@@ -57,7 +57,8 @@
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 
-#include "pmix_client_ops.h"
+#include "src/server/pmix_server_ops.h"
+#include "src/client/pmix_client_ops.h"
 
 /* define a tracking object for group operations */
 typedef struct {
@@ -1201,6 +1202,9 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     bool gotctxid = false;
     pmix_proc_t *members = NULL;
     size_t nmembers = 0;
+    size_t ngrpinfo = 0;
+    size_t n, m, ninfo, npinfo;
+    pmix_info_t grpinfo, *iptr, *pinfo;
     pmix_data_array_t darray;
     void *ilist;
 
@@ -1272,9 +1276,62 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             ret = rc;
+            goto report;
         }
     }
 
+    // unpack any group info that was provided
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ngrpinfo, &cnt, PMIX_SIZE);
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        goto report;
+    } else if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        ret = rc;
+        goto report;
+    }
+    if (0 < ngrpinfo && gotctxid) {
+        for (n=0; n < ngrpinfo; n++) {
+            PMIX_INFO_CONSTRUCT(&grpinfo);
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &grpinfo, &cnt, PMIX_INFO);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                ret = rc;
+                PMIX_INFO_DESTRUCT(&grpinfo);
+                goto report;
+            }
+            // store the info locally
+            iptr = (pmix_info_t*)grpinfo.value.data.darray->array;
+            ninfo = grpinfo.value.data.darray->size;
+
+            if (PMIX_CHECK_KEY(&grpinfo, PMIX_GROUP_INFO)) {
+                // this is just a single array of group info
+                rc = pmix_server_process_grpinfo(ctxid, iptr, ninfo);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    ret = rc;
+                    PMIX_INFO_DESTRUCT(&grpinfo);
+                    goto report;
+                }
+
+            } else {
+                // contains an array of group info arrays
+                for (m=0; m < ninfo; m++) {
+                    pinfo = (pmix_info_t*)iptr[m].value.data.darray->array;
+                    npinfo = iptr[m].value.data.darray->size;
+                    rc = pmix_server_process_grpinfo(ctxid, pinfo, npinfo);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        ret = rc;
+                        PMIX_INFO_DESTRUCT(&grpinfo);
+                        goto report;
+                    }
+                }
+            }
+            PMIX_INFO_DESTRUCT(&grpinfo);
+        }
+    }
 
 report:
     ilist = PMIx_Info_list_start();

@@ -561,6 +561,24 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                             break;
                         }
                     }
+                    /* add any group info */
+                    ninfo = pmix_list_get_size(&grpinfo);
+                    PMIX_BFROPS_PACK(ret, cd->peer, reply, &ninfo, 1, PMIX_SIZE);
+                    if (PMIX_SUCCESS != ret) {
+                        PMIX_ERROR_LOG(ret);
+                        PMIX_RELEASE(reply);
+                        break;
+                    }
+                    if (0 < ninfo) {
+                        PMIX_LIST_FOREACH(g, &grpinfo, pmix_info_caddy_t) {
+                            PMIX_BFROPS_PACK(ret, cd->peer, reply, g->info, 1, PMIX_INFO);
+                            if (PMIX_SUCCESS != ret) {
+                                PMIX_ERROR_LOG(ret);
+                                PMIX_RELEASE(reply);
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 pmix_output_verbose(2, pmix_server_globals.group_output,
