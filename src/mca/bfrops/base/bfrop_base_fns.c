@@ -393,7 +393,9 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
         PMIX_ALLOC_DIRECTIVE,
         PMIX_LINK_STATE,
         PMIX_LOCTYPE,
-        PMIX_DEVTYPE
+        PMIX_DEVTYPE,
+
+        PMIX_UNDEF
     };
 
     rc = PMIX_SUCCESS;
@@ -503,7 +505,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
             if (NULL != kv->data.bo.bytes && 0 < kv->data.bo.size) {
                 rc = pmix_bfrops_base_copy_bo((pmix_byte_object_t**)data, &kv->data.bo, PMIX_BYTE_OBJECT);
                 if (PMIX_SUCCESS == rc) {
-                    *sz = kv->data.bo.size;
+                    *sz = sizeof(pmix_byte_object_t);
                 } else {
                     *data = NULL;
                     *sz = 0;
