@@ -2,7 +2,7 @@
 # Copyright (c) 2022 Cisco Systems, Inc.  All rights reserved.
 #
 # Copyright (c) 2022-2023 Intel, Inc.  All rights reserved.
-# Copyright (c) 2023-2025 Nanook Consulting  All rights reserved.
+# Copyright (c) 2023-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -89,9 +89,10 @@ PMIX_MAN1 = \
         pmix_info.1
 
 PMIX_MAN3 = \
-        PMIx_Abort.3 \
-        PMIx_Init.3 \
-        PMIx_Finalize.3
+	PMIx_Abort.3 \
+	PMIx_Init.3 \
+	PMIx_Finalize.3 \
+	PMIx_Value_unload.3
 
 PMIX_MAN5 = \
         openpmix.5
@@ -130,7 +131,7 @@ EXTRA_DIST += \
         $(OUTDIR)/man
 
 ALL_MAN_BUILT = \
-        $(PMIX_MAN1_BUILT) $(PMIX_MAN3_BUILD) $(PMIX_MAN5_BUILT)
+        $(PMIX_MAN1_BUILT) $(PMIX_MAN3_BUILT) $(PMIX_MAN5_BUILT)
 $(ALL_MAN_BUILT): $(RST_SOURCE_FILES) $(IMAGE_SOURCE_FILES)
 $(ALL_MAN_BUILT): $(TEXT_SOURCE_FILES) $(SPHINX_CONFIG)
 
