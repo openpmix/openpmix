@@ -12,3 +12,4 @@ APIs (section 3)
    PMIx_Abort.3.rst
    PMIx_Init.3.rst
    PMIx_Finalize.3.rst
+   PMIx_Value_unload.3.rst
