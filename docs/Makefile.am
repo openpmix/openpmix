@@ -92,10 +92,14 @@ PMIX_MAN3 = \
 	PMIx_Abort.3 \
 	PMIx_Init.3 \
 	PMIx_Finalize.3 \
-	PMIx_Value_unload.3
+	PMIx_Value_unload.3 \
+        PMIx_Value_get_number.3
 
 PMIX_MAN5 = \
-        openpmix.5
+        openpmix.5 \
+        pmix_status_t.5 \
+        pmix_value_t.5 \
+        pmix_byte_object_t.5
 
 MAN_OUTDIR = $(OUTDIR)/man
 
