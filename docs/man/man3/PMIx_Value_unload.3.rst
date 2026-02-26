@@ -1,11 +1,11 @@
-.. _PMIx_Value_unload:
+.. _man3-PMIx_Value_unload:
 
 PMIx_Value_unload
 =================
 
 .. include_body
 
-:ref:`PMIx_Value_unload` |mdash| Unload the contents of a ``pmix_value_t``
+`PMIx_Value_unload` |mdash| Unload the contents of a :ref:`pmix_value_t(5) <man5-pmix_value_t>`
 
 SYNOPSIS
 --------
@@ -29,7 +29,7 @@ unnecessary to provide an equivalent "unload" function.
 INPUT PARAMETERS
 ----------------
 
-* ``val``: Pointer to a ``pmix_value_t`` struct containing the
+* ``val``: Pointer to a :ref:`pmix_value_t(5) <man5-pmix_value_t>` struct containing the
   value to be unloaded.
 * ``data``: Pointer to the location where the data value is to be
   returned
@@ -39,25 +39,27 @@ INPUT PARAMETERS
 DESCRIPTION
 -----------
 
-The `PMIx_Value_unload` function follows the format of the data in the
-`pmix_value_t` structure. If the data type in the `pmix_value_t`:
+The ``PMIx_Value_unload`` function follows the format of the data in the
+`pmix_value_t` structure. If the data type in the :ref:`pmix_value_t(5) <man5-pmix_value_t>` is:
 
-   * is a simple data field (e.g., a `size_t`), then the function just copies
+   * a standard datatype (e.g., a `size_t`) or a PMIx abstraction of
+     a standard datatype (e.g., a :ref:`pmix_status_t(5) <man5-pmix_status_t>`, then the function just copies
      the data across. The caller needs to provide the storage for the data.
 
-   * is a pointer (e.g., the pmix_envar_t field), then the function malloc's
+   * a pointer (e.g., the `(void*)ptr` field) or a PMIx defined structure
+     (e.g., the :ref:`pmix_byte_object_t(5) <man5-pmix_byte_object_t>`), then the function malloc's
      the storage for the value, copies the fields into the new storage, and
      returns that storage to the caller. The caller needs to provide storage
      for the pointer to the returned value.
 
 So in other words, the caller needs to provide storage (and a pointer to) the
-place where the final data is to be put. If it's a simple data field, the value
-will be placed in the provided storage. If it's a complex data field (e.g., a
-struct), then the function will place the pointer to that malloc'd data in the
+place where the final data is to be put. If it's a statndard data field, the value
+will be placed in the provided storage. If it's a PMIx-defined
+struct, then the function will place the pointer to that malloc'd data in the
 provided storage.
 
-Note that the source `pmix_value_t` will not be altered in any way, and that it can
-be modified or free'd without affecting the copied data once the function has completed.
+The source `pmix_value_t` will not be altered in any way, and it can
+be modified or free'd without affecting the unloaded data once the function has completed.
 
 Note that this has an unusual side effect. For example, consider the case where
 the ``pmix_value_t`` contains a ``pmix_byte_object_t``. In this case, the caller
@@ -89,9 +91,11 @@ Unloading a string:
 
     rc = PMIx_Value_unload(&val, (void**)&str, &sz);
 
-On return of `PMIX_SUCCESS`, the variable `str` will point to
+On return of ``PMIX_SUCCESS``, the variable `str` will point to
 a new copy of the string "this is a string", and `sz` will equal
-the length of that string.
+the length of that string. Note that the function placed the
+location of the string into the provided `str` location as the
+``char*`` datatype is a standard one. Similarly:
 
 
 .. code-block:: c
@@ -106,8 +110,8 @@ the length of that string.
 
     rc = PMIx_Value_unload(&val, (void**)&uptr, &sz);
 
-On return of `PMIX_SUCCESS`, the variable `u32` will contain a
-value of `1234` and `sz` will equal 4.
+On return of ``PMIX_SUCCESS``, the variable `u32` will contain a
+value of `1234` and `sz` will equal 4. However:
 
 
   .. code-block:: c
@@ -122,20 +126,13 @@ value of `1234` and `sz` will equal 4.
 
     rc = PMIx_Value_unload(&val, (void**)&bo, &sz);
 
-On return of `PMIX_SUCCESS`, the variable `bo` will point to
-a newly allocated `pmix_byte_object_t` struct containing a
-`bytes` field of 32 bytes and a `size` of 32. The `sz` parameter
-will equal 16 as that is the size of a `pmix_byte_object_t` structure.
+On return of ``PMIX_SUCCESS``, the variable `bo` will point to
+a newly allocated :ref:`pmix_byte_object_t(5) <man5-pmix_byte_object_t>` struct containing a
+`bytes` field of 32 bytes and a `size` of 32 because this is a
+PMIx-defined data structure. The `sz` parameter
+will equal 16 as that is the size of the structure.
 
 
-ERRORS
-------
-
-PMIx ``errno`` values are defined in ``pmix_common.h``.
-
-.. JMS COMMENT When more man pages are added, they can be :ref:'ed
-   appropriately, so that HTML hyperlinks are created to link to the
-   corresponding pages.
 
 .. seealso::
-   :ref:`PMIx_Init(3) <man3-PMIx_Init>`
+   :ref:`pmix_value_t(5) <man5-pmix_value_t>`

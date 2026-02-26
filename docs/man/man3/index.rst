@@ -13,3 +13,4 @@ APIs (section 3)
    PMIx_Init.3.rst
    PMIx_Finalize.3.rst
    PMIx_Value_unload.3.rst
+   PMIx_Value_get_number.3.rst
