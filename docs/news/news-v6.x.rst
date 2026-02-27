@@ -4,8 +4,8 @@ PMIx v6.x series
 This file contains all the NEWS updates for the PMIx v6.x
 series, in reverse chronological order.
 
-6.1.0 -- TBD
-------------
+6.1.0 -- 27 Feb 2025
+--------------------
 .. important:: This is the second release in the v6 family. The release
                is based on a refork of the PMIx master branch as the
                changes since v6.0.0 were extensive. Many of the changes
@@ -37,6 +37,19 @@ series, in reverse chronological order.
 
 
 Detailed changes since refork include:
+ - PR #3826: Update NEWS and VERSION to final release
+ - PR #3825: Multiple commits
+    - Terminate an array and return correct size
+    - Add a man page on PMIx_Value_unload
+    - Extend the PMIx_Value_unload man page
+    - Update man pages to better explain a couple of PMIx functions
+ - PR #3820: Cleanup a place in the value_unload functions
+ - PR #3818: Multiple commits
+    - Properly handle qualified values in client get
+    - Return group info to members during construct
+ - PR #3814: Ensure the log source always gets set
+ - PR #3812: Copy the source procID instead of pointing at it
+ - PR #3810: Add function defs to pmix_deprecated.h
  - PR #3804: Multiple commits
     - Silence a few Coverity warnings
     - Enable including help topics in topics
