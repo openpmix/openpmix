@@ -18,7 +18,7 @@
  * Copyright (c) 2018      Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -594,6 +594,7 @@ int main(int argc, char *argv[])
     bool disable_flags = true;
     bool real_flag = false;
     char hostname[PMIX_PATH_MAX];
+    char *str;
     PMIX_HIDE_UNUSED_PARAMS(options);
 
     /* init globals */
@@ -708,13 +709,6 @@ int main(int argc, char *argv[])
     user_argc = PMIx_Argv_count(user_argv);
 
     for (i = 0; i < user_argc; ++i) {
-        if (0 == strcmp(user_argv[i], "--help") ||
-            0 == strcmp(user_argv[i], "-h")) {
-            pmix_show_help("help-pmixcc.txt", "usage", false,
-                            "pmixcc");
-            exit_status = 0;
-            goto cleanup;
-        }
         if (0 == strncmp(user_argv[i], "-showme", strlen("-showme")) ||
             0 == strncmp(user_argv[i], "--showme", strlen("--showme")) ||
             0 == strncmp(user_argv[i], "-show", strlen("-show")) ||
@@ -784,7 +778,6 @@ int main(int argc, char *argv[])
 
             } else if (0 == strncmp(user_argv[i], "-showme:version", strlen("-showme:version")) ||
                        0 == strncmp(user_argv[i], "--showme:version", strlen("--showme:version"))) {
-                char *str;
                 str = pmix_show_help_string("help-pmixcc.txt", "version", false, base_argv0,
                                             options_data[user_data_idx].project,
                                             options_data[user_data_idx].version,
@@ -797,13 +790,10 @@ int main(int argc, char *argv[])
 
             } else if (0 == strncmp(user_argv[i], "-showme:help", strlen("-showme:help")) ||
                        0 == strncmp(user_argv[i], "--showme:help", strlen("--showme:help"))) {
-                char *str;
-                fprintf(stderr, "BUG %s\n", PMIX_PROXY_BUGREPORT);
                 str = pmix_show_help_string("help-pmixcc.txt", "usage", false, base_argv0,
                                             options_data[user_data_idx].project,
                                             options_data[user_data_idx].version,
-                                            base_argv0, options_data[parse_options_idx].compiler,
-                                            pmix_tool_msg);
+                                            base_argv0, pmix_tool_msg);
                 if (NULL != str) {
                     printf("%s", str);
                     free(str);
