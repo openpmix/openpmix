@@ -13,7 +13,7 @@
 # Copyright (c) 2006-2010 Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2012-2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2025      Nanook Consulting  All rights reserved.
+# Copyright (c) 2025-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -40,7 +40,7 @@ PMIx wrapper compiler
   --showme:libdirs_static  Show list of static library dirs added when linking
   --showme:libs            Show list of libraries added when linking
   --showme:libs_static     Show list of static libraries added when linking
-  --showme:version         Show version of %s
+  --showme:version         Show version of PMIx library
   --showme:help            This help message
 
 where "args" consists of compiler flags and sources that are to
