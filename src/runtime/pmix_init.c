@@ -242,7 +242,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
 #endif
 
     pmix_init_called = true;
-    memset(&flags, 0, sizeof(pmix_iof_flags_t));
+    pmix_iof_init_flags(&flags);
 
     if (PMIX_SUCCESS != pmix_init_util(info, ninfo, NULL)) {
         return PMIX_ERROR;

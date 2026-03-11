@@ -3080,7 +3080,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->copied = false;
     p->keys = NULL;
     p->channels = PMIX_FWD_NO_CHANNELS;
-    memset(&p->flags, 0, sizeof(pmix_iof_flags_t));
+    pmix_iof_init_flags(&p->flags);
     p->bo = NULL;
     p->nbo = 0;
     p->cbfunc = NULL;

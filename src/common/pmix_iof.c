@@ -973,6 +973,12 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
     return NULL;
 }
 
+void pmix_iof_init_flags(pmix_iof_flags_t *flags)
+{
+    memset(flags, 0, sizeof(pmix_iof_flags_t));
+    flags->nocopy = true;
+}
+
 void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
 {
     if (PMIX_CHECK_KEY(info, PMIX_IOF_TAG_OUTPUT) ||
