@@ -52,6 +52,7 @@
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
+#include "src/common/pmix_iof.h"
 #include "src/mca/bfrops/bfrops_types.h"
 #include "src/mca/bfrops/base/bfrop_base_tma.h"
 #include "src/threads/pmix_threads.h"
@@ -149,7 +150,7 @@ static void nscon(pmix_namespace_t *p)
     PMIX_CONSTRUCT(&p->epilog.cleanup_files, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.ignores, pmix_list_t);
     PMIX_CONSTRUCT(&p->setup_data, pmix_list_t);
-    memset(&p->iof_flags, 0, sizeof(p->iof_flags));
+    pmix_iof_init_flags(&p->iof_flags);
     PMIX_CONSTRUCT(&p->sinks, pmix_list_t);
 
 }
@@ -324,7 +325,7 @@ static void iofreqcon(pmix_iof_req_t *p)
     p->remote_id = 0;
     p->procs = NULL;
     p->nprocs = 0;
-    memset(&p->flags, 0, sizeof(pmix_iof_flags_t));
+    pmix_iof_init_flags(&p->flags);
     p->channels = PMIX_FWD_NO_CHANNELS;
     p->cbfunc = NULL;
     p->regcbfunc = NULL;
