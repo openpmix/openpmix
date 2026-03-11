@@ -348,7 +348,7 @@ typedef struct {
     .rank = false,                  \
     .file = NULL,                   \
     .directory = NULL,              \
-    .nocopy = false,                \
+    .nocopy = true,                 \
     .merge = false,                 \
     .local_output = false,          \
     .local_output_given = false,    \
