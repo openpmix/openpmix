@@ -1,132 +1,160 @@
 .. _man1-pmixcc:
 
-pmixcc
-=========
+PMIx Wrapper Compiler
+=====================
 
 .. include_body
 
-pmixcc |mdash| wrapper compiler for PMIx-based applications or tools
+pmixcc |mdash| PMIx wrapper compiler
 
-SYNOPSIS
---------
+SYNTAX
+------
 
-``pmixcc [options] <file>``
-
-
-DESCRIPTION
------------
-
-``pmixcc`` is a wrapper compiler that can be used to build PMIx-based
-applications or tools.
+``pmixcc [--showme | --showme:compile | --showme:link] ...``
 
 
 OPTIONS
 -------
 
-``pmixcc`` accepts the following options:
+The options include:
 
-* ``-h`` | ``--help``: Show help message
+* ``--showme``: This option comes in several different variants (see
+  below). None of the variants invokes the underlying compiler; they
+  all provide information on how the underlying compiler would have
+  been invoked had ``--showme`` not been used. The basic ``--showme``
+  option outputs the command line that would be executed to compile
+  the program.
 
-* ``--help={common|optimizers|params|target|warnings|[^]{joined|separate|undocumented}}[,...].``: Display specific types of command line options
+  .. note:: If a non-filename argument is passed on the command line,
+            the ``--showme`` option will *not* display any additional
+            flags. For example, both ``"pmixcc --showme`` and
+            ``pmixcc --showme my_source.c`` will show all the
+            wrapper-supplied flags. But ``pmixcc
+            --showme -v`` will only show the underlying compiler name
+            and ``-v``.
 
-* ``-v`` | ``--verbose``: Enable debug output.
+* ``--showme:compile``: Output the compiler flags that would have been
+  supplied to the underlying compiler.
 
-* ``-V`` | ``--version``: Print version and exit.
+* ``--showme:link``: Output the linker flags that would have been
+  supplied to the underlying compiler.
 
-* ``-dumpspecs``: Display all of the built in spec strings.
+* ``--showme:command``: Outputs the underlying compiler
+  command (which may be one or more tokens).
 
-* ``-dumpversion``: Display the version of the compiler.
+* ``--showme:incdirs``: Outputs a space-delimited (but otherwise
+  undecorated) list of directories that the wrapper compiler would
+  have provided to the underlying compiler to indicate
+  where relevant header files are located.
 
-* ``-dumpmachine``: Display the compiler's target processor.
+* ``--showme:libdirs``: Outputs a space-delimited (but otherwise
+  undecorated) list of directories that the wrapper compiler would
+  have provided to the underlying linker to indicate where relevant
+  libraries are located.
 
-* ``-foffload=<targets>``: Specify offloading targets.
+* ``--showme:libs`` Outputs a space-delimited (but otherwise
+  undecorated) list of library names that the wrapper compiler would
+  have used to link an application. For example: ``pmix util``.
 
-* ``-print-search-dirs``: Display the directories in the compiler's search path.
+* ``--showme:version``: Outputs the version number of PMIx.
 
-* ``-print-libgcc-file-name``: Display the name of the compiler's companion library.
+* ``--showme:help``: Output a brief usage help message.
 
-* ``-print-file-name=<lib>``: Display the full path to library <lib>.
-
-* ``-print-prog-name=<prog>``: Display the full path to compiler component <prog>.
-
-* ``-print-multiarch``: Display the target's normalized GNU triplet, used as a component in the library path.
-
-* ``-print-multi-directory``: Display the root directory for versions of libgcc.
-
-* ``-print-multi-lib``: Display the mapping between command line options and multiple library search directories.
-
-* ``-print-multi-os-directory``: Display the relative path to OS libraries.
-
-* ``-print-sysroot``: Display the target libraries directory.
-
-* ``-print-sysroot-headers-suffix``: Display the sysroot suffix used to find headers.
-
-* ``-Wa,<options>``: Pass comma-separated <options> on to the assembler.
-
-* ``-Wp,<options>``: Pass comma-separated <options> on to the preprocessor.
-* ``-Wl,<options>``: Pass comma-separated <options> on to the linker.
-
-* ``-Xassembler <arg>``: Pass <arg> on to the assembler.
-
-* ``-Xpreprocessor <arg>``: Pass <arg> on to the preprocessor.
-
-* ``-Xlinker <arg>``: Pass <arg> on to the linker.
-
-* ``-save-temps``: Do not delete intermediate files.
-
-* ``-save-temps=<arg>``: Do not delete intermediate files.
-
-* ``-no-canonical-prefixes``: Do not canonicalize paths when building relative prefixes to other gcc components.
-
-* ``-pipe``: Use pipes rather than intermediate files.
-
-* ``-time``: Time the execution of each subprocess.
-
-* ``-specs=<file>``: Override built-in specs with the contents of <file>.
-
-* ``-std=<standard>``: Assume that the input sources are for <standard>.
-
-* ``--sysroot=<directory>``: Use <directory> as the root directory for headers and libraries.
-
-* ``-B <directory>``: Add <directory> to the compiler's search paths.
-
-* ``-v``: Display the programs invoked by the compiler.
-
-* ``-###``: Like -v but options quoted and commands not executed.
-
-* ``-E``: Preprocess only; do not compile, assemble or link.
-
-* ``-S``: Compile only; do not assemble or link.
-
-* ``-c``: Compile and assemble, but do not link.
-
-* ``-o <file>``: Place the output into <file>.
-
-* ``-pie``: Create a dynamically linked position independent executable.
-
-* ``-shared``: Create a shared library.
-
-* ``-x <language>``: Specify the language of the following input files.
-  Permissible languages include: c c++ assembler none
-  'none' means revert to the default behavior of
-  guessing the language based on the file's extension.
+See the man page for your underlying compiler for other options that
+can be passed through pmixcc.
 
 
-Options starting with ``-g``, ``-f``, ``-m``, ``-O``, ``-W``, or ``--param`` are automatically
-passed on to the various sub-processes invoked by the compiler.  In order to pass
-other options on to these processes the ``-W<letter>`` options must be used.
-
-
-EXIT STATUS
+DESCRIPTION
 -----------
 
-Returns 0 if build is successful, a non-zero error code if otherwise.
+Conceptually, the role of these commands is quite simple:
+transparently add relevant compiler and linker flags to the user's
+command line that are necessary to compile / link PMIx-based programs,
+and then invoke the underlying compiler to actually perform the
+command.
+
+As such, these commands are frequently referred to as "wrapper"
+compilers because they do not actually compile or link applications
+themselves; they only add in command line flags and invoke the
+back-end compiler.
 
 
-EXAMPLES
+Overview
 --------
 
-Examples of using this command.
+``pmixcc`` is a convenience wrapper for the underlying C compiler.
+Translation of a PMIx-based program requires the linkage of the
+PMIx-specific libraries which may not reside in one of the standard
+search directories of ``ld(1)``. It also often requires the inclusion
+of header files what may also not be found in a standard location.
 
-.. seealso::
-   :ref:`openpmix(5) <man5-openpmix>`
+``pmixcc`` passes its arguments to the underlying C compiler along with
+the ``-I``, ``-L`` and ``-l`` options required by PMIx-based programs.
+
+The PMIx Team *strongly* encourages using the wrapper compiler
+instead of attempting to link to the PMIx library manually. This
+allows the specific implementation of PMIx to change without
+forcing changes to linker directives in users' Makefiles. Indeed, the
+specific set of flags and libraries used by the wrapper compiler
+depends on how PMIx was configured and built; the values can change
+between different installations of the same version of PMIx.
+
+Indeed, since the wrappers are simply thin shells on top of an
+underlying compiler, there are very, very few compelling reasons *not*
+to use PMIx's wrapper compiler. When it is not possible to use
+the wrapper directly, the ``--showme:compile`` and ``--showme:link``
+options should be used to determine what flags the wrapper would have
+used. For example:
+
+.. code:: sh
+
+   shell$ cc -c file1.c `pmixcc --showme:compile`
+
+   shell$ cc -c file2.c `pmixcc --showme:compile`
+
+   shell$ cc file1.o file2.o `pmixcc --showme:link` -o my_program
+
+.. _man1-pmix-wrapper-compiler-files:
+
+FILES
+-----
+
+The strings that the wrapper compiler inserts into the command line
+before invoking the underlying compiler are stored in a text file
+created by PMIx and installed to
+``$pkgdata/pmixcc-wrapper-data.txt``, where:
+
+* ``$pkgdata`` is typically ``$prefix/share/pmix``
+* ``$prefix`` is the top installation directory of PMIx
+
+It is rarely necessary to edit this file, but it can be examined to
+gain insight into what flags the wrapper is placing on the command
+line.
+
+
+ENVIRONMENT VARIABLES
+---------------------
+
+By default, the wrapper uses the compiler that was selected when
+PMIx was configured. This compiler was either found
+automatically by PMIx's "configure" script, or was selected by
+the user via the ``CC`` environment variable
+before ``configure`` was invoked. Additionally, other arguments specific
+to the compiler may have been selected by configure.
+
+These values can be selectively overridden by either editing the text
+files containing this configuration information (see the :ref:`FILES
+<man1-pmix-wrapper-compiler-files>` section), or by setting selected
+environment variables of the form ``pmix_value``.
+
+Valid value names are:
+
+* ``CPPFLAGS``: Flags added when invoking the preprocessor
+
+* ``LDFLAGS``: Flags added when invoking the linker
+
+* ``LIBS``: Libraries added when invoking the linker
+
+* ``CC``: C compiler
+
+* ``CFLAGS``: C compiler flags
