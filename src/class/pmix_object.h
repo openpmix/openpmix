@@ -655,6 +655,7 @@ static inline void pmix_obj_run_constructors(pmix_object_t *object)
     assert(NULL != object->obj_class);
 
     cls_construct = object->obj_class->cls_construct_array;
+    if (NULL == cls_construct) return;
     while (NULL != *cls_construct) {
         (*cls_construct)(object);
         cls_construct++;
@@ -676,6 +677,7 @@ static inline void pmix_obj_run_destructors(pmix_object_t *object)
     assert(NULL != object->obj_class);
 
     cls_destruct = object->obj_class->cls_destruct_array;
+    if (NULL == cls_destruct) return;
     while (NULL != *cls_destruct) {
         (*cls_destruct)(object);
         cls_destruct++;
