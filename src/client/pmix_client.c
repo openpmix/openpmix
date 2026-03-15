@@ -785,12 +785,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                sizeof(pmix_personality_t));
         /* mark that the server is unreachable */
         unreach = true;
-        /* we are a connected singleton */
-        rc = pmix_tool_init_info();
-        if (PMIX_SUCCESS != rc) {
-            free(suri);
-            return rc;
-        }
+
     } else {
         /* send a request for our job info - we do this as a non-blocking
          * transaction because some systems cannot handle very large
