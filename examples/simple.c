@@ -46,9 +46,11 @@ int main(int argc, char **argv)
      * is included, then the process will be stopped in this call until
      * the "debugger release" notification arrives */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-       fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
-                PMIx_Error_string(rc));
-        exit(1);
+        if (PMIX_ERR_UNREACH != rc) {
+           fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
+                    PMIx_Error_string(rc));
+            exit(1);
+        }
     }
 
     rc = PMIx_Finalize(NULL, 0);
@@ -57,9 +59,11 @@ int main(int argc, char **argv)
     }
 
      if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-       fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
-                PMIx_Error_string(rc));
-        exit(1);
+        if (PMIX_ERR_UNREACH != rc) {
+           fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
+                    PMIx_Error_string(rc));
+            exit(1);
+        }
     }
 
    /* finalize us */

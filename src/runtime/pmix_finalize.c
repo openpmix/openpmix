@@ -156,9 +156,6 @@ void pmix_rte_finalize(void)
     // release the topology
     pmix_hwloc_finalize();
 
-    /* now safe to release the event base */
-    (void) pmix_progress_thread_finalize(NULL);
-
     for (i = 0; i < PMIX_VAR_DUMP_COLOR_KEY_COUNT; i++) {
         free(pmix_var_dump_color[i]);
         pmix_var_dump_color[i] = NULL;
