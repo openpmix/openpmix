@@ -11,9 +11,12 @@ def main():
     except:
         print("FAILED TO CREATE SERVER")
         exit(1)
+
     print("Testing server version ", foo.get_version())
-    args = [{'key':'FOOBAR', 'value':'VAR', 'val_type':PMIX_STRING},
-            {'key':'BLAST', 'value':7, 'val_type':PMIX_INT32}]
+    args = [
+        {'key': 'pmix.tcp.repuri',  'value': '-', 'val_type': PMIX_STRING} # Print URI to stdout
+    ]
+
     map = {'clientconnected': clientconnected,
            'clientfinalized': clientfinalized,
            'fencenb': clientfence,
@@ -22,6 +25,7 @@ def main():
            'lookup': clientlookup,
            'query': clientquery,
            'registerevents': client_register_events}
+
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()
@@ -56,6 +60,8 @@ def main():
     # setup the fork
     rc = foo.setup_fork({'nspace':"testnspace", 'rank':0}, env)
     print("SetupFrk", rc)
+    
+    print("Envy wyszly takie:", env)
 
     # setup the client argv
     args = ["./client.py"]

@@ -1839,7 +1839,7 @@ cdef class PMIxServer(PMIxClient):
 
     def server_module_init(self):
         # v1.x interfaces
-        self.myserver.client_connected2 = <pmix_server_client_connected2_fn_t>clientconnected
+        self.myserver.client_connected2 = <pmix_server_client_connected2_fn_t>clientconnected2
         self.myserver.client_finalized = <pmix_server_client_finalized_fn_t>clientfinalized
         self.myserver.abort = <pmix_server_abort_fn_t>clientaborted
         self.myserver.fence_nb = <pmix_server_fencenb_fn_t>fencenb
@@ -2303,8 +2303,27 @@ cdef int clientconnected(pmix_proc_t *proc, void *server_object,
         myproc = []
         pmix_unload_procs(proc, 1, myproc)
         cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['clientconnected'](myproc[0], pypmix_op_cbfunc, cbdata_dict)
-    
+        return pmixservermodule['clientconnected'](myproc[0], [], pypmix_op_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_FOUND
+
+cdef int clientconnected2(pmix_proc_t *proc, void *server_object,
+                          pmix_info_t info[], size_t ninfo,
+                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
+    keys = pmixservermodule.keys()
+    if 'clientconnected' in keys:
+        if not proc:
+            return PMIX_ERR_BAD_PARAM
+        myproc = []
+        pmix_unload_procs(proc, 1, myproc)
+        pyinfo = []
+        if 0 < ninfo:
+            rc = pmix_unload_info(info, ninfo, pyinfo)
+            if PMIX_SUCCESS != rc:
+                return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['clientconnected'](myproc[0], pyinfo, pypmix_op_cbfunc, cbdata_dict)
+
     return PMIX_ERR_NOT_FOUND
 
 cdef int clientfinalized(pmix_proc_t *proc, void *server_object,

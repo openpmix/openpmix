@@ -6,6 +6,18 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 global killer
 
+from typing import Callable  
+  
+# Define the callback types locally  
+pypmix_op_cbfunc_t = Callable[[int, dict], int]  
+pypmix_info_cbfunc_t = Callable[[int, list, dict], int]  
+pypmix_modex_cbfunc_t = Callable[[int, bytearray, dict], int]  
+pypmix_lookup_cbfunc_t = Callable[[int, list, dict], int]  
+pypmix_spawn_cbfunc_t = Callable[[int, str, dict], int]  
+pypmix_tool_connection_cbfunc_t = Callable[[int, dict, dict], None]  
+pypmix_credential_cbfunc_t = Callable[[int, dict, list, dict], None]  
+pypmix_validation_cbfunc_t = Callable[[int, list], None]
+
 # Our event loop
 event_loop = None
 
@@ -34,13 +46,17 @@ class GracefulKiller:
   def exit_gracefully(self,signum, frame):
     self.kill_now = True
 
-def _clientconnected(proc:tuple is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
-    print("CLIENT CONNECTED SHIFTED", proc)
-    cbfunc(PMIX_SUCCESS, cbdata)
-
-def clientconnected(proc:tuple is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
-    print("CLIENT CONNECTED", proc)
-    event_loop.call_soon_threadsafe(_clientconnected, proc, cbfunc, cbdata)
+def _clientconnected(proc:tuple, info:list, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):  
+    """Internal callback that runs in the event loop"""  
+    print("CLIENT CONNECTED SHIFTED", proc)  
+    if info:  
+        print("Connection info:", info)  
+    cbfunc(PMIX_SUCCESS, cbdata)  
+  
+def clientconnected(proc:tuple, info:list, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):  
+    """Entry point called from C code"""  
+    print("CLIENT CONNECTED", proc)  
+    event_loop.call_soon_threadsafe(_clientconnected, proc, info, cbfunc, cbdata)  
     return PMIX_SUCCESS
 
 def _clientfinalized(proc:tuple is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
