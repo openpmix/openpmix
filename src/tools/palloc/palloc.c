@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -64,6 +64,7 @@ static struct option pallocptions[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_CONNECTION_ORDER, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_SYS_CONTROLLER, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SCHEDULER, PMIX_ARG_NONE),
 
     PMIX_OPTION_DEFINE(PMIX_CLI_REQ_ID, PMIX_ARG_REQD),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_QUEUE, PMIX_ARG_REQD, 'q'),
@@ -298,6 +299,9 @@ int main(int argc, char **argv)
 
     } else if (pmix_cmd_line_is_taken(&results, PMIX_CLI_SYS_CONTROLLER)) {
         PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SYS_CONTROLLER, NULL, PMIX_BOOL);
+
+    } else if (pmix_cmd_line_is_taken(&results, PMIX_CLI_SCHEDULER)) {
+        PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SCHEDULER, NULL, PMIX_BOOL);
 
     } else {
         /* if none of the above, setup a common "order" to check */

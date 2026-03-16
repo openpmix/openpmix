@@ -127,6 +127,7 @@ PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 #define PMIX_CLI_TMPDIR                 "tmpdir"                    // required
 #define PMIX_CLI_CONNECTION_ORDER       "connect-order"             // required
 #define PMIX_CLI_SYS_CONTROLLER         "system-controller"         // none
+#define PMIX_CLI_SCHEDULER              "scheduler"                 // none
 
 // Allocation request options
 #define PMIX_CLI_REQ_ID                 "request-id"                // required

@@ -51,6 +51,7 @@ PMIx Allocation Request tool
    --system-server-first             First look for a system server and connect to it if found
    --system-server-only              Connect only to a system-level server
    --system-controller               Connect to the system controller
+   --scheduler                       Connect to the scheduler
    --tmpdir <arg0>                   Set the root for the session directory tree
    --connect-order <arg0>            Specify search order for server connections - e.g., scheduler,
                                      system controller, system-level server, or local server
@@ -160,6 +161,9 @@ Connect only to a system-level server - abort if one is not found
 #
 [system-controller]
 Look for a system controller and connect to it if found
+#
+[scheduler]
+Look for the scheduler on this node and connect to it if found
 #
 [tmpdir]
 Define the root location for the session directory tree where the
