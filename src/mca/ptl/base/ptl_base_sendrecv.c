@@ -7,7 +7,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -203,21 +203,13 @@ static void lost_connection(pmix_peer_t *peer)
             /* cleanup any sensors that are monitoring them */
             pmix_psensor.stop(peer, NULL);
         }
-        if (!pmix_globals.mypeer->finalized) {
-            /* if the peer is a tool, then we always generate the
-             * lost connection event so that the host can know the
-             * tool departed */
-            if (PMIX_PEER_IS_TOOL(peer) && !PMIX_PEER_IS_CLIENT(peer)) {
-                PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION, peer,
-                                  PMIX_RANGE_PROC_LOCAL, _notify_complete);
-            } else if (!peer->finalized) {
-                /* if this peer already called finalize, then
-                 * we are just seeing their connection go away
-                 * when they terminate - so do not generate
-                 * an event. If an abnormal termination, then we do */
-                PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION, peer,
-                                  PMIX_RANGE_PROC_LOCAL, _notify_complete);
-            }
+        if (!pmix_globals.mypeer->finalized && !peer->finalized) {
+            /* if this peer already called finalize, then
+             * we are just seeing their connection go away
+             * when they terminate - so do not generate
+             * an event. If an abnormal termination, then we do */
+            PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION, peer,
+                              PMIX_RANGE_PROC_LOCAL, _notify_complete);
         }
 
     } else if (peer == pmix_client_globals.myserver) {
