@@ -148,7 +148,7 @@ static void stop_progress_engine(pmix_progress_tracker_t *trk)
 static void checkev(int fd, short args, void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t*)cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(fd, args, cbdata);
+    PMIX_HIDE_UNUSED_PARAMS(fd, args);
 
     PMIX_WAKEUP_THREAD(lock);
 }
