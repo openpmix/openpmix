@@ -12,7 +12,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -39,9 +39,9 @@ int pmix_plog_base_select(void)
     pmix_mca_base_component_t *component = NULL;
     pmix_mca_base_module_t *module = NULL;
     pmix_plog_module_t *nmodule;
-    pmix_plog_base_active_module_t *newmodule, *mod, *default_mod = NULL;
+    pmix_plog_base_active_module_t *newmodule, *mod;
     int rc, priority, n;
-    bool inserted, default_added, reqd;
+    bool inserted, reqd;
     pmix_list_t actives;
     char *ptr;
     size_t len;
@@ -112,16 +112,10 @@ int pmix_plog_base_select(void)
             /* must be lowest priority - add to end */
             pmix_list_append(&actives, &newmodule->super);
         }
-
-        /* if this is the default module, track it */
-        if (0 == strcmp(newmodule->module->name, "default")) {
-            default_mod = newmodule;
-        }
     }
 
     /* if they gave us a desired ordering, then impose it here */
     if (NULL != pmix_plog_globals.channels) {
-        default_added = false;
         for (n = 0; NULL != pmix_plog_globals.channels[n]; n++) {
             len = strlen(pmix_plog_globals.channels[n]);
             /* check for the "req" modifier */
@@ -150,41 +144,20 @@ int pmix_plog_base_select(void)
                     break;
                 }
             }
-            if (!inserted) {
-                /* we didn't find a supporting module - this
-                 * still might be okay because it could be something
-                 * the RM itself supports, so just insert the default
-                 * module here if it hasn't already been inserted */
-                if (!default_added) {
-                    /* if the default module isn't available and this
-                     * channel isn't optional, then there is nothing
-                     * we can do except report an error */
-                    if (NULL == default_mod && reqd) {
-                        pmix_show_help("help-pmix-plog.txt", "reqd-not-found", true,
-                                       pmix_plog_globals.channels[n]);
-                        PMIX_LIST_DESTRUCT(&actives);
-                        return PMIX_ERR_NOT_FOUND;
-                    } else if (NULL != default_mod) {
-                        pmix_pointer_array_add(&pmix_plog_globals.actives, default_mod);
-                        default_added = true;
-                        default_mod->reqd = reqd;
-                    }
-                } else if (reqd) {
-                    /* if we already added it, we still have to check the
-                     * reqd status - if any citation requires that the
-                     * default be used, then we set it, but be sure we
-                     * don't overwrite it with a "not required" if it
-                     * was already set as "required" */
-                    default_mod->reqd = reqd;
-                }
+            if (!inserted && reqd) {
+                /* we didn't find a supporting module and this channel isn't optional.
+                 * Nothing we can do except report an error */
+                pmix_show_help("help-pmix-plog.txt", "reqd-not-found", true,
+                               pmix_plog_globals.channels[n]);
+                PMIX_LIST_DESTRUCT(&actives);
+                return PMIX_ERR_NOT_FOUND;
             }
         }
         /* if there are any modules left over, we need to discard them */
         PMIX_LIST_DESTRUCT(&actives);
     } else {
         /* insert the modules into the global array in priority order */
-        while (NULL
-               != (mod = (pmix_plog_base_active_module_t *) pmix_list_remove_first(&actives))) {
+        while (NULL != (mod = (pmix_plog_base_active_module_t *) pmix_list_remove_first(&actives))) {
             pmix_pointer_array_add(&pmix_plog_globals.actives, mod);
         }
         PMIX_DESTRUCT(&actives);

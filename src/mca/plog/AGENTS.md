@@ -143,18 +143,37 @@ Its algorithm:
    the active-module struct prevents a module being listed twice.
 
 3. **Deliver.** Reset the `added` markers, then call each listed
-   module's `log`. Interpret the return code:
+   module's `log`, counting how many modules were asked to service the
+   request versus how many actually handled it. Interpret each return
+   code:
    - `PMIX_SUCCESS` / `PMIX_OPERATION_SUCCEEDED` — handled; if `logonce`,
      stop here.
    - `PMIX_ERR_NOT_AVAILABLE` / `PMIX_ERR_TAKE_NEXT_OPTION` — this module
      declined; continue to the next.
    - anything else — a real error; abort the loop and return it.
 
-4. **Nothing to do?** If no module matched, return
-   `PMIX_OPERATION_SUCCEEDED` (**not** `PMIX_SUCCESS`). This distinction
-   matters: `PMIX_SUCCESS` tells the caller a callback will fire later,
-   while `PMIX_OPERATION_SUCCEEDED` means "done synchronously, no callback
-   coming." Returning the wrong one here will hang the caller or double-fire.
+   Once the loop finishes, collapse the tally into a single status:
+   - **no module handled it** → `PMIX_ERR_NOT_AVAILABLE` — none of the
+     available channels could service the request.
+   - **some, but not all, modules handled it** (and this was not a
+     `logonce` request) → `PMIX_ERR_PARTIAL_SUCCESS`.
+   - **every module handled it** (or the first one did under `logonce`)
+     → `PMIX_SUCCESS`.
+
+4. **Nothing to route?** If no module matched any data item at all,
+   return `PMIX_ERR_NOT_AVAILABLE` — the caller asked for channels that no
+   active module (nor, by extension, this process) can service. The one
+   exception is a call carrying literally no data (`NULL == data`), which
+   is a no-op and returns `PMIX_OPERATION_SUCCEEDED`.
+
+   These synchronous return codes are meaningful to callers. The router
+   never fires a callback itself — its callers do, using the value it
+   returns. In particular, a server servicing a client's `PMIx_Log`
+   request packs this status into the reply; the client's `log_cbfunc`
+   treats `PMIX_ERR_NOT_AVAILABLE` as "the server could not service this"
+   and retries the request against its *own* local modules before giving
+   up. Returning `PMIX_SUCCESS` where the request was not actually
+   serviced would silently suppress that fallback.
 
 **Completion tracking is shared, mutable state on the caller's arrays.**
 Modules mark individual items done with `PMIX_INFO_OP_COMPLETED(&data[n])`,

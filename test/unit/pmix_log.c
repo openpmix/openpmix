@@ -283,6 +283,29 @@ static void test_gateway_nohost_hostonly_true(void)
     pmix_log_host_only = false;
 }
 
+/* Gateway + host_only=false with a data item whose channel no active
+ * plog module services.  The request falls to the local plog framework,
+ * which must report that it could not service the request rather than
+ * falsely claiming success.  PMIX_LOG_JOB_RECORD ("jrec") is not claimed
+ * by any of the built-in channels (stdout/stderr, syslog, email). */
+static void test_gateway_unavailable_channel(void)
+{
+    pmix_info_t data[1];
+    pmix_status_t rc;
+    bool flag = true;
+
+    set_gateway(true);
+    clear_host_log();
+    pmix_log_host_only = false;
+    PMIX_INFO_LOAD(&data[0], PMIX_LOG_JOB_RECORD, &flag, PMIX_BOOL);
+
+    rc = PMIx_Log(data, 1, NULL, 0);
+    report("gateway + unavailable channel: PMIX_ERR_NOT_AVAILABLE",
+           PMIX_ERR_NOT_AVAILABLE == rc);
+    PMIX_INFO_DESTRUCT(data);
+    set_gateway(false);
+}
+
 /* ------------------------------------------------------------------ */
 /* PMIx_Log_nb: cbfunc is invoked on completion                       */
 /* ------------------------------------------------------------------ */
@@ -348,6 +371,7 @@ int main(int argc, char **argv)
     test_gateway_log2_hostonly_true();
     test_gateway_nohost_hostonly_false();
     test_gateway_nohost_hostonly_true();
+    test_gateway_unavailable_channel();
 
     /* Non-blocking completion */
     test_lognb_cbfunc_invoked();

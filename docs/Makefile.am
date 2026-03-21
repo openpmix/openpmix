@@ -91,12 +91,22 @@ EXTRA_DIST         = \
 # explicitly listed.
 
 PMIX_MAN1 = \
-        pmix_info.1
+        pmix_info.1 \
+        palloc.1 \
+        pattrs.1 \
+        pevent.1 \
+        plookup.1 \
+        pmixcc.1 \
+        pps.1 \
+        pquery.1
 
 PMIX_MAN3 = \
 	PMIx_Abort.3 \
 	PMIx_Init.3 \
 	PMIx_Finalize.3 \
+	PMIx_Log.3 \
+	PMIx_Info_construct.3 \
+	PMIx_Info_create.3 \
 	PMIx_Value_unload.3 \
         PMIx_Value_get_number.3
 
@@ -104,6 +114,8 @@ PMIX_MAN5 = \
         openpmix.5 \
         pmix_status_t.5 \
         pmix_value_t.5 \
+        pmix_info_t.5 \
+        pmix_info_directives_t.5 \
         pmix_byte_object_t.5
 
 MAN_OUTDIR = $(OUTDIR)/man

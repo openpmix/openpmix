@@ -6,5 +6,7 @@ Config file manual pages (section 5)
 
    openpmix.5.rst
    pmix_value_t.5.rst
+   pmix_info_t.5.rst
+   pmix_info_directives_t.5.rst
    pmix_status_t.5.rst
    pmix_byte_object_t.5.rst

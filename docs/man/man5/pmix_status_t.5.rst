@@ -53,6 +53,4 @@ PMIx ``errno`` values are defined in ``pmix_common.h``.
    :ref:`PMIx_Abort(3) <man3-PMIx_Abort>`,
    PMIx_Commit(3),
    :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>`,
-   PMIx_Put(3),
-   pmiAddInstance(3),
-   pmiAddMetric(3)
+   PMIx_Put(3)
