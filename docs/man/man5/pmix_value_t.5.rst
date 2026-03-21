@@ -92,7 +92,7 @@ DESCRIPTION
 The `pmix_value_t` structure is used to represent the value passed to `PMIx_Put` and retrieved by
 ``PMIx_Get``, as well as many of the other PMIx functions.
 
-A collection of values may be specified under a single key by passing a `pmix_value_t` containing an array
+A collection of values may be specified under a single `pmix_value_t` that contains an array
 of type `pmix_data_array_t`, with each array element containing its own object.
 
 

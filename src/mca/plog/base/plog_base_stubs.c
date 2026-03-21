@@ -29,7 +29,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
 {
     pmix_plog_base_active_module_t *active;
     pmix_status_t rc = PMIX_ERR_NOT_AVAILABLE;
-    size_t n, k;
+    size_t n, k, nmods, nsucc;
     int m;
     bool logonce = false;
     pmix_list_t channels;
@@ -127,9 +127,9 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
         while (NULL != pmix_list_remove_first(&channels));
         PMIX_DESTRUCT(&channels);
 
-        // Don't return PMIX_SUCCESS here, or else the called
-        // will expect the cbfunc to be executed (which it won't be.).
-        return PMIX_OPERATION_SUCCEEDED;
+        // Cannot process the request as none of the requested
+        // channels is available
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* reset the added marker for the next time we are called */
@@ -137,28 +137,44 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
         active->added = false;
     }
 
-    // cycle through the channels and let them log
+    // cycle through the channels and let them log. Track how many
+    // modules we asked to service the request (nmods) versus how many
+    // actually handled it (nsucc) so we can report the correct status.
+    nmods = 0;
+    nsucc = 0;
     PMIX_LIST_FOREACH (active, &channels, pmix_plog_base_active_module_t) {
         if (NULL != active->module->log) {
-
+            ++nmods;
             rc = active->module->log(source, data, ndata, directives, ndirs);
 
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                ++nsucc;
                 // if we are only logging once, then we are done
                 if (logonce) {
                     break;
                 }
             } else if (PMIX_ERR_NOT_AVAILABLE == rc ||
                        PMIX_ERR_TAKE_NEXT_OPTION == rc) {
-                // ignore this module
+                // this module declined - ignore it and try the next
                 continue;
             } else {
-                // hit a real error - abort
-                break;
+                // hit a real error - abort and return it
+                goto cleanup;
             }
         }
     }
 
+    if (0 == nsucc) {
+        // none of the available modules could service the request
+        rc = PMIX_ERR_NOT_AVAILABLE;
+    } else if (!logonce && nsucc < nmods) {
+        // at least one, but not all, of the modules handled the request
+        rc = PMIX_ERR_PARTIAL_SUCCESS;
+    } else {
+        rc = PMIX_SUCCESS;
+    }
+
+cleanup:
     /* cannot release the modules - just remove everything from the list */
     while (NULL != pmix_list_remove_first(&channels));
     PMIX_DESTRUCT(&channels);
