@@ -2,3 +2,5 @@ sphinx>=4.2.0
 recommonmark
 docutils
 sphinx-rtd-theme
+requests>=2.33.0
+pygments>=2.20.0
