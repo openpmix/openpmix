@@ -1,4 +1,4 @@
-FROM almalinux:9
+FROM almalinux:latest
 
 RUN \
     dnf install -y perl perl-Data-Dumper \
