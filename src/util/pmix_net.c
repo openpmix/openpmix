@@ -15,7 +15,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -66,6 +66,8 @@
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_show_help.h"
+
+char *pmix_hostname_unknown = "UNKNOWN";
 
 /* this function doesn't depend on sockaddr_h */
 bool pmix_net_isaddr(const char *name)
@@ -341,8 +343,8 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
     char *p;
 
     if (NULL == name) {
-        pmix_output(0, "pmix_sockaddr2str: malloc() failed\n");
-        return NULL;
+        pmix_output(0, "pmix_net_get_hostname: malloc() failed\n");
+        return pmix_hostname_unknown;
     }
     memset(name, 0, sizeof(*name));
 
@@ -354,11 +356,9 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
 #    if defined(__NetBSD__)
         /* hotfix for netbsd: on my netbsd machine, getnameinfo
            returns an unknown error code. */
-        if (NULL
-            == inet_ntop(AF_INET6, &((struct sockaddr_in6 *) addr)->sin6_addr, name, NI_MAXHOST)) {
+        if (NULL == inet_ntop(AF_INET6, &((struct sockaddr_in6 *) addr)->sin6_addr, name, NI_MAXHOST)) {
             pmix_output(0, "pmix_sockaddr2str failed with error code %d", errno);
-            free(name);
-            return NULL;
+            return pmix_hostname_unknown;
         }
         return name;
 #    else
@@ -366,8 +366,7 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
 #    endif
         break;
     default:
-        free(name);
-        return NULL;
+        return pmix_hostname_unknown;
     }
 
     error = getnameinfo(addr, addrlen, name, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
@@ -375,8 +374,7 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
     if (error) {
         int err = errno;
         pmix_output(0, "pmix_sockaddr2str failed:%s (return code %i)\n", gai_strerror(err), error);
-        free(name);
-        return NULL;
+        return pmix_hostname_unknown;
     }
     /* strip any trailing % data as it isn't pertinent */
     if (NULL != (p = strrchr(name, '%'))) {
