@@ -27,12 +27,12 @@ myhdlrs = []
 myname = {}
 
 
-cdef struct icbd: 
+cdef struct icbd:
     pmix_info_t *info
     size_t ninfo
 ctypedef icbd pypmix_info_cbdata_t
 
-cdef struct mcbd: 
+cdef struct mcbd:
     char *data
     size_t size
 ctypedef mcbd pypmix_modex_cbdata_t
@@ -84,7 +84,7 @@ def pypmix_op_cbfunc(int rc, dict cbdata_dict):
     cdef void* cbdata
     cbfunc = <pmix_op_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
     cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
-    
+
     if NULL == cbfunc:
         return
 
@@ -117,9 +117,9 @@ def pypmix_info_cbfunc(int rc, list refarginfo, dict cbdata_dict):
     icbd.ninfo = ninfo
 
     with nogil:
-        cbfunc(rc, info, ninfo, cbdata, info_release, <void*> icbd) 
+        cbfunc(rc, info, ninfo, cbdata, info_release, <void*> icbd)
 
-def pypmix_modex_cbfunc(int status, bytearray ret_data, dict cbdata_dict):    
+def pypmix_modex_cbfunc(int status, bytearray ret_data, dict cbdata_dict):
     cdef char *data
     cdef size_t size = len(ret_data)
     cdef pmix_modex_cbfunc_t cbfunc = <pmix_modex_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
@@ -137,7 +137,7 @@ def pypmix_modex_cbfunc(int status, bytearray ret_data, dict cbdata_dict):
     mcbd.size = size
 
     with nogil:
-        cbfunc(status, data, size, cbdata, modex_release, mcbd)   
+        cbfunc(status, data, size, cbdata, modex_release, mcbd)
 
 def pypmix_lookup_cbfunc(int rc, list pdata, dict cbdata_dict):
     cdef pmix_lookup_cbfunc_t cbfunc = <pmix_lookup_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
@@ -163,7 +163,7 @@ def pypmix_lookup_cbfunc(int rc, list pdata, dict cbdata_dict):
             pd = NULL
     else:
         pd = NULL
-    
+
     with nogil:
         cbfunc(rc, pd, ndata, cbdata)
 
@@ -179,7 +179,7 @@ def pypmix_spawn_cbfunc(int rc, str nspace, dict cbdata_dict):
 
     if PMIX_SUCCESS == rc:
         strcpy(c_nspace, nspace)
-    
+
     with nogil:
         cbfunc(rc, c_nspace, cbdata)
 
@@ -195,7 +195,7 @@ def pypmix_tool_connection_cbfunc(int rc, dict proc, dict cbdata_dict):
     if PMIX_SUCCESS == rc:
         pmix_copy_nspace(c_proc.nspace, proc['nspace'])
         c_proc.rank = proc['rank']
-    
+
     with nogil:
         cbfunc(rc, &c_proc, cbdata)
 
@@ -219,7 +219,7 @@ def pypmix_credential_cbfunc(int rc, dict byteobject, list info, dict cbdata_dic
         if PMIX_SUCCESS != prc:
             print("Error transferring info to C:", prc)
             return prc
-    
+
     with nogil:
         cbfunc(rc, &c_byteobject, c_info, ninfo, cbdata)
 
@@ -244,7 +244,7 @@ def pypmix_validation_cbfunc(int rc, dict byteobject, list info, dict cbdata_dic
         if PMIX_SUCCESS != prc:
             print("Error transferring info to C:", prc)
             return prc
-    
+
     with nogil:
         cbfunc(rc, c_info, ninfo, cbdata)
 
@@ -817,8 +817,13 @@ cdef class PMIxClient:
         ninfo   = 0
 
         # allocate and load pmix info structs from python list of dictionaries
-        info_ptr = &info
-        rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
+        if dicts is not None:
+            info_ptr = &info
+            rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
+            if PMIX_SUCCESS != rc:
+                return rc
+        else:
+            info = NULL
 
         # convert the list of dictionaries to array of
         # pmix_pdata_t structs
@@ -832,11 +837,7 @@ cdef class PMIxClient:
                 for d in data:
                     pykey = d['key']
                     pmix_copy_key(pdata[n].key, pykey)
-                    rc = 0
                     n += 1
-                if PMIX_SUCCESS != rc:
-                    pmix_free_pdata(pdata, npdata)
-                    return rc
             else:
                 pdata = NULL
         else:
@@ -1784,7 +1785,8 @@ def setmodulefn(k, f):
                  'deregisterevents', 'listener', 'notify_event', 'query',
                  'toolconnected', 'log', 'allocate', 'jobcontrol',
                  'monitor', 'getcredential', 'validatecredential',
-                 'iofpull', 'pushstdin', 'group', 'fabric', 'sessioncontrol']
+                 'iofpull', 'pushstdin', 'group', 'fabric', 'clientconnected2',
+                 'toolconnected2', 'log2', 'sessioncontrol', 'resourceblock']
     if k not in permitted:
         return PMIX_ERR_BAD_PARAM
     if not k in pmixservermodule:
@@ -1816,7 +1818,6 @@ cdef class PMIxServer(PMIxClient):
         cdef size_t sz
 
         # setup server module
-        self.server_module_init()
         if map is None or 0 == len(map):
             print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
             return PMIX_ERR_INIT
@@ -1827,6 +1828,9 @@ cdef class PMIxServer(PMIxClient):
             except KeyError:
                 print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
                 return PMIX_ERR_INIT
+
+        # setup server module functions
+        self.server_module_init(kvkeys)
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
@@ -1837,58 +1841,78 @@ cdef class PMIxServer(PMIxClient):
             rc = PMIx_server_init(&self.myserver, NULL, 0)
         return rc
 
-    def server_module_init(self):
+    def server_module_init(self, kvkeys:list):
         # v1.x interfaces
-        self.myserver.client_connected2 = <pmix_server_client_connected2_fn_t>clientconnected
-        self.myserver.client_finalized = <pmix_server_client_finalized_fn_t>clientfinalized
-        self.myserver.abort = <pmix_server_abort_fn_t>clientaborted
-        self.myserver.fence_nb = <pmix_server_fencenb_fn_t>fencenb
-        self.myserver.direct_modex = <pmix_server_dmodex_req_fn_t>directmodex
-        self.myserver.publish = <pmix_server_publish_fn_t>publish
-        self.myserver.lookup = <pmix_server_lookup_fn_t>lookup
-        self.myserver.unpublish = <pmix_server_unpublish_fn_t>unpublish
-        self.myserver.spawn = <pmix_server_spawn_fn_t>spawn
-        self.myserver.connect = <pmix_server_connect_fn_t>connect
-        self.myserver.disconnect = <pmix_server_disconnect_fn_t>disconnect
-        self.myserver.register_events = <pmix_server_register_events_fn_t>registerevents
-        self.myserver.deregister_events = <pmix_server_deregister_events_fn_t>deregisterevents
+        if 'clientconnected' in kvkeys:
+            self.myserver.client_connected = <pmix_server_client_connected_fn_t>clientconnected
+        if 'clientfinalized' in kvkeys:
+            self.myserver.client_finalized = <pmix_server_client_finalized_fn_t>clientfinalized
+        if 'abort' in kvkeys:
+            self.myserver.abort = <pmix_server_abort_fn_t>clientaborted
+        if 'fencenb' in kvkeys:
+            self.myserver.fence_nb = <pmix_server_fencenb_fn_t>fencenb
+        if 'directmodex' in kvkeys:
+            self.myserver.direct_modex = <pmix_server_dmodex_req_fn_t>directmodex
+        if 'publish' in kvkeys:
+            self.myserver.publish = <pmix_server_publish_fn_t>publish
+        if 'lookup' in kvkeys:
+            self.myserver.lookup = <pmix_server_lookup_fn_t>lookup
+        if 'unpublish' in kvkeys:
+            self.myserver.unpublish = <pmix_server_unpublish_fn_t>unpublish
+        if 'spawn' in kvkeys:
+            self.myserver.spawn = <pmix_server_spawn_fn_t>spawn
+        if 'connect' in kvkeys:
+            self.myserver.connect = <pmix_server_connect_fn_t>connect
+        if 'disconnect' in kvkeys:
+            self.myserver.disconnect = <pmix_server_disconnect_fn_t>disconnect
+        if 'registerevents' in kvkeys:
+            self.myserver.register_events = <pmix_server_register_events_fn_t>registerevents
+        if 'deregisterevents' in kvkeys:
+            self.myserver.deregister_events = <pmix_server_deregister_events_fn_t>deregisterevents
         # skip the listener entry as Python servers will never
         # provide their own socket listener thread
         #
         # v2.x interfaces
-        self.myserver.notify_event = <pmix_server_notify_event_fn_t>notifyevent
-        self.myserver.query = <pmix_server_query_fn_t>query
-        self.myserver.tool_connected = <pmix_server_tool_connection_fn_t>toolconnected
-        self.myserver.log = <pmix_server_log_fn_t>log
-        self.myserver.allocate = <pmix_server_alloc_fn_t>allocate
-        self.myserver.job_control = <pmix_server_job_control_fn_t>jobcontrol
-        self.myserver.monitor = <pmix_server_monitor_fn_t>monitor
+        if 'notifyevent' in kvkeys:
+            self.myserver.notify_event = <pmix_server_notify_event_fn_t>notifyevent
+        if 'query' in kvkeys:
+            self.myserver.query = <pmix_server_query_fn_t>query
+        if 'toolconnected' in kvkeys:
+            self.myserver.tool_connected = <pmix_server_tool_connection_fn_t>toolconnected
+        if 'log' in kvkeys:
+            self.myserver.log = <pmix_server_log_fn_t>log
+        if 'allocate' in kvkeys:
+            self.myserver.allocate = <pmix_server_alloc_fn_t>allocate
+        if 'jobcontrol' in kvkeys:
+            self.myserver.job_control = <pmix_server_job_control_fn_t>jobcontrol
+        if 'monitor' in kvkeys:
+            self.myserver.monitor = <pmix_server_monitor_fn_t>monitor
         # v3.x interfaces
-        self.myserver.get_credential = <pmix_server_get_cred_fn_t>getcredential
-        self.myserver.validate_credential = <pmix_server_validate_cred_fn_t>validatecredential
-        self.myserver.iof_pull = <pmix_server_iof_fn_t>iofpull
-        self.myserver.push_stdin = <pmix_server_stdin_fn_t>pushstdin
+        if 'getcredential' in kvkeys:
+            self.myserver.get_credential = <pmix_server_get_cred_fn_t>getcredential
+        if 'validatecredential' in kvkeys:
+            self.myserver.validate_credential = <pmix_server_validate_cred_fn_t>validatecredential
+        if 'iofpull' in kvkeys:
+            self.myserver.iof_pull = <pmix_server_iof_fn_t>iofpull
+        if 'pushstdin' in kvkeys:
+            self.myserver.push_stdin = <pmix_server_stdin_fn_t>pushstdin
         # v4.x interfaces
-        self.myserver.group = <pmix_server_grp_fn_t>group
-        self.myserver.fabric = <pmix_server_fabric_fn_t>fabric
-        # v5.x interfaces
-        self.myserver.session_control = <pmix_server_session_control_fn_t>sessioncontrol
-
-    # Allow a tool to set server module callback functions
-    # when it needs to also act as a server
-    def set_server_module(self, map:dict):
-        # setup server module
-        if map is None or 0 == len(map):
-            print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
-            return PMIX_ERR_INIT
-        kvkeys = list(map.keys())
-        for key in kvkeys:
-            try:
-                setmodulefn(key, map[key])
-            except KeyError:
-                print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
-                return PMIX_ERR_INIT
-        return PMIX_SUCCESS
+        if 'group' in kvkeys:
+            self.myserver.group = <pmix_server_grp_fn_t>group
+        if 'fabric' in kvkeys:
+            self.myserver.fabric = <pmix_server_fabric_fn_t>fabric
+        # v6.x interfaces
+        if 'clientconnected2' in kvkeys:
+            self.myserver.client_connected2 = <pmix_server_client_connected2_fn_t>clientconnected2
+        if 'toolconnected2' in kvkeys:
+            self.myserver.tool_connected2 = <pmix_server_tool_connection2_fn_t>toolconnected2
+        if 'log2' in kvkeys:
+            self.myserver.log2 = <pmix_server_log2_fn_t>log2
+        # pending interfaces
+        if 'sessioncontrol' in kvkeys:
+            self.myserver.session_control = <pmix_server_session_control_fn_t>sessioncontrol
+        if 'resourceblock' in kvkeys:
+            self.myserver.resource_block = <pmix_server_resource_block_fn_t>resourceblock
 
     def finalize(self):
         # finalize
@@ -2304,7 +2328,29 @@ cdef int clientconnected(pmix_proc_t *proc, void *server_object,
         pmix_unload_procs(proc, 1, myproc)
         cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
         return pmixservermodule['clientconnected'](myproc[0], pypmix_op_cbfunc, cbdata_dict)
-    
+
+    return PMIX_ERR_NOT_FOUND
+
+cdef int clientconnected2(pmix_proc_t *proc, void *server_object,
+                          pmix_info_t info[], size_t ninfo,
+                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
+    keys = pmixservermodule.keys()
+    if 'clientconnected2' in keys:
+        if not proc:
+            return PMIX_ERR_BAD_PARAM
+        args = {}
+        myproc = []
+        pmix_unload_procs(proc, 1, myproc)
+        args['proc'] = myproc[0]
+        ilist = []
+        if NULL != info:
+            rc = pmix_unload_info(info, ninfo, ilist)
+            if PMIX_SUCCESS != rc:
+                return rc
+            args['directives'] = ilist
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['clientconnected2'](args, pypmix_op_cbfunc, cbdata_dict)
+
     return PMIX_ERR_NOT_FOUND
 
 cdef int clientfinalized(pmix_proc_t *proc, void *server_object,
@@ -2344,7 +2390,7 @@ cdef int clientaborted(const pmix_proc_t *proc, void *server_object,
         cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
         # upcall it
         return pmixservermodule['abort'](args, pypmix_op_cbfunc, cbdata_dict)
-    
+
     return PMIX_ERR_NOT_SUPPORTED
 
 cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
@@ -2375,7 +2421,7 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
             args['data'] = barray
         cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
         return pmixservermodule['fencenb'](args, pypmix_modex_cbfunc, cbdata_dict)
-    
+
     return PMIX_ERR_NOT_SUPPORTED
 
 
@@ -2438,7 +2484,7 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
             args['directives'] = ilist
         cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
         return pmixservermodule['lookup'](args, pypmix_lookup_cbfunc, cbdata_dict)
-        
+
     return PMIX_ERR_NOT_SUPPORTED
 
 cdef int unpublish(const pmix_proc_t *proc, char **keys,
@@ -2460,7 +2506,7 @@ cdef int unpublish(const pmix_proc_t *proc, char **keys,
             args['directives'] = ilist
         cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
         return pmixservermodule['unpublish'](args, pypmix_op_cbfunc, cbdata_dict)
-    
+
     return PMIX_ERR_NOT_SUPPORTED
 
 cdef int spawn(const pmix_proc_t *proc,
@@ -2583,7 +2629,7 @@ cdef int notifyevent(pmix_status_t code,
             args['directives'] = ilist
         cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
         return pmixservermodule['notifyevent'](args, pypmix_op_cbfunc, cbdata_dict)
-    
+
     return PMIX_ERR_NOT_SUPPORTED
 
 
@@ -2664,7 +2710,7 @@ cdef int allocate(const pmix_proc_t *client,
             args['directives'] = keyvals
         cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
         return pmixservermodule['allocate'](args, pypmix_info_cbfunc, cbdata_dict)
-    
+
     return PMIX_ERR_NOT_SUPPORTED
 
 
@@ -2737,7 +2783,7 @@ cdef int getcredential(const pmix_proc_t *proc,
         return pmixservermodule['getcredential'](args, pypmix_credential_cbfunc, cbdata_dict)
 
     return PMIX_ERR_NOT_SUPPORTED
-   
+
 cdef int validatecredential(const pmix_proc_t *proc,
                             const pmix_byte_object_t *cred,
                             const pmix_info_t directives[], size_t ndirs,
@@ -2765,7 +2811,7 @@ cdef int validatecredential(const pmix_proc_t *proc,
         cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
         return pmixservermodule['validatecredential'](args, pypmix_validation_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED       
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int iofpull(const pmix_proc_t procs[], size_t nprocs,
                  const pmix_info_t directives[], size_t ndirs,
@@ -2823,7 +2869,7 @@ cdef int pushstdin(const pmix_proc_t *source,
         return pmixservermodule['pushstdin'](args, pypmix_op_cbfunc, cbdata_dict)
 
     return PMIX_ERR_NOT_SUPPORTED
-    
+
 
 # TODO: This function requires that the server execute the
 # provided callback function to return the group info, and
@@ -2874,6 +2920,47 @@ cdef int fabric(const pmix_proc_t *requestor,
 
     return PMIX_ERR_NOT_SUPPORTED
 
+cdef int toolconnected2(pmix_info_t *info, size_t ninfo,
+                        pmix_tool_connection_cbfunc_t cbfunc,
+                        void *cbdata) noexcept with gil:
+    keys = pmixservermodule.keys()
+    ret_proc = {'nspace': "UNDEF", 'rank': PMIX_RANK_UNDEF}
+    if 'toolconnected2' in keys:
+        args = {}
+        ilist = []
+        if NULL != info:
+            pmix_unload_info(info, ninfo, ilist)
+            args['directives'] = ilist
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['toolconnected2'](args, pypmix_tool_connection_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
+
+cdef int log2(const pmix_proc_t *client,
+              const pmix_info_t data[], size_t ndata,
+              const pmix_info_t directives[], size_t ndirs,
+              pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    keys = pmixservermodule.keys()
+    if 'log2' in keys:
+        args = {}
+        ilist = []
+        myproc = []
+        mydirs = []
+        if NULL == client:
+            return PMIX_ERR_BAD_PARAM
+        pmix_unload_procs(client, 1, myproc)
+        args['source'] = myproc[0]
+        if NULL != data:
+            pmix_unload_info(data, ndata, ilist)
+            args['data'] = ilist
+        if NULL != directives:
+            pmix_unload_info(directives, ndirs, mydirs)
+            args['directives'] = mydirs
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['log2'](args, pypmix_op_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
+
 cdef int sessioncontrol(const pmix_proc_t *requestor,
                         uint32_t sessionID,
                         const pmix_info_t directives[], size_t ndirs,
@@ -2901,6 +2988,41 @@ cdef int sessioncontrol(const pmix_proc_t *requestor,
 
     return PMIX_ERR_NOT_SUPPORTED
 
+cdef int resourceblock(const pmix_proc_t *requestor,
+                       pmix_resource_block_directive_t directive,
+                       const char *block,
+                       const pmix_resource_unit_t *units, size_t nunits,
+                       const pmix_info_t *info, size_t ninfo,
+                       pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
+    keys = pmixservermodule.keys()
+    if 'resourceblock' in keys:
+        args = {}
+        myproc = []
+        blist = []
+        ulist = []
+        ilist = []
+        barray = None
+
+        if NULL == requestor:
+            return PMIX_ERR_BAD_PARAM
+        if NULL == units:
+            return PMIX_ERR_BAD_PARAM
+        pmix_unload_procs(requestor, 1, myproc)
+        args['requestor'] = myproc[0]
+        args['directive'] = directive
+        args['block'] = block
+        rc = pmix_unload_units(units, nunits, ulist)
+        if PMIX_SUCCESS != rc:
+            return rc
+        args['units'] = ulist
+        if NULL != info:
+            rc = pmix_unload_info(info, ninfo, ilist)
+            if PMIX_SUCCESS != rc:
+                return rc
+            args['info'] = ilist
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['resourceblock'](args, pypmix_info_cbfunc, cbdata_dict)
+
 
 cdef class PMIxTool(PMIxServer):
     def __cinit__(self):
@@ -2923,9 +3045,6 @@ cdef class PMIxTool(PMIxServer):
         # init myname
         myname = {'nspace':'UNASSIGNED', 'rank':PMIX_RANK_UNDEF}
 
-        # init server module in case the tool uses it
-        self.server_module_init()
-
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &sz, dicts)
@@ -2940,7 +3059,6 @@ cdef class PMIxTool(PMIxServer):
         if PMIX_SUCCESS == rc:
             # convert the returned name
             myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
-            rc = PMIx_tool_set_server_module(&self.myserver);
         return rc, myname
 
     # Finalize the tool library
@@ -3030,6 +3148,24 @@ cdef class PMIxTool(PMIxServer):
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         return rc
+
+    # Allow a tool to set server module callback functions
+    # when it needs to also act as a server
+    def set_server_module(self, map:dict):
+        # setup server module
+        if map is None or 0 == len(map):
+            print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
+            return PMIX_ERR_INIT
+        kvkeys = list(map.keys())
+        for key in kvkeys:
+            try:
+                setmodulefn(key, map[key])
+            except KeyError:
+                print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
+                return PMIX_ERR_INIT
+        self.server_module_init(kvkeys)
+        return PMIX_SUCCESS
+
 
     def iof_pull(self, pyprocs:list, iof_channel:int, pydirs:list, hdlr):
         cdef pmix_proc_t *procs
@@ -3208,7 +3344,6 @@ cdef class PMIxScheduler(PMIxTool):
         if PMIX_SUCCESS == rc:
             # convert the returned name
             myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
-            rc = PMIx_tool_set_server_module(&self.myserver);
         return rc, myname
 
     # Finalize the tool library
