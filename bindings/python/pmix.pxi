@@ -1440,6 +1440,22 @@ cdef void pmix_free_info(pmix_info_t *array, size_t sz):
         n += 1
     free(array)
 
+
+# Convert array of resource units into a python list of
+# dictionaries
+cdef int pmix_unload_units(const pmix_resource_unit_t *units, size_t nunits, ilist:list):
+    cdef size_t n
+    n = 0
+    while n < nunits:
+        d     = {}
+        d['type']      = units[n].type
+        # TODO: don't know how to decide if flags was defined or not??
+        d['count']    = units[n].count
+        ilist.append(d)
+        n += 1
+    return PMIX_SUCCESS
+
+
 # Convert list of python pmix_pdata_t dicts into an
 # array of pmix_pdata_t structs
 #

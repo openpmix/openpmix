@@ -25,7 +25,10 @@ def main():
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()
-    print("Initialized: ", rc)
+    if rc == True:
+        print("Initialized: True")
+    else:
+        print("Initialized: False")
     vers = foo.get_version()
     print("Version: ", vers)
 
@@ -46,16 +49,16 @@ def main():
              {'key':PMIX_JOB_SIZE, 'value':1, 'val_type':PMIX_UINT32}]
     print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
-    print("RegNspace ", rc)
+    print("RegNspace ", foo.error_string(rc))
 
     # register a client
     uid = os.getuid()
     gid = os.getgid()
     rc = foo.register_client({'nspace':"testnspace", 'rank':0}, uid, gid)
-    print("RegClient ", rc)
+    print("RegClient ", foo.error_string(rc))
     # setup the fork
     rc = foo.setup_fork({'nspace':"testnspace", 'rank':0}, env)
-    print("SetupFrk", rc)
+    print("SetupFrk", foo.error_string(rc))
 
     # setup the client argv
     args = ["./client.py"]
