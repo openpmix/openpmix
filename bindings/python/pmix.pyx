@@ -706,18 +706,21 @@ cdef class PMIxClient:
             pmix_copy_nspace(p.nspace, proc['nspace'])
             p.rank = proc['rank']
 
-        # convert key,val to pmix_value_t and pmix_key_t
-        pmix_copy_key(key, ky)
-
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
 
         val = None
 
-        # pass it into the get API
-        with nogil:
-            rc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
+        # None key - pass NULL to return all data
+        if ky is None:
+            with nogil:
+                rc = PMIx_Get(&p, NULL, info, ninfo, &val_ptr)
+        else:
+            # convert key,val to pmix_value_t and pmix_key_t
+            pmix_copy_key(key, ky)
+            with nogil:
+                rc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
         if PMIX_SUCCESS == rc:
             val = pmix_unload_value(val_ptr)
             pmix_free_value(self, val_ptr)
