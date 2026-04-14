@@ -117,6 +117,7 @@ def main():
 
     # put value into keystore
     test_put(foo, PMIX_GLOBAL, "mykey", {'value':1, 'val_type':PMIX_INT32})
+    test_put(foo, PMIX_GLOBAL, "secondkey", {'value':2, 'val_type':PMIX_INT32})
 
     # commit it
     test_commit(foo)
@@ -128,6 +129,9 @@ def main():
 
     info = []
     test_get(foo, {'nspace':"testnspace", 'rank': 0}, "mykey", info)
+
+    # Get all keys for this proc
+    test_get(foo, {'nspace':"testnspace", 'rank': 0}, None, info)
 
     # test a fence that should return not_supported because
     # we pass a required attribute that doesn't exist
