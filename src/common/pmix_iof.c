@@ -2110,6 +2110,11 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
             /* nothing we can do with this info - no point in reactivating it */
             return;
         }
+        if (0 == bo.size) {
+            // our stdin fd has closed - nothing to do, and
+            // we don't reactivate the event
+            return;
+        }
         PMIX_BYTE_OBJECT_CREATE(boptr, 1);
         if (0 < bo.size) {
             boptr->bytes = (char*)malloc(bo.size);
