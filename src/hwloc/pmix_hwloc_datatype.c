@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -17,9 +17,7 @@
 #include "src/include/pmix_config.h"
 
 #include <hwloc.h>
-#if HWLOC_API_VERSION >= 0x20000
 #include <hwloc/shmem.h>
-#endif
 
 #include "pmix_common.h"
 #include "src/mca/bfrops/base/base.h"
@@ -196,15 +194,9 @@ pmix_status_t pmix_hwloc_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
     }
 
     /* extract an xml-buffer representation of the tree */
-#if HWLOC_API_VERSION < 0x20000
-    if (0 != hwloc_topology_export_xmlbuffer(src->topology, &xmlbuffer, &len)) {
-        return PMIX_ERROR;
-    }
-#else
     if (0 != hwloc_topology_export_xmlbuffer(src->topology, &xmlbuffer, &len, 0)) {
         return PMIX_ERROR;
     }
-#endif
 
     /* add to buffer */
     PMIX_BFROPS_PACK_TYPE(rc, buf, &xmlbuffer, 1, PMIX_STRING, regtypes);
@@ -282,20 +274,11 @@ pmix_status_t pmix_hwloc_unpack_topology(pmix_buffer_t *buf, pmix_topology_t *de
      * explicitly set a flag so hwloc sets things up correctly
      */
     flags = HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM;
-#if HWLOC_API_VERSION < 0x00020000
-    flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM;
-    flags |= HWLOC_TOPOLOGY_FLAG_IO_DEVICES;
-#else
     if (0 != hwloc_topology_set_io_types_filter(t, HWLOC_TYPE_FILTER_KEEP_IMPORTANT)) {
         hwloc_topology_destroy(t);
         return PMIX_ERROR;
     }
-#    if HWLOC_API_VERSION < 0x00020100
-    flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM;
-#    else
     flags |= HWLOC_TOPOLOGY_FLAG_INCLUDE_DISALLOWED;
-#    endif
-#endif
     if (0 != hwloc_topology_set_flags(t, flags)) {
         hwloc_topology_destroy(t);
         return PMIX_ERROR;
@@ -471,11 +454,6 @@ void pmix_ploc_base_release_topology(pmix_topology_t *topo, size_t n)
 
 pmix_status_t pmix_hwloc_get_topology_size(pmix_topology_t *ptr, size_t *sz)
 {
-#if HWLOC_API_VERSION < 0x20000
-    PMIX_HIDE_UNUSED_PARAMS(ptr);
-    *sz = 0;
-    return PMIX_ERR_NOT_SUPPORTED;
-#else
     int err;
 
     err = hwloc_shmem_topology_get_length(ptr->topology, sz, 0);
@@ -484,5 +462,4 @@ pmix_status_t pmix_hwloc_get_topology_size(pmix_topology_t *ptr, size_t *sz)
         return PMIX_ERROR;
     }
     return PMIX_SUCCESS;
-#endif
 }
