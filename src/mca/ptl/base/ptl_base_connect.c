@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -643,6 +643,22 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         kv = PMIX_NEW(pmix_info_caddy_t);
         PMIX_INFO_LOAD(&launcher, PMIX_LAUNCHER, NULL, PMIX_BOOL);
+        kv->info = &launcher;
+        pmix_list_append(&ilist, &kv->super);
+    }
+
+    /* if I am a system controller, tell them so */
+    if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        kv = PMIX_NEW(pmix_info_caddy_t);
+        PMIX_INFO_LOAD(&launcher, PMIX_SERVER_SYS_CONTROLLER, NULL, PMIX_BOOL);
+        kv->info = &launcher;
+        pmix_list_append(&ilist, &kv->super);
+    }
+
+    /* if I am a scheduler, tell them so */
+    if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
+        kv = PMIX_NEW(pmix_info_caddy_t);
+        PMIX_INFO_LOAD(&launcher, PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
         kv->info = &launcher;
         pmix_list_append(&ilist, &kv->super);
     }
