@@ -1405,3 +1405,37 @@ char **pmix_ptl_base_split_and_resolve(const char *orig_str,
     PMIx_Argv_free(argv);
     return interfaces;
 }
+
+char *pmix_ptl_base_peer_type(pmix_peer_t *peer)
+{
+    char **types = NULL;
+    char *ans;
+
+    if (PMIX_PEER_IS_CLIENT(peer)) {
+        PMIx_Argv_append_nosize(&types, "CLIENT");
+    }
+    if (PMIX_PEER_IS_SINGLETON(peer)) {
+        PMIx_Argv_append_nosize(&types, "SINGLETON");
+    }
+    if (PMIX_PEER_IS_SERVER(peer)) {
+        PMIx_Argv_append_nosize(&types, "SERVER");
+    }
+    if (PMIX_PEER_IS_TOOL(peer)) {
+        PMIx_Argv_append_nosize(&types, "TOOL");
+    }
+    if (PMIX_PEER_IS_LAUNCHER(peer)) {
+        PMIx_Argv_append_nosize(&types, "LAUNCHER");
+    }
+    if (PMIX_PEER_IS_GATEWAY(peer)) {
+        PMIx_Argv_append_nosize(&types, "GATEWAY");
+    }
+    if (PMIX_PEER_IS_SCHEDULER(peer)) {
+        PMIx_Argv_append_nosize(&types, "SCHEDULER");
+    }
+    if (PMIX_PEER_IS_SYS_CTRLR(peer)) {
+        PMIx_Argv_append_nosize(&types, "SYSCTRLR");
+    }
+    ans = PMIx_Argv_join(types, ',');
+    PMIx_Argv_free(types);
+    return ans;
+}
