@@ -4,6 +4,33 @@ PMIx v6.x series
 This file contains all the NEWS updates for the PMIx v6.x
 series, in reverse chronological order.
 
+6.1.1 -- xx May 2026
+--------------------
+:: important:: This release contains the following important changes:
+
+                * restoration/repair of the OmniPath support component
+                * update of the Python bindings and fix to allow Python
+                  to retrieve all nspace-level info via PMIx_Get
+                * fix messaging problem in the PMIx communication logic
+                  that could cause a message from one process to be
+                  incorrectly delivered to a pending receive for another
+                  process
+
+Detailed changes since v6.1.0:
+ - PR #3855: Multiple commits
+    - Cleanup error paths in net_get_hostname
+    - Update Python bindings
+    - Update Python-related workflow to actually test bindings
+    - Add missing data types to value load/unload
+    - Don't pass zero-byte stdin to host
+    - test: add get() test without keys specified
+    - bindings: capture None as NULL key in get()
+    - Remove unnecessary hwloc version protection
+    - Restore pnet/opa component
+    - Add fn to print peer type
+    - Fix messaging problem in ptl recv
+
+
 6.1.0 -- 27 Feb 2025
 --------------------
 .. important:: This is the second release in the v6 family. The release
