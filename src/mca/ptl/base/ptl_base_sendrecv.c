@@ -712,7 +712,8 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(ms);
 
-    if (NULL == ms->peer || ms->peer->sd < 0 || NULL == ms->peer->info || NULL == ms->peer->nptr) {
+    if (NULL == ms->peer || ms->peer->sd < 0 ||
+        NULL == ms->peer->info || NULL == ms->peer->nptr) {
         /* this peer has lost connection */
         if (NULL != ms->bfr) {
             PMIX_RELEASE(ms->bfr);
@@ -737,11 +738,13 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     if (NULL != ms->cbfunc) {
         /* if a callback msg is expected, setup a recv for it */
         req = PMIX_NEW(pmix_ptl_posted_recv_t);
+        req->peer = ms->peer;
         req->tag = tag;
         req->cbfunc = ms->cbfunc;
         req->cbdata = ms->cbdata;
 
-        pmix_output_verbose(5, pmix_ptl_base_framework.framework_output, "posting recv on tag %d",
+        pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
+                            "posting recv on tag %d",
                             req->tag);
         /* add it to the list of recvs - we cannot have unexpected messages
          * in this subsystem as the server never sends us something that
@@ -810,15 +813,21 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
     PMIX_ACQUIRE_OBJECT(msg);
 
     pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                        "%s:%d message received %d bytes for tag %u on socket %d",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank, (int) msg->hdr.nbytes,
-                        msg->hdr.tag, msg->sd);
+                        "%s message received from %s with %d bytes for tag %u on socket %d",
+                        PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_PEER_PRINT(msg->peer),
+                        (int) msg->hdr.nbytes, msg->hdr.tag, msg->sd);
 
     /* see if we have a waiting recv for this message */
     PMIX_LIST_FOREACH (rcv, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
         pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                            "checking msg on tag %u for tag %u", msg->hdr.tag, rcv->tag);
+                            "checking msg from %s on tag %u for peer %s tag %u",
+                            (NULL == msg->peer) ? "NULL" : PMIX_PEER_PRINT(msg->peer), msg->hdr.tag,
+                            (NULL == rcv->peer) ? "NULL" : PMIX_PEER_PRINT(rcv->peer), rcv->tag);
 
+        // if the msg and rcv peers don't match, then skip this rcv
+        if (NULL != rcv->peer && msg->peer != rcv->peer && UINT_MAX != rcv->tag) {
+            continue;
+        }
         if (msg->hdr.tag == rcv->tag || UINT_MAX == rcv->tag) {
             if (NULL != rcv->cbfunc) {
                 /* construct and load the buffer */
@@ -851,20 +860,9 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
         }
     }
 
-    /* if the tag in this message is above the dynamic marker, then
-     * that is an error */
-    if (PMIX_PTL_TAG_DYNAMIC <= msg->hdr.tag) {
-        pmix_output(0, "UNEXPECTED MESSAGE tag = %d from source %s:%d", msg->hdr.tag,
-                    msg->peer->info->pname.nspace, msg->peer->info->pname.rank);
-        PMIX_REPORT_EVENT(PMIX_ERROR, msg->peer, PMIX_RANGE_NAMESPACE, _notify_complete);
-        PMIX_RELEASE(msg);
-        return;
-    }
-
-    /* it is possible that someone may post a recv for this message
-     * at some point, so we have to hold onto it */
-    pmix_list_append(&pmix_ptl_base.unexpected_msgs, &msg->super);
-    /* ensure we post the modified object before another thread
-     * picks it back up */
-    PMIX_POST_OBJECT(msg);
+    /* we should never see an unexpected msg */
+    pmix_show_help("help-ptl-base.txt", "unexpected-message", true,
+                   PMIX_PEER_PRINT(msg->peer), msg->hdr.tag);
+    PMIX_REPORT_EVENT(PMIX_ERROR, msg->peer, PMIX_RANGE_NAMESPACE, _notify_complete);
+    PMIX_RELEASE(msg);
 }

@@ -13,7 +13,7 @@
  * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -264,6 +264,7 @@ PMIX_CLASS_DECLARATION(pmix_ptl_recv_t);
 typedef struct {
     pmix_list_item_t super;
     pmix_event_t ev;
+    struct pmix_peer_t *peer;
     uint32_t tag;
     pmix_ptl_cbfunc_t cbfunc;
     void *cbdata;
