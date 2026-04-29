@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2015-2020 Cisco Systems, Inc.  All rights reserved
-# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -121,3 +121,12 @@ interfaces were found after applying any include or exclude directives:
 
 Please adjust your include or exclude to allow selection of an
 available interface.
+#
+[unexpected-message]
+The PMIx messaging system has received an unexpected message:
+
+  Peer: %s
+  Tag:  %u
+
+The message cannot be processed and will be ignored. Please
+report this error to the PMIx developers.
