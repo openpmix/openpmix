@@ -17,6 +17,7 @@ series, in reverse chronological order.
                   process
 
 Detailed changes since v6.1.0:
+ - PR #3856: Roll to rc1
  - PR #3855: Multiple commits
     - Cleanup error paths in net_get_hostname
     - Update Python bindings
@@ -29,6 +30,7 @@ Detailed changes since v6.1.0:
     - Restore pnet/opa component
     - Add fn to print peer type
     - Fix messaging problem in ptl recv
+    - Update NEWS
 
 
 6.1.0 -- 27 Feb 2025
