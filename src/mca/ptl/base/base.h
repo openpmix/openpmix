@@ -134,9 +134,6 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_connection(char *uri,
                                                          struct sockaddr_storage *connection,
                                                          size_t *len);
 
-PMIX_EXPORT void pmix_ptl_base_post_recv(int fd, short args, void *cbdata);
-PMIX_EXPORT void pmix_ptl_base_cancel_recv(int sd, short args, void *cbdata);
-
 PMIX_EXPORT pmix_status_t pmix_ptl_base_start_listening(pmix_info_t info[], size_t ninfo);
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
 

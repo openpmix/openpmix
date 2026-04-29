@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -325,7 +325,6 @@ static pmix_status_t pmix_ptl_close(void)
     }
     /* the component will cleanup when closed */
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
-    PMIX_LIST_DESTRUCT(&pmix_ptl_base.unexpected_msgs);
     PMIX_DESTRUCT(&pmix_ptl_base.listener);
 
     if (NULL != pmix_ptl_base.scheduler_filename) {
@@ -462,7 +461,6 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     /* initialize globals */
     pmix_ptl_base.initialized = true;
     PMIX_CONSTRUCT(&pmix_ptl_base.posted_recvs, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_ptl_base.unexpected_msgs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
     pmix_ptl_base.connection = (struct sockaddr_storage *)malloc(sizeof(struct sockaddr_storage));
     if (NULL == pmix_ptl_base.connection) {
@@ -557,6 +555,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_recv_t,
 
 static void prcon(pmix_ptl_posted_recv_t *p)
 {
+    p->peer = NULL;
     p->tag = UINT32_MAX;
     p->cbfunc = NULL;
     p->cbdata = NULL;

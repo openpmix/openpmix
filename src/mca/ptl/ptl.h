@@ -16,7 +16,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -160,42 +160,10 @@ typedef struct pmix_ptl_module_t pmix_ptl_module_t;
         }                                            \
     } while (0)
 
-#define PMIX_PTL_RECV(r, c, t)                                               \
-    do {                                                                     \
-        pmix_ptl_posted_recv_t *req;                                         \
-        req = PMIX_NEW(pmix_ptl_posted_recv_t);                              \
-        if (NULL == req) {                                                   \
-            (r) = PMIX_ERR_NOMEM;                                            \
-        } else {                                                             \
-            req->tag = (t);                                                  \
-            req->cbfunc = (c);                                               \
-            pmix_event_assign(&(req->ev), pmix_globals.evbase, -1, EV_WRITE, \
-                              pmix_ptl_base_post_recv, req);                 \
-            pmix_event_active(&(req->ev), EV_WRITE, 1);                      \
-            (r) = PMIX_SUCCESS;                                              \
-        }                                                                    \
-    } while (0)
-
-#define PMIX_PTL_CANCEL(r, t)                                                \
-    do {                                                                     \
-        pmix_ptl_posted_recv_t *req;                                         \
-        req = PMIX_NEW(pmix_ptl_posted_recv_t);                              \
-        if (NULL == req) {                                                   \
-            (r) = PMIX_ERR_NOMEM;                                            \
-        } else {                                                             \
-            req->tag = (t);                                                  \
-            pmix_event_assign(&(req->ev), pmix_globals.evbase, -1, EV_WRITE, \
-                              pmix_ptl_base_cancel_recv, req);               \
-            pmix_event_active(&(req->ev), EV_WRITE, 1);                      \
-            (r) = PMIX_SUCCESS;                                              \
-        }                                                                    \
-    } while (0)
-
 /* expose functions used by the macros */
 PMIX_EXPORT extern void pmix_ptl_base_send(int sd, short args, void *cbdata);
 PMIX_EXPORT extern void pmix_ptl_base_send_recv(int sd, short args, void *cbdata);
 PMIX_EXPORT extern void pmix_ptl_base_register_recv(int sd, short args, void *cbdata);
-PMIX_EXPORT extern void pmix_ptl_base_cancel_recv(int sd, short args, void *cbdata);
 
 /****    COMPONENT STRUCTURE DEFINITION    ****/
 

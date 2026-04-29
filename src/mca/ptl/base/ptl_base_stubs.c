@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -106,59 +106,4 @@ pmix_status_t pmix_ptl_base_set_notification_cbfunc(pmix_ptl_cbfunc_t cbfunc)
      * we didn't previously request */
     pmix_list_prepend(&pmix_ptl_base.posted_recvs, &req->super);
     return PMIX_SUCCESS;
-}
-
-void pmix_ptl_base_post_recv(int fd, short args, void *cbdata)
-{
-    (void) fd;
-    (void) args;
-    pmix_ptl_posted_recv_t *req = (pmix_ptl_posted_recv_t *) cbdata;
-    pmix_ptl_recv_t *msg, *nmsg;
-    pmix_buffer_t buf;
-
-    pmix_output_verbose(5, pmix_ptl_base_framework.framework_output, "posting recv on tag %d",
-                        req->tag);
-
-    /* add it to the list of recvs */
-    pmix_list_append(&pmix_ptl_base.posted_recvs, &req->super);
-
-    /* now check the unexpected msg queue to see if we already
-     * recvd something for it */
-    PMIX_LIST_FOREACH_SAFE (msg, nmsg, &pmix_ptl_base.unexpected_msgs, pmix_ptl_recv_t) {
-        if (msg->hdr.tag == req->tag || UINT_MAX == req->tag) {
-            if (NULL != req->cbfunc) {
-                /* construct and load the buffer */
-                PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-                if (NULL != msg->data) {
-                    buf.base_ptr = (char *) msg->data;
-                    buf.bytes_allocated = buf.bytes_used = msg->hdr.nbytes;
-                    buf.unpack_ptr = buf.base_ptr;
-                    buf.pack_ptr = ((char *) buf.base_ptr) + buf.bytes_used;
-                }
-                msg->data = NULL; // protect the data region
-                req->cbfunc(msg->peer, &msg->hdr, &buf, req->cbdata);
-                PMIX_DESTRUCT(&buf); // free's the msg data
-            }
-            pmix_list_remove_item(&pmix_ptl_base.unexpected_msgs, &msg->super);
-            PMIX_RELEASE(msg);
-        }
-    }
-}
-
-void pmix_ptl_base_cancel_recv(int fd, short args, void *cbdata)
-{
-    (void) fd;
-    (void) args;
-    pmix_ptl_posted_recv_t *req = (pmix_ptl_posted_recv_t *) cbdata;
-    pmix_ptl_posted_recv_t *rcv;
-
-    PMIX_LIST_FOREACH (rcv, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
-        if (rcv->tag == req->tag) {
-            pmix_list_remove_item(&pmix_ptl_base.posted_recvs, &rcv->super);
-            PMIX_RELEASE(rcv);
-            PMIX_RELEASE(req);
-            return;
-        }
-    }
-    PMIX_RELEASE(req);
 }
