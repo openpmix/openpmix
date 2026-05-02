@@ -116,6 +116,7 @@ examples/monitor_remote
 examples/monitor_multi
 examples/simple
 examples/simple_server
+examples/abort
 
 include/pmix_version.h
 include/pmix_rename.h
