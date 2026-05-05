@@ -1719,7 +1719,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
         inputsize = bo->size;
         copied = false;
         PMIX_LIST_FOREACH(res, &pmix_server_globals.iof_residuals, pmix_iof_residual_t) {
-            if (PMIX_CHECK_PROCID(name, &res->name) || (stream & res->stream)) {
+            if (PMIX_CHECK_PROCID(name, &res->name) && (stream & res->stream)) {
                 /* we need to pre-pend the residual data to the new
                  * data so any lines can be completed */
                 inputdata = (char*)malloc(inputsize + res->bo.size);
