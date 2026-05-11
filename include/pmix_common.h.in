@@ -449,6 +449,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_LOCAL_COLLECTIVE_STATUS        "pmix.loc.col.st"       // (pmix_status_t) status code for local collective operation being
                                                                     //         reported to host by server library
 #define PMIX_SORTED_PROC_ARRAY              "pmix.sorted.parr"      // (bool) Proc array being passed has been sorted
+#define PMIX_LOCAL_PARTICIPANTS             "pmix.lcl.part"         // (pmix_data_array_t*) Array of pmix_proc_t identifiers of local procs
+                                                                    //         that participated in a collective operation (e.g., PMIx_Group_construct)
 
 
 /* event handler registration and notification info keys */
