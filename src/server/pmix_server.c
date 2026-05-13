@@ -2697,6 +2697,16 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
     return pmix_preg.generate_node_regex(input, regexp);
 }
 
+pmix_status_t PMIx_parse_regex(const char *regex,
+                               char ***output)
+{
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
+    return pmix_preg.parse_nodes(regex, output);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **regexp)
 {
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
@@ -2705,6 +2715,17 @@ PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **regexp)
 
     return pmix_preg.generate_ppn(input, regexp);
 }
+
+pmix_status_t PMIx_parse_ppn(const char *ppn,
+                             char ***output)
+{
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
+    return pmix_preg.parse_procs(ppn, output);
+}
+
 
 static void _setup_op(pmix_status_t rc, void *cbdata)
 {

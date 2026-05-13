@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
@@ -640,6 +640,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void);
  */
 PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regex);
 
+/* Given a reduced size representation of a comma-separated list of
+ * input values as typically returned by PMIx_generate_regex, parse
+ * the input and return a NULL-terminated argv array of the individual
+ * values. The caller is responsible for releasing the returned array.
+ */
+PMIX_EXPORT pmix_status_t PMIx_parse_regex(const char *regex,
+                                           char ***output);
+
 /* The input shall consist of a semicolon-separated list of ranges
  * representing the ranks of processes on each node of the job -
  * e.g.,  "1-4;2-5;8,10,11,12;6,7,9". Each field of the input must
@@ -659,6 +667,14 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regex);
  * binary array.
  */
 PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **ppn);
+
+/* Given a reduced size representation of a semicolon-separated list
+ * of ranges representing the ranks of processes on each node of the
+ * job such as is returned by PMIx_generate_ppn, parse the input and
+ * return a NULL-terminated array of ranges. The caller is responsible
+ * for releasing the returned array.
+ */
+PMIX_EXPORT pmix_status_t PMIx_parse_ppn(const char *ppn, char ***output);
 
 /* Setup the data about a particular nspace so it can
  * be passed to any child process upon startup. The PMIx
