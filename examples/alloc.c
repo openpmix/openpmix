@@ -34,6 +34,8 @@
 #include "examples.h"
 #include <pmix.h>
 
+static pmix_proc_t myproc;
+
 /* this is a callback function for the PMIx_Query and
  * PMIx_Allocate APIs. The query will callback with a status indicating
  * if the request could be fully satisfied, partially
@@ -92,7 +94,7 @@ static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
 {
     myrel_t *lock;
     size_t n;
-
+    pmix_status_t rc, pstatus = PMIX_ERROR;
     EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
 
     /* find the return object */
@@ -100,7 +102,12 @@ static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
     for (n = 0; n < ninfo; n++) {
         if (0 == strncmp(info[n].key, PMIX_EVENT_RETURN_OBJECT, PMIX_MAX_KEYLEN)) {
             lock = (myrel_t *) info[n].value.data.ptr;
-            break;
+        } else if (PMIx_Check_key(info[n].key, PMIX_ALLOC_STATUS)) {
+            rc = PMIx_Value_get_number(&info[n].value, (void*)&pstatus, PMIX_STATUS);
+            if (PMIX_SUCCESS != rc) {
+                fprintf(stderr, "Client %s: Error in notification status returned: %s\n",
+                        PMIx_Proc_string(&myproc), PMIx_Error_string(rc));
+            }
         }
     }
     /* if the object wasn't returned, then that is an error */
@@ -117,10 +124,7 @@ static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
     }
-    /* the status will be PMIX_ERR_ALLOC_COMPLETE since that is the code
-     * we registered to receive. The result of the allocation request is
-     * in the info array - for now, just assume success */
-    lock->lock.status = PMIX_SUCCESS;
+    lock->lock.status = pstatus;
     /* release the lock */
     DEBUG_WAKEUP_THREAD(&lock->lock);
 }
@@ -147,7 +151,6 @@ static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, voi
 
 int main(int argc, char **argv)
 {
-    pmix_proc_t myproc;
     int rc;
     pmix_value_t *val = NULL;
     pmix_proc_t proc;
@@ -202,10 +205,11 @@ int main(int argc, char **argv)
                 myproc.rank, PMIx_Error_string(rc));
         DEBUG_DESTRUCT_MYQUERY(&mydata);
 
-        if (PMIX_SUCCESS != rc) {
-            // need to notify rank=1 so it gets released
-            PMIx_Notify_event(PMIX_NOTIFY_ALLOC_COMPLETE, &myproc, PMIX_RANGE_GLOBAL, NULL, 0, NULL, NULL);
-        }
+        // need to notify rank=1 so it gets released
+        PMIX_INFO_CREATE(info, 1);
+        PMIX_INFO_LOAD(&info[0], PMIX_ALLOC_STATUS, &rc, PMIX_STATUS);
+        PMIx_Notify_event(PMIX_NOTIFY_ALLOC_COMPLETE, &myproc, PMIX_RANGE_GLOBAL, info, 1, NULL, NULL);
+
     } else if (1 == myproc.rank) {
         /* demonstrate a notification based approach - register a handler
          * specifically for when the allocation operation completes */
@@ -237,15 +241,17 @@ int main(int argc, char **argv)
         PMIX_QUERY_CREATE(query, 1);
         PMIX_ARGV_APPEND(rc, query[0].keys, PMIX_QUERY_ALLOC_STATUS);
         PMIX_INFO_CREATE(query[0].qualifiers, 1);
+        query[0].nqual = 1;
         PMIX_INFO_LOAD(&query[0].qualifiers[0], PMIX_ALLOC_ID, myallocation, PMIX_STRING);
 
+        fprintf(stderr, "Client %s querying allocation\n", PMIx_Proc_string(&myproc));
         if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, 1, infocbfunc, (void *) &mydata))) {
             fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
             goto done;
         }
         DEBUG_WAIT_THREAD(&mydata.lock);
         PMIX_QUERY_FREE(query, 1);
-        fprintf(stderr, "[%s:%d] Allocation returned status: %s\n", myproc.nspace, myproc.rank,
+        fprintf(stderr, "[%s:%d] Allocation query returned status: %s\n", myproc.nspace, myproc.rank,
                 PMIx_Error_string(mydata.lock.status));
         DEBUG_DESTRUCT_MYQUERY(&mydata);
     }
