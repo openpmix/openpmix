@@ -15,7 +15,7 @@
  *
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -113,7 +113,7 @@ char *pmix_argv_join_range(char **argv, size_t start, size_t end, int delimiter)
 
     /* Allocate the string. */
 
-    if (NULL == (str = (char *) malloc(str_len))) {
+    if (NULL == (str = (char *) calloc(str_len, sizeof(char)))) {
         return NULL;
     }
 

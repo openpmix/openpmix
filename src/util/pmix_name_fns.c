@@ -13,7 +13,7 @@
  * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -86,7 +86,7 @@ static pmix_print_args_buffers_t *get_print_name_buffer(void)
     if (NULL == ptr) {
         ptr = (pmix_print_args_buffers_t *) malloc(sizeof(pmix_print_args_buffers_t));
         for (i = 0; i < PMIX_PRINT_NAME_ARG_NUM_BUFS; i++) {
-            ptr->buffers[i] = (char *) malloc((PMIX_PRINT_NAME_ARGS_MAX_SIZE + 1) * sizeof(char));
+            ptr->buffers[i] = (char *) calloc((PMIX_PRINT_NAME_ARGS_MAX_SIZE + 1), sizeof(char));
         }
         ptr->cntr = 0;
         ret = pmix_tsd_setspecific(print_args_tsd_key, (void *) ptr);

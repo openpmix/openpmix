@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2014      Artem Polyakov <artpol84@gmail.com>
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -90,11 +90,10 @@ pmix_timing_event_t *pmix_timing_event_alloc(pmix_timing_t *t)
         // notch timings overhead
         double alloc_begin = t->get_ts();
 
-        t->buffer = malloc(sizeof(pmix_timing_event_t) * t->buffer_size);
+        t->buffer = calloc(t->buffer_size, sizeof(pmix_timing_event_t));
         if (t->buffer == NULL) {
             return NULL;
         }
-        memset(t->buffer, 0, sizeof(pmix_timing_event_t) * t->buffer_size);
 
         double alloc_end = t->get_ts();
 
@@ -259,9 +258,8 @@ static int _prepare_descriptions(pmix_timing_t *t, struct interval_descr **__des
         return 0;
     }
 
-    *__descr = malloc(sizeof(struct interval_descr) * t->next_id_cntr);
+    *__descr = calloc(t->next_id_cntr, sizeof(struct interval_descr));
     descr = *__descr;
-    memset(descr, 0, sizeof(struct interval_descr) * t->next_id_cntr);
 
     PMIX_LIST_FOREACH_SAFE (ev, next, t->events, pmix_timing_event_t) {
 
@@ -343,12 +341,11 @@ int pmix_timing_report(pmix_timing_t *t, char *fname)
 
     _prepare_descriptions(t, &descr);
 
-    buf = malloc(PMIX_TIMING_OUTBUF_SIZE + 1);
+    buf = calloc((PMIX_TIMING_OUTBUF_SIZE + 1), sizeof(char));
     if (buf == NULL) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         goto err_exit;
     }
-    buf[0] = '\0';
 
     double overhead = 0;
     PMIX_LIST_FOREACH (ev, t->events, pmix_timing_event_t) {
@@ -535,12 +532,11 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname)
         assert(0);
     }
 
-    buf = malloc(PMIX_TIMING_OUTBUF_SIZE + 1);
+    buf = calloc((PMIX_TIMING_OUTBUF_SIZE + 1), sizeof(char));
     if (buf == NULL) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         goto err_exit;
     }
-    buf[0] = '\0';
     buf_size = PMIX_TIMING_OUTBUF_SIZE + 1;
     buf_used = 0;
     for (i = 0; i < t->next_id_cntr; i++) {

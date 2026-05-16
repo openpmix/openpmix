@@ -747,7 +747,7 @@ static int make_string(char **out, char **no_newline_string, pmix_output_desc_t 
     if (NULL != ldi->ldi_suffix) {
         total_len += strlen(ldi->ldi_suffix);
     }
-    temp_str = (char *) malloc(total_len * 2);
+    temp_str = (char *) calloc((total_len * 2), sizeof(char));
     if (NULL == temp_str) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
