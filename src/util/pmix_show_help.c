@@ -401,7 +401,7 @@ static pmix_status_t array2string(char **outstring,
 
     /* Malloc it out */
 
-    (*outstring) = (char *) malloc(len + 1);
+    (*outstring) = (char *) calloc((len + 1), sizeof(char));
     if (NULL == *outstring) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }

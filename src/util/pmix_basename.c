@@ -13,7 +13,7 @@
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -124,7 +124,7 @@ char *pmix_dirname(const char *filename)
                 }
             }
             if (p != filename) {
-                char *ret = (char *) malloc(p - filename + 1);
+                char *ret = (char *) calloc((p - filename + 1), sizeof(char));
                 pmix_strncpy(ret, filename, p - filename);
                 ret[p - filename] = '\0';
                 return pmix_make_filename_os_friendly(ret);
