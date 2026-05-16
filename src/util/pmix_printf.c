@@ -12,7 +12,7 @@
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2018      Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -240,7 +240,7 @@ int pmix_vasprintf(char **ptr, const char *fmt, va_list ap)
     length = guess_strlen(fmt, ap);
 
     /* allocate a buffer */
-    *ptr = (char *) malloc((size_t) length + 1);
+    *ptr = (char *) calloc(((size_t) length + 1), sizeof(char));
     if (NULL == *ptr) {
         errno = ENOMEM;
         va_end(ap2);

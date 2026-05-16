@@ -119,7 +119,7 @@ static char *get_hostname_buffer(void)
         return NULL;
 
     if (NULL == buffer) {
-        buffer = (void *) malloc((NI_MAXHOST + 1) * sizeof(char));
+        buffer = (void *) calloc((NI_MAXHOST + 1), sizeof(char));
         ret = pmix_tsd_setspecific(hostname_tsd_key, buffer);
     }
 
@@ -135,7 +135,7 @@ int pmix_net_init(void)
     args = PMIx_Argv_split(pmix_net_private_ipv4, ';');
     if (NULL != args) {
         count = PMIx_Argv_count(args);
-        private_ipv4 = (private_ipv4_t *) malloc((count + 1) * sizeof(private_ipv4_t));
+        private_ipv4 = (private_ipv4_t *) calloc((count + 1), sizeof(private_ipv4_t));
         if (NULL == private_ipv4) {
             pmix_output(0, "Unable to allocate memory for the private addresses array");
             PMIx_Argv_free(args);

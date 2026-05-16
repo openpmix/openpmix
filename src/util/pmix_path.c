@@ -17,7 +17,7 @@
  * Copyright (c) 2016      University of Houston. All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -149,7 +149,7 @@ char *pmix_path_find(char *fname, char **pathv, int mode, char **envv)
                 if (!delimit) {
                     fullpath = pmix_path_access(fname, env, mode);
                 } else {
-                    pfix = (char *) malloc(strlen(env) + strlen(delimit) + 1);
+                    pfix = (char *) calloc((strlen(env) + strlen(delimit) + 1), sizeof(char));
                     if (NULL == pfix) {
                         return NULL;
                     }

@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -88,7 +88,7 @@ int pmix_bitmap_init(pmix_bitmap_t *bm, int size)
         if (bm->max_size < bm->array_size)
             bm->max_size = bm->array_size;
     }
-    bm->bitmap = (uint64_t *) malloc(bm->array_size * sizeof(uint64_t));
+    bm->bitmap = (uint64_t *) calloc(bm->array_size, sizeof(uint64_t));
     if (NULL == bm->bitmap) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
