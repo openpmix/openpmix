@@ -16,7 +16,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -335,7 +335,7 @@ pmix_mca_base_component_repository_release_internal(pmix_mca_base_component_repo
 {
     int group_id;
 
-    group_id = pmix_mca_base_var_group_find(NULL, ri->ri_type, ri->ri_name);
+    group_id = pmix_mca_base_var_group_find("*", ri->ri_type, ri->ri_name);
     if (0 <= group_id) {
         /* ensure all variables are deregistered before we dlclose the component */
         pmix_mca_base_var_group_deregister(group_id);
