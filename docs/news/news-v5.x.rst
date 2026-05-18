@@ -4,6 +4,29 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
+5.0.11 -- xx May 2026
+---------------------
+:: important:: This release contains the following important changes:
+
+                * restoration/repair of the OmniPath support component
+                * Repair support of OMPI default MCA params
+
+Detailed changes include:
+ - PR #3869: Multiple commits
+    - Update NEWS and VERSION
+    - pmdl/ompi: use the right type to enumerate myenvars
+    - fix var group lookup in component repository release
+    - Prepend I/O residuals to correct redirected streams
+    - Restore pnet/opa component
+    - Don't pass zero-byte stdin to host
+    - Correct the wrapper compiler man page
+    - Default output to file to nocopy
+    - Properly handle qualified values in client get
+    - Do not double-process IOF formats
+    - Correct cflags used for check_compiler_version.m4
+    - Fully support return of static values
+
+
 5.0.10 -- 23 Jan 2026
 ---------------------
 .. important:: This release includes two critical changes:
