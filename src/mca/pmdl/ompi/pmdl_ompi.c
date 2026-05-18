@@ -3,6 +3,8 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -823,6 +825,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     pmix_info_t info[2];
     uint32_t n;
     pmix_cb_t cb;
+    pmix_mca_base_var_file_value_t *fv;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                         "pmdl:ompi: setup fork for %s", PMIX_NAME_PRINT(proc));
@@ -1159,8 +1162,8 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     PMIX_DESTRUCT(&cb);
 
     /* add any envars we collected from param files */
-    PMIX_LIST_FOREACH(kv, &myenvars, pmix_kval_t) {
-        PMIx_Setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true, env);
+    PMIX_LIST_FOREACH(fv, &myenvars, pmix_mca_base_var_file_value_t) {
+        PMIx_Setenv(fv->mbvfv_var, fv->mbvfv_value, true, env);
     }
 
     return PMIX_SUCCESS;
