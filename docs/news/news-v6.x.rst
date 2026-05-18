@@ -17,6 +17,12 @@ series, in reverse chronological order.
                   process
 
 Detailed changes since v6.1.0:
+ - PR #3868: Multiple commits
+    - Update NEWS
+    - pmdl/ompi: use the right type to enumerate myenvars
+    - Add a little overflow protection
+    - fix var group lookup in component repository release
+    - Prepend I/O residuals to correct redirected streams
  - PR #3856: Roll to rc1
  - PR #3855: Multiple commits
     - Cleanup error paths in net_get_hostname
