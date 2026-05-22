@@ -35,7 +35,7 @@ jobs:
         sudo apt-get install -y --no-install-recommends software-properties-common libhwloc-dev libevent-dev
 
     - name: Git clone OpenPMIx
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: recursive
         clean: false
@@ -48,7 +48,7 @@ jobs:
         make install
 
     - name: Git clone PRRTE
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: recursive
         repository: openpmix/prrte
@@ -67,7 +67,7 @@ jobs:
         make install
 
     - name: Checkout Open MPI
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: recursive
         repository: open-mpi/ompi
@@ -133,7 +133,7 @@ jobs:
               numpy cffi pyyaml
 
     - name: Checkout mpi4py
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         repository: ${{ inputs.repository || 'mpi4py/mpi4py' }}
         ref: ${{ inputs.ref }}
