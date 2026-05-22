@@ -18,7 +18,7 @@ jobs:
         sudo apt-get install -y --no-install-recommends software-properties-common libhwloc-dev libevent-dev
 
     - name: Git clone PR
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
             submodules: recursive
             path: pr
@@ -35,7 +35,7 @@ jobs:
         make
 
     - name: Git clone branch
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
             submodules: recursive
             repository: openpmix/openpmix
