@@ -1548,13 +1548,13 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
                                  cd->directives, cd->ndirs,
                                  localcbfn, (void *) cd);
         } else {
-            // no choice but to process locally
-            goto local;
+            // tell the client that we cannot do this
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_NOT_AVAILABLE;
         }
         return PMIX_SUCCESS;
     }
 
-local:
     /* pass it down */
     pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                         "pmix:server processing locally");
