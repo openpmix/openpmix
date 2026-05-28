@@ -788,14 +788,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     /* add it to the end of the list of recvs */
     pmix_list_append(&pmix_ptl_base.posted_recvs, &req->super);
 
-    /* if we are a gateway, setup our IOF events */
-    if (PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
-        /* setup IOF */
-        PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stdout, &pmix_globals.myid, 1,
-                             PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
-        PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stderr, &pmix_globals.myid, 2,
-                             PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
-    }
+    /* setup our IOF sinks */
+    PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stdout, &pmix_globals.myid, 1,
+                         PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
+    PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stderr, &pmix_globals.myid, 2,
+                         PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
 
     /* register our attributes */
     if (PMIX_SUCCESS != (rc = pmix_register_server_attrs())) {
