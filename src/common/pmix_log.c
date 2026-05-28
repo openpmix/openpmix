@@ -61,6 +61,10 @@ static void log_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         status = rc;
     }
 
+    if (PMIX_ERR_NOT_AVAILABLE == status) {
+        /* call down to process the request */
+        status = pmix_plog.log(cd->proc, cd->info, cd->ninfo, cd->directives, cd->ndirs);
+    }
     if (NULL != cd->cbfunc.opcbfn) {
         cd->cbfunc.opcbfn(status, cd->cbdata);
     }
@@ -201,12 +205,16 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
             goto local;
         }
-        PMIX_PROC_FREE(source, 1); // don't need this value
 
         // otherwise, we send to our server
         cd = PMIX_NEW(pmix_shift_caddy_t);
+        cd->info = (pmix_info_t*)data;
+        cd->ninfo = ndata;
+        cd->directives = (pmix_info_t*)directives;
+        cd->ndirs = ndirs;
         cd->cbfunc.opcbfn = cbfunc;
         cd->cbdata = cbdata;
+        cd->proc = source;
         msg = PMIX_NEW(pmix_buffer_t);
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
         if (PMIX_SUCCESS != rc) {

@@ -62,6 +62,7 @@
 
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
+#include "src/common/pmix_iof.h"
 #include "src/event/pmix_event.h"
 
 #include "src/runtime/pmix_progress_threads.h"
@@ -316,7 +317,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
         pmix_globals.evauxbase = pmix_globals.evbase;
     }
 
-    /* setup the globals structure */
+    /* setup the globals structures */
     pmix_globals.pid = getpid();
     PMIX_LOAD_PROCID(&pmix_globals.myid, NULL, PMIX_RANK_INVALID);
 
@@ -337,7 +338,11 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
                           pmix_globals.event_eviction_time, _notification_eviction_cbfunc);
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_keyindex_t);
+    // construct client globals structures
     PMIX_CONSTRUCT(&pmix_client_globals.groups, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_client_globals.iof_stdout, pmix_iof_sink_t);
+    PMIX_CONSTRUCT(&pmix_client_globals.iof_stderr, pmix_iof_sink_t);
+
     /* need to hold off checking the hotel init return code
      * until after we construct all the globals so they can
      * correctly finalize */

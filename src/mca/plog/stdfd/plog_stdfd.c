@@ -137,30 +137,40 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
                                 "%s: plog:stdfd delivering to stderr for source %s",
                                 PMIX_NAME_PRINT(&pmix_globals.myid),
                                 (NULL == source) ? "NULL" : PMIX_NAME_PRINT(source));
-            p = PMIX_NEW(pmix_iof_deliver_t);
-            PMIX_XFER_PROCID(&p->source, source);
-            p->bo.size = strlen(data[n].value.data.string) + 1; // include NULL terminator
-            p->bo.bytes = (char*)malloc(p->bo.size);
-            memcpy(p->bo.bytes, data[n].value.data.string, p->bo.size);
-            rc = PMIx_server_IOF_deliver(&p->source, PMIX_FWD_STDERR_CHANNEL, &p->bo, NULL, 0, lkcbfunc, (void*)p);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(p);
+            if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) ||
+                PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+                fprintf(stderr, "%s", data[n].value.data.string);
+            } else {
+                p = PMIX_NEW(pmix_iof_deliver_t);
+                PMIX_XFER_PROCID(&p->source, source);
+                p->bo.size = strlen(data[n].value.data.string) + 1; // include NULL terminator
+                p->bo.bytes = (char*)malloc(p->bo.size);
+                memcpy(p->bo.bytes, data[n].value.data.string, p->bo.size);
+                rc = PMIx_server_IOF_deliver(&p->source, PMIX_FWD_STDERR_CHANNEL, &p->bo, NULL, 0, lkcbfunc, (void*)p);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(p);
+                }
             }
         } else if (0 == strncmp(data[n].key, PMIX_LOG_STDOUT, PMIX_MAX_KEYLEN)) {
             pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                                 "%s: plog:stdfd delivering to stdout for source %s",
                                 PMIX_NAME_PRINT(&pmix_globals.myid),
                                 (NULL == source) ? "NULL" : PMIX_NAME_PRINT(source));
-            p = PMIX_NEW(pmix_iof_deliver_t);
-            PMIX_XFER_PROCID(&p->source, source);
-            p->bo.size = strlen(data[n].value.data.string) + 1; // include NULL terminator
-            p->bo.bytes = (char*)malloc(p->bo.size);
-            memcpy(p->bo.bytes, data[n].value.data.string, p->bo.size);
-            rc = PMIx_server_IOF_deliver(&p->source, PMIX_FWD_STDOUT_CHANNEL, &p->bo, NULL, 0, lkcbfunc, (void*)p);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(p);
+            if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) ||
+                PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+                fprintf(stdout, "%s", data[n].value.data.string);
+            } else {
+                p = PMIX_NEW(pmix_iof_deliver_t);
+                PMIX_XFER_PROCID(&p->source, source);
+                p->bo.size = strlen(data[n].value.data.string) + 1; // include NULL terminator
+                p->bo.bytes = (char*)malloc(p->bo.size);
+                memcpy(p->bo.bytes, data[n].value.data.string, p->bo.size);
+                rc = PMIx_server_IOF_deliver(&p->source, PMIX_FWD_STDOUT_CHANNEL, &p->bo, NULL, 0, lkcbfunc, (void*)p);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(p);
+                }
             }
         }
     }
