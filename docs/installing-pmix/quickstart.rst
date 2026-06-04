@@ -101,7 +101,7 @@ Note that VPATH builds are fully supported.  For example:
 
 Parallel builds are also supported (although some versions of ``make``,
 such as GNU make, will only use the first target listed on the command
-line when executable parallel builds).  For example (assume GNU make):
+line when executing parallel builds).  For example (assume GNU make):
 
 .. code-block:: sh
 
@@ -202,7 +202,7 @@ functionality.  Some of these libraries, such as `HWLOC
 a varying number of additional libraries (such as libpci or libudev).
 While PMIx's wrapper compiler will add the correct direct dependencies
 for third party packages, it will frequently not pull in the right
-sub-libraries.  When linking against dyanamic library versions of
+sub-libraries.  When linking against dynamic library versions of
 these dependencies, this is not a problem (and is preferred behavior
 to avoid adding unnecessary indirect linking dependencies).  However,
 this does cause problems for building entirely static versions of

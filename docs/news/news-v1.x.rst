@@ -29,7 +29,7 @@ series, in reverse chronological order.
 - Replace stale PMIX_DECLSPEC with PMIX_EXPORT (PR #448)
 - Memory barrier fixes for thread shifting (PR #387)
 - Fix race condition in dmodex (PR #346)
-- Allow disable backward compatability for PMI-1/2 (PR #350)
+- Allow disable backward compatibility for PMI-1/2 (PR #350)
 - Fix segv in PMIx_server_deregister_nspace (PR #343)
 - Fix possible hang in PMIx_Abort (PR #339)
 

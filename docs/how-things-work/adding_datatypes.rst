@@ -18,7 +18,7 @@ The datatype definition includes four pieces:
 
 Definition of the struct itself
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Almost all datatypes are structures of some kind, though that is not a requirement - a new datatype could simple be an abstraction over a standard C datatype (e.g., declaring something to represent a ``uint32_t``). Structures are required to be formatted as follows:
+Almost all datatypes are structures of some kind, though that is not a requirement - a new datatype could simply be an abstraction over a standard C datatype (e.g., declaring something to represent a ``uint32_t``). Structures are required to be formatted as follows:
 
 .. code-block:: c
 

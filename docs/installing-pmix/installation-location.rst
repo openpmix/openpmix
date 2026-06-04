@@ -109,7 +109,7 @@ Installing over a prior PMIx installation
 .. warning:: The PMIx team does not recommend installing a new
    version of PMIx over an existing / older installation of PMIx.
 
-In its default configuration, an PMIx installation consists of
+In its default configuration, a PMIx installation consists of
 several shared libraries, header files, executables, and plugins
 (dynamic shared objects |mdash| DSOs).  These installation files act
 together as a single entity.  The specific filenames and
@@ -152,7 +152,7 @@ upgrading your PMIx installation:
   the same installation prefix, and then run ``make uninstall``.  Or
   use one of the other methods, above.
 
-Relocating an PMIx installation
+Relocating a PMIx installation
 -------------------------------
 
 It can be desirable to initially install PMIx to one location
@@ -182,7 +182,7 @@ PMIx-based application.  For example, if PMIx had initially been installed to
 ``/home/pmix``, setting ``PMIX_PREFIX`` to ``/home/pmix`` will
 enable PMIx to function properly.
 
-"Stage" an PMIx installation in a temporary location
+"Stage" a PMIx installation in a temporary location
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 When *creating* self-contained installation packages, systems such as

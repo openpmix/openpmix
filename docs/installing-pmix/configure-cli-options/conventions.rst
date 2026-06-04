@@ -6,7 +6,7 @@
 ``configure`` will, by default, search for header files and/or
 libraries for various optional features (e.g., various network
 support libraries).  If the relevant files are found, PMIx
-will built support for that feature.  If they are not found, PMIx
+will build support for that feature.  If they are not found, PMIx
 will skip building support for that feature.
 
 However, if you specify ``--with-FOO`` (where ``FOO`` is the
@@ -17,7 +17,7 @@ feature that was specifically requested, and will therefore abort so
 that a human can resolve out the issue.
 
 .. note:: Using ``--with-FOO`` to force PMIx's ``configure``
-          script to abort it if can't find support for a given feature
+          script to abort if it can't find support for a given feature
           may be preferable to unexpectedly discovering at run-time
           that PMIx is missing support for a critical feature.
 

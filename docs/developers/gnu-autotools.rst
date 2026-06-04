@@ -1,6 +1,6 @@
 .. _developers-installing-autotools-label:
 
-Manually installing the GNU Autootools
+Manually installing the GNU Autotools
 ======================================
 
 There is enough detail in building the GNU Autotools that it warrants
@@ -8,7 +8,7 @@ its own section.
 
 .. note:: As noted above, you only need to read/care about this
           section if you are building PMIx from a Git clone.  End
-          users installing an PMIx distribution tarball do *not*
+          users installing a PMIx distribution tarball do *not*
           need to have the GNU Autotools installed.
 
 Use a package manager
@@ -114,7 +114,7 @@ Installing the GNU Autotools from source
           Autotools manually if you can't use your operating system
           packaging system to install them for you.
 
-The GNU Autotools sources can be can be downloaded from:
+The GNU Autotools sources can be downloaded from:
 
 * https://ftp.gnu.org/gnu/autoconf/
 * https://ftp.gnu.org/gnu/automake/

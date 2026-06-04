@@ -226,7 +226,7 @@ after running ``make install``:
 
       shell$ open $prefix/share/doc/pmix/html/index.html
 
-#. The man pages are installed (by default) to ``$preix/share/man``.
+#. The man pages are installed (by default) to ``$prefix/share/man``.
    If your man page search path includes this location, you can invoke
    commands similar to the following to see the same content that you
    see in these HTML pages:
