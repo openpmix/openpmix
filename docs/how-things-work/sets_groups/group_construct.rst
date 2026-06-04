@@ -28,7 +28,7 @@ In contrast,
 the *bootstrap* method is a somewhat more dynamic form of the operation
 that assumes each leader only knows the number of group leaders,
 but does not know their process IDs. This is commonly the case when
-two or mote collections of processes wish to join together (e.g., in an
+two or more collections of processes wish to join together (e.g., in an
 MPI connect/accept operation), but only the "root" processes
 know of each other. In such cases, each root process typically knows the
 process ID of all processes in its collection, but only the root

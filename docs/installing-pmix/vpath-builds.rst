@@ -3,7 +3,7 @@
 VPATH builds
 ============
 
-VPATH build are fully supported. For example:
+VPATH builds are fully supported. For example:
 
 .. code-block:: sh
 

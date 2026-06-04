@@ -7,7 +7,7 @@ The following are command line options for various runtime systems that
 can be used with ``configure``:
 
 * ``--with-alps``:
-  Force the building of for the Cray Alps run-time environment.  If
+  Force the building of support for the Cray Alps run-time environment.  If
   Alps support cannot be found, configure will abort.
 
 * ``--with-lsf=DIR``:

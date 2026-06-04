@@ -26,7 +26,7 @@ major, minor, release, and an optional quantifier.
 
 * Minor: The minor number is the second integer in the version
   string (e.g., v1.2.3). Changes in the minor number typically
-  indicate a incremental change in the code base and/or end-user
+  indicate an incremental change in the code base and/or end-user
   functionality. The minor number is always included in the version
   number:
 

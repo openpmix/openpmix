@@ -86,7 +86,7 @@ Overview
 Translation of a PMIx-based program requires the linkage of the
 PMIx-specific libraries which may not reside in one of the standard
 search directories of ``ld(1)``. It also often requires the inclusion
-of header files what may also not be found in a standard location.
+of header files that may also not be found in a standard location.
 
 ``pmixcc`` passes its arguments to the underlying C compiler along with
 the ``-I``, ``-L`` and ``-l`` options required by PMIx-based programs.

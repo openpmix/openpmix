@@ -14,7 +14,7 @@ probably work in many environments.
    Please consult the other sections in this chapter for more details,
    if necessary.
 
-PMIx provides a "wrapper" compiler (```pmixcc`` <man1-pmixcc>`)that can be used for
+PMIx provides a "wrapper" compiler (```pmixcc`` <man1-pmixcc>`) that can be used for
 compiling PMIx-based applications. The intent is that users can simply invoke the
 PMIx wrapper compiler instead of their usual language compiler (e.g., ``gcc``).
 For example, instead of invoking your usual C compiler to build your
@@ -29,7 +29,7 @@ All the wrapper compiler does is add a variety of compiler and linker
 flags to the command line and then invoke a back-end compiler.  To be
 specific: the wrapper compilers do not parse source code at all; they
 are solely command-line manipulators, and have nothing to do with the
-actual compilation or linking of programs.  The end result is anI
+actual compilation or linking of programs.  The end result is an
 executable that is properly linked to all the relevant libraries.
 
 .. caution:: It is *absolutely not sufficient* to simply add ``-lpmix``

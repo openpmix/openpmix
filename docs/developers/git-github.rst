@@ -18,7 +18,7 @@ PMIx's Git repository is `hosted at GitHub
       shell$ git clone --recursive https://github.com/openpmix/openpmix.git
 
 Note that Git is natively capable of using many forms of web
-proxies. If your network setup requires the user of a web proxy,
+proxies. If your network setup requires the use of a web proxy,
 `consult the Git documentation for more details
 <https://git-scm.com/>`_.
 
@@ -100,7 +100,7 @@ commit hash ``123abc``:
 .. code:: sh
 
    # Fetch all upstream git activity, including the merge of the "master" PR.
-   shell$ get fetch --all
+   shell$ git fetch --all
 
    # Check out the target release branch, and advance to the most recent commit.
    shell$ git checkout v5.0.x

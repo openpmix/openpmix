@@ -42,11 +42,11 @@ Process *sets* differ from process *groups* in several key ways:
 * Process *sets* have no implied relationship between their members - i.e., a process in a process set has no concept of a ``pset rank`` as it would in a process *group*.
 
     * Process *set* identifiers are set by the host environment or by the user at time of application submission for execution -
-      there are no PMIx client API's provided by which an application can define a process set or change a process set membership.
+      there are no PMIx client APIs provided by which an application can define a process set or change a process set membership.
       In contrast, PMIx process *groups* can only be defined dynamically by the application.
 
     * Process *sets* are immutable - members cannot be added or removed once the set has been defined. In contrast, PMIx process *groups* can dynamically
-      change their membership using the appropriate API's.
+      change their membership using the appropriate APIs.
 
     * Process *groups* can be used in calls to PMIx operations. Members of process *groups* that are involved in an operation are translated by their
       PMIx library into their *native* identifier prior to the operation being passed to the host environment. For example, an application can define a
