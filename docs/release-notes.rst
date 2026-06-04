@@ -32,7 +32,7 @@ Compiler Notes
 
 * The Portland Group compilers prior to version 7.0 require the
   ``-Msignextend`` compiler flag to extend the sign bit when converting
-  from a shorter to longer integer.  This is is different than other
+  from a shorter to longer integer.  This is different than other
   compilers (such as GNU).  When compiling PMIx with the Portland
   compiler suite, the following flags should be passed to PMIx's
   configure script:

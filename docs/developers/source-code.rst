@@ -50,7 +50,7 @@ C / C++
 * PMIx requires a C99-compliant compiler.
 
   * C++-style comments are now allowed (and preferred).
-  * C99-style mixing declarations are allow allowable (and preferred).
+  * C99-style mixing of declarations is allowable (and preferred).
 
 * **ALWAYS** include ``pmix_config.h`` as your first #include file.
   There are very, very few cases where
