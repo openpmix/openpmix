@@ -36,7 +36,7 @@ treatment of components that may be of interest to packagers:
    .. note:: See the descriptions of ``--enable-mca-dso`` and
              ``--enable-mca-static`` :ref:`in this section
              <label-building-installation-cli-options>` for more
-             details about how to change this defaults.
+             details about how to change these defaults.
 
 A side effect of these two defaults is that all the components
 included in the PMIx libraries will bring their dependencies with

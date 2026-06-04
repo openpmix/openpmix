@@ -4,12 +4,12 @@ Filesystem requirements
 .. _install-filesystem-timestamp-warning-label:
 
 .. warning:: If you are building PMIx on a network filesystem, the
-   machine you on which you are building *must* be time-synchronized
+   machine on which you are building *must* be time-synchronized
    with the file server.
 
 Specifically: PMIx's build system *requires* accurate filesystem
 timestamps.  If your ``make`` output shows that it ran GNU Automake,
-Autoconf, and/or Libtool, or includes warning about timestamps in the
+Autoconf, and/or Libtool, or includes warnings about timestamps in the
 future, perhaps looking something like this::
 
    Warning: File `Makefile.am' has modification time 3.6e+04 s in the future

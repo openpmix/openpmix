@@ -42,7 +42,7 @@ customize include the following:
 
 * ``ptl``: PMIx Transport Layer; users may need to assist the
   messaging layer with selection of network interfaces and
-  controls parameters
+  control parameters
 * ``pmdl``: Programming Model and Library; identify environmental
   variables to be forwarded to application processes
 

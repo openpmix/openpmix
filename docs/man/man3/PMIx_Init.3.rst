@@ -38,7 +38,7 @@ If successful, the function will return ``PMIX_SUCCESS`` and will fill
 the provided structure with the server-assigned namespace and rank of
 the process within the application.
 
-Note that the PMIx client library is referenced counted, and so
+Note that the PMIx client library is reference counted, and so
 multiple calls to ``PMIx_Init`` are allowed. Thus, one way to obtain
 the namespace and rank of the process is to simply call ``PMIx_Init``
 with a non-NULL parameter.

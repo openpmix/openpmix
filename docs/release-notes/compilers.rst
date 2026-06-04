@@ -32,11 +32,11 @@ Compiler Notes
   very little (if any) testing performed on IA64 platforms (with any
   compiler).  Support is "best effort" for these platforms, but it is
   doubtful that any effort will be expended to fix the Intel 9.1 /
-  10.0 compiler issuers on this platform.
+  10.0 compiler issues on this platform.
 
 * Early versions of the Intel 12.1 Linux compiler suite on x86_64 seem
   to have a bug that prevents PMIx from working.  Symptoms
-  including immediate segv of the wrapper compiler (``pmixcc``) and
+  include immediate segv of the wrapper compiler (``pmixcc``) and
   PMIx-based applications.  If you upgrade to the latest
   version of the Intel 12.1 Linux compiler suite, the problem will go
   away.

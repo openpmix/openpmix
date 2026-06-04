@@ -2,7 +2,7 @@ Definitions
 ===========
 
 * **Source tree:** The tree where the PMIx source code is located.
-  It is typically the result of expanding an PMIx distribution
+  It is typically the result of expanding a PMIx distribution
   source code bundle, such as a tarball.
 * **Build tree:** The tree where PMIx was built.  It is always
   related to a specific source tree, but may actually be a different

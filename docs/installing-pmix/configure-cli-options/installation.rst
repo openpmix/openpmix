@@ -297,7 +297,7 @@ be used with ``configure``:
   the FOO components failing to load because ``libFOO.so`` is not
   available on their systems.
 
-  Conversely, system administrators tend to build an PMIx that is
+  Conversely, system administrators tend to build a PMIx that is
   targeted at their specific environment, and contains few (if any)
   components that are not needed.  In such cases, they might want
   their users to be warned that the FOO network components failed to
