@@ -8,7 +8,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018      Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -80,6 +80,8 @@ static bool zlibng_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outb
 
     /* get an upper bound on the required output storage */
     len = zng_deflateBound(&strm, inlen);
+    // it's okay if this len > inlen because it includes
+    // working space for the compression library
     if (NULL == (tmp = (uint8_t *) malloc(len))) {
         (void) zng_deflateEnd(&strm);
         return false;
