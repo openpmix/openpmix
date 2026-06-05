@@ -224,6 +224,8 @@ test/sshot/server
 test/sshot/mytopo.json
 test/sshot/testcoord
 
+test/unit/compress
+
 test/util/numa
 test/util/convert
 
