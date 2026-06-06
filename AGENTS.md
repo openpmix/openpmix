@@ -116,7 +116,19 @@ pmix_info --param FRAMEWORK COMPONENT
 
 ## Performance Considerations
 
-PMIx is used in latency-critical paths during job launch and process management at scale.  Avoid adding heap allocations, lock acquisitions, or branches to hot paths without first measuring the impact.  Microseconds matter at the scale PMIx targets.
+PMIx is not generally used in latency-critical paths, but it is important that the code remain time-sensitive: PMIx can be used as a dependency by time-sensitive libraries, so unnecessary overhead is never acceptable.  Avoid adding heap allocations, lock acquisitions, or branches to hot paths without first measuring the impact.
+
+## Version Interoperability
+
+PMIx is required to be interoperable across released versions.  A server built against one PMIx version must be able to communicate with a client built against a different version, whether older or newer.
+
+**Wire-format stability rules:**
+- The order and content of fields in any message must not change between versions.
+- New information may only be appended to the end of an existing message; nothing may be inserted, removed, or reordered.
+- Readers must tolerate trailing data they do not recognize (forward compatibility) and must not require fields that did not exist in older versions (backward compatibility).
+
+**Adding new data types:**
+New data types may be introduced in new PMIx versions.  The `bfrops` framework is the correct place to add serialization/deserialization support for them.  Each `bfrops` component corresponds to a specific wire-format version; older components remain in the tree to support communication with older peers.  Do not modify the pack/unpack logic of an existing `bfrops` component in a way that changes its wire representation — create a new component (version) instead.
 
 ## Contributing Requirements
 
