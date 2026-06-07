@@ -221,6 +221,77 @@ CI). Prefer a `make check`-able test over a manual one-off so the
 coverage sticks and regressions are caught automatically.
 
 
+## Thread Safety and the Progress Thread
+
+PMIx uses [Libevent](https://libevent.org/doc/) to drive an internal **progress thread**.  All internal library operations must execute inside this thread.  Code that runs outside it (e.g., the public API entry points, callbacks invoked by the caller's threads) must never touch shared library state directly — it must be **thread-shifted** first.
+
+### Thread-shifting with caddies
+
+A **caddy** is a short-lived heap object whose sole job is to carry a request's parameters across the thread boundary into the progress thread.  Every caddy struct must contain at minimum:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| ev | `pmix_event_t` | Required by Libevent to queue the caddy; **must be named `ev`** |
+| lock | `pmix_lock_t` | Thread synchronization (blocking APIs wait on this; handlers wake it) |
+| cbdata | `void *` | Opaque pointer passed through to the callback |
+| callback pointer(s) | function pointer(s) | Cache the caller-supplied callback function(s) |
+
+The pattern:
+
+1. Allocate a caddy with `PMIX_NEW(caddy_type_t)`.
+2. Assign the caddy's fields to point at the caller's input parameters — **do not copy the data**.
+3. Call `PMIX_THREADSHIFT(cd, handler_fn)` to post the caddy to the progress thread's event queue.
+4. The progress thread fires `handler_fn(cd)`, which performs the actual work.
+
+Never read or write shared library state before the `PMIX_THREADSHIFT`; do it only inside the handler that runs on the progress thread.
+
+**Callers are required to keep all input parameters valid until their callback is invoked.**  This contract exists precisely so that caddies can hold pointers rather than copies.  Copying data into a caddy wastes allocation and free overhead and should not be done.  Exceptions exist but are rare; any departure from the no-copy rule requires explicit justification and team consensus before it is introduced.
+
+### Blocking APIs
+
+If the public API is **blocking** (no user callback, or `NULL` callback):
+
+```c
+pmix_lock_t mylock;
+PMIX_CONSTRUCT_LOCK(&mylock);
+cd->opcbfunc = internal_opcbfunc;   // sets mylock.status and wakes lock
+cd->cbdata   = &mylock;
+PMIX_THREADSHIFT(cd, _do_the_work);
+PMIX_WAIT_THREAD(&mylock);          // caller blocks here
+rc = mylock.status;
+PMIX_DESTRUCT_LOCK(&mylock);
+```
+
+The handler running on the progress thread **must** call `PMIX_WAKEUP_THREAD(&cd->lock)` (or the equivalent through the internal callback) before it returns, or the caller will hang.
+
+### Non-blocking APIs
+
+If the public API is **non-blocking** (user supplies a callback):
+
+```c
+PMIX_THREADSHIFT(cd, _do_the_work);
+return PMIX_SUCCESS;   // return immediately; result delivered via callback
+```
+
+The handler must:
+1. Invoke the user's callback function with the result.
+2. Release the caddy (e.g., `PMIX_RELEASE(cd)`) to free its memory.
+
+It must **not** call `PMIX_WAKEUP_THREAD` in the non-blocking path — there is no thread waiting to wake.
+
+### Reference implementation
+
+`src/server/pmix_server.c` is the canonical reference.  The `PMIx_server_register_nspace` / `_register_nspace` pair shows both paths: when `cbfunc == NULL` the API constructs a local lock, substitutes an internal callback, and blocks; when a callback is provided it simply thread-shifts and returns.  Study that file before writing a new API or modifying an existing one.
+
+### Rules to remember
+
+- **Never touch shared state outside the progress thread** — always thread-shift first.
+- **Do not copy input data into caddies.** Assign pointers instead; callers guarantee the data stays live until the callback fires.  Copying is the wrong default and requires explicit justification and team consensus.
+- **Every blocking path needs a matching `PMIX_WAKEUP_THREAD`** in the handler.
+- **Every non-blocking path must release the caddy** when the callback fires.
+- Caddy structs must include a `pmix_event_t` field; without it `PMIX_THREADSHIFT` will corrupt memory.
+- Do not allocate a caddy on the stack — it must outlive the function that creates it.
+
 ## Performance Considerations
 
 PMIx is not generally used in latency-critical paths, but it is important that the code remain time-sensitive: PMIx can be used as a dependency by time-sensitive libraries, so unnecessary overhead is never acceptable. Concrete rules for hot paths include:
