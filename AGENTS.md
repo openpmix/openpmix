@@ -25,6 +25,53 @@ plausible-looking code that solves one problem in one environment at the
 expense of others. Hold yourself to the same bar as a thoughtful human
 contributor.
 
+## Terminology
+
+The following terms are used throughout the PMIx codebase and are defined precisely in **Chapter 2 of the PMIx Standard v5.0** (<https://pmix.org/standard>).  When reading or writing PMIx code, use these definitions — not informal or colloquial meanings.
+
+| Term | Definition |
+|------|-----------|
+| **session** | A set of resources assigned by the Workload Manager (WLM) and reserved for one or more users. Identified by a session ID unique within the scope of the governing WLM. A session may be static (a fixed block of resources) or dynamic (resources accumulated from multiple allocation requests and managed as a single unit). |
+| **job** | A set of one or more applications executed as a single user invocation within a session. Assigned a unique job ID by the RM or launcher. A single `mpiexec` invocation with multiple application specs is one MPMD job. A user may run multiple jobs within a session, sequentially or concurrently. |
+| **namespace** / **nspace** | A character string assigned by the RM to a job. All applications in that job share the same namespace. Must be unique within the scope of the governing RM; often the string form of the numerical job ID. *Namespace* and *job* are used interchangeably in the Standard. |
+| **application** | A set of identical (but not necessarily unique) execution contexts within a job. One job may contain multiple applications (MPMD). |
+| **process** | An operating system process (heavyweight process), possibly comprising multiple lightweight threads. The Standard does not restrict "process" to a particular OS concept. |
+| **client** | A process that was registered with the PMIx server *before* being started and connects to that server via `PMIx_Init`, using its pre-assigned namespace and rank. The connection information is provided at start of execution. |
+| **tool** | A process that may or may not have been registered with the PMIx server before being started; initializes via `PMIx_tool_init`. Tools include debuggers, profilers, and workflow managers. |
+| **clone** | A process directly started by a PMIx client (e.g., `fork`/`exec`) that calls `PMIx_Init` and connects to the local PMIx server using the same namespace and rank as its parent. |
+| **rank** | The zero-based numerical position of a process within a defined scope. *Job rank* is the rank within the job (synonymous with unqualified "rank"); *application rank* is the rank within the application. |
+| **peer** | Another process within the same job. |
+| **resource manager (RM)** | The subsystem that hosts the PMIx server library. May be a vendor-supplied RM or a third-party agent such as a programming-model runtime library. |
+| **host environment** | Used interchangeably with *resource manager*: the process that hosts the PMIx server library. |
+| **scheduler** / **WLM** | The component of the system management stack (SMS) responsible for scheduling resource allocations. Also called the system workflow manager; *WLM* is used interchangeably with *scheduler* in the Standard. |
+| **workflow** | An orchestrated execution plan involving multiple jobs under the control of a workflow manager. |
+| **node** | A single operating system instance, which may encompass one or more physical objects. |
+| **package** | A single object soldered or socketed onto a printed circuit board. May contain multiple chips (processing units, memory, peripheral interfaces). |
+| **processing unit (PU)** | The electronic circuitry that executes instructions. May be a single hardware thread or multiple hardware threads organized as a core, depending on architecture. |
+| **fabric** | The networks within a system, regardless of speed or protocol. Interchangeable with *network* throughout the Standard. |
+| **fabric device** | An OS fabric interface, physical or virtual. Interchangeable with *Network Interface Card (NIC)*. |
+| **fabric plane** | A collection of fabric devices in a common logical or physical configuration (e.g., a separate overlay or physical network controlled by a dedicated fabric manager). |
+| **attribute** | A key-value pair: a string key (`pmix_key_t`) paired with a typed value. Attributes serve as both directives (qualifiers to APIs, passed in `pmix_info_t` arrays) and information identifiers (labeling the contents of a `pmix_value_t`). |
+| **key** | The string component of an attribute. Passed to APIs such as `PMIx_Get` or `PMIx_Query_info` to identify requested information. Not all attributes can be used as keys; some are solely API qualifiers. |
+| **instant on** | A PMIx concept: all information required for setup and communication — including the address vector of endpoints for every process — is available to each process at start of execution. |
+
+### Normative language
+
+The Standard also uses precise modal verbs whose meaning agents must respect when reading Standard text:
+
+- **shall / must / will** — the behavior is required of all conforming implementations.
+- **should / may** — the behavior is recommended or permitted, but not required.
+
+### Naming conventions (from the Standard)
+
+- Constants and attributes: `PMIX_` prefix.
+- Structures and type definitions: `pmix_` prefix.
+- String representations of attributes: `pmix` prefix.
+- Client API functions: `PMIx_` prefix with mixed case after the first word — e.g., `PMIx_Get_version`.
+- Server and tool API functions: `PMIx_` prefix, fully lower-case after — e.g., `PMIx_server_register_nspace`.
+
+User code must not use the `PMIX_`, `PMIx_`, or `pmix_` prefixes to avoid symbol conflicts.
+
 ## Overview
 
 PMIx (Process Management Interface - Exascale) is an open-source reference implementation of the PMIx Standard (see <https://pmix.org/standard>), a low-level API used by resource managers and launchers to communicate with processes in high-performance computing environments.  It provides a framework through which programming models, tools, and runtime systems can exchange information without depending on a specific resource manager or job launcher.
@@ -332,9 +379,86 @@ PMIx is not generally used in latency-critical paths, but it is important that t
 - **Prefer an MCA parameter** to a hard-coded constant when a value
   might need tuning per environment.
 
+## The Role of Attributes
+
+Attributes are the primary mechanism by which PMIx APIs are extended over time.  Rather than introducing new API entry points for every new capability, PMIx defines a small set of generic APIs that accept an array of `pmix_info_t` key-value pairs.  New and expanded functionality is delivered by defining one or more new attributes and passing them to an existing API — the API signature stays the same, so callers that do not need the new behavior are completely unaffected.
+
+**Every PMIx API is required to include an attribute array in its parameter list.**  A function that accepts no attributes today must still declare a `pmix_info_t info[], size_t ninfo` parameter pair so that attributes can be added in the future without changing the signature.  Any proposed API that omits these parameters will be rejected.
+
+This design has two practical consequences for contributors:
+
+1. **Prefer a new attribute over a new API.** Before adding a new `PMIx_*` function, ask whether the desired behavior can be expressed as an attribute on an existing call.  In most cases it can.  A new attribute is far less disruptive: it does not alter any existing call sites, does not require version-gating in callers, and does not increase the size of the public API surface that must be supported forever.
+
+2. **Document every new attribute fully.**  Because attributes are the extension point, their definitions carry more weight than individual API parameters.  Each new attribute must have: a string key (e.g., `"pmix.example.attr"`), a data type, a clear prose description of its semantics, and a note on which APIs accept it and in which direction (`IN` or `OUT`).  Add the definition to [`include/pmix_common.h`](include/pmix_common.h) following the conventions of the surrounding entries.
+
+## Backward Compatibility
+
+PMIx is required to continue supporting deprecated APIs and attributes indefinitely.  Applications in production HPC environments may have been built years ago against an older PMIx release and cannot easily be recompiled.  Containers and pre-built binaries compound this: a deprecated symbol removed from the library silently breaks a workload with no actionable error message for the user.
+
+The rules are strict:
+
+- **An API signature cannot be altered.** Once a function appears in an official PMIx release, its name, return type, and parameter list are frozen.
+- **A data type definition cannot be altered.** Struct layouts and typedef'd types are ABI; changing them breaks binary compatibility.
+- **An attribute cannot be removed.** A string key published in a release must continue to be accepted (and handled gracefully) by all future releases.
+
+### Deprecating a user-facing API
+
+1. Move the existing function declaration from [`include/pmix.h`](include/pmix.h) to [`include/pmix_deprecated.h`](include/pmix_deprecated.h).  This preserves the symbol for existing callers while signalling that it should not be used in new code.
+2. Define the replacement function in the same location in [`include/pmix.h`](include/pmix.h) where the original appeared.  The replacement name should be the original name with a `2` appended (e.g., `PMIx_Foo` → `PMIx_Foo2`), or a higher integer if `2` is already taken.  Give it the revised signature (new return type and/or parameter list).
+3. Update the accompanying description in the header and in [`docs/`](docs/) to explain what changed and point users to the replacement.
+
+### Deprecating a server module function
+
+The `pmix_server_module_t` struct in [`include/pmix_server.h`](include/pmix_server.h) is consumed by host environments (RMs, launchers) that may initialize it with positional initializers rather than designated initializers.  **The order of fields in this struct must never change.**
+
+1. Leave the deprecated field in place and its associated typedef unmodified.  Add a comment to the field marking it `// DEPRECATED` so readers know not to use it.
+2. Add a new `pmix_server_*_fn_t` typedef that supports the new signature near its predecessor in the pmix_server.h header. Provide an updated description that explains the modified signature.
+3. Add the replacement field using the new typedef at the **end** of the struct.  Name it by appending or incrementing a numeric suffix: `client_connected` → `client_connected2`; if `client_connected2` already exists, use `client_connected3`.
+
+## Compatibility Flags in Configure
+
+A particular version of PMIx can indicate its level of support for critical APIs and capabilities via inclusion of **capability flags** in its version header ([`include/pmix_version.h.in`](include/pmix_version.h.in)).
+
+### When to define a new flag
+
+Add a new `PMIX_CAP_*` flag whenever:
+- A new public API is added.
+- A new utility or behavior is introduced that a companion project (such as PRRTE) might need to detect and compensate for.
+- Functionality within the library has fundamentally changed in a way that a consumer cannot reliably infer from the release version numbers alone.
+
+Do **not** add a flag for internal refactors that have no externally visible effect.
+
+### How to define a flag
+
+Add a `#define` to [`include/pmix_version.h.in`](include/pmix_version.h.in) in the **Individual capability flags** block, immediately after the last existing flag.  The value is arbitrary (sequential integers are the convention); what matters is that the definition **exists**:
+
+```c
+#define PMIX_CAP_MY_NEW_FEATURE   7
+```
+
+Only flags that are actually supported by the version being built should appear in this file.  The absence of a definition is the signal that the capability is not present — do not add a flag and then conditionalize it out.
+
+### How consumers check flags
+
+Companion projects use the `AC_PREPROC_IFELSE` idiom in their configure scripts to test for a flag at build time.  PRRTE's `config/prte_setup_pmix.m4` is the canonical example; it defines a helper macro `PRTE_CHECK_PMIX_CAP` that reduces the check to:
+
+```m4
+PRTE_CHECK_PMIX_CAP([MY_NEW_FEATURE],
+    [action if supported],
+    [action if not supported])
+```
+
+The macro succeeds when `PMIX_CAP_MY_NEW_FEATURE` is defined in the installed `pmix_version.h`; it fails (and triggers the third argument) when the definition is absent, meaning the running PMIx predates the feature.
+
+### The deprecated `PMIX_CAPABILITIES` bitmask
+
+Earlier releases exported a composite `PMIX_CAPABILITIES` bitmask formed by OR-ing a fixed set of flag values.  This approach proved unworkable as the flag space grew, and has been abandoned in favor of presence-or-absence of individual `#define`s.  The bitmask and its constituent flags remain in [`include/pmix_version.h.in`](include/pmix_version.h.in) solely for backward compatibility with older consumers that still check `PMIX_CAPABILITIES`; do not extend or rely on it for new work.
+
 ## Version Interoperability
 
 PMIx is required to be interoperable across released versions.  A server built against one PMIx version must be able to communicate with a client built against a different version, whether older or newer.
+
+This requirement is especially critical in **static deployment environments such as containers**.  A containerized application image bundles a specific PMIx client library at build time and cannot be updated independently of the image.  When that container is later scheduled on a cluster whose RM hosts a different PMIx server version — possibly newer, possibly older — the two must still interoperate correctly.  Breaks in wire-format or behavioral compatibility silently strand jobs or produce incorrect results with no easy path to remediation short of rebuilding the image.  The same concern applies to any environment where components are independently installed and upgraded: bare-metal HPC clusters with vendor-supplied software stacks, pre-built application binaries distributed through package managers, and long-lived batch jobs that span a system software upgrade.
 
 **Wire-format stability rules:**
 - The order and content of fields in any message must not change between versions.
