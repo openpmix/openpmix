@@ -225,6 +225,7 @@ test/sshot/mytopo.json
 test/sshot/testcoord
 
 test/unit/compress
+test/unit/preg
 
 test/util/numa
 test/util/convert

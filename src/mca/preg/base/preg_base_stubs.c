@@ -168,3 +168,64 @@ pmix_status_t pmix_preg_base_release(char *regexp)
     }
     return PMIX_ERR_BAD_PARAM;
 }
+
+pmix_status_t pmix_preg_base_parse_regex(const pmix_regex_t *regex,
+                                          pmix_info_t info[], size_t ninfo,
+                                          char **output)
+{
+    pmix_preg_base_active_module_t *active;
+
+    PMIX_LIST_FOREACH (active, &pmix_preg_globals.actives, pmix_preg_base_active_module_t) {
+        if (NULL != active->module->parse_regex) {
+            if (PMIX_SUCCESS == active->module->parse_regex(regex, info, ninfo, output)) {
+                return PMIX_SUCCESS;
+            }
+        }
+    }
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+pmix_status_t pmix_preg_base_generate_regex(const char *input,
+                                             pmix_info_t info[], size_t ninfo,
+                                             pmix_regex_t *regex)
+{
+    pmix_preg_base_active_module_t *active;
+    pmix_regex_t candidate = PMIX_REGEX_STATIC_INIT;
+    pmix_regex_t best = PMIX_REGEX_STATIC_INIT;
+
+    PMIX_LIST_FOREACH (active, &pmix_preg_globals.actives, pmix_preg_base_active_module_t) {
+        if (NULL == active->module->generate_regex) {
+            continue;
+        }
+        if (PMIX_SUCCESS != active->module->generate_regex(input, info, ninfo, &candidate)) {
+            continue;
+        }
+        /* keep this result if it is the first or smaller than the current best */
+        if (NULL == best.bytes || candidate.len < best.len) {
+            /* release the previous best if there was one */
+            if (NULL != best.type) {
+                free(best.type);
+            }
+            if (NULL != best.bytes) {
+                free(best.bytes);
+            }
+            best = candidate;
+        } else {
+            /* discard this candidate */
+            if (NULL != candidate.type) {
+                free(candidate.type);
+            }
+            if (NULL != candidate.bytes) {
+                free(candidate.bytes);
+            }
+        }
+        candidate = (pmix_regex_t) PMIX_REGEX_STATIC_INIT;
+    }
+
+    if (NULL == best.bytes) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    *regex = best;
+    return PMIX_SUCCESS;
+}

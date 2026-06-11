@@ -51,6 +51,10 @@ static pmix_status_t copy(char **dest, size_t *len, const char *input);
 static pmix_status_t pack(pmix_buffer_t *buffer, const char *input);
 static pmix_status_t unpack(pmix_buffer_t *buffer, char **regex);
 static pmix_status_t release(char *regexp);
+static pmix_status_t generate_regex(const char *input, pmix_info_t info[], size_t ninfo,
+                                    pmix_regex_t *regex);
+static pmix_status_t parse_regex(const pmix_regex_t *regex, pmix_info_t info[], size_t ninfo,
+                                 char **output);
 
 pmix_preg_module_t pmix_preg_compress_module = {
     .name = "compress",
@@ -61,7 +65,9 @@ pmix_preg_module_t pmix_preg_compress_module = {
     .copy = copy,
     .pack = pack,
     .unpack = unpack,
-    .release = release
+    .release = release,
+    .generate_regex = generate_regex,
+    .parse_regex = parse_regex
 };
 
 #define PREG_COMPRESS_PREFIX "blob: component=zlib: size="
@@ -328,6 +334,53 @@ static pmix_status_t release(char *regexp)
 
     // just free it
     free(regexp);
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t parse_regex(const pmix_regex_t *regex, pmix_info_t info[], size_t ninfo,
+                                 char **output)
+{
+    char *tmp = NULL;
+
+    // no attributes are currently defined for this function
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
+
+    if (NULL == regex || NULL == regex->type ||
+        0 != strcmp(regex->type, pmix_preg_compress_module.name)) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    if (!pmix_compress.decompress_string(&tmp, regex->bytes, regex->len)) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    *output = tmp;
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t generate_regex(const char *input, pmix_info_t info[], size_t ninfo,
+                                    pmix_regex_t *regex)
+{
+    uint8_t *compressed = NULL;
+    size_t len;
+
+    // no attributes are currently defined for this function
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
+
+    if (!pmix_compress.compress_string((char *) input, &compressed, &len)) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    if (NULL == compressed) {
+        return PMIX_ERR_NOMEM;
+    }
+
+    regex->type = strdup(pmix_preg_compress_module.name);
+    if (NULL == regex->type) {
+        free(compressed);
+        return PMIX_ERR_NOMEM;
+    }
+    regex->bytes = compressed;
+    regex->len = len;
     return PMIX_SUCCESS;
 }
 
