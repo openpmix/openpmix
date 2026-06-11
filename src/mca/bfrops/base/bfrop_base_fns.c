@@ -341,6 +341,14 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
                 PMIX_ERROR_LOG(rc);
             }
             break;
+        case PMIX_REGEX2: {
+            pmix_regex2_t *rx2ptr = (pmix_regex2_t *) data;
+            rc = pmix_bfrops_base_copy_regex2(&v->data.regex2, rx2ptr, PMIX_REGEX2);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
+        }
 
         default:
             /* silence warnings */
@@ -688,6 +696,13 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
             ndpidptr->pid = ndpd->pid;
             *data = ndpidptr;
             *sz = sizeof(pmix_node_pid_t);
+            break;
+        case PMIX_REGEX2:
+            rc = pmix_bfrops_base_copy_regex2((pmix_regex2_t **) data, kv->data.regex2,
+                                              PMIX_REGEX2);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_regex2_t);
+            }
             break;
 
         default:
@@ -1366,6 +1381,17 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
                 }
             }
             break;
+        case PMIX_REGEX2: {
+            pmix_regex2_t *rx2 = (pmix_regex2_t *)array->array;
+            *sz = array->size * sizeof(pmix_regex2_t);
+            for (n = 0; n < array->size; n++) {
+                if (NULL != rx2[n].type) {
+                    *sz += strlen(rx2[n].type) + 1;
+                }
+                *sz += rx2[n].len;
+            }
+            break;
+        }
 
         default:
             /* silence warnings */
@@ -1621,6 +1647,13 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             if (NULL != ndpd->hostname) {
                 *sz += strlen(ndpd->hostname) + 1;  // account for NULL
             }
+            break;
+        case PMIX_REGEX2:
+            *sz = sizeof(pmix_regex2_t);
+            if (NULL != v->data.regex2->type) {
+                *sz += strlen(v->data.regex2->type) + 1;
+            }
+            *sz += v->data.regex2->len;
             break;
 
         default:

@@ -412,6 +412,26 @@ void PMIx_Node_pid_free(pmix_node_pid_t *d, size_t n)
     pmix_bfrops_base_tma_node_pid_free(d, n, NULL);
 }
 
+void PMIx_Regex2_construct(pmix_regex2_t *d)
+{
+    pmix_bfrops_base_tma_regex2_construct(d, NULL);
+}
+
+void PMIx_Regex2_destruct(pmix_regex2_t *d)
+{
+    pmix_bfrops_base_tma_regex2_destruct(d, NULL);
+}
+
+pmix_regex2_t* PMIx_Regex2_create(size_t n)
+{
+    return pmix_bfrops_base_tma_regex2_create(n, NULL);
+}
+
+void PMIx_Regex2_free(pmix_regex2_t *d, size_t n)
+{
+    pmix_bfrops_base_tma_regex2_free(d, n, NULL);
+}
+
 void PMIx_Resource_unit_construct(pmix_resource_unit_t *d)
 {
     pmix_bfrops_base_tma_resource_unit_construct(d, NULL);

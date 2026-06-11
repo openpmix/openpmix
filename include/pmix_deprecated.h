@@ -69,15 +69,21 @@ extern "C" {
 /* APIs */
 
 /* PMIx_generate_regex is deprecated - use PMIx_generate_regex2 instead.
- * The new API returns the encoded representation in a pmix_regex_t
+ * The new API returns the encoded representation in a pmix_regex2_t
  * rather than a raw char*, properly conveying that the output may
  * not be a NULL-terminated string. */
 PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regex);
 
 /* PMIx_generate_ppn is deprecated - no replacement is provided as the
- * per-node process rank mapping is now conveyed through the pmix_regex_t
+ * per-node process rank mapping is now conveyed through the pmix_regex2_t
  * returned by PMIx_generate_regex2. */
 PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **ppn);
+
+/* DATATYPES */
+/* PMIX_REGEX is deprecated - use PMIX_REGEX2 instead.  The numeric
+ * value is preserved so that wire-format data produced by older
+ * implementations can still be decoded. */
+#define PMIX_REGEX                      49
 
 /***** v4 DECPRECATIONS/REMOVALS *****/
 /* APIs */
@@ -604,6 +610,18 @@ PMIX_EXPORT pmix_node_pid_t* PMIx_Node_pid_create(size_t n);
 /* free memory stored inside an array of node_pid structs
  * (frees the struct memory itself) */
 PMIX_EXPORT void PMIx_Node_pid_free(pmix_node_pid_t *d, size_t n);
+
+/* initialize a regex2 struct */
+PMIX_EXPORT void PMIx_Regex2_construct(pmix_regex2_t *d);
+
+/* free memory stored inside a regex2 struct */
+PMIX_EXPORT void PMIx_Regex2_destruct(pmix_regex2_t *d);
+
+/* create and initialize an array of regex2 structs */
+PMIX_EXPORT pmix_regex2_t* PMIx_Regex2_create(size_t n);
+
+/* free an array of regex2 structs (frees the struct memory itself) */
+PMIX_EXPORT void PMIx_Regex2_free(pmix_regex2_t *d, size_t n);
 
 /* initialize a resource unit struct */
 PMIX_EXPORT void PMIx_Resource_unit_construct(pmix_resource_unit_t *d);

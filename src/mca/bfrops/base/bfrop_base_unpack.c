@@ -626,6 +626,13 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_b
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.nodepid, &m, PMIX_NODE_PID, regtypes);
             return ret;
+        case PMIX_REGEX2:
+            val->data.regex2 = PMIx_Regex2_create(1);
+            if (NULL == val->data.regex2) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.regex2, &m, PMIX_REGEX2, regtypes);
+            return ret;
 
         default:
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &val->data, &m, val->type, regtypes);
@@ -1500,6 +1507,48 @@ pmix_status_t pmix_bfrops_base_unpack_regex(pmix_pointer_array_t *regtypes, pmix
         if (PMIX_SUCCESS != ret) {
             *num_vals = 0;
             return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_regex2(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                            void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_regex2_t *ptr;
+    int32_t i, n, m;
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d regex2", *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    ptr = (pmix_regex2_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        PMIx_Regex2_construct(&ptr[i]);
+        m = 1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].type, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m = 1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].len, &m, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (0 < ptr[i].len) {
+            ptr[i].bytes = (uint8_t *) malloc(ptr[i].len);
+            m = ptr[i].len;
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].bytes, &m, PMIX_BYTE, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_ERROR_LOG(ret);
+                return ret;
+            }
         }
     }
     return PMIX_SUCCESS;
