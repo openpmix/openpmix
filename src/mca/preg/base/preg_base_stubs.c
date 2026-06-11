@@ -169,7 +169,7 @@ pmix_status_t pmix_preg_base_release(char *regexp)
     return PMIX_ERR_BAD_PARAM;
 }
 
-pmix_status_t pmix_preg_base_parse_regex(const pmix_regex_t *regex,
+pmix_status_t pmix_preg_base_parse_regex(const pmix_regex2_t *regex,
                                           pmix_info_t info[], size_t ninfo,
                                           char **output)
 {
@@ -187,11 +187,11 @@ pmix_status_t pmix_preg_base_parse_regex(const pmix_regex_t *regex,
 
 pmix_status_t pmix_preg_base_generate_regex(const char *input,
                                              pmix_info_t info[], size_t ninfo,
-                                             pmix_regex_t *regex)
+                                             pmix_regex2_t *regex)
 {
     pmix_preg_base_active_module_t *active;
-    pmix_regex_t candidate = PMIX_REGEX_STATIC_INIT;
-    pmix_regex_t best = PMIX_REGEX_STATIC_INIT;
+    pmix_regex2_t candidate = PMIX_REGEX2_STATIC_INIT;
+    pmix_regex2_t best = PMIX_REGEX2_STATIC_INIT;
 
     PMIX_LIST_FOREACH (active, &pmix_preg_globals.actives, pmix_preg_base_active_module_t) {
         if (NULL == active->module->generate_regex) {
@@ -219,7 +219,7 @@ pmix_status_t pmix_preg_base_generate_regex(const char *input,
                 free(candidate.bytes);
             }
         }
-        candidate = (pmix_regex_t) PMIX_REGEX_STATIC_INIT;
+        candidate = (pmix_regex2_t) PMIX_REGEX2_STATIC_INIT;
     }
 
     if (NULL == best.bytes) {

@@ -335,6 +335,10 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_unpack_nodepid, pmix_bfrops_base_copy_nodepid,
                        pmix_bfrops_base_print_nodepid, &pmix_mca_bfrops_v61_component.types);
 
+    PMIX_REGISTER_TYPE("PMIX_REGEX2", PMIX_REGEX2, pmix_bfrops_base_pack_regex2,
+                       pmix_bfrops_base_unpack_regex2, pmix_bfrops_base_copy_regex2,
+                       pmix_bfrops_base_print_regex2, &pmix_mca_bfrops_v61_component.types);
+
     return PMIX_SUCCESS;
 }
 

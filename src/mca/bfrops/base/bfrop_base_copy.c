@@ -520,3 +520,10 @@ pmix_status_t pmix_bfrops_base_copy_nodepid(pmix_node_pid_t **dest,
 {
     return pmix_bfrops_base_tma_copy_nodepid(dest, src, type, NULL);
 }
+
+pmix_status_t pmix_bfrops_base_copy_regex2(pmix_regex2_t **dest,
+                                           pmix_regex2_t *src,
+                                           pmix_data_type_t type)
+{
+    return pmix_bfrops_base_tma_copy_regex2(dest, src, type, NULL);
+}

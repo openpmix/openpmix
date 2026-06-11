@@ -2039,6 +2039,18 @@ PMIX_EXPORT pmix_node_pid_t* PMIx_Node_pid_create(size_t n);
  * (frees the struct memory itself) */
 PMIX_EXPORT void PMIx_Node_pid_free(pmix_node_pid_t *d, size_t n);
 
+/* initialize a regex2 struct */
+PMIX_EXPORT void PMIx_Regex2_construct(pmix_regex2_t *d);
+
+/* free memory stored inside a regex2 struct */
+PMIX_EXPORT void PMIx_Regex2_destruct(pmix_regex2_t *d);
+
+/* create and initialize an array of regex2 structs */
+PMIX_EXPORT pmix_regex2_t* PMIx_Regex2_create(size_t n);
+
+/* free an array of regex2 structs (frees the struct memory itself) */
+PMIX_EXPORT void PMIx_Regex2_free(pmix_regex2_t *d, size_t n);
+
 /* initialize a resource unit struct */
 PMIX_EXPORT void PMIx_Resource_unit_construct(pmix_resource_unit_t *d);
 

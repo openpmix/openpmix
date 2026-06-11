@@ -1112,6 +1112,34 @@ pmix_status_t pmix_bfrops_base_pack_regex(pmix_pointer_array_t *regtypes, pmix_b
     return PMIX_SUCCESS;
 }
 
+pmix_status_t pmix_bfrops_base_pack_regex2(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                          const void *src, int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_regex2_t *ptr = (pmix_regex2_t *) src;
+    int32_t i;
+    pmix_status_t ret;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    for (i = 0; i < num_vals; ++i) {
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].type, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].len, 1, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        if (0 < ptr[i].len) {
+            PMIX_BFROPS_PACK_TYPE(ret, buffer, ptr[i].bytes, ptr[i].len, PMIX_BYTE, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_bfrops_base_pack_jobstate(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                              const void *src, int32_t num_vals,
                                              pmix_data_type_t type)

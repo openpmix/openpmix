@@ -1036,6 +1036,30 @@ static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
             }
             return PMIX_EQUAL;
             break;
+        case PMIX_REGEX2: {
+            pmix_regex2_t *rx1 = (pmix_regex2_t *)d1->array;
+            pmix_regex2_t *rx2 = (pmix_regex2_t *)d2->array;
+            for (n = 0; n < d1->size; n++) {
+                int tcmp = (NULL == rx1[n].type && NULL == rx2[n].type) ? 0
+                         : (NULL == rx1[n].type) ? -1
+                         : (NULL == rx2[n].type) ? 1
+                         : strcmp(rx1[n].type, rx2[n].type);
+                if (0 != tcmp) {
+                    return (0 < tcmp) ? PMIX_VALUE1_GREATER : PMIX_VALUE2_GREATER;
+                }
+                if (rx1[n].len != rx2[n].len) {
+                    return (rx1[n].len > rx2[n].len) ? PMIX_VALUE1_GREATER : PMIX_VALUE2_GREATER;
+                }
+                if (0 < rx1[n].len) {
+                    int bcmp = memcmp(rx1[n].bytes, rx2[n].bytes, rx1[n].len);
+                    if (0 != bcmp) {
+                        return (0 < bcmp) ? PMIX_VALUE1_GREATER : PMIX_VALUE2_GREATER;
+                    }
+                }
+            }
+            return PMIX_EQUAL;
+            break;
+        }
 
         default:
             pmix_output(0, "COMPARE-PMIX-VALUE: UNSUPPORTED TYPE %s (%d)",
@@ -1256,6 +1280,28 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p1,
         rc = cmp_nodepid(p1->data.nodepid, p2->data.nodepid);
         return rc;
         break;
+    case PMIX_REGEX2: {
+        pmix_regex2_t *rx1 = p1->data.regex2;
+        pmix_regex2_t *rx2 = p2->data.regex2;
+        int tcmp = (NULL == rx1->type && NULL == rx2->type) ? 0
+                 : (NULL == rx1->type) ? -1
+                 : (NULL == rx2->type) ? 1
+                 : strcmp(rx1->type, rx2->type);
+        if (0 != tcmp) {
+            return (0 < tcmp) ? PMIX_VALUE1_GREATER : PMIX_VALUE2_GREATER;
+        }
+        if (rx1->len != rx2->len) {
+            return (rx1->len > rx2->len) ? PMIX_VALUE1_GREATER : PMIX_VALUE2_GREATER;
+        }
+        if (0 < rx1->len) {
+            int bcmp = memcmp(rx1->bytes, rx2->bytes, rx1->len);
+            if (0 != bcmp) {
+                return (0 < bcmp) ? PMIX_VALUE1_GREATER : PMIX_VALUE2_GREATER;
+            }
+        }
+        return PMIX_EQUAL;
+        break;
+    }
 
     default:
         pmix_output(0, "COMPARE-PMIX-VALUE: UNSUPPORTED TYPE %s (%d)",

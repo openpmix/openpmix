@@ -560,6 +560,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_satyp(pmix_pointer_array_t *regt
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_nodepid(pmix_pointer_array_t *regtypes,
                                                         pmix_buffer_t *buffer, const void *src,
                                                         int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_regex2(pmix_pointer_array_t *regtypes,
+                                                       pmix_buffer_t *buffer, const void *src,
+                                                       int32_t num_vals, pmix_data_type_t type);
 
 /*
  * "Standard" unpack functions
@@ -774,6 +777,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_satyp(pmix_pointer_array_t *re
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_nodepid(pmix_pointer_array_t *regtypes,
                                                           pmix_buffer_t *buffer, void *dest,
                                                           int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_regex2(pmix_pointer_array_t *regtypes,
+                                                         pmix_buffer_t *buffer, void *dest,
+                                                         int32_t *num_vals, pmix_data_type_t type);
 
 /**** DEPRECATED ****/
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_array(pmix_pointer_array_t *regtypes,
@@ -854,6 +860,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_dbuf(pmix_data_buffer_t **dest,
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_nodepid(pmix_node_pid_t **dest,
                                                         pmix_node_pid_t *src,
                                                         pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_regex2(pmix_regex2_t **dest,
+                                                       pmix_regex2_t *src,
+                                                       pmix_data_type_t type);
 
 /*
  * "Standard" print functions
@@ -1023,6 +1032,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_satyp(char **output, char *pref
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_nodepid(char **output, char *prefix,
                                                          pmix_node_pid_t *src,
                                                          pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_regex2(char **output, char *prefix,
+                                                        pmix_regex2_t *src,
+                                                        pmix_data_type_t type);
 
 /*
  * Common helper functions

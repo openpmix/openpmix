@@ -20,9 +20,9 @@
 # $HEADER$
 #
 
-check_PROGRAMS = compress preg
+check_PROGRAMS = compress preg bfrops_regex2
 
-TESTS = compress preg
+TESTS = compress preg bfrops_regex2
 
 compress_SOURCES =  \
         compress.c
@@ -36,5 +36,11 @@ preg_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 preg_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+bfrops_regex2_SOURCES = \
+        bfrops_regex2.c
+bfrops_regex2_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+bfrops_regex2_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 clean-local:
-	rm -f compress preg
+	rm -f compress preg bfrops_regex2

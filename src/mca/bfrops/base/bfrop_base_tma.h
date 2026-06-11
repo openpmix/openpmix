@@ -1326,6 +1326,78 @@ pmix_status_t pmix_bfrops_base_tma_copy_nodepid(pmix_node_pid_t **dest,
 }
 
 static inline
+void pmix_bfrops_base_tma_regex2_construct(pmix_regex2_t *d, pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+    d->type = NULL;
+    d->bytes = NULL;
+    d->len = 0;
+}
+
+static inline
+void pmix_bfrops_base_tma_regex2_destruct(pmix_regex2_t *d, pmix_tma_t *tma)
+{
+    if (NULL != d->type) {
+        pmix_tma_free(tma, d->type);
+    }
+    if (NULL != d->bytes) {
+        pmix_tma_free(tma, d->bytes);
+    }
+}
+
+static inline
+pmix_regex2_t* pmix_bfrops_base_tma_regex2_create(size_t n, pmix_tma_t *tma)
+{
+    if (0 == n) {
+        return NULL;
+    }
+    pmix_regex2_t *d = (pmix_regex2_t *)pmix_tma_malloc(tma, n * sizeof(pmix_regex2_t));
+    if (PMIX_LIKELY(NULL != d)) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_regex2_construct(&d[m], tma);
+        }
+    }
+    return d;
+}
+
+static inline
+void pmix_bfrops_base_tma_regex2_free(pmix_regex2_t *d, size_t n, pmix_tma_t *tma)
+{
+    if (NULL != d) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_regex2_destruct(&d[m], tma);
+        }
+        pmix_tma_free(tma, d);
+    }
+}
+
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_regex2(pmix_regex2_t **dest,
+                                               pmix_regex2_t *src,
+                                               pmix_data_type_t type,
+                                               pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    pmix_regex2_t *p = pmix_bfrops_base_tma_regex2_create(1, tma);
+    if (PMIX_UNLIKELY(NULL == p)) {
+        return PMIX_ERR_NOMEM;
+    }
+    *dest = p;
+    if (NULL != src->type) {
+        p->type = pmix_tma_strdup(tma, src->type);
+    }
+    if (NULL != src->bytes && 0 < src->len) {
+        p->bytes = (uint8_t *)pmix_tma_malloc(tma, src->len);
+        if (PMIX_LIKELY(NULL != p->bytes)) {
+            memcpy(p->bytes, src->bytes, src->len);
+            p->len = src->len;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+static inline
 void pmix_bfrops_base_tma_resource_unit_destruct(pmix_resource_unit_t *d,
                                                  pmix_tma_t *tma)
 {
@@ -3117,6 +3189,26 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         }
         break;
     }
+    case PMIX_REGEX2: {
+        p->array = pmix_bfrops_base_tma_regex2_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_regex2_t *const prx = (pmix_regex2_t *)p->array;
+        pmix_regex2_t *const srx = (pmix_regex2_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != srx[n].type) {
+                prx[n].type = pmix_tma_strdup(tma, srx[n].type);
+            }
+            if (NULL != srx[n].bytes && 0 < srx[n].len) {
+                prx[n].bytes = (uint8_t *)pmix_tma_malloc(tma, srx[n].len);
+                memcpy(prx[n].bytes, srx[n].bytes, srx[n].len);
+                prx[n].len = srx[n].len;
+            }
+        }
+        break;
+    }
     case PMIX_PROC_NSPACE: {
         p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_nspace_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
@@ -3333,6 +3425,8 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
         return pmix_bfrops_base_tma_copy_devdist(&p->data.devdist, src->data.devdist, PMIX_DEVICE_DIST, tma);
     case PMIX_ENDPOINT:
         return pmix_bfrops_base_tma_copy_endpoint(&p->data.endpoint, src->data.endpoint, PMIX_ENDPOINT, tma);
+    case PMIX_REGEX2:
+        return pmix_bfrops_base_tma_copy_regex2(&p->data.regex2, src->data.regex2, PMIX_REGEX2, tma);
     case PMIX_REGATTR:
         return pmix_bfrops_base_tma_copy_regattr((pmix_regattr_t **) &p->data.ptr, src->data.ptr,
                                                  PMIX_REGATTR, tma);
@@ -3465,6 +3559,9 @@ void pmix_bfrops_base_tma_data_array_destruct(pmix_data_array_t *d,
             break;
         case PMIX_ENDPOINT:
             pmix_bfrops_base_tma_endpoint_free(d->array, d->size, tma);
+            break;
+        case PMIX_REGEX2:
+            pmix_bfrops_base_tma_regex2_free((pmix_regex2_t *)d->array, d->size, tma);
             break;
         case PMIX_REGEX: {
             pmix_byte_object_t *const bo = (pmix_byte_object_t *)d->array;
@@ -3765,6 +3862,11 @@ void pmix_bfrops_base_tma_value_destruct(pmix_value_t *v,
         case PMIX_REGATTR:
             if (NULL != v->data.ptr) {
                 pmix_bfrops_base_tma_regattr_free(v->data.ptr, 1, tma);
+            }
+            break;
+        case PMIX_REGEX2:
+            if (NULL != v->data.regex2) {
+                pmix_bfrops_base_tma_regex2_free(v->data.regex2, 1, tma);
             }
             break;
         case PMIX_REGEX:
