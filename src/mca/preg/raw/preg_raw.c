@@ -45,6 +45,10 @@ static pmix_status_t copy(char **dest, size_t *len, const char *input);
 static pmix_status_t pack(pmix_buffer_t *buffer, const char *input);
 static pmix_status_t unpack(pmix_buffer_t *buffer, char **regex);
 static pmix_status_t release(char *regexp);
+static pmix_status_t generate_regex(const char *input, pmix_info_t info[], size_t ninfo,
+                                    pmix_regex_t *regex);
+static pmix_status_t parse_regex(const pmix_regex_t *regex, pmix_info_t info[], size_t ninfo,
+                                 char **output);
 
 pmix_preg_module_t pmix_preg_raw_module = {
     .name = "raw",
@@ -55,7 +59,9 @@ pmix_preg_module_t pmix_preg_raw_module = {
     .copy = copy,
     .pack = pack,
     .unpack = unpack,
-    .release = release
+    .release = release,
+    .generate_regex = generate_regex,
+    .parse_regex = parse_regex
 };
 
 static pmix_status_t generate_node_regex(const char *input, char **regexp)
@@ -164,5 +170,40 @@ static pmix_status_t release(char *regexp)
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     free(regexp);
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t parse_regex(const pmix_regex_t *regex, pmix_info_t info[], size_t ninfo,
+                                 char **output)
+{
+    // no attributes are currently defined for this function
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
+
+    if (NULL == regex || NULL == regex->type ||
+        0 != strcmp(regex->type, pmix_preg_raw_module.name)) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    *output = strdup((const char *) regex->bytes);
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t generate_regex(const char *input, pmix_info_t info[], size_t ninfo,
+                                    pmix_regex_t *regex)
+{
+    // no attributes are currently defined for this function
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
+
+    regex->type = strdup(pmix_preg_raw_module.name);
+    if (NULL == regex->type) {
+        return PMIX_ERR_NOMEM;
+    }
+    regex->bytes = (uint8_t *) strdup(input);
+    if (NULL == regex->bytes) {
+        free(regex->type);
+        regex->type = NULL;
+        return PMIX_ERR_NOMEM;
+    }
+    regex->len = strlen(input) + 1;
     return PMIX_SUCCESS;
 }
