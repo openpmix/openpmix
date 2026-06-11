@@ -20,7 +20,9 @@
 # $HEADER$
 #
 
-noinst_PROGRAMS = compress
+check_PROGRAMS = compress preg
+
+TESTS = compress preg
 
 compress_SOURCES =  \
         compress.c
@@ -28,5 +30,11 @@ compress_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 compress_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+preg_SOURCES = \
+        preg.c
+preg_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+preg_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 clean-local:
-	rm -f compress
+	rm -f compress preg

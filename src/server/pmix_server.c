@@ -2668,6 +2668,35 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
     return pmix_preg.generate_node_regex(input, regexp);
 }
 
+PMIX_EXPORT pmix_status_t PMIx_generate_regex2(const char *input,
+                                               pmix_info_t info[], size_t ninfo,
+                                               pmix_regex_t *regex)
+{
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+    if (NULL == regex) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    return pmix_preg.generate_regex(input, info, ninfo, regex);
+}
+
+
+PMIX_EXPORT pmix_status_t PMIx_parse_regex2(const pmix_regex_t *regex,
+                                            pmix_info_t info[], size_t ninfo,
+                                            char **output)
+{
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+    if (NULL == regex || NULL == output) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    return pmix_preg.parse_regex(regex, info, ninfo, output);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **regexp)
 {
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {

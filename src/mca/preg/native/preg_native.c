@@ -61,7 +61,8 @@ pmix_preg_module_t pmix_preg_native_module = {
     .copy = copy,
     .pack = pack,
     .unpack = unpack,
-    .release = release
+    .release = release,
+    .generate_regex = NULL
 };
 
 static pmix_status_t regex_parse_value_ranges(char *base, char *ranges, int num_digits,
@@ -934,3 +935,4 @@ static pmix_status_t release(char *regexp)
     free(regexp);
     return PMIX_SUCCESS;
 }
+
