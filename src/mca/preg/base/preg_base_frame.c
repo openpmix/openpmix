@@ -60,7 +60,9 @@ pmix_preg_module_t pmix_preg = {
     .copy = pmix_preg_base_copy,
     .pack = pmix_preg_base_pack,
     .unpack = pmix_preg_base_unpack,
-    .release = pmix_preg_base_release
+    .release = pmix_preg_base_release,
+    .generate_regex = pmix_preg_base_generate_regex,
+    .parse_regex  = pmix_preg_base_parse_regex
 };
 
 static pmix_status_t pmix_preg_close(void)

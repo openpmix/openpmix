@@ -65,6 +65,20 @@
 extern "C" {
 #endif
 
+/***** v5 DEPRECATIONS/REMOVALS *****/
+/* APIs */
+
+/* PMIx_generate_regex is deprecated - use PMIx_generate_regex2 instead.
+ * The new API returns the encoded representation in a pmix_regex_t
+ * rather than a raw char*, properly conveying that the output may
+ * not be a NULL-terminated string. */
+PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regex);
+
+/* PMIx_generate_ppn is deprecated - no replacement is provided as the
+ * per-node process rank mapping is now conveyed through the pmix_regex_t
+ * returned by PMIx_generate_regex2. */
+PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **ppn);
+
 /***** v4 DECPRECATIONS/REMOVALS *****/
 /* APIs */
 PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,

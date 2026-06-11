@@ -2266,6 +2266,21 @@ typedef struct pmix_byte_object {
 }
 
 
+/****    PMIX REGEX    ****/
+typedef struct pmix_regex {
+    char *type;         // colon-delimited identifier of the encoding method (e.g., "pmix" or "blob")
+    uint8_t *bytes;     // encoded representation (may not be NULL-terminated)
+    size_t len;         // number of bytes in the encoded representation
+} pmix_regex_t;
+
+#define PMIX_REGEX_STATIC_INIT  \
+{                               \
+    .type = NULL,               \
+    .bytes = NULL,              \
+    .len = 0                    \
+}
+
+
 /****    PMIX ENDPOINT    ****/
 typedef struct pmix_endpoint {
     char *uuid;

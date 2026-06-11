@@ -624,57 +624,26 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void);
 
 /* Given a comma-separated list of \refarg{input} values, generate
  * a reduced size representation of the input that can be passed
- * down to PMIx_server_register_nspace for parsing. The order of
- * the individual values in the \refarg{input} string is preserved
- * across the operation. The caller is responsible for releasing
+ * down to PMIx_server_register_nspace for processing, or to
+ * PMIx_parse_regex2 for parsing. The order of the individual
+ * values in the \refarg{input} string is preserved across the
+ * generate/parse operation. The caller is responsible for releasing
  * the returned data.
- *
- * The returned representation may be an arbitrary array of bytes
- * as opposed to a valid NULL-terminated string. However, the
- * method used to generate the representation shall be identified
- * with a colon-delimited string at the beginning of the output.
- * For example, an output starting with "pmix:" indicates that
- * the representation is a PMIx-defined regular expression.
- * In contrast, an output starting with "blob:" is a compressed
- * binary array.
  */
-PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regex);
+PMIX_EXPORT pmix_status_t PMIx_generate_regex2(const char *input,
+                                               pmix_info_t info[], size_t ninfo,
+                                               pmix_regex_t *regex);
 
-/* Given a reduced size representation of a comma-separated list of
- * input values as typically returned by PMIx_generate_regex, parse
- * the input and return a NULL-terminated argv array of the individual
- * values. The caller is responsible for releasing the returned array.
- */
-PMIX_EXPORT pmix_status_t PMIx_parse_regex(const char *regex,
-                                           char ***output);
 
-/* The input shall consist of a semicolon-separated list of ranges
- * representing the ranks of processes on each node of the job -
- * e.g.,  "1-4;2-5;8,10,11,12;6,7,9". Each field of the input must
- * correspond to the node name provided at that position in the
- * input to PMIx_generate_regex. Thus, in the example, ranks 1-4
- * would be located on the first node of the comma-separated list
- * of names provided to PMIx_generate_regex, and ranks 2-5 would
- * be on the second name in the list.
- *
- * The returned representation may be an arbitrary array of bytes
- * as opposed to a valid NULL-terminated string. However, the
- * method used to generate the representation shall be identified
- * with a colon-delimited string at the beginning of the output.
- * For example, an output starting with "pmix:" indicates that
- * the representation is a PMIx-defined regular expression.
- * In contrast, an output starting with "blob:" is a compressed
- * binary array.
+/* Given a pmix_regex_t as returned by PMIx_generate_regex2, expand
+ * the encoded representation and return a NULL-terminated string
+ * of the individual values in output. The caller is
+ * responsible for releasing the returned string.
  */
-PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **ppn);
+PMIX_EXPORT pmix_status_t PMIx_parse_regex2(const pmix_regex_t *regex,
+                                            pmix_info_t info[], size_t ninfo,
+                                            char **output);
 
-/* Given a reduced size representation of a semicolon-separated list
- * of ranges representing the ranks of processes on each node of the
- * job such as is returned by PMIx_generate_ppn, parse the input and
- * return a NULL-terminated array of ranges. The caller is responsible
- * for releasing the returned array.
- */
-PMIX_EXPORT pmix_status_t PMIx_parse_ppn(const char *ppn, char ***output);
 
 /* Setup the data about a particular nspace so it can
  * be passed to any child process upon startup. The PMIx

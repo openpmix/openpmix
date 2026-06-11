@@ -85,6 +85,25 @@ typedef pmix_status_t (*pmix_preg_base_module_unpack_fn_t)(pmix_buffer_t *buffer
 
 typedef pmix_status_t (*pmix_preg_base_module_release_fn_t)(char *regexp);
 
+/* Compress the input node-name list directly into a pmix_regex_t.
+ * The module sets regex->type to its name, stores the encoded bytes
+ * in regex->bytes, and sets regex->len accordingly.
+ * Returns PMIX_ERR_TAKE_NEXT_OPTION if the module cannot handle the input.
+ */
+typedef pmix_status_t (*pmix_preg_base_module_generate_regex_fn_t)(const char *input,
+                                                                    pmix_info_t info[],
+                                                                    size_t ninfo,
+                                                                    pmix_regex_t *regex);
+
+/* Expand a pmix_regex_t (as produced by generate_regex) back into a
+ * NULL-terminated argv array of node names in output.
+ * Returns PMIX_ERR_TAKE_NEXT_OPTION if the module does not recognize
+ * the regex->type value.
+ */
+typedef pmix_status_t (*pmix_preg_base_module_parse_regex_fn_t)(const pmix_regex_t *regex,
+                                                                 pmix_info_t info[], size_t ninfo,
+                                                                 char **output);
+
 /**
  * Base structure for a PREG module
  */
@@ -98,6 +117,8 @@ typedef struct {
     pmix_preg_base_module_pack_fn_t pack;
     pmix_preg_base_module_unpack_fn_t unpack;
     pmix_preg_base_module_release_fn_t release;
+    pmix_preg_base_module_generate_regex_fn_t generate_regex;
+    pmix_preg_base_module_parse_regex_fn_t parse_regex;
 } pmix_preg_module_t;
 
 /* we just use the standard component definition */

@@ -415,7 +415,8 @@ static pmix_attr_init_t server_fns[] = {
                          "PMIX_IOF_FILE_PATTERN",
                         NULL}},
     {.function = "PMIx_server_finalize", .attrs = (char *[]){"NONE", NULL}},
-    {.function = "PMIx_generate_regex", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_generate_regex", .attrs = (char *[]){"N/A", NULL}},   // DEPRECATED
+    {.function = "PMIx_generate_regex2", .attrs = (char *[]){"N/A", NULL}},
     {.function = "PMIx_generate_ppn", .attrs = (char *[]){"N/A", NULL}},
     {.function = "PMIx_server_register_nspace", .attrs = (char *[]){"PMIX_REGISTER_NODATA", NULL}},
     {.function = "PMIx_server_deregister_nspace", .attrs = (char *[]){"N/A", NULL}},
