@@ -800,6 +800,9 @@ static int print_val(char **output, pmix_value_t *src)
         case PMIX_NODE_PID:
             rc = pmix_bfrops_base_print_nodepid(&tp, NULL, src->data.nodepid, PMIX_NODE_PID);
             break;
+        case PMIX_REGEX2:
+            rc = pmix_bfrops_base_print_regex2(&tp, NULL, src->data.regex2, PMIX_REGEX2);
+            break;
         default:
             pmix_asprintf(&tp, " Data type: %s(%d)\tValue: UNPRINTABLE",
                           PMIx_Data_type_string(src->type), (int)(src->type));
@@ -2171,6 +2174,20 @@ pmix_status_t pmix_bfrops_base_print_satyp(char **output, char *prefix,
     } else {
         return PMIX_SUCCESS;
     }
+}
+
+pmix_status_t pmix_bfrops_base_print_regex2(char **output, char *prefix,
+                                            pmix_regex2_t *src,
+                                            pmix_data_type_t type)
+{
+    int ret;
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    ret = asprintf(output, "%sData type: PMIX_REGEX2\tType: %s\tLen: %zu",
+                   (NULL == prefix) ? " " : prefix,
+                   (NULL == src->type) ? "NULL" : src->type,
+                   src->len);
+    return (0 > ret) ? PMIX_ERR_OUT_OF_RESOURCE : PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_bfrops_base_print_nodepid(char **output, char *prefix,

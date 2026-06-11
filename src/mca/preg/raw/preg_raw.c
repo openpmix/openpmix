@@ -46,8 +46,8 @@ static pmix_status_t pack(pmix_buffer_t *buffer, const char *input);
 static pmix_status_t unpack(pmix_buffer_t *buffer, char **regex);
 static pmix_status_t release(char *regexp);
 static pmix_status_t generate_regex(const char *input, pmix_info_t info[], size_t ninfo,
-                                    pmix_regex_t *regex);
-static pmix_status_t parse_regex(const pmix_regex_t *regex, pmix_info_t info[], size_t ninfo,
+                                    pmix_regex2_t *regex);
+static pmix_status_t parse_regex(const pmix_regex2_t *regex, pmix_info_t info[], size_t ninfo,
                                  char **output);
 
 pmix_preg_module_t pmix_preg_raw_module = {
@@ -173,7 +173,7 @@ static pmix_status_t release(char *regexp)
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t parse_regex(const pmix_regex_t *regex, pmix_info_t info[], size_t ninfo,
+static pmix_status_t parse_regex(const pmix_regex2_t *regex, pmix_info_t info[], size_t ninfo,
                                  char **output)
 {
     // no attributes are currently defined for this function
@@ -189,7 +189,7 @@ static pmix_status_t parse_regex(const pmix_regex_t *regex, pmix_info_t info[], 
 }
 
 static pmix_status_t generate_regex(const char *input, pmix_info_t info[], size_t ninfo,
-                                    pmix_regex_t *regex)
+                                    pmix_regex2_t *regex)
 {
     // no attributes are currently defined for this function
     PMIX_HIDE_UNUSED_PARAMS(info, ninfo);

@@ -90,9 +90,9 @@ PMIX_EXPORT pmix_status_t pmix_preg_base_release(char *regexp);
 
 PMIX_EXPORT pmix_status_t pmix_preg_base_generate_regex(const char *input,
                                                          pmix_info_t info[], size_t ninfo,
-                                                         pmix_regex_t *regex);
+                                                         pmix_regex2_t *regex);
 
-PMIX_EXPORT pmix_status_t pmix_preg_base_parse_regex(const pmix_regex_t *regex,
+PMIX_EXPORT pmix_status_t pmix_preg_base_parse_regex(const pmix_regex2_t *regex,
                                                       pmix_info_t info[], size_t ninfo,
                                                       char **output);
 

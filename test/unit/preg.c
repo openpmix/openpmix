@@ -9,7 +9,7 @@
  * Unit tests for PMIx_generate_regex2 and PMIx_parse_regex2.
  *
  * Each test calls PMIx_generate_regex2 on a known input, checks that the
- * returned pmix_regex_t is non-empty, then round-trips through
+ * returned pmix_regex2_t is non-empty, then round-trips through
  * PMIx_parse_regex2 and verifies the decoded string matches the original.
  *
  * A simple PASS/FAIL summary is printed for each case.  The program exits
@@ -72,7 +72,7 @@ static void report(const char *name, int passed)
  */
 static int roundtrip(const char *input)
 {
-    pmix_regex_t regex = PMIX_REGEX_STATIC_INIT;
+    pmix_regex2_t regex = PMIX_REGEX2_STATIC_INIT;
     char *decoded = NULL;
     pmix_status_t rc;
     int ok = 0;
@@ -83,7 +83,7 @@ static int roundtrip(const char *input)
         goto out;
     }
     if (NULL == regex.type || NULL == regex.bytes || 0 == regex.len) {
-        fprintf(stdout, "    generate_regex2 returned empty pmix_regex_t\n");
+        fprintf(stdout, "    generate_regex2 returned empty pmix_regex2_t\n");
         goto out;
     }
 
@@ -207,7 +207,7 @@ static void test_null_parse_input(void)
 /* Verify parse_regex2 rejects a NULL output pointer */
 static void test_null_parse_output(void)
 {
-    pmix_regex_t regex = PMIX_REGEX_STATIC_INIT;
+    pmix_regex2_t regex = PMIX_REGEX2_STATIC_INIT;
     pmix_status_t rc;
 
     rc = PMIx_generate_regex2("node0", NULL, 0, &regex);
@@ -227,7 +227,7 @@ static void test_null_parse_output(void)
 /* Verify that the type field is set to a non-empty string */
 static void test_type_field_set(void)
 {
-    pmix_regex_t regex = PMIX_REGEX_STATIC_INIT;
+    pmix_regex2_t regex = PMIX_REGEX2_STATIC_INIT;
     pmix_status_t rc;
     int ok = 0;
 
