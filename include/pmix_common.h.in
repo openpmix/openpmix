@@ -1808,7 +1808,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_ENVAR                      46
 #define PMIX_COORD                      47
 #define PMIX_REGATTR                    48
-#define PMIX_REGEX                      49
+// Hole left by deprecation of PMIX_REGEX (use PMIX_REGEX2 instead)
 #define PMIX_JOB_STATE                  50
 #define PMIX_LINK_STATE                 51
 #define PMIX_PROC_CPUSET                52
@@ -1829,6 +1829,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_RESBLOCK_DIRECTIVE         71
 #define PMIX_RESOURCE_UNIT              72
 #define PMIX_NODE_PID                   73
+#define PMIX_REGEX2                     74
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -2262,13 +2263,13 @@ typedef struct pmix_byte_object {
 
 
 /****    PMIX REGEX    ****/
-typedef struct pmix_regex {
+typedef struct pmix_regex2 {
     char *type;         // colon-delimited identifier of the encoding method (e.g., "pmix" or "blob")
     uint8_t *bytes;     // encoded representation (may not be NULL-terminated)
     size_t len;         // number of bytes in the encoded representation
-} pmix_regex_t;
+} pmix_regex2_t;
 
-#define PMIX_REGEX_STATIC_INIT  \
+#define PMIX_REGEX2_STATIC_INIT  \
 {                               \
     .type = NULL,               \
     .bytes = NULL,              \
@@ -2454,6 +2455,7 @@ typedef struct pmix_value {
         pmix_data_buffer_t *dbuf;
         pmix_resource_unit_t *resunit;
         pmix_node_pid_t *nodepid;
+        pmix_regex2_t *regex2;
     } data;
 } pmix_value_t;
 

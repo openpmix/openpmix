@@ -237,6 +237,19 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                     PMIX_ERROR_LOG(rc);
                     goto release;
                 }
+            } else if (PMIX_REGEX2 == info[n].value.type) {
+                char *decoded = NULL;
+                rc = pmix_preg.parse_regex(info[n].value.data.regex2, NULL, 0, &decoded);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    goto release;
+                }
+                rc = pmix_preg.parse_nodes(decoded, &nodes);
+                free(decoded);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    goto release;
+                }
             } else if (PMIX_STRING == info[n].value.type) {
                 rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes);
                 if (PMIX_SUCCESS != rc) {
@@ -260,6 +273,19 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             if (PMIX_REGEX == info[n].value.type) {
                 if (PMIX_SUCCESS
                     != (rc = pmix_preg.parse_procs(info[n].value.data.bo.bytes, &procs))) {
+                    PMIX_ERROR_LOG(rc);
+                    goto release;
+                }
+            } else if (PMIX_REGEX2 == info[n].value.type) {
+                char *decoded = NULL;
+                rc = pmix_preg.parse_regex(info[n].value.data.regex2, NULL, 0, &decoded);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    goto release;
+                }
+                rc = pmix_preg.parse_procs(decoded, &procs);
+                free(decoded);
+                if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     goto release;
                 }

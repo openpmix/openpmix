@@ -2670,7 +2670,7 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
 
 PMIX_EXPORT pmix_status_t PMIx_generate_regex2(const char *input,
                                                pmix_info_t info[], size_t ninfo,
-                                               pmix_regex_t *regex)
+                                               pmix_regex2_t *regex)
 {
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -2683,7 +2683,7 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex2(const char *input,
 }
 
 
-PMIX_EXPORT pmix_status_t PMIx_parse_regex2(const pmix_regex_t *regex,
+PMIX_EXPORT pmix_status_t PMIx_parse_regex2(const pmix_regex2_t *regex,
                                             pmix_info_t info[], size_t ninfo,
                                             char **output)
 {

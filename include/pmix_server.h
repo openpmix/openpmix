@@ -632,14 +632,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void);
  */
 PMIX_EXPORT pmix_status_t PMIx_generate_regex2(const char *input,
                                                pmix_info_t info[], size_t ninfo,
-                                               pmix_regex_t *regex);
+                                               pmix_regex2_t *regex);
 
-/* Given a pmix_regex_t as returned by PMIx_generate_regex2, expand
+/* Given a pmix_regex2_t as returned by PMIx_generate_regex2, expand
  * the encoded representation and return a NULL-terminated string
  * of the individual values in output. The caller is
  * responsible for releasing the returned string.
  */
-PMIX_EXPORT pmix_status_t PMIx_parse_regex2(const pmix_regex_t *regex,
+PMIX_EXPORT pmix_status_t PMIx_parse_regex2(const pmix_regex2_t *regex,
                                             pmix_info_t info[], size_t ninfo,
                                             char **output);
 

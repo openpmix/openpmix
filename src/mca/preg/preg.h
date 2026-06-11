@@ -85,7 +85,7 @@ typedef pmix_status_t (*pmix_preg_base_module_unpack_fn_t)(pmix_buffer_t *buffer
 
 typedef pmix_status_t (*pmix_preg_base_module_release_fn_t)(char *regexp);
 
-/* Compress the input node-name list directly into a pmix_regex_t.
+/* Compress the input node-name list directly into a pmix_regex2_t.
  * The module sets regex->type to its name, stores the encoded bytes
  * in regex->bytes, and sets regex->len accordingly.
  * Returns PMIX_ERR_TAKE_NEXT_OPTION if the module cannot handle the input.
@@ -93,14 +93,14 @@ typedef pmix_status_t (*pmix_preg_base_module_release_fn_t)(char *regexp);
 typedef pmix_status_t (*pmix_preg_base_module_generate_regex_fn_t)(const char *input,
                                                                     pmix_info_t info[],
                                                                     size_t ninfo,
-                                                                    pmix_regex_t *regex);
+                                                                    pmix_regex2_t *regex);
 
-/* Expand a pmix_regex_t (as produced by generate_regex) back into a
+/* Expand a pmix_regex2_t (as produced by generate_regex) back into a
  * NULL-terminated argv array of node names in output.
  * Returns PMIX_ERR_TAKE_NEXT_OPTION if the module does not recognize
  * the regex->type value.
  */
-typedef pmix_status_t (*pmix_preg_base_module_parse_regex_fn_t)(const pmix_regex_t *regex,
+typedef pmix_status_t (*pmix_preg_base_module_parse_regex_fn_t)(const pmix_regex2_t *regex,
                                                                  pmix_info_t info[], size_t ninfo,
                                                                  char **output);
 
