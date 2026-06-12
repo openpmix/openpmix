@@ -603,7 +603,7 @@ void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace, pmix_ran
     if (NULL != peer->info->pname.nspace) {
         free(peer->info->pname.nspace);
     }
-    peer->info->pname.nspace = strdup(peer->nptr->nspace);
+    peer->info->pname.nspace = strdup(nspace);
     peer->info->pname.rank = rank;
 
     pmix_ptl_base_set_nonblocking(peer->sd);
