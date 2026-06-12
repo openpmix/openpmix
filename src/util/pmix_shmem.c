@@ -22,6 +22,13 @@
 #include <fcntl.h>
 #endif
 #include <sys/mman.h>
+#include <errno.h>
+
+// MAP_FIXED_NOREPLACE (Linux 4.17+) may be unavailable on older systems; fall
+// back to a plain address hint, which the post-mmap address check validates.
+#ifndef MAP_FIXED_NOREPLACE
+#define MAP_FIXED_NOREPLACE 0
+#endif
 
 typedef struct pmix_shmem_header_t {
     /** Reference count. */
@@ -71,22 +78,40 @@ segment_attach(
         goto out;
     }
 
+    // When the caller requires a specific base address (gds/shmem2 stores
+    // absolute pointers, so every process must map the segment at the same
+    // address), use MAP_FIXED_NOREPLACE: the kernel either honors the address
+    // exactly or fails with EEXIST. A bare address is only a hint that the
+    // kernel may silently relocate even when the target range is free.
+    int mmap_flags = MAP_SHARED;
+    const int must_map_at_raddr =
+        (flags & PMIX_SHMEM_MUST_MAP_AT_RADDR) &&
+        (uintptr_t) NULL != desired_base_address;
+    if (must_map_at_raddr) {
+        mmap_flags |= MAP_FIXED_NOREPLACE;
+    }
     mmap_addr = mmap(
         (void *)desired_base_address, shmem->size,
-        PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0
+        PROT_READ | PROT_WRITE, mmap_flags, fd, 0
     );
     if (MAP_FAILED == mmap_addr) {
-        rc = PMIX_ERR_NOMEM;
+        // EEXIST: the requested address is occupied. Report it as "not
+        // available" so the caller can retry at a different address.
+        rc = (must_map_at_raddr && EEXIST == errno)
+                 ? PMIX_ERR_NOT_AVAILABLE : PMIX_ERR_NOMEM;
         goto out;
     }
-    // Check flags.
-    // The caller wants memory mapped at their requested address.
-    if ((flags & PMIX_SHMEM_MUST_MAP_AT_RADDR) &&
-         desired_base_address != (uintptr_t)NULL) {
-        if (desired_base_address != (uintptr_t)mmap_addr) {
-            rc = PMIX_ERR_NOT_AVAILABLE;
-            goto out;
-        }
+    // Fallback for kernels that ignore MAP_FIXED_NOREPLACE and treat the
+    // address as a hint: reject a mapping that did not land where required.
+    if (must_map_at_raddr && desired_base_address != (uintptr_t)mmap_addr) {
+        // The mapping succeeded, just at the wrong address; unmap it here.
+        // The error path below calls pmix_shmem_segment_detach(), which only
+        // unmaps once shmem->attached is set (success only), so the mapping
+        // would otherwise leak -- once per attempt under the gds/shmem2 retry.
+        (void)munmap(mmap_addr, shmem->size);
+        mmap_addr = MAP_FAILED;
+        rc = PMIX_ERR_NOT_AVAILABLE;
+        goto out;
     }
 out:
     if (-1 != fd) {

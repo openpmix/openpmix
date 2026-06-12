@@ -4,6 +4,13 @@ PMIx v6.x series
 This file contains all the NEWS updates for the PMIx v6.x
 series, in reverse chronological order.
 
+6.1.1 -- xx May 2026
+--------------------
+Detailed changes since v6.1.0:
+ - gds/shmem2: make fixed-address segment attach reliable, fixing an
+   intermittent spawn-time PMIx_Init failure (PMIX_ERR_PACK_MISMATCH)
+   seen under AddressSanitizer and during MPI_Comm_spawn
+
 6.0.0 -- TBD
 ------------
 .. important:: This is the first release in the v6 family. The intent
