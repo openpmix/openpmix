@@ -17,6 +17,9 @@ series, in reverse chronological order.
                   process
 
 Detailed changes since v6.1.0:
+ - gds/shmem2: make fixed-address segment attach reliable, fixing an
+   intermittent spawn-time PMIx_Init failure (PMIX_ERR_PACK_MISMATCH)
+   seen under AddressSanitizer and during MPI_Comm_spawn
  - PR #3868: Multiple commits
     - Update NEWS
     - pmdl/ompi: use the right type to enumerate myenvars
