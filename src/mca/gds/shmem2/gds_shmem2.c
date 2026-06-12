@@ -1184,19 +1184,6 @@ shmem2_segment_create_and_attach(
     pmix_status_t rc = PMIX_SUCCESS;
     // Pad given size to fill remaining space on the last page.
     const size_t real_segsize = pmix_shmem_utils_pad_to_page(segment_size);
-    // Find a hole in virtual memory that meets our size requirements.
-    size_t base_addr = 0;
-    rc = pmix_vmem_find_hole(
-        VMEM_HOLE_BIGGEST, &base_addr, real_segsize
-    );
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        PMIX_ERROR_LOG(rc);
-        goto out;
-    }
-    PMIX_GDS_SHMEM2_VOUT(
-        "%s: %s found vmhole at address=0x%zx",
-        __func__, segment_name, base_addr
-    );
     // Find a unique path for the shared-memory backing file.
     const char *segment_path = get_shmem2_backing_path(job, segment_name);
     if (PMIX_UNLIKELY(!segment_path)) {
@@ -1223,12 +1210,52 @@ shmem2_segment_create_and_attach(
         PMIX_ERROR_LOG(rc);
         goto out;
     }
-    // Attach to the shared-memory segment.
-    rc = shmem2_attach(job, shmem2_id, (uintptr_t)base_addr);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        PMIX_ERROR_LOG(rc);
-        goto out;
+    // Find a hole in virtual memory and attach the segment there.
+    //
+    // The hole is located by scanning /proc/self/maps and is then claimed by a
+    // separate mmap(); those two steps are not atomic. PMIx runs its internal
+    // work on a single progress thread, so PMIx never races itself here -- but
+    // the address space is process-wide, so other activity in the process can
+    // take the located hole in between: another thread, the dynamic loader
+    // (dlopen as components/namespaces come up), the C allocator growing an
+    // arena via mmap, or AddressSanitizer's own mappings. This is rare in
+    // general but considerably more likely under ASAN and during
+    // MPI_Comm_spawn. Because the server chooses this address (clients are
+    // later told whichever one we land on), recover from a lost hole by
+    // selecting a new one and retrying rather than failing the spawned job's
+    // PMIx_Init.
+    //
+    // Bypass shmem2_attach() here: on a failed map it reports a client-style
+    // address mismatch and tears the job down, which is wrong for the server,
+    // which chose the address and can simply try another hole.
+    enum { MAX_ATTACH_ATTEMPTS = 16 };
+    for (int attempt = 1; ; ++attempt) {
+        size_t base_addr = 0;
+        rc = pmix_vmem_find_hole(
+            VMEM_HOLE_BIGGEST, &base_addr, real_segsize
+        );
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            goto out;
+        }
+        PMIX_GDS_SHMEM2_VOUT(
+            "%s: %s found vmhole at address=0x%zx (attempt %d)",
+            __func__, segment_name, base_addr, attempt
+        );
+        rc = pmix_shmem_segment_attach(
+            shmem2, (uintptr_t)base_addr, PMIX_SHMEM_MUST_MAP_AT_RADDR
+        );
+        if (PMIX_LIKELY(PMIX_SUCCESS == rc)) {
+            break;
+        }
+        // Only the "could not map at the requested address" case is retryable;
+        // pmix_shmem_segment_attach() already detached its failed attempt.
+        if (PMIX_ERR_NOT_AVAILABLE != rc || attempt >= MAX_ATTACH_ATTEMPTS) {
+            PMIX_ERROR_LOG(rc);
+            goto out_release;
+        }
     }
+    pmix_gds_shmem2_set_status(job, shmem2_id, PMIX_GDS_SHMEM2_ATTACHED);
     // Fix-up backing file permission.
     rc = shmem2_segment_fix_perms(job, shmem2);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -1241,6 +1268,13 @@ out:
             job, shmem2_id, PMIX_GDS_SHMEM2_MINE
         );
     }
+    return rc;
+out_release:
+    // Mirror shmem2_attach()'s failure handling: detach and drop the job
+    // tracker entry.
+    (void)pmix_shmem_segment_detach(shmem2);
+    pmix_list_remove_item(&pmix_mca_gds_shmem2_component.jobs, &job->super);
+    PMIX_RELEASE(job);
     return rc;
 }
 
