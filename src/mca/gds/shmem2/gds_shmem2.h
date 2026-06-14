@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -42,6 +43,15 @@ extern pmix_gds_base_module_t pmix_shmem2_module;
  * Stores MCA parameter value for segment_size_multiplier.
  */
 PMIX_EXPORT extern double pmix_gds_shmem2_segment_size_multiplier;
+
+/**
+ * Testing-only MCA parameter. When true, a client's attempt to attach a
+ * shared-memory segment at its required fixed address is forced to fail,
+ * so the graceful fallback to the next GDS module can be exercised in
+ * tests without depending on each process's virtual-memory layout. Never
+ * set this in production.
+ */
+PMIX_EXPORT extern bool pmix_gds_shmem2_force_client_attach_failure;
 
 /**
  * IDs for pmix_shmem_ts in pmix_gds_shmem2_job_t.

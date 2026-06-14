@@ -10,6 +10,12 @@ Detailed changes since v6.1.0:
  - gds/shmem2: make fixed-address segment attach reliable, fixing an
    intermittent spawn-time PMIx_Init failure (PMIX_ERR_PACK_MISMATCH)
    seen under AddressSanitizer and during MPI_Comm_spawn
+ - gds: when a client cannot attach a gds/shmem2 fixed-address segment
+   at runtime, it now gracefully falls back to the next available GDS
+   module (typically hash) and re-requests its job data, instead of
+   failing PMIx_Init. GDS module selection is now tracked per-client
+   rather than per-namespace, so one client falling back does not affect
+   its peers
 
 6.0.0 -- TBD
 ------------

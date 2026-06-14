@@ -16,6 +16,7 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+# Copyright (c) 2026      Jeff Squyres  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -24,8 +25,6 @@
 #
 
 AM_CPPFLAGS = $(gds_shmem2_CPPFLAGS)
-
-EXTRA_DIST = help-gds-shmem2.txt
 
 headers = \
         gds_shmem2.h \

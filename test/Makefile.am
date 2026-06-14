@@ -17,6 +17,7 @@
 # Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
+# Copyright (c) 2026      Jeff Squyres  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -56,7 +57,8 @@ noinst_SCRIPTS = pmix_client_otheruser.sh \
 	run_tests10.pl \
 	run_tests11.pl \
 	run_tests12.pl \
-	run_tests13.pl
+	run_tests13.pl \
+	run_gds_fallback.pl
 #	run_tests14.pl \
 #	run_tests15.pl
 
@@ -86,6 +88,7 @@ TESTS = \
 	run_tests11.pl \
 	run_tests12.pl \
 	run_tests13.pl \
+	run_gds_fallback.pl \
 	pmix_environ
 #	run_tests14.pl \
 #	run_tests15.pl

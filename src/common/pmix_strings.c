@@ -15,6 +15,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -297,6 +298,8 @@ PMIX_EXPORT const char *pmix_command_string(pmix_cmd_t cmd)
         return "RESOLVE PEERS";
     case PMIX_RESOLVE_NODE_CMD:
         return "RESOLVE NODE";
+    case PMIX_GDS_FALLBACK_CMD:
+        return "GDS FALLBACK";
     default:
         return "UNKNOWN";
     }

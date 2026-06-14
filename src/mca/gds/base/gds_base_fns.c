@@ -8,6 +8,7 @@
  *                         and Technology (RIST).  All rights reserved.
  *
  * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -66,6 +67,38 @@ pmix_gds_base_module_t *pmix_gds_base_assign_module(pmix_info_t *info, size_t ni
     }
 
     return mod;
+}
+
+/* Return the highest-priority active module whose name differs from the
+ * failing one, selecting purely by the recorded component priority
+ * (active->pri). Unlike pmix_gds_base_assign_module(), this does not
+ * consult each module's assign_module callback. No module names are
+ * hard-coded. With the modules that ship today (shmem2 at higher priority
+ * than hash) the failing module is the highest priority, so this returns
+ * the next one down; the general contract is "the highest-priority active
+ * module other than the failing one." */
+pmix_gds_base_module_t *
+pmix_gds_base_get_fallback_module(pmix_gds_base_module_t *failing)
+{
+    pmix_gds_base_active_module_t *active;
+    pmix_gds_base_module_t *best = NULL;
+    int best_pri = -1;
+
+    if (!pmix_gds_globals.initialized || NULL == failing) {
+        return NULL;
+    }
+
+    PMIX_LIST_FOREACH (active, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
+        if (0 == strcmp(active->module->name, failing->name)) {
+            continue;
+        }
+        if (active->pri > best_pri) {
+            best = active->module;
+            best_pri = active->pri;
+        }
+    }
+
+    return best; // NULL if no other module is available
 }
 
 pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc, char ***env)

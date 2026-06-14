@@ -17,6 +17,7 @@
  *                         All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -263,6 +264,11 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_REQ_SYSINFO_CMD              36
 #define PMIX_RESOLVE_PEERS_CMD            37
 #define PMIX_RESOLVE_NODE_CMD             38
+// Client tells the server it has switched to a different GDS module
+// (carries the module name) and re-requests its job data in that format.
+// Appended at the end for wire compatibility; an older server that does
+// not recognize it falls through to PMIX_ERR_NOT_SUPPORTED.
+#define PMIX_GDS_FALLBACK_CMD             39
 
 
 /* provide a "pretty-print" function for cmds */
@@ -460,6 +466,10 @@ PMIX_CLASS_DECLARATION(pmix_proclist_t);
 typedef struct pmix_peer_t {
     pmix_object_t super;
     pmix_namespace_t *nptr; // point to the nspace object for this process
+    pmix_gds_base_module_t *gds; // per-peer GDS module override; when NULL, the
+                                 // nspace-level nptr->compat.gds is used. Lets a
+                                 // single client fall back to another module
+                                 // (e.g. hash) without affecting its peers.
     pmix_rank_info_t *info;
     pmix_proc_type_t proc_type;
     pmix_listener_protocol_t protocol;
