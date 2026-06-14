@@ -13,6 +13,7 @@
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -936,6 +937,7 @@ pmix_status_t pmix_bfrops_base_pack_val(pmix_pointer_array_t *regtypes, pmix_buf
     case PMIX_REGATTR:
     case PMIX_RESOURCE_UNIT:
     case PMIX_NODE_PID:
+    case PMIX_REGEX2:
         PMIX_BFROPS_PACK_TYPE(ret, buffer, p->data.ptr, 1, p->type, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
