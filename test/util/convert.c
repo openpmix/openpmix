@@ -47,12 +47,18 @@ int main(int argc, char **argv)
     }
 
     /* output it in v1 format */
-    asprintf(&tmp, "%s.v1", argv[1]);
-    if (0 != hwloc_topology_export_xml(topo, tmp, HWLOC_TOPOLOGY_EXPORT_XML_FLAG_V1)) {
-        fprintf(stderr, "EXPORT FAILED\n");
+    if (0 > asprintf(&tmp, "%s.v1", argv[1])) {
+        fprintf(stderr, "ASPRINTF FAILED\n");
         hwloc_topology_destroy(topo);
         return -1;
     }
+    if (0 != hwloc_topology_export_xml(topo, tmp, HWLOC_TOPOLOGY_EXPORT_XML_FLAG_V1)) {
+        fprintf(stderr, "EXPORT FAILED\n");
+        free(tmp);
+        hwloc_topology_destroy(topo);
+        return -1;
+    }
+    free(tmp);
     hwloc_topology_destroy(topo);
     return 0;
 }
