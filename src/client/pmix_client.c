@@ -10,6 +10,7 @@
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -281,13 +282,84 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
         return;
     }
 
-    /* decode it */
+    /* decode it - leave cb->status set to the store result so the caller
+     * sees a storage failure (e.g. PMIX_ERR_TAKE_NEXT_OPTION when a shmem2
+     * segment cannot be attached) rather than having it masked as success */
     PMIX_GDS_STORE_JOB_INFO(cb->status, pmix_client_globals.myserver, nspace, buf);
 
     free(nspace);
-    cb->status = PMIX_SUCCESS;
     PMIX_POST_OBJECT(cb);
     PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
+/* The GDS module chosen at connect time could not deliver our job data to
+ * this client (e.g. shmem2 could not attach its fixed-address segment in
+ * our address space). Switch our server connection to the next-priority
+ * GDS module and re-request the job data in that module's format, telling
+ * the server which module we switched to via PMIX_GDS_FALLBACK_CMD.
+ *
+ * Returns PMIX_SUCCESS once the fallback data has been stored, or an error
+ * otherwise - PMIX_ERR_TAKE_NEXT_OPTION when no other module is available,
+ * or the error produced by the re-request. In particular, an older server
+ * that does not understand PMIX_GDS_FALLBACK_CMD rejects it, and the
+ * reused job_data callback turns that rejection reply into an error, so
+ * PMIx_Init fails just as it would have before this fallback existed. */
+static pmix_status_t fallback_to_next_gds(void)
+{
+    pmix_peer_t *myserver = pmix_client_globals.myserver;
+    pmix_gds_base_module_t *fb;
+    pmix_buffer_t *req;
+    pmix_cmd_t cmd = PMIX_GDS_FALLBACK_CMD;
+    char *modname;
+    pmix_cb_t cb;
+    pmix_status_t rc;
+
+    fb = pmix_gds_base_get_fallback_module(PMIX_GDS_PEER_MODULE(myserver));
+    if (NULL == fb) {
+        /* nothing else to fall back to */
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    pmix_output_verbose(2, pmix_client_globals.base_output,
+                        "pmix:client falling back to GDS module %s", fb->name);
+    /* route this client's server connection through the fallback module so
+     * the re-requested data is stored - and future ops resolved - with it */
+    myserver->gds = fb;
+    /* keep the nspace-level default consistent with the per-peer override.
+     * On the client this namespace object belongs solely to the server
+     * peer (it is not shared with other peers, unlike on the server), so
+     * any code that still reads compat.gds directly - e.g. verbose
+     * logging - resolves to the fallback module too. */
+    myserver->nptr->compat.gds = fb;
+
+    req = PMIX_NEW(pmix_buffer_t);
+    if (NULL == req) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_BFROPS_PACK(rc, myserver, req, &cmd, 1, PMIX_COMMAND);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(req);
+        return rc;
+    }
+    /* tell the server which module we switched to */
+    modname = (char *) fb->name;
+    PMIX_BFROPS_PACK(rc, myserver, req, &modname, 1, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(req);
+        return rc;
+    }
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_PTL_SEND_RECV(rc, myserver, req, job_data, (void *) &cb);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+    PMIX_WAIT_THREAD(&cb.lock);
+    rc = cb.status;
+    PMIX_DESTRUCT(&cb);
+    return rc;
 }
 
 PMIX_EXPORT const char *PMIx_Get_version(void)
@@ -810,6 +882,11 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_WAIT_THREAD(&cb.lock);
         rc = cb.status;
         PMIX_DESTRUCT(&cb);
+        if (PMIX_ERR_TAKE_NEXT_OPTION == rc) {
+            /* the connect-time GDS module could not deliver our job data to
+             * this client; fall back to the next module and re-request */
+            rc = fallback_to_next_gds();
+        }
         if (PMIX_SUCCESS != rc) {
             return rc;
         }

@@ -7,6 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,7 +22,6 @@
 
 #include "src/include/pmix_dictionary.h"
 
-#include "src/util/pmix_show_help.h"
 #include "src/util/pmix_string_copy.h"
 #include "src/util/pmix_vmem.h"
 
@@ -1042,15 +1042,26 @@ shmem2_attach(
     rc = pmix_shmem_segment_attach(
         shmem2, req_addr, PMIX_SHMEM_MUST_MAP_AT_RADDR
     );
+    if (PMIX_UNLIKELY(pmix_gds_shmem2_force_client_attach_failure)) {
+        // Testing only: pretend the fixed-address attach failed so the
+        // client exercises the GDS fallback path. The shared "out" cleanup
+        // below detaches the segment if the real attach actually succeeded.
+        rc = PMIX_ERR_NOT_AVAILABLE;
+    }
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        // This type of error occurs when we
-        // didn't map to the requested address.
+        // We were given a fixed base address but could not map the segment
+        // there in this process's address space -- its VM layout (ASLR,
+        // what else is already mapped) differs from the process that chose
+        // the address. This is not fatal: signal the framework to fall
+        // back to the next GDS module (e.g. hash) for this client instead
+        // of aborting PMIx_Init.
         if (PMIX_ERR_NOT_AVAILABLE == rc) {
-            pmix_show_help("help-gds-shmem2.txt",
-                           "shmem2-segment-attach:address-mismatch",
-                           true, (size_t)req_addr, (size_t)shmem2->hdr_address
+            PMIX_GDS_SHMEM2_VOUT(
+                "%s: could not attach segment at required address 0x%zx; "
+                "falling back to the next GDS module",
+                __func__, (size_t)req_addr
             );
-            rc = PMIX_ERROR;
+            rc = PMIX_ERR_TAKE_NEXT_OPTION;
         }
         goto out;
     }
@@ -2613,6 +2624,12 @@ client_connect_to_shmem2_from_buffi(
     // Release the leftover kval.
     PMIX_DESTRUCT(&kval);
 
+    // A segment could not be attached at its required fixed address;
+    // propagate the signal unchanged so the client falls back to the next
+    // GDS module rather than treating it as a fatal unpack failure.
+    if (PMIX_ERR_TAKE_NEXT_OPTION == rc) {
+        return rc;
+    }
     if (PMIX_UNLIKELY(PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc)) {
         rc = PMIX_ERR_UNPACK_FAILURE;
         return rc;

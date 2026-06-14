@@ -15,6 +15,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -76,6 +77,8 @@ pmix_gds_shmem2_component_t pmix_mca_gds_shmem2_component = {
 
 double pmix_gds_shmem2_segment_size_multiplier = 1.0;
 
+bool pmix_gds_shmem2_force_client_attach_failure = false;
+
 static int
 gds_shmem2_component_register(void)
 {
@@ -90,6 +93,19 @@ gds_shmem2_component_register(void)
         "respectively.",
         PMIX_MCA_BASE_VAR_TYPE_DOUBLE,
         &pmix_gds_shmem2_segment_size_multiplier
+    );
+    if (varidx < 0) {
+        return PMIX_ERROR;
+    }
+
+    varidx = pmix_mca_base_component_var_register(
+        &pmix_mca_gds_shmem2_component.super,
+        "force_client_attach_failure",
+        "(Testing only) Force a client's fixed-address segment attach to "
+        "fail so the graceful fallback to the next GDS module can be "
+        "exercised. Do not set this in production.",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_gds_shmem2_force_client_attach_failure
     );
     if (varidx < 0) {
         return PMIX_ERROR;

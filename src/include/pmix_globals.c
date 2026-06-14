@@ -10,6 +10,7 @@
  *                         All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -256,6 +257,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_rank_info_t,
 static void pcon(pmix_peer_t *p)
 {
     p->nptr = NULL;
+    p->gds = NULL;
     p->proc_type.type = PMIX_PROC_UNDEF;
     p->proc_type.major = PMIX_MAJOR_WILDCARD;
     p->proc_type.minor = PMIX_MINOR_WILDCARD;

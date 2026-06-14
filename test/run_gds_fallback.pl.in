@@ -1,0 +1,135 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# Copyright (c) 2026      Jeff Squyres  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# Exercise the graceful GDS fallback. The gds/shmem2 client-side segment
+# attach is forced to fail (via the testing-only MCA parameter
+# gds_shmem2_force_client_attach_failure); each client must then fall back
+# to the next-priority GDS module (typically hash) and still complete
+# PMIx_Init, so the job runs to completion and pmix_test exits 0.
+#
+# On platforms where gds/shmem2 does not activate -- e.g. those without
+# /proc/self/maps -- shmem2 is never selected, the force-failure switch
+# has no effect, and the job simply runs on hash. The test still passes
+# there; it just does not exercise the fallback path.
+
+use strict;
+
+# We are running tests against the build tree (vs. the installation
+# tree). Autogen gives us a full list of all possible component
+# directories in PMIX_COMPONENT_LIBRARY_PATHS. Turn each into an absolute
+# path to the built component and hand the list to the MCA base so it can
+# find the components.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# Force shmem2 clients to fail their fixed-address attach so the fallback
+# path is taken when shmem2 is the selected module.
+$ENV{'PMIX_MCA_gds_shmem2_force_client_attach_failure'} = "1";
+
+# Turn on gds verbosity so we can confirm from the output which GDS modules
+# were actually used (and thus whether the fallback really fired).
+$ENV{'PMIX_MCA_gds_base_verbose'} = "1";
+
+my $wdir = $mybuilddir . "/test";
+chdir $wdir;
+
+# find the timeout or gtimeout cmd so we can timeout the test if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; it can
+# escalate signals on a hang. When none is available, arm a Perl alarm
+# instead so that a deadlocked pmix_test can never hang "make check"
+# forever, even on platforms without GNU coreutils.
+my @cmd = ("./pmix_test", "-n", "4", "--job-fence");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run the test in a child we control, merging its stderr into stdout, and
+# slurp the output. The alarm (when armed) bounds the wait and lets us
+# kill a wedged child.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec pmix_test: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: pmix_test exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The job itself must complete: with shmem2 forced to fail its attach, the
+# clients can only finish PMIx_Init if the fallback works.
+if (0 != $status) {
+    print "FAIL: pmix_test did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm the fallback actually fired rather than passing vacuously. If
+# shmem2 was selected (its name appears in the gds job-info traffic), the
+# forced attach failure must have driven a fallback to another module, so
+# that module's name must appear too. If shmem2 never activated (e.g. no
+# /proc/self/maps), there is nothing to fall back from and we pass without
+# having exercised the path.
+my $used_shmem2 = ($output =~ /JOB INFO WITH shmem2/);
+my $fell_back   = ($output =~ /JOB INFO WITH hash/);
+if ($used_shmem2 && !$fell_back) {
+    print "FAIL: shmem2 was used but no GDS fallback was observed\n";
+    exit(1);
+}
+if ($used_shmem2) {
+    print "PASS: observed shmem2 -> hash GDS fallback\n";
+} else {
+    print "PASS: gds/shmem2 not active here; fallback not exercised\n";
+}
+exit(0);
