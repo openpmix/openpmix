@@ -18,6 +18,7 @@
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -107,6 +108,14 @@ PMIX_EXPORT char *pmix_gds_base_get_available_modules(void);
 
 /* Select a gds module based on the provided directives */
 PMIX_EXPORT pmix_gds_base_module_t *pmix_gds_base_assign_module(pmix_info_t *info, size_t ninfo);
+
+/* Return the highest-priority active gds module other than the given
+ * "failing" module, or NULL if no other module is available. Used to
+ * fall back to the next module when the current one cannot be used at
+ * runtime. No module names are hard-coded: selection is purely by the
+ * priority of the remaining active modules. */
+PMIX_EXPORT pmix_gds_base_module_t *
+pmix_gds_base_get_fallback_module(pmix_gds_base_module_t *failing);
 
 /**
  * Add any envars to a peer's environment that the module needs

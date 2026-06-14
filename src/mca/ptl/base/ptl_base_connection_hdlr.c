@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -470,6 +471,10 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     if (NULL == peer->nptr->compat.gds) {
         goto error;
     }
+    /* track this client's GDS module on the peer itself, so a later
+     * per-client fallback (PMIX_GDS_FALLBACK_CMD) can change it without
+     * affecting the other peers sharing this nspace */
+    peer->gds = peer->nptr->compat.gds;
 
     /* if we haven't previously stored the version for this
      * nspace, do so now */
@@ -785,6 +790,9 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     if (NULL == peer->nptr->compat.gds) {
         goto error;
     }
+    /* track this peer's GDS module on the peer itself (see the client
+     * connection path for rationale) */
+    peer->gds = peer->nptr->compat.gds;
 
     /* if we haven't previously stored the version for this
      * nspace, do so now */
