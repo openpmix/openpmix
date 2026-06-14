@@ -18,6 +18,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -184,6 +185,14 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
     x->active = false;
 }
 
+/* run the tmpdir cleanup command, warning if it fails (best effort) */
+static void run_cleanup(const char *cmd)
+{
+    if (0 != system(cmd)) {
+        fprintf(stderr, "Warning: cleanup command \"%s\" failed\n", cmd);
+    }
+}
+
 int main(int argc, char **argv)
 {
     char **client_env = NULL;
@@ -222,7 +231,10 @@ int main(int argc, char **argv)
             exit(1);
         }
     }
-    asprintf(&cleanup, "rm -rf %s", tmpdir);
+    if (0 > asprintf(&cleanup, "rm -rf %s", tmpdir)) {
+        fprintf(stderr, "Out of memory\n");
+        exit(1);
+    }
     PMIX_INFO_CREATE(info, 1);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TMPDIR, tmpdir, PMIX_STRING);
 
@@ -266,7 +278,10 @@ int main(int argc, char **argv)
     /* we have a single namespace for all clients */
     atmp = NULL;
     for (n = 0; n < nprocs; n++) {
-        asprintf(&tmp, "%d", n);
+        if (0 > asprintf(&tmp, "%d", n)) {
+            fprintf(stderr, "Out of memory\n");
+            exit(1);
+        }
         PMIx_Argv_append_nosize(&atmp, tmp);
         free(tmp);
     }
@@ -296,7 +311,7 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_server_setup_local_support(ncache, NULL, 0, opcbfunc, x))) {
         fprintf(stderr, "Setup local support failed: %d\n", rc);
         PMIx_server_finalize();
-        system(cleanup);
+        run_cleanup(cleanup);
         return rc;
     }
     PMIX_WAIT_FOR_COMPLETION(x->active);
@@ -309,7 +324,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(&proc, &client_env))) { // n
             fprintf(stderr, "Server fork setup failed with error %d\n", rc);
             PMIx_server_finalize();
-            system(cleanup);
+            run_cleanup(cleanup);
             return rc;
         }
         x = PMIX_NEW(myxfer_t);
@@ -317,7 +332,7 @@ int main(int argc, char **argv)
             != (rc = PMIx_server_register_client(&proc, myuid, mygid, NULL, opcbfunc, x))) {
             fprintf(stderr, "Server fork setup failed with error %d\n", rc);
             PMIx_server_finalize();
-            system(cleanup);
+            run_cleanup(cleanup);
             return rc;
         }
         /* don't fork/exec the client until we know it is registered
@@ -328,7 +343,7 @@ int main(int argc, char **argv)
         if (pid < 0) {
             fprintf(stderr, "Fork failed\n");
             PMIx_server_finalize();
-            system(cleanup);
+            run_cleanup(cleanup);
             return -1;
         }
         child = PMIX_NEW(wait_tracker_t);
@@ -365,7 +380,7 @@ int main(int argc, char **argv)
     }
 
     fprintf(stderr, "Test finished OK!\n");
-    system(cleanup);
+    run_cleanup(cleanup);
 
     return rc;
 }
