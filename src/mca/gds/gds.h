@@ -6,6 +6,7 @@
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -74,9 +75,18 @@ typedef void (*pmix_gds_base_module_fini_fn_t)(void);
 typedef pmix_status_t (*pmix_gds_base_assign_module_fn_t)(pmix_info_t *info, size_t ninfo,
                                                           int *priority);
 
-#define PMIX_GDS_CHECK_COMPONENT(p, s) (0 == strcmp((p)->nptr->compat.gds->name, (s)))
+/* Resolve the GDS module to use for a given peer. A peer may carry its
+ * own module (peer->gds) that overrides the nspace-level default in
+ * nptr->compat.gds - this happens when a client falls back to a
+ * different module than the rest of its nspace (e.g. shmem2 attach
+ * failed and the client switched to hash). When peer->gds is NULL, the
+ * nspace-level module is used. */
+#define PMIX_GDS_PEER_MODULE(p) \
+    (NULL != (p)->gds ? (p)->gds : (p)->nptr->compat.gds)
+
+#define PMIX_GDS_CHECK_COMPONENT(p, s) (0 == strcmp(PMIX_GDS_PEER_MODULE(p)->name, (s)))
 #define PMIX_GDS_CHECK_PEER_COMPONENT(p1, p2) \
-    (0 == strcmp((p1)->nptr->compat.gds->name, (p2)->nptr->compat.gds->name))
+    (0 == strcmp(PMIX_GDS_PEER_MODULE(p1)->name, PMIX_GDS_PEER_MODULE(p2)->name))
 
 /* SERVER FN: assemble the keys buffer for server answer */
 typedef pmix_status_t (*pmix_gds_base_module_assemb_kvs_req_fn_t)(const pmix_proc_t *proc,
@@ -178,7 +188,7 @@ typedef pmix_status_t (*pmix_gds_base_module_register_job_info_fn_t)(struct pmix
  * a given peer */
 #define PMIX_GDS_REGISTER_JOB_INFO(s, p, b)                                                        \
     do {                                                                                           \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                        \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);                                      \
         pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS REG JOB INFO WITH %s", __FILE__, \
                             __LINE__, _g->name);                                                   \
         (s) = _g->register_job_info((struct pmix_peer_t *) (p), b);                                \
@@ -195,7 +205,7 @@ typedef pmix_status_t (*pmix_gds_base_module_store_job_info_fn_t)(const char *ns
 /* define a convenience macro for storing job info based on peer */
 #define PMIX_GDS_STORE_JOB_INFO(s, p, n, b)                                                \
     do {                                                                                   \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);                              \
         pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS STORE JOB INFO WITH %s", \
                             __FILE__, __LINE__, _g->name);                                 \
         (s) = _g->store_job_info(n, b);                                                    \
@@ -225,7 +235,7 @@ typedef pmix_status_t (*pmix_gds_base_module_store_fn_t)(const pmix_proc_t *proc
 /* define a convenience macro for storing key-val pairs based on peer */
 #define PMIX_GDS_STORE_KV(s, p, pc, sc, k)                                     \
     do {                                                                       \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                    \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);                  \
         (s) = PMIX_SUCCESS;                                                    \
         if (NULL == _g->store) {                                               \
             if (0 == strcmp(_g->name, "hash")) {                               \
@@ -352,7 +362,7 @@ typedef pmix_status_t (*pmix_gds_base_module_fetch_fn_t)(struct pmix_peer_t *pee
  * passing a pmix_cb_t containing all the required info */
 #define PMIX_GDS_FETCH_KV(s, p, c)                                                             \
     do {                                                                                       \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                    \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);                                  \
         pmix_output_verbose(1, pmix_gds_base_output,                                           \
                             "[%s:%d] GDS FETCH KV WITH %s",                                    \
                             __FILE__,  __LINE__, _g->name);                                    \

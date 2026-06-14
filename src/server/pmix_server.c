@@ -11,6 +11,7 @@
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -5741,6 +5742,64 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
             PMIX_RELEASE(reply);
         }
         peer->nptr->ndelivered++;
+        return PMIX_SUCCESS;
+    }
+
+    if (PMIX_GDS_FALLBACK_CMD == cmd) {
+        /* the client could not use the GDS module it selected at connect
+         * time and has switched to another one. Record the new module on
+         * this peer (only this peer - its nspace peers are unaffected) and
+         * re-register the job data in that module's format. */
+        char *modname = NULL;
+        pmix_gds_base_module_t *mod;
+        pmix_info_t ginfo;
+
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, &modname, &cnt, PMIX_STRING);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        /* guard against a malformed/malicious client: a zero-length string
+         * unpacks to NULL, and PMIX_INFO_LOAD would strdup(NULL) and crash */
+        if (NULL == modname) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, modname, PMIX_STRING);
+        mod = pmix_gds_base_assign_module(&ginfo, 1);
+        PMIX_INFO_DESTRUCT(&ginfo);
+        /* assign_module always returns some module (modules offer themselves
+         * by priority and a requested name only bumps that module's
+         * priority), so confirm we actually got the module the client named
+         * rather than a higher-priority default. If not, we do not have it. */
+        if (NULL == mod || 0 != strcmp(mod->name, modname)) {
+            free(modname);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        free(modname);
+        peer->gds = mod;
+        reply = PMIX_NEW(pmix_buffer_t);
+        if (NULL == reply) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return PMIX_ERR_NOMEM;
+        }
+        PMIX_GDS_REGISTER_JOB_INFO(rc, peer, reply);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(reply);
+            return rc;
+        }
+        PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
+        if (PMIX_SUCCESS != rc) {
+            /* return the error so the switchyard caller sends a failure
+             * reply rather than leaving the client's PMIx_Init blocked
+             * waiting for a response that was never queued */
+            PMIX_RELEASE(reply);
+            return rc;
+        }
+        /* do NOT increment ndelivered: this client was already counted by
+         * its original PMIX_REQ_CMD; this is the same client re-requesting
+         * the same job data in a different format */
         return PMIX_SUCCESS;
     }
 
