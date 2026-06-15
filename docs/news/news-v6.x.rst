@@ -17,9 +17,31 @@ series, in reverse chronological order.
                   process
 
 Detailed changes since v6.1.0:
- - gds/shmem2: make fixed-address segment attach reliable, fixing an
-   intermittent spawn-time PMIx_Init failure (PMIX_ERR_PACK_MISMATCH)
-   seen under AddressSanitizer and during MPI_Comm_spawn
+ - PR #3898: Multiple commits
+    - Update NEWS
+    - AGENTS.md: add thread safety and progress thread section
+    - Document proper build system regeneration workflow
+    - AGENTS.md: document PMIx conventions for agent-assisted development
+    - preg: add generate_regex2/parse_regex2 API with pmix_regex_t
+    - Include deprecated definitions in Python bindings hooks
+    - Rename pmix_regex_t to pmix_regex2_t
+    - version: replace PMIX_CAP_REGEX_PARSER with PMIX_CAP_REGEX2
+    - Add CodeQL analysis workflow configuration
+    - Add CodeQL sidecar
+    - ptl: fix potential use-after-free in ptl_base_fns.c
+    - AGENTS.md: improve orientation and correct stale content
+    - bfrops: pack PMIX_REGEX2 values via their struct pointer
+    - gds: gracefully fall back to the next GDS module on client attach fail
+    - test/util: check asprintf return in convert helper
+    - AGENTS.md: add guidance on shared clones, testing, and commits
+    - server/log: add pmix_log_host_only MCA parameter
+    - test/unit: add PMIx_Log / PMIx_Log_nb unit tests
+    - test: move run_gds_fallback.pl into test/unit where it belongs
+    - .gitignore: ignore test/unit/run_gds_fallback.pl build product
+    - docs: add code of conduct
+    - docs: add how-things-work document for PMIx_Log
+    - client: verify calling process is a fence participant
+    - AGENTS.md: document topic-branch commit policy
  - PR #3868: Multiple commits
     - Update NEWS
     - pmdl/ompi: use the right type to enumerate myenvars
