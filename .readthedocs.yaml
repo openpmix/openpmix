@@ -12,6 +12,9 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.10"
+  jobs:
+    pre_build:
+      - python3 docs/generate-code-of-conduct-rst.py --input .github/CODE_OF_CONDUCT.md --output docs/code-of-conduct.rst
 
 python:
   install:
