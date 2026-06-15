@@ -21,9 +21,9 @@
 # $HEADER$
 #
 
-check_PROGRAMS = compress preg bfrops_regex2 gds_fallback
+check_PROGRAMS = compress preg bfrops_regex2 gds_fallback pmix_log
 
-TESTS = compress preg bfrops_regex2 gds_fallback
+TESTS = compress preg bfrops_regex2 gds_fallback pmix_log
 
 compress_SOURCES =  \
         compress.c
@@ -49,5 +49,11 @@ gds_fallback_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 gds_fallback_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+pmix_log_SOURCES = \
+        pmix_log.c
+pmix_log_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pmix_log_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 clean-local:
-	rm -f compress preg bfrops_regex2 gds_fallback
+	rm -f compress preg bfrops_regex2 gds_fallback pmix_log
