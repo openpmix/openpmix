@@ -56,6 +56,7 @@ bool pmix_bind_progress_thread_reqd = false;
 int pmix_maxfd = 1024;
 int pmix_server_client_fintime;
 bool pmix_keep_fqdn_hostnames = false;
+bool pmix_log_host_only = false;
 
 char *pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_KEY_COUNT] = {NULL};
 static char *pmix_var_dump_color_string = NULL;
@@ -308,6 +309,13 @@ pmix_status_t pmix_register_params(void)
                                       "Whether or not to keep FQDN hostnames [default: no]",
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &pmix_keep_fqdn_hostnames);
+
+    pmix_log_host_only = false;
+    (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "log_host_only",
+                                      "Direct all PMIx_Log handling to the host environment;"
+                                      " the library's plog framework will not be invoked [default: no]",
+                                      PMIX_MCA_BASE_VAR_TYPE_BOOL,
+                                      &pmix_log_host_only);
 
     /* Var-dump color */
 

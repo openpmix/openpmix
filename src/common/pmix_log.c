@@ -33,6 +33,7 @@
 
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
+#include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
@@ -279,9 +280,9 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         return rc;
     }
 
-    /* get here if we are a server - if we are not a gateway, then
-     * we don't handle this ourselves if the host support is available */
-    if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
+    /* get here if we are a server - if we are not a gateway, or the
+     * host-only log param is set, pass this to the host if available */
+    if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer) || pmix_log_host_only) {
         cb = PMIX_NEW(pmix_cb_t);
         cb->cbfunc.opfn = cbfunc;
         cb->cbdata = cbdata;
@@ -299,6 +300,12 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         } else if (NULL != pmix_host_server.log) {
             pmix_host_server.log(cb->proc, data, ndata, directives, ndirs,
                                  localcbfn, (void *) cb);
+        } else if (pmix_log_host_only) {
+            // caller explicitly requested host-only handling; never fall local
+            PMIX_PROC_FREE(source, 1);
+            cb->proc = NULL;
+            PMIX_RELEASE(cb);
+            return PMIX_ERR_NOT_SUPPORTED;
         } else {
             // no choice but to process locally
             goto local;
