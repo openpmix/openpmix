@@ -26,8 +26,6 @@ Detailed changes since v6.1.0:
     - Include deprecated definitions in Python bindings hooks
     - Rename pmix_regex_t to pmix_regex2_t
     - version: replace PMIX_CAP_REGEX_PARSER with PMIX_CAP_REGEX2
-    - Add CodeQL analysis workflow configuration
-    - Add CodeQL sidecar
     - ptl: fix potential use-after-free in ptl_base_fns.c
     - AGENTS.md: improve orientation and correct stale content
     - bfrops: pack PMIX_REGEX2 values via their struct pointer
