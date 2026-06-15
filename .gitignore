@@ -239,6 +239,9 @@ docs/_static
 docs/_static/css/custom.css
 docs/_templates
 
+# Generated RST files
+docs/code-of-conduct.rst
+
 # Common Python virtual environment directory names
 venv
 py??
