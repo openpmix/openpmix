@@ -523,13 +523,29 @@ honor:
   usually best to land them as standalone commits, separate from your
   main change, so each can be evaluated and reviewed on its own. One
   logical change per commit keeps history reviewable and easy to bisect.
-- **Branch flow:** work on a short-lived `topic/<short-description>`
-  branch (e.g., `topic/fix-ptl-uaf`, `topic/cap-flags`), then open a
-  pull request targeting `master`. After merge, cherry-pick to the
-  relevant release branch(es) `vMAJOR.MINOR.x` with a
-  `(cherry picked from commit ...)` line at the end of the commit
-  message; use `git cherry-pick -x` to add it. Never commit features
-  directly to a release branch. See
+- **Branch flow:** **Never commit directly to `master` or to a release
+  branch.** All work — including the very first commit in a sequence —
+  goes on a dedicated topic branch that you create before making any
+  changes.
+
+  - **Topic branches for `master`** are named `topic/<short-description>`,
+    where the description is a few words that identify the work
+    (e.g., `topic/fix-ptl-uaf`, `topic/cap-flags`, `topic/log-doc`).
+    A topic branch may carry as many commits as the change requires;
+    the requirement is one branch per logical unit of work, not one
+    commit.
+  - **Topic branches for release branches** follow a different naming
+    scheme: `cmrNN/xxx`, where `NN` is the two-digit release series
+    number (drop the dot) and `xxx` is the short description.
+    For example, changes destined for the `v6.1.x` release branch are
+    developed on a branch named `cmr61/<short-description>`.
+
+  Once the topic branch is ready, open a pull request targeting
+  `master` (or the appropriate release branch). After merge,
+  cherry-pick to the relevant release branch(es) `vMAJOR.MINOR.x`
+  with a `(cherry picked from commit ...)` line at the end of the
+  commit message; use `git cherry-pick -x` to add it automatically.
+  Never commit features directly to a release branch. See
   [`docs/developers/git-github.rst`](docs/developers/git-github.rst).
 - **Update the docs and the news** when user-visible behavior
   changes: RST under [`docs/`](docs/), and a release-notes entry under
