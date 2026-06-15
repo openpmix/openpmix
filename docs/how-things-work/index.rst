@@ -15,3 +15,4 @@ find information on that subject here.
    sets_groups/index.rst
    resolve.rst
    adding_datatypes.rst
+   pmix_log.rst
