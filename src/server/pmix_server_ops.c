@@ -25,6 +25,7 @@
 #include "include/pmix_server.h"
 #include "src/mca/pcompress/pcompress.h"
 #include "src/include/pmix_globals.h"
+#include "src/runtime/pmix_rte.h"
 
 #ifdef HAVE_STRING_H
 #    include <string.h>
@@ -1523,9 +1524,10 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
     }
 
-    /* if we are not the gateway, then pass this up to the host
-     * for transfer to the gateway, if available */
-    if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
+    /* if we are not the gateway, or the host-only log param is set,
+     * then pass this up to the host for transfer to the gateway, if
+     * available */
+    if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer) || pmix_log_host_only) {
         pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                             "pmix:server not gateway");
         cd->cbfunc.opcbfn = cbfunc;
