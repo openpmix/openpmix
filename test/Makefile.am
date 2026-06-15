@@ -57,8 +57,7 @@ noinst_SCRIPTS = pmix_client_otheruser.sh \
 	run_tests10.pl \
 	run_tests11.pl \
 	run_tests12.pl \
-	run_tests13.pl \
-	run_gds_fallback.pl
+	run_tests13.pl
 #	run_tests14.pl \
 #	run_tests15.pl
 
@@ -88,7 +87,6 @@ TESTS = \
 	run_tests11.pl \
 	run_tests12.pl \
 	run_tests13.pl \
-	run_gds_fallback.pl \
 	pmix_environ
 #	run_tests14.pl \
 #	run_tests15.pl

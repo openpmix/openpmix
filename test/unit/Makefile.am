@@ -21,9 +21,13 @@
 # $HEADER$
 #
 
+noinst_SCRIPTS = run_gds_fallback.pl
+
+EXTRA_DIST = run_gds_fallback.pl.in
+
 check_PROGRAMS = compress preg bfrops_regex2 gds_fallback pmix_log
 
-TESTS = compress preg bfrops_regex2 gds_fallback pmix_log
+TESTS = compress preg bfrops_regex2 gds_fallback run_gds_fallback.pl pmix_log
 
 compress_SOURCES =  \
         compress.c
@@ -57,3 +61,4 @@ pmix_log_LDADD = \
 
 clean-local:
 	rm -f compress preg bfrops_regex2 gds_fallback pmix_log
+
