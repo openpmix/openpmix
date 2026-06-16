@@ -225,6 +225,9 @@ test/sshot/testcoord
 
 test/unit/compress
 test/unit/preg
+test/unit/bfrops_regex2
+test/unit/gds_fallback
+test/unit/pmix_log
 
 test/util/numa
 test/util/convert
