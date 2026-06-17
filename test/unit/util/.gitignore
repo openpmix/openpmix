@@ -6,3 +6,11 @@ util_cmd_line
 util_show_help
 util_timings
 util_context_fns
+util_basename
+util_string_copy
+util_argv
+util_path
+util_environ
+util_alfg
+util_printf
+util_os_dirpath

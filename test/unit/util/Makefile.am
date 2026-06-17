@@ -9,11 +9,15 @@
 
 check_PROGRAMS = util_hash util_name_fns \
     util_output util_error util_cmd_line \
-    util_show_help util_timings util_context_fns
+    util_show_help util_timings util_context_fns \
+    util_basename util_string_copy util_argv util_path \
+    util_environ util_alfg util_printf util_os_dirpath
 
 TESTS = util_hash util_name_fns \
     util_output util_error util_cmd_line \
-    util_show_help util_timings util_context_fns
+    util_show_help util_timings util_context_fns \
+    util_basename util_string_copy util_argv util_path \
+    util_environ util_alfg util_printf util_os_dirpath
 
 util_hash_SOURCES = util_hash.c
 util_hash_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -55,7 +59,49 @@ util_context_fns_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_context_fns_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+util_basename_SOURCES = util_basename.c
+util_basename_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_basename_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+util_string_copy_SOURCES = util_string_copy.c
+util_string_copy_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_string_copy_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+util_argv_SOURCES = util_argv.c
+util_argv_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_argv_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+util_path_SOURCES = util_path.c
+util_path_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_path_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+util_environ_SOURCES = util_environ.c
+util_environ_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_environ_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+util_alfg_SOURCES = util_alfg.c
+util_alfg_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_alfg_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+util_printf_SOURCES = util_printf.c
+util_printf_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_printf_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+util_os_dirpath_SOURCES = util_os_dirpath.c
+util_os_dirpath_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_os_dirpath_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 clean-local:
 	rm -f util_hash util_name_fns \
 	    util_output util_error util_cmd_line \
-	    util_show_help util_timings util_context_fns
+	    util_show_help util_timings util_context_fns \
+	    util_basename util_string_copy util_argv util_path \
+	    util_environ util_alfg util_printf util_os_dirpath
