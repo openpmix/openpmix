@@ -21,6 +21,8 @@
 # $HEADER$
 #
 
+SUBDIRS = util
+
 noinst_SCRIPTS = run_gds_fallback.pl
 
 EXTRA_DIST = run_gds_fallback.pl.in
