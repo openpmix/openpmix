@@ -102,8 +102,9 @@ static int if_linux_ipv6_open(void)
                 addrbyte[6], addrbyte[7], addrbyte[8], addrbyte[9], addrbyte[10], addrbyte[11],
                 addrbyte[12], addrbyte[13], addrbyte[14], addrbyte[15], scope);
 
-            /* Only interested in global (0x00) scope */
-            if (scope != 0x00) {
+            /* Accept global (0x00) and host/loopback (0x10) scope; skip all others
+             * (e.g. link-local 0x20, site-local 0x40) */
+            if (scope != 0x00 && scope != 0x10) {
                 pmix_output_verbose(
                     1, pmix_pif_base_framework.framework_output,
                     "skipping interface %2x%2x:%2x%2x:%2x%2x:%2x%2x:%2x%2x:%2x%2x:%2x%2x:%2x%2x "
