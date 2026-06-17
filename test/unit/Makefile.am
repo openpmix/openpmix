@@ -21,7 +21,7 @@
 # $HEADER$
 #
 
-SUBDIRS = util
+SUBDIRS = util class
 
 noinst_SCRIPTS = run_gds_fallback.pl
 
