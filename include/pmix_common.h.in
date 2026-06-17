@@ -47,6 +47,8 @@
  *
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -622,6 +624,14 @@ typedef uint32_t pmix_rank_t;
                                                                     //         the hostname of that node, with additional info on the node in subsequent entries.
                                                                     //         SUPPORTED_QUALIFIER: a PMIX_ALLOC_ID qualifier indicating the specific
                                                                     //         allocation of interest
+#define PMIX_QUERY_ALLOC_IDS                "pmix.query.alloc.ids"  // (pmix_data_array_t*) returns an array of pmix_info_t, each containing
+                                                                    //         PMIX_ALLOC_ID with the string allocation ID known to the server.
+                                                                    //         NO QUALIFIERS
+#define PMIX_QUERY_ALLOC_PROPERTIES         "pmix.query.alloc.prop" // (pmix_data_array_t*) returns an array of pmix_info_t describing properties
+                                                                    //         of a specific allocation.
+                                                                    //         REQUIRES a PMIX_ALLOC_ID qualifier indicating the allocation being queried.
+                                                                    //         SUPPORTED QUALIFIERS: PMIX_ALLOC_PROPERTY containing the specific
+                                                                    //         property name to return. If absent, return all known properties.
 #define PMIX_TIME_REMAINING                 "pmix.time.remaining"   // (uint32_t) returns number of seconds remaining in allocation
                                                                     //         for the specified nspace (defaults to allocation containing the caller)
                                                                     //         SUPPORTED QUALIFIERS: PMIX_NSPACE of the nspace whose info is being requested
@@ -901,6 +911,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_ID                       "pmix.alloc.id"         // (char*) A string identifier (provided by the host environment) for
                                                                     //         the resulting allocation which can later be used to reference
                                                                     //         the allocated resources in, for example, a call to PMIx_Spawn
+#define PMIX_ALLOC_PROPERTY                 "pmix.alloc.property"   // (char*) name of an allocation property
+#define PMIX_ALLOC_REMOVABLE                "pmix.alloc.removable"  // (bool) true if the entire allocation may be removed.
 #define PMIX_ALLOC_NUM_NODES                "pmix.alloc.nnodes"     // (uint64_t) number of nodes
 #define PMIX_ALLOC_NODE_LIST                "pmix.alloc.nlist"      // (char*) regex of specific nodes
 #define PMIX_ALLOC_EXCLUDE                  "pmix.alloc.exclude"    // (char*) regex of nodes to exclude from scheduling consideration
