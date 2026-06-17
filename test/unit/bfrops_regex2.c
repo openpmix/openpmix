@@ -11,6 +11,7 @@
  */
 
 #include "src/include/pmix_config.h"
+#include "include/pmix.h"
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_argv.h"
