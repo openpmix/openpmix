@@ -26,10 +26,12 @@ noinst_SCRIPTS = run_gds_fallback.pl
 EXTRA_DIST = run_gds_fallback.pl.in
 
 check_PROGRAMS = compress preg bfrops_regex2 gds_fallback pmix_log \
-    util_basename util_string_copy util_argv util_path
+    util_basename util_string_copy util_argv util_path \
+    util_environ util_alfg util_printf util_os_dirpath
 
 TESTS = compress preg bfrops_regex2 gds_fallback run_gds_fallback.pl pmix_log \
-    util_basename util_string_copy util_argv util_path
+    util_basename util_string_copy util_argv util_path \
+    util_environ util_alfg util_printf util_os_dirpath
 
 compress_SOURCES =  \
         compress.c
@@ -85,7 +87,32 @@ util_path_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_path_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+util_environ_SOURCES = \
+        util_environ.c
+util_environ_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_environ_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+util_alfg_SOURCES = \
+        util_alfg.c
+util_alfg_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_alfg_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+util_printf_SOURCES = \
+        util_printf.c
+util_printf_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_printf_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+util_os_dirpath_SOURCES = \
+        util_os_dirpath.c
+util_os_dirpath_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_os_dirpath_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 clean-local:
 	rm -f compress preg bfrops_regex2 gds_fallback pmix_log \
-	    util_basename util_string_copy util_argv util_path
+	    util_basename util_string_copy util_argv util_path \
+	    util_environ util_alfg util_printf util_os_dirpath
 
