@@ -258,8 +258,8 @@ pmix_status_t pmix_argv_delete(int *argc, char ***argv, int start, int num_to_de
     if (NULL != tmp)
         *argv = tmp;
 
-    /* adjust the argc */
-    (*argc) -= num_to_delete;
+    /* adjust the argc: i is start + suffix_count, i.e. the new count */
+    (*argc) = i;
 
     return PMIX_SUCCESS;
 }

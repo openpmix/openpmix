@@ -183,7 +183,6 @@ test/run_tests12.pl
 test/run_tests13.pl
 test/run_tests14.pl
 test/run_tests15.pl
-test/unit/run_gds_fallback.pl
 test/simple/doubleget
 test/simple/quietclient
 test/simple/simptest
@@ -230,6 +229,11 @@ test/unit/preg
 test/unit/bfrops_regex2
 test/unit/gds_fallback
 test/unit/pmix_log
+test/unit/run_gds_fallback.pl
+test/unit/util_argv
+test/unit/util_basename
+test/unit/util_path
+test/unit/util_string_copy
 
 test/util/numa
 test/util/convert
