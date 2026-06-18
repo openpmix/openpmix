@@ -12,14 +12,9 @@
 #include "pmix_config.h"
 #include "pmix_common.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
-#ifdef HAVE_SYS_TYPES_H
-#    include <sys/types.h>
-#endif
-#ifdef HAVE_SYS_STAT_H
-#    include <sys/stat.h>
-#endif
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
@@ -30,9 +25,11 @@
 #include "src/util/pmix_string_copy.h"
 
 /*
- * Use $PWD instead of getcwd() a) if $PWD exists and b) is a valid
- * synonym for the results from getcwd(). If both of these conditions
- * are not met, just fall back and use the results of getcwd().
+ * Return the current working directory. The result of getcwd() is
+ * authoritative; $PWD is used only when it is textually identical to
+ * getcwd(). Any difference (e.g., $PWD preserving symlink components
+ * that getcwd() resolves, or a stale $PWD) results in falling back to
+ * the getcwd() value.
  */
 int pmix_getcwd(char *buf, size_t size)
 {
@@ -63,7 +60,7 @@ int pmix_getcwd(char *buf, size_t size)
     /* pwd is pointing to the result that we want to
        give.  Ensure the user's buffer is long enough.  If it is, copy
        in the value and be done. */
-    if (strlen(pwd) > size) {
+    if (strlen(pwd) >= size) {
         /* if it isn't big enough, give them as much
          * of the basename as possible
          */
