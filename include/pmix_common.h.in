@@ -1003,6 +1003,13 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_STATUS                   "pmix.alloc.status"     // (pmix_status_t) Result of an allocation request - typically used in event
                                                                     //        notifying processes of the result of an allocation request generated
                                                                     //        by another process
+#define PMIX_ALLOC_RESERVED                 "pmix.alloc.rsvd"       // (bool) Reserve allocated resources - by default, resources will be reserved
+                                                                    //        for use by members of the requestor's namespace. If set to false,
+                                                                    //        allocated resources will be made generally available within the
+                                                                    //        requestor's session
+#define PMIX_ALLOC_TARGET                   "pmix.alloc.tgt"        // (char*) Namespace to which the allocated resources are to be assigned. If
+                                                                    //         a target is given, then the host is to treat the resources as
+                                                                    //         reserved to members of that namespace.
 
 
 /* job control attributes */
