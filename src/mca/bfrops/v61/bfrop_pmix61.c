@@ -238,6 +238,11 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_unpack_resblock_directive, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_resblock_directive, &pmix_mca_bfrops_v61_component.types);
 
+    PMIX_REGISTER_TYPE("PMIX_ALLOC_INHERIT", PMIX_ALLOC_INHERIT,
+                       pmix_bfrops_base_pack_alloc_inheritance,
+                       pmix_bfrops_base_unpack_alloc_inheritance, pmix_bfrops_base_std_copy,
+                       pmix_bfrops_base_print_alloc_inheritance, &pmix_mca_bfrops_v61_component.types);
+
     PMIX_REGISTER_TYPE("PMIX_IOF_CHANNEL", PMIX_IOF_CHANNEL, pmix_bfrops_base_pack_iof_channel,
                        pmix_bfrops_base_unpack_iof_channel, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_iof_channel, &pmix_mca_bfrops_v61_component.types);

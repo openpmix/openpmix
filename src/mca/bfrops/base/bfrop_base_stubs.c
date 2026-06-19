@@ -168,6 +168,8 @@ static const char *basic_type_string(pmix_data_type_t type)
         return "PMIX_RESOURCE_UNIT";
     case PMIX_REGEX2:
         return "PMIX_REGEX2";
+    case PMIX_ALLOC_INHERIT:
+        return "PMIX_ALLOC_INHERIT";
     default:
         return "NOT INITIALIZED";
     }

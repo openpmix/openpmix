@@ -1168,6 +1168,7 @@ PMIX_EXPORT void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo
  * - pmix_info_directives_t   (PMIX_INFO_DIRECTIVES)
  * - pmix_data_type_t   (PMIX_DATA_TYPE)
  * - pmix_alloc_directive_t  (PMIX_ALLOC_DIRECTIVE)
+ * - pmix_alloc_inheritance_t  (PMIX_ALLOC_INHERIT)
  * - pmix_iof_channel_t  (PMIX_IOF_CHANNEL)
  * - pmix_job_state_t  (PMIX_JOB_STATE)
  * - pmix_proc_state_t  (PMIX_PROC_STATE)
@@ -1190,6 +1191,7 @@ PMIX_EXPORT const char* PMIx_Data_range_string(pmix_data_range_t range);
 PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
 PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
 PMIX_EXPORT const char* PMIx_Resource_block_directive_string(pmix_resource_block_directive_t directive);
+PMIX_EXPORT const char* PMIx_Alloc_inheritance_string(pmix_alloc_inheritance_t inheritance);
 PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
 PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state);
 PMIX_EXPORT const char* PMIx_Get_attribute_string(const char *attribute);

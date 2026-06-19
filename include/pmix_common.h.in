@@ -585,6 +585,12 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_SPAWN_PTY                      "pmix.spawn.pty"        // (bool) Spawn a pseudo-terminal
 #define PMIX_PTY_TERMIO                     "pmix.pty.termio"       // (pmix_byte_object_t) Contents of a termio structure
 #define PMIX_PTY_WSIZE                      "pmix.pty.wsize"        // (pmix_byte_object_t) Contents of a window size structure
+#define PMIX_SPAWN_TARGET                   "pmix.spwn.tgt"         // (varies) Specify the allocation(s) to be used when mapping the
+                                                                    //         applications to be spawned.
+                                                                    //         Can be either of two data types:
+                                                                    //           (a) char* - PMIX_ALLOC_ID of the target allocation
+                                                                    //           (b) a pmix_data_array_t of char* allocation IDs
+                                                                    //         Note that an invalid nspace equates to the "default" allocation
 
 
 /* query keys - value type shown is the type of the value that will be RETURNED by that key  */
@@ -966,7 +972,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_IMAGE                    "pmix.alloc.image"      // (char*) name of the image that the requested nodes are to have on them
 #define PMIX_ALLOC_WAIT_ALL_NODES           "pmix.alloc.waitall"    // (bool) whether or not to wait for all nodes to be scheduled before
                                                                     //        starting to initialize and release nodes for use
-#define PMIX_ALLOC_SHARE                    "pmix.alloc.share"      // (bool) Allow non-exclusive use of specified resources
+#define PMIX_ALLOC_SHARE                    "pmix.alloc.share"      // (bool) Reserve allocated resources - false by default, resources will be reserved
+                                                                    //        for use only by members of the requestor's namespace. If set to true,
+                                                                    //        allocated resources will be made generally available within the
+                                                                    //        requestor's session
 #define PMIX_ALLOC_NOSHELL                  "pmix.alloc.noshell"    // (bool) Immediately exit after allocating resources, without running a command.
 #define PMIX_ALLOC_DEPENDENCY               "pmix.alloc.depend"     // (char*) Defer the start of allocation until the specified dependencies have
                                                                     //         successfully completed.
@@ -1003,14 +1012,11 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_STATUS                   "pmix.alloc.status"     // (pmix_status_t) Result of an allocation request - typically used in event
                                                                     //        notifying processes of the result of an allocation request generated
                                                                     //        by another process
-#define PMIX_ALLOC_RESERVED                 "pmix.alloc.rsvd"       // (bool) Reserve allocated resources - by default, resources will be reserved
-                                                                    //        for use by members of the requestor's namespace. If set to false,
-                                                                    //        allocated resources will be made generally available within the
-                                                                    //        requestor's session
 #define PMIX_ALLOC_TARGET                   "pmix.alloc.tgt"        // (char*) Namespace to which the allocated resources are to be assigned. If
                                                                     //         a target is given, then the host is to treat the resources as
                                                                     //         reserved to members of that namespace.
-
+#define PMIX_ALLOC_INHERITANCE              "pmix.alloc.inhrt"      // (pmix_alloc_inheritance_t) inheritance rules to be applied to the
+                                                                    //         allocated resources
 
 /* job control attributes */
 #define PMIX_JOB_CTRL_ID                    "pmix.jctrl.id"         // (char*) provide a string identifier for this request
@@ -1855,6 +1861,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_RESOURCE_UNIT              72
 #define PMIX_NODE_PID                   73
 #define PMIX_REGEX2                     74
+#define PMIX_ALLOC_INHERIT              75
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1928,6 +1935,17 @@ typedef uint8_t pmix_alloc_directive_t;
 /* define a value boundary beyond which implementers are free
  * to define their own directive values */
 #define PMIX_ALLOC_EXTERNAL     128
+
+/* define a datatype for specifying inheritance of an allocation */
+typedef uint8_t pmix_alloc_inheritance_t;
+#define PMIX_ALLOC_INHERIT_NONE          1   // no one is to inherit the allocation - it will be released
+                                             // upon termination of the owning namespace
+#define PMIX_ALLOC_INHERIT_CHILD         2   // allocation is to remain alive until all child namespaces have
+                                             // terminated, including derived children
+#define PMIX_ALLOC_INHERIT_DEFAULT       3   // allocation is to become unreserved upon termination of the
+                                             // owning namespace
+#define PMIX_ALLOC_INHERIT_CHILD_DEFAULT 4   // allocation is to become unreserved upon termination of the
+                                             // last derived child namespace
 
 /* define a set of directives for resource block requests */
 typedef uint8_t pmix_resource_block_directive_t;
@@ -2465,6 +2483,7 @@ typedef struct pmix_value {
         void *ptr;
         pmix_alloc_directive_t adir;
         pmix_resource_block_directive_t rbdir;
+        pmix_alloc_inheritance_t inheritance;
         pmix_envar_t envar;
         pmix_coord_t *coord;
         pmix_link_state_t linkstate;

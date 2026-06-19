@@ -3374,6 +3374,9 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
     case PMIX_RESBLOCK_DIRECTIVE:
         memcpy(&p->data.rbdir, &src->data.rbdir, sizeof(pmix_resource_block_directive_t));
         break;
+    case PMIX_ALLOC_INHERIT:
+        memcpy(&p->data.inheritance, &src->data.inheritance, sizeof(pmix_alloc_inheritance_t));
+        break;
     case PMIX_ENVAR:
         pmix_bfrops_base_tma_envar_construct(&p->data.envar, tma);
 

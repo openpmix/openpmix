@@ -221,6 +221,22 @@ PMIX_EXPORT const char *PMIx_Resource_block_directive_string(pmix_resource_block
     }
 }
 
+PMIX_EXPORT const char *PMIx_Alloc_inheritance_string(pmix_alloc_inheritance_t inheritance)
+{
+    switch (inheritance) {
+    case PMIX_ALLOC_INHERIT_NONE:
+        return "NONE";
+    case PMIX_ALLOC_INHERIT_CHILD:
+        return "CHILD";
+    case PMIX_ALLOC_INHERIT_DEFAULT:
+        return "DEFAULT";
+    case PMIX_ALLOC_INHERIT_CHILD_DEFAULT:
+        return "CHILD_DEFAULT";
+    default:
+        return "UNSPECIFIED";
+    }
+}
+
 PMIX_EXPORT const char *pmix_command_string(pmix_cmd_t cmd)
 {
     switch (cmd) {
