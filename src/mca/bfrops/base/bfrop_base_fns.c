@@ -399,6 +399,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
         PMIX_PROC_STATE,
         PMIX_POINTER,
         PMIX_ALLOC_DIRECTIVE,
+        PMIX_RESBLOCK_DIRECTIVE,
         PMIX_LINK_STATE,
         PMIX_LOCTYPE,
         PMIX_DEVTYPE,
