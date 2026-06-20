@@ -93,14 +93,50 @@ static void test_basename_multi_trailing_slash(void)
     free(r);
 }
 
+static void test_basename_single_char_trailing_slash(void)
+{
+    /* Regression: a single-character component with a trailing separator
+     * must not be mistaken for an all-separator string. */
+    char *r = pmix_basename("a/");
+    report("basename(\"a/\") == \"a\"", r && 0 == strcmp(r, "a"));
+    free(r);
+}
+
+static void test_basename_single_char_multi_trailing_slash(void)
+{
+    char *r = pmix_basename("x//");
+    report("basename(\"x//\") == \"x\"", r && 0 == strcmp(r, "x"));
+    free(r);
+}
+
+static void test_basename_all_separators(void)
+{
+    char *r = pmix_basename("///");
+    report("basename(\"///\") == \"/\"", r && 0 == strcmp(r, "/"));
+    free(r);
+}
+
 /* ------------------------------------------------------------------ */
 /* pmix_dirname                                                        */
 /* ------------------------------------------------------------------ */
+
+static void test_dirname_null(void)
+{
+    char *r = pmix_dirname(NULL);
+    report("dirname(NULL) == NULL", NULL == r);
+}
 
 static void test_dirname_absolute(void)
 {
     char *r = pmix_dirname("/foo/bar/baz");
     report("dirname(\"/foo/bar/baz\") == \"/foo/bar\"", r && 0 == strcmp(r, "/foo/bar"));
+    free(r);
+}
+
+static void test_dirname_trailing_slash(void)
+{
+    char *r = pmix_dirname("/foo/bar/");
+    report("dirname(\"/foo/bar/\") == \"/foo\"", r && 0 == strcmp(r, "/foo"));
     free(r);
 }
 
@@ -141,8 +177,13 @@ int main(int argc, char **argv)
     test_basename_single_component();
     test_basename_trailing_slash();
     test_basename_multi_trailing_slash();
+    test_basename_single_char_trailing_slash();
+    test_basename_single_char_multi_trailing_slash();
+    test_basename_all_separators();
 
+    test_dirname_null();
     test_dirname_absolute();
+    test_dirname_trailing_slash();
     test_dirname_single_component();
     test_dirname_local_file();
     test_dirname_deep_path();
