@@ -14,3 +14,4 @@ util_environ
 util_alfg
 util_printf
 util_os_dirpath
+util_net
