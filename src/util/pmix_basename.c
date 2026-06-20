@@ -43,7 +43,14 @@
  */
 static inline char *pmix_find_last_path_separator(const char *filename, size_t n)
 {
-    char *p = (char *) filename + n;
+    char *p;
+
+    if (0 == n) {
+        return NULL;
+    }
+
+    /* Start at the last character, not the terminating NUL */
+    p = (char *) filename + n - 1;
 
     /* First skip the latest separators */
     for (; p >= filename; p--) {
@@ -86,8 +93,10 @@ char *pmix_basename(const char *filename)
                 break;
             }
         }
-        if (0 == i) {
+        if (0 == i && sep == tmp[0]) {
+            /* The entire string consisted of separators */
             tmp[0] = sep;
+            tmp[1] = '\0';
             return tmp;
         }
     }
@@ -104,6 +113,11 @@ char *pmix_basename(const char *filename)
 
 char *pmix_dirname(const char *filename)
 {
+    /* Check for the bozo case */
+    if (NULL == filename) {
+        return NULL;
+    }
+
 #if defined(HAVE_DIRNAME) || PMIX_HAVE_DIRNAME
     char *safe_tmp = strdup(filename), *result;
     result = strdup(dirname(safe_tmp));
@@ -111,27 +125,34 @@ char *pmix_dirname(const char *filename)
     return result;
 #else
     const char *p = pmix_find_last_path_separator(filename, strlen(filename));
-    /* NOTE: p will be NULL if no path separator was in the filename - i.e.,
-     * if filename is just a local file */
+    const char *end;
+    char *ret;
 
-    for (; NULL != p && p != filename; p--) {
-        if ((*p == '\\') || (*p == '/')) {
-            /* If there are several delimiters remove them all */
-            for (--p; p != filename; p--) {
-                if ((*p != '\\') && (*p != '/')) {
-                    p++;
-                    break;
-                }
-            }
-            if (p != filename) {
-                char *ret = (char *) calloc((p - filename + 1), sizeof(char));
-                pmix_strncpy(ret, filename, p - filename);
-                ret[p - filename] = '\0';
-                return pmix_make_filename_os_friendly(ret);
-            }
-            break; /* return the duplicate of "." */
-        }
+    /* NOTE: p will be NULL if no path separator was in the filename - i.e.,
+     * if filename is just a local file - in which case the dirname is "." */
+    if (NULL == p) {
+        return strdup(".");
     }
-    return strdup(".");
+
+    /* p points at the last non-trailing separator. Back up over any run of
+     * consecutive separators that precede the final path component. */
+    end = p;
+    while (end > filename && (('\\' == *(end - 1)) || ('/' == *(end - 1)))) {
+        end--;
+    }
+
+    if (end == filename) {
+        /* The separators run all the way to the start of the string
+         * (e.g., "/yow.c" or "///foo"); the dirname is the root. */
+        return strdup(PMIX_PATH_SEP);
+    }
+
+    ret = (char *) calloc((end - filename) + 1, sizeof(char));
+    if (NULL == ret) {
+        return NULL;
+    }
+    pmix_strncpy(ret, filename, end - filename);
+    ret[end - filename] = '\0';
+    return pmix_make_filename_os_friendly(ret);
 #endif /* defined(HAVE_DIRNAME) || PMIX_HAVE_DIRNAME */
 }
