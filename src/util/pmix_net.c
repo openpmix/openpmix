@@ -130,7 +130,7 @@ int pmix_net_init(void)
 {
     char **args, *arg;
     uint32_t a, b, c, d, bits, addr;
-    int i, count, found_bad = 0;
+    int i, j, count, found_bad = 0;
 
     args = PMIx_Argv_split(pmix_net_private_ipv4, ';');
     if (NULL != args) {
@@ -141,12 +141,14 @@ int pmix_net_init(void)
             PMIx_Argv_free(args);
             goto do_local_init;
         }
-        for (i = 0; i < count; i++) {
+        /* j tracks the next slot to fill so that malformed entries are
+         * skipped rather than left as zeroed holes - a zero addr is the
+         * array terminator, so a hole would truncate the list. */
+        for (i = 0, j = 0; i < count; i++) {
             arg = args[i];
 
-            (void) sscanf(arg, "%u.%u.%u.%u/%u", &a, &b, &c, &d, &bits);
-
-            if ((a > 255) || (b > 255) || (c > 255) || (d > 255) || (bits > 32)) {
+            if (5 != sscanf(arg, "%u.%u.%u.%u/%u", &a, &b, &c, &d, &bits)
+                || (a > 255) || (b > 255) || (c > 255) || (d > 255) || (bits > 32)) {
                 if (0 == found_bad) {
                     pmix_show_help("help-pmix-util.txt", "malformed net_private_ipv4", true,
                                    args[i]);
@@ -155,11 +157,12 @@ int pmix_net_init(void)
                 continue;
             }
             addr = (a << 24) | (b << 16) | (c << 8) | d;
-            private_ipv4[i].addr = htonl(addr);
-            private_ipv4[i].netmask_bits = bits;
+            private_ipv4[j].addr = htonl(addr);
+            private_ipv4[j].netmask_bits = bits;
+            j++;
         }
-        private_ipv4[i].addr = 0;
-        private_ipv4[i].netmask_bits = 0;
+        private_ipv4[j].addr = 0;
+        private_ipv4[j].netmask_bits = 0;
         PMIx_Argv_free(args);
     }
 
@@ -178,7 +181,18 @@ int pmix_net_finalize(void)
 /* convert a CIDR prefixlen to netmask (in network byte order) */
 uint32_t pmix_net_prefix2netmask(uint32_t prefixlen)
 {
-    return htonl(((1 << prefixlen) - 1) << (32 - prefixlen));
+    /* A prefix of 0 matches everything; anything >= 32 is an exact
+     * match. Handle both ends explicitly: shifting a 32-bit value by
+     * 32 (or by 0 from the other direction) is undefined behavior, and
+     * shifting a signed 1 left by 31 overflows. Compute the mask from
+     * an unsigned all-ones value for the in-between cases. */
+    if (0 == prefixlen) {
+        return 0;
+    }
+    if (32 <= prefixlen) {
+        return htonl(0xFFFFFFFFU);
+    }
+    return htonl(0xFFFFFFFFU << (32 - prefixlen));
 }
 
 bool pmix_net_islocalhost(const struct sockaddr *addr)
@@ -186,9 +200,10 @@ bool pmix_net_islocalhost(const struct sockaddr *addr)
     switch (addr->sa_family) {
     case AF_INET: {
         const struct sockaddr_in *inaddr = (struct sockaddr_in *) addr;
-        /* if it's in the 127. domain, it shouldn't be routed
-           (0x7f == 127) */
-        if (0x7F000000 == (0x7F000000 & ntohl(inaddr->sin_addr.s_addr))) {
+        /* if it's in the 127.0.0.0/8 domain, it shouldn't be routed
+           (0x7f == 127); mask the full top octet so that other
+           addresses such as 255.x are not misclassified */
+        if (0x7F000000 == (0xFF000000 & ntohl(inaddr->sin_addr.s_addr))) {
             return true;
         }
         return false;
@@ -346,7 +361,7 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
         pmix_output(0, "pmix_net_get_hostname: malloc() failed\n");
         return pmix_hostname_unknown;
     }
-    memset(name, 0, sizeof(*name));
+    memset(name, 0, NI_MAXHOST + 1);
 
     switch (addr->sa_family) {
     case AF_INET:
@@ -372,8 +387,9 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
     error = getnameinfo(addr, addrlen, name, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 
     if (error) {
-        int err = errno;
-        pmix_output(0, "pmix_sockaddr2str failed:%s (return code %i)\n", gai_strerror(err), error);
+        /* getnameinfo() returns an EAI_* code directly; decode that,
+         * not errno (which it does not generally set) */
+        pmix_output(0, "pmix_sockaddr2str failed:%s (return code %i)\n", gai_strerror(error), error);
         return pmix_hostname_unknown;
     }
     /* strip any trailing % data as it isn't pertinent */
