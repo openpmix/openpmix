@@ -12,6 +12,10 @@
 #include "pmix_config.h"
 
 #include <assert.h>
+#include <stdio.h>
+#ifdef HAVE_STRING_H
+#    include <string.h>
+#endif
 
 #include "src/util/pmix_string_copy.h"
 
@@ -30,6 +34,12 @@ void pmix_string_copy(char *dest, const char *src, size_t dest_len)
     // obvious.
     assert(dest_len <= PMIX_MAX_SIZE_ALLOWED_BY_PMIX_STRING_COPY);
 
+    // A zero-length destination buffer has no room for even the
+    // terminating '\0'.  Do nothing rather than write to dest[-1].
+    if (0 == dest_len) {
+        return;
+    }
+
     for (i = 0; i < dest_len; ++i, ++src, ++new_dest) {
         *new_dest = *src;
         if ('\0' == *src) {
@@ -44,10 +54,19 @@ char *pmix_getline(FILE *fp)
 {
     char *ret, *buff;
     char input[1024];
+    size_t len;
 
     ret = fgets(input, 1024, fp);
     if (NULL != ret) {
-        input[strlen(input) - 1] = '\0'; /* remove newline */
+        /* strip a trailing newline, if present.  fgets does not
+         * guarantee one: a line longer than the buffer or a final
+         * line at EOF will have none, so we must not blindly delete
+         * the last character.  Guard against an empty string as well
+         * to avoid a size_t underflow on input[len - 1]. */
+        len = strlen(input);
+        if (0 < len && '\n' == input[len - 1]) {
+            input[len - 1] = '\0';
+        }
         buff = strdup(input);
         return buff;
     }
