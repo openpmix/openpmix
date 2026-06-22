@@ -261,6 +261,97 @@ static void test_append_unique_idx_duplicate(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* pmix_argv_insert                                                    */
+/* ------------------------------------------------------------------ */
+
+static void test_insert_array_middle(void)
+{
+    char **target = NULL;
+    int argc = 0;
+    char **source = NULL;
+
+    pmix_argv_append(&argc, &target, "a");
+    pmix_argv_append(&argc, &target, "d");
+    PMIx_Argv_append_nosize(&source, "b");
+    PMIx_Argv_append_nosize(&source, "c");
+
+    pmix_status_t rc = pmix_argv_insert(&target, 1, source);
+    report("insert array middle: returns PMIX_SUCCESS", PMIX_SUCCESS == rc);
+    report("insert array middle: argv[0] == \"a\"", target && 0 == strcmp(target[0], "a"));
+    report("insert array middle: argv[1] == \"b\"", target && 0 == strcmp(target[1], "b"));
+    report("insert array middle: argv[2] == \"c\"", target && 0 == strcmp(target[2], "c"));
+    report("insert array middle: argv[3] == \"d\"", target && 0 == strcmp(target[3], "d"));
+    report("insert array middle: argv[4] is NULL", target && NULL == target[4]);
+    /* source must be left unaffected */
+    report("insert array middle: source preserved", source && 0 == strcmp(source[0], "b"));
+    PMIx_Argv_free(target);
+    PMIx_Argv_free(source);
+}
+
+static void test_insert_array_past_end(void)
+{
+    char **target = NULL;
+    int argc = 0;
+    char **source = NULL;
+
+    pmix_argv_append(&argc, &target, "a");
+    PMIx_Argv_append_nosize(&source, "b");
+    PMIx_Argv_append_nosize(&source, "c");
+
+    /* start beyond the end appends */
+    pmix_argv_insert(&target, 10, source);
+    report("insert array past end: argv[0] == \"a\"", target && 0 == strcmp(target[0], "a"));
+    report("insert array past end: argv[1] == \"b\"", target && 0 == strcmp(target[1], "b"));
+    report("insert array past end: argv[2] == \"c\"", target && 0 == strcmp(target[2], "c"));
+    report("insert array past end: argv[3] is NULL", target && NULL == target[3]);
+    PMIx_Argv_free(target);
+    PMIx_Argv_free(source);
+}
+
+/* ------------------------------------------------------------------ */
+/* pmix_argv_copy_strip                                                */
+/* ------------------------------------------------------------------ */
+
+static void test_copy_strip_quotes(void)
+{
+    char **argv = NULL;
+    PMIx_Argv_append_nosize(&argv, "\"quoted\"");
+    PMIx_Argv_append_nosize(&argv, "plain");
+
+    char **dupv = pmix_argv_copy_strip(argv);
+    report("copy_strip: non-NULL result", NULL != dupv);
+    report("copy_strip: quotes removed", dupv && 0 == strcmp(dupv[0], "quoted"));
+    report("copy_strip: plain unchanged", dupv && 0 == strcmp(dupv[1], "plain"));
+    report("copy_strip: NULL terminated", dupv && NULL == dupv[2]);
+    /* original must be restored to its quoted form */
+    report("copy_strip: original restored", 0 == strcmp(argv[0], "\"quoted\""));
+    PMIx_Argv_free(dupv);
+    PMIx_Argv_free(argv);
+}
+
+static void test_copy_strip_empty_element(void)
+{
+    char **argv = NULL;
+    /* an empty element must not trigger an out-of-bounds access */
+    PMIx_Argv_append_nosize(&argv, "");
+    PMIx_Argv_append_nosize(&argv, "x");
+
+    char **dupv = pmix_argv_copy_strip(argv);
+    report("copy_strip empty: non-NULL result", NULL != dupv);
+    report("copy_strip empty: argv[0] == \"\"", dupv && 0 == strcmp(dupv[0], ""));
+    report("copy_strip empty: argv[1] == \"x\"", dupv && 0 == strcmp(dupv[1], "x"));
+    report("copy_strip empty: NULL terminated", dupv && NULL == dupv[2]);
+    PMIx_Argv_free(dupv);
+    PMIx_Argv_free(argv);
+}
+
+static void test_copy_strip_null(void)
+{
+    char **dupv = pmix_argv_copy_strip(NULL);
+    report("copy_strip NULL returns NULL", NULL == dupv);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -286,6 +377,13 @@ int main(int argc, char **argv)
 
     test_insert_middle();
     test_insert_at_start();
+
+    test_insert_array_middle();
+    test_insert_array_past_end();
+
+    test_copy_strip_quotes();
+    test_copy_strip_empty_element();
+    test_copy_strip_null();
 
     test_append_unique_idx_new();
     test_append_unique_idx_duplicate();
