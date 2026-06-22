@@ -150,8 +150,9 @@ size_t pmix_argv_len(char **argv)
     char **p;
     size_t length;
 
-    if (NULL == argv)
+    if (NULL == argv) {
         return (size_t) 0;
+    }
 
     length = sizeof(char *);
 
@@ -181,6 +182,9 @@ char **pmix_argv_copy_strip(char **argv)
     /* create an "empty" list, so that we return something valid if we
      were passed a valid list with no contained elements */
     dupv = (char **) malloc(sizeof(char *));
+    if (NULL == dupv) {
+        return NULL;
+    }
     dupv[0] = NULL;
 
     for (n=0; NULL != argv[n]; n++) {
@@ -190,7 +194,7 @@ char **pmix_argv_copy_strip(char **argv)
             ++start;
         }
         len = strlen(argv[n]);
-        if ('\"' == argv[n][len-1]) {
+        if (0 < len && '\"' == argv[n][len-1]) {
             argv[n][len-1] = '\0';
             mod = true;
         }
@@ -255,8 +259,9 @@ pmix_status_t pmix_argv_delete(int *argc, char ***argv, int start, int num_to_de
 
     /* adjust the argv array */
     tmp = (char **) realloc(*argv, sizeof(char *) * (i + 1));
-    if (NULL != tmp)
+    if (NULL != tmp) {
         *argv = tmp;
+    }
 
     /* adjust the argc: i is start + suffix_count, i.e. the new count */
     (*argc) = i;
@@ -268,6 +273,7 @@ pmix_status_t pmix_argv_insert(char ***target, int start, char **source)
 {
     int i, source_count, target_count;
     int suffix_count;
+    char **tmp;
 
     /* Check for the bozo cases */
 
@@ -287,13 +293,17 @@ pmix_status_t pmix_argv_insert(char ***target, int start, char **source)
         }
     }
 
-    /* Harder: insertting into the middle */
+    /* Harder: inserting into the middle */
 
     else {
 
-        /* Alloc out new space */
+        /* Allocate new space */
 
-        *target = (char **) realloc(*target, sizeof(char *) * (target_count + source_count + 1));
+        tmp = (char **) realloc(*target, sizeof(char *) * (target_count + source_count + 1));
+        if (NULL == tmp) {
+            return PMIX_ERR_NOMEM;
+        }
+        *target = tmp;
 
         /* Move suffix items down to the end */
 
@@ -319,6 +329,7 @@ pmix_status_t pmix_argv_insert_element(char ***target, int location, char *sourc
 {
     int i, target_count;
     int suffix_count;
+    char **tmp;
 
     /* Check for the bozo cases */
 
@@ -335,8 +346,12 @@ pmix_status_t pmix_argv_insert_element(char ***target, int location, char *sourc
         return PMIX_SUCCESS;
     }
 
-    /* Alloc out new space */
-    *target = (char **) realloc(*target, sizeof(char *) * (target_count + 2));
+    /* Allocate new space */
+    tmp = (char **) realloc(*target, sizeof(char *) * (target_count + 2));
+    if (NULL == tmp) {
+        return PMIX_ERR_NOMEM;
+    }
+    *target = tmp;
 
     /* Move suffix items down to the end */
     suffix_count = target_count - location;
