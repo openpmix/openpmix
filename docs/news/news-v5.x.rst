@@ -4,7 +4,7 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
-5.0.11 -- xx May 2026
+5.0.11 -- 23 Jun 2026
 ---------------------
 :: important:: This release contains the following important changes:
 
