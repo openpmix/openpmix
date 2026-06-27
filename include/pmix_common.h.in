@@ -1016,7 +1016,11 @@ typedef uint32_t pmix_rank_t;
                                                                     //         a target is given, then the host is to treat the resources as
                                                                     //         reserved to members of that namespace.
 #define PMIX_ALLOC_INHERITANCE              "pmix.alloc.inhrt"      // (pmix_alloc_inheritance_t) inheritance rules to be applied to the
-                                                                    //         allocated resources
+                                                                    //         allocated resources. If not provided, defaults to
+                                                                    //         PMIX_ALLOC_INHERIT_DEFAULT - i.e., upon termination of the
+                                                                    //         owning namespace the allocation becomes unreserved and remains
+                                                                    //         available within the owning session rather than being released
+                                                                    //         back to the scheduler
 
 /* job control attributes */
 #define PMIX_JOB_CTRL_ID                    "pmix.jctrl.id"         // (char*) provide a string identifier for this request
