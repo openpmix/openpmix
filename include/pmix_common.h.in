@@ -956,6 +956,12 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_TIME                     "pmix.alloc.time"       // (char*) time that the allocation shall remain valid. Time is specified in
                                                                     //         usual time format of months:days:hours:minutes:seconds, scanning
                                                                     //         from right to left (i.e., a value of "2" equates to 2 seconds)
+#define PMIX_ALLOC_WARN_TIMEOUT             "pmix.alloc.wtmo"       // (uint32_t) request that the scheduler provide advance warning of the
+                                                                    //         impending timeout (expiration) of the allocation. The value
+                                                                    //         indicates the number of seconds prior to expiration at which the
+                                                                    //         warning is to be delivered. The scheduler issues the warning by
+                                                                    //         generating a PMIX_ALLOC_TIMEOUT_WARNING event targeting the
+                                                                    //         requestor of the allocation.
 #define PMIX_ALLOC_FABRIC_TYPE              "pmix.alloc.nettype"    // (char*) type of desired transport (e.g., tcp, udp)
 #define PMIX_ALLOC_FABRIC_PLANE             "pmix.alloc.netplane"   // (char*) id string for the NIC (aka plane) to be used for this allocation
                                                                     //         (e.g., CIDR for Ethernet)
@@ -1741,6 +1747,8 @@ typedef int pmix_status_t;
 #define PMIX_EVENT_JOB_END                          -145
 #define PMIX_EVENT_SESSION_START                    -192
 #define PMIX_EVENT_SESSION_END                      -193
+#define PMIX_ALLOC_TIMEOUT_WARNING                  -194     // scheduler warning of impending allocation timeout - payload
+                                                             // includes the allocation ID(s) and the time remaining
 
 /* process-related events */
 #define PMIX_ERR_PROC_REQUESTED_ABORT               -8
