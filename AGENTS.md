@@ -206,6 +206,14 @@ and [`docs/contributing.rst`](docs/contributing.rst):
 
 **No hand-editing of generated files:** Do not modify files produced by autotools (`configure`, `Makefile.in`, etc.), pre-rendered documentation, or third-party vendored code. Edit the source code instead.
 
+**Never push a branch to `origin`.** The `origin` remote is the shared
+upstream repository (`openpmix/openpmix`); pushing topic branches there
+is not the project workflow. Always push your branch to your personal
+fork remote instead, and open the pull request from the fork against
+the upstream `master` (or the appropriate release branch). If you are
+unsure which remote is the fork, run `git remote -v` and ask rather than
+guessing.
+
 ## Building and Testing
 
 PMIx uses GNU Autotools.  From a clean clone:
