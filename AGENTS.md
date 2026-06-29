@@ -189,6 +189,29 @@ and [`docs/contributing.rst`](docs/contributing.rst):
   with `#if FOO`, not `#ifdef FOO`, so a misspelling is a compiler
   error, not a silent false.
 
+**Never reuse a status/event code value.** Every `PMIX_*` status and
+  event constant in [`include/pmix_common.h.in`](include/pmix_common.h.in)
+  must have a numeric value that is unique across the *entire* code base,
+  including the deprecated constants in
+  [`include/pmix_deprecated.h`](include/pmix_deprecated.h). Two active
+  constants sharing a value are indistinguishable to event handlers and
+  status comparisons — a latent, hard-to-trace bug. Before adding or
+  changing a code, sweep both headers for the value you intend to use,
+  e.g.:
+
+  ```sh
+  grep -hoE '^#define[[:space:]]+[A-Z0-9_]+[[:space:]]+-[0-9]+' \
+      include/pmix_common.h.in include/pmix_deprecated.h \
+      | awk '{print $3}' | sort -n | uniq -d
+  ```
+
+  The one legitimate exception is a deprecation *rename*: a deprecated
+  alias in `pmix_deprecated.h` intentionally keeps the same value as the
+  active constant that replaced it (e.g., `PMIX_ERR_EXISTS` and the
+  deprecated `PMIX_EXISTS` are both `-11`). That is a rename, not a new
+  code. Remember too that values in `-230`..`-330` are reserved as system
+  events by the `PMIX_SYSTEM_EVENT()` macro range.
+
 **Constant-on-left comparisons:** Always write `NULL == ptr` rather than `ptr == NULL`.  This turns typos (`=` instead of `==`) into compile errors.
 
 **Always brace blocks:** Use `{ }` around every conditional or loop body, even single-line ones.

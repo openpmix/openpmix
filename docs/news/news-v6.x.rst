@@ -7,6 +7,12 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Resolve a status-code value collision: PMIX_ERR_LOST_PRECISION and
+   PMIX_ERR_CHANGE_SIGN shared the values -400 and -401 with the
+   PMIX_ERR_PROC_KILLED_BY_CMD and PMIX_ERR_PROC_FAILED_TO_START event
+   codes, making the two indistinguishable to event handlers, status
+   comparisons, and PMIx_Error_string. The two conversion-error codes
+   have been renumbered to -202 and -203
  - gds/shmem2: make fixed-address segment attach reliable, fixing an
    intermittent spawn-time PMIx_Init failure (PMIX_ERR_PACK_MISMATCH)
    seen under AddressSanitizer and during MPI_Comm_spawn
