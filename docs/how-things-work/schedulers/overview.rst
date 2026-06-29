@@ -155,3 +155,41 @@ notification range to the requesting process. A recipient handler
 returns ``PMIX_EVENT_ACTION_COMPLETE`` (or the appropriate status) once
 it has reacted, for instance by issuing a ``PMIX_ALLOC_EXTEND`` request
 to lengthen the allocation, or by beginning an orderly shutdown.
+
+Dynamic resource modification
+-----------------------------
+
+A request to grow or shrink a session is satisfied asynchronously: the
+scheduler adjusts the underlying allocation and the RTE then reshapes
+its distributed virtual machine (DVM) to match - starting or stopping
+daemons on the affected nodes. Because this happens in the background,
+the requestor learns the outcome through an event rather than a direct
+return from the request.
+
+Two events report the result, both targeted at the process that
+requested the modification:
+
+* ``PMIX_DVM_IS_READY`` - the DVM has completed the requested
+  grow/shrink operation and is ready for use.
+
+* ``PMIX_ERR_DVM_MOD`` - the requested grow/shrink operation failed
+  (for example, a daemon failed to start on a node added during a grow).
+
+Both events carry a ``pmix_info_t`` payload identifying the affected
+allocation:
+
+============================  ==========================  ==============================================
+Attribute                     Type                        Meaning
+============================  ==========================  ==============================================
+``PMIX_ALLOC_ID``             ``char*``                   Scheduler-assigned ID of the affected
+                                                          allocation.
+``PMIX_ALLOC_REQ_ID``         ``char*``                   User-provided request ID, included whenever
+                                                          one was given on the original request.
+============================  ==========================  ==============================================
+
+As with the timeout warning, ``PMIX_ALLOC_REQ_ID`` is included only when
+the requestor supplied one, allowing the recipient to correlate the
+notification with the request it issued using either identifier. The
+``PMIX_ERR_DVM_MOD`` payload additionally carries whatever information
+is available describing the cause of the failure, so the recipient can
+decide how to recover.
