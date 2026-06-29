@@ -1741,6 +1741,11 @@ typedef int pmix_status_t;
 #define PMIX_ERR_JOB_WDIR_NOT_FOUND                 -233
 #define PMIX_ERR_JOB_INSUFFICIENT_RESOURCES         -234
 #define PMIX_ERR_JOB_SYS_OP_FAILED                  -235
+#define PMIX_ERR_DVM_MOD                            -196     // a requested DVM grow/shrink operation failed (e.g., daemon startup
+                                                             // on grow failed) - payload includes the scheduler allocation ID
+                                                             // (PMIX_ALLOC_ID) and the user-provided allocation ID
+                                                             // (PMIX_ALLOC_REQ_ID), if one was given, plus any available
+                                                             // information describing the cause of the failure
 
 /* job/session-related non-error events */
 #define PMIX_EVENT_JOB_START                        -191
@@ -1749,6 +1754,9 @@ typedef int pmix_status_t;
 #define PMIX_EVENT_SESSION_END                      -193
 #define PMIX_ALLOC_TIMEOUT_WARNING                  -194     // scheduler warning of impending allocation timeout - payload
                                                              // includes the allocation ID(s) and the time remaining
+#define PMIX_DVM_IS_READY                           -195     // the DVM has completed a requested grow/shrink operation - payload
+                                                             // includes the scheduler allocation ID (PMIX_ALLOC_ID) and the
+                                                             // user-provided allocation ID (PMIX_ALLOC_REQ_ID), if one was given
 
 /* process-related events */
 #define PMIX_ERR_PROC_REQUESTED_ABORT               -8
