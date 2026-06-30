@@ -176,6 +176,16 @@ and [`docs/contributing.rst`](docs/contributing.rst):
 
 **Symbol visibility:** Use `PMIX_EXPORT` on any symbol that must be visible outside `libpmix.so`.  Do not mark internal symbols with `PMIX_EXPORT`.
 
+**Use the `__pmix_attribute_*__` macros for compiler attributes.**
+  [`src/include/pmix_config_bottom.h`](src/include/pmix_config_bottom.h),
+  pulled in transitively by `pmix_config.h`, defines portable wrappers —
+  `__pmix_attribute_unused__`, `__pmix_attribute_noreturn__`,
+  `__pmix_attribute_format__`, `__pmix_attribute_deprecated__`, and many
+  more — that expand to the appropriate `__attribute__((...))` on
+  compilers that support it and to nothing elsewhere. Reach for these
+  (for example, to mark an unused function parameter) rather than writing
+  a bare `__attribute__` or leaving a warning unaddressed.
+
 **PMIx back-end code must never call public `PMIx_*()` APIs.** The
   bindings are thin wrappers; call the internal `pmix_*` routines, not
   the user-facing entry points.
