@@ -17,3 +17,4 @@ find information on that subject here.
    resolve.rst
    adding_datatypes.rst
    pmix_log.rst
+   regex.rst
