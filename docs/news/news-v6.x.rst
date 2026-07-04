@@ -22,6 +22,18 @@ Detailed changes since v6.1.0:
    failing PMIx_Init. GDS module selection is now tracked per-client
    rather than per-namespace, so one client falling back does not affect
    its peers
+ - plog/stdfd: implement the output-formatting directives for the
+   stdout/stderr log channels. PMIx_Log requests that carry
+   PMIX_LOG_TAG_OUTPUT, PMIX_LOG_TIMESTAMP_OUTPUT, and/or
+   PMIX_LOG_XML_OUTPUT now have their output tagged, timestamped, and/or
+   wrapped in XML, matching the formatting used for forwarded stdio.
+   These directives were previously accepted but silently ignored
+ - iof: fix XML output escaping. An ampersand was emitted as the invalid
+   entity "&ap;" instead of "&amp;", and each escaped character left a
+   trailing zero byte in the output due to an allocation-size overcount.
+   This affected all XML-formatted stdout/stderr output
+ - plog/smtp: fix the "body_suffix" MCA parameter, which was mistakenly
+   registered under the name "body_prefix" and so could not be set
 
 6.0.0 -- TBD
 ------------

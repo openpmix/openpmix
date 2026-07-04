@@ -181,6 +181,48 @@ Dispatch (pmix_plog_base_log)
      module cannot handle the request; skip to next.
    * Any other error — abort processing.
 
+If, after matching, *no* module was assembled for the request,
+``pmix_plog_base_log()`` returns ``PMIX_OPERATION_SUCCEEDED`` — **not**
+``PMIX_SUCCESS``.  This distinction is load-bearing throughout the log
+path (see `The PMIX_OPERATION_SUCCEEDED convention`_).
+
+
+Module Contract and Cooperation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Because ``plog`` is *multi-select*, a single request may be serviced by
+several modules in turn, and the modules must cooperate rather than step
+on each other.  Two mechanisms make this work, and any new or modified
+component must honor both:
+
+**Per-item completion marking.**  The ``data[]`` array is shared, mutable
+state.  A module marks each entry it consumes with
+``PMIX_INFO_OP_COMPLETED(&data[n])`` and skips any entry for which
+``PMIX_INFO_OP_IS_COMPLETE(&data[n])`` is already true.  Both the
+dispatcher (during aggregation suppression) and the sibling modules
+observe these flags, so this is how two modules divide one array without
+double-logging.
+
+**The return-code contract.**  A module's ``log`` must return exactly one
+of:
+
+* ``PMIX_SUCCESS`` / ``PMIX_OPERATION_SUCCEEDED`` — "I handled at least
+  part of this request."
+* ``PMIX_ERR_TAKE_NEXT_OPTION`` or ``PMIX_ERR_NOT_AVAILABLE`` — "none of
+  these keys are mine; let another module try."  Returning this (rather
+  than an error) when a module's keys are simply absent is precisely what
+  lets the multi-select chain — and ``PMIX_LOG_ONCE`` — work.
+* a hard error code — only for genuine failures; it aborts the whole
+  dispatch loop.
+
+The most common ``plog`` defect is an over-eager module that returns
+``PMIX_SUCCESS`` for a request it did not actually handle: doing so
+swallows a ``PMIX_LOG_ONCE`` request and starves the channel the caller
+really wanted.  (Historically the ``syslog`` module has been loose here —
+it falls through to ``PMIX_SUCCESS`` rather than
+``PMIX_ERR_TAKE_NEXT_OPTION`` when its keys are absent; new code should
+follow the explicit convention.)
+
 
 plog Components
 ---------------
@@ -188,16 +230,50 @@ plog Components
 stdfd (src/mca/plog/stdfd/)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Handles ``PMIX_LOG_STDERR`` and ``PMIX_LOG_STDOUT``.
+Claims the ``stdout`` and ``stderr`` channels (set up in the module's
+``init`` from a split of ``"stdout,stderr"``) and handles
+``PMIX_LOG_STDERR`` and ``PMIX_LOG_STDOUT``.  Its ``component_query``
+returns priority ``5`` — deliberately *below* ``syslog`` and ``smtp`` so
+that, absent an explicit ordering, the more notable channels sort ahead
+of plain stdio.
 
-* When called on a *client*: writes directly to ``stderr`` / ``stdout``
-  via ``fprintf``.
-* When called on a *server*: delivers the output to the client's IOF
-  stream via ``PMIx_server_IOF_deliver()`` so it appears on the
-  originating process's stdio.
+* When called on a *client* or *tool*: writes the string directly to
+  ``stderr`` / ``stdout`` via ``fprintf`` — this process *is* the
+  endpoint, so there is nowhere to forward.
+* When called on a *server*: the output belongs to a process whose stdio
+  the server manages, so it is handed to the IOF (I/O forwarding)
+  subsystem via the non-blocking ``PMIx_server_IOF_deliver()`` (targeting
+  ``PMIX_FWD_STDOUT_CHANNEL`` / ``PMIX_FWD_STDERR_CHANNEL``) so it appears
+  on the originating process's stdio.
 
-The component also honours ``PMIX_LOG_TAG_OUTPUT`` (prepend channel name)
-and ``PMIX_LOG_XML_OUTPUT`` (wrap in XML tags).
+The server path allocates a small ``pmix_iof_deliver_t`` scratch object
+that carries a *copy* of the message bytes and the source ``pmix_proc_t``;
+a completion callback (``lkcbfunc``) releases it once IOF delivery
+finishes.  This is a deliberate, local exception to the framework's
+no-copy rule: because ``mylog`` returns before the async delivery
+completes, the caller's ``data`` array cannot be assumed live by then, so
+the payload must be copied.
+
+The component also honors the output-formatting directives
+``PMIX_LOG_TAG_OUTPUT`` (prefix each line with its channel tag),
+``PMIX_LOG_TIMESTAMP_OUTPUT`` (prefix with a timestamp), and
+``PMIX_LOG_XML_OUTPUT`` (wrap the line in an XML element, payload
+escaped).  Rather than duplicate that logic, it maps the directives onto
+a ``pmix_iof_flags_t`` and calls the shared IOF formatter
+``pmix_iof_prep_output()`` so log output is formatted identically to
+forwarded stdio.  The formatter runs only when at least one flag is set;
+otherwise the raw string is written directly, so unformatted logging pays
+no extra cost.
+
+.. note::
+
+   ``pmix_iof_prep_output()`` generates the printed timestamp at emission
+   time (as it does for IOF), so the explicit ``PMIX_LOG_TIMESTAMP``
+   *value* attached to the request is not used for the ``stdfd`` stamp —
+   in contrast to the ``syslog`` and ``smtp`` components, which print the
+   supplied value.  Honoring a caller-supplied timestamp here would be a
+   central enhancement to the shared formatter rather than a
+   ``stdfd``-local change.
 
 syslog (src/mca/plog/syslog/)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -214,17 +290,39 @@ component falls back to sensible defaults.
 smtp (src/mca/plog/smtp/)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Handles ``PMIX_LOG_EMAIL``.  Requires libesmtp at build time.
+Claims the ``email`` channel and handles ``PMIX_LOG_EMAIL``.  Requires
+libesmtp at build time; the component's ``configure.m4`` disables it when
+libesmtp is absent, so its symbols must never be assumed present
+elsewhere in the library.
 
-Additional directives used only by this component:
+Unlike the other channels, ``PMIX_LOG_EMAIL``'s value is *not* a string —
+it is a ``pmix_data_array_t`` of nested ``pmix_info_t`` entries that
+describe the message.  ``mylog`` picks up that nested array and scans it
+for:
 
-* ``PMIX_LOG_EMAIL_ADDR`` — ``(char*)`` recipient address(es)
+* ``PMIX_LOG_EMAIL_ADDR`` — ``(char*)`` comma-delimited recipient list
 * ``PMIX_LOG_EMAIL_SENDER_ADDR`` — ``(char*)`` sender address
 * ``PMIX_LOG_EMAIL_SUBJECT`` — ``(char*)`` subject line
-* ``PMIX_LOG_EMAIL_SERVER`` — ``(char*)`` SMTP relay hostname
+* ``PMIX_LOG_MSG`` — the body, accepted as either a ``PMIX_STRING`` or a
+  ``PMIX_BYTE_OBJECT``
 
-A failed ``libesmtp`` send emits a ``pmix_show_help`` warning from
-``help-pmix-plog.txt`` topic ``smtp:send_email failed``.
+Recipient and sender fall back to the component's ``to`` / ``from_addr``
+MCA parameters when the request omits them.  The SMTP relay host and port
+come from the ``plog_smtp_server`` / ``plog_smtp_port`` MCA parameters,
+*not* from the request; the component's ``component_query`` resolves the
+server name with ``gethostbyname`` at selection time and disables the
+component (returns no module) if the name will not resolve.  Only one
+email per call and one body per email are permitted; both limits are
+enforced with a hard error return.  ``PMIX_LOG_TIMESTAMP`` (from the
+directives) is added as a ``Timestamp`` header when present.
+
+Delivery is driven through libesmtp in ``send_email``: it temporarily
+ignores ``SIGPIPE`` around the network I/O (restoring the prior handler
+afterward) so a remote hangup cannot kill the process, and it streams the
+body through a small state-machine callback (``message_cb``) that brackets
+the caller's message with the configurable ``plog_smtp_body_prefix`` and
+``plog_smtp_body_suffix`` text.  A failed send emits a ``pmix_show_help``
+warning from ``help-pmix-plog.txt`` topic ``smtp:send_email failed``.
 
 
 pmix_show_help Aggregation
@@ -315,6 +413,33 @@ Set via the standard MCA parameter mechanism, e.g.::
     export PMIX_MCA_pmix_log_host_only=1
 
 
+The PMIX_OPERATION_SUCCEEDED convention
+---------------------------------------
+
+The log path leans heavily on the difference between two success codes,
+and getting it wrong hangs the caller or double-fires a callback:
+
+* ``PMIX_SUCCESS`` means "accepted; a completion callback **will** fire
+  later."  The blocking ``PMIx_Log`` therefore waits on its condition
+  variable, and non-blocking callers expect their ``cbfunc`` to run.
+* ``PMIX_OPERATION_SUCCEEDED`` means "already done synchronously; **no**
+  callback is coming."  ``PMIx_Log`` translates it to ``PMIX_SUCCESS``
+  for its own return but does *not* wait.
+
+This is why:
+
+* ``pmix_plog_base_log()`` returns ``PMIX_OPERATION_SUCCEEDED`` when there
+  was nothing to log (no matching module, or everything suppressed by
+  aggregation) — there is no downstream callback to await.
+* ``pmix_server_log()`` promotes a local ``PMIX_SUCCESS`` from
+  ``pmix_plog.log()`` to ``PMIX_OPERATION_SUCCEEDED`` before replying to
+  the client, signalling that the request was fully handled on the server
+  and the reply carries the final status.
+
+When adding a component or a new entry point, choose the code that
+matches whether a callback will actually be invoked.
+
+
 Thread Safety
 -------------
 
@@ -365,3 +490,10 @@ Key Source Files
      - show-help subsystem & dup tracking
    * - ``src/runtime/pmix_params.c``
      - ``pmix_log_host_only`` MCA parameter
+
+For a code-oriented orientation aimed at contributors working *inside*
+the framework, each ``plog`` directory also carries an ``AGENTS.md``
+(with a ``CLAUDE.md`` symlink): ``src/mca/plog/AGENTS.md`` for the
+framework as a whole, plus one in each of ``stdfd/``, ``syslog/``, and
+``smtp/``.  This document explains how logging is integrated into the
+wider library; those explain each component's internals in detail.
