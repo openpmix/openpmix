@@ -596,7 +596,7 @@ static pmix_status_t disk_stat(void *answer,
         }
 
         if (dkst->ioprog) {
-            u64 = strtoul(fields[10], NULL, 11);
+            u64 = strtoul(fields[11], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_IO_IN_PROGRESS, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -606,7 +606,7 @@ static pmix_status_t disk_stat(void *answer,
             }
         }
         if (dkst->ioms) {
-            u64 = strtoul(fields[10], NULL, 12);
+            u64 = strtoul(fields[12], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_IO_MILLISEC, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -616,7 +616,7 @@ static pmix_status_t disk_stat(void *answer,
             }
         }
         if (dkst->ioweight) {
-            u64 = strtoul(fields[10], NULL, 13);
+            u64 = strtoul(fields[13], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_IO_WEIGHTED, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);

@@ -166,14 +166,16 @@ These are real observations about the current Linux parsing code; if you
 touch this file, be aware of them (and fixing them is welcome as a
 standalone commit — do not paper over them):
 
-- **`disk_stat` `ioprog`/`ioms`/`ioweight` look buggy.** Those three read
-  from `fields[10]` (the same column used for `wrtms`) and call
-  `strtoul(..., 10/11/12/13)` with a non-decimal *base* argument rather
-  than the intended field index. The `/proc/diskstats` layout puts
-  in-progress/io-ms/weighted-io in fields 11/12/13 and they are all
-  decimal, so this almost certainly should be `strtoul(fields[11..13],
-  NULL, 10)`. Treat the values these fields currently produce as
-  unreliable.
+- **`disk_stat` only handles the classic 14-column `/proc/diskstats`.**
+  The reader indexes fixed columns (device name at `fields[2]`, the 11
+  stat columns at `fields[3]`..`fields[13]`) and, before parsing, *skips*
+  any line with more than 14 fields (`if (14 < PMIx_Argv_count(fields))`).
+  Kernels 4.18+/5.5+ append discard and flush counters, giving 18–20
+  fields per line, so on a modern kernel every `sd*` line is rejected and
+  the disk path returns nothing. Widening the guard (and reading the newer
+  columns) is a genuine, still-open improvement — but be careful to keep
+  the short-line case safe, since partitions on older kernels can present
+  fewer than 14 fields.
 - **`node_stat` matches `/proc/meminfo` keys with exact `strcmp`** (e.g.
   `strcmp(dptr, "MemTotal")`) against the colon-stripped key produced by
   `local_stripper`. This depends on that stripping being exact; changes to
