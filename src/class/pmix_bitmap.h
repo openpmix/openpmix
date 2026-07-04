@@ -172,7 +172,7 @@ static inline void pmix_bitmap_copy(pmix_bitmap_t *dest, pmix_bitmap_t *src)
         if (NULL != dest->bitmap)
             free(dest->bitmap);
         dest->max_size = src->max_size;
-        dest->bitmap = (uint64_t *) malloc(src->array_size * sizeof(uint64_t));
+        dest->bitmap = (uint64_t *) calloc(src->array_size, sizeof(uint64_t));
     }
     memcpy(dest->bitmap, src->bitmap, src->array_size * sizeof(uint64_t));
     dest->array_size = src->array_size;
