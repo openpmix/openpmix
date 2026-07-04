@@ -19,3 +19,4 @@ find information on that subject here.
    pmix_log.rst
    regex.rst
    ptl.rst
+   pstat.rst
