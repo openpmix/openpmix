@@ -18,8 +18,8 @@ described there all apply here and are not repeated. This file covers what
 is specific to `pstat`: what the framework is for, how a monitoring
 request flows through it, the shared data structures and base helpers
 every component leans on, and the contract a component must honor. Each
-component subdirectory (`plinux/`, `test/`) carries its own `AGENTS.md`
-with component-specific detail.
+component subdirectory (`plinux/`, `pmacos/`, `test/`) carries its own
+`AGENTS.md` with component-specific detail.
 
 For a wider, API-oriented tour of how this framework implements the
 `PMIx_Process_monitor` family of calls, see
@@ -49,9 +49,12 @@ any caller of the monitor API.
 
 `pstat` is a **single-select** framework: exactly one component is active
 per process. On a Linux node with a readable `/proc`, that is `plinux`
-(priority 80). The `test` component (priority 20) returns deterministic
+(priority 80); on macOS (Darwin) it is `pmacos` (priority 80), which reads
+the same categories through the mach/libproc/sysctl/IOKit interfaces.
+Only one of these ever builds on a given host, so their equal priorities
+never collide. The `test` component (priority 20) returns deterministic
 canned values and exists so the monitor code path can be exercised on
-platforms without `/proc` and in CI. If no component can run, the base
+platforms without a native reader and in CI. If no component can run, the base
 installs an "unsupported" module whose every entry point returns
 `PMIX_ERR_NOT_SUPPORTED` — so the monitor API degrades cleanly rather
 than crashing.
@@ -68,6 +71,7 @@ src/mca/pstat/
 │   ├── pstat_base_select.c single-component selection + init
 │   └── pstat_base_fns.c    the four "parse the request" helpers
 ├── plinux/                 Linux /proc reader (the real component)
+├── pmacos/                 macOS reader (mach/libproc/sysctl/IOKit)
 └── test/                   canned-data component for CI / unsupported hosts
 ```
 
@@ -353,10 +357,12 @@ rest of the library also uses.
 
 The framework core (`base/`) is always built into `libpmix`. Each
 component builds as a standard MCA component (DSO
-`pmix_mca_pstat_<name>.la` or static `libpmix_mca_pstat_<name>.la`). Only
-`plinux` ships a `configure.m4`: it enables the component **only** on
-Linux with a readable `/proc/cpuinfo` and a defined `HZ` (from
-`<sys/param.h>`), so on non-Linux hosts only `test` remains and the
+`pmix_mca_pstat_<name>.la` or static `libpmix_mca_pstat_<name>.la`). Both
+real components ship a `configure.m4`: `plinux` enables **only** on Linux
+with a readable `/proc/cpuinfo` and a defined `HZ` (from `<sys/param.h>`),
+and `pmacos` enables **only** on Apple/Darwin (`oac_found_apple`), where
+it also pulls in the IOKit and CoreFoundation frameworks for its per-disk
+statistics. On a host matching neither, only `test` remains and the
 framework falls back to it (or to `unsupported`). Adding a component means
 creating `src/mca/pstat/<name>/` with the usual `Makefile.am`, a component
 struct, and a module; the framework picks it up through the generated

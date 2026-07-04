@@ -12,7 +12,8 @@ timer and streams each sample back to the requestor as a PMIx event.
 For a code-oriented orientation aimed at contributors working *inside*
 the framework, each ``pstat`` directory also carries an ``AGENTS.md``
 (with a ``CLAUDE.md`` symlink): ``src/mca/pstat/AGENTS.md`` for the
-framework as a whole, plus one each in ``plinux/`` and ``test/``. This
+framework as a whole, plus one each in ``plinux/``, ``pmacos/``, and
+``test/``. This
 document explains how the pieces fit into the wider library; those explain
 each piece's internals in detail.
 
@@ -189,10 +190,16 @@ Inside the Framework
      - 80
      - Reads real statistics from the Linux ``/proc`` filesystem. Built
        only on Linux with a readable ``/proc`` and a defined ``HZ``.
+   * - ``pmacos``
+     - 80
+     - Reads real statistics on macOS (Darwin) through the native mach,
+       libproc, sysctl, and IOKit interfaces. Built only on Apple hosts;
+       never coexists with ``plinux``, so the shared priority never
+       collides.
    * - ``test``
      - 20
      - Returns fixed, canned values with no OS access. Always built; the
-       fallback on non-Linux hosts and the vehicle for CI.
+       fallback where no native reader is present and the vehicle for CI.
 
 If no component can run, the base leaves an *unsupported* module in place
 whose ``query`` returns ``PMIX_ERR_NOT_SUPPORTED``, so the monitor API
