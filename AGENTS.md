@@ -247,6 +247,23 @@ the upstream `master` (or the appropriate release branch). If you are
 unsure which remote is the fork, run `git remote -v` and ask rather than
 guessing.
 
+**Regenerate `show_help` content after touching any help text.** The
+`show_help` help messages are compiled into the library from a generated
+source pair, [`src/util/pmix_show_help_content.c`](src/util/pmix_show_help_content.c)
+and its header, which are built from the `help-*.txt` files. These
+generated files are not refreshed automatically when the underlying help
+text changes. After **any** add, delete, or modify of `show_help`
+content — including adding a brand-new `show_help` file — you must
+delete the generated pair and rebuild so the change is picked up:
+
+```sh
+rm src/util/pmix_show_help_content.*
+make
+```
+
+Skipping this leaves the library emitting stale help output that no
+longer matches the source.
+
 ## Building and Testing
 
 PMIx uses GNU Autotools.  From a clean clone:
