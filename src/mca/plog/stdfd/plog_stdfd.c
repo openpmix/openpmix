@@ -103,7 +103,12 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     size_t n;
     pmix_status_t rc;
     pmix_iof_deliver_t *p;
-    PMIX_HIDE_UNUSED_PARAMS(directives, ndirs);
+    pmix_iof_flags_t flags = PMIX_IOF_FLAGS_STATIC_INIT;
+    pmix_iof_channel_t channel;
+    pmix_byte_object_t raw;
+    pmix_byte_object_t *formatted;
+    const pmix_proc_t *name;
+    FILE *stream;
 
     /* if there is no data, then we don't handle it */
     if (NULL == data || 0 == ndata) {
@@ -114,18 +119,31 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
                         "%s: plog:stdfd called",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-#if 0
-    /* check to see if there are any relevant directives */
-    for (n = 0; n < ndirs; n++) {
-        if (0 == strncmp(directives[n].key, PMIX_LOG_TIMESTAMP, PMIX_MAX_KEYLEN)) {
-            flags.timestamp = directives[n].value.data.time;
-        } else if (0 == strncmp(directives[n].key, PMIX_LOG_XML_OUTPUT, PMIX_MAX_KEYLEN)) {
-            flags.xml = PMIX_INFO_TRUE(&directives[n]);
-        } else if (0 == strncmp(directives[n].key, PMIX_LOG_TAG_OUTPUT, PMIX_MAX_KEYLEN)) {
-            flags.tag = PMIX_INFO_TRUE(&directives[n]);
+    /* check for any output-formatting directives that apply to the
+     * stdout/stderr channels - these tell us to label the output with
+     * the channel name, prefix it with a timestamp, and/or wrap it in
+     * xml. We reuse the common IOF output formatter so that log output
+     * is formatted identically to forwarded stdio. */
+    if (NULL != directives) {
+        for (n = 0; n < ndirs; n++) {
+            if (0 == strncmp(directives[n].key, PMIX_LOG_TAG_OUTPUT, PMIX_MAX_KEYLEN)) {
+                flags.tag = PMIX_INFO_TRUE(&directives[n]);
+            } else if (0 == strncmp(directives[n].key, PMIX_LOG_TIMESTAMP_OUTPUT, PMIX_MAX_KEYLEN)) {
+                flags.timestamp = PMIX_INFO_TRUE(&directives[n]);
+            } else if (0 == strncmp(directives[n].key, PMIX_LOG_XML_OUTPUT, PMIX_MAX_KEYLEN)) {
+                flags.xml = PMIX_INFO_TRUE(&directives[n]);
+            }
         }
     }
-#endif
+    /* the formatter only decorates the output if at least one flag is set */
+    if (flags.tag || flags.timestamp || flags.xml) {
+        flags.set = true;
+    }
+
+    /* the formatter tags each line with the identity of the source, so
+     * fall back to our own ID if the caller did not provide one */
+    name = (NULL == source) ? &pmix_globals.myid : source;
+
     /* check to see if there are any stdfd entries */
     rc = PMIX_ERR_TAKE_NEXT_OPTION;
     for (n = 0; n < ndata; n++) {
@@ -133,44 +151,57 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
             continue;
         }
         if (0 == strncmp(data[n].key, PMIX_LOG_STDERR, PMIX_MAX_KEYLEN)) {
-            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
-                                "%s: plog:stdfd delivering to stderr for source %s",
-                                PMIX_NAME_PRINT(&pmix_globals.myid),
-                                (NULL == source) ? "NULL" : PMIX_NAME_PRINT(source));
-            if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) ||
-                PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-                fprintf(stderr, "%s", data[n].value.data.string);
-            } else {
-                p = PMIX_NEW(pmix_iof_deliver_t);
-                PMIX_XFER_PROCID(&p->source, source);
-                p->bo.size = strlen(data[n].value.data.string) + 1; // include NULL terminator
-                p->bo.bytes = (char*)malloc(p->bo.size);
-                memcpy(p->bo.bytes, data[n].value.data.string, p->bo.size);
-                rc = PMIx_server_IOF_deliver(&p->source, PMIX_FWD_STDERR_CHANNEL, &p->bo, NULL, 0, lkcbfunc, (void*)p);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE(p);
-                }
-            }
+            channel = PMIX_FWD_STDERR_CHANNEL;
+            stream = stderr;
         } else if (0 == strncmp(data[n].key, PMIX_LOG_STDOUT, PMIX_MAX_KEYLEN)) {
-            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
-                                "%s: plog:stdfd delivering to stdout for source %s",
-                                PMIX_NAME_PRINT(&pmix_globals.myid),
-                                (NULL == source) ? "NULL" : PMIX_NAME_PRINT(source));
-            if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) ||
-                PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-                fprintf(stdout, "%s", data[n].value.data.string);
+            channel = PMIX_FWD_STDOUT_CHANNEL;
+            stream = stdout;
+        } else {
+            continue;
+        }
+
+        pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                            "%s: plog:stdfd delivering to %s for source %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid),
+                            (PMIX_FWD_STDERR_CHANNEL == channel) ? "stderr" : "stdout",
+                            (NULL == source) ? "NULL" : PMIX_NAME_PRINT(source));
+
+        /* apply the requested tag/timestamp/xml formatting, if any */
+        formatted = NULL;
+        if (flags.set) {
+            raw.bytes = data[n].value.data.string;
+            raw.size = strlen(data[n].value.data.string);
+            formatted = pmix_iof_prep_output(name, &flags, channel, &raw);
+        }
+
+        if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) ||
+            PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+            /* we are the endpoint - write directly to our own stream */
+            if (NULL != formatted) {
+                fwrite(formatted->bytes, 1, formatted->size, stream);
+                free(formatted->bytes);
+                free(formatted);
             } else {
-                p = PMIX_NEW(pmix_iof_deliver_t);
-                PMIX_XFER_PROCID(&p->source, source);
+                fprintf(stream, "%s", data[n].value.data.string);
+            }
+        } else {
+            /* hand off to IOF for delivery to the source proc's stream */
+            p = PMIX_NEW(pmix_iof_deliver_t);
+            PMIX_XFER_PROCID(&p->source, name);
+            if (NULL != formatted) {
+                /* take ownership of the formatted bytes */
+                p->bo.bytes = formatted->bytes;
+                p->bo.size = formatted->size;
+                free(formatted);
+            } else {
                 p->bo.size = strlen(data[n].value.data.string) + 1; // include NULL terminator
-                p->bo.bytes = (char*)malloc(p->bo.size);
+                p->bo.bytes = (char *) malloc(p->bo.size);
                 memcpy(p->bo.bytes, data[n].value.data.string, p->bo.size);
-                rc = PMIx_server_IOF_deliver(&p->source, PMIX_FWD_STDOUT_CHANNEL, &p->bo, NULL, 0, lkcbfunc, (void*)p);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE(p);
-                }
+            }
+            rc = PMIx_server_IOF_deliver(&p->source, channel, &p->bo, NULL, 0, lkcbfunc, (void *) p);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(p);
             }
         }
     }
