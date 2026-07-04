@@ -1435,6 +1435,7 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
                 if ('&' == bo->bytes[n]) {
                     buffer[m++] = '&';
                     buffer[m++] = 'a';
+                    buffer[m++] = 'm';
                     buffer[m++] = 'p';
                     buffer[m++] = ';';
                 } else if ('<' == bo->bytes[n]) {
@@ -1456,6 +1457,11 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
                     buffer[m++] = bo->bytes[n];
                 }
             }
+            /* the initial bufsize was a worst-case over-estimate used to
+             * size the allocation; the actual number of bytes written is
+             * "m". Use that downstream so we don't copy the trailing
+             * zero-fill into the output. */
+            bufsize = m;
         } else {
             buffer = bo->bytes;
             bufsize = bo->size;
