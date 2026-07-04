@@ -18,3 +18,4 @@ find information on that subject here.
    adding_datatypes.rst
    pmix_log.rst
    regex.rst
+   ptl.rst
