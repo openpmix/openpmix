@@ -481,7 +481,10 @@ static pmix_status_t disk_stat(void *answer,
         if (NULL == fields) {
             continue;
         }
-        if (14 < PMIx_Argv_count(fields)) {
+        /* we index fixed columns up through fields[13], so require at
+         * least 14 fields; modern kernels append discard/flush columns
+         * that we simply ignore */
+        if (14 > PMIx_Argv_count(fields)) {
             PMIx_Argv_free(fields);
             continue;
         }
@@ -693,7 +696,10 @@ static pmix_status_t net_stat(void *answer, char**nets,
         if (NULL == fields) {
             continue;
         }
-        if (11 < PMIx_Argv_count(fields)) {
+        /* we index fixed columns up through fields[10], so require at
+         * least 11 fields; /proc/net/dev supplies 16 per interface and we
+         * simply ignore the extras */
+        if (11 > PMIx_Argv_count(fields)) {
             PMIx_Argv_free(fields);
             continue;
         }

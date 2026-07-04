@@ -166,16 +166,17 @@ These are real observations about the current Linux parsing code; if you
 touch this file, be aware of them (and fixing them is welcome as a
 standalone commit — do not paper over them):
 
-- **`disk_stat` only handles the classic 14-column `/proc/diskstats`.**
-  The reader indexes fixed columns (device name at `fields[2]`, the 11
-  stat columns at `fields[3]`..`fields[13]`) and, before parsing, *skips*
-  any line with more than 14 fields (`if (14 < PMIx_Argv_count(fields))`).
-  Kernels 4.18+/5.5+ append discard and flush counters, giving 18–20
-  fields per line, so on a modern kernel every `sd*` line is rejected and
-  the disk path returns nothing. Widening the guard (and reading the newer
-  columns) is a genuine, still-open improvement — but be careful to keep
-  the short-line case safe, since partitions on older kernels can present
-  fewer than 14 fields.
+- **The `disk_stat` / `net_stat` readers index fixed columns.** Both use
+  positional columns (disk: device name at `fields[2]`, stats at
+  `fields[3]`..`fields[13]`; net: stats at `fields[0]`..`fields[10]`), so
+  each guards against a short line before parsing — disk requires at least
+  14 fields, net at least 11. Extra trailing columns are ignored, which is
+  what lets the readers accept modern kernels' wider lines (the
+  discard/flush counters `/proc/diskstats` gained in 4.18+/5.5+, and the
+  16 columns `/proc/net/dev` supplies per interface). Two real limitations
+  remain: the newer disk discard/flush counters are **not** surfaced as
+  attributes, and disk selection matches only device names containing
+  `"sd"` — so `nvme*` and other non-SCSI devices are skipped entirely.
 - **`node_stat` matches `/proc/meminfo` keys with exact `strcmp`** (e.g.
   `strcmp(dptr, "MemTotal")`) against the colon-stripped key produced by
   `local_stripper`. This depends on that stripping being exact; changes to
