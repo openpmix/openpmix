@@ -132,10 +132,11 @@ with the `PMIx_Info_list_*` helpers) to the answer, each tagged with a
 - **`node_stat`** — reads `/proc/loadavg` (the three load averages) and
   `/proc/meminfo` (total/free/buffers/cached/swap-cached/swap-total/
   swap-free/mapped), gated by `op->ndstats`. Emits into the node sub-list.
-- **`disk_stat`** — reads `/proc/diskstats`, keeping lines that look like
-  `sd*` disks (or only those named in `op->disks`), and emits the
-  read/write/io counters selected by `op->dkstats`. Emits
-  `PMIX_DISK_RESOURCE_USAGE`.
+- **`disk_stat`** — reads `/proc/diskstats`, keeping lines whose device
+  name matches a known physical-disk driver prefix — `sd`, `hd`, `vd`,
+  `xvd`, `nvme`, or `mmcblk` (see `is_disk_device`) — or only those named
+  in `op->disks`, and emits the read/write/io counters selected by
+  `op->dkstats`. Emits `PMIX_DISK_RESOURCE_USAGE`.
 - **`net_stat`** — reads `/proc/net/dev` (skipping its two header lines),
   splitting on the `:` after the interface name, and emits the
   received/sent byte/packet/error counters selected by `op->netstats`,
@@ -173,10 +174,12 @@ standalone commit — do not paper over them):
   14 fields, net at least 11. Extra trailing columns are ignored, which is
   what lets the readers accept modern kernels' wider lines (the
   discard/flush counters `/proc/diskstats` gained in 4.18+/5.5+, and the
-  16 columns `/proc/net/dev` supplies per interface). Two real limitations
-  remain: the newer disk discard/flush counters are **not** surfaced as
-  attributes, and disk selection matches only device names containing
-  `"sd"` — so `nvme*` and other non-SCSI devices are skipped entirely.
+  16 columns `/proc/net/dev` supplies per interface). One real limitation
+  remains: the newer disk discard/flush counters are **not** surfaced as
+  attributes. (Disk *selection* is no longer SCSI-only — `is_disk_device`
+  now matches `sd`/`hd`/`vd`/`xvd`/`nvme`/`mmcblk` device-name prefixes,
+  so `nvme*` and other non-SCSI disks are reported. Add a prefix there if
+  a driver you care about is missing.)
 - **`node_stat` matches `/proc/meminfo` keys with exact `strcmp`** (e.g.
   `strcmp(dptr, "MemTotal")`) against the colon-stripped key produced by
   `local_stripper`. This depends on that stripping being exact; changes to

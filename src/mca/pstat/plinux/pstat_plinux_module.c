@@ -111,6 +111,33 @@ static char *next_field(char *ptr, int barrier)
     return ptr;
 }
 
+/* Decide whether a /proc/diskstats device name refers to a physical
+ * disk we should report. The kernel lists many virtual devices (loop,
+ * ram, dm-*, md*, etc.) that we do not want; restrict to the known
+ * block-device driver name prefixes. Partitions (e.g. "sda1",
+ * "nvme0n1p1") share these prefixes and so are reported as well, which
+ * matches the historical behavior of this reader. */
+static bool is_disk_device(const char *name)
+{
+    static const char *const prefixes[] = {
+        "sd",     /* SCSI / SATA / USB block devices */
+        "hd",     /* legacy IDE */
+        "vd",     /* virtio */
+        "xvd",    /* Xen virtual */
+        "nvme",   /* NVMe */
+        "mmcblk", /* eMMC / SD card */
+        NULL
+    };
+    size_t i;
+
+    for (i = 0; NULL != prefixes[i]; i++) {
+        if (0 == strncmp(name, prefixes[i], strlen(prefixes[i]))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static float convert_value(char *value)
 {
     char *ptr;
@@ -471,10 +498,6 @@ static pmix_status_t disk_stat(void *answer,
 
     /* read the file one line at a time */
     while (NULL != (dptr = local_getline(fp))) {
-        /* look for the local disks */
-        if (NULL == strstr(dptr, "sd")) {
-            continue;
-        }
         /* parse to extract the fields */
         fields = NULL;
         local_getfields(dptr, &fields);
@@ -490,7 +513,9 @@ static pmix_status_t disk_stat(void *answer,
         }
         // see if this is a disk they want
         if (NULL == disks) {
-            takeit = true;
+            /* no specific disks named - report every device that looks
+             * like a physical disk (sd*, nvme*, vd*, ...) */
+            takeit = is_disk_device(fields[2]);
         } else {
             takeit = false;
             for (n=0; NULL != disks[n]; n++) {
