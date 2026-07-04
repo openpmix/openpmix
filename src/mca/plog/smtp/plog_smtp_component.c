@@ -135,7 +135,7 @@ static pmix_status_t smtp_register(void)
         "The PMIx SMTP plog wishes to inform you of the following message:\n\n");
      }
 
-    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "body_prefix",
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "body_suffix",
                                                 "Text to put at the end of the mail message",
                                                 PMIX_MCA_BASE_VAR_TYPE_STRING,
                                                 &suffix);
