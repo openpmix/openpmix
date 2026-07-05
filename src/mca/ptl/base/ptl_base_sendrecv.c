@@ -8,6 +8,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Jeffrey M. Squyres.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -102,6 +103,45 @@ static void lost_connection(pmix_peer_t *peer)
                 }
                 if (!flag) {
                     continue;
+                }
+                /* If this peer disconnected as the result of an orderly
+                 * PMIx_Finalize (rather than a fault), do not prune it from a
+                 * *fence* it has not yet joined. Under the repeated
+                 * PMIx_Init/PMIx_Finalize usage model (e.g., the MPI Sessions
+                 * model), the peer will reconnect via a subsequent PMIx_Init
+                 * and is still required to participate in the namespace's
+                 * fences. Because a wildcard fence tracker lists every proc in
+                 * the namespace, a proc that is momentarily disconnected
+                 * between the PMIx_Finalize of one cycle and the PMIx_Init of
+                 * the next matches, by name, a fence tracker that a faster
+                 * peer already opened for the next cycle; pruning it there
+                 * decrements nlocal and lets that fence complete short
+                 * (PMIX_ERR_PARTIAL_SUCCESS), desynchronizing the fence
+                 * sequence and hanging the peers still expecting it. This is
+                 * consistent with the nlocalprocs and event-notification
+                 * handling below, which already special-case peer->finalized.
+                 *
+                 * Scope this strictly to fence (PMIX_FENCENB_CMD). The other
+                 * collective types handled here - connect, disconnect, and
+                 * group construct - establish persistent relationships and are
+                 * not part of the per-cycle init/finalize pattern, so their
+                 * existing fault-tolerance pruning is left unchanged. A
+                 * blocking PMIx_Fence cannot have been joined by a peer that
+                 * subsequently called PMIx_Finalize (the fence must have
+                 * returned first), but a non-blocking PMIx_Fence_nb can be
+                 * abandoned that way, so we still prune when the peer had
+                 * actually joined the tracker. */
+                if (peer->finalized && PMIX_FENCENB_CMD == trk->type) {
+                    bool joined = false;
+                    PMIX_LIST_FOREACH (rinfo, &trk->local_cbs, pmix_server_caddy_t) {
+                        if (PMIX_CHECK_NAMES(&rinfo->peer->info->pname, &peer->info->pname)) {
+                            joined = true;
+                            break;
+                        }
+                    }
+                    if (!joined) {
+                        continue;
+                    }
                 }
                 /* it should - adjust the count */
                 --trk->nlocal;
