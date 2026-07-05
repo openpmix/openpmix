@@ -228,6 +228,15 @@ and [`docs/contributing.rst`](docs/contributing.rst):
 
 **Indentation:** 4 spaces, never tab characters.
 
+**Spacing on conditional statements:** Use a space to separate the condition from the surrounding
+  words — e.g., "if (condition) {" instead of "if(condition){". Separate conditions on long lines
+  by putting the combining operator at the end of the preceding line
+
+  ```c
+  if (condition1 ||
+      condition2) {
+  ```
+
 **Language standard:** C11 is required.  C++-style `//` comments are allowed and preferred.
 
 **Stay compiler-warning-free.** PMIx strives to build with zero
