@@ -127,7 +127,7 @@ static void lost_connection(pmix_peer_t *peer)
                     continue;
                 }
                 /* are we now locally complete? */
-                if (trk->def_complete && trk->nlocal == pmix_list_get_size(&trk->local_cbs)) {
+                if (pmix_server_trk_complete(trk)) {
                     /* if this is a local-only collective, then resolve it now */
                     if (trk->local) {
                         /* everyone else has called in - we need to let them know

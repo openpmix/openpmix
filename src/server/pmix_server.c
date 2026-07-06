@@ -1309,7 +1309,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
         /* update this tracker's status */
         trk->def_complete = all_def;
         /* is this now locally completed? */
-        if (trk->def_complete && pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+        if (pmix_server_trk_complete(trk)) {
             /* it did, so now we need to process it
              * we don't want to block someone
              * here, so kick any completed trackers into a
@@ -2202,7 +2202,7 @@ static void _register_client(int sd, short args, void *cbdata)
             /* update this tracker's status */
             trk->def_complete = all_def;
             /* is this now locally completed? */
-            if (trk->def_complete && pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+            if (pmix_server_trk_complete(trk)) {
                 /* it did, so now we need to process it
                  * we don't want to block someone
                  * here, so kick any completed trackers into a

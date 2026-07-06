@@ -424,4 +424,6 @@ PMIX_EXPORT pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *p
 PMIX_EXPORT pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                                                    pmix_buffer_t *buf);
 
+PMIX_EXPORT bool pmix_server_trk_complete(pmix_server_trkr_t *trk);
+
 #endif // PMIX_SERVER_OPS_H
