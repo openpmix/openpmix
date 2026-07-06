@@ -258,24 +258,48 @@ Behavior that genuinely differs between operations must be confined to a
 small set of per-operation hooks the service invokes — which host
 callback to forward to, and how to assemble the operation's payload
 (modex-data collection for fence; context-id assignment and group-info
-aggregation for group construct). Everything else is shared. A single
-service is the only tractable way to keep the invariants below true: a
-predicate or a rule that exists in exactly one place cannot drift out of
-agreement with a copy of itself.
+aggregation for group construct). Everything else is shared. Sharing the
+logic in exactly one place is the only tractable way to keep the
+invariants below true: a predicate or a rule that exists once cannot
+drift out of agreement with a copy of itself.
+
+**What "single" means in practice.** The fence, connect, and disconnect
+operations do share one tracker type (``pmix_server_trkr_t``), and for
+them the requirement is literal: one struct, one predicate, one loss
+routine. The group operations are the exception. Their tracker is a
+two-level structure — a ``grp_block_t`` owning a list of ``grp_trk_t``
+members, one per call signature — because a single group construct can
+be assembled from several distinct signatures (leader, followers,
+bootstrap), the contribution count is the number of member trackers
+rather than the size of a single contribution list, and the block carries
+group-only state (context-id assignment, group-info aggregation). Forcing
+that onto ``pmix_server_trkr_t`` would be an invasive rewrite of delicate,
+HPC-critical code that currently has no automated test coverage. The
+consolidation requirement for the group family is therefore satisfied by
+sharing the *semantics* — the same completion-predicate shape
+(contributed + departed ≥ expected) and the same Case A / Case B
+lost-connection rules — expressed in the group's own structure and
+reached through a single exported entry point, rather than by collapsing
+the two structs into one. Invariant 7 below is stated in these terms.
 
 Additional required behaviors
 -----------------------------
 
-**Clones share a rank but are distinct contributors.** A process may
-fork/exec one or more clones that connect to the same server with the
-same ``{namespace, rank}`` and independently join a collective. Identity
-tracking must therefore key on the *connected peer*, not solely on the
-``{namespace, rank}`` name: losing one peer must not silently discard a
-clone's contribution that happens to share the same name, and the
-expected/contributed accounting must remain consistent when clones
-participate. Name-based matching (``PMIX_CHECK_NAMES``) alone is
-insufficient to distinguish a peer from its clone and must not be the
-basis for deciding whether "this participant" contributed.
+**Clones share a rank but must not corrupt the accounting.** A process
+may fork/exec one or more clones that connect to the same server with the
+same ``{namespace, rank}`` and independently join a collective. The
+overriding requirement is that losing one peer must never discard a
+clone's contribution that shares the same name. The current expected
+count (``nlocal``) is maintained per *rank* — a clone is not counted as a
+separate expected participant — so the contribution question is asked per
+rank too: a rank is satisfied once any of its peers has contributed. The
+clone data-loss hazard is closed not by keying the contribution *check*
+on the peer pointer but by the stronger guarantee that **a loss never
+removes a contribution at all** (Case A does nothing): whatever a rank's
+peers delivered stays in the collective regardless of which peer's
+connection drops. (A future change that made ``nlocal`` count clones
+individually would move the contribution check to the peer granularity;
+until then, per-rank name matching is the consistent choice.)
 
 **Contribution is idempotent and terminal.** A given required
 contribution is recorded once. Once recorded, it is never removed by
@@ -327,10 +351,13 @@ all times:
    completion** for that tracker.
 #. **The rules apply uniformly** to fence, connect, disconnect, and group
    operations, and to both directly-connected clients and their clones.
-#. **All four operations are tracked by one service through one code
-   path.** There is a single tracker representation, a single completion
-   predicate, and a single lost-connection accounting routine; no
-   operation carries a private copy of the participation logic.
+#. **Participation logic is shared, not copied.** Fence, connect, and
+   disconnect are tracked by one tracker representation with one
+   completion predicate and one lost-connection routine. Group operations,
+   whose two-level tracker differs materially, reuse the same completion-
+   predicate shape and the same Case A / Case B loss semantics through a
+   single exported entry point rather than a private copy. No operation
+   carries its own divergent copy of the participation rules.
 
 Relationship to the current implementation
 -------------------------------------------

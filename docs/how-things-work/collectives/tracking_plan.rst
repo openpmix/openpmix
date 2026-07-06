@@ -87,13 +87,19 @@ operations and add identity accounting. The additive fields:
 
 * ``contributed`` is represented by the existing ``local_cbs`` list — it
   already stores one ``pmix_server_caddy_t`` per contributing peer, and
-  each caddy retains its ``pmix_peer_t *peer``. "Has *this peer*
-  contributed?" is answered by scanning ``local_cbs`` for a caddy whose
-  ``peer`` pointer matches — **by peer, not by name**, which is what
-  makes clones distinguishable.
-* ``departed`` is the new list of expected peers lost before
-  contributing. A peer appears in at most one of ``local_cbs`` /
-  ``departed``.
+  each caddy retains its ``pmix_peer_t *peer``. "Has this rank
+  contributed?" is answered by scanning ``local_cbs`` for a caddy with
+  the departing peer's name. Because ``nlocal`` counts *ranks* (one per
+  local participant, clones not counted separately), the contribution
+  question is correctly asked per rank: a rank is satisfied if any of its
+  peers — the client or a fork/exec'd clone — has an entry. The clone
+  data-loss hazard the spec warns about is avoided not by keying the
+  *check* on the peer pointer but by **never removing a contribution on
+  loss at all** (Case A does nothing), so a sibling clone's data can never
+  be discarded.
+* ``departed`` is the new list (of ``pmix_proclist_t``) of expected ranks
+  lost before contributing, deduplicated by name. A rank appears in at
+  most one of ``local_cbs`` / ``departed``.
 * ``expected`` remains the count ``nlocal`` (established exactly as today,
   including ``PMIX_RANK_WILDCARD`` expansion and the late-registration
   increments). It is **no longer decremented** on loss.
@@ -108,7 +114,7 @@ One function, called from every site that currently hand-rolls the test:
 
 .. code-block:: c
 
-   bool pmix_coll_locally_complete(pmix_server_trkr_t *trk)
+   bool pmix_server_trk_complete(pmix_server_trkr_t *trk)
    {
        if (!trk->def_complete) {
            return false;
@@ -118,127 +124,161 @@ One function, called from every site that currently hand-rolls the test:
                pmix_list_get_size(&trk->departed)) >= trk->nlocal;
    }
 
-Because a peer is counted in exactly one of the two lists and neither is
+Because a rank is counted in exactly one of the two lists and neither is
 ever decremented behind the predicate's back, this cannot complete early:
 a not-yet-heard-from live participant is in neither list, so the sum stays
 below ``nlocal`` until it either contributes or departs. (``>=`` rather
 than ``==`` is deliberate defensive hygiene against any clone
 over-count; see *Clones*.)
 
-Service API
-~~~~~~~~~~~
+As built
+~~~~~~~~
 
-.. code-block:: c
+No new ``pmix_coll_*`` namespace was introduced (see the *[FOLDED]* note
+under the migration sequence). The pieces landed where their data already
+lives:
 
-   /* locate or create the tracker for this operation */
-   pmix_server_trkr_t *pmix_coll_get_tracker(char *id, pmix_proc_t *procs,
-                                             size_t nprocs, pmix_cmd_t type);
+* ``pmix_server_trk_complete`` — the predicate above — in
+  ``pmix_server_ops.c``, declared in ``pmix_server_ops.h``; called from
+  all six fence-family completion sites.
+* Locate/create stays in ``pmix_server_get_tracker`` /
+  ``pmix_server_new_tracker``; contributions are still appended to
+  ``local_cbs`` at each operation's call site.
+* The loss routine is the single Case A / Case B block in
+  ``lost_connection`` (fence family) plus the pending exported
+  ``pmix_server_grp_peer_lost`` (group family).
+* Forwarding to the host stays at each operation's completion site
+  (``fence_nb`` after ``pmix_server_collect_data``; ``connect`` /
+  ``disconnect``; the group host call with context-id / ``grpinfo``
+  aggregation). These handoffs were already per-operation and are left
+  in place.
 
-   /* record a contribution from a connected peer (appends its caddy) */
-   void pmix_coll_add_contribution(pmix_server_trkr_t *trk,
-                                   pmix_server_caddy_t *cd);
+Groups: shared semantics, not a shared struct
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   /* account for a lost peer across ALL trackers it participates in;
-      applies Case A / Case B and drives completion where warranted */
-   void pmix_coll_peer_lost(pmix_peer_t *peer);
+An audit of ``pmix_server_group.c`` (done during implementation) settled
+the open question about the ``grp_block_t`` / ``grp_trk_t`` split: it is
+**not** folded into ``pmix_server_trkr_t``. Each participant call appends
+a fresh ``grp_trk_t`` to the block's ``mbrs`` list, so the group's
+contribution count is ``size(mbrs)`` (not the size of a single
+contribution list); one block can carry several call signatures (leader /
+follower / bootstrap); and the block owns group-only state (context-id,
+``grpinfo`` aggregation). Collapsing that onto the fence tracker would be
+an invasive rewrite of delicate, untested, HPC-critical code for no
+correctness benefit. Instead the group family reuses the *semantics* —
+the completion-predicate shape and the Case A / Case B rules — in its own
+structure. See *Group loss-accounting design* under the migration
+sequence for the concrete plan, and the spec's *What "single" means in
+practice* for the rationale.
 
-   /* the shared completion predicate */
-   bool pmix_coll_locally_complete(pmix_server_trkr_t *trk);
+The two tracker lists therefore remain separate
+(``pmix_server_globals.collectives`` and ``.grp_collectives``);
+``lost_connection`` traverses both — the fence family inline and the
+group family through the exported ``pmix_server_grp_peer_lost``.
 
-   /* forward a locally-complete tracker to the host via the right hook */
-   pmix_status_t pmix_coll_forward(pmix_server_trkr_t *trk);
+Rewriting ``lost_connection`` (fence family — done)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Per-operation hooks
-~~~~~~~~~~~~~~~~~~~
+The collective-adjustment block in
+``src/mca/ptl/base/ptl_base_sendrecv.c`` now, for each tracker the peer
+is an expected participant in:
 
-The only operation-specific behavior is *what to do at handoff*. Model it
-as a tiny dispatch keyed on ``trk->type`` inside ``pmix_coll_forward``
-(fence → ``fence_nb`` after ``pmix_server_collect_data``; connect →
-``connect``; disconnect → ``disconnect``; group → the group host call
-with context-id / grpinfo aggregation). No operation retains its own
-completion or loss logic.
-
-Folding in groups
-~~~~~~~~~~~~~~~~~
-
-The group ``grp_block_t`` / ``grp_trk_t`` split maps onto the unified
-tracker as follows:
-
-* The block's participation bookkeeping (``nlocal``, ``def_complete``,
-  and the counting that drives completion) is exactly what the unified
-  tracker already holds — delete the duplicates.
-* Group-specific state that has no analogue in the other operations
-  (``need_cxtid`` / context-id assignment, ``grpinfo`` aggregation, and
-  the ``block → mbrs`` fan-out where one construct spans multiple
-  sub-collectives) is retained as a thin group-only side structure that
-  *references* the unified tracker rather than re-implementing counting.
-
-**Open decision:** whether one ``grp_block_t`` maps to exactly one
-unified tracker or to several. If a block can legitimately carry more
-than one concurrent sub-collective, the group wrapper keeps its ``mbrs``
-list but each member is (or points at) a unified tracker. Resolve this by
-auditing how ``mbrs`` is populated in ``pmix_server_group.c`` before
-writing code.
-
-Unify the lists
-~~~~~~~~~~~~~~~
-
-Move group trackers onto ``pmix_server_globals.collectives`` (or, if the
-group wrapper is retained, ensure ``pmix_coll_peer_lost`` traverses both
-lists). One list is preferred: it is the change that structurally
-guarantees the lost-connection handler can never again miss an operation
-class.
-
-Rewriting ``lost_connection``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Replace the collective-adjustment block in
-``src/mca/ptl/base/ptl_base_sendrecv.c`` with a single call to
-``pmix_coll_peer_lost(peer)``. That routine, for each tracker the peer is
-an expected participant in:
-
-#. Determine contribution by **peer pointer** (scan ``local_cbs``).
-#. **Case A** (found): do nothing to the accounting — leave the
-   contribution and its data in place, leave ``nlocal`` untouched.
-#. **Case B** (not found): append the peer to ``departed`` (once).
+#. Determine whether the peer's rank has already contributed (scan
+   ``local_cbs`` by name — consistent with the per-rank ``nlocal`` count).
+#. **Case A** (contributed): do nothing — leave the contribution and its
+   data in place, leave ``nlocal`` untouched.
+#. **Case B** (not contributed): append the rank to ``departed`` (once).
 #. Set ``PMIX_LOCAL_COLLECTIVE_STATUS`` (``PMIX_ERR_PARTIAL_SUCCESS`` if
-   live participants remain, else ``PMIX_ERR_LOST_CONNECTION``).
+   any expected participant is still awaited, else
+   ``PMIX_ERR_LOST_CONNECTION``).
 #. If ``host_called`` is already set, stop — the local phase is frozen
    (spec invariant 5).
-#. Otherwise re-evaluate ``pmix_coll_locally_complete`` and, if newly
-   complete, drive it through ``pmix_coll_forward`` exactly as a normal
-   final contribution would.
+#. Otherwise re-evaluate ``pmix_server_trk_complete`` and, if newly
+   complete, drive it through the existing completion block exactly as a
+   normal final contribution would.
 
-All of this continues to run on the progress thread, as it does today;
+All of this continues to run on the progress thread, as it did before;
 no new thread-shifting is introduced.
 
 Migration sequence
 ------------------
 
 Land in small, independently-buildable, independently-reviewable commits
-(the project favors one logical change per commit):
+(the project favors one logical change per commit). Status is recorded
+against each step.
 
-#. **Introduce the predicate.** Add ``pmix_coll_locally_complete`` and the
-   ``departed`` list to ``pmix_server_trkr_t``; replace the six-plus
-   hand-rolled completion tests with calls to it. No behavior change yet
-   (``departed`` is always empty), so this is a pure refactor that must
-   build clean and pass ``make check``.
-#. **Fix loss accounting for fence/connect/disconnect.** Rewrite the
-   ``collectives`` handling in ``lost_connection`` to Case A / Case B via
-   ``departed`` instead of ``--nlocal`` + name-based removal. This is the
-   commit that fixes the reported bug.
-#. **Extract the service.** Move locate/create, add-contribution,
-   forward, and loss accounting into the ``pmix_coll_*`` API; point
-   fence/connect/disconnect at it. Still no group changes.
-#. **Fold in groups.** Port group construct/destruct onto the unified
-   tracker and service; resolve the ``block``/``mbrs`` open decision;
-   unify the tracker lists (or extend the loss traversal). Group
-   collectives now get loss accounting for the first time.
-#. **Remove dead code.** Delete ``local_cnt`` and the now-unused
-   ``grp_block_t`` / ``grp_trk_t`` counting fields.
+#. **[DONE] Introduce the predicate.** Added ``pmix_server_trk_complete``
+   and the ``departed`` list to ``pmix_server_trkr_t``; replaced the six
+   hand-rolled completion tests with calls to it. Behavior-neutral
+   (``departed`` empty), builds clean, ``make check`` green.
+#. **[DONE] Fix loss accounting for fence/connect/disconnect.** Rewrote
+   the ``collectives`` handling in ``lost_connection`` to Case A / Case B
+   via ``departed`` instead of ``--nlocal`` + name-based removal. This is
+   the commit that fixes the reported bug. Verified with ``make check``,
+   ``simptest``, and the ``simpdie`` death-injection scenarios.
+#. **[FOLDED] Extract a ``pmix_coll_*`` service.** After steps 1 and 2
+   there was little left to extract for the fence family: locate/create
+   already live in ``pmix_server_{get,new}_tracker``, the predicate is
+   ``pmix_server_trk_complete`` in ``pmix_server_ops.c``, and the loss
+   routine is the single block in ``lost_connection``. A separate
+   ``pmix_coll_*`` namespace would have been churn without payoff, so this
+   step was folded into steps 1-2 rather than done as a rename. The group
+   entry point (step 4) is exported from ``pmix_server_group.c`` for the
+   same reason — keep the logic with the data it owns.
+#. **[DONE] Remove dead code.** Deleted the vestigial ``local_cnt`` from
+   both ``pmix_server_trkr_t`` and ``grp_block_t``.
+#. **[DONE] Group loss accounting.** Group construct/destruct now get the
+   same Case A / Case B semantics; previously ``lost_connection`` did not
+   touch ``grp_collectives`` at all, so a group whose participant died
+   before contributing hung forever. Implemented as described below and
+   validated with a new death-injection exercise
+   (``examples/group_die.c``): a member leaves before contributing and the
+   survivors' construct completes rather than hangs. ``make check`` and
+   the normal group path (``doubleget``) are unaffected.
 
-Each step keeps the tree building warning-free under
+Each landed step keeps the tree building warning-free under
 ``--enable-devel-check`` and green under ``make check``.
+
+Group loss-accounting design (as built)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Implemented in ``pmix_server_group.c`` (keeping the two-level structure —
+see the spec's *What "single" means in practice*), reached from
+``lost_connection`` through one exported entry point:
+
+#. Added ``pmix_list_t departed`` and a real ``bool host_called`` to
+   ``grp_block_t`` (the existing ``host_called`` on ``grp_trk_t`` is
+   declared but never set — groups had no host-called gate).
+#. Added ``grp_blk_locally_complete(blk)`` == ``def_complete &&
+   (size(mbrs) + size(departed)) >= nlocal`` (a pure predicate, matching
+   the fence-family shape). Both completion sites gate on it together with
+   ``!blk->host_called``; the normal completion site sets ``host_called``
+   just before calling the host.
+#. Exported ``pmix_server_grp_peer_lost(peer)``, called from
+   ``lost_connection`` alongside the fence-family loop. For each block the
+   peer is an expected member of, that has ``nlocal > 0`` (skipping
+   bootstrap/follower blocks, which pass up per call and never wait) and
+   is not yet ``host_called``: if any member's ``local_cbs`` holds a caddy
+   with the peer's name it already contributed (Case A — do nothing);
+   otherwise record the rank on ``departed`` once (Case B). If that makes
+   the block locally complete, forward it to the host then — no further
+   participant call will arrive to do it.
+#. The loss path repeats the ``aggregate_info`` + ``pmix_host_server
+   .group`` completion (using the first member's ``pcs``, since all
+   non-bootstrap members share the membership) rather than sharing a
+   helper with the normal site: the normal site's error handling is
+   entangled with the triggering caddy's ownership, and duplicating a
+   dozen lines kept that delicate path untouched. This is the one place
+   the group family does not literally share code with itself; the
+   *semantics* (predicate shape, Case A / Case B) are identical.
+
+Keeping this logic inside ``pmix_server_group.c`` confines the delicate
+group lifecycle (context-id, ``grpinfo`` aggregation, ``grpcbfunc``
+reply/removal) to the file that owns it, and gives ``lost_connection`` a
+clean, single call — mirroring how the fence family is handled.
+
+A multi-node harness (``contrib/dockerswarm``) drives the group examples,
+including ``group_die``, across separate PMIx servers under PRRTE.
 
 Testing
 -------
