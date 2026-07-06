@@ -2997,7 +2997,6 @@ static void tcon(pmix_server_trkr_t *t)
     PMIX_CONSTRUCT(&t->local_cbs, pmix_list_t);
     PMIX_CONSTRUCT(&t->departed, pmix_list_t);
     t->nlocal = 0;
-    t->local_cnt = 0;
     t->info = NULL;
     t->ninfo = 0;
     PMIX_CONSTRUCT(&t->grpinfo, pmix_list_t);
