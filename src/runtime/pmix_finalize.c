@@ -46,6 +46,7 @@
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/pmix_tsd.h"
 #include "src/util/pmix_keyval_parse.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_net.h"
@@ -161,8 +162,18 @@ void pmix_rte_finalize(void)
         pmix_var_dump_color[i] = NULL;
     }
     pmix_tsd_keys_destruct();
+    /* clear the print-buffer TSD latch now that its key has been deleted,
+     * so a subsequent PMIx_Init recreates it */
+    pmix_name_fns_finalize();
 
     pmix_finalize_util();
     // release the event base
     pmix_progress_thread_stop(NULL);
+    /* the event base has now been freed - clear our cached pointers so a
+     * subsequent PMIx_Init starts from a clean slate and nothing in the
+     * gap dereferences freed memory. evauxbase either aliased evbase or
+     * was supplied externally by the caller (who owns it); in both cases
+     * we only drop our reference, we do not free it here */
+    pmix_globals.evbase = NULL;
+    pmix_globals.evauxbase = NULL;
 }

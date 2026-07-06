@@ -65,6 +65,15 @@ static void buffer_cleanup(void *value)
     }
 }
 
+void pmix_name_fns_finalize(void)
+{
+    /* the TSD key (and the per-thread buffers hung off it) are torn down
+     * by pmix_tsd_keys_destruct during finalize; clear our latch here so
+     * that a subsequent PMIx_Init recreates and re-registers the key
+     * rather than reusing one that no longer exists. */
+    fns_init = false;
+}
+
 static pmix_print_args_buffers_t *get_print_name_buffer(void)
 {
     pmix_print_args_buffers_t *ptr;

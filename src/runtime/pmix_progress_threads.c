@@ -380,6 +380,12 @@ pmix_status_t pmix_progress_thread_stop(const char *name)
                 stop_progress_engine(trk);
             }
             pmix_list_remove_item(&tracking, &trk->super);
+            /* if this is the shared tracker, clear the cached pointer so a
+             * PMIx_Progress call between finalize and the next init does
+             * not dereference freed memory */
+            if (trk == shared_thread_tracker) {
+                shared_thread_tracker = NULL;
+            }
             PMIX_RELEASE(trk);
             return PMIX_SUCCESS;
         }
@@ -415,6 +421,9 @@ pmix_status_t pmix_progress_thread_finalize(const char *name)
             }
 
             pmix_list_remove_item(&tracking, &trk->super);
+            if (trk == shared_thread_tracker) {
+                shared_thread_tracker = NULL;
+            }
             PMIX_RELEASE(trk);
             return PMIX_SUCCESS;
         }
