@@ -2995,6 +2995,7 @@ static void tcon(pmix_server_trkr_t *t)
     PMIX_CONSTRUCT_LOCK(&t->lock);
     t->def_complete = false;
     PMIX_CONSTRUCT(&t->local_cbs, pmix_list_t);
+    PMIX_CONSTRUCT(&t->departed, pmix_list_t);
     t->nlocal = 0;
     t->local_cnt = 0;
     t->info = NULL;
@@ -3019,6 +3020,7 @@ static void tdes(pmix_server_trkr_t *t)
         free(t->pcs);
     }
     PMIX_LIST_DESTRUCT(&t->local_cbs);
+    PMIX_LIST_DESTRUCT(&t->departed);
     if (NULL != t->info) {
         PMIX_INFO_FREE(t->info, t->ninfo);
     }
@@ -3028,6 +3030,25 @@ static void tdes(pmix_server_trkr_t *t)
 PMIX_CLASS_INSTANCE(pmix_server_trkr_t,
                     pmix_list_item_t,
                     tcon, tdes);
+
+/* The single predicate for deciding whether a collective's local phase
+ * is complete. The tracker definition must be complete (all participating
+ * nspaces registered, so nlocal is final) AND every expected local
+ * participant must be accounted for - either by having contributed (an
+ * entry on local_cbs) or by having departed before contributing (an entry
+ * on departed). A live participant that has not yet been heard from is on
+ * neither list, so the sum stays below nlocal until it either contributes
+ * or departs. The '>=' comparison is deliberate: it tolerates any
+ * over-count from fork/exec'd clones without falsely reporting the
+ * collective as incomplete. See docs/how-things-work/collectives. */
+bool pmix_server_trk_complete(pmix_server_trkr_t *trk)
+{
+    if (!trk->def_complete) {
+        return false;
+    }
+    return (pmix_list_get_size(&trk->local_cbs) +
+            pmix_list_get_size(&trk->departed)) >= trk->nlocal;
+}
 
 static void cdcon(pmix_server_caddy_t *cd)
 {

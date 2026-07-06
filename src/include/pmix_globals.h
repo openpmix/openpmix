@@ -593,6 +593,11 @@ typedef struct {
     pmix_list_t local_cbs;  // list of pmix_server_caddy_t for sending result to the local participants
                             //    Note: there may be multiple entries for a given proc if that proc
                             //    has fork/exec'd clones that are also participating
+    pmix_list_t departed;   // local participants lost (connection dropped) BEFORE contributing.
+                            //    Participation is tracked by identity: a peer that already
+                            //    contributed (appears on local_cbs) is never moved here, so its
+                            //    loss cannot complete the collective early nor discard its data.
+                            //    See docs/how-things-work/collectives for the specification.
     uint32_t nlocal;        // number of local participants
     uint32_t local_cnt;     // number of local participants who have contributed
     pmix_info_t *info;      // array of info structs

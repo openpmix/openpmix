@@ -172,7 +172,7 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
      * let the local host's server know that we are at the
      * "fence" point - they will callback once the [dis]connect
      * across all participants has been completed */
-    if (trk->def_complete && pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+    if (pmix_server_trk_complete(trk)) {
         if (trk->local) {
             /* the operation is being atomically completed and the host will
              * not be calling us back - ensure we notify all participants.
@@ -400,7 +400,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * let the local host's server know that we are at the
      * "fence" point - they will callback once the [dis]connect
      * across all participants has been completed */
-    if (trk->def_complete && pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+    if (pmix_server_trk_complete(trk)) {
         /* if all the participants are local, then we don't need the host */
         if (trk->local) {
             /* the operation is being atomically completed and the host will
