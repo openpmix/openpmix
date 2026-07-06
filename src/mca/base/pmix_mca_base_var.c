@@ -1435,13 +1435,14 @@ static int var_set_from_env(pmix_mca_base_var_t *var, pmix_mca_base_var_t *origi
     if (NULL != source_env) {
         if (0 == strncasecmp(source_env, "file:", 5)) {
             original->mbv_source_file = append_filename_to_list(source_env + 5);
-            if (0 == strcmp(var->mbv_source_file, pmix_mca_base_var_override_file)) {
+            if (0 == strcmp(original->mbv_source_file, pmix_mca_base_var_override_file)) {
                 original->mbv_source = PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE;
             } else {
                 original->mbv_source = PMIX_MCA_BASE_VAR_SOURCE_FILE;
             }
-        } else if (0 == strcasecmp(source_env, "command")) {
-            var->mbv_source = PMIX_MCA_BASE_VAR_SOURCE_COMMAND_LINE;
+        } else if (0 == strcasecmp(source_env, "command") ||
+                   0 == strcasecmp(source_env, "command_line")) {
+            original->mbv_source = PMIX_MCA_BASE_VAR_SOURCE_COMMAND_LINE;
         }
     }
 
@@ -1449,10 +1450,10 @@ static int var_set_from_env(pmix_mca_base_var_t *var, pmix_mca_base_var_t *origi
         const char *new_variable = "None (going away)";
 
         if (is_synonym) {
-            new_variable = var->mbv_full_name;
+            new_variable = original->mbv_full_name;
         }
 
-        switch (var->mbv_source) {
+        switch (original->mbv_source) {
         case PMIX_MCA_BASE_VAR_SOURCE_ENV:
             pmix_show_help("help-pmix-mca-var.txt", "deprecated-mca-env", true, var_full_name,
                            new_variable);
@@ -1464,7 +1465,7 @@ static int var_set_from_env(pmix_mca_base_var_t *var, pmix_mca_base_var_t *origi
         case PMIX_MCA_BASE_VAR_SOURCE_FILE:
         case PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE:
             pmix_show_help("help-pmix-mca-var.txt", "deprecated-mca-file", true, var_full_name,
-                           pmix_mca_base_var_source_file(var), new_variable);
+                           pmix_mca_base_var_source_file(original), new_variable);
             break;
 
         case PMIX_MCA_BASE_VAR_SOURCE_DEFAULT:
