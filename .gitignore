@@ -232,6 +232,7 @@ test/unit/bfrops_regex2
 test/unit/bfrops_alloc_inherit
 test/unit/gds_fallback
 test/unit/pmix_log
+test/unit/collective_status
 test/unit/run_gds_fallback.pl
 test/unit/util_argv
 test/unit/util_basename

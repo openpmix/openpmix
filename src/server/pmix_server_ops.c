@@ -3049,6 +3049,32 @@ bool pmix_server_trk_complete(pmix_server_trkr_t *trk)
             pmix_list_get_size(&trk->departed)) >= trk->nlocal;
 }
 
+/* Record a collective's completion status in the tracker's info array. The
+ * participant handlers seed a PMIX_LOCAL_COLLECTIVE_STATUS slot; locate it by
+ * key rather than by position. It is the last element for the fence and
+ * disconnect families, but connect appends per-participant endpoint info and
+ * (for cross-namespace connects) job-level info AFTER that slot (see
+ * pmix_server_connect), so a positional write to info[ninfo-1] would clobber
+ * the appended info and leave the real status slot stale. Locating by key is
+ * correct for every family and cannot underflow when info is unset. If the
+ * slot is absent this is a no-op. Shared with the collective-status unit test
+ * (test/unit/collective_status.c). */
+void pmix_server_set_collective_status(pmix_info_t *info, size_t ninfo,
+                                       pmix_status_t status)
+{
+    size_t n;
+
+    if (NULL == info) {
+        return;
+    }
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_LOCAL_COLLECTIVE_STATUS)) {
+            info[n].value.data.status = status;
+            return;
+        }
+    }
+}
+
 static void cdcon(pmix_server_caddy_t *cd)
 {
     memset(&cd->ev, 0, sizeof(pmix_event_t));

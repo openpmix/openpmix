@@ -154,19 +154,10 @@ static void lost_connection(pmix_peer_t *peer)
                 } else {
                     rc = PMIX_ERR_LOST_CONNECTION;
                 }
-                /* record the collective's health in the
-                 * PMIX_LOCAL_COLLECTIVE_STATUS slot the participant handlers
-                 * seeded. Locate it by key rather than by position: connect
-                 * appends endpoint and job-level info AFTER that slot (see
-                 * pmix_server_connect), so it is not reliably the last element
-                 * of trk->info - writing trk->info[trk->ninfo-1] would clobber
-                 * the appended info and leave the real status slot stale. */
-                for (n = 0; n < trk->ninfo; n++) {
-                    if (PMIX_CHECK_KEY(&trk->info[n], PMIX_LOCAL_COLLECTIVE_STATUS)) {
-                        trk->info[n].value.data.status = rc;
-                        break;
-                    }
-                }
+                /* record the collective's health in the status slot the
+                 * participant handlers seeded (located by key, since connect
+                 * appends info after it - see pmix_server_set_collective_status) */
+                pmix_server_set_collective_status(trk->info, trk->ninfo, rc);
                 /* if the host has already been called for this tracker,
                  * then the local phase is frozen - just wait for the host
                  * to return from the operation */

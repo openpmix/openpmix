@@ -426,6 +426,9 @@ PMIX_EXPORT pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
 
 PMIX_EXPORT bool pmix_server_trk_complete(pmix_server_trkr_t *trk);
 
+PMIX_EXPORT void pmix_server_set_collective_status(pmix_info_t *info, size_t ninfo,
+                                                   pmix_status_t status);
+
 PMIX_EXPORT void pmix_server_grp_peer_lost(pmix_peer_t *peer);
 
 #endif // PMIX_SERVER_OPS_H
