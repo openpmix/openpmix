@@ -117,9 +117,16 @@ int pmix_tsd_keys_destruct(void)
                 pmix_tsd_setspecific(pmix_tsd_key_values[i].key, NULL);
             }
         }
+        /* delete the key itself so its slot is not leaked across an
+         * init/finalize cycle - callers that created it will recreate
+         * it on the next PMIx_Init */
+        pmix_tsd_key_delete(pmix_tsd_key_values[i].key);
     }
     if (0 < pmix_tsd_key_values_count) {
         free(pmix_tsd_key_values);
+        /* null the registry so the next pmix_tsd_key_create reallocs from
+         * a clean base rather than a freed pointer */
+        pmix_tsd_key_values = NULL;
         pmix_tsd_key_values_count = 0;
     }
     return PMIX_SUCCESS;

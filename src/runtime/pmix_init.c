@@ -68,6 +68,7 @@
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/runtime/pmix_init_util.h"
+#include "src/threads/pmix_threads.h"
 
 const char pmix_version_string[] = PMIX_IDENT_STRING;
 const char* pmix_tool_basename = NULL;
@@ -158,6 +159,14 @@ int pmix_init_util(pmix_info_t info[], size_t ninfo, char *libdir)
     if (pmix_atomic_check_bool(&pmix_globals.util_initialized)) {
         return PMIX_SUCCESS;
     }
+
+    /* record the initializing thread as "main" so that thread-specific
+     * data keys it creates (e.g., in pmix_net_init) are registered for
+     * cleanup. Without this the registry stays empty and every key -
+     * and its pthread slot - leaks across an init/finalize cycle,
+     * eventually exhausting PTHREAD_KEYS_MAX. init and finalize run on
+     * this same thread, so it is also where pmix_tsd_keys_destruct runs. */
+    pmix_thread_set_main();
 
     /* initialize the output system */
     if (!pmix_output_init()) {

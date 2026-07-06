@@ -58,5 +58,10 @@ PMIX_EXPORT char *pmix_util_print_rank(const pmix_rank_t vpid);
 
 PMIX_EXPORT int pmix_util_compare_proc(const void *a, const void *b);
 
+/* reset the one-time initialization of the print-buffer TSD key so that
+ * a subsequent PMIx_Init recreates it. The key itself is deleted by
+ * pmix_tsd_keys_destruct; this only clears the local latch. */
+PMIX_EXPORT void pmix_name_fns_finalize(void);
+
 END_C_DECLS
 #endif
