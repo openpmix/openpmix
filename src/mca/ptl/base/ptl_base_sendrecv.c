@@ -221,6 +221,11 @@ static void lost_connection(pmix_peer_t *peer)
                 }
             }
 
+            /* account for the loss in any in-flight group construct/destruct
+             * collectives as well - these are tracked separately from the
+             * fence/connect/disconnect collectives above */
+            pmix_server_grp_peer_lost(peer);
+
             /* if the peer simply died without finalizing,
              * then reduce the number of local procs */
             if (!peer->finalized && 0 < peer->nptr->nlocalprocs) {

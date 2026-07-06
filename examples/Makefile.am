@@ -29,7 +29,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
                   group_bootstrap client3 client4 launcher spawn_group resolve multi_nspace_group \
                   pub2 toolqry simple_resolve pubstress monitor monitor_remote monitor_multi \
-                  simple simple_server abort
+                  simple simple_server abort group_die
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -96,6 +96,10 @@ tool_LDADD = $(top_builddir)/src/libpmix.la
 group_SOURCES = group.c examples.h
 group_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 group_LDADD = $(top_builddir)/src/libpmix.la
+
+group_die_SOURCES = group_die.c examples.h
+group_die_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_die_LDADD = $(top_builddir)/src/libpmix.la
 
 group_dmodex_SOURCES = group_dmodex.c examples.h
 group_dmodex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)

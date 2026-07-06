@@ -89,7 +89,16 @@ typedef struct {
     size_t npcs;
     pmix_info_t *info;
     size_t ninfo;
-    pmix_list_t mbrs;  // list of grp_trk_t
+    pmix_list_t mbrs;  // list of grp_trk_t - one per participant call; its
+                       //    size is the number of local participants that have
+                       //    contributed
+    pmix_list_t departed;   // ranks lost (connection dropped) BEFORE contributing;
+                            //    list of pmix_proclist_t, deduplicated by name.
+                            //    Counted alongside mbrs so the construct can
+                            //    complete on the survivors rather than hang.
+                            //    See docs/how-things-work/collectives.
+    bool host_called;       // the block has been forwarded to the host - the
+                            //    local phase is frozen
     bool def_complete;      // all local procs have been registered and the trk definition is complete
     uint32_t nlocal;        // number of local participants
 } grp_block_t;
@@ -104,6 +113,8 @@ static void gbcon(grp_block_t *p)
     p->info = NULL;
     p->ninfo = 0;
     PMIX_CONSTRUCT(&p->mbrs, pmix_list_t);
+    PMIX_CONSTRUCT(&p->departed, pmix_list_t);
+    p->host_called = false;
     p->def_complete = false;
     p->nlocal = 0;
 }
@@ -119,6 +130,7 @@ static void gbdes(grp_block_t *p)
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
     PMIX_LIST_DESTRUCT(&p->mbrs);
+    PMIX_LIST_DESTRUCT(&p->departed);
 }
 static PMIX_CLASS_INSTANCE(grp_block_t,
                            pmix_list_item_t,
@@ -282,6 +294,20 @@ static void check_definition_complete(grp_block_t *blk)
     // if we get here, then we have completed definition of the block
     blk->def_complete = true;
     blk->nlocal = nlocal;
+}
+
+/* The group analog of pmix_server_trk_complete: the block's definition must be
+ * complete and every expected local participant must be accounted for - either
+ * by having contributed (a member tracker on mbrs) or by having departed before
+ * contributing (an entry on departed). Kept in the same shape as the
+ * fence-family predicate. See docs/how-things-work/collectives. */
+static bool grp_blk_locally_complete(grp_block_t *blk)
+{
+    if (!blk->def_complete) {
+        return false;
+    }
+    return (pmix_list_get_size(&blk->mbrs) +
+            pmix_list_get_size(&blk->departed)) >= blk->nlocal;
 }
 
 static pmix_status_t get_tracker(char *grpid, bool bootstrap, bool follower,
@@ -942,7 +968,7 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     }
 
     /* are we locally complete? */
-    if (!blk->def_complete || pmix_list_get_size(&blk->mbrs) != blk->nlocal) {
+    if (blk->host_called || !grp_blk_locally_complete(blk)) {
         /* if we are not locally complete, then we are done */
         return PMIX_SUCCESS;
     }
@@ -959,6 +985,8 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_RELEASE(blk);
         return rc;
     }
+    // the local phase is complete - freeze it and pass up to the host
+    blk->host_called = true;
     rc = pmix_host_server.group(op, blk->id, trk->pcs, trk->npcs,
                                 blk->info, blk->ninfo, grpcbfunc, blk);
     if (PMIX_SUCCESS != rc) {
@@ -980,4 +1008,96 @@ error:
         PMIX_INFO_FREE(info, ninfo);
     }
     return rc;
+}
+
+/* Account for a lost peer across all in-flight group construct/destruct blocks.
+ * This is the group-family analog of the fence/connect/disconnect accounting in
+ * lost_connection(), expressed in the group's two-level structure, and is
+ * called from that same handler. Participation is tracked by identity: if the
+ * departing peer's rank has already contributed (a member tracker holds a caddy
+ * with its name) its contribution stands and the loss is ignored (Case A);
+ * otherwise the rank is recorded as departed so the construct can complete on
+ * the surviving participants instead of hanging (Case B). See
+ * docs/how-things-work/collectives. */
+void pmix_server_grp_peer_lost(pmix_peer_t *peer)
+{
+    grp_block_t *blk, *bnext;
+    grp_trk_t *trk;
+    pmix_server_caddy_t *scd;
+    pmix_proclist_t *dp;
+    pmix_status_t rc;
+    bool ismbr, contributed, known;
+    size_t n;
+
+    PMIX_LIST_FOREACH_SAFE (blk, bnext, &pmix_server_globals.grp_collectives, grp_block_t) {
+        /* bootstrap/follower blocks are passed up per-call and never wait on a
+         * local count (nlocal == 0), so nothing here can hang; and a block that
+         * has already been forwarded to the host has a frozen local phase.
+         * Skip both. */
+        if (0 == blk->nlocal || blk->host_called) {
+            continue;
+        }
+        /* is this peer an expected member of this group, and has its rank
+         * already contributed? */
+        ismbr = false;
+        contributed = false;
+        PMIX_LIST_FOREACH (trk, &blk->mbrs, grp_trk_t) {
+            for (n = 0; n < trk->npcs; n++) {
+                if (PMIX_CHECK_NAMES(&trk->pcs[n], &peer->info->pname)) {
+                    ismbr = true;
+                    break;
+                }
+            }
+            PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
+                if (PMIX_CHECK_NAMES(&scd->peer->info->pname, &peer->info->pname)) {
+                    contributed = true;
+                    break;
+                }
+            }
+            if (contributed) {
+                break;
+            }
+        }
+        if (!ismbr || contributed) {
+            /* not a participant, or Case A (already contributed - its
+             * contribution and data stand, so ignore the loss) */
+            continue;
+        }
+        /* Case B: the rank had not yet contributed and never will. Record it as
+         * departed (once) so the construct can complete on the survivors. */
+        known = false;
+        PMIX_LIST_FOREACH (dp, &blk->departed, pmix_proclist_t) {
+            if (PMIX_CHECK_NAMES(&dp->proc, &peer->info->pname)) {
+                known = true;
+                break;
+            }
+        }
+        if (!known) {
+            dp = PMIX_NEW(pmix_proclist_t);
+            PMIX_LOAD_PROCID(&dp->proc, peer->info->pname.nspace, peer->info->pname.rank);
+            pmix_list_append(&blk->departed, &dp->super);
+        }
+        /* did that complete the local phase? if so we must forward to the host
+         * now - no further participant call will arrive to do it for us. All
+         * non-bootstrap members carry the same membership, so use the first. */
+        if (grp_blk_locally_complete(blk)) {
+            trk = (grp_trk_t *) pmix_list_get_first(&blk->mbrs);
+            rc = aggregate_info(blk);
+            if (PMIX_SUCCESS != rc) {
+                pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
+                PMIX_RELEASE(blk);
+                continue;
+            }
+            blk->host_called = true;
+            rc = pmix_host_server.group(blk->grpop, blk->id, trk->pcs, trk->npcs,
+                                        blk->info, blk->ninfo, grpcbfunc, blk);
+            if (PMIX_OPERATION_SUCCEEDED == rc) {
+                /* the host will not call back - drive completion ourselves */
+                grpcbfunc(PMIX_SUCCESS, NULL, 0, blk, NULL, NULL);
+            } else if (PMIX_SUCCESS != rc) {
+                pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
+                PMIX_RELEASE(blk);
+            }
+        }
+    }
 }

@@ -104,6 +104,7 @@ examples/group_lcl_cid
 examples/nodeinfo
 examples/pset
 examples/group_bootstrap
+examples/group_die
 examples/spawn_group
 examples/resolve
 examples/multi_nspace_group
