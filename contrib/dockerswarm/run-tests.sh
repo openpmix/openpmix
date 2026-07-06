@@ -159,6 +159,32 @@ test_linux() {
         skp "group_die not built"
     fi
     cleanup_swarm
+
+    banner "participant death during PMIx_Connect (loss accounting)"
+    cleanup_swarm
+    # connect_die: same shape as group_die, but the collective is PMIx_Connect.
+    # Each rank posts remote-scope data before connecting, which makes the
+    # client send endpoint info to the server -- info the server appends to the
+    # connect tracker AFTER the collective-status slot. The last rank leaves
+    # before calling PMIx_Connect (and without finalizing), so the server must
+    # account for the departed participant and complete the connect on the
+    # survivors instead of hanging, without corrupting the tracker's info array
+    # while recording the loss status. Same two requirements as group_die apply:
+    # --rtos recoverable and whole-job membership + --map-by node.
+    if RUN 'test -x /opt/prte/tests/connect_die'; then
+        OUT="$(RUN 'prterun --rtos recoverable --host node1:2,node2:2 -np 4 --map-by node --timeout 60 /opt/prte/tests/connect_die 2>&1')"
+        n=$(echo "$OUT" | grep -c 'complete on survivors')
+        if echo "$OUT" | grep -qiE 'timeout|timed out|DVM timeout'; then
+            bad "connect HUNG on participant death (loss accounting missing)"
+        elif [ "$n" -ge 3 ]; then
+            ok "connect completed on all 3 survivors after a participant died"
+        else
+            bad "connect_die: only $n survivors completed: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+        fi
+    else
+        skp "connect_die not built"
+    fi
+    cleanup_swarm
 }
 
 ########################################################################
