@@ -688,6 +688,12 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                          PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
 
     /* setup the globals */
+    /* reset the singleton indicator on every fresh init: it is a static
+     * that records how *this* cycle came up, and is only set true below
+     * if we fail to find a server. Leaving a stale "true" from a prior
+     * singleton cycle would cause finalize to tear down the server-side
+     * IOF lists that a subsequent with-server cycle never constructed. */
+    pmix_client_globals.singleton = false;
     PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.peers, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
