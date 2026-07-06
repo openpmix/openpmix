@@ -985,6 +985,15 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_RELEASE(blk);
         return rc;
     }
+    /* if an expected member was lost before contributing, the block still
+     * completes on the survivors - but record the degraded status in the
+     * block's info so the host sees it, matching the fence/connect/disconnect
+     * families. The status slot is located by key (see
+     * pmix_server_set_collective_status). */
+    if (0 < pmix_list_get_size(&blk->departed)) {
+        pmix_server_set_collective_status(blk->info, blk->ninfo,
+                                          PMIX_ERR_LOST_CONNECTION);
+    }
     // the local phase is complete - freeze it and pass up to the host
     blk->host_called = true;
     rc = pmix_host_server.group(op, blk->id, trk->pcs, trk->npcs,
@@ -1088,6 +1097,11 @@ void pmix_server_grp_peer_lost(pmix_peer_t *peer)
                 PMIX_RELEASE(blk);
                 continue;
             }
+            /* a member was lost before contributing (that is why we are here):
+             * record the degraded status in the block's info so the host sees
+             * it, matching the fence/connect/disconnect families */
+            pmix_server_set_collective_status(blk->info, blk->ninfo,
+                                              PMIX_ERR_LOST_CONNECTION);
             blk->host_called = true;
             rc = pmix_host_server.group(blk->grpop, blk->id, trk->pcs, trk->npcs,
                                         blk->info, blk->ninfo, grpcbfunc, blk);
