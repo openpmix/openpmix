@@ -1,0 +1,5 @@
+# Out-of-tree (VPATH) build directories created by build.sh macos at the repo
+# root (see README.md).  The Linux build lives in the docker `pmix-build`
+# volume, not on disk, so only the native-macOS trees need ignoring.
+vpath-macos-pmix/
+vpath-macos-prte/

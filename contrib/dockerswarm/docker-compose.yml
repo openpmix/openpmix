@@ -1,0 +1,74 @@
+# A 10-"node" cluster on a private docker network for exercising PMIx group
+# construction across real, separate PMIx servers (one prted per node).  node1
+# is the head node (where you start the DVM and run the tests); node2..node10
+# host the additional daemons a multi-node group spans.
+#
+# Nothing is baked into the image except the toolchain and PRRTE *source*:
+# build.sh compiles your live openpmix working tree (and PRRTE against it)
+# out-of-tree into the shared `pmix-build` volume, which every node mounts
+# read-only at /opt/prte.  So `docker compose up -d` must be preceded by a
+# `./build.sh` (which populates the volume).  See README.md.
+#
+# Ten nodes give a group enough distinct servers that the local-completion and
+# lost-connection accounting run on several daemons at once, and let a group
+# span a multi-level daemon tree.
+
+x-node: &node
+  image: pmix-swarm:latest
+  networks: [dvm]
+  tty: true
+  volumes:
+    - pmix-build:/opt/prte:ro
+
+services:
+  node1:
+    <<: *node
+    hostname: node1
+    container_name: pmix-node1
+  node2:
+    <<: *node
+    hostname: node2
+    container_name: pmix-node2
+  node3:
+    <<: *node
+    hostname: node3
+    container_name: pmix-node3
+  node4:
+    <<: *node
+    hostname: node4
+    container_name: pmix-node4
+  node5:
+    <<: *node
+    hostname: node5
+    container_name: pmix-node5
+  node6:
+    <<: *node
+    hostname: node6
+    container_name: pmix-node6
+  node7:
+    <<: *node
+    hostname: node7
+    container_name: pmix-node7
+  node8:
+    <<: *node
+    hostname: node8
+    container_name: pmix-node8
+  node9:
+    <<: *node
+    hostname: node9
+    container_name: pmix-node9
+  node10:
+    <<: *node
+    hostname: node10
+    container_name: pmix-node10
+
+networks:
+  dvm:
+    driver: bridge
+
+# Populated by build.sh (docker volume create pmix-build) and shared,
+# read-only, by every node.  Declared external so the builder container and
+# these services reference the exact same volume name (no compose prefix).
+volumes:
+  pmix-build:
+    external: true
