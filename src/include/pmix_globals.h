@@ -599,7 +599,6 @@ typedef struct {
                             //    loss cannot complete the collective early nor discard its data.
                             //    See docs/how-things-work/collectives for the specification.
     uint32_t nlocal;        // number of local participants
-    uint32_t local_cnt;     // number of local participants who have contributed
     pmix_info_t *info;      // array of info structs
     size_t ninfo;           // number of info structs in array
     pmix_list_t grpinfo;    // list of group info to be distributed

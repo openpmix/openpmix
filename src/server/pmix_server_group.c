@@ -92,7 +92,6 @@ typedef struct {
     pmix_list_t mbrs;  // list of grp_trk_t
     bool def_complete;      // all local procs have been registered and the trk definition is complete
     uint32_t nlocal;        // number of local participants
-    uint32_t local_cnt;     // number of local participants who have contributed
 } grp_block_t;
 static void gbcon(grp_block_t *p)
 {
@@ -107,7 +106,6 @@ static void gbcon(grp_block_t *p)
     PMIX_CONSTRUCT(&p->mbrs, pmix_list_t);
     p->def_complete = false;
     p->nlocal = 0;
-    p->local_cnt = 0;
 }
 static void gbdes(grp_block_t *p)
 {
