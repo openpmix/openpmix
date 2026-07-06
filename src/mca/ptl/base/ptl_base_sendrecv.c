@@ -60,7 +60,8 @@ static void _notify_complete(pmix_status_t status, void *cbdata)
 static void lost_connection(pmix_peer_t *peer)
 {
     pmix_server_trkr_t *trk, *tnxt;
-    pmix_server_caddy_t *rinfo, *rnext;
+    pmix_server_caddy_t *rinfo;
+    pmix_proclist_t *dp;
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
@@ -92,7 +93,7 @@ static void lost_connection(pmix_peer_t *peer)
              * have been added to any collective tracker until
              * after it successfully connected */
             PMIX_LIST_FOREACH_SAFE (trk, tnxt, &pmix_server_globals.collectives, pmix_server_trkr_t) {
-                /* check if the process should be participating in this collective */
+                /* check if this peer should be participating in this collective */
                 flag = false;
                 for (n=0; n < trk->npcs; n++) {
                     if (PMIX_CHECK_NAMES(&trk->pcs[n], &peer->info->pname)) {
@@ -103,26 +104,60 @@ static void lost_connection(pmix_peer_t *peer)
                 if (!flag) {
                     continue;
                 }
-                /* it should - adjust the count */
-                --trk->nlocal;
-                if (0 < trk->nlocal) {
+                /* Determine whether this participant has already contributed.
+                 * Its rank counts as contributed if any of its local peers -
+                 * the client or a fork/exec'd clone sharing the same name -
+                 * has an entry on local_cbs. If so, the contribution and the
+                 * data it already delivered stand: we ignore the loss for
+                 * this collective. We do NOT reduce the expected count and do
+                 * NOT remove the contribution, so the collective neither
+                 * completes early nor drops the departed peer's data. The
+                 * dead peer's reply caddy is harmless - its socket has been
+                 * closed, so the eventual QUEUE_REPLY is dropped rather than
+                 * sent. */
+                flag = false;
+                PMIX_LIST_FOREACH (rinfo, &trk->local_cbs, pmix_server_caddy_t) {
+                    if (PMIX_CHECK_NAMES(&rinfo->peer->info->pname, &peer->info->pname)) {
+                        flag = true;
+                        break;
+                    }
+                }
+                if (flag) {
+                    /* already contributed - nothing to account for */
+                    continue;
+                }
+                /* This participant had not yet contributed and now never will.
+                 * Record its rank as departed (once) so the collective can
+                 * complete on the remaining live participants instead of
+                 * hanging forever. Participation is tracked per rank, matching
+                 * the way nlocal is counted, so a clone sharing the name does
+                 * not add a second departed entry. */
+                flag = false;
+                PMIX_LIST_FOREACH (dp, &trk->departed, pmix_proclist_t) {
+                    if (PMIX_CHECK_NAMES(&dp->proc, &peer->info->pname)) {
+                        flag = true;
+                        break;
+                    }
+                }
+                if (!flag) {
+                    dp = PMIX_NEW(pmix_proclist_t);
+                    PMIX_LOAD_PROCID(&dp->proc, peer->info->pname.nspace,
+                                     peer->info->pname.rank);
+                    pmix_list_append(&trk->departed, &dp->super);
+                }
+                /* report the collective's health to the surviving participants:
+                 * partial success if any expected participant is still awaited,
+                 * else lost-connection */
+                if ((pmix_list_get_size(&trk->local_cbs) +
+                     pmix_list_get_size(&trk->departed)) < trk->nlocal) {
                     rc = PMIX_ERR_PARTIAL_SUCCESS;
                 } else {
                     rc = PMIX_ERR_LOST_CONNECTION;
                 }
                 PMIX_INFO_LOAD(&trk->info[trk->ninfo-1], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
-                /* see if it already participated in this tracker */
-                PMIX_LIST_FOREACH_SAFE (rinfo, rnext, &trk->local_cbs, pmix_server_caddy_t) {
-                    if (!PMIX_CHECK_NAMES(&rinfo->peer->info->pname, &peer->info->pname)) {
-                        continue;
-                    }
-                    /* remove it from the list */
-                    pmix_list_remove_item(&trk->local_cbs, &rinfo->super);
-                    PMIX_RELEASE(rinfo);
-                }
                 /* if the host has already been called for this tracker,
-                 * then do nothing here - just wait for the host to return
-                 * from the operation */
+                 * then the local phase is frozen - just wait for the host
+                 * to return from the operation */
                 if (trk->host_called) {
                     continue;
                 }
