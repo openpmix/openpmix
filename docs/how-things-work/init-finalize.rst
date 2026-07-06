@@ -1,11 +1,13 @@
-Client Init/Finalize Lifecycle and Server-Side State
-====================================================
+Client Init/Finalize Lifecycle and State Management
+===================================================
 
-This document specifies how the PMIx server manages the per-client and
-per-namespace state associated with a client across the ``PMIx_Init`` /
-``PMIx_Finalize`` boundary. Its purpose is to define the intended
-behavior precisely enough to implement and test it, and in particular to
-guarantee one property:
+This document specifies how PMIx manages the state associated with a
+client across the ``PMIx_Init`` / ``PMIx_Finalize`` boundary. It has two
+halves: the **server-side** management of the per-client and
+per-namespace state the server holds on a client's behalf, and the
+**client-side** teardown of the client library itself. Its purpose is to
+define the intended behavior precisely enough to implement and test it,
+and in particular to guarantee one property:
 
 .. admonition:: The cycling guarantee
    :class: note
@@ -273,6 +275,84 @@ means freed.
      - Released; all references purged
 
 
+Client-Side Teardown
+--------------------
+
+Everything above concerns the state a *server* holds for a client. The
+cycling guarantee has a second half: the client's own library must tear
+itself down on ``PMIx_Finalize`` so that a subsequent ``PMIx_Init`` in
+the same process starts from a clean slate. Unlike the server side —
+where finalize deliberately *preserves* registration state — the client
+side has no such asymmetry to manage: a client ``PMIx_Finalize`` (once
+the init reference count reaches zero) is a full teardown of the library,
+and a later ``PMIx_Init`` is a brand-new library instance that opens a
+fresh socket and reconnects.
+
+The teardown runs ``PMIx_Finalize`` → ``pmix_rte_finalize`` → framework
+closes plus ``pmix_finalize_util`` and the release of the progress
+thread; it is the mirror image of ``PMIx_Init`` → ``pmix_rte_init`` →
+``pmix_init_util`` plus the framework opens. The governing principle is
+**symmetry**: finalize must undo exactly what init did, leaving no
+residue that the next init would either trip over or skip.
+
+The reference-count guard
+    ``PMIx_Init`` is reference-counted: nested init/init/…/finalize
+    sequences only tear down on the *last* finalize, when the counter
+    returns to zero. The full teardown described here applies to that
+    final finalize. A nested (non-final) finalize must leave the library
+    running and untouched.
+
+Three requirements make the symmetry real, and an implementation **must**
+uphold all three:
+
+1. **Every one-time-init latch must be reset.** Any ``static`` boolean or
+   counter that guards a "do this once" step in init (module
+   registration, key creation, subsystem setup) must be cleared by the
+   corresponding finalize, so the step runs again on the next init.
+   Leaving a latch set silently *skips* re-initialization on the second
+   cycle — the failure is not a crash at finalize but wrong or missing
+   state later. The multi-select framework ``initialized`` flags, the MCA
+   parameter-registration latch, and the attribute/output/show-help
+   subsystems all follow this rule and are the model to copy.
+
+2. **Every freed global must be nulled, and every per-cycle flag reset.**
+   A global pointer whose target is freed during finalize must be set to
+   ``NULL`` in the same step. Two hazards follow from not doing so:
+
+   * **Dangling reuse.** A non-``NULL`` pointer to freed memory defeats
+     the ``if (NULL == p)`` guards that would otherwise make a
+     between-cycles access safe; it reads as "still valid" and yields a
+     use-after-free. The event base, the shared progress-thread tracker,
+     and the cached server peer are pointers of this kind.
+
+   * **Stale mode flags.** A flag that records *how* this cycle was set
+     up — most importantly the singleton indicator, which records that
+     the process came up with no server and therefore constructed the
+     server-side I/O-forwarding lists — must be reset on every fresh
+     init, not only when it happens to be toggled. A stale singleton flag
+     carried from a no-server cycle into a with-server cycle drives
+     finalize to tear down lists the with-server path never built.
+
+3. **Init and finalize of the utility layer must stay in lockstep.**
+   ``pmix_init_util`` opens a fixed set of low-level subsystems (output,
+   install-dirs, show-help, the keyval parser, the MCA base and its
+   variable system, the network and interface helpers). Each must be
+   closed on finalize. Whether the close lives in ``pmix_finalize_util``
+   or inline in ``pmix_rte_finalize`` is an implementation choice, but the
+   two lists must be kept in correspondence: a subsystem added to init
+   without a matching teardown persists across a cycle and breaks the
+   clean-slate guarantee for the next init.
+
+Platform caveat: destructor support
+    On platforms that provide neither a compiler ``destructor``
+    attribute nor linker ``-fini`` support, the library cannot guarantee
+    cleanup at unload, and re-initialization after finalize is
+    **explicitly unsupported** — a second ``PMIx_Init`` returns
+    ``PMIX_ERR_NOT_SUPPORTED`` rather than risk an inconsistent restart.
+    The cycling guarantee therefore applies only where destructor or
+    ``-fini`` support is present (the mainstream case).
+
+
 Invariants
 ----------
 
@@ -298,3 +378,9 @@ An implementation of the above must uphold these invariants:
   The ``pmix_rank_info_t`` and the client-array slot persist across
   finalize and are removed only by an explicit host deregister. GDS job
   data and job resources persist until ``PMIx_server_deregister_nspace``.
+
+* **The client library reinitializes from a clean slate.** After the
+  final ``PMIx_Finalize``, no ``static`` init-once latch remains set, no
+  global pointer references freed memory, and no per-cycle mode flag
+  retains a value from the previous cycle. The next ``PMIx_Init`` behaves
+  exactly as the first.
