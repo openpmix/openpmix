@@ -41,10 +41,10 @@ PRRTE_REPO="${PRRTE_REPO:-https://github.com/openpmix/prrte.git}"
 
 # the group example programs that exercise the construction methods; built as
 # standalone clients against the installed PMIx and launched by prterun/prun.
-# group_die (a member leaves before contributing) drives the lost-connection
-# accounting and is exercised separately by run-tests.sh.
+# group_die and connect_die (a participant leaves before contributing) drive
+# the lost-connection accounting and are exercised separately by run-tests.sh.
 GROUP_EXAMPLES="group group_bootstrap group_dmodex group_lcl_cid asyncgroup multi_nspace_group"
-BUILD_EXAMPLES="$GROUP_EXAMPLES group_die"
+BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die"
 
 mode="${1:-linux}"
 
