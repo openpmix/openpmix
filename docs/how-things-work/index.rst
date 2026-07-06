@@ -10,6 +10,7 @@ find information on that subject here.
    :maxdepth: 2
 
    session_dirs.rst
+   init-finalize.rst
    distances.rst
    schedulers/index.rst
    sets_groups/index.rst
