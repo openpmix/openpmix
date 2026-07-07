@@ -64,10 +64,13 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank,
-                rc);
+    /* init us - a singleton comes up without a server and so PMIx_Init
+     * returns PMIX_ERR_UNREACH rather than PMIX_SUCCESS. That is not a
+     * fatal error: the library is fully usable, so accept it and carry on. */
+    rc = PMIx_Init(&myproc, NULL, 0);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_UNREACH != rc) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
+                PMIx_Error_string(rc));
         exit(0);
     }
     fprintf(stderr, "Client ns %s rank %d: Running on host %s\n", myproc.nspace, myproc.rank, hostname);
