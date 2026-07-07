@@ -330,6 +330,21 @@ subject to the same vulnerability. They must adopt the identity-based
 model and must be traversed by the lost-connection handler, which today
 walks only the ``collectives`` list.
 
+**A voluntary group leave is the deliberate cousin of a loss.** When a
+member calls ``PMIx_Group_leave`` it will never contribute to an
+in-flight construct/destruct of that group, exactly as a lost member
+never will — the only difference is that the departure is intentional and
+scoped to one named group rather than triggered by a dropped socket. The
+group family therefore accounts a voluntary leave through the *same*
+``departed`` machinery as a loss: the per-block routine
+(``account_departed``) is reached from two entry points —
+``pmix_server_grp_peer_lost`` (walks every block for a dropped peer) and
+``pmix_server_grp_member_left`` (walks only the blocks for the named
+group, invoked when the server intercepts the ``PMIX_GROUP_LEFT`` event
+the leaving client generates). Case A / Case B and the completion
+predicate are identical; a leave that completes a block's local phase
+forwards it to the host on the survivors just as a loss does.
+
 Invariants
 ----------
 

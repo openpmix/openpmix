@@ -1019,18 +1019,19 @@ error:
     return rc;
 }
 
-/* Account for a lost peer across all in-flight group construct/destruct blocks.
- * This is the group-family analog of the fence/connect/disconnect accounting in
- * lost_connection(), expressed in the group's two-level structure, and is
- * called from that same handler. Participation is tracked by identity: if the
- * departing peer's rank has already contributed (a member tracker holds a caddy
- * with its name) its contribution stands and the loss is ignored (Case A);
- * otherwise the rank is recorded as departed so the construct can complete on
- * the surviving participants instead of hanging (Case B). See
+/* Account for a single departed participant in one in-flight group block, where
+ * "departed" means the named rank will never contribute to this block - either
+ * because its connection was lost (pmix_server_grp_peer_lost) or because it
+ * voluntarily left the group (pmix_server_grp_member_left). Participation is
+ * tracked by identity: if the rank has already contributed (a member tracker
+ * holds a caddy with its name) its contribution stands and the departure is
+ * ignored (Case A); otherwise the rank is recorded as departed so the block can
+ * complete on the surviving participants instead of hanging (Case B), and if
+ * that completes the local phase the block is forwarded to the host. The block
+ * may be released (on error) - callers must iterate with FOREACH_SAFE. See
  * docs/how-things-work/collectives. */
-void pmix_server_grp_peer_lost(pmix_peer_t *peer)
+static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
 {
-    grp_block_t *blk, *bnext;
     grp_trk_t *trk;
     pmix_server_caddy_t *scd;
     pmix_proclist_t *dp;
@@ -1038,80 +1039,113 @@ void pmix_server_grp_peer_lost(pmix_peer_t *peer)
     bool ismbr, contributed, known;
     size_t n;
 
+    /* bootstrap/follower blocks are passed up per-call and never wait on a
+     * local count (nlocal == 0), so nothing here can hang; and a block that
+     * has already been forwarded to the host has a frozen local phase.
+     * Skip both. */
+    if (0 == blk->nlocal || blk->host_called) {
+        return;
+    }
+    /* is this proc an expected member of this group, and has its rank
+     * already contributed? */
+    ismbr = false;
+    contributed = false;
+    PMIX_LIST_FOREACH (trk, &blk->mbrs, grp_trk_t) {
+        for (n = 0; n < trk->npcs; n++) {
+            if (PMIX_CHECK_NAMES(&trk->pcs[n], proc)) {
+                ismbr = true;
+                break;
+            }
+        }
+        PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
+            if (PMIX_CHECK_NAMES(&scd->peer->info->pname, proc)) {
+                contributed = true;
+                break;
+            }
+        }
+        if (contributed) {
+            break;
+        }
+    }
+    if (!ismbr || contributed) {
+        /* not a participant, or Case A (already contributed - its
+         * contribution and data stand, so ignore the departure) */
+        return;
+    }
+    /* Case B: the rank had not yet contributed and never will. Record it as
+     * departed (once) so the block can complete on the survivors. */
+    known = false;
+    PMIX_LIST_FOREACH (dp, &blk->departed, pmix_proclist_t) {
+        if (PMIX_CHECK_NAMES(&dp->proc, proc)) {
+            known = true;
+            break;
+        }
+    }
+    if (!known) {
+        dp = PMIX_NEW(pmix_proclist_t);
+        PMIX_LOAD_PROCID(&dp->proc, proc->nspace, proc->rank);
+        pmix_list_append(&blk->departed, &dp->super);
+    }
+    /* did that complete the local phase? if so we must forward to the host
+     * now - no further participant call will arrive to do it for us. All
+     * non-bootstrap members carry the same membership, so use the first. */
+    if (grp_blk_locally_complete(blk)) {
+        trk = (grp_trk_t *) pmix_list_get_first(&blk->mbrs);
+        rc = aggregate_info(blk);
+        if (PMIX_SUCCESS != rc) {
+            pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
+            PMIX_RELEASE(blk);
+            return;
+        }
+        /* a member departed before contributing (that is why we are here):
+         * record the degraded status in the block's info so the host sees
+         * it, matching the fence/connect/disconnect families */
+        pmix_server_set_collective_status(blk->info, blk->ninfo,
+                                          PMIX_ERR_LOST_CONNECTION);
+        blk->host_called = true;
+        rc = pmix_host_server.group(blk->grpop, blk->id, trk->pcs, trk->npcs,
+                                    blk->info, blk->ninfo, grpcbfunc, blk);
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            /* the host will not call back - drive completion ourselves */
+            grpcbfunc(PMIX_SUCCESS, NULL, 0, blk, NULL, NULL);
+        } else if (PMIX_SUCCESS != rc) {
+            pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
+            PMIX_RELEASE(blk);
+        }
+    }
+}
+
+/* Account for a lost peer across all in-flight group construct/destruct blocks.
+ * This is the group-family analog of the fence/connect/disconnect accounting in
+ * lost_connection(), expressed in the group's two-level structure, and is
+ * called from that same handler. See account_departed(). */
+void pmix_server_grp_peer_lost(pmix_peer_t *peer)
+{
+    grp_block_t *blk, *bnext;
+    pmix_proc_t proc;
+
+    /* the peer's identity is carried as a pmix_name_t; account_departed works
+     * in terms of pmix_proc_t (as the group membership arrays do), so convert */
+    PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
     PMIX_LIST_FOREACH_SAFE (blk, bnext, &pmix_server_globals.grp_collectives, grp_block_t) {
-        /* bootstrap/follower blocks are passed up per-call and never wait on a
-         * local count (nlocal == 0), so nothing here can hang; and a block that
-         * has already been forwarded to the host has a frozen local phase.
-         * Skip both. */
-        if (0 == blk->nlocal || blk->host_called) {
+        account_departed(blk, &proc);
+    }
+}
+
+/* Account for a member voluntarily leaving a group (via PMIx_Group_leave, which
+ * generates a PMIX_GROUP_LEFT event that the server intercepts). A voluntary
+ * leave is the deliberate cousin of a lost participant: any in-flight
+ * construct/destruct block for that group that was still waiting on the departed
+ * member must complete on the survivors rather than hang. Unlike a lost
+ * connection, this is scoped to the one named group. See account_departed(). */
+void pmix_server_grp_member_left(const char *grpid, const pmix_proc_t *proc)
+{
+    grp_block_t *blk, *bnext;
+
+    PMIX_LIST_FOREACH_SAFE (blk, bnext, &pmix_server_globals.grp_collectives, grp_block_t) {
+        if (0 != strcmp(grpid, blk->id)) {
             continue;
         }
-        /* is this peer an expected member of this group, and has its rank
-         * already contributed? */
-        ismbr = false;
-        contributed = false;
-        PMIX_LIST_FOREACH (trk, &blk->mbrs, grp_trk_t) {
-            for (n = 0; n < trk->npcs; n++) {
-                if (PMIX_CHECK_NAMES(&trk->pcs[n], &peer->info->pname)) {
-                    ismbr = true;
-                    break;
-                }
-            }
-            PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
-                if (PMIX_CHECK_NAMES(&scd->peer->info->pname, &peer->info->pname)) {
-                    contributed = true;
-                    break;
-                }
-            }
-            if (contributed) {
-                break;
-            }
-        }
-        if (!ismbr || contributed) {
-            /* not a participant, or Case A (already contributed - its
-             * contribution and data stand, so ignore the loss) */
-            continue;
-        }
-        /* Case B: the rank had not yet contributed and never will. Record it as
-         * departed (once) so the construct can complete on the survivors. */
-        known = false;
-        PMIX_LIST_FOREACH (dp, &blk->departed, pmix_proclist_t) {
-            if (PMIX_CHECK_NAMES(&dp->proc, &peer->info->pname)) {
-                known = true;
-                break;
-            }
-        }
-        if (!known) {
-            dp = PMIX_NEW(pmix_proclist_t);
-            PMIX_LOAD_PROCID(&dp->proc, peer->info->pname.nspace, peer->info->pname.rank);
-            pmix_list_append(&blk->departed, &dp->super);
-        }
-        /* did that complete the local phase? if so we must forward to the host
-         * now - no further participant call will arrive to do it for us. All
-         * non-bootstrap members carry the same membership, so use the first. */
-        if (grp_blk_locally_complete(blk)) {
-            trk = (grp_trk_t *) pmix_list_get_first(&blk->mbrs);
-            rc = aggregate_info(blk);
-            if (PMIX_SUCCESS != rc) {
-                pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
-                PMIX_RELEASE(blk);
-                continue;
-            }
-            /* a member was lost before contributing (that is why we are here):
-             * record the degraded status in the block's info so the host sees
-             * it, matching the fence/connect/disconnect families */
-            pmix_server_set_collective_status(blk->info, blk->ninfo,
-                                              PMIX_ERR_LOST_CONNECTION);
-            blk->host_called = true;
-            rc = pmix_host_server.group(blk->grpop, blk->id, trk->pcs, trk->npcs,
-                                        blk->info, blk->ninfo, grpcbfunc, blk);
-            if (PMIX_OPERATION_SUCCEEDED == rc) {
-                /* the host will not call back - drive completion ourselves */
-                grpcbfunc(PMIX_SUCCESS, NULL, 0, blk, NULL, NULL);
-            } else if (PMIX_SUCCESS != rc) {
-                pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
-                PMIX_RELEASE(blk);
-            }
-        }
+        account_departed(blk, proc);
     }
 }

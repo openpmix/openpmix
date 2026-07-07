@@ -1078,14 +1078,29 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
     return rc;
 }
 
+/* callback fired once the PMIX_GROUP_LEFT event has been locally
+ * generated - per the API contract, that is when the leave operation
+ * is considered complete (it is not indicative of remote receipt) */
+static void leave_cbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
+
+    if (NULL != cb->opcbfunc) {
+        cb->opcbfunc(status, cb->cbdata);
+    }
+    PMIX_RELEASE(cb);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
                                               const pmix_info_t info[], size_t ninfo,
                                               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_buffer_t *msg = NULL;
-    pmix_cmd_t cmd = PMIX_GROUP_LEAVE_CMD;
     pmix_status_t rc;
     pmix_group_tracker_t *cb = NULL;
+    pmix_group_t *grpobj, *pgrp;
+    pmix_proc_t *range = NULL;
+    pmix_data_array_t darray;
+    size_t n, m, nrange;
 
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_leave_nb called");
@@ -1094,7 +1109,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
         return PMIX_ERR_INIT;
     }
 
-    /* if we aren't connected, don't attempt to send */
+    /* if we aren't connected, then we cannot notify */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
@@ -1108,54 +1123,83 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
         return PMIX_ERR_BAD_PARAM;
     }
 
-    msg = PMIX_NEW(pmix_buffer_t);
-    /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto done;
-    }
-
-    /* pack the group ID */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &grp, 1, PMIX_STRING);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto done;
-    }
-
-    /* pack the info structs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(msg);
-        goto done;
-    }
-    if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            goto done;
+    /* find this group in our local list - we can only leave a group
+     * we belong to, and we need its membership to know who to notify */
+    grpobj = NULL;
+    PMIX_LIST_FOREACH(pgrp, &pmix_client_globals.groups, pmix_group_t) {
+        if (0 == strcmp(grp, pgrp->grpid)) {
+            grpobj = pgrp;
+            break;
         }
     }
+    if (NULL == grpobj) {
+        return PMIX_ERR_NOT_FOUND;
+    }
 
-    /* create a callback object as we need to pass it to the
-     * recv routine so we know which callback to use when
-     * the return message is recvd */
     cb = PMIX_NEW(pmix_group_tracker_t);
     cb->opcbfunc = cbfunc;
     cb->cbdata = cbdata;
 
-    /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, destruct_cbfunc, (void *) cb);
+    /* Per the API contract, leaving generates a PMIX_GROUP_LEFT event
+     * that notifies all members of the group of our departure. Build the
+     * event's info array: a custom range limited to the other members,
+     * the identity of the departing proc, the group ID, and any
+     * directives the caller provided. */
+    cb->ninfo = 3 + ninfo;
+    PMIX_INFO_CREATE(cb->info, cb->ninfo);
+    if (NULL == cb->info) {
+        PMIX_RELEASE(cb);
+        return PMIX_ERR_NOMEM;
+    }
+
+    /* the custom range is the membership, excluding ourselves */
+    PMIX_PROC_CREATE(range, grpobj->nmbrs);
+    if (NULL == range) {
+        PMIX_RELEASE(cb);
+        return PMIX_ERR_NOMEM;
+    }
+    nrange = 0;
+    for (m = 0; m < grpobj->nmbrs; m++) {
+        if (PMIX_CHECK_PROCID(&grpobj->members[m], &pmix_globals.myid)) {
+            continue;
+        }
+        PMIX_XFER_PROCID(&range[nrange], &grpobj->members[m]);
+        ++nrange;
+    }
+
+    n = 0;
+    darray.type = PMIX_PROC;
+    darray.array = range;
+    darray.size = nrange;
+    /* PMIX_INFO_LOAD deep-copies the array into the info */
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_EVENT_CUSTOM_RANGE, &darray, PMIX_DATA_ARRAY);
+    ++n;
+    /* identify the departing process */
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_EVENT_AFFECTED_PROC, &pmix_globals.myid, PMIX_PROC);
+    ++n;
+    /* identify the group being left */
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_GROUP_ID, grp, PMIX_STRING);
+    ++n;
+    /* carry along any caller-provided directives */
+    for (m = 0; m < ninfo; m++) {
+        PMIX_INFO_XFER(&cb->info[n], &info[m]);
+        ++n;
+    }
+    PMIX_PROC_FREE(range, grpobj->nmbrs);
+
+    /* we are no longer a member - drop the group from our local list */
+    pmix_list_remove_item(&pmix_client_globals.groups, &grpobj->super);
+    PMIX_RELEASE(grpobj);
+
+    /* generate the event - the callback fires once it has been locally
+     * generated, which is when the operation is complete */
+    rc = PMIx_Notify_event(PMIX_GROUP_LEFT, &pmix_globals.myid, PMIX_RANGE_CUSTOM,
+                           cb->info, cb->ninfo, leave_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cb);
     }
 
-done:
-    if (PMIX_SUCCESS != rc && NULL != msg) {
-        PMIX_RELEASE(msg);
-    }
     return rc;
 }
 

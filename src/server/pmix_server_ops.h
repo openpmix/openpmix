@@ -431,4 +431,6 @@ PMIX_EXPORT void pmix_server_set_collective_status(pmix_info_t *info, size_t nin
 
 PMIX_EXPORT void pmix_server_grp_peer_lost(pmix_peer_t *peer);
 
+PMIX_EXPORT void pmix_server_grp_member_left(const char *grpid, const pmix_proc_t *proc);
+
 #endif // PMIX_SERVER_OPS_H
