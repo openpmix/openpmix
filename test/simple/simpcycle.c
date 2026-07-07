@@ -17,7 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -41,7 +41,7 @@
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 
-#define MAXCNT 1
+#define MAXCNT 25
 
 static volatile bool completed = false;
 static pmix_proc_t myproc;
@@ -104,93 +104,98 @@ int main(int argc, char **argv)
     pmix_info_t *iptr;
     size_t ninfo;
     pmix_status_t code;
+    int cycle;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
-    /* init us and declare we are a test programming model */
-    PMIX_INFO_CREATE(iptr, 2);
-    PMIX_INFO_LOAD(&iptr[0], PMIX_PROGRAMMING_MODEL, "TEST", PMIX_STRING);
-    PMIX_INFO_LOAD(&iptr[1], PMIX_MODEL_LIBRARY_NAME, "PMIX", PMIX_STRING);
-    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, iptr, 2))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %s", myproc.nspace, myproc.rank,
-                    PMIx_Error_string(rc));
-        exit(rc);
-    }
-    PMIX_INFO_FREE(iptr, 2);
-    pmix_output(0, "Client ns %s rank %d: Running on node %s", myproc.nspace, myproc.rank,
-                pmix_globals.hostname);
+    /* Cycle PMIx_Init -> work -> PMIx_Finalize repeatedly against the same
+     * persistent server, reusing our namespace and rank each time. Each
+     * finalize drops our connection; the server must recycle our peer object
+     * in place so the next Init reuses it rather than leaking a fresh one.
+     * Exercising many cycles here is a regression guard on that server-side
+     * recycle path - see docs/how-things-work/init-finalize.rst. */
+    for (cycle = 0; cycle < MAXCNT; cycle++) {
 
-    /* test something */
-    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
-    proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-        exit(rc);
-    }
-    nprocs = val->data.uint32;
-    PMIX_VALUE_RELEASE(val);
-    pmix_output(0, "Client %s:%d job size %d", myproc.nspace, myproc.rank, nprocs);
+        /* init us and declare we are a test programming model */
+        PMIX_INFO_CREATE(iptr, 2);
+        PMIX_INFO_LOAD(&iptr[0], PMIX_PROGRAMMING_MODEL, "TEST", PMIX_STRING);
+        PMIX_INFO_LOAD(&iptr[1], PMIX_MODEL_LIBRARY_NAME, "PMIX", PMIX_STRING);
+        if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, iptr, 2))) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Init(%d) failed: %s", myproc.nspace,
+                        myproc.rank, cycle, PMIx_Error_string(rc));
+            exit(rc);
+        }
+        PMIX_INFO_FREE(iptr, 2);
+        pmix_output(0, "Client ns %s rank %d: Init(%d) on node %s", myproc.nspace, myproc.rank,
+                    cycle, pmix_globals.hostname);
 
-    /* register a handler specifically for when models declare */
-    ninfo = 1;
-    PMIX_INFO_CREATE(iptr, ninfo);
-    PMIX_INFO_LOAD(&iptr[0], PMIX_EVENT_HDLR_NAME, "SIMPCLIENT-MODEL", PMIX_STRING);
-    code = PMIX_MODEL_DECLARED;
-    PMIx_Register_event_handler(&code, 1, iptr, ninfo, model_callback, NULL, NULL);
-    PMIX_INFO_FREE(iptr, ninfo);
+        /* test something */
+        pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+        proc.rank = PMIX_RANK_WILDCARD;
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s", myproc.nspace,
+                        myproc.rank, PMIx_Error_string(rc));
+            exit(rc);
+        }
+        nprocs = val->data.uint32;
+        PMIX_VALUE_RELEASE(val);
+        pmix_output(0, "Client %s:%d job size %d", myproc.nspace, myproc.rank, nprocs);
 
-    /* register our errhandler */
-    PMIx_Register_event_handler(NULL, 0, NULL, 0, notification_fn, NULL, NULL);
+        /* register a handler specifically for when models declare */
+        ninfo = 1;
+        PMIX_INFO_CREATE(iptr, ninfo);
+        PMIX_INFO_LOAD(&iptr[0], PMIX_EVENT_HDLR_NAME, "SIMPCLIENT-MODEL", PMIX_STRING);
+        code = PMIX_MODEL_DECLARED;
+        PMIx_Register_event_handler(&code, 1, iptr, ninfo, model_callback, NULL, NULL);
+        PMIX_INFO_FREE(iptr, ninfo);
 
-    /* put a few values */
-    if (0 > asprintf(&tmp, "%s-%d-internal", myproc.nspace, myproc.rank)) {
-        errno = ENOMEM;
-        abort();
-    }
-    value.type = PMIX_UINT32;
-    value.data.uint32 = 1234;
-    if (PMIX_SUCCESS != (rc = PMIx_Store_internal(&myproc, tmp, &value))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Store_internal failed: %s", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-        exit(rc);
+        /* register our errhandler */
+        PMIx_Register_event_handler(NULL, 0, NULL, 0, notification_fn, NULL, NULL);
+
+        /* put a few values */
+        if (0 > asprintf(&tmp, "%s-%d-internal", myproc.nspace, myproc.rank)) {
+            errno = ENOMEM;
+            abort();
+        }
+        value.type = PMIX_UINT32;
+        value.data.uint32 = 1234;
+        if (PMIX_SUCCESS != (rc = PMIx_Store_internal(&myproc, tmp, &value))) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Store_internal failed: %s", myproc.nspace,
+                        myproc.rank, PMIx_Error_string(rc));
+            exit(rc);
+        }
+        free(tmp);
+
+        /* participate in a fence - this drives a server-side collective
+         * tracker that retains our peer, so it also verifies that the peer's
+         * refcount is back to 1 by the time we finalize (a precondition for
+         * recycle-in-place rather than release) */
+        pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+        proc.rank = PMIX_RANK_WILDCARD;
+        if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %s", myproc.nspace,
+                        myproc.rank, PMIx_Error_string(rc));
+            exit(rc);
+        }
+
+        /* get a list of our local peers */
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Get local peers failed: %s", myproc.nspace,
+                        myproc.rank, PMIx_Error_string(rc));
+            exit(rc);
+        }
+        PMIX_VALUE_RELEASE(val);
+
+        /* finalize us */
+        pmix_output(0, "Client ns %s rank %d: Finalizing(%d)", myproc.nspace, myproc.rank, cycle);
+        if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
+            fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize(%d) failed: %s\n", myproc.nspace,
+                    myproc.rank, cycle, PMIx_Error_string(rc));
+            exit(rc);
+        }
     }
 
-    /* get a list of our local peers */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get local peers failed: %s", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-        exit(rc);
-    }
-    PMIX_VALUE_RELEASE(val);
-
-    /* finalize us */
-    pmix_output(0, "Client ns %s rank %d: Finalizing(1)", myproc.nspace, myproc.rank);
-    if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n", myproc.nspace,
-                myproc.rank, PMIx_Error_string(rc));
-        exit(rc);
-    } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
-                myproc.nspace, myproc.rank);
-    }
-
-    /* initialize us again */
-    fprintf(stderr, "Client Init(2)\n");
-    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %s", myproc.nspace, myproc.rank,
-                    PMIx_Error_string(rc));
-        exit(rc);
-    }
-    pmix_output(0, "Client ns %s rank %d: Finalizing(2)", myproc.nspace, myproc.rank);
-    if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n", myproc.nspace,
-                myproc.rank, PMIx_Error_string(rc));
-        exit(rc);
-    } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
-                myproc.nspace, myproc.rank);
-    }
-
+    fprintf(stderr, "Client ns %s rank %d: completed %d init/finalize cycles OK\n", myproc.nspace,
+            myproc.rank, MAXCNT);
     fflush(stderr);
     return (rc);
 }
