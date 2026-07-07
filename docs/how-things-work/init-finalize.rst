@@ -102,11 +102,11 @@ is normative: "must" denotes a required behavior.
 
 1. Client finalize (all clones included)
     A client, together with all of its clones, has finalized — the rank's
-    ``proc_cnt`` has dropped to zero. The peer object serving that rank
-    is **recycled in place**: the server performs an object
-    destruct/construct on it and repoints it at the namespace it belongs
-    to. The object is **not** released and is **not** removed from the
-    namespace's client list. See `Recycling the peer on finalize`_.
+    ``proc_cnt`` has dropped to zero. The peer object serving that rank is
+    **released** and its client-array slot is nulled, but the rank's
+    **registration** (the ``pmix_rank_info_t`` on ``nptr->ranks``) is
+    deliberately preserved so the client can init again. See `Releasing the
+    peer on finalize`_.
 
 2. Host deregisters a client (``PMIx_server_deregister_client``)
     The server removes the peer object from the namespace and releases
@@ -125,71 +125,70 @@ the client or the whole job is gone for good and its objects may be
 freed.
 
 
-Recycling the Peer on Finalize
+Releasing the Peer on Finalize
 ------------------------------
 
 When the last live process for a rank finalizes (``proc_cnt`` reaches
-zero), the server **must** reset the peer object rather than release it:
+zero), the server **must** release the peer object but leave the rank's
+**registration** intact:
 
-* Run the peer's destructor (``PMIX_DESTRUCT``) so that every allocation
-  and reference the object accumulated during the cycle is torn down:
-  pending send/receive messages and queues, event registrations, the
-  peer-level epilog, the reference to its namespace, its ``gds``
-  assignment, dynamic-tag state, and the ``finalized`` flag.
+* Null the object's slot in ``pmix_server_globals.clients`` and
+  ``PMIX_RELEASE`` the peer. Release only drops the server's reference; if
+  a pending collective or an active sensor still holds one, the object
+  survives until that last holder frees it. Either way the peer's
+  destructor eventually tears down everything it accumulated during the
+  cycle — pending send/receive messages and queues, event registrations,
+  its ``gds`` assignment — and executes the peer-level epilog.
 
-* Immediately reconstruct it (``PMIX_CONSTRUCT``) so it returns to the
-  pristine state a freshly allocated peer would have — in particular
-  ``finalized`` is once again ``false`` and all lists and counters are
-  empty.
+* Leave the rank's ``pmix_rank_info_t`` on ``nptr->ranks`` (the
+  registration), and leave the namespace's GDS job data in place. Only
+  ``info->peerid`` is updated — cleared to ``-1``, or repointed to a
+  surviving clone (see below).
 
-* Repoint the reconstructed object at the namespace it serves
-  (re-establish ``peer->nptr`` with a retained reference), so the peer
-  remains associated with its job.
+The result is a registered rank with no live peer object. When the client
+calls ``PMIx_Init`` again and reconnects, the connection handler finds the
+still-valid registration and allocates a **fresh** peer for the rank — so
+the second cycle starts from a guaranteed-clean per-client state and no
+peer object is left stranded in the clients array between cycles.
 
-* Leave the object in ``pmix_server_globals.clients`` at its existing
-  slot, and leave ``info->peerid`` pointing at it. The **registration**
-  (the ``pmix_rank_info_t`` on ``nptr->ranks`` and the client-array slot)
-  is deliberately preserved.
-
-The result is a registered rank whose peer object is a clean, empty
-container ready to be repopulated. When the client calls ``PMIx_Init``
-again and reconnects, the server reuses this existing, reset peer for the
-rank instead of allocating a new one — so no peer object is orphaned and
-the second cycle starts from a guaranteed-fresh per-client state.
-
-Why destruct/construct rather than release? Releasing the peer would
-either strand ``info->peerid`` (a dangling index) or force the host to
-re-register the client before it could init again — defeating the cycling
-guarantee. Recycling in place keeps the registration valid and the
-client-array slot stable while still discarding every byte of
-client-scoped state from the previous cycle.
+Why release and reallocate rather than recycle the object in place? An
+earlier design reset the peer with an in-place ``PMIX_DESTRUCT`` /
+``PMIX_CONSTRUCT`` and parked it in the clients array for the next init to
+reuse. Reconstructing a ``pmix_peer_t`` that is still reachable from that
+array — and whose embedded libevent structures and ``rank_info`` alias
+other server state — leaves a partially reinitialized object live in a
+table other code walks; it proved fragile (an architecture-sensitive hang
+of Open MPI singleton ``MPI_Comm_spawn``). Releasing and reallocating is
+simpler and keeps no half-initialized object visible; the reuse was only
+an allocation optimization.
 
 Job-scoped accounting must be reconciled at the same time so that it does
 not drift across cycles. In particular, the namespace's finalized
 accounting (``nfinalized`` relative to ``nlocalprocs``) and the rank's
 ``proc_cnt`` must reflect the true, current number of connected processes
-after a recycle, so that a client which finalizes and re-inits is not
+after a release, so that a client which finalizes and re-inits is not
 double-counted and the "all local processes finalized" condition remains
 accurate for the job as a whole.
 
 What finalize does **not** do
-    Finalize does not remove the rank from ``nptr->ranks``, does not
-    release the peer, does not drop the namespace's GDS job data, and
-    does not touch network or programming-model resources reserved for
-    the job. Those are job-scoped and survive until the host deregisters.
-    Transient, client-scoped registrations that are keyed to the peer —
-    event registrations, I/O-forwarding requests, in-flight direct-modex
-    requests, and cached notifications targeting the client — are pruned
-    as part of the teardown so they do not linger on the reset object.
+    Finalize does not remove the rank from ``nptr->ranks``, does not drop
+    the namespace's GDS job data, and does not touch network or
+    programming-model resources reserved for the job. Those are job-scoped
+    and survive until the host deregisters. Transient, client-scoped
+    registrations that are keyed to the peer — event registrations,
+    I/O-forwarding requests, in-flight direct-modex requests, and cached
+    notifications targeting the client — are pruned as part of the
+    teardown so they do not linger.
 
-Recycle mechanics
+Release mechanics
 ~~~~~~~~~~~~~~~~~~
 
-The recycle is driven from two points in the transport layer, and its
-correctness rests on two per-namespace counters staying honest across
-every cycle.
+The release is driven from ``lost_connection`` in the transport layer
+when a cleanly-finalized client's socket drops, and its correctness rests
+on two per-namespace counters staying honest across every cycle.
 
-**Peer states.** A client peer moves through three states:
+**Peer states.** A client peer moves through two live states, then is
+released:
 
 .. list-table::
    :header-rows: 1
@@ -207,18 +206,9 @@ every cycle.
      - ``true``
      - ≥ 0
      - yes
-   * - Recycled-idle (reset in place, kept at ``info->peerid``)
-     - ``true``
-     - −1
-     - no
 
-A recycled-idle peer is deliberately left with ``finalized == true``.
-That keeps it **inert** to every ``finalized``-guarded send path (the
-``PMIX_PTL_SEND_*`` macros and ``PMIX_SERVER_QUEUE_REPLY`` all
-short-circuit on ``finalized``), so a stray asynchronous notification or
-I/O-forwarding message cannot arm a doomed send on its closed socket
-while it waits to be reused. It also uniquely identifies the object as a
-reuse candidate for the next ``PMIx_Init``.
+Once the socket drops the object is released; there is no idle,
+kept-in-the-array state.
 
 **The two counters.**
 
@@ -226,60 +216,40 @@ reuse candidate for the next ``PMIx_Init``.
   rank. It is incremented in the connection handler when a peer connects
   and decremented on **every** peer departure — a clean finalize drop
   *and* an abnormal termination. Decrementing on abnormal death too
-  (in ``lost_connection``) keeps a later clone's recycle-vs-release
-  decision correct.
+  (in ``lost_connection``) keeps a later clone's release accounting
+  correct.
 
 * ``nptr->nfinalized`` is the number of client peers currently in the
   ``finalized == true`` state. It is incremented when ``FINALIZE_CMD`` is
-  received, decremented when a recycled-idle peer is **reused** (it goes
-  back to active) or when a finalized peer is **released**, and left
-  unchanged when a peer is recycled to idle (it stays ``finalized``, so it
-  stays counted). Keeping this balanced is what lets the
-  ``nlocalprocs == nfinalized`` test at namespace teardown fire the
-  programming-model "all local processes finalized" callback exactly once.
+  received and decremented when the finalized peer is **released**.
+  Keeping this balanced is what lets the ``nlocalprocs == nfinalized``
+  test at namespace teardown fire the programming-model "all local
+  processes finalized" callback exactly once.
 
-**Recycle vs. release.** When a cleanly-finalized peer's socket drops,
-``pmix_server_peer_finalized`` decrements ``proc_cnt`` and then chooses:
-
-* **Recycle in place** when this was the last live process for the rank
-  **and** nothing else still references the peer object
-  (``proc_cnt == 0 && obj_reference_count == 1``): destruct/construct the
-  peer, repoint it at its namespace, keep it at its ``clients`` slot with
-  ``info->peerid`` pointing at it, and leave it idle. ``nfinalized`` is
-  unchanged.
-
-* **Release** otherwise. The reference count is *not* guaranteed to be one
-  at the drop: a pending non-blocking collective (whose caddy sits on the
-  tracker's ``local_cbs``) or an active sensor can retain the peer past
-  finalize. Recycling a still-aliased object would leave those references
-  pointing at a reinitialized — possibly reconnected — peer, a
-  use-after-free. In that case, and for a surplus clone
-  (``proc_cnt > 0``), the peer is released instead: ``nfinalized`` is
-  decremented, the ``clients`` slot is cleared, and ``PMIX_RELEASE`` drops
-  the reference so the last holder frees it. A subsequent ``PMIx_Init``
-  then allocates a fresh peer.
-
-**Reuse requires ``finalized``.** On reconnect, the connection handler
-reuses the peer at ``info->peerid`` only when ``proc_cnt == 0`` and that
-candidate has ``finalized == true`` — the signature of a recycled-idle
-peer. This decouples reuse safety from an abnormally-terminated peer that
-may still be lingering in the array, and from any still-active sibling.
+**Release on socket drop.** When a cleanly-finalized peer's socket drops,
+``pmix_server_peer_finalized`` decrements ``proc_cnt``, decrements
+``nfinalized``, repoints ``info->peerid`` (see below), nulls the
+``clients`` slot, and ``PMIX_RELEASE``\ s the peer. Because it is a plain
+release, a reference still held by a pending non-blocking collective
+(whose caddy sits on the tracker's ``local_cbs``) or an active sensor is
+harmless: the object is not torn down until that last holder drops its
+reference, and it never reappears in the clients array in the meantime.
 
 **Clone ``peerid`` repointing.** A local ``PMIx_Get`` for the rank
 resolves committed data only while ``info->peerid`` names a live peer
-(a negative ``peerid`` defers the get). So when a *surplus clone* is
-released and it happened to be the rank's referenced peer, ``peerid`` is
-repointed to a surviving sibling (found by scanning ``clients`` for a peer
-sharing the same ``info``) rather than left dangling or set negative while
-another process for the rank is still connected.
+(a negative ``peerid`` defers the get). So when the released peer happened
+to be the rank's referenced peer, ``peerid`` is repointed to a surviving
+clone (found by scanning ``clients`` for a peer sharing the same ``info``)
+if one is still connected, and otherwise set to ``-1``.
 
 
 Deregistering a Client
 ----------------------
 
 ``PMIx_server_deregister_client`` is the host's declaration that a
-specific rank is gone and will not init again. Here the peer is **removed
-and released**, not recycled:
+specific rank is gone and will not init again. Unlike finalize — which
+releases the peer object but keeps the rank's registration so it can init
+again — deregistration also **removes the registration**:
 
 * Remove the peer object from the namespace: release the reference the
   namespace/registration holds, null out the client-array slot
@@ -307,10 +277,10 @@ entire job is gone. This is the terminal, whole-namespace teardown and
 * Remove all GDS-registered job data for the namespace (``gds`` del of
   the namespace), so no key/value or job-info data survives.
 
-* Remove and release **all** peer objects belonging to the namespace —
-  both those still recycled/idle from a finalize and any that never
-  finalized — nulling their client-array slots and freeing every
-  ``pmix_rank_info_t`` on ``nptr->ranks``.
+* Remove and release **all** peer objects still belonging to the
+  namespace (any rank whose processes have not all finalized), nulling
+  their client-array slots and freeing every ``pmix_rank_info_t`` on
+  ``nptr->ranks``.
 
 * Release the network and programming-model resources reserved for the
   job, run the namespace epilog, and prune every remaining reference to
@@ -325,8 +295,8 @@ State Ownership Summary
 -----------------------
 
 The following table classifies the state and states which trigger frees
-it. "Recycled" means reset in place by finalize (not freed); "Released"
-means freed.
+it. "Released" means the object is freed and its client-array slot nulled;
+"Kept" means the trigger leaves it in place.
 
 .. list-table::
    :header-rows: 1
@@ -337,7 +307,7 @@ means freed.
      - Deregister client
      - Deregister nspace
    * - Peer object (``pmix_peer_t``)
-     - Recycled (destruct/construct, repointed, kept)
+     - Released, slot nulled
      - Released, slot nulled
      - Released, slot nulled
    * - Event / IOF / direct-modex regs, cached notifications for the peer
@@ -497,15 +467,15 @@ Invariants
 
 An implementation of the above must uphold these invariants:
 
-* **No cross-cycle carryover.** After a recycle, the peer object must be
-  indistinguishable from a freshly allocated one except that it is
-  already associated with its namespace. ``finalized`` is ``false``; all
-  queues, event registrations, tag counters, and datastore assignments
-  are empty/default.
+* **No cross-cycle carryover.** The peer object serving a rank is released
+  on finalize and a fresh one is allocated when the rank reconnects, so a
+  new cycle cannot inherit queues, event registrations, tag counters, or
+  datastore assignments from the previous one.
 
 * **No orphaned peers.** Cycling init/finalize must not leave unreferenced
-  peer objects in the ``clients`` array. Recycling in place, rather than
-  allocating a new peer on reconnect, is what guarantees this.
+  peer objects in the ``clients`` array. Releasing the departed peer and
+  nulling its array slot on finalize — while preserving only the rank's
+  ``pmix_rank_info_t`` registration — is what guarantees this.
 
 * **No counter drift.** Per-namespace finalized accounting and per-rank
   ``proc_cnt`` must return to values consistent with the actual number of

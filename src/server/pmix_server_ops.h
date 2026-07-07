@@ -348,10 +348,10 @@ PMIX_EXPORT void pmix_server_message_handler(struct pmix_peer_t *pr, pmix_ptl_hd
 PMIX_EXPORT void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc);
 
 /* Handle the departure of a cleanly-finalized local client peer whose
- * socket has dropped: decrement the rank's live-process count and either
- * recycle the peer object in place (when it was the last live process for
- * the rank and nothing else still references it) so a subsequent
- * PMIx_Init reuses it, or release it. See
+ * socket has dropped: decrement the rank's live-process count, undo the
+ * nfinalized bump that FINALIZE_CMD added, repoint the rank's referenced
+ * peerid, and release the peer so it does not stay stranded in the clients
+ * array until the nspace is deregistered. See
  * docs/how-things-work/init-finalize.rst. */
 PMIX_EXPORT void pmix_server_peer_finalized(pmix_peer_t *peer);
 

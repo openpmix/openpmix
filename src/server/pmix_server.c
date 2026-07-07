@@ -1505,35 +1505,19 @@ void pmix_server_peer_finalized(pmix_peer_t *peer)
         --info->proc_cnt;
     }
 
-    /* Recycle the peer object in place only when this was the last live
-     * process for the rank AND nothing else still references the object.
-     * A pending collective (its caddy sits on the tracker's local_cbs) or
-     * a sensor can retain the peer past finalize; recycling a still-aliased
-     * object would leave those references pointing at a reinitialized (and
-     * possibly reconnected) peer - a use-after-free. In that case we fall
-     * through to release, which only decrements the refcount and lets the
-     * last holder free it; a subsequent PMIx_Init then allocates fresh. */
-    if (NULL != info && 0 == info->proc_cnt &&
-        1 == peer->super.obj_reference_count) {
-        /* retain the nspace across the destruct so pdes's release of it
-         * does not free it, then hand that reference back to the peer */
-        PMIX_RETAIN(nptr);
-        PMIX_DESTRUCT(peer);
-        PMIX_CONSTRUCT(peer, pmix_peer_t);
-        peer->nptr = nptr;
-        peer->index = idx;
-        /* keep the recycled peer counted as finalized: this leaves it
-         * inert to every finalized-guarded send path while idle, keeps
-         * nfinalized honest, and identifies it as available for reuse on
-         * the next PMIx_Init. info stays on nptr->ranks and is reattached
-         * to peer->info when the rank reconnects. */
-        peer->finalized = true;
-        info->peerid = idx;
-        return;
-    }
-
-    /* Releasing a finalized peer: it leaves the finalized state, so undo
-     * the count that FINALIZE_CMD added. */
+    /* Release the departed peer so it does not stay stranded in the
+     * clients array until the nspace is deregistered. We deliberately do
+     * NOT recycle the object in place: destructing and reconstructing a
+     * pmix_peer_t that is still reachable from the clients array (and
+     * whose embedded libevent structures and rank_info alias other state)
+     * is fragile - the reuse was only an allocation optimization, and a
+     * subsequent PMIx_Init for this rank simply allocates a fresh peer.
+     * PMIX_RELEASE only drops our reference; if a pending collective or an
+     * active sensor still holds one, the object survives until that last
+     * holder frees it.
+     *
+     * Releasing undoes the finalized state, so undo the count that
+     * FINALIZE_CMD added. */
     if (0 < nptr->nfinalized) {
         --nptr->nfinalized;
     }
