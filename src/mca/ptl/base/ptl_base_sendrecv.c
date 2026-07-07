@@ -230,9 +230,17 @@ static void lost_connection(pmix_peer_t *peer)
             pmix_server_grp_peer_lost(peer);
 
             /* if the peer simply died without finalizing,
-             * then reduce the number of local procs */
-            if (!peer->finalized && 0 < peer->nptr->nlocalprocs) {
-                --peer->nptr->nlocalprocs;
+             * then reduce the number of local procs, and reduce the
+             * rank's live-process count so a later clone recycle decision
+             * remains correct (the finalize path decrements proc_cnt in
+             * pmix_server_peer_finalized; the abnormal path must too) */
+            if (!peer->finalized) {
+                if (0 < peer->nptr->nlocalprocs) {
+                    --peer->nptr->nlocalprocs;
+                }
+                if (NULL != peer->info && 0 < peer->info->proc_cnt) {
+                    --peer->info->proc_cnt;
+                }
             }
         }
 
@@ -253,6 +261,16 @@ static void lost_connection(pmix_peer_t *peer)
              * an event. If an abnormal termination, then we do */
             PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION, peer,
                               PMIX_RANGE_PROC_LOCAL, _notify_complete);
+        }
+
+        /* if a local client finalized cleanly and its socket has now
+         * dropped, recycle or release its peer object so it does not leak
+         * until the nspace is deregistered. This MUST be the last use of
+         * peer here: the object may be destructed/reconstructed or freed.
+         * The callers only issue a write barrier afterward (they never
+         * dereference peer), so doing it inline is safe. */
+        if (peer->finalized && PMIX_PEER_IS_CLIENT(peer) && !PMIX_PEER_IS_TOOL(peer)) {
+            pmix_server_peer_finalized(peer);
         }
 
     } else if (peer == pmix_client_globals.myserver) {
