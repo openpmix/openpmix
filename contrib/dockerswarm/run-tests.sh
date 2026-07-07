@@ -185,6 +185,34 @@ test_linux() {
         skp "connect_die not built"
     fi
     cleanup_swarm
+
+    banner "voluntary group leave (PMIX_GROUP_LEFT notification)"
+    cleanup_swarm
+    # group_leave: every rank builds a group, then the last rank calls
+    # PMIx_Group_leave. That must generate a PMIX_GROUP_LEFT event to the
+    # remaining members (across nodes, via the broadcast notification path) and
+    # return success once locally generated. Each surviving member has a handler
+    # registered for PMIX_GROUP_LEFT and reports PASS on receipt; the departing
+    # rank reports SUCCESS. Whole-job membership + --map-by node ensures the
+    # departing rank's node also hosts a survivor, exercising both local and
+    # remote delivery. The victim leaves and finalizes cleanly, so no
+    # --rtos recoverable is needed.
+    if RUN 'test -x /opt/prte/tests/group_leave'; then
+        OUT="$(RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_leave 2>&1')"
+        n=$(echo "$OUT" | grep -c 'correctly received: PASS')
+        if echo "$OUT" | grep -qiE 'timeout|timed out|DVM timeout'; then
+            bad "group_leave HUNG (notification never delivered)"
+        elif echo "$OUT" | grep -qiE 'FAILED'; then
+            bad "group_leave: a member reported failure: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
+        elif [ "$n" -ge 3 ] && echo "$OUT" | grep -q 'Group_leave complete: SUCCESS'; then
+            ok "all 3 survivors notified of the voluntary departure"
+        else
+            bad "group_leave: only $n survivors notified: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+        fi
+    else
+        skp "group_leave not built"
+    fi
+    cleanup_swarm
 }
 
 ########################################################################

@@ -7,6 +7,15 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - PMIx_Group_leave / PMIx_Group_leave_nb are now implemented. Previously
+   the client sent a command the server never handled, so the call
+   returned PMIX_ERR_NOT_SUPPORTED and the documented PMIX_GROUP_LEFT
+   event was never generated. A voluntary leave now generates a
+   PMIX_GROUP_LEFT event notifying the remaining members of the caller's
+   departure (returning success once the event is locally generated, per
+   the API contract), updates group membership on the members and in the
+   host environment, and completes any in-flight group construct/destruct
+   collective on the survivors rather than hanging
  - Resolve a status-code value collision: PMIX_ERR_LOST_PRECISION and
    PMIX_ERR_CHANGE_SIGN shared the values -400 and -401 with the
    PMIX_ERR_PROC_KILLED_BY_CMD and PMIX_ERR_PROC_FAILED_TO_START event

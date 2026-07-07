@@ -1356,6 +1356,29 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer
         }
     }
 
+    /* if a local member is voluntarily leaving a group, account for its
+     * departure in any in-flight group construct/destruct collective for
+     * that group so the collective completes on the survivors rather than
+     * hanging - the deliberate cousin of a lost participant. We do this
+     * before the loop-detection check below because only the originating
+     * server (the one that received the leave from its client) sees this
+     * command; peer servers receive the relayed event with the
+     * PMIX_SERVER_INTERNAL_NOTIFY marker and bail out. */
+    if (PMIX_GROUP_LEFT == cd->status) {
+        char *grpid = NULL;
+        pmix_proc_t *affected = NULL;
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GROUP_ID)) {
+                grpid = cd->info[n].value.data.string;
+            } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_EVENT_AFFECTED_PROC)) {
+                affected = cd->info[n].value.data.proc;
+            }
+        }
+        if (NULL != grpid && NULL != affected) {
+            pmix_server_grp_member_left(grpid, affected);
+        }
+    }
+
     /* check to see if we already processed this event - it is possible
      * that a local client "echoed" it back to us and we want to avoid
      * a potential infinite loop */

@@ -738,7 +738,8 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
     bool found;
     pmix_group_t *grp, *gp;
     pmix_proc_t *members = NULL;
-    size_t n, nmembers = 0;
+    pmix_proc_t *affected = NULL;
+    size_t n, m, k, nmembers = 0;
     char *grpid = NULL;
     size_t ctxid = SIZE_MAX;
 
@@ -817,6 +818,38 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                 grp->grpid = strdup(grpid);
                 grp->ctxid = ctxid;
                 pmix_list_append(&pmix_client_globals.groups, &grp->super);
+            }
+        }
+    }
+
+    /* if this is the "group_left" event, then a member has voluntarily
+     * departed the group - update our local membership to drop it */
+    if (PMIX_GROUP_LEFT == chain->status) {
+        // find the group ID and the departing proc
+        for (n = 0; n < chain->ninfo; n++) {
+            if (PMIX_CHECK_KEY(&chain->info[n], PMIX_GROUP_ID)) {
+                grpid = chain->info[n].value.data.string;
+
+            } else if (PMIX_CHECK_KEY(&chain->info[n], PMIX_EVENT_AFFECTED_PROC)) {
+                affected = chain->info[n].value.data.proc;
+            }
+        }
+        if (NULL != grpid && NULL != affected) {
+            PMIX_LIST_FOREACH(gp, &pmix_client_globals.groups, pmix_group_t) {
+                if (0 != strcmp(grpid, gp->grpid)) {
+                    continue;
+                }
+                // remove the departed proc from this group's membership
+                for (m = 0; m < gp->nmbrs; m++) {
+                    if (PMIX_CHECK_PROCID(&gp->members[m], affected)) {
+                        for (k = m + 1; k < gp->nmbrs; k++) {
+                            PMIX_XFER_PROCID(&gp->members[k - 1], &gp->members[k]);
+                        }
+                        --gp->nmbrs;
+                        break;
+                    }
+                }
+                break;
             }
         }
     }
