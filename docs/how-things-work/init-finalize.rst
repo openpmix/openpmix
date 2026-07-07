@@ -444,6 +444,54 @@ Platform caveat: destructor support
     ``-fini`` support is present (the mainstream case).
 
 
+Tool-Side Teardown
+------------------
+
+The tool role has the same cycling guarantee as the client: a process
+must be able to cycle ``PMIx_tool_init`` → work → ``PMIx_tool_finalize``
+repeatedly, each init a clean slate. ``PMIx_tool_init`` /
+``PMIx_tool_finalize`` are a **separate** entry-point pair from the client
+``PMIx_Init`` / ``PMIx_Finalize`` — they do not share the client's
+finalize code — so the three symmetry requirements above have to be
+satisfied independently in the tool path. Two of them bite the tool
+specifically:
+
+The reference-count guard and the one-time latch
+    ``PMIx_tool_init`` is reference-counted through its own counter, and
+    it sets the shared one-time-init latch (``pmix_globals.init_called``).
+    ``PMIx_tool_finalize`` must decrement that counter, tear down only on
+    the last matching finalize, and **reset the latch**. Forgetting the
+    reset is the most visible cycling failure: the second
+    ``PMIx_tool_init`` sees the latch still set, concludes the library is
+    already initialized, and returns ``PMIX_ERR_INIT`` — the tool never
+    comes back up.
+
+The tool constructs server state every init
+    Because a tool may itself act as a server (a launcher connects *up* to
+    its own server while *listening* for its children), ``PMIx_tool_init``
+    unconditionally initializes the ``server_globals`` bookkeeping —
+    constructing the client array and every server-side list — on **every**
+    init, whether or not the tool will act as a server. Tool finalize must
+    therefore destruct **all** of those lists, not just the subset a
+    particular run happened to populate; any list left un-destructed leaks
+    its contents each cycle when the next init reconstructs over it. For
+    the same reason the tool must free (and ``NULL``) the ``tmpdir`` and
+    ``system_tmpdir`` strings: the init-time code refreshes them only when
+    they are ``NULL``, so a surviving pointer both leaks and silently
+    pins the previous cycle's temporary-directory choice, ignoring a
+    changed environment on the next init. The tool must likewise destruct
+    the client-side ``peers`` array backing store and the static IOF
+    sinks, exactly as the client finalize does.
+
+    The reset of the *server module* latch
+    (``pmix_server_globals.module_set``, set by
+    ``PMIx_tool_set_server_module``) is **not** part of this pair: that
+    latch is owned by a separate registration call a launcher makes
+    outside ``PMIx_tool_init``, and the server reference finalizer does
+    not clear it either. A launcher that re-registers its server module
+    between cycles is therefore out of scope here and handled separately.
+
+
 Invariants
 ----------
 
