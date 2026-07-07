@@ -27,9 +27,9 @@ noinst_SCRIPTS = run_gds_fallback.pl
 
 EXTRA_DIST = run_gds_fallback.pl.in
 
-check_PROGRAMS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback pmix_log collective_status
+check_PROGRAMS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback pmix_log collective_status client_cycle
 
-TESTS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback run_gds_fallback.pl pmix_log collective_status
+TESTS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback run_gds_fallback.pl pmix_log collective_status client_cycle
 
 compress_SOURCES =  \
         compress.c
@@ -73,5 +73,11 @@ collective_status_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 collective_status_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+client_cycle_SOURCES = \
+        client_cycle.c
+client_cycle_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+client_cycle_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 clean-local:
-	rm -f compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback pmix_log collective_status
+	rm -f compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback pmix_log collective_status client_cycle
