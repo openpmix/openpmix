@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,6 +24,8 @@ BEGIN_C_DECLS
 typedef struct {
     pmix_peer_t *myserver;        // messaging support to/from my server
     bool singleton;               // no server
+    bool local_iof;               // we constructed the server-side IOF lists
+                                  // (pmix_server_globals.iof/iof_residuals)
     pmix_list_t pending_requests; // list of pmix_cb_t pending data requests
     pmix_pointer_array_t peers;   // array of pmix_peer_t cached for data ops
     pmix_list_t groups;           // list of groups this client is part of

@@ -207,6 +207,7 @@ error:
 pmix_client_globals_t pmix_client_globals = {
     .myserver = NULL,
     .singleton = false,
+    .local_iof = false,
     .pending_requests = PMIX_LIST_STATIC_INIT,
     .peers = PMIX_POINTER_ARRAY_STATIC_INIT,
     .groups = PMIX_LIST_STATIC_INIT,
@@ -688,12 +689,17 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                          PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
 
     /* setup the globals */
-    /* reset the singleton indicator on every fresh init: it is a static
-     * that records how *this* cycle came up, and is only set true below
-     * if we fail to find a server. Leaving a stale "true" from a prior
-     * singleton cycle would cause finalize to tear down the server-side
-     * IOF lists that a subsequent with-server cycle never constructed. */
+    /* reset these indicators on every fresh init: they are statics that
+     * record how *this* cycle came up. "singleton" is set true below only
+     * if we fail to find a server; "local_iof" is set true only if we
+     * construct the server-side IOF lists. They are independent - a client
+     * given a PMIX_NAMESPACE that fails to connect is a singleton without
+     * those lists, and a no-namespace process that does find a (system)
+     * server constructs them yet is not a singleton - so finalize must key
+     * the IOF teardown off local_iof, not off singleton. Leaving either as
+     * a stale "true" from a prior cycle would mis-tear-down on finalize. */
     pmix_client_globals.singleton = false;
+    pmix_client_globals.local_iof = false;
     PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.peers, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
@@ -734,6 +740,10 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_globals.iof_flags.local_output = true;
         PMIX_CONSTRUCT(&pmix_server_globals.iof, pmix_list_t);
         PMIX_CONSTRUCT(&pmix_server_globals.iof_residuals, pmix_list_t);
+        /* record that we built these so finalize tears them down - note
+         * this is independent of whether we ultimately connect to a
+         * server below (a system server may accept us as a singleton) */
+        pmix_client_globals.local_iof = true;
     } else {
         if (NULL != proc) {
             PMIX_LOAD_NSPACE(proc->nspace, evar);
@@ -1242,9 +1252,15 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         }
     }
     PMIX_DESTRUCT(&pmix_client_globals.peers);
-    if (pmix_client_globals.singleton) {
+    /* tear down the server-side IOF lists only if we actually constructed
+     * them during init (no PMIX_NAMESPACE was present). This is tracked by
+     * local_iof rather than the singleton flag: the two are independent
+     * (see PMIx_Init) and keying off singleton either destructs lists that
+     * were never built - a crash - or leaks lists that were. */
+    if (pmix_client_globals.local_iof) {
         PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
         PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
+        pmix_client_globals.local_iof = false;
     }
 
     if (0 <= pmix_client_globals.myserver->sd) {
