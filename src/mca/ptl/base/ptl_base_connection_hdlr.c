@@ -181,6 +181,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     cnct_hdlr_t *ch;
     void *ilist;
     pmix_data_array_t darray;
+    pmix_peer_t *stale;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -410,6 +411,31 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         nptr->version.major = pnd->proc_type.major;
         nptr->version.minor = pnd->proc_type.minor;
         nptr->version.release = pnd->proc_type.release;
+    }
+
+    /* If this rank previously finalized, a harmless finalized "tombstone"
+     * peer from that prior cycle may still occupy its clients-array slot -
+     * pmix_server_peer_finalized leaves it in place at socket-close rather
+     * than mutating shared state amid concurrent collectives. Now that the
+     * rank is reconnecting we are at a safe point (no collective from the
+     * prior cycle can still be in flight), so reclaim that tombstone
+     * before allocating a fresh peer for this connection: null its slot,
+     * drop the finalized count it was still contributing, and release it.
+     * This is what keeps the clients array and nptr->nfinalized from
+     * drifting across repeated init/finalize cycles. We only reclaim when
+     * no live process remains for the rank (proc_cnt == 0) so a surviving
+     * fork/exec'd clone is never disturbed. See
+     * docs/how-things-work/init-finalize.rst. */
+    if (0 <= info->peerid && 0 == info->proc_cnt) {
+        stale = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
+                                                            info->peerid);
+        if (NULL != stale && stale->finalized) {
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, info->peerid, NULL);
+            if (0 < nptr->nfinalized) {
+                --nptr->nfinalized;
+            }
+            PMIX_RELEASE(stale);
+        }
     }
 
     /* a peer can connect on multiple sockets since it can fork/exec

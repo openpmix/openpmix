@@ -109,10 +109,11 @@ int main(int argc, char **argv)
 
     /* Cycle PMIx_Init -> work -> PMIx_Finalize repeatedly against the same
      * persistent server, reusing our namespace and rank each time. Each
-     * finalize drops our connection; the server releases our peer object and
-     * the next Init allocates a fresh one. Exercising many cycles here is a
-     * regression guard on the server-side finalize teardown: the departed
-     * peer must not strand in the clients array, and the per-rank accounting
+     * finalize drops our connection; the server leaves our peer object as a
+     * finalized tombstone and reclaims it when the next Init reconnects,
+     * allocating a fresh one. Exercising many cycles here is a regression
+     * guard on the server-side finalize teardown: finalized peers must not
+     * accumulate in the clients array, and the per-rank accounting
      * (nfinalized, proc_cnt) must stay balanced so the "all local processes
      * finalized" condition keeps evaluating correctly across cycles - see
      * docs/how-things-work/init-finalize.rst. */

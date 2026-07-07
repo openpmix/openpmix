@@ -348,10 +348,15 @@ PMIX_EXPORT void pmix_server_message_handler(struct pmix_peer_t *pr, pmix_ptl_hd
 PMIX_EXPORT void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc);
 
 /* Handle the departure of a cleanly-finalized local client peer whose
- * socket has dropped: decrement the rank's live-process count, undo the
- * nfinalized bump that FINALIZE_CMD added, repoint the rank's referenced
- * peerid, and release the peer so it does not stay stranded in the clients
- * array until the nspace is deregistered. See
+ * socket has dropped: decrement the rank's live-process count and leave
+ * the peer in place as an inert finalized "tombstone" at its existing
+ * clients slot (info->peerid unchanged, slot not nulled), to be reclaimed
+ * at the next reconnect for the rank or at namespace deregistration. Only
+ * a stranded peer that a newer connection has already displaced
+ * (info->peerid no longer names it) is freed here. Deferring the free and
+ * never moving a live peerid keeps concurrent spawn/connect/disconnect
+ * collectives and direct-modex gets - which resolve ranks through
+ * info->peerid - from racing peer teardown. See
  * docs/how-things-work/init-finalize.rst. */
 PMIX_EXPORT void pmix_server_peer_finalized(pmix_peer_t *peer);
 
