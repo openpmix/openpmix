@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
@@ -181,6 +181,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     cnct_hdlr_t *ch;
     void *ilist;
     pmix_data_array_t darray;
+    bool reuse = false;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -414,10 +415,32 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     /* a peer can connect on multiple sockets since it can fork/exec
      * a child that also calls PMIX_Init, so add it here if necessary.
-     * Create the tracker for this peer */
-    peer = PMIX_NEW(pmix_peer_t);
-    if (NULL == peer) {
-        goto error;
+     * If this rank previously finalized and its peer was recycled in
+     * place (left idle with finalized==true and no live processes), reuse
+     * that object rather than leaking it and allocating a new one - see
+     * docs/how-things-work/init-finalize.rst. We require finalized==true
+     * on the candidate so we never reuse a still-active peer or one left
+     * behind by an abnormal termination. */
+    if (0 == info->proc_cnt && 0 <= info->peerid) {
+        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
+                                                           info->peerid);
+        if (NULL != peer && peer->finalized) {
+            reuse = true;
+        } else {
+            peer = NULL;
+        }
+    }
+    if (!reuse) {
+        peer = PMIX_NEW(pmix_peer_t);
+        if (NULL == peer) {
+            goto error;
+        }
+    } else {
+        /* reactivate the recycled peer - it was left counted as finalized */
+        peer->finalized = false;
+        if (0 < nptr->nfinalized) {
+            --nptr->nfinalized;
+        }
     }
 
     /* Assign the upper half of the tag space for sendrecvs */
@@ -428,9 +451,11 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     memcpy(&peer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
     /* save the protocol */
     peer->protocol = pnd->protocol;
-    /* add in the nspace pointer */
-    PMIX_RETAIN(nptr);
-    peer->nptr = nptr;
+    /* add in the nspace pointer - a recycled peer is already pointed at it */
+    if (!reuse) {
+        PMIX_RETAIN(nptr);
+        peer->nptr = nptr;
+    }
     PMIX_RETAIN(info);
     peer->info = info;
     /* update the epilog fields */
@@ -441,10 +466,13 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     nptr->epilog.gid = info->gid;
     info->proc_cnt++; /* increase number of processes on this rank */
     peer->sd = pnd->sd;
-    if (0 > (peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer))) {
-        goto error;
+    /* a recycled peer keeps its clients-array slot and peerid */
+    if (!reuse) {
+        if (0 > (peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer))) {
+            goto error;
+        }
+        info->peerid = peer->index;
     }
-    info->peerid = peer->index;
 
     /* set the sec module to match this peer */
     peer->nptr->compat.psec = pmix_psec_base_assign_module(pnd->psec);

@@ -1492,6 +1492,70 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
     }
 }
 
+void pmix_server_peer_finalized(pmix_peer_t *peer)
+{
+    pmix_rank_info_t *info = peer->info;
+    pmix_namespace_t *nptr = peer->nptr;
+    int idx = peer->index;
+    pmix_peer_t *sib;
+    int i;
+
+    /* this process is gone - reduce the rank's live-process count */
+    if (NULL != info && 0 < info->proc_cnt) {
+        --info->proc_cnt;
+    }
+
+    /* Recycle the peer object in place only when this was the last live
+     * process for the rank AND nothing else still references the object.
+     * A pending collective (its caddy sits on the tracker's local_cbs) or
+     * a sensor can retain the peer past finalize; recycling a still-aliased
+     * object would leave those references pointing at a reinitialized (and
+     * possibly reconnected) peer - a use-after-free. In that case we fall
+     * through to release, which only decrements the refcount and lets the
+     * last holder free it; a subsequent PMIx_Init then allocates fresh. */
+    if (NULL != info && 0 == info->proc_cnt &&
+        1 == peer->super.obj_reference_count) {
+        /* retain the nspace across the destruct so pdes's release of it
+         * does not free it, then hand that reference back to the peer */
+        PMIX_RETAIN(nptr);
+        PMIX_DESTRUCT(peer);
+        PMIX_CONSTRUCT(peer, pmix_peer_t);
+        peer->nptr = nptr;
+        peer->index = idx;
+        /* keep the recycled peer counted as finalized: this leaves it
+         * inert to every finalized-guarded send path while idle, keeps
+         * nfinalized honest, and identifies it as available for reuse on
+         * the next PMIx_Init. info stays on nptr->ranks and is reattached
+         * to peer->info when the rank reconnects. */
+        peer->finalized = true;
+        info->peerid = idx;
+        return;
+    }
+
+    /* Releasing a finalized peer: it leaves the finalized state, so undo
+     * the count that FINALIZE_CMD added. */
+    if (0 < nptr->nfinalized) {
+        --nptr->nfinalized;
+    }
+    /* If this peer was the rank's referenced peer, repoint peerid so a
+     * concurrent local PMIx_Get for the rank still resolves: to a
+     * surviving sibling if one is still live (a clone), else to -1. */
+    if (NULL != info && info->peerid == idx) {
+        info->peerid = -1;
+        if (0 < info->proc_cnt) {
+            for (i = 0; i < pmix_server_globals.clients.size; i++) {
+                sib = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, i);
+                if (NULL != sib && sib != peer && sib->info == info) {
+                    info->peerid = i;
+                    break;
+                }
+            }
+        }
+    }
+    pmix_pointer_array_set_item(&pmix_server_globals.clients, idx, NULL);
+    PMIX_RELEASE(peer);
+}
+
 static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
 {
     pmix_rank_info_t *info, *inext;
