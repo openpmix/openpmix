@@ -1006,6 +1006,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests12.pl], [chmod +x test/run_tests12.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests13.pl], [chmod +x test/run_tests13.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_gds_fallback.pl], [chmod +x test/unit/run_gds_fallback.pl])
+    AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_simpcycle.pl], [chmod +x test/unit/run_simpcycle.pl])
 #    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests14.pl], [chmod +x test/run_tests14.pl])
 #    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests15.pl], [chmod +x test/run_tests15.pl])
     if test "$WANT_PYTHON_BINDINGS" = "1"; then

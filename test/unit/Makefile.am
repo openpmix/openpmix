@@ -23,13 +23,13 @@
 
 SUBDIRS = util class
 
-noinst_SCRIPTS = run_gds_fallback.pl
+noinst_SCRIPTS = run_gds_fallback.pl run_simpcycle.pl
 
-EXTRA_DIST = run_gds_fallback.pl.in
+EXTRA_DIST = run_gds_fallback.pl.in run_simpcycle.pl.in
 
 check_PROGRAMS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback pmix_log collective_status client_cycle
 
-TESTS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback run_gds_fallback.pl pmix_log collective_status client_cycle
+TESTS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback run_gds_fallback.pl run_simpcycle.pl pmix_log collective_status client_cycle
 
 compress_SOURCES =  \
         compress.c
