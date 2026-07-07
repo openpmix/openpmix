@@ -182,6 +182,97 @@ What finalize does **not** do
     requests, and cached notifications targeting the client — are pruned
     as part of the teardown so they do not linger on the reset object.
 
+Recycle mechanics
+~~~~~~~~~~~~~~~~~~
+
+The recycle is driven from two points in the transport layer, and its
+correctness rests on two per-namespace counters staying honest across
+every cycle.
+
+**Peer states.** A client peer moves through three states:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 12 8 12
+
+   * - State
+     - ``finalized``
+     - ``sd``
+     - in ``proc_cnt``?
+   * - Active
+     - ``false``
+     - ≥ 0
+     - yes
+   * - Finalizing (``FINALIZE_CMD`` seen, socket not yet dropped)
+     - ``true``
+     - ≥ 0
+     - yes
+   * - Recycled-idle (reset in place, kept at ``info->peerid``)
+     - ``true``
+     - −1
+     - no
+
+A recycled-idle peer is deliberately left with ``finalized == true``.
+That keeps it **inert** to every ``finalized``-guarded send path (the
+``PMIX_PTL_SEND_*`` macros and ``PMIX_SERVER_QUEUE_REPLY`` all
+short-circuit on ``finalized``), so a stray asynchronous notification or
+I/O-forwarding message cannot arm a doomed send on its closed socket
+while it waits to be reused. It also uniquely identifies the object as a
+reuse candidate for the next ``PMIx_Init``.
+
+**The two counters.**
+
+* ``info->proc_cnt`` is the number of **live** processes (clones) for the
+  rank. It is incremented in the connection handler when a peer connects
+  and decremented on **every** peer departure — a clean finalize drop
+  *and* an abnormal termination. Decrementing on abnormal death too
+  (in ``lost_connection``) keeps a later clone's recycle-vs-release
+  decision correct.
+
+* ``nptr->nfinalized`` is the number of client peers currently in the
+  ``finalized == true`` state. It is incremented when ``FINALIZE_CMD`` is
+  received, decremented when a recycled-idle peer is **reused** (it goes
+  back to active) or when a finalized peer is **released**, and left
+  unchanged when a peer is recycled to idle (it stays ``finalized``, so it
+  stays counted). Keeping this balanced is what lets the
+  ``nlocalprocs == nfinalized`` test at namespace teardown fire the
+  programming-model "all local processes finalized" callback exactly once.
+
+**Recycle vs. release.** When a cleanly-finalized peer's socket drops,
+``pmix_server_peer_finalized`` decrements ``proc_cnt`` and then chooses:
+
+* **Recycle in place** when this was the last live process for the rank
+  **and** nothing else still references the peer object
+  (``proc_cnt == 0 && obj_reference_count == 1``): destruct/construct the
+  peer, repoint it at its namespace, keep it at its ``clients`` slot with
+  ``info->peerid`` pointing at it, and leave it idle. ``nfinalized`` is
+  unchanged.
+
+* **Release** otherwise. The reference count is *not* guaranteed to be one
+  at the drop: a pending non-blocking collective (whose caddy sits on the
+  tracker's ``local_cbs``) or an active sensor can retain the peer past
+  finalize. Recycling a still-aliased object would leave those references
+  pointing at a reinitialized — possibly reconnected — peer, a
+  use-after-free. In that case, and for a surplus clone
+  (``proc_cnt > 0``), the peer is released instead: ``nfinalized`` is
+  decremented, the ``clients`` slot is cleared, and ``PMIX_RELEASE`` drops
+  the reference so the last holder frees it. A subsequent ``PMIx_Init``
+  then allocates a fresh peer.
+
+**Reuse requires ``finalized``.** On reconnect, the connection handler
+reuses the peer at ``info->peerid`` only when ``proc_cnt == 0`` and that
+candidate has ``finalized == true`` — the signature of a recycled-idle
+peer. This decouples reuse safety from an abnormally-terminated peer that
+may still be lingering in the array, and from any still-active sibling.
+
+**Clone ``peerid`` repointing.** A local ``PMIx_Get`` for the rank
+resolves committed data only while ``info->peerid`` names a live peer
+(a negative ``peerid`` defers the get). So when a *surplus clone* is
+released and it happened to be the rank's referenced peer, ``peerid`` is
+repointed to a surviving sibling (found by scanning ``clients`` for a peer
+sharing the same ``info``) rather than left dangling or set negative while
+another process for the rank is still connected.
+
 
 Deregistering a Client
 ----------------------
