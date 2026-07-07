@@ -1504,7 +1504,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_status_t rc;
     pmix_tool_timeout_t tev;
     struct timeval tv = {5, 0};
-    int n;
+    int n, i;
     pmix_peer_t *peer;
     pmix_pfexec_child_t *child, *nxt;
     pmix_lock_t lock;
@@ -1512,7 +1512,17 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
+    /* PMIx_tool_init is reference counted (a tool may init more than once);
+     * only the last matching finalize tears the library down */
+    i = pmix_atomic_fetch_add(&tool_init_cntr, -1);
+    if (1 < i) {
+        return PMIX_SUCCESS;
+    }
     pmix_atomic_unset_bool(&pmix_globals.initialized);
+    /* reset the one-time-init latch so a subsequent PMIx_tool_init in this
+     * process starts a fresh library instance rather than short-circuiting
+     * on the still-set flag and returning PMIX_ERR_INIT */
+    pmix_globals.init_called = false;
     pmix_globals.mypeer->finalized = true;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1579,9 +1589,13 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     /* wait here until all active events have been processed */
     PMIx_Progress_thread_stop(NULL, 0);
 
-    /* flush anything that is still trying to be written out */
+    /* flush anything that is still trying to be written out, then tear
+     * down the static IOF sinks so their buffered-output and write-event
+     * state does not leak across a re-init (matches the client finalize) */
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
+    PMIX_DESTRUCT(&pmix_client_globals.iof_stdout);
+    PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     for (n = 0; n < pmix_client_globals.peers.size; n++) {
@@ -1590,6 +1604,9 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
             PMIX_RELEASE(peer);
         }
     }
+    /* release the peers array's backing store, matching the client
+     * finalize - the loop above only released the items it held */
+    PMIX_DESTRUCT(&pmix_client_globals.peers);
 
     pmix_ptl_base_stop_listening();
 
@@ -1601,16 +1618,36 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     }
 
     (void) pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+    /* tear down every server_globals list that pmix_server_initialize
+     * constructs on each init, so none of their contents leak across a
+     * cycle. pmix_server_initialize (called unconditionally from
+     * PMIx_tool_init) reconstructs all of these on the next init. */
     PMIX_DESTRUCT(&pmix_server_globals.clients);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.remote_pnd);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.local_reqs);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.gdata);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.events);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.psets);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.grp_collectives);
 
     (void) pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
-    (void) pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+
+    /* free the tmpdir strings so they neither leak nor carry a stale
+     * value into the next init: the init-time guards only refresh them
+     * when they are NULL, so a surviving pointer would silently ignore a
+     * changed PMIX_SERVER_TMPDIR/PMIX_SYSTEM_TMPDIR on the next cycle */
+    if (NULL != pmix_server_globals.tmpdir) {
+        free(pmix_server_globals.tmpdir);
+        pmix_server_globals.tmpdir = NULL;
+    }
+    if (NULL != pmix_server_globals.system_tmpdir) {
+        free(pmix_server_globals.system_tmpdir);
+        pmix_server_globals.system_tmpdir = NULL;
+    }
 
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {
