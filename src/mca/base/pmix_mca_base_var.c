@@ -76,6 +76,7 @@ static char *pmix_mca_base_var_override_file = NULL;
 static char *pmix_mca_base_var_file_prefix = NULL;
 static char *pmix_mca_base_param_file_path = NULL;
 static bool pmix_mca_base_var_suppress_override_warning = false;
+static bool pmix_mca_base_var_suppress_deprecated_warning = true;
 static int pmix_mca_base_var_count = 0;
 static pmix_hash_table_t pmix_mca_base_var_index_hash = PMIX_HASH_TABLE_STATIC_INIT;
 
@@ -358,6 +359,19 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
                                      &pmix_mca_base_var_override_file);
     free(tmp);
+    if (0 > ret) {
+        return ret;
+    }
+
+    /* Suppress warnings emitted when a deprecated MCA parameter is set.
+     * Defaults to true so that deprecated-but-still-functional parameters
+     * do not spam users; set to false to surface the warnings. */
+    pmix_mca_base_var_suppress_deprecated_warning = true;
+    ret = pmix_mca_base_var_register(
+        "pmix", "mca", "base", "suppress_deprecated_warning",
+        "Suppress warnings when a deprecated MCA parameter is set (default: true)",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_mca_base_var_suppress_deprecated_warning);
     if (0 > ret) {
         return ret;
     }
@@ -1446,7 +1460,7 @@ static int var_set_from_env(pmix_mca_base_var_t *var, pmix_mca_base_var_t *origi
         }
     }
 
-    if (deprecated) {
+    if (deprecated && !pmix_mca_base_var_suppress_deprecated_warning) {
         const char *new_variable = "None (going away)";
 
         if (is_synonym) {
@@ -1510,7 +1524,7 @@ static int var_set_from_file(pmix_mca_base_var_t *var, pmix_mca_base_var_t *orig
             return PMIX_ERR_NOT_FOUND;
         }
 
-        if (deprecated) {
+        if (deprecated && !pmix_mca_base_var_suppress_deprecated_warning) {
             const char *new_variable = "None (going away)";
 
             if (is_synonym) {
