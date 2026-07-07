@@ -109,10 +109,13 @@ int main(int argc, char **argv)
 
     /* Cycle PMIx_Init -> work -> PMIx_Finalize repeatedly against the same
      * persistent server, reusing our namespace and rank each time. Each
-     * finalize drops our connection; the server must recycle our peer object
-     * in place so the next Init reuses it rather than leaking a fresh one.
-     * Exercising many cycles here is a regression guard on that server-side
-     * recycle path - see docs/how-things-work/init-finalize.rst. */
+     * finalize drops our connection; the server releases our peer object and
+     * the next Init allocates a fresh one. Exercising many cycles here is a
+     * regression guard on the server-side finalize teardown: the departed
+     * peer must not strand in the clients array, and the per-rank accounting
+     * (nfinalized, proc_cnt) must stay balanced so the "all local processes
+     * finalized" condition keeps evaluating correctly across cycles - see
+     * docs/how-things-work/init-finalize.rst. */
     for (cycle = 0; cycle < MAXCNT; cycle++) {
 
         /* init us and declare we are a test programming model */
@@ -166,9 +169,9 @@ int main(int argc, char **argv)
         free(tmp);
 
         /* participate in a fence - this drives a server-side collective
-         * tracker that retains our peer, so it also verifies that the peer's
-         * refcount is back to 1 by the time we finalize (a precondition for
-         * recycle-in-place rather than release) */
+         * tracker that retains our peer, so it also exercises the teardown
+         * path where that reference must be dropped before the peer can be
+         * released on finalize */
         pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
         proc.rank = PMIX_RANK_WILDCARD;
         if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
