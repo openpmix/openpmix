@@ -7,6 +7,28 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Group construct fault handling. When a member is lost before
+   contributing to a PMIx_Group_construct, the server now consults the
+   PMIX_GROUP_FT_COLLECTIVE directive (previously ignored): by default
+   the construct aborts with PMIX_GROUP_CONSTRUCT_ABORT rather than
+   silently forming a reduced group, while with the directive set it
+   completes on the survivors and notifies each of them via a
+   PMIX_GROUP_MEMBER_FAILED event naming the lost member. The server
+   synthesizes PMIX_GROUP_MEMBER_FAILED itself, so this works with any
+   host environment
+ - Group leader failure. A process that accepts an invitation with
+   PMIx_Group_join_nb now watches the group leader; if the leader
+   terminates before the construct completes, the library delivers a
+   PMIX_GROUP_LEADER_FAILED event to the waiting process (naming the
+   leader) so the application can drive reselection, rather than
+   blocking indefinitely
+ - Group construct timeout. A PMIX_TIMEOUT supplied to
+   PMIx_Group_construct is now enforced by the server for the local
+   phase: if a live participant never contributes, the construct
+   completes with PMIX_ERR_TIMEOUT instead of hanging
+ - Added the PMIX_GROUP_CANCEL group operation (a host callback used to
+   abort an in-flight cross-server construct) and the PMIX_CAP_GROUP_FT
+   capability flag advertising the group fault-tolerance feature set
  - PMIx_Group_leave / PMIx_Group_leave_nb are now implemented. Previously
    the client sent a command the server never handled, so the call
    returned PMIX_ERR_NOT_SUPPORTED and the documented PMIX_GROUP_LEFT
