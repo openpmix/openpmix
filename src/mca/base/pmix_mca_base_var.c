@@ -363,34 +363,13 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
         return ret;
     }
 
-    /* Suppress warnings emitted when a deprecated MCA parameter is set.
-     * Defaults to false to surface the warnings, set to true so that
-     * deprecated-but-still-functional parameters
-     * do not spam users */
-    pmix_mca_base_var_suppress_deprecated_warning = false;
-    ret = pmix_mca_base_var_register(
-        "pmix", "mca", "base", "suppress_deprecated_warning",
-        "Suppress warnings when a deprecated MCA parameter is set (default: false)",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL,
-        &pmix_mca_base_var_suppress_deprecated_warning);
-    if (0 > ret) {
-        return ret;
-    }
-
-    /* Disable reading MCA parameter files. */
+    /* Disable reading MCA parameter files. The suppression variables
+     * registered below still need to be created in this case so their
+     * values can be picked up from the environment, so jump past the
+     * file handling rather than returning here. */
     if (NULL == pmix_mca_base_var_files ||
         0 == strcmp(pmix_mca_base_var_files, "none")) {
-        return PMIX_SUCCESS;
-    }
-
-    pmix_mca_base_var_suppress_override_warning = false;
-    ret = pmix_mca_base_var_register(
-        "pmix", "mca", "base", "suppress_override_warning",
-        "Suppress warnings when attempting to set an overridden value (default: false)",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL,
-        &pmix_mca_base_var_suppress_override_warning);
-    if (0 > ret) {
-        return ret;
+        goto register_suppress;
     }
 
     /* Aggregate MCA parameter files
@@ -459,6 +438,38 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     ret = read_files(pmix_mca_base_var_override_file, &pmix_mca_base_var_override_values, PMIX_ENV_SEP);
     if (PMIX_SUCCESS != ret && PMIX_ERR_NOT_FOUND != ret) {
         // it is okay if the file isn't found
+        return ret;
+    }
+
+register_suppress:
+    /* Register the warning-suppression variables only after the MCA
+     * parameter files have been read and cached above. Registration
+     * applies any value found in those files to the variable's backing
+     * store; registering these before the files were read left the
+     * store at its default and silently ignored a user's setting in
+     * their mca-params.conf. */
+
+    /* Suppress warnings emitted when a deprecated MCA parameter is set.
+     * Defaults to false to surface the warnings, set to true so that
+     * deprecated-but-still-functional parameters
+     * do not spam users */
+    pmix_mca_base_var_suppress_deprecated_warning = false;
+    ret = pmix_mca_base_var_register(
+        "pmix", "mca", "base", "suppress_deprecated_warning",
+        "Suppress warnings when a deprecated MCA parameter is set (default: false)",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_mca_base_var_suppress_deprecated_warning);
+    if (0 > ret) {
+        return ret;
+    }
+
+    pmix_mca_base_var_suppress_override_warning = false;
+    ret = pmix_mca_base_var_register(
+        "pmix", "mca", "base", "suppress_override_warning",
+        "Suppress warnings when attempting to set an overridden value (default: false)",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_mca_base_var_suppress_override_warning);
+    if (0 > ret) {
         return ret;
     }
 
