@@ -68,6 +68,8 @@ PMIX_EXPORT void pmix_parse_localquery(int sd, short args, void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t insize,
                                                           pmix_proc_t **outprocs, size_t *outsize);
 
+PMIX_EXPORT bool pmix_client_proc_is_included(const pmix_proc_t *procs, size_t nprocs);
+
 END_C_DECLS
 
 #endif /* PMIX_CLIENT_OPS_H */

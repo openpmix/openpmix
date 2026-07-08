@@ -167,3 +167,27 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
     *outsize = sz;
     return PMIX_SUCCESS;
 }
+
+/* Return true if pmix_globals.myid is covered by the resolved procs array.
+ * Should be called after group expansion, so every entry carries a real
+ * nspace. PMIX_RANK_WILDCARD, PMIX_RANK_LOCAL_NODE, and PMIX_RANK_LOCAL_PEERS
+ * all cover the calling process when the nspace matches. Used by the
+ * collective APIs (fence, connect/disconnect, group construct) that require
+ * the caller to be among the listed participants. */
+bool pmix_client_proc_is_included(const pmix_proc_t *procs, size_t nprocs)
+{
+    size_t n;
+
+    for (n = 0; n < nprocs; n++) {
+        if (!PMIX_CHECK_NSPACE(procs[n].nspace, pmix_globals.myid.nspace)) {
+            continue;
+        }
+        if (PMIX_RANK_WILDCARD == procs[n].rank ||
+            PMIX_RANK_LOCAL_NODE == procs[n].rank ||
+            PMIX_RANK_LOCAL_PEERS == procs[n].rank ||
+            procs[n].rank == pmix_globals.myid.rank) {
+            return true;
+        }
+    }
+    return false;
+}
