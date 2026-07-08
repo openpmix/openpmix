@@ -61,7 +61,6 @@ static pmix_status_t pack_fence(pmix_buffer_t *msg, pmix_cmd_t cmd, const pmix_p
 static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
                         void *cbdata);
 static void op_cbfunc(pmix_status_t status, void *cbdata);
-static bool fence_client_is_included(const pmix_proc_t *procs, size_t nprocs);
 
 PMIX_EXPORT pmix_status_t PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
                                      const pmix_info_t info[], size_t ninfo)
@@ -115,28 +114,6 @@ PMIX_EXPORT pmix_status_t PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
                         "pmix: fence released");
 
     return rc;
-}
-
-/* Return true if pmix_globals.myid is covered by the resolved procs array.
- * Called after group expansion, so every entry carries a real nspace.
- * PMIX_RANK_WILDCARD, PMIX_RANK_LOCAL_NODE, and PMIX_RANK_LOCAL_PEERS all
- * cover the calling process when the nspace matches. */
-static bool fence_client_is_included(const pmix_proc_t *procs, size_t nprocs)
-{
-    size_t n;
-
-    for (n = 0; n < nprocs; n++) {
-        if (!PMIX_CHECK_NSPACE(procs[n].nspace, pmix_globals.myid.nspace)) {
-            continue;
-        }
-        if (PMIX_RANK_WILDCARD == procs[n].rank ||
-            PMIX_RANK_LOCAL_NODE == procs[n].rank ||
-            PMIX_RANK_LOCAL_PEERS == procs[n].rank ||
-            procs[n].rank == pmix_globals.myid.rank) {
-            return true;
-        }
-    }
-    return false;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
@@ -194,7 +171,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
     }
 
     /* verify that the calling process is among the fence participants */
-    if (!fence_client_is_included(rgs, nrg)) {
+    if (!pmix_client_proc_is_included(rgs, nrg)) {
         if (created) {
             PMIX_PROC_FREE(rgs, nrg);
         }
