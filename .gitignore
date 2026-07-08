@@ -210,6 +210,7 @@ test/python/run_sched.sh
 test/python/run_server.sh
 test/simple/pmitest
 test/simple/simpcycle
+test/simple/simptoolcycle
 test/simple/simpfabric
 test/simple/get_put_example
 test/simple/simpvni
@@ -237,6 +238,7 @@ test/unit/client_cycle
 test/unit/tool_cycle
 test/unit/run_gds_fallback.pl
 test/unit/run_simpcycle.pl
+test/unit/run_toolcycle.pl
 test/unit/util_argv
 test/unit/util_basename
 test/unit/util_path

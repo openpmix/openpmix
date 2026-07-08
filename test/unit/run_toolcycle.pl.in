@@ -1,0 +1,121 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# Exercise the SERVER side of a tool that cycles PMIx_tool_init ->
+# PMIx_tool_finalize against a persistent server. simptoolcycle forks into
+# a minimal server (parent) and a tool child that re-execs itself and loops
+# init/finalize while reusing one identity. After the child exits, the
+# parent counts the peers left in its clients array: a correct server
+# retires each finalized tool peer, so the count stays small and bounded no
+# matter how many cycles ran. A per-cycle leak (a never-reclaimed finalized
+# "tombstone" peer), a use-after-free, a failed reconnect, or a hang makes
+# the run exit non-zero or wedge until the timeout fires. See
+# docs/how-things-work/init-finalize.rst.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen
+# hands us every possible component directory in
+# PMIX_COMPONENT_LIBRARY_PATHS; turn each into an absolute path to the
+# built component so the MCA base can find them without a prior install.
+# simptoolcycle re-execs itself as the tool child and seeds that child's
+# environment from its own, so this search path reaches the child too.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# simptoolcycle re-execs itself by argv[0], so run from its directory.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise
+# arm a Perl alarm so a wedged run can never hang "make check" forever.
+my @cmd = ("./simptoolcycle");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run in a child we control, merging stderr into stdout, and slurp it.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec simptoolcycle: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: simptoolcycle exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The harness must exit 0: a crash, a failed tool re-init, or a per-cycle
+# peer leak (client count over the bound) drives a non-zero exit.
+if (0 != $status) {
+    print "FAIL: simptoolcycle did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm both phases actually cycled and the server judged itself clean, so
+# a vacuous pass (e.g. a child never connected) cannot slip through.
+my $pure_ran   = ($output =~ /pure\s+phase: \d+ cycles/);
+my $client_ran = ($output =~ /client phase: \d+ cycles/);
+my $passed     = ($output =~ /server-side tool init\/finalize cycling: PASS/);
+if (!$pure_ran || !$client_ran) {
+    print "FAIL: a tool phase did not complete its init/finalize cycles\n";
+    exit(1);
+}
+if (!$passed) {
+    print "FAIL: server reported a peer leak or did not finish cleanly\n";
+    exit(1);
+}
+print "PASS: tool recycled through the server across all cycles\n";
+exit(0);
