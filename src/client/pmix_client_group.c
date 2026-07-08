@@ -66,17 +66,21 @@ typedef struct {
     pmix_lock_t lock;
     pmix_status_t status;
     size_t ref;
-    size_t accepted;
     char *grpid;
     pmix_proc_t *members;
     size_t nmembers;
     /* for the invite/join model: the concrete (wildcard-expanded) list of
-     * invited processes, a parallel flag marking which have responded with an
-     * acceptance, and a timer that bounds how long the leader waits for the
-     * invitees to respond (armed only when PMIX_TIMEOUT is provided). On
-     * expiry the non-responders are reported via PMIX_GROUP_INVITE_FAILED and
-     * the construct completes on the members that did accept. */
+     * invited processes and two parallel per-member flags. "answered" marks
+     * that a member has responded definitively (accepted OR declined/
+     * terminated); the invitation resolves once every member has answered, or
+     * the timeout fires. "responded" marks the members that specifically
+     * ACCEPTED - those form the group; every other member (a decliner, a
+     * terminated proc, or, on timeout, a non-responder) is reported to the
+     * leader via PMIX_GROUP_INVITE_FAILED and excluded. The timer bounds how
+     * long the leader waits, and is armed only when PMIX_TIMEOUT is provided. */
     bool *responded;
+    bool *answered;
+    size_t nanswered;
     pmix_event_t ev;
     bool timer_active;
     bool completed;
@@ -94,11 +98,12 @@ static void gtcon(pmix_group_tracker_t *p)
     PMIX_CONSTRUCT_LOCK(&p->lock);
     p->status = PMIX_SUCCESS;
     p->ref = SIZE_MAX;
-    p->accepted = 0;
     p->grpid = NULL;
     p->members = NULL;
     p->nmembers = 0;
     p->responded = NULL;
+    p->answered = NULL;
+    p->nanswered = 0;
     p->timer_active = false;
     p->completed = false;
     p->info = NULL;
@@ -118,6 +123,10 @@ static void gtdes(pmix_group_tracker_t *p)
     if (NULL != p->responded) {
         free(p->responded);
         p->responded = NULL;
+    }
+    if (NULL != p->answered) {
+        free(p->answered);
+        p->answered = NULL;
     }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
@@ -608,14 +617,18 @@ static void invite_handler(size_t evhdlr_registration_id, pmix_status_t status,
                            pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     pmix_group_tracker_t *cb = NULL;
+    const pmix_proc_t *responder = source;
     size_t n;
     PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, results, nresults);
 
-    /* find the tracker we asked to be returned with the event */
+    /* find the tracker we asked to be returned with the event, and the identity
+     * of the responding proc. An accept/decline names itself as the event
+     * source; a termination names the departed proc as the affected proc. */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_RETURN_OBJECT)) {
             cb = (pmix_group_tracker_t *) info[n].value.data.ptr;
-            break;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC)) {
+            responder = info[n].value.data.proc;
         }
     }
     if (NULL == cb) {
@@ -625,28 +638,30 @@ static void invite_handler(size_t evhdlr_registration_id, pmix_status_t status,
         return;
     }
 
-    /* Record an acceptance by identity so we can later build the (possibly
-     * reduced) final membership and know who has yet to respond. A decline or a
-     * termination is simply left as a non-responder: when the invitation
-     * resolves (all accepted, or the timeout fires) the leader reports every
-     * non-responder via PMIX_GROUP_INVITE_FAILED and excludes it from the
-     * group. Those notifications, and the completion broadcast, are issued by
-     * PMIx_Group_invite on its own thread - PMIx_Notify_event must not be
-     * called from this progress thread, where it would deadlock. */
-    if (PMIX_GROUP_INVITE_ACCEPTED == status) {
-        for (n = 0; n < cb->nmembers; n++) {
-            if (PMIX_CHECK_PROCID(&cb->members[n], source)) {
-                if (!cb->responded[n]) {
+    /* Record this response by identity. A member that ACCEPTS joins the group
+     * (responded); one that DECLINES or TERMINATES definitively will not, and
+     * is left out of "responded" so it is reported to the leader via
+     * PMIX_GROUP_INVITE_FAILED and excluded when the invitation resolves. Either
+     * way the member has now "answered", so a decline resolves the construct
+     * immediately rather than waiting out the timeout. The notifications and the
+     * completion broadcast are issued by PMIx_Group_invite on its own thread -
+     * PMIx_Notify_event must not be called from this progress thread, where it
+     * would deadlock. */
+    for (n = 0; n < cb->nmembers; n++) {
+        if (PMIX_CHECK_PROCID(&cb->members[n], responder)) {
+            if (!cb->answered[n]) {
+                cb->answered[n] = true;
+                cb->nanswered++;
+                if (PMIX_GROUP_INVITE_ACCEPTED == status) {
                     cb->responded[n] = true;
-                    cb->accepted++;
                 }
-                break;
             }
+            break;
         }
     }
 
-    /* if every invited member has now accepted, the invitation has resolved */
-    if (cb->accepted == cb->nmembers) {
+    /* once every invited member has answered, the invitation has resolved */
+    if (cb->nanswered == cb->nmembers) {
         invite_wake(cb, PMIX_SUCCESS);
     }
 
@@ -695,7 +710,7 @@ static pmix_status_t invite_job_size(const pmix_proc_t *proc, uint32_t *jsize)
     return rc;
 }
 
-/* An invitation has resolved - either every invitee accepted, or the timeout
+/* An invitation has resolved - either every invitee answered, or the timeout
  * fired. Cancel the timer (if still pending) and wake the operation. The
  * notifications (PMIX_GROUP_INVITE_FAILED for any non-responder and the
  * PMIX_GROUP_CONSTRUCT_COMPLETE broadcast) are deliberately NOT done here:
@@ -758,7 +773,7 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
     struct timeval tv;
 
     cb->grpid = strdup(grp);
-    cb->accepted = 1; // obviously, we accept
+    cb->nanswered = 1; // we have obviously answered (by accepting)
 
     /* compute the number of proposed members, expanding any wildcard ranks */
     for (n = 0; n < nprocs; n++) {
@@ -773,17 +788,22 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
         }
     }
 
-    /* build the concrete (wildcard-expanded) list of invited members plus a
-     * parallel flag marking who has responded with an acceptance. We track
-     * identities - not just a count - so that, on a timeout, we can name the
-     * non-responders in the PMIX_GROUP_INVITE_FAILED events and construct the
-     * group on the members that did accept. */
+    /* build the concrete (wildcard-expanded) list of invited members plus the
+     * parallel per-member "answered"/"responded" flags. We track identities -
+     * not just a count - so that we can name the non-accepters (decliners,
+     * terminated procs, and, on a timeout, non-responders) in the
+     * PMIX_GROUP_INVITE_FAILED events and construct the group on the members
+     * that did accept. */
     PMIX_PROC_CREATE(cb->members, cb->nmembers);
     if (NULL == cb->members) {
         return PMIX_ERR_NOMEM;
     }
     cb->responded = (bool *) calloc(cb->nmembers, sizeof(bool));
     if (NULL == cb->responded) {
+        return PMIX_ERR_NOMEM;
+    }
+    cb->answered = (bool *) calloc(cb->nmembers, sizeof(bool));
+    if (NULL == cb->answered) {
         return PMIX_ERR_NOMEM;
     }
     m = 0;
@@ -802,10 +822,12 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
             m++;
         }
     }
-    /* we (the leader) are a member and have obviously already accepted */
+    /* we (the leader) are a member and have obviously already answered by
+     * accepting (this matches the nanswered = 1 seed above) */
     for (m = 0; m < cb->nmembers; m++) {
         if (PMIX_CHECK_PROCID(&cb->members[m], &pmix_globals.myid)) {
             cb->responded[m] = true;
+            cb->answered[m] = true;
             break;
         }
     }
@@ -874,7 +896,7 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
 
     /* if a timeout was requested, arm a timer so a non-responding invitee
      * cannot hang the leader indefinitely. The handler runs on the progress
-     * thread; it is cancelled by invite_wake() on a full acceptance. */
+     * thread; it is cancelled by invite_wake() once every invitee answers. */
     if (0 < timeout) {
         pmix_event_assign(&cb->ev, pmix_globals.evbase, -1, 0, invite_timeout, (void *) cb);
         cb->timer_active = true;
@@ -1017,9 +1039,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t 
         return rc;
     }
 
-    /* wait for the invitation to resolve - every invitee accepted, or the
-     * timeout fired (invite_wake, on the progress thread, only wakes us; it does
-     * not notify, as PMIx_Notify_event cannot be called from that thread) */
+    /* wait for the invitation to resolve - every invitee answered (accept or
+     * decline), or the timeout fired (invite_wake, on the progress thread, only
+     * wakes us; it does not notify, as PMIx_Notify_event cannot be called from
+     * that thread) */
     PMIX_WAIT_THREAD(&cb->lock);
     rc = cb->status;
 
