@@ -420,6 +420,39 @@ pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
     return PMIX_SUCCESS;
 }
 
+/* Synthesize a PMIX_GROUP_MEMBER_FAILED event for each member that was lost
+ * before contributing to this group construct. This is done entirely within
+ * the PMIx server so it works with any host environment, not just one that
+ * knows how to generate the event: the loss is recorded in blk->departed by
+ * the server's own lost-connection / voluntary-leave accounting (see
+ * account_departed), so the event is produced the same way regardless of which
+ * host runs the collective. It is delivered to the surviving local group
+ * members registered for the event; members on other nodes are notified by
+ * their own local server, which performs the identical accounting on its half
+ * of the collective. Runs on the progress thread, so it uses the internal
+ * notification path (pmix_server_notify_client_of_event thread-shifts) and
+ * never the public PMIx_Notify_event, which cannot be called from the progress
+ * thread. */
+static void notify_local_members_of_loss(grp_block_t *blk)
+{
+    pmix_proclist_t *dp;
+    pmix_info_t info[2];
+    pmix_status_t rc;
+
+    PMIX_LIST_FOREACH (dp, &blk->departed, pmix_proclist_t) {
+        PMIX_INFO_LOAD(&info[0], PMIX_EVENT_AFFECTED_PROC, &dp->proc, PMIX_PROC);
+        PMIX_INFO_LOAD(&info[1], PMIX_GROUP_ID, blk->id, PMIX_STRING);
+        rc = pmix_server_notify_client_of_event(PMIX_GROUP_MEMBER_FAILED,
+                                                &pmix_globals.myid, PMIX_RANGE_LOCAL,
+                                                info, 2, NULL, NULL);
+        PMIX_INFO_DESTRUCT(&info[0]);
+        PMIX_INFO_DESTRUCT(&info[1]);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+}
+
 static void _grpcbfunc(int sd, short args, void *cbdata)
 {
     grp_shifter_t *scd = (grp_shifter_t *) cbdata;
@@ -613,6 +646,14 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                     PMIX_RELEASE(reply);
                 }
             }
+        }
+        /* if any expected member was lost before contributing, the construct
+         * completed on the survivors - tell them which members failed so
+         * fault-aware applications can react. Only meaningful for a construct;
+         * a destruct is tearing the group down regardless. */
+        if (PMIX_GROUP_CONSTRUCT == bk->grpop &&
+            0 < pmix_list_get_size(&bk->departed)) {
+            notify_local_members_of_loss(bk);
         }
         /* remove the block from the list */
         pmix_list_remove_item(&pmix_server_globals.grp_collectives, &bk->super);

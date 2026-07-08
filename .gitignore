@@ -217,6 +217,7 @@ test/python/run_server.sh
 test/simple/pmitest
 test/simple/simpcycle
 test/simple/simpgrpmember
+test/simple/simpgrpdie
 test/simple/simptoolcycle
 test/simple/simpfabric
 test/simple/get_put_example
@@ -251,6 +252,7 @@ test/unit/run_grpinvite.pl
 test/unit/run_grptimeout.pl
 test/unit/run_grpdecline.pl
 test/unit/run_grpabort.pl
+test/unit/run_grpmemberfail.pl
 test/unit/util_argv
 test/unit/util_basename
 test/unit/util_path
