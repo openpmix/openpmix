@@ -30,7 +30,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   group_bootstrap client3 client4 launcher spawn_group resolve multi_nspace_group \
                   pub2 toolqry simple_resolve pubstress monitor monitor_remote monitor_multi \
                   simple simple_server abort group_die connect_die group_leave \
-                  group_destruct_die group_invite
+                  group_destruct_die group_invite group_invite_timeout
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -117,6 +117,10 @@ group_destruct_die_LDADD = $(top_builddir)/src/libpmix.la
 group_invite_SOURCES = group_invite.c examples.h
 group_invite_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 group_invite_LDADD = $(top_builddir)/src/libpmix.la
+
+group_invite_timeout_SOURCES = group_invite_timeout.c examples.h
+group_invite_timeout_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_timeout_LDADD = $(top_builddir)/src/libpmix.la
 
 group_dmodex_SOURCES = group_dmodex.c examples.h
 group_dmodex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -226,7 +230,7 @@ distclean-local:
         hello jctrl launcher log pub pubi server tool \
         abi_no_init abi_with_init group_lcl_cid pset \
         async_group group_dmodex group_bootstrap client3 \
-        group_leave group_destruct_die group_invite \
+        group_leave group_destruct_die group_invite group_invite_timeout \
         spawn_group resolve multi_nspace_group pub2 toolqry \
         simple_resolve pubstress monitor monitor_remote \
         simple simple_server abort

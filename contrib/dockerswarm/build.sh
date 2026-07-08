@@ -49,11 +49,13 @@ PRRTE_REPO="${PRRTE_REPO:-https://github.com/openpmix/prrte.git}"
 # The EVENT_EXAMPLES exercise the dynamic, event-driven group operations and
 # their fault paths, and are driven by the companion run-group-events.sh:
 # group_invite (leader invites, invitees join, the group forms and every member
-# is notified of completion) and group_destruct_die (a member is lost mid
+# is notified of completion), group_invite_timeout (an invitee never responds,
+# so the leader's PMIX_TIMEOUT fires, reports the non-responder, and forms the
+# group on those that accepted), and group_destruct_die (a member is lost mid
 # PMIx_Group_destruct, so the destruct must complete on the survivors -- the
 # destruct analog of group_die).
 GROUP_EXAMPLES="group group_bootstrap group_dmodex group_lcl_cid asyncgroup multi_nspace_group"
-EVENT_EXAMPLES="group_invite group_destruct_die"
+EVENT_EXAMPLES="group_invite group_invite_timeout group_destruct_die"
 BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die group_leave $EVENT_EXAMPLES"
 
 mode="${1:-linux}"
