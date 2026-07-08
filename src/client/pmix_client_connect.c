@@ -61,6 +61,7 @@
 static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
                         void *cbdata);
 static void op_cbfunc(pmix_status_t status, void *cbdata);
+static bool connect_client_is_included(const pmix_proc_t *procs, size_t nprocs);
 
 PMIX_EXPORT pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
                                        const pmix_info_t info[], size_t ninfo)
@@ -124,6 +125,8 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     pmix_nspace_t nspace;
     pmix_rank_t minrank;
     pmix_proc_t proc;
+    pmix_proc_t *rgs;
+    size_t nrg;
 
     pmix_output_verbose(2, pmix_client_globals.connect_output,
                         "pmix:connect_nb called");
@@ -146,23 +149,43 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* if any of the participants are referencing a PMIx group, then
+     * replace that group with the actual member proc(s) */
+    rc = pmix_client_convert_group_procs(procs, nprocs, &rgs, &nrg);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* PMIx_Connect requires that all participants be listed in the
+     * input array, so verify that the calling process is among them */
+    if (!connect_client_is_included(rgs, nrg)) {
+        PMIX_PROC_FREE(rgs, nrg);
+        return PMIX_ERR_NOT_A_MEMBER;
+    }
+
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_PROC_FREE(rgs, nrg);
         return rc;
     }
 
     /* pack the number of procs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nprocs, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nrg, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_PROC_FREE(rgs, nrg);
         return rc;
     }
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, procs, nprocs, PMIX_PROC);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, rgs, nrg, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_PROC_FREE(rgs, nrg);
         return rc;
     }
 
@@ -171,6 +194,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
+        PMIX_PROC_FREE(rgs, nrg);
         return rc;
     }
     if (0 < ninfo) {
@@ -178,6 +202,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
+            PMIX_PROC_FREE(rgs, nrg);
             return rc;
         }
     }
@@ -213,6 +238,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
                 PMIx_Info_list_release(ilist);
+                PMIX_PROC_FREE(rgs, nrg);
                 return rc;
             }
             // insert into a pmix_info_t for packing
@@ -225,6 +251,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
                 PMIx_Info_list_release(ilist);
+                PMIX_PROC_FREE(rgs, nrg);
                 return rc;
             }
         }
@@ -236,10 +263,10 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
      * share job-level info between the participants. We only need to
      * add it once per namespace, so have the lowest participating rank
      * in each namespace add the info */
-    PMIX_LOAD_NSPACE(nspace, procs[0].nspace);
+    PMIX_LOAD_NSPACE(nspace, rgs[0].nspace);
     found = false;
-    for (n=1; n < nprocs; n++) {
-        if (!PMIX_CHECK_NSPACE(nspace, procs[n].nspace)) {
+    for (n=1; n < nrg; n++) {
+        if (!PMIX_CHECK_NSPACE(nspace, rgs[n].nspace)) {
             found = true;
             break;
         }
@@ -247,10 +274,10 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     if (found) {
         // see if I am the lowest participating rank from my namespace
         minrank = UINT32_MAX;
-        for (n=0; n < nprocs; n++) {
-            if (PMIX_CHECK_NSPACE(pmix_globals.myid.nspace, procs[n].nspace)) {
+        for (n=0; n < nrg; n++) {
+            if (PMIX_CHECK_NSPACE(pmix_globals.myid.nspace, rgs[n].nspace)) {
                 // this is my nspace - check the rank
-                if (PMIX_RANK_WILDCARD == procs[n].rank) {
+                if (PMIX_RANK_WILDCARD == rgs[n].rank) {
                     // all ranks included, so see if I am rank 0
                     if (0 == pmix_globals.myid.rank) {
                         minrank = 0;
@@ -258,8 +285,8 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                     }
                 } else {
                     // see if I am the lowest
-                    if (procs[n].rank < minrank) {
-                        minrank = procs[n].rank;
+                    if (rgs[n].rank < minrank) {
+                        minrank = rgs[n].rank;
                     }
                 }
             }
@@ -303,6 +330,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(msg);
                     PMIx_Info_list_release(ilist);
+                    PMIX_PROC_FREE(rgs, nrg);
                     return rc;
                 }
                 // insert into a pmix_info_t for packing
@@ -317,6 +345,9 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     }
 
 moveon:
+    /* done with the (possibly group-expanded) participant array */
+    PMIX_PROC_FREE(rgs, nrg);
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -381,16 +412,11 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
     pmix_cmd_t cmd = PMIX_DISCONNECTNB_CMD;
     pmix_status_t rc;
     pmix_cb_t *cb;
+    pmix_proc_t *rgs;
+    size_t nrg, cnt;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: disconnect called");
-
-    size_t cnt;
-    for (cnt = 0; cnt < nprocs; cnt++) {
-        if (0 != strcmp(pmix_globals.myid.nspace, procs[cnt].nspace)) {
-            PMIX_GDS_DEL_NSPACE(rc, procs[cnt].nspace);
-        }
-    }
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -410,23 +436,51 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* if any of the participants are referencing a PMIx group, then
+     * replace that group with the actual member proc(s) */
+    rc = pmix_client_convert_group_procs(procs, nprocs, &rgs, &nrg);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* PMIx_Disconnect requires that all participants be listed in the
+     * input array, so verify that the calling process is among them */
+    if (!connect_client_is_included(rgs, nrg)) {
+        PMIX_PROC_FREE(rgs, nrg);
+        return PMIX_ERR_NOT_A_MEMBER;
+    }
+
+    /* remove the locally-stored data for any nspace other than our
+     * own that is involved in this disconnect */
+    for (cnt = 0; cnt < nrg; cnt++) {
+        if (0 != strcmp(pmix_globals.myid.nspace, rgs[cnt].nspace)) {
+            PMIX_GDS_DEL_NSPACE(rc, rgs[cnt].nspace);
+        }
+    }
+
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_PROC_FREE(rgs, nrg);
         return rc;
     }
 
     /* pack the number of procs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nprocs, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nrg, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_PROC_FREE(rgs, nrg);
         return rc;
     }
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, procs, nprocs, PMIX_PROC);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, rgs, nrg, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_PROC_FREE(rgs, nrg);
         return rc;
     }
 
@@ -435,6 +489,7 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
+        PMIX_PROC_FREE(rgs, nrg);
         return rc;
     }
     if (0 < ninfo) {
@@ -442,9 +497,13 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
+            PMIX_PROC_FREE(rgs, nrg);
             return rc;
         }
     }
+
+    /* done with the (possibly group-expanded) participant array */
+    PMIX_PROC_FREE(rgs, nrg);
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
@@ -547,4 +606,22 @@ static void op_cbfunc(pmix_status_t status, void *cbdata)
     cb->status = status;
     PMIX_POST_OBJECT(cb);
     PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
+static bool connect_client_is_included(const pmix_proc_t *procs, size_t nprocs)
+{
+    size_t n;
+
+    for (n = 0; n < nprocs; n++) {
+        if (!PMIX_CHECK_NSPACE(procs[n].nspace, pmix_globals.myid.nspace)) {
+            continue;
+        }
+        if (PMIX_RANK_WILDCARD == procs[n].rank ||
+            PMIX_RANK_LOCAL_NODE == procs[n].rank ||
+            PMIX_RANK_LOCAL_PEERS == procs[n].rank ||
+            procs[n].rank == pmix_globals.myid.rank) {
+            return true;
+        }
+    }
+    return false;
 }
