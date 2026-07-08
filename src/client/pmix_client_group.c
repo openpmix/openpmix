@@ -369,6 +369,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     rc = construct_msg(msg, grp, procs, nprocs, info, ninfo);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
         return rc;
     }
 
