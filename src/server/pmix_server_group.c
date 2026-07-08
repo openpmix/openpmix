@@ -732,16 +732,41 @@ static bool grp_ft_collective(grp_block_t *blk)
     return false;
 }
 
+/* Completion callback for a server-issued PMIX_GROUP_CANCEL to the host. The
+ * cancel is fire-and-forget from our side - our own local participants are
+ * completed directly (see abort_construct), and the host's resulting abort of
+ * the cross-server collective reaches the other servers through the normal
+ * group release path - so here we need only honor the release contract. */
+static void cancel_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
+                          void *cbdata, pmix_release_cbfunc_t release_fn,
+                          void *release_cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(status, info, ninfo, cbdata);
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+}
+
 /* Abort an in-flight group construct because a required member was lost and
  * fault-tolerant collective tracking (PMIX_GROUP_FT_COLLECTIVE) was not
- * requested. The block was never forwarded to the host, so no host involvement
- * is needed: freeze it and complete it on the participants with
- * PMIX_GROUP_CONSTRUCT_ABORT as the operation status, so each participant's
- * PMIx_Group_construct returns that abort rather than silently forming a reduced
- * group. grpcbfunc consumes (releases) the block via its threadshift, matching
- * the survive path. */
+ * requested. Complete our own local participants with PMIX_GROUP_CONSTRUCT_ABORT
+ * as the operation status, so each participant's PMIx_Group_construct returns
+ * that abort rather than silently forming a reduced group; grpcbfunc consumes
+ * (releases) the block via its threadshift, matching the survive path.
+ *
+ * If a host is present, also ask it to cancel the cross-server collective:
+ * other servers may already have forwarded their local phase, leaving the
+ * host's collective waiting for a contribution this server will never send. The
+ * cancel unsticks the host, which aborts the collective on the remaining
+ * servers through their own group releases. We deliberately complete our local
+ * participants directly here rather than through that release - this block is
+ * removed below, so the host's abort release is a no-op back on this server. */
 static void abort_construct(grp_block_t *blk)
 {
+    if (NULL != pmix_host_server.group) {
+        pmix_host_server.group(PMIX_GROUP_CANCEL, blk->id, NULL, 0, NULL, 0,
+                               cancel_cbfunc, NULL);
+    }
     blk->host_called = true;
     grpcbfunc(PMIX_GROUP_CONSTRUCT_ABORT, NULL, 0, blk, NULL, NULL);
 }
