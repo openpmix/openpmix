@@ -542,6 +542,8 @@ const char* PMIx_Group_operation_string(pmix_group_operation_t op)
             return "DESTRUCT";
         case PMIX_GROUP_NONE:
             return "NONE";
+        case PMIX_GROUP_CANCEL:
+            return "CANCEL";
         default:
             return "UNKNOWN VALUE";
     }

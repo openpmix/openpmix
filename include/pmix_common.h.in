@@ -2002,7 +2002,11 @@ typedef enum {
 typedef enum {
     PMIX_GROUP_CONSTRUCT,
     PMIX_GROUP_DESTRUCT,
-    PMIX_GROUP_NONE
+    PMIX_GROUP_NONE,
+    // new values must be appended here to preserve the numeric value of the
+    // existing operations - this enum crosses the PMIx-to-host callback
+    // boundary (pmix_server_module_t.group)
+    PMIX_GROUP_CANCEL
 } pmix_group_operation_t;
 
 /* define storage medium values
