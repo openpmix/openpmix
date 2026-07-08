@@ -220,6 +220,7 @@ test/simple/simpgrpmember
 test/simple/simpgrpdie
 test/simple/simpgrpleader
 test/simple/simpgrpcabort
+test/simple/simpgrpctimeout
 test/simple/simptoolcycle
 test/simple/simpfabric
 test/simple/get_put_example
@@ -257,6 +258,7 @@ test/unit/run_grpabort.pl
 test/unit/run_grpmemberfail.pl
 test/unit/run_grpleader.pl
 test/unit/run_grpcabort.pl
+test/unit/run_grpctimeout.pl
 test/unit/util_argv
 test/unit/util_basename
 test/unit/util_path
