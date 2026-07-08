@@ -19,10 +19,12 @@
  *
  * Exercise the invite/join TIMEOUT path.
  *
- * The leader (rank 0) invites the whole job to a group, passing PMIX_TIMEOUT.
- * Every invitee accepts EXCEPT the last rank, which deliberately never responds
- * to its PMIX_GROUP_INVITED event.  Without a timeout the leader would wait
- * forever for that missing acceptance; with one, the library must:
+ * The leader (rank 0) invites the whole job to a group, passing PMIX_TIMEOUT
+ * and PMIX_GROUP_OPTIONAL (so a non-responder yields a reduced group rather than
+ * aborting the construct).  Every invitee accepts EXCEPT the last rank, which
+ * deliberately never responds to its PMIX_GROUP_INVITED event.  Without a
+ * timeout the leader would wait forever for that missing acceptance; with one,
+ * the library must:
  *
  *   - fire PMIX_GROUP_INVITE_FAILED at the leader naming the non-responder;
  *   - complete PMIx_Group_invite on the members that DID accept (reduced
@@ -175,7 +177,7 @@ int main(int argc, char **argv)
     pmix_value_t *val = NULL;
     pmix_proc_t proc, *procs;
     uint32_t nprocs, n;
-    pmix_info_t *results, tinfo;
+    pmix_info_t *results, tinfo[2];
     size_t nresults;
     int waited, timeout = INVITE_TIMEOUT;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
@@ -237,12 +239,16 @@ int main(int argc, char **argv)
         for (n = 0; n < nprocs; n++) {
             PMIX_PROC_LOAD(&procs[n], myproc.nspace, n);
         }
-        PMIX_INFO_LOAD(&tinfo, PMIX_TIMEOUT, &timeout, PMIX_INT);
+        /* mark participation PMIX_GROUP_OPTIONAL so a non-responder yields a
+         * reduced group rather than aborting the construct */
+        PMIX_INFO_LOAD(&tinfo[0], PMIX_TIMEOUT, &timeout, PMIX_INT);
+        PMIX_INFO_LOAD(&tinfo[1], PMIX_GROUP_OPTIONAL, NULL, PMIX_BOOL);
         results = NULL;
         nresults = 0;
-        rc = PMIx_Group_invite(GROUP_ID, procs, nprocs, &tinfo, 1, &results, &nresults);
+        rc = PMIx_Group_invite(GROUP_ID, procs, nprocs, tinfo, 2, &results, &nresults);
         PMIX_PROC_FREE(procs, nprocs);
-        PMIX_INFO_DESTRUCT(&tinfo);
+        PMIX_INFO_DESTRUCT(&tinfo[0]);
+        PMIX_INFO_DESTRUCT(&tinfo[1]);
         if (NULL != results) {
             PMIX_INFO_FREE(results, nresults);
         }
