@@ -76,7 +76,7 @@ static char *pmix_mca_base_var_override_file = NULL;
 static char *pmix_mca_base_var_file_prefix = NULL;
 static char *pmix_mca_base_param_file_path = NULL;
 static bool pmix_mca_base_var_suppress_override_warning = false;
-static bool pmix_mca_base_var_suppress_deprecated_warning = true;
+static bool pmix_mca_base_var_suppress_deprecated_warning = false;
 static int pmix_mca_base_var_count = 0;
 static pmix_hash_table_t pmix_mca_base_var_index_hash = PMIX_HASH_TABLE_STATIC_INIT;
 
@@ -364,12 +364,13 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     }
 
     /* Suppress warnings emitted when a deprecated MCA parameter is set.
-     * Defaults to true so that deprecated-but-still-functional parameters
-     * do not spam users; set to false to surface the warnings. */
-    pmix_mca_base_var_suppress_deprecated_warning = true;
+     * Defaults to false to surface the warnings, set to true so that
+     * deprecated-but-still-functional parameters
+     * do not spam users */
+    pmix_mca_base_var_suppress_deprecated_warning = false;
     ret = pmix_mca_base_var_register(
         "pmix", "mca", "base", "suppress_deprecated_warning",
-        "Suppress warnings when a deprecated MCA parameter is set (default: true)",
+        "Suppress warnings when a deprecated MCA parameter is set (default: false)",
         PMIX_MCA_BASE_VAR_TYPE_BOOL,
         &pmix_mca_base_var_suppress_deprecated_warning);
     if (0 > ret) {
