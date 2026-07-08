@@ -1,10 +1,13 @@
 Process Sets
 ============
 
-PMIx supports two slightly related, but functionally different concepts
-known as *process sets* and *process groups*. This section defines
-these two concepts and describes how they are utilized, along with their
-corresponding APIs.
+A PMIx *process set* is a label associated with a fixed collection of
+application processes, assigned by the host environment or by the user at
+time of application submission. Unlike a process *group*, a set is immutable
+and confers no operational function — it is purely a label by which an
+application can derive information about a process and its application (see
+the :doc:`overview` for the full comparison). This page describes the
+attributes used to query and report process sets.
 
 
 Process Set Attributes

@@ -73,3 +73,78 @@ reflected in the process set using the same identifier.
 
     * that process set names do not conflict with system-assigned namespaces within the scope of the set.
 
+
+The Group Lifecycle
+-------------------
+
+A PMIx process group progresses through a simple lifecycle that the
+application drives explicitly:
+
+* **Construct.** The members are assembled into a group and assigned the
+  user-provided group identifier. Construction is a collective (or, in the
+  *invite* method, an event-driven) operation: it does not complete until
+  every intended member has joined. Upon completion, every member has
+  access to the job-level information of all namespaces represented in the
+  group and to the contact information of every other member, and may
+  reference the group as a whole in subsequent PMIx operations. See
+  :ref:`Group Construction <group-construction-label>`.
+
+* **Use.** Once constructed, the group identifier behaves like a namespace
+  for the purpose of PMIx operations. A member may name the entire group in
+  a collective by passing ``{grpid, PMIX_RANK_WILDCARD}`` — for example,
+  ``PMIx_Fence`` across the group. The PMIx library translates the group
+  identifier and rank back into the participants' *native* (host-assigned)
+  identifiers before the request reaches the host, so the host environment
+  never has to understand the group abstraction.
+
+* **Membership change.** An individual member may voluntarily withdraw with
+  ``PMIx_Group_leave``, generating a ``PMIX_GROUP_LEFT`` event that updates
+  the membership held by the remaining members. Leaving is intended for the
+  asynchronous departure of a single process while the rest of the group
+  continues; it is not a scalable, all-hands operation.
+
+* **Destruct.** The group is torn down collectively with
+  ``PMIx_Group_destruct``. Like construct, destruct is a collective over the
+  current membership — every member must call it. Destruction releases the
+  group identifier and any assigned context ID.
+
+Because the group identifier is an application-level label, several
+independent groups may exist simultaneously as long as each carries a unique
+identifier, and a single process may belong to many groups at once.
+
+
+Fault Tolerance
+---------------
+
+Group operations are collectives, and a collective that waits on a member
+which has died will hang unless the library accounts for the loss. PMIx
+therefore detects when a participant is lost — a dropped connection, an
+abnormal termination, or a voluntary ``PMIx_Group_leave`` — while a group
+construct or destruct is still in flight, and resolves the operation rather
+than blocking forever.
+
+The application controls what "resolve" means through directives and events:
+
+* By default, losing a required member *aborts* the construct: every
+  survivor's ``PMIx_Group_construct`` returns
+  ``PMIX_GROUP_CONSTRUCT_ABORT`` rather than silently forming a reduced
+  group.
+
+* Supplying ``PMIX_GROUP_FT_COLLECTIVE`` instead lets the operation
+  *complete on the survivors*; each survivor is told which member was lost
+  through a ``PMIX_GROUP_MEMBER_FAILED`` event.
+
+* Failure of a group *leader* is reported separately, via
+  ``PMIX_GROUP_LEADER_FAILED``, so the application can select a replacement
+  leader and continue.
+
+* A ``PMIX_TIMEOUT`` bounds how long the library will wait for a live
+  member that never calls in.
+
+These behaviors, the events that carry them, and the capability flag
+(``PMIX_CAP_GROUP_FT``) by which a companion project can detect their
+presence, are described in the
+:ref:`Group Construction <group-construction-label>` section and, at the
+implementation level, in
+:ref:`Group Operations: Theory and Implementation <group-implementation-label>`.
+
