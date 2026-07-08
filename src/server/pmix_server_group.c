@@ -647,11 +647,16 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                 }
             }
         }
-        /* if any expected member was lost before contributing, the construct
-         * completed on the survivors - tell them which members failed so
-         * fault-aware applications can react. Only meaningful for a construct;
-         * a destruct is tearing the group down regardless. */
-        if (PMIX_GROUP_CONSTRUCT == bk->grpop &&
+        /* if any expected member was lost before contributing but the construct
+         * still completed successfully on the survivors (fault-tolerant
+         * collective tracking was requested), tell the survivors which members
+         * failed so fault-aware applications can react. Skip this when the
+         * construct aborted (status is not SUCCESS): there is no surviving group
+         * to inform, and the participants already learn of the abort through the
+         * operation status. Only meaningful for a construct; a destruct is
+         * tearing the group down regardless. */
+        if (PMIX_SUCCESS == scd->status &&
+            PMIX_GROUP_CONSTRUCT == bk->grpop &&
             0 < pmix_list_get_size(&bk->departed)) {
             notify_local_members_of_loss(bk);
         }
@@ -707,6 +712,38 @@ static void grpcbfunc(pmix_status_t status,
     scd->relfn = relfn;
     scd->cbdata = relcbd;
     PMIX_THREADSHIFT(scd, _grpcbfunc);
+}
+
+/* Did any participant request fault-tolerant collective tracking via
+ * PMIX_GROUP_FT_COLLECTIVE? When true, a construct completes on the surviving
+ * membership if an expected member is lost before contributing. When false (the
+ * default), the loss of a required member means the group cannot form as
+ * requested and the construct is aborted instead. Only meaningful once the
+ * block's info has been aggregated. */
+static bool grp_ft_collective(grp_block_t *blk)
+{
+    size_t n;
+
+    for (n = 0; n < blk->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&blk->info[n], PMIX_GROUP_FT_COLLECTIVE)) {
+            return PMIX_INFO_TRUE(&blk->info[n]);
+        }
+    }
+    return false;
+}
+
+/* Abort an in-flight group construct because a required member was lost and
+ * fault-tolerant collective tracking (PMIX_GROUP_FT_COLLECTIVE) was not
+ * requested. The block was never forwarded to the host, so no host involvement
+ * is needed: freeze it and complete it on the participants with
+ * PMIX_GROUP_CONSTRUCT_ABORT as the operation status, so each participant's
+ * PMIx_Group_construct returns that abort rather than silently forming a reduced
+ * group. grpcbfunc consumes (releases) the block via its threadshift, matching
+ * the survive path. */
+static void abort_construct(grp_block_t *blk)
+{
+    blk->host_called = true;
+    grpcbfunc(PMIX_GROUP_CONSTRUCT_ABORT, NULL, 0, blk, NULL, NULL);
 }
 
 static pmix_status_t aggregate_info(grp_block_t *blk)
@@ -1026,12 +1063,20 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_RELEASE(blk);
         return rc;
     }
-    /* if an expected member was lost before contributing, the block still
-     * completes on the survivors - but record the degraded status in the
-     * block's info so the host sees it, matching the fence/connect/disconnect
-     * families. The status slot is located by key (see
+    /* if an expected member was lost before contributing, how we proceed
+     * depends on whether fault-tolerant collective tracking was requested. For a
+     * construct without PMIX_GROUP_FT_COLLECTIVE (the default), the group cannot
+     * form as requested, so abort it rather than silently reduce the membership.
+     * Otherwise (the flag is set, or this is a destruct that is tearing the
+     * group down regardless) complete on the survivors, recording the degraded
+     * status in the block's info so the host sees it - matching the
+     * fence/connect/disconnect families. The status slot is located by key (see
      * pmix_server_set_collective_status). */
     if (0 < pmix_list_get_size(&blk->departed)) {
+        if (PMIX_GROUP_CONSTRUCT == op && !grp_ft_collective(blk)) {
+            abort_construct(blk);
+            return PMIX_SUCCESS;
+        }
         pmix_server_set_collective_status(blk->info, blk->ninfo,
                                           PMIX_ERR_LOST_CONNECTION);
     }
@@ -1138,9 +1183,17 @@ static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
             PMIX_RELEASE(blk);
             return;
         }
-        /* a member departed before contributing (that is why we are here):
-         * record the degraded status in the block's info so the host sees
-         * it, matching the fence/connect/disconnect families */
+        /* a member departed before contributing (that is why we are here).
+         * For a construct without PMIX_GROUP_FT_COLLECTIVE (the default), the
+         * group cannot form as requested, so abort it rather than silently
+         * reduce the membership. Otherwise (the flag is set, or this is a
+         * destruct) complete on the survivors, recording the degraded status in
+         * the block's info so the host sees it, matching the
+         * fence/connect/disconnect families. */
+        if (PMIX_GROUP_CONSTRUCT == blk->grpop && !grp_ft_collective(blk)) {
+            abort_construct(blk);
+            return;
+        }
         pmix_server_set_collective_status(blk->info, blk->ninfo,
                                           PMIX_ERR_LOST_CONNECTION);
         blk->host_called = true;

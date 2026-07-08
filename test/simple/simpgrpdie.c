@@ -82,7 +82,7 @@ int main(int argc, char **argv)
     pmix_value_t *val = NULL;
     pmix_proc_t proc, *procs;
     uint32_t nprocs, n, victim;
-    pmix_info_t info;
+    pmix_info_t *info;
     pmix_info_t *results = NULL;
     size_t nresults = 0;
     pmix_status_t code = PMIX_GROUP_MEMBER_FAILED;
@@ -145,14 +145,20 @@ int main(int argc, char **argv)
     for (n = 0; n < nprocs; n++) {
         PMIX_PROC_LOAD(&procs[n], myproc.nspace, n);
     }
-    PMIX_INFO_LOAD(&info, PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
+    /* request fault-tolerant collective tracking so the construct completes on
+     * the survivors (and each learns of the loss via PMIX_GROUP_MEMBER_FAILED)
+     * when the victim drops before contributing. Without this flag the construct
+     * would instead abort - see simpgrpcabort. */
+    PMIX_INFO_CREATE(info, 2);
+    PMIX_INFO_LOAD(&info[0], PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[1], PMIX_GROUP_FT_COLLECTIVE, NULL, PMIX_BOOL);
 
-    rc = PMIx_Group_construct("diegroup", procs, nprocs, &info, 1, &results, &nresults);
+    rc = PMIx_Group_construct("diegroup", procs, nprocs, info, 2, &results, &nresults);
     PMIX_PROC_FREE(procs, nprocs);
     if (NULL != results) {
         PMIX_INFO_FREE(results, nresults);
     }
-    PMIX_INFO_DESTRUCT(&info);
+    PMIX_INFO_FREE(info, 2);
 
     /* The construct must complete on the survivors (success or a
      * lost-connection/partial status), not hang. */
