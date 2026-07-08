@@ -30,6 +30,7 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
+#include "src/event/pmix_event.h"
 #include "src/include/pmix_types.h"
 
 #include <errno.h>
@@ -761,17 +762,28 @@ static void errhandler(size_t evhdlr_registration_id, pmix_status_t status,
                        pmix_info_t results[], size_t nresults,
                        pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
-    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, info, ninfo, results, nresults);
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, info, ninfo, results, nresults);
 
     pmix_output(0, "SERVER: ERRHANDLER CALLED WITH STATUS %s", PMIx_Error_string(status));
 
     if (PMIX_ERR_LOST_CONNECTION == status) {
         // give the procs a chance to do something
         usleep(10000);
-        /* let the other clients know */
-        PMIx_Notify_event(PMIX_ERR_PROC_ABORTED, &pmix_globals.myid,
-                          PMIX_RANGE_LOCAL, NULL, 0,
-                          NULL, NULL);
+        /* Let the other clients know a peer was lost, identifying it so a
+         * handler (e.g. a group leader-failure watch) can tell who died. Use
+         * the server-to-client delivery path directly: this process is a
+         * server+tool, so the public PMIx_Notify_event would route the event
+         * up toward our own server rather than down to our clients. */
+        if (NULL != source && PMIX_RANK_UNDEF != source->rank) {
+            pmix_info_t xinfo;
+            PMIX_INFO_LOAD(&xinfo, PMIX_EVENT_AFFECTED_PROC, source, PMIX_PROC);
+            pmix_server_notify_client_of_event(PMIX_ERR_PROC_ABORTED, &pmix_globals.myid,
+                                               PMIX_RANGE_LOCAL, &xinfo, 1, NULL, NULL);
+            PMIX_INFO_DESTRUCT(&xinfo);
+        } else {
+            pmix_server_notify_client_of_event(PMIX_ERR_PROC_ABORTED, &pmix_globals.myid,
+                                               PMIX_RANGE_LOCAL, NULL, 0, NULL, NULL);
+        }
     }
 
     /* we must NOT tell the event handler state machine that we
