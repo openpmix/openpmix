@@ -1,0 +1,128 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# Exercise the dynamic group invite/join happy path, deterministically, in
+# "make check". A single persistent server (test/simple/simptest) forks four
+# clients (examples/group_invite). Rank 0 is the leader: it invites the whole
+# job to a group; ranks 1..3 accept via PMIx_Group_join_nb from their
+# PMIX_GROUP_INVITED handlers; the group forms purely through the event
+# notification subsystem (no server collective). Every member must then receive
+# PMIX_GROUP_CONSTRUCT_COMPLETE, fence across the formed group, and collectively
+# destruct it. A regression in the invite/join negotiation or in the completion
+# broadcast makes a client exit non-zero, or wedges the run until the timeout
+# fires. See src/client/pmix_client_group.c, examples/group_invite.c, and #3936.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen hands us
+# every possible component directory in PMIX_COMPONENT_LIBRARY_PATHS; turn each
+# into an absolute path to the built component so the MCA base can find them
+# without a prior install.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# simptest forks its clients from its own directory; run from there and name the
+# client (built under examples/) by absolute path so simptest can exec it.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+my $client = $mybuilddir . "/examples/group_invite";
+my $nprocs = 4;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise arm a
+# Perl alarm so a wedged run can never hang "make check" forever.
+my @cmd = ("./simptest", "-n", "$nprocs", "-e", "$client");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run the server in a child we control, merging stderr into stdout, and slurp
+# the output. The alarm (when armed) bounds the wait.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec simptest: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: simptest exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The server must exit 0: a client that failed (never invited, never notified of
+# completion, or could not fence/destruct) drives a non-zero exit.
+if (0 != $status) {
+    print "FAIL: simptest did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm the run actually exercised the path rather than passing vacuously:
+# every one of the four members must report it was notified of construct
+# completion and then fenced across the group, and simptest must finish cleanly.
+my $npass  = () = ($output =~ /CONSTRUCT_COMPLETE received: PASS/g);
+my $nfence = () = ($output =~ /group fence complete/g);
+my $server_done = ($output =~ /Test finished OK!/);
+if ($npass < $nprocs) {
+    print "FAIL: only $npass/$nprocs members notified of construct completion\n";
+    exit(1);
+}
+if ($nfence < $nprocs) {
+    print "FAIL: only $nfence/$nprocs members fenced across the group\n";
+    exit(1);
+}
+if (!$server_done) {
+    print "FAIL: server did not finish cleanly after the clients ran\n";
+    exit(1);
+}
+print "PASS: invite/join happy path formed the group across all $nprocs members\n";
+exit(0);
