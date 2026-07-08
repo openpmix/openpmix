@@ -70,6 +70,16 @@ typedef struct {
     char *grpid;
     pmix_proc_t *members;
     size_t nmembers;
+    /* for the invite/join model: the concrete (wildcard-expanded) list of
+     * invited processes, a parallel flag marking which have responded with an
+     * acceptance, and a timer that bounds how long the leader waits for the
+     * invitees to respond (armed only when PMIX_TIMEOUT is provided). On
+     * expiry the non-responders are reported via PMIX_GROUP_INVITE_FAILED and
+     * the construct completes on the members that did accept. */
+    bool *responded;
+    pmix_event_t ev;
+    bool timer_active;
+    bool completed;
     pmix_info_t *info;
     size_t ninfo;
     pmix_info_t *results;
@@ -88,6 +98,9 @@ static void gtcon(pmix_group_tracker_t *p)
     p->grpid = NULL;
     p->members = NULL;
     p->nmembers = 0;
+    p->responded = NULL;
+    p->timer_active = false;
+    p->completed = false;
     p->info = NULL;
     p->ninfo = 0;
     p->results = NULL;
@@ -101,6 +114,10 @@ static void gtdes(pmix_group_tracker_t *p)
     PMIX_DESTRUCT_LOCK(&p->lock);
     if (NULL != p->members) {
         PMIX_PROC_FREE(p->members, p->nmembers);
+    }
+    if (NULL != p->responded) {
+        free(p->responded);
+        p->responded = NULL;
     }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
@@ -124,6 +141,8 @@ static void destruct_cbfunc(struct pmix_peer_t *pr,
                             void *cbdata);
 static void op_cbfunc(pmix_status_t status, void *cbdata);
 static void op_cbfunc_rel(pmix_status_t status, void *cbdata);
+static void invite_timeout(int sd, short args, void *cbdata);
+static void invite_wake(pmix_group_tracker_t *cb, pmix_status_t status);
 
 static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                         pmix_release_cbfunc_t release_fn, void *release_cbdata);
@@ -583,112 +602,56 @@ done:
     return rc;
 }
 
-static void chaincbfunc(pmix_status_t status, void *cbdata)
-{
-    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(status);
-
-    if (NULL != cb) {
-        PMIX_RELEASE(cb);
-    }
-}
-
-static void relcbfunc(void *cbdata)
-{
-    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
-
-    PMIX_RELEASE(cb);
-}
-
 static void invite_handler(size_t evhdlr_registration_id, pmix_status_t status,
                            const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                            pmix_info_t *results, size_t nresults,
                            pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     pmix_group_tracker_t *cb = NULL;
-    pmix_proc_t *affected = NULL;
     size_t n;
-    pmix_status_t rc = PMIX_GROUP_INVITE_DECLINED;
-    size_t contextid;
-    bool gotctxid = false;
-    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, results, nresults);
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, results, nresults);
 
-    /* find the object we asked to be returned with event */
+    /* find the tracker we asked to be returned with the event */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_RETURN_OBJECT)) {
-            if (PMIX_POINTER != info[n].value.type) {
-                /* this is an unrecoverable error - need to abort */
-            }
             cb = (pmix_group_tracker_t *) info[n].value.data.ptr;
-
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC)) {
-            if (PMIX_PROC != info[n].value.type) {
-                /* this is an unrecoverable error - need to abort */
-            }
-            affected = info[n].value.data.proc;
-
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_CONTEXT_ID)) {
-            rc = PMIx_Value_get_number(&info[n].value, &contextid, PMIX_SIZE);
-            gotctxid = true;
+            break;
         }
     }
     if (NULL == cb) {
-        pmix_output(0, "%s: INVITE HANDLER NULL OBJECT",
-                    PMIX_NAME_PRINT(&pmix_globals.myid));
-        /* this is an unrecoverable error - need to abort */
+        pmix_output(0, "%s: INVITE HANDLER NULL OBJECT", PMIX_NAME_PRINT(&pmix_globals.myid));
         /* always must continue the chain */
-        cbfunc(rc, NULL, 0, chaincbfunc, NULL, cbdata);
+        cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
         return;
     }
 
-    /* if the status is accepted, then record it */
+    /* Record an acceptance by identity so we can later build the (possibly
+     * reduced) final membership and know who has yet to respond. A decline or a
+     * termination is simply left as a non-responder: when the invitation
+     * resolves (all accepted, or the timeout fires) the leader reports every
+     * non-responder via PMIX_GROUP_INVITE_FAILED and excludes it from the
+     * group. Those notifications, and the completion broadcast, are issued by
+     * PMIx_Group_invite on its own thread - PMIx_Notify_event must not be
+     * called from this progress thread, where it would deadlock. */
     if (PMIX_GROUP_INVITE_ACCEPTED == status) {
-        cb->accepted++;
-        /* allow the chain to continue */
-        rc = PMIX_SUCCESS;
-        goto complete;
+        for (n = 0; n < cb->nmembers; n++) {
+            if (PMIX_CHECK_PROCID(&cb->members[n], source)) {
+                if (!cb->responded[n]) {
+                    cb->responded[n] = true;
+                    cb->accepted++;
+                }
+                break;
+            }
+        }
     }
 
-    /* if the reporting process terminated, then issue the corresponding
-     * group event - it only goes to this process */
-    if (PMIX_PROC_TERMINATED == status) {
-        if (gotctxid) {
-            cb->ninfo = 2;
-        } else {
-            cb->ninfo = 1;
-        }
-        PMIX_INFO_CREATE(cb->info, cb->ninfo);
-        PMIX_INFO_LOAD(&cb->info[0], PMIX_EVENT_AFFECTED_PROC, affected, PMIX_PROC);
-        if (gotctxid) {
-            PMIX_INFO_LOAD(&cb->info[1], PMIX_GROUP_CONTEXT_ID, &contextid, PMIX_SIZE);
-        }
-        rc = PMIx_Notify_event(PMIX_GROUP_INVITE_FAILED, &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
-                               cb->info, cb->ninfo, chaincbfunc, (void *) cb);
-        if (PMIX_SUCCESS != rc) {
-            /* this is an unrecoverable error - need to abort */
-            pmix_output(0, "%s: INVITE HANDLER ERROR",
-                        PMIX_NAME_PRINT(&pmix_globals.myid));
-        }
-        PMIX_INFO_FREE(cb->info, cb->ninfo);
-        goto complete;
-    }
-
-    /* otherwise, we consider the process as having "declined" and
-     * ignore it here - if the user registered a handler for that
-     * case, then the chain will eventually call it
-     */
-
-complete:
-    /* check for complete */
+    /* if every invited member has now accepted, the invitation has resolved */
     if (cb->accepted == cb->nmembers) {
-        /* execute the completion callback */
-        if (NULL != cb->cbfunc) {
-            cb->cbfunc(PMIX_SUCCESS, info, ninfo, cb->cbdata, relcbfunc, cb->cbdata);
-        }
+        invite_wake(cb, PMIX_SUCCESS);
     }
 
     /* always must continue the chain */
-    cbfunc(PMIX_EVENT_ACTION_COMPLETE, cb->results, cb->nresults, NULL, NULL, cbdata);
+    cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
     return;
 }
 
@@ -701,14 +664,325 @@ static void regcbfunc(pmix_status_t status, size_t refid, void *cbdata)
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
+/* fetch the number of processes in the given proc's namespace so a
+ * PMIX_RANK_WILDCARD entry in an invitation can be expanded into concrete
+ * ranks */
+static pmix_status_t invite_job_size(const pmix_proc_t *proc, uint32_t *jsize)
+{
+    pmix_cb_t cb2;
+    pmix_info_t optional;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+
+    PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+    PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+    cb2.proc = (pmix_proc_t *) proc;
+    cb2.key = PMIX_JOB_SIZE;
+    cb2.info = &optional;
+    cb2.ninfo = 1;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        PMIX_DESTRUCT(&cb2);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    kv = (pmix_kval_t *) pmix_list_remove_first(&cb2.kvs);
+    PMIX_DESTRUCT(&cb2);
+    if (NULL == kv) { // should never be NULL
+        return PMIX_ERR_BAD_PARAM;
+    }
+    rc = PMIx_Value_get_number(kv->value, jsize, PMIX_UINT32);
+    PMIX_RELEASE(kv);
+    return rc;
+}
+
+/* An invitation has resolved - either every invitee accepted, or the timeout
+ * fired. Cancel the timer (if still pending) and wake the operation. The
+ * notifications (PMIX_GROUP_INVITE_FAILED for any non-responder and the
+ * PMIX_GROUP_CONSTRUCT_COMPLETE broadcast) are deliberately NOT done here:
+ * this runs on the progress thread, where PMIx_Notify_event would deadlock.
+ * The blocking PMIx_Group_invite issues them on its own thread after it wakes;
+ * the non-blocking form hands the result to the caller's callback. Guarded so
+ * a late (post-timeout) acceptance cannot resolve the invite twice. */
+static void invite_wake(pmix_group_tracker_t *cb, pmix_status_t status)
+{
+    if (cb->completed) {
+        return;
+    }
+    cb->completed = true;
+    if (cb->timer_active) {
+        pmix_event_del(&cb->ev);
+        cb->timer_active = false;
+    }
+    cb->status = status;
+    if (NULL != cb->cbfunc) {
+        /* non-blocking form: deliver the result to the caller's callback */
+        cb->cbfunc(status, NULL, 0, cb->cbdata, NULL, NULL);
+    }
+    /* wake the blocking PMIx_Group_invite (if any) */
+    PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
+/* Timeout handler: some invitees did not respond within the caller-provided
+ * PMIX_TIMEOUT. Resolve the invitation on whoever did accept - PMIx_Group_invite
+ * reports the non-responders once it wakes. */
+static void invite_timeout(int sd, short args, void *cbdata)
+{
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    /* the timer has fired, so it is no longer pending */
+    cb->timer_active = false;
+    invite_wake(cb, PMIX_SUCCESS);
+}
+
+/* Perform the shared setup for an invitation on a caller-provided tracker
+ * (with cbfunc/cbdata already set for the non-blocking form): build the
+ * concrete membership, register the response handler, notify the invitees, and
+ * arm the optional timeout timer. Runs on the caller's thread. On error the
+ * caller releases the tracker. */
+static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
+                                  const pmix_proc_t *procs, size_t nprocs,
+                                  const pmix_info_t *info, size_t ninfo)
+{
+    pmix_group_tracker_t lock;
+    pmix_status_t codes[] = {
+        PMIX_GROUP_INVITE_ACCEPTED,
+        PMIX_GROUP_INVITE_DECLINED,
+        PMIX_PROC_TERMINATED
+    };
+    size_t ncodes, n, m;
+    pmix_info_t myinfo[2];
+    pmix_status_t rc;
+    uint32_t jsize, j;
+    int timeout = 0;
+    struct timeval tv;
+
+    cb->grpid = strdup(grp);
+    cb->accepted = 1; // obviously, we accept
+
+    /* compute the number of proposed members, expanding any wildcard ranks */
+    for (n = 0; n < nprocs; n++) {
+        if (PMIX_RANK_WILDCARD == procs[n].rank) {
+            rc = invite_job_size(&procs[n], &jsize);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            cb->nmembers += jsize;
+        } else {
+            cb->nmembers++;
+        }
+    }
+
+    /* build the concrete (wildcard-expanded) list of invited members plus a
+     * parallel flag marking who has responded with an acceptance. We track
+     * identities - not just a count - so that, on a timeout, we can name the
+     * non-responders in the PMIX_GROUP_INVITE_FAILED events and construct the
+     * group on the members that did accept. */
+    PMIX_PROC_CREATE(cb->members, cb->nmembers);
+    if (NULL == cb->members) {
+        return PMIX_ERR_NOMEM;
+    }
+    cb->responded = (bool *) calloc(cb->nmembers, sizeof(bool));
+    if (NULL == cb->responded) {
+        return PMIX_ERR_NOMEM;
+    }
+    m = 0;
+    for (n = 0; n < nprocs; n++) {
+        if (PMIX_RANK_WILDCARD == procs[n].rank) {
+            rc = invite_job_size(&procs[n], &jsize);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            for (j = 0; j < jsize; j++) {
+                PMIX_LOAD_PROCID(&cb->members[m], procs[n].nspace, j);
+                m++;
+            }
+        } else {
+            PMIX_LOAD_PROCID(&cb->members[m], procs[n].nspace, procs[n].rank);
+            m++;
+        }
+    }
+    /* we (the leader) are a member and have obviously already accepted */
+    for (m = 0; m < cb->nmembers; m++) {
+        if (PMIX_CHECK_PROCID(&cb->members[m], &pmix_globals.myid)) {
+            cb->responded[m] = true;
+            break;
+        }
+    }
+
+    /* register an event handler specifically to respond to accept responses */
+    PMIX_INFO_LOAD(&myinfo[0], PMIX_EVENT_RETURN_OBJECT, cb, PMIX_POINTER);
+    PMIX_INFO_LOAD(&myinfo[1], PMIX_EVENT_HDLR_PREPEND, NULL, PMIX_BOOL);
+    ncodes = sizeof(codes) / sizeof(pmix_status_t);
+    PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
+    PMIx_Register_event_handler(codes, ncodes, myinfo, 2, invite_handler, regcbfunc, &lock);
+    PMIX_WAIT_THREAD(&lock.lock);
+    rc = lock.status;
+    cb->ref = lock.ref;
+    PMIX_DESTRUCT(&lock);
+    PMIX_INFO_DESTRUCT(&myinfo[0]);
+    PMIX_INFO_DESTRUCT(&myinfo[1]);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* check for directives - a timeout bounds how long we wait for the
+     * invitees to respond */
+    if (NULL != info) {
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
+                rc = PMIx_Value_get_number(&info[n].value, &timeout, PMIX_INT);
+                if (PMIX_SUCCESS != rc) {
+                    timeout = 0;
+                }
+                break;
+            }
+        }
+    }
+
+    /* limit the range to just the procs we are inviting */
+    PMIX_INFO_CREATE(cb->info, 3);
+    if (NULL == cb->info) {
+        return PMIX_ERR_NOMEM;
+    }
+    cb->ninfo = 3;
+    n = 0;
+    (void) strncpy(cb->info[n].key, PMIX_EVENT_CUSTOM_RANGE, PMIX_MAX_KEYLEN);
+    cb->info[n].value.type = PMIX_DATA_ARRAY;
+    PMIX_DATA_ARRAY_CREATE(cb->info[n].value.data.darray, nprocs, PMIX_PROC);
+    if (NULL == cb->info[n].value.data.darray || NULL == cb->info[n].value.data.darray->array) {
+        return PMIX_ERR_NOMEM;
+    }
+    memcpy(cb->info[n].value.data.darray->array, procs, nprocs * sizeof(pmix_proc_t));
+    ++n;
+    /* mark that this only goes to non-default handlers */
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    ++n;
+    /* provide the group ID */
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_GROUP_ID, grp, PMIX_STRING);
+
+    /* notify everyone of the invitation */
+    PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
+    rc = PMIx_Notify_event(PMIX_GROUP_INVITED, &pmix_globals.myid, PMIX_RANGE_CUSTOM,
+                           cb->info, cb->ninfo, op_cbfunc, (void *) &lock);
+    PMIX_WAIT_THREAD(&lock.lock);
+    rc = lock.status;
+    PMIX_DESTRUCT(&lock);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* if a timeout was requested, arm a timer so a non-responding invitee
+     * cannot hang the leader indefinitely. The handler runs on the progress
+     * thread; it is cancelled by invite_wake() on a full acceptance. */
+    if (0 < timeout) {
+        pmix_event_assign(&cb->ev, pmix_globals.evbase, -1, 0, invite_timeout, (void *) cb);
+        cb->timer_active = true;
+        tv.tv_sec = timeout;
+        tv.tv_usec = 0;
+        PMIX_POST_OBJECT(cb);
+        pmix_event_add(&cb->ev, &tv);
+    }
+
+    return PMIX_SUCCESS;
+}
+
+/* Once an invitation has resolved, announce the outcome. Runs on the caller's
+ * (non-progress) thread: report each non-responder to the leader via
+ * PMIX_GROUP_INVITE_FAILED, then announce the group to the members that
+ * accepted via PMIX_GROUP_CONSTRUCT_COMPLETE (only sent to members; servers
+ * intercept it to update their membership lists). The membership is the full
+ * invited list in the common case, or a reduced list if some invitees
+ * declined, terminated, or timed out. */
+static pmix_status_t invite_announce(pmix_group_tracker_t *cb)
+{
+    pmix_proc_t *members = NULL;
+    size_t i, nmembers = 0;
+    pmix_data_array_t darray;
+    pmix_info_t finfo, cinfo[4];
+    pmix_group_tracker_t lock;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    /* report each proc that did not accept the invitation */
+    for (i = 0; i < cb->nmembers; i++) {
+        if (cb->responded[i]) {
+            continue;
+        }
+        PMIX_INFO_LOAD(&finfo, PMIX_EVENT_AFFECTED_PROC, &cb->members[i], PMIX_PROC);
+        PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
+        rc = PMIx_Notify_event(PMIX_GROUP_INVITE_FAILED, &pmix_globals.myid,
+                               PMIX_RANGE_PROC_LOCAL, &finfo, 1, op_cbfunc, (void *) &lock);
+        if (PMIX_SUCCESS == rc) {
+            PMIX_WAIT_THREAD(&lock.lock);
+        }
+        PMIX_DESTRUCT(&lock);
+        PMIX_INFO_DESTRUCT(&finfo);
+    }
+
+    /* build the final membership from the members that accepted */
+    PMIX_PROC_CREATE(members, cb->nmembers);
+    if (NULL == members) {
+        return PMIX_ERR_NOMEM;
+    }
+    for (i = 0; i < cb->nmembers; i++) {
+        if (cb->responded[i]) {
+            PMIX_LOAD_PROCID(&members[nmembers], cb->members[i].nspace, cb->members[i].rank);
+            ++nmembers;
+        }
+    }
+    darray.type = PMIX_PROC;
+    darray.array = members;
+    darray.size = nmembers;
+    // limit the range to, and report, the final membership
+    PMIX_INFO_LOAD(&cinfo[0], PMIX_EVENT_CUSTOM_RANGE, &darray, PMIX_DATA_ARRAY);
+    PMIX_INFO_LOAD(&cinfo[1], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
+    /* this only goes to non-default handlers */
+    PMIX_INFO_LOAD(&cinfo[2], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&cinfo[3], PMIX_GROUP_ID, cb->grpid, PMIX_STRING);
+    PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
+    rc = PMIx_Notify_event(PMIX_GROUP_CONSTRUCT_COMPLETE, &pmix_globals.myid,
+                           PMIX_RANGE_CUSTOM, cinfo, 4, op_cbfunc, (void *) &lock);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_WAIT_THREAD(&lock.lock);
+        rc = lock.status;
+    }
+    PMIX_DESTRUCT(&lock);
+    PMIX_INFO_DESTRUCT(&cinfo[0]);
+    PMIX_INFO_DESTRUCT(&cinfo[1]);
+    PMIX_INFO_DESTRUCT(&cinfo[2]);
+    PMIX_INFO_DESTRUCT(&cinfo[3]);
+    PMIX_PROC_FREE(members, nmembers);
+    return rc;
+}
+
+/* Deregister the invitation handler (if it was ever registered), cancel any
+ * pending timer, and release the tracker. Safe to call whether or not
+ * invite_setup got as far as registering, and used both to clean up a failed
+ * setup and to tear down after a blocking invite completes. */
+static void invite_teardown(pmix_group_tracker_t *cb)
+{
+    pmix_group_tracker_t lock;
+
+    if (cb->timer_active) {
+        pmix_event_del(&cb->ev);
+        cb->timer_active = false;
+    }
+    if (SIZE_MAX != cb->ref) {
+        PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
+        PMIx_Deregister_event_handler(cb->ref, op_cbfunc, &lock);
+        PMIX_WAIT_THREAD(&lock.lock);
+        PMIX_DESTRUCT(&lock);
+        cb->ref = SIZE_MAX;
+    }
+    PMIX_RELEASE(cb);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t procs[],
                                             size_t nprocs, const pmix_info_t info[], size_t ninfo,
                                             pmix_info_t **results, size_t *nresults)
 {
     pmix_group_tracker_t *cb;
     pmix_status_t rc;
-    size_t n;
-    pmix_data_array_t darray;
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -728,64 +1002,36 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t 
         return PMIX_ERR_BAD_PARAM;
     }
 
-    cb = PMIX_NEW(pmix_group_tracker_t);
-    /* we have to bump the reference count of this object
-     * because the invite_nb function involves a release
-     * and we need the object after the invite completes */
-    PMIX_RETAIN(cb);
-    rc = PMIx_Group_invite_nb(grp, procs, nprocs, info, ninfo, info_cbfunc, (void *)cb);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(cb);
-        return rc;
-    }
+    *results = NULL;
+    *nresults = 0;
 
-    /* wait for the group construction to complete or fail */
-    PMIX_WAIT_THREAD(&cb->lock);
-    rc = cb->status;
-    *results = cb->results;
-    *nresults = cb->nresults;
-    cb->results = NULL;
-    cb->nresults = 0;
-    PMIX_RELEASE(cb);
-
-    /* announce group completion, including list of final
-     * members - only sent to members. Servers will intercept
-     * and update their membership lists */
     cb = PMIX_NEW(pmix_group_tracker_t);
-    cb->ninfo = 4;
-    PMIX_INFO_CREATE(cb->info, cb->ninfo);
-    if (NULL == cb->info) {
-        PMIX_RELEASE(cb);
+    if (NULL == cb) {
         return PMIX_ERR_NOMEM;
     }
-    n = 0;
-    darray.type = PMIX_PROC;
-    darray.array = (pmix_proc_t*)procs;
-    darray.size = nprocs;
-    // load the custom range
-    PMIX_INFO_LOAD(&cb->info[n], PMIX_EVENT_CUSTOM_RANGE, &darray, PMIX_DATA_ARRAY);
-    ++n;
-    // provide final group membership
-    PMIX_INFO_LOAD(&cb->info[n], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
-    ++n;
-    /* mark that this only goes to non-default handlers */
-    PMIX_INFO_LOAD(&cb->info[n], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-    ++n;
-    /* provide the group ID */
-    PMIX_INFO_LOAD(&cb->info[n], PMIX_GROUP_ID, grp, PMIX_STRING);
-
-    /* notify members */
-    rc = PMIx_Notify_event(PMIX_GROUP_CONSTRUCT_COMPLETE, &pmix_globals.myid, PMIX_RANGE_CUSTOM,
-                           cb->info, cb->ninfo, op_cbfunc, (void *)cb);
+    /* leave cb->cbfunc NULL: this is the blocking form, so we wait on the
+     * tracker's lock rather than being handed the result via a callback */
+    rc = invite_setup(cb, grp, procs, nprocs, info, ninfo);
     if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(cb);
+        invite_teardown(cb);
         return rc;
     }
 
-    /* wait for the notify to get out */
+    /* wait for the invitation to resolve - every invitee accepted, or the
+     * timeout fired (invite_wake, on the progress thread, only wakes us; it does
+     * not notify, as PMIx_Notify_event cannot be called from that thread) */
     PMIX_WAIT_THREAD(&cb->lock);
     rc = cb->status;
-    PMIX_RELEASE(cb);
+
+    /* now on our own thread, announce the outcome to the group */
+    if (PMIX_SUCCESS == rc) {
+        rc = invite_announce(cb);
+    }
+
+    /* deregister the invitation handler now that the invite has resolved (so a
+     * late response cannot fire it against the released tracker) and release
+     * the tracker */
+    invite_teardown(cb);
     return rc;
 }
 
@@ -795,19 +1041,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
                                                void *cbdata)
 {
     pmix_group_tracker_t *cb;
-    pmix_group_tracker_t lock;
-    pmix_status_t codes[] = {
-        PMIX_GROUP_INVITE_ACCEPTED,
-        PMIX_GROUP_INVITE_DECLINED,
-        PMIX_PROC_TERMINATED
-    };
-    size_t ncodes, n;
-    pmix_info_t myinfo[2];
     pmix_status_t rc;
-    pmix_cb_t cb2;
-    pmix_info_t optional;
-    pmix_kval_t *kv;
-    uint32_t jsize;
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -833,118 +1067,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
     }
     cb->cbfunc = cbfunc;
     cb->cbdata = cbdata;
-    cb->accepted = 1; // obviously, we accept
-
-    /* compute the number of proposed members */
-    for (n = 0; n < nprocs; n++) {
-        if (PMIX_RANK_WILDCARD == procs[n].rank) {
-            /* must get the number of procs in this nspace */
-            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
-            PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
-            cb2.proc = (pmix_proc_t*)&procs[n];
-            cb2.key = PMIX_JOB_SIZE;
-            cb2.info = &optional;
-            cb2.ninfo = 1;
-            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
-            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
-                kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                PMIX_DESTRUCT(&cb2);
-                if (NULL != kv) {  // should never be NULL
-                    rc = PMIx_Value_get_number(kv->value, &jsize, PMIX_UINT32);
-                    PMIX_RELEASE(kv);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_RELEASE(cb);
-                        PMIX_DESTRUCT(&cb2);
-                        return PMIX_ERR_BAD_PARAM;
-                    }
-                    cb->nmembers += jsize;
-                }
-            } else {
-                PMIX_RELEASE(cb);
-                PMIX_DESTRUCT(&cb2);
-                return PMIX_ERR_BAD_PARAM;
-            }
-        } else {
-            cb->nmembers++;
-        }
-    }
-
-    /* register an event handler specifically to respond
-     * to accept responses */
-    PMIX_INFO_LOAD(&myinfo[0], PMIX_EVENT_RETURN_OBJECT, cb, PMIX_POINTER);
-    PMIX_INFO_LOAD(&myinfo[1], PMIX_EVENT_HDLR_PREPEND, NULL, PMIX_BOOL);
-    ncodes = sizeof(codes) / sizeof(pmix_status_t);
-    PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
-    PMIx_Register_event_handler(codes, ncodes, myinfo, 2, invite_handler, regcbfunc, &lock);
-    PMIX_WAIT_THREAD(&lock.lock);
-    rc = lock.status;
-    cb->ref = lock.ref;
-    PMIX_DESTRUCT(&lock);
-    PMIX_INFO_DESTRUCT(&myinfo[0]);
-    PMIX_INFO_DESTRUCT(&myinfo[1]);
+    rc = invite_setup(cb, grp, procs, nprocs, info, ninfo);
     if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(cb);
-        return rc;
+        invite_teardown(cb);
     }
-
-    /* check for directives */
-    if (NULL != info) {
-        for (n = 0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-                /* setup a timer */
-                break;
-            }
-        }
-    }
-
-    /* limit the range to just the procs we are inviting */
-    PMIX_INFO_CREATE(cb->info, 3);
-    if (NULL == cb->info) {
-        PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
-        PMIx_Deregister_event_handler(cb->ref, op_cbfunc, &lock);
-        PMIX_WAIT_THREAD(&lock.lock);
-        PMIX_DESTRUCT(&lock);
-        PMIX_RELEASE(cb);
-        return PMIX_ERR_NOMEM;
-    }
-    cb->ninfo = 3;
-    n = 0;
-    (void) strncpy(cb->info[n].key, PMIX_EVENT_CUSTOM_RANGE, PMIX_MAX_KEYLEN);
-    cb->info[n].value.type = PMIX_DATA_ARRAY;
-    PMIX_DATA_ARRAY_CREATE(cb->info[n].value.data.darray, nprocs, PMIX_PROC);
-    if (NULL == cb->info[n].value.data.darray || NULL == cb->info[n].value.data.darray->array) {
-        PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
-        PMIx_Deregister_event_handler(cb->ref, op_cbfunc, &lock);
-        PMIX_WAIT_THREAD(&lock.lock);
-        PMIX_DESTRUCT(&lock);
-        PMIX_RELEASE(cb);
-        return PMIX_ERR_NOMEM;
-    }
-    memcpy(cb->info[n].value.data.darray->array, procs, nprocs * sizeof(pmix_proc_t));
-    ++n;
-    /* mark that this only goes to non-default handlers */
-    PMIX_INFO_LOAD(&cb->info[n], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-    ++n;
-    /* provide the group ID */
-    PMIX_INFO_LOAD(&cb->info[n], PMIX_GROUP_ID, grp, PMIX_STRING);
-
-    /* notify everyone of the invitation */
-    PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
-    rc = PMIx_Notify_event(PMIX_GROUP_INVITED, &pmix_globals.myid,
-                           PMIX_RANGE_CUSTOM,
-                           cb->info, cb->ninfo,
-                           op_cbfunc, (void *) &lock);
-    PMIX_WAIT_THREAD(&lock.lock);
-    rc = lock.status;
-    PMIX_DESTRUCT(&lock);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
-        PMIx_Deregister_event_handler(cb->ref, op_cbfunc, &lock);
-        PMIX_WAIT_THREAD(&lock.lock);
-        PMIX_DESTRUCT(&lock);
-        PMIX_RELEASE(cb);
-    }
-
     return rc;
 }
 
