@@ -119,6 +119,7 @@ examples/monitor_multi
 examples/simple
 examples/simple_server
 examples/abort
+examples/group_leave
 
 include/pmix_version.h
 include/pmix_rename.h
