@@ -25,7 +25,8 @@ is only the nickname.
 | File | Purpose |
 |------|---------|
 | `build.sh` | Builds PMIx from your **live** tree (VPATH) plus PRRTE master against it: into a shared volume for the Linux swarm, or natively for macOS. Start here. |
-| `run-tests.sh` | Runs the group example programs and reports PASS/FAIL: full multi-node suite on Linux, single-host subset on macOS. |
+| `run-tests.sh` | Runs the group **construction-method** example programs (plus the construct/connect loss and voluntary-leave cases) and reports PASS/FAIL: full multi-node suite on Linux, single-host subset on macOS. |
+| `run-group-events.sh` | Runs the **dynamic, event-driven** group exercisers and their fault paths (invite/join, member lost during destruct, ...); kept separate from `run-tests.sh` so the event/fault matrix can grow independently. Same `linux`/`macos` modes. |
 | `Dockerfile` | Base image: toolchain, PRRTE master *source* (autogen'd), SSH wiring, node entrypoint. It contains **no** PMIx and **no** built PRRTE. |
 | `docker-compose.yml` | The ten nodes `pmix-node1`..`pmix-node10`, each mounting the shared `pmix-build` volume. |
 
@@ -73,10 +74,12 @@ is only the nickname.
                            #   build PMIx + PRRTE + group clients into the volume
 docker compose up -d       # start pmix-node1 .. pmix-node10
 ./run-tests.sh linux       # multi-node group construction suite
+./run-group-events.sh linux # dynamic invite/join + group fault paths
 
 # ---- native macOS (single host) ----
 ./build.sh macos           # native PMIx + PRRTE build under vpath-macos-*
 ./run-tests.sh macos       # single-host group smoke
+./run-group-events.sh macos # single-host dynamic-group smoke
 ```
 
 Rebuild after editing PMIx: rerun `./build.sh` (incremental). No image rebuild

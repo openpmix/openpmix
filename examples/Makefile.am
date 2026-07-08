@@ -29,7 +29,8 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
                   group_bootstrap client3 client4 launcher spawn_group resolve multi_nspace_group \
                   pub2 toolqry simple_resolve pubstress monitor monitor_remote monitor_multi \
-                  simple simple_server abort group_die connect_die group_leave
+                  simple simple_server abort group_die connect_die group_leave \
+                  group_destruct_die group_invite
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -108,6 +109,14 @@ connect_die_LDADD = $(top_builddir)/src/libpmix.la
 group_leave_SOURCES = group_leave.c examples.h
 group_leave_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 group_leave_LDADD = $(top_builddir)/src/libpmix.la
+
+group_destruct_die_SOURCES = group_destruct_die.c examples.h
+group_destruct_die_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_destruct_die_LDADD = $(top_builddir)/src/libpmix.la
+
+group_invite_SOURCES = group_invite.c examples.h
+group_invite_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_LDADD = $(top_builddir)/src/libpmix.la
 
 group_dmodex_SOURCES = group_dmodex.c examples.h
 group_dmodex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -217,7 +226,7 @@ distclean-local:
         hello jctrl launcher log pub pubi server tool \
         abi_no_init abi_with_init group_lcl_cid pset \
         async_group group_dmodex group_bootstrap client3 \
-        group_leave \
+        group_leave group_destruct_die group_invite \
         spawn_group resolve multi_nspace_group pub2 toolqry \
         simple_resolve pubstress monitor monitor_remote \
         simple simple_server abort
