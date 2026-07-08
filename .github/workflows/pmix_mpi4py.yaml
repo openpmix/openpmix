@@ -113,7 +113,7 @@ jobs:
         echo mapby = :oversubscribe >> "$mca_params"
         mca_params="$HOME/.pmix/mca-params.conf"
         mkdir -p "$(dirname "$mca_params")"
-        echo pmix_mca_base_var_suppress_deprecated_warning = true >> "$mca_params"
+        echo mca_base_suppress_deprecated_warning = true >> "$mca_params"
 
     - name: Show MPI
       run:  ompi_info
