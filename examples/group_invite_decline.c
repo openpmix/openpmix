@@ -19,12 +19,13 @@
  *
  * Exercise the invite/join DECLINE path.
  *
- * The leader (rank 0) invites the whole job to a group and - unlike the timeout
- * exerciser - passes NO PMIX_TIMEOUT. Every invitee accepts EXCEPT the last
- * rank, which explicitly DECLINES via PMIx_Group_join with PMIX_GROUP_DECLINE.
- * A decline is a definitive answer, so the leader must resolve the construct
- * immediately - it must NOT hang waiting for the decliner (there is no timeout
- * to rescue it). The library must:
+ * The leader (rank 0) invites the whole job to a group with PMIX_GROUP_OPTIONAL
+ * (so a non-accepter yields a reduced group rather than aborting the construct)
+ * and - unlike the timeout exerciser - passes NO PMIX_TIMEOUT. Every invitee
+ * accepts EXCEPT the last rank, which explicitly DECLINES via PMIx_Group_join
+ * with PMIX_GROUP_DECLINE. A decline is a definitive answer, so the leader must
+ * resolve the construct immediately - it must NOT hang waiting for the decliner
+ * (there is no timeout to rescue it). The library must:
  *
  *   - report the decliner to the leader via PMIX_GROUP_INVITE_FAILED; and
  *   - complete PMIx_Group_invite on the members that accepted (reduced
@@ -226,16 +227,22 @@ int main(int argc, char **argv)
     }
 
     if (0 == myproc.rank) {
+        pmix_info_t dirs[1];
         /* invite the whole job - deliberately with NO timeout, so the decline
-         * itself (not a timer) must resolve the construct */
-        fprintf(stderr, "%d executing Group_invite (no timeout) for the whole job\n", myproc.rank);
+         * itself (not a timer) must resolve the construct. Mark participation
+         * PMIX_GROUP_OPTIONAL so the decline yields a reduced group rather than
+         * aborting the construct. */
+        fprintf(stderr, "%d executing Group_invite (optional, no timeout) for the whole job\n",
+                myproc.rank);
         PMIX_PROC_CREATE(procs, nprocs);
         for (n = 0; n < nprocs; n++) {
             PMIX_PROC_LOAD(&procs[n], myproc.nspace, n);
         }
         results = NULL;
         nresults = 0;
-        rc = PMIx_Group_invite(GROUP_ID, procs, nprocs, NULL, 0, &results, &nresults);
+        PMIX_INFO_LOAD(&dirs[0], PMIX_GROUP_OPTIONAL, NULL, PMIX_BOOL);
+        rc = PMIx_Group_invite(GROUP_ID, procs, nprocs, dirs, 1, &results, &nresults);
+        PMIX_INFO_DESTRUCT(&dirs[0]);
         PMIX_PROC_FREE(procs, nprocs);
         if (NULL != results) {
             PMIX_INFO_FREE(results, nresults);

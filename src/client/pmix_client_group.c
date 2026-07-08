@@ -74,13 +74,19 @@ typedef struct {
      * that a member has responded definitively (accepted OR declined/
      * terminated); the invitation resolves once every member has answered, or
      * the timeout fires. "responded" marks the members that specifically
-     * ACCEPTED - those form the group; every other member (a decliner, a
-     * terminated proc, or, on timeout, a non-responder) is reported to the
-     * leader via PMIX_GROUP_INVITE_FAILED and excluded. The timer bounds how
-     * long the leader waits, and is armed only when PMIX_TIMEOUT is provided. */
+     * ACCEPTED - those form the group. Whether a non-accepter is fatal depends
+     * on "optional" (the PMIX_GROUP_OPTIONAL directive): when set, participation
+     * is optional, so every non-accepter (a decliner, a terminated proc, or, on
+     * timeout, a non-responder) is reported to the leader via
+     * PMIX_GROUP_INVITE_FAILED and excluded, and the group forms on the reduced
+     * membership. When not set (the default), the construct is all-or-nothing:
+     * any non-accepter aborts it via PMIX_GROUP_CONSTRUCT_ABORT and no group
+     * forms. The timer bounds how long the leader waits, and is armed only when
+     * PMIX_TIMEOUT is provided. */
     bool *responded;
     bool *answered;
     size_t nanswered;
+    bool optional;
     pmix_event_t ev;
     bool timer_active;
     bool completed;
@@ -104,6 +110,7 @@ static void gtcon(pmix_group_tracker_t *p)
     p->responded = NULL;
     p->answered = NULL;
     p->nanswered = 0;
+    p->optional = false;
     p->timer_active = false;
     p->completed = false;
     p->info = NULL;
@@ -849,7 +856,9 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
     }
 
     /* check for directives - a timeout bounds how long we wait for the
-     * invitees to respond */
+     * invitees to respond, and PMIX_GROUP_OPTIONAL selects reduced membership
+     * (form the group on whoever accepts) over the default all-or-nothing
+     * construct (abort if any invitee fails to join) */
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
@@ -857,7 +866,8 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
                 if (PMIX_SUCCESS != rc) {
                     timeout = 0;
                 }
-                break;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_OPTIONAL)) {
+                cb->optional = PMIX_INFO_TRUE(&info[n]);
             }
         }
     }
@@ -910,20 +920,59 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
 }
 
 /* Once an invitation has resolved, announce the outcome. Runs on the caller's
- * (non-progress) thread: report each non-responder to the leader via
- * PMIX_GROUP_INVITE_FAILED, then announce the group to the members that
- * accepted via PMIX_GROUP_CONSTRUCT_COMPLETE (only sent to members; servers
- * intercept it to update their membership lists). The membership is the full
- * invited list in the common case, or a reduced list if some invitees
- * declined, terminated, or timed out. */
+ * (non-progress) thread. If any invitee failed to join (declined, terminated,
+ * or timed out) and participation was not marked PMIX_GROUP_OPTIONAL, the
+ * construct is all-or-nothing: abort it by notifying every invited participant
+ * with PMIX_GROUP_CONSTRUCT_ABORT and return that status, forming no group.
+ * Otherwise report each non-responder to the leader via PMIX_GROUP_INVITE_FAILED
+ * and announce the group to the members that accepted via
+ * PMIX_GROUP_CONSTRUCT_COMPLETE (only sent to members; servers intercept it to
+ * update their membership lists). The membership is the full invited list in
+ * the common case, or a reduced list if some invitees declined, terminated, or
+ * timed out. */
 static pmix_status_t invite_announce(pmix_group_tracker_t *cb)
 {
     pmix_proc_t *members = NULL;
-    size_t i, nmembers = 0;
+    size_t i, nmembers = 0, nfailed = 0;
     pmix_data_array_t darray;
     pmix_info_t finfo, cinfo[4];
     pmix_group_tracker_t lock;
     pmix_status_t rc = PMIX_SUCCESS;
+
+    /* count the invitees that did not accept */
+    for (i = 0; i < cb->nmembers; i++) {
+        if (!cb->responded[i]) {
+            ++nfailed;
+        }
+    }
+
+    /* default (not optional): the construct is all-or-nothing. If any invitee
+     * failed to join, abort the whole construct - notify every invited
+     * participant (the full membership, so those that accepted stop waiting for
+     * a completion that will never come) with PMIX_GROUP_CONSTRUCT_ABORT, and
+     * return that status. No group forms. */
+    if (0 < nfailed && !cb->optional) {
+        darray.type = PMIX_PROC;
+        darray.array = cb->members;
+        darray.size = cb->nmembers;
+        PMIX_INFO_LOAD(&cinfo[0], PMIX_EVENT_CUSTOM_RANGE, &darray, PMIX_DATA_ARRAY);
+        /* this only goes to non-default handlers */
+        PMIX_INFO_LOAD(&cinfo[1], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        PMIX_INFO_LOAD(&cinfo[2], PMIX_GROUP_ID, cb->grpid, PMIX_STRING);
+        PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
+        rc = PMIx_Notify_event(PMIX_GROUP_CONSTRUCT_ABORT, &pmix_globals.myid,
+                               PMIX_RANGE_CUSTOM, cinfo, 3, op_cbfunc, (void *) &lock);
+        if (PMIX_SUCCESS == rc) {
+            PMIX_WAIT_THREAD(&lock.lock);
+        }
+        PMIX_DESTRUCT(&lock);
+        PMIX_INFO_DESTRUCT(&cinfo[0]);
+        PMIX_INFO_DESTRUCT(&cinfo[1]);
+        PMIX_INFO_DESTRUCT(&cinfo[2]);
+        /* the outcome of the invitation is the abort, even if the notification
+         * itself failed - the group did not form */
+        return PMIX_GROUP_CONSTRUCT_ABORT;
+    }
 
     /* report each proc that did not accept the invitation */
     for (i = 0; i < cb->nmembers; i++) {
