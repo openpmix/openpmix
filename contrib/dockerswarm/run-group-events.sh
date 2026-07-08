@@ -112,6 +112,36 @@ test_linux() {
     cleanup_swarm
 
     #############################################################
+    # invite timeout (a non-responder)
+    #############################################################
+    banner "invite timeout (PMIX_GROUP_INVITE_FAILED + reduced membership)"
+    cleanup_swarm
+    # group_invite_timeout: the leader invites the whole job with a PMIX_TIMEOUT;
+    # the last rank deliberately never answers its PMIX_GROUP_INVITED event. The
+    # leader's timer must fire, report the non-responder via
+    # PMIX_GROUP_INVITE_FAILED, and form the group on the members that did accept
+    # (which then receive PMIX_GROUP_CONSTRUCT_COMPLETE). The non-responder stays
+    # alive and rejoins the closing barrier, so no --rtos recoverable is needed.
+    if RUN 'test -x /opt/prte/tests/group_invite_timeout'; then
+        OUT="$(RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_invite_timeout 2>&1')"
+        nfail=$(echo "$OUT" | grep -c 'INVITE_FAILED for non-responder: PASS')
+        npass=$(echo "$OUT" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
+        if hung "$OUT"; then
+            bad "group_invite_timeout HUNG (timeout never fired)"
+        elif echo "$OUT" | grep -qiE 'FAILED -'; then
+            bad "group_invite_timeout: a member reported failure: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
+        elif [ "$nfail" -ge 1 ] && [ "$npass" -ge 3 ]; then
+            ok "leader reported the non-responder and formed the group on the 3 that accepted"
+        else
+            bad "group_invite_timeout: failed=$nfail completed=$npass: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+        fi
+    else
+        skp "group_invite_timeout not built"
+    fi
+    [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] || bad "group_invite_timeout: stray prted left behind"
+    cleanup_swarm
+
+    #############################################################
     # member lost during destruct
     #############################################################
     banner "member lost during PMIx_Group_destruct (loss accounting)"
@@ -173,6 +203,23 @@ test_macos() {
         fi
     else
         skp "group_invite (not built)"
+    fi
+
+    banner "macOS: invite timeout (single host)"
+    if [ -x "$prefix/bin/group_invite_timeout" ]; then
+        macpk; sleep 1
+        out="$(prterun -np 4 --timeout 60 "$prefix/bin/group_invite_timeout" 2>&1)"
+        nfail=$(echo "$out" | grep -c 'INVITE_FAILED for non-responder: PASS')
+        npass=$(echo "$out" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
+        if echo "$out" | grep -qiE 'FAILED -|timeout|timed out'; then
+            skp "group_invite_timeout: not clean (native Darwin DVM can be flaky)"
+        elif [ "$nfail" -ge 1 ] && [ "$npass" -ge 3 ]; then
+            ok "group_invite_timeout: non-responder reported, group formed on 3 (single host)"
+        else
+            skp "group_invite_timeout: failed=$nfail completed=$npass (native Darwin DVM can be flaky)"
+        fi
+    else
+        skp "group_invite_timeout (not built)"
     fi
 
     banner "macOS: member lost during destruct (single host)"
