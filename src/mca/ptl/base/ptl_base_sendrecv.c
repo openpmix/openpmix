@@ -238,7 +238,7 @@ static void lost_connection(pmix_peer_t *peer)
                 if (0 < peer->nptr->nlocalprocs) {
                     --peer->nptr->nlocalprocs;
                 }
-                if (NULL != peer->info && 0 < peer->info->proc_cnt) {
+                if (0 < peer->info->proc_cnt) {
                     --peer->info->proc_cnt;
                 }
             }
