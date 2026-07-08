@@ -1,7 +1,13 @@
 .. _group-construction-label:
 
-Group Construction
-==================
+Group Construction, Destruction, and Fault Tolerance
+====================================================
+
+This section describes, from the application's point of view, how a PMIx
+group is built, torn down, and how the library behaves when a participant
+is lost while a group operation is still in flight. The internal mechanics
+that realize these behaviors are documented separately in
+:ref:`Group Operations: Theory and Implementation <group-implementation-label>`.
 
 For purposes of constructing PMIx groups, PMIx defines two
 classes of group members:
@@ -50,6 +56,22 @@ called ``PMIx_Group_construct``. This is required so that any group
 and/or endpoint information
 provided by the added members can be included in the returned
 ``pmix_info_t`` array.
+
+.. note::
+
+    **Participant array expansion and caller verification.** When a
+    ``PMIx_Group_construct`` call names its participants explicitly (i.e.,
+    it is *not* using the ``PMIX_GROUP_ADD_MEMBERS`` or
+    ``PMIX_GROUP_BOOTSTRAP`` methods), the client library first expands any
+    PMIx *group* identifier appearing in the ``procs`` array into that
+    group's actual member processes, and then verifies that the calling
+    process is itself among the resolved participants. A caller that is not
+    a member of the operation it is invoking receives
+    ``PMIX_ERR_NOT_A_MEMBER`` immediately, rather than issuing a construct
+    that can never complete for it. This check is intentionally skipped for
+    the add-members and bootstrap methods, since those deliberately omit
+    participants from the ``procs`` array (a non-bootstrap "add member" may
+    even pass ``NULL``), so local membership cannot be validated.
 
 
 Finally, the *invite* method represents the most dynamic form
@@ -273,3 +295,171 @@ Host responsibilities
 
 The host is responsible solely for propagating event notifications across
 participating processes.
+
+
+Group Destruction
+-----------------
+
+A constructed group is torn down with ``PMIx_Group_destruct`` (or its
+non-blocking form). Destruction is a collective over the *current*
+membership: every member must call ``PMIx_Group_destruct`` with the group
+identifier, and the operation does not complete until they have all done so
+(or a fault-handling rule below resolves it). Because the group identifier
+and its membership are held by the client libraries — not the host — the
+destruct call carries the membership to its local server so the server knows
+how many local participants to wait for. On completion the group identifier
+and any assigned context ID are released, and the group is removed from each
+member's local group list.
+
+By default, ``PMIx_Group_destruct`` returns an error if any group member
+fails or terminates before calling destruct. If the group was constructed
+with ``PMIX_GROUP_NOTIFY_TERMINATION`` set to true, then instead of an error
+each surviving member receives a ``PMIX_GROUP_MEMBER_FAILED`` event naming
+the departed process, the destruct tracker is adjusted to no longer wait on
+that process, and the operation returns ``PMIX_SUCCESS`` once the remaining
+members have all called destruct. In other words, with notification enabled
+the event takes the place of the error return, and the destruct completes on
+the survivors rather than hanging. A ``PMIX_TIMEOUT`` directive bounds how
+long the library will wait for a live member that never calls destruct.
+
+
+Leaving a Group
+---------------
+
+An individual process may withdraw from a live group with
+``PMIx_Group_leave`` (or its non-blocking form) without tearing the group
+down for everyone else. This is deliberately *not* a collective: it is
+intended for the asynchronous departure of a single process when the rest of
+the group has a valid reason to continue. For all other scenarios —
+especially coordinated teardown — ``PMIx_Group_destruct`` is the correct,
+scalable choice.
+
+A leave is realized entirely through the event subsystem. The call generates
+a ``PMIX_GROUP_LEFT`` event, ranged to the current membership and naming the
+departing process, and returns once that event has been *locally generated*
+(the return is not indicative of remote receipt). The departing process
+drops the group from its own local list immediately. Each remaining member,
+on receiving ``PMIX_GROUP_LEFT``, updates its local record of the group
+membership to remove the departed process.
+
+A voluntary leave is treated by the library as the deliberate cousin of a
+lost member (see below): if a group construct or destruct for that same group
+is still in flight when the leave arrives, the leaving process is accounted
+as "departed" so the in-flight collective can complete on the survivors
+rather than block on a process that will never call in.
+
+
+Fault Tolerance
+---------------
+
+Group construct and destruct are collective operations, and a collective
+that waits on a participant which has died will hang forever unless the loss
+is accounted for. PMIx detects three kinds of departure while a group
+operation is still in flight — a dropped connection, an abnormal process
+termination, and a voluntary ``PMIx_Group_leave`` — and resolves the
+operation according to the directives supplied by the participants and the
+events for which they have registered.
+
+The events and attributes named in this section are all defined in
+:ref:`Group Operations: Theory and Implementation <group-implementation-label>`,
+which describes how the behavior is realized inside the library.
+
+
+Member failure during construction
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When a required member is lost before it contributes to a
+``PMIx_Group_construct``, the outcome depends on the
+``PMIX_GROUP_FT_COLLECTIVE`` directive (a boolean, default ``false``):
+
+* **Default — abort.** Without the directive, the construct is *aborted*
+  rather than silently forming a reduced group. Every surviving
+  participant's ``PMIx_Group_construct`` returns
+  ``PMIX_GROUP_CONSTRUCT_ABORT`` (non-blocking callers have their callback
+  invoked with that status). This is the safe default: an application that
+  expected an exact membership is told the membership could not be formed,
+  instead of unknowingly proceeding with fewer processes.
+
+* **Survive on the survivors.** With ``PMIX_GROUP_FT_COLLECTIVE`` set to
+  true, the construct instead *completes on the surviving members*. Each
+  survivor receives a ``PMIX_GROUP_MEMBER_FAILED`` event naming the lost
+  member, so the application knows exactly who is missing from the group it
+  just formed. The library synthesizes this event itself, so the behavior is
+  available with any host environment, not only those that generate their
+  own member-failure notifications.
+
+This same accounting handles a member lost mid-*destruct*: a destruct always
+completes on the survivors (subject to ``PMIX_GROUP_NOTIFY_TERMINATION`` for
+whether the departed member is reported), because tearing a group down does
+not require the departed process.
+
+
+Leader failure
+^^^^^^^^^^^^^^^
+
+The *leader* of a group construction (the process that declared
+``PMIX_GROUP_LEADER``, or the inviter in the invite method) occupies a
+distinguished role, so its loss is reported separately from an ordinary
+member's. A process that has accepted an invitation with
+``PMIx_Group_join_nb`` watches the leader for the duration of the
+construction. If the leader terminates before the construct completes, that
+process receives a ``PMIX_GROUP_LEADER_FAILED`` event naming the lost leader,
+rather than blocking indefinitely.
+
+On receiving ``PMIX_GROUP_LEADER_FAILED`` the application may drive
+reselection: a single process nominates itself by returning the
+``PMIX_GROUP_LEADER`` attribute in the results array of its event handler,
+and the outcome is communicated to all participants via a
+``PMIX_GROUP_LEADER_SELECTED`` event identifying the new leader. If no leader
+was selected, the status carried by that event lets the participants take
+appropriate action. Any participant may instead force the whole procedure to
+end by returning ``PMIX_GROUP_CONSTRUCT_ABORT`` from the handler, which
+causes all participants to be notified of the abort.
+
+
+Invitation failures
+^^^^^^^^^^^^^^^^^^^^^
+
+In the invite method, an invited process that declines
+(``PMIx_Group_join`` with ``PMIX_GROUP_DECLINE``), terminates before
+responding, or never responds within the leader's ``PMIX_TIMEOUT`` is a
+failure of that invitation. The leader is notified of each such process via a
+``PMIX_GROUP_INVITE_FAILED`` event. What happens next depends on
+``PMIX_GROUP_OPTIONAL``:
+
+* **All-or-nothing (default).** Without ``PMIX_GROUP_OPTIONAL``, any invitee
+  that fails to accept causes the whole construct to abort: every
+  participant receives ``PMIX_GROUP_CONSTRUCT_ABORT`` and the leader's
+  ``PMIx_Group_invite`` returns that status. No group is formed.
+
+* **Optional.** With ``PMIX_GROUP_OPTIONAL`` set to true, the failed invitees
+  are simply excluded and the group forms on those that accepted; each
+  member then receives ``PMIX_GROUP_CONSTRUCT_COMPLETE`` carrying the reduced
+  membership.
+
+
+Timeouts
+^^^^^^^^
+
+A ``PMIX_TIMEOUT`` directive (in seconds) may be supplied to any of the group
+construction calls. It bounds how long the operation will wait for a *live*
+participant that never calls in — the classic "a process fails to call the
+API due to hanging" scenario. For the collective and bootstrap methods the
+server enforces the timeout over the local phase: if the timer expires before
+every expected local participant has contributed, the construct completes
+with ``PMIX_ERR_TIMEOUT`` instead of hanging. For the invite method the
+leader's library arms the timeout over the invitation responses. The host
+environment remains responsible for any cross-node (global) timeout.
+
+
+Detecting fault-tolerance support
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A companion project (such as PRRTE) can detect at build time whether the PMIx
+it is compiling against provides this group fault-tolerance feature set by
+testing for the ``PMIX_CAP_GROUP_FT`` capability flag in the installed
+``pmix_version.h``. The flag's *presence* is the signal that the behaviors
+described in this section — the ``PMIX_GROUP_FT_COLLECTIVE`` gate, the
+synthesized ``PMIX_GROUP_MEMBER_FAILED`` and ``PMIX_GROUP_LEADER_FAILED``
+events, the group construct timeout, and the ``PMIX_GROUP_CANCEL`` operation
+— are available.
