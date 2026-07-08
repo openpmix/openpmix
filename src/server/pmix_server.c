@@ -1619,7 +1619,15 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                 pmix_pointer_array_set_item(&pmix_server_globals.clients, info->peerid, NULL);
                 PMIX_RELEASE(peer);
             }
-            if (nptr->nlocalprocs == nptr->nfinalized) {
+            /* Fire the "all local processes finalized" callback exactly
+             * once. In the tombstone model a finalized peer stays counted in
+             * nfinalized until it is reclaimed, so nfinalized is already
+             * saturated at nlocalprocs here and this equality holds on every
+             * rank we iterate; without the guard the callback would fire once
+             * per rank as the nspace is torn down. */
+            if (!nptr->local_app_fini_fired &&
+                nptr->nlocalprocs == nptr->nfinalized) {
+                nptr->local_app_fini_fired = true;
                 pmix_pnet.local_app_finalized(nptr);
             }
             pmix_list_remove_item(&nptr->ranks, &info->super);

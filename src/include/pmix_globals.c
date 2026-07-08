@@ -142,6 +142,7 @@ static void nscon(pmix_namespace_t *p)
     p->jobbkt = NULL;
     p->ndelivered = 0;
     p->nfinalized = 0;
+    p->local_app_fini_fired = false;
     PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
     memset(&p->compat, 0, sizeof(p->compat));
     PMIX_CONSTRUCT(&p->epilog.cleanup_dirs, pmix_list_t);
