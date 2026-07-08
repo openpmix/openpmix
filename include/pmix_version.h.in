@@ -51,6 +51,7 @@
 #define PMIX_CAP_STOP_PRGTHRD    4
 #define PMIX_CAP_GET_NUMBER_FN   5
 #define PMIX_CAP_REGEX2          6
+#define PMIX_CAP_GROUP_FT        7
 
 
 /*****    DEPRECATED    *****/
