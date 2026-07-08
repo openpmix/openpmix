@@ -1999,13 +1999,15 @@ typedef enum {
     PMIX_GROUP_ACCEPT
 } pmix_group_opt_t;
 
+/* Group operations. New values must be appended after the existing ones to
+ * preserve their numeric values - this enum crosses the PMIx-to-host callback
+ * boundary (pmix_server_module_t.group). Keep the body free of comment lines:
+ * the Python bindings generator (bindings/python/construct.py) treats every
+ * line inside a typedef enum as an enumerator. */
 typedef enum {
     PMIX_GROUP_CONSTRUCT,
     PMIX_GROUP_DESTRUCT,
     PMIX_GROUP_NONE,
-    // new values must be appended here to preserve the numeric value of the
-    // existing operations - this enum crosses the PMIx-to-host callback
-    // boundary (pmix_server_module_t.group)
     PMIX_GROUP_CANCEL
 } pmix_group_operation_t;
 
