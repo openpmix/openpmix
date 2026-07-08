@@ -1146,6 +1146,198 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
     return rc;
 }
 
+/* ---- invitee-side leader-failure watch ----------------------------------
+ *
+ * A process that accepts an invitation is depending on the leader to drive the
+ * construct to completion. If the leader is lost before the construct resolves,
+ * the acceptor would otherwise wait forever. The library therefore watches the
+ * leader for the life of an in-progress join and, when it is lost, delivers a
+ * PMIX_GROUP_LEADER_FAILED event to this process's own handlers. Reselection of
+ * a new leader is left to the application (it declares a replacement via
+ * PMIX_GROUP_LEADER in its handler and announces it with
+ * PMIX_GROUP_LEADER_SELECTED); the library's job is only to surface the loss.
+ *
+ * The watch is a pmix_group_tracker_t carrying the group id and the leader (in
+ * members[0]); it is handed to its own event handler as the return object, so
+ * no global registry is needed. The handler runs on the progress thread. */
+
+/* Free the heap info used to carry a locally-injected event; used as the
+ * completion callback so the info outlives the non-blocking notification. */
+static void leader_failed_relcb(pmix_status_t status, void *cbdata)
+{
+    pmix_info_t *info = (pmix_info_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+    PMIX_INFO_FREE(info, 2);
+}
+
+/* Deliver PMIX_GROUP_LEADER_FAILED to this process's own handlers, naming the
+ * failed leader and the group. Runs on the progress thread (from the watch
+ * handler), so it must use the non-blocking form of PMIx_Notify_event - the
+ * blocking form would deadlock here - and let leader_failed_relcb free the info
+ * once the local delivery completes. */
+static void emit_leader_failed(const char *grpid, const pmix_proc_t *leader)
+{
+    pmix_info_t *info;
+    pmix_status_t rc;
+
+    PMIX_INFO_CREATE(info, 2);
+    if (NULL == info) {
+        return;
+    }
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_AFFECTED_PROC, leader, PMIX_PROC);
+    PMIX_INFO_LOAD(&info[1], PMIX_GROUP_ID, grpid, PMIX_STRING);
+    rc = PMIx_Notify_event(PMIX_GROUP_LEADER_FAILED, &pmix_globals.myid,
+                           PMIX_RANGE_PROC_LOCAL, info, 2, leader_failed_relcb, info);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_INFO_FREE(info, 2);
+    }
+}
+
+/* Release the watch tracker once its handler has been deregistered. */
+static void watch_deregcb(pmix_status_t status, void *cbdata)
+{
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+    PMIX_RELEASE(cb);
+}
+
+/* Tear down the watch: deregister its handler (non-blocking, since we reach
+ * this from the progress thread by way of a threadshift) and release the
+ * tracker when that completes. Deferring via a threadshift also avoids
+ * deregistering a handler from within its own callback. */
+static void watch_teardown(int sd, short args, void *cbdata)
+{
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (SIZE_MAX != cb->ref) {
+        PMIx_Deregister_event_handler(cb->ref, watch_deregcb, cb);
+        cb->ref = SIZE_MAX;
+    } else {
+        PMIX_RELEASE(cb);
+    }
+}
+
+/* Watch handler: fires on a termination-type event (to catch the leader's
+ * loss) or on the construct resolving (to end the watch). */
+static void leader_watch_handler(size_t evhdlr_registration_id, pmix_status_t status,
+                                 const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                                 pmix_info_t *results, size_t nresults,
+                                 pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    pmix_group_tracker_t *cb = NULL;
+    const pmix_proc_t *affected = NULL;
+    const char *grpid = NULL;
+    size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, results, nresults);
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_RETURN_OBJECT)) {
+            cb = (pmix_group_tracker_t *) info[n].value.data.ptr;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC)) {
+            affected = info[n].value.data.proc;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ID)) {
+            grpid = info[n].value.data.string;
+        }
+    }
+    if (NULL == cb || cb->completed) {
+        goto done;
+    }
+
+    /* the construct resolved - the leader is no longer critical, so end the
+     * watch. A CONSTRUCT_COMPLETE/ABORT with no group id is treated as ours. */
+    if (PMIX_GROUP_CONSTRUCT_COMPLETE == status || PMIX_GROUP_CONSTRUCT_ABORT == status) {
+        if (NULL == grpid || 0 == strcmp(grpid, cb->grpid)) {
+            cb->completed = true;
+            PMIX_POST_OBJECT(cb);
+            PMIX_THREADSHIFT(cb, watch_teardown);
+        }
+        goto done;
+    }
+
+    /* a termination-type event - if the departed proc is our leader, surface
+     * the loss as PMIX_GROUP_LEADER_FAILED and end the watch */
+    if (PMIX_PROC_TERMINATED == status || PMIX_ERR_PROC_ABORTED == status ||
+        PMIX_ERR_PROC_TERM_WO_SYNC == status) {
+        if (NULL != affected && PMIX_CHECK_PROCID(affected, &cb->members[0])) {
+            cb->completed = true;
+            emit_leader_failed(cb->grpid, &cb->members[0]);
+            PMIX_POST_OBJECT(cb);
+            PMIX_THREADSHIFT(cb, watch_teardown);
+        }
+    }
+
+done:
+    /* this watch is a passive observer - it must never terminate the event
+     * chain, or it would swallow the very CONSTRUCT_COMPLETE (or termination)
+     * the application registered to see. Report NO_ACTION_TAKEN so the chain
+     * continues to the caller's own handlers. */
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_EVENT_NO_ACTION_TAKEN, NULL, 0, NULL, NULL, cbdata);
+    }
+}
+
+/* Registration callback for the leader watch. Runs on the progress thread when
+ * the handler has been registered; caches the returned handler id on the watch
+ * tracker so it can later be deregistered. On failure there is no handler, so
+ * release the tracker. */
+static void watch_regcb(pmix_status_t status, size_t refid, void *cbdata)
+{
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
+
+    if (PMIX_SUCCESS != status) {
+        PMIX_RELEASE(cb);
+        return;
+    }
+    cb->ref = refid;
+    PMIX_POST_OBJECT(cb);
+}
+
+/* Register a leader-failure watch for a process that has accepted an
+ * invitation. This is normally reached from within the application's
+ * PMIX_GROUP_INVITED handler (PMIx_Group_join_nb called from an event handler),
+ * so it runs on the progress thread - the handler registration MUST therefore
+ * be non-blocking; a blocking wait here would deadlock the progress thread.
+ * Best-effort: on failure the acceptor simply has no watch, exactly as before
+ * this facility existed. */
+static void setup_leader_watch(const char *grp, const pmix_proc_t *leader)
+{
+    pmix_group_tracker_t *cb;
+    pmix_status_t codes[] = {
+        PMIX_PROC_TERMINATED,
+        PMIX_ERR_PROC_ABORTED,
+        PMIX_ERR_PROC_TERM_WO_SYNC,
+        PMIX_GROUP_CONSTRUCT_COMPLETE,
+        PMIX_GROUP_CONSTRUCT_ABORT
+    };
+    size_t ncodes = sizeof(codes) / sizeof(codes[0]);
+
+    cb = PMIX_NEW(pmix_group_tracker_t);
+    cb->grpid = strdup(grp);
+    PMIX_PROC_CREATE(cb->members, 1);
+    if (NULL == cb->members) {
+        PMIX_RELEASE(cb);
+        return;
+    }
+    cb->nmembers = 1;
+    PMIX_LOAD_PROCID(&cb->members[0], leader->nspace, leader->rank);
+
+    /* the registration references (does not copy) this info array and consumes
+     * it asynchronously on the progress thread, so it must outlive this call.
+     * Carry it on the tracker - which lives until the watch is torn down and is
+     * freed by the tracker destructor - rather than on the stack. */
+    PMIX_INFO_CREATE(cb->info, 2);
+    if (NULL == cb->info) {
+        PMIX_RELEASE(cb);
+        return;
+    }
+    cb->ninfo = 2;
+    PMIX_INFO_LOAD(&cb->info[0], PMIX_EVENT_RETURN_OBJECT, cb, PMIX_POINTER);
+    PMIX_INFO_LOAD(&cb->info[1], PMIX_EVENT_HDLR_PREPEND, NULL, PMIX_BOOL);
+    PMIx_Register_event_handler(codes, ncodes, cb->info, cb->ninfo,
+                                leader_watch_handler, watch_regcb, cb);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *leader,
                                           pmix_group_opt_t opt, const pmix_info_t info[],
                                           size_t ninfo, pmix_info_t **results, size_t *nresults)
@@ -1198,7 +1390,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
     pmix_status_t code;
     size_t n;
     pmix_data_range_t range;
-    PMIX_HIDE_UNUSED_PARAMS(grp, cbfunc);
+    PMIX_HIDE_UNUSED_PARAMS(cbfunc);
 
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "[%s:%d] pmix: join nb called",
@@ -1261,6 +1453,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cb);
     }
+
+    /* an acceptor now depends on the leader to complete the construct; watch
+     * the leader so its loss is surfaced as PMIX_GROUP_LEADER_FAILED rather
+     * than leaving this process waiting forever */
+    if (PMIX_SUCCESS == rc && PMIX_GROUP_ACCEPT == opt && NULL != leader) {
+        setup_leader_watch(grp, leader);
+    }
+
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "[%s:%d] pmix: group invite %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,

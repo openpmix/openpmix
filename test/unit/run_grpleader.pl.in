@@ -1,0 +1,135 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# Exercise leader failure and app-driven reselection in the invite/join model.
+# A single persistent server (test/simple/simptest) forks four clients
+# (test/simple/simpgrpleader). Rank 0 is the leader; each other rank joins the
+# group led by rank 0, which arms the library's leader-failure watch. Rank 0
+# then dies, and the library must surface the loss to each joiner as a
+# PMIX_GROUP_LEADER_FAILED event naming the leader. The application drives
+# reselection: rank 1 declares itself the new leader and announces it via
+# PMIX_GROUP_LEADER_SELECTED, which the other joiners receive. A regression that
+# fails to arm the watch or generate the event makes a joiner exit non-zero, or
+# wedges the run until the timeout fires. See src/client/pmix_client_group.c
+# (setup_leader_watch / leader_watch_handler).
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen
+# hands us every possible component directory in
+# PMIX_COMPONENT_LIBRARY_PATHS; turn each into an absolute path to the
+# built component so the MCA base can find them without a prior install.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# simptest forks its clients from the current directory using a relative
+# path ("./simpgrpleader"), so run from the directory that holds both
+# binaries.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise
+# arm a Perl alarm so a wedged run can never hang "make check" forever.
+my @cmd = ("./simptest", "-n", "4", "-e", "./simpgrpleader");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run the server in a child we control, merging stderr into stdout, and
+# slurp the output. The alarm (when armed) bounds the wait.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec simptest: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: simptest exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The server must exit 0: a client that failed an assertion (or could not
+# connect/finalize) drives a non-zero exit.
+if (0 != $status) {
+    print "FAIL: simptest did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm the run actually exercised the path: every joiner prints the
+# "saw LEADER_FAILED" line only after the library surfaced the leader's loss;
+# the non-electing joiners print "saw LEADER_SELECTED" only after receiving the
+# reselection announcement; and simptest prints its own line once all clients
+# are gone.
+my @failed = ($output =~ /saw LEADER_FAILED for leader 0/g);
+my @selected = ($output =~ /saw LEADER_SELECTED new leader 1/g);
+my $elected = ($output =~ /rank 1 elected as new leader/);
+my $server_done = ($output =~ /Test finished OK!/);
+if (3 != scalar(@failed)) {
+    printf("FAIL: expected 3 joiners to see LEADER_FAILED, saw %d\n", scalar(@failed));
+    exit(1);
+}
+if (!$elected) {
+    print "FAIL: rank 1 did not elect itself as the new leader\n";
+    exit(1);
+}
+if (2 != scalar(@selected)) {
+    printf("FAIL: expected 2 joiners to see LEADER_SELECTED, saw %d\n", scalar(@selected));
+    exit(1);
+}
+if (!$server_done) {
+    print "FAIL: server did not finish cleanly after the clients ran\n";
+    exit(1);
+}
+print "PASS: leader failure surfaced and reselection completed\n";
+exit(0);
