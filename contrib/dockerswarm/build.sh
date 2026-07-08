@@ -53,11 +53,13 @@ PRRTE_REPO="${PRRTE_REPO:-https://github.com/openpmix/prrte.git}"
 # so the leader's PMIX_TIMEOUT fires, reports the non-responder, and forms the
 # group on those that accepted), group_invite_decline (an invitee explicitly
 # declines, so the construct resolves immediately -- no timeout -- reporting the
-# decliner and forming the group on those that accepted), and group_destruct_die
-# (a member is lost mid PMIx_Group_destruct, so the destruct must complete on
-# the survivors -- the destruct analog of group_die).
+# decliner and forming the group on those that accepted), group_invite_abort (an
+# invitee declines an all-or-nothing invite -- no PMIX_GROUP_OPTIONAL -- so the
+# whole construct aborts and every participant is notified), and
+# group_destruct_die (a member is lost mid PMIx_Group_destruct, so the destruct
+# must complete on the survivors -- the destruct analog of group_die).
 GROUP_EXAMPLES="group group_bootstrap group_dmodex group_lcl_cid asyncgroup multi_nspace_group"
-EVENT_EXAMPLES="group_invite group_invite_timeout group_invite_decline group_destruct_die"
+EVENT_EXAMPLES="group_invite group_invite_timeout group_invite_decline group_invite_abort group_destruct_die"
 BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die group_leave $EVENT_EXAMPLES"
 
 mode="${1:-linux}"

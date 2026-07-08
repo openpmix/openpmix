@@ -124,6 +124,7 @@ examples/group_destruct_die
 examples/group_invite
 examples/group_invite_timeout
 examples/group_invite_decline
+examples/group_invite_abort
 
 include/pmix_version.h
 include/pmix_rename.h
@@ -249,6 +250,7 @@ test/unit/run_grpmember.pl
 test/unit/run_grpinvite.pl
 test/unit/run_grptimeout.pl
 test/unit/run_grpdecline.pl
+test/unit/run_grpabort.pl
 test/unit/util_argv
 test/unit/util_basename
 test/unit/util_path

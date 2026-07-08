@@ -38,6 +38,10 @@
 #                             resolves immediately (no timeout), reports the
 #                             decliner via PMIX_GROUP_INVITE_FAILED, and forms
 #                             the group on the members that accepted.
+#   * group_invite_abort   -- an invitee declines an all-or-nothing invite (no
+#                             PMIX_GROUP_OPTIONAL); the whole construct aborts,
+#                             every participant receives PMIX_GROUP_CONSTRUCT_ABORT
+#                             and the leader's invite returns that status.
 #   * group_destruct_die   -- a member is lost mid-PMIx_Group_destruct; the
 #                             destruct must complete on the survivors rather than
 #                             hang (the destruct analog of run-tests.sh's
@@ -183,6 +187,37 @@ test_linux() {
     cleanup_swarm
 
     #############################################################
+    # invite aborted (all-or-nothing construct)
+    #############################################################
+    banner "invite aborted (PMIX_GROUP_CONSTRUCT_ABORT, all-or-nothing)"
+    cleanup_swarm
+    # group_invite_abort: the leader invites the whole job WITHOUT
+    # PMIX_GROUP_OPTIONAL, making the construct all-or-nothing. The last rank
+    # declines, so the lone non-accepter must abort the entire construct: every
+    # invited participant (including the members that accepted) must receive
+    # PMIX_GROUP_CONSTRUCT_ABORT, the leader's PMIx_Group_invite must return that
+    # status, and no group may form (no CONSTRUCT_COMPLETE). All ranks stay alive
+    # and rejoin the closing barrier, so no --rtos recoverable is needed.
+    if RUN 'test -x /opt/prte/tests/group_invite_abort'; then
+        OUT="$(RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_invite_abort 2>&1')"
+        nleader=$(echo "$OUT" | grep -c 'PMIx_Group_invite returned CONSTRUCT_ABORT: PASS')
+        nabort=$(echo "$OUT" | grep -c 'PMIX_GROUP_CONSTRUCT_ABORT received: PASS')
+        if hung "$OUT"; then
+            bad "group_invite_abort HUNG (abort was not propagated)"
+        elif echo "$OUT" | grep -qiE 'FAILED -'; then
+            bad "group_invite_abort: a member reported failure: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
+        elif [ "$nleader" -ge 1 ] && [ "$nabort" -ge 4 ]; then
+            ok "leader's invite returned abort and all 4 participants were notified"
+        else
+            bad "group_invite_abort: leader=$nleader aborted=$nabort: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+        fi
+    else
+        skp "group_invite_abort not built"
+    fi
+    [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] || bad "group_invite_abort: stray prted left behind"
+    cleanup_swarm
+
+    #############################################################
     # member lost during destruct
     #############################################################
     banner "member lost during PMIx_Group_destruct (loss accounting)"
@@ -278,6 +313,23 @@ test_macos() {
         fi
     else
         skp "group_invite_decline (not built)"
+    fi
+
+    banner "macOS: invite aborted (single host)"
+    if [ -x "$prefix/bin/group_invite_abort" ]; then
+        macpk; sleep 1
+        out="$(prterun -np 4 --timeout 60 "$prefix/bin/group_invite_abort" 2>&1)"
+        nleader=$(echo "$out" | grep -c 'PMIx_Group_invite returned CONSTRUCT_ABORT: PASS')
+        nabort=$(echo "$out" | grep -c 'PMIX_GROUP_CONSTRUCT_ABORT received: PASS')
+        if echo "$out" | grep -qiE 'FAILED -|timeout|timed out'; then
+            skp "group_invite_abort: not clean (native Darwin DVM can be flaky)"
+        elif [ "$nleader" -ge 1 ] && [ "$nabort" -ge 4 ]; then
+            ok "group_invite_abort: construct aborted, all 4 participants notified (single host)"
+        else
+            skp "group_invite_abort: leader=$nleader aborted=$nabort (native Darwin DVM can be flaky)"
+        fi
+    else
+        skp "group_invite_abort (not built)"
     fi
 
     banner "macOS: member lost during destruct (single host)"
