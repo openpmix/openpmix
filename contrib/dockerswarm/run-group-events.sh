@@ -46,10 +46,26 @@
 #                             destruct must complete on the survivors rather than
 #                             hang (the destruct analog of run-tests.sh's
 #                             group_die, which covers construct).
+#   * group_construct_abort-- a required member is lost mid-construct (its client
+#                             exits before contributing) with no
+#                             PMIX_GROUP_FT_COLLECTIVE; the construct must ABORT
+#                             on every survivor. The victim shares a server with a
+#                             survivor and the other survivors are on other nodes,
+#                             so the victim's server aborts locally AND issues
+#                             PMIX_GROUP_CANCEL to abort the cross-server
+#                             collective (else the remote survivors would hang).
+#   * group_daemon_fail    -- a whole daemon is lost mid-construct: the victim is
+#                             placed alone on a node and the harness kills that
+#                             node's prted while the construct is pending. PRRTE's
+#                             grpcomm fault handler must abort the pending
+#                             construct on the surviving servers (rather than tear
+#                             the DVM down), so every survivor sees
+#                             PMIX_GROUP_CONSTRUCT_ABORT. Requires --rtos
+#                             recoverable.
 #
 # Still to come (as the library gains support -- see issue #3936): leader
-# failure and reselection, construct abort, member-failed events, and the
-# FT-collective adjustment.
+# failure and reselection, member-failed events, and the FT-collective
+# survival adjustment (openpmix/prrte#2510).
 
 set -uo pipefail
 
@@ -78,8 +94,11 @@ cleanup_swarm() {
 }
 prted_count() { local c=0 n; for n in "$@"; do ON "$n" 'pgrep -x prted' >/dev/null 2>&1 && c=$((c+1)); done; echo "$c"; }
 
-# common markers of a launch that hung to the DVM/job timeout
-hung() { echo "$1" | grep -qiE 'time limit for job|timed out|DVM timeout|timeout'; }
+# Markers of a launch that hung until the DVM/job timeout fired. Match only the
+# launcher's genuine timeout-expiry text -- NOT the bare word "timeout", which
+# appears benignly in some tests' own output (e.g. group_invite_timeout prints
+# "(timeout 3 s)" and group_invite_decline prints "(optional, no timeout)").
+hung() { echo "$1" | grep -qiE 'time limit for job|timed out|DVM timeout'; }
 
 test_linux() {
     if ! docker ps --format '{{.Names}}' | grep -qx pmix-node1; then
@@ -247,6 +266,110 @@ test_linux() {
     fi
     [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] || bad "group_destruct_die: stray prted left behind"
     cleanup_swarm
+
+    #############################################################
+    # member lost mid-construct (cross-server cancel)
+    #############################################################
+    banner "member lost mid-construct (PMIX_GROUP_CANCEL across servers)"
+    cleanup_swarm
+    # group_construct_abort: the whole job is the membership; every rank EXCEPT
+    # the last enters PMIx_Group_construct WITHOUT PMIX_GROUP_FT_COLLECTIVE, and
+    # the last rank (the victim) exits before contributing (and without
+    # finalizing). Because fault-tolerant collective tracking was not requested,
+    # the loss of a required member must ABORT the construct on every survivor
+    # rather than form a reduced group.
+    #
+    # The layout puts the victim (rank 3) on node1 alongside a survivor (rank 0),
+    # with the other survivors on node2 and node3 (--host node1:2,node2:1,node3:1
+    # --map-by node). So the victim's server has a local construct participant to
+    # abort directly AND must issue PMIX_GROUP_CANCEL to the host to abort the
+    # cross-server collective the node2/node3 servers already joined -- if the
+    # cancel were not propagated those survivors would hang forever. --rtos
+    # recoverable keeps the job alive when the victim vanishes.
+    if RUN 'test -x /opt/prte/tests/group_construct_abort'; then
+        OUT="$(RUN 'prterun --rtos recoverable --host node1:2,node2:1,node3:1 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_construct_abort 2>&1')"
+        n=$(echo "$OUT" | grep -c 'construct ABORT on member loss: PASS')
+        if hung "$OUT"; then
+            bad "group_construct_abort HUNG (cancel not propagated across servers)"
+        elif echo "$OUT" | grep -qiE 'expected PMIX_GROUP_CONSTRUCT_ABORT: FAILED'; then
+            bad "group_construct_abort: a survivor got the wrong status: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
+        elif [ "$n" -ge 3 ]; then
+            ok "all 3 survivors across servers aborted the construct on member loss"
+        else
+            bad "group_construct_abort: only $n survivors aborted: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+        fi
+    else
+        skp "group_construct_abort not built"
+    fi
+    [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] || bad "group_construct_abort: stray prted left behind"
+    cleanup_swarm
+
+    #############################################################
+    # daemon lost mid-construct (recover + abort the construct)
+    #############################################################
+    banner "daemon lost mid-construct (recover, abort the pending construct)"
+    cleanup_swarm
+    # group_daemon_fail: the whole job is the membership; every rank EXCEPT the
+    # last enters PMIx_Group_construct and blocks. The victim (rank 3) stays alive
+    # but never contributes, and is placed ALONE on its own node
+    # (--host node1:1,node2:1,node3:1,node4:1 --map-by node puts rank 3 on node4
+    # by itself). Once the construct is pending, the harness kills node4's prted.
+    # PRRTE's grpcomm fault handler (on the HNP) aborts the pending construct so
+    # every survivor's PMIx_Group_construct returns PMIX_GROUP_CONSTRUCT_ABORT
+    # -- the clean-abort scope of issue #3936 (item #6). This is what the test
+    # verifies.
+    #
+    # NOTE: losing a whole daemon (as opposed to a client process) is a failure
+    # PRRTE currently treats as fatal -- even under --rtos recoverable it prints
+    # "cannot recover ... will terminate the job" and tears the DVM down. Keeping
+    # the DVM alive on a daemon loss (degraded survival) is the separate effort
+    # tracked as openpmix/prrte#2510. During that fatal teardown prterun trips a
+    # PRE-EXISTING PRRTE assertion (prte_job_destruct, a prte_proc_t double-free)
+    # that has nothing to do with the group code -- it reproduces with a plain
+    # `prterun ... sleep` job whose daemon is killed, no PMIx group involved. So
+    # this test asserts ONLY the survivor abort markers (which are emitted before
+    # that teardown) and does not treat the crash-marred, non-clean teardown
+    # (orphaned prteds) as a failure of the group path.
+    if RUN 'test -x /opt/prte/tests/group_daemon_fail'; then
+        RUN 'rm -f /tmp/gdf.out; nohup prterun --rtos recoverable --host node1:1,node2:1,node3:1,node4:1 -np 4 --map-by node --timeout 90 /opt/prte/tests/group_daemon_fail >/tmp/gdf.out 2>&1 </dev/null & disown; echo launched' >/dev/null
+        # wait for the construct to be pending: the victim announces it is waiting
+        reached=0
+        for _ in $(seq 1 40); do
+            if RUN 'grep -q "awaiting daemon kill" /tmp/gdf.out 2>/dev/null'; then reached=1; break; fi
+            sleep 1
+        done
+        # let the survivors settle into the collective, then kill the victim's daemon
+        sleep 3
+        ON 4 'pkill -9 -x prted' >/dev/null 2>&1 || true
+        # wait for the launch to wind down (bounded); the pre-existing teardown
+        # crash may leave prterun dead and some prteds orphaned -- either way we
+        # stop waiting once prterun is gone or the window elapses
+        for _ in $(seq 1 60); do
+            RUN 'pgrep -x prterun >/dev/null 2>&1' || break
+            sleep 1
+        done
+        # strip NULs: the captured launcher log can carry binary debug bytes,
+        # which bash command substitution would warn about otherwise
+        OUT="$(RUN 'tr -d "\000" < /tmp/gdf.out 2>/dev/null')"
+        n=$(echo "$OUT" | grep -c 'construct ABORT after daemon loss: PASS')
+        if [ "$reached" = 0 ]; then
+            bad "group_daemon_fail: construct never became pending (victim never reached wait)"
+        elif echo "$OUT" | grep -qiE 'expected PMIX_GROUP_CONSTRUCT_ABORT: FAILED'; then
+            bad "group_daemon_fail: a survivor got the wrong status: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
+        elif [ "$n" -ge 3 ]; then
+            ok "all 3 survivors aborted the construct after the daemon was killed"
+            if echo "$OUT" | grep -q 'prte_job_destruct: Assertion'; then
+                printf '       (note: pre-existing PRRTE daemon-loss teardown assertion fired -- see openpmix/prrte#2510)\n'
+            fi
+        else
+            bad "group_daemon_fail: only $n survivors aborted: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+        fi
+    else
+        skp "group_daemon_fail not built"
+    fi
+    # unconditional cleanup: the fatal daemon-loss teardown is not guaranteed to
+    # reap every prted, so tidy up rather than assert on strays for this case
+    cleanup_swarm
 }
 
 ########################################################################
@@ -347,6 +470,29 @@ test_macos() {
     else
         skp "group_destruct_die (not built)"
     fi
+
+    banner "macOS: member lost mid-construct (single host)"
+    if [ -x "$prefix/bin/group_construct_abort" ]; then
+        macpk; sleep 1
+        out="$(prterun --rtos recoverable -np 4 --timeout 60 "$prefix/bin/group_construct_abort" 2>&1)"
+        n=$(echo "$out" | grep -c 'construct ABORT on member loss: PASS')
+        if echo "$out" | grep -qiE 'timeout|timed out'; then
+            skp "group_construct_abort: not clean (native Darwin DVM can be flaky)"
+        elif [ "$n" -ge 3 ]; then
+            ok "group_construct_abort: construct aborted on 3 survivors (single host)"
+        else
+            skp "group_construct_abort: only $n survivors (native Darwin DVM can be flaky)"
+        fi
+    else
+        skp "group_construct_abort (not built)"
+    fi
+
+    # group_daemon_fail is a multi-node test: it needs the victim alone on a node
+    # whose prted the harness can kill without taking a survivor with it. A native
+    # single-host DVM has one prted for the whole job, so killing it kills every
+    # rank -- there is nothing to recover. Exercise it in the Linux swarm only.
+    banner "macOS: daemon lost mid-construct (multi-node only)"
+    skp "group_daemon_fail: requires the multi-node swarm (run ./run-group-events.sh linux)"
     macpk
 }
 

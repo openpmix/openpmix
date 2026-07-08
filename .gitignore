@@ -125,6 +125,8 @@ examples/group_invite
 examples/group_invite_timeout
 examples/group_invite_decline
 examples/group_invite_abort
+examples/group_construct_abort
+examples/group_daemon_fail
 
 include/pmix_version.h
 include/pmix_rename.h
