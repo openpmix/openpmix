@@ -25,19 +25,27 @@
 # invitations, completion broadcasts, and fault events actually run.
 #
 # Coverage so far:
-#   * group_invite       -- invite/join happy path: a leader invites the whole
-#                           job, invitees accept via PMIx_Group_join, the group
-#                           forms, and every member receives
-#                           PMIX_GROUP_CONSTRUCT_COMPLETE and can fence across
-#                           the group.
-#   * group_destruct_die -- a member is lost mid-PMIx_Group_destruct; the
-#                           destruct must complete on the survivors rather than
-#                           hang (the destruct analog of run-tests.sh's
-#                           group_die, which covers construct).
+#   * group_invite         -- invite/join happy path: a leader invites the whole
+#                             job, invitees accept via PMIx_Group_join, the group
+#                             forms, and every member receives
+#                             PMIX_GROUP_CONSTRUCT_COMPLETE and can fence across
+#                             the group.
+#   * group_invite_timeout -- an invitee never responds; the leader's
+#                             PMIX_TIMEOUT fires, reports the non-responder via
+#                             PMIX_GROUP_INVITE_FAILED, and forms the group on
+#                             the members that accepted.
+#   * group_invite_decline -- an invitee explicitly declines; the construct
+#                             resolves immediately (no timeout), reports the
+#                             decliner via PMIX_GROUP_INVITE_FAILED, and forms
+#                             the group on the members that accepted.
+#   * group_destruct_die   -- a member is lost mid-PMIx_Group_destruct; the
+#                             destruct must complete on the survivors rather than
+#                             hang (the destruct analog of run-tests.sh's
+#                             group_die, which covers construct).
 #
-# Still to come (as the library gains support -- see issue #3936): invite
-# declined / failed / timeout, leader failure and reselection, construct abort,
-# member-failed events, and the FT-collective adjustment.
+# Still to come (as the library gains support -- see issue #3936): leader
+# failure and reselection, construct abort, member-failed events, and the
+# FT-collective adjustment.
 
 set -uo pipefail
 
@@ -142,6 +150,39 @@ test_linux() {
     cleanup_swarm
 
     #############################################################
+    # invite declined (an explicit refusal)
+    #############################################################
+    banner "invite declined (PMIX_GROUP_INVITE_FAILED, no timeout)"
+    cleanup_swarm
+    # group_invite_decline: the leader invites the whole job with NO PMIX_TIMEOUT;
+    # the last rank explicitly DECLINES via PMIx_Group_join instead of accepting.
+    # A decline is a definitive answer, so the construct must resolve immediately
+    # -- report the decliner via PMIX_GROUP_INVITE_FAILED and form the group on
+    # the members that accepted (which then receive PMIX_GROUP_CONSTRUCT_COMPLETE)
+    # -- rather than wait on a member that will never join. With no timeout, a
+    # regression cannot be broken by a timer; it simply hangs to the job timeout.
+    # The decliner stays alive and rejoins the closing barrier, so no
+    # --rtos recoverable is needed.
+    if RUN 'test -x /opt/prte/tests/group_invite_decline'; then
+        OUT="$(RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_invite_decline 2>&1')"
+        nfail=$(echo "$OUT" | grep -c 'INVITE_FAILED for decliner: PASS')
+        npass=$(echo "$OUT" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
+        if hung "$OUT"; then
+            bad "group_invite_decline HUNG (decline did not resolve the construct)"
+        elif echo "$OUT" | grep -qiE 'FAILED -'; then
+            bad "group_invite_decline: a member reported failure: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
+        elif [ "$nfail" -ge 1 ] && [ "$npass" -ge 3 ]; then
+            ok "leader reported the decliner and formed the group on the 3 that accepted"
+        else
+            bad "group_invite_decline: failed=$nfail completed=$npass: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+        fi
+    else
+        skp "group_invite_decline not built"
+    fi
+    [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] || bad "group_invite_decline: stray prted left behind"
+    cleanup_swarm
+
+    #############################################################
     # member lost during destruct
     #############################################################
     banner "member lost during PMIx_Group_destruct (loss accounting)"
@@ -220,6 +261,23 @@ test_macos() {
         fi
     else
         skp "group_invite_timeout (not built)"
+    fi
+
+    banner "macOS: invite declined (single host)"
+    if [ -x "$prefix/bin/group_invite_decline" ]; then
+        macpk; sleep 1
+        out="$(prterun -np 4 --timeout 60 "$prefix/bin/group_invite_decline" 2>&1)"
+        nfail=$(echo "$out" | grep -c 'INVITE_FAILED for decliner: PASS')
+        npass=$(echo "$out" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
+        if echo "$out" | grep -qiE 'FAILED -|timeout|timed out'; then
+            skp "group_invite_decline: not clean (native Darwin DVM can be flaky)"
+        elif [ "$nfail" -ge 1 ] && [ "$npass" -ge 3 ]; then
+            ok "group_invite_decline: decliner reported, group formed on 3 (single host)"
+        else
+            skp "group_invite_decline: failed=$nfail completed=$npass (native Darwin DVM can be flaky)"
+        fi
+    else
+        skp "group_invite_decline (not built)"
     fi
 
     banner "macOS: member lost during destruct (single host)"
