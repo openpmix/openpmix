@@ -120,6 +120,12 @@ static void gbcon(grp_block_t *p)
 }
 static void gbdes(grp_block_t *p)
 {
+    /* safety net: stop any still-armed local-phase timeout so it cannot fire
+     * on freed memory (the normal paths delete it before releasing the block) */
+    if (p->event_active) {
+        pmix_event_del(&p->ev);
+        p->event_active = false;
+    }
     if (NULL != p->id) {
         free(p->id);
     }
@@ -747,12 +753,13 @@ static void cancel_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
     }
 }
 
-/* Abort an in-flight group construct because a required member was lost and
- * fault-tolerant collective tracking (PMIX_GROUP_FT_COLLECTIVE) was not
- * requested. Complete our own local participants with PMIX_GROUP_CONSTRUCT_ABORT
- * as the operation status, so each participant's PMIx_Group_construct returns
- * that abort rather than silently forming a reduced group; grpcbfunc consumes
- * (releases) the block via its threadshift, matching the survive path.
+/* Abort an in-flight group construct during its local phase, completing our own
+ * local participants with the given status (PMIX_GROUP_CONSTRUCT_ABORT when a
+ * required member was lost and fault-tolerant collective tracking was not
+ * requested, PMIX_ERR_TIMEOUT when the local-phase timer expired). Each
+ * participant's PMIx_Group_construct returns that status rather than silently
+ * forming a reduced group; grpcbfunc consumes (releases) the block via its
+ * threadshift, matching the survive path.
  *
  * If a host is present, also ask it to cancel the cross-server collective:
  * other servers may already have forwarded their local phase, leaving the
@@ -760,15 +767,39 @@ static void cancel_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
  * cancel unsticks the host, which aborts the collective on the remaining
  * servers through their own group releases. We deliberately complete our local
  * participants directly here rather than through that release - this block is
- * removed below, so the host's abort release is a no-op back on this server. */
-static void abort_construct(grp_block_t *blk)
+ * removed below, so the host's abort release is a no-op back on this server.
+ *
+ * Called only before the block is forwarded to the host (host_called is still
+ * false), so no host completion can be in flight for it. */
+static void abort_construct(grp_block_t *blk, pmix_status_t st)
 {
+    /* the local phase is ending - stop any pending local-phase timeout */
+    if (blk->event_active) {
+        pmix_event_del(&blk->ev);
+        blk->event_active = false;
+    }
     if (NULL != pmix_host_server.group) {
         pmix_host_server.group(PMIX_GROUP_CANCEL, blk->id, NULL, 0, NULL, 0,
                                cancel_cbfunc, NULL);
     }
     blk->host_called = true;
-    grpcbfunc(PMIX_GROUP_CONSTRUCT_ABORT, NULL, 0, blk, NULL, NULL);
+    grpcbfunc(st, NULL, 0, blk, NULL, NULL);
+}
+
+/* Local-phase timeout handler for a group construct. Armed (only when the
+ * caller supplied PMIX_TIMEOUT) while we wait for all local participants to
+ * contribute, and deleted the moment the local phase completes and the block is
+ * forwarded to the host - so if it fires, the block has not been forwarded and
+ * aborting it here cannot race a host completion. */
+static void group_timeout(int sd, short args, void *cbdata)
+{
+    grp_block_t *blk = (grp_block_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    pmix_output_verbose(2, pmix_server_globals.group_output,
+                        "group construct timed out for %s", blk->id);
+    blk->event_active = false;
+    abort_construct(blk, PMIX_ERR_TIMEOUT);
 }
 
 static pmix_status_t aggregate_info(grp_block_t *blk)
@@ -950,6 +981,7 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     bool need_cxtid = false;
     bool bootstrap = false;
     bool follower = false;
+    uint32_t tmo = 0;
 
     pmix_output_verbose(2, pmix_server_globals.group_output,
                         "recvd grpconstruct cmd from %s",
@@ -1023,6 +1055,10 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             // we don't care what the number is, we only care that
             // bootstrap is being given
             bootstrap = true;
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
+            // bound how long we wait for all local participants to contribute
+            PMIx_Value_get_number(&info[n].value, &tmo, PMIX_UINT32);
         }
     }
 
@@ -1070,6 +1106,15 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         return PMIX_SUCCESS;
     }
 
+    /* arm the local-phase timeout if one was requested and not already set. It
+     * bounds how long we wait for all local participants to contribute; once the
+     * local phase completes and we forward to the host, the timer is deleted and
+     * the host owns any further timeout (mirroring the fence family). */
+    if (0 < tmo && !blk->event_active) {
+        PMIX_THREADSHIFT_DELAY(blk, group_timeout, tmo);
+        blk->event_active = true;
+    }
+
     /* are we locally complete? */
     if (blk->host_called || !grp_blk_locally_complete(blk)) {
         /* if we are not locally complete, then we are done */
@@ -1099,11 +1144,18 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
      * pmix_server_set_collective_status). */
     if (0 < pmix_list_get_size(&blk->departed)) {
         if (PMIX_GROUP_CONSTRUCT == op && !grp_ft_collective(blk)) {
-            abort_construct(blk);
+            abort_construct(blk, PMIX_GROUP_CONSTRUCT_ABORT);
             return PMIX_SUCCESS;
         }
         pmix_server_set_collective_status(blk->info, blk->ninfo,
                                           PMIX_ERR_LOST_CONNECTION);
+    }
+    /* local phase complete - delete the local-phase timer before handing the
+     * block to the host, so a late internal timeout cannot race the host's
+     * completion (which could return the block after we released it) */
+    if (blk->event_active) {
+        pmix_event_del(&blk->ev);
+        blk->event_active = false;
     }
     // the local phase is complete - freeze it and pass up to the host
     blk->host_called = true;
@@ -1216,11 +1268,17 @@ static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
          * the block's info so the host sees it, matching the
          * fence/connect/disconnect families. */
         if (PMIX_GROUP_CONSTRUCT == blk->grpop && !grp_ft_collective(blk)) {
-            abort_construct(blk);
+            abort_construct(blk, PMIX_GROUP_CONSTRUCT_ABORT);
             return;
         }
         pmix_server_set_collective_status(blk->info, blk->ninfo,
                                           PMIX_ERR_LOST_CONNECTION);
+        /* delete the local-phase timer before handing the block to the host,
+         * so a late internal timeout cannot race the host's completion */
+        if (blk->event_active) {
+            pmix_event_del(&blk->ev);
+            blk->event_active = false;
+        }
         blk->host_called = true;
         rc = pmix_host_server.group(blk->grpop, blk->id, trk->pcs, trk->npcs,
                                     blk->info, blk->ninfo, grpcbfunc, blk);
