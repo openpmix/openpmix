@@ -1,0 +1,123 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# Exercise the client-side group-construct membership check. A single
+# persistent server (test/simple/simptest) forks one client
+# (test/simple/simpgrpmember) that connects and calls PMIx_Group_construct
+# with a participant array that deliberately excludes itself. Because the
+# construct is not an "add members" or "bootstrap" operation, every
+# participant must be listed and the caller must be among them; the client
+# must reject the call locally with PMIX_ERR_NOT_A_MEMBER before anything is
+# sent to the server. A regression that drops the check (or wrongly rejects
+# a legitimate caller) makes the client exit non-zero, or wedges the run
+# until the timeout fires. See src/client/pmix_client_group.c and #3850.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen
+# hands us every possible component directory in
+# PMIX_COMPONENT_LIBRARY_PATHS; turn each into an absolute path to the
+# built component so the MCA base can find them without a prior install.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# simptest forks its client from the current directory using a relative
+# path ("./simpgrpmember"), so run from the directory that holds both
+# binaries.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise
+# arm a Perl alarm so a wedged run can never hang "make check" forever.
+my @cmd = ("./simptest", "-e", "./simpgrpmember");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run the server in a child we control, merging stderr into stdout, and
+# slurp the output. The alarm (when armed) bounds the wait.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec simptest: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: simptest exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The server must exit 0: a client that failed the assertion (or could not
+# connect/finalize) drives a non-zero exit.
+if (0 != $status) {
+    print "FAIL: simptest did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm the run actually exercised the check rather than passing
+# vacuously: the client only prints this line after PMIx_Group_construct
+# returned PMIX_ERR_NOT_A_MEMBER, and simptest only prints its own line
+# after the client has gone.
+my $client_ok  = ($output =~ /rejected the not-a-member group construct OK/);
+my $server_done = ($output =~ /Test finished OK!/);
+if (!$client_ok) {
+    print "FAIL: client did not reject the not-a-member group construct\n";
+    exit(1);
+}
+if (!$server_done) {
+    print "FAIL: server did not finish cleanly after the client ran\n";
+    exit(1);
+}
+print "PASS: client rejected the not-a-member group construct\n";
+exit(0);
