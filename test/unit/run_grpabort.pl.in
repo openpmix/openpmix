@@ -1,0 +1,133 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# Exercise the group invite CONSTRUCT_ABORT path deterministically in "make
+# check". A single persistent server (test/simple/simptest) forks four clients
+# (examples/group_invite_abort). Rank 0 is the leader: it invites the whole job
+# to a group WITHOUT PMIX_GROUP_OPTIONAL, so the construct is all-or-nothing.
+# Every invitee accepts EXCEPT the last rank, which explicitly DECLINES via
+# PMIx_Group_join. Because participation was not optional, that lone non-accepter
+# must abort the entire construct: the library must notify every invited
+# participant (including the members that accepted) with
+# PMIX_GROUP_CONSTRUCT_ABORT and return that status from the leader's
+# PMIx_Group_invite, forming no group and delivering no CONSTRUCT_COMPLETE. A
+# regression makes a client exit non-zero - either the invite did not return the
+# abort status, a participant never saw the abort event, or a bogus completion
+# arrived. See src/client/pmix_client_group.c, examples/group_invite_abort.c,
+# and #3936.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen hands us
+# every possible component directory in PMIX_COMPONENT_LIBRARY_PATHS; turn each
+# into an absolute path to the built component so the MCA base can find them
+# without a prior install.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# simptest forks its clients from its own directory; run from there and name the
+# client (built under examples/) by absolute path so simptest can exec it.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+my $client = $mybuilddir . "/examples/group_invite_abort";
+my $nprocs = 4;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise arm a
+# Perl alarm so a wedged run can never hang "make check" forever.
+my @cmd = ("./simptest", "-n", "$nprocs", "-e", "$client");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run the server in a child we control, merging stderr into stdout, and slurp
+# the output. The alarm (when armed) bounds the wait.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec simptest: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: simptest exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The server must exit 0: a client that failed (the leader did not get the abort
+# return, a participant never saw the abort event, or a bogus completion fired)
+# drives a non-zero exit.
+if (0 != $status) {
+    print "FAIL: simptest did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm the run actually exercised the path: the leader's invite must have
+# returned the abort status, every one of the four invited participants must
+# have received the abort event, and simptest must finish cleanly.
+my $leader = ($output =~ /PMIx_Group_invite returned CONSTRUCT_ABORT: PASS/);
+my $nabort = () = ($output =~ /PMIX_GROUP_CONSTRUCT_ABORT received: PASS/g);
+my $server_done = ($output =~ /Test finished OK!/);
+if (!$leader) {
+    print "FAIL: leader's PMIx_Group_invite did not return CONSTRUCT_ABORT\n";
+    exit(1);
+}
+if ($nabort < 4) {
+    print "FAIL: only $nabort/4 participants received the abort event\n";
+    exit(1);
+}
+if (!$server_done) {
+    print "FAIL: server did not finish cleanly after the clients ran\n";
+    exit(1);
+}
+print "PASS: an all-or-nothing invite aborted the construct for every participant\n";
+exit(0);

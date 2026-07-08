@@ -23,13 +23,13 @@
 
 SUBDIRS = util class
 
-noinst_SCRIPTS = run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_grpmember.pl run_grpinvite.pl run_grptimeout.pl run_grpdecline.pl
+noinst_SCRIPTS = run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_grpmember.pl run_grpinvite.pl run_grptimeout.pl run_grpdecline.pl run_grpabort.pl
 
-EXTRA_DIST = run_gds_fallback.pl.in run_simpcycle.pl.in run_toolcycle.pl.in run_grpmember.pl.in run_grpinvite.pl.in run_grptimeout.pl.in run_grpdecline.pl.in
+EXTRA_DIST = run_gds_fallback.pl.in run_simpcycle.pl.in run_toolcycle.pl.in run_grpmember.pl.in run_grpinvite.pl.in run_grptimeout.pl.in run_grpdecline.pl.in run_grpabort.pl.in
 
 check_PROGRAMS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback pmix_log collective_status client_cycle tool_cycle
 
-TESTS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_grpmember.pl run_grpinvite.pl run_grptimeout.pl run_grpdecline.pl pmix_log collective_status client_cycle tool_cycle
+TESTS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_grpmember.pl run_grpinvite.pl run_grptimeout.pl run_grpdecline.pl run_grpabort.pl pmix_log collective_status client_cycle tool_cycle
 
 compress_SOURCES =  \
         compress.c
