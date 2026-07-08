@@ -347,6 +347,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     pmix_buffer_t *msg = NULL;
     pmix_status_t rc;
     pmix_group_tracker_t *cb = NULL;
+    pmix_proc_t *rgs = NULL;
+    size_t nrg = 0, n;
+    bool partial = false;
 
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_construct_nb called");
@@ -364,9 +367,42 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* An "add members" or "bootstrap" construct does not list all
+     * participants in the procs array - the remaining members are
+     * supplied separately (via PMIX_GROUP_ADD_MEMBERS) or join later,
+     * and an individual caller (e.g., a non-bootstrap participant that
+     * passes a NULL procs array) may not appear in its own procs array.
+     * We therefore cannot validate membership for those operations. */
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ADD_MEMBERS) ||
+            PMIX_CHECK_KEY(&info[n], PMIX_GROUP_BOOTSTRAP)) {
+            partial = true;
+            break;
+        }
+    }
+
+    if (!partial && NULL != procs && 0 < nprocs) {
+        /* every participant must be listed in the procs array, so
+         * replace any PMIx group reference with its actual member
+         * proc(s) and verify that the caller is among them */
+        rc = pmix_client_convert_group_procs(procs, nprocs, &rgs, &nrg);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        if (!pmix_client_proc_is_included(rgs, nrg)) {
+            PMIX_PROC_FREE(rgs, nrg);
+            return PMIX_ERR_NOT_A_MEMBER;
+        }
+    }
+
     // send any data to our server
     msg = PMIX_NEW(pmix_buffer_t);
-    rc = construct_msg(msg, grp, procs, nprocs, info, ninfo);
+    if (NULL != rgs) {
+        rc = construct_msg(msg, grp, rgs, nrg, info, ninfo);
+        PMIX_PROC_FREE(rgs, nrg);
+    } else {
+        rc = construct_msg(msg, grp, procs, nprocs, info, ninfo);
+    }
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
