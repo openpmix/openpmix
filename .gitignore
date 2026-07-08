@@ -120,6 +120,8 @@ examples/simple
 examples/simple_server
 examples/abort
 examples/group_leave
+examples/group_destruct_die
+examples/group_invite
 
 include/pmix_version.h
 include/pmix_rename.h

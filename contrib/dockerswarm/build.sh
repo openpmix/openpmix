@@ -41,12 +41,20 @@ PRRTE_REPO="${PRRTE_REPO:-https://github.com/openpmix/prrte.git}"
 
 # the group example programs that exercise the construction methods; built as
 # standalone clients against the installed PMIx and launched by prterun/prun.
-# group_die and connect_die (a participant leaves before contributing) drive
-# the lost-connection accounting, and group_leave (a member voluntarily departs
-# a live group) drives the group-leave notification path; all three are
-# exercised separately by run-tests.sh.
+# run-tests.sh drives the construction methods plus three fault/notification
+# exercisers: group_die and connect_die (a participant leaves before
+# contributing) drive the lost-connection accounting, and group_leave (a member
+# voluntarily departs a live group) drives the group-leave notification path.
+#
+# The EVENT_EXAMPLES exercise the dynamic, event-driven group operations and
+# their fault paths, and are driven by the companion run-group-events.sh:
+# group_invite (leader invites, invitees join, the group forms and every member
+# is notified of completion) and group_destruct_die (a member is lost mid
+# PMIx_Group_destruct, so the destruct must complete on the survivors -- the
+# destruct analog of group_die).
 GROUP_EXAMPLES="group group_bootstrap group_dmodex group_lcl_cid asyncgroup multi_nspace_group"
-BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die group_leave"
+EVENT_EXAMPLES="group_invite group_destruct_die"
+BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die group_leave $EVENT_EXAMPLES"
 
 mode="${1:-linux}"
 
