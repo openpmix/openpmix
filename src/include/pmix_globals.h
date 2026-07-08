@@ -379,6 +379,9 @@ typedef struct {
     pmix_buffer_t *jobbkt; // packed version of jobinfo
     size_t ndelivered;     // count of #local clients that have received the jobinfo
     size_t nfinalized;     // count of #local clients that have finalized
+    bool local_app_fini_fired; // the "all local processes finalized" callback has been
+                               // fired for this nspace; guards against re-firing it once
+                               // per rank while the nspace is torn down
     pmix_list_t ranks;     // list of pmix_rank_info_t for connection support of my clients
     /* all members of an nspace are required to have the
      * same personality, but it can differ between nspaces.
