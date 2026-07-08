@@ -108,7 +108,10 @@ is normative: "must" denotes a required behavior.
     not moved), while the rank's **registration** (the ``pmix_rank_info_t``
     on ``nptr->ranks``) is preserved so the client can init again. The
     tombstone is reclaimed later, at the next reconnect for the rank or at
-    namespace deregistration. See `Tombstoning the peer on finalize`_.
+    namespace deregistration. See `Tombstoning the peer on finalize`_. A
+    **tool** peer takes a lighter path — it is freed at socket-close rather
+    than tombstoned, because nothing resolves a tool through
+    ``info->peerid``; see `Tombstone mechanics`_.
 
 2. Host deregisters a client (``PMIx_server_deregister_client``)
     The server removes the peer object from the namespace and releases
@@ -130,10 +133,14 @@ freed.
 Tombstoning the Peer on Finalize
 --------------------------------
 
-When the last live process for a rank finalizes (``proc_cnt`` reaches
-zero), the server **must not** free the peer object, null its client-array
-slot, or move ``info->peerid`` at socket-close time. Instead it leaves the
-peer in place as an inert **tombstone**:
+This section describes the **client** peer path, where the tombstone is
+required; a tool peer is retired more simply (freed at socket-close) and
+is covered under `Tombstone mechanics`_ below.
+
+When the last live process for a client rank finalizes (``proc_cnt``
+reaches zero), the server **must not** free the peer object, null its
+client-array slot, or move ``info->peerid`` at socket-close time. Instead
+it leaves the peer in place as an inert **tombstone**:
 
 * Leave the object at its existing slot in ``pmix_server_globals.clients``
   with ``finalized == true``. By the time ``pmix_server_peer_finalized``
@@ -259,34 +266,69 @@ concurrent collective or get can still find the rank's GDS module.
   is reclaimed — on reconnect, or when a stranded tombstone is freed.
   Keeping this balanced is what lets the ``nlocalprocs == nfinalized``
   test at namespace teardown fire the programming-model "all local
-  processes finalized" callback.
+  processes finalized" callback. Because a tombstone stays counted in
+  ``nfinalized`` until it is reclaimed, that equality is already satisfied
+  before namespace teardown begins and holds for **every** rank the
+  teardown then walks. The callback must therefore be fired only **once**
+  per namespace — a ``local_app_fini_fired`` latch on the namespace guards
+  it — rather than once per rank as the ranks are removed.
 
-**Finalize on socket drop.** When a cleanly-finalized peer's socket drops,
-``pmix_server_peer_finalized`` decrements ``proc_cnt``. If the peer is
-still the rank's referenced peer (``info->peerid == peer->index``) it is
-left in place as a tombstone and nothing else is touched. Otherwise a
-newer peer already owns the rank's slot and this object is stranded, so it
-is freed at once: its own ``clients`` slot is nulled (never the live
-referenced one), ``nfinalized`` is decremented, and it is
-``PMIX_RELEASE``\ d. A reference still held by a pending non-blocking
-collective (whose caddy sits on the tracker's ``local_cbs``) or an active
-sensor is harmless in either case: a tombstone is simply retained a while
-longer, and a released stranded object is not torn down until that last
-holder drops its reference.
+**Finalize on socket drop.** ``lost_connection`` in the transport layer
+routes a cleanly-finalized peer whose socket has now dropped to
+``pmix_server_peer_finalized`` — a **pure client** so it can be tombstoned,
+and a **pure tool** so it can be freed (a peer that is *both* a client and
+a tool is left for its tool reconnect/deregistration reclaim; see below).
+``pmix_server_peer_finalized`` decrements ``proc_cnt``, then, if the peer
+is still the rank's referenced peer (``info->peerid == peer->index``),
+retires it according to its role:
 
-**Reclaim on reconnect.** The connection handler, before allocating a
-fresh peer for a reconnecting rank, checks ``info->peerid``: if it names a
-``finalized`` peer and the rank has no live process (``proc_cnt == 0``),
-that tombstone is reclaimed — its slot nulled, ``nfinalized`` decremented,
-and the object released — and only then is a new peer allocated. This is
-the point at which ``info->peerid`` is repointed, by the normal
-connection-handler assignment, to the freshly allocated peer.
+* An **application client** (``PMIX_PEER_IS_CLIENT``) is left in place as a
+  tombstone and nothing else is touched — a concurrent collective or get
+  belonging to another local process may still resolve this rank through
+  ``info->peerid`` (see below), so its shared state must not change here.
 
-**``peerid`` stays valid.** Because a finalize never clears
-``info->peerid`` to ``-1``, a local ``PMIx_Get`` for the rank (which
-resolves committed data only while ``info->peerid`` names a resolvable
-peer) continues to work against the tombstone until the rank either
-reconnects or is deregistered.
+* A **pure tool** is instead freed at once, and ``info->peerid`` is
+  repointed — to a surviving tool sibling sharing the same ``info`` if one
+  is still live, else to ``-1``. A tool is not an application-job member:
+  it has its own namespace and is never the peer a job collective or
+  direct-modex get resolves through ``info->peerid``, so the tombstone that
+  protects that race is unnecessary. And because each tool init is assigned
+  a fresh namespace, a finalized tool never reconnects onto the same rank
+  to be reclaimed there — leaving it would leak one peer per init/finalize
+  cycle. Freeing it also restores the post-finalize ``info->peerid == -1``
+  state that ``process_tool_request`` relies on to recognize a reconnecting
+  tool.
+
+Otherwise a newer peer already owns the rank's slot and this object is
+stranded, so it is freed at once regardless of role: its own ``clients``
+slot is nulled (never the live referenced one), ``nfinalized`` is
+decremented, and it is ``PMIX_RELEASE``\ d. A reference still held by a
+pending non-blocking collective (whose caddy sits on the tracker's
+``local_cbs``) or an active sensor is harmless in every case: a tombstone
+is simply retained a while longer, and a released object is not torn down
+until that last holder drops its reference.
+
+**Reclaim on reconnect.** Before allocating a fresh peer for a
+reconnecting rank, the connection path reclaims any tombstone the rank
+left behind. For a client this is the main connection handler, which
+checks ``info->peerid``: if it names a ``finalized`` peer and the rank has
+no live process (``proc_cnt == 0``), that tombstone is reclaimed — its
+slot nulled, ``nfinalized`` decremented, and the object released — and
+only then is a new peer allocated. A tool that was registered as a client
+(a launcher child) keeps the client tombstone semantics above but
+reconnects through ``process_tool_request`` rather than the client
+handler; that path performs the same reclaim on the finalized peer at
+``info->peerid`` before assigning the reconnecting tool its fresh slot.
+Either way ``info->peerid`` is then repointed, by the normal connection
+assignment, to the freshly allocated peer.
+
+**``peerid`` stays valid for clients.** Because a client finalize never
+clears ``info->peerid`` to ``-1``, a local ``PMIx_Get`` for the rank
+(which resolves committed data only while ``info->peerid`` names a
+resolvable peer) continues to work against the client tombstone until the
+rank either reconnects or is deregistered. A pure tool, freed at
+socket-close, instead leaves ``info->peerid == -1`` — which is correct,
+because no other process resolves a tool's rank this way.
 
 
 Deregistering a Client
@@ -521,12 +563,15 @@ An implementation of the above must uphold these invariants:
   previous one.
 
 * **No orphaned peers.** Cycling init/finalize must not accumulate
-  unreferenced peer objects in the ``clients`` array. A finalized peer is
-  left as a single tombstone at ``info->peerid`` and is reclaimed when the
-  rank reconnects (or when the namespace is deregistered); a peer that a
-  newer connection has already displaced is freed immediately. Either way
-  at most one finalized object per rank is ever kept, and only while the
-  rank's registration itself persists.
+  unreferenced peer objects in the ``clients`` array. A finalized client
+  peer is left as a single tombstone at ``info->peerid`` and is reclaimed
+  when the rank reconnects (or when the namespace is deregistered); a peer
+  that a newer connection has already displaced, and a finalized **tool**
+  peer, are freed immediately. Either way at most one finalized object per
+  rank is ever kept, and only while the rank's registration itself
+  persists — including across repeated tool init/finalize cycles that
+  reuse the same namespace and rank, whose reconnect reclaim runs in
+  ``process_tool_request``.
 
 * **No shared-state mutation while a collective is in flight.** Finalize
   must not free a peer, null a live ``clients`` slot, or move a live
