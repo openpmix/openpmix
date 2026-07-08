@@ -59,7 +59,7 @@ PRRTE_REPO="${PRRTE_REPO:-https://github.com/openpmix/prrte.git}"
 # group_destruct_die (a member is lost mid PMIx_Group_destruct, so the destruct
 # must complete on the survivors -- the destruct analog of group_die).
 GROUP_EXAMPLES="group group_bootstrap group_dmodex group_lcl_cid asyncgroup multi_nspace_group"
-EVENT_EXAMPLES="group_invite group_invite_timeout group_invite_decline group_invite_abort group_destruct_die"
+EVENT_EXAMPLES="group_invite group_invite_timeout group_invite_decline group_invite_abort group_destruct_die group_construct_abort group_daemon_fail"
 BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die group_leave $EVENT_EXAMPLES"
 
 mode="${1:-linux}"
