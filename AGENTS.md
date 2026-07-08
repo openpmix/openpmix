@@ -248,6 +248,17 @@ and [`docs/contributing.rst`](docs/contributing.rst):
 
 **No hand-editing of generated files:** Do not modify files produced by autotools (`configure`, `Makefile.in`, etc.), pre-rendered documentation, or third-party vendored code. Edit the source code instead.
 
+**Update `.gitignore` for build products you introduce.** If your
+change adds a new source file, component, or generated artifact that the
+build produces something new from — a new executable or test binary, a
+newly generated source/header, an object or library in a directory that
+did not have one before — add the resulting build product to the
+appropriate `.gitignore` so it does not show up as an untracked file.
+Never commit the build product itself; ignore it. Check `git status`
+after a clean build to confirm no generated file you created is left
+untracked, and match the nearest existing `.gitignore` pattern style
+(many component directories carry their own `.gitignore`).
+
 **Never push a branch to `origin`.** The `origin` remote is the shared
 upstream repository (`openpmix/openpmix`); pushing topic branches there
 is not the project workflow. Always push your branch to your personal
