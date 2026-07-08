@@ -263,13 +263,23 @@ static void lost_connection(pmix_peer_t *peer)
                               PMIX_RANGE_PROC_LOCAL, _notify_complete);
         }
 
-        /* if a local client finalized cleanly and its socket has now
-         * dropped, recycle or release its peer object so it does not leak
-         * until the nspace is deregistered. This MUST be the last use of
-         * peer here: the object may be destructed/reconstructed or freed.
-         * The callers only issue a write barrier afterward (they never
-         * dereference peer), so doing it inline is safe. */
+        /* if a local peer finalized cleanly and its socket has now dropped,
+         * retire its peer object so it does not leak until the nspace is
+         * deregistered. This MUST be the last use of peer here: the object
+         * may be freed. The callers only issue a write barrier afterward
+         * (they never dereference peer), so doing it inline is safe. */
         if (peer->finalized && PMIX_PEER_IS_CLIENT(peer) && !PMIX_PEER_IS_TOOL(peer)) {
+            /* a pure client is tombstoned - reclaimed on reconnect or
+             * namespace deregistration */
+            pmix_server_peer_finalized(peer);
+        } else if (peer->finalized && PMIX_PEER_IS_TOOL(peer) && !PMIX_PEER_IS_CLIENT(peer)) {
+            /* a pure tool is freed outright: nothing resolves a tool through
+             * info->peerid, so it needs no tombstone, and it never reconnects
+             * onto the same rank (each tool init is assigned a fresh nspace),
+             * so leaving it would leak one peer per init/finalize cycle. A
+             * tool the host registered as a client keeps the client tombstone
+             * path above and is reclaimed by its tool reconnect (or namespace
+             * deregistration) instead. */
             pmix_server_peer_finalized(peer);
         }
 

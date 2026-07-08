@@ -1496,46 +1496,69 @@ void pmix_server_peer_finalized(pmix_peer_t *peer)
 {
     pmix_rank_info_t *info = peer->info;
     pmix_namespace_t *nptr = peer->nptr;
+    pmix_peer_t *sib;
+    int i;
 
-    /* This is a cleanly-finalized local client whose socket has now
-     * dropped. lost_connection has already stopped the peer's events and
-     * closed its socket, and peer->finalized is true, so the object is
-     * inert to every finalized-guarded send path.
+    /* This is a cleanly-finalized local peer whose socket has now dropped.
+     * lost_connection has already stopped the peer's events and closed its
+     * socket, and peer->finalized is true, so the object is inert to every
+     * finalized-guarded send path.
      *
      * First, reduce the rank's live-process count. */
     if (NULL != info && 0 < info->proc_cnt) {
         --info->proc_cnt;
     }
 
-    /* If this peer is still the rank's referenced peer (info->peerid names
-     * it), we deliberately leave it in place as a harmless finalized
-     * "tombstone" at its existing clients slot rather than freeing it,
-     * nulling the slot, or repointing info->peerid here. Mutating that
-     * shared per-namespace/per-rank state at socket-close time races with
-     * concurrent spawn/connect/disconnect collectives and direct-modex
-     * gets that walk the clients array and the rank list (via
-     * info->peerid) while a peer is departing - an architecture- and
-     * timing-sensitive hang of multi-local-process MPI_Comm_spawn. The
-     * tombstone is reclaimed at a safe point instead: when the rank
-     * reconnects on the next PMIx_Init (the connection handler frees the
-     * stale tombstone before allocating a fresh peer) or when the
-     * namespace is deregistered. Leaving it counted as finalized
-     * (nfinalized untouched) is what keeps nfinalized honest across
-     * init/finalize cycles. See docs/how-things-work/init-finalize.rst. */
     if (NULL != info && info->peerid == peer->index) {
-        return;
+        /* This peer is still the rank's referenced peer. How we retire it
+         * depends on whether it is an application client or a tool. */
+        if (PMIX_PEER_IS_CLIENT(peer)) {
+            /* A client can be resolved through info->peerid by a *different*
+             * local process's spawn/connect/disconnect collective or
+             * direct-modex get that is still walking the clients array and
+             * the rank list while this peer departs. Freeing it, nulling the
+             * slot, or repointing info->peerid here would mutate that shared
+             * state underneath such an in-flight operation - an architecture-
+             * and timing-sensitive hang of multi-local-process
+             * MPI_Comm_spawn. So we deliberately leave the client in place as
+             * a harmless finalized "tombstone" at its existing clients slot,
+             * counted as finalized (nfinalized untouched), and reclaim it at
+             * a safe point instead: when the rank reconnects on the next
+             * PMIx_Init (the connection handler frees the stale tombstone
+             * before allocating a fresh peer) or when the namespace is
+             * deregistered. See docs/how-things-work/init-finalize.rst. */
+            return;
+        }
+        /* A tool is not an application-job member: it has its own namespace
+         * and is never resolved through info->peerid by a concurrent job
+         * collective or direct-modex get, so it needs no tombstone. Free it
+         * now and repoint the rank's referenced peerid - to a surviving tool
+         * sibling sharing this info if one is still live, else to -1. This
+         * both restores the post-finalize info->peerid == -1 state that
+         * process_tool_request relies on to recognize a reconnecting tool,
+         * and keeps tool peers from accumulating in the clients array across
+         * tool init/finalize cycles that reuse the same namespace and rank.
+         * Fall through to the shared free below. */
+        info->peerid = -1;
+        if (0 < info->proc_cnt) {
+            for (i = 0; i < pmix_server_globals.clients.size; i++) {
+                sib = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, i);
+                if (NULL != sib && sib != peer && sib->info == info) {
+                    info->peerid = i;
+                    break;
+                }
+            }
+        }
     }
 
-    /* Otherwise a newer peer has already taken over this rank's slot - a
-     * fork/exec'd clone that is still running, or a fast re-init that
-     * reconnected before this socket-close was processed. This finalized
-     * object is stranded: info->peerid no longer names it, so nothing
-     * references it as the rank's peer. It is therefore safe to free it
-     * now - we only null its OWN clients slot (never the live referenced
-     * one) and never touch info->peerid, so no collective or get that
-     * resolves the rank through info->peerid is disturbed. Freeing here
-     * keeps the stranded object, and the finalized count it still holds,
-     * from leaking. */
+    /* We reach here either for a just-retired tool referenced peer (handled
+     * above) or for a stranded peer that a newer connection already took
+     * over - a fork/exec'd clone still running, or a fast re-init that
+     * reconnected before this socket-close was processed. In the stranded
+     * case info->peerid no longer names this object, so nothing references
+     * it as the rank's peer. Either way it is safe to free it now: we null
+     * only its OWN clients slot (never the live referenced one), drop the
+     * finalized count it was still holding, and release it. */
     if (NULL != nptr && 0 < nptr->nfinalized) {
         --nptr->nfinalized;
     }

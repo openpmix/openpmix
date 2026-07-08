@@ -876,6 +876,27 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* set the socket non-blocking for all further operations */
     pmix_ptl_base_set_nonblocking(pnd->sd);
 
+    /* If this rank previously finalized and left a tombstone peer behind
+     * (a tool registered as a client keeps the client tombstone semantics,
+     * which pmix_server_peer_finalized does not free at socket-close), the
+     * stale finalized peer may still occupy the rank's clients slot. We are
+     * now at a safe reconnect point, so reclaim it before allocating this
+     * connection's fresh peer - mirroring the client path in the main
+     * connection handler. Without this a tool that reuses its identity
+     * across init/finalize cycles would leak one peer (and one nfinalized
+     * count) per cycle. See docs/how-things-work/init-finalize.rst. */
+    if (NULL != peer->info && 0 <= peer->info->peerid) {
+        pr2 = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
+                                                          peer->info->peerid);
+        if (NULL != pr2 && pr2 != peer && pr2->finalized) {
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->info->peerid, NULL);
+            if (NULL != peer->nptr && 0 < peer->nptr->nfinalized) {
+                --peer->nptr->nfinalized;
+            }
+            PMIX_RELEASE(pr2);
+        }
+    }
+
     if (0 > (peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer))) {
         goto error;
     }
