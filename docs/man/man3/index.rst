@@ -13,6 +13,7 @@ APIs (section 3)
    PMIx_Init.3.rst
    PMIx_Initialized.3.rst
    PMIx_Finalize.3.rst
+   PMIx_Put.3.rst
    PMIx_Log.3.rst
    PMIx_Group_construct.3.rst
    PMIx_Group_invite.3.rst
