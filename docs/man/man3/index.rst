@@ -33,11 +33,16 @@ APIs (section 3)
    PMIx_Job_control.3.rst
    PMIx_Process_monitor.3.rst
    PMIx_Heartbeat.3.rst
+   PMIx_Get_credential.3.rst
+   PMIx_Validate_credential.3.rst
    PMIx_Group_construct.3.rst
    PMIx_Group_invite.3.rst
    PMIx_Group_join.3.rst
    PMIx_Group_leave.3.rst
    PMIx_Group_destruct.3.rst
+   PMIx_Register_event_handler.3.rst
+   PMIx_Deregister_event_handler.3.rst
+   PMIx_Notify_event.3.rst
    PMIx_Info_construct.3.rst
    PMIx_Info_create.3.rst
    PMIx_Value_unload.3.rst
