@@ -1,0 +1,210 @@
+.. _man3-PMIx_Query_info:
+
+PMIx_Query_info
+===============
+
+.. include_body
+
+``PMIx_Query_info``, ``PMIx_Query_info_nb`` |mdash| Query information about the
+system in general.
+
+
+SYNOPSIS
+--------
+
+.. code-block:: c
+
+   #include <pmix.h>
+
+   pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nqueries,
+                                 pmix_info_t **results, size_t *nresults);
+
+   pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nqueries,
+                                    pmix_info_cbfunc_t cbfunc, void *cbdata);
+
+
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # each query is a dict with a list of key strings and a list of
+  # ``pmix_info_t`` qualifier dictionaries
+  pyq = [{'keys': [PMIX_QUERY_NAMESPACES],
+          'qualifiers': []}]
+  rc, results = foo.query(pyq)
+  # results is a list of Python ``pmix_info_t`` dictionaries
+
+
+INPUT PARAMETERS
+----------------
+
+* ``queries``: Array of ``pmix_query_t`` structures. Each structure carries a
+  NULL-terminated array of string ``keys`` identifying the information being
+  requested, plus an optional array of ``qualifiers`` (a ``pmix_info_t`` array
+  with ``nqual`` elements) that refine or scope those keys (see `DIRECTIVES`_).
+* ``nqueries``: Number of elements in the ``queries`` array. Must be non-zero, and
+  ``queries`` must be non-``NULL``.
+
+
+OUTPUT PARAMETERS
+-----------------
+
+* ``results`` (blocking form): Address where a pointer to a freshly allocated
+  array of ``pmix_info_t`` holding the results is returned. Set to ``NULL`` when no
+  data is returned. The caller must release the array with ``PMIX_INFO_FREE``.
+* ``nresults`` (blocking form): Address where the number of elements in
+  ``results`` is returned; set to zero when no data is returned.
+
+The non-blocking form replaces ``results``/``nresults`` with a callback:
+
+* ``cbfunc``: Callback function of type ``pmix_info_cbfunc_t`` invoked with the
+  status and result array once the query completes.
+* ``cbdata``: Opaque pointer passed, unmodified, to ``cbfunc``.
+
+
+DESCRIPTION
+-----------
+
+Query information about the system in general. This can include a list of active
+namespaces, the fabric topology, or node-specific information such as the list of
+peers executing on a given node. Unlike :ref:`PMIx_Get(3) <man3-PMIx_Get>`, which
+retrieves a single key value scoped to a specific session, job, application,
+process, or node, ``PMIx_Query_info`` supports multiple keys per request, complex
+search criteria expressed through qualifiers, and dynamic system-level information
+that is not part of the job data provided at start of execution.
+
+``PMIx_Query_info`` is the blocking form: it does not return until the query has
+completed, at which point ``results`` and ``nresults`` are set. ``PMIx_Query_info_nb``
+is the non-blocking form: it returns immediately after accepting the request for
+processing, and the provided ``cbfunc`` is invoked with the final status and result
+array. The blocking form is implemented in terms of the non-blocking form.
+
+The library first attempts to satisfy each key from its local cache. Keys that
+cannot be resolved locally are forwarded to the host environment (via the PMIx
+server) for resolution. A small number of keys |mdash| notably the ABI version
+queries |mdash| are always resolved locally. Results returned from the host
+environment are cached so that subsequent retrievals can succeed with minimal
+overhead; include the ``PMIX_QUERY_REFRESH_CACHE`` qualifier to bypass the cache
+and obtain fresh values.
+
+``PMIx_Query_info`` is normally called between initialization
+(:ref:`PMIx_Init(3) <man3-PMIx_Init>`) and finalization
+(:ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>`). As an exception, the blocking form
+may be called **before** initialization when used exclusively with the
+``PMIX_QUERY_STABLE_ABI_VERSION`` and/or ``PMIX_QUERY_PROVISIONAL_ABI_VERSION``
+keys, which are computed entirely within the local library.
+
+As with all non-blocking PMIx APIs, callers of ``PMIx_Query_info_nb`` **must** keep
+the ``queries`` array valid until ``cbfunc`` is invoked.
+
+
+DIRECTIVES
+----------
+
+Each ``pmix_query_t`` combines a list of **keys** (the information requested) with
+a list of **qualifiers** (attributes that scope or refine the request). The keys
+and qualifiers below are representative of the most commonly used values; an
+implementation is not required to support any particular key, and an unsupported
+key is handled the same way as a key that could not be found.
+
+Commonly used **keys**:
+
+* ``PMIX_QUERY_NAMESPACES`` |mdash| return a comma-delimited list of the active
+  namespaces known to the server.
+* ``PMIX_QUERY_JOB_STATUS`` |mdash| return the status of a specified, currently
+  executing job.
+* ``PMIX_QUERY_QUEUE_LIST`` |mdash| return a list of scheduler queues.
+* ``PMIX_QUERY_PROC_TABLE`` / ``PMIX_QUERY_LOCAL_PROC_TABLE`` |mdash| return the
+  process table (all processes, or only those local to a node) for a namespace.
+* ``PMIX_QUERY_SPAWN_SUPPORT`` |mdash| return a list of the attributes supported by
+  the ``PMIx_Spawn`` API.
+* ``PMIX_QUERY_MEMORY_USAGE`` |mdash| return memory usage statistics.
+* ``PMIX_QUERY_ATTRIBUTE_SUPPORT`` |mdash| return the attributes supported by a
+  named function. Must appear first in the ``keys`` array, followed by the
+  user-level API names (e.g., ``"PMIx_Get"``) whose support is being queried.
+* ``PMIX_QUERY_NUM_PSETS`` / ``PMIX_QUERY_PSET_NAMES`` |mdash| return the number,
+  or the names, of the defined process sets.
+* ``PMIX_QUERY_AVAIL_SERVERS`` |mdash| scan the local node for PMIx servers the
+  caller could connect to.
+* ``PMIX_QUERY_STABLE_ABI_VERSION`` / ``PMIX_QUERY_PROVISIONAL_ABI_VERSION``
+  |mdash| return the stable or provisional Standard ABI version supported by the
+  library. These are resolved locally and may be queried before initialization.
+
+Commonly used **qualifiers**:
+
+* ``PMIX_QUERY_REFRESH_CACHE`` (bool) |mdash| bypass the local cache and retrieve a
+  fresh value, refreshing the cache on return. Required on each query for which
+  current (non-cached) data is needed.
+* ``PMIX_SESSION_INFO`` / ``PMIX_JOB_INFO`` / ``PMIX_APP_INFO`` /
+  ``PMIX_NODE_INFO`` / ``PMIX_PROC_INFO`` (bool) |mdash| scope the query to
+  session-, job-, application-, node-, or process-level information, respectively.
+* ``PMIX_PROCID`` (pmix_proc_t) |mdash| identify the specific process whose
+  information is being requested. The identifier applies to every key in that
+  ``pmix_query_t``.
+* ``PMIX_NSPACE`` (char*) / ``PMIX_RANK`` (pmix_rank_t) |mdash| identify a specific
+  process by namespace and rank. These must be used together. Combining
+  ``PMIX_PROCID`` with either ``PMIX_NSPACE`` or ``PMIX_RANK`` in the same query
+  yields ``PMIX_ERR_BAD_PARAM``.
+* ``PMIX_CLIENT_ATTRIBUTES`` / ``PMIX_SERVER_ATTRIBUTES`` /
+  ``PMIX_HOST_ATTRIBUTES`` / ``PMIX_TOOL_ATTRIBUTES`` (bool) |mdash| when used with
+  ``PMIX_QUERY_ATTRIBUTE_SUPPORT``, select the level(s) of attribute support to
+  report. Omitting all levels is equivalent to requesting every level.
+
+Qualifiers that are not applicable to a given key are ignored.
+
+
+RETURN VALUE
+------------
+
+For the blocking form, ``PMIX_SUCCESS`` indicates that all requested data was found
+and returned in ``results``. For the non-blocking form, ``PMIX_SUCCESS`` indicates
+only that the request was accepted for processing; the final status and results are
+delivered to ``cbfunc``. In both cases the possible completion statuses include:
+
+* ``PMIX_SUCCESS`` |mdash| all requested data was found and returned.
+* ``PMIX_ERR_PARTIAL_SUCCESS`` |mdash| only some of the requested data was found;
+  the result array contains an element for each key that returned a value.
+* ``PMIX_ERR_NOT_FOUND`` |mdash| none of the requested data was available.
+* ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the host environment does not support this
+  operation.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied |mdash| for
+  example, ``nqueries`` of zero, a ``NULL`` ``queries`` array, or a conflicting
+  combination of process-identifier qualifiers.
+* ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because the
+  library's progress engine has been stopped.
+* ``PMIX_ERR_INIT`` |mdash| the PMIx library has not been initialized (and the
+  query was not one of the locally resolvable ABI-version queries).
+
+When a value other than ``PMIX_SUCCESS`` or ``PMIX_ERR_PARTIAL_SUCCESS`` is the
+completion status, the result array is ``NULL`` and its count is zero. Any other
+negative value indicates an appropriate error condition. PMIx error constants are
+defined in ``pmix_common.h``.
+
+
+NOTES
+-----
+
+The returned ``results`` array (blocking form) or the array delivered to ``cbfunc``
+(non-blocking form) is owned by the caller and must be released with
+``PMIX_INFO_FREE`` when no longer needed.
+
+Because a query can carry multiple keys and qualifiers, it is well suited to
+retrieving a multi-attribute block of data in a single request |mdash| something
+the single-key :ref:`PMIx_Get(3) <man3-PMIx_Get>` API cannot do. For a single
+static key value, however, ``PMIx_Get`` is typically faster because it avoids the
+overhead of constructing and processing the ``pmix_query_t`` structure.
+
+
+.. seealso::
+   :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
+   :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>`,
+   :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
+   :ref:`PMIx_Resolve_peers(3) <man3-PMIx_Resolve_peers>`,
+   :ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`,
+   :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`

@@ -17,7 +17,22 @@ APIs (section 3)
    PMIx_Commit.3.rst
    PMIx_Fence.3.rst
    PMIx_Get.3.rst
+   PMIx_Publish.3.rst
+   PMIx_Lookup.3.rst
+   PMIx_Unpublish.3.rst
+   PMIx_Spawn.3.rst
+   PMIx_Connect.3.rst
+   PMIx_Disconnect.3.rst
+   PMIx_Resolve_peers.3.rst
+   PMIx_Resolve_nodes.3.rst
+   PMIx_Query_info.3.rst
    PMIx_Log.3.rst
+   PMIx_Allocation_request.3.rst
+   PMIx_Resource_block.3.rst
+   PMIx_Session_control.3.rst
+   PMIx_Job_control.3.rst
+   PMIx_Process_monitor.3.rst
+   PMIx_Heartbeat.3.rst
    PMIx_Group_construct.3.rst
    PMIx_Group_invite.3.rst
    PMIx_Group_join.3.rst
