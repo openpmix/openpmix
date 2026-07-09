@@ -242,8 +242,7 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
         }
         rc = pthread_setaffinity_np(trk->engine.t_handle, sizeof(cpu_set_t), &cpuset);
         if (0 != rc && pmix_bind_progress_thread_reqd) {
-            pmix_output(0, "Failed to bind progress thread %s",
-                        (NULL == trk->name) ? "NULL" : trk->name);
+            pmix_output(0, "Failed to bind progress thread %s", trk->name);
             rc = PMIX_ERR_NOT_SUPPORTED;
         } else {
             rc = PMIX_SUCCESS;
