@@ -73,8 +73,8 @@ and depends on how the PMIx implementation was built.
 * ``PMIX_EMBED_BARRIER`` (bool) |mdash| execute a blocking fence operation across
   the caller's namespace as part of the finalize operation. ``PMIx_Finalize``
   performs no internal barrier by default; setting this attribute to ``true``
-  directs it to run the equivalent of a ``PMIx_Fence`` (see PMIx_Fence(3)) over
-  the caller's namespace before disconnecting from the local server.
+  directs it to run the equivalent of a :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`
+  over the caller's namespace before disconnecting from the local server.
 
 
 RETURN VALUE
@@ -103,7 +103,7 @@ should call ``PMIx_server_finalize``.
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Abort(3) <man3-PMIx_Abort>`,
-   PMIx_Initialized(3),
+   :ref:`PMIx_Initialized(3) <man3-PMIx_Initialized>`,
    PMIx_tool_finalize(3),
    PMIx_server_finalize(3),
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,

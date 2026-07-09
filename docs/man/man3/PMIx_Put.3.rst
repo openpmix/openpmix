@@ -53,9 +53,9 @@ DESCRIPTION
 Post a key-value pair for distribution. The provided value is copied into
 internal memory before ``PMIx_Put`` returns, so the caller may modify or free
 ``val`` immediately afterward. The client PMIx library caches the posted value
-locally until ``PMIx_Commit`` (see PMIx_Commit(3)) is called, at which point the
-committed values are pushed to the local PMIx server, which distributes the data
-as directed by each value's scope.
+locally until :ref:`PMIx_Commit(3) <man3-PMIx_Commit>` is called, at which point
+the committed values are pushed to the local PMIx server, which distributes the
+data as directed by each value's scope.
 
 The ``pmix_value_t`` structure supports both string and binary values. PMIx
 implementations support heterogeneous environments by properly converting binary
@@ -113,15 +113,15 @@ NOTES
 -----
 
 ``PMIx_Put`` only stages data locally; the values are not made available to other
-processes until they are committed with ``PMIx_Commit`` (see PMIx_Commit(3)) and,
-typically, a subsequent synchronization such as ``PMIx_Fence`` (see PMIx_Fence(3))
-has completed.
+processes until they are committed with :ref:`PMIx_Commit(3) <man3-PMIx_Commit>`
+and, typically, a subsequent synchronization such as
+:ref:`PMIx_Fence(3) <man3-PMIx_Fence>` has completed.
 
 
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
-   PMIx_Commit(3),
+   :ref:`PMIx_Commit(3) <man3-PMIx_Commit>`,
    PMIx_Get(3),
-   PMIx_Fence(3),
+   :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
    :ref:`pmix_value_t(5) <man5-pmix_value_t>`
