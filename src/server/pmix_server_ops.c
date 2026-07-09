@@ -951,7 +951,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        return rc;
+        goto cleanup;
     }
     /* unpack the array of info objects */
     if (0 < ninfo) {
@@ -1130,7 +1130,19 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
              * thus guaranteeing that the client will get their registration
              * callback prior to delivery of an event notification */
             if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+                /* the caddy carries the codes and info arrays, but its
+                 * destructor does not free them - so release them here,
+                 * along with the affected array that was never attached */
+                if (NULL != scd->codes) {
+                    free(scd->codes);
+                }
+                if (NULL != scd->info) {
+                    PMIX_INFO_FREE(scd->info, scd->ninfo);
+                }
                 PMIX_RELEASE(scd);
+                if (NULL != affected) {
+                    PMIX_PROC_FREE(affected, naffected);
+                }
                 return PMIX_ERR_NOT_AVAILABLE;
             }
 
@@ -1160,7 +1172,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
          * thus guaranteeing that the client will get their registration
          * callback prior to delivery of an event notification */
         if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
-            return PMIX_ERR_NOT_AVAILABLE;
+            rc = PMIX_ERR_NOT_AVAILABLE;
+            goto cleanup;
         }
 
         scd = PMIX_NEW(pmix_setup_caddy_t);
