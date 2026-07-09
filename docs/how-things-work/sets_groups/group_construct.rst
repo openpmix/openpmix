@@ -243,12 +243,12 @@ example from the PMIx library for details):
             API as it is invoked from inside the PMIx library's progress
             thread. Doing so will cause a thread deadlock condition.
 
-* the ``PMIX_GROUP_COMPLETE`` event, which will be triggered once the
+* the ``PMIX_GROUP_CONSTRUCT_COMPLETE`` event, which will be triggered once the
   construct operation has completed. This can be used to receive the final
   group membership, along with any provided group info or other data.
 
 The construct procedure is initiated by a single "leader" that calls the
-``PMIx_Group_Invite`` API, providing (among other optional things) an array
+``PMIx_Group_invite`` API, providing (among other optional things) an array
 of process IDs that it wishes to have join the group. Prior to doing so,
 the leader may choose to register an event handler for the ``PMIX_GROUP_INVITE_FAILED``
 event. This will allow the library to notify the process should any of
@@ -260,7 +260,7 @@ a reduced final group membership).
 
 The leader will return from the ``PMIx_Group_invite`` function once all
 specified members have responded to the invitation. In addition, the leader
-will (since it is a member of the group) receive the ``PMIX_GROUP_COMPLETE``
+will (since it is a member of the group) receive the ``PMIX_GROUP_CONSTRUCT_COMPLETE``
 event specifying the status return of the operation (``PMIX_SUCCESS`` to
 indicate that the group successfully constructed, or else an appropriate
 error value) and, if successful, containing the resulting information.

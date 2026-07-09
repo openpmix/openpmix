@@ -741,8 +741,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
  * process provides a response using the appropriate form of PMIx_Group_join. This will
  * notify the inviting process that the invitation was either accepted (via the
  * PMIX_GROUP_INVITE_ACCEPTED event) or declined (via the PMIX_GROUP_INVITE_DECLINED event).
- * The inviting process will also receive PMIX_GROUP_MEMBER_FAILED events whenever a
- * process fails or terminates prior to responding to the invitation.
+ * The inviting process will also receive a PMIX_GROUP_INVITE_FAILED event for any
+ * invited process that fails to accept - i.e., one that declines, terminates, or
+ * fails to respond within a provided PMIX_TIMEOUT prior to responding.
  *
  * Upon accepting the invitation, both the inviting and invited process will receive
  * access to the job-level information of each other’s nspaces and the contact
@@ -758,10 +759,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
  *
  * The inviting process is automatically considered the leader of the asynchronous
  * group construction procedure and will receive all failure or termination events
- * for invited members prior to completion. The inviting process is required to
- * provide a PMIX_GROUP_CONSTRUCT_COMPLETE event once the group has been fully
- * assembled – this event will be distributed to all participants along with the
- * final membership.
+ * for invited members prior to completion. Once the group has been fully assembled,
+ * the PMIx library assembles the completion payload and distributes a
+ * PMIX_GROUP_CONSTRUCT_COMPLETE event to all participants along with the final
+ * membership.
  *
  * Failure of the leader at any time will cause a PMIX_GROUP_LEADER_FAILED event
  * to be delivered to all participants so they can optionally declare a new leader.
