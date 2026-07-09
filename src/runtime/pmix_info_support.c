@@ -500,7 +500,7 @@ void pmix_info_do_path(bool wall, pmix_cli_result_t *cmd_line,
         pmix_info_show_path(pmix_info_path_pkgdatadir, dirs->pmixdatadir);
         pmix_info_show_path(pmix_info_path_pkglibdir, dirs->pmixlibdir);
         pmix_info_show_path(pmix_info_path_pkgincludedir, dirs->pmixincludedir);
-    } else {
+    } else if (NULL != opt) {
         for (i = 0; NULL != opt->values[i]; ++i) {
             scope = opt->values[i];
 
