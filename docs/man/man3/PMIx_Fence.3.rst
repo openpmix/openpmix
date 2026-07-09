@@ -89,7 +89,7 @@ the ``PMIX_COLLECT_DATA`` directive causes the barrier to additionally collect a
 committed :ref:`PMIx_Put(3) <man3-PMIx_Put>` data from the participants, making it
 locally available to each participant at the end of the operation. Collected data
 is cached at the server to reduce memory footprint and is retrieved as needed via
-``PMIx_Get`` (see PMIx_Get(3)).
+:ref:`PMIx_Get(3) <man3-PMIx_Get>`.
 
 ``PMIx_Fence`` and ``PMIx_Fence_nb`` are *collective* operations. The PMIx server
 library aggregates the participation of its local clients, passing a single request
@@ -160,6 +160,6 @@ constants are defined in ``pmix_common.h``.
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Put(3) <man3-PMIx_Put>`,
    :ref:`PMIx_Commit(3) <man3-PMIx_Commit>`,
-   PMIx_Get(3),
+   :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`

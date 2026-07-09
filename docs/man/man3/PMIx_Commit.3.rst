@@ -78,12 +78,12 @@ Because commitment does not guarantee that peers can immediately retrieve the
 data, a typical publication sequence is one or more
 :ref:`PMIx_Put(3) <man3-PMIx_Put>` calls, followed by ``PMIx_Commit``, followed by
 a collective synchronization such as :ref:`PMIx_Fence(3) <man3-PMIx_Fence>` before
-the peers issue ``PMIx_Get`` (see PMIx_Get(3)).
+the peers issue :ref:`PMIx_Get(3) <man3-PMIx_Get>`.
 
 
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Put(3) <man3-PMIx_Put>`,
-   PMIx_Get(3),
+   :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`
