@@ -43,6 +43,42 @@ APIs (section 3)
    PMIx_Register_event_handler.3.rst
    PMIx_Deregister_event_handler.3.rst
    PMIx_Notify_event.3.rst
+   PMIx_Fabric_register.3.rst
+   PMIx_Fabric_update.3.rst
+   PMIx_Fabric_deregister.3.rst
+   PMIx_Compute_distances.3.rst
+   PMIx_Load_topology.3.rst
+   PMIx_Parse_cpuset_string.3.rst
+   PMIx_Get_cpuset.3.rst
+   PMIx_Get_relative_locality.3.rst
+   PMIx_Progress.3.rst
+   PMIx_Progress_thread_stop.3.rst
+   PMIx_Error_string.3.rst
+   PMIx_Error_code.3.rst
+   PMIx_Proc_state_string.3.rst
+   PMIx_Scope_string.3.rst
+   PMIx_Persistence_string.3.rst
+   PMIx_Data_range_string.3.rst
+   PMIx_Data_type_string.3.rst
+   PMIx_Alloc_directive_string.3.rst
+   PMIx_Resource_block_directive_string.3.rst
+   PMIx_Alloc_inheritance_string.3.rst
+   PMIx_IOF_channel_string.3.rst
+   PMIx_Job_state_string.3.rst
+   PMIx_Get_attribute_string.3.rst
+   PMIx_Get_attribute_name.3.rst
+   PMIx_Link_state_string.3.rst
+   PMIx_Device_type_string.3.rst
+   PMIx_Value_comparison_string.3.rst
+   PMIx_Group_operation_string.3.rst
+   PMIx_Info_string.3.rst
+   PMIx_Value_string.3.rst
+   PMIx_Info_directives_string.3.rst
+   PMIx_App_string.3.rst
+   PMIx_Proc_string.3.rst
+   PMIx_Resource_unit_string.3.rst
+   PMIx_Get_version.3.rst
+   PMIx_Store_internal.3.rst
    PMIx_Info_construct.3.rst
    PMIx_Info_create.3.rst
    PMIx_Value_unload.3.rst
