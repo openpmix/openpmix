@@ -69,7 +69,7 @@ If successful, the function will return ``PMIX_SUCCESS`` and will fill the
 provided structure (if non-``NULL``) with the server-assigned namespace and rank
 of the process within the application. In addition, all startup information
 provided by the resource manager is made available to the client process via
-subsequent calls to ``PMIx_Get`` (see PMIx_Get(3)).
+subsequent calls to :ref:`PMIx_Get(3) <man3-PMIx_Get>`.
 
 The ``info`` array is used to pass user directives pertaining to the
 initialization and subsequent operations. These commonly describe the transport
@@ -105,7 +105,7 @@ Connection attributes
 
 These attributes describe how the client is to rendezvous with the local PMIx
 server. They are consumed during connection establishment and are not typically
-retrievable via ``PMIx_Get`` (see PMIx_Get(3)).
+retrievable via :ref:`PMIx_Get(3) <man3-PMIx_Get>`.
 
 * ``PMIX_TCP_URI`` (char\*) |mdash| the URI of the PMIx server to connect to, or
   a file name containing it in the form ``file:<name of file>``.
@@ -218,7 +218,7 @@ were registered with a PMIx server before being started. Processes acting as
    :ref:`PMIx_Abort(3) <man3-PMIx_Abort>`,
    :ref:`PMIx_Initialized(3) <man3-PMIx_Initialized>`,
    PMIx_Progress(3),
-   PMIx_Get(3),
+   :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    PMIx_tool_init(3),
    PMIx_server_init(3),
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
