@@ -13,6 +13,11 @@ APIs (section 3)
    PMIx_Init.3.rst
    PMIx_Finalize.3.rst
    PMIx_Log.3.rst
+   PMIx_Group_construct.3.rst
+   PMIx_Group_invite.3.rst
+   PMIx_Group_join.3.rst
+   PMIx_Group_leave.3.rst
+   PMIx_Group_destruct.3.rst
    PMIx_Info_construct.3.rst
    PMIx_Info_create.3.rst
    PMIx_Value_unload.3.rst
