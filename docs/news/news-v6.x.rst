@@ -16,6 +16,16 @@ Detailed changes since v6.1.0:
    PMIX_GROUP_MEMBER_FAILED event naming the lost member. The server
    synthesizes PMIX_GROUP_MEMBER_FAILED itself, so this works with any
    host environment
+ - Group destruct fault handling. When a member is lost before
+   contributing to a PMIx_Group_destruct, the server now consults the
+   PMIX_GROUP_NOTIFY_TERMINATION directive (previously ignored, so the
+   documented behavior never occurred): by default the teardown completes
+   on the survivors but is reported as an error, while with the directive
+   set each survivor receives a PMIX_GROUP_MEMBER_FAILED event naming the
+   lost member and the destruct returns PMIX_SUCCESS - the event serving
+   in place of an error. The directive is supplied at construct time but
+   governs the destruct; the library remembers it and re-applies it
+   automatically (it may also be passed directly to PMIx_Group_destruct)
  - Group leader failure. A process that accepts an invitation with
    PMIx_Group_join_nb now watches the group leader; if the leader
    terminates before the construct completes, the library delivers a

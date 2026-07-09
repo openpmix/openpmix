@@ -215,6 +215,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(grp_shifter_t,
 
 /* DEFINE LOCAL FUNCTIONS */
 static pmix_status_t aggregate_info(grp_block_t *blk);
+static bool grp_notify_termination(grp_block_t *blk);
 
 static void check_definition_complete(grp_block_t *blk)
 {
@@ -427,9 +428,10 @@ pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
 }
 
 /* Synthesize a PMIX_GROUP_MEMBER_FAILED event for each member that was lost
- * before contributing to this group construct. This is done entirely within
- * the PMIx server so it works with any host environment, not just one that
- * knows how to generate the event: the loss is recorded in blk->departed by
+ * before contributing to this group operation (a surviving construct or a
+ * destruct that requested PMIX_GROUP_NOTIFY_TERMINATION). This is done entirely
+ * within the PMIx server so it works with any host environment, not just one
+ * that knows how to generate the event: the loss is recorded in blk->departed by
  * the server's own lost-connection / voluntary-leave accounting (see
  * account_departed), so the event is produced the same way regardless of which
  * host runs the collective. It is delivered to the surviving local group
@@ -653,17 +655,20 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                 }
             }
         }
-        /* if any expected member was lost before contributing but the construct
-         * still completed successfully on the survivors (fault-tolerant
-         * collective tracking was requested), tell the survivors which members
-         * failed so fault-aware applications can react. Skip this when the
-         * construct aborted (status is not SUCCESS): there is no surviving group
-         * to inform, and the participants already learn of the abort through the
-         * operation status. Only meaningful for a construct; a destruct is
-         * tearing the group down regardless. */
+        /* if any expected member was lost before contributing but the operation
+         * still completed successfully on the survivors, tell the survivors
+         * which members failed so fault-aware applications can react. This
+         * applies to a construct that was allowed to survive the loss
+         * (fault-tolerant collective tracking was requested) and to a destruct
+         * for which termination notification was requested
+         * (PMIX_GROUP_NOTIFY_TERMINATION). Skip it when the operation did not
+         * complete successfully (status is not SUCCESS - e.g., a construct that
+         * aborted): there is no surviving group to inform, and the participants
+         * already learn of the outcome through the operation status. */
         if (PMIX_SUCCESS == scd->status &&
-            PMIX_GROUP_CONSTRUCT == bk->grpop &&
-            0 < pmix_list_get_size(&bk->departed)) {
+            0 < pmix_list_get_size(&bk->departed) &&
+            (PMIX_GROUP_CONSTRUCT == bk->grpop ||
+             (PMIX_GROUP_DESTRUCT == bk->grpop && grp_notify_termination(bk)))) {
             notify_local_members_of_loss(bk);
         }
         /* remove the block from the list */
@@ -732,6 +737,29 @@ static bool grp_ft_collective(grp_block_t *blk)
 
     for (n = 0; n < blk->ninfo; n++) {
         if (PMIX_CHECK_KEY(&blk->info[n], PMIX_GROUP_FT_COLLECTIVE)) {
+            return PMIX_INFO_TRUE(&blk->info[n]);
+        }
+    }
+    return false;
+}
+
+/* Did any participant request termination notification via
+ * PMIX_GROUP_NOTIFY_TERMINATION? The group's failure policy is chosen at
+ * construct time, but the server holds no group state between operations, so
+ * the client re-attaches the flag to the destruct request (see
+ * PMIx_Group_destruct_nb). When true, a member lost before contributing to a
+ * destruct is reported to the survivors via a synthesized
+ * PMIX_GROUP_MEMBER_FAILED event and the destruct completes on the survivors
+ * with success - the event serving in place of an error return. When false (the
+ * default), the loss is recorded as a degraded local-collective status so the
+ * teardown is reported as an error. Only meaningful once the block's info has
+ * been aggregated. */
+static bool grp_notify_termination(grp_block_t *blk)
+{
+    size_t n;
+
+    for (n = 0; n < blk->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&blk->info[n], PMIX_GROUP_NOTIFY_TERMINATION)) {
             return PMIX_INFO_TRUE(&blk->info[n]);
         }
     }
@@ -1134,12 +1162,16 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         return rc;
     }
     /* if an expected member was lost before contributing, how we proceed
-     * depends on whether fault-tolerant collective tracking was requested. For a
-     * construct without PMIX_GROUP_FT_COLLECTIVE (the default), the group cannot
-     * form as requested, so abort it rather than silently reduce the membership.
-     * Otherwise (the flag is set, or this is a destruct that is tearing the
-     * group down regardless) complete on the survivors, recording the degraded
-     * status in the block's info so the host sees it - matching the
+     * depends on the operation and its directives. For a construct without
+     * PMIX_GROUP_FT_COLLECTIVE (the default), the group cannot form as
+     * requested, so abort it rather than silently reduce the membership.
+     * Otherwise the operation completes on the survivors. A destruct for which
+     * PMIX_GROUP_NOTIFY_TERMINATION was requested completes cleanly (success),
+     * with the survivors told which member was lost via a synthesized
+     * PMIX_GROUP_MEMBER_FAILED event (see _grpcbfunc) - the event serving in
+     * place of an error return. Every other survive path (a fault-tolerant
+     * construct, or a destruct without notification) records the degraded status
+     * in the block's info so the host sees it - matching the
      * fence/connect/disconnect families. The status slot is located by key (see
      * pmix_server_set_collective_status). */
     if (0 < pmix_list_get_size(&blk->departed)) {
@@ -1147,8 +1179,10 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             abort_construct(blk, PMIX_GROUP_CONSTRUCT_ABORT);
             return PMIX_SUCCESS;
         }
-        pmix_server_set_collective_status(blk->info, blk->ninfo,
-                                          PMIX_ERR_LOST_CONNECTION);
+        if (!(PMIX_GROUP_DESTRUCT == op && grp_notify_termination(blk))) {
+            pmix_server_set_collective_status(blk->info, blk->ninfo,
+                                              PMIX_ERR_LOST_CONNECTION);
+        }
     }
     /* local phase complete - delete the local-phase timer before handing the
      * block to the host, so a late internal timeout cannot race the host's
@@ -1263,16 +1297,20 @@ static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
         /* a member departed before contributing (that is why we are here).
          * For a construct without PMIX_GROUP_FT_COLLECTIVE (the default), the
          * group cannot form as requested, so abort it rather than silently
-         * reduce the membership. Otherwise (the flag is set, or this is a
-         * destruct) complete on the survivors, recording the degraded status in
-         * the block's info so the host sees it, matching the
-         * fence/connect/disconnect families. */
+         * reduce the membership. Otherwise complete on the survivors. A destruct
+         * for which PMIX_GROUP_NOTIFY_TERMINATION was requested completes cleanly
+         * (the survivors are told which member was lost via a synthesized
+         * PMIX_GROUP_MEMBER_FAILED event in _grpcbfunc); every other survive path
+         * records the degraded status in the block's info so the host sees it,
+         * matching the fence/connect/disconnect families. */
         if (PMIX_GROUP_CONSTRUCT == blk->grpop && !grp_ft_collective(blk)) {
             abort_construct(blk, PMIX_GROUP_CONSTRUCT_ABORT);
             return;
         }
-        pmix_server_set_collective_status(blk->info, blk->ninfo,
-                                          PMIX_ERR_LOST_CONNECTION);
+        if (!(PMIX_GROUP_DESTRUCT == blk->grpop && grp_notify_termination(blk))) {
+            pmix_server_set_collective_status(blk->info, blk->ninfo,
+                                              PMIX_ERR_LOST_CONNECTION);
+        }
         /* delete the local-phase timer before handing the block to the host,
          * so a late internal timeout cannot race the host's completion */
         if (blk->event_active) {

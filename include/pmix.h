@@ -877,12 +877,16 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
  * The destruct API will return an error if any group process fails or terminates
  * prior to calling PMIx_Group_destruct or its non-blocking version unless the
  * PMIX_GROUP_NOTIFY_TERMINATION attribute was provided (with a value of true) at
- * time of group construction. If notification was requested, then a event will
- * be delivered (using PMIX_GROUP_MEMBER_FAILED) for each process that fails to
- * call destruct and the destruct tracker updated to account for the lack of
- * participation. The PMIx_Group_destruct operation will subsequently return
- * PMIX_SUCCESS when the remaining processes have all called destruct – i.e., the
- * event will serve in place of return of an error.
+ * time of group construction. If notification was requested, then an event will
+ * be delivered (using PMIX_GROUP_MEMBER_FAILED) to each surviving member for
+ * each process that fails to call destruct, and the destruct tracker updated to
+ * account for the lack of participation. The PMIx_Group_destruct operation will
+ * subsequently return PMIX_SUCCESS when the remaining processes have all called
+ * destruct – i.e., the event will serve in place of return of an error. The
+ * PMIX_GROUP_NOTIFY_TERMINATION directive is provided at construct time but
+ * governs this destruct; the library remembers it and re-applies it here on the
+ * caller's behalf, as the server retains no group state between the two
+ * collectives.
  */
 PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
                                               const pmix_info_t info[], size_t ninfo);

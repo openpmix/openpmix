@@ -220,6 +220,7 @@ test/simple/pmitest
 test/simple/simpcycle
 test/simple/simpgrpmember
 test/simple/simpgrpdie
+test/simple/simpgrpddie
 test/simple/simpgrpleader
 test/simple/simpgrpcabort
 test/simple/simpgrpctimeout

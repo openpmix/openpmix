@@ -106,6 +106,16 @@ view), and delivers the results. ``PMIx_Group_destruct_nb`` mirrors this with
 server does not store it) and removing the group from the local list on
 completion.
 
+The persistent ``pmix_group_t`` also carries the group's failure policy across
+the two collectives. ``PMIX_GROUP_NOTIFY_TERMINATION`` is specified at construct
+time but governs the eventual destruct, and the server keeps no group state
+between operations — so the blocking construct wrapper captures the flag into
+the tracker, ``add_group()`` records it in the ``pmix_group_t`` (``notterm``),
+and ``PMIx_Group_destruct_nb`` re-attaches ``PMIX_GROUP_NOTIFY_TERMINATION`` to
+the destruct request (unless the caller passed it explicitly, which overrides).
+The server then reads it off the aggregated destruct block via
+``grp_notify_termination()``.
+
 ``pmix_client_proc_is_included()`` (in ``pmix_client_convert.c``) is the
 shared "is the caller covered by this participant array?" predicate — it
 matches the caller's namespace and accepts ``PMIX_RANK_WILDCARD``,
@@ -306,17 +316,26 @@ server decides between aborting and surviving:
            abort_construct(blk, PMIX_GROUP_CONSTRUCT_ABORT);
            return;
        }
-       pmix_server_set_collective_status(blk->info, blk->ninfo,
-                                         PMIX_ERR_LOST_CONNECTION);
+       if (!(PMIX_GROUP_DESTRUCT == op && grp_notify_termination(blk))) {
+           pmix_server_set_collective_status(blk->info, blk->ninfo,
+                                             PMIX_ERR_LOST_CONNECTION);
+       }
    }
 
 * ``grp_ft_collective(blk)`` scans the aggregated directives for
-  ``PMIX_GROUP_FT_COLLECTIVE`` (``"pmix.grp.ftcoll"``, bool, default false).
-* A **construct without the flag** aborts. A construct **with the flag**, or
-  any **destruct**, survives on the survivors, recording
-  ``PMIX_ERR_LOST_CONNECTION`` into the ``PMIX_LOCAL_COLLECTIVE_STATUS`` slot
-  so the host is told the local phase was degraded (clients still receive
-  their own status through ``grpcbfunc``).
+  ``PMIX_GROUP_FT_COLLECTIVE`` (``"pmix.grp.ftcoll"``, bool, default false);
+  ``grp_notify_termination(blk)`` scans them for
+  ``PMIX_GROUP_NOTIFY_TERMINATION`` (``"pmix.grp.notterm"``, bool, default
+  false).
+* A **construct without the FT flag** aborts. Every other case survives on the
+  survivors. A **destruct with termination notification** completes cleanly:
+  the ``PMIX_LOCAL_COLLECTIVE_STATUS`` slot is left at ``PMIX_SUCCESS`` and the
+  survivors are told which member was lost via the synthesized
+  ``PMIX_GROUP_MEMBER_FAILED`` event (the event standing in place of an error).
+  Every other survive path — a fault-tolerant **construct**, or a **destruct
+  without notification** — records ``PMIX_ERR_LOST_CONNECTION`` into that slot
+  so the host is told the local phase was degraded (clients still receive their
+  own status through ``grpcbfunc``).
 
 ``abort_construct(blk, status)`` deletes any armed timer; if a host is
 present it issues ``pmix_host_server.group(PMIX_GROUP_CANCEL, blk->id, ...)``
@@ -333,16 +352,25 @@ race it.
 Synthesizing ``PMIX_GROUP_MEMBER_FAILED``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-On the *survive* path, ``notify_local_members_of_loss()`` (called from
-``_grpcbfunc`` only when the construct succeeded, is a construct, and has a
-non-empty ``departed`` list) emits, for each departed process, a
-``PMIX_GROUP_MEMBER_FAILED`` event carrying ``PMIX_EVENT_AFFECTED_PROC`` (the
-lost member) and ``PMIX_GROUP_ID``. It is delivered through the internal,
-progress-thread-safe ``pmix_server_notify_client_of_event`` — never the
-public ``PMIx_Notify_event``. Because each server does this accounting for
-its own local survivors, a member lost on another node is reported by that
-node's server performing the identical logic; the feature therefore needs no
-cooperation from the host environment.
+On the *survive* path, ``notify_local_members_of_loss()`` emits, for each
+departed process, a ``PMIX_GROUP_MEMBER_FAILED`` event carrying
+``PMIX_EVENT_AFFECTED_PROC`` (the lost member) and ``PMIX_GROUP_ID``. It is
+delivered through the internal, progress-thread-safe
+``pmix_server_notify_client_of_event`` — never the public ``PMIx_Notify_event``.
+Because each server does this accounting for its own local survivors, a member
+lost on another node is reported by that node's server performing the identical
+logic; the feature therefore needs no cooperation from the host environment.
+
+``_grpcbfunc`` calls it when the operation completed successfully (status is
+``PMIX_SUCCESS``), has a non-empty ``departed`` list, and is either a construct
+(which reaches ``_grpcbfunc`` with success only on the fault-tolerant survive
+path — an aborted construct arrives with ``PMIX_GROUP_CONSTRUCT_ABORT``) or a
+destruct for which ``grp_notify_termination()`` reports that
+``PMIX_GROUP_NOTIFY_TERMINATION`` was requested. For the destruct survive path
+the two host-forward points (``pmix_server_group`` and ``account_departed``)
+deliberately leave the local-collective status at ``PMIX_SUCCESS`` when
+notification was requested (so the operation returns success, the event standing
+in place of an error) and record ``PMIX_ERR_LOST_CONNECTION`` otherwise.
 
 The local-phase timeout
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -457,10 +485,13 @@ The behaviors above are exercised at several levels:
 * ``test/unit/collective_status.c`` — white-box coverage of the by-key status
   helper (connect/fence layouts, absent slot, degenerate inputs), wired into
   ``make check``.
-* ``test/simple`` drivers — ``simpgrpdie`` (survive on loss +
+* ``test/simple`` drivers — ``simpgrpdie`` (construct survives loss +
   ``PMIX_GROUP_MEMBER_FAILED``, with ``PMIX_GROUP_FT_COLLECTIVE``),
-  ``simpgrpcabort`` (default abort with ``PMIX_GROUP_CONSTRUCT_ABORT``), and
-  ``simpgrpctimeout`` (``PMIX_ERR_TIMEOUT`` on a hung live member).
+  ``simpgrpddie`` (destruct survives loss +
+  ``PMIX_GROUP_MEMBER_FAILED`` and returns success, with
+  ``PMIX_GROUP_NOTIFY_TERMINATION``), ``simpgrpcabort`` (default abort with
+  ``PMIX_GROUP_CONSTRUCT_ABORT``), and ``simpgrpctimeout``
+  (``PMIX_ERR_TIMEOUT`` on a hung live member).
 * ``examples/`` exercisers driven by the dockerswarm harness
   (``contrib/dockerswarm/run-group-events.sh``) across a multi-node swarm, so
   the cross-server notification and cancel paths actually run:

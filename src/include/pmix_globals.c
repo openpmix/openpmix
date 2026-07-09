@@ -618,6 +618,7 @@ static void grcon(pmix_group_t *p)
     p->ctxid = SIZE_MAX;
     p->members = NULL;
     p->nmbrs = 0;
+    p->notterm = false;
 }
 static void grdes(pmix_group_t *p)
 {

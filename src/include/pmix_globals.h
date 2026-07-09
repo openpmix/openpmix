@@ -566,6 +566,11 @@ typedef struct {
     size_t ctxid;
     pmix_proc_t *members;
     size_t nmbrs;
+    /* the group's failure policy is chosen at construct time but governs the
+     * later destruct; the server holds no group state between the two
+     * collectives, so we remember here whether PMIX_GROUP_NOTIFY_TERMINATION was
+     * requested and re-attach it to the destruct request. */
+    bool notterm;
 } pmix_group_t;
 PMIX_CLASS_DECLARATION(pmix_group_t);
 

@@ -87,6 +87,10 @@ typedef struct {
     bool *answered;
     size_t nanswered;
     bool optional;
+    /* whether PMIX_GROUP_NOTIFY_TERMINATION was requested at construct time;
+     * carried into the persistent pmix_group_t so it can be re-applied to the
+     * later destruct (see add_group / PMIx_Group_destruct_nb). */
+    bool notterm;
     pmix_event_t ev;
     bool timer_active;
     bool completed;
@@ -111,6 +115,7 @@ static void gtcon(pmix_group_tracker_t *p)
     p->answered = NULL;
     p->nanswered = 0;
     p->optional = false;
+    p->notterm = false;
     p->timer_active = false;
     p->completed = false;
     p->info = NULL;
@@ -163,7 +168,7 @@ static void invite_wake(pmix_group_tracker_t *cb, pmix_status_t status);
 static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                         pmix_release_cbfunc_t release_fn, void *release_cbdata);
 static pmix_status_t add_group(const char *grpid,
-                               size_t ctxid,
+                               size_t ctxid, bool notterm,
                                pmix_proc_t *members, size_t nmembers);
 
 static pmix_status_t get_endpts(pmix_info_t *xfer,
@@ -330,6 +335,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
 {
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
+    size_t n;
 
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix: group_construct called");
@@ -351,6 +357,16 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_group_tracker_t);
+    /* capture the group's failure policy now, while we have the construct
+     * directives, so info_cbfunc can record it in the persistent group and the
+     * later destruct can honor PMIX_GROUP_NOTIFY_TERMINATION on the caller's
+     * behalf (the server keeps no group state between the two collectives) */
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_NOTIFY_TERMINATION)) {
+            cb->notterm = PMIX_INFO_TRUE(&info[n]);
+            break;
+        }
+    }
 
     /* push the message into our event base to send to the server */
     rc = PMIx_Group_construct_nb(grp, procs, nprocs, info, ninfo, info_cbfunc, cb);
@@ -518,6 +534,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
     pmix_status_t rc;
     pmix_group_tracker_t *cb = NULL;
     pmix_group_t *grp, *pgrp;
+    pmix_info_t *dinfo = (pmix_info_t *) info;
+    size_t ndinfo = ninfo, n;
+    bool freeinfo = false, notterm = false;
 
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_destruct_nb called");
@@ -552,6 +571,31 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
         return PMIX_ERR_NOT_FOUND;
     }
 
+    /* the group's failure policy was chosen at construct time; re-apply
+     * PMIX_GROUP_NOTIFY_TERMINATION here so the server (which keeps no group
+     * state between the two collectives) honors it for this destruct. If the
+     * group was constructed with the flag and the caller did not itself provide
+     * it, append it to the info we send. A caller that explicitly passes the
+     * attribute overrides the remembered policy. */
+    if (grp->notterm) {
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_NOTIFY_TERMINATION)) {
+                notterm = true;
+                break;
+            }
+        }
+        if (!notterm) {
+            bool flag = true;
+            ndinfo = ninfo + 1;
+            PMIX_INFO_CREATE(dinfo, ndinfo);
+            for (n = 0; n < ninfo; n++) {
+                PMIX_INFO_XFER(&dinfo[n], (pmix_info_t *) &info[n]);
+            }
+            PMIX_INFO_LOAD(&dinfo[ninfo], PMIX_GROUP_NOTIFY_TERMINATION, &flag, PMIX_BOOL);
+            freeinfo = true;
+        }
+    }
+
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
@@ -582,14 +626,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
     }
 
     /* pack the info structs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ndinfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         goto done;
     }
-    if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
+    if (0 < ndinfo) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, dinfo, ndinfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -614,6 +658,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
 done:
     if (PMIX_SUCCESS != rc && NULL != msg) {
         PMIX_RELEASE(msg);
+    }
+    if (freeinfo) {
+        PMIX_INFO_FREE(dinfo, ndinfo);
     }
     return rc;
 }
@@ -1943,7 +1990,7 @@ static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
         }
     }
     if (NULL != members && NULL != grpid) {
-        add_group(grpid, ctxid, members, nmembers);
+        add_group(grpid, ctxid, cb->notterm, members, nmembers);
     }
 
     if (NULL != release_fn) {
@@ -1954,7 +2001,7 @@ static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
 }
 
 static pmix_status_t add_group(const char *grpid,
-                               size_t ctxid,
+                               size_t ctxid, bool notterm,
                                pmix_proc_t *members, size_t nmembers)
 {
     pmix_group_t *grp;
@@ -1969,6 +2016,9 @@ static pmix_status_t add_group(const char *grpid,
     grp->nmbrs = nmembers;
     grp->grpid = strdup(grpid);
     grp->ctxid = ctxid;
+    /* remember the construct-time failure policy so the later destruct can
+     * re-apply PMIX_GROUP_NOTIFY_TERMINATION on the caller's behalf */
+    grp->notterm = notterm;
     pmix_list_append(&pmix_client_globals.groups, &grp->super);
 
     return PMIX_SUCCESS;
