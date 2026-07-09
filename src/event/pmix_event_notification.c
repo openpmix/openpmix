@@ -434,7 +434,7 @@ static void cycle_events(int sd, short args, void *cbdata)
     }
 
     /* save this handler's returned status */
-    if (NULL != chain->evhdlr && NULL != chain->evhdlr->name) {
+    if (NULL != chain->evhdlr->name) {
         pmix_strncpy(newinfo[cnt].key, chain->evhdlr->name, PMIX_MAX_KEYLEN);
     } else {
         pmix_strncpy(newinfo[cnt].key, "UNKNOWN", PMIX_MAX_KEYLEN);
