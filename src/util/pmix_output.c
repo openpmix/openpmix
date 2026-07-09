@@ -341,7 +341,7 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
         pmix_output_verbose(verbose_level, output_id, "dump data at %p %d bytes\n", ptr, buflen);
         for (i = 0; i < buflen; i += 16) {
             out_pos = 0;
-            ret = snprintf(out_buf + out_pos, 1024, "%06x: ", i);
+            ret = snprintf(out_buf + out_pos, sizeof(out_buf) - out_pos, "%06x: ", i);
             if (ret < 0) {
                 return;
             }
@@ -351,9 +351,9 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
                     return;
                 }
                 if (i + j < buflen) {
-                    ret = snprintf(out_buf + out_pos, 1024, "%02x ", buf[i + j]);
+                    ret = snprintf(out_buf + out_pos, sizeof(out_buf) - out_pos, "%02x ", buf[i + j]);
                 } else {
-                    ret = snprintf(out_buf + out_pos, 1024, "   ");
+                    ret = snprintf(out_buf + out_pos, sizeof(out_buf) - out_pos, "   ");
                 }
                 if (ret < 0) {
                     return;
@@ -363,7 +363,7 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
             if (1023 < (out_pos+1)) {
                 return;
             }
-            ret = snprintf(out_buf + out_pos, 1024, " ");
+            ret = snprintf(out_buf + out_pos, sizeof(out_buf) - out_pos, " ");
             if (ret < 0) {
                 return;
             }
@@ -373,7 +373,7 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
                     return;
                 }
                 if (i + j < buflen) {
-                    ret = snprintf(out_buf + out_pos, 1024, "%c", isprint(buf[i + j]) ? buf[i + j] : '.');
+                    ret = snprintf(out_buf + out_pos, sizeof(out_buf) - out_pos, "%c", isprint(buf[i + j]) ? buf[i + j] : '.');
                     if (ret < 0) {
                         return;
                     }
@@ -383,7 +383,7 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
             if (1023 < (out_pos+1)) {
                 return;
             }
-            ret = snprintf(out_buf + out_pos, 1024, "\n");
+            ret = snprintf(out_buf + out_pos, sizeof(out_buf) - out_pos, "\n");
             if (ret < 0) {
                 return;
             }
