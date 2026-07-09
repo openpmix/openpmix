@@ -15,6 +15,7 @@ APIs (section 3)
    PMIx_Finalize.3.rst
    PMIx_Put.3.rst
    PMIx_Commit.3.rst
+   PMIx_Fence.3.rst
    PMIx_Log.3.rst
    PMIx_Group_construct.3.rst
    PMIx_Group_invite.3.rst
