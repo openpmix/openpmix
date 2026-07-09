@@ -1,0 +1,283 @@
+.. _man3-PMIx_Spawn:
+
+PMIx_Spawn
+==========
+
+.. include_body
+
+``PMIx_Spawn``, ``PMIx_Spawn_nb`` |mdash| Spawn a new job consisting of one or
+more applications.
+
+
+SYNOPSIS
+--------
+
+.. code-block:: c
+
+   #include <pmix.h>
+
+   pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
+                            const pmix_app_t apps[], size_t napps,
+                            pmix_nspace_t nspace);
+
+   pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t ninfo,
+                               const pmix_app_t apps[], size_t napps,
+                               pmix_spawn_cbfunc_t cbfunc, void *cbdata);
+
+
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # jobInfo is a list of Python ``pmix_info_t`` dictionaries
+  jobInfo = [{'key': PMIX_NOTIFY_COMPLETION,
+              'value': {'value': True, 'val_type': PMIX_BOOL}}]
+  # pyapps is a list of Python ``pmix_app_t`` dictionaries; each app
+  # provides at least a command and its argv, plus optional per-app info
+  pyapps = [{'cmd': "hello", 'argv': ["hello", "world"],
+             'maxprocs': 4, 'info': []}]
+  rc, nspace = foo.spawn(jobInfo, pyapps)
+
+
+INPUT PARAMETERS
+----------------
+
+* ``job_info``: Pointer to an array of :ref:`pmix_info_t(5) <man5-pmix_info_t>`
+  structures conveying job-level directives that apply to the spawned job as a
+  whole (see `DIRECTIVES`_). A ``NULL`` value is supported when no job-level
+  directives are desired.
+* ``ninfo``: Number of elements in the ``job_info`` array.
+* ``apps``: Pointer to an array of ``pmix_app_t`` structures, one per application
+  to be launched. Each ``pmix_app_t`` describes a single application via the
+  following fields:
+
+  * ``cmd`` (char\*) |mdash| the executable to launch.
+  * ``argv`` (char\*\*) |mdash| the ``NULL``-terminated argument vector.
+  * ``env`` (char\*\*) |mdash| a ``NULL``-terminated array of environment
+    variables (in ``name=value`` form) to be set for this application.
+  * ``cwd`` (char\*) |mdash| the working directory in which to start the
+    application's processes.
+  * ``maxprocs`` (int) |mdash| the number of processes to start for this
+    application.
+  * ``info`` / ``ninfo`` |mdash| an array of :ref:`pmix_info_t(5) <man5-pmix_info_t>`
+    structures conveying per-application directives (see `DIRECTIVES`_), and the
+    number of elements in it.
+
+  At least one of ``cmd`` or ``argv`` must be provided in every element; an
+  element that supplies neither causes the operation to fail with
+  ``PMIX_ERR_BAD_PARAM``.
+* ``napps``: Number of elements in the ``apps`` array.
+
+The non-blocking form replaces the ``nspace`` output parameter with a callback:
+
+* ``cbfunc``: Callback function of type ``pmix_spawn_cbfunc_t`` invoked when the
+  applications have been launched (or the launch has failed).
+* ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.
+
+
+OUTPUT PARAMETERS
+-----------------
+
+* ``nspace`` (blocking form): A ``pmix_nspace_t`` (a fixed-size character array of
+  at least ``PMIX_MAX_NSLEN + 1`` bytes) into which the namespace assigned to the
+  newly spawned job is copied on success. Because ``pmix_nspace_t`` is an array,
+  this parameter cannot itself be ``NULL``.
+
+For the non-blocking form, the assigned namespace is instead delivered as the
+``nspace`` argument to ``cbfunc``. That value is not protected after the callback
+returns, so the receiver must copy it if it needs to be retained.
+
+
+DESCRIPTION
+-----------
+
+Spawn a new job consisting of the applications described in the ``apps`` array.
+``PMIx_Spawn`` is the blocking form: it does not return until the job has been
+launched (or the operation fails), at which point the namespace assigned to the
+new job is returned in ``nspace``. ``PMIx_Spawn_nb`` is the non-blocking form: it
+returns immediately, and the provided ``cbfunc`` is invoked with the final status
+and the assigned namespace once the launch completes.
+
+Each element of the ``apps`` array describes one application (multiple elements
+therefore describe an MPMD job launched as a single unit). Directives that apply
+to the job as a whole are passed in ``job_info``; directives that apply to only a
+single application are passed in that application's ``info`` array. Where an
+attribute is meaningful at both levels, a value in an application's ``info`` array
+applies to that application only, while a value in ``job_info`` applies to every
+application in the job.
+
+By default, the spawned processes will be PMIx "connected" to the parent process
+upon successful launch (see :ref:`PMIx_Connect(3) <man3-PMIx_Connect>` for
+details). In practice this means the parent process is given a copy of the new
+job's job-level information |mdash| so it can query that information without
+incurring communication penalties |mdash| and that both the parent and the members
+of the child job receive notification of errors arising anywhere in their combined
+assemblage.
+
+Behavior of individual resource managers may differ, but it is expected that
+failure of any application process to start will result in termination and cleanup
+of *all* processes in the newly spawned job and return of an error code to the
+caller.
+
+As with all non-blocking PMIx APIs, callers of ``PMIx_Spawn_nb`` **must** keep the
+``job_info`` and ``apps`` arrays (and everything they reference) valid until
+``cbfunc`` is invoked.
+
+
+DIRECTIVES
+----------
+
+PMIx libraries are not required to directly support any attributes for this
+operation; any provided attributes are passed to the host environment for
+processing. Unless otherwise noted, each attribute below may be placed either in
+the ``job_info`` array (to apply to the whole job) or in the ``info`` array of an
+individual ``pmix_app_t`` (to apply to that application only).
+
+Host environments are **required** to support the following attributes when
+present:
+
+* ``PMIX_WDIR`` (char\*) |mdash| working directory in which to start the spawned
+  processes.
+* ``PMIX_SET_SESSION_CWD`` (bool) |mdash| set the application's current working
+  directory to the session working directory assigned by the RM.
+* ``PMIX_PREFIX`` (char\*) |mdash| prefix directory to use when looking for the
+  application's executables and libraries.
+* ``PMIX_HOST`` (char\*) |mdash| comma-delimited list of hosts to use for the
+  spawned processes.
+* ``PMIX_HOSTFILE`` (char\*) |mdash| hostfile naming the resources to use for the
+  spawned processes.
+
+The following attributes are **optional** for host environments that support this
+operation. Placement, mapping, and resource selection:
+
+* ``PMIX_ADD_HOST`` (char\*) / ``PMIX_ADD_HOSTFILE`` (char\*) |mdash| add the named
+  hosts, or the hosts named in the given hostfile, to the existing allocation.
+* ``PMIX_PRELOAD_BIN`` (bool) |mdash| preload the application binaries onto the
+  target nodes.
+* ``PMIX_PRELOAD_FILES`` (char\*) |mdash| comma-delimited list of files to
+  pre-position on the target nodes.
+* ``PMIX_PERSONALITY`` (char\*) |mdash| name of the programming-model personality
+  to assume for the application (e.g., ``"ompi"``).
+* ``PMIX_MAPBY`` (char\*) / ``PMIX_RANKBY`` (char\*) / ``PMIX_BINDTO`` (char\*)
+  |mdash| mapping, ranking, and binding policies for the spawned processes.
+* ``PMIX_PPR`` (char\*) |mdash| number of processes to spawn on each identified
+  resource.
+* ``PMIX_DISPLAY_MAP`` (bool) |mdash| display the resulting process placement map
+  upon spawn.
+* ``PMIX_STDIN_TGT`` (pmix_proc_t\*) |mdash| the process that is to receive
+  forwarded stdin.
+
+Environment control:
+
+* ``PMIX_SET_ENVAR`` / ``PMIX_ADD_ENVAR`` / ``PMIX_PREPEND_ENVAR`` /
+  ``PMIX_APPEND_ENVAR`` (pmix_envar_t\*) |mdash| set, add, prepend to, or append to
+  an environment variable in the spawned processes' environment.
+* ``PMIX_ENVARS_HARVESTED`` (bool) |mdash| indicates that the requestor has already
+  harvested and included the relevant environment variables.
+
+Behavior, restart, and tool support:
+
+* ``PMIX_JOB_RECOVERABLE`` (bool) |mdash| the application supports recoverable
+  operations.
+* ``PMIX_MAX_RESTARTS`` (uint32_t) |mdash| maximum number of times to restart a
+  failed process.
+* ``PMIX_COSPAWN_APP`` (bool) |mdash| the designated application is to be spawned
+  as a disconnected job.
+* ``PMIX_SPAWN_TOOL`` (bool) |mdash| the job being spawned is a tool.
+
+Timeouts:
+
+* ``PMIX_TIMEOUT`` (int) |mdash| time, in seconds, before the operation should be
+  declared to have timed out (``0`` means infinite).
+* ``PMIX_JOB_TIMEOUT`` (int) |mdash| time, in seconds, before the spawned job
+  should time out.
+* ``PMIX_SPAWN_TIMEOUT`` (int) |mdash| time, in seconds, before the spawn operation
+  itself should time out.
+
+Completion and termination notification:
+
+* ``PMIX_NOTIFY_COMPLETION`` (bool) |mdash| notify the parent process when the
+  spawned job terminates, either normally or with an error.
+* ``PMIX_NOTIFY_PROC_TERMINATION`` (bool) |mdash| request that the launcher
+  generate an event when any process in the spawned job terminates.
+
+.. note::
+   Several attributes historically used with ``PMIx_Spawn`` to control output
+   forwarding |mdash| ``PMIX_TAG_OUTPUT``, ``PMIX_TIMESTAMP_OUTPUT``,
+   ``PMIX_MERGE_STDERR_STDOUT``, and ``PMIX_OUTPUT_TO_FILE`` |mdash| as well as
+   ``PMIX_NON_PMI`` (indicating that the spawned processes will not call
+   ``PMIx_Init``) are now deprecated and should not be used in new code. Tools
+   requesting that the spawned job's output be forwarded to them may use
+   ``PMIX_FWD_STDOUT`` / ``PMIX_FWD_STDERR`` (bool), and may forward their own
+   stdin to the spawned processes with ``PMIX_FWD_STDIN`` (bool).
+
+
+RETURN VALUE
+------------
+
+For the blocking form, ``PMIX_SUCCESS`` indicates that the job was successfully
+launched and its namespace has been returned in ``nspace``. For the non-blocking
+form, a return of ``PMIX_SUCCESS`` indicates only that the request was accepted for
+processing; the final status and assigned namespace are delivered to ``cbfunc``.
+
+* ``PMIX_SUCCESS`` |mdash| the job was successfully launched.
+* ``PMIX_OPERATION_SUCCEEDED`` |mdash| (non-blocking form) the spawn completed
+  atomically; ``cbfunc`` will **not** be called. In this case ``PMIx_Spawn``
+  returns the assigned namespace in ``nspace``.
+* ``PMIX_ERR_JOB_ALLOC_FAILED`` |mdash| the job could not be executed due to
+  failure to obtain the specified allocation.
+* ``PMIX_ERR_JOB_APP_NOT_EXECUTABLE`` |mdash| the specified executable could not be
+  found or lacks execution privileges.
+* ``PMIX_ERR_JOB_NO_EXE_SPECIFIED`` |mdash| the request did not specify an
+  executable.
+* ``PMIX_ERR_JOB_FAILED_TO_MAP`` |mdash| the launcher was unable to map the
+  processes for the request.
+* ``PMIX_ERR_JOB_FAILED_TO_LAUNCH`` |mdash| one or more processes failed to launch.
+* ``PMIX_ERR_JOB_EXE_NOT_FOUND`` |mdash| the specified executable was not found.
+* ``PMIX_ERR_JOB_INSUFFICIENT_RESOURCES`` |mdash| insufficient resources to spawn
+  the job.
+* ``PMIX_ERR_JOB_SYS_OP_FAILED`` |mdash| a system library operation failed.
+* ``PMIX_ERR_JOB_WDIR_NOT_FOUND`` |mdash| the specified working directory was not
+  found.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied |mdash| for
+  example, an ``apps`` element supplying neither a ``cmd`` nor an ``argv``.
+* ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the PMIx server has no host environment
+  capable of servicing the spawn request.
+* ``PMIX_ERR_UNREACH`` |mdash| the caller is a tool or client that is not connected
+  to a PMIx server, and no local fork/exec fallback is available.
+* ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because the
+  library's progress engine has been stopped.
+* ``PMIX_ERR_INIT`` |mdash| the PMIx library has not been initialized.
+
+Any other negative value indicates an appropriate error condition. PMIx error
+constants are defined in ``pmix_common.h``.
+
+
+NOTES
+-----
+
+A launcher process (such as an intermediate launcher started by a tool) that is
+not connected to a PMIx server defaults to launching the applications via a local
+fork/exec, allowing tools to maintain a single code path for both the connected
+and disconnected cases. A tool or client that is not so privileged and cannot
+reach a server receives ``PMIX_ERR_UNREACH``.
+
+When ``PMIx_Spawn_nb`` returns ``PMIX_OPERATION_SUCCEEDED``, the spawn was
+satisfied atomically and no callback will be made; callers must handle this status
+distinctly from ``PMIX_SUCCESS``. The blocking ``PMIx_Spawn`` absorbs this case
+internally and simply returns ``PMIX_SUCCESS`` with the namespace populated.
+
+
+.. seealso::
+   :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
+   :ref:`PMIx_Connect(3) <man3-PMIx_Connect>`,
+   :ref:`PMIx_Disconnect(3) <man3-PMIx_Disconnect>`,
+   :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`,
+   :ref:`PMIx_Job_control(3) <man3-PMIx_Job_control>`,
+   :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
