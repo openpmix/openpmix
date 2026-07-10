@@ -413,6 +413,13 @@ PMIX_MAN3_NB_ALIASES = \
 	PMIx_Unpublish \
 	PMIx_Validate_credential
 
+# Some section-5 datatype pages are also known by a shorter alias. For
+# each "link:target" pair, install a <link>.5 symlink pointing at
+# <target>.5 so that, e.g., "man pmix_server_module" resolves to the
+# pmix_server_module_t page.
+PMIX_MAN5_ALIASES = \
+	pmix_server_module:pmix_server_module_t
+
 PMIX_MAN5 = \
         openpmix.5 \
         pmix_status_t.5 \
@@ -466,7 +473,8 @@ PMIX_MAN5 = \
         pmix_storage_accessibility_t.5 \
         pmix_storage_medium_t.5 \
         pmix_storage_persistence_t.5 \
-        pmix_regex2_t.5
+        pmix_regex2_t.5 \
+        pmix_server_module_t.5
 
 MAN_OUTDIR = $(OUTDIR)/man
 
@@ -590,10 +598,25 @@ install-data-hook:
 	    fi; \
 	done
 
+# Install a <link>.5 symlink for each section-5 alias pair.
+	@list='$(PMIX_MAN5_ALIASES)'; for pair in $$list; do \
+	    link=`echo "$$pair" | sed -e 's/:.*//'`; \
+	    target=`echo "$$pair" | sed -e 's/.*://'`; \
+	    if test -f "$(DESTDIR)$(man5dir)/$$target.5"; then \
+	        echo "  LN_S     $$link.5 -> $$target.5"; \
+	        rm -f "$(DESTDIR)$(man5dir)/$$link.5"; \
+	        (cd "$(DESTDIR)$(man5dir)" && $(LN_S) "$$target.5" "$$link.5"); \
+	    fi; \
+	done
+
 uninstall-hook:
 	rm -rf $(DESTDIR)$(docdir)
 	@list='$(PMIX_MAN3_NB_ALIASES)'; for base in $$list; do \
 	    rm -f "$(DESTDIR)$(man3dir)/$${base}_nb.3"; \
+	done
+	@list='$(PMIX_MAN5_ALIASES)'; for pair in $$list; do \
+	    link=`echo "$$pair" | sed -e 's/:.*//'`; \
+	    rm -f "$(DESTDIR)$(man5dir)/$$link.5"; \
 	done
 
 endif PMIX_INSTALL_DOCS

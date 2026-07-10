@@ -37,7 +37,8 @@ Python Syntax
 INPUT PARAMETERS
 ----------------
 
-* ``module``: Pointer to a ``pmix_server_module_t`` structure whose fields
+* ``module``: Pointer to a :ref:`pmix_server_module_t(5)
+  <man5-pmix_server_module_t>` structure whose fields
   point at the host-provided functions the PMIx library is to call when it
   needs the tool (acting as a server) to perform a corresponding operation.
   Any field left ``NULL`` indicates that the tool does not provide that
@@ -105,5 +106,6 @@ role is that of a PMIx server should instead supply its module through
 .. seealso::
    :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`,
    :ref:`PMIx_tool_set_server(3) <man3-PMIx_tool_set_server>`,
-   PMIx_server_init(3),
+   :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
+   :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`
