@@ -747,14 +747,16 @@ pmix_coord_t* pmix_bfrops_base_tma_coord_create(size_t dims,
     if (PMIX_UNLIKELY(NULL == m)) {
         return NULL;
     }
-    m->view = PMIX_COORD_VIEW_UNDEF;
-    m->dims = dims;
-    if (0 == dims) {
-        m->coord = NULL;
-    } else {
-        m->coord = (uint32_t *)pmix_tma_malloc(tma, dims * sizeof(uint32_t));
-        if (PMIX_LIKELY(NULL != m->coord)) {
-            memset(m->coord, 0, dims * sizeof(uint32_t));
+    for (size_t i = 0; i < number; i++) {
+        m[i].view = PMIX_COORD_VIEW_UNDEF;
+        m[i].dims = dims;
+        if (0 == dims) {
+            m[i].coord = NULL;
+        } else {
+            m[i].coord = (uint32_t *)pmix_tma_malloc(tma, dims * sizeof(uint32_t));
+            if (PMIX_LIKELY(NULL != m[i].coord)) {
+                memset(m[i].coord, 0, dims * sizeof(uint32_t));
+            }
         }
     }
     return m;
