@@ -79,6 +79,24 @@ APIs (section 3)
    PMIx_Resource_unit_string.3.rst
    PMIx_Get_version.3.rst
    PMIx_Store_internal.3.rst
+   PMIx_Value_get_size.3.rst
+   PMIx_Info_get_size.3.rst
+   PMIx_Data_pack.3.rst
+   PMIx_Data_unpack.3.rst
+   PMIx_Data_copy.3.rst
+   PMIx_Data_print.3.rst
+   PMIx_Data_copy_payload.3.rst
+   PMIx_Data_unload.3.rst
+   PMIx_Data_load.3.rst
+   PMIx_Data_embed.3.rst
+   PMIx_Data_compress.3.rst
+   PMIx_Data_decompress.3.rst
+   PMIx_Data_buffer_construct.3.rst
+   PMIx_Data_buffer_destruct.3.rst
+   PMIx_Data_buffer_create.3.rst
+   PMIx_Data_buffer_release.3.rst
+   PMIx_Data_buffer_load.3.rst
+   PMIx_Data_buffer_unload.3.rst
    PMIx_Info_construct.3.rst
    PMIx_Info_create.3.rst
    PMIx_Value_unload.3.rst
