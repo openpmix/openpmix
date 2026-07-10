@@ -43,7 +43,7 @@ INPUT PARAMETERS
   `DIRECTIVES`_). A ``NULL`` value (with ``ndirs`` of zero) is supported when no
   directives are desired.
 * ``ndirs``: Number of elements in the ``directives`` array.
-* ``cbfunc``: Callback function of type ``pmix_info_cbfunc_t`` invoked with the
+* ``cbfunc``: Callback function of type :ref:`pmix_info_cbfunc_t <man5-pmix_info_cbfunc_t>` invoked with the
   collected inventory once the operation completes (see `CALLBACK FUNCTION`_).
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.
 

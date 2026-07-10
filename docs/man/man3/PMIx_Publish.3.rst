@@ -51,7 +51,7 @@ INPUT PARAMETERS
 
 The non-blocking form adds a callback:
 
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` invoked once the
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` invoked once the
   datastore confirms that the data has been posted.
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.
 

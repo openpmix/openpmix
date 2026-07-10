@@ -43,7 +43,7 @@ INPUT PARAMETERS
   the process whose posted data is being requested. A rank of
   ``PMIX_RANK_WILDCARD`` requests the job-level information for the namespace
   rather than the data posted by a specific process. Must not be ``NULL``.
-* ``cbfunc``: Callback function of type ``pmix_dmodex_response_fn_t`` that is
+* ``cbfunc``: Callback function of type :ref:`pmix_dmodex_response_fn_t <man5-pmix_dmodex_response_fn_t>` that is
   invoked with the requested data once it becomes available. Must not be
   ``NULL``.
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.

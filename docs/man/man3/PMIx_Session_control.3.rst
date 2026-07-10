@@ -47,7 +47,7 @@ INPUT PARAMETERS
   action(s) to be taken. A ``NULL`` value is supported when no directives are
   desired.
 * ``ndirs``: Number of elements in the ``directives`` array.
-* ``cbfunc``: Callback function of type ``pmix_info_cbfunc_t``. If ``NULL``, the
+* ``cbfunc``: Callback function of type :ref:`pmix_info_cbfunc_t <man5-pmix_info_cbfunc_t>`. If ``NULL``, the
   call is treated as a blocking operation; otherwise it is non-blocking and the
   callback is invoked once the request has been processed.
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.

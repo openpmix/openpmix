@@ -45,7 +45,7 @@ INPUT PARAMETERS
   :ref:`PMIx_server_setup_application(3) <man3-PMIx_server_setup_application>`
   call and distributed to this node. May be ``NULL`` with ``ninfo`` of zero.
 * ``ninfo``: Number of elements in the ``info`` array.
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` invoked when the
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` invoked when the
   operation completes. A ``NULL`` value makes the call **blocking** (see
   `DESCRIPTION`_).
 * ``cbdata``: Opaque pointer passed, unmodified, to ``cbfunc``.

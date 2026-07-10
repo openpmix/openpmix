@@ -44,7 +44,7 @@ INPUT PARAMETERS
   is used to select what to remove; the associated values are ignored except where
   they serve as qualifiers (see `DIRECTIVES`_).
 * ``ninfo``: Number of elements in the ``info`` array.
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` invoked when the
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` invoked when the
   operation completes. A ``NULL`` value makes the call **blocking** (see
   `DESCRIPTION`_).
 * ``cbdata``: Opaque pointer passed, unmodified, to ``cbfunc``.

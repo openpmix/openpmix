@@ -62,7 +62,7 @@ OUTPUT PARAMETERS
 
 The non-blocking form replaces ``results``/``nresults`` with a callback:
 
-* ``cbfunc``: Callback function of type ``pmix_info_cbfunc_t`` invoked with the
+* ``cbfunc``: Callback function of type :ref:`pmix_info_cbfunc_t <man5-pmix_info_cbfunc_t>` invoked with the
   status and result array once the query completes.
 * ``cbdata``: Opaque pointer passed, unmodified, to ``cbfunc``.
 

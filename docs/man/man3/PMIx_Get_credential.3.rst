@@ -61,7 +61,7 @@ OUTPUT PARAMETERS
 
 The non-blocking form replaces ``credential`` with a callback:
 
-* ``cbfunc``: Callback function of type ``pmix_credential_cbfunc_t`` invoked with
+* ``cbfunc``: Callback function of type :ref:`pmix_credential_cbfunc_t <man5-pmix_credential_cbfunc_t>` invoked with
   the final status, the returned credential, and any accompanying information once
   the request completes.
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.

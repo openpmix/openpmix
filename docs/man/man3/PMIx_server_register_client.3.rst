@@ -46,7 +46,7 @@ INPUT PARAMETERS
   server-module function is invoked in relation to this specific process,
   letting the host access its tracking object without a namespace/rank lookup.
   May be ``NULL``.
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` invoked when the
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` invoked when the
   registration completes. A ``NULL`` value makes the call *blocking* (see
   `DESCRIPTION`_).
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.

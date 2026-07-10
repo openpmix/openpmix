@@ -71,7 +71,7 @@ INPUT PARAMETERS
 
 For :ref:`PMIx_Compute_distances_nb(3) <man3-PMIx_Compute_distances>`:
 
-* ``cbfunc``: Callback function of type ``pmix_device_dist_cbfunc_t`` to be
+* ``cbfunc``: Callback function of type :ref:`pmix_device_dist_cbfunc_t <man5-pmix_device_dist_cbfunc_t>` to be
   invoked when the operation is complete.
 * ``cbdata``: Opaque data pointer to be passed to ``cbfunc`` when invoked.
 

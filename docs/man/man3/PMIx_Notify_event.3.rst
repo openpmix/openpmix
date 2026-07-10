@@ -62,7 +62,7 @@ INPUT PARAMETERS
 
 The blocking behavior is selected by the callback parameters:
 
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` to be invoked upon
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` to be invoked upon
   completion of the notification's local actions. If ``cbfunc`` is ``NULL``, the
   call is treated as **blocking** and the result of the operation is returned in
   the function's status code.

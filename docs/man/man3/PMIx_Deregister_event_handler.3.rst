@@ -40,7 +40,7 @@ INPUT PARAMETERS
 * ``evhdlr_ref``: The reference identifier (a ``size_t``) that was returned by
   the corresponding call to :ref:`PMIx_Register_event_handler(3)
   <man3-PMIx_Register_event_handler>` when the handler was registered.
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` to be invoked when
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` to be invoked when
   the deregistration completes. A ``NULL`` value makes the call blocking (see
   `DESCRIPTION`_).
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.

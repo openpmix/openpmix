@@ -418,7 +418,26 @@ PMIX_MAN3_NB_ALIASES = \
 # <target>.5 so that, e.g., "man pmix_server_module" resolves to the
 # pmix_server_module_t page.
 PMIX_MAN5_ALIASES = \
-	pmix_server_module:pmix_server_module_t
+	pmix_server_module:pmix_server_module_t \
+	pmix_release_cbfunc_t:pmix_callback_functions \
+	pmix_op_cbfunc_t:pmix_callback_functions \
+	pmix_info_cbfunc_t:pmix_callback_functions \
+	pmix_modex_cbfunc_t:pmix_callback_functions \
+	pmix_value_cbfunc_t:pmix_callback_functions \
+	pmix_lookup_cbfunc_t:pmix_callback_functions \
+	pmix_spawn_cbfunc_t:pmix_callback_functions \
+	pmix_credential_cbfunc_t:pmix_callback_functions \
+	pmix_validation_cbfunc_t:pmix_callback_functions \
+	pmix_device_dist_cbfunc_t:pmix_callback_functions \
+	pmix_hdlr_reg_cbfunc_t:pmix_callback_functions \
+	pmix_evhdlr_reg_cbfunc_t:pmix_callback_functions \
+	pmix_notification_fn_t:pmix_callback_functions \
+	pmix_event_notification_cbfunc_fn_t:pmix_callback_functions \
+	pmix_setup_application_cbfunc_t:pmix_callback_functions \
+	pmix_connection_cbfunc_t:pmix_callback_functions \
+	pmix_tool_connection_cbfunc_t:pmix_callback_functions \
+	pmix_dmodex_response_fn_t:pmix_callback_functions \
+	pmix_iof_cbfunc_t:pmix_callback_functions
 
 PMIX_MAN5 = \
         openpmix.5 \
@@ -474,7 +493,8 @@ PMIX_MAN5 = \
         pmix_storage_medium_t.5 \
         pmix_storage_persistence_t.5 \
         pmix_regex2_t.5 \
-        pmix_server_module_t.5
+        pmix_server_module_t.5 \
+        pmix_callback_functions.5
 
 MAN_OUTDIR = $(OUTDIR)/man
 
