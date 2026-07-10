@@ -229,6 +229,10 @@ The following attributes are relevant to this operation:
   across all members of the group during construction. When the array is passed
   to the host, its first element must be the process ID (marked by
   ``PMIX_PROCID``) of the process that provided it.
+* ``PMIX_GROUP_LOCAL_CID`` (size_t) |mdash| the local context ID for the
+  providing process as a member of this group. It is supplied as an entry within
+  the process's ``PMIX_GROUP_INFO`` array so that it is shared with the other
+  group members during construction.
 * ``PMIX_GROUP_LOCAL_ONLY`` (bool) |mdash| the group operation involves only
   processes that are local to this node, allowing the library to complete it
   without engaging the host environment.
