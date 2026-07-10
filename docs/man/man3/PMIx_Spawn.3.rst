@@ -179,6 +179,12 @@ Environment control:
   an environment variable in the spawned processes' environment.
 * ``PMIX_ENVARS_HARVESTED`` (bool) |mdash| indicates that the requestor has already
   harvested and included the relevant environment variables.
+* ``PMIX_SETUP_APP_ENVARS`` (bool) |mdash| direct the spawn library to harvest the
+  environment variables relevant to the application's programming model and include
+  them with the request. May be placed in the ``job_info`` array or in an individual
+  application's ``info`` array. The full set of application-setup-data attributes is
+  described under
+  :ref:`PMIx_server_setup_application(3) <man3-PMIx_server_setup_application>`.
 
 Behavior, restart, and tool support:
 
