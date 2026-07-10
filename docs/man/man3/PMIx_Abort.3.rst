@@ -116,4 +116,5 @@ constants are defined in ``pmix_common.h``.
    :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>`,
    :ref:`PMIx_Initialized(3) <man3-PMIx_Initialized>`,
    pmix_proc_t(5),
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

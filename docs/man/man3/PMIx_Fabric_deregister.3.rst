@@ -87,4 +87,5 @@ re-registered.
 .. seealso::
    :ref:`PMIx_Fabric_register(3) <man3-PMIx_Fabric_register>`,
    :ref:`PMIx_Fabric_update(3) <man3-PMIx_Fabric_update>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_fabric_t(5) <man5-pmix_fabric_t>`

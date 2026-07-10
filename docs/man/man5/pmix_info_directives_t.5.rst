@@ -53,7 +53,7 @@ denoting a particular characteristic of that structure. Defined values include:
      - The included attribute is "required". This informs consumers of the info that support is not optional, and that an error must be returned if support is not available
    * - `PMIX_INFO_ARRAY_END`
      - 0x00000002
-     - Marks the last element of an array created by the :ref:`PMIx_Info_create(3) <man3-pmix_info_create>` function. This serves to provide an additional layer of protection should the user fail to set the number of elements in the array prior to passing the array to another PMIx library function.
+     - Marks the last element of an array created by the :ref:`PMIx_Info_create(3) <man3-PMIx_Info_create>` function. This serves to provide an additional layer of protection should the user fail to set the number of elements in the array prior to passing the array to another PMIx library function.
    * - `PMIX_INFO_REQD_PROCESSED`
      - 0x00000004
      - Required attribute has been processed. In some cases, a required attribute should only be processed once - this flag tells subsequent functions that the attribute has been processed.
@@ -73,9 +73,8 @@ ERRORS
 
 PMIx ``errno`` values are defined in ``pmix_common.h``.
 
-.. JMS COMMENT When more man pages are added, they can be :ref:'ed
-   appropriately, so that HTML hyperlinks are created to link to the
-   corresponding pages.
-
 .. seealso::
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
+   :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
+   :ref:`PMIx_Info_create(3) <man3-PMIx_Info_create>`,
+   :ref:`PMIx_Info_construct(3) <man3-PMIx_Info_construct>`

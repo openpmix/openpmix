@@ -1,7 +1,7 @@
 .. _man5-pmix_info_t:
 
 pmix_info_t
-============
+===========
 
 .. include_body
 
@@ -43,7 +43,16 @@ where ``key`` is a string key (e.g., ``PMIX_TIMEOUT``), ``flags`` is a `uint32_t
 DESCRIPTION
 -----------
 
-The `pmix_info_t` structure is a core building block of PMIx, used to pass information and directives between applications, servers, and host environments.
+The `pmix_info_t` structure is a core building block of PMIx, used to pass
+information and directives between applications, servers, and host environments.
+
+The ``key`` field is a :ref:`pmix_key_t(5) <man5-pmix_key_t>` string naming the
+attribute being conveyed. The ``value`` field is a
+:ref:`pmix_value_t(5) <man5-pmix_value_t>` carrying the typed data associated
+with that key. The ``flags`` field is a bit-mask of
+:ref:`pmix_info_directives_t(5) <man5-pmix_info_directives_t>` values that
+qualify how the entry is to be interpreted |mdash| for example, marking the
+entry as required rather than optional.
 
 
 SUPPORT FUNCTIONS

@@ -53,4 +53,5 @@ freed.
 
 .. seealso::
    :ref:`PMIx_Register_event_handler(3) <man3-PMIx_Register_event_handler>`,
-   :ref:`PMIx_Notify_event(3) <man3-PMIx_Notify_event>`
+   :ref:`PMIx_Notify_event(3) <man3-PMIx_Notify_event>`,
+   :ref:`pmix_proc_state_t(5) <man5-pmix_proc_state_t>`

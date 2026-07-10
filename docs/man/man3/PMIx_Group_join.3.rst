@@ -151,4 +151,6 @@ Any other value indicates an appropriate error condition.
    :ref:`PMIx_Group_leave(3) <man3-PMIx_Group_leave>`,
    :ref:`PMIx_Group_destruct(3) <man3-PMIx_Group_destruct>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_group_opt_t(5) <man5-pmix_group_opt_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

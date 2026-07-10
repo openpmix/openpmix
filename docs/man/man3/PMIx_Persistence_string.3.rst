@@ -52,4 +52,5 @@ freed.
 
 
 .. seealso::
-   :ref:`PMIx_Publish(3) <man3-PMIx_Publish>`
+   :ref:`PMIx_Publish(3) <man3-PMIx_Publish>`,
+   :ref:`pmix_persistence_t(5) <man5-pmix_persistence_t>`

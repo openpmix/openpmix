@@ -48,4 +48,5 @@ is always non-``NULL`` and must not be freed by the caller.
 
 .. seealso::
    :ref:`PMIx_Group_construct(3) <man3-PMIx_Group_construct>`,
-   :ref:`PMIx_Group_destruct(3) <man3-PMIx_Group_destruct>`
+   :ref:`PMIx_Group_destruct(3) <man3-PMIx_Group_destruct>`,
+   :ref:`pmix_group_operation_t(5) <man5-pmix_group_operation_t>`

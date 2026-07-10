@@ -147,4 +147,5 @@ forwarded to the server supporting the scheduler.
    :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_fabric_t(5) <man5-pmix_fabric_t>`

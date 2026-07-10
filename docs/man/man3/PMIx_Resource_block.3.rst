@@ -131,4 +131,7 @@ published PMIx Standard.
    :ref:`PMIx_Allocation_request(3) <man3-PMIx_Allocation_request>`,
    :ref:`PMIx_Session_control(3) <man3-PMIx_Session_control>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_device_type_t(5) <man5-pmix_device_type_t>`,
+   :ref:`pmix_resource_block_directive_t(5) <man5-pmix_resource_block_directive_t>`,
+   :ref:`pmix_resource_unit_t(5) <man5-pmix_resource_unit_t>`

@@ -182,4 +182,5 @@ semantics described here.
    :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    :ref:`PMIx_Spawn(3) <man3-PMIx_Spawn>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

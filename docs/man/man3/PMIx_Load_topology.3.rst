@@ -88,4 +88,5 @@ returned topology description is compatible with the caller's code.
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_topology_t(5) <man5-pmix_topology_t>`

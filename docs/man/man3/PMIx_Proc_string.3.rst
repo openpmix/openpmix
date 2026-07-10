@@ -58,4 +58,5 @@ caller must supply a valid pointer.
 
 .. seealso::
    :ref:`PMIx_Resolve_peers(3) <man3-PMIx_Resolve_peers>`,
-   :ref:`PMIx_Info_string(3) <man3-PMIx_Info_string>`
+   :ref:`PMIx_Info_string(3) <man3-PMIx_Info_string>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

@@ -5,8 +5,54 @@ Config file manual pages (section 5)
    :maxdepth: 1
 
    openpmix.5.rst
+   pmix_status_t.5.rst
+   pmix_rank_t.5.rst
+   pmix_nspace_t.5.rst
+   pmix_proc_t.5.rst
+   pmix_proc_info_t.5.rst
+   pmix_proc_state_t.5.rst
+   pmix_key_t.5.rst
+   pmix_boolean_t.5.rst
    pmix_value_t.5.rst
    pmix_info_t.5.rst
    pmix_info_directives_t.5.rst
-   pmix_status_t.5.rst
+   pmix_pdata_t.5.rst
+   pmix_data_array_t.5.rst
    pmix_byte_object_t.5.rst
+   pmix_data_buffer_t.5.rst
+   pmix_data_type_t.5.rst
+   pmix_value_cmp_t.5.rst
+   pmix_scope_t.5.rst
+   pmix_data_range_t.5.rst
+   pmix_persistence_t.5.rst
+   pmix_app_t.5.rst
+   pmix_envar_t.5.rst
+   pmix_query_t.5.rst
+   pmix_regattr_t.5.rst
+   pmix_group_operation_t.5.rst
+   pmix_group_opt_t.5.rst
+   pmix_alloc_directive_t.5.rst
+   pmix_alloc_inheritance_t.5.rst
+   pmix_resource_block_directive_t.5.rst
+   pmix_resource_unit_t.5.rst
+   pmix_iof_channel_t.5.rst
+   pmix_job_state_t.5.rst
+   pmix_link_state_t.5.rst
+   pmix_bind_envelope_t.5.rst
+   pmix_coord_t.5.rst
+   pmix_coord_view_t.5.rst
+   pmix_cpuset_t.5.rst
+   pmix_geometry_t.5.rst
+   pmix_topology_t.5.rst
+   pmix_locality_t.5.rst
+   pmix_device_t.5.rst
+   pmix_device_type_t.5.rst
+   pmix_device_distance_t.5.rst
+   pmix_endpoint_t.5.rst
+   pmix_fabric_t.5.rst
+   pmix_fabric_operation_t.5.rst
+   pmix_node_pid_t.5.rst
+   pmix_storage_access_type_t.5.rst
+   pmix_storage_accessibility_t.5.rst
+   pmix_storage_medium_t.5.rst
+   pmix_storage_persistence_t.5.rst

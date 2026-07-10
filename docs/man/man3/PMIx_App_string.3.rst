@@ -64,4 +64,5 @@ caller must supply a valid pointer.
 
 .. seealso::
    :ref:`PMIx_Spawn(3) <man3-PMIx_Spawn>`,
-   :ref:`PMIx_Info_string(3) <man3-PMIx_Info_string>`
+   :ref:`PMIx_Info_string(3) <man3-PMIx_Info_string>`,
+   :ref:`pmix_app_t(5) <man5-pmix_app_t>`

@@ -229,10 +229,56 @@ PMIX_MAN3_NB_ALIASES = \
 PMIX_MAN5 = \
         openpmix.5 \
         pmix_status_t.5 \
+        pmix_rank_t.5 \
+        pmix_nspace_t.5 \
+        pmix_proc_t.5 \
+        pmix_proc_info_t.5 \
+        pmix_proc_state_t.5 \
+        pmix_key_t.5 \
+        pmix_boolean_t.5 \
         pmix_value_t.5 \
         pmix_info_t.5 \
         pmix_info_directives_t.5 \
-        pmix_byte_object_t.5
+        pmix_pdata_t.5 \
+        pmix_data_array_t.5 \
+        pmix_byte_object_t.5 \
+        pmix_data_buffer_t.5 \
+        pmix_data_type_t.5 \
+        pmix_value_cmp_t.5 \
+        pmix_scope_t.5 \
+        pmix_data_range_t.5 \
+        pmix_persistence_t.5 \
+        pmix_app_t.5 \
+        pmix_envar_t.5 \
+        pmix_query_t.5 \
+        pmix_regattr_t.5 \
+        pmix_group_operation_t.5 \
+        pmix_group_opt_t.5 \
+        pmix_alloc_directive_t.5 \
+        pmix_alloc_inheritance_t.5 \
+        pmix_resource_block_directive_t.5 \
+        pmix_resource_unit_t.5 \
+        pmix_iof_channel_t.5 \
+        pmix_job_state_t.5 \
+        pmix_link_state_t.5 \
+        pmix_bind_envelope_t.5 \
+        pmix_coord_t.5 \
+        pmix_coord_view_t.5 \
+        pmix_cpuset_t.5 \
+        pmix_geometry_t.5 \
+        pmix_topology_t.5 \
+        pmix_locality_t.5 \
+        pmix_device_t.5 \
+        pmix_device_type_t.5 \
+        pmix_device_distance_t.5 \
+        pmix_endpoint_t.5 \
+        pmix_fabric_t.5 \
+        pmix_fabric_operation_t.5 \
+        pmix_node_pid_t.5 \
+        pmix_storage_access_type_t.5 \
+        pmix_storage_accessibility_t.5 \
+        pmix_storage_medium_t.5 \
+        pmix_storage_persistence_t.5
 
 MAN_OUTDIR = $(OUTDIR)/man
 

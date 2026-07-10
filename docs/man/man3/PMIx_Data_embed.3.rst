@@ -91,4 +91,5 @@ copy.
    :ref:`PMIx_Data_unload(3) <man3-PMIx_Data_unload>`,
    :ref:`PMIx_Data_copy_payload(3) <man3-PMIx_Data_copy_payload>`,
    :ref:`PMIx_Data_unpack(3) <man3-PMIx_Data_unpack>`,
-   :ref:`pmix_byte_object_t(5) <man5-pmix_byte_object_t>`
+   :ref:`pmix_byte_object_t(5) <man5-pmix_byte_object_t>`,
+   :ref:`pmix_data_buffer_t(5) <man5-pmix_data_buffer_t>`

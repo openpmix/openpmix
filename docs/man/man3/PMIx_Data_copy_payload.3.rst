@@ -69,4 +69,5 @@ machinery selected at initialization.
 
 .. seealso::
    :ref:`PMIx_Data_copy(3) <man3-PMIx_Data_copy>`,
-   :ref:`PMIx_Data_print(3) <man3-PMIx_Data_print>`
+   :ref:`PMIx_Data_print(3) <man3-PMIx_Data_print>`,
+   :ref:`pmix_data_buffer_t(5) <man5-pmix_data_buffer_t>`

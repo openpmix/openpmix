@@ -56,4 +56,5 @@ freed.
 
 .. seealso::
    :ref:`PMIx_Notify_event(3) <man3-PMIx_Notify_event>`,
-   :ref:`PMIx_Publish(3) <man3-PMIx_Publish>`
+   :ref:`PMIx_Publish(3) <man3-PMIx_Publish>`,
+   :ref:`pmix_data_range_t(5) <man5-pmix_data_range_t>`

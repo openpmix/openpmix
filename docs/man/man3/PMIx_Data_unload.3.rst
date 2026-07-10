@@ -90,4 +90,5 @@ for later unpacking with :ref:`PMIx_Data_load(3) <man3-PMIx_Data_load>`.
    :ref:`PMIx_Data_embed(3) <man3-PMIx_Data_embed>`,
    :ref:`PMIx_Data_pack(3) <man3-PMIx_Data_pack>`,
    :ref:`PMIx_Data_unpack(3) <man3-PMIx_Data_unpack>`,
-   :ref:`pmix_byte_object_t(5) <man5-pmix_byte_object_t>`
+   :ref:`pmix_byte_object_t(5) <man5-pmix_byte_object_t>`,
+   :ref:`pmix_data_buffer_t(5) <man5-pmix_data_buffer_t>`

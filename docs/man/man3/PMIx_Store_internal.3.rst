@@ -98,4 +98,5 @@ available to other processes, use :ref:`PMIx_Put(3) <man3-PMIx_Put>` followed by
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Put(3) <man3-PMIx_Put>`,
    :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
-   :ref:`pmix_value_t(5) <man5-pmix_value_t>`
+   :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

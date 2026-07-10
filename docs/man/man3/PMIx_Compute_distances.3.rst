@@ -186,4 +186,8 @@ inconsistent results from calls to this API by different threads if the
    :ref:`PMIx_Load_topology(3) <man3-PMIx_Load_topology>`,
    :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_cpuset_t(5) <man5-pmix_cpuset_t>`,
+   :ref:`pmix_device_distance_t(5) <man5-pmix_device_distance_t>`,
+   :ref:`pmix_device_type_t(5) <man5-pmix_device_type_t>`,
+   :ref:`pmix_topology_t(5) <man5-pmix_topology_t>`

@@ -52,4 +52,5 @@ is always non-``NULL`` and must not be freed by the caller.
 
 .. seealso::
    :ref:`PMIx_Value_get_number(3) <man3-PMIx_Value_get_number>`,
-   :ref:`pmix_value_t(5) <man5-pmix_value_t>`
+   :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
+   :ref:`pmix_value_cmp_t(5) <man5-pmix_value_cmp_t>`

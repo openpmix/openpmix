@@ -124,4 +124,5 @@ and, typically, a subsequent synchronization such as
    :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
-   :ref:`pmix_value_t(5) <man5-pmix_value_t>`
+   :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
+   :ref:`pmix_scope_t(5) <man5-pmix_scope_t>`
