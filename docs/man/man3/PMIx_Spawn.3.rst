@@ -196,6 +196,38 @@ Behavior, restart, and tool support:
   as a disconnected job.
 * ``PMIX_SPAWN_TOOL`` (bool) |mdash| the job being spawned is a tool.
 
+Debugger support:
+
+These attributes support co-launching an application under debugger control and
+spawning debugger daemons alongside it.
+
+* ``PMIX_DEBUG_STOP_ON_EXEC`` (varies) |mdash| stop the specified rank(s) upon
+  ``exec`` and notify that they are ready to be debugged. The value may be a
+  ``bool`` (``true`` for all ranks, ``false`` for none), a ``pmix_rank_t`` (a
+  single rank, or ``PMIX_RANK_WILDCARD`` for all), or a ``pmix_data_array_t`` of
+  individual processes.
+* ``PMIX_DEBUG_STOP_IN_INIT`` (varies) |mdash| stop the specified rank(s) inside
+  ``PMIx_Init`` and notify that they are ready to be debugged. Same value forms
+  as ``PMIX_DEBUG_STOP_ON_EXEC``.
+* ``PMIX_DEBUG_STOP_IN_APP`` (varies) |mdash| direct the specified rank(s) to
+  stop at an application-defined point and notify that they are ready to be
+  debugged. Same value forms as ``PMIX_DEBUG_STOP_ON_EXEC``.
+* ``PMIX_DEBUG_TARGET`` (pmix_proc_t\*) |mdash| identifier of the process(es) to
+  be debugged. A launcher spawning debugger daemons places this in the daemons'
+  job-level information so the daemons can self-determine their specific targets.
+* ``PMIX_DEBUG_DAEMONS_PER_PROC`` (uint16_t) |mdash| number of debugger daemons
+  to spawn per application process.
+* ``PMIX_DEBUG_DAEMONS_PER_NODE`` (uint16_t) |mdash| number of debugger daemons
+  to spawn on each node where the target job is executing.
+
+When a process stopped by one of the ``PMIX_DEBUG_STOP_*`` directives is ready to
+be debugged, it generates a ``PMIX_READY_FOR_DEBUG`` event accompanied by the
+following OUT attribute (delivered to the debugger's event handler, not passed to
+``PMIx_Spawn``):
+
+* ``PMIX_BREAKPOINT`` (char\*) |mdash| string identifier of the breakpoint at
+  which the process(es) are waiting.
+
 Timeouts:
 
 * ``PMIX_TIMEOUT`` (int) |mdash| time, in seconds, before the operation should be
