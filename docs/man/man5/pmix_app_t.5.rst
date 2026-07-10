@@ -63,6 +63,16 @@ The fields are:
 ``ninfo``
    The number of elements in the ``info`` array.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_app_t`` may be initialized with the
+``PMIX_APP_STATIC_INIT`` macro, which sets ``cmd``, ``argv``, ``env``, ``cwd``, and ``info`` to ``NULL`` and ``maxprocs`` and ``ninfo`` to ``0``:
+
+.. code-block:: c
+
+   pmix_app_t app = PMIX_APP_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Spawn(3) <man3-PMIx_Spawn>`,

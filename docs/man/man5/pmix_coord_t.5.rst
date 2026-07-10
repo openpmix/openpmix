@@ -52,6 +52,16 @@ fabric coordinates are logically grouped within the *node* realm.
 The ``PMIX_COORD_STATIC_INIT`` macro is provided to statically initialize a
 `pmix_coord_t` structure.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_coord_t`` may be initialized with the
+``PMIX_COORD_STATIC_INIT`` macro, which sets ``view`` to ``PMIX_COORD_VIEW_UNDEF``, ``coord`` to ``NULL``, and ``dims`` to ``0``:
+
+.. code-block:: c
+
+   pmix_coord_t coord = PMIX_COORD_STATIC_INIT;
+
 
 .. seealso::
    :ref:`pmix_coord_view_t(5) <man5-pmix_coord_view_t>`,

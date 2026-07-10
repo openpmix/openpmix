@@ -42,6 +42,16 @@ as ``PMIX_ALLOC_MAU`` (the minimum allocatable unit for the system) passed to
 The :ref:`PMIx_Resource_unit_string(3) <man3-PMIx_Resource_unit_string>`
 function returns a string representation of a `pmix_resource_unit_t` value.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_resource_unit_t`` may be initialized with the
+``PMIX_RESOURCE_UNIT_STATIC_INIT`` macro, which sets ``type`` to ``PMIX_DEVTYPE_UNKNOWN`` and ``count`` to ``0``:
+
+.. code-block:: c
+
+   pmix_resource_unit_t unit = PMIX_RESOURCE_UNIT_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Resource_unit_string(3) <man3-PMIx_Resource_unit_string>`,

@@ -91,6 +91,16 @@ contents. These include:
 ``PMIx_Data_pack``, ``PMIx_Data_unpack``, and ``PMIx_Data_buffer_*``
 interfaces.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_data_buffer_t`` may be initialized with the
+``PMIX_DATA_BUFFER_STATIC_INIT`` macro, which sets the ``base_ptr``, ``pack_ptr``, and ``unpack_ptr`` pointers to ``NULL`` and both ``bytes_allocated`` and ``bytes_used`` to ``0``:
+
+.. code-block:: c
+
+   pmix_data_buffer_t buffer = PMIX_DATA_BUFFER_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Data_pack(3) <man3-PMIx_Data_pack>`,

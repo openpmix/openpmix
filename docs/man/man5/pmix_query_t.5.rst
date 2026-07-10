@@ -49,6 +49,16 @@ The fields are:
 ``nqual``
    The number of elements in the ``qualifiers`` array.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_query_t`` may be initialized with the
+``PMIX_QUERY_STATIC_INIT`` macro, which sets ``keys`` and ``qualifiers`` to ``NULL`` and ``nqual`` to ``0``:
+
+.. code-block:: c
+
+   pmix_query_t query = PMIX_QUERY_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`,

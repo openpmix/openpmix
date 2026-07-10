@@ -57,6 +57,16 @@ Although not strictly required, both PMIx library implementers and host
 environments are strongly encouraged to provide both human-readable and
 machine-parsable descriptions of supported attributes when registering them.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_regattr_t`` may be initialized with the
+``PMIX_REGATTR_STATIC_INIT`` macro, which sets ``name`` and ``description`` to ``NULL``, clears the ``string`` key, and sets ``type`` to ``PMIX_UNDEF``:
+
+.. code-block:: c
+
+   pmix_regattr_t attr = PMIX_REGATTR_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`,

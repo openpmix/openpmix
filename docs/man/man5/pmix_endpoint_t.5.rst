@@ -47,6 +47,16 @@ bound), fabric endpoints for a process are typically returned as a
 :ref:`pmix_data_array_t(5) <man5-pmix_data_array_t>` of `pmix_endpoint_t`
 elements.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_endpoint_t`` may be initialized with the
+``PMIX_ENDPOINT_STATIC_INIT`` macro, which sets ``uuid`` and ``osname`` to ``NULL`` and initializes the embedded ``endpt`` byte object to its empty state:
+
+.. code-block:: c
+
+   pmix_endpoint_t endpoint = PMIX_ENDPOINT_STATIC_INIT;
+
 
 .. seealso::
    :ref:`pmix_byte_object_t(5) <man5-pmix_byte_object_t>`,

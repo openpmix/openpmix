@@ -56,3 +56,4 @@ Config file manual pages (section 5)
    pmix_storage_accessibility_t.5.rst
    pmix_storage_medium_t.5.rst
    pmix_storage_persistence_t.5.rst
+   pmix_regex2_t.5.rst

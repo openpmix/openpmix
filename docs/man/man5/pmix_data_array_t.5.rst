@@ -43,6 +43,17 @@ or :ref:`pmix_info_t(5) <man5-pmix_info_t>`: the containing structure references
 a `pmix_data_array_t` (via the ``darray`` union member of a `pmix_value_t`),
 which in turn points at the array of individual objects.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_data_array_t`` may be initialized with the
+``PMIX_DATA_ARRAY_STATIC_INIT`` macro, which sets ``type`` to ``PMIX_UNDEF``, ``size`` to ``0``, and ``array`` to ``NULL``:
+
+.. code-block:: c
+
+   pmix_data_array_t array = PMIX_DATA_ARRAY_STATIC_INIT;
+
+
 .. seealso::
    :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`

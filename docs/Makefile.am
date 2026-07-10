@@ -465,7 +465,8 @@ PMIX_MAN5 = \
         pmix_storage_access_type_t.5 \
         pmix_storage_accessibility_t.5 \
         pmix_storage_medium_t.5 \
-        pmix_storage_persistence_t.5
+        pmix_storage_persistence_t.5 \
+        pmix_regex2_t.5
 
 MAN_OUTDIR = $(OUTDIR)/man
 

@@ -41,7 +41,7 @@ OUTPUT PARAMETERS
 -----------------
 
 * ``regex``: Pointer to caller-provided storage for a
-  ``pmix_regex2_t`` structure into which the
+  :ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>` structure into which the
   encoded representation is placed. The structure carries a colon-delimited
   ``type`` string identifying the encoding method, a ``bytes`` buffer
   holding the encoded representation (which may **not** be
@@ -113,4 +113,5 @@ on the ``type`` prefix.
    :ref:`PMIx_parse_regex2(3) <man3-PMIx_parse_regex2>`,
    :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>`

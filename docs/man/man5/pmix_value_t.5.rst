@@ -113,6 +113,16 @@ A collection of values may be specified under a single key by passing a
 :ref:`pmix_data_array_t(5) <man5-pmix_data_array_t>`, with each array element
 containing its own object.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_value_t`` may be initialized with the
+``PMIX_VALUE_STATIC_INIT`` macro, which sets ``type`` to ``PMIX_UNDEF`` and clears the data union:
+
+.. code-block:: c
+
+   pmix_value_t value = PMIX_VALUE_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Put(3) <man3-PMIx_Put>`,
