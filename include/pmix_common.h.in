@@ -2298,8 +2298,8 @@ typedef struct pmix_device_distance {
     .uuid = NULL,                       \
     .osname = NULL,                     \
     .type = PMIX_DEVTYPE_UNKNOWN,       \
-    .mindist = 0,                       \
-    .maxdist = 0                        \
+    .mindist = UINT16_MAX,              \
+    .maxdist = UINT16_MAX               \
 }
 
 
@@ -2647,7 +2647,7 @@ typedef struct pmix_fabric_s {
 #define PMIX_FABRIC_STATIC_INIT \
 {                               \
     .name = NULL,               \
-    .index = 0,                 \
+    .index = SIZE_MAX,          \
     .info = NULL,               \
     .ninfo = 0,                 \
     .module = NULL              \
