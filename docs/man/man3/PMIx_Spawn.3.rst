@@ -75,7 +75,7 @@ INPUT PARAMETERS
 
 The non-blocking form replaces the ``nspace`` output parameter with a callback:
 
-* ``cbfunc``: Callback function of type ``pmix_spawn_cbfunc_t`` invoked when the
+* ``cbfunc``: Callback function of type :ref:`pmix_spawn_cbfunc_t <man5-pmix_spawn_cbfunc_t>` invoked when the
   applications have been launched (or the launch has failed).
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.
 

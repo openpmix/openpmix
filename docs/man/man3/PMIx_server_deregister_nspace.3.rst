@@ -37,7 +37,7 @@ INPUT PARAMETERS
 
 * ``nspace``: The namespace (a character array of maximum length
   ``PMIX_MAX_NSLEN``) to deregister.
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` invoked when the
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` invoked when the
   deregistration completes. A ``NULL`` value makes the call *blocking* (see
   `DESCRIPTION`_).
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.

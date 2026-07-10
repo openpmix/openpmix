@@ -55,9 +55,9 @@ INPUT PARAMETERS
   structures conveying directives that qualify the registration (see
   `DIRECTIVES`_). A ``NULL`` value is supported when no directives are desired.
 * ``ninfo``: Number of elements in the ``info`` array.
-* ``evhdlr``: The event-handler function, of type ``pmix_notification_fn_t``,
+* ``evhdlr``: The event-handler function, of type :ref:`pmix_notification_fn_t <man5-pmix_notification_fn_t>`,
   to be called when a matching event is delivered (see `DESCRIPTION`_).
-* ``cbfunc``: Callback function of type ``pmix_hdlr_reg_cbfunc_t`` invoked when
+* ``cbfunc``: Callback function of type :ref:`pmix_hdlr_reg_cbfunc_t <man5-pmix_hdlr_reg_cbfunc_t>` invoked when
   the registration completes, delivering the final status and the reference
   identifier assigned to the handler. A ``NULL`` value makes the call blocking
   (see `DESCRIPTION`_).

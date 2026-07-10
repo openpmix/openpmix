@@ -74,7 +74,7 @@ The blocking form returns results directly:
 The non-blocking form takes two additional parameters in place of ``results``
 and ``nresults``:
 
-* ``cbfunc``: Callback function of type ``pmix_info_cbfunc_t`` to be executed once
+* ``cbfunc``: Callback function of type :ref:`pmix_info_cbfunc_t <man5-pmix_info_cbfunc_t>` to be executed once
   the group has been constructed.
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.
 

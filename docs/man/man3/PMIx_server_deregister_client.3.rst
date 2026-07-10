@@ -37,7 +37,7 @@ INPUT PARAMETERS
 
 * ``proc``: Pointer to a :ref:`pmix_proc_t(5) <man5-pmix_proc_t>` structure
   identifying the client by namespace and rank.
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` invoked when the
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` invoked when the
   deregistration completes. A ``NULL`` value makes the call *blocking* (see
   `DESCRIPTION`_).
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.

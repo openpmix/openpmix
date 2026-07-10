@@ -47,7 +47,7 @@ INPUT PARAMETERS
   disposition of any data currently in the I/O buffer for the affected
   processes. A ``NULL`` value is supported when no directives are desired.
 * ``ndirs``: Number of elements in the ``directives`` array.
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` invoked when
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` invoked when
   deregistration has completed. A ``NULL`` value makes the call blocking
   (see `DESCRIPTION`_).
 * ``cbdata``: Opaque pointer passed, unmodified, to ``cbfunc``.

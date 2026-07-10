@@ -60,13 +60,13 @@ INPUT PARAMETERS
   ``PMIX_FWD_STDOUT_CHANNEL`` and/or ``PMIX_FWD_STDERR_CHANNEL``).
   ``PMIX_FWD_STDIN_CHANNEL`` is **not** supported on this path and results in
   an error.
-* ``cbfunc``: Function of type ``pmix_iof_cbfunc_t`` to be called when
+* ``cbfunc``: Function of type :ref:`pmix_iof_cbfunc_t <man5-pmix_iof_cbfunc_t>` to be called when
   forwarded output is received (see `CALLBACK FUNCTION`_). A ``NULL`` value
   directs that output for the indicated channels be written to this process's
   own ``stdout``/``stderr`` file descriptors instead of being delivered to a
   callback.
 * ``regcbfunc``: Registration-completion callback of type
-  ``pmix_hdlr_reg_cbfunc_t``. Because registration is asynchronous, this
+  :ref:`pmix_hdlr_reg_cbfunc_t <man5-pmix_hdlr_reg_cbfunc_t>`. Because registration is asynchronous, this
   function is invoked once registration completes, delivering the final
   status and the reference identifier assigned to the request. A ``NULL``
   value makes the call blocking (see `DESCRIPTION`_).

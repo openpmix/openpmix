@@ -49,7 +49,7 @@ INPUT PARAMETERS
 
 The non-blocking form takes two additional parameters:
 
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` to be executed once the
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` to be executed once the
   departure event has been locally generated.
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.
 

@@ -54,7 +54,7 @@ INPUT PARAMETERS
   ``NULL`` value (with ``ninfo`` of zero) is supported when no metadata is
   provided.
 * ``ninfo``: Number of elements in the ``info`` array.
-* ``cbfunc``: Callback function of type ``pmix_op_cbfunc_t`` invoked once the
+* ``cbfunc``: Callback function of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>` invoked once the
   library no longer requires access to the provided data. A ``NULL`` value makes
   the call blocking (see `DESCRIPTION`_).
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.

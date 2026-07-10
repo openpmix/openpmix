@@ -76,7 +76,7 @@ OUTPUT PARAMETERS
 
 The non-blocking form replaces ``data`` with a callback:
 
-* ``cbfunc``: Callback function of type ``pmix_lookup_cbfunc_t`` invoked with an
+* ``cbfunc``: Callback function of type :ref:`pmix_lookup_cbfunc_t <man5-pmix_lookup_cbfunc_t>` invoked with an
   array of ``pmix_pdata_t`` structures for the found keys once the lookup
   completes.
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.

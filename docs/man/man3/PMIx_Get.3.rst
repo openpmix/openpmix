@@ -68,7 +68,7 @@ OUTPUT PARAMETERS
 
 The non-blocking form replaces ``val`` with a callback:
 
-* ``cbfunc``: Callback function of type ``pmix_value_cbfunc_t`` invoked with the
+* ``cbfunc``: Callback function of type :ref:`pmix_value_cbfunc_t <man5-pmix_value_cbfunc_t>` invoked with the
   retrieved value once it is available.
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.
 

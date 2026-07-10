@@ -51,7 +51,7 @@ INPUT PARAMETERS
   The array **must** include a description of the job via the ``PMIX_NODE_MAP`` and
   ``PMIX_PROC_MAP`` attributes.
 * ``ninfo``: Number of elements in the ``info`` array.
-* ``cbfunc``: Callback function of type ``pmix_setup_application_cbfunc_t`` invoked
+* ``cbfunc``: Callback function of type :ref:`pmix_setup_application_cbfunc_t <man5-pmix_setup_application_cbfunc_t>` invoked
   when the setup data is ready (see `CALLBACK FUNCTION`_).
 * ``cbdata``: Opaque pointer passed, unmodified, to ``cbfunc``.
 
@@ -153,7 +153,7 @@ application, and ``provided_cbdata`` |mdash| the ``cbdata`` originally passed to
 ``PMIx_server_setup_application``.
 
 The returned ``info`` array is **owned by the PMIx server library** and remains
-valid only until the recipient calls the ``cbfunc`` (of type ``pmix_op_cbfunc_t``)
+valid only until the recipient calls the ``cbfunc`` (of type :ref:`pmix_op_cbfunc_t <man5-pmix_op_cbfunc_t>`)
 that is passed along with it; the library frees the array at that point.
 Accordingly, the host must copy any data it needs to retain and then invoke that
 completion function so the library can release its memory. If no data is returned,
