@@ -38,7 +38,8 @@ Python Syntax
 INPUT PARAMETERS
 ----------------
 
-* ``module``: Pointer to a ``pmix_server_module_t`` structure containing the
+* ``module``: Pointer to a :ref:`pmix_server_module_t(5)
+  <man5-pmix_server_module_t>` structure containing the
   host environment's callback functions |mdash| the "function-shipped" server
   module through which client requests are relayed to the resource manager.
   Any function the host does not support is indicated by leaving its function
@@ -194,5 +195,6 @@ launching that client, then set up the client's environment with
    :ref:`PMIx_server_register_client(3) <man3-PMIx_server_register_client>`,
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`,
+   :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`

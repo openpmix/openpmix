@@ -36,7 +36,8 @@ Python Syntax
 INPUT PARAMETERS
 ----------------
 
-* ``function``: The string name of the ``pmix_server_module_t`` function whose
+* ``function``: The string name of the :ref:`pmix_server_module_t(5)
+  <man5-pmix_server_module_t>` function whose
   supported attributes are being registered |mdash| for example,
   ``"register_events"``, ``"validate_credential"``, or ``"allocate"``.
 * ``attrs``: A ``NULL``-terminated ``argv``-style array of attribute-name strings
@@ -108,5 +109,6 @@ release accepts the simpler ``NULL``-terminated string array shown here.
 .. seealso::
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`,
+   :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
    :ref:`pmix_regattr_t(5) <man5-pmix_regattr_t>`
