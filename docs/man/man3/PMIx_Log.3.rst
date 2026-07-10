@@ -98,8 +98,15 @@ never names a component directly. Supported channels include:
   priority.
 * ``PMIX_LOG_GLOBAL_SYSLOG`` |mdash| forward the message to the system "master" and output it to that
   node's syslog. Defaults to ``ERROR`` priority.
-* ``PMIX_LOG_EMAIL`` |mdash| send the message via email. The email parameters (recipient, sender,
-  subject, server, and port) are provided using the ``PMIX_LOG_EMAIL_*`` attributes.
+* ``PMIX_LOG_EMAIL`` (pmix_data_array_t\*) |mdash| send the message via email, described by an array
+  of :ref:`pmix_info_t(5) <man5-pmix_info_t>` using the following ``PMIX_LOG_EMAIL_*`` attributes:
+
+  * ``PMIX_LOG_EMAIL_ADDR`` (char*) |mdash| comma-delimited list of recipient email addresses.
+  * ``PMIX_LOG_EMAIL_SENDER_ADDR`` (char*) |mdash| the sender's return email address.
+  * ``PMIX_LOG_EMAIL_SUBJECT`` (char*) |mdash| the subject line for the email.
+  * ``PMIX_LOG_EMAIL_MSG`` (char*) |mdash| the message body to be included in the email.
+  * ``PMIX_LOG_EMAIL_SERVER`` (char*) |mdash| hostname or IP address of the eSMTP server.
+  * ``PMIX_LOG_EMAIL_SRVR_PORT`` (int32_t) |mdash| the port on which the email server is listening.
 
 Additional channels defined for future use, whose availability depends on host environment support,
 include:
@@ -109,6 +116,13 @@ include:
   used, and other statistics, and may support injecting application-provided messages into that record
   for historical purposes.
 * ``PMIX_LOG_GLOBAL_DATASTORE`` |mdash| record the message in a host-provided global datastore.
+
+In addition to the destination channels above, a ``data`` element may carry its message content
+using one of the following keys:
+
+* ``PMIX_LOG_MSG`` (pmix_byte_object_t) |mdash| a message blob to be logged.
+* ``PMIX_LOG_KEY`` (char*) / ``PMIX_LOG_VAL`` (char*) |mdash| the key and value of a structured
+  (key/value) log message. Used together.
 
 Channel availability
 ^^^^^^^^^^^^^^^^^^^^^
@@ -143,6 +157,22 @@ The ``directives`` array qualifies how the request is handled. Commonly used dir
 * ``PMIX_LOG_TIMESTAMP_OUTPUT`` (bool) |mdash| prefix the printed output with a timestamp.
 * ``PMIX_LOG_XML_OUTPUT`` (bool) |mdash| emit the output in XML format.
 * ``PMIX_LOG_SYSLOG_PRI`` (int) |mdash| set the syslog priority level for syslog channels.
+* ``PMIX_LOG_SOURCE`` (pmix_proc_t\*) |mdash| identify the process that is the source of the log
+  request.
+* ``PMIX_LOG_AGG`` (bool) |mdash| aggregate log messages and suppress duplicates based on their
+  key/value pairs (see ``PMIX_LOG_KEY`` / ``PMIX_LOG_VAL``).
+
+The following directives request that the launcher log specific runtime events on the requestor's
+behalf using ``PMIx_Log``:
+
+* ``PMIX_LOG_JOB_EVENTS`` (bool) |mdash| log the ``PMIX_EVENT_JOB_START``, ``PMIX_LAUNCH_COMPLETE``,
+  and ``PMIX_EVENT_JOB_END`` events.
+* ``PMIX_LOG_COMPLETION`` (bool) |mdash| log the ``PMIX_EVENT_JOB_END`` event for the normal or
+  abnormal termination of the spawned job, including the returned status code.
+* ``PMIX_LOG_PROC_TERMINATION`` (bool) |mdash| log the ``PMIX_EVENT_PROC_TERMINATED`` event whenever
+  a process terminates, whether normally or abnormally.
+* ``PMIX_LOG_PROC_ABNORMAL_TERMINATION`` (bool) |mdash| log the ``PMIX_EVENT_PROC_TERMINATED`` event
+  only when a process terminates abnormally.
 
 It is possible to log messages to different channels using a single call to
 :ref:`PMIx_Log <man3-PMIx_Log>`. In this case, only directives applicable to a given channel are used
