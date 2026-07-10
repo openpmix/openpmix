@@ -344,7 +344,42 @@ PMIX_MAN3 = \
 	PMIx_Rank_valid.3 \
 	PMIx_Multicluster_nspace_construct.3 \
 	PMIx_Multicluster_nspace_parse.3 \
-	PMIx_Setenv.3
+	PMIx_Setenv.3 \
+	PMIx_server_init.3 \
+	PMIx_server_finalize.3 \
+	PMIx_server_register_nspace.3 \
+	PMIx_server_deregister_nspace.3 \
+	PMIx_server_register_client.3 \
+	PMIx_server_deregister_client.3 \
+	PMIx_server_setup_fork.3 \
+	PMIx_server_setup_application.3 \
+	PMIx_server_setup_local_support.3 \
+	PMIx_server_register_resources.3 \
+	PMIx_server_deregister_resources.3 \
+	PMIx_Register_attributes.3 \
+	PMIx_server_dmodex_request.3 \
+	PMIx_server_collect_inventory.3 \
+	PMIx_server_deliver_inventory.3 \
+	PMIx_server_collect_job_info.3 \
+	PMIx_server_IOF_deliver.3 \
+	PMIx_server_generate_cpuset.3 \
+	PMIx_server_generate_cpuset_string.3 \
+	PMIx_server_generate_locality_string.3 \
+	PMIx_server_define_process_set.3 \
+	PMIx_server_delete_process_set.3 \
+	PMIx_generate_regex2.3 \
+	PMIx_parse_regex2.3 \
+	PMIx_tool_init.3 \
+	PMIx_tool_finalize.3 \
+	PMIx_tool_attach_to_server.3 \
+	PMIx_tool_disconnect.3 \
+	PMIx_tool_get_servers.3 \
+	PMIx_tool_is_connected.3 \
+	PMIx_tool_set_server.3 \
+	PMIx_tool_set_server_module.3 \
+	PMIx_IOF_pull.3 \
+	PMIx_IOF_push.3 \
+	PMIx_IOF_deregister.3
 
 
 # The following section-3 pages each document both a blocking API and
