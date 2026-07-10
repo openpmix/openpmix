@@ -163,6 +163,10 @@ Optional for supporting host environments:
   be provisioned.
 * ``PMIX_JOB_CTRL_PREEMPTIBLE`` (bool) |mdash| register the job as available for
   preemption.
+* ``PMIX_JOB_CTRL_DEFINE_PSET`` (char*) |mdash| process set name to be assigned
+  to the target processes.
+* ``PMIX_JOB_CTRL_SEP`` (bool) |mdash| separate the specified namespace from its
+  parent |mdash| i.e., allow the two to terminate independently.
 
 
 RETURN VALUE
