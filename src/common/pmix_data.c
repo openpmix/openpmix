@@ -493,11 +493,11 @@ pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer, const pmix_byte_object
 bool PMIx_Data_compress(const uint8_t *inbytes, size_t size, uint8_t **outbytes, size_t *nbytes)
 {
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
-        return PMIX_ERR_INIT;
+        return false;
     }
 
     if (NULL == inbytes) {
-        return PMIX_ERR_BAD_PARAM;
+        return false;
     }
 
     return pmix_compress.compress(inbytes, size, outbytes, nbytes);
@@ -507,11 +507,11 @@ bool PMIx_Data_decompress(const uint8_t *inbytes, size_t size,
                           uint8_t **outbytes, size_t *nbytes)
 {
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
-        return PMIX_ERR_INIT;
+        return false;
     }
 
     if (NULL == inbytes) {
-        return PMIX_ERR_BAD_PARAM;
+        return false;
     }
 
     return pmix_compress.decompress(outbytes, nbytes, inbytes, size);
