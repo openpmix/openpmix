@@ -103,12 +103,110 @@ PMIX_MAN1 = \
 PMIX_MAN3 = \
 	PMIx_Abort.3 \
 	PMIx_Init.3 \
+	PMIx_Initialized.3 \
 	PMIx_Finalize.3 \
+	PMIx_Put.3 \
+	PMIx_Commit.3 \
+	PMIx_Fence.3 \
+	PMIx_Get.3 \
+	PMIx_Publish.3 \
+	PMIx_Lookup.3 \
+	PMIx_Unpublish.3 \
+	PMIx_Spawn.3 \
+	PMIx_Connect.3 \
+	PMIx_Disconnect.3 \
+	PMIx_Resolve_peers.3 \
+	PMIx_Resolve_nodes.3 \
+	PMIx_Query_info.3 \
 	PMIx_Log.3 \
+	PMIx_Allocation_request.3 \
+	PMIx_Resource_block.3 \
+	PMIx_Session_control.3 \
+	PMIx_Job_control.3 \
+	PMIx_Process_monitor.3 \
+	PMIx_Heartbeat.3 \
+	PMIx_Get_credential.3 \
+	PMIx_Validate_credential.3 \
+	PMIx_Group_construct.3 \
+	PMIx_Group_invite.3 \
+	PMIx_Group_join.3 \
+	PMIx_Group_leave.3 \
+	PMIx_Group_destruct.3 \
+	PMIx_Register_event_handler.3 \
+	PMIx_Deregister_event_handler.3 \
+	PMIx_Notify_event.3 \
+	PMIx_Fabric_register.3 \
+	PMIx_Fabric_update.3 \
+	PMIx_Fabric_deregister.3 \
+	PMIx_Compute_distances.3 \
+	PMIx_Load_topology.3 \
+	PMIx_Parse_cpuset_string.3 \
+	PMIx_Get_cpuset.3 \
+	PMIx_Get_relative_locality.3 \
+	PMIx_Progress.3 \
+	PMIx_Progress_thread_stop.3 \
+	PMIx_Error_string.3 \
+	PMIx_Error_code.3 \
+	PMIx_Proc_state_string.3 \
+	PMIx_Scope_string.3 \
+	PMIx_Persistence_string.3 \
+	PMIx_Data_range_string.3 \
+	PMIx_Data_type_string.3 \
+	PMIx_Alloc_directive_string.3 \
+	PMIx_Resource_block_directive_string.3 \
+	PMIx_Alloc_inheritance_string.3 \
+	PMIx_IOF_channel_string.3 \
+	PMIx_Job_state_string.3 \
+	PMIx_Get_attribute_string.3 \
+	PMIx_Get_attribute_name.3 \
+	PMIx_Link_state_string.3 \
+	PMIx_Device_type_string.3 \
+	PMIx_Value_comparison_string.3 \
+	PMIx_Group_operation_string.3 \
+	PMIx_Info_string.3 \
+	PMIx_Value_string.3 \
+	PMIx_Info_directives_string.3 \
+	PMIx_App_string.3 \
+	PMIx_Proc_string.3 \
+	PMIx_Resource_unit_string.3 \
+	PMIx_Get_version.3 \
+	PMIx_Store_internal.3 \
 	PMIx_Info_construct.3 \
 	PMIx_Info_create.3 \
 	PMIx_Value_unload.3 \
-        PMIx_Value_get_number.3
+	PMIx_Value_get_number.3
+
+
+# The following section-3 pages each document both a blocking API and
+# its non-blocking (_nb) counterpart on a single page. For each one,
+# install a <name>_nb.3 symlink pointing at <name>.3 so that, e.g.,
+# "man PMIx_Fence_nb" displays the page that documents both forms.
+PMIX_MAN3_NB_ALIASES = \
+	PMIx_Allocation_request \
+	PMIx_Compute_distances \
+	PMIx_Connect \
+	PMIx_Disconnect \
+	PMIx_Fabric_deregister \
+	PMIx_Fabric_register \
+	PMIx_Fabric_update \
+	PMIx_Fence \
+	PMIx_Get_credential \
+	PMIx_Get \
+	PMIx_Group_construct \
+	PMIx_Group_destruct \
+	PMIx_Group_invite \
+	PMIx_Group_join \
+	PMIx_Group_leave \
+	PMIx_Job_control \
+	PMIx_Log \
+	PMIx_Lookup \
+	PMIx_Process_monitor \
+	PMIx_Publish \
+	PMIx_Query_info \
+	PMIx_Resource_block \
+	PMIx_Spawn \
+	PMIx_Unpublish \
+	PMIx_Validate_credential
 
 PMIX_MAN5 = \
         openpmix.5 \
@@ -230,7 +328,20 @@ install-data-hook:
 	find html -type d -exec $(mkinstalldirs) $(DESTDIR)$(docdir)/{} \; ; \
 	find html -type f -exec $(INSTALL_DATA) {} $(DESTDIR)$(docdir)/{} \;
 
+# Install a <name>_nb.3 symlink alongside each base page that documents
+# a non-blocking form, so "man PMIx_Foo_nb" resolves to the shared page.
+	@list='$(PMIX_MAN3_NB_ALIASES)'; for base in $$list; do \
+	    if test -f "$(DESTDIR)$(man3dir)/$$base.3"; then \
+	        echo "  LN_S     $${base}_nb.3 -> $$base.3"; \
+	        rm -f "$(DESTDIR)$(man3dir)/$${base}_nb.3"; \
+	        (cd "$(DESTDIR)$(man3dir)" && $(LN_S) "$$base.3" "$${base}_nb.3"); \
+	    fi; \
+	done
+
 uninstall-hook:
 	rm -rf $(DESTDIR)$(docdir)
+	@list='$(PMIX_MAN3_NB_ALIASES)'; for base in $$list; do \
+	    rm -f "$(DESTDIR)$(man3dir)/$${base}_nb.3"; \
+	done
 
 endif PMIX_INSTALL_DOCS
