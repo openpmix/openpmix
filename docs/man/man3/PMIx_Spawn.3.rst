@@ -206,15 +206,49 @@ Completion and termination notification:
 * ``PMIX_NOTIFY_PROC_TERMINATION`` (bool) |mdash| request that the launcher
   generate an event when any process in the spawned job terminates.
 
+Output forwarding:
+
+These attributes control how the spawned job's ``stdout``/``stderr`` streams are
+tagged, formatted, and directed as they are forwarded. They supersede the older,
+now-deprecated non-``IOF`` output attributes (see the note below).
+
+* ``PMIX_IOF_TAG_OUTPUT`` (bool) |mdash| tag each line of output with the
+  ``[local jobid,rank]`` of its source and the channel it came from.
+* ``PMIX_IOF_TAG_DETAILED_OUTPUT`` (bool) |mdash| tag output with the
+  ``[local jobid,rank][hostname:pid]`` and channel of its source.
+* ``PMIX_IOF_TAG_FULLNAME_OUTPUT`` (bool) |mdash| tag output with the
+  ``[nspace,rank]`` and channel of its source.
+* ``PMIX_IOF_RANK_OUTPUT`` (bool) |mdash| tag output with the rank it came from.
+* ``PMIX_IOF_TIMESTAMP_OUTPUT`` (bool) |mdash| timestamp each line of output.
+* ``PMIX_IOF_MERGE_STDERR_STDOUT`` (bool) |mdash| merge the ``stderr`` stream
+  into the ``stdout`` stream of the application processes.
+* ``PMIX_IOF_XML_OUTPUT`` (bool) |mdash| format the forwarded output in XML.
+* ``PMIX_IOF_OUTPUT_RAW`` (bool) |mdash| do not buffer output into complete
+  lines; emit characters as the stream delivers them.
+* ``PMIX_IOF_LOCAL_OUTPUT`` (bool) |mdash| write the output streams to the local
+  ``stdout``/``stderr``.
+* ``PMIX_IOF_OUTPUT_TO_FILE`` (char\*) |mdash| direct application output into
+  files of the form ``<filename>.rank``, with both ``stdout`` and ``stderr``
+  redirected into it.
+* ``PMIX_IOF_OUTPUT_TO_DIRECTORY`` (char\*) |mdash| direct application output
+  into files of the form ``<directory>/<jobid>/rank.<rank>/stdout[err]``.
+* ``PMIX_IOF_FILE_PATTERN`` (bool) |mdash| treat the ``PMIX_IOF_OUTPUT_TO_FILE``
+  value as a pattern, suppressing the automatic annotation by nspace, rank, or
+  other parameters.
+* ``PMIX_IOF_FILE_ONLY`` (bool) |mdash| output only into the designated files; do
+  not also emit a copy to ``stdout``/``stderr``.
+
 .. note::
    Several attributes historically used with ``PMIx_Spawn`` to control output
    forwarding |mdash| ``PMIX_TAG_OUTPUT``, ``PMIX_TIMESTAMP_OUTPUT``,
-   ``PMIX_MERGE_STDERR_STDOUT``, and ``PMIX_OUTPUT_TO_FILE`` |mdash| as well as
+   ``PMIX_MERGE_STDERR_STDOUT``, ``PMIX_OUTPUT_TO_FILE``, and
+   ``PMIX_OUTPUT_TO_DIRECTORY`` |mdash| are now deprecated in favor of the
+   ``PMIX_IOF_*`` equivalents listed above under **Output forwarding**, as is
    ``PMIX_NON_PMI`` (indicating that the spawned processes will not call
-   ``PMIx_Init``) are now deprecated and should not be used in new code. Tools
-   requesting that the spawned job's output be forwarded to them may use
-   ``PMIX_FWD_STDOUT`` / ``PMIX_FWD_STDERR`` (bool), and may forward their own
-   stdin to the spawned processes with ``PMIX_FWD_STDIN`` (bool).
+   ``PMIx_Init``); none of these should be used in new code. Tools requesting
+   that the spawned job's output be forwarded to them may use ``PMIX_FWD_STDOUT``
+   / ``PMIX_FWD_STDERR`` (bool), and may forward their own stdin to the spawned
+   processes with ``PMIX_FWD_STDIN`` (bool).
 
 
 RETURN VALUE
