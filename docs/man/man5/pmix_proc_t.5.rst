@@ -44,6 +44,16 @@ The macro ``PMIX_PROC_STATIC_INIT`` is provided to statically initialize the
 fields of a `pmix_proc_t` structure, setting ``nspace`` to all zeroes and
 ``rank`` to ``PMIX_RANK_UNDEF``.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_proc_t`` may be initialized with the
+``PMIX_PROC_STATIC_INIT`` macro, which clears ``nspace`` and sets ``rank`` to ``PMIX_RANK_UNDEF``:
+
+.. code-block:: c
+
+   pmix_proc_t proc = PMIX_PROC_STATIC_INIT;
+
 
 .. seealso::
    :ref:`pmix_nspace_t(5) <man5-pmix_nspace_t>`,

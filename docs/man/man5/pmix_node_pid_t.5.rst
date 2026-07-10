@@ -46,6 +46,16 @@ The fields of the structure are:
 Either ``hostname`` or ``nodeid`` may be used to identify the node; a
 consumer must be prepared to accept whichever the producer has supplied.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_node_pid_t`` may be initialized with the
+``PMIX_NODE_PID_STATIC_INIT`` macro, which sets ``hostname`` to ``NULL``, ``nodeid`` to ``UINT32_MAX``, and ``pid`` to ``-1``:
+
+.. code-block:: c
+
+   pmix_node_pid_t npid = PMIX_NODE_PID_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Process_monitor(3) <man3-PMIx_Process_monitor>`,

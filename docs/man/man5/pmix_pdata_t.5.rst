@@ -44,6 +44,19 @@ Data is placed into the PMIx datastore with
 :ref:`PMIx_Publish(3) <man3-PMIx_Publish>` and later removed with
 :ref:`PMIx_Unpublish(3) <man3-PMIx_Unpublish>`.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_pdata_t`` may be initialized with the
+``PMIX_LOOKUP_STATIC_INIT`` macro, which initializes the embedded ``proc`` (with ``rank`` set to ``PMIX_RANK_UNDEF``), clears ``key``, and initializes the embedded ``value`` (with ``type`` set to ``PMIX_UNDEF``):
+
+.. code-block:: c
+
+   pmix_pdata_t pdata = PMIX_LOOKUP_STATIC_INIT;
+
+For historical reasons this macro is named ``PMIX_LOOKUP_STATIC_INIT`` rather than ``PMIX_PDATA_STATIC_INIT``.
+
+
 .. seealso::
    :ref:`PMIx_Lookup(3) <man3-PMIx_Lookup>`,
    :ref:`PMIx_Publish(3) <man3-PMIx_Publish>`,

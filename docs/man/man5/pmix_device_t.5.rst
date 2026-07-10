@@ -40,6 +40,16 @@ device resides.
 The ``type`` field is a :ref:`pmix_device_type_t(5) <man5-pmix_device_type_t>`
 bitmask identifying the type(s) of the device.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_device_t`` may be initialized with the
+``PMIX_DEVICE_STATIC_INIT`` macro, which sets ``uuid`` and ``osname`` to ``NULL`` and ``type`` to ``PMIX_DEVTYPE_UNKNOWN``:
+
+.. code-block:: c
+
+   pmix_device_t device = PMIX_DEVICE_STATIC_INIT;
+
 
 .. seealso::
    :ref:`pmix_device_type_t(5) <man5-pmix_device_type_t>`,

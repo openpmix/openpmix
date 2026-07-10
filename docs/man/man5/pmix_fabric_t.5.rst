@@ -60,6 +60,16 @@ protection for accessing the information in the `pmix_fabric_t` structure.
 Callers must therefore coordinate their access to the structure with any
 updates driven by the PMIx library.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_fabric_t`` may be initialized with the
+``PMIX_FABRIC_STATIC_INIT`` macro, which sets ``name``, ``info``, and ``module`` to ``NULL``, ``index`` to ``SIZE_MAX`` (the "unset" sentinel), and ``ninfo`` to ``0``:
+
+.. code-block:: c
+
+   pmix_fabric_t fabric = PMIX_FABRIC_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Fabric_register(3) <man3-PMIx_Fabric_register>`,

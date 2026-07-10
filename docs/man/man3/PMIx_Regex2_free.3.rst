@@ -5,7 +5,7 @@ PMIx_Regex2_free
 
 .. include_body
 
-``PMIx_Regex2_free`` |mdash| Release an array of ``pmix_regex2_t`` structures.
+``PMIx_Regex2_free`` |mdash| Release an array of :ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>` structures.
 
 
 SYNOPSIS
@@ -61,4 +61,5 @@ single caller-owned structure without freeing its storage, use
 .. seealso::
    :ref:`PMIx_Regex2_create(3) <man3-PMIx_Regex2_create>`,
    :ref:`PMIx_Regex2_construct(3) <man3-PMIx_Regex2_construct>`,
-   :ref:`PMIx_Regex2_destruct(3) <man3-PMIx_Regex2_destruct>`
+   :ref:`PMIx_Regex2_destruct(3) <man3-PMIx_Regex2_destruct>`,
+   :ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>`

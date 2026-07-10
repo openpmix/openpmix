@@ -51,6 +51,17 @@ A `pmix_byte_object_t` may be carried as the value of a
 :ref:`pmix_info_t(5) <man5-pmix_info_t>`, allowing arbitrary binary payloads to
 be exchanged through the standard PMIx information-passing mechanisms.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_byte_object_t`` may be initialized with the
+``PMIX_BYTE_OBJECT_STATIC_INIT`` macro, which sets ``bytes`` to ``NULL`` and ``size`` to ``0``:
+
+.. code-block:: c
+
+   pmix_byte_object_t bo = PMIX_BYTE_OBJECT_STATIC_INIT;
+
+
 .. seealso::
    :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`

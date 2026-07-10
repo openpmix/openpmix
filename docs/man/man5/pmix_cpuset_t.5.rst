@@ -50,6 +50,16 @@ a ``PMIX_CPUSET`` string into the structure. The
 ``PMIx_Get_cpuset`` controls which threads of a possibly multi-threaded process
 are considered.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_cpuset_t`` may be initialized with the
+``PMIX_CPUSET_STATIC_INIT`` macro, which sets both ``source`` and ``bitmap`` to ``NULL``:
+
+.. code-block:: c
+
+   pmix_cpuset_t cpuset = PMIX_CPUSET_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Get_cpuset(3) <man3-PMIx_Get_cpuset>`,

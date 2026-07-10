@@ -51,6 +51,16 @@ the fields of a `pmix_proc_info_t` structure. PMIx also provides the
 ``PMIx_Proc_info_create``, and ``PMIx_Proc_info_free`` support functions for
 initializing, releasing, allocating, and freeing these structures.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_proc_info_t`` may be initialized with the
+``PMIX_PROC_INFO_STATIC_INIT`` macro, which initializes the embedded ``proc`` (with ``rank`` set to ``PMIX_RANK_UNDEF``), sets ``hostname`` and ``executable_name`` to ``NULL`` and ``pid`` and ``exit_code`` to ``0``, and sets ``state`` to ``PMIX_PROC_STATE_UNDEF``:
+
+.. code-block:: c
+
+   pmix_proc_info_t pinfo = PMIX_PROC_INFO_STATIC_INIT;
+
 
 .. seealso::
    :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`,

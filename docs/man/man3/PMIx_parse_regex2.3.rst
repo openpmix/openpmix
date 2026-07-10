@@ -30,7 +30,7 @@ No Python equivalent
 INPUT PARAMETERS
 ----------------
 
-* ``regex``: Pointer to a ``pmix_regex2_t`` structure as returned by
+* ``regex``: Pointer to a :ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>` structure as returned by
   :ref:`PMIx_generate_regex2(3) <man3-PMIx_generate_regex2>`. Its
   colon-delimited ``type`` prefix selects the decoding method.
 * ``info``: Optional array of :ref:`pmix_info_t(5) <man5-pmix_info_t>`
@@ -103,4 +103,5 @@ with ``free()`` when no longer needed.
    :ref:`PMIx_generate_regex2(3) <man3-PMIx_generate_regex2>`,
    :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>`

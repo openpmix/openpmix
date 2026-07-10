@@ -47,6 +47,16 @@ The fields are:
    The single character used as the delimiter when composing the aggregate value
    of the environment variable from its constituent arguments.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_envar_t`` may be initialized with the
+``PMIX_ENVAR_STATIC_INIT`` macro, which sets ``envar`` and ``value`` to ``NULL`` and ``separator`` to the null character ``'\0'``:
+
+.. code-block:: c
+
+   pmix_envar_t envar = PMIX_ENVAR_STATIC_INIT;
+
 
 .. seealso::
    :ref:`pmix_value_t(5) <man5-pmix_value_t>`,

@@ -57,6 +57,16 @@ grouped within the *node* realm.
 The ``PMIX_GEOMETRY_STATIC_INIT`` macro is provided to statically initialize a
 `pmix_geometry_t` structure.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_geometry_t`` may be initialized with the
+``PMIX_GEOMETRY_STATIC_INIT`` macro, which sets ``fabric`` and ``ncoords`` to ``0`` and ``uuid``, ``osname``, and ``coordinates`` to ``NULL``:
+
+.. code-block:: c
+
+   pmix_geometry_t geometry = PMIX_GEOMETRY_STATIC_INIT;
+
 
 .. seealso::
    :ref:`pmix_coord_t(5) <man5-pmix_coord_t>`,

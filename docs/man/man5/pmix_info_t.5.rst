@@ -78,6 +78,17 @@ setting flags on `pmix_info_t` structures. These include:
 The flag values that may appear in the ``flags`` field are enumerated in
 :ref:`pmix_info_directives_t(5) <man5-pmix_info_directives_t>`.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_info_t`` may be initialized with the
+``PMIX_INFO_STATIC_INIT`` macro, which clears ``key`` and ``flags`` and initializes the embedded ``value`` (with ``type`` set to ``PMIX_UNDEF``):
+
+.. code-block:: c
+
+   pmix_info_t info = PMIX_INFO_STATIC_INIT;
+
+
 .. seealso::
    :ref:`PMIx_Info_construct(3) <man3-PMIx_Info_construct>`,
    :ref:`PMIx_Info_create(3) <man3-PMIx_Info_create>`,

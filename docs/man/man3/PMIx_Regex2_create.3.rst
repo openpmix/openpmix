@@ -6,7 +6,7 @@ PMIx_Regex2_create
 .. include_body
 
 ``PMIx_Regex2_create`` |mdash| Allocate and initialize an array of
-``pmix_regex2_t`` structures.
+:ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>` structures.
 
 
 SYNOPSIS
@@ -79,4 +79,5 @@ Create and later free an array:
 .. seealso::
    :ref:`PMIx_Regex2_free(3) <man3-PMIx_Regex2_free>`,
    :ref:`PMIx_Regex2_construct(3) <man3-PMIx_Regex2_construct>`,
-   :ref:`PMIx_Regex2_destruct(3) <man3-PMIx_Regex2_destruct>`
+   :ref:`PMIx_Regex2_destruct(3) <man3-PMIx_Regex2_destruct>`,
+   :ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>`

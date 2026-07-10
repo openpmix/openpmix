@@ -65,6 +65,16 @@ device locations) or other factors.
 An array of `pmix_device_distance_t` structures is returned by
 :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>`.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_device_distance_t`` may be initialized with the
+``PMIX_DEVICE_DIST_STATIC_INIT`` macro, which sets ``uuid`` and ``osname`` to ``NULL``, ``type`` to ``PMIX_DEVTYPE_UNKNOWN``, and both ``mindist`` and ``maxdist`` to ``UINT16_MAX`` (the "unknown distance" sentinel):
+
+.. code-block:: c
+
+   pmix_device_distance_t dist = PMIX_DEVICE_DIST_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>`,

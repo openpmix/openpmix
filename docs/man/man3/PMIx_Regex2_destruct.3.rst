@@ -6,7 +6,7 @@ PMIx_Regex2_destruct
 .. include_body
 
 ``PMIx_Regex2_destruct`` |mdash| Release the contents of a
-``pmix_regex2_t`` structure.
+:ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>` structure.
 
 
 SYNOPSIS
@@ -63,4 +63,5 @@ the array storage itself |mdash| use :ref:`PMIx_Regex2_free(3)
 .. seealso::
    :ref:`PMIx_Regex2_construct(3) <man3-PMIx_Regex2_construct>`,
    :ref:`PMIx_Regex2_create(3) <man3-PMIx_Regex2_create>`,
-   :ref:`PMIx_Regex2_free(3) <man3-PMIx_Regex2_free>`
+   :ref:`PMIx_Regex2_free(3) <man3-PMIx_Regex2_free>`,
+   :ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>`

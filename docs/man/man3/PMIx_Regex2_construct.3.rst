@@ -6,7 +6,7 @@ PMIx_Regex2_construct
 .. include_body
 
 ``PMIx_Regex2_construct`` |mdash| Initialize a caller-provided
-``pmix_regex2_t`` structure.
+:ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>` structure.
 
 
 SYNOPSIS
@@ -87,4 +87,5 @@ Construct a structure:
 .. seealso::
    :ref:`PMIx_Regex2_destruct(3) <man3-PMIx_Regex2_destruct>`,
    :ref:`PMIx_Regex2_create(3) <man3-PMIx_Regex2_create>`,
-   :ref:`PMIx_Regex2_free(3) <man3-PMIx_Regex2_free>`
+   :ref:`PMIx_Regex2_free(3) <man3-PMIx_Regex2_free>`,
+   :ref:`pmix_regex2_t(5) <man5-pmix_regex2_t>`

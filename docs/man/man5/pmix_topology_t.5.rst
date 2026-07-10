@@ -45,6 +45,16 @@ A `pmix_topology_t` may be populated by
 :ref:`PMIx_Load_topology(3) <man3-PMIx_Load_topology>` and is consumed by
 operations such as :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>`.
 
+STATIC INITIALIZER
+------------------
+
+A statically declared ``pmix_topology_t`` may be initialized with the
+``PMIX_TOPOLOGY_STATIC_INIT`` macro, which sets both ``source`` and ``topology`` to ``NULL``:
+
+.. code-block:: c
+
+   pmix_topology_t topology = PMIX_TOPOLOGY_STATIC_INIT;
+
 
 .. seealso::
    :ref:`PMIx_Load_topology(3) <man3-PMIx_Load_topology>`,
