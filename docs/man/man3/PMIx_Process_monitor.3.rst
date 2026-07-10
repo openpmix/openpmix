@@ -187,6 +187,123 @@ When a monitoring request involves other nodes, the library adds the
 passes to its host environment.
 
 
+RESOURCE USAGE ATTRIBUTES
+-------------------------
+
+The following attributes describe the individual resource-usage statistics
+associated with the ``PMIX_MONITOR_PROC_RESOURCE_USAGE``,
+``PMIX_MONITOR_NODE_RESOURCE_USAGE``, ``PMIX_MONITOR_DISK_RESOURCE_USAGE``, and
+``PMIX_MONITOR_NET_RESOURCE_USAGE`` actions. They serve a dual purpose: placed
+(as keys, with their values ignored) in the array accompanying a
+``*_RESOURCE_USAGE`` action, they select which specific statistics are to be
+reported; they then label the corresponding values in the returned data. If the
+accompanying array is ``NULL``, all available statistics are reported. The
+availability of any given statistic varies across implementations and operating
+systems. Each per-sample container places its subject identifier in the first
+element of the array; the ordering of the remaining elements is arbitrary.
+
+Process resource usage:
+
+* ``PMIX_PROC_RESOURCE_USAGE`` (pmix_data_array_t*) |mdash| array of
+  :ref:`pmix_info_t(5) <man5-pmix_info_t>` describing the resource usage of a
+  process, with the process ID (marked by ``PMIX_PROCID``) as the first element.
+* ``PMIX_PROC_OS_STATE`` (char*) |mdash| the state of the process as reported by
+  the OS (on Linux, a single character).
+* ``PMIX_PROC_TIME`` (struct timeval) |mdash| cumulative CPU time.
+* ``PMIX_PROC_PERCENT_CPU`` (float) |mdash| percent CPU utilization by the
+  process (typically the CPU-time / real-time ratio, as a percentage).
+* ``PMIX_PROC_PRIORITY`` (int32_t) |mdash| priority of the process (higher
+  numbers mean higher priority).
+* ``PMIX_PROC_NUM_THREADS`` (uint16_t) |mdash| number of threads operating in
+  the process.
+* ``PMIX_PROC_PSS`` (float) |mdash| proportional share size |mdash| the
+  non-swapped physical memory, with shared memory proportionally accounted to
+  all tasks mapping it (MBytes).
+* ``PMIX_PROC_VSIZE`` (float) |mdash| virtual memory size of the process
+  (MBytes).
+* ``PMIX_PROC_RSS`` (float) |mdash| resident set size |mdash| the non-swapped
+  physical memory the task has used (MBytes).
+* ``PMIX_PROC_PEAK_VSIZE`` (float) |mdash| peak virtual memory size of the
+  process (MBytes).
+* ``PMIX_PROC_CPU`` (uint16_t) |mdash| the processor on which the process last
+  executed.
+* ``PMIX_PROC_SAMPLE_TIME`` (time_t) |mdash| time when the sample was taken.
+  Always included in returned process-usage data.
+
+Disk resource usage:
+
+* ``PMIX_DISK_RESOURCE_USAGE`` (pmix_data_array_t*) |mdash| array of
+  :ref:`pmix_info_t(5) <man5-pmix_info_t>` describing the resource usage of a
+  disk, with the disk name (marked by ``PMIX_DISK_ID``) as the first element.
+* ``PMIX_DISK_ID`` (char*) |mdash| string identifier of a disk.
+* ``PMIX_DISK_READ_COMPLETED`` (uint64_t) |mdash| number of completed read
+  operations.
+* ``PMIX_DISK_READ_MERGED`` (uint64_t) |mdash| number of merged reads.
+* ``PMIX_DISK_READ_SECTORS`` (uint64_t) |mdash| number of sectors read.
+* ``PMIX_DISK_READ_MILLISEC`` (uint64_t) |mdash| milliseconds spent reading the
+  disk.
+* ``PMIX_DISK_WRITE_COMPLETED`` (uint64_t) |mdash| number of completed write
+  operations.
+* ``PMIX_DISK_WRITE_MERGED`` (uint64_t) |mdash| number of merged writes.
+* ``PMIX_DISK_WRITE_SECTORS`` (uint64_t) |mdash| number of sectors written.
+* ``PMIX_DISK_WRITE_MILLISEC`` (uint64_t) |mdash| milliseconds spent writing to
+  the disk.
+* ``PMIX_DISK_IO_IN_PROGRESS`` (uint64_t) |mdash| number of disk I/O operations
+  in progress.
+* ``PMIX_DISK_IO_MILLISEC`` (uint64_t) |mdash| milliseconds spent in I/O
+  operations.
+* ``PMIX_DISK_IO_WEIGHTED`` (uint64_t) |mdash| number of I/Os in progress times
+  the milliseconds spent doing I/O since the last update |mdash| an indicator of
+  accumulating backlog.
+* ``PMIX_DISK_SAMPLE_TIME`` (time_t) |mdash| time when the sample was taken.
+  Always included in returned disk-usage data.
+
+Network resource usage:
+
+* ``PMIX_NETWORK_RESOURCE_USAGE`` (pmix_data_array_t*) |mdash| array of
+  :ref:`pmix_info_t(5) <man5-pmix_info_t>` describing the resource usage of a
+  network interface, with the interface name (marked by ``PMIX_NETWORK_ID``) as
+  the first element.
+* ``PMIX_NETWORK_ID`` (char*) |mdash| string identifier of a network interface.
+* ``PMIX_NET_RECVD_BYTES`` (uint64_t) |mdash| number of bytes received.
+* ``PMIX_NET_RECVD_PCKTS`` (uint64_t) |mdash| number of packets received.
+* ``PMIX_NET_RECVD_ERRS`` (uint64_t) |mdash| number of receive errors.
+* ``PMIX_NET_SENT_BYTES`` (uint64_t) |mdash| number of bytes sent.
+* ``PMIX_NET_SENT_PCKTS`` (uint64_t) |mdash| number of packets sent.
+* ``PMIX_NET_SENT_ERRS`` (uint64_t) |mdash| number of send errors.
+* ``PMIX_NET_SAMPLE_TIME`` (time_t) |mdash| time when the sample was taken.
+  Always included in returned network-usage data.
+
+Node resource usage:
+
+* ``PMIX_NODE_RESOURCE_USAGE`` (pmix_data_array_t*) |mdash| array of
+  :ref:`pmix_info_t(5) <man5-pmix_info_t>` describing the resource usage of a
+  node, with the node ID (marked by ``PMIX_HOSTNAME`` or ``PMIX_NODEID``) as the
+  first element.
+* ``PMIX_NODE_LOAD_AVG`` (float) |mdash| load average over the last minute.
+* ``PMIX_NODE_LOAD_AVG5`` (float) |mdash| load average over the last five
+  minutes.
+* ``PMIX_NODE_LOAD_AVG15`` (float) |mdash| load average over the last fifteen
+  minutes.
+* ``PMIX_NODE_MEM_TOTAL`` (float) |mdash| total usable RAM |mdash| physical RAM
+  minus reserved bits and kernel binary code (MBytes).
+* ``PMIX_NODE_MEM_FREE`` (float) |mdash| total free RAM (MBytes).
+* ``PMIX_NODE_MEM_BUFFERS`` (float) |mdash| temporary storage for raw disk
+  blocks (MBytes).
+* ``PMIX_NODE_MEM_CACHED`` (float) |mdash| in-memory cache for files read from
+  disk, plus tmpfs and shmem (excluding ``PMIX_NODE_MEM_SWAP_CACHED``) (MBytes).
+* ``PMIX_NODE_MEM_SWAP_CACHED`` (float) |mdash| memory that was swapped out and
+  swapped back in but is still also present in the swapfile (MBytes).
+* ``PMIX_NODE_SWAP_TOTAL`` (float) |mdash| total amount of swap space available
+  (MBytes).
+* ``PMIX_NODE_MEM_SWAP_FREE`` (float) |mdash| memory evicted from RAM and
+  temporarily on disk (MBytes).
+* ``PMIX_NODE_MEM_MAPPED`` (float) |mdash| files that have been mmapped, such as
+  libraries (MBytes).
+* ``PMIX_NODE_SAMPLE_TIME`` (time_t) |mdash| time when the sample was taken.
+  Always included in returned node-usage data.
+
+
 RETURN VALUE
 ------------
 
