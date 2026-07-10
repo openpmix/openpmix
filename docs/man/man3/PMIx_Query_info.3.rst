@@ -129,6 +129,12 @@ Commonly used **keys**:
   user-level API names (e.g., ``"PMIx_Get"``) whose support is being queried.
 * ``PMIX_QUERY_NUM_PSETS`` / ``PMIX_QUERY_PSET_NAMES`` |mdash| return the number,
   or the names, of the defined process sets.
+* ``PMIX_GROUP_NAMES`` (pmix_data_array_t*) |mdash| return an array of the string
+  names of the process groups in which the given process is a member. The target
+  process is identified with the usual ``PMIX_PROCID`` (or ``PMIX_NSPACE`` /
+  ``PMIX_RANK``) qualifier. This key may also be passed directly to
+  :ref:`PMIx_Get(3) <man3-PMIx_Get>` to retrieve the same information for a single
+  process.
 * ``PMIX_QUERY_AVAIL_SERVERS`` |mdash| scan the local node for PMIx servers the
   caller could connect to.
 * ``PMIX_QUERY_STABLE_ABI_VERSION`` / ``PMIX_QUERY_PROVISIONAL_ABI_VERSION``
