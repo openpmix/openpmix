@@ -190,6 +190,9 @@ DIRECTIVES
 
 The following attributes are relevant to this operation:
 
+* ``PMIX_GROUP_ID`` (char*) |mdash| the user-provided group identifier. This is
+  normally passed as the ``grp`` argument; the attribute form is accepted as an
+  equivalent means of conveying the identifier.
 * ``PMIX_GROUP_LEADER`` (bool) |mdash| declare this process to be the leader of
   the construction procedure. If a process provides this attribute, failure
   notification for any participating process goes only to that process. In the
@@ -221,9 +224,32 @@ The following attributes are relevant to this operation:
   the surviving members when a required member is lost, delivering a
   ``PMIX_GROUP_MEMBER_FAILED`` event for each loss, instead of aborting the
   operation (default: ``false``).
+* ``PMIX_GROUP_INFO`` (pmix_data_array_t\*) |mdash| an array of
+  :ref:`pmix_info_t(5) <man5-pmix_info_t>` containing data that is to be shared
+  across all members of the group during construction. When the array is passed
+  to the host, its first element must be the process ID (marked by
+  ``PMIX_PROCID``) of the process that provided it.
+* ``PMIX_GROUP_LOCAL_ONLY`` (bool) |mdash| the group operation involves only
+  processes that are local to this node, allowing the library to complete it
+  without engaging the host environment.
+* ``PMIX_GROUP_FINAL_MEMBERSHIP_ORDER`` (pmix_data_array_t\*) |mdash| an array of
+  ``pmix_proc_t`` specifying the desired order of the processes in the final
+  group membership. The order may be given by individual process or by namespace
+  (with a wildcard rank). If more than one participant supplies this attribute,
+  the provided orderings must be identical.
 * ``PMIX_TIMEOUT`` (int) |mdash| return an error if the group does not assemble
   within the specified number of seconds. This targets the scenario where a
   process fails to participate due to hanging.
+
+The following values may be returned in the ``results`` array (or the
+non-blocking callback):
+
+* ``PMIX_GROUP_CONTEXT_ID`` (size_t) |mdash| the numerical context ID assigned to
+  the group by the resource manager, returned when ``PMIX_GROUP_ASSIGN_CONTEXT_ID``
+  was requested.
+* ``PMIX_GROUP_MEMBERSHIP`` (pmix_data_array_t\*) |mdash| an array of
+  ``pmix_proc_t`` giving the final membership of the constructed group. This is
+  also carried by the ``PMIX_GROUP_MEMBERSHIP_UPDATE`` event.
 
 
 RETURN VALUE
