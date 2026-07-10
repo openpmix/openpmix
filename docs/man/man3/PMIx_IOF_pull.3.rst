@@ -123,6 +123,15 @@ The following attributes are optional:
   identity (namespace/rank) and channel from which it originated.
 * ``PMIX_IOF_TIMESTAMP_OUTPUT`` (bool) |mdash| timestamp the output.
 * ``PMIX_IOF_XML_OUTPUT`` (bool) |mdash| format the output in XML.
+* ``PMIX_IOF_COPY`` (bool) |mdash| request that the host environment deliver a
+  *copy* of the specified output stream(s) to the requesting tool while the
+  stream(s) continue to be delivered to their current final destination. This
+  lets the tool tap into the output without redirecting it.
+* ``PMIX_IOF_REDIRECT`` (bool) |mdash| request that the host environment
+  *intercept* the specified output stream(s) and deliver them to the requesting
+  tool instead of their current final destination |mdash| for example, to keep
+  debugger-related output out of the application's result files. The original
+  destination is restored when the tool terminates.
 
 
 CALLBACK FUNCTION
