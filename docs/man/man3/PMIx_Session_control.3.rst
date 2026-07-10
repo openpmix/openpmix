@@ -44,8 +44,8 @@ INPUT PARAMETERS
   applies to all sessions under the caller's control.
 * ``directives``: Pointer to an array of
   :ref:`pmix_info_t(5) <man5-pmix_info_t>` structures describing the control
-  action(s) to be taken. A ``NULL`` value is supported when no directives are
-  desired.
+  action(s) to be taken (see `DIRECTIVES`_). A ``NULL`` value is supported when
+  no directives are desired.
 * ``ndirs``: Number of elements in the ``directives`` array.
 * ``cbfunc``: Callback function of type :ref:`pmix_info_cbfunc_t <man5-pmix_info_cbfunc_t>`. If ``NULL``, the
   call is treated as a blocking operation; otherwise it is non-blocking and the
@@ -75,6 +75,67 @@ through a single entry point, selected by the ``cbfunc`` argument:
 
 As with all non-blocking PMIx APIs, when a ``cbfunc`` is supplied the caller
 **must** keep the ``directives`` array valid until ``cbfunc`` is invoked.
+
+
+DIRECTIVES
+----------
+
+The requested action is expressed entirely through the ``directives`` array.
+The PMIx library is not required to interpret these directives itself |mdash|
+it passes them to the host environment (typically the scheduler) for
+processing. Actual support for any given directive depends on the host
+environment.
+
+Identifying the request:
+
+* ``PMIX_SESSION_CTRL_ID`` (char*) |mdash| a string identifier for this request,
+  allowing its status to later be queried or the operation to be cancelled.
+
+Instantiating a session (typically issued by a scheduler):
+
+* ``PMIX_SESSION_INSTANTIATE`` (bool) |mdash| instantiate the specified session.
+* ``PMIX_SESSION_RESOURCES`` (pmix_data_array_t*) |mdash| array of
+  :ref:`pmix_info_t(5) <man5-pmix_info_t>` structures describing the resources
+  to be included in the session (e.g., a regular expression of node names, an
+  array of resource blocks, etc.).
+* ``PMIX_SESSION_APP`` (pmix_data_array_t*) |mdash| array of ``pmix_app_t``
+  structures to be executed in the assigned session upon instantiation.
+* ``PMIX_SESSION_JOB`` (pmix_data_array_t*) |mdash| array of
+  :ref:`pmix_info_t(5) <man5-pmix_info_t>` structures describing the job
+  information to be applied in conjunction with the specified
+  ``PMIX_SESSION_APP`` definitions. It is an error to provide this without a
+  ``PMIX_SESSION_APP`` description.
+* ``PMIX_SESSION_PROVISION_NODES`` (char*) |mdash| regular expression
+  identifying nodes that are to be provisioned.
+* ``PMIX_SESSION_PROVISION_IMAGE`` (char*) |mdash| name of the image that is to
+  be provisioned.
+
+Controlling a session's operation:
+
+* ``PMIX_SESSION_PAUSE`` (bool) |mdash| pause all jobs in the specified session.
+* ``PMIX_SESSION_RESUME`` (bool) |mdash| resume ("un-pause") all jobs in the
+  specified session.
+* ``PMIX_SESSION_PREEMPT`` (bool) |mdash| preempt the indicated jobs (named via
+  a ``PMIX_NSPACE`` attribute in the accompanying array) in the specified
+  session and recover all their resources. If no ``PMIX_NSPACE`` is given, all
+  jobs in the session are preempted.
+* ``PMIX_SESSION_RESTORE`` (bool) |mdash| restore the indicated jobs (named via
+  a ``PMIX_NSPACE`` attribute in the accompanying array) in the specified
+  session, including all their resources. If no ``PMIX_NSPACE`` is given, all
+  jobs in the session are restored.
+* ``PMIX_SESSION_SIGNAL`` (int) |mdash| send the given signal to all processes
+  of every job in the session.
+* ``PMIX_SESSION_EXTEND`` (bool) |mdash| extend the specified session, either in
+  time or in resources, based on additional provided attributes.
+* ``PMIX_SESSION_SEP`` (bool) |mdash| separate the specified session from its
+  parent |mdash| i.e., allow the two to terminate independently.
+* ``PMIX_SESSION_TERMINATE`` (bool) |mdash| terminate all jobs in the specified
+  session and recover all resources included in the session.
+* ``PMIX_SESSION_COMPLETE`` (bool) |mdash| indicate that the specified session
+  has completed and all of its resources have been recovered and are available
+  for scheduling. The accompanying array must include
+  :ref:`pmix_info_t(5) <man5-pmix_info_t>` structures reporting the returned
+  status of any jobs executed in the session.
 
 
 RETURN VALUE
