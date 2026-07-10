@@ -51,4 +51,5 @@ freed.
 
 
 .. seealso::
-   :ref:`PMIx_Resource_block(3) <man3-PMIx_Resource_block>`
+   :ref:`PMIx_Resource_block(3) <man3-PMIx_Resource_block>`,
+   :ref:`pmix_resource_block_directive_t(5) <man5-pmix_resource_block_directive_t>`

@@ -216,4 +216,5 @@ delivered to the affected processes.
    :ref:`PMIx_Allocation_request(3) <man3-PMIx_Allocation_request>`,
    :ref:`PMIx_Session_control(3) <man3-PMIx_Session_control>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

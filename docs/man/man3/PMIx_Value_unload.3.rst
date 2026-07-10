@@ -135,4 +135,5 @@ will equal 16 as that is the size of the structure.
 
 
 .. seealso::
-   :ref:`pmix_value_t(5) <man5-pmix_value_t>`
+   :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
+   :ref:`pmix_byte_object_t(5) <man5-pmix_byte_object_t>`

@@ -208,4 +208,5 @@ request against itself and will receive ``PMIX_ERR_NOT_SUPPORTED``.
    :ref:`PMIx_Resource_block(3) <man3-PMIx_Resource_block>`,
    :ref:`PMIx_Session_control(3) <man3-PMIx_Session_control>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_alloc_directive_t(5) <man5-pmix_alloc_directive_t>`

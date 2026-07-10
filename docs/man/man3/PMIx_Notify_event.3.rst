@@ -209,4 +209,6 @@ removed with
    :ref:`PMIx_Register_event_handler(3) <man3-PMIx_Register_event_handler>`,
    :ref:`PMIx_Deregister_event_handler(3) <man3-PMIx_Deregister_event_handler>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_data_range_t(5) <man5-pmix_data_range_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

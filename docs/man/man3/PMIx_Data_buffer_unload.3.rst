@@ -79,4 +79,5 @@ macro, which is implemented in terms of this function.
    :ref:`PMIx_Data_buffer_load(3) <man3-PMIx_Data_buffer_load>`,
    :ref:`PMIx_Data_buffer_create(3) <man3-PMIx_Data_buffer_create>`,
    :ref:`PMIx_Data_buffer_release(3) <man3-PMIx_Data_buffer_release>`,
-   :ref:`PMIx_Data_unload(3) <man3-PMIx_Data_unload>`
+   :ref:`PMIx_Data_unload(3) <man3-PMIx_Data_unload>`,
+   :ref:`pmix_data_buffer_t(5) <man5-pmix_data_buffer_t>`

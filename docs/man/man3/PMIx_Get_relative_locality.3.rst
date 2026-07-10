@@ -107,4 +107,5 @@ no attributes.
    :ref:`PMIx_Parse_cpuset_string(3) <man3-PMIx_Parse_cpuset_string>`,
    :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>`,
    :ref:`PMIx_Load_topology(3) <man3-PMIx_Load_topology>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_locality_t(5) <man5-pmix_locality_t>`

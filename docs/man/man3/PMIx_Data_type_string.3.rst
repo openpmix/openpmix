@@ -47,4 +47,5 @@ freed.
 
 
 .. seealso::
-   :ref:`pmix_value_t(5) <man5-pmix_value_t>`
+   :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
+   :ref:`pmix_data_type_t(5) <man5-pmix_data_type_t>`

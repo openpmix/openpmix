@@ -51,4 +51,5 @@ freed.
 
 
 .. seealso::
-   :ref:`PMIx_Put(3) <man3-PMIx_Put>`
+   :ref:`PMIx_Put(3) <man3-PMIx_Put>`,
+   :ref:`pmix_scope_t(5) <man5-pmix_scope_t>`

@@ -133,8 +133,13 @@ matching sequence of ``PMIx_Data_unpack`` calls issued in the same order.
 
 
 .. seealso::
-   :ref:`PMIx_Data_pack(3) <man3-PMIx_Data_pack>`
-
-   Related routines (not all cross-referenced as links): PMIx_Data_copy(3),
-   PMIx_Data_print(3), PMIx_Data_copy_payload(3), PMIx_Data_load(3),
-   PMIx_Data_unload(3), PMIx_Data_buffer_construct(3)
+   :ref:`PMIx_Data_pack(3) <man3-PMIx_Data_pack>`,
+   :ref:`PMIx_Data_copy(3) <man3-PMIx_Data_copy>`,
+   :ref:`PMIx_Data_print(3) <man3-PMIx_Data_print>`,
+   :ref:`PMIx_Data_copy_payload(3) <man3-PMIx_Data_copy_payload>`,
+   :ref:`PMIx_Data_load(3) <man3-PMIx_Data_load>`,
+   :ref:`PMIx_Data_unload(3) <man3-PMIx_Data_unload>`,
+   :ref:`PMIx_Data_buffer_construct(3) <man3-PMIx_Data_buffer_construct>`,
+   :ref:`pmix_data_buffer_t(5) <man5-pmix_data_buffer_t>`,
+   :ref:`pmix_data_type_t(5) <man5-pmix_data_type_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

@@ -57,4 +57,5 @@ macro, which is implemented as an assignment from a call to this function.
    :ref:`PMIx_Data_buffer_construct(3) <man3-PMIx_Data_buffer_construct>`,
    :ref:`PMIx_Data_buffer_destruct(3) <man3-PMIx_Data_buffer_destruct>`,
    :ref:`PMIx_Data_buffer_load(3) <man3-PMIx_Data_buffer_load>`,
-   :ref:`PMIx_Data_buffer_unload(3) <man3-PMIx_Data_buffer_unload>`
+   :ref:`PMIx_Data_buffer_unload(3) <man3-PMIx_Data_buffer_unload>`,
+   :ref:`pmix_data_buffer_t(5) <man5-pmix_data_buffer_t>`

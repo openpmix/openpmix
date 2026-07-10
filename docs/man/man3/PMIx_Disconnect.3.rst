@@ -167,4 +167,5 @@ avoids these events.
    :ref:`PMIx_Connect(3) <man3-PMIx_Connect>`,
    :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

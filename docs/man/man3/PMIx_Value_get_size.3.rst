@@ -88,4 +88,6 @@ structure and its contents.
 .. seealso::
    :ref:`PMIx_Info_get_size(3) <man3-PMIx_Info_get_size>`,
    :ref:`PMIx_Value_unload(3) <man3-PMIx_Value_unload>`,
-   :ref:`pmix_value_t(5) <man5-pmix_value_t>`
+   :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
+   :ref:`pmix_byte_object_t(5) <man5-pmix_byte_object_t>`,
+   :ref:`pmix_data_buffer_t(5) <man5-pmix_data_buffer_t>`

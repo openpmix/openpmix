@@ -117,4 +117,5 @@ the node hosts no processes in the requested namespace |mdash| it is not an erro
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`,
    :ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

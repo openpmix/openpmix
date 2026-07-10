@@ -280,4 +280,6 @@ internally and simply returns ``PMIX_SUCCESS`` with the namespace populated.
    :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`,
    :ref:`PMIx_Job_control(3) <man3-PMIx_Job_control>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_app_t(5) <man5-pmix_app_t>`,
+   :ref:`pmix_nspace_t(5) <man5-pmix_nspace_t>`

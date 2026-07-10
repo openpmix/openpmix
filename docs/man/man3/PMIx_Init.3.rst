@@ -217,9 +217,10 @@ were registered with a PMIx server before being started. Processes acting as
    :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>`,
    :ref:`PMIx_Abort(3) <man3-PMIx_Abort>`,
    :ref:`PMIx_Initialized(3) <man3-PMIx_Initialized>`,
-   PMIx_Progress(3),
+   :ref:`PMIx_Progress(3) <man3-PMIx_Progress>`,
    :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    PMIx_tool_init(3),
    PMIx_server_init(3),
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

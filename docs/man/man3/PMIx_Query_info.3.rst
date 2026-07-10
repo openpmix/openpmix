@@ -207,4 +207,5 @@ overhead of constructing and processing the ``pmix_query_t`` structure.
    :ref:`PMIx_Resolve_peers(3) <man3-PMIx_Resolve_peers>`,
    :ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_query_t(5) <man5-pmix_query_t>`

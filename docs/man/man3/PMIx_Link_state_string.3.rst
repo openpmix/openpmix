@@ -60,4 +60,5 @@ is always non-``NULL`` and must not be freed by the caller.
 
 .. seealso::
    ``PMIx_Job_state_string(3)``,
-   ``PMIx_Device_type_string(3)``
+   ``PMIx_Device_type_string(3)``,
+   :ref:`pmix_link_state_t(5) <man5-pmix_link_state_t>`

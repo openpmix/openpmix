@@ -230,4 +230,5 @@ host-environment-dependent.
    :ref:`PMIx_Heartbeat(3) <man3-PMIx_Heartbeat>`,
    :ref:`PMIx_Log(3) <man3-PMIx_Log>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_node_pid_t(5) <man5-pmix_node_pid_t>`

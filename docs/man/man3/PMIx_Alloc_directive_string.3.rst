@@ -50,4 +50,5 @@ freed.
 
 
 .. seealso::
-   :ref:`PMIx_Allocation_request(3) <man3-PMIx_Allocation_request>`
+   :ref:`PMIx_Allocation_request(3) <man3-PMIx_Allocation_request>`,
+   :ref:`pmix_alloc_directive_t(5) <man5-pmix_alloc_directive_t>`

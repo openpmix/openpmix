@@ -182,4 +182,5 @@ publication range.
    :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
    :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_pdata_t(5) <man5-pmix_pdata_t>`

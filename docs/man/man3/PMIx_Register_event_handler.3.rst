@@ -232,4 +232,5 @@ boundary.
    :ref:`PMIx_Notify_event(3) <man3-PMIx_Notify_event>`,
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`

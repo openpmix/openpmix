@@ -96,4 +96,5 @@ be handed back to :ref:`PMIx_Data_decompress(3) <man3-PMIx_Data_decompress>`.
 
 
 .. seealso::
-   :ref:`PMIx_Data_decompress(3) <man3-PMIx_Data_decompress>`
+   :ref:`PMIx_Data_decompress(3) <man3-PMIx_Data_decompress>`,
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`

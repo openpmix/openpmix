@@ -100,4 +100,6 @@ attributes.
    :ref:`PMIx_Get_relative_locality(3) <man3-PMIx_Get_relative_locality>`,
    :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>`,
    :ref:`PMIx_Load_topology(3) <man3-PMIx_Load_topology>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :ref:`pmix_bind_envelope_t(5) <man5-pmix_bind_envelope_t>`,
+   :ref:`pmix_cpuset_t(5) <man5-pmix_cpuset_t>`
