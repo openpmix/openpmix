@@ -146,24 +146,114 @@ support the following attributes:
   this allocation request, which can later be used to query its status.
 * ``PMIX_ALLOC_NUM_NODES`` (uint64_t) |mdash| number of nodes being requested.
 * ``PMIX_ALLOC_NUM_CPUS`` (uint64_t) |mdash| number of CPUs being requested.
-* ``PMIX_ALLOC_TIME`` (uint32_t) |mdash| time (in seconds) for which the
-  resources are being requested.
+* ``PMIX_ALLOC_TIME`` (char*) |mdash| time for which the resources are being
+  requested, specified in the usual ``months:days:hours:minutes:seconds``
+  format, scanned from right to left (i.e., a value of ``"2"`` equates to two
+  seconds).
 
 The following attributes are optional for host environments that support this
-operation:
+operation.
+
+Identifying an existing allocation (for the ``PMIX_ALLOC_EXTEND``,
+``PMIX_ALLOC_RELEASE``, ``PMIX_ALLOC_REAQUIRE``, and ``PMIX_ALLOC_REQ_CANCEL``
+directives):
+
+* ``PMIX_ALLOC_ID`` (char*) |mdash| the host-provided string identifier of the
+  allocation to be operated upon (used both as a qualifier on input and, for a
+  new-resource request, returned on output |mdash| see below).
+
+Describing the resources being requested:
 
 * ``PMIX_ALLOC_NODE_LIST`` (char*) |mdash| regular expression of the specific
   nodes being requested.
+* ``PMIX_ALLOC_EXCLUDE`` (char*) |mdash| regular expression of nodes to exclude
+  from scheduling consideration.
 * ``PMIX_ALLOC_NUM_CPU_LIST`` (char*) |mdash| regular expression of the number
   of CPUs being requested on each node.
 * ``PMIX_ALLOC_CPU_LIST`` (char*) |mdash| regular expression of the specific
   CPUs being requested on each node.
-* ``PMIX_ALLOC_MEM_SIZE`` (float) |mdash| amount of memory being requested.
-* ``PMIX_ALLOC_FABRIC``, ``PMIX_ALLOC_FABRIC_ID``, ``PMIX_ALLOC_BANDWIDTH``,
-  ``PMIX_ALLOC_FABRIC_QOS``, ``PMIX_ALLOC_FABRIC_TYPE``,
-  ``PMIX_ALLOC_FABRIC_PLANE``, ``PMIX_ALLOC_FABRIC_ENDPTS``,
-  ``PMIX_ALLOC_FABRIC_ENDPTS_NODE``, ``PMIX_ALLOC_FABRIC_SEC_KEY`` |mdash|
-  attributes describing fabric resources being requested.
+* ``PMIX_ALLOC_MEM_SIZE`` (float) |mdash| amount of memory being requested, in
+  Mbytes.
+* ``PMIX_ALLOC_RES_BLOCK`` (char*) |mdash| name of a previously-defined
+  resource block to be allocated.
+* ``PMIX_ALLOC_NUM_BLOCKS`` (uint64_t) |mdash| number of the specified resource
+  blocks to allocate.
+* ``PMIX_ALLOC_MAU`` (pmix_data_array_t*) |mdash| minimum allocatable unit for
+  the system, expressed as an array of ``pmix_resource_unit_t`` structures.
+* ``PMIX_ALLOC_IMAGE`` (char*) |mdash| name of the image that the requested
+  nodes are to have on them.
+* ``PMIX_MEM_ALLOC_KIND`` (char*) |mdash| comma-delimited list of memory kinds
+  being allocated (e.g., ``system,mpi,rocm:device``).
+* ``PMIX_GPU_SUPPORT`` (bool) |mdash| direct the application to enable (true)
+  or disable (false) its internal library's GPU support.
+
+Describing fabric resources being requested:
+
+* ``PMIX_ALLOC_FABRIC`` (pmix_data_array_t*) |mdash| array of
+  :ref:`pmix_info_t(5) <man5-pmix_info_t>` structures describing a fabric
+  resource request. It must include at least ``PMIX_ALLOC_FABRIC_ID``,
+  ``PMIX_ALLOC_FABRIC_TYPE``, and ``PMIX_ALLOC_FABRIC_ENDPTS``, plus any other
+  desired descriptors.
+* ``PMIX_ALLOC_FABRIC_ID`` (char*) |mdash| key to be used when accessing this
+  requested fabric allocation.
+* ``PMIX_ALLOC_FABRIC_TYPE`` (char*) |mdash| type of desired transport (e.g.,
+  ``tcp``, ``udp``).
+* ``PMIX_ALLOC_FABRIC_PLANE`` (char*) |mdash| identifier string for the NIC
+  (fabric plane) to be used for this allocation.
+* ``PMIX_ALLOC_FABRIC_ENDPTS`` (size_t) |mdash| number of endpoints to allocate
+  per process.
+* ``PMIX_ALLOC_FABRIC_ENDPTS_NODE`` (size_t) |mdash| number of endpoints to
+  allocate per node.
+* ``PMIX_ALLOC_FABRIC_QOS`` (char*) |mdash| quality-of-service level being
+  requested.
+* ``PMIX_ALLOC_BANDWIDTH`` (float) |mdash| bandwidth being requested, in
+  Mbits/sec.
+* ``PMIX_ALLOC_FABRIC_SEC_KEY`` (pmix_byte_object_t) |mdash| fabric security
+  key.
+
+Controlling scheduling, timing, and lifecycle:
+
+* ``PMIX_ALLOC_QUEUE`` (char*) |mdash| name of the queue being referenced.
+* ``PMIX_ALLOC_PREEMPTIBLE`` (bool) |mdash| whether the jobs in the resulting
+  allocation are to be considered preemptible (overridable at the per-job
+  level).
+* ``PMIX_ALLOC_BEGIN`` (char*) |mdash| direct the scheduler to defer the
+  allocation until the specified time (see the attribute definition in
+  ``pmix_common.h`` for the accepted time formats).
+* ``PMIX_ALLOC_DEPENDENCY`` (char*) |mdash| defer the start of the allocation
+  until the specified dependencies have successfully completed.
+* ``PMIX_ALLOC_WAIT_ALL_NODES`` (bool) |mdash| whether to wait for all nodes to
+  be scheduled before beginning to initialize and release nodes for use.
+* ``PMIX_ALLOC_WARN_TIMEOUT`` (uint32_t) |mdash| request that the scheduler
+  provide advance warning of the impending expiration of the allocation. The
+  value is the number of seconds prior to expiration at which the warning is to
+  be delivered via a ``PMIX_ALLOC_TIMEOUT_WARNING`` event.
+* ``PMIX_ALLOC_LEND`` (char*) |mdash| estimated time before the lent resources
+  shall be available for return, in the same time format as ``PMIX_ALLOC_TIME``
+  (used with the ``PMIX_ALLOC_RELEASE`` directive).
+* ``PMIX_ALLOC_RELEASABLE`` (bool) |mdash| true if the entire allocation may be
+  released.
+* ``PMIX_ALLOC_NOSHELL`` (bool) |mdash| immediately exit after allocating
+  resources, without running a command.
+* ``PMIX_ALLOC_NOT_WAITING`` (bool) |mdash| the requestor is not waiting for
+  the allocation to be issued; it will discover the allocation by monitoring
+  for the "allocated" event or by querying the system.
+* ``PMIX_ALLOC_PROPERTY`` (char*) |mdash| name of an allocation property.
+
+Controlling ownership, sharing, and inheritance:
+
+* ``PMIX_ALLOC_TARGET`` (char*) |mdash| namespace to which the allocated
+  resources are to be assigned; the host reserves the resources to members of
+  that namespace.
+* ``PMIX_ALLOC_SHARE`` (bool) |mdash| if true, make the allocated resources
+  generally available within the requestor's session rather than reserving them
+  solely for the requestor's namespace (false by default).
+* ``PMIX_ALLOC_CHILD_SEP`` (bool) |mdash| treat the resulting allocation as
+  independent from its parent |mdash| i.e., do not terminate the allocation
+  upon termination of the parent.
+* ``PMIX_ALLOC_INHERITANCE`` (pmix_alloc_inheritance_t) |mdash| inheritance
+  rules to be applied to the allocated resources. If not provided, defaults to
+  ``PMIX_ALLOC_INHERIT_DEFAULT``.
 
 On successful completion of a request for additional resources, the returned
 data includes ``PMIX_ALLOC_ID`` (char*), a host-provided string identifier for
