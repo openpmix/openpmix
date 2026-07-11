@@ -109,6 +109,81 @@ aid callers in identifying the fabric whose data is being sought:
   Mellanox, HPE, Intel) whose fabric is to be accessed.
 
 
+FABRIC INFORMATION ATTRIBUTES
+-----------------------------
+
+Once registration is complete, the fabric information is retrieved using
+:ref:`PMIx_Get(3) <man3-PMIx_Get>` or
+:ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`. The following keys identify the
+available fabric-level and per-device information. These are returned values
+rather than registration directives, though several also serve as request
+modifiers as noted. The ``PMIX_FABRIC_PLANE``, ``PMIX_FABRIC_IDENTIFIER``, and
+``PMIX_FABRIC_VENDOR`` directives above likewise double as retrieval modifiers;
+unless a specific plane is named, information is returned for all planes in the
+system.
+
+Fabric-level information:
+
+* ``PMIX_FABRIC_COST_MATRIX`` (pointer) |mdash| pointer to a two-dimensional array
+  of point-to-point relative communication costs, expressed as ``uint16_t``
+  values.
+* ``PMIX_FABRIC_NUM_DEVICES`` (size_t) |mdash| total number of fabric devices in
+  the system, corresponding to the number of rows or columns in the cost matrix.
+* ``PMIX_FABRIC_INDEX`` (size_t) |mdash| the index of the fabric as returned in the
+  ``pmix_fabric_t`` structure.
+* ``PMIX_FABRIC_GROUPS`` (char\*) |mdash| the fabric group membership of the nodes,
+  as a string of ``group:node,node,...`` entries delimited by semicolons.
+* ``PMIX_FABRIC_COORDINATES`` (pmix_data_array_t\*) |mdash| an array of
+  ``pmix_geometry_t`` fabric coordinates for the devices on a node, covering all
+  supported coordinate views. Defaults to the local node when none is specified.
+* ``PMIX_FABRIC_DIMS`` (uint32_t) |mdash| the number of dimensions in the specified
+  fabric plane/view.
+* ``PMIX_FABRIC_SHAPE`` (pmix_data_array_t\*) |mdash| the size of each dimension in
+  the specified fabric plane/view, as an array of ``uint32_t`` values.
+* ``PMIX_FABRIC_SHAPE_STRING`` (char\*) |mdash| the fabric shape expressed as a
+  string (e.g., ``"10x12x2"``).
+* ``PMIX_FABRIC_SWITCH`` (char\*) |mdash| the ID of a fabric switch. As a modifier,
+  selects the switch whose information is returned; as a direct key, returns the
+  identifiers of all switches in the system.
+* ``PMIX_FABRIC_ENDPT`` (pmix_data_array_t\*) |mdash| the fabric endpoints for a
+  specified process, returned as an array of ``pmix_endpoint_t`` elements.
+
+Per-device information (carried within each ``PMIX_FABRIC_DEVICE`` array):
+
+* ``PMIX_FABRIC_DEVICE`` (pmix_data_array_t\*) |mdash| an array of ``pmix_info_t``
+  describing a single fabric device; the first element is the device identifier.
+* ``PMIX_FABRIC_DEVICES`` (pmix_data_array_t\*) |mdash| an array containing a
+  ``PMIX_FABRIC_DEVICE`` entry for every device on the specified node.
+* ``PMIX_FABRIC_DEVICE_NAME`` (char\*) |mdash| the OS name of the device (e.g.,
+  ``eth0``) or an absolute filename.
+* ``PMIX_FABRIC_DEVICE_INDEX`` (uint32_t) |mdash| index of the device within the
+  associated cost matrix.
+* ``PMIX_FABRIC_DEVICE_VENDOR`` (char\*) |mdash| name of the device's vendor.
+* ``PMIX_FABRIC_DEVICE_VENDORID`` (char\*) |mdash| vendor-provided identifier for
+  the device or product.
+* ``PMIX_FABRIC_DEVICE_BUS_TYPE`` (char\*) |mdash| type of bus to which the device
+  is attached (e.g., ``"PCI"``, ``"GEN-Z"``).
+* ``PMIX_FABRIC_DEVICE_DRIVER`` (char\*) |mdash| name of the driver associated with
+  the device.
+* ``PMIX_FABRIC_DEVICE_FIRMWARE`` (char\*) |mdash| the device's firmware version.
+* ``PMIX_FABRIC_DEVICE_ADDRESS`` (char\*) |mdash| the primary link-level address of
+  the device (e.g., a MAC address).
+* ``PMIX_FABRIC_DEVICE_COORDINATES`` (pmix_geometry_t) |mdash| the fabric
+  coordinates for the device across all supported coordinate views.
+* ``PMIX_FABRIC_DEVICE_MTU`` (size_t) |mdash| the maximum transfer unit of
+  link-level frames, in bytes.
+* ``PMIX_FABRIC_DEVICE_SPEED`` (size_t) |mdash| the active link data rate, in bits
+  per second.
+* ``PMIX_FABRIC_DEVICE_STATE`` (pmix_link_state_t) |mdash| the last available
+  physical port state (``PMIX_LINK_STATE_UNKNOWN``, ``PMIX_LINK_DOWN``, or
+  ``PMIX_LINK_UP``).
+* ``PMIX_FABRIC_DEVICE_TYPE`` (char\*) |mdash| the type of fabric interface active
+  on the device (e.g., Ethernet, InfiniBand).
+* ``PMIX_FABRIC_DEVICE_PCI_DEVID`` (char\*) |mdash| a node-level unique PCI device
+  identifier, as a colon-delimited ``domain:bus:device:function`` tuple in
+  hexadecimal.
+
+
 RETURN VALUE
 ------------
 
