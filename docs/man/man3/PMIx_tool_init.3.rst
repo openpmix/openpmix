@@ -138,12 +138,54 @@ during initialization.
   name containing it in the form ``file:<name of file>``.
 * ``PMIX_TOOL_ATTACHMENT_FILE`` (char\*) |mdash| file containing the connection
   information to be used for attaching to a server.
+* ``PMIX_CONNECT_TO_SCHEDULER`` (bool) |mdash| connect to the system scheduler.
+* ``PMIX_CONNECT_TO_SYS_CONTROLLER`` (bool) |mdash| connect to the system
+  controller.
+* ``PMIX_SERVER_HOSTNAME`` (char\*) |mdash| the node on which the target server is
+  located.
+* ``PMIX_MYSERVER_URI`` (char\*) |mdash| the URI of this process's own listener
+  socket, used when the process itself accepts connections.
+* ``PMIX_CONNECTION_ORDER`` (char\*) |mdash| comma-delimited list of
+  connection-target attributes (e.g., ``PMIX_CONNECT_TO_SCHEDULER``,
+  ``PMIX_CONNECT_TO_SYS_CONTROLLER``, ``PMIX_CONNECT_TO_SYSTEM``) defining the
+  order, first to last, in which connections are attempted. Unless the final entry
+  is an "only" flag, the tool falls back to the local server if no listed target
+  succeeds.
+* ``PMIX_CONNECT_MAX_RETRIES`` (uint32_t) |mdash| maximum number of times to
+  attempt connecting to the server.
+* ``PMIX_CONNECT_RETRY_DELAY`` (uint32_t) |mdash| time, in seconds, between
+  connection attempts.
+* ``PMIX_PRIMARY_SERVER`` (bool) |mdash| designate the server being connected to as
+  the tool's primary server once the connection is established.
+
+Launcher attributes
+^^^^^^^^^^^^^^^^^^^
+
+These attributes apply to a tool that declares itself a launcher via
+``PMIX_LAUNCHER``.
+
+* ``PMIX_LAUNCHER_RENDEZVOUS_FILE`` (char\*) |mdash| pathname of the file in which
+  the launcher's connection information is to be stored.
+* ``PMIX_LAUNCHER_DAEMON`` (char\*) |mdash| path to an executable to use as the
+  launcher's backend daemon, replacing the launcher's own. The user is responsible
+  for ensuring compatibility with the host launcher.
+* ``PMIX_EXEC_AGENT`` (char\*) |mdash| path to an executable that the launcher's
+  backend daemons fork/exec in place of the actual application processes. The
+  daemon passes the application's full command line to the exec agent, which is
+  responsible for exec'ing the application in its own place and does not connect
+  back to the daemon.
+* ``PMIX_LAUNCH_DIRECTIVES`` (pmix_data_array_t\*) |mdash| an array of
+  ``pmix_info_t`` containing directives for the launcher; a convenience attribute
+  allowing all directives to be retrieved with a single ``PMIx_Get`` call.
 
 Behavioral attributes
 ^^^^^^^^^^^^^^^^^^^^^^
 
 * ``PMIX_FWD_STDIN`` (bool) |mdash| forward this process's ``stdin`` to the
   target processes.
+* ``PMIX_NOHUP`` (bool) |mdash| any processes started on behalf of the calling
+  tool (or the specified namespace) should continue running after the tool
+  disconnects from its server.
 * ``PMIX_IOF_LOCAL_OUTPUT`` (bool) |mdash| write forwarded output streams to the
   local ``stdout``/``stderr`` (the default for tools).
 * ``PMIX_SERVER_TMPDIR`` (char\*) |mdash| temporary directory where the PMIx
