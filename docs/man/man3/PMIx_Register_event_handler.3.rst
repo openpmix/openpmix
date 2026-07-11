@@ -177,6 +177,8 @@ the registration.
 * ``PMIX_EVENT_RETURN_OBJECT`` (void*) |mdash| an object to be returned to this
   process whenever the registered handler is invoked. The object is returned
   only to the process that registered it.
+* ``PMIX_EVENT_ONESHOT`` (bool) |mdash| automatically deregister this handler
+  after it has been invoked once.
 
 Host environments that implement PMIx event notification are additionally
 required to support the following directives, which restrict the handler to
