@@ -223,6 +223,47 @@ Resource usage, devices, and storage:
 * ``PMIX_QUERY_STORAGE_LIST`` (char*) |mdash| return a comma-delimited list of
   identifiers for all available storage systems.
 
+Storage system information. ``PMIX_QUERY_STORAGE_LIST`` returns the available
+storage-system identifiers; the following keys return the properties of a
+particular system, selected with a ``PMIX_STORAGE_ID`` qualifier:
+
+* ``PMIX_STORAGE_PATH`` (char*) |mdash| the mount point corresponding to the
+  specified storage ID.
+* ``PMIX_STORAGE_VERSION`` (char*) |mdash| the version string for the storage
+  system.
+* ``PMIX_STORAGE_MEDIUM`` (pmix_storage_medium_t) |mdash| the storage medium(s) the
+  system uses (e.g., SSD, HDD, tape). See
+  :ref:`pmix_storage_medium_t(5) <man5-pmix_storage_medium_t>`.
+* ``PMIX_STORAGE_ACCESSIBILITY`` (pmix_storage_accessibility_t) |mdash| the
+  accessibility level of the storage system (e.g., node, session). See
+  :ref:`pmix_storage_accessibility_t(5) <man5-pmix_storage_accessibility_t>`.
+* ``PMIX_STORAGE_PERSISTENCE`` (pmix_storage_persistence_t) |mdash| the persistence
+  level of the storage system (e.g., scratch, archive). See
+  :ref:`pmix_storage_persistence_t(5) <man5-pmix_storage_persistence_t>`.
+* ``PMIX_STORAGE_CAPACITY_LIMIT`` (uint64_t) |mdash| the overall capacity of the
+  storage system, in base-2 megabytes.
+* ``PMIX_STORAGE_CAPACITY_USED`` (double) |mdash| the overall used capacity of the
+  storage system, in bytes.
+* ``PMIX_STORAGE_OBJECT_LIMIT`` (uint64_t) |mdash| the overall limit on the number
+  of objects (e.g., inodes) in the storage system.
+* ``PMIX_STORAGE_OBJECTS_USED`` (uint64_t) |mdash| the number of objects currently
+  in use in the storage system.
+* ``PMIX_STORAGE_BW_CUR`` (double) |mdash| the recently observed bandwidth of the
+  storage system, in bytes/sec.
+* ``PMIX_STORAGE_BW_MAX`` (double) |mdash| the maximum (theoretical or observed)
+  bandwidth of the storage system, in bytes/sec.
+* ``PMIX_STORAGE_IOPS_CUR`` (double) |mdash| the recently observed I/O operations
+  per second for the storage system.
+* ``PMIX_STORAGE_IOPS_MAX`` (double) |mdash| the maximum (theoretical or observed)
+  I/O operations per second for the storage system.
+* ``PMIX_STORAGE_MINIMAL_XFER_SIZE`` (double) |mdash| the storage system's atomic
+  unit of transfer (e.g., block size), in bytes.
+* ``PMIX_STORAGE_SUGGESTED_XFER_SIZE`` (double) |mdash| the suggested transfer size
+  for the storage system, in bytes.
+
+The bandwidth, IOPS, and suggested-transfer-size keys may be further qualified by
+``PMIX_STORAGE_ACCESS_TYPE`` to select read, write, or read/write access.
+
 The following two keys appear only in returned results and **cannot** be used as
 input to ``PMIx_Query_info`` or ``PMIx_Get``:
 
@@ -259,6 +300,14 @@ Commonly used **qualifiers**:
 * ``PMIX_QUERY_SUPPORTED_QUALIFIERS`` (bool) |mdash| return a comma-delimited list of
   the qualifiers supported for the provided key, instead of performing the query on
   that key.
+* ``PMIX_STORAGE_ID`` (char*) |mdash| identify the storage system whose information
+  is being requested (used with the storage keys above).
+* ``PMIX_STORAGE_TYPE`` (char*) |mdash| restrict a storage query to systems of the
+  given type (e.g., ``lustre``, ``gpfs``, ``fabric-attached``).
+* ``PMIX_STORAGE_ACCESS_TYPE`` (pmix_storage_access_type_t) |mdash| for the storage
+  bandwidth, IOPS, and suggested-transfer-size keys, select which access type
+  (read, write, or read/write) to report. See
+  :ref:`pmix_storage_access_type_t(5) <man5-pmix_storage_access_type_t>`.
 
 Qualifiers that are not applicable to a given key are ignored.
 
