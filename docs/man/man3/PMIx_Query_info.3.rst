@@ -107,10 +107,12 @@ DIRECTIVES
 ----------
 
 Each ``pmix_query_t`` combines a list of **keys** (the information requested) with
-a list of **qualifiers** (attributes that scope or refine the request). The keys
-and qualifiers below are representative of the most commonly used values; an
-implementation is not required to support any particular key, and an unsupported
-key is handled the same way as a key that could not be found.
+a list of **qualifiers** (attributes that scope or refine the request). The most
+commonly used keys are listed first, followed by the remaining defined keys grouped
+by purpose, and then the qualifiers. An implementation is not required to support
+any particular key, and an unsupported key is handled the same way as a key that
+could not be found. The value type shown for a key is the type of the value it
+*returns*; the type shown for a qualifier is the type of data provided with it.
 
 Commonly used **keys**:
 
@@ -141,6 +143,96 @@ Commonly used **keys**:
   |mdash| return the stable or provisional Standard ABI version supported by the
   library. These are resolved locally and may be queried before initialization.
 
+Additional keys, grouped by purpose |mdash| introspection and support:
+
+* ``PMIX_QUERY_SUPPORTED_KEYS`` (char*) |mdash| return a comma-delimited list of the
+  keys supported by the query function.
+* ``PMIX_QUERY_DEBUG_SUPPORT`` (char*) |mdash| return a comma-delimited list of the
+  supported debugger attributes.
+* ``PMIX_QUERY_AUTHORIZATIONS`` (pmix_data_array_t*) |mdash| return the operations
+  the tool is authorized to perform.
+
+Namespaces and processes:
+
+* ``PMIX_QUERY_NAMESPACE_INFO`` (pmix_data_array_t*) |mdash| return an array of
+  information about the active namespaces; each element includes the namespace and
+  the command line of the application executing within it. Accepts an optional
+  ``PMIX_NSPACE`` qualifier to select one namespace.
+* ``PMIX_QUERY_RESOLVE_PEERS`` (pmix_data_array_t*) |mdash| return the process IDs of
+  the procs from a given namespace executing on a specified node, as if answering a
+  :ref:`PMIx_Resolve_peers(3) <man3-PMIx_Resolve_peers>` request on the caller's
+  behalf.
+* ``PMIX_QUERY_RESOLVE_NODE`` (char*) |mdash| return a comma-delimited list of the
+  nodes on which procs from a specified namespace have been placed, as if answering
+  a :ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>` request on the caller's
+  behalf.
+
+Scheduler, queues, and allocations:
+
+* ``PMIX_QUERY_QUEUE_STATUS`` (pmix_data_array_t*) |mdash| return the name and status
+  of each scheduler queue. Accepts an optional ``PMIX_ALLOC_QUEUE`` qualifier to
+  select one queue.
+* ``PMIX_QUERY_ALLOC_STATUS`` (char*) |mdash| return a string reporting the status of
+  an allocation request. Requires a ``PMIX_ALLOC_REQUEST_ID`` qualifier.
+* ``PMIX_QUERY_ALLOCATION`` (pmix_data_array_t*) |mdash| return an array describing
+  the nodes in an allocation. Accepts a ``PMIX_ALLOC_ID`` qualifier to select a
+  specific allocation.
+* ``PMIX_QUERY_ALLOC_IDS`` (pmix_data_array_t*) |mdash| return the allocation IDs
+  known to the server.
+* ``PMIX_QUERY_ALLOC_PROPERTIES`` (pmix_data_array_t*) |mdash| return the properties
+  of a specific allocation. Requires a ``PMIX_ALLOC_ID`` qualifier, and accepts an
+  optional ``PMIX_ALLOC_PROPERTY`` qualifier to select a single property.
+* ``PMIX_QUERY_MIN_ALLOC_UNIT`` (pmix_data_array_t*) |mdash| return the resources
+  composing the minimum allocatable unit for the system.
+* ``PMIX_QUERY_RES_BLOCKS`` (pmix_data_array_t*) |mdash| return the names of the
+  currently defined resource blocks.
+* ``PMIX_QUERY_RES_BLOCK_DEF`` (pmix_data_array_t*) |mdash| given a resource block
+  name as its qualifier, return an array of ``pmix_resource_unit_t`` describing the
+  resources contained in that block.
+* ``PMIX_QUERY_AVAILABLE_SLOTS`` (uint32_t) |mdash| return the number of slots
+  currently available in the session (a point-in-time snapshot). Accepts an optional
+  ``PMIX_SESSION_ID`` qualifier.
+
+Process sets and groups:
+
+* ``PMIX_QUERY_PSET_MEMBERSHIP`` (pmix_data_array_t*) |mdash| return an array of
+  ``pmix_proc_t`` naming the members of a specified process set.
+* ``PMIX_QUERY_NUM_GROUPS`` (size_t) |mdash| return the number of process groups
+  defined in the specified range (defaults to the session). Accepts an optional
+  ``PMIX_RANGE`` qualifier.
+* ``PMIX_QUERY_GROUP_NAMES`` (pmix_data_array_t*) |mdash| return the string names of
+  the process groups defined in the specified range (defaults to the session).
+  Accepts an optional ``PMIX_RANGE`` qualifier. Distinct from ``PMIX_GROUP_NAMES``
+  above, which returns the groups a *given process* belongs to.
+* ``PMIX_QUERY_GROUP_MEMBERSHIP`` (pmix_data_array_t*) |mdash| return an array of
+  ``pmix_proc_t`` naming the members of a specified process group. Requires a
+  ``PMIX_GROUP_ID`` qualifier.
+
+Resource usage, devices, and storage:
+
+* ``PMIX_QUERY_PROC_RESOURCE_USAGE`` (pmix_proc_t*) |mdash| return the resource-usage
+  statistics for the specified process(es). A namespace combined with
+  ``PMIX_RANK_WILDCARD`` returns an array with one assembly per process. Accepts
+  ``PMIX_SESSION_ID``, ``PMIX_NODEID``, or ``PMIX_HOSTNAME`` qualifiers.
+* ``PMIX_QUERY_NODE_RESOURCE_USAGE`` (char*) |mdash| return the resource-usage
+  statistics for the specified node(s). Accepts ``PMIX_SESSION_ID``, ``PMIX_NSPACE``,
+  or ``PMIX_JOBID`` qualifiers.
+* ``PMIX_QUERY_DEVICES`` (pmix_data_array_t*) |mdash| return an array of
+  ``pmix_device_t`` for the devices in the current topology that meet the query
+  qualifications, e.g., a ``PMIX_DEVICE_TYPE`` qualifier.
+* ``PMIX_QUERY_STORAGE_LIST`` (char*) |mdash| return a comma-delimited list of
+  identifiers for all available storage systems.
+
+The following two keys appear only in returned results and **cannot** be used as
+input to ``PMIx_Query_info`` or ``PMIx_Get``:
+
+* ``PMIX_QUERY_RESULTS`` (pmix_data_array_t*) |mdash| the array of results produced
+  for a given ``pmix_query_t``. When the query carried qualifiers, the first element
+  is a ``PMIX_QUERY_QUALIFIERS`` entry; each remaining element is a ``pmix_info_t``
+  pairing a queried key with its returned value.
+* ``PMIX_QUERY_QUALIFIERS`` (pmix_data_array_t*) |mdash| the qualifiers that were
+  included in the query that produced the accompanying results.
+
 Commonly used **qualifiers**:
 
 * ``PMIX_QUERY_REFRESH_CACHE`` (bool) |mdash| bypass the local cache and retrieve a
@@ -160,6 +252,13 @@ Commonly used **qualifiers**:
   ``PMIX_HOST_ATTRIBUTES`` / ``PMIX_TOOL_ATTRIBUTES`` (bool) |mdash| when used with
   ``PMIX_QUERY_ATTRIBUTE_SUPPORT``, select the level(s) of attribute support to
   report. Omitting all levels is equivalent to requesting every level.
+* ``PMIX_QUERY_LOCAL_ONLY`` (bool) |mdash| constrain the query to locally available
+  information only, rather than forwarding it to the host environment.
+* ``PMIX_QUERY_REPORT_AVG`` (bool) |mdash| report average values.
+* ``PMIX_QUERY_REPORT_MINMAX`` (bool) |mdash| report minimum and maximum values.
+* ``PMIX_QUERY_SUPPORTED_QUALIFIERS`` (bool) |mdash| return a comma-delimited list of
+  the qualifiers supported for the provided key, instead of performing the query on
+  that key.
 
 Qualifiers that are not applicable to a given key are ignored.
 
