@@ -167,10 +167,53 @@ operation. Placement, mapping, and resource selection:
   |mdash| mapping, ranking, and binding policies for the spawned processes.
 * ``PMIX_PPR`` (char\*) |mdash| number of processes to spawn on each identified
   resource.
+* ``PMIX_CPUS_PER_PROC`` (uint32_t) |mdash| number of CPUs to assign to each rank.
+* ``PMIX_CPU_LIST`` (char\*) |mdash| list of CPUs to use for this job.
+* ``PMIX_NO_PROCS_ON_HEAD`` (bool) |mdash| do not place any processes on the head
+  node.
+* ``PMIX_NO_OVERSUBSCRIBE`` (bool) |mdash| do not oversubscribe the CPUs.
+* ``PMIX_COLOCATE_PROCS`` (pmix_data_array_t\*) |mdash| array of ``pmix_proc_t``
+  identifying the processes with which the new job's processes are to be
+  colocated.
+* ``PMIX_COLOCATE_NPERPROC`` (uint16_t) / ``PMIX_COLOCATE_NPERNODE`` (uint16_t)
+  |mdash| number of processes to colocate with each identified process, or on the
+  node of each identified process, respectively.
+* ``PMIX_SPAWN_TARGET`` (varies) |mdash| specify the allocation(s) to use when
+  mapping the applications. The value is a ``char*`` ``PMIX_ALLOC_ID``, or a
+  ``pmix_data_array_t`` of such allocation-ID strings.
+* ``PMIX_APP_ARGV`` (char\*) |mdash| the consolidated ``argv`` passed to the spawn
+  command for the given application.
+* ``PMIX_INDEX_ARGV`` (bool) |mdash| mark each process's ``argv`` with the rank of
+  the process.
+* ``PMIX_WDIR_USER_SPECIFIED`` (bool) |mdash| indicate that the working directory
+  was explicitly specified by the user (accompanies ``PMIX_WDIR``).
 * ``PMIX_DISPLAY_MAP`` (bool) |mdash| display the resulting process placement map
   upon spawn.
+* ``PMIX_DISPLAY_MAP_DETAILED`` (bool) |mdash| display a highly detailed placement
+  map upon spawn.
 * ``PMIX_STDIN_TGT`` (pmix_proc_t\*) |mdash| the process that is to receive
   forwarded stdin.
+
+Diagnostic and dry-run output:
+
+* ``PMIX_DISPLAY_ALLOCATION`` (bool) |mdash| display the resource allocation.
+* ``PMIX_DISPLAY_TOPOLOGY`` (char\*) |mdash| comma-delimited list of hosts whose
+  topology is to be displayed.
+* ``PMIX_DISPLAY_PROCESSORS`` (char\*) |mdash| comma-delimited list of hosts whose
+  available CPUs are to be displayed.
+* ``PMIX_DISPLAY_PARSEABLE_OUTPUT`` (bool) |mdash| render the requested display
+  information in a format more amenable to machine parsing.
+* ``PMIX_REPORT_BINDINGS`` (bool) |mdash| report the binding of each individual
+  process.
+* ``PMIX_REPORT_PHYSICAL_CPUS`` (bool) |mdash| report bindings using physical CPU
+  IDs.
+* ``PMIX_SHOW_LAUNCH_PROGRESS`` (bool) |mdash| provide periodic progress reports on
+  the job launch procedure (e.g., after every 100 processes have been spawned).
+* ``PMIX_DO_NOT_LAUNCH`` (bool) |mdash| execute all procedures to prepare the
+  requested job for launch, but do not launch it. Typically combined with
+  ``PMIX_DISPLAY_MAP`` or ``PMIX_DISPLAY_MAP_DETAILED`` for debugging.
+* ``PMIX_AGGREGATE_HELP`` (bool) |mdash| aggregate help messages, reporting each
+  unique message once accompanied by the number of processes that reported it.
 
 Environment control:
 
@@ -179,6 +222,8 @@ Environment control:
   an environment variable in the spawned processes' environment.
 * ``PMIX_ENVARS_HARVESTED`` (bool) |mdash| indicates that the requestor has already
   harvested and included the relevant environment variables.
+* ``PMIX_FWD_ENVIRONMENT`` (bool) |mdash| forward the local environment to each
+  spawned process.
 * ``PMIX_SETUP_APP_ENVARS`` (bool) |mdash| direct the spawn library to harvest the
   environment variables relevant to the application's programming model and include
   them with the request. May be placed in the ``job_info`` array or in an individual
@@ -194,7 +239,23 @@ Behavior, restart, and tool support:
   failed process.
 * ``PMIX_COSPAWN_APP`` (bool) |mdash| the designated application is to be spawned
   as a disconnected job.
+* ``PMIX_JOB_CONTINUOUS`` (bool) |mdash| the application is continuous; any failed
+  processes should be immediately restarted.
+* ``PMIX_ABORT_NON_ZERO_TERM`` (bool) |mdash| abort the spawned job if any process
+  terminates with non-zero status.
+* ``PMIX_SPAWN_CHILD_SEP`` (bool) |mdash| treat the spawned job as independent from
+  the parent |mdash| i.e., do not terminate it if the parent terminates.
+* ``PMIX_REPORT_CHILD_SEP`` (bool) |mdash| report the exit status of any child jobs
+  separately. If ``false``, the reported status is zero when the primary and all
+  child jobs exit normally, or the first non-zero status returned by any of them.
+* ``PMIX_RUNTIME_OPTIONS`` (char\*) |mdash| environment-specific runtime directives
+  that control job behavior.
+* ``PMIX_FORKEXEC_AGENT`` (char\*) |mdash| command line of a fork/exec agent to be
+  used for starting local processes.
 * ``PMIX_SPAWN_TOOL`` (bool) |mdash| the job being spawned is a tool.
+* ``PMIX_CMD_LINE`` (char\*) |mdash| the command line executing in the specified
+  namespace. This is informational |mdash| e.g., recorded for, or retrieved from, a
+  running job |mdash| rather than a launch directive.
 
 Debugger support:
 
@@ -219,6 +280,8 @@ spawning debugger daemons alongside it.
   to spawn per application process.
 * ``PMIX_DEBUG_DAEMONS_PER_NODE`` (uint16_t) |mdash| number of debugger daemons
   to spawn on each node where the target job is executing.
+* ``PMIX_DEBUGGER_DAEMONS`` (bool) |mdash| the spawned application consists of
+  debugger daemons.
 
 When a process stopped by one of the ``PMIX_DEBUG_STOP_*`` directives is ready to
 be debugged, it generates a ``PMIX_READY_FOR_DEBUG`` event accompanied by the
@@ -236,19 +299,44 @@ Timeouts:
   should time out.
 * ``PMIX_SPAWN_TIMEOUT`` (int) |mdash| time, in seconds, before the spawn operation
   itself should time out.
+* ``PMIX_TIMEOUT_STACKTRACES`` (bool) |mdash| include process stacktraces in the
+  timeout report from a job.
+* ``PMIX_TIMEOUT_REPORT_STATE`` (bool) |mdash| report process states in the timeout
+  report from a job.
 
 Completion and termination notification:
 
 * ``PMIX_NOTIFY_COMPLETION`` (bool) |mdash| notify the parent process when the
   spawned job terminates, either normally or with an error.
 * ``PMIX_NOTIFY_PROC_TERMINATION`` (bool) |mdash| request that the launcher
-  generate an event when any process in the spawned job terminates.
+  generate a ``PMIX_EVENT_PROC_TERMINATED`` event whenever any process in the
+  spawned job terminates, normally or abnormally.
+* ``PMIX_NOTIFY_PROC_ABNORMAL_TERMINATION`` (bool) |mdash| request that the launcher
+  generate a ``PMIX_EVENT_PROC_TERMINATED`` event only when a process terminates
+  abnormally.
+* ``PMIX_NOTIFY_JOB_EVENTS`` (bool) |mdash| request that the launcher generate the
+  ``PMIX_EVENT_JOB_START``, ``PMIX_LAUNCH_COMPLETE``, and ``PMIX_EVENT_JOB_END``
+  events, each including at least the job's namespace and a
+  ``PMIX_EVENT_TIMESTAMP``.
 
 Output forwarding:
 
-These attributes control how the spawned job's ``stdout``/``stderr`` streams are
-tagged, formatted, and directed as they are forwarded. They supersede the older,
-now-deprecated non-``IOF`` output attributes (see the note below).
+These attributes control which of the spawned job's streams are forwarded and how
+they are tagged, formatted, and directed. They supersede the older, now-deprecated
+non-``IOF`` output attributes (see the note below).
+
+Selecting which streams to forward:
+
+* ``PMIX_FWD_STDIN`` (bool) |mdash| forward this process's ``stdin`` to the target
+  processes.
+* ``PMIX_FWD_STDOUT`` (bool) |mdash| forward the spawned processes' ``stdout`` to
+  this process (typically used by a tool).
+* ``PMIX_FWD_STDERR`` (bool) |mdash| forward the spawned processes' ``stderr`` to
+  this process (typically used by a tool).
+* ``PMIX_FWD_STDDIAG`` (bool) |mdash| if a diagnostic channel exists, forward its
+  output from the spawned processes to this process (typically used by a tool).
+
+Formatting and destination of the forwarded output:
 
 * ``PMIX_IOF_TAG_OUTPUT`` (bool) |mdash| tag each line of output with the
   ``[local jobid,rank]`` of its source and the channel it came from.
@@ -283,10 +371,15 @@ now-deprecated non-``IOF`` output attributes (see the note below).
    ``PMIX_OUTPUT_TO_DIRECTORY`` |mdash| are now deprecated in favor of the
    ``PMIX_IOF_*`` equivalents listed above under **Output forwarding**, as is
    ``PMIX_NON_PMI`` (indicating that the spawned processes will not call
-   ``PMIx_Init``); none of these should be used in new code. Tools requesting
-   that the spawned job's output be forwarded to them may use ``PMIX_FWD_STDOUT``
-   / ``PMIX_FWD_STDERR`` (bool), and may forward their own stdin to the spawned
-   processes with ``PMIX_FWD_STDIN`` (bool).
+   ``PMIx_Init``); none of these should be used in new code.
+
+Pseudo-terminal:
+
+* ``PMIX_SPAWN_PTY`` (bool) |mdash| spawn the processes under a pseudo-terminal.
+* ``PMIX_PTY_TERMIO`` (pmix_byte_object_t) |mdash| the contents of a ``termio``
+  structure describing the terminal settings for the pseudo-terminal.
+* ``PMIX_PTY_WSIZE`` (pmix_byte_object_t) |mdash| the contents of a window-size
+  structure for the pseudo-terminal.
 
 
 RETURN VALUE
