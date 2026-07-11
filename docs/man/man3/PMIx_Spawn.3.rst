@@ -318,6 +318,10 @@ Completion and termination notification:
   ``PMIX_EVENT_JOB_START``, ``PMIX_LAUNCH_COMPLETE``, and ``PMIX_EVENT_JOB_END``
   events, each including at least the job's namespace and a
   ``PMIX_EVENT_TIMESTAMP``.
+* ``PMIX_EVENT_SILENT_TERMINATION`` (bool) |mdash| suppress the event that is
+  otherwise generated when this job terminates normally. See
+  :ref:`PMIx_Notify_event(3) <man3-PMIx_Notify_event>` for the notification-side
+  description of this attribute.
 
 Output forwarding:
 
