@@ -1678,9 +1678,6 @@ typedef int pmix_status_t;
 #define PMIX_DEBUGGER_RELEASE                       -3      // replaced deprecated PMIX_ERR_DEBUGGER_RELEASE
 #define PMIX_READY_FOR_DEBUG                        -58     // accompanied by PMIX_BREAKPOINT indicating where proc is waiting
 
-/* query errors */
-#define PMIX_QUERY_PARTIAL_SUCCESS                  -104
-
 /* job control */
 #define PMIX_JCTRL_CHECKPOINT                       -106    // monitored by client to trigger checkpoint operation
 #define PMIX_JCTRL_CHECKPOINT_COMPLETE              -107    // sent by client and monitored by server to notify that requested

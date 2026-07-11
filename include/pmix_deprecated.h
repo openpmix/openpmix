@@ -135,6 +135,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_ERR_LOST_CONNECTION_TO_SERVER          -101
 #define PMIX_ERR_LOST_PEER_CONNECTION               -102
 #define PMIX_ERR_LOST_CONNECTION_TO_CLIENT          -103
+#define PMIX_QUERY_PARTIAL_SUCCESS                  -104    // DEPRECATED - was never returned; use PMIX_ERR_PARTIAL_SUCCESS
 #define PMIX_NOTIFY_ALLOC_COMPLETE                  -105
 #define PMIX_ERR_INVALID_TERMINATION                -112
 #define PMIX_ERR_JOB_TERMINATED                     -145    // DEPRECATED NAME - non-error termination
