@@ -139,6 +139,15 @@ will be passed, when relevant, to all invoked handlers:
   behalf of the original source.
 * ``PMIX_EVENT_TEXT_MESSAGE`` (char*) |mdash| a human-readable text message
   describing the event, suitable for reporting to the user.
+* ``PMIX_EVENT_TIMESTAMP`` (time_t) |mdash| the system time at which the associated
+  event occurred.
+* ``PMIX_EVENT_STAYS_LOCAL`` (bool) |mdash| the event is not to be passed up to the
+  host environment. Used together with a custom range to also indicate a range of
+  "local" and to prevent infinite notification loops with the host.
+* ``PMIX_EVENT_SILENT_TERMINATION`` (bool) |mdash| suppress the event that is
+  otherwise generated when a job terminates normally. This is typically supplied in
+  a job's launch-time information (e.g., to :ref:`PMIx_Spawn(3) <man3-PMIx_Spawn>`)
+  rather than passed to ``PMIx_Notify_event`` directly.
 
 Host environments that implement support for PMIx event notification are required
 to provide the following attributes for all events they generate:
