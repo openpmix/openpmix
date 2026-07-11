@@ -57,6 +57,23 @@ Although not strictly required, both PMIx library implementers and host
 environments are strongly encouraged to provide both human-readable and
 machine-parsable descriptions of supported attributes when registering them.
 
+DESCRIPTIVE VALUE ATTRIBUTES
+----------------------------
+
+Beyond the free-form ``description`` field, the following keys provide a
+standardized, machine-parsable vocabulary for describing the range of values an
+attribute accepts:
+
+* ``PMIX_MAX_VALUE`` (varies) |mdash| the maximum valid value for the associated
+  attribute. The value carries the attribute's own declared data type.
+* ``PMIX_MIN_VALUE`` (varies) |mdash| the minimum valid value for the associated
+  attribute. The value carries the attribute's own declared data type.
+* ``PMIX_ENUM_VALUE`` (char*) |mdash| the accepted values for the associated
+  attribute. Numerical values shall be presented in a form convertible to the
+  attribute's declared data type; named values (i.e., those defined by constant
+  names via a typical C-language ``enum`` declaration) must be provided as their
+  numerical equivalent.
+
 STATIC INITIALIZER
 ------------------
 
