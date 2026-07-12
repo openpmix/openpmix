@@ -142,6 +142,13 @@ Runtime attributes
 * ``PMIX_EXTERNAL_PROGRESS`` (bool) |mdash| the host will progress the PMIx
   library as needed via calls to ``PMIx_Progress`` (see PMIx_Progress(3)),
   rather than PMIx spawning its own internal progress thread.
+* ``PMIX_BIND_PROGRESS_THREAD`` (char\*) |mdash| comma-delimited ranges of CPUs to
+  which the internal PMIx progress thread is to be bound.
+* ``PMIX_BIND_REQUIRED`` (bool) |mdash| return an error if the internal PMIx
+  progress thread cannot be bound as requested.
+* ``PMIX_EXTERNAL_AUX_EVENT_BASE`` (void\*) |mdash| pointer to an ``event_base``
+  the library is to use for auxiliary functions (e.g., capturing signals) that
+  would otherwise interfere with the host.
 
 Programming-model attributes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
