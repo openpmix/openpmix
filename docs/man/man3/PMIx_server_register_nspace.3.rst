@@ -146,6 +146,18 @@ Job-realm information
   nodes hosting the job (see ``PMIx_generate_regex2``).
 * ``PMIX_PROC_MAP`` (char\*) |mdash| regular-expression representation of the
   process-to-node mapping.
+* ``PMIX_NODE_MAP_RAW`` (char\*) |mdash| comma-delimited list of the nodes
+  containing processes for this job, provided as an alternative to the
+  regular-expression form in ``PMIX_NODE_MAP``.
+* ``PMIX_PROC_MAP_RAW`` (char\*) |mdash| semicolon-delimited list of strings,
+  each a comma-delimited list of the ranks on the corresponding node, provided
+  as an alternative to the regular-expression form in ``PMIX_PROC_MAP``.
+* ``PMIX_ANL_MAP`` (char\*) |mdash| process mapping in ANL notation, as used by
+  PMI-1 and PMI-2.
+* ``PMIX_APP_MAP_TYPE`` (char\*) |mdash| type of mapping used to lay out the
+  application (e.g., ``cyclic``).
+* ``PMIX_APP_MAP_REGEX`` (char\*) |mdash| regular expression describing the
+  result of the mapping.
 * ``PMIX_JOB_NUM_APPS`` (uint32_t) |mdash| number of applications in the job;
   required when the job contains more than one application.
 * ``PMIX_SERVER_NSPACE`` (char\*) |mdash| namespace of the PMIx server itself.
