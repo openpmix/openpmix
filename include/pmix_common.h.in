@@ -1280,7 +1280,6 @@ typedef uint32_t pmix_rank_t;
                                                                     // in environments where multiple authentication mechanisms
                                                                     // may be available. When returned in a callback function, a
                                                                     // string identifier of the credential type
-#define PMIX_CRYPTO_KEY                     "pmix.sec.key"          // (pmix_byte_object_t) blob containing crypto key
 
 
 /* IO Forwarding Attributes */
