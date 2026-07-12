@@ -137,6 +137,120 @@ for host environments.
   exposes the requested data.
 
 
+RESERVED KEYS
+-------------
+
+In addition to keys posted by applications via
+:ref:`PMIx_Put(3) <man3-PMIx_Put>`, the host environment provides a range of
+reserved keys (those beginning with ``"pmix"``) that describe the process,
+its job, and the resources it occupies. These are passed as the ``key``
+parameter and, unless otherwise noted, are retrieved for the process
+identified in ``proc``. A rank of ``PMIX_RANK_WILDCARD`` retrieves the
+job-level value for the process's namespace. The following are commonly
+available:
+
+**Process identity and rank**
+
+* ``PMIX_NSPACE`` (char*) |mdash| namespace of the process's job.
+* ``PMIX_JOBID`` (char*) |mdash| job identifier assigned by the scheduler.
+* ``PMIX_PROCID`` (pmix_proc_t\*) |mdash| process identifier (namespace and
+  rank).
+* ``PMIX_RANK`` (pmix_rank_t) |mdash| rank of the process within its job.
+* ``PMIX_GLOBAL_RANK`` (pmix_rank_t) |mdash| rank of the process spanning across
+  all jobs in this session.
+* ``PMIX_APP_RANK`` (pmix_rank_t) |mdash| rank of the process within its
+  application.
+* ``PMIX_LOCAL_RANK`` (uint16_t) |mdash| rank of the process on its node within
+  its job.
+* ``PMIX_NODE_RANK`` (uint16_t) |mdash| rank of the process on its node spanning
+  all jobs.
+* ``PMIX_PACKAGE_RANK`` (uint16_t) |mdash| rank of the process within its job on
+  the package where it resides.
+* ``PMIX_NPROC_OFFSET`` (pmix_rank_t) |mdash| starting global rank of this job.
+* ``PMIX_LOCALLDR`` (pmix_rank_t) |mdash| lowest rank on this node within this
+  job.
+* ``PMIX_APPLDR`` (pmix_rank_t) |mdash| lowest rank in this application within
+  this job.
+* ``PMIX_APPNUM`` (uint32_t) |mdash| application number within the job in which
+  the process is included.
+* ``PMIX_SESSION_ID`` (uint32_t) |mdash| session identifier.
+* ``PMIX_PROC_PID`` (pid_t) |mdash| operating-system process identifier (pid) of
+  the specified process.
+
+**Node and host information**
+
+* ``PMIX_HOSTNAME`` (char*) |mdash| name of the host on which the specified
+  process is located.
+* ``PMIX_HOSTNAME_ALIASES`` (char*) |mdash| comma-delimited list of names by
+  which the node is known.
+* ``PMIX_HOSTNAME_KEEP_FQDN`` (bool) |mdash| indicates that fully-qualified
+  domain-name hostnames are being retained.
+* ``PMIX_NODEID`` (uint32_t) |mdash| node identifier where the specified process
+  is located.
+* ``PMIX_CLUSTER_ID`` (char*) |mdash| string name of the cluster on which the
+  process is executing.
+* ``PMIX_NODE_LIST`` (char*) |mdash| comma-delimited list of nodes running
+  processes for the specified namespace.
+* ``PMIX_ALLOCATED_NODELIST`` (char*) |mdash| comma-delimited list of all nodes
+  in this allocation, regardless of whether or not they currently host
+  processes.
+* ``PMIX_LOCAL_PEERS`` (char*) |mdash| comma-delimited string of ranks on this
+  node within the specified namespace.
+* ``PMIX_LOCAL_PROCS`` (pmix_data_array_t\*) |mdash| array of
+  :ref:`pmix_proc_t(5) <man5-pmix_proc_t>` structures identifying the processes
+  on the specified node.
+* ``PMIX_LOCAL_CPUSETS`` (char*) |mdash| colon-delimited cpusets of the local
+  peers within the specified namespace.
+
+**Sizes and counts**
+
+* ``PMIX_UNIV_SIZE`` (uint32_t) |mdash| number of slots in this session.
+* ``PMIX_JOB_SIZE`` (uint32_t) |mdash| number of processes in this job.
+* ``PMIX_JOB_NUM_APPS`` (uint32_t) |mdash| number of applications in this job.
+* ``PMIX_APP_SIZE`` (uint32_t) |mdash| number of processes in the application.
+* ``PMIX_LOCAL_SIZE`` (uint32_t) |mdash| number of processes in this job on the
+  local node.
+* ``PMIX_NODE_SIZE`` (uint32_t) |mdash| number of processes across all jobs on
+  this node.
+* ``PMIX_MAX_PROCS`` (uint32_t) |mdash| maximum number of processes for this
+  job.
+* ``PMIX_NUM_SLOTS`` (uint32_t) |mdash| number of slots allocated.
+* ``PMIX_NUM_NODES`` (uint32_t) |mdash| number of nodes currently hosting
+  processes in the specified realm.
+* ``PMIX_NUM_ALLOCATED_NODES`` (uint32_t) |mdash| number of nodes in the
+  specified realm, regardless of whether or not they currently host processes.
+
+**Scratch directories**
+
+* ``PMIX_TMPDIR`` (char*) |mdash| top-level temporary directory assigned to the
+  session.
+* ``PMIX_NSDIR`` (char*) |mdash| sub-directory of the session temporary
+  directory assigned to the namespace.
+* ``PMIX_PROCDIR`` (char*) |mdash| sub-directory of the namespace directory
+  assigned to the process.
+* ``PMIX_TDIR_RMCLEAN`` (bool) |mdash| the resource manager will clean up the
+  session directories, so the application need not do so.
+
+**Process state and launch**
+
+* ``PMIX_SPAWNED`` (bool) |mdash| true if this process resulted from a call to
+  :ref:`PMIx_Spawn(3) <man3-PMIx_Spawn>`.
+* ``PMIX_PARENT_ID`` (pmix_proc_t\*) |mdash| identifier of the process that
+  called :ref:`PMIx_Spawn(3) <man3-PMIx_Spawn>` to launch this process's
+  application.
+* ``PMIX_EXIT_CODE`` (int) |mdash| exit code returned when the specified process
+  terminated.
+* ``PMIX_REINCARNATION`` (uint32_t) |mdash| number of times this process has
+  been instantiated |mdash| i.e., a count of the number of times it has been
+  restarted.
+* ``PMIX_NODE_OVERSUBSCRIBED`` (bool) |mdash| true if the number of processes
+  from this job on this node exceeds the number of slots allocated to it.
+* ``PMIX_CPUSET_BITMAP`` (pmix_cpuset_t\*) |mdash| bitmap applied to the process
+  at launch.
+* ``PMIX_CREDENTIAL`` (char*) |mdash| security credential assigned to the
+  process.
+
+
 RETURN VALUE
 ------------
 
