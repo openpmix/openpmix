@@ -220,6 +220,10 @@ Environment control:
 * ``PMIX_SET_ENVAR`` / ``PMIX_ADD_ENVAR`` / ``PMIX_PREPEND_ENVAR`` /
   ``PMIX_APPEND_ENVAR`` (pmix_envar_t\*) |mdash| set, add, prepend to, or append to
   an environment variable in the spawned processes' environment.
+* ``PMIX_FIRST_ENVAR`` (pmix_envar_t\*) |mdash| ensure the given value appears
+  first in the specified environment variable, using the provided separator.
+* ``PMIX_UNSET_ENVAR`` (char\*) |mdash| unset the named environment variable in
+  the spawned processes' environment, if present.
 * ``PMIX_ENVARS_HARVESTED`` (bool) |mdash| indicates that the requestor has already
   harvested and included the relevant environment variables.
 * ``PMIX_FWD_ENVIRONMENT`` (bool) |mdash| forward the local environment to each
