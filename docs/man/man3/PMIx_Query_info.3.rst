@@ -140,7 +140,9 @@ Commonly used **keys**:
 * ``PMIX_QUERY_AVAIL_SERVERS`` |mdash| scan the local node for PMIx servers the
   caller could connect to. The result is an array of ``pmix_info_t``, each a
   ``PMIX_SERVER_INFO_ARRAY`` (pmix_data_array_t*) holding the available data for
-  one connectable server (beginning with its namespace).
+  one connectable server (beginning with its namespace). That per-server data
+  includes the server's ``PMIX_SERVER_START_TIME`` (char*), the ctime-format time
+  at which it created its rendezvous file.
 * ``PMIX_QUERY_STABLE_ABI_VERSION`` / ``PMIX_QUERY_PROVISIONAL_ABI_VERSION``
   |mdash| return the stable or provisional Standard ABI version supported by the
   library. These are resolved locally and may be queried before initialization.
