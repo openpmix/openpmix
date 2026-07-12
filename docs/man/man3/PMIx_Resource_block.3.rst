@@ -89,6 +89,11 @@ The ``directive`` argument is a value of type
 Values at or above ``PMIX_RESOURCE_BLOCK_EXTERNAL`` are reserved for
 implementer-defined directives.
 
+The ``info`` array may additionally carry the following attribute:
+
+* ``PMIX_RESOURCE_BLOCK_NAME`` (char\*) |mdash| name of the resource block that
+  the operation concerns.
+
 
 RETURN VALUE
 ------------
