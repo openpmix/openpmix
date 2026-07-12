@@ -167,6 +167,10 @@ OpenMP runtime co-located in the same process can discover one another via a
   ``"core"``, etc.
 * ``PMIX_MODEL_AFFINITY_POLICY`` (char\*) |mdash| thread affinity policy, e.g.
   ``"master"``, ``"close"``, or ``"spread"``.
+* ``PMIX_MODEL_PHASE_NAME`` (char\*) |mdash| user-assigned name for a phase in the
+  application's execution (e.g., ``"cfd reduction"``).
+* ``PMIX_MODEL_PHASE_TYPE`` (char\*) |mdash| type of phase being executed (e.g.,
+  ``"matrix multiply"``).
 
 
 INITIALIZATION EVENTS
