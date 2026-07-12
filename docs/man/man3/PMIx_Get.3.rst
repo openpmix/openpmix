@@ -250,6 +250,11 @@ available:
 * ``PMIX_CREDENTIAL`` (char*) |mdash| security credential assigned to the
   process.
 
+**Process set membership**
+
+* ``PMIX_PSET_NAMES`` (pmix_data_array_t\*) |mdash| array of the string names of
+  the process sets in which the specified process is a member.
+
 
 RETURN VALUE
 ------------
