@@ -292,6 +292,12 @@ whose host environment provides an allocation entry point that can forward the
 request. A process hosted directly by the scheduler cannot issue an allocation
 request against itself and will receive ``PMIX_ERR_NOT_SUPPORTED``.
 
+Upon completion of an allocation request, the host environment may generate an
+event to notify processes other than the requestor |mdash| for example, the
+members of a job affected by the change |mdash| of the result. The result is
+conveyed in that event through the ``PMIX_ALLOC_STATUS`` (pmix_status_t)
+attribute, which carries the completion status of the allocation request.
+
 
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
