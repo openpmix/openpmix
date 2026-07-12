@@ -196,6 +196,14 @@ aggregated result through a ``pmix_modex_cbfunc_t``. A NULL ``data`` means the
 local processes had nothing to contribute. Directives in the ``info`` array
 steer the collective and are optional unless the mandatory flag is set.
 
+The ``info`` array may include ``PMIX_LOCAL_COLLECTIVE_STATUS``
+(pmix_status_t), by which the PMIx server library reports to the host the status
+of the local portion of the collective |mdash| for example, an error detected
+among the local participants. A host that receives a failing status should
+propagate it into the collective result rather than proceeding with the data
+exchange. This attribute applies equally to the other collective module
+functions below (``connect``, ``disconnect``, and ``group``).
+
 direct_modex
 ^^^^^^^^^^^^
 
@@ -253,7 +261,9 @@ connect
 :ref:`PMIx_Connect(3) <man3-PMIx_Connect>`. Records the specified processes as
 "connected" so the host treats the failure of any of them as a reportable event.
 This is a client-side collective, so the callback fires once all participants
-have contributed; completion is reported through a ``pmix_op_cbfunc_t``.
+have contributed; completion is reported through a ``pmix_op_cbfunc_t``. As with
+``fence_nb``, the ``info`` array may carry ``PMIX_LOCAL_COLLECTIVE_STATUS``
+reporting the status of the local portion of the collective.
 
 disconnect
 ^^^^^^^^^^
@@ -261,7 +271,9 @@ disconnect
 ``disconnect`` (``pmix_server_disconnect_fn_t``) |mdash| Services
 :ref:`PMIx_Disconnect(3) <man3-PMIx_Disconnect>`. Reverses a prior ``connect`` of
 the same set of processes; an error is returned if the set was not previously
-connected. Completion is reported through a ``pmix_op_cbfunc_t``.
+connected. Completion is reported through a ``pmix_op_cbfunc_t``. As with
+``fence_nb``, the ``info`` array may carry ``PMIX_LOCAL_COLLECTIVE_STATUS``
+reporting the status of the local portion of the collective.
 
 register_events
 ^^^^^^^^^^^^^^^
@@ -396,7 +408,9 @@ group
 operations. The ``op`` argument (a ``pmix_group_operation_t``) selects construct,
 destruct, or cancel of the named group across its member processes; directives
 may request, for example, assignment of a group context ID. Results are returned
-through a ``pmix_info_cbfunc_t``.
+through a ``pmix_info_cbfunc_t``. As with ``fence_nb``, the ``info`` array may
+carry ``PMIX_LOCAL_COLLECTIVE_STATUS`` reporting the status of the local portion
+of the collective.
 
 fabric
 ^^^^^^
