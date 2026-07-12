@@ -1480,7 +1480,7 @@ typedef uint32_t pmix_rank_t;
                                                                    //         PMIX_FABRIC_PLANE followed by that plane's fabric shape string.
                                                                    //         Default is to provide the shape in logical view.
 
-#define PMIX_SWITCH_PEERS                   "pmix.speers"          // (char*) Peer ranks that share the same switch as the process specified in
+#define PMIX_SWITCH_PEERS                   "pmix.speers"          // (pmix_data_array_t*) Peer ranks that share the same switch as the process specified in
                                                                    //         the call to PMIx_Get. Returns a pmix_data_array_t array of
                                                                    //         pmix_info_t results, each element containing the PMIX_SWITCH_PEERS
                                                                    //         key with a three-element pmix_data_array_t array of pmix_info_t
