@@ -167,6 +167,10 @@ Optional for supporting host environments:
   to the target processes.
 * ``PMIX_JOB_CTRL_SEP`` (bool) |mdash| separate the specified namespace from its
   parent |mdash| i.e., allow the two to terminate independently.
+* ``PMIX_REQUESTOR`` (pmix_proc_t\*) |mdash| identifier of the process on whose
+  behalf the request is being made, used when one process relays the operation
+  to the PMIx library on behalf of another (the API itself takes no requestor
+  parameter).
 
 
 RETURN VALUE

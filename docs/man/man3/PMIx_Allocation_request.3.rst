@@ -154,6 +154,11 @@ support the following attributes:
 The following attributes are optional for host environments that support this
 operation.
 
+* ``PMIX_REQUESTOR`` (pmix_proc_t\*) |mdash| identifier of the process on whose
+  behalf the request is being made, used when one process relays the operation
+  to the PMIx library on behalf of another (the API itself takes no requestor
+  parameter).
+
 Identifying an existing allocation (for the ``PMIX_ALLOC_EXTEND``,
 ``PMIX_ALLOC_RELEASE``, ``PMIX_ALLOC_REAQUIRE``, and ``PMIX_ALLOC_REQ_CANCEL``
 directives):
