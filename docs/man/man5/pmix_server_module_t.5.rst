@@ -204,6 +204,9 @@ contact the remote server hosting a given process and retrieve that process's
 modex blob on demand (used when a :ref:`PMIx_Get(3) <man3-PMIx_Get>` cannot be
 satisfied from local data). The blob is returned through a
 ``pmix_modex_cbfunc_t``. A timeout directive may be supplied to bound the wait.
+The request may carry a ``PMIX_REQUIRED_KEY`` (char*) naming the specific key the
+requester is waiting on, allowing the host to defer its response until that key
+has been posted by the target process.
 
 publish
 ^^^^^^^
@@ -237,7 +240,11 @@ spawn
 :ref:`PMIx_Spawn(3) <man3-PMIx_Spawn>`. Launches the given array of applications.
 A failure to start any process causes the entire request to be terminated and an
 error returned. The namespace of the spawned job is returned through a
-``pmix_spawn_cbfunc_t``.
+``pmix_spawn_cbfunc_t``. The job-level information accompanying the request may
+include ``PMIX_REQUESTOR_IS_TOOL`` or ``PMIX_REQUESTOR_IS_CLIENT`` (bool),
+indicating whether the process that issued the spawn request is a tool or a
+client, respectively; a host may use this to apply different policies to
+tool-initiated launches.
 
 connect
 ^^^^^^^
