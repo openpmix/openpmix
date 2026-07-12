@@ -117,6 +117,14 @@ processes until they are committed with :ref:`PMIx_Commit(3) <man3-PMIx_Commit>`
 and, typically, a subsequent synchronization such as
 :ref:`PMIx_Fence(3) <man3-PMIx_Fence>` has completed.
 
+**Qualified values.** A value may be posted together with one or more qualifiers
+that scope its later retrieval by using the reserved key
+``PMIX_QUALIFIED_VALUE``. In that case ``val`` must be a ``pmix_value_t`` of type
+``PMIX_DATA_ARRAY`` whose first element is the primary key-value pair and whose
+remaining elements are the qualifier key-value pairs. The stored value is later
+obtained with :ref:`PMIx_Get(3) <man3-PMIx_Get>` by supplying the matching
+qualifiers, allowing several distinct values to be posted under the same key.
+
 
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,

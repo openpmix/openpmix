@@ -299,6 +299,12 @@ key with :ref:`PMIx_Put(3) <man3-PMIx_Put>`, committed it with
 typically via a :ref:`PMIx_Fence(3) <man3-PMIx_Fence>` |mdash| unless the
 ``PMIX_OPTIONAL`` or ``PMIX_IMMEDIATE`` directives are used to bound the search.
 
+**Qualified values.** When a key was posted together with qualifiers (using the
+``PMIX_QUALIFIED_VALUE`` key to :ref:`PMIx_Put(3) <man3-PMIx_Put>`), supply the
+desired qualifiers in the ``info`` array to select among the values stored under
+that key. ``PMIx_Get`` returns the primary value of the matching entry; the
+qualifiers themselves are used only for matching and are not returned.
+
 
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
