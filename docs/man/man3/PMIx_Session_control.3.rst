@@ -90,6 +90,10 @@ Identifying the request:
 
 * ``PMIX_SESSION_CTRL_ID`` (char*) |mdash| a string identifier for this request,
   allowing its status to later be queried or the operation to be cancelled.
+* ``PMIX_REQUESTOR`` (pmix_proc_t\*) |mdash| identifier of the process on whose
+  behalf the request is being made, used when one process relays the operation
+  to the PMIx library on behalf of another (the API itself takes no requestor
+  parameter).
 
 Instantiating a session (typically issued by a scheduler):
 

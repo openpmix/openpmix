@@ -353,7 +353,9 @@ allocate
 :ref:`PMIx_Allocation_request(3) <man3-PMIx_Allocation_request>`. The host acts
 on the requested allocation modification (identified by a
 ``pmix_alloc_directive_t``) and returns any results through a
-``pmix_info_cbfunc_t``.
+``pmix_info_cbfunc_t``. The directives may include ``PMIX_REQUESTOR``
+(pmix_proc_t*) identifying the process on whose behalf the request was made when
+it was relayed by another process.
 
 job_control
 ^^^^^^^^^^^
@@ -361,7 +363,9 @@ job_control
 ``job_control`` (``pmix_server_job_control_fn_t``) |mdash| Services
 :ref:`PMIx_Job_control(3) <man3-PMIx_Job_control>`. The host executes the
 requested control action (e.g., pause, resume, signal, terminate) against the
-target processes and returns results through a ``pmix_info_cbfunc_t``.
+target processes and returns results through a ``pmix_info_cbfunc_t``. The
+directives may include ``PMIX_REQUESTOR`` (pmix_proc_t*) identifying the process
+on whose behalf the request was made when it was relayed by another process.
 
 monitor
 ^^^^^^^
@@ -463,7 +467,9 @@ session_control
 ``session_control`` (``pmix_server_session_control_fn_t``) |mdash| Services
 :ref:`PMIx_Session_control(3) <man3-PMIx_Session_control>`. The host executes the
 requested control operation against the identified session (``sessionID``) and
-returns results through a ``pmix_info_cbfunc_t``.
+returns results through a ``pmix_info_cbfunc_t``. The directives may include
+``PMIX_REQUESTOR`` (pmix_proc_t*) identifying the process on whose behalf the
+request was made when it was relayed by another process.
 
 resource_block
 ^^^^^^^^^^^^^^
