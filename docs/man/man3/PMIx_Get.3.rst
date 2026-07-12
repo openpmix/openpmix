@@ -255,6 +255,15 @@ available:
 * ``PMIX_PSET_NAMES`` (pmix_data_array_t\*) |mdash| array of the string names of
   the process sets in which the specified process is a member.
 
+**Fabric locality**
+
+* ``PMIX_SWITCH_PEERS`` (pmix_data_array_t\*) |mdash| the peer ranks that share a
+  switch with the specified process. Returns an array of ``pmix_info_t``, one per
+  local fabric device; each element is itself a ``PMIX_SWITCH_PEERS`` entry
+  holding a three-element array that gives the device's
+  ``PMIX_FABRIC_DEVICE_ID``, the ``PMIX_FABRIC_SWITCH`` to which it is connected,
+  and a comma-delimited string of the peer ranks sharing that switch.
+
 
 RETURN VALUE
 ------------
