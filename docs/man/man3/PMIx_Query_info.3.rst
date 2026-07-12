@@ -138,7 +138,9 @@ Commonly used **keys**:
   :ref:`PMIx_Get(3) <man3-PMIx_Get>` to retrieve the same information for a single
   process.
 * ``PMIX_QUERY_AVAIL_SERVERS`` |mdash| scan the local node for PMIx servers the
-  caller could connect to.
+  caller could connect to. The result is an array of ``pmix_info_t``, each a
+  ``PMIX_SERVER_INFO_ARRAY`` (pmix_data_array_t*) holding the available data for
+  one connectable server (beginning with its namespace).
 * ``PMIX_QUERY_STABLE_ABI_VERSION`` / ``PMIX_QUERY_PROVISIONAL_ABI_VERSION``
   |mdash| return the stable or provisional Standard ABI version supported by the
   library. These are resolved locally and may be queried before initialization.
@@ -192,6 +194,10 @@ Scheduler, queues, and allocations:
 * ``PMIX_QUERY_AVAILABLE_SLOTS`` (uint32_t) |mdash| return the number of slots
   currently available in the session (a point-in-time snapshot). Accepts an optional
   ``PMIX_SESSION_ID`` qualifier.
+* ``PMIX_TIME_REMAINING`` (uint32_t) |mdash| return the number of seconds
+  remaining in the allocation for the specified namespace, defaulting to the
+  allocation containing the caller. Accepts an optional ``PMIX_NSPACE``
+  qualifier.
 
 Process sets and groups:
 
@@ -217,6 +223,10 @@ Resource usage, devices, and storage:
 * ``PMIX_QUERY_NODE_RESOURCE_USAGE`` (char*) |mdash| return the resource-usage
   statistics for the specified node(s). Accepts ``PMIX_SESSION_ID``, ``PMIX_NSPACE``,
   or ``PMIX_JOBID`` qualifiers.
+* ``PMIX_DAEMON_MEMORY`` (float) |mdash| return the amount of memory, in
+  megabytes, currently in use by the PMIx server daemon.
+* ``PMIX_CLIENT_AVG_MEMORY`` (float) |mdash| return the average amount of
+  memory, in megabytes, in use by the client processes on the node.
 * ``PMIX_QUERY_DEVICES`` (pmix_data_array_t*) |mdash| return an array of
   ``pmix_device_t`` for the devices in the current topology that meet the query
   qualifications, e.g., a ``PMIX_DEVICE_TYPE`` qualifier.
@@ -293,6 +303,12 @@ Commonly used **qualifiers**:
   ``PMIX_HOST_ATTRIBUTES`` / ``PMIX_TOOL_ATTRIBUTES`` (bool) |mdash| when used with
   ``PMIX_QUERY_ATTRIBUTE_SUPPORT``, select the level(s) of attribute support to
   report. Omitting all levels is equivalent to requesting every level.
+* ``PMIX_CLIENT_FUNCTIONS`` / ``PMIX_SERVER_FUNCTIONS`` /
+  ``PMIX_TOOL_FUNCTIONS`` / ``PMIX_HOST_FUNCTIONS`` (bool) |mdash| when used with
+  ``PMIX_QUERY_ATTRIBUTE_SUPPORT``, return a comma-delimited list of the PMIx
+  functions supported at the client, server, tool, or host level, respectively
+  (in place of the per-function attribute listing produced by the
+  corresponding ``PMIX_*_ATTRIBUTES`` qualifier).
 * ``PMIX_QUERY_LOCAL_ONLY`` (bool) |mdash| constrain the query to locally available
   information only, rather than forwarding it to the host environment.
 * ``PMIX_QUERY_REPORT_AVG`` (bool) |mdash| report average values.
