@@ -131,6 +131,13 @@ Role and support attributes
   system controller.
 * ``PMIX_SERVER_REMOTE_CONNECTIONS`` (bool) |mdash| allow (or disable)
   connections from remote tools.
+* ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` (bool) |mdash| mark the tool rendezvous
+  files as readable by all users and allow tools running under user IDs other
+  than that of the server to connect. The host retains ultimate authority over
+  such connections and may restrict what foreign tools are permitted to do
+  (for example, limiting them to queries) as dictated by host policy.
+* ``PMIX_ALLOW_CLIENT_CLONES`` (bool) |mdash| allow connections from clones
+  (forks) of a registered client process.
 
 Topology and behavior attributes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
