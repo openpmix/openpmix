@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      ParTec AG.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -42,67 +42,69 @@ int main(int argc, char **argv)
     pmix_status_t rc;
     pmix_value_t *val = NULL;
     pmix_proc_t proc;
+    char *me = NULL;
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
+        me = PMIx_Proc_string(&myproc);
         if (PMIX_ERR_UNREACH == rc) {
-            fprintf(stderr, "%s: Cannot operate as singleton\n",
-                    PMIx_Proc_string(&myproc));
+            fprintf(stderr, "%s: Cannot operate as singleton\n", me);
         } else {
-            fprintf(stderr, "%s: PMIx_Init failed: %s\n",
-                    PMIx_Proc_string(&myproc),
-                    PMIx_Error_string(rc));
+            fprintf(stderr, "%s: PMIx_Init failed: %s\n", me, PMIx_Error_string(rc));
         }
+        free(me);
         exit(1);
     }
-    fprintf(stderr, "%s: Running\n", PMIx_Proc_string(&myproc));
+    /* our identity is fixed, so cache its string form and reuse it - the
+     * string returned by PMIx_Proc_string is allocated and must be freed */
+    me = PMIx_Proc_string(&myproc);
+    fprintf(stderr, "%s: Running\n", me);
 
     // get our rank
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_INVALID);
     rc = PMIx_Get(&proc, PMIX_RANK, NULL, 0, &val);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "%s: Get rank failed - %s\n", PMIx_Proc_string(&myproc), PMIx_Error_string(rc));
+        fprintf(stderr, "%s: Get rank failed - %s\n", me, PMIx_Error_string(rc));
         fflush(stderr);
         goto done;
     }
     if (val->data.rank != myproc.rank) {
         fprintf(stderr, "%s: Get rank returned wrong rank - %u instead of %u\n",
-                PMIx_Proc_string(&myproc), val->data.rank, myproc.rank);
+                me, val->data.rank, myproc.rank);
         fflush(stderr);
         goto done;
     }
-    fprintf(stderr, "%s: Rank return correct\n", PMIx_Proc_string(&myproc));
+    fprintf(stderr, "%s: Rank return correct\n", me);
     PMIX_VALUE_RELEASE(val);
 
     // get our node ID
     rc = PMIx_Get(&myproc, PMIX_NODEID, NULL, 0, &val);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "%s: Get my nodeID failed - %s\n", PMIx_Proc_string(&myproc), PMIx_Error_string(rc));
+        fprintf(stderr, "%s: Get my nodeID failed - %s\n", me, PMIx_Error_string(rc));
         fflush(stderr);
         goto done;
     }
     // rank=0 is on node 0, rank=1 on node 1
     if (val->data.uint32 != myproc.rank) {
         fprintf(stderr, "%s: Get my nodeID returned wrong value - %u instead of %u\n",
-                PMIx_Proc_string(&myproc), val->data.uint32, myproc.rank);
+                me, val->data.uint32, myproc.rank);
         fflush(stderr);
         goto done;
     }
-    fprintf(stderr, "%s: NodeID return correct\n", PMIx_Proc_string(&myproc));
+    fprintf(stderr, "%s: NodeID return correct\n", me);
     PMIX_VALUE_RELEASE(val);
 
     // get our node ID with rank=WILDCARD - should fail!
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
     rc = PMIx_Get(&proc, PMIX_NODEID, NULL, 0, &val);
     if (PMIX_SUCCESS == rc) {
-        fprintf(stderr, "%s: Get my nodeID with WILDCARD rank incorrectly succeeded\n",
-                PMIx_Proc_string(&myproc));
+        fprintf(stderr, "%s: Get my nodeID with WILDCARD rank incorrectly succeeded\n", me);
         fflush(stderr);
         goto done;
     }
     fprintf(stderr, "%s: NodeID with WILDCARD rank correctly failed - %s\n",
-            PMIx_Proc_string(&myproc), PMIx_Error_string(rc));
+            me, PMIx_Error_string(rc));
     PMIX_VALUE_RELEASE(val);
 
     // get our peer's nodeID
@@ -113,35 +115,35 @@ int main(int argc, char **argv)
     }
     rc = PMIx_Get(&proc, PMIX_NODEID, NULL, 0, &val);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "%s: Get peer's nodeID failed - %s\n", PMIx_Proc_string(&myproc), PMIx_Error_string(rc));
+        fprintf(stderr, "%s: Get peer's nodeID failed - %s\n", me, PMIx_Error_string(rc));
         fflush(stderr);
         goto done;
     }
     // rank=0 is on node 0, rank=1 on node 1
     if (val->data.uint32 != proc.rank) {
         fprintf(stderr, "%s: Get peer's nodeID returned wrong value - %u instead of %u\n",
-                PMIx_Proc_string(&myproc), val->data.uint32, proc.rank);
+                me, val->data.uint32, proc.rank);
         fflush(stderr);
         goto done;
     }
-    fprintf(stderr, "%s: Peer's NodeID return correct\n", PMIx_Proc_string(&myproc));
+    fprintf(stderr, "%s: Peer's NodeID return correct\n", me);
     PMIX_VALUE_RELEASE(val);
 
     // get our appnum
     rc = PMIx_Get(&myproc, PMIX_APPNUM, NULL, 0, &val);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "%s: Get my appnum failed - %s\n", PMIx_Proc_string(&myproc), PMIx_Error_string(rc));
+        fprintf(stderr, "%s: Get my appnum failed - %s\n", me, PMIx_Error_string(rc));
         fflush(stderr);
         goto done;
     }
     // rank=0 is on node 0, rank=1 on node 1
     if (val->data.uint32 != myproc.rank) {
         fprintf(stderr, "%s: Get my appnum returned wrong value - %u instead of %u\n",
-                PMIx_Proc_string(&myproc), val->data.uint32, myproc.rank);
+                me, val->data.uint32, myproc.rank);
         fflush(stderr);
         goto done;
     }
-    fprintf(stderr, "%s: Appnum return correct\n", PMIx_Proc_string(&myproc));
+    fprintf(stderr, "%s: Appnum return correct\n", me);
     PMIX_VALUE_RELEASE(val);
 
     // get appnum with WILDCARD - should fail!
@@ -149,12 +151,12 @@ int main(int argc, char **argv)
     rc = PMIx_Get(&proc, PMIX_APPNUM, NULL, 0, &val);
     if (PMIX_SUCCESS == rc) {
         fprintf(stderr, "%s: Get appnum with WILDCARD incorrectly succeeded - returned %u\n",
-                PMIx_Proc_string(&myproc), val->data.uint32);
+                me, val->data.uint32);
         fflush(stderr);
         goto done;
     }
     fprintf(stderr, "%s: Appnum with WILDCARD rank correctly failed - %s\n",
-            PMIx_Proc_string(&myproc), PMIx_Error_string(rc));
+            me, PMIx_Error_string(rc));
     PMIX_VALUE_RELEASE(val);
 
     // get peer's appnum
@@ -165,21 +167,27 @@ int main(int argc, char **argv)
     }
     rc = PMIx_Get(&proc, PMIX_APPNUM, NULL, 0, &val);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "%s: Get peer's appnum failed - %s\n", PMIx_Proc_string(&myproc), PMIx_Error_string(rc));
+        fprintf(stderr, "%s: Get peer's appnum failed - %s\n", me, PMIx_Error_string(rc));
         fflush(stderr);
         goto done;
     }
     // rank=0 is in appnum 0, rank=1 is in appnum 1
     if (val->data.uint32 != proc.rank) {
         fprintf(stderr, "%s: Get peer's appnum returned wrong value - %u instead of %u\n",
-                PMIx_Proc_string(&myproc), val->data.uint32, proc.rank);
+                me, val->data.uint32, proc.rank);
         fflush(stderr);
         goto done;
     }
-    fprintf(stderr, "%s: Peer's Appnum return correct\n", PMIx_Proc_string(&myproc));
+    fprintf(stderr, "%s: Peer's Appnum return correct\n", me);
     PMIX_VALUE_RELEASE(val);
 
 done:
+    /* release the value from whichever Get we bailed out on (the
+     * success paths already released and NULLed it) */
+    if (NULL != val) {
+        PMIX_VALUE_RELEASE(val);
+    }
+    free(me);
     /* finalize us */
     rc = PMIx_Finalize(NULL, 0);
     fflush(stderr);
