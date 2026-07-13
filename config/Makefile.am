@@ -43,7 +43,6 @@ EXTRA_DIST = \
     distscript.sh \
     getdate.sh \
     pmix_get_version.sh \
-    pmix_mca_priority_sort.pl \
     mca_library_paths.txt \
     from-savannah/upstream-config.guess \
     from-savannah/upstream-config.sub \
