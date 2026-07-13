@@ -289,6 +289,9 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
     free(file);
     rc = hwloc_shmem_topology_adopt((hwloc_topology_t *) &pmix_globals.topology.topology, fd, 0,
                                     (void *) addr, size, 0);
+    /* the topology has been mmap'd, so the fd is no longer
+     * needed regardless of whether the adopt succeeded */
+    close(fd);
     if (0 == rc) {
         pmix_output_verbose(2, pmix_hwloc_output, "%s:%s shmem adopted",
                             __FILE__, __func__);
