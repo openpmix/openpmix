@@ -37,7 +37,20 @@ OPTIONS
 
 * ``--pmixmca <arg0> <arg1>``: Set MCA parameter value
 
+* ``--uri <arg0>``: Specify the URI of the server to which we are to connect, or
+  the name of the file (specified as ``file:filename``) that contains that info
+
+* ``--namespace <arg0>``: Namespace of the daemon to which we should connect
+
+* ``--system-server-first``: First look for a system server and connect to it if found
+
+* ``--system-server``: Connect to a system server if a local server isn't found
+
 * ``--pid <arg0>``: PID of the daemon to which we should connect (int => PID or file:<file> for file containing the PID
+
+* ``--wait-to-connect <arg0>``: Delay specified number of seconds before trying to connect
+
+* ``--num-connect-retries <arg0>``: Max number of times to try to connect
 
 * ``--tmpdir <arg0>``: Set the root for the session directory tree
 

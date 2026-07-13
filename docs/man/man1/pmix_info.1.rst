@@ -43,6 +43,9 @@ OPTIONS
 
 * ``-V`` | ``--version``: Print version and exit.
 
+* ``--pmixmca <key> <value>``: Pass a PMIx MCA parameter, where ``key`` is the
+  parameter name and ``value`` is the parameter value.
+
 * ``-a`` | ``--all``: Show all configuration options and MCA
   parameters.
 
@@ -60,6 +63,18 @@ OPTIONS
   parameter is the framework (or the keyword "all"); the second parameter
   is a comma-delimited list of specific component names (if only <arg0>
   is given, then all components will be reported).
+
+* ``--params <arg0>:<arg1>,<arg2>``: Synonym for ``--param``.
+
+* ``--type <arg0>``: Show MCA parameters of the type specified in the argument.
+  Accepts: ``unsigned_int``, ``unsigned_long``, ``unsigned_long_long``,
+  ``size_t``, ``string``, ``version_string``, ``bool``, and ``double``.
+
+* ``--show-version <arg0>:<arg1>``: Show the version of PMIx or a component. The
+  first parameter can be the keywords ``pmix`` or ``all``, a framework name (all
+  components in a framework), or a ``framework:component`` string. The second
+  parameter can be one of: ``full``, ``major``, ``minor``, ``release``,
+  ``greek``, ``repo``.
 
 * ``--path <type>``: Show paths that PMIx was configured
   with. Accepts the following parameters: ``all``, ``prefix``, ``bindir``,
