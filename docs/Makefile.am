@@ -94,6 +94,7 @@ PMIX_MAN1 = \
         pmix_info.1 \
         palloc.1 \
         pattrs.1 \
+        pctrl.1 \
         pevent.1 \
         plookup.1 \
         pmixcc.1 \
