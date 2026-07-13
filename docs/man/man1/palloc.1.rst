@@ -42,6 +42,8 @@ OPTIONS
 
 * ``-V`` | ``--version``: Print version and exit.
 
+* ``--pmixmca <arg0> <arg1>``: Set MCA parameter value
+
 * ``--uri <arg0>``: Specify the URI of the server to which we are to connect, or
   the name of the file (specified as ``file:filename``) that contains that info
 
@@ -57,6 +59,8 @@ OPTIONS
 * ``--system-server-only``: Connect only to a system-level server
 
 * ``--system-controller``: Connect to the system controller
+
+* ``--scheduler``: Connect to the scheduler
 
 * ``--tmpdir <arg0>``: Set the root for the session directory tree
 
