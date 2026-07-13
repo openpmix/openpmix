@@ -55,7 +55,7 @@ PMIx Library Information
                                      specific component names (if only <arg0> is given, then all
                                      components will be reported).
    --params <arg0>:<arg1>,<arg2>     Synonym for "param"
-   --path <type>                     Show paths with which PRRTE was configured. Accepts the following
+   --path <type>                     Show paths with which PMIx was configured. Accepts the following
                                      parameters: "prefix", "bindir", "libdir", "incdir", "mandir",
                                      "pkglibdir", "sysconfdir".
    --show-version <arg0>:<arg1>      Show version of PMIx or a component.  The first parameter can be the
