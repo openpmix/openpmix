@@ -431,9 +431,16 @@ static void lgcon(pmix_get_logic_t *p)
     p->appdirective = false;
     p->appnum = UINT32_MAX;
 }
+static void lgdes(pmix_get_logic_t *p)
+{
+    if (NULL != p->hostname) {
+        free(p->hostname);
+        p->hostname = NULL;
+    }
+}
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_get_logic_t,
                                 pmix_object_t,
-                                lgcon, NULL);
+                                lgcon, lgdes);
 
 static void cbcon(pmix_cb_t *p)
 {
