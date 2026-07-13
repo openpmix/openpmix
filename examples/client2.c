@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -146,7 +146,8 @@ int main(int argc, char **argv)
                 rc);
         goto done;
     }
-    free(val);
+    /* PMIx_Put copied the data array, so we are done with our copy */
+    free(u64);
 
     /* push the data to our PMIx server */
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
@@ -213,6 +214,8 @@ int main(int argc, char **argv)
                 goto done;
             }
         }
+        /* done with the value returned for this rank */
+        PMIX_VALUE_RELEASE(val);
     }
 
 done:
