@@ -477,7 +477,11 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata)
     PMIX_ACQUIRE_OBJECT(cb);
     cb = (pmix_cb_t *) cbdata;
     cb->status = status;
-    if (PMIX_SUCCESS == status) {
+    /* the local get_data path invokes us with the value it already
+     * stashed in cb->value - in that case it is ours to keep, so copying
+     * it onto itself would simply orphan (leak) the original.  Only make
+     * a copy when we are handed a value we do not already own. */
+    if (PMIX_SUCCESS == status && kv != cb->value) {
         PMIX_BFROPS_COPY(rc, pmix_client_globals.myserver, (void **)&cb->value, kv, PMIX_VALUE);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
