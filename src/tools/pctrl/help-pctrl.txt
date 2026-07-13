@@ -175,8 +175,10 @@ provided via their name (e.g., SIGTERM, SIGKILL) or an integer value
 (e.g., -9).
 #
 [restart]
-"Un-pause" the specified processes - usually implemented by applying a
-SIGCONT signal to the processes.
+Restart the specified processes using the given checkpoint ID. The restart
+operation will be conducted according to the method specified when the processes
+were originally spawned. Support for this operation therefore depends both on the
+capabilities of the runtime environment _and_ the application being restarted.
 #
 [checkpoint]
 Checkpoint the specified processes and assign the given ID to it. The checkpoint
