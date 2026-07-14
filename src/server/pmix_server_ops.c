@@ -1520,6 +1520,8 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
     cnt = cd->ninfo;
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
+    /* the caddy owns this array and must release it when done */
+    cd->infocopy = true;
     /* unpack the data */
     if (0 < cnt) {
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
@@ -1550,6 +1552,8 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_INFO_CREATE(cd->directives, cd->ndirs);
         PMIX_INFO_LOAD(&cd->directives[cnt], PMIX_LOG_SOURCE, &proc, PMIX_PROC);
     }
+    /* the caddy owns this array and must release it when done */
+    cd->dircopy = true;
 
     /* unpack the directives */
     if (0 < cnt) {
