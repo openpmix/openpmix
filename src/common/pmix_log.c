@@ -69,6 +69,8 @@ static void log_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     if (NULL != cd->cbfunc.opcbfn) {
         cd->cbfunc.opcbfn(status, cd->cbdata);
     }
+    PMIX_PROC_FREE(cd->proc, 1);
+    cd->proc = NULL;
     PMIX_RELEASE(cd);
 }
 
