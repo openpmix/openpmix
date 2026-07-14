@@ -150,6 +150,7 @@ int main(int argc, char **argv)
     PMIX_INFO_LOAD(&info[0], PMIX_JOB_CTRL_PREEMPTIBLE, (void *) &flag, PMIX_BOOL);
     /* can't use "load" to load a pmix_data_array_t */
     (void) strncpy(info[1].key, PMIX_JOB_CTRL_CHECKPOINT_METHOD, PMIX_MAX_KEYLEN);
+    info[1].value.type = PMIX_DATA_ARRAY;
     PMIX_DATA_ARRAY_CREATE(info[1].value.data.darray, 2, PMIX_INFO);
     dptr = info[1].value.data.darray;
     rc = SIGUSR2;
