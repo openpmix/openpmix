@@ -91,6 +91,7 @@ int main(int argc, char **argv)
     pmix_data_array_t darray;
     void *grpinfo, *list;
     char hostname[1024];
+    char *tmp;
     pmix_value_t value;
     bool idassigned = false;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
@@ -227,6 +228,7 @@ int main(int argc, char **argv)
         }
         fprintf(stderr, "Rank %d Group construct complete with status %s KEY %s CID assigned: %s value: %lu\n",
                 myproc.rank, PMIx_Error_string(rc), results[0].key, idassigned ? "T" : "F", (unsigned long) cid);
+        PMIX_INFO_FREE(results, nresults);
     } else {
         fprintf(stderr, "Rank %d Group construct complete, but no CID returned\n", myproc.rank);
     }
@@ -269,14 +271,18 @@ int main(int argc, char **argv)
                 continue;
             }
             if ((1234UL + (unsigned long)n) != val->data.size) {
+                tmp = PMIx_Value_string(val);
                 fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %d returned wrong value: %s\n",
-                        myproc.nspace, myproc.rank, n, PMIx_Value_string(val));
+                        myproc.nspace, myproc.rank, n, tmp);
+                free(tmp);
                 PMIX_VALUE_RELEASE(val);
                 abort();
                 continue;
             }
+            tmp = PMIx_Value_string(val);
             fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %u SUCCESS value: %s\n",
-                    myproc.nspace, myproc.rank, n, PMIx_Value_string(val));
+                    myproc.nspace, myproc.rank, n, tmp);
+            free(tmp);
             PMIX_VALUE_RELEASE(val);
         }
         fflush(stderr);
