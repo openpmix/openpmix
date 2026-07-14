@@ -238,6 +238,7 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata, const 
      * nothing more for us to do */
     rc = cb->status;
     PMIX_RELEASE(cb);
+    PMIx_Argv_free(keys);
     return rc;
 }
 
