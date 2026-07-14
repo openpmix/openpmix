@@ -164,6 +164,7 @@ int main(int argc, char **argv)
                 break;
             }
         }
+        PMIX_INFO_FREE(results, nresults);
     } else {
         fprintf(stderr, "%d Group construct complete, but no CID returned\n", myproc.rank);
         goto done;
