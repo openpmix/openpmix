@@ -23,6 +23,7 @@
 #include "include/pmix_server.h"
 
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/psensor/psensor.h"
 #include "src/mca/pstat/pstat.h"
 #include "src/mca/ptl/ptl.h"
 #include "src/threads/pmix_threads.h"
@@ -189,6 +190,36 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
     local = false;
     remote = false;
     error = cb->status;
+
+    // Liveness monitoring (heartbeat/file) is serviced by the psensor
+    // framework rather than by pstat's resource-usage sampling, and it
+    // watches the requesting process itself, so it has no local/remote
+    // target to resolve. Offer the request to psensor first: it claims a
+    // liveness monitor and returns the start status, or returns
+    // PMIX_ERR_NOT_SUPPORTED when the monitor is none of its keys - in
+    // which case we fall through to the resource-usage path below. The
+    // sensors track the requesting peer, which must be one of our local
+    // clients (recovered here from the requestor's procid).
+    ptr = pmix_get_peer_object(&cb->proc[0]);
+    if (NULL != ptr) {
+        rc = pmix_psensor.start(ptr, error, cb->info, cb->directives, cb->ndirs);
+        if (PMIX_ERR_NOT_SUPPORTED != rc) {
+            // psensor claimed the request (started it, or failed trying).
+            // A start returns only a status - there are no info results.
+            cb->status = rc;
+            if (NULL != cb->proc) {
+                PMIX_PROC_FREE(cb->proc, 1);
+            }
+            if (cb->infocopy) {
+                PMIX_INFO_FREE(cb->info, cb->ninfo);
+                cb->info = NULL;
+                cb->ninfo = 0;
+                cb->infocopy = false;
+            }
+            goto complete;
+        }
+        // not a liveness monitor - fall through to the pstat path
+    }
 
     // see if the requested targets involve our node, or processes on
     // our local node
