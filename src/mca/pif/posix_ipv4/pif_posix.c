@@ -5,7 +5,7 @@
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -296,6 +296,7 @@ static int if_posix_open(void)
         /* get the MAC address */
         if (ioctl(sd, SIOCGIFHWADDR, ifr) < 0) {
             pmix_output(0, "pmix_ifinit: ioctl(SIOCGIFHWADDR) failed with errno=%d", errno);
+            PMIX_RELEASE(intf);
             break;
         }
         memcpy(intf->if_mac, ifr->ifr_hwaddr.sa_data, 6);
@@ -305,6 +306,7 @@ static int if_posix_open(void)
         /* get the MTU */
         if (ioctl(sd, SIOCGIFMTU, ifr) < 0) {
             pmix_output(0, "pmix_ifinit: ioctl(SIOCGIFMTU) failed with errno=%d", errno);
+            PMIX_RELEASE(intf);
             break;
         }
         intf->ifmtu = ifr->ifr_mtu;
