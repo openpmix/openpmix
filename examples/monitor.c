@@ -61,11 +61,16 @@ static void update(size_t evhdlr_registration_id, pmix_status_t status,
                    pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     size_t n;
+    char *tmp;
     EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
 
-    fprintf(stderr, "[%s]UPDATE:\n", PMIx_Proc_string(&myproc));
+    tmp = PMIx_Proc_string(&myproc);
+    fprintf(stderr, "[%s]UPDATE:\n", tmp);
+    free(tmp);
     for (n=0; n < ninfo; n++) {
-        fprintf(stderr, "%s", PMIx_Info_string(&info[n]));
+        tmp = PMIx_Info_string(&info[n]);
+        fprintf(stderr, "%s", tmp);
+        free(tmp);
     }
     fprintf(stderr, "\n\n");
 
@@ -104,6 +109,7 @@ int main(int argc, char **argv)
     pmix_info_t monitor, *results=NULL, directives[2];
     size_t nresults;
     bool flag;
+    char *tmp;
     mylock_t mylock;
     pmix_data_array_t darray;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
@@ -185,7 +191,9 @@ int main(int argc, char **argv)
         } else {
             fprintf(stderr, "INITIAL PROC RESULTS:\n");
             for (n=0; n < nresults; n++) {
-                fprintf(stderr, "%s", PMIx_Info_string(&results[n]));
+                tmp = PMIx_Info_string(&results[n]);
+                fprintf(stderr, "%s", tmp);
+                free(tmp);
             }
             fprintf(stderr, "\n\n");
             n = 0;
@@ -197,6 +205,13 @@ int main(int argc, char **argv)
             }
         }
 
+        PMIX_INFO_DESTRUCT(&monitor);
+        PMIX_INFO_DESTRUCT(&directives[0]);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
+        }
+
         // cancel the monitor
         PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_CANCEL, "mymonitor", PMIX_STRING);
         rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
@@ -205,6 +220,13 @@ int main(int argc, char **argv)
             fprintf(stderr, "Client ns %s rank %d: cancel monitor failed: %s\n", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
             goto done;
+        }
+
+        PMIX_INFO_DESTRUCT(&monitor);
+        PMIX_INFO_DESTRUCT(&directives[0]);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
         }
 
         /* ask to monitor node resource usage */
@@ -227,7 +249,9 @@ int main(int argc, char **argv)
         } else {
             fprintf(stderr, "INITIAL NODE RESULTS:\n");
             for (n=0; n < nresults; n++) {
-                fprintf(stderr, "%s", PMIx_Info_string(&results[n]));
+                tmp = PMIx_Info_string(&results[n]);
+                fprintf(stderr, "%s", tmp);
+                free(tmp);
             }
             fprintf(stderr, "\n\n");
             n = 0;
@@ -239,6 +263,13 @@ int main(int argc, char **argv)
             }
         }
 
+        PMIX_INFO_DESTRUCT(&monitor);
+        PMIX_INFO_DESTRUCT(&directives[0]);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
+        }
+
         PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_CANCEL, "nodemon", PMIX_STRING);
         rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
                                   NULL, 0, &results, &nresults);
@@ -246,6 +277,13 @@ int main(int argc, char **argv)
             fprintf(stderr, "Client ns %s rank %d: cancel monitor failed: %s\n", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
             goto done;
+        }
+
+        PMIX_INFO_DESTRUCT(&monitor);
+        PMIX_INFO_DESTRUCT(&directives[0]);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
         }
 
         /* ask to monitor disk resource usage */
@@ -268,7 +306,9 @@ int main(int argc, char **argv)
         } else {
             fprintf(stderr, "INITIAL DISK RESULTS:\n");
             for (n=0; n < nresults; n++) {
-                fprintf(stderr, "%s", PMIx_Info_string(&results[n]));
+                tmp = PMIx_Info_string(&results[n]);
+                fprintf(stderr, "%s", tmp);
+                free(tmp);
             }
             fprintf(stderr, "\n\n");
             n = 0;
@@ -280,6 +320,13 @@ int main(int argc, char **argv)
             }
         }
 
+        PMIX_INFO_DESTRUCT(&monitor);
+        PMIX_INFO_DESTRUCT(&directives[0]);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
+        }
+
         PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_CANCEL, "dkmon", PMIX_STRING);
         rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
                                   NULL, 0, &results, &nresults);
@@ -287,6 +334,13 @@ int main(int argc, char **argv)
             fprintf(stderr, "Client ns %s rank %d: cancel monitor failed: %s\n", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
             goto done;
+        }
+
+        PMIX_INFO_DESTRUCT(&monitor);
+        PMIX_INFO_DESTRUCT(&directives[0]);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
         }
 
         /* ask to monitor network resource usage */
@@ -309,7 +363,9 @@ int main(int argc, char **argv)
         } else {
             fprintf(stderr, "INITIAL NETWORK RESULTS:\n");
             for (n=0; n < nresults; n++) {
-                fprintf(stderr, "%s", PMIx_Info_string(&results[n]));
+                tmp = PMIx_Info_string(&results[n]);
+                fprintf(stderr, "%s", tmp);
+                free(tmp);
             }
             fprintf(stderr, "\n\n");
             n = 0;
@@ -321,6 +377,13 @@ int main(int argc, char **argv)
             }
         }
 
+        PMIX_INFO_DESTRUCT(&monitor);
+        PMIX_INFO_DESTRUCT(&directives[0]);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
+        }
+
         PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_CANCEL, "netmon", PMIX_STRING);
         rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
                                   NULL, 0, &results, &nresults);
@@ -328,6 +391,11 @@ int main(int argc, char **argv)
             fprintf(stderr, "Client ns %s rank %d: cancel monitor failed: %s\n", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
             goto done;
+        }
+        PMIX_INFO_DESTRUCT(&monitor);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
         }
 
     }
