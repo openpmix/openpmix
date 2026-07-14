@@ -177,6 +177,14 @@ static void gtdes(grp_trk_t *t)
     if (NULL != t->blk) {
         PMIX_RELEASE(t->blk);
     }
+    /* the tracker owns its copy of the participant array and the
+     * info array handed to it by get_tracker */
+    if (NULL != t->pcs) {
+        PMIX_PROC_FREE(t->pcs, t->npcs);
+    }
+    if (NULL != t->info) {
+        PMIX_INFO_FREE(t->info, t->ninfo);
+    }
     PMIX_LIST_DESTRUCT(&t->local_cbs);
 }
 static PMIX_CLASS_INSTANCE(grp_trk_t,
@@ -1101,6 +1109,13 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     }
     // grpid has been copied into the tracker
     free(grpid);
+    // get_tracker copied the participant array into the tracker, so
+    // release our unpacked copy - the tracker's trk->pcs is used from
+    // here on
+    if (NULL != procs) {
+        PMIX_PROC_FREE(procs, nprocs);
+        procs = NULL;
+    }
     // mark as a construct op
     blk->grpop = op;
     // track ctx id request
@@ -1116,7 +1131,7 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
          * so we cannot aggregate info from this proc. We therefore pass
          * everything up separately and rely on the host to properly
          * deal with it */
-        rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, blk->id, procs, nprocs,
+        rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, blk->id, trk->pcs, trk->npcs,
                                     trk->info, trk->ninfo, grpcbfunc, blk);
         if (PMIX_OPERATION_SUCCEEDED == rc) {
             // the host will not be calling back
