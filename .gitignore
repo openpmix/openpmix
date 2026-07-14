@@ -211,6 +211,7 @@ test/simple/stability
 test/simple/gwclient
 test/simple/gwtest
 test/simple/simpjctrl
+test/simple/simpmonitor
 test/simple/simpio
 test/simple/data-*
 test/simple/simpcoord
@@ -262,6 +263,7 @@ test/unit/run_grpmemberfail.pl
 test/unit/run_grpleader.pl
 test/unit/run_grpcabort.pl
 test/unit/run_grpctimeout.pl
+test/unit/run_monitor.pl
 test/unit/util_argv
 test/unit/util_basename
 test/unit/util_path

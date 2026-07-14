@@ -1017,6 +1017,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grpleader.pl], [chmod +x test/unit/run_grpleader.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grpcabort.pl], [chmod +x test/unit/run_grpcabort.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grpctimeout.pl], [chmod +x test/unit/run_grpctimeout.pl])
+    AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_monitor.pl], [chmod +x test/unit/run_monitor.pl])
 #    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests14.pl], [chmod +x test/run_tests14.pl])
 #    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests15.pl], [chmod +x test/run_tests15.pl])
     if test "$WANT_PYTHON_BINDINGS" = "1"; then
