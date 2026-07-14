@@ -453,6 +453,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     size_t niptr = 0;
     pmix_peer_t *peer = (pmix_peer_t *) pr;
     bool optional = false;
+    bool cmdline_loaded = false;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base: connecting to server");
@@ -672,6 +673,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
         kv->info = &mycmdlineinfo;
         pmix_list_append(&ilist, &kv->super);
         free(p);
+        cmdline_loaded = true;
     }
 
     /* if we need to pass anything, setup an array */
@@ -914,6 +916,13 @@ cleanup:
     }
     if (NULL != iptr) {
         PMIX_INFO_FREE(iptr, niptr);
+    }
+    if (NULL != order) {
+        PMIx_Argv_free(order);
+    }
+    /* the command line was xfer'd into iptr, so release our local copy */
+    if (cmdline_loaded) {
+        PMIX_INFO_DESTRUCT(&mycmdlineinfo);
     }
     if (NULL != rendfile) {
         free(rendfile);
