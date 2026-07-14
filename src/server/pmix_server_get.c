@@ -678,9 +678,9 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char 
     }
     if (NULL != lcd) {
         /* we already have a request, so just track that someone
-         * else wants data from the same target */
+         * else wants data from the same target - the new request
+         * created below takes its own reference on the tracker */
         rc = PMIX_SUCCESS; // indicates we found an existing request
-        PMIX_RETAIN(lcd);
         goto complete;
     }
     /* we do not have an existing request, so let's create
@@ -715,12 +715,9 @@ complete:
     req->lcd = lcd;
     req->cbfunc = cbfunc;
     pmix_list_append(&lcd->loc_reqs, &req->super);
-    /* if provided, the cbdata is always a pmix_server_caddy_t. Since
-     * it will be released by every req when it completes, we have to
-     * up the refcount on it to avoid multiple free's of its contents */
-    if (NULL != cbdata && 1 < pmix_list_get_size(&lcd->loc_reqs)) {
-        PMIX_RETAIN(cbdata);
-    }
+    /* the cbdata is a pmix_server_caddy_t that is unique to this
+     * request (each GET creates its own), so this request owns the
+     * single reference on it and no additional retain is required */
     req->cbdata = cbdata;
     *ld = lcd;
     *rq = req;
