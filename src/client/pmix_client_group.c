@@ -62,7 +62,7 @@
 
 /* define a tracking object for group operations */
 typedef struct {
-    pmix_object_t super;
+    pmix_list_item_t super;
     pmix_lock_t lock;
     pmix_status_t status;
     size_t ref;
@@ -149,7 +149,23 @@ static void gtdes(pmix_group_tracker_t *p)
         p->grpid = NULL;
     }
 }
-PMIX_CLASS_INSTANCE(pmix_group_tracker_t, pmix_object_t, gtcon, gtdes);
+PMIX_CLASS_INSTANCE(pmix_group_tracker_t, pmix_list_item_t, gtcon, gtdes);
+
+/* Registry of active leader-watch trackers. Each acceptor of a group
+ * invitation registers a persistent event handler (see setup_leader_watch)
+ * that must live until the group construct completes. The construct-complete
+ * (or construct-abort) event that would trigger teardown is not guaranteed to
+ * reach the acceptor before it finalizes - in practice, for the common
+ * single-server case, it often does not. Rather than leak the tracker (and its
+ * registered handler) in that case, we record each active watch here and
+ * release any survivors at finalize. Access is confined to the progress thread
+ * (watches are added in watch_regcb and removed in watch_teardown, both of
+ * which run there) and to finalize after the progress thread has stopped, so
+ * no lock is required - the same discipline used for pending_requests. The
+ * list is constructed lazily on first use (a static initializer alone does not
+ * wire up the sentinel for appends) and drained at finalize. */
+static pmix_list_t pmix_group_leader_watches = PMIX_LIST_STATIC_INIT;
+static bool pmix_group_leader_watches_active = false;
 
 /* callback for wait completion */
 static void construct_cbfunc(struct pmix_peer_t *pr,
@@ -1257,6 +1273,10 @@ static void watch_teardown(int sd, short args, void *cbdata)
     pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
+    /* this watch is being torn down on its own terms, so drop it from the
+     * finalize-time registry before releasing it */
+    pmix_list_remove_item(&pmix_group_leader_watches, &cb->super);
+
     if (SIZE_MAX != cb->ref) {
         PMIx_Deregister_event_handler(cb->ref, watch_deregcb, cb);
         cb->ref = SIZE_MAX;
@@ -1337,6 +1357,13 @@ static void watch_regcb(pmix_status_t status, size_t refid, void *cbdata)
         return;
     }
     cb->ref = refid;
+    /* the watch is now live - record it so a survivor can be reclaimed at
+     * finalize should its construct-complete event never arrive */
+    if (!pmix_group_leader_watches_active) {
+        PMIX_CONSTRUCT(&pmix_group_leader_watches, pmix_list_t);
+        pmix_group_leader_watches_active = true;
+    }
+    pmix_list_append(&pmix_group_leader_watches, &cb->super);
     PMIX_POST_OBJECT(cb);
 }
 
@@ -1383,6 +1410,26 @@ static void setup_leader_watch(const char *grp, const pmix_proc_t *leader)
     PMIX_INFO_LOAD(&cb->info[1], PMIX_EVENT_HDLR_PREPEND, NULL, PMIX_BOOL);
     PMIx_Register_event_handler(codes, ncodes, cb->info, cb->ninfo,
                                 leader_watch_handler, watch_regcb, cb);
+}
+
+/* Release any leader-watch trackers still active at finalize. The construct
+ * event that would normally tear a watch down is not guaranteed to reach the
+ * acceptor before it finalizes, so reclaim the survivors here. This runs after
+ * the progress thread has stopped, so no handler can be firing and the list is
+ * ours to drain; the registered event handlers are torn down with the rest of
+ * the event base. */
+void pmix_client_group_cleanup(void)
+{
+    pmix_group_tracker_t *cb;
+
+    if (!pmix_group_leader_watches_active) {
+        return;
+    }
+    while (NULL != (cb = (pmix_group_tracker_t *) pmix_list_remove_first(&pmix_group_leader_watches))) {
+        PMIX_RELEASE(cb);
+    }
+    PMIX_DESTRUCT(&pmix_group_leader_watches);
+    pmix_group_leader_watches_active = false;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *leader,
