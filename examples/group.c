@@ -198,6 +198,9 @@ int main(int argc, char **argv)
         }
 
         rc = PMIx_Group_construct("ourgroup", procs, nprocs, info, psize, &results, &nresults);
+        for (n = 0; n < psize; n++) {
+            PMIX_INFO_DESTRUCT(&info[n]);
+        }
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
