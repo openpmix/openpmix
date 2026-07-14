@@ -1245,6 +1245,9 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
+    /* reclaim any group leader-watch trackers whose construct event never
+     * arrived to tear them down (safe now that the progress thread is stopped) */
+    pmix_client_group_cleanup();
     for (i = 0; i < pmix_client_globals.peers.size; i++) {
         peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_client_globals.peers, i);
         if (NULL != peer) {
