@@ -231,6 +231,9 @@ int main(int argc, char **argv)
 
 done:
     /* finalize us */
+    if (NULL != locals) {
+        free(locals);
+    }
 
     /* call fence so everyone waits before leaving */
     if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, NULL, 0))) {
