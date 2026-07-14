@@ -709,7 +709,12 @@ done:
                 cb->value = val;
                 gcbfn(0, 0, cb);
             } else {
-                cb->cbfunc.valuefn(rc, val, cb->cbdata);
+                /* hand the value to the cb so the blocking caller
+                 * collects it directly.  Passing it as cb->value lets
+                 * _value_cbfunc() take ownership rather than copying it
+                 * onto a separate pointer that would then be leaked */
+                cb->value = val;
+                cb->cbfunc.valuefn(rc, cb->value, cb->cbdata);
             }
         }
     }
