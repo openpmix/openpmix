@@ -422,6 +422,9 @@ int main(int argc, char **argv)
     }
 
 done:
+    if (NULL != locals) {
+        free(locals);
+    }
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
