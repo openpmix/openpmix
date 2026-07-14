@@ -731,13 +731,21 @@ static pmix_status_t process_values(pmix_cb_t *cb)
     if (NULL != cb->key && 1 == pmix_list_get_size(kvs)) {
         kv = (pmix_kval_t *) pmix_list_get_first(kvs);
         if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
-            // extract the actual value
+            // the actual value is embedded in the qualified-value array,
+            // which the kv still owns.  Hand back a standalone copy so the
+            // caller can release it, and leave the kv (with its array) to
+            // be released normally when the cb is destructed.
             iptr = (pmix_info_t*)kv->value->data.darray->array;
-            cb->value = &iptr[0].value;
+            PMIX_VALUE_CREATE(cb->value, 1);
+            if (NULL == cb->value) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIx_Value_xfer(cb->value, &iptr[0].value);
         } else {
+            // take ownership of the value away from the kv
             cb->value = kv->value;
+            kv->value = NULL;
         }
-        kv->value = NULL; // protect the value
         return PMIX_SUCCESS;
     }
     /* we will return the data as an array of pmix_info_t
