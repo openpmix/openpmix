@@ -2,7 +2,7 @@
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -163,6 +163,7 @@ static int if_bsdx_ipv6_open(void)
         intf = PMIX_NEW(pmix_pif_t);
         if (NULL == intf) {
             pmix_output(0, "pmix_ifinit: unable to allocate %lu bytes\n", sizeof(pmix_pif_t));
+            freeifaddrs(*ifadd_list);
             free(ifadd_list);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
@@ -190,6 +191,7 @@ static int if_bsdx_ipv6_open(void)
         pmix_list_append(&pmix_if_list, &(intf->super));
     } /*  of for loop over ifaddrs list */
 
+    freeifaddrs(*ifadd_list);
     free(ifadd_list);
 
     return PMIX_SUCCESS;
