@@ -3,7 +3,7 @@
  * Copyright (c) 2012      Los Alamos National Security, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,27 +24,35 @@ pmix_status_t pmix_psensor_base_start(pmix_peer_t *requestor, pmix_status_t erro
 {
     pmix_psensor_active_module_t *mod;
     pmix_status_t rc;
-    bool didit = false;
+    bool serviced = false;
 
     pmix_output_verbose(5, pmix_psensor_base_framework.framework_output,
                         "%s:%d sensor:base: starting sensors", pmix_globals.myid.nspace,
                         pmix_globals.myid.rank);
 
-    /* call the start function of all modules in priority order */
+    /* offer the request to the start function of all modules in
+     * priority order. A module that recognizes the monitor claims it by
+     * returning PMIX_SUCCESS; one that does not declines with
+     * PMIX_ERR_TAKE_NEXT_OPTION so the next module gets a chance. */
     PMIX_LIST_FOREACH (mod, &pmix_psensor_base.actives, pmix_psensor_active_module_t) {
-        if (NULL != mod->module->start) {
-            rc = mod->module->start(requestor, error, monitor, directives, ndirs);
-            if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
-                return rc;
-            }
-            didit = true;
+        if (NULL == mod->module->start) {
+            continue;
+        }
+        rc = mod->module->start(requestor, error, monitor, directives, ndirs);
+        if (PMIX_SUCCESS == rc) {
+            /* a module claimed and started the request */
+            serviced = true;
+        } else if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            /* the module claimed the request but hit a hard error */
+            return rc;
         }
     }
 
-    /* if none of the components could do it, then report
-     * not supported upwards so the server knows to ask
-     * the host to try */
-    if (!didit) {
+    /* if no module could service the request, report not supported
+     * upwards so the server knows to ask the host to try. This matches
+     * the convention pstat uses (its unsupported module returns
+     * PMIX_ERR_NOT_SUPPORTED) when nothing can meet the request. */
+    if (!serviced) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
