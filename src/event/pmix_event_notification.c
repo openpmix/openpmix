@@ -1306,8 +1306,15 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                         /* if the event was cached and this is the last one,
                          * then evict this event from the cache */
                         if (0 == cd->nleft) {
-                            pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
-                            holdcd = false;
+                            if (holdcd) {
+                                /* remove it from the cache and release the
+                                 * reference the cache was holding; our own
+                                 * in-flight reference keeps cd alive through
+                                 * the remainder of this routine */
+                                pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
+                                PMIX_RELEASE(cd);
+                                holdcd = false;
+                            }
                             break;
                         }
                     }
