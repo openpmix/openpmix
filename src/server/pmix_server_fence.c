@@ -802,12 +802,16 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
         PMIX_LIST_FOREACH (blob, &rank_blobs, rank_blob_t) {
             /* extract the blob */
             PMIX_UNLOAD_BUFFER(blob->buf, bo.bytes, bo.size);
+            /* the payload now belongs to bo, so release the emptied
+             * buffer object - the list destructor skips it once cleared */
+            PMIX_RELEASE(blob->buf);
             blob->buf = NULL;
             /* pack the returned blob */
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &bo, 1, PMIX_BYTE_OBJECT);
             PMIX_BYTE_OBJECT_DESTRUCT(&bo); // releases the data
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
+                PMIX_LIST_DESTRUCT(&rank_blobs);
                 goto cleanup;
             }
         }
