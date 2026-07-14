@@ -532,6 +532,14 @@ static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
             PMIX_INFO_XFER(&immediate[n], &cb->info[n]);
         }
         PMIX_INFO_LOAD(&immediate[n], PMIX_IMMEDIATE, NULL, PMIX_BOOL);
+        /* if cb->info was already a library-allocated copy (e.g., the
+         * directive array built for a node/app/session-level get), release
+         * it now that its contents have been transferred - otherwise it is
+         * orphaned by the reassignment and leaks. A caller-provided array
+         * (infocopy == false) must be left untouched. */
+        if (cb->infocopy) {
+            PMIX_INFO_FREE(cb->info, cb->ninfo);
+        }
         cb->info = immediate;
         cb->ninfo = nimm;
         cb->infocopy = true;
