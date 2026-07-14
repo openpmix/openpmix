@@ -7,7 +7,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,6 +16,8 @@
  */
 
 #include "pmix_config.h"
+
+#include <string.h>
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/base/pmix_base.h"
@@ -69,11 +71,43 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
     return false;
 }
 
+/* These read the uncompressed length from the leading 4 bytes of a
+ * compressed blob (see the shared blob format); they need no compression
+ * library, so the base default implements them too. This keeps the
+ * PMIX_COMPRESSED_* size paths in bfrops safe on a host that built no
+ * compression component but still receives a compressed blob from a
+ * peer that did. */
+static size_t get_decompressed_size(const pmix_byte_object_t *bo)
+{
+    uint32_t len = 0;
+
+    if (NULL == bo || NULL == bo->bytes || bo->size < sizeof(uint32_t)) {
+        return 0;
+    }
+    /* the first 4 bytes contain the uncompressed size */
+    memcpy(&len, bo->bytes, sizeof(uint32_t));
+    return (size_t) len;
+}
+
+static size_t get_decompressed_strlen(const pmix_byte_object_t *bo)
+{
+    size_t len;
+
+    /* add one for the NUL terminator, matching PMIX_STRING accounting */
+    len = get_decompressed_size(bo);
+    if (0 == len) {
+        return 0;
+    }
+    return len + 1;
+}
+
 pmix_compress_base_module_t pmix_compress = {
     .compress = compress_block,
     .decompress = decompress_block,
+    .get_decompressed_size = get_decompressed_size,
     .compress_string = compress_string,
-    .decompress_string = decompress_string
+    .decompress_string = decompress_string,
+    .get_decompressed_strlen = get_decompressed_strlen
 };
 
 pmix_compress_base_t pmix_compress_base = {

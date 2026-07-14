@@ -48,11 +48,17 @@ static bool compress_string(char *instring, uint8_t **outbytes, size_t *nbytes);
 
 static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len);
 
+static size_t get_decompressed_size(const pmix_byte_object_t *bo);
+
+static size_t get_decompressed_strlen(const pmix_byte_object_t *bo);
+
 pmix_compress_base_module_t pmix_pcompress_zlib_module = {
     .compress = zlib_compress,
     .decompress = zlib_decompress,
+    .get_decompressed_size = get_decompressed_size,
     .compress_string = compress_string,
     .decompress_string = decompress_string,
+    .get_decompressed_strlen = get_decompressed_strlen,
 };
 
 static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbytes, size_t *outlen)
@@ -232,4 +238,36 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
     /* set the default error answer */
     *outstring = NULL;
     return false;
+}
+
+/* A blob produced by zlib_compress / compress_string carries the
+ * uncompressed length in its leading 4 bytes (see the shared blob
+ * format). These helpers return that length by reading the prefix,
+ * without inflating the payload, so callers computing the in-memory
+ * footprint of a PMIX_COMPRESSED_BYTE_OBJECT / PMIX_COMPRESSED_STRING
+ * need not decompress it first. */
+static size_t get_decompressed_size(const pmix_byte_object_t *bo)
+{
+    uint32_t len = 0;
+
+    if (NULL == bo || NULL == bo->bytes || bo->size < sizeof(uint32_t)) {
+        return 0;
+    }
+    /* the first 4 bytes contain the uncompressed size */
+    memcpy(&len, bo->bytes, sizeof(uint32_t));
+    return (size_t) len;
+}
+
+static size_t get_decompressed_strlen(const pmix_byte_object_t *bo)
+{
+    size_t len;
+
+    /* a compressed string stores its strlen (without the NUL) in the
+     * prefix; add one for the terminator so the reported size matches
+     * the uncompressed PMIX_STRING accounting */
+    len = get_decompressed_size(bo);
+    if (0 == len) {
+        return 0;
+    }
+    return len + 1;
 }
