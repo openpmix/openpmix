@@ -42,7 +42,7 @@ int main(int argc, char **argv)
     pmix_value_t *val;
     pmix_proc_t proc;
     uint32_t nprocs;
-    char *nodelist, **nodes, *hostname;
+    char *nodelist = NULL, **nodes = NULL, *hostname = NULL, *tmp;
     pmix_info_t info[2];
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
@@ -112,8 +112,10 @@ int main(int argc, char **argv)
             fprintf(stderr, "Client ns %s rank %d: PMIx_Get coordinates for rank %u failed: %s\n",
                     myproc.nspace, myproc.rank, proc.rank, PMIx_Error_string(rc));
         } else {
+            tmp = PMIx_Value_string(val);
             fprintf(stderr, "Client ns %s rank %d: Rank %u has coordinates\n    %s\n",
-                    myproc.nspace, myproc.rank, proc.rank, PMIx_Value_string(val));
+                    myproc.nspace, myproc.rank, proc.rank, tmp);
+            free(tmp);
             PMIX_VALUE_RELEASE(val);
         }
 
@@ -121,17 +123,28 @@ int main(int argc, char **argv)
         proc.rank = PMIX_RANK_WILDCARD;
         PMIX_INFO_LOAD(&info[0], PMIX_NODE_INFO, NULL, PMIX_BOOL);
         PMIX_INFO_LOAD(&info[1], PMIX_HOSTNAME, hostname, PMIX_STRING);
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_FABRIC_COORDINATES, info, 2, &val))) {
+        rc = PMIx_Get(&proc, PMIX_FABRIC_COORDINATES, info, 2, &val);
+        PMIX_INFO_DESTRUCT(&info[0]);
+        PMIX_INFO_DESTRUCT(&info[1]);
+        if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Get coordinates with directive for host %s failed: %s\n",
                     myproc.nspace, myproc.rank, hostname, PMIx_Error_string(rc));
             goto done;
         }
+        tmp = PMIx_Value_string(val);
         fprintf(stderr, "Client ns %s rank %d: Host %s has coordinates\n    %s\n",
-                myproc.nspace, myproc.rank, hostname, PMIx_Value_string(val));
+                myproc.nspace, myproc.rank, hostname, tmp);
+        free(tmp);
         PMIX_VALUE_RELEASE(val);
     }
 
 done:
+    if (NULL != nodes) {
+        PMIX_ARGV_FREE(nodes);
+    }
+    if (NULL != hostname) {
+        free(hostname);
+    }
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
