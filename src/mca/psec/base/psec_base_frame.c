@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -64,8 +64,8 @@ static pmix_status_t pmix_psec_close(void)
     PMIX_LIST_FOREACH_SAFE (active, prev, &pmix_psec_globals.actives,
                             pmix_psec_base_active_module_t) {
         pmix_list_remove_item(&pmix_psec_globals.actives, &active->super);
-        if (NULL != active->component->finalize) {
-            active->component->finalize();
+        if (NULL != active->module->finalize) {
+            active->module->finalize();
         }
         PMIX_RELEASE(active);
     }
