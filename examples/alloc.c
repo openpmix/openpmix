@@ -94,6 +94,7 @@ static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
 {
     myrel_t *lock;
     size_t n;
+    char *tmp;
     pmix_status_t rc, pstatus = PMIX_ERROR;
     EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
 
@@ -105,8 +106,10 @@ static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
         } else if (PMIx_Check_key(info[n].key, PMIX_ALLOC_STATUS)) {
             rc = PMIx_Value_get_number(&info[n].value, (void*)&pstatus, PMIX_STATUS);
             if (PMIX_SUCCESS != rc) {
+                tmp = PMIx_Proc_string(&myproc);
                 fprintf(stderr, "Client %s: Error in notification status returned: %s\n",
-                        PMIx_Proc_string(&myproc), PMIx_Error_string(rc));
+                        tmp, PMIx_Error_string(rc));
+                free(tmp);
             }
         }
     }
@@ -159,7 +162,7 @@ int main(int argc, char **argv)
     uint64_t nnodes = 12;
     myquery_data_t mydata;
     pmix_query_t *query;
-    char *myallocation = "MYALLOCATION";
+    char *myallocation = "MYALLOCATION", *tmp;
     mylock_t mylock;
     pmix_status_t code;
     myrel_t myrel;
@@ -209,6 +212,7 @@ int main(int argc, char **argv)
         PMIX_INFO_CREATE(info, 1);
         PMIX_INFO_LOAD(&info[0], PMIX_ALLOC_STATUS, &rc, PMIX_STATUS);
         PMIx_Notify_event(PMIX_NOTIFY_ALLOC_COMPLETE, &myproc, PMIX_RANGE_GLOBAL, info, 1, NULL, NULL);
+        PMIX_INFO_FREE(info, 1);
 
     } else if (1 == myproc.rank) {
         /* demonstrate a notification based approach - register a handler
@@ -244,7 +248,9 @@ int main(int argc, char **argv)
         query[0].nqual = 1;
         PMIX_INFO_LOAD(&query[0].qualifiers[0], PMIX_ALLOC_ID, myallocation, PMIX_STRING);
 
-        fprintf(stderr, "Client %s querying allocation\n", PMIx_Proc_string(&myproc));
+        tmp = PMIx_Proc_string(&myproc);
+        fprintf(stderr, "Client %s querying allocation\n", tmp);
+        free(tmp);
         if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, 1, infocbfunc, (void *) &mydata))) {
             fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
             goto done;
