@@ -138,6 +138,7 @@ int main(int argc, char **argv)
         /* execute the query */
         if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(&query, 1, cbfunc, (void *) &mylock))) {
             fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
+            PMIX_QUERY_DESTRUCT(&query);
             goto done;
         }
         DEBUG_WAIT_THREAD(&mylock);
@@ -145,6 +146,7 @@ int main(int argc, char **argv)
             rc = mylock.status;
         }
         DEBUG_DESTRUCT_LOCK(&mylock);
+        PMIX_QUERY_DESTRUCT(&query);
 
 #endif
     }
