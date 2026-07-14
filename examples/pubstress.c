@@ -284,6 +284,8 @@ int main(int argc, char **argv)
                     myproc.rank, rc);
             goto done;
         }
+        free(keys[0]);
+        free(keys[1]);
         // purge the rest
         if (PMIX_SUCCESS != (rc = PMIx_Unpublish(NULL, NULL, 0))) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Unpublish purge failed: %d\n", myproc.nspace,
@@ -366,6 +368,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "Client ns %s rank %d: PMIx_Unpublish of app persistence succeeded\n", myproc.nspace,
                     myproc.rank);
         }
+        free(keys[0]);
 
         // verify the app persistence keys are gone
         PMIX_PDATA_CONSTRUCT(&pdata);
