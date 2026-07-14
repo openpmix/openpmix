@@ -421,6 +421,10 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
         }
         ++n;
     }
+    /* the unresolved queries have been copied into the caddy's
+     * query cache, so we are done with the list */
+    PMIX_LIST_DESTRUCT(&unresolved);
+
     /* ask for help */
     rc = request_help(cd);
     if (PMIX_SUCCESS != rc) {

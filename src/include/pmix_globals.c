@@ -518,9 +518,13 @@ static void qlcon(pmix_querylist_t *p)
 {
     PMIX_QUERY_CONSTRUCT(&p->query);
 }
+static void qldes(pmix_querylist_t *p)
+{
+    PMIX_QUERY_DESTRUCT(&p->query);
+}
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_querylist_t,
                                 pmix_list_item_t,
-                                qlcon, NULL);
+                                qlcon, qldes);
 
 static void qcon(pmix_query_caddy_t *p)
 {
@@ -547,6 +551,7 @@ static void qdes(pmix_query_caddy_t *p)
 {
     PMIX_DESTRUCT_LOCK(&p->lock);
     PMIX_BYTE_OBJECT_DESTRUCT(&p->bo);
+    PMIX_QUERY_FREE(p->queries, p->nqueries);
     PMIX_PROC_FREE(p->targets, p->ntargets);
     PMIX_INFO_FREE(p->info, p->ninfo);
     PMIX_LIST_DESTRUCT(&p->results);
