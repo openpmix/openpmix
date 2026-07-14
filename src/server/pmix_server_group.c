@@ -174,9 +174,11 @@ static void gtcon(grp_trk_t *t)
 static void gtdes(grp_trk_t *t)
 {
     PMIX_DESTRUCT_LOCK(&t->lock);
-    if (NULL != t->blk) {
-        PMIX_RELEASE(t->blk);
-    }
+    /* t->blk is a non-owning back-reference: the block owns its trackers
+     * (they live on blk->mbrs and are freed by this destructor when the
+     * block is released), so the tracker must NOT hold a reference on the
+     * block - doing so forms a refcount cycle that leaks the entire block,
+     * its trackers, and their queued participant caddies. */
     /* the tracker owns its copy of the participant array and the
      * info array handed to it by get_tracker */
     if (NULL != t->pcs) {
@@ -348,7 +350,7 @@ static pmix_status_t get_tracker(char *grpid, bool bootstrap, bool follower,
             *block = blk;
             // new signature, so create a tracker for it
             trk = PMIX_NEW(grp_trk_t);
-            PMIX_RETAIN(blk);
+            // non-owning back-reference - see gtdes
             trk->blk = blk;
             trk->npcs = nprocs;
             PMIX_PROC_CREATE(trk->pcs, trk->npcs);
@@ -370,7 +372,7 @@ newblock:
     *block = blk;
     // setup a tracker for it
     trk = PMIX_NEW(grp_trk_t);
-    PMIX_RETAIN(blk);
+    // non-owning back-reference - see gtdes
     trk->npcs = nprocs;
     if (NULL != procs) {
         PMIX_PROC_CREATE(trk->pcs, trk->npcs);
@@ -472,7 +474,7 @@ static void notify_local_members_of_loss(grp_block_t *blk)
 static void _grpcbfunc(int sd, short args, void *cbdata)
 {
     grp_shifter_t *scd = (grp_shifter_t *) cbdata;
-    grp_block_t *blk = scd->blk, *bk;
+    grp_block_t *blk = scd->blk, *bk, *nxt_bk;
     char *id;
     pmix_group_operation_t op;
     grp_trk_t *trk;
@@ -579,8 +581,10 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
     }
 
     // because bootstrap will have added multiple blocks to the collectives
-    // for each bootstrap operation, cycle across the list to find them all
-    PMIX_LIST_FOREACH(bk, &pmix_server_globals.grp_collectives, grp_block_t) {
+    // for each bootstrap operation, cycle across the list to find them all.
+    // Use the SAFE variant: matching blocks are removed and released below,
+    // so we must cache the next pointer before freeing the current block.
+    PMIX_LIST_FOREACH_SAFE(bk, nxt_bk, &pmix_server_globals.grp_collectives, grp_block_t) {
         if (0 != strcmp(id, bk->id)) {
             continue;
         }
@@ -700,7 +704,10 @@ static void grpcbfunc(pmix_status_t status,
     grp_shifter_t *scd;
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
-        PMIX_RELEASE(blk);
+        /* we are shutting down and cannot thread-shift. The block is still
+         * on the collectives list (it is removed only in _grpcbfunc), so
+         * leave it there for finalize to reclaim via PMIX_LIST_DESTRUCT
+         * rather than releasing the list's reference out from under it. */
         return;
     }
 
