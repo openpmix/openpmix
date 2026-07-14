@@ -3120,6 +3120,7 @@ static void cdcon(pmix_server_caddy_t *cd)
     cd->info = NULL;
     cd->ninfo = 0;
     cd->query = NULL;
+    cd->key = NULL;
 }
 static void cddes(pmix_server_caddy_t *cd)
 {
@@ -3137,6 +3138,9 @@ static void cddes(pmix_server_caddy_t *cd)
     }
     if (NULL != cd->query) {
         PMIX_QUERY_FREE(cd->query, 1);
+    }
+    if (NULL != cd->key) {
+        free(cd->key);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_server_caddy_t,

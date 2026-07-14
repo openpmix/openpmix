@@ -228,6 +228,10 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     if (PMIX_SUCCESS == rc) {
         keyprovided = true;
     }
+    /* the caddy takes ownership of the key string so that it is
+     * released no matter which of the many exit paths below is
+     * taken - cddes will free it when the caddy is released */
+    cd->key = key;
 
     /* search for directives we can deal with here */
     for (n = 0; n < cd->ninfo; n++) {
@@ -466,6 +470,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         if (NULL != key) {
             free(key);
             key = NULL;
+            cd->key = NULL;
         }
         goto request;
     }

@@ -633,6 +633,7 @@ typedef struct {
     pmix_info_t *info;
     size_t ninfo;
     pmix_query_t *query;
+    char *key;
 } pmix_server_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 
