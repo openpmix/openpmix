@@ -611,6 +611,15 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
     pmix_proc_t wildcard;
     pmix_status_t rc;
     pmix_topology_t *t;
+    /* Source string reported for a caller-provided topology when the caller
+     * did not request a specific source. It has static storage duration, so
+     * the caller must treat it as read-only and must NOT free it - consistent
+     * with the returned topology being a library-managed, read-only object.
+     * A source the caller DID provide remains theirs to free. We never assign
+     * this to our own cached topology, whose source is heap-allocated and
+     * released when the library finalizes. */
+    static const char hwloc_source[] = "hwloc:" HWLOC_VERSION;
+    bool source_given = (NULL != topo->source);
 
     pmix_output_verbose(2, pmix_hwloc_output, "%s:%s", __FILE__, __func__);
 
@@ -642,7 +651,8 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
             pmix_output_verbose(2, pmix_hwloc_output,
                                 "%s:%s no source stipulated - returning current version", __FILE__,
                                 __func__);
-            topo->source = strdup(pmix_globals.topology.source);
+            /* read-only static source - caller must not free it */
+            topo->source = (char *) hwloc_source;
             topo->topology = pmix_globals.topology.topology;
             return PMIX_SUCCESS;
         }
@@ -664,8 +674,15 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
         if (NULL != t) {
             pmix_output_verbose(2, pmix_hwloc_output,
                                 "%s:%s found in storage", __FILE__, __func__);
-            topo->source = strdup(t->source);
-            topo->topology = t->topology;
+            /* populate the caller's topology (unless it IS our cache). A
+             * caller-provided source stays theirs; otherwise report the
+             * read-only static source they must not free. */
+            if (topo != &pmix_globals.topology) {
+                if (!source_given) {
+                    topo->source = (char *) hwloc_source;
+                }
+                topo->topology = t->topology;
+            }
             pmix_globals.topology.source = strdup(t->source);
             pmix_globals.topology.topology = t->topology;
             return PMIX_SUCCESS;
@@ -676,8 +693,12 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
     pmix_output_verbose(2, pmix_hwloc_output,
                         "%s:%s nothing found - calling setup", __FILE__, __func__);
     rc = pmix_hwloc_setup_topology(NULL, 0);
-    if (PMIX_SUCCESS == rc) {
-        topo->source = strdup(pmix_globals.topology.source);
+    if (PMIX_SUCCESS == rc && topo != &pmix_globals.topology) {
+        /* setup populated our cache; hand the caller the shared topology
+         * plus a read-only static source (unless they provided their own) */
+        if (!source_given) {
+            topo->source = (char *) hwloc_source;
+        }
         topo->topology = pmix_globals.topology.topology;
     }
     return rc;

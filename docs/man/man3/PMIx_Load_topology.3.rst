@@ -55,7 +55,22 @@ indicate that the implementation is not available by returning
 
 The returned description should be treated as a read-only object; attempts to
 modify it may result in errors. The PMIx library is responsible for performing
-any required cleanup when the client library finalizes.
+any required cleanup of the returned topology when the client library finalizes.
+
+Ownership of the ``source`` field depends on who set it:
+
+* If the caller set the ``source`` field before the call to request a
+  particular implementation, that string belongs to the caller, and the caller
+  remains responsible for releasing it.
+* If the caller did *not* set the ``source`` field, the library fills it in on
+  return with a read-only, statically allocated string identifying the source
+  of the returned topology. The caller must **not** modify or release this
+  string; the library manages its lifetime.
+
+In neither case should the caller destruct or free the returned topology
+itself (for example with ``PMIx_Topology_destruct()``): the topology object is
+shared, library-managed state, and releasing it would corrupt the library's
+internal copy. The library performs the necessary cleanup at finalize.
 
 
 RETURN VALUE

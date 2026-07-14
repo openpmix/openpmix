@@ -7,6 +7,13 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - PMIx_Load_topology no longer leaks the source string. When the caller
+   does not request a specific source, the returned topology's source
+   field now points to a read-only, statically allocated string instead
+   of a heap copy the caller had no safe way to release (the returned
+   topology is shared, library-managed state that must not be destructed
+   by the caller). A source the caller did supply remains theirs to free.
+   The PMIx_Load_topology man page documents this ownership split
  - Group construct fault handling. When a member is lost before
    contributing to a PMIx_Group_construct, the server now consults the
    PMIX_GROUP_FT_COLLECTIVE directive (previously ignored): by default
