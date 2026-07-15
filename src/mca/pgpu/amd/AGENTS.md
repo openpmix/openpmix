@@ -14,8 +14,9 @@
 harvesting AMD-relevant environment variables for a job and (eventually)
 reporting AMD GPU inventory. Read the framework [`AGENTS.md`](../AGENTS.md)
 first; this file covers only what is specific to `amd`. **It is not built
-in any current configuration** (see the Availability section) and its GPU
-logic beyond envar harvesting is stubbed.
+in a default configuration** (see Availability) and its inventory logic is
+stubbed, but its envar-harvesting path compiles cleanly and runs through
+the shared launch wiring when the component is enabled.
 
 ## Files
 
@@ -87,8 +88,10 @@ With the default `NULL` include list, `allocate` harvests nothing —
 
 ## Gotchas
 
-- Do not describe `amd` as functional. It is not built, its default
-  include list is empty, and its inventory functions do nothing.
+- Do not describe `amd` as functional: it is not built in a default
+  configuration, its default include list is empty, and its inventory
+  functions do nothing. Its envar-harvesting `allocate`/`setup_local` do
+  compile and work when the component is enabled.
 - The blob key `PMIX_PGPU_AMD_BLOB` and inventory key
   `PMIX_PGPU_AMD_INVENTORY_KEY` (`pgpu_amd.h`) must stay unique across
   components — the `setup_local` search keys on the blob string to claim

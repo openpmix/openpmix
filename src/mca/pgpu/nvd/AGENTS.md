@@ -14,10 +14,11 @@
 harvesting NVIDIA-relevant environment variables (CUDA/NCCL) for a job and
 (eventually) reporting NVIDIA GPU inventory. Read the framework
 [`AGENTS.md`](../AGENTS.md) first; this file covers only what is specific
-to `nvd`. **It is not built in any current configuration** (see
-Availability) and its GPU logic beyond envar harvesting is stubbed. It is
-the one component with a non-empty default include list — and it carries a
-latent component-name bug.
+to `nvd`. **It is not built in a default configuration** (see
+Availability) and its inventory logic is stubbed, but its envar-harvesting
+path compiles cleanly and runs through the shared launch wiring when the
+component is enabled. It is the one component with a non-empty default
+include list (`CUDA_*,NCCL_*`).
 
 ## Files
 
@@ -46,17 +47,15 @@ Two independent gates keep `nvd` inactive:
 `component_query` sets priority **10** — the lowest of the three vendor
 components — and hands back `pmix_pgpu_nvd_module`.
 
-## Latent bug: component-name mismatch
+## Component-name requirement
 
 `pgpu_nvd_component.c` emits its static-component pointer with
-`PMIX_MCA_BASE_COMPONENT_INIT(pmix, pgpu, nvidia)` — note **`nvidia`**,
-not `nvd`. That macro expands to a pointer named
-`pmix_mca_pgpu_nvidia_component_ptr` referencing
-`pmix_mca_pgpu_nvidia_component`, but the actual struct is
-`pmix_mca_pgpu_nvd_component`. If `nvd` were ever enabled and linked into
-`static-components.h`, this would fail to resolve. The third macro
-argument must be `nvd`. Fix this together with the `configure.m4` gate
-before attempting to build the component.
+`PMIX_MCA_BASE_COMPONENT_INIT(pmix, pgpu, nvd)`. The third argument must
+match the struct name `pmix_mca_pgpu_nvd_component`. An earlier version
+used `nvidia` here, which referenced an undefined
+`pmix_mca_pgpu_nvidia_component` symbol and would have failed to link had
+the component been enabled; it is now correct. Keep the name in sync if
+you ever rename the component.
 
 ## Component struct and MCA params
 
@@ -93,12 +92,13 @@ The bodies match the other vendor components:
 
 ## Gotchas
 
-- Do not describe `nvd` as functional: not built (and would not even link
-  as written due to the `nvidia` name bug), and its inventory functions
-  are no-ops.
+- Do not describe `nvd` as functional: it is not built in a default
+  configuration and its inventory functions are no-ops. Its
+  envar-harvesting `allocate`/`setup_local` do compile and work when the
+  component is enabled.
 - Keep `PMIX_PGPU_NVD_BLOB` / `PMIX_PGPU_NVD_INVENTORY_KEY` unique across
   components; `setup_local` claims its data by matching the blob key.
-- Bringing it to life means fixing the `PMIX_MCA_BASE_COMPONENT_INIT`
-  name, replacing the `configure.m4` placeholder with real CUDA-runtime
-  detection, and implementing the inventory functions. `configure.m4`
-  changes require the full `./autogen.pl && ./configure && make` regen.
+- Bringing it to life means replacing the `configure.m4` placeholder with
+  real CUDA-runtime detection and implementing the inventory functions.
+  `configure.m4` changes require the full `./autogen.pl && ./configure &&
+  make` regen.
