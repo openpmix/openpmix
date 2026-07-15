@@ -17,13 +17,14 @@ can be exercised without real fabric hardware. Read the framework
 [`AGENTS.md`](../AGENTS.md) first; this file covers only what is specific
 to `simptest`.
 
-**Status warning:** `simptest` builds only with `--with-simptest`, and in
-its current form it is **stale** — its `setup_local_network` signature
-does not match the current `pmix_pnet_module_t`, and its module body
-references struct fields (`nd->coord`, `nd->endpt`) that its own
-`pnet_node_t` definition does not contain. As written it would not compile
-even with `--with-simptest`. Treat it as an illustrative sketch of the
-static-endpoint assignment flow, not as working test infrastructure.
+**Status:** `simptest` builds with either `--with-simptest` or
+`--enable-test-build`, and it is **working** — it compiles against the
+current `pmix_pnet_module_t` interface and drives the full
+assign → pack → cache → `PMIx_Get` path end-to-end (exercised by the
+[`test/simple/simpcoord.c`](../../../../test/simple/simpcoord.c) client,
+which retrieves the assigned endpoints and coordinates). It was
+previously stale (signature drift plus an internal `pnet_node_t`
+field mismatch) and has been ported back to the live interface.
 
 ## Files
 
@@ -60,45 +61,73 @@ pmix_pnet_module_t pmix_simptest_module = {
 };
 ```
 
-Note `setup_local_network` here is written as
-`(pmix_namespace_t *nptr, …)`, which does **not** match the current
-typedef's `pmix_nspace_env_cache_t *` — one of the reasons the file is
-stale.
+`setup_local_network` takes the current typedef's
+`pmix_nspace_env_cache_t *nptr`; the underlying `pmix_namespace_t *` is
+reached as `nptr->ns` when caching.
 
-## What the code is trying to do
+## The `pnet_node_t` topology cache
+
+Each line of the config file becomes one `pnet_node_t`:
+
+```c
+typedef struct {
+    pmix_list_item_t super;
+    char *name;             // node name (first token on the line)
+    pmix_coord_t coord;     // fabric coordinate (remaining integer tokens)
+    pmix_byte_object_t endpt;  // synthesized endpoint string
+} pnet_node_t;
+```
+
+`simptest_init` fills `coord` from the parsed integer vector (as
+`uint32_t` values, logical view) and synthesizes `endpt` as the string
+`"simptest.endpt.<name>"` — simptest has no real fabric, so the endpoint
+is a recognizable placeholder.
+
+## What the code does
 
 - **`simptest_init`** reads the `config_file` line by line (skipping
-  `#` comments), building a `mynodes` list of `pnet_node_t` — one per
-  node, each with a name and an integer coordinate vector parsed from the
-  rest of the line. Missing file → `show_help("help-pnet-simptest.txt",
-  "missing-file", …)`.
+  `#` comments), building the `mynodes` list. Missing file →
+  `show_help("help-pnet-simptest.txt", "missing-file", …)`.
 - **`allocate`** (scheduler only) parses `PMIX_PROC_MAP` and
   `PMIX_NODE_MAP` via `pmix_preg.parse_procs` / `parse_nodes`, then for
-  each node assigns every local rank a `PMIX_PROC_DATA` array holding its
-  rank, a `PMIX_FABRIC_COORDINATE`, and a `PMIX_FABRIC_ENDPT`. The kvals
-  are packed under `PMIX_ALLOC_FABRIC_ENDPTS` into a
-  `"pmix-pnet-simptest-blob"` byte object appended to `ilist`. It returns
-  `PMIX_ERR_TAKE_NEXT_OPTION` when no proc/node map is present.
-- **`setup_local_network`** finds `"pmix-pnet-simptest-blob"`, unpacks the
-  kvals, and for `PMIX_ALLOC_FABRIC_ENDPTS` caches the per-rank endpoint /
-  coordinate arrays as job info via `PMIX_GDS_CACHE_JOB_INFO`.
+  each node emits **two** kinds of data into the blob:
+  - a `PMIX_ALLOC_FABRIC_ENDPTS` kval whose value is a `PMIX_PROC_DATA`
+    array — one entry per local rank holding the rank and its
+    `PMIX_FABRIC_ENDPT` (a data array of byte objects). The endpoint is
+    **per-process** data, fetched by rank.
+  - a `PMIX_NODE_INFO_ARRAY` kval tagging this node (`PMIX_HOSTNAME`)
+    with its `PMIX_FABRIC_COORDINATES` (a data array of `pmix_coord_t`).
+    The coordinate is a **per-node** attribute — `PMIX_FABRIC_COORDINATES`
+    is fetched at the node level (rank `PMIX_RANK_UNDEF`), not by rank, so
+    it must be delivered as node info rather than proc data.
 
-The `pnet_node_t` destructor frees `pmix_geometry_t` devices,
-`pmix_endpoint_t` endpts, and `pmix_device_distance_t` distances — but the
-`allocate`/`init` code instead reads/writes `nd->coord` and `nd->endpt`,
-fields the struct does not declare. That mismatch is the concrete bug that
-prevents compilation.
+  All kvals are packed under a `"pmix-pnet-simptest-blob"` byte object
+  appended to `ilist`. It returns `PMIX_ERR_TAKE_NEXT_OPTION` when no
+  proc/node map is present.
+- **`setup_local_network`** finds `"pmix-pnet-simptest-blob"`, unpacks the
+  kvals, and caches each via `PMIX_GDS_CACHE_JOB_INFO`: the
+  `PMIX_ALLOC_FABRIC_ENDPTS` proc-data becomes per-rank job info, and each
+  `PMIX_NODE_INFO_ARRAY` becomes node-level info that the GDS matches to
+  the local node. A client on that node then resolves both
+  `PMIx_Get(rank, PMIX_FABRIC_ENDPT)` and
+  `PMIx_Get(PMIX_FABRIC_COORDINATES)`.
 
 ## Gotchas
 
-- **It does not compile as-is.** Before using `simptest` for anything you
-  must reconcile the `pnet_node_t` fields (`coord`/`endpt` vs.
-  `devices`/`endpts`/`distances`) and update `setup_local_network` to the
-  current `pmix_nspace_env_cache_t *` signature.
+- **Endpoint is per-proc; coordinate is per-node.** This split is not
+  cosmetic — `PMIX_FABRIC_ENDPT` is fetched by rank while
+  `PMIX_FABRIC_COORDINATES` is fetched at the node level. Delivering the
+  coordinate as proc data (as an earlier version did) caches it under a
+  rank the client never queries, so `PMIx_Get` returns
+  `PMIX_ERR_NOT_FOUND`. Keep the coordinate in a `PMIX_NODE_INFO_ARRAY`.
 - **It is the canonical `PMIX_ALLOC_FABRIC_ENDPTS` producer.** The blob it
-  builds (rank + `PMIX_FABRIC_COORDINATE` + `PMIX_FABRIC_ENDPT` per proc)
-  is the shape a real fabric component's `allocate` should emit, so it is
-  useful as a design reference even while broken.
+  builds is the shape a real fabric component's `allocate` should emit, so
+  it is a working design reference.
+- **Running it:** select the component and point it at a topology file,
+  e.g. `PMIX_MCA_pnet=simptest
+  PMIX_MCA_pnet_simptest_config_file=topo.txt ./simptest -n 2 -e
+  ./simpcoord`, where `topo.txt` lists one `nodename coord...` line per
+  node (the node name must match the launcher's node map).
 - **Editing the help text** (`help-pnet-simptest.txt`) requires the
   regenerate-help golden rule: `rm src/util/pmix_show_help_content.* &&
   make`.

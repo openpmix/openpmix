@@ -9,7 +9,7 @@ series, in reverse chronological order.
 Detailed changes since v6.1.0:
  - Added the --enable-test-build configure option. It force-builds the
    test and environment-specific components - the GPU vendor components,
-   the NVIDIA and TCP transports, the pgpu test component, and the
+   the NVIDIA/simptest/TCP transports, the pgpu test component, and the
    optional-library wrappers (zlib, zlib-ng, libesmtp, MUNGE) - so they
    can be compile-checked on a machine that lacks the supporting hardware
    or libraries. Components that need a third-party header supply a
@@ -17,6 +17,13 @@ Detailed changes since v6.1.0:
    macro. The option is intended for developers and CI: the shimmed
    components are not functional, so a test-build must not be installed
    for real use
+ - Revived the pnet/simptest test fabric component. It had grown stale
+   (its module signatures and internal node struct no longer matched the
+   pnet interface) and no longer compiled; it has been ported to the
+   current interface and once again drives the static endpoint/coordinate
+   assignment path end-to-end. Fabric endpoints are delivered as per-proc
+   data and fabric coordinates as per-node info, matching how PMIx_Get
+   resolves each
  - PMIx_Load_topology no longer leaks the source string. When the caller
    does not request a specific source, the returned topology's source
    field now points to a read-only, statically allocated string instead

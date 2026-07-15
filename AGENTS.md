@@ -357,13 +357,11 @@ tree.
 
 Many components only build when a piece of hardware, a fabric, or an
 optional third-party library is present — the GPU vendor components
-(`pgpu/{amd,intel,nvd}`), some transports (`pnet/nvd`, and the opt-in
-`pnet/tcp`), the test components (`pgpu/test`), and the library wrappers
-(`pcompress/{zlib,zlibng}`, `plog/smtp`, `psec/munge`). On a machine that
-lacks those dependencies, that code is silently left out of the build and
-never gets compiler coverage. (The one deliberate exception is
-`pnet/simptest`, which is stale and does not compile against the current
-interface; it stays behind `--with-simptest` until it is ported.)
+(`pgpu/{amd,intel,nvd}`), some transports (`pnet/nvd` and the opt-in
+`pnet/{simptest,tcp}`), the test components (`pgpu/test`), and the library
+wrappers (`pcompress/{zlib,zlibng}`, `plog/smtp`, `psec/munge`). On a
+machine that lacks those dependencies, that code is silently left out of
+the build and never gets compiler coverage.
 
 Configuring with `--enable-test-build` force-builds **all** of those
 components so they can be compile-checked (this is what CI uses to keep

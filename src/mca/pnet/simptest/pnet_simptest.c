@@ -41,6 +41,7 @@
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 #include "pnet_simptest.h"
@@ -51,7 +52,8 @@ static pmix_status_t simptest_init(void);
 static void simptest_finalize(void);
 static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist);
-static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo);
+static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr, pmix_info_t info[],
+                                         size_t ninfo);
 
 pmix_pnet_module_t pmix_simptest_module = {
     .name = "simptest",
@@ -60,38 +62,32 @@ pmix_pnet_module_t pmix_simptest_module = {
     .allocate = allocate,
     .setup_local_network = setup_local_network};
 
-/* internal tracking structures */
+/* internal tracking structures - each node in the config file is
+ * assigned a fabric coordinate (parsed from the file) and a synthetic
+ * endpoint, which are then handed out to the procs running on it */
 typedef struct {
     pmix_list_item_t super;
     char *name;
-    pmix_geometry_t *devices;
-    size_t ndevices;
-    pmix_endpoint_t *endpts;
-    size_t nendpts;
-    pmix_device_distance_t *distances;
-    size_t ndists;
+    pmix_coord_t coord;
+    pmix_byte_object_t endpt;
 } pnet_node_t;
 static void ndcon(pnet_node_t *p)
 {
     p->name = NULL;
-    p->devices = NULL;
-    p->endpts = NULL;
-    p->distances = NULL;
+    p->coord.view = PMIX_COORD_VIEW_UNDEF;
+    p->coord.coord = NULL;
+    p->coord.dims = 0;
+    PMIX_BYTE_OBJECT_CONSTRUCT(&p->endpt);
 }
 static void nddes(pnet_node_t *p)
 {
     if (NULL != p->name) {
         free(p->name);
     }
-    if (NULL != p->devices) {
-        PMIX_GEOMETRY_FREE(p->devices, p->ndevices);
+    if (NULL != p->coord.coord) {
+        free(p->coord.coord);
     }
-    if (NULL != p->endpts) {
-        PMIX_ENDPOINT_FREE(p->endpts, p->nendpts);
-    }
-    if (NULL != p->distances) {
-        PMIX_DEVICE_DIST_FREE(p->distances, p->ndists);
-    }
+    PMIX_BYTE_OBJECT_DESTRUCT(&p->endpt);
 }
 static PMIX_CLASS_INSTANCE(pnet_node_t, pmix_list_item_t, ndcon, nddes);
 
@@ -127,7 +123,7 @@ static pmix_status_t simptest_init(void)
     FILE *fp = NULL;
     char *line, **tmp;
     pnet_node_t *nd;
-    int n, cache[1024];
+    int i, n, cache[1024];
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet: simptest init");
 
@@ -163,9 +159,19 @@ static pmix_status_t simptest_init(void)
             ++n;
         }
 
+        /* the remainder of the line is this node's fabric coordinate */
+        nd->coord.view = PMIX_COORD_LOGICAL_VIEW;
         nd->coord.dims = n;
-        nd->coord.coord = (int *) malloc(nd->coord.dims * sizeof(int));
-        memcpy(nd->coord.coord, cache, nd->coord.dims * sizeof(int));
+        if (0 < n) {
+            nd->coord.coord = (uint32_t *) malloc(n * sizeof(uint32_t));
+            for (i = 0; i < n; i++) {
+                nd->coord.coord[i] = (uint32_t) cache[i];
+            }
+        }
+        /* synthesize a fabric endpoint for this node - simptest has no
+         * real fabric, so we just fabricate a recognizable string */
+        pmix_asprintf((char **) &nd->endpt.bytes, "simptest.endpt.%s", nd->name);
+        nd->endpt.size = strlen(nd->endpt.bytes) + 1;
         free(line);
         PMIx_Argv_free(tmp);
     }
@@ -196,12 +202,13 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     pmix_list_t mylist;
     char **locals;
     pnet_node_t *nd, *nd2;
-    pmix_kval_t *kv;
+    pmix_kval_t *kv, *kvc;
     pmix_info_t *iptr, *ip2;
-    pmix_data_array_t *darray, *d2, *d3;
+    pmix_data_array_t *darray, *d2, *d3, *dcoord, *dnode;
     pmix_rank_t rank;
     pmix_buffer_t buf;
     pmix_byte_object_t *bptr;
+    pmix_coord_t *cptr;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:simptest:allocate for nspace %s", nptr->nspace);
@@ -291,10 +298,12 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         kv->value->data.darray = darray;
         iptr = (pmix_info_t *) darray->array;
         for (m = 0; NULL != locals[m]; m++) {
-            /* each proc has one endpoint and one coord corresponding to the
-             * node they upon which they are executing */
+            /* each proc is assigned a fabric endpoint corresponding to
+             * the node upon which it is executing. The endpoint is
+             * per-process data (PMIX_FABRIC_ENDPT is fetched by rank),
+             * so it lives in this proc's PMIX_PROC_DATA array */
             PMIX_LOAD_KEY(iptr[m].key, PMIX_PROC_DATA);
-            PMIX_DATA_ARRAY_CREATE(d2, 3, PMIX_INFO);
+            PMIX_DATA_ARRAY_CREATE(d2, 2, PMIX_INFO);
             iptr[m].value.type = PMIX_DATA_ARRAY;
             iptr[m].value.data.darray = d2;
             ip2 = (pmix_info_t *) d2->array;
@@ -304,13 +313,11 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
                                 "pnet:simptest:allocate assigning %d endpoints for rank %u",
                                 (int) q, rank);
             PMIX_INFO_LOAD(&ip2[0], PMIX_RANK, &rank, PMIX_PROC_RANK);
-            /* the second element in this array is the coord */
-            PMIX_INFO_LOAD(&ip2[1], PMIX_FABRIC_COORDINATE, &nd->coord, PMIX_COORD);
-            /* third element is the endpt */
+            /* the second element is the endpt - a data array of byte objects */
             PMIX_DATA_ARRAY_CREATE(d3, 1, PMIX_BYTE_OBJECT);
-            PMIX_LOAD_KEY(ip2[2].key, PMIX_FABRIC_ENDPT);
-            ip2[2].value.type = PMIX_DATA_ARRAY;
-            ip2[2].value.data.darray = d3;
+            PMIX_LOAD_KEY(ip2[1].key, PMIX_FABRIC_ENDPT);
+            ip2[1].value.type = PMIX_DATA_ARRAY;
+            ip2[1].value.data.darray = d3;
             bptr = (pmix_byte_object_t *) d3->array;
             bptr[0].bytes = strdup(nd->endpt.bytes);
             bptr[0].size = nd->endpt.size;
@@ -318,6 +325,41 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         PMIx_Argv_free(locals);
         locals = NULL;
         pmix_list_append(&mylist, &kv->super);
+
+        /* the fabric coordinate is a per-NODE attribute
+         * (PMIX_FABRIC_COORDINATES is fetched at the node level, not by
+         * rank), so deliver it inside a PMIX_NODE_INFO_ARRAY tagged with
+         * this node's name. The backend GDS will match it to the local
+         * node and hand it to every proc running there */
+        kvc = PMIX_NEW(pmix_kval_t);
+        if (NULL == kvc) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        kvc->key = strdup(PMIX_NODE_INFO_ARRAY);
+        kvc->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        if (NULL == kvc->value) {
+            PMIX_RELEASE(kvc);
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        kvc->value->type = PMIX_DATA_ARRAY;
+        PMIX_DATA_ARRAY_CREATE(dnode, 2, PMIX_INFO);
+        kvc->value->data.darray = dnode;
+        ip2 = (pmix_info_t *) dnode->array;
+        PMIX_INFO_LOAD(&ip2[0], PMIX_HOSTNAME, nd->name, PMIX_STRING);
+        PMIX_DATA_ARRAY_CREATE(dcoord, 1, PMIX_COORD);
+        PMIX_LOAD_KEY(ip2[1].key, PMIX_FABRIC_COORDINATES);
+        ip2[1].value.type = PMIX_DATA_ARRAY;
+        ip2[1].value.data.darray = dcoord;
+        cptr = (pmix_coord_t *) dcoord->array;
+        cptr[0].view = nd->coord.view;
+        cptr[0].dims = nd->coord.dims;
+        if (0 < nd->coord.dims) {
+            cptr[0].coord = (uint32_t *) malloc(nd->coord.dims * sizeof(uint32_t));
+            memcpy(cptr[0].coord, nd->coord.coord, nd->coord.dims * sizeof(uint32_t));
+        }
+        pmix_list_append(&mylist, &kvc->super);
     }
 
     /* pack all our results into a buffer for xmission to the backend */
@@ -362,7 +404,8 @@ cleanup:
     return rc;
 }
 
-static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo)
+static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr, pmix_info_t info[],
+                                         size_t ninfo)
 {
     size_t n, nvals;
     pmix_buffer_t bkt;
@@ -370,9 +413,15 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t inf
     pmix_kval_t *kv;
     pmix_status_t rc;
     pmix_info_t *iptr;
+    pmix_info_t nodeinfo;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:simptest:setup_local_network with %lu info", (unsigned long) ninfo);
+
+    /* the value field is filled in per node-info kval below; the GDS
+     * copies the data, so a borrowed shallow value is sufficient */
+    PMIX_INFO_CONSTRUCT(&nodeinfo);
+    PMIX_LOAD_KEY(nodeinfo.key, PMIX_NODE_INFO_ARRAY);
 
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
@@ -402,7 +451,20 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t inf
                         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                                             "pnet:simptest:setup_local_network caching %d endpts",
                                             (int) nvals);
-                        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, iptr, nvals);
+                        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr->ns, iptr, nvals);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_RELEASE(kv);
+                            return rc;
+                        }
+                    } else if (PMIX_CHECK_KEY(kv, PMIX_NODE_INFO_ARRAY)) {
+                        /* per-node fabric coordinate - hand the entire
+                         * node-info array to the GDS, which will store it
+                         * as node-level info and match it to the local
+                         * node so PMIX_FABRIC_COORDINATES resolves there */
+                        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                            "pnet:simptest:setup_local_network caching node info");
+                        nodeinfo.value = *kv->value;
+                        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr->ns, &nodeinfo, 1);
                         if (PMIX_SUCCESS != rc) {
                             PMIX_RELEASE(kv);
                             return rc;
