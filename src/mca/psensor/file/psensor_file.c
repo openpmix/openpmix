@@ -9,7 +9,7 @@
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -82,6 +82,7 @@ typedef struct {
     uint32_t nmisses;
     pmix_status_t error;
     pmix_data_range_t range;
+    pmix_proc_t source;
     pmix_info_t *info;
     size_t ninfo;
 } file_tracker_t;
@@ -103,6 +104,7 @@ static void ft_constructor(file_tracker_t *ft)
     ft->nmisses = 0;
     ft->error = PMIX_SUCCESS;
     ft->range = PMIX_RANGE_NAMESPACE;
+    PMIX_PROC_CONSTRUCT(&ft->source);
     ft->info = NULL;
     ft->ninfo = 0;
 }
@@ -283,7 +285,6 @@ static void file_sample(int sd, short args, void *cbdata)
     file_tracker_t *ft = (file_tracker_t *) cbdata;
     struct stat buf;
     pmix_status_t rc;
-    pmix_proc_t source;
 
     PMIX_ACQUIRE_OBJECT(ft);
 
@@ -344,10 +345,12 @@ static void file_sample(int sd, short args, void *cbdata)
         }
         /* stop monitoring this client */
         pmix_list_remove_item(&pmix_mca_psensor_file_component.trackers, &ft->super);
-        /* generate an event */
-        pmix_strncpy(source.nspace, ft->requestor->info->pname.nspace, PMIX_MAX_NSLEN);
-        source.rank = ft->requestor->info->pname.rank;
-        rc = PMIx_Notify_event(PMIX_MONITOR_FILE_ALERT, &source, ft->range, ft->info, ft->ninfo,
+        /* generate an event - the source proc lives in the tracker (not
+         * on the stack) because PMIx_Notify_event borrows the pointer and
+         * processes the event asynchronously, after we return */
+        pmix_strncpy(ft->source.nspace, ft->requestor->info->pname.nspace, PMIX_MAX_NSLEN);
+        ft->source.rank = ft->requestor->info->pname.rank;
+        rc = PMIx_Notify_event(PMIX_MONITOR_FILE_ALERT, &ft->source, ft->range, ft->info, ft->ninfo,
                                opcbfunc, ft);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);

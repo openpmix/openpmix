@@ -4,7 +4,7 @@
  *                         reserved.
  *
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -62,6 +62,7 @@ typedef struct {
     uint32_t nmissed;
     pmix_status_t error;
     pmix_data_range_t range;
+    pmix_proc_t source;
     pmix_info_t *info;
     size_t ninfo;
     bool stopped;
@@ -79,6 +80,7 @@ static void ft_constructor(pmix_heartbeat_trkr_t *ft)
     ft->nmissed = 0;
     ft->error = PMIX_SUCCESS;
     ft->range = PMIX_RANGE_NAMESPACE;
+    PMIX_PROC_CONSTRUCT(&ft->source);
     ft->info = NULL;
     ft->ninfo = 0;
     ft->stopped = false;
@@ -276,7 +278,6 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
 {
     pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t *) cbdata;
     pmix_status_t rc;
-    pmix_proc_t source;
 
     PMIX_ACQUIRE_OBJECT(ft);
     PMIX_HIDE_UNUSED_PARAMS(fd, dummy);
@@ -293,15 +294,17 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
                              "[%s:%d] sensor:check_heartbeat failed for proc %s:%d",
                              pmix_globals.myid.nspace, pmix_globals.myid.rank,
                              ft->requestor->info->pname.nspace, ft->requestor->info->pname.rank);
-        /* generate an event */
-        pmix_strncpy(source.nspace, ft->requestor->info->pname.nspace, PMIX_MAX_NSLEN);
-        source.rank = ft->requestor->info->pname.rank;
+        /* generate an event - the source proc lives in the tracker (not
+         * on the stack) because PMIx_Notify_event borrows the pointer and
+         * processes the event asynchronously, after we return */
+        pmix_strncpy(ft->source.nspace, ft->requestor->info->pname.nspace, PMIX_MAX_NSLEN);
+        ft->source.rank = ft->requestor->info->pname.rank;
         /* ensure the tracker remains throughout the process */
         PMIX_RETAIN(ft);
         /* mark that the process appears stopped so we don't
          * continue to report it */
         ft->stopped = true;
-        rc = PMIx_Notify_event(PMIX_MONITOR_HEARTBEAT_ALERT, &source, ft->range, ft->info,
+        rc = PMIx_Notify_event(PMIX_MONITOR_HEARTBEAT_ALERT, &ft->source, ft->range, ft->info,
                                ft->ninfo, opcbfunc, ft);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);

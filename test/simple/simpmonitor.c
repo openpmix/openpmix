@@ -25,19 +25,28 @@
 /*
  * Regression test for heartbeat monitoring via PMIx_Process_monitor.
  *
- * This client asks its server to watch it for heartbeats, then
- * deliberately never sends one. The server's psensor/heartbeat monitor
- * must therefore observe an empty window and raise
- * PMIX_MONITOR_HEARTBEAT_ALERT back to us. We register a handler for that
- * code and wait a bounded time for it to fire.
+ * Run as two ranks in one namespace (simptest -n 2):
  *
- * The subtlety this guards against: PMIx_Process_monitor_nb returns
- * success for a heartbeat request whether or not a monitor was actually
- * started (an unhandled monitor key used to fall through to a spurious
- * success). So a passing "start" says nothing on its own - only the
- * arrival of the alert proves the sensor was really armed. If the
- * monitor path is not wired to psensor, no alert is ever generated and
- * this test fails on the timeout.
+ *   - rank 0 (the monitored proc) asks its server to watch it for
+ *     heartbeats, then deliberately never sends one. It stays connected
+ *     until rank 1 has had its say.
+ *   - rank 1 (the observer) registers for PMIX_MONITOR_HEARTBEAT_ALERT
+ *     and waits for it.
+ *
+ * When rank 0 goes silent the server's psensor/heartbeat monitor observes
+ * an empty window and raises PMIX_MONITOR_HEARTBEAT_ALERT with rank 0 as
+ * the source, scoped to the namespace. The source proc is deliberately
+ * NOT notified of its own event (it is presumed dead), which is why the
+ * observer is a *different* rank. rank 1 receives the alert and checks
+ * that its source is really rank 0, then prints "MONITOR TEST PASSED".
+ *
+ * This guards two things at once:
+ *   1. that the monitor API is wired to psensor at all - otherwise no
+ *      alert is ever generated and rank 1 times out; and
+ *   2. that the alert carries the correct source - the source proc is
+ *      passed to an asynchronous notify, so it must outlive the call that
+ *      raised it. A stack-allocated source produces a garbage rank/nspace
+ *      here.
  */
 
 #include <errno.h>
@@ -52,8 +61,12 @@
 #include "include/pmix.h"
 #include "simptest.h"
 
+#define MONITORED_RANK 0
+#define OBSERVER_RANK  1
+
 static pmix_proc_t myproc;
 static mylock_t alertlock;
+static volatile int alert_source_ok = 0;
 
 static void hide_unused_params(int x, ...)
 {
@@ -63,25 +76,27 @@ static void hide_unused_params(int x, ...)
     va_end(ap);
 }
 
-/* handler for PMIX_MONITOR_HEARTBEAT_ALERT - fired by the server when it
- * detects that we have stopped sending heartbeats */
+/* observer handler for PMIX_MONITOR_HEARTBEAT_ALERT */
 static void alert_handler(size_t evhdlr_registration_id, pmix_status_t status,
                           const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                           pmix_info_t results[], size_t nresults,
                           pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     int rc = 0;
-    hide_unused_params(rc, evhdlr_registration_id, source, info, ninfo, results, nresults);
+    hide_unused_params(rc, evhdlr_registration_id, info, ninfo, results, nresults);
 
-    fprintf(stderr, "Client %s:%d MONITOR ALERT RECEIVED (%s)\n", myproc.nspace, myproc.rank,
-            PMIx_Error_string(status));
+    /* the alert must name the monitored proc as its source */
+    if (NULL != source && PMIX_CHECK_NSPACE(source->nspace, myproc.nspace)
+        && MONITORED_RANK == (int) source->rank) {
+        alert_source_ok = 1;
+    }
+    fprintf(stderr, "Observer %s:%d ALERT RECEIVED (%s) source=%s:%d source_ok=%d\n", myproc.nspace,
+            myproc.rank, PMIx_Error_string(status), (NULL == source) ? "NULL" : source->nspace,
+            (NULL == source) ? -1 : (int) source->rank, alert_source_ok);
 
-    /* let the notification system know we are done with the event */
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
     }
-
-    /* wake the main thread */
     alertlock.status = status;
     DEBUG_WAKEUP_THREAD(&alertlock);
 }
@@ -112,8 +127,7 @@ static void infocbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, vo
     DEBUG_WAKEUP_THREAD(lk);
 }
 
-/* bounded wait on a lock; returns 0 if the lock was signalled,
- * -1 if we timed out first */
+/* bounded wait on a lock; returns 0 if signalled, -1 on timeout */
 static int wait_for_alert(mylock_t *lk, int seconds)
 {
     struct timespec ts;
@@ -134,39 +148,14 @@ static int wait_for_alert(mylock_t *lk, int seconds)
     return rc;
 }
 
-int main(int argc, char **argv)
+/* rank 0: ask to be monitored via heartbeats, then go silent */
+static int run_monitored(void)
 {
-    int rc = 0;
+    int rc;
     pmix_info_t *monitor, *info;
-    pmix_status_t code = PMIX_MONITOR_HEARTBEAT_ALERT;
     mylock_t mylock;
     uint32_t n;
-    hide_unused_params(rc, argc, argv);
 
-    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
-                PMIx_Error_string(rc));
-        exit(1);
-    }
-    fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
-
-    /* register a handler specifically for the heartbeat alert */
-    DEBUG_CONSTRUCT_LOCK(&alertlock);
-    DEBUG_CONSTRUCT_LOCK(&mylock);
-    PMIx_Register_event_handler(&code, 1, NULL, 0, alert_handler, evhandler_reg_callbk,
-                                (void *) &mylock);
-    DEBUG_WAIT_THREAD(&mylock);
-    if (PMIX_SUCCESS != mylock.status) {
-        fprintf(stderr, "Client ns %s rank %d: alert handler registration failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(mylock.status));
-        DEBUG_DESTRUCT_LOCK(&mylock);
-        rc = 1;
-        goto done;
-    }
-    DEBUG_DESTRUCT_LOCK(&mylock);
-
-    /* ask to be monitored via heartbeats, with a short (1 second) window
-     * so the alert fires quickly once we go silent */
     PMIX_INFO_CREATE(monitor, 1);
     PMIX_INFO_LOAD(&monitor[0], PMIX_MONITOR_HEARTBEAT, NULL, PMIX_POINTER);
 
@@ -180,38 +169,98 @@ int main(int argc, char **argv)
     DEBUG_CONSTRUCT_LOCK(&mylock);
     rc = PMIx_Process_monitor_nb(monitor, PMIX_MONITOR_HEARTBEAT_ALERT, info, 3, infocbfunc,
                                  (void *) &mylock);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor_nb failed: %s\n", myproc.nspace,
-                myproc.rank, PMIx_Error_string(rc));
-        DEBUG_DESTRUCT_LOCK(&mylock);
-        PMIX_INFO_FREE(monitor, 1);
-        PMIX_INFO_FREE(info, 3);
-        rc = 1;
-        goto done;
-    }
-    DEBUG_WAIT_THREAD(&mylock);
-    PMIX_INFO_FREE(monitor, 1);
-    PMIX_INFO_FREE(info, 3);
-    if (PMIX_SUCCESS != mylock.status && PMIX_OPERATION_SUCCEEDED != mylock.status) {
-        fprintf(stderr, "Client ns %s rank %d: heartbeat monitor request rejected: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(mylock.status));
-        DEBUG_DESTRUCT_LOCK(&mylock);
-        rc = 1;
-        goto done;
+    if (PMIX_SUCCESS == rc) {
+        DEBUG_WAIT_THREAD(&mylock);
+        rc = mylock.status;
     }
     DEBUG_DESTRUCT_LOCK(&mylock);
-    fprintf(stderr, "Client ns %s rank %d: heartbeat monitor request accepted\n", myproc.nspace,
+    PMIX_INFO_FREE(monitor, 1);
+    PMIX_INFO_FREE(info, 3);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        fprintf(stderr, "Monitored %s:%d: heartbeat monitor request rejected: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        return 1;
+    }
+    fprintf(stderr, "Monitored %s:%d: monitoring started, going silent\n", myproc.nspace,
             myproc.rank);
+    /* deliberately send NO heartbeats; the second fence below keeps us
+     * connected until the observer has seen (or waited out) the alert */
+    return 0;
+}
 
-    /* deliberately send NO heartbeats and wait for the server to notice
-     * and alert us. The window is 1s; allow generous slack. */
-    if (0 == wait_for_alert(&alertlock, 30)) {
-        fprintf(stderr, "Client ns %s rank %d: MONITOR TEST PASSED\n", myproc.nspace, myproc.rank);
-        rc = 0;
-    } else {
-        fprintf(stderr, "Client ns %s rank %d: MONITOR TEST FAILED - no heartbeat alert\n",
-                myproc.nspace, myproc.rank);
-        rc = 1;
+/* rank 1: watch for the alert the server raises about rank 0 */
+static int run_observer(void)
+{
+    pmix_status_t code = PMIX_MONITOR_HEARTBEAT_ALERT;
+    mylock_t mylock;
+
+    DEBUG_CONSTRUCT_LOCK(&mylock);
+    PMIx_Register_event_handler(&code, 1, NULL, 0, alert_handler, evhandler_reg_callbk,
+                                (void *) &mylock);
+    DEBUG_WAIT_THREAD(&mylock);
+    if (PMIX_SUCCESS != mylock.status) {
+        fprintf(stderr, "Observer %s:%d: alert handler registration failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(mylock.status));
+        DEBUG_DESTRUCT_LOCK(&mylock);
+        return 1;
+    }
+    DEBUG_DESTRUCT_LOCK(&mylock);
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    int rc = 0, result = 0;
+    pmix_proc_t proc;
+    pmix_info_t fenceinfo;
+    bool flag;
+    hide_unused_params(rc, argc, argv);
+
+    DEBUG_CONSTRUCT_LOCK(&alertlock);
+
+    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
+                PMIx_Error_string(rc));
+        exit(1);
+    }
+    fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
+
+    /* the observer arms its handler before anyone synchronizes */
+    if (OBSERVER_RANK == (int) myproc.rank) {
+        result = run_observer();
+    }
+
+    /* barrier: everyone is set up before the monitored proc goes silent */
+    PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
+    flag = false;
+    PMIX_INFO_LOAD(&fenceinfo, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, &fenceinfo, 1))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence(1) failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        result = 1;
+        goto done;
+    }
+
+    if (MONITORED_RANK == (int) myproc.rank) {
+        result = run_monitored();
+    } else if (OBSERVER_RANK == (int) myproc.rank) {
+        if (0 == wait_for_alert(&alertlock, 30) && alert_source_ok) {
+            fprintf(stderr, "Observer %s:%d: MONITOR TEST PASSED\n", myproc.nspace, myproc.rank);
+            result = 0;
+        } else {
+            fprintf(stderr, "Observer %s:%d: MONITOR TEST FAILED - no valid heartbeat alert\n",
+                    myproc.nspace, myproc.rank);
+            result = 1;
+        }
+    }
+
+    /* second barrier: keeps the monitored proc connected until the
+     * observer is done, so it does not disconnect (and cancel its
+     * monitor) before the alert has fired and been seen */
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, &fenceinfo, 1))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence(2) failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        result = 1;
     }
 
 done:
@@ -220,5 +269,5 @@ done:
         fprintf(stderr, "Client ns %s rank %d: PMIx_Finalize failed\n", myproc.nspace, myproc.rank);
     }
     fflush(stderr);
-    return rc;
+    return result;
 }
