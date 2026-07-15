@@ -2847,6 +2847,11 @@ static void _setup_app(int sd, short args, void *cbdata)
         goto depart;
     }
 
+    /* pass to the GPU libraries */
+    if (PMIX_SUCCESS != (rc = pmix_pgpu.allocate(cd->nspace, cd->info, cd->ninfo, &ilist))) {
+        goto depart;
+    }
+
     /* pass to the programming model libraries */
     if (PMIX_SUCCESS != (rc = pmix_pmdl.harvest_envars(cd->nspace, cd->info, cd->ninfo, &ilist))) {
         goto depart;
@@ -2935,6 +2940,11 @@ static void _setup_local_support(int sd, short args, void *cbdata)
 
     /* pass to the network libraries */
     rc = pmix_pnet.setup_local_network(cd->nspace, cd->info, cd->ninfo);
+
+    /* pass to the GPU libraries */
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_pgpu.setup_local(cd->nspace, cd->info, cd->ninfo);
+    }
 
     /* pass the info back */
     if (NULL != cd->opcbfunc) {
