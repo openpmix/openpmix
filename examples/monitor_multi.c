@@ -61,11 +61,16 @@ static void update(size_t evhdlr_registration_id, pmix_status_t status,
                    pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     size_t n;
+    char *tmp;
     EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
 
-    fprintf(stderr, "[%s]UPDATE:\n", PMIx_Proc_string(&myproc));
+    tmp = PMIx_Proc_string(&myproc);
+    fprintf(stderr, "[%s]UPDATE:\n", tmp);
+    free(tmp);
     for (n=0; n < ninfo; n++) {
-        fprintf(stderr, "%s", PMIx_Info_string(&info[n]));
+        tmp = PMIx_Info_string(&info[n]);
+        fprintf(stderr, "%s", tmp);
+        free(tmp);
     }
     fprintf(stderr, "\n\n");
 
@@ -107,6 +112,7 @@ int main(int argc, char **argv)
     mylock_t mylock;
     pmix_data_array_t darray;
     char hostname[2048];
+    char *tmp;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     gethostname(hostname, 2048);
@@ -214,7 +220,9 @@ int main(int argc, char **argv)
         } else {
             fprintf(stderr, "INITIAL PROC RESULTS:\n");
             for (n=0; n < nresults; n++) {
-                fprintf(stderr, "%s", PMIx_Info_string(&results[n]));
+                tmp = PMIx_Info_string(&results[n]);
+                fprintf(stderr, "%s", tmp);
+                free(tmp);
             }
             fprintf(stderr, "\n\n");
             n = 0;
