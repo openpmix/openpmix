@@ -159,7 +159,8 @@ No directory under `src/mca/` may break this pattern (except `base/` subdirector
 1. Place new component code in `src/mca/FRAMEWORK/COMPONENT/`.
 2. Follow the existing naming convention: filenames use `framework_component_*` prefixes; public symbols use `pmix_framework_component_` prefixes.
 3. Register an `open`, `close`, and `query` function in the component struct.
-4. Wire the component into the build system via `Makefile.am` changes in the component directory.
+4. Wire the component into the build system: add a `configure.m4` (to gate whether the component builds, if necessary) and a `Makefile.am` in the component directory.
+5. Regenerate the build system so the new component is actually compiled. Adding a component directory — or editing its `configure.m4` — changes the build wiring, and a plain `make` cannot pick that up: run `./autogen.pl` and then re-run `./configure` (with the same options as the original configure) first. Until you do, the component will not be built. See [Modifying the configure / build system](#modifying-the-configure--build-system) below for the full procedure.
 
 ## Golden rules (the things agents most often get wrong)
 
@@ -186,9 +187,19 @@ and [`docs/contributing.rst`](docs/contributing.rst):
   (for example, to mark an unused function parameter) rather than writing
   a bare `__attribute__` or leaving a warning unaddressed.
 
-**PMIx back-end code must never call public `PMIx_*()` APIs.** The
-  bindings are thin wrappers; call the internal `pmix_*` routines, not
-  the user-facing entry points.
+**PMIx back-end code must never call public `PMIx_*()` APIs that
+  thread-shift.** Most user-facing entry points are thin wrappers that
+  hand the request to the progress thread (via a caddy) and then either
+  block waiting on it or return and fire a callback. Calling one from
+  inside the library — where you may already be running on the progress
+  thread — invites deadlock or re-entrancy. Call the internal `pmix_*`
+  routine that does the actual work instead. Public APIs that are
+  self-contained helpers and do **not** thread-shift are the exception:
+  routines like `PMIx_Argv_split()`, `PMIx_Value_load()`, or the other
+  `PMIx_Argv_*`/`PMIx_Value_*` string and value helpers simply operate on
+  their arguments and are safe to call internally. When unsure whether an
+  API thread-shifts, check its implementation for a `PMIX_THREADSHIFT`
+  (or a construct-lock-and-wait pattern) before relying on it.
 
 **New files need the standard copyright/license header.** Copy the
   multi-institution BSD header block — including the `$COPYRIGHT$` and
@@ -306,6 +317,41 @@ Inspect available MCA parameters for any component with:
 ```sh
 pmix_info --param FRAMEWORK COMPONENT
 ```
+
+### Test-building your changes (don't short-circuit the build)
+
+When you just want to confirm that an edit compiles, **do not** try to
+invoke the compiler on a single file by hand or otherwise bypass the
+build system. That path is a time sink: a source file needs generated
+headers (`pmix_config.h`, `pmix_common.h`, …), the right include paths,
+and per-target flags that only the generated Makefiles know, so
+hand-rolled one-file compiles usually fail for reasons that have nothing
+to do with your change.
+
+Instead, from the **root of the repo** simply run:
+
+```sh
+make -j$(nproc)
+```
+
+`libpmix` does not take long to build, and Automake only recompiles what
+your change actually touched, so this is fast on an already-configured
+tree — and it is the *real* build, so a clean result means your change
+truly compiles (warning-free under the default `--enable-devel-check`).
+
+If you are iterating repeatedly on a single component and want to avoid
+relinking the whole library each time, configure the tree with:
+
+```sh
+./configure --enable-mca-dso <other options>
+```
+
+`--enable-mca-dso` leaves every component as a separate run-time-loadable
+plugin (a DSO) rather than statically linking it into `libpmix`. With
+that in place you can rebuild and install just the component you are
+working on by running `make install` **inside that component's
+directory** (e.g. `src/mca/pnet/tcp/`), instead of rebuilding the entire
+tree.
 
 ## Modifying the configure / build system
 
