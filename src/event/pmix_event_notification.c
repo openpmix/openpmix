@@ -1047,7 +1047,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     pmix_peer_events_info_t *pr;
     pmix_event_chain_t *chain;
     size_t n, nleft;
-    bool matched, holdcd;
+    bool matched, holdcd, cached;
     pmix_buffer_t *bfr;
     pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
     pmix_status_t rc;
@@ -1077,6 +1077,11 @@ static void _notify_client_event(int sd, short args, void *cbdata)
             }
         }
     }
+    /* remember the caching decision: "holdcd" is reused further down to
+     * track whether the caddy is being held for an async upstream
+     * callback, so we cannot rely on it to tell us later whether this
+     * event was placed in the cache */
+    cached = holdcd;
     if (holdcd) {
         /* we cannot know if everyone who wants this notice has had a chance
          * to register for it - the notice may be coming too early. So cache
@@ -1306,14 +1311,14 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                         /* if the event was cached and this is the last one,
                          * then evict this event from the cache */
                         if (0 == cd->nleft) {
-                            if (holdcd) {
+                            if (cached) {
                                 /* remove it from the cache and release the
                                  * reference the cache was holding; our own
                                  * in-flight reference keeps cd alive through
                                  * the remainder of this routine */
                                 pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
                                 PMIX_RELEASE(cd);
-                                holdcd = false;
+                                cached = false;
                             }
                             break;
                         }
@@ -1479,6 +1484,7 @@ void pmix_event_timeout_cb(int fd, short flags, void *arg)
     (void) fd;
     (void) flags;
     pmix_event_chain_t *ch = (pmix_event_chain_t *) arg;
+    pmix_status_t rc;
 
     /* need to acquire the object from its originating thread */
     PMIX_ACQUIRE_OBJECT(ch);
@@ -1491,9 +1497,16 @@ void pmix_event_timeout_cb(int fd, short flags, void *arg)
     /* process this event thru the regular channels */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        pmix_server_notify_client_of_event(ch->status, &ch->source, ch->range,
-                                           ch->info, ch->ninfo,
-                                           ch->final_cbfunc, ch->final_cbdata);
+        /* on success, ch is released when the forwarded final_cbfunc
+         * (which carries ch as its cbdata) fires; on failure that
+         * callback will not run, so release the chain here */
+        rc = pmix_server_notify_client_of_event(ch->status, &ch->source, ch->range,
+                                                ch->info, ch->ninfo,
+                                                ch->final_cbfunc, ch->final_cbdata);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(ch);
+        }
     } else {
         pmix_invoke_local_event_hdlr(ch);
     }
