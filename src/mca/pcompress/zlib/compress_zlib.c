@@ -25,7 +25,11 @@
 #if HAVE_UNISTD_H
 #    include <unistd.h>
 #endif /* HAVE_UNISTD_H */
-#include <zlib.h>
+#if PMIX_TESTBUILD
+#    include "testbuild_zlib.h"
+#else
+#    include <zlib.h>
+#endif
 
 #include "src/include/pmix_stdint.h"
 #include "src/util/pmix_argv.h"

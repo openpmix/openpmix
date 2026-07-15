@@ -14,6 +14,9 @@
 
 AM_CPPFLAGS = $(pcompress_zlibng_CPPFLAGS)
 
+# Non-functional shim used only under --enable-test-build; always shipped
+EXTRA_DIST = testbuild_zlibng.h
+
 sources = \
         compress_zlibng.h \
         compress_zlibng_component.c \

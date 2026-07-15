@@ -22,12 +22,14 @@
 AC_DEFUN([MCA_pmix_pgpu_nvd_CONFIG],[
     AC_CONFIG_FILES([src/mca/pgpu/nvd/Makefile])
 
-    AS_IF([test "yes" = "no"],
+    # No real NVIDIA-runtime detection exists yet, so this component
+    # only builds under --enable-test-build for compile coverage.
+    AS_IF([test "$pmix_testbuild" = "1"],
           [$1
            pmix_pgpu_nvd_happy=yes],
           [$2
            pmix_pgpu_nvd_happy=no])
 
-    PMIX_SUMMARY_ADD([GPUs], [NVIDIA], [], [$pmix_pgpu_nvd_happy])])])
+    PMIX_SUMMARY_ADD([GPUs], [NVIDIA], [], [$pmix_pgpu_nvd_happy])
 ])
 

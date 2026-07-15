@@ -23,7 +23,8 @@ AC_DEFUN([MCA_pmix_pgpu_test_CONFIG], [
                                 [Build the pgpu test component used to exercise the GPU setup path (default: no)])],
                 [pmix_want_pgpu_test=yes], [pmix_want_pgpu_test=no])
 
-    AS_IF([test "$pmix_want_pgpu_test" = "yes"],
+    # --enable-test-build force-builds this component for compile coverage
+    AS_IF([test "$pmix_want_pgpu_test" = "yes" || test "$pmix_testbuild" = "1"],
           [$1],
           [$2])
 

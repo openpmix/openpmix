@@ -41,8 +41,11 @@ AC_DEFUN([MCA_pmix_pcompress_zlibng_CONFIG],[
         AC_MSG_ERROR([CANNOT CONTINUE])
     fi
 
+    # --enable-test-build force-builds this component (against the
+    # non-functional testbuild_zlibng.h shim if the real headers are
+    # absent) so it can be compile-checked.
     AC_MSG_CHECKING([will zlib-ng support be built])
-    AS_IF([test "$pmix_zlibng_support" = "1"],
+    AS_IF([test "$pmix_zlibng_support" = "1" || test "$pmix_testbuild" = "1"],
           [$1
            AC_MSG_RESULT([yes])],
           [$2

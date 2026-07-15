@@ -47,8 +47,11 @@ AC_DEFUN([MCA_pmix_plog_smtp_CONFIG], [
         AC_MSG_ERROR([CANNOT CONTINUE])
     fi
 
+    # --enable-test-build force-builds this component (against the
+    # non-functional testbuild_libesmtp.h shim if the real headers are
+    # absent) so it can be compile-checked.
     AC_MSG_CHECKING([will smtp support be built])
-    AS_IF([test "$pmix_smtp_support" = "1"],
+    AS_IF([test "$pmix_smtp_support" = "1" || test "$pmix_testbuild" = "1"],
           [$1
            AC_MSG_RESULT([yes])],
           [$2

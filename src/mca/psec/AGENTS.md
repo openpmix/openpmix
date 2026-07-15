@@ -342,8 +342,9 @@ are conditional:
   `OAC_CHECK_PACKAGE` for `munge.h` / `libmunge`. It is built only if
   MUNGE is present (or errors out if `--with-munge` was requested and not
   found). Its source can be *compile-tested* without the real library via
-  the `#if 0` stub block at the top of `psec_munge.c` — that block is not
-  used in real builds.
+  the `#if PMIX_TESTBUILD` stub block at the top of `psec_munge.c`
+  (activated by `--enable-test-build`) — that block is not used in real
+  builds.
 - **`dummy_handshake`** has no `configure.m4`; it is gated by the
   Automake conditional `MCA_BUILD_PSEC_DUMMY_HANDSHAKE`, set by
   `--enable-dummy-handshake` (default: disabled) in `config/pmix.m4`.

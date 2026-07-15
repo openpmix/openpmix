@@ -24,7 +24,9 @@ AC_DEFUN([MCA_pmix_pnet_nvd_CONFIG],[
 
     AC_CONFIG_FILES([src/mca/pnet/nvd/Makefile])
 
-    AS_IF([test "yes" = "no"],
+    # No real NVIDIA-transport detection exists yet, so this component
+    # only builds under --enable-test-build for compile coverage.
+    AS_IF([test "$pmix_testbuild" = "1"],
           [$1
            pmix_nvd_happy=yes],
           [$2
