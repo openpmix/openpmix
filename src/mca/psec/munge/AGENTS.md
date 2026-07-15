@@ -98,6 +98,11 @@ each active module's `finalize`, so `mycred` is reclaimed at teardown.
   (`#include <munge.h>`). The `PMIX_TESTBUILD` macro is 0 by default and
   is set to 1 only by `--enable-test-build` (see the top-level AGENTS.md),
   so the stub is never active in a normal build. Do not hard-code the
-  guard to `#if 1` in committed code.
+  guard to `#if 1` in committed code. The stubbed `munge_encode`
+  deliberately returns a **failure** (never `EMUNGE_SUCCESS`) so that
+  `munge_init`'s liveness probe fails and the psec framework de-selects
+  MUNGE at runtime: a `--enable-test-build` library therefore falls back
+  to `native` rather than selecting a non-functional MUNGE module and
+  crashing in `create_cred` on the credential it never produced.
 - **libmunge is LGPL** (noted in the source header). Keep MUNGE behind its
   `configure.m4` gate so the dependency stays optional.

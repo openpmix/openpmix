@@ -27,6 +27,12 @@
 
 // Non-functional shim so this component can be compile-checked without
 // libmunge when the library is configured with --enable-test-build.
+// The encode/decode stubs deliberately return a failure code (never
+// EMUNGE_SUCCESS): munge_init treats a failed encode as "the munge
+// daemon is unreachable" and returns PMIX_ERR_SERVER_NOT_AVAIL, so the
+// psec framework de-selects this component at runtime. That keeps a
+// test-build library from selecting a non-functional MUNGE module and
+// crashing when it later tries to use the (never-produced) credential.
 #if PMIX_TESTBUILD
 typedef int32_t munge_err_t;
 
@@ -35,25 +41,26 @@ typedef struct {
 } munge_ctx_t;
 
 #define EMUNGE_SUCCESS 0
+#define EMUNGE_SNAFU   1
 
 static inline munge_err_t munge_encode (char **cred, munge_ctx_t *ctx,
                                         const void *buf, int len)
 {
     PMIX_HIDE_UNUSED_PARAMS(cred, ctx, buf, len);
-    return EMUNGE_SUCCESS;
+    return EMUNGE_SNAFU;
 }
 
 static inline  munge_err_t munge_decode (const char *cred, munge_ctx_t *ctx,
                                          void **buf, int *len, uid_t *uid, gid_t *gid)
 {
     PMIX_HIDE_UNUSED_PARAMS(cred, ctx, buf, len, uid, gid);
-    return EMUNGE_SUCCESS;
+    return EMUNGE_SNAFU;
 }
 
 static inline  const char * munge_strerror (munge_err_t e)
 {
     PMIX_HIDE_UNUSED_PARAMS(e);
-    return "FOO";
+    return "munge testbuild shim - not functional";
 }
 
 #else
