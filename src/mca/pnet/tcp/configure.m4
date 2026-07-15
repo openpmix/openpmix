@@ -19,7 +19,8 @@ AC_DEFUN([MCA_pmix_pnet_tcp_CONFIG], [
     AC_ARG_WITH([tcp], [AS_HELP_STRING([--with-tcp], [Include TCP/UDP static-port fabric support])],
                 [pmix_want_tcp=yes], [pmix_want_tcp=no])
 
-    AS_IF([test "$pmix_want_tcp" = "yes"],
+    # --enable-test-build force-builds this component for compile coverage
+    AS_IF([test "$pmix_want_tcp" = "yes" || test "$pmix_testbuild" = "1"],
           [$1],
           [$2])
 

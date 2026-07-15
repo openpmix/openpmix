@@ -38,9 +38,12 @@ AC_DEFUN([MCA_pmix_psec_munge_CONFIG],[
         AC_MSG_ERROR([CANNOT CONTINUE])
     fi
 
-    AS_IF([test "$psec_munge_support" != "1"],
-          [$2],
-          [$1])
+    # --enable-test-build force-builds this component (against the
+    # non-functional in-source shim in psec_munge.c if libmunge is
+    # absent) so it can be compile-checked.
+    AS_IF([test "$psec_munge_support" = "1" || test "$pmix_testbuild" = "1"],
+          [$1],
+          [$2])
 
     PMIX_SUMMARY_ADD([External Packages], [munge], [], [${psec_munge_SUMMARY}])
 

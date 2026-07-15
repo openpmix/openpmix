@@ -91,10 +91,13 @@ each active module's `finalize`, so `mycred` is reclaimed at teardown.
 - **`munge_init` is a real dependency probe, not a formality.** It talks
   to `munged`. Returning success from it when the daemon is down would put
   a dead module in the actives list and break connections that select it.
-- **The `#if 0` stub block at the top of `psec_munge.c` is compile-test
-  scaffolding only.** It provides fake `munge_encode`/`munge_decode`/
-  `munge_strerror` so the file can be syntax-checked without libmunge; the
-  real build takes the `#else` branch (`#include <munge.h>`). Never flip
-  it to `#if 1` in committed code.
+- **The `#if PMIX_TESTBUILD` stub block at the top of `psec_munge.c` is
+  compile-test scaffolding only.** It provides fake `munge_encode`/
+  `munge_decode`/`munge_strerror` so the file can be syntax-checked
+  without libmunge; the real build takes the `#else` branch
+  (`#include <munge.h>`). The `PMIX_TESTBUILD` macro is 0 by default and
+  is set to 1 only by `--enable-test-build` (see the top-level AGENTS.md),
+  so the stub is never active in a normal build. Do not hard-code the
+  guard to `#if 1` in committed code.
 - **libmunge is LGPL** (noted in the source header). Keep MUNGE behind its
   `configure.m4` gate so the dependency stays optional.

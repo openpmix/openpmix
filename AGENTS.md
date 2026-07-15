@@ -353,6 +353,35 @@ working on by running `make install` **inside that component's
 directory** (e.g. `src/mca/pnet/tcp/`), instead of rebuilding the entire
 tree.
 
+### Compile-checking the environment-specific components (`--enable-test-build`)
+
+Many components only build when a piece of hardware, a fabric, or an
+optional third-party library is present — the GPU vendor components
+(`pgpu/{amd,intel,nvd}`), some transports (`pnet/nvd`, and the opt-in
+`pnet/tcp`), the test components (`pgpu/test`), and the library wrappers
+(`pcompress/{zlib,zlibng}`, `plog/smtp`, `psec/munge`). On a machine that
+lacks those dependencies, that code is silently left out of the build and
+never gets compiler coverage. (The one deliberate exception is
+`pnet/simptest`, which is stale and does not compile against the current
+interface; it stays behind `--with-simptest` until it is ported.)
+
+Configuring with `--enable-test-build` force-builds **all** of those
+components so they can be compile-checked (this is what CI uses to keep
+them warning-free). It defines the `PMIX_TESTBUILD` macro to `1`.
+Components that need a third-party header that may be absent are written
+to include a non-functional **shim** header under `#if PMIX_TESTBUILD`
+instead of the real one (see, e.g.,
+[`src/mca/pcompress/zlib/testbuild_zlib.h`](src/mca/pcompress/zlib/testbuild_zlib.h)
+or the in-source stub block in
+[`src/mca/psec/munge/psec_munge.c`](src/mca/psec/munge/psec_munge.c)),
+so they still compile. **The resulting library is only good for verifying
+that the code compiles — the shimmed components are non-functional — so
+never install a test-build for real use.** When you add a new
+environment-specific component that wraps an optional library, follow the
+same pattern: gate its `configure.m4` with `|| test "$pmix_testbuild" =
+"1"`, and guard its third-party include with `#if PMIX_TESTBUILD` against
+a shim header you ship in the component's `EXTRA_DIST`.
+
 ## Modifying the configure / build system
 
 Editing the build system means regenerating it — `make` alone can't,

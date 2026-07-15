@@ -1444,6 +1444,42 @@ fi
 AM_CONDITIONAL(MCA_BUILD_PSEC_DUMMY_HANDSHAKE, test "$DISABLE_psec_dummy_handshake" = "0")
 
 #
+# Do we want to force-build all the test and environment-specific
+# components so they can be compile-checked?
+#
+# Normally, environment-specific components (e.g., the GPU vendor
+# components, or the transports that require a particular fabric) and
+# the components that wrap an optional third-party library (e.g.,
+# zlib/zlib-ng, libesmtp, MUNGE) only build when their supporting
+# hardware, headers, or libraries are detected. That leaves those code
+# paths silently out of the build - and therefore untested by CI - on
+# machines that lack the dependency. Setting --enable-test-build forces
+# every such component into the build. Components that need a
+# third-party header that may be absent supply a non-functional
+# "testbuild" shim header (see, e.g., src/mca/pcompress/zlib) so they
+# still compile. The resulting library is only good for verifying that
+# the code compiles - the shimmed components are not functional - so
+# this option is intended for developers and CI, not production.
+#
+AC_MSG_CHECKING([if want to test-build all components])
+AC_ARG_ENABLE([test-build],
+    [AS_HELP_STRING([--enable-test-build],
+        [Force-build all test and environment-specific components (including those that wrap an optional third-party library, using non-functional shim headers where needed) so they can be compile-checked. The resulting components are not functional; intended for developers and CI (default: disabled)])])
+if test "$enable_test_build" = "yes"; then
+    AC_MSG_RESULT([yes])
+    pmix_testbuild=1
+    pmix_testbuild_msg=yes
+else
+    AC_MSG_RESULT([no])
+    pmix_testbuild=0
+    pmix_testbuild_msg=no
+fi
+AC_DEFINE_UNQUOTED([PMIX_TESTBUILD], [$pmix_testbuild],
+                   [Force-build all test and environment-specific components using shim headers where needed])
+
+PMIX_SUMMARY_ADD([Miscellaneous], [Test build all components], [], [$pmix_testbuild_msg])
+
+#
 # Do we want to enable IPv6 support?
 #
 AC_MSG_CHECKING([if want IPv6 support])

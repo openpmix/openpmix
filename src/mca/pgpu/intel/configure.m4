@@ -26,7 +26,9 @@ AC_DEFUN([MCA_pmix_pgpu_intel_CONFIG],[
 
 # eventually need to check for L0 library
 
-    AS_IF([test "yes" = "no"],
+    # No real Intel L0-runtime detection exists yet, so this component
+    # only builds under --enable-test-build for compile coverage.
+    AS_IF([test "$pmix_testbuild" = "1"],
           [$1
           pmix_pgpu_intel_happy=yes],
           [$2

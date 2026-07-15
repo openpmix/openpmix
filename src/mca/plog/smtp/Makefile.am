@@ -22,6 +22,9 @@
 
 AM_CPPFLAGS = $(plog_smtp_CPPFLAGS)
 
+# Non-functional shim used only under --enable-test-build; always shipped
+EXTRA_DIST = testbuild_libesmtp.h
+
 sources = \
         plog_smtp.h \
         plog_smtp.c \

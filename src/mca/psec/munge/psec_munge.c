@@ -25,8 +25,9 @@
 #    include <sys/types.h>
 #endif
 
-// define abstractions to test compile this component
-#if 0
+// Non-functional shim so this component can be compile-checked without
+// libmunge when the library is configured with --enable-test-build.
+#if PMIX_TESTBUILD
 typedef int32_t munge_err_t;
 
 typedef struct {

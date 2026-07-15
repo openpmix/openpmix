@@ -20,6 +20,11 @@ AC_DEFUN([MCA_pmix_pnet_simptest_CONFIG], [
     AC_ARG_WITH([simptest], [AS_HELP_STRING([--with-simptest], [Include simptest fabric support])],
                 [pmix_want_simptest=yes], [pmix_want_simptest=no])
 
+    # NOTE: simptest is deliberately NOT wired to --enable-test-build. It
+    # is stale (its module signatures and internal struct no longer match
+    # the current pnet interface) and does not compile against HEAD;
+    # force-building it would break the test-build. It stays opt-in via
+    # --with-simptest until it is ported to the current interface.
     AS_IF([test "$pmix_want_simptest" = "yes"],
           [$1],
           [$2])

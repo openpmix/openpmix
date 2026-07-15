@@ -27,7 +27,11 @@
 
 #include <netdb.h>
 
-#include "libesmtp.h"
+#if PMIX_TESTBUILD
+#    include "testbuild_libesmtp.h"
+#else
+#    include "libesmtp.h"
+#endif
 
 #include "src/mca/plog/plog.h"
 
