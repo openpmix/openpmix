@@ -76,7 +76,13 @@ pmix_pnet_module_t pmix_opa_module = {
 static inline void transports_use_rand(uint64_t *unique_key)
 {
     pmix_rng_buff_t rng;
-    pmix_srand(&rng, (unsigned int) time(NULL));
+    /* pmix_srand() wants a 32-bit seed, so fold the full width of the
+     * time_t into 32 bits rather than silently truncating it - this
+     * lets every bit of the clock contribute to the seed and remains
+     * well-defined whether time_t is 32 or 64 bits wide */
+    uint64_t now = (uint64_t) time(NULL);
+    uint32_t seed = (uint32_t) now ^ (uint32_t) (now >> 32);
+    pmix_srand(&rng, seed);
     unique_key[0] = pmix_rand(&rng);
     unique_key[1] = pmix_rand(&rng);
 }
