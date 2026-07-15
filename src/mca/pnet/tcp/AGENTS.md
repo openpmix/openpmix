@@ -16,12 +16,17 @@ each job a slice of a pre-configured port pool, and each daemon caches the
 assignment as job-level info. Read the framework [`AGENTS.md`](../AGENTS.md)
 first; this file covers only what is specific to `tcp`.
 
-**Status warning:** `tcp` is **not built** (hardwired off in
-`configure.m4`) *and* is **stale** — its module functions no longer match
-the current `pmix_pnet_module_t`, and it references base symbols that no
-longer exist. It would not compile against today's tree. Read it as a
-historical example of the intended port-allocation design, not as working
-code.
+**Status:** `tcp` compiles against the current `pmix_pnet_module_t`, but
+it is **opt-in** — its `configure.m4` is guarded by `--with-tcp`, so it is
+**not built by default** (like `simptest`). When you *do* build it, note
+that unlike `nvd`/`opa` it has **no hardware gate** — `component_open`
+always succeeds and `component_query` always returns the module at
+priority **5** — so it is then **selected into `actives` on every
+server**. Its entry points self-gate: `allocate`/`tcp_init`/
+`deregister_nspace` act only for the gateway role, and
+`setup_local_network`/`deliver_inventory` act only on their own blob key.
+`collect_inventory`, however, runs on every server and reports the local
+TCP interfaces.
 
 ## Files
 
@@ -29,28 +34,29 @@ code.
 |------|----------|
 | `pnet_tcp.h` | Component struct type (`static_ports`, `default_request`, `costmatrix`, …). |
 | `pnet_tcp_component.c` | Component struct, `component_register` (MCA params), `component_query` (priority **5**). |
-| `pnet_tcp.c` | The module: init/finalize, allocate, setup_local_network, setup_fork, finalize hooks, collect/deliver inventory, and the `process_request` port assigner. |
-| `configure.m4` | Hardwired **off** (`test "yes" = "no"`); adds the `TCP` summary line. |
+| `pnet_tcp.c` | The module: init/finalize, allocate, setup_local_network, finalize hooks, collect/deliver inventory, and the `process_request` port assigner. |
+| `configure.m4` | Guarded by `--with-tcp` (off by default); adds the `TCP` summary line. |
 
-## Why it does not compile against HEAD
+## Interface notes for maintainers
 
-The module struct it fills in uses an **older** interface:
+The module was ported to the current framework interface; when editing,
+keep it aligned with `pmix_pnet_module_t`:
 
-- It sets a `.setup_fork` slot — but `pmix_pnet_module_t` has **no
-  `setup_fork` field** any more (fork-time envar injection is base-only).
-- `collect_inventory` is declared `(directives, ndirs,
-  pmix_inventory_cbfunc_t cbfunc, void *cbdata)` and `deliver_inventory`
-  `(info, ninfo, directives, ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata)`
-  — the current typedefs take a plain `pmix_list_t *inventory` and no
-  callbacks, respectively.
-- `setup_local_network` takes `pmix_namespace_t *` rather than the
-  current `pmix_nspace_env_cache_t *`.
-- `deliver_inventory` references `pmix_pnet_globals.nodes`,
-  `pmix_pnet_node_t`, and `pmix_pnet_resource_t`, none of which exist in
-  the current `base/base.h`.
-
-Any resurrection must port all of the above to the current framework
-header — do not change the header to match this file.
+- There is **no `.setup_fork` slot** — fork-time envar injection is
+  base-only, so a component that needs an envar in the child appends a
+  `pmix_envar_list_item_t` to the namespace's `ns->envars` cache during
+  `setup_local_network`.
+- `collect_inventory` takes a plain `pmix_list_t *inventory` (append
+  `pmix_kval_t`s to it) and `deliver_inventory` takes
+  `(info, ninfo, directives, ndirs)` — neither uses a callback.
+- `setup_local_network` takes a `pmix_nspace_env_cache_t *` (use
+  `ns->ns` for the underlying `pmix_namespace_t *`).
+- The framework's old global inventory store (`pmix_pnet_globals.nodes`
+  and the `pmix_pnet_node_t` / `pmix_pnet_resource_t` types) was removed.
+  `deliver_inventory` therefore archives into a **component-local** node
+  tree (`tcp_node_t` → `tcp_resource_t` → `tcp_available_ports_t`), held
+  on the static `nodes` list and dumped at verbosity >5. Nothing else
+  queries that tree today; it exists to keep the archiving example intact.
 
 ## The intended design (what the code shows)
 
@@ -80,19 +86,19 @@ header — do not change the header to match this file.
 - **`collect_inventory`** enumerates non-loopback, non-virtual IPv4/IPv6
   interfaces via the `pmix_if*` API and packs `(device, tcp[46]://addr)`
   pairs into an inventory blob keyed `PMIX_TCP_INVENTORY_KEY`;
-  **`deliver_inventory`** unpacks such blobs into the (now-removed)
-  per-node resource lists.
+  **`deliver_inventory`** unpacks such blobs into the component-local
+  `nodes` tree (see the interface notes above).
 
 ## Gotchas
 
-- **Do not treat this as a template.** Prefer [`opa`](../opa/AGENTS.md) or
-  [`nvd`](../nvd/AGENTS.md), which match the current interface. This file
-  is an archaeology reference for the port-allocation idea only.
-- **The port-recycling lives in the tracker destructor.** If you ever port
-  this forward, keep the invariant that releasing a `tcp_port_tracker_t`
-  returns its ports to its `src` pool — that is what makes ports reusable
-  across successive jobs.
-- **MCA params still register.** `component_register` is on the built
-  code path only if the component is built; today it is not, so
+- **It is an example, not production code.** `tcp` illustrates the
+  static-port-allocation design; `opa` and `nvd` are the other current
+  references. The port-allocation path only does real work on the gateway
+  with `static_ports` configured.
+- **The port-recycling lives in the tracker destructor.** Keep the
+  invariant that releasing a `tcp_port_tracker_t` returns its ports to its
+  `src` pool — that is what makes ports reusable across successive jobs.
+- **MCA params register at runtime when built.** With `--with-tcp`,
   `static_ports` / `default_network_allocation` / `include_envars` /
-  `exclude_envars` are not actually available at runtime.
+  `exclude_envars` are available (visible via `pmix_info --all` under
+  `MCA pnet tcp`). Without it, the component is absent entirely.

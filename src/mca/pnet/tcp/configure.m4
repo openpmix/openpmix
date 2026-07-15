@@ -16,12 +16,13 @@
 AC_DEFUN([MCA_pmix_pnet_tcp_CONFIG], [
     AC_CONFIG_FILES([src/mca/pnet/tcp/Makefile])
 
-    AS_IF([test "yes" = "no"],
-          [$1
-           pmix_pnet_tcp_happy=yes],
-          [$2
-           pmix_pnet_tcp_happy=no])
+    AC_ARG_WITH([tcp], [AS_HELP_STRING([--with-tcp], [Include TCP/UDP static-port fabric support])],
+                [pmix_want_tcp=yes], [pmix_want_tcp=no])
 
-    PMIX_SUMMARY_ADD([Transports], [TCP], [], [$pmix_pnet_tcp_happy])
+    AS_IF([test "$pmix_want_tcp" = "yes"],
+          [$1],
+          [$2])
+
+    PMIX_SUMMARY_ADD([Transports], [TCP], [], [$pmix_want_tcp])
 
 ])dnl
