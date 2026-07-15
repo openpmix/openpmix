@@ -23,16 +23,6 @@ its own [`AGENTS.md`](ompi/AGENTS.md) with component-specific detail.
 
 There is no `docs/how-things-work/` page for `pmdl`.
 
-> **A naming warning up front.** The header comment in [`pmdl.h`](pmdl.h)
-> and the framework's description string in `pmdl_base_frame.c` both say
-> this framework is about *network* operations ("PMIx Network
-> Operations", "obtain network-related info … setup network support").
-> That text is **stale boilerplate copied from `pnet`** and does not
-> describe `pmdl` at all. `pmdl` has nothing to do with networks — it is
-> about programming-model (MPI/OpenMP/OpenSHMEM) environment setup. Do
-> not be misled by those comments; fixing them would be a welcome
-> drive-by.
-
 ## What PMDL does
 
 `pmdl` collects the **environment variables and MCA parameters that a
@@ -60,8 +50,8 @@ Concretely, it does four kinds of work:
 
 Everything `pmdl` produces is *additive* environment for the child; it
 never opens sockets, allocates resources, or talks to a peer. Compare
-`pnet` (endpoints/"instant on") — despite the misleading shared boilerplate,
-they are different frameworks.
+`pnet` (endpoints/"instant on") — a different framework with a similar
+producer/consumer shape but an unrelated purpose.
 
 ## Where it runs
 
@@ -251,7 +241,7 @@ environment" directive the fork path understands.
 ## Selection and lifecycle (`base/pmdl_base_frame.c`)
 
 - `PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pmdl, …)` declares the framework
-  with the (stale) "PMIx Network Operations" description.
+  with the "PMIx Programming Model Operations" description.
 - `pmix_pmdl_open` sets `initialized`, constructs the lock and the
   `actives` list, and opens all components.
 - `pmix_pmdl_close` finalizes and releases every active module, destructs
@@ -335,5 +325,3 @@ children receive.
   overlapping models, repeated `register_nspace` calls, and re-launches
   all happen; guard with the "already given" marker envars (as `ompi`
   does with `OPAL_*_PARAMS_GIVEN`) rather than assuming single-shot.
-- **Ignore the "network" wording** in `pmdl.h` / the framework
-  description — it is wrong, and correcting it is welcome.

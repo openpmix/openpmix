@@ -14,8 +14,9 @@
 harvesting Intel-relevant environment variables for a job and (eventually)
 reporting Intel GPU inventory. Read the framework [`AGENTS.md`](../AGENTS.md)
 first; this file covers only what is specific to `intel`. **It is not built
-in any current configuration** (see Availability) and its GPU logic beyond
-envar harvesting is stubbed.
+in a default configuration** (see Availability) and its inventory logic is
+stubbed, but its envar-harvesting path compiles cleanly and runs through
+the shared launch wiring when the component is enabled.
 
 ## Files
 
@@ -79,8 +80,10 @@ The bodies are identical in shape to the other vendor components:
 
 ## Gotchas
 
-- Do not describe `intel` as functional: not built, empty default include
-  list, and no-op inventory functions.
+- Do not describe `intel` as functional: not built in a default
+  configuration, empty default include list, and no-op inventory
+  functions. Its envar-harvesting `allocate`/`setup_local` do compile and
+  work when the component is enabled.
 - Keep `PMIX_PGPU_INTEL_BLOB` / `PMIX_PGPU_INTEL_INVENTORY_KEY` unique
   across components; `setup_local` claims its data by matching the blob
   key string.

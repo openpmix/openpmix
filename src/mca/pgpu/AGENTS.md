@@ -15,50 +15,54 @@ This document orients AI agents and human contributors working in the
 top-level [`AGENTS.md`](../../../AGENTS.md) — the golden rules, prefix
 conventions, thread-safety model, and MCA concepts described there all
 apply here and are not repeated. This file covers what is specific to
-`pgpu`: what the framework is *meant* to do, how its two module structs
-relate, the base routing layer every component leans on, and — critically
-— the honest state of the code, which is **mostly dormant scaffolding**
-today. Each vendor component subdirectory (`amd/`, `intel/`, `nvd/`)
-carries its own `AGENTS.md`.
+`pgpu`: what the framework does, how its two module structs relate, the
+base routing layer every component leans on, and the honest state of the
+code. Each vendor component subdirectory (`amd/`, `intel/`, `nvd/`)
+carries its own `AGENTS.md`; a build-on-request `test/` component (see
+[Building](#building)) exercises the launch path on a host that has no
+real GPU.
 
 There is no `docs/how-things-work/` page for `pgpu`. Its closest sibling
 is [`pnet`](../pnet/AGENTS.md), whose structure `pgpu` mirrors almost
-exactly (same allocate / setup_local / setup_fork / inventory shape); when
-in doubt about intended behavior, read how the server actually drives
-`pnet` and note where `pgpu` is *not* yet wired in the same way.
+exactly (same allocate / setup_local / setup_fork / inventory shape). The
+server now drives `pgpu` the same way it drives `pnet`, so when in doubt
+about intended behavior, read how the server calls `pnet`.
 
 ## Read this first: the current state of `pgpu`
 
-Before you invest in this framework, understand three facts that the
-source makes plain:
+Before you invest in this framework, understand what is and is not live:
 
-1. **No component is built in any current configuration.** All three
-   vendor components (`amd`, `intel`, `nvd`) ship a `configure.m4` whose
-   gate is literally `AS_IF([test "yes" = "no"], [build], [do not
-   build])` — a condition that is always false. The generated
-   [`base/static-components.h`](base/static-components.h) is therefore
-   empty (`{ NULL }`): `libpmix` contains the `pgpu` **base** but zero
-   `pgpu` components. `pmix_pgpu_globals.actives` is always empty at
-   runtime.
+1. **The server drives the full launch path.**
+   `PMIx_server_setup_application` calls `pmix_pgpu.allocate` and
+   `PMIx_server_setup_local_support` calls `pmix_pgpu.setup_local` (in
+   `src/server/pmix_server.c`), immediately alongside the corresponding
+   `pnet` calls, and `pmix_pgpu.setup_fork` runs from the fork path.
+   Together with the long-standing `pmix_pgpu.collect_inventory` /
+   `pmix_pgpu.deliver_inventory` calls, **every `pgpu` API entry now has
+   an in-tree caller** — the envar harvest → ship → inject pipeline is
+   wired exactly as `pnet`'s is.
 
-2. **Only two of the API entry points have any in-tree caller.** The
-   server calls `pmix_pgpu.collect_inventory` and
-   `pmix_pgpu.deliver_inventory` (in `src/server/pmix_server.c`). The
-   other entries — `allocate`, `setup_local`, `setup_fork`,
-   `child_finalized`, `local_app_finalized`, `deregister_nspace` — are
-   defined and exported but **nothing inside `libpmix` invokes them**. The
-   analogous launch-time work is currently done by `pnet`
-   (`pmix_pnet.allocate`, `pmix_pnet.setup_local_network`,
-   `pmix_pnet.setup_fork`), not by `pgpu`.
+2. **No vendor component is built by default.** The three vendor
+   components (`amd`, `intel`, `nvd`) ship a `configure.m4` whose gate is
+   literally `AS_IF([test "yes" = "no"], [build], [do not build])` — a
+   condition that is always false — so they are compiled out, the
+   generated [`base/static-components.h`](base/static-components.h)
+   contains no vendor component, and `pmix_pgpu_globals.actives` is empty
+   on a stock build. They now *compile and link* cleanly when their gate
+   is enabled, but shipping them on by default still needs real
+   vendor-runtime detection. To exercise the framework end-to-end today,
+   build the `test` component with `--with-pgpu-test` (see
+   [Building](#building)).
 
-3. **The components' actual GPU logic is stubbed.** Even the envar-
-   harvesting `allocate`/`setup_local` that *is* implemented would only
-   run if a component were built and selected; `collect_inventory` and
-   `deliver_inventory` are empty stubs that just `return PMIX_SUCCESS`.
+3. **The vendor GPU logic is still stubbed.** The envar-harvesting
+   `allocate`/`setup_local` are fully implemented, but `collect_inventory`
+   and `deliver_inventory` are empty stubs that just `return
+   PMIX_SUCCESS`.
 
-So treat this framework as an **intended design that is not yet live**.
-Document and extend it faithfully, but do not describe it as doing things
-the code does not currently do.
+So the framework *is* wired into launch, but no vendor component runs in a
+stock build — enable `--with-pgpu-test` (or a vendor gate) to see it work.
+Document and extend it faithfully, and do not describe the stubs as doing
+work the code does not yet do.
 
 ## What PGPU is for
 
@@ -114,9 +118,10 @@ This is the per-component module. Its function-pointer fields:
 | `deliver_inventory` | `..._deliver_inventory_fn_t` — `(pmix_info_t info[], size_t ninfo, pmix_info_t directives[], size_t ndirs)` | archive inventory from remote peers |
 
 Note there is **no `setup_fork` in the component module** — components do
-not touch the fork directly; the base does (see below). The three current
+not touch the fork directly; the base does (see below). The three vendor
 components fill in only `name`, `allocate`, `setup_local`,
-`collect_inventory`, and `deliver_inventory`; the rest are left `NULL` and
+`collect_inventory`, and `deliver_inventory`; the `test` component fills
+`name`, `allocate`, and `setup_local`. All other slots are left `NULL` and
 the base skips them.
 
 ### `pmix_pgpu_API_module_t` and the global `pmix_pgpu`
@@ -160,9 +165,10 @@ src/mca/pgpu/
 │   ├── pgpu_base_frame.c   open/close, framework decl, global pmix_pgpu, active-module class
 │   ├── pgpu_base_select.c  hand-rolled multi-select (query + priority insert)
 │   └── pgpu_base_fns.c     the pmix_pgpu_base_* routing functions
-├── amd/                    AMD vendor component  (never built; envar-harvest + inventory stubs)
-├── intel/                  Intel vendor component (never built; " )
-└── nvd/                    NVIDIA vendor component (never built; " )
+├── amd/                    AMD vendor component  (compiles; build-gated off by default)
+├── intel/                  Intel vendor component (compiles; build-gated off by default)
+├── nvd/                    NVIDIA vendor component (compiles; build-gated off by default)
+└── test/                   Build-on-request test component (--with-pgpu-test)
 ```
 
 ## Framework globals (`base/base.h`)
@@ -219,8 +225,9 @@ function pointer. Specifics that matter:
   each module's `deregister_nspace` first.
 - **`pmix_pgpu_base_collect_inventory` / `_deliver_inventory`** — loop and
   forward; here a **non-`SUCCESS` return stops the loop and is returned**
-  (stricter than the allocate/setup path). These are the two entries the
-  server actually drives.
+  (stricter than the allocate/setup path). These run from the server's
+  inventory-collection paths, as `allocate`/`setup_local`/`setup_fork` run
+  from the launch paths.
 
 ### A dead declaration to be aware of
 
@@ -247,9 +254,10 @@ with a `pmix_mca_query_component`:
    iteration order).
 
 Finding zero components is **not** an error — the function returns
-`PMIX_SUCCESS` with an empty `actives` list, which is exactly the current
-reality. At verbosity >4 it prints the resolved priority list. `selected`
-guards against a second pass.
+`PMIX_SUCCESS` with an empty `actives` list, which is the case in a
+default build (no vendor component compiled, `test` compiled only with
+`--with-pgpu-test`). At verbosity >4 it prints the resolved priority list.
+`selected` guards against a second pass.
 
 Default component priorities (from each `component_query`):
 
@@ -258,6 +266,7 @@ Default component priorities (from each `component_query`):
 | `amd`   | 20 | `pmix_hwloc_check_vendor(topo, 0x1022, 0x302)` |
 | `intel` | 20 | `pmix_hwloc_check_vendor(topo, 0x8086, 0x0380)` |
 | `nvd`   | 10 | `pmix_hwloc_check_vendor(topo, 0x10de, 0x302)` |
+| `test`  | 10 | server role **and** `pgpu=test` named in the MCA selection string |
 
 `pmix_hwloc_check_vendor` (in `src/hwloc/pmix_hwloc.c`) walks the PCI
 devices in the node topology and returns `PMIX_SUCCESS` only if a device
@@ -271,7 +280,7 @@ that actually has that vendor's GPU**.
 ## Lifecycle (`pgpu_base_frame.c`)
 
 - **`pmix_pgpu_open`** constructs `actives` and `nspaces`, then opens all
-  (currently zero) components.
+  built components (none in a stock build).
 - **`pmix_pgpu_close`** clears `selected`, finalizes each active module,
   destructs both lists, and closes the components.
 - The framework is declared with
@@ -285,18 +294,22 @@ that actually has that vendor's GPU**.
 The framework is opened and selected during **server** startup in
 `src/server/pmix_server.c` — `pmix_mca_base_framework_open(...)` followed
 by `pmix_pgpu_base_select()`, immediately after `pnet` selection and
-before `pstat` is opened — and closed at server teardown. The inventory
-entries are invoked from the server's inventory-collection paths.
+before `pstat` is opened — and closed at server teardown. `pmix_pgpu.allocate`
+is invoked from `_setup_app` (next to `pmix_pnet.allocate`),
+`pmix_pgpu.setup_local` from `_setup_local_support` (next to
+`pmix_pnet.setup_local_network`), `pmix_pgpu.setup_fork` from the local
+fork path, and the inventory entries from the server's
+inventory-collection paths.
 
 ## MCA parameters
 
-The framework has none. Each vendor component registers two string params
-(shown here for `nvd`; `amd` and `intel` are identical apart from the
+The framework has none. Each component registers two string params (shown
+here for `nvd`; `amd`, `intel`, and `test` are identical apart from the
 prefix and defaults):
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
-| `pgpu_nvd_include_envars` | `CUDA_*,NCCL_*` (nvd only; `amd`/`intel` default `NULL`) | comma-delimited glob list of envars to harvest (`*`/`?` supported) |
+| `pgpu_nvd_include_envars` | `CUDA_*,NCCL_*` (nvd); `amd`/`intel` default `NULL`; `test` defaults `PMIX_TEST_GPU_*` | comma-delimited glob list of envars to harvest (`*`/`?` supported) |
 | `pgpu_nvd_exclude_envars` | `NULL` | comma-delimited glob list of envars to exclude |
 
 At register time each list is split with `PMIx_Argv_split` into the
@@ -321,19 +334,23 @@ implement it, follow the top-level thread-shifting rules.
 The framework **base** is always compiled into `libpmix` (via
 `base/Makefile.include`); the top-level `Makefile.am` builds
 `libmca_pgpu.la` with `sources =` empty apart from the base. Each
-component ships a `configure.m4` and a `Makefile.am`, but as noted every
-`configure.m4` currently hard-disables its component (`test "yes" =
-"no"`), so `static-components.h` is generated empty and no component
-object is built or linked.
+component ships a `configure.m4` and a `Makefile.am`:
 
-- To actually enable a component you must fix its `configure.m4` gate
-  (and, for `nvd`, the component-name bug noted in its `AGENTS.md`), then
-  regenerate: `./autogen.pl && ./configure ... && make`. Merely editing a
-  `Makefile.am` needs only `make`, but changing a `configure.m4` or
-  adding/removing a component directory changes the wiring `configure`
-  resolves, so the full regen is required.
-- `pgpu` ships **no `show_help` text**, so the regenerate-the-help-content
-  golden rule does not apply here.
+- The three **vendor** components (`amd`, `intel`, `nvd`) hard-disable
+  themselves (`AS_IF([test "yes" = "no"], ...)`), so they are not compiled
+  and `static-components.h` carries no vendor component. To enable one,
+  replace the placeholder gate with real vendor-runtime detection, then
+  regenerate: `./autogen.pl && ./configure ... && make`.
+- The **`test`** component builds only when `--with-pgpu-test` is passed
+  to `configure`, and never ships in a normal build. It is the way to
+  exercise the launch path on a host with no GPU (select it at runtime
+  with `PMIX_MCA_pgpu=test`).
+
+Merely editing a `Makefile.am` needs only `make`, but changing a
+`configure.m4` or adding/removing a component directory changes the wiring
+`configure` resolves, so the full `./autogen.pl && ./configure && make`
+regen is required. `pgpu` ships **no `show_help` text**, so the
+regenerate-the-help-content golden rule does not apply here.
 
 ## When adding or modifying a component
 
@@ -342,7 +359,7 @@ object is built or linked.
   init symbol with `PMIX_MCA_BASE_COMPONENT_INIT(pmix, pgpu, <name>)` —
   the third argument **must** match the struct's component name
   (`pmix_mca_pgpu_<name>_component`), or the static-component pointer will
-  reference an undefined symbol (this is exactly the latent `nvd` bug).
+  reference an undefined symbol (this was the `nvd` bug, since fixed).
 - Provide a `component_query` that hands back your `pmix_pgpu_module_t` and
   a priority, and a `component_open` that declines (returns non-success)
   when the vendor hardware is absent — reuse `pmix_hwloc_check_vendor`.
@@ -355,8 +372,11 @@ object is built or linked.
   `setup_local` can find and unpack it.
 - Give the component a real `configure.m4` gate (detect the vendor
   runtime/library) instead of the placeholder `test "yes" = "no"`, and add
-  the `PMIX_SUMMARY_ADD` line so the configure summary reports it.
-- If you make `pgpu` actually drive launches, wire the missing API calls
-  (`pmix_pgpu.allocate` / `.setup_local` / `.setup_fork` / the finalize
-  hooks) into the server the way `pnet` is wired — today they are
-  reachable code with no caller.
+  the `PMIX_SUMMARY_ADD` line so the configure summary reports it. The
+  `test` component's `configure.m4` (an `--with-pgpu-test` `AC_ARG_WITH`)
+  is the template for a real opt-in gate.
+- The launch API calls (`pmix_pgpu.allocate` / `.setup_local` /
+  `.setup_fork`) are already wired into the server the way `pnet` is; a
+  new component inherits them for free. The `test` component is the
+  working reference for a component that harvests and replays envars
+  through that path.
