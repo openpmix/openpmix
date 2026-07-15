@@ -61,16 +61,20 @@ server code (e.g. `pmix_pnet.allocate`, `pmix_pnet.setup_fork`).
 
 Only **one** component, [`opa`](opa/AGENTS.md), is compiled in a default
 build, and it selects at runtime **only** when hwloc reports matching
-fabric hardware. [`nvd`](nvd/AGENTS.md) and [`tcp`](tcp/AGENTS.md) are
-hardwired **off** in their `configure.m4` (see [Building](#building)), and
-[`simptest`](simptest/AGENTS.md) builds only with `--with-simptest`.
-Moreover, `tcp` and `simptest` are **stale**: their module functions no
-longer match the current `pmix_pnet_module_t` interface and they reference
-base symbols that no longer exist, so they would not compile against
-today's tree (this is invisible in CI precisely because they are not
-built). Treat the shipped components as a mix of one live example (`opa`),
-one current-but-disabled example (`nvd`), and two stale examples
-(`tcp`, `simptest`). See each component's `AGENTS.md` for specifics, and
+fabric hardware. [`tcp`](tcp/AGENTS.md) also compiles against the current
+interface but is **opt-in** — its `configure.m4` is guarded by
+`--with-tcp`, so it is off by default; when built it has no hardware gate
+and is selected on **every** server (its entry points then self-gate on
+role / blob key). [`nvd`](nvd/AGENTS.md) is hardwired **off** in its
+`configure.m4` (see [Building](#building)), and
+[`simptest`](simptest/AGENTS.md) builds only with `--with-simptest` and is
+**stale** — its module functions no longer match the current
+`pmix_pnet_module_t` interface and it references base symbols that no
+longer exist, so it would not compile against today's tree (this is
+invisible in CI precisely because it is not built). Treat the shipped
+components as two current examples (`opa` built by default, `tcp` opt-in
+via `--with-tcp`), one current-but-disabled example (`nvd`), and one stale
+example (`simptest`). See each component's `AGENTS.md` for specifics, and
 do not assume any of them reflects a supported, exercised code path.
 
 ## Single-select vs. multi-select
@@ -227,13 +231,16 @@ Default priorities and runtime gates (from each component's
 | `nvd` | 10 | **No** (hardwired off) | hwloc reports a Mellanox `0x15b3` / NVIDIA `0x10de` device of class `0x207` |
 | `opa` | 10 | **Yes** | hwloc reports an Intel `0x8086` device of class `0x208` |
 | `simptest` | 0 | Only with `--with-simptest` | server role **and** `pnet=simptest` MCA selection **and** a config file given |
-| `tcp` | 5 | **No** (hardwired off) | always returns a module (its gating is inside the module, on `PMIX_PEER_IS_GATEWAY`) |
+| `tcp` | 5 | **No** (`--with-tcp`) | always returns a module (no hardware gate); its entry points self-gate on `PMIX_PEER_IS_GATEWAY` / their own blob key, but `collect_inventory` runs on every server |
 
 Because `nvd`/`opa` gate selection on a hwloc hardware probe in
-`component_open`, on a typical server **no** `pnet` component ends up in
-`actives`, and the base functions quietly do nothing. That is the normal,
-intended behavior — `pnet` is opt-in on the presence of real fabric
-hardware or an explicit test configuration.
+`component_open`, they only end up in `actives` on hosts with the matching
+fabric hardware. On a default build with no matching hardware, **no**
+`pnet` component ends up in `actives` and the base functions quietly do
+nothing. If `tcp` is built (`--with-tcp`) it has no such gate, so it then
+lands in `actives` on every server; its entry points self-gate, so the
+only work done on a non-gateway server without a matching blob is
+`collect_inventory` reporting the local TCP interfaces.
 
 ## MCA parameters
 
@@ -261,9 +268,9 @@ src/mca/pnet/
 │   ├── pnet_base_select.c  multi-select: build the priority-ordered actives list
 │   └── pnet_base_fns.c     the pmix_pnet_base_* fan-out functions
 ├── nvd/                    Mellanox/NVIDIA example (current interface, disabled in build)
-├── opa/                    Omni-Path example (the only default-built component)
+├── opa/                    Omni-Path example (default-built; hwloc-gated at runtime)
 ├── simptest/               static-endpoint test example (stale; --with-simptest only)
-└── tcp/                    static TCP/UDP port example (stale; disabled in build)
+└── tcp/                    static TCP/UDP port example (--with-tcp; no hardware gate)
 ```
 
 ## Threading
@@ -291,10 +298,12 @@ are unusually blunt about it:
   It is the only component listed in the generated
   `base/static-components.h` in a default configure. (Whether it then
   *selects* still depends on the hwloc probe at runtime.)
+- **`tcp`** — guarded by `--with-tcp` (same `AC_ARG_WITH` pattern as
+  `simptest`): **not built by default**. When the flag is given it
+  compiles and, having no runtime hardware gate, also always selects.
 - **`nvd`** — `AS_IF([test "yes" = "no"], …)`, i.e. the "can-compile"
   branch is never taken: **never built**. Its `Makefile` is still
   generated, but the source is not compiled into the library.
-- **`tcp`** — same hardwired-off pattern as `nvd`: **never built**.
 - **`simptest`** — built only when `--with-simptest` is passed to
   `configure`.
 
@@ -311,24 +320,28 @@ Per the top-level build rules: editing a `Makefile.am` needs only a plain
 `make`; **adding or removing a component directory, or changing a
 `configure.m4`, changes the build wiring and requires
 `./autogen.pl && ./configure … && make`** (this is exactly the mechanism
-that keeps `nvd`/`tcp` out of the library today).
+that keeps `nvd` out of the library today).
 
 ## When working in this framework
 
-- **Do not assume any component is a working reference.** `opa` compiles
-  and is the closest thing to a live example, but it only runs on
-  Omni-Path hardware. `nvd` matches the current interface but is not
-  built. `tcp` and `simptest` are stale (see below) and are not built by
-  default. Read `opa` first if you need a template.
-- **Know why `tcp`/`simptest` don't compile against HEAD.** Their module
+- **`opa` and `tcp` are the current references.** Both compile against
+  today's interface. `opa` is built by default but only *runs* on
+  Omni-Path hardware; `tcp` is opt-in (`--with-tcp`) and, once built, has
+  no hardware gate so it always selects. `nvd` matches the current
+  interface but is not built. `simptest` is stale (see below) and builds
+  only with `--with-simptest`. Read `opa` or `tcp` first if you need a
+  template.
+- **Know why `simptest` doesn't compile against HEAD.** Its module
   functions use signatures from an older `pmix_pnet_module_t` (e.g. a
   `setup_fork` module slot that no longer exists, inventory functions that
   still take `pmix_inventory_cbfunc_t`/`pmix_op_cbfunc_t` callbacks, a
-  `setup_local_network` taking `pmix_namespace_t *`), and `tcp` references
-  base symbols (`pmix_pnet_globals.nodes`, `pmix_pnet_node_t`,
-  `pmix_pnet_resource_t`) that no longer exist. If you resurrect either,
-  you must port it to the current interface — do not "fix" the framework
-  header to match the stale component.
+  `setup_local_network` taking `pmix_namespace_t *`). `tcp` used to share
+  these problems and additionally referenced base symbols
+  (`pmix_pnet_globals.nodes`, `pmix_pnet_node_t`, `pmix_pnet_resource_t`)
+  that no longer exist; it has since been ported to the current interface
+  (its inventory archive now lives in a component-local tree). If you
+  resurrect `simptest`, port it the same way — do not "fix" the framework
+  header to match a stale component.
 - **`setup_fork` is base-only.** If a component needs an envar in the
   child's environment, it must add it to the namespace's envar cache
   during `setup_local_network` (append a `pmix_envar_list_item_t` to
