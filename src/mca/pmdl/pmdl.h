@@ -6,6 +6,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2026      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,9 +17,10 @@
 /**
  * @file
  *
- * This interface is for use by PMIx servers to obtain network-related info
- * such as security keys that need to be shared across applications, and to
- * setup network support for applications prior to launch
+ * This interface is for use by PMIx servers and tools to collect the
+ * environment variables and MCA parameters a programming model (e.g.,
+ * MPI, OpenMP, OpenSHMEM) requires, and to inject them into application
+ * processes prior to launch
  *
  * Available plugins may be defined at runtime via the typical MCA parameter
  * syntax.
@@ -90,14 +92,14 @@ typedef pmix_status_t (*pmix_pmdl_base_module_setup_fork_fn_t)(const pmix_proc_t
                                                                char ***priors);
 
 /**
- * Provide an opportunity for the fabric components to cleanup any
- * resources they may have created to track the nspace
+ * Provide an opportunity for the programming model components to cleanup
+ * any resources they may have created to track the nspace
  */
 typedef void (*pmix_pmdl_base_module_dregister_nspace_fn_t)(pmix_namespace_t *nptr);
 
 /**
  * Base structure for a PMDL module. Each component should malloc a
- * copy of the module structure for each fabric plane they support.
+ * copy of the module structure for each programming model they support.
  */
 typedef struct {
     char *name;
