@@ -67,14 +67,13 @@ interface but is **opt-in** — its `configure.m4` is guarded by
 and is selected on **every** server (its entry points then self-gate on
 role / blob key). [`nvd`](nvd/AGENTS.md) is hardwired **off** in its
 `configure.m4` (see [Building](#building)), and
-[`simptest`](simptest/AGENTS.md) builds only with `--with-simptest` and is
-**stale** — its module functions no longer match the current
-`pmix_pnet_module_t` interface and it references base symbols that no
-longer exist, so it would not compile against today's tree (this is
-invisible in CI precisely because it is not built). Treat the shipped
-components as two current examples (`opa` built by default, `tcp` opt-in
-via `--with-tcp`), one current-but-disabled example (`nvd`), and one stale
-example (`simptest`). See each component's `AGENTS.md` for specifics, and
+[`simptest`](simptest/AGENTS.md) is a working test fabric that builds with
+`--with-simptest` or `--enable-test-build`; it compiles against the
+current interface and drives the assign → cache → `PMIx_Get` path
+end-to-end (exercised by `test/simple/simpcoord.c`). Treat the shipped
+components as three current examples (`opa` built by default, `tcp` and
+`simptest` opt-in) and one current-but-disabled example (`nvd`). See each
+component's `AGENTS.md` for specifics, and
 do not assume any of them reflects a supported, exercised code path.
 
 ## Single-select vs. multi-select
@@ -269,7 +268,7 @@ src/mca/pnet/
 │   └── pnet_base_fns.c     the pmix_pnet_base_* fan-out functions
 ├── nvd/                    Mellanox/NVIDIA example (current interface, disabled in build)
 ├── opa/                    Omni-Path example (default-built; hwloc-gated at runtime)
-├── simptest/               static-endpoint test example (stale; --with-simptest only)
+├── simptest/               static-endpoint test example (working; --with-simptest / --enable-test-build)
 └── tcp/                    static TCP/UDP port example (--with-tcp; no hardware gate)
 ```
 
@@ -304,8 +303,8 @@ are unusually blunt about it:
 - **`nvd`** — `AS_IF([test "yes" = "no"], …)`, i.e. the "can-compile"
   branch is never taken: **never built**. Its `Makefile` is still
   generated, but the source is not compiled into the library.
-- **`simptest`** — built only when `--with-simptest` is passed to
-  `configure`.
+- **`simptest`** — built when `--with-simptest` is passed to `configure`,
+  or force-built for compile coverage by `--enable-test-build`.
 
 Each component reports its state through `PMIX_SUMMARY_ADD([Transports],
 …)`, so `configure`'s summary shows `NVIDIA`, `OmniPath`, `Simptest`,
@@ -324,24 +323,23 @@ that keeps `nvd` out of the library today).
 
 ## When working in this framework
 
-- **`opa` and `tcp` are the current references.** Both compile against
-  today's interface. `opa` is built by default but only *runs* on
+- **`opa`, `tcp`, and `simptest` are the current references.** All compile
+  against today's interface. `opa` is built by default but only *runs* on
   Omni-Path hardware; `tcp` is opt-in (`--with-tcp`) and, once built, has
-  no hardware gate so it always selects. `nvd` matches the current
-  interface but is not built. `simptest` is stale (see below) and builds
-  only with `--with-simptest`. Read `opa` or `tcp` first if you need a
-  template.
-- **Know why `simptest` doesn't compile against HEAD.** Its module
-  functions use signatures from an older `pmix_pnet_module_t` (e.g. a
-  `setup_fork` module slot that no longer exists, inventory functions that
-  still take `pmix_inventory_cbfunc_t`/`pmix_op_cbfunc_t` callbacks, a
-  `setup_local_network` taking `pmix_namespace_t *`). `tcp` used to share
-  these problems and additionally referenced base symbols
-  (`pmix_pnet_globals.nodes`, `pmix_pnet_node_t`, `pmix_pnet_resource_t`)
-  that no longer exist; it has since been ported to the current interface
-  (its inventory archive now lives in a component-local tree). If you
-  resurrect `simptest`, port it the same way — do not "fix" the framework
-  header to match a stale component.
+  no hardware gate so it always selects; `simptest` is opt-in
+  (`--with-simptest` / `--enable-test-build`) and drives the
+  endpoint/coordinate assignment path without real hardware. `nvd` matches
+  the current interface but is not built. Read `opa` or `tcp` first if you
+  need a template, or `simptest` for the static assign → cache → `Get`
+  flow.
+- **`simptest` shows the per-proc vs. per-node split.** Fabric endpoints
+  (`PMIX_FABRIC_ENDPT`) are per-process data, fetched by rank, so they go
+  in a `PMIX_PROC_DATA` array; fabric coordinates
+  (`PMIX_FABRIC_COORDINATES`) are per-node, fetched at the node level
+  (rank `PMIX_RANK_UNDEF`), so they must be delivered in a
+  `PMIX_NODE_INFO_ARRAY` rather than proc data or the client's `PMIx_Get`
+  will not find them. This mirrors how a real fabric component must split
+  the two.
 - **`setup_fork` is base-only.** If a component needs an envar in the
   child's environment, it must add it to the namespace's envar cache
   during `setup_local_network` (append a `pmix_envar_list_item_t` to
