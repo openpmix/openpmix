@@ -3,6 +3,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2026      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -36,7 +37,6 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/pcompress/pcompress.h"
 #include "src/mca/preg/preg.h"
-#include "src/util/alfg.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
@@ -134,6 +134,9 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     if (pmix_compress.compress((uint8_t *) bo.bytes, bo.size,
                                (uint8_t **) &kv->value->data.bo.bytes, &kv->value->data.bo.size)) {
         kv->value->type = PMIX_COMPRESSED_BYTE_OBJECT;
+        /* the compressed copy now holds the payload - release the
+         * uncompressed buffer we unloaded above */
+        free(bo.bytes);
     } else {
         kv->value->data.bo.bytes = bo.bytes;
         kv->value->data.bo.size = bo.size;
@@ -206,6 +209,12 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
             /* we are done */
             break;
         }
+    }
+
+    /* the unpack loop terminates on the trailing empty read, which is
+     * the normal end of the blob - not an error to report to the base */
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        rc = PMIX_SUCCESS;
     }
 
     if (release) {
