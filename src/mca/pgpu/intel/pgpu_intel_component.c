@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -69,14 +69,13 @@ PMIX_MCA_BASE_COMPONENT_INIT(pmix, pgpu, intel)
 
 static pmix_status_t component_register(void)
 {
-    pmix_mca_base_component_t *component = &pmix_mca_pgpu_intel_component.super.base;
+    pmix_mca_base_component_t *component = &pmix_mca_pgpu_intel_component.super;
 
     pmix_mca_pgpu_intel_component.incparms = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-        &pmix_mca_pgpu_intel_component.incparms);
+        PMIX_MCA_BASE_VAR_TYPE_STRING, &pmix_mca_pgpu_intel_component.incparms);
     if (NULL != pmix_mca_pgpu_intel_component.incparms) {
         pmix_mca_pgpu_intel_component.include = PMIx_Argv_split(pmix_mca_pgpu_intel_component.incparms, ',');
     }
@@ -85,8 +84,7 @@ static pmix_status_t component_register(void)
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-        &pmix_mca_pgpu_intel_component.excparms);
+        PMIX_MCA_BASE_VAR_TYPE_STRING, &pmix_mca_pgpu_intel_component.excparms);
     if (NULL != pmix_mca_pgpu_intel_component.excparms) {
         pmix_mca_pgpu_intel_component.exclude = PMIx_Argv_split(pmix_mca_pgpu_intel_component.excparms, ',');
     }
