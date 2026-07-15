@@ -127,7 +127,21 @@ is a recognizable placeholder.
   e.g. `PMIX_MCA_pnet=simptest
   PMIX_MCA_pnet_simptest_config_file=topo.txt ./simptest -n 2 -e
   ./simpcoord`, where `topo.txt` lists one `nodename coord...` line per
-  node (the node name must match the launcher's node map).
+  node.
+- **The config-file node names must match the launcher's node map.**
+  `allocate` looks up each node from the `PMIX_NODE_MAP` in `mynodes` by
+  exact name (`strcmp`), so a name in the topology file that does not
+  appear in the job's node map is silently skipped and its procs get no
+  fabric data. This is intrinsic to a topology-description file - it names
+  the real nodes the RM placed the job on - not a bug to fix. Note the
+  node map may carry the **short** host name (e.g. `node01`) while the OS
+  reports an FQDN; use whatever name the launcher's node map uses. (The
+  per-node coordinate is tagged with that same config name as its
+  `PMIX_HOSTNAME`; the backend GDS reconciles short-name/FQDN/alias
+  differences when it matches the node-info to the local node, so the
+  coordinate still resolves on the compute node.) With
+  `test/simple/simptest` the map is generated from the local host, so the
+  topology file needs a single line for this node.
 - **Editing the help text** (`help-pnet-simptest.txt`) requires the
   regenerate-help golden rule: `rm src/util/pmix_show_help_content.* &&
   make`.
