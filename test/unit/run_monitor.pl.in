@@ -62,7 +62,7 @@ foreach my $p (@paths) {
 
 # Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise
 # arm a Perl alarm so a wedged run can never hang "make check" forever.
-my @cmd = ("./simptest", "-e", "./simpmonitor");
+my @cmd = ("./simptest", "-n", "2", "-e", "./simpmonitor");
 my $use_alarm = 0;
 if ("" ne $timeout_cmd) {
     unshift(@cmd, split(' ', $timeout_cmd));
