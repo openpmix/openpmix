@@ -69,14 +69,13 @@ PMIX_MCA_BASE_COMPONENT_INIT(pmix, pgpu, nvd)
 
 static pmix_status_t component_register(void)
 {
-    pmix_mca_base_component_t *component = &pmix_mca_pgpu_nvd_component.super.base;
+    pmix_mca_base_component_t *component = &pmix_mca_pgpu_nvd_component.super;
 
     pmix_mca_pgpu_nvd_component.incparms = "CUDA_*,NCCL_*";
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-        &pmix_mca_pgpu_nvd_component.incparms);
+        PMIX_MCA_BASE_VAR_TYPE_STRING, &pmix_mca_pgpu_nvd_component.incparms);
     if (NULL != pmix_mca_pgpu_nvd_component.incparms) {
         pmix_mca_pgpu_nvd_component.include = PMIx_Argv_split(pmix_mca_pgpu_nvd_component.incparms, ',');
     }
@@ -85,8 +84,7 @@ static pmix_status_t component_register(void)
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-        &pmix_mca_pgpu_nvd_component.excparms);
+        PMIX_MCA_BASE_VAR_TYPE_STRING, &pmix_mca_pgpu_nvd_component.excparms);
     if (NULL != pmix_mca_pgpu_nvd_component.excparms) {
         pmix_mca_pgpu_nvd_component.exclude = PMIx_Argv_split(pmix_mca_pgpu_nvd_component.excparms, ',');
     }
