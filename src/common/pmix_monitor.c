@@ -48,7 +48,33 @@ static void relcbfunc(void *cbdata)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:monitor release callback");
+    /* the caddy's proc array is not freed by the pmix_cb_t destructor,
+     * so release it here - this is the common completion point for all
+     * paths that hand the caddy to a callback (PMIX_PROC_FREE NULLs the
+     * pointer, so it is safe against the error paths that already freed
+     * it) */
+    if (NULL != cd->proc) {
+        PMIX_PROC_FREE(cd->proc, 1);
+    }
     PMIX_RELEASE(cd);
+}
+
+/* terminal callback for the fire-and-forget case (server-side _nb call
+ * with a NULL user cbfunc). It behaves as a well-mannered user callback
+ * that ignores the returned info and simply invokes the release
+ * function, which releases the caddy. We must NOT substitute acb here:
+ * acb is the blocking copy-out callback, and pointing the caddy's
+ * cbfunc at acb while setting cbdata to the caddy itself causes acb to
+ * re-invoke itself (recursion / use-after-free) since acb only reaches
+ * its PMIX_WAKEUP_THREAD terminal when cbfunc.infofn is NULL. */
+static void mon_relcb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                      pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(status, info, ninfo, cbdata);
+
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
 }
 
 pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t error,
@@ -142,6 +168,7 @@ static void hostprocess(int sd, short args, void *cbdata)
             cb->cbfunc.infofn(cb->status, cb->info, cb->ninfo, cb->cbdata,
                               relcbfunc, (void*)cb);
         }
+        PMIX_RELEASE(scd);
         return;
     }
 
@@ -435,11 +462,14 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
                                                cb->directives, cb->ndirs, hostcb,
                                                cb2);
         if (PMIX_SUCCESS != cb2->status) {
+            cb->status = cb2->status;
             PMIX_RELEASE(cb2);
-            PMIX_INFO_FREE(cb->info, cb->ninfo);
-            cb->info = NULL;
-            cb->ninfo = 0;
-            cb->infocopy = false;
+            if (cb->infocopy) {
+                PMIX_INFO_FREE(cb->info, cb->ninfo);
+                cb->info = NULL;
+                cb->ninfo = 0;
+                cb->infocopy = false;
+            }
             goto complete;
         }
     }
@@ -489,7 +519,7 @@ pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t 
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
 
-        // makes mo sense for server to send heartbeat
+        // makes no sense for server to send heartbeat
         if (PMIx_Check_key(monitor->key, PMIX_SEND_HEARTBEAT)) {
             return PMIX_ERR_BAD_PARAM;
         }
@@ -518,8 +548,8 @@ pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t 
             cb->cbfunc.infofn = cbfunc;
             cb->cbdata = cbdata;
         } else {
-            cb->cbfunc.infofn = acb;
-            cb->cbdata = cb;
+            cb->cbfunc.infofn = mon_relcb;
+            cb->cbdata = NULL;
         }
         PMIX_THREADSHIFT(cb, pmix_monitor_processing);
         return PMIX_SUCCESS;
@@ -649,6 +679,7 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &results->status, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        results->status = rc;
         goto complete;
     }
     if (PMIX_SUCCESS != results->status &&

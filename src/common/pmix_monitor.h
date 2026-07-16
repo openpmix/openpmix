@@ -27,7 +27,7 @@
 /**
  * @file
  *
- * I/O Forwarding Service
+ * Process monitoring (PMIx_Process_monitor) support
  */
 
 #ifndef PMIX_MONITOR_H
