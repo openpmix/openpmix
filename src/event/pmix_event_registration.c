@@ -422,11 +422,12 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
                                         ncd->naffected)) {
             continue;
         }
-        /* create the chain */
+        /* create the chain, preserving the original source and
+         * range of the cached event */
         chain = PMIX_NEW(pmix_event_chain_t);
         chain->status = ncd->status;
-        pmix_strncpy(chain->source.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
-        chain->source.rank = pmix_globals.myid.rank;
+        chain->range = ncd->range;
+        PMIX_LOAD_PROCID(&chain->source, ncd->source.nspace, ncd->source.rank);
         /* we always leave space for event hdlr name and a callback object */
         chain->nallocated = ncd->ninfo + 2;
         PMIX_INFO_CREATE(chain->info, chain->nallocated);
@@ -441,7 +442,8 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
                     PMIX_PROC_CREATE(chain->affected, 1);
                     if (NULL == chain->affected) {
                         PMIX_RELEASE(chain);
-                        return;
+                        chain = NULL;
+                        break;
                     }
                     chain->naffected = 1;
                     memcpy(chain->affected, ncd->info[n].value.data.proc, sizeof(pmix_proc_t));
@@ -451,11 +453,17 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
                     if (NULL == chain->affected) {
                         chain->naffected = 0;
                         PMIX_RELEASE(chain);
-                        return;
+                        chain = NULL;
+                        break;
                     }
                     memcpy(chain->affected, ncd->info[n].value.data.darray->array,
                            chain->naffected * sizeof(pmix_proc_t));
                 }
+            }
+            if (NULL == chain) {
+                /* we ran out of memory processing this event - skip
+                 * it and continue checking the remaining cache */
+                continue;
             }
         }
         /* check this event out of the cache since we
