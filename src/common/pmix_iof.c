@@ -341,6 +341,7 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     PMIX_THREADSHIFT(req, myreg);
     if (NULL == regcbfunc) {
         // blocking call, so wait here
+        pmix_status_t status;
         PMIX_WAIT_THREAD(&req->lock);
         if (PMIX_SUCCESS == req->status) {
             // we don't want the IO to arrive before we return from
@@ -348,7 +349,12 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
             PMIX_THREADSHIFT_DELAY(req, process_cache, 1.0);
             return PMIX_OPERATION_SUCCEEDED;
         } else {
-            return req->status;
+            // the request failed and myreg removed it from the
+            // iof_requests array without releasing it (the blocking
+            // path only wakes us), so release it here to avoid a leak
+            status = req->status;
+            PMIX_RELEASE(req);
+            return status;
         }
     }
     return PMIX_SUCCESS;
@@ -362,7 +368,7 @@ static void deregcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(hdr);
 
-    PMIX_ACQUIRE_OBJECT(req);
+    PMIX_ACQUIRE_OBJECT(cd);
 
     /* unpack the return status */
     m = 1;
@@ -456,7 +462,7 @@ cleanup:
         PMIX_RELEASE(cd);
     } else {
         cd->status = rc;
-        PMIX_WAIT_THREAD(&cd->lock);
+        PMIX_WAKEUP_THREAD(&cd->lock);
     }
 }
 
@@ -540,9 +546,10 @@ static void stdincbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         status = rc;
     }
     if (NULL != cb->cbfunc.opfn) {
-        cb->cbfunc.opfn(PMIX_ERR_COMM_FAILURE, cb->cbdata);
+        cb->cbfunc.opfn(status, cb->cbdata);
         PMIX_RELEASE(cb);
     } else {
+        cb->status = status;
         PMIX_WAKEUP_THREAD(&cb->lock);
     }
 }
@@ -774,7 +781,7 @@ reply:
 
 }
 
-pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets, pmix_byte_object_t *bo,
+PMIX_EXPORT pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets, pmix_byte_object_t *bo,
                             const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
                             void *cbdata)
 {
@@ -792,6 +799,9 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets, pmix_b
     // need to threadshift this request to process it since it accesses
     // global structures
     cb = PMIX_NEW(pmix_cb_t);
+    if (NULL == cb) {
+        return PMIX_ERR_NOMEM;
+    }
     cb->procs = (pmix_proc_t*)targets;
     cb->nprocs = ntargets;
     cb->bo = bo;
@@ -1325,8 +1335,12 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                cptr = strdup(kv->value->data.string);
-                PMIX_RELEASE(kv);
+                if (NULL != kv) {  // should never be NULL
+                    cptr = strdup(kv->value->data.string);
+                    PMIX_RELEASE(kv);
+                } else {
+                    cptr = strdup("unknown");
+                }
             } else {
                 cptr = strdup("unknown");
             }
@@ -1340,12 +1354,16 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                rc = PMIx_Value_get_number(kv->value, &pid, PMIX_PID);
-                PMIX_RELEASE(kv);
-                if (PMIX_SUCCESS != rc) {
-                    pidstring = strdup("unknown");
+                if (NULL != kv) {  // should never be NULL
+                    rc = PMIx_Value_get_number(kv->value, &pid, PMIX_PID);
+                    PMIX_RELEASE(kv);
+                    if (PMIX_SUCCESS != rc) {
+                        pidstring = strdup("unknown");
+                    } else {
+                        pmix_asprintf(&pidstring, "%u", pid);
+                    }
                 } else {
-                    pmix_asprintf(&pidstring, "%u", pid);
+                    pidstring = strdup("unknown");
                 }
             } else {
                 pidstring = strdup("unknown");
@@ -1504,6 +1522,9 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
     }
     if (bufcopy) {
         free(buffer);
+    }
+    if (NULL != segments) {
+        PMIx_Argv_free(segments);
     }
     return output;
 }
@@ -2233,8 +2254,12 @@ static void iof_sink_destruct(pmix_iof_sink_t *ptr)
                             "%s iof: closing sink for process %s on fd %d",
                             PMIX_NAME_PRINT(&pmix_globals.myid),
                             PMIX_NAME_PRINT(&ptr->name), ptr->wev.fd);
-        PMIX_DESTRUCT(&ptr->wev);
     }
+    /* Always tear down the write event: the write handler sets wev.fd to
+     * -1 after writing an EOF buffer, so gating the destruct on a valid
+     * fd would leak the malloc'd wev.ev and the queued outputs list. The
+     * wev destructor guards its own close() against an invalid fd. */
+    PMIX_DESTRUCT(&ptr->wev);
 }
 PMIX_CLASS_INSTANCE(pmix_iof_sink_t,
                     pmix_list_item_t,
