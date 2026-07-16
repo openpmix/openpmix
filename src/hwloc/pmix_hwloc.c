@@ -683,8 +683,13 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
                 }
                 topo->topology = t->topology;
             }
-            pmix_globals.topology.source = strdup(t->source);
+            /* popptr handed us ownership of the fetched container. Adopt
+             * its topology and source directly into our cache, then free
+             * the now-empty struct - otherwise the container and its
+             * source string leak on every call down this path. */
+            pmix_globals.topology.source = t->source;
             pmix_globals.topology.topology = t->topology;
+            free(t);
             return PMIX_SUCCESS;
         }
     }
