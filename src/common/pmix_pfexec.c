@@ -32,7 +32,6 @@
 #include "pmix_config.h"
 
 #include <stdlib.h>
-#include <ctype.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
@@ -59,9 +58,6 @@
 #endif
 #ifdef HAVE_LIBUTIL_H
 #    include <libutil.h>
-#endif
-#ifdef HAVE_DIRENT_H
-#    include <dirent.h>
 #endif
 
 #include "include/pmix.h"
@@ -973,118 +969,36 @@ static void set_handler_linux(int sig)
     sigaction(sig, &act, (struct sigaction *) 0);
 }
 
-/*
- * Internal function to write a rendered show_help message back up the
- * pipe to the waiting parent.
- */
-static int write_help_msg(int fd, pmix_pfexec_pipe_err_msg_t *msg, const char *file,
-                          const char *topic, va_list ap)
+/* Called from the child, in the async-signal-safe window between fork()
+ * and execve(), to report a failure to the waiting parent and exit.
+ *
+ * It writes only a fixed-size record - no strings, no allocation, no
+ * show_help - because formatting a message in the child (malloc, stdio,
+ * reading the help file) can deadlock: fork() leaves any lock another
+ * thread held frozen in the child. The parent renders the diagnostic
+ * from `which` and `errnum`. We use _exit() rather than exit() so no
+ * atexit handlers run and no stdio buffers are flushed in the child. */
+static void child_fail(int fd, int exit_status, pmix_pfexec_child_err_t which, int errnum)
 {
-    int ret;
-    char *str;
-
-    if (NULL == file || NULL == topic) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    str = pmix_show_help_vstring(file, topic, true, ap);
-
-    msg->file_str_len = (int) strlen(file);
-    if (msg->file_str_len > PMIX_PFEXEC_MAX_FILE_LEN) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return PMIX_ERR_BAD_PARAM;
-    }
-    msg->topic_str_len = (int) strlen(topic);
-    if (msg->topic_str_len > PMIX_PFEXEC_MAX_TOPIC_LEN) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return PMIX_ERR_BAD_PARAM;
-    }
-    msg->msg_str_len = (int) strlen(str);
-
-    /* Only keep writing if each write() succeeds */
-    if (PMIX_SUCCESS != (ret = pmix_fd_write(fd, sizeof(*msg), msg))) {
-        goto out;
-    }
-    if (msg->file_str_len > 0
-        && PMIX_SUCCESS != (ret = pmix_fd_write(fd, msg->file_str_len, file))) {
-        goto out;
-    }
-    if (msg->topic_str_len > 0
-        && PMIX_SUCCESS != (ret = pmix_fd_write(fd, msg->topic_str_len, topic))) {
-        goto out;
-    }
-    if (msg->msg_str_len > 0 && PMIX_SUCCESS != (ret = pmix_fd_write(fd, msg->msg_str_len, str))) {
-        goto out;
-    }
-
-out:
-    free(str);
-    return ret;
-}
-
-/* Called from the child to send an error message up the pipe to the
-   waiting parent. */
-static void send_error_show_help(int fd, int exit_status, const char *file, const char *topic, ...)
-{
-    va_list ap;
     pmix_pfexec_pipe_err_msg_t msg;
 
     msg.fatal = true;
     msg.exit_status = exit_status;
+    msg.which = (int) which;
+    msg.errnum = errnum;
 
-    /* Send it */
-    va_start(ap, topic);
-    write_help_msg(fd, &msg, file, topic, ap);
-    va_end(ap);
+    /* best effort - if the write fails there is nothing safe we can do
+     * here, and the parent will still see the pipe close */
+    (void) pmix_fd_write(fd, sizeof(msg), &msg);
 
-    exit(exit_status);
-}
-
-/* close all open file descriptors w/ exception of stdin/stdout/stderr
-   the pipe up to the parent, and the keepalive pipe. */
-static int close_open_file_descriptors(int write_fd, int keepalive)
-{
-#if defined(__OSX__)
-    DIR *dir = opendir("/dev/fd");
-#else  /* Linux */
-    DIR *dir = opendir("/proc/self/fd");
-#endif  /* defined(__OSX__) */
-    if (NULL == dir) {
-        return PMIX_ERR_FILE_OPEN_FAILURE;
-    }
-    struct dirent *files;
-
-    /* grab the fd of the opendir above so we don't close in the
-     * middle of the scan. */
-    int dir_scan_fd = dirfd(dir);
-    if (dir_scan_fd < 0) {
-        closedir(dir);
-        return PMIX_ERR_FILE_OPEN_FAILURE;
-    }
-
-    while (NULL != (files = readdir(dir))) {
-        if (!isdigit(files->d_name[0])) {
-            continue;
-        }
-        int fd = strtol(files->d_name, NULL, 10);
-        if (errno == EINVAL || errno == ERANGE) {
-            closedir(dir);
-            return PMIX_ERR_TYPE_MISMATCH;
-        }
-        if (fd >= 3 && fd != write_fd && fd != dir_scan_fd && fd != keepalive) {
-            close(fd);
-        }
-    }
-    closedir(dir);
-    return PMIX_SUCCESS;
+    _exit(exit_status);
 }
 
 static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, int write_fd)
 {
-    int i, errval;
+    int errval;
     sigset_t sigs;
     long fd, fdmax = sysconf(_SC_OPEN_MAX);
-    char dir[MAXPATHLEN];
 
 #if HAVE_SETPGID
     /* Set a new process group for this child, so that any
@@ -1108,22 +1022,19 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
        always outputs a nice, single message indicating what
        happened
     */
-    if (PMIX_SUCCESS != (i = pmix_pfexec_base_setup_child(child))) {
-        PMIX_ERROR_LOG(i);
-        send_error_show_help(write_fd, 1, "help-pfexec-base.txt", "iof setup failed",
-                             pmix_globals.hostname, app->cmd);
+    if (PMIX_SUCCESS != pmix_pfexec_base_setup_child(child)) {
+        child_fail(write_fd, 1, PMIX_PFEXEC_CHILD_ERR_SETUP, errno);
         /* Does not return */
     }
 
-    /* close all open file descriptors w/ exception of stdin/stdout/stderr,
-       the pipe used for the IOF INTERNAL messages, and the pipe up to
-       the parent. */
-    if (PMIX_SUCCESS != close_open_file_descriptors(write_fd, child->keepalive[1])) {
-        // close *all* file descriptors -- slow
-        for (fd = 3; fd < fdmax; fd++) {
-            if (fd != write_fd && fd != child->keepalive[1]) {
-                close(fd);
-            }
+    /* Close all open file descriptors except stdin/stdout/stderr, the
+       pipe up to the parent, and the keepalive pipe. We use a plain
+       close() loop rather than scanning /proc/self/fd with
+       opendir/readdir: those allocate, and we are between fork() and
+       execve() where only async-signal-safe calls are permitted. */
+    for (fd = 3; fd < fdmax; fd++) {
+        if (fd != write_fd && fd != child->keepalive[1]) {
+            close(fd);
         }
     }
 
@@ -1150,8 +1061,7 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
     /* take us to the correct wdir */
     if (NULL != app->cwd) {
         if (0 != chdir(app->cwd)) {
-            send_error_show_help(write_fd, 1, "help-pfexec-base.txt", "wdir-not-found", "pmixd",
-                                 app->cwd, pmix_globals.hostname, child->proc.rank);
+            child_fail(write_fd, 1, PMIX_PFEXEC_CHILD_ERR_WDIR, errno);
             /* Does not return */
         }
     }
@@ -1159,11 +1069,7 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
     /* Exec the new executable */
     execve(app->cmd, app->argv, env);
     errval = errno;
-    if (NULL == getcwd(dir, sizeof(dir))) {
-        pmix_strncpy(dir, "GETCWD-FAILED", sizeof(dir));
-    }
-    send_error_show_help(write_fd, 1, "help-pfexec-base.txt", "execve error",
-                         pmix_globals.hostname, dir, app->cmd, strerror(errval));
+    child_fail(write_fd, 1, PMIX_PFEXEC_CHILD_ERR_EXEC, errval);
     /* Does not return */
 }
 
@@ -1171,7 +1077,6 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
 {
     pmix_status_t rc;
     pmix_pfexec_pipe_err_msg_t msg;
-    char file[PMIX_PFEXEC_MAX_FILE_LEN + 1], topic[PMIX_PFEXEC_MAX_TOPIC_LEN + 1], *str = NULL;
 
     /* close the child-side ends of the stdio pipes - the parent keeps
      * only the read ends of stdout/stderr and the write end of stdin
@@ -1193,97 +1098,53 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
         close(child->keepalive[1]);
     }
 
-    /* Block reading a message from the pipe */
-    while (1) {
-        rc = pmix_fd_read(read_fd, sizeof(msg), &msg);
-
-        /* If the pipe closed, then the child successfully launched */
-        if (PMIX_ERR_TIMEOUT == rc) {
-            break;
-        }
-
-        /* If Something Bad happened in the read, error out */
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            close(read_fd);
-            return rc;
-        }
-        // silence Coverity warnings
-        if (msg.file_str_len > PMIX_PFEXEC_MAX_FILE_LEN ||
-            msg.topic_str_len > PMIX_PFEXEC_MAX_TOPIC_LEN ||
-            msg.msg_str_len > PMIX_TAINT_INT_LIMIT) {
-            pmix_show_help("help-pfexec-base.txt", "msg-too-large", true,
-                           msg.msg_str_len, 8192);
-            return PMIX_ERR_SYS_OTHER;
-        }
-
-        /* Read in the strings; ensure to terminate them with \0 */
-        if (msg.file_str_len > 0) {
-            rc = pmix_fd_read(read_fd, msg.file_str_len, file);
-            if (PMIX_SUCCESS != rc) {
-                pmix_show_help("help-pfexec-base.txt", "syscall fail", true, pmix_globals.hostname,
-                               app->cmd, "pmix_fd_read", __FILE__, __LINE__);
-                return rc;
-            }
-            file[msg.file_str_len] = '\0';
-        }
-        if (msg.topic_str_len > 0) {
-            rc = pmix_fd_read(read_fd, msg.topic_str_len, topic);
-            if (PMIX_SUCCESS != rc) {
-                pmix_show_help("help-pfexec-base.txt", "syscall fail", true, pmix_globals.hostname,
-                               app->cmd, "pmix_fd_read", __FILE__, __LINE__);
-                return rc;
-            }
-            topic[msg.topic_str_len] = '\0';
-        }
-        if (msg.msg_str_len > 0) {
-            str = calloc(1, msg.msg_str_len + 1);
-            if (NULL == str) {
-                pmix_show_help("help-pfexec-base.txt", "syscall fail", true, pmix_globals.hostname,
-                               app->cmd, "calloc", __FILE__, __LINE__);
-                return PMIX_ERR_NOMEM;
-            }
-            rc = pmix_fd_read(read_fd, msg.msg_str_len, str);
-            if (PMIX_SUCCESS != rc) {
-                pmix_show_help("help-pfexec-base.txt", "syscall fail", true, pmix_globals.hostname,
-                               app->cmd, "pmix_fd_read", __FILE__, __LINE__);
-                free(str);
-                return rc;
-            }
-            str[msg.msg_str_len] = '\0'; // ensure NULL termination
-        }
-
-        /* Print out what we got.  We already have a rendered string,
-           so just print it. */
-        if (msg.msg_str_len > 0) {
-            fprintf(stderr, "%s\n", str);
-            free(str);
-            str = NULL;
-        }
-
-        /* If msg.fatal is true, then the child exited with an error.
-           Otherwise, whatever we just printed was a warning, so loop
-           around and see what else is on the pipe (or if the pipe
-           closed, indicating that the child launched
-           successfully). */
-        if (msg.fatal) {
-            close(read_fd);
-            if (NULL != str) {
-                free(str);
-            }
-            return PMIX_ERR_SYS_OTHER;
-        }
-        if (NULL != str) {
-            free(str);
-            str = NULL;
-        }
+    /* Read the child's failure record. A pipe that closes with no data
+       means the child reached execve() successfully. */
+    rc = pmix_fd_read(read_fd, sizeof(msg), &msg);
+    close(read_fd);
+    if (PMIX_ERR_TIMEOUT == rc) {
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
-    /* If we got here, it means that the pipe closed without
-       indication of a fatal error, meaning that the child process
-       launched successfully. */
-    close(read_fd);
-    return PMIX_SUCCESS;
+    /* The child restricted itself to async-signal-safe calls before
+       exec, so it sent a failure code plus errno rather than a formatted
+       message. Render the human-readable diagnostic here in the parent,
+       where allocation and show_help are safe. */
+    switch (msg.which) {
+    case PMIX_PFEXEC_CHILD_ERR_SETUP:
+        pmix_show_help("help-pfexec-base.txt", "child-setup-failed", true,
+                       pmix_globals.hostname, app->cmd, strerror(msg.errnum));
+        break;
+    case PMIX_PFEXEC_CHILD_ERR_WDIR:
+        pmix_show_help("help-pfexec-base.txt", "wdir-not-found", true,
+                       pmix_globals.hostname,
+                       (NULL != app->cwd) ? app->cwd : "<none>",
+                       strerror(msg.errnum));
+        break;
+    case PMIX_PFEXEC_CHILD_ERR_EXEC:
+    default: {
+        char cwd[MAXPATHLEN];
+        const char *wdir;
+        /* the child's working dir is the app's cwd if one was given,
+           otherwise ours (it never chdir'd) */
+        if (NULL != app->cwd) {
+            wdir = app->cwd;
+        } else if (NULL != getcwd(cwd, sizeof(cwd))) {
+            wdir = cwd;
+        } else {
+            wdir = "<unknown>";
+        }
+        pmix_show_help("help-pfexec-base.txt", "execve error", true,
+                       pmix_globals.hostname, wdir, app->cmd, strerror(msg.errnum));
+        break;
+    }
+    }
+
+    return PMIX_ERR_SYS_OTHER;
 }
 
 /**

@@ -154,29 +154,37 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pfexec_cmpl_caddy_t);
     } while (0)
 
 /*
- * Struct written up the pipe from the child to the parent.
+ * Identifies which point in the child's setup/exec sequence failed. The
+ * child code that runs between fork() and execve() must be
+ * async-signal-safe, so it cannot format a message or call show_help;
+ * instead it reports one of these codes (plus errno) and the parent
+ * renders the human-readable diagnostic.
+ */
+typedef enum {
+    PMIX_PFEXEC_CHILD_ERR_NONE = 0,
+    PMIX_PFEXEC_CHILD_ERR_SETUP, /* pmix_pfexec_base_setup_child failed */
+    PMIX_PFEXEC_CHILD_ERR_WDIR,  /* chdir to the app's working dir failed */
+    PMIX_PFEXEC_CHILD_ERR_EXEC   /* execve failed */
+} pmix_pfexec_child_err_t;
+
+/*
+ * Fixed-size record written up the pipe from the child to the parent. It
+ * carries no strings and needs no allocation, so it is safe to emit from
+ * the async-signal-safe window between fork() and execve(). The parent
+ * renders the message from `which` and `errnum`.
  */
 typedef struct {
-    /* True if the child has died; false if this is just a warning to
-       be printed. */
+    /* True if the child has died; false if this is just a warning. */
     bool fatal;
     /* Relevant only if fatal==true */
     int exit_status;
-
-    /* Length of the strings that are written up the pipe after this
-       struct */
-    int file_str_len;
-    int topic_str_len;
-    int msg_str_len;
+    /* which failure occurred (pmix_pfexec_child_err_t) */
+    int which;
+    /* errno captured at the point of failure (0 if not applicable) */
+    int errnum;
 } pmix_pfexec_pipe_err_msg_t;
 
 PMIX_EXPORT pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child);
-
-/*
- * Max length of strings from the pmix_pfexec_pipe_err_msg_t
- */
-#define PMIX_PFEXEC_MAX_FILE_LEN  511
-#define PMIX_PFEXEC_MAX_TOPIC_LEN PMIX_PFEXEC_MAX_FILE_LEN
 
 END_C_DECLS
 
