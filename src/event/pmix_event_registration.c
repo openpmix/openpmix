@@ -196,12 +196,14 @@ static pmix_status_t _send_to_server(pmix_rshift_caddy_t *rcd)
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
         return rc;
     }
     /* pack the number of codes */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cd->ncodes, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
         return rc;
     }
     /* pack any provided codes */
@@ -209,6 +211,7 @@ static pmix_status_t _send_to_server(pmix_rshift_caddy_t *rcd)
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, cd->codes, cd->ncodes, PMIX_STATUS);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
             return rc;
         }
     }
@@ -217,6 +220,7 @@ static pmix_status_t _send_to_server(pmix_rshift_caddy_t *rcd)
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &rcd->ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
         return rc;
     }
     /* pack any provided info */
@@ -224,6 +228,7 @@ static pmix_status_t _send_to_server(pmix_rshift_caddy_t *rcd)
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, rcd->info, rcd->ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
             return rc;
         }
     }

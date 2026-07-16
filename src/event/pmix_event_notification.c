@@ -326,6 +326,7 @@ pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_
                 if (NULL == cd->affected) {
                     cd->naffected = 0;
                     rc = PMIX_ERR_NOMEM;
+                    PMIX_RELEASE(cd);
                     goto cleanup;
                 }
                 memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
@@ -391,6 +392,9 @@ cleanup:
                         "client: notifying server - unable to send");
     if (NULL != msg) {
         PMIX_RELEASE(msg);
+    }
+    if (NULL != chain) {
+        PMIX_RELEASE(chain);
     }
     /* we were unable to send anything, so we just return the error */
     return rc;
@@ -458,12 +462,11 @@ static void cycle_events(int sd, short args, void *cbdata)
     /* pass along the new ones */
     chain->results = newinfo;
     chain->nresults = cnt;
-    /* clear any loaded name and object */
-    if (chain->nallocated > chain->ninfo) {
-        chain->ninfo = chain->nallocated - 2;
-        PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 2]);
-        PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 1]);
-    }
+    /* clear any loaded name and object - destructing a slot that
+     * was never loaded is harmless as its value type is UNDEF */
+    chain->ninfo = chain->nallocated - 2;
+    PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 2]);
+    PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 1]);
     // call their interim cbfunc
     if (NULL != chain->opcbfunc) {
         chain->opcbfunc(chain->interim_status, chain->cbdata);
