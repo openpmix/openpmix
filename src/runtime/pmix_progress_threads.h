@@ -51,18 +51,6 @@ PMIX_EXPORT pmix_status_t pmix_progress_thread_start(const char *name);
 PMIX_EXPORT pmix_status_t pmix_progress_thread_stop(const char *name);
 
 /**
- * Finalize a progress thread name (reference counted).
- *
- * Once this function is invoked after pmix_progress_thread_stop() has been called
- * as many times as pmix_progress_thread_init() was invoked on this name (or NULL),
- * the event base associated with it is destroyed.
- *
- * Will return PMIX_ERR_NOT_FOUND if the progress thread name does not
- * exist; PMIX_SUCCESS otherwise.
- */
-PMIX_EXPORT pmix_status_t pmix_progress_thread_finalize(const char *name);
-
-/**
  * Temporarily pause the progress thread associated with this name.
  *
  * This function does not destroy the event base associated with this
