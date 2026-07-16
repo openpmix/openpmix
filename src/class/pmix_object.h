@@ -642,11 +642,12 @@ PMIX_EXPORT int pmix_class_finalize(void);
  *
  * Do not use this function directly: use PMIX_CONSTRUCT() instead.
  *
- * WARNING: This implementation relies on a hardwired maximum depth of
- * the inheritance tree!!!
+ * The constructor pointers are stored in a NULL-terminated array on the
+ * class descriptor, built lazily by pmix_class_initialize() from the full
+ * parent chain, so this walks the entire inheritance hierarchy regardless
+ * of its depth.
  *
- * Hardwired for fairly shallow inheritance trees
- * @param size          Pointer to the object.
+ * @param object        Pointer to the object.
  */
 static inline void pmix_obj_run_constructors(pmix_object_t *object)
 {

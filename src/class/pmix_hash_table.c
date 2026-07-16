@@ -671,6 +671,9 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
         if (!elt->valid) {
             /* new entry */
             void *key_local = pmix_tma_malloc(tma, key_size);
+            if (NULL == key_local) {
+                return PMIX_ERR_OUT_OF_RESOURCE;
+            }
             memcpy(key_local, key, key_size);
             elt->key.ptr.key = key_local;
             elt->key.ptr.key_size = key_size;
