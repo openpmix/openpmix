@@ -1534,6 +1534,11 @@ static int enough_space(const char *filename, size_t space_req, uint64_t *space_
     }
     /* get the parent directory */
     last_sep = strrchr(target_dir, PMIX_PATH_SEP[0]);
+    if (NULL == last_sep) {
+        /* no separator - cannot determine a parent directory */
+        rc = PMIX_ERR_BAD_PARAM;
+        goto out;
+    }
     *last_sep = '\0';
     /* now check space availability */
     if (PMIX_SUCCESS != (rc = pmix_path_df(target_dir, &avail))) {
