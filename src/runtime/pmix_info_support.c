@@ -1312,7 +1312,19 @@ char *pmix_info_make_version_str(const char *scope, int major, int minor, int re
     char *str = NULL, *tmp;
     char temp[BUFSIZ];
 
+    /* Start with an empty string so that an unrecognized scope (or a
+     * scope whose branch leaves str NULL) falls through to a harmless
+     * empty result rather than the strdup(temp) below reading
+     * uninitialized stack. */
+    temp[0] = '\0';
     temp[BUFSIZ - 1] = '\0';
+
+    /* Be tolerant of misuse: a NULL scope yields an empty string
+     * rather than crashing in strcmp. */
+    if (NULL == scope) {
+        return strdup("");
+    }
+
     if (0 == strcmp(scope, pmix_info_ver_full) || 0 == strcmp(scope, pmix_info_ver_all)) {
         snprintf(temp, BUFSIZ - 1, "%d.%d.%d", major, minor, release);
         str = strdup(temp);
@@ -1328,9 +1340,10 @@ char *pmix_info_make_version_str(const char *scope, int major, int minor, int re
     } else if (0 == strcmp(scope, pmix_info_ver_release)) {
         snprintf(temp, BUFSIZ - 1, "%d", release);
     } else if (0 == strcmp(scope, pmix_info_ver_greek)) {
-        str = strdup(greek);
+        /* greek/repo may legitimately be absent; do not strdup(NULL) */
+        str = strdup(NULL != greek ? greek : "");
     } else if (0 == strcmp(scope, pmix_info_ver_repo)) {
-        str = strdup(repo);
+        str = strdup(NULL != repo ? repo : "");
     }
 
     if (NULL == str) {
