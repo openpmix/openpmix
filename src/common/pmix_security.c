@@ -119,8 +119,12 @@ static void mycdcb(pmix_status_t status, pmix_byte_object_t *credential,
     cb->status = status;
     if (PMIX_SUCCESS == status && NULL != credential) {
         cb->bo.bytes = malloc(credential->size);
-        memcpy(cb->bo.bytes, credential->bytes, credential->size);
-        cb->bo.size = credential->size;
+        if (NULL == cb->bo.bytes) {
+            cb->status = PMIX_ERR_NOMEM;
+        } else {
+            memcpy(cb->bo.bytes, credential->bytes, credential->size);
+            cb->bo.size = credential->size;
+        }
     }
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
@@ -146,8 +150,12 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t n
         rc = cb.status;
         if (NULL != cb.bo.bytes) {
             credential->bytes = malloc(cb.bo.size);
-            memcpy(credential->bytes, cb.bo.bytes, cb.bo.size);
-            credential->size = cb.bo.size;
+            if (NULL == credential->bytes) {
+                rc = PMIX_ERR_NOMEM;
+            } else {
+                memcpy(credential->bytes, cb.bo.bytes, cb.bo.size);
+                credential->size = cb.bo.size;
+            }
         }
     }
     PMIX_DESTRUCT(&cb);
@@ -186,14 +194,17 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
             PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
             PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, info, ninfo, &results, &nresults, &cred);
             if (PMIX_SUCCESS == rc) {
-                /* pass it back in the callback function */
+                /* pass it back in the callback function - the cbfunc has no
+                 * release function, so we retain ownership of the credential
+                 * and results and must free them regardless of whether a
+                 * cbfunc was provided */
                 if (NULL != cbfunc) {
                     cbfunc(PMIX_SUCCESS, &cred, results, nresults, cbdata);
-                    if (NULL != results) {
-                        PMIX_INFO_FREE(results, nresults);
-                    }
-                    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
                 }
+                if (NULL != results) {
+                    PMIX_INFO_FREE(results, nresults);
+                }
+                PMIX_BYTE_OBJECT_DESTRUCT(&cred);
             }
             return rc;
         }
@@ -209,14 +220,17 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
         PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
         PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, info, ninfo, &results, &nresults, &cred);
         if (PMIX_SUCCESS == rc) {
-            /* pass it back in the callback function */
+            /* pass it back in the callback function - the cbfunc has no
+             * release function, so we retain ownership of the credential
+             * and results and must free them regardless of whether a
+             * cbfunc was provided */
             if (NULL != cbfunc) {
                 cbfunc(PMIX_SUCCESS, &cred, results, nresults, cbdata);
-                if (NULL != results) {
-                    PMIX_INFO_FREE(results, nresults);
-                }
-                PMIX_BYTE_OBJECT_DESTRUCT(&cred);
             }
+            if (NULL != results) {
+                PMIX_INFO_FREE(results, nresults);
+            }
+            PMIX_BYTE_OBJECT_DESTRUCT(&cred);
         }
         return rc;
     }
@@ -388,7 +402,7 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
     size_t nresults = 0;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: monitor called");
+                        "pmix: validate credential called");
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -407,12 +421,15 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
             PMIX_PSEC_VALIDATE_CRED(rc, pmix_globals.mypeer, directives, ndirs, &results, &nresults,
                                     cred);
             if (PMIX_SUCCESS == rc) {
-                /* pass it back in the callback function */
+                /* pass it back in the callback function - the cbfunc has no
+                 * release function, so we retain ownership of the results
+                 * and must free them regardless of whether a cbfunc was
+                 * provided */
                 if (NULL != cbfunc) {
                     cbfunc(PMIX_SUCCESS, results, nresults, cbdata);
-                    if (NULL != results) {
-                        PMIX_INFO_FREE(results, nresults);
-                    }
+                }
+                if (NULL != results) {
+                    PMIX_INFO_FREE(results, nresults);
                 }
             }
             return rc;
@@ -430,12 +447,15 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
         PMIX_PSEC_VALIDATE_CRED(rc, pmix_globals.mypeer, directives, ndirs, &results, &nresults,
                                 cred);
         if (PMIX_SUCCESS == rc) {
-            /* pass it back in the callback function */
+            /* pass it back in the callback function - the cbfunc has no
+             * release function, so we retain ownership of the results
+             * and must free them regardless of whether a cbfunc was
+             * provided */
             if (NULL != cbfunc) {
                 cbfunc(PMIX_SUCCESS, results, nresults, cbdata);
-                if (NULL != results) {
-                    PMIX_INFO_FREE(results, nresults);
-                }
+            }
+            if (NULL != results) {
+                PMIX_INFO_FREE(results, nresults);
             }
         }
         return rc;
