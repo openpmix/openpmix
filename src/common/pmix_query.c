@@ -200,6 +200,9 @@ static void finalstep(pmix_status_t status, pmix_info_t info[], size_t ninfo, vo
     for (n = 0; n < ninfo; n++) {
         PMIX_KVAL_NEW(kv, info[n].key);
         PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, kv->value, &info[n].value);
+        if (PMIX_SUCCESS != rc) {
+            lstat = rc;
+        }
         pmix_list_append(&cd->results, &kv->super);
     }
 
@@ -219,6 +222,10 @@ static void finalstep(pmix_status_t status, pmix_info_t info[], size_t ninfo, vo
             }
         }
         cd->cbfunc(lstat, cd->info, cd->ninfo, cd->cbdata, relcbfunc, cd);
+    } else {
+        /* nobody to hand the results to - release the caddy so it,
+         * and any info we built, are not leaked */
+        PMIX_RELEASE(cd);
     }
 
     if (NULL != release_fn) {
@@ -314,7 +321,7 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
             } else {
                 if (0 == strlen(proc.nspace)) {
                     /* use our nspace */
-                    PMIX_LOAD_NSPACE(cb.proc->nspace, pmix_globals.myid.nspace);
+                    PMIX_LOAD_NSPACE(proc.nspace, pmix_globals.myid.nspace);
                 }
                 if (PMIX_RANK_INVALID == proc.rank) {
                     /* user the wildcard rank */
@@ -391,6 +398,7 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
                 if (PMIX_SUCCESS != rc) {
                     cd->status = rc;
                     PMIX_INFO_FREE(cd->info, cd->ninfo);
+                    cd->ninfo = 0;
                     break;
                 }
                 ++n;
@@ -441,6 +449,7 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
                 if (PMIX_SUCCESS != rc) {
                     cd->status = rc;
                     PMIX_INFO_FREE(cd->info, cd->ninfo);
+                    cd->ninfo = 0;
                     break;
                 }
                 ++n;
