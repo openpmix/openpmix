@@ -27,7 +27,7 @@
 /**
  * @file
  *
- * I/O Forwarding Service
+ * Attribute registration and introspection support
  */
 
 #ifndef PMIX_ATTRIBUTES_H
@@ -75,4 +75,4 @@ PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr);
 
 END_C_DECLS
 
-#endif /* PMIX_IOF_H */
+#endif /* PMIX_ATTRIBUTES_H */
