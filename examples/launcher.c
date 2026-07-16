@@ -151,11 +151,21 @@ int main(int argc, char **argv)
     /* can also provide environmental params in the app.env field */
 
     /* spawn the application */
-    PMIx_Spawn(NULL, 0, app, napps, appspace);
+    rc = PMIx_Spawn(NULL, 0, app, napps, appspace);
     /* cleanup */
     PMIX_APP_FREE(app, napps);
 
-    DEBUG_WAIT_THREAD(&myrel.lock);
+    /* If the launch itself failed, the library reports it via the
+     * return code rather than a job-termination event - so no event
+     * will ever arrive to wake us, and we must not wait for one.
+     * Only block on the completion event when the job actually
+     * started. */
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "[%s:%d] Spawn failed: %s\n", myproc.nspace, myproc.rank,
+                PMIx_Error_string(rc));
+    } else {
+        DEBUG_WAIT_THREAD(&myrel.lock);
+    }
     DEBUG_DESTRUCT_MYREL(&myrel);
 
 done:
