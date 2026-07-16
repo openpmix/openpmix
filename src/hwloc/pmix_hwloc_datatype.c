@@ -443,6 +443,7 @@ void pmix_hwloc_release_topology(pmix_topology_t *src, size_t sz)
     for (n = 0; n < sz; n++) {
         pmix_hwloc_destruct_topology(&src[n]);
     }
+    free(src);
 }
 
 // avoid ABI break
