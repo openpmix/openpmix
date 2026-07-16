@@ -558,7 +558,7 @@ void pmix_info_do_params(const char *project, bool want_all_in, bool want_intern
     pmix_cli_item_t *opt;
     char *type, *component, *str;
     bool found;
-    int i;
+    int i, j;
     bool want_all = false;
 
     opt = pmix_cmd_line_get_param(pmix_info_cmd_line, PMIX_CLI_INFO_PARAM);
@@ -610,8 +610,8 @@ void pmix_info_do_params(const char *project, bool want_all_in, bool want_intern
             }
             component = opt->values[i];
 
-            for (found = false, i = 0; i < mca_types->size; ++i) {
-                if (NULL == (str = (char *) pmix_pointer_array_get_item(mca_types, i))) {
+            for (found = false, j = 0; j < mca_types->size; ++j) {
+                if (NULL == (str = (char *) pmix_pointer_array_get_item(mca_types, j))) {
                     continue;
                 }
                 if (0 == strcmp(str, type)) {
@@ -698,7 +698,6 @@ void pmix_info_do_type(pmix_cli_result_t *pmix_info_cmd_line)
                 for (j = 0; strings[j]; ++j) {
                     if (0 == j && pmix_info_pretty) {
                         pmix_asprintf(&message, "MCA %s", group->group_framework);
-                        pmix_output(0, "STRINGS: %s", strings[j]);
                         pmix_info_out(message, message, strings[j]);
                         free(message);
                     } else {
