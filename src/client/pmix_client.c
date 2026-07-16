@@ -828,7 +828,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
      * have passed down a directive for this purpose. If they did, then
      * use it. Otherwise, we want the "hash" module */
     found = false;
-    if (info != NULL) {
+    if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_GDS_MODULE)) {
                 PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, info[n].value.data.string, PMIX_STRING);
@@ -994,8 +994,6 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                         PMIx_Data_type_string(kv->value->type));
             return PMIX_ERR_BAD_PARAM;
         }
-        PMIX_RELEASE(kv); // done with this value
-
         pmix_output_verbose(2, pmix_client_globals.base_output,
                             "[%s:%d] RECEIVED %s FOR RANK %s (%s)",
                             pmix_globals.myid.nspace,
@@ -1003,6 +1001,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                             PMIx_Get_attribute_name(kv->key),
                             PMIX_RANK_PRINT(rank),
                             PMIx_Data_type_string(kv->value->type));
+        PMIX_RELEASE(kv); // done with this value
 
         /* if the value was found and we are involved, then we need to wait
          * for debugger attach here */
@@ -1219,15 +1218,21 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         /* send to the server */
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, finwait_cbfunc, (void *) &tev);
         if (PMIX_SUCCESS != rc) {
+            /* the recv callback will not fire, so cancel the timer and
+             * tear down the lock before we return */
+            pmix_event_del(&tev.ev);
+            PMIX_DESTRUCT_LOCK(&tev.lock);
             return rc;
         }
 
         /* wait for the ack to return */
         PMIX_WAIT_THREAD(&tev.lock);
+        /* cancel the protection timer. If the server answered, the timer
+         * is still pending and must be removed from the event base before
+         * this stack frame (which holds tev) goes away; if the timer fired
+         * instead, deleting an inactive event is a harmless no-op */
+        pmix_event_del(&tev.ev);
         PMIX_DESTRUCT_LOCK(&tev.lock);
-        if (tev.active) {
-            pmix_event_del(&tev.ev);
-        }
 
         pmix_output_verbose(2, pmix_client_globals.base_output,
                             "%s:%d pmix:client finalize sync received", pmix_globals.myid.nspace,
