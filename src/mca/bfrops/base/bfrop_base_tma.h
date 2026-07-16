@@ -193,6 +193,11 @@ bool pmix_bfrops_base_tma_check_key(const char *key,
 {
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
+    /* a NULL key (e.g., an unset attribute) cannot match a specific
+     * target string, so report "no match" rather than dereferencing it */
+    if (NULL == key || NULL == str) {
+        return false;
+    }
     if (0 == strncmp(key, str, PMIX_MAX_KEYLEN)) {
         return true;
     }
