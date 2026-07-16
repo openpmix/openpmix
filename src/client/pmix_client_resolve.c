@@ -342,6 +342,7 @@ done:
     }
     PMIX_DESTRUCT(&cb);
     cd->status = rc;
+    PMIX_POST_OBJECT(cd);
     PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
@@ -364,8 +365,8 @@ static void respeer(pmix_status_t status, pmix_info_t info[], size_t ninfo, void
     if (NULL != release_fn) {
         release_fn(release_cbdata);
     }
-    PMIX_WAKEUP_THREAD(&cb->lock);
     PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_nspace_t nspace,
@@ -422,24 +423,27 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
             if (PMIX_SUCCESS == rc) {
                 // wait for the response
                 PMIX_WAIT_THREAD(&cb.lock);
-                PMIX_QUERY_DESTRUCT(&query);
                 rc = cb.status;
-                if (PMIX_SUCCESS == rc) {
-                    // string return should be in first info
-                    if (0 < cb.ninfo) {
-                        val = &cb.info[0].value;
-                        if (PMIX_DATA_ARRAY != val->type ||
-                            PMIX_PROC != val->data.darray->type) {
-                            PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
-                        } else {
-                            *procs = (pmix_proc_t*)val->data.darray->array;
-                            *nprocs = val->data.darray->size;
-                            // protect the returned data
-                            cb.info = NULL;
-                            cb.ninfo = 0;
-                            PMIX_DESTRUCT(&cb);
-                            return rc;
-                        }
+            }
+            // done with the query inputs regardless of outcome - the host
+            // is finished with them once the callback fired (success) or
+            // the call failed synchronously (no callback)
+            PMIX_QUERY_DESTRUCT(&query);
+            if (PMIX_SUCCESS == rc) {
+                // string return should be in first info
+                if (0 < cb.ninfo) {
+                    val = &cb.info[0].value;
+                    if (PMIX_DATA_ARRAY != val->type ||
+                        PMIX_PROC != val->data.darray->type) {
+                        PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
+                    } else {
+                        *procs = (pmix_proc_t*)val->data.darray->array;
+                        *nprocs = val->data.darray->size;
+                        // protect the returned data
+                        cb.info = NULL;
+                        cb.ninfo = 0;
+                        PMIX_DESTRUCT(&cb);
+                        return rc;
                     }
                 }
             }
@@ -667,8 +671,8 @@ done:
     cb.info = NULL;
     cb.ninfo = 0;
     PMIX_DESTRUCT(&cb);
-    PMIX_WAKEUP_THREAD(&cd->lock);
     PMIX_POST_OBJECT(cd);
+    PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
 static void resnode(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata,
@@ -690,8 +694,8 @@ static void resnode(pmix_status_t status, pmix_info_t info[], size_t ninfo, void
     if (NULL != release_fn) {
         release_fn(release_cbdata);
     }
-    PMIX_WAKEUP_THREAD(&cb->lock);
     PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **nodelist)
@@ -735,22 +739,25 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
             if (PMIX_SUCCESS == rc) {
                 // wait for the response
                 PMIX_WAIT_THREAD(&cb.lock);
-                // protect the qualifier
-                query.qualifiers = NULL;
-                query.nqual = 0;
-                PMIX_QUERY_DESTRUCT(&query);
                 rc = cb.status;
-                if (PMIX_SUCCESS == rc) {
-                    // string return should be in first info
-                    if (0 < cb.ninfo) {
-                        val = &cb.info[0].value;
-                        if (PMIX_STRING != val->type) {
-                            PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
-                        } else {
-                            *nodelist = strdup(val->data.string);
-                            PMIX_DESTRUCT(&cb);
-                            return rc;
-                        }
+            }
+            // done with the query inputs regardless of outcome. The
+            // qualifier is a stack object, so detach it before destructing
+            // the query, then free its contents separately
+            query.qualifiers = NULL;
+            query.nqual = 0;
+            PMIX_QUERY_DESTRUCT(&query);
+            PMIX_INFO_DESTRUCT(&info);
+            if (PMIX_SUCCESS == rc) {
+                // string return should be in first info
+                if (0 < cb.ninfo) {
+                    val = &cb.info[0].value;
+                    if (PMIX_STRING != val->type) {
+                        PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
+                    } else {
+                        *nodelist = strdup(val->data.string);
+                        PMIX_DESTRUCT(&cb);
+                        return rc;
                     }
                 }
             }
