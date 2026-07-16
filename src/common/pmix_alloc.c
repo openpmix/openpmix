@@ -121,6 +121,11 @@ static void alloc_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
     if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        /* release the caller */
+        if (NULL != cd->cbfunc) {
+            cd->cbfunc(PMIX_ERR_COMM_FAILURE, NULL, 0, cd->cbdata, NULL, NULL);
+        }
+        PMIX_RELEASE(cd);
         return;
     }
 
@@ -174,6 +179,8 @@ complete:
     /* release the caller */
     if (NULL != cd->cbfunc) {
         cd->cbfunc(results->status, results->info, results->ninfo, cd->cbdata, relcbfunc, results);
+    } else {
+        relcbfunc(results);
     }
     PMIX_RELEASE(cd);
 }
@@ -418,6 +425,11 @@ static void blkcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
     if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        /* release the caller */
+        if (NULL != cd->cbfunc.opcbfn) {
+            cd->cbfunc.opcbfn(PMIX_ERR_COMM_FAILURE, cd->cbdata);
+        }
+        PMIX_RELEASE(cd);
         return;
     }
 
@@ -443,7 +455,7 @@ static void opcb(pmix_status_t status, void *cbdata)
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
 
     cb->status = status;
-    PMIX_RELEASE_THREAD(&cb->lock);
+    PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Resource_block(pmix_resource_block_directive_t directive,
@@ -518,19 +530,19 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
     pmix_rb_caddy_t *cd;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: allocate called");
+                        "pmix: resource block called");
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* if we are hosted by the scheduler, then this makes no sense */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         return PMIX_ERR_NOT_SUPPORTED;
-    }
-
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
-        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* if our server is the scheduler, then send it */
