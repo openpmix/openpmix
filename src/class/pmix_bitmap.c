@@ -62,9 +62,11 @@ int pmix_bitmap_set_max_size(pmix_bitmap_t *bm, int max_size)
     }
 
     /*
-     * Only if the caller wants to set the maximum size,
-     * we set it (in numbers of bits!), otherwise it is
-     * set to INT_MAX in the constructor.
+     * The public argument is a bit count, but max_size is maintained
+     * internally as the number of words (array elements) required to hold
+     * that many bits; the init and set_bit paths compare against it in
+     * word units. By default (when this is never called) max_size is
+     * INT_MAX, set in the constructor.
      */
     bm->max_size = (int) (((size_t) max_size + SIZE_OF_BASE_TYPE - 1) / SIZE_OF_BASE_TYPE);
 
@@ -73,16 +75,25 @@ int pmix_bitmap_set_max_size(pmix_bitmap_t *bm, int max_size)
 
 int pmix_bitmap_init(pmix_bitmap_t *bm, int size)
 {
-    /*
-     * Only if the caller set the maximum size before initializing,
-     * we test here (in numbers of bits!)
-     * By default, the max size is INT_MAX, set in the constructor.
-     */
-    if ((size <= 0) || (NULL == bm) || (size > bm->max_size)) {
+    int nwords;
+
+    if ((size <= 0) || (NULL == bm)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    bm->array_size = (int) (((size_t) size + SIZE_OF_BASE_TYPE - 1) / SIZE_OF_BASE_TYPE);
+    /*
+     * max_size is maintained internally as a number of words (see
+     * pmix_bitmap_set_max_size), so convert the requested bit count to
+     * words before comparing. By default max_size is INT_MAX (set in the
+     * constructor), so this only rejects when the caller explicitly
+     * capped the bitmap via pmix_bitmap_set_max_size.
+     */
+    nwords = (int) (((size_t) size + SIZE_OF_BASE_TYPE - 1) / SIZE_OF_BASE_TYPE);
+    if (nwords > bm->max_size) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    bm->array_size = nwords;
     if (NULL != bm->bitmap) {
         free(bm->bitmap);
         if (bm->max_size < bm->array_size)
@@ -101,12 +112,22 @@ int pmix_bitmap_set_bit(pmix_bitmap_t *bm, int bit)
 {
     int index, offset, new_size;
 
-    if ((bit < 0) || (NULL == bm) || (bit > bm->max_size)) {
+    if ((bit < 0) || (NULL == bm)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
     index = bit / SIZE_OF_BASE_TYPE;
     offset = bit % SIZE_OF_BASE_TYPE;
+
+    /*
+     * max_size is a word count (see pmix_bitmap_set_max_size); a bit whose
+     * word index reaches that cap cannot be accommodated. Rejecting here
+     * also guarantees the growth path below never clamps new_size down to
+     * a value that leaves index out of bounds.
+     */
+    if (index >= bm->max_size) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     if (index >= bm->array_size) {
 

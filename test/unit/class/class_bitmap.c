@@ -100,6 +100,45 @@ static void test_out_of_range_clear(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* set_max_size                                                         */
+/* ------------------------------------------------------------------ */
+
+static void test_max_size(void)
+{
+    pmix_bitmap_t bm;
+    int rc;
+
+    /* Cap the bitmap at 128 bits, then initialize within that cap.
+     * Regression: max_size is tracked in words internally, so an init or
+     * set_bit request expressed in bits must be converted before the
+     * comparison. This previously failed spuriously (e.g. init(64) saw
+     * 64 > 2 and returned PMIX_ERR_BAD_PARAM). */
+    PMIX_CONSTRUCT(&bm, pmix_bitmap_t);
+    rc = pmix_bitmap_set_max_size(&bm, 128);
+    report("max_size: set_max_size returns PMIX_SUCCESS", PMIX_SUCCESS == rc);
+
+    rc = pmix_bitmap_init(&bm, 64);
+    report("max_size: init(64) within 128-bit cap succeeds", PMIX_SUCCESS == rc);
+
+    rc = pmix_bitmap_set_bit(&bm, 100);
+    report("max_size: set_bit(100) within cap succeeds", PMIX_SUCCESS == rc);
+    report("max_size: bit 100 is set", pmix_bitmap_is_set_bit(&bm, 100));
+
+    /* A bit beyond the cap must be rejected, not silently written OOB. */
+    rc = pmix_bitmap_set_bit(&bm, 100000);
+    report("max_size: set_bit beyond cap is rejected", PMIX_SUCCESS != rc);
+
+    PMIX_DESTRUCT(&bm);
+
+    /* An init larger than the cap must fail. */
+    PMIX_CONSTRUCT(&bm, pmix_bitmap_t);
+    pmix_bitmap_set_max_size(&bm, 128);
+    rc = pmix_bitmap_init(&bm, 256);
+    report("max_size: init(256) beyond 128-bit cap is rejected", PMIX_SUCCESS != rc);
+    PMIX_DESTRUCT(&bm);
+}
+
+/* ------------------------------------------------------------------ */
 /* find_and_set_first_unset_bit                                         */
 /* ------------------------------------------------------------------ */
 
@@ -326,6 +365,7 @@ int main(int argc, char **argv)
     test_set_clear_bit();
     test_set_beyond_size();
     test_out_of_range_clear();
+    test_max_size();
     test_find_and_set();
     test_clear_all();
     test_set_all();
