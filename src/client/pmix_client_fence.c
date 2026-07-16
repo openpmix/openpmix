@@ -202,6 +202,9 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
+        /* the recv callback will not fire; do not fall through into the
+         * blocking wait, which would dereference the just-released cb */
+        return rc;
     }
 
     if (NULL == cbfunc) {
