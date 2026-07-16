@@ -26,16 +26,6 @@ The specified fork agent was not found:
 
 The application cannot be launched.
 #
-[syscall fail]
-A system call failed that should not have.  In this particular case,
-a warning or error message was not displayed that should have been.
-Your job may behave unpredictably after this, or abort.
-
-  Local host:        %s
-  Application name:  %s
-  Function:          %s
-  Location:          %s:%d
-#
 [execve error]
 PMIx tried to fork a new process via the "execve" system call but
 failed.  PMIx checks many things before attempting to launch a
@@ -48,11 +38,18 @@ having specified a directory for your application.
   Application name:  %s
   Error:             %s
 #
-[msg-too-large]
-The error message being sent back to parent by new child is too
-large:
+[child-setup-failed]
+PMIx was unable to set up the standard I/O for a child process prior to
+launching it.  The child process was not started.
 
-  Msg size:   %lu
-  Limit:      %lu
+  Local host:        %s
+  Application name:  %s
+  Error:             %s
+#
+[wdir-not-found]
+PMIx was unable to change to the requested working directory prior to
+launching a child process.  The child process was not started.
 
-This is an unrecoverable error.
+  Local host:        %s
+  Working dir:       %s
+  Error:             %s
