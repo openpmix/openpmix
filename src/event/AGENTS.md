@@ -182,19 +182,27 @@ generic `pmix_shift_caddy_t` for other paths) to
      (`_send_to_server`); `_add_hdlr` returns `PMIX_ERR_WOULD_BLOCK`
      and the caller's callback fires later from `regevents_cbfunc`;
    - **server with `enviro` codes and a host `register_events`**:
-     up-call the host; the ack is supposed to come back through
-     `reg_cbfunc` → (threadshift) → `_regcbfunc`;
+     up-call the host. If the host accepts the request
+     (`PMIX_SUCCESS`), `_add_hdlr` likewise returns
+     `PMIX_ERR_WOULD_BLOCK` and the ack arrives via the host's
+     callback through `reg_cbfunc` → (threadshift) → `_regcbfunc`; if
+     the host completes it atomically (`PMIX_OPERATION_SUCCEEDED`),
+     the ack is immediate. Either way the requestor must be acked
+     **exactly once** — a host callback after an immediate ack would
+     double-invoke the caller;
    - otherwise: purely local, ack immediately.
-5. on the ack path (`ack:`), replays any matching cached notifications
-   (`check_cached_events`) *before* invoking the registration callback,
-   so late registrants still see recently generated events.
+5. on every successful ack path — immediate (`ack:`), server response
+   (`regevents_cbfunc`), or host response (`_regcbfunc`) — matching
+   cached notifications are replayed (`check_cached_events`) *before*
+   the registration callback fires, so late registrants still see
+   recently generated events.
 
 `PMIX_RANGE_PROC_LOCAL` registrations never leave the process at all.
 
 Failure handling is "undo": if the server/host rejects the
 registration, the callback path removes the handler from its list (or
 clears `events.first`/`events.last`) and reports
-`PMIX_ERR_SERVER_FAILED_REQUEST` with index `UINT_MAX`. When you touch
+`PMIX_ERR_SERVER_FAILED_REQUEST` with index `SIZE_MAX`. When you touch
 these paths, walk both the immediate-failure and deferred-failure
 branches — the caddy juggling (`rb` wraps `cd`, `rb->cd` retains it,
 the `rsdes` destructor releases it) is the most error-prone spot in the
@@ -319,6 +327,14 @@ source file. After a build, smoke-test with `make check` in `test/` and
 `test/simple` programs (e.g. `simpdyn`, the debugger/tool tests) and by
 any spawn/group test. Do not diagnose functional failures against an
 `--enable-test-build` tree (see the top-level guide).
+
+The event system's dedicated regression suite is
+[`test/unit/event_chain.c`](../../test/unit/event_chain.c), run as part
+of `make check`. It drives registration placement, the full chain
+progression order, caching/replay, and the completion protocols in a
+single-process server, using the pattern established by
+`test/unit/pmix_log.c`. When you change behavior here, extend that
+suite — most of this directory is unit-testable without a launcher.
 
 ## When modifying code here
 
