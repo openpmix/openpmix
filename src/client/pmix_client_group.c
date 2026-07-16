@@ -143,8 +143,10 @@ static void gtdes(pmix_group_tracker_t *p)
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
-    if (NULL != p->grpid)
-    {
+    if (NULL != p->results) {
+        PMIX_INFO_FREE(p->results, p->nresults);
+    }
+    if (NULL != p->grpid) {
         free(p->grpid);
         p->grpid = NULL;
     }
@@ -336,6 +338,7 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, icopy, sz, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_INFO_FREE(icopy, sz);
             return rc;
         }
         PMIX_INFO_FREE(icopy, sz);
