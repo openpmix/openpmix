@@ -380,6 +380,22 @@ same pattern: gate its `configure.m4` with `|| test "$pmix_testbuild" =
 "1"`, and guard its third-party include with `#if PMIX_TESTBUILD` against
 a shim header you ship in the component's `EXTRA_DIST`.
 
+**Do not expect correct runtime behavior from a `--enable-test-build`
+tree, and do not run `make check` / the functional test suite against
+one.** The shims return placeholder values rather than doing real work, so
+any test that exercises a shimmed component *will* misbehave — and it is
+**expected**, not a bug to chase. A concrete example that has burned us
+before: with the `pcompress/{zlib,zlibng}` shims in place, `deflate`
+becomes a no-op, so compression produces an empty payload and a
+compression round-trip yields an empty string. That makes
+`test/unit/preg` fail its "large list" case and the `test/unit/compress`
+smoke test print `NODES ERROR` — neither indicates a real defect, only
+that a functional test was pointed at a non-functional library. Before
+investigating a failing functional test, confirm the tree was **not**
+configured with `--enable-test-build` (check `./config.status --config`
+or `grep PMIX_TESTBUILD src/include/pmix_config.h`); reproduce functional
+failures only in an ordinary build.
+
 ## Modifying the configure / build system
 
 Editing the build system means regenerating it — `make` alone can't,
