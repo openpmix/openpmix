@@ -712,7 +712,7 @@ static inline pmix_list_item_t *pmix_list_remove_first(pmix_list_t *list)
  */
 static inline pmix_list_item_t *pmix_list_remove_last(pmix_list_t *list)
 {
-    /*  Removes, releases and returns last item on list.
+    /*  Removes and returns last item on list.
         Caller now owns the item and should release the item
         when caller is done with it.
     */
