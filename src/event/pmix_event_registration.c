@@ -150,9 +150,15 @@ static void _regcbfunc(int sd, short args, void *cbdata)
         index = UINT_MAX;
     }
 
-    if (NULL != cd && NULL != cd->evregcbfn) {
-        /* pass back our local index */
-        cd->evregcbfn(rc, index, cd->cbdata);
+    if (NULL != cd) {
+        if (PMIX_SUCCESS == scd->status) {
+            /* check this event against anything in our cache */
+            check_cached_events(cd);
+        }
+        if (NULL != cd->evregcbfn) {
+            /* pass back our local index */
+            cd->evregcbfn(rc, index, cd->cbdata);
+        }
     }
 
     /* release any info we brought along as they are
@@ -338,11 +344,17 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
                             "pmix: _add_hdlr registering with server");
         rc = pmix_host_server.register_events(cd->codes, cd->ncodes, cd2->info, cd2->ninfo,
                                               reg_cbfunc, cd2);
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-            if (NULL != cd2->info) {
-                PMIX_INFO_FREE(cd2->info, cd2->ninfo);
-            }
-            PMIX_RELEASE(cd2);
+        if (PMIX_SUCCESS == rc) {
+            /* the host will call us back when the registration
+             * completes - we will ack the requestor at that time */
+            return PMIX_ERR_WOULD_BLOCK;
+        }
+        /* no callback will be coming - clean up ourselves */
+        if (NULL != cd2->info) {
+            PMIX_INFO_FREE(cd2->info, cd2->ninfo);
+        }
+        PMIX_RELEASE(cd2);
+        if (PMIX_OPERATION_SUCCEEDED != rc) {
             return rc;
         }
         return PMIX_SUCCESS;
