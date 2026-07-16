@@ -733,22 +733,23 @@ pmix_status_t pmix_hwloc_generate_cpuset_string(const pmix_cpuset_t *cpuset,
 
 pmix_status_t pmix_hwloc_parse_cpuset_string(const char *cpuset_string, pmix_cpuset_t *cpuset)
 {
-    char *src;
+    const char *src;
     int hrc;
 
-    /* if we aren't the source, then pass */
+    /* the string is formatted as "<source>:<bitmap>" - find the delimiter */
     src = strchr(cpuset_string, ':');
     if (NULL == src) {
         /* bad string */
         return PMIX_ERR_BAD_PARAM;
     }
-    *src = '\0';
+    /* if we aren't the source, then pass. Compare the prefix in place - we
+     * must NOT modify the caller's const string (doing so crashes on a
+     * read-only string literal), so we do not temporarily NUL-terminate it.
+     * strncasecmp stops at 5 chars, which is exactly the length of "hwloc". */
     if (0 != strncasecmp(cpuset_string, "hwloc", 5)) {
-        *src = ':';
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
-    *src = ':';
-    ++src;
+    ++src;  /* advance past the ':' delimiter */
 
     cpuset->source = strdup("hwloc");
     cpuset->bitmap = hwloc_bitmap_alloc();
