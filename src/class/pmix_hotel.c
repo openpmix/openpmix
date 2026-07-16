@@ -60,12 +60,25 @@ pmix_status_t pmix_hotel_init(pmix_hotel_t *h, int num_rooms, pmix_event_base_t 
     h->eviction_timeout.tv_usec = 0;
     h->eviction_timeout.tv_sec = eviction_timeout;
     h->evict_callback_fn = evict_callback_fn;
+    /* evict_callback_fn is guaranteed non-NULL by the bozo check above,
+     * so all three arrays are always allocated. */
     h->rooms = (pmix_hotel_room_t *) malloc(num_rooms * sizeof(pmix_hotel_room_t));
-    if (NULL != evict_callback_fn) {
-        h->eviction_args = (pmix_hotel_room_eviction_callback_arg_t *) malloc(
-            num_rooms * sizeof(pmix_hotel_room_eviction_callback_arg_t));
-    }
+    h->eviction_args = (pmix_hotel_room_eviction_callback_arg_t *) malloc(
+        num_rooms * sizeof(pmix_hotel_room_eviction_callback_arg_t));
     h->unoccupied_rooms = (int *) malloc(num_rooms * sizeof(int));
+    if (NULL == h->rooms || NULL == h->eviction_args || NULL == h->unoccupied_rooms) {
+        /* Reset to a clean, destructor-safe state (free() ignores NULL).
+         * num_rooms=0 keeps the destructor's room-scan loop from running
+         * against a NULL rooms array. */
+        free(h->rooms);
+        free(h->eviction_args);
+        free(h->unoccupied_rooms);
+        h->rooms = NULL;
+        h->eviction_args = NULL;
+        h->unoccupied_rooms = NULL;
+        h->num_rooms = 0;
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     h->last_unoccupied_room = num_rooms - 1;
 
     for (i = 0; i < num_rooms; ++i) {
