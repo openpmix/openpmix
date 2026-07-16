@@ -227,15 +227,20 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
         CPU_ZERO(&cpuset);
         // comma-delimited list of cpu ranges
         ranges = PMIx_Argv_split(pmix_progress_thread_cpus, ',');
-        for (n=0; NULL != ranges[n]; n++) {
-            // look for '-'
+        for (n=0; NULL != ranges && NULL != ranges[n]; n++) {
+            // a range is "start-end"; a bare entry is a single cpu. Note
+            // that strtoul sets 'dash' to the character where parsing
+            // stopped - which is never NULL - so we must test what it
+            // points at, not whether the pointer itself is NULL.
             start = strtoul(ranges[n], &dash, 10);
-            if (NULL == dash) {
+            if ('-' != *dash) {
+                // single cpu
                 CPU_SET(start, &cpuset);
             } else {
                 ++dash;  // skip over the '-'
                 end = strtoul(dash, NULL, 10);
-                for (k=start; k < end; k++) {
+                // the range is inclusive of both endpoints
+                for (k=start; k <= end; k++) {
                     CPU_SET(k, &cpuset);
                 }
             }
@@ -244,6 +249,10 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
         if (0 != rc && pmix_bind_progress_thread_reqd) {
             pmix_output(0, "Failed to bind progress thread %s", trk->name);
             rc = PMIX_ERR_NOT_SUPPORTED;
+            /* the engine thread is already running - stop it before we
+             * report failure so the caller can safely tear down the
+             * tracker without freeing a live event base */
+            stop_progress_engine(trk);
         } else {
             rc = PMIX_SUCCESS;
         }
@@ -338,6 +347,14 @@ pmix_status_t pmix_progress_thread_start(const char *name)
             }
             if (PMIX_SUCCESS != (rc = start_progress_engine(trk))) {
                 PMIX_ERROR_LOG(rc);
+                /* the engine failed to start (start_progress_engine has
+                 * already stopped it if it had begun running); drop the
+                 * tracker from the list and clear the shared cache so
+                 * nothing later dereferences the freed tracker */
+                pmix_list_remove_item(&tracking, &trk->super);
+                if (trk == shared_thread_tracker) {
+                    shared_thread_tracker = NULL;
+                }
                 PMIX_RELEASE(trk);
             }
             return rc;
