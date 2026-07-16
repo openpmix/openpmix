@@ -275,10 +275,15 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
                 ret = PMIx_Value_get_number(&info[n].value, &pmix_globals.nodeid, PMIX_UINT32);
                 if (PMIX_SUCCESS != ret) {
+                    error = "nodeid";
                     goto return_error;
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO_ARRAY)) {
                 /* contains info about our node */
+                if (NULL == info[n].value.data.darray ||
+                    NULL == info[n].value.data.darray->array) {
+                    continue;
+                }
                 iptr = (pmix_info_t *) info[n].value.data.darray->array;
                 minfo = info[n].value.data.darray->size;
                 for (m = 0; m < minfo; m++) {
@@ -290,6 +295,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
                     } else if (PMIX_CHECK_KEY(&iptr[m], PMIX_NODEID)) {
                         ret = PMIx_Value_get_number(&iptr[m].value, &pmix_globals.nodeid, PMIX_UINT32);
                         if (PMIX_SUCCESS != ret) {
+                            error = "nodeid";
                             goto return_error;
                         }
                     }
@@ -431,6 +437,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     /* create our peer object */
     pmix_globals.mypeer = PMIX_NEW(pmix_peer_t);
     if (NULL == pmix_globals.mypeer) {
+        error = "peer object";
         ret = PMIX_ERR_NOMEM;
         goto return_error;
     }
@@ -444,6 +451,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_globals.mypeer->nptr = PMIX_NEW(pmix_namespace_t);
     if (NULL == pmix_globals.mypeer->nptr) {
         PMIX_RELEASE(pmix_globals.mypeer);
+        error = "namespace object";
         ret = PMIX_ERR_NOMEM;
         goto return_error;
     }
