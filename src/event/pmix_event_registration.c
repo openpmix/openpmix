@@ -781,7 +781,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
                 if (NULL == ev->name) {
                     continue;
                 }
-                if (0 == strcmp(ev->name, name)) {
+                if (0 == strcmp(ev->name, locator)) {
                     if (PMIX_EVENT_ORDER_BEFORE == location) {
                         /* put it before this handler */
                         pmix_list_insert_pos(cd->list, &ev->super, &evhdlr->super);
@@ -804,6 +804,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
              * those two possibilities */
             if (!found) {
                 if (NULL != pmix_globals.events.first
+                    && NULL != pmix_globals.events.first->name
                     && 0 == strcmp(pmix_globals.events.first->name, locator)) {
                     /* if they asked to go AFTER this event, then we can oblige */
                     if (PMIX_EVENT_ORDER_AFTER == location) {
@@ -813,6 +814,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
                     }
                     /* only other options would be BEFORE, and that isn't allowed */
                 } else if (NULL != pmix_globals.events.last
+                           && NULL != pmix_globals.events.last->name
                            && 0 == strcmp(pmix_globals.events.last->name, locator)) {
                     /* if they asked to go BEFORE this event, then we can oblige */
                     if (PMIX_EVENT_ORDER_BEFORE == location) {
