@@ -200,6 +200,8 @@ PMIX_EXPORT const char *PMIx_Alloc_directive_string(pmix_alloc_directive_t direc
         return "RELEASE";
     case PMIX_ALLOC_REAQUIRE:
         return "REACQUIRE";
+    case PMIX_ALLOC_REQ_CANCEL:
+        return "CANCEL REQUEST";
     default:
         return "UNSPECIFIED";
     }
@@ -356,8 +358,8 @@ PMIX_EXPORT const char *PMIx_Job_state_string(pmix_job_state_t state)
     switch (state) {
     case PMIX_JOB_STATE_UNDEF:
         return "UNDEFINED";
-    case PMIX_JOB_STATE_PREPPED:
-        return "PREPPED FOR LAUNCH";
+    case PMIX_JOB_STATE_AWAITING_ALLOC:
+        return "AWAITING ALLOCATION";
     case PMIX_JOB_STATE_LAUNCH_UNDERWAY:
         return "LAUNCHING";
     case PMIX_JOB_STATE_RUNNING:
@@ -418,6 +420,16 @@ const char *PMIx_Device_type_string(pmix_device_type_t type)
         return "DMA";
     case PMIX_DEVTYPE_COPROC:
         return "COPROCESSOR";
+    case PMIX_DEVTYPE_MEMORY:
+        return "MEMORY";
+    case PMIX_DEVTYPE_CORE:
+        return "CORE";
+    case PMIX_DEVTYPE_HWT:
+        return "HWT";
+    case PMIX_DEVTYPE_CPU:
+        return "CPU";
+    case PMIX_DEVTYPE_NODE:
+        return "NODE";
     default:
         return "UNKNOWN";
     }
@@ -451,9 +463,13 @@ char* PMIx_App_string(const pmix_app_t *app)
     pmix_status_t rc;
 
     /* add the command */
-    pmix_asprintf(&tmp, "CMD: %s", app->cmd);
-    PMIx_Argv_append_nosize(&ans, tmp);
-    free(tmp);
+    if (NULL == app->cmd) {
+        PMIx_Argv_append_nosize(&ans, "CMD: NULL");
+    } else {
+        pmix_asprintf(&tmp, "CMD: %s", app->cmd);
+        PMIx_Argv_append_nosize(&ans, tmp);
+        free(tmp);
+    }
 
     /* add the argv */
     PMIx_Argv_append_nosize(&ans, "    ARGV:");
