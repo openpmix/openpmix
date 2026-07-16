@@ -612,6 +612,7 @@ static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t nda
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_pdata_t *tgt = (pmix_pdata_t *) cb->cbdata;
+    pmix_status_t rc;
     size_t i, j;
 
     PMIX_ACQUIRE_OBJECT(cb);
@@ -624,9 +625,15 @@ static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t nda
                 if (0 == strcmp(pdata[i].key, tgt[j].key)) {
                     /* transfer the publishing proc id */
                     memcpy(&tgt[j].proc, &pdata[i].proc, sizeof(pmix_proc_t));
-                    /* transfer the value to the pmix_info_t */
-                    PMIX_BFROPS_VALUE_XFER(cb->status, pmix_client_globals.myserver,
+                    /* transfer the value to the pmix_info_t. Do not fold
+                     * the xfer result into cb->status - that would mask a
+                     * PMIX_ERR_PARTIAL_SUCCESS return; only surface an
+                     * actual transfer failure */
+                    PMIX_BFROPS_VALUE_XFER(rc, pmix_client_globals.myserver,
                                            &tgt[j].value, &pdata[i].value);
+                    if (PMIX_SUCCESS != rc) {
+                        cb->status = rc;
+                    }
                     break;
                 }
             }
