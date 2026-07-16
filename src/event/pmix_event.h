@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -103,10 +103,11 @@ PMIX_CLASS_DECLARATION(pmix_event_hdlr_t);
     .name = NULL,                           \
     .index = SIZE_MAX,                      \
     .precedence = UINT8_MAX,                \
+    .oneshot = false,                       \
     .locator = NULL,                        \
     .source = PMIX_PROC_STATIC_INIT,        \
     .rng = PMIX_RANGE_TRKR_STATIC_INIT,     \
-    .affected - NULL,                       \
+    .affected = NULL,                       \
     .naffected = 0,                         \
     .evhdlr = NULL,                         \
     .cbobject = NULL,                       \
