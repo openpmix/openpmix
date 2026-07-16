@@ -82,6 +82,13 @@ static void test_version_str(void)
     check_version("version:release", "release", 5, 1, 2, "", "", "2");
     check_version("version:greek", "greek", 5, 1, 2, "rc3", "", "rc3");
     check_version("version:repo", "repo", 5, 1, 2, "", "deadbeef", "deadbeef");
+
+    /* misuse hardening: none of these should crash or leak uninitialized
+     * memory - they all resolve to an empty string */
+    check_version("version:unknown-scope", "bogus", 5, 1, 2, "x", "y", "");
+    check_version("version:null-scope", NULL, 5, 1, 2, "x", "y", "");
+    check_version("version:greek-null", "greek", 5, 1, 2, NULL, "", "");
+    check_version("version:repo-null", "repo", 5, 1, 2, "", NULL, "");
 }
 
 /* ------------------------------------------------------------------ */
