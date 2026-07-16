@@ -283,6 +283,14 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *target, pmix_data_
         // if I am a client or tool, then we can only talk to the
         // server, so use that peer
         peer = pmix_client_globals.myserver;
+        if (NULL == peer) {
+            // we don't have a server
+            return PMIX_ERR_NOT_FOUND;
+        }
+        if (!PMIx_Check_nspace(target->nspace, peer->nptr->nspace)) {
+            // trying to talk to someone we don't know
+            return PMIX_ERR_NOT_FOUND;
+        }
     }
 
 execute:
@@ -321,11 +329,11 @@ PMIX_EXPORT pmix_status_t PMIx_Data_print(char **output, char *prefix, void *src
 {
     pmix_status_t rc;
 
-     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
-   /* print the value */
+    /* print the value */
     PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer, output, prefix, src, type);
 
     return rc;
