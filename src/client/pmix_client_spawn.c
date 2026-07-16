@@ -244,12 +244,18 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         }
         fcd->info = darray.array;
         fcd->ninfo = darray.size;
+        /* convert copies into darray; the list is ours to release */
+        PMIx_Info_list_release(xlist);
     }
 
     /* sadly, we have to copy the apps array since we are
      * going to modify the individual app structs */
     fcd->napps = napps;
     PMIX_APP_CREATE(fcd->apps, fcd->napps);
+    /* we now own the info and apps arrays we filled into the caddy, so
+     * mark it copied - this is what tells the destructor (scaddes) to
+     * free them, on both the completion path and every error path below */
+    fcd->copied = true;
     for (n = 0; n < napps; n++) {
         aptr = (pmix_app_t *) &apps[n];
         /* protect against bozo case */
