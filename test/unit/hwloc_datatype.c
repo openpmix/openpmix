@@ -11,8 +11,12 @@
  * (PMIX_PROC_CPUSET), plus PMIx_Get_relative_locality. These exercise the
  * public PMIx entry points that route into src/hwloc.
  *
- * The topology pack/unpack path is the one that matters most here: the
- * support flags now ride inside the exported XML (recovered on the far
+ * The topology tests are run twice: once against the machine's own
+ * (this-system) topology, and once against each synthetic topology XML in
+ * PMIX_TEST_TOPO_DIR (test/topologies), so the pack/unpack/print/size code
+ * is exercised against machine shapes other than the one the test happens
+ * to run on. The topology pack/unpack path is the one that matters most:
+ * the support flags now ride inside the exported XML (recovered on the far
  * side via HWLOC_TOPOLOGY_FLAG_IMPORT_SUPPORT) rather than being hand-
  * serialized as raw struct bytes, so the round-trip must faithfully
  * reproduce the topology structure.
@@ -68,21 +72,46 @@ static void report(const char *name, int passed)
     }
 }
 
+/* Load a topology from an XML file into a pmix_topology_t, as a plain
+ * (non-this-system) topology. Returns 0 on success, -1 on failure. */
+static int load_topo_file(const char *path, pmix_topology_t *topo)
+{
+    hwloc_topology_t t;
+
+    if (0 != hwloc_topology_init(&t)) {
+        return -1;
+    }
+    if (0 != hwloc_topology_set_xml(t, path)) {
+        hwloc_topology_destroy(t);
+        return -1;
+    }
+    (void) hwloc_topology_set_flags(t, HWLOC_TOPOLOGY_FLAG_INCLUDE_DISALLOWED);
+    if (0 != hwloc_topology_load(t)) {
+        hwloc_topology_destroy(t);
+        return -1;
+    }
+    topo->source = strdup("hwloc");
+    topo->topology = (void *) t;
+    return 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* topology pack / unpack                                              */
 /* ------------------------------------------------------------------ */
 
-/* Pack the local topology, unpack it into a fresh object, and confirm the
+/* Pack a topology, unpack it into a fresh object, and confirm the
  * reconstructed topology matches the original structurally. This is the
  * direct test of the XML-carries-the-support-flags change. */
-static void test_topology_pack_unpack(pmix_topology_t *topo)
+static void test_topology_pack_unpack(pmix_topology_t *topo, const char *label)
 {
     pmix_topology_t dst = PMIX_TOPOLOGY_STATIC_INIT;
     pmix_data_buffer_t buf;
     pmix_status_t rc;
     int32_t count;
+    char name[256];
     int ok = 0;
 
+    snprintf(name, sizeof(name), "topology pack/unpack preserves structure [%s]", label);
     PMIx_Data_buffer_construct(&buf);
 
     rc = PMIx_Data_pack(NULL, &buf, topo, 1, PMIX_TOPO);
@@ -111,44 +140,44 @@ static void test_topology_pack_unpack(pmix_topology_t *topo)
     /* structural comparison against the original */
     hwloc_topology_t a = (hwloc_topology_t) topo->topology;
     hwloc_topology_t b = (hwloc_topology_t) dst.topology;
-    int da = hwloc_topology_get_depth(a);
-    int db = hwloc_topology_get_depth(b);
-    if (da != db) {
-        fprintf(stdout, "    depth mismatch: orig=%d unpacked=%d\n", da, db);
+    if (hwloc_topology_get_depth(a) != hwloc_topology_get_depth(b)) {
+        fprintf(stdout, "    depth mismatch: orig=%d unpacked=%d\n",
+                hwloc_topology_get_depth(a), hwloc_topology_get_depth(b));
         goto cleanup;
     }
     int puda = hwloc_get_type_depth(a, HWLOC_OBJ_PU);
     int pudb = hwloc_get_type_depth(b, HWLOC_OBJ_PU);
     if (hwloc_get_nbobjs_by_depth(a, puda) != hwloc_get_nbobjs_by_depth(b, pudb)) {
-        fprintf(stdout, "    PU count mismatch after round-trip\n");
+        fprintf(stdout, "    PU count mismatch: orig=%u unpacked=%u\n",
+                hwloc_get_nbobjs_by_depth(a, puda), hwloc_get_nbobjs_by_depth(b, pudb));
         goto cleanup;
     }
     ok = 1;
 
 cleanup:
-    /* only destruct the unpacked copy; topo aliases the library-owned cache */
     PMIx_Topology_destruct(&dst);
     PMIx_Data_buffer_destruct(&buf);
-    report("topology pack/unpack preserves structure", ok);
+    report(name, ok);
 }
 
 /* Pack several topologies into one buffer and unpack them all - guards
  * against buffer desync (the failure mode of the old raw-struct support
  * serialization when peers disagreed on struct sizes). */
-static void test_topology_pack_unpack_multiple(pmix_topology_t *topo)
+static void test_topology_pack_unpack_multiple(pmix_topology_t *topo, const char *label)
 {
     const int N = 3;
     pmix_topology_t dst[3];
     pmix_data_buffer_t buf;
     pmix_status_t rc;
     int32_t count;
+    char name[256];
     int i, ok = 1;
 
+    snprintf(name, sizeof(name), "multiple topologies pack/unpack without desync [%s]", label);
     for (i = 0; i < N; i++) {
         pmix_topology_t t = PMIX_TOPOLOGY_STATIC_INIT;
         dst[i] = t;
     }
-
     PMIx_Data_buffer_construct(&buf);
 
     for (i = 0; i < N; i++) {
@@ -179,14 +208,16 @@ cleanup:
         PMIx_Topology_destruct(&dst[i]);
     }
     PMIx_Data_buffer_destruct(&buf);
-    report("multiple topologies pack/unpack without desync", ok);
+    report(name, ok);
 }
 
 /* ------------------------------------------------------------------ */
 /* topology print                                                      */
 /* ------------------------------------------------------------------ */
 
-static void test_topology_print(pmix_topology_t *topo)
+/* The local topology is this-system, so support is available and the root
+ * machine object must render the bind-support lines. */
+static void test_topology_print_local(pmix_topology_t *topo)
 {
     char *output = NULL;
     pmix_status_t rc;
@@ -197,8 +228,6 @@ static void test_topology_print(pmix_topology_t *topo)
         fprintf(stdout, "    print failed: %s\n", PMIx_Error_string(rc));
         goto cleanup;
     }
-    /* the local topology is this-system, so support is available and the
-     * root machine object must render the bind-support lines */
     if (NULL != output && '\0' != output[0] &&
         NULL != strstr(output, "Type:") &&
         NULL != strstr(output, "Bind CPU")) {
@@ -209,41 +238,29 @@ static void test_topology_print(pmix_topology_t *topo)
 
 cleanup:
     free(output);
-    report("topology print renders machine + bind support", ok);
+    report("topology print renders machine + bind support [local]", ok);
 }
 
-/* A topology reconstructed via unpack that lacks importable support info
- * must still print without crashing and report bind support as
- * "not available" rather than emit misleading values. We can only force
- * the "not available" branch deterministically below hwloc 2.3 (no
- * IMPORT_SUPPORT); at 2.3+ the round-tripped topology legitimately carries
- * support, so we just require a clean, non-empty render there. */
-static void test_topology_print_unpacked(pmix_topology_t *topo)
+/* A topology loaded from an older XML export is neither this-system nor
+ * carries importable support, so print must render cleanly and report bind
+ * support as "not available" rather than emit misleading values. This is
+ * the deterministic exercise of the "not available" branch. */
+static void test_topology_print_imported(pmix_topology_t *topo, const char *label)
 {
-    pmix_topology_t dst = PMIX_TOPOLOGY_STATIC_INIT;
-    pmix_data_buffer_t buf;
     char *output = NULL;
     pmix_status_t rc;
-    int32_t count;
+    char name[256];
     int ok = 0;
 
-    PMIx_Data_buffer_construct(&buf);
-    rc = PMIx_Data_pack(NULL, &buf, topo, 1, PMIX_TOPO);
-    if (PMIX_SUCCESS != rc) {
-        goto cleanup;
-    }
-    count = 1;
-    rc = PMIx_Data_unpack(NULL, &buf, &dst, &count, PMIX_TOPO);
-    if (PMIX_SUCCESS != rc) {
-        goto cleanup;
-    }
-
-    rc = PMIx_Data_print(&output, NULL, &dst, PMIX_TOPO);
+    snprintf(name, sizeof(name), "imported topology prints, bind support not available [%s]", label);
+    rc = PMIx_Data_print(&output, NULL, topo, PMIX_TOPO);
     if (PMIX_SUCCESS != rc) {
         fprintf(stdout, "    print failed: %s\n", PMIx_Error_string(rc));
         goto cleanup;
     }
-    if (NULL != output && '\0' != output[0] && NULL != strstr(output, "Type:")) {
+    if (NULL != output && '\0' != output[0] &&
+        NULL != strstr(output, "Type:") &&
+        NULL != strstr(output, "not available")) {
         ok = 1;
     } else {
         fprintf(stdout, "    print output missing expected content\n");
@@ -251,9 +268,32 @@ static void test_topology_print_unpacked(pmix_topology_t *topo)
 
 cleanup:
     free(output);
-    PMIx_Topology_destruct(&dst);
-    PMIx_Data_buffer_destruct(&buf);
-    report("unpacked topology prints cleanly", ok);
+    report(name, ok);
+}
+
+/* ------------------------------------------------------------------ */
+/* size                                                                */
+/* ------------------------------------------------------------------ */
+
+static void test_topology_get_size(pmix_topology_t *topo, const char *label)
+{
+    pmix_value_t val;
+    size_t sz = 0;
+    char name[256];
+    int ok = 0;
+
+    snprintf(name, sizeof(name), "topology size is reported [%s]", label);
+    PMIX_VALUE_CONSTRUCT(&val);
+    val.type = PMIX_TOPO;
+    val.data.topo = topo;
+
+    if (PMIX_SUCCESS == PMIx_Value_get_size(&val, &sz) && 0 < sz) {
+        ok = 1;
+    } else {
+        fprintf(stdout, "    get_size returned sz=%zu\n", sz);
+    }
+    /* do not destruct val: data.topo aliases a topology owned elsewhere */
+    report(name, ok);
 }
 
 /* ------------------------------------------------------------------ */
@@ -346,30 +386,6 @@ cleanup:
 }
 
 /* ------------------------------------------------------------------ */
-/* size                                                                */
-/* ------------------------------------------------------------------ */
-
-static void test_topology_get_size(pmix_topology_t *topo)
-{
-    pmix_value_t val;
-    size_t sz = 0;
-    int ok = 0;
-
-    PMIX_VALUE_CONSTRUCT(&val);
-    val.type = PMIX_TOPO;
-    val.data.topo = topo;
-
-    if (PMIX_SUCCESS == PMIx_Value_get_size(&val, &sz) && 0 < sz) {
-        ok = 1;
-    } else {
-        fprintf(stdout, "    get_size returned sz=%zu\n", sz);
-    }
-
-    /* do not destruct val: data.topo aliases the library-owned cache */
-    report("topology size is reported for a valid topology", ok);
-}
-
-/* ------------------------------------------------------------------ */
 /* relative locality                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -411,6 +427,19 @@ step2:
 
 /* ------------------------------------------------------------------ */
 
+/* Run the full topology datatype battery against one topology. */
+static void run_topology_suite(pmix_topology_t *topo, const char *label, int this_system)
+{
+    test_topology_pack_unpack(topo, label);
+    test_topology_pack_unpack_multiple(topo, label);
+    test_topology_get_size(topo, label);
+    if (this_system) {
+        test_topology_print_local(topo);
+    } else {
+        test_topology_print_imported(topo, label);
+    }
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -425,7 +454,7 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "\n=== src/hwloc datatype unit tests ===\n\n");
 
-    /* obtain the local topology for the topology-based tests */
+    /* obtain the local topology for the this-system topology tests */
     rc = PMIx_Load_topology(&topo);
     if (PMIX_SUCCESS != rc || NULL == topo.topology) {
         fprintf(stdout, "SKIP: no hwloc topology available (%s)\n", PMIx_Error_string(rc));
@@ -433,16 +462,32 @@ int main(int argc, char **argv)
         return 77;
     }
 
-    test_topology_pack_unpack(&topo);
-    test_topology_pack_unpack_multiple(&topo);
-    test_topology_print(&topo);
-    test_topology_print_unpacked(&topo);
-    test_topology_get_size(&topo);
-
+    /* type-level tests that do not need a specific topology */
     test_cpuset_pack_unpack();
     test_cpuset_copy();
-
     test_relative_locality();
+
+    /* the machine's own topology */
+    run_topology_suite(&topo, "local", 1);
+
+    /* every synthetic topology shipped in test/topologies */
+#ifdef PMIX_TEST_TOPO_DIR
+    {
+        const char *files[] = {"test-topo.xml", "test-topo2.xml"};
+        size_t i;
+        for (i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+            char path[2048];
+            pmix_topology_t ft = PMIX_TOPOLOGY_STATIC_INIT;
+            snprintf(path, sizeof(path), "%s/%s", PMIX_TEST_TOPO_DIR, files[i]);
+            if (0 != load_topo_file(path, &ft)) {
+                fprintf(stdout, "  SKIP: could not load %s\n", path);
+                continue;
+            }
+            run_topology_suite(&ft, files[i], 0);
+            PMIx_Topology_destruct(&ft);
+        }
+    }
+#endif
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 

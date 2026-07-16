@@ -93,6 +93,7 @@ event_chain_LDADD = \
 
 hwloc_datatype_SOURCES = \
         hwloc_datatype.c
+hwloc_datatype_CPPFLAGS = -DPMIX_TEST_TOPO_DIR=\"$(abs_top_srcdir)/test/topologies\"
 hwloc_datatype_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 hwloc_datatype_LDADD = \
     $(top_builddir)/src/libpmix.la

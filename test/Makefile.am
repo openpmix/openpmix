@@ -28,7 +28,7 @@
 if !WANT_HIDDEN
 # these tests use internal symbols
 # use --disable-visibility
-SUBDIRS = simple sshot util unit
+SUBDIRS = simple sshot util unit topologies
 
 if WANT_PYTHON_BINDINGS
 SUBDIRS += python
