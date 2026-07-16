@@ -340,6 +340,10 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                 PMIX_INFO_DESTRUCT(&xfer);
                 PMIx_Info_list_release(ilist);
             }
+            /* release the job-info fetch results (the error paths above
+             * destruct cb2 before jumping to moveon, so this only runs on
+             * the normal path) */
+            PMIX_DESTRUCT(&cb2);
         }
     }
 
