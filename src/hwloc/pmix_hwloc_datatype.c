@@ -181,7 +181,6 @@ pmix_status_t pmix_hwloc_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
     pmix_status_t rc;
     char *xmlbuffer = NULL;
     int len;
-    struct hwloc_topology_support *support;
 
     if (NULL == src) {
         /* pack a NULL string */
@@ -193,7 +192,15 @@ pmix_status_t pmix_hwloc_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    /* extract an xml-buffer representation of the tree */
+    /* Extract an xml-buffer representation of the tree. We deliberately do
+     * NOT hand-serialize the hwloc topology_support structs anymore. Those
+     * structs are arrays of boolean bytes that grow across hwloc releases,
+     * so packing sizeof(struct ...) raw bytes made the wire format depend on
+     * the builder's hwloc ABI: two peers linked against different hwloc
+     * versions disagreed on the byte count and desynced the buffer. Instead
+     * we rely on hwloc itself - since hwloc 2.3 the support flags are embedded
+     * in the exported XML, and the unpacker recovers them via
+     * HWLOC_TOPOLOGY_FLAG_IMPORT_SUPPORT (see pmix_hwloc_unpack_topology). */
     if (0 != hwloc_topology_export_xmlbuffer(src->topology, &xmlbuffer, &len, 0)) {
         return PMIX_ERROR;
     }
@@ -201,30 +208,6 @@ pmix_status_t pmix_hwloc_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
     /* add to buffer */
     PMIX_BFROPS_PACK_TYPE(rc, buf, &xmlbuffer, 1, PMIX_STRING, regtypes);
     free(xmlbuffer);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-
-    /* get the available support - hwloc unfortunately does
-     * not include this info in its xml export!
-     */
-    support = (struct hwloc_topology_support *) hwloc_topology_get_support(src->topology);
-    /* pack the discovery support */
-    PMIX_BFROPS_PACK_TYPE(rc, buf, support->discovery,
-                          sizeof(struct hwloc_topology_discovery_support), PMIX_BYTE, regtypes);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-    /* pack the cpubind support */
-    PMIX_BFROPS_PACK_TYPE(rc, buf, support->cpubind, sizeof(struct hwloc_topology_cpubind_support),
-                          PMIX_BYTE, regtypes);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-
-    /* pack the membind support */
-    PMIX_BFROPS_PACK_TYPE(rc, buf, support->membind, sizeof(struct hwloc_topology_membind_support),
-                          PMIX_BYTE, regtypes);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -239,7 +222,6 @@ pmix_status_t pmix_hwloc_unpack_topology(pmix_buffer_t *buf, pmix_topology_t *de
     pmix_status_t rc;
     char *xmlbuffer = NULL;
     int cnt;
-    struct hwloc_topology_support *support;
     hwloc_topology_t t;
     unsigned long flags;
 
@@ -270,44 +252,28 @@ pmix_status_t pmix_hwloc_unpack_topology(pmix_buffer_t *buf, pmix_topology_t *de
     }
     free(xmlbuffer);
 
-    /* since we are loading this from an external source, we have to
-     * explicitly set a flag so hwloc sets things up correctly
-     */
-    flags = HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM;
+    /* This is a topology imported from another process, not the machine we
+     * are running on, so we do NOT assert IS_THISSYSTEM here - that flag is
+     * reserved for the topology we actually bind against, which is
+     * established in pmix_hwloc.c. On hwloc 2.3+, IMPORT_SUPPORT pulls the
+     * origin machine's topology_support flags in from the XML, replacing the
+     * old, non-portable hand-serialization of those structs (see the pack
+     * routine). If the XML came from a pre-2.3 exporter it simply carries no
+     * support info and imported_support is left unset. */
+    flags = HWLOC_TOPOLOGY_FLAG_INCLUDE_DISALLOWED;
+#if HWLOC_API_VERSION >= 0x00020300
+    flags |= HWLOC_TOPOLOGY_FLAG_IMPORT_SUPPORT;
+#endif
     if (0 != hwloc_topology_set_io_types_filter(t, HWLOC_TYPE_FILTER_KEEP_IMPORTANT)) {
         hwloc_topology_destroy(t);
         return PMIX_ERROR;
     }
-    flags |= HWLOC_TOPOLOGY_FLAG_INCLUDE_DISALLOWED;
     if (0 != hwloc_topology_set_flags(t, flags)) {
         hwloc_topology_destroy(t);
         return PMIX_ERROR;
     }
     /* now load the topology */
     if (0 != hwloc_topology_load(t)) {
-        hwloc_topology_destroy(t);
-        return PMIX_ERROR;
-    }
-
-    /* get the available support - hwloc unfortunately does
-     * not include this info in its xml import!
-     */
-    support = (struct hwloc_topology_support *) hwloc_topology_get_support(t);
-    cnt = sizeof(struct hwloc_topology_discovery_support);
-    PMIX_BFROPS_UNPACK_TYPE(rc, buf, support->discovery, &cnt, PMIX_BYTE, regtypes);
-    if (PMIX_SUCCESS != rc) {
-        hwloc_topology_destroy(t);
-        return PMIX_ERROR;
-    }
-    cnt = sizeof(struct hwloc_topology_cpubind_support);
-    PMIX_BFROPS_UNPACK_TYPE(rc, buf, support->cpubind, &cnt, PMIX_BYTE, regtypes);
-    if (PMIX_SUCCESS != rc) {
-        hwloc_topology_destroy(t);
-        return PMIX_ERROR;
-    }
-    cnt = sizeof(struct hwloc_topology_membind_support);
-    PMIX_BFROPS_UNPACK_TYPE(rc, buf, support->membind, &cnt, PMIX_BYTE, regtypes);
-    if (PMIX_SUCCESS != rc) {
         hwloc_topology_destroy(t);
         return PMIX_ERROR;
     }
@@ -364,18 +330,35 @@ static void print_hwloc_obj(char **output, char *prefix, hwloc_topology_t topo, 
         tmp = tmp2;
     }
     if (HWLOC_OBJ_MACHINE == obj->type) {
-        /* root level object - add support values */
+        /* root level object - add support values. The support bits are only
+         * trustworthy when they describe a real machine: either this is our
+         * own (this-system) topology, or hwloc imported them from the XML of
+         * a 2.3+ exporter. A topology exported by an older hwloc carries no
+         * support info, so we report it as unavailable rather than print
+         * misleading values. */
+        bool have_support = (0 != hwloc_topology_is_thissystem(topo));
         support = (struct hwloc_topology_support *) hwloc_topology_get_support(topo);
-        pmix_asprintf(&tmp2, "%s%sBind CPU proc:   %s%sBind CPU thread: %s", tmp, pfx,
-                      (support->cpubind->set_thisproc_cpubind) ? "TRUE" : "FALSE", pfx,
-                      (support->cpubind->set_thisthread_cpubind) ? "TRUE" : "FALSE");
-        free(tmp);
-        tmp = tmp2;
-        pmix_asprintf(&tmp2, "%s%sBind MEM proc:   %s%sBind MEM thread: %s", tmp, pfx,
-                      (support->membind->set_thisproc_membind) ? "TRUE" : "FALSE", pfx,
-                      (support->membind->set_thisthread_membind) ? "TRUE" : "FALSE");
-        free(tmp);
-        tmp = tmp2;
+#if HWLOC_API_VERSION >= 0x00020300
+        if (!have_support && NULL != support->misc && support->misc->imported_support) {
+            have_support = true;
+        }
+#endif
+        if (have_support) {
+            pmix_asprintf(&tmp2, "%s%sBind CPU proc:   %s%sBind CPU thread: %s", tmp, pfx,
+                          (support->cpubind->set_thisproc_cpubind) ? "TRUE" : "FALSE", pfx,
+                          (support->cpubind->set_thisthread_cpubind) ? "TRUE" : "FALSE");
+            free(tmp);
+            tmp = tmp2;
+            pmix_asprintf(&tmp2, "%s%sBind MEM proc:   %s%sBind MEM thread: %s", tmp, pfx,
+                          (support->membind->set_thisproc_membind) ? "TRUE" : "FALSE", pfx,
+                          (support->membind->set_thisthread_membind) ? "TRUE" : "FALSE");
+            free(tmp);
+            tmp = tmp2;
+        } else {
+            pmix_asprintf(&tmp2, "%s%sBind support:    not available", tmp, pfx);
+            free(tmp);
+            tmp = tmp2;
+        }
     }
     pmix_asprintf(&tmp2, "%s%s\n", (NULL == *output) ? "" : *output, tmp);
     free(tmp);

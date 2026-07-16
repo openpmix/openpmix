@@ -153,12 +153,22 @@ and `PMIX_TOPO` (`pmix_topology_t`); see
 
 - **cpuset is packed as its `hwloc_bitmap_list_asprintf` string.** A NULL
   bitmap (unbound process) packs as a NULL string. Symmetric on unpack.
-- **topology is packed as an XML string, followed by three raw
-  `hwloc_topology_support` sub-structs** (`discovery`, `cpubind`,
-  `membind`) as `PMIX_BYTE` blobs — because hwloc's XML export omits the
-  support flags. **This is a wire-format fragility** (see Pitfalls): the
-  blob length is `sizeof(struct hwloc_topology_*_support)`, an hwloc-ABI
-  quantity, not a fixed protocol width.
+- **topology is packed as an XML string only.** hwloc 2.3+ embeds the
+  `hwloc_topology_support` flags in the exported XML, and the unpacker
+  recovers them by loading with `HWLOC_TOPOLOGY_FLAG_IMPORT_SUPPORT`
+  (guarded by `#if HWLOC_API_VERSION >= 0x00020300`, since PMIx's floor is
+  2.1). PMIx used to hand-serialize the three support sub-structs
+  (`discovery`, `cpubind`, `membind`) as raw `PMIX_BYTE` blobs of
+  `sizeof(struct ...)`; because those structs grow across hwloc releases,
+  that made the wire format depend on the builder's hwloc ABI and could
+  desync the buffer between peers on different hwloc versions. That
+  serialization has been removed — do not reintroduce it.
+- **the unpacked topology does NOT assert `IS_THISSYSTEM`.** A
+  deserialized `PMIX_TOPO` is a *foreign* topology used only for
+  structural queries (distances, copy, print, vendor check); the flag is
+  reserved for the topology PMIx actually binds against, which is
+  established in `pmix_hwloc.c`. This is what lets the print handler
+  distinguish a real local machine from a support-less import.
 - **`destruct` frees the innards; `release(ptr, sz)` loops destruct over
   an array and then frees the array block itself.** Both
   `pmix_hwloc_release_cpuset` and `pmix_hwloc_release_topology` end with a
@@ -229,13 +239,22 @@ a normal build does exercise it.
   `hwloc_free_xmlbuffer` (not `free`); bitmaps with `hwloc_bitmap_free`;
   topologies with `hwloc_topology_destroy`. Strings built with
   `pmix_asprintf` use `free`.
-- **The support-struct blob is not portable across hwloc ABIs.** Packing
-  `sizeof(struct hwloc_topology_*_support)` raw bytes means two peers
-  built against hwloc releases with different struct layouts can
-  mis-unpack. This is inherent to how the support flags are shipped;
-  don't "optimize" the XML/blob split without understanding the
-  cross-version consequences described in the top-level interoperability
-  rules.
+- **Never hand-serialize hwloc structs by `sizeof`.** The
+  `hwloc_topology_*_support` structs (and others) are hwloc-ABI
+  quantities that grow across releases, so packing `sizeof(struct ...)`
+  raw bytes makes the wire format depend on the builder's hwloc version
+  and desyncs the buffer between mismatched peers. The topology support
+  flags now ride inside the XML via `IMPORT_SUPPORT` instead (see the
+  datatype section). If you ever need to ship another hwloc-derived value,
+  serialize its *semantic content* (a string, a fixed-width field), never
+  its in-memory struct.
+- **Feature-test hwloc with `HWLOC_API_VERSION`, not `#ifdef`.** Flags
+  like `HWLOC_TOPOLOGY_FLAG_IMPORT_SUPPORT` are enum values, not macros,
+  so `#ifdef HWLOC_TOPOLOGY_FLAG_...` is always false and would silently
+  disable the feature. Gate version-dependent code on
+  `#if HWLOC_API_VERSION >= 0x000NNN00` (e.g. `0x00020300` for the 2.3
+  support-import machinery, including the `misc`/`imported_support`
+  member that does not exist in older headers).
 - **`hwloc_topology_set_xmlbuffer` wants the NUL-inclusive length.**
   hwloc's `export_xmlbuffer` reports (and `set_xmlbuffer` expects) a
   length that *includes* the terminating NUL, so always pass
