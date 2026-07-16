@@ -3803,6 +3803,13 @@ void pmix_bfrops_base_tma_value_destruct(pmix_value_t *v,
                 pmix_bfrops_base_tma_proc_free(v->data.proc, 1, tma);
             }
             break;
+        case PMIX_PROC_NSPACE:
+            /* value_load heap-allocates data.nspace; free it here or it
+             * leaks on every destruct of a PMIX_PROC_NSPACE value */
+            if (NULL != v->data.nspace) {
+                pmix_tma_free(tma, v->data.nspace);
+            }
+            break;
         case PMIX_BYTE_OBJECT:
         case PMIX_COMPRESSED_STRING:
         case PMIX_COMPRESSED_BYTE_OBJECT:
