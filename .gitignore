@@ -253,6 +253,8 @@ test/unit/client_cycle
 test/unit/tool_cycle
 test/unit/event_chain
 test/unit/hwloc_datatype
+test/unit/progress_threads
+test/unit/info_support
 test/unit/run_gds_fallback.pl
 test/unit/run_simpcycle.pl
 test/unit/run_toolcycle.pl
