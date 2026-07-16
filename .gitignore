@@ -251,6 +251,7 @@ test/unit/pmix_log
 test/unit/collective_status
 test/unit/client_cycle
 test/unit/tool_cycle
+test/unit/event_chain
 test/unit/run_gds_fallback.pl
 test/unit/run_simpcycle.pl
 test/unit/run_toolcycle.pl
