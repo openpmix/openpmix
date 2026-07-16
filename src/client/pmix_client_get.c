@@ -721,6 +721,14 @@ done:
                     }
                 }
             }
+            /* release any fetched values we are not going to deliver -
+             * the failed-fetch and multiple-value paths above leave
+             * entries stranded in the cb's kvs list, and the cb is
+             * delivered (and may be reused for a coalesced request)
+             * without that list otherwise being drained */
+            while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(&cb->kvs))) {
+                PMIX_RELEASE(kv);
+            }
             if (cb->checked) {
                 cb->status = rc;
                 cb->value = val;
