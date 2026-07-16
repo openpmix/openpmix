@@ -43,9 +43,15 @@ static void myinfocbfunc(pmix_status_t status,
                          void *release_cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(info, ninfo, release_fn, release_cbdata);
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
 
     lock->status = status;
+    /* the blocking caller does not consume the returned info, so
+     * release it here via the provided release function to avoid
+     * leaking the results caddy */
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
     PMIX_WAKEUP_THREAD(lock);
 }
 
@@ -192,6 +198,7 @@ sendit:
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, ssnctrlcbfunc, (void *) cd);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
+        goto errorrpt;
     }
 
     return;
