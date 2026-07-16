@@ -66,16 +66,15 @@ void pmix_internal_notify_event(int sd, short args, void *cbdata)
                                                 scd->info, scd->ninfo,
                                                 _ntfy_done, scd);
 
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            /* the request was completed atomically - no callback
+             * will be made, so complete the caller ourselves */
+            _ntfy_done(PMIX_SUCCESS, scd);
+        } else if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             _ntfy_done(rc, scd);
-            return;
         }
-        if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
-            !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-            // let the completion function cleanup
-            return;
-        }
+        /* on success, let the completion function cleanup */
         return;
     }
 
@@ -348,6 +347,11 @@ pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_
         if (PMIX_ERR_LOST_CONNECTION == status ||
             pmix_globals.mypeer == pmix_client_globals.myserver) {
             PMIX_RELEASE(msg);
+            /* nothing will be sent, so no server ack will arrive -
+             * complete the caller's request ourselves */
+            if (NULL != cbfunc) {
+                cbfunc(PMIX_SUCCESS, cbdata);
+            }
             goto local;
         }
         /* create a callback object as we need to pass it to the
@@ -1113,6 +1117,11 @@ static void _notify_client_event(int sd, short args, void *cbdata)
      * event ourselves - the PMIx server may aggregate the
      * events from a namespace prior to passing it to the host */
     if (PMIX_RANGE_RM == cd->range) {
+        /* "holdcd" is reused below to indicate that the caddy is
+         * being held pending an async host upcall - that never
+         * happens on this path, so reset it here or the caller's
+         * callback is never invoked and the caddy leaks */
+        holdcd = false;
         goto local;
     }
     /* if we are a tool, we send it to our clients regardless
