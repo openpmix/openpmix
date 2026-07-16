@@ -186,6 +186,8 @@ int main(int argc, char **argv)
                 goto done;
             }
             PMIX_APP_DESTRUCT(&app);
+            /* release the spawn directive before we reuse info[0] below */
+            PMIX_INFO_DESTRUCT(&info[0]);
 
             // circulate the child nspace with our peers
             value.type = PMIX_STRING;
@@ -251,6 +253,7 @@ int main(int argc, char **argv)
             // the spawned children
             PMIX_LOAD_PROCID(&parray[0], myproc.nspace, PMIX_RANK_WILDCARD);
             PMIX_LOAD_PROCID(&parray[1], val->data.string, PMIX_RANK_WILDCARD);
+            PMIX_VALUE_RELEASE(val);
 
             rc = PMIx_Group_construct("ourgroup", parray, 2, NULL, 0, &results, &nresults);
             if (PMIX_SUCCESS != rc) {
@@ -300,6 +303,7 @@ int main(int argc, char **argv)
 
         PMIX_LOAD_PROCID(&parray[0], val->data.string, PMIX_RANK_WILDCARD);
         PMIX_LOAD_PROCID(&parray[1], myproc.nspace, PMIX_RANK_WILDCARD);
+        PMIX_VALUE_RELEASE(val);
 
         // construct the group
         rc = PMIx_Group_construct("ourgroup", parray, 2, NULL, 0, &results, &nresults);
@@ -366,11 +370,17 @@ int main(int argc, char **argv)
                 } else {
                     fprintf(stderr, "Client ns %s rank %d: Get modex for proc %s:%u returned %lu\n",
                             myproc.nspace, myproc.rank, proc.nspace, proc.rank, (unsigned long)val->data.uint64);
+                    PMIX_VALUE_RELEASE(val);
                 }
             }
         }
     }
 done:
+    /* release the results handed back by PMIx_Group_construct */
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+        results = NULL;
+    }
     /* finalize us */
     DEBUG_CONSTRUCT_LOCK(&lock);
     PMIx_Deregister_event_handler(1, op_callbk, &lock);

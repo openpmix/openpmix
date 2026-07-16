@@ -150,6 +150,10 @@ int main(int argc, char **argv)
         PMIX_INFO_LOAD(&info[2], PMIX_GROUP_ADD_MEMBERS, &dry, PMIX_DATA_ARRAY);
         PMIX_DATA_ARRAY_DESTRUCT(&dry);
         rc = PMIx_Group_construct("ourgroup", &myproc, 1, info, 3, &results, &nresults);
+        /* the info array was copied by the library, so release our copy */
+        PMIX_INFO_DESTRUCT(&info[0]);
+        PMIX_INFO_DESTRUCT(&info[1]);
+        PMIX_INFO_DESTRUCT(&info[2]);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
@@ -215,6 +219,11 @@ int main(int argc, char **argv)
     }
 
 done:
+    /* release the results handed back by PMIx_Group_construct */
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+        results = NULL;
+    }
     /* finalize us */
     DEBUG_CONSTRUCT_LOCK(&lock);
     PMIx_Deregister_event_handler(1, op_callbk, &lock);
