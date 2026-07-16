@@ -886,7 +886,10 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             }
             /* if this event handler provided a range, check to see if
              * the source fits within it */
-            if (found && pmix_notify_check_range(&pmix_globals.events.first->rng, &chain->source)) {
+            if (found && pmix_notify_check_range(&pmix_globals.events.first->rng, &chain->source)
+                && pmix_notify_check_affected(pmix_globals.events.first->affected,
+                                              pmix_globals.events.first->naffected,
+                                              chain->affected, chain->naffected)) {
                 /* invoke the handler */
                 chain->evhdlr = pmix_globals.events.first;
                 pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
@@ -895,7 +898,10 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             }
         } else {
             /* take all codes for a default handler */
-            if (pmix_notify_check_range(&pmix_globals.events.first->rng, &chain->source)) {
+            if (pmix_notify_check_range(&pmix_globals.events.first->rng, &chain->source)
+                && pmix_notify_check_affected(pmix_globals.events.first->affected,
+                                              pmix_globals.events.first->naffected,
+                                              chain->affected, chain->naffected)) {
                 /* invoke the handler */
                 chain->evhdlr = pmix_globals.events.first;
                 pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
