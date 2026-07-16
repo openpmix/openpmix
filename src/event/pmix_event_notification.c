@@ -1590,7 +1590,7 @@ pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain, const pmix_info_t
 static void sevcon(pmix_event_hdlr_t *p)
 {
     p->name = NULL;
-    p->index = UINT_MAX;
+    p->index = SIZE_MAX;
     p->precedence = PMIX_EVENT_ORDER_NONE;
     p->oneshot = false;
     p->locator = NULL;

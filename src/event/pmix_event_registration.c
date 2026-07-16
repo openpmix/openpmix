@@ -99,7 +99,7 @@ static void regevents_cbfunc(struct pmix_peer_t *peer,
             PMIX_RELEASE(rb->hdlr);
         }
         ret = PMIX_ERR_SERVER_FAILED_REQUEST;
-        index = UINT_MAX;
+        index = SIZE_MAX;
     }
 
     /* call the callback */
@@ -147,7 +147,7 @@ static void _regcbfunc(int sd, short args, void *cbdata)
             PMIX_RELEASE(rb->hdlr);
         }
         rc = PMIX_ERR_SERVER_FAILED_REQUEST;
-        index = UINT_MAX;
+        index = SIZE_MAX;
     }
 
     if (NULL != cd) {
@@ -607,13 +607,13 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
         if ((firstoverall && NULL != pmix_globals.events.first) ||
             (lastoverall && NULL != pmix_globals.events.last)) {
             /* oops - someone already took that position */
-            index = UINT_MAX;
+            index = SIZE_MAX;
             rc = PMIX_ERR_EVENT_REGISTRATION;
             goto ack;
         }
         evhdlr = PMIX_NEW(pmix_event_hdlr_t);
         if (NULL == evhdlr) {
-            index = UINT_MAX;
+            index = SIZE_MAX;
             rc = PMIX_ERR_EVENT_REGISTRATION;
             goto ack;
         }
@@ -630,7 +630,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
             evhdlr->rng.nprocs = nprocs;
             PMIX_PROC_CREATE(evhdlr->rng.procs, nprocs);
             if (NULL == evhdlr->rng.procs) {
-                index = UINT_MAX;
+                index = SIZE_MAX;
                 rc = PMIX_ERR_EVENT_REGISTRATION;
                 PMIX_RELEASE(evhdlr);
                 goto ack;
@@ -641,7 +641,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
             evhdlr->naffected = cd->naffected;
             PMIX_PROC_CREATE(evhdlr->affected, cd->naffected);
             if (NULL == evhdlr->affected) {
-                index = UINT_MAX;
+                index = SIZE_MAX;
                 rc = PMIX_ERR_EVENT_REGISTRATION;
                 PMIX_RELEASE(evhdlr);
                 goto ack;
@@ -654,7 +654,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
             evhdlr->codes = (pmix_status_t *) malloc(cd->ncodes * sizeof(pmix_status_t));
             if (NULL == evhdlr->codes) {
                 PMIX_RELEASE(evhdlr);
-                index = UINT_MAX;
+                index = SIZE_MAX;
                 rc = PMIX_ERR_EVENT_REGISTRATION;
                 goto ack;
             }
@@ -677,7 +677,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
      * by creating an event */
     evhdlr = PMIX_NEW(pmix_event_hdlr_t);
     if (NULL == evhdlr) {
-        index = UINT_MAX;
+        index = SIZE_MAX;
         rc = PMIX_ERR_EVENT_REGISTRATION;
         goto ack;
     }
@@ -697,7 +697,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
         evhdlr->rng.nprocs = nprocs;
         PMIX_PROC_CREATE(evhdlr->rng.procs, nprocs);
         if (NULL == evhdlr->rng.procs) {
-            index = UINT_MAX;
+            index = SIZE_MAX;
             rc = PMIX_ERR_EVENT_REGISTRATION;
             PMIX_RELEASE(evhdlr);
             goto ack;
@@ -708,7 +708,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
         evhdlr->naffected = cd->naffected;
         PMIX_PROC_CREATE(evhdlr->affected, cd->naffected);
         if (NULL == evhdlr->affected) {
-            index = UINT_MAX;
+            index = SIZE_MAX;
             rc = PMIX_ERR_EVENT_REGISTRATION;
             PMIX_RELEASE(evhdlr);
             goto ack;
@@ -724,7 +724,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
         evhdlr->codes = (pmix_status_t *) malloc(cd->ncodes * sizeof(pmix_status_t));
         if (NULL == evhdlr->codes) {
             PMIX_RELEASE(evhdlr);
-            index = UINT_MAX;
+            index = SIZE_MAX;
             rc = PMIX_ERR_EVENT_REGISTRATION;
             goto ack;
         }
@@ -754,7 +754,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
                 /* this is an error */
                 --pmix_globals.events.nhdlrs;
                 rc = PMIX_ERR_EVENT_REGISTRATION;
-                index = UINT_MAX;
+                index = SIZE_MAX;
                 PMIX_RELEASE(evhdlr);
                 goto ack;
             }
@@ -767,7 +767,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
                 /* this is an error */
                 --pmix_globals.events.nhdlrs;
                 rc = PMIX_ERR_EVENT_REGISTRATION;
-                index = UINT_MAX;
+                index = SIZE_MAX;
                 PMIX_RELEASE(evhdlr);
                 goto ack;
             }
@@ -859,7 +859,7 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
                 /* this is an error */
                 --pmix_globals.events.nhdlrs;
                 rc = PMIX_ERR_EVENT_REGISTRATION;
-                index = UINT_MAX;
+                index = SIZE_MAX;
                 PMIX_RELEASE(evhdlr);
                 goto ack;
             }
@@ -879,7 +879,7 @@ tellserver:
         /* unable to register */
         --pmix_globals.events.nhdlrs;
         rc = PMIX_ERR_EVENT_REGISTRATION;
-        index = UINT_MAX;
+        index = SIZE_MAX;
         if (firstoverall) {
             pmix_globals.events.first = NULL;
         } else if (lastoverall) {
