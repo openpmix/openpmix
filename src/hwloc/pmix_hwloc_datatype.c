@@ -262,7 +262,7 @@ pmix_status_t pmix_hwloc_unpack_topology(pmix_buffer_t *buf, pmix_topology_t *de
         free(xmlbuffer);
         return rc;
     }
-    if (0 != hwloc_topology_set_xmlbuffer(t, xmlbuffer, strlen(xmlbuffer))) {
+    if (0 != hwloc_topology_set_xmlbuffer(t, xmlbuffer, strlen(xmlbuffer) + 1)) {
         rc = PMIX_ERROR;
         free(xmlbuffer);
         hwloc_topology_destroy(t);
