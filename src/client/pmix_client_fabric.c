@@ -115,6 +115,9 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
         goto complete;
     }
     if (PMIX_SUCCESS != cb->status) {
+        /* propagate the server's error to the completion below so a
+         * non-blocking caller's callback is not told the op succeeded */
+        rc = cb->status;
         goto complete;
     }
 
@@ -300,7 +303,13 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric)
      * the non-blocking operation is complete */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.fabric = fabric;
-    if (PMIX_SUCCESS != (rc = PMIx_Fabric_update_nb(fabric, NULL, &cb))) {
+    rc = PMIx_Fabric_update_nb(fabric, NULL, &cb);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        /* the operation completed synchronously (e.g., we are the
+         * scheduler and handled it ourselves); no callback will fire */
+        PMIX_DESTRUCT(&cb);
+        return PMIX_SUCCESS;
+    } else if (PMIX_SUCCESS != rc) {
         PMIX_DESTRUCT(&cb);
         return rc;
     }
@@ -324,11 +333,27 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FABRIC_UPDATE_CMD;
 
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     /* if I am a scheduler server, then I should be able
      * to support this myself */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
+        /* update_fabric is synchronous and takes no callback, so we must
+         * bridge its result to the (non)blocking completion contract */
         rc = pmix_pnet.update_fabric(fabric);
-        return rc;
+        if (PMIX_SUCCESS != rc) {
+            /* error: no callback fires, caller sees the error return */
+            return rc;
+        }
+        if (NULL != cbfunc) {
+            /* async caller: deliver completion via the callback */
+            cbfunc(PMIX_SUCCESS, cbdata);
+            return PMIX_SUCCESS;
+        }
+        /* blocking caller: signal that we completed synchronously */
+        return PMIX_OPERATION_SUCCEEDED;
     }
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
