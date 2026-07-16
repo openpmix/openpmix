@@ -1598,7 +1598,9 @@ PMIX_EXPORT const char *pmix_attributes_lookup(const char *attr)
 
     for (int i = 0; i < kidx->table->size; ++i) {
         pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
-        if (NULL == ra) break;
+        if (NULL == ra) {
+            break;
+        }
         if (0 == strcasecmp(ra->name, attr)) {
             return ra->string;
         }
@@ -1617,7 +1619,9 @@ PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
 
     for (int i = 0; i < kidx->table->size; ++i) {
         pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
-        if (NULL == ra) break;
+        if (NULL == ra) {
+            break;
+        }
         if (0 == strcasecmp(ra->string, attrstring)) {
             return ra->name;
         }
@@ -1636,7 +1640,9 @@ PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr)
 
     for (int i = 0; i < kidx->table->size; ++i) {
         pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
-        if (NULL == ra) break;
+        if (NULL == ra) {
+            break;
+        }
         if (0 == strcasecmp(ra->name, attr)) {
             return ra;
         }
@@ -1732,6 +1738,13 @@ void pmix_attributes_print_attrs(char ***ans, char *function,
 
         for (m = 0; NULL != attrs[n].description[m]; m++) {
             len = strlen(attrs[n].description[m]);
+            if ((PMIX_PRINT_ATTR_COLUMN_WIDTH - 1
+                 - (PMIX_PRINT_NAME_COLUMN_WIDTH + PMIX_PRINT_STRING_COLUMN_WIDTH
+                    + PMIX_PRINT_TYPE_COLUMN_WIDTH + 6)) < len) {
+                len = PMIX_PRINT_ATTR_COLUMN_WIDTH - 1
+                      - (PMIX_PRINT_NAME_COLUMN_WIDTH + PMIX_PRINT_STRING_COLUMN_WIDTH
+                         + PMIX_PRINT_TYPE_COLUMN_WIDTH + 6);
+            }
             memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH + PMIX_PRINT_STRING_COLUMN_WIDTH
                          + PMIX_PRINT_TYPE_COLUMN_WIDTH + 6],
                    attrs[n].description[m], len);
