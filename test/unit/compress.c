@@ -49,7 +49,8 @@
 #include "src/util/pmix_printf.h"
 
 
-static pmix_server_module_t mymodule = {
+/* Unused when PMIX_TESTBUILD short-circuits main() before server init. */
+static pmix_server_module_t mymodule __pmix_attribute_unused__ = {
     .client_connected = NULL,
     .client_finalized = NULL,
     .abort = NULL,
@@ -76,13 +77,23 @@ static pmix_server_module_t mymodule = {
 
 int main(int argc, char **argv)
 {
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+
+#if PMIX_TESTBUILD
+    /* This test drives real (de)compression end-to-end, but the pcompress
+     * components are non-functional shims in a --enable-test-build (see the
+     * top-level AGENTS.md): deflate/inflate are no-ops, so the round-trips
+     * cannot reproduce their input. Report the automake "skip" status (77)
+     * rather than a spurious failure. */
+    fprintf(stdout, "SKIP: compression is stubbed in --enable-test-build\n");
+    return 77;
+#else
     char **nodes = NULL, **nodesout;
     char **procs = NULL, **procsout;
     char *tmp, *regex, *ppn, *t1;
     int n, rk;
+    int errors = 0;
     pmix_status_t rc;
-    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
-
 
     /* setup the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, NULL, 0))) {
@@ -108,6 +119,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "NODES MATCH\n");
     } else {
         fprintf(stderr, "NODES ERROR\n");
+        errors++;
     }
     free(tmp);
     free(t1);
@@ -132,6 +144,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "PROCS MATCH\n");
     } else {
         fprintf(stderr, "PROCS ERROR\n");
+        errors++;
     }
     free(tmp);
     free(t1);
@@ -141,5 +154,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "Finalize failed with error %d\n", rc);
     }
 
-    return 0;
+    return errors;
+#endif
 }

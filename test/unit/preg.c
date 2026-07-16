@@ -53,6 +53,7 @@ static pmix_server_module_t mymodule = {
 
 static int npass = 0;
 static int nfail = 0;
+static int nskip = 0;
 
 /* Report a single test result and update counters */
 static void report(const char *name, int passed)
@@ -65,6 +66,16 @@ static void report(const char *name, int passed)
         nfail++;
     }
 }
+
+#if PMIX_TESTBUILD
+/* Note a test case that cannot run in this configuration. Only needed in a
+ * --enable-test-build, where the compression-dependent case is skipped. */
+static void skipped(const char *name, const char *reason)
+{
+    fprintf(stdout, "  SKIP: %s (%s)\n", name, reason);
+    nskip++;
+}
+#endif
 
 /*
  * Round-trip helper: generate a regex from input, then parse it back and
@@ -176,7 +187,16 @@ static void test_large_list(void)
     input = PMIx_Argv_join(nodes, ',');
     PMIx_Argv_free(nodes);
 
+#if PMIX_TESTBUILD
+    /* A large, highly-compressible list is encoded via the pcompress
+     * "blob" path, but the pcompress components are non-functional shims
+     * in a --enable-test-build (see the top-level AGENTS.md): deflate is a
+     * no-op, so the round-trip cannot reproduce the input. Skip rather
+     * than report a spurious failure. */
+    skipped("large list (10000 nodes)", "compression stubbed in --enable-test-build");
+#else
     report("large list (10000 nodes)", roundtrip(input));
+#endif
     free(input);
 }
 
@@ -273,7 +293,7 @@ int main(int argc, char **argv)
     /* Structural checks */
     test_type_field_set();
 
-    fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
+    fprintf(stdout, "\nResults: %d passed, %d failed, %d skipped\n\n", npass, nfail, nskip);
 
     PMIx_server_finalize();
 
