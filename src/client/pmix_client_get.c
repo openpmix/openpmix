@@ -164,7 +164,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             lg->appinfo = true;
             lg->nodeinfo = false;
             lg->sessioninfo = false;
-        } else if (PMIX_CHECK_KEY(info, PMIX_SESSION_INFO)) {
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_INFO)) {
             /* regardless of the default setting, they want us
              * to get it from the session realm */
             lg->sessiondirective = true;
@@ -281,7 +281,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
     /* if they passed a group in the nspace of proc,
      * replace it with the translated proc. */
     if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
-        proc != NULL && 0 != strlen(proc->nspace)) {
+        NULL != proc && 0 != strlen(proc->nspace)) {
         rc = pmix_client_convert_group_procs(proc, 1, &procs, &nprocs);
         if (PMIX_SUCCESS != rc) {
             return rc;
@@ -584,6 +584,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     int32_t cnt;
     pmix_kval_t *kv;
     pmix_get_logic_t *lg;
+    pmix_proc_t rproc;
     pmix_info_t *iptr;
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
@@ -637,8 +638,16 @@ done:
      * don't support calls to "get" for a NULL key */
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix: get_nb looking for requested key");
+    /* snapshot the reference proc. The cb this recv was in response to is
+     * itself in the pending list and its "lg" is the one we hold here;
+     * once we start delivering results below, that cb (and its lg) will
+     * be released, so we must not dereference lg during the loop */
+    PMIX_LOAD_PROCID(&rproc, lg->p.nspace, lg->p.rank);
     PMIX_LIST_FOREACH_SAFE (cb, cb2, &pmix_client_globals.pending_requests, pmix_cb_t) {
-        if (PMIX_CHECK_NSPACE(lg->p.nspace, cb->pname.nspace) && cb->pname.rank == lg->p.rank) {
+        if (PMIX_CHECK_NSPACE(rproc.nspace, cb->pname.nspace) && cb->pname.rank == rproc.rank) {
+            /* reset per iteration so a failed fetch for this request can
+             * never deliver a value already handed to a previous one */
+            val = NULL;
             pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
             if (PMIX_SUCCESS != ret) {
                 if (cb->checked) {
@@ -650,7 +659,7 @@ done:
                 continue;
             }
             /* we have the data for this proc - see if we can find the key */
-            cb->proc = &lg->p;
+            cb->proc = &rproc;
             cb->scope = PMIX_SCOPE_UNDEF;
             pmix_output_verbose(2, pmix_client_globals.get_output,
                                 "pmix: get_nb searching for key %s for rank %s", cb->key,
@@ -952,7 +961,7 @@ static void get_data(int sd, short args, void *cbdata)
             if (NULL != lg->hostname) {
                 PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_HOSTNAME, lg->hostname, PMIX_STRING);
             } else {
-                PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_HOSTNAME, &lg->nodeid, PMIX_UINT32);
+                PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_NODEID, &lg->nodeid, PMIX_UINT32);
             }
             PMIX_INFO_LOAD(&iptr[cb->ninfo+2], PMIX_OPTIONAL, NULL, PMIX_BOOL);
             cb->infocopy = true;
@@ -1007,7 +1016,7 @@ static void get_data(int sd, short args, void *cbdata)
         }
         /* we get here with a valid appnum - if that is what they were
          * asking for, then we are done */
-        if (0 == strcmp(cb->key, PMIX_APPNUM)) {
+        if (NULL != cb->key && 0 == strcmp(cb->key, PMIX_APPNUM)) {
             cb->status = PMIX_SUCCESS;
             PMIX_VALUE_CREATE(cb->value, 1);
             PMIX_VALUE_LOAD(cb->value, &lg->appnum, PMIX_UINT32);
@@ -1074,7 +1083,7 @@ static void get_data(int sd, short args, void *cbdata)
             }
         }
         /* if they were asking for sessionid, then we are done */
-        if (0 == strcmp(cb->key, PMIX_SESSION_ID)) {
+        if (NULL != cb->key && 0 == strcmp(cb->key, PMIX_SESSION_ID)) {
             cb->status = PMIX_SUCCESS;
             PMIX_VALUE_CREATE(cb->value, 1);
             PMIX_VALUE_LOAD(cb->value, &lg->sessionid, PMIX_UINT32);
