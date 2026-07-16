@@ -457,6 +457,15 @@ pmix_status_t pmix_hwloc_get_topology_size(pmix_topology_t *ptr, size_t *sz)
 {
     int err;
 
+    *sz = 0;
+    if (NULL == ptr || NULL == ptr->topology) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* only report a size for a topology we own */
+    if (NULL != ptr->source && 0 != strncasecmp(ptr->source, "hwloc", 5)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
     err = hwloc_shmem_topology_get_length(ptr->topology, sz, 0);
     if (0 != err) {
         *sz = 0;
