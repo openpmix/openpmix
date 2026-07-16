@@ -46,7 +46,7 @@ int main(int argc, char **argv)
 {
     int rc;
     pmix_value_t *val = NULL, value;
-    pmix_proc_t proc, *parray;
+    pmix_proc_t proc, *parray = NULL;
     uint32_t nprocs;
     size_t nall, n, maxprocs = 2;
     char nsp2[PMIX_MAX_NSLEN + 1], *nsp;
@@ -123,6 +123,7 @@ int main(int argc, char **argv)
                 goto done;
             }
             PMIX_APP_FREE(app, 1);
+            PMIX_INFO_DESTRUCT(&info);
 
             // share the child namespace
             value.type = PMIX_STRING;
@@ -171,6 +172,7 @@ int main(int argc, char **argv)
             for (n=0; n < maxprocs; n++) {
                 PMIX_LOAD_PROCID(&parray[n+nprocs], nsp, n);
             }
+            PMIX_VALUE_RELEASE(val);
         }
     } else {
         // we are the child job
@@ -227,6 +229,12 @@ int main(int argc, char **argv)
     }
 
 done:
+    if (NULL != parray) {
+        PMIX_PROC_FREE(parray, nall);
+    }
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+    }
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
 
