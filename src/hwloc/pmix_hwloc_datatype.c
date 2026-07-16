@@ -44,8 +44,12 @@ pmix_status_t pmix_hwloc_pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src,
         /* the process isn't bound */
         tmp = NULL;
     } else {
-        /* express the cpuset as a string */
-        if (0 != hwloc_bitmap_list_asprintf(&tmp, src->bitmap)) {
+        /* express the cpuset as a string. hwloc_bitmap_list_asprintf
+         * returns the number of characters written (>= 0), and -1 only on
+         * error - despite the header comment claiming "0 on success". Test
+         * for the negative error value, not non-zero, or every bound cpuset
+         * (any non-empty bitmap) is mistaken for a failure. */
+        if (0 > hwloc_bitmap_list_asprintf(&tmp, src->bitmap)) {
             return PMIX_ERROR;
         }
     }
@@ -111,8 +115,9 @@ char *pmix_hwloc_print_cpuset(pmix_cpuset_t *src)
         return NULL;
     }
 
-    /* express the cpuset as a string */
-    if (0 != hwloc_bitmap_list_asprintf(&tmp, src->bitmap)) {
+    /* express the cpuset as a string. As above, the return is the character
+     * count (>= 0), with -1 signalling error - not "0 on success". */
+    if (0 > hwloc_bitmap_list_asprintf(&tmp, src->bitmap)) {
         return NULL;
     }
 
