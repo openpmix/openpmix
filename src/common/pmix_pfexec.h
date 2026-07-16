@@ -80,6 +80,9 @@ typedef struct {
     pmix_proc_t *proc;
     int signal;
     pmix_lock_t *lock;
+    /* used only by the kill sequence to carry the target child across
+     * the SIGCONT/SIGTERM/SIGKILL timer stages */
+    pmix_pfexec_child_t *child;
 } pmix_pfexec_signal_caddy_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pfexec_signal_caddy_t);
 
@@ -177,4 +180,4 @@ PMIX_EXPORT pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *chil
 
 END_C_DECLS
 
-#endif /* MCA_PFEXEC_H */
+#endif /* PMIX_PFEXEC_H */
