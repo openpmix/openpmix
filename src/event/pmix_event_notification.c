@@ -481,14 +481,17 @@ static void cycle_events(int sd, short args, void *cbdata)
     item = NULL;
 
     /* see if we need to continue, starting with the single code events */
-    if (1 == chain->evhdlr->ncodes) {
+    if (PMIX_EVENT_ORDER_FIRST_OVERALL == chain->evhdlr->precedence) {
+        /* the "first overall" handler just completed - resume from the
+         * top of the single-code list regardless of how many codes that
+         * handler was registered against */
+        item = pmix_list_get_begin(&pmix_globals.events.single_events);
+    } else if (1 == chain->evhdlr->ncodes) {
         /* the last handler was for a single code - see if there are
          * any others that match this event */
-        if (PMIX_EVENT_ORDER_FIRST_OVERALL == chain->evhdlr->precedence) {
-            item = pmix_list_get_begin(&pmix_globals.events.single_events);
-        } else {
-            item = &chain->evhdlr->super;
-        }
+        item = &chain->evhdlr->super;
+    }
+    if (NULL != item) {
         while (pmix_list_get_end(&pmix_globals.events.single_events) != (item = pmix_list_get_next(item))) {
             nxt = (pmix_event_hdlr_t *) item;
             if (nxt->codes[0] == chain->status && pmix_notify_check_range(&nxt->rng, &chain->source)
@@ -522,13 +525,11 @@ static void cycle_events(int sd, short args, void *cbdata)
     }
 
     /* see if we need to continue with the multi code events */
-    if (NULL != chain->evhdlr->codes || NULL != item) {
-        /* the last handler was for a multi-code event, or we exhausted
-         * all the single code events */
-        if (PMIX_EVENT_ORDER_FIRST_OVERALL == chain->evhdlr->precedence) {
-            item = pmix_list_get_begin(&pmix_globals.events.multi_events);
-        } else if (NULL == item) {
-            /* if the last handler was multi-code, then start from that point */
+    if (NULL != item || 1 < chain->evhdlr->ncodes) {
+        /* we exhausted all the single code events, or the last
+         * handler was for a multi-code event */
+        if (NULL == item) {
+            /* the last handler was multi-code, so start from that point */
             item = &chain->evhdlr->super;
         }
         while (pmix_list_get_end(&pmix_globals.events.multi_events)
@@ -573,12 +574,11 @@ static void cycle_events(int sd, short args, void *cbdata)
 
     /* if they didn't want it to go to a default handler, then ignore them */
     if (!chain->nondefault) {
-        if (PMIX_EVENT_ORDER_FIRST_OVERALL == chain->evhdlr->precedence) {
-            item = pmix_list_get_begin(&pmix_globals.events.default_events);
-        } else if (NULL == item) {
+        if (NULL == item) {
+            /* the last handler was a default handler, so continue from it */
             item = &chain->evhdlr->super;
         }
-        if (pmix_list_get_end(&pmix_globals.events.default_events) != (item = pmix_list_get_next(item))) {
+        while (pmix_list_get_end(&pmix_globals.events.default_events) != (item = pmix_list_get_next(item))) {
             nxt = (pmix_event_hdlr_t *) item;
             /* if this event handler provided a range, check to see if
              * the source fits within it */
