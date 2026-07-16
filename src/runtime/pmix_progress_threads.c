@@ -410,44 +410,6 @@ pmix_status_t pmix_progress_thread_stop(const char *name)
     return PMIX_ERR_NOT_FOUND;
 }
 
-pmix_status_t pmix_progress_thread_finalize(const char *name)
-{
-    pmix_progress_tracker_t *trk;
-
-    if (!inited) {
-        /* nothing we can do */
-        return PMIX_ERR_NOT_FOUND;
-    }
-
-    if (NULL == name) {
-        if (pmix_globals.external_progress) {
-            return PMIX_SUCCESS;
-        }
-        name = shared_thread_name;
-        // mark progress thread as stopped
-        pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
-    }
-
-    /* find the specified engine */
-    PMIX_LIST_FOREACH (trk, &tracking, pmix_progress_tracker_t) {
-        if (0 == strcmp(name, trk->name)) {
-            /* If the refcount is still above 0, we're done here */
-            if (trk->refcount > 0) {
-                return PMIX_SUCCESS;
-            }
-
-            pmix_list_remove_item(&tracking, &trk->super);
-            if (trk == shared_thread_tracker) {
-                shared_thread_tracker = NULL;
-            }
-            PMIX_RELEASE(trk);
-            return PMIX_SUCCESS;
-        }
-    }
-
-    return PMIX_ERR_NOT_FOUND;
-}
-
 /*
  * Stop the progress thread, but don't delete the tracker (or event base)
  */
