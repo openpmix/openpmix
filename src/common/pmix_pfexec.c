@@ -32,6 +32,7 @@
 #include "pmix_config.h"
 
 #include <stdlib.h>
+#include <ctype.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
@@ -156,6 +157,12 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
             PMIX_RELEASE(cd->child);
             PMIX_RELEASE(cd);
         }
+    } else {
+        /* this proc is done, but other procs in its nspace are still
+         * running - release the completed child and the caddy so they
+         * are not leaked */
+        PMIX_RELEASE(cd->child);
+        PMIX_RELEASE(cd);
     }
 }
 
@@ -226,10 +233,10 @@ static pmix_status_t setup_path(pmix_app_t *app)
 
 pmix_status_t pmix_pfexec_base_spawn_job(pmix_setup_caddy_t *fcd)
 {
-     sigset_t unblock;
+    sigset_t unblock;
 
-     pmix_output_verbose(5, pmix_client_globals.spawn_output,
-                        "%s pfexec:linux spawning child job",
+    pmix_output_verbose(5, pmix_client_globals.spawn_output,
+                        "%s pfexec spawning child job",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
     if (NULL == pmix_pfexec_globals.handler) {
@@ -520,6 +527,33 @@ static pmix_status_t sigproc(pid_t pd, int signum)
     return 0;
 }
 
+/* The kill sequence (SIGCONT, pause, SIGTERM, pause, SIGKILL) must not
+ * block the progress thread with sleep(); instead it is driven as a
+ * timer-based state machine. Each pause is an evtimer of
+ * timeout_before_sigkill seconds scheduled on evbase; the caddy carries
+ * the target child across the stages, and the blocking caller stays
+ * parked on scd->lock until the sequence finishes. */
+
+static void kill_stage2(int sd, short args, void *cbdata);
+static void kill_stage3(int sd, short args, void *cbdata);
+
+static void kill_pause(pmix_pfexec_signal_caddy_t *scd, event_callback_fn next)
+{
+    struct timeval tv = {0, 0};
+
+    tv.tv_sec = pmix_pfexec_globals.timeout_before_sigkill;
+    pmix_event_evtimer_set(pmix_globals.evbase, &scd->ev, next, scd);
+    PMIX_POST_OBJECT(scd);
+    pmix_event_evtimer_add(&scd->ev, &tv);
+}
+
+static void kill_finish(pmix_pfexec_signal_caddy_t *scd)
+{
+    PMIX_RELEASE(scd->child);
+    PMIX_WAKEUP_THREAD(scd->lock);
+    PMIX_RELEASE(scd);
+}
+
 void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
 {
     pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t *) cbdata;
@@ -546,6 +580,7 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
      * conditions when we are deliberately killing the process
      */
     pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
+    scd->child = child;
 
     /* First send a SIGCONT in case the process is in stopped state.
        If it is in a stopped state and we do not first change it to
@@ -555,28 +590,41 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
                          PMIX_NAME_PRINT(&pmix_globals.myid));
     sigproc(child->pid, SIGCONT);
 
-    /* wait a little to give the proc a chance to wakeup */
-    sleep(pmix_pfexec_globals.timeout_before_sigkill);
+    /* wait a little to give the proc a chance to wakeup, then continue
+     * to the SIGTERM stage */
+    kill_pause(scd, kill_stage2);
+}
+
+static void kill_stage2(int sd, short args, void *cbdata)
+{
+    pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     /* issue a SIGTERM */
     pmix_output_verbose(5, pmix_client_globals.spawn_output, "%s SENDING SIGTERM",
                          PMIX_NAME_PRINT(&pmix_globals.myid));
-    scd->lock->status = sigproc(child->pid, SIGTERM);
+    scd->lock->status = sigproc(scd->child->pid, SIGTERM);
 
     if (0 != scd->lock->status) {
-        /* wait a little again */
-        sleep(pmix_pfexec_globals.timeout_before_sigkill);
-        /* issue a SIGKILL */
-        pmix_output_verbose(5, pmix_client_globals.spawn_output, "%s SENDING SIGKILL",
-                             PMIX_NAME_PRINT(&pmix_globals.myid));
-        scd->lock->status = sigproc(child->pid, SIGKILL);
+        /* wait a little again, then escalate to SIGKILL */
+        kill_pause(scd, kill_stage3);
+        return;
     }
 
-    /* cleanup */
-    PMIX_RELEASE(child);
-    PMIX_WAKEUP_THREAD(scd->lock);
-    PMIX_RELEASE(scd);
+    kill_finish(scd);
+}
 
-    return;
+static void kill_stage3(int sd, short args, void *cbdata)
+{
+    pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    /* issue a SIGKILL */
+    pmix_output_verbose(5, pmix_client_globals.spawn_output, "%s SENDING SIGKILL",
+                         PMIX_NAME_PRINT(&pmix_globals.myid));
+    scd->lock->status = sigproc(scd->child->pid, SIGKILL);
+
+    kill_finish(scd);
 }
 
 void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata)
@@ -596,6 +644,7 @@ void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata)
     if (NULL == child) {
         scd->lock->status = PMIX_SUCCESS;
         PMIX_WAKEUP_THREAD(scd->lock);
+        PMIX_RELEASE(scd);
         return;
     }
 
@@ -604,6 +653,7 @@ void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata)
     scd->lock->status = sigproc(child->pid, scd->signal);
 
     PMIX_WAKEUP_THREAD(scd->lock);
+    PMIX_RELEASE(scd);
 }
 
 static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
@@ -633,11 +683,25 @@ static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
     /* always leave stdin available in case we forward to it */
     if (pipe(opts->p_stdin) < 0) {
         PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
+        /* release the stdout pipe/pty we already opened */
+        close(opts->p_stdout[0]);
+        close(opts->p_stdout[1]);
+        opts->p_stdout[0] = -1;
+        opts->p_stdout[1] = -1;
         return PMIX_ERR_SYS_OTHER;
     }
 
     if (pipe(opts->p_stderr) < 0) {
         PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
+        /* release the stdout and stdin pipes we already opened */
+        close(opts->p_stdout[0]);
+        close(opts->p_stdout[1]);
+        close(opts->p_stdin[0]);
+        close(opts->p_stdin[1]);
+        opts->p_stdout[0] = -1;
+        opts->p_stdout[1] = -1;
+        opts->p_stdin[0] = -1;
+        opts->p_stdin[1] = -1;
         return PMIX_ERR_SYS_OTHER;
     }
 
@@ -859,13 +923,13 @@ static pmix_status_t register_nspace(char *nspace, pmix_setup_caddy_t *fcd)
             PMIX_INFO_LIST_START(pinfo);
             /* must start with the rank */
             PMIX_INFO_LIST_ADD(rc, pinfo, PMIX_RANK, &rk, PMIX_PROC_RANK);
-            ++rk;
             /* app number for this proc */
             u32 = n;
             PMIX_INFO_LIST_ADD(rc, pinfo, PMIX_APPNUM, &u32, PMIX_UINT32);
             /* local rank is the same as rank since we only fork locally */
             u16 = rk;
             PMIX_INFO_LIST_ADD(rc, pinfo, PMIX_LOCAL_RANK, &u16, PMIX_UINT16);
+            ++rk;
             /* convert the list into an array */
             PMIX_INFO_LIST_CONVERT(rc, pinfo, &darray);
             /* release the list */
@@ -994,6 +1058,7 @@ static int close_open_file_descriptors(int write_fd, int keepalive)
      * middle of the scan. */
     int dir_scan_fd = dirfd(dir);
     if (dir_scan_fd < 0) {
+        closedir(dir);
         return PMIX_ERR_FILE_OPEN_FAILURE;
     }
 
@@ -1094,7 +1159,7 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
     /* Exec the new executable */
     execve(app->cmd, app->argv, env);
     errval = errno;
-    if (0 != getcwd(dir, sizeof(dir))) {
+    if (NULL == getcwd(dir, sizeof(dir))) {
         pmix_strncpy(dir, "GETCWD-FAILED", sizeof(dir));
     }
     send_error_show_help(write_fd, 1, "help-pfexec-base.txt", "execve error",
@@ -1108,14 +1173,22 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
     pmix_pfexec_pipe_err_msg_t msg;
     char file[PMIX_PFEXEC_MAX_FILE_LEN + 1], topic[PMIX_PFEXEC_MAX_TOPIC_LEN + 1], *str = NULL;
 
-    if (child->opts.connect_stdin && 0 <= child->opts.p_stdin[0]) {
+    /* close the child-side ends of the stdio pipes - the parent keeps
+     * only the read ends of stdout/stderr and the write end of stdin
+     * (wired to the IOF sink/read events). These are marked closed so
+     * the child destructor does not close them a second time. */
+    if (0 <= child->opts.p_stdin[0]) {
         close(child->opts.p_stdin[0]);
+        child->opts.p_stdin[0] = -1;
     }
     if (0 <= child->opts.p_stdout[1]) {
         close(child->opts.p_stdout[1]);
+        child->opts.p_stdout[1] = -1;
     }
-    if (0 <= child->opts.p_stderr[1])
+    if (0 <= child->opts.p_stderr[1]) {
         close(child->opts.p_stderr[1]);
+        child->opts.p_stderr[1] = -1;
+    }
     if (0 <= child->keepalive[1]) {
         close(child->keepalive[1]);
     }
@@ -1238,6 +1311,8 @@ static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env)
 
     if (child->pid < 0) {
         PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
+        close(p[0]);
+        close(p[1]);
         return PMIX_ERR_SYS_OTHER;
     }
 
@@ -1257,6 +1332,49 @@ static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env)
     return do_parent(app, child, p[0]);
 }
 
+/* Caddy used to hand a reaped child's exit status from the SIGCHLD
+ * handler over to the progress thread. The SIGCHLD handler may run on a
+ * host-provided auxiliary event base (a different thread than evbase),
+ * but all access to the pmix_pfexec_globals.children list must happen on
+ * the progress thread, so the handler ships the (pid, status) across. */
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pid_t pid;
+    int status;
+} pmix_pfexec_reap_caddy_t;
+static PMIX_CLASS_INSTANCE(pmix_pfexec_reap_caddy_t, pmix_object_t, NULL, NULL);
+
+/* Runs on the progress thread: match the reaped pid to its child, record
+ * the exit status, and check whether the job has now completed. */
+static void child_reaped(int sd, short args, void *cbdata)
+{
+    pmix_pfexec_reap_caddy_t *rc = (pmix_pfexec_reap_caddy_t *) cbdata;
+    pmix_pfexec_child_t *child;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(rc);
+
+    PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+        if (rc->pid == child->pid) {
+            /* record the exit status */
+            if (WIFEXITED(rc->status)) {
+                child->exitcode = WEXITSTATUS(rc->status);
+            } else if (WIFSIGNALED(rc->status)) {
+                child->exitcode = WTERMSIG(rc->status) + 128;
+            }
+            /* mark the child as complete */
+            child->completed = true;
+            if ((NULL == child->stdoutev || !child->stdoutev->active)
+                && (NULL == child->stderrev || !child->stderrev->active)) {
+                PMIX_PFEXEC_CHK_COMPLETE(child);
+            }
+            break;
+        }
+    }
+    PMIX_RELEASE(rc);
+}
+
 /* callback from the event library whenever a SIGCHLD is received */
 static void wait_signal_callback(int fd, short event, void *arg)
 {
@@ -1265,7 +1383,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
     pmix_event_t *signal = (pmix_event_t *) arg;
     int status;
     pid_t pid;
-    pmix_pfexec_child_t *child;
+    pmix_pfexec_reap_caddy_t *rc;
 
     PMIX_ACQUIRE_OBJECT(signal);
 
@@ -1290,26 +1408,13 @@ static void wait_signal_callback(int fd, short event, void *arg)
             return;
         }
 
-        /* we are already in an event, so it is safe to access globals */
-        PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-            if (pid == child->pid) {
-                /* record the exit status */
-                if (WIFEXITED(status)) {
-                    child->exitcode = WEXITSTATUS(status);
-                } else {
-                    if (WIFSIGNALED(status)) {
-                        child->exitcode = WTERMSIG(status) + 128;
-                    }
-                }
-                /* mark the child as complete */
-                child->completed = true;
-                if ((NULL == child->stdoutev || !child->stdoutev->active)
-                    && (NULL == child->stderrev || !child->stderrev->active)) {
-                    PMIX_PFEXEC_CHK_COMPLETE(child);
-                }
-                break;
-            }
-        }
+        /* waitpid is process-global and safe from any thread, but the
+         * children list is not - hand the exit status to the progress
+         * thread rather than touching the list here */
+        rc = PMIX_NEW(pmix_pfexec_reap_caddy_t);
+        rc->pid = pid;
+        rc->status = status;
+        PMIX_THREADSHIFT(rc, child_reaped);
     }
 }
 
@@ -1336,12 +1441,26 @@ static void chcon(pmix_pfexec_child_t *p)
 }
 static void chdes(pmix_pfexec_child_t *p)
 {
+    /* the IOF sink/read events own and close the parent-side ends of the
+     * stdio pipes (p_stdin[1], p_stdout[0], p_stderr[0]) */
     PMIX_DESTRUCT(&p->stdinsink);
     if (NULL != p->stdoutev) {
         PMIX_RELEASE(p->stdoutev);
     }
     if (NULL != p->stderrev) {
         PMIX_RELEASE(p->stderrev);
+    }
+    /* close any child-side pipe ends still open - normally do_parent
+     * closes these, but on an error path between setup_prefork and the
+     * fork they can still be open here */
+    if (0 <= p->opts.p_stdin[0]) {
+        close(p->opts.p_stdin[0]);
+    }
+    if (0 <= p->opts.p_stdout[1]) {
+        close(p->opts.p_stdout[1]);
+    }
+    if (0 <= p->opts.p_stderr[1]) {
+        close(p->opts.p_stderr[1]);
     }
     if (0 <= p->keepalive[0]) {
         close(p->keepalive[0]);
@@ -1354,10 +1473,28 @@ PMIX_CLASS_INSTANCE(pmix_pfexec_child_t,
                     pmix_list_item_t,
                     chcon, chdes);
 
+static void scdcon(pmix_pfexec_signal_caddy_t *p)
+{
+    p->proc = NULL;
+    p->signal = 0;
+    p->lock = NULL;
+    p->child = NULL;
+}
 PMIX_CLASS_INSTANCE(pmix_pfexec_signal_caddy_t,
                     pmix_object_t,
-                    NULL, NULL);
+                    scdcon, NULL);
 
+static void cmplcon(pmix_pfexec_cmpl_caddy_t *p)
+{
+    p->child = NULL;
+    PMIX_INFO_CONSTRUCT(&p->info[0]);
+    PMIX_INFO_CONSTRUCT(&p->info[1]);
+}
+static void cmpldes(pmix_pfexec_cmpl_caddy_t *p)
+{
+    PMIX_INFO_DESTRUCT(&p->info[0]);
+    PMIX_INFO_DESTRUCT(&p->info[1]);
+}
 PMIX_CLASS_INSTANCE(pmix_pfexec_cmpl_caddy_t,
                     pmix_object_t,
-                    NULL, NULL);
+                    cmplcon, cmpldes);
