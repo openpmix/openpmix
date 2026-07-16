@@ -284,6 +284,20 @@ not lost and so a future refactor does not silently reintroduce them:
 4. **`pmix_hwloc_get_topology_size` did no validation** — it now guards a
    NULL `ptr`/`ptr->topology` and applies the same `source` check the
    other datatype handlers use.
+5. **`pmix_hwloc_parse_cpuset_string` wrote through its `const char *`
+   input** — it temporarily NUL-terminated the caller's string to compare
+   the `hwloc:` prefix, which is undefined behavior and crashes on a
+   read-only string literal. It now compares in place without mutating.
+6. **`pack_cpuset` / `print_cpuset` misread `hwloc_bitmap_list_asprintf`**
+   — that function returns the character count (`-1` only on error), *not*
+   `0` on success as its header comment claims, so the `0 != rc` checks
+   treated every bound (non-empty) cpuset as a failure. They now test for
+   a negative return.
+
+Items 5 and 6 were caught by the `hwloc_datatype` unit test
+([`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c), wired
+into `make check`), which round-trips and prints topologies and cpusets
+through the public API. Extend it when you touch this directory.
 
 If you find a genuine bug here, fix it in the source as a standalone,
 signed-off commit per the contribution rules — never bend a test to make
