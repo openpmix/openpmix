@@ -263,6 +263,67 @@ static void test_multiple_ranks(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Qualified store/fetch                                                */
+/* ------------------------------------------------------------------ */
+
+/* Regression for the pmix_hash_store qualifier-array construction bug:
+ * when the info array mixes non-qualifier and qualifier entries, the
+ * qualifier's index was written to the wrong (out-of-bounds) slot, so the
+ * stored qualifier index was left uninitialized and a later qualified
+ * fetch failed to match (and the OOB write corrupted the heap). Store a
+ * value qualified by a marked qualifier that is preceded by a
+ * non-qualifier info, then confirm a matching qualified fetch finds it. */
+static void test_store_fetch_qualified(void)
+{
+    pmix_hash_table_t *t = new_table();
+    pmix_kval_t *kv = make_kval_str("unit.qkey", "qvalue");
+    pmix_info_t quals[2];
+    pmix_info_t fq[1];
+    pmix_list_t kvals;
+    pmix_status_t rc;
+    uint32_t plain = 7, qval = 42;
+
+    /* quals[0] is an ordinary (non-qualifier) info; quals[1] is the
+     * actual qualifier - this ordering is what triggered the bug. */
+    PMIX_INFO_LOAD(&quals[0], "unit.plain.directive", &plain, PMIX_UINT32);
+    PMIX_INFO_LOAD(&quals[1], "unit.qualifier", &qval, PMIX_UINT32);
+    PMIX_INFO_SET_QUALIFIER(&quals[1]);
+
+    rc = pmix_hash_store(t, 0, kv, quals, 2, NULL);
+    PMIX_RELEASE(kv);
+    report("store_qualified: store returns SUCCESS", PMIX_SUCCESS == rc);
+
+    /* fetch qualified by the same key/value must match */
+    PMIX_INFO_LOAD(&fq[0], "unit.qualifier", &qval, PMIX_UINT32);
+    PMIX_INFO_SET_QUALIFIER(&fq[0]);
+
+    PMIX_CONSTRUCT(&kvals, pmix_list_t);
+    rc = pmix_hash_fetch(t, 0, "unit.qkey", fq, 1, &kvals, NULL);
+    report("store_qualified: qualified fetch matches",
+           PMIX_SUCCESS == rc && !pmix_list_is_empty(&kvals));
+    drain_list(&kvals);
+    PMIX_DESTRUCT(&kvals);
+
+    /* fetch qualified by a different value must NOT match */
+    qval = 99;
+    PMIX_INFO_DESTRUCT(&fq[0]);
+    PMIX_INFO_LOAD(&fq[0], "unit.qualifier", &qval, PMIX_UINT32);
+    PMIX_INFO_SET_QUALIFIER(&fq[0]);
+    PMIX_CONSTRUCT(&kvals, pmix_list_t);
+    rc = pmix_hash_fetch(t, 0, "unit.qkey", fq, 1, &kvals, NULL);
+    report("store_qualified: mismatched qualifier not found",
+           PMIX_ERR_NOT_FOUND == rc);
+    drain_list(&kvals);
+    PMIX_DESTRUCT(&kvals);
+
+    PMIX_INFO_DESTRUCT(&quals[0]);
+    PMIX_INFO_DESTRUCT(&quals[1]);
+    PMIX_INFO_DESTRUCT(&fq[0]);
+    pmix_hash_remove_data(t, 0, NULL, NULL);
+    PMIX_RELEASE(t);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -286,6 +347,7 @@ int main(int argc, char **argv)
     test_store_overwrite();
     test_remove_then_fetch();
     test_multiple_ranks();
+    test_store_fetch_qualified();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 

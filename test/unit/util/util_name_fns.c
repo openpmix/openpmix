@@ -177,6 +177,35 @@ static void test_compare_proc_rank_order(void)
 
 /* ------------------------------------------------------------------ */
 
+/* Regression: pmix_rank_t is uint32_t and the special ranks live at the
+ * top of the range. A plain "a->rank - b->rank" comparator reduces mod
+ * 2^32 and returns the wrong sign when the ranks differ by more than
+ * INT_MAX, mis-ordering a sort. A normal rank must always compare less
+ * than PMIX_RANK_WILDCARD / PMIX_RANK_UNDEF. */
+static void test_compare_proc_special_ranks(void)
+{
+    pmix_proc_t normal, wildcard, undef;
+
+    memset(&normal, 0, sizeof(normal));
+    memset(&wildcard, 0, sizeof(wildcard));
+    memset(&undef, 0, sizeof(undef));
+    pmix_strncpy(normal.nspace, "ns", PMIX_MAX_NSLEN);
+    pmix_strncpy(wildcard.nspace, "ns", PMIX_MAX_NSLEN);
+    pmix_strncpy(undef.nspace, "ns", PMIX_MAX_NSLEN);
+    normal.rank = 0;
+    wildcard.rank = PMIX_RANK_WILDCARD; /* 0xFFFFFFFE */
+    undef.rank = PMIX_RANK_UNDEF;       /* 0xFFFFFFFF */
+
+    report("compare_proc_special: 0 < WILDCARD",
+           pmix_util_compare_proc(&normal, &wildcard) < 0);
+    report("compare_proc_special: WILDCARD > 0",
+           pmix_util_compare_proc(&wildcard, &normal) > 0);
+    report("compare_proc_special: WILDCARD < UNDEF",
+           pmix_util_compare_proc(&wildcard, &undef) < 0);
+    report("compare_proc_special: identical special ranks equal",
+           0 == pmix_util_compare_proc(&undef, &undef));
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -200,6 +229,7 @@ int main(int argc, char **argv)
     test_compare_proc_equal();
     test_compare_proc_nspace_diff();
     test_compare_proc_rank_order();
+    test_compare_proc_special_ranks();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;
