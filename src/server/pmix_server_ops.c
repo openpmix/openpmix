@@ -821,35 +821,35 @@ static void _check_cached_events(int sd, short args, void *cbdata)
             /* nothing we can do */
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             ret = PMIX_ERR_NOMEM;
+            if (found) {
+                /* this event was checked out of the hotel above */
+                PMIX_RELEASE(cd);
+            }
             break;
         }
         /* pack the info data stored in the event */
         PMIX_BFROPS_PACK(ret, scd->peer, relay, &cmd, 1, PMIX_COMMAND);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            break;
+        if (PMIX_SUCCESS == ret) {
+            PMIX_BFROPS_PACK(ret, scd->peer, relay, &cd->status, 1, PMIX_STATUS);
         }
-        PMIX_BFROPS_PACK(ret, scd->peer, relay, &cd->status, 1, PMIX_STATUS);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            break;
+        if (PMIX_SUCCESS == ret) {
+            PMIX_BFROPS_PACK(ret, scd->peer, relay, &cd->source, 1, PMIX_PROC);
         }
-        PMIX_BFROPS_PACK(ret, scd->peer, relay, &cd->source, 1, PMIX_PROC);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            break;
+        if (PMIX_SUCCESS == ret) {
+            PMIX_BFROPS_PACK(ret, scd->peer, relay, &cd->ninfo, 1, PMIX_SIZE);
         }
-        PMIX_BFROPS_PACK(ret, scd->peer, relay, &cd->ninfo, 1, PMIX_SIZE);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            break;
-        }
-        if (0 < cd->ninfo) {
+        if (PMIX_SUCCESS == ret && 0 < cd->ninfo) {
             PMIX_BFROPS_PACK(ret, scd->peer, relay, cd->info, cd->ninfo, PMIX_INFO);
-            if (PMIX_SUCCESS != ret) {
-                PMIX_ERROR_LOG(ret);
-                break;
+        }
+        if (PMIX_SUCCESS != ret) {
+            /* release the relay we could not fill, and the event if it was
+             * checked out of the hotel, before abandoning the loop */
+            PMIX_ERROR_LOG(ret);
+            PMIX_RELEASE(relay);
+            if (found) {
+                PMIX_RELEASE(cd);
             }
+            break;
         }
         PMIX_SERVER_QUEUE_REPLY(ret, scd->peer, 0, relay);
         if (PMIX_SUCCESS != ret) {

@@ -1123,10 +1123,13 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
      * stored (e.g., via a register_nspace call in response to a request
      * for job-level data). For now, we will retrieve it so it can
      * be stored for each peer */
+    /* construct this unconditionally so that every error path jumping to
+     * the 'complete' label releases it (and its retained namespace
+     * references) in one place */
+    PMIX_CONSTRUCT(&nspaces, pmix_list_t);
     if (PMIX_SUCCESS == caddy->status) {
         /* cycle across all outstanding local requests and collect their
          * unique nspaces so we can store this for each one */
-        PMIX_CONSTRUCT(&nspaces, pmix_list_t);
         PMIX_LIST_FOREACH (dm, &caddy->lcd->loc_reqs, pmix_dmdx_request_t) {
             /* this is a local proc that has requested this data - search
              * the list of nspace's and see if we already have it */
@@ -1220,6 +1223,9 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         caddy->status = rc;
+                        PMIX_RELEASE(kv);
+                        pbkt.base_ptr = NULL; // do not free the caller's data
+                        PMIX_DESTRUCT(&pbkt);
                         goto complete;
                     }
                     PMIX_RELEASE(kv);
@@ -1237,10 +1243,10 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                 }
             }
         }
-        PMIX_LIST_DESTRUCT(&nspaces);
     }
 
 complete:
+    PMIX_LIST_DESTRUCT(&nspaces);
     /* always execute the callback to avoid having the client hang */
     pmix_pending_resolve(nptr, caddy->lcd->proc.rank,
                          caddy->status, PMIX_REMOTE, caddy->lcd);

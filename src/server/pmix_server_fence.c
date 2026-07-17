@@ -138,6 +138,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
         PMIX_BFROPS_UNPACK(rc, peer, buf, &b2, &cnt, PMIX_BUFFER);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&b2);
             return rc;
         }
         /* unpack the buffer and store the values - we store them
@@ -934,7 +935,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
-        return rc;
+        goto cleanup;
     }
     ninfo = ninf + 2;
     PMIX_INFO_CREATE(info, ninfo);
