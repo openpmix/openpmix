@@ -100,4 +100,4 @@ PMIX_EXPORT int pmix_tsd_keys_destruct(void);
 
 END_C_DECLS
 
-#endif /* PMIX_MTHREADS_TSD_H */
+#endif /* PMIX_THREADS_TSD_H */

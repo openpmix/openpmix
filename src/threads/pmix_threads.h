@@ -28,7 +28,6 @@
 #include "src/include/pmix_config.h"
 
 #include <pthread.h>
-#include <signal.h>
 
 #include "src/class/pmix_object.h"
 #include "src/include/pmix_atomic.h"
@@ -42,7 +41,7 @@ BEGIN_C_DECLS
 
 typedef void *(*pmix_thread_fn_t)(pmix_object_t *);
 
-#define PMIX_THREAD_CANCELLED ((void *) 1);
+#define PMIX_THREAD_CANCELLED ((void *) 1)
 
 struct pmix_thread_t {
     pmix_object_t super;
@@ -69,7 +68,7 @@ typedef struct {
     pmix_status_t status;
     pmix_mutex_t mutex;
     pmix_condition_t cond;
-    volatile bool active;
+    bool active;
 } pmix_lock_t;
 
 #define PMIX_LOCK_STATIC_INIT               \
@@ -101,13 +100,13 @@ typedef struct {
         do {                                                                    \
             pmix_mutex_lock(&(lck)->mutex);                                     \
             if (pmix_debug_threads) {                                           \
-                pmix_output(0, "Waiting for thread %s:%d", __FILE__, __LINE__); \
+                pmix_output(0, "Acquiring thread %s:%d", __FILE__, __LINE__);   \
             }                                                                   \
             while ((lck)->active) {                                             \
                 pmix_condition_wait(&(lck)->cond, &(lck)->mutex);               \
             }                                                                   \
             if (pmix_debug_threads) {                                           \
-                pmix_output(0, "Thread obtained %s:%d", __FILE__, __LINE__);    \
+                pmix_output(0, "Thread acquired %s:%d", __FILE__, __LINE__);    \
             }                                                                   \
             PMIX_ACQUIRE_OBJECT(lck);                                           \
             (lck)->active = true;                                               \
@@ -196,10 +195,6 @@ typedef struct {
 
 PMIX_EXPORT int pmix_thread_start(pmix_thread_t *);
 PMIX_EXPORT int pmix_thread_join(pmix_thread_t *, void **thread_return);
-PMIX_EXPORT bool pmix_thread_self_compare(pmix_thread_t *);
-PMIX_EXPORT pmix_thread_t *pmix_thread_get_self(void);
-PMIX_EXPORT void pmix_thread_kill(pmix_thread_t *, int sig);
-PMIX_EXPORT void pmix_thread_set_main(void);
 
 END_C_DECLS
 

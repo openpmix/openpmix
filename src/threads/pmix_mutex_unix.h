@@ -51,55 +51,14 @@ struct pmix_mutex_t {
     pmix_object_t super;
 
     pthread_mutex_t m_lock_pthread;
-
-#if PMIX_ENABLE_DEBUG
-    int m_lock_debug;
-    const char *m_lock_file;
-    int m_lock_line;
-#endif
 };
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_mutex_t);
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_recursive_mutex_t);
 
-#if defined(PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP)
-#    define PMIX_PTHREAD_RECURSIVE_MUTEX_INITIALIZER PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP
-#elif defined(PTHREAD_RECURSIVE_MUTEX_INITIALIZER)
-#    define PMIX_PTHREAD_RECURSIVE_MUTEX_INITIALIZER PTHREAD_RECURSIVE_MUTEX_INITIALIZER
-#endif
-
-#if PMIX_ENABLE_DEBUG
-#    define PMIX_MUTEX_STATIC_INIT                                                               \
-        {                                                                                        \
-            .super = PMIX_OBJ_STATIC_INIT(pmix_mutex_t),                                         \
-            .m_lock_pthread = PTHREAD_MUTEX_INITIALIZER, .m_lock_debug = 0, .m_lock_file = NULL, \
-            .m_lock_line = 0,                                                                    \
-        }
-#else
-#    define PMIX_MUTEX_STATIC_INIT                                                               \
-        {                                                                                        \
-            .super = PMIX_OBJ_STATIC_INIT(pmix_mutex_t),                                         \
-            .m_lock_pthread = PTHREAD_MUTEX_INITIALIZER,                                         \
-        }
-#endif
-
-#if defined(PMIX_PTHREAD_RECURSIVE_MUTEX_INITIALIZER)
-
-#    if PMIX_ENABLE_DEBUG
-#        define PMIX_RECURSIVE_MUTEX_STATIC_INIT                                               \
-            {                                                                                  \
-                .super = PMIX_OBJ_STATIC_INIT(pmix_mutex_t),                                   \
-                .m_lock_pthread = PMIX_PTHREAD_RECURSIVE_MUTEX_INITIALIZER, .m_lock_debug = 0, \
-                .m_lock_file = NULL, .m_lock_line = 0,                                         \
-            }
-#    else
-#        define PMIX_RECURSIVE_MUTEX_STATIC_INIT                            \
-            {                                                               \
-                .super = PMIX_OBJ_STATIC_INIT(pmix_mutex_t),                \
-                .m_lock_pthread = PMIX_PTHREAD_RECURSIVE_MUTEX_INITIALIZER, \
-            }
-#    endif
-
-#endif
+#define PMIX_MUTEX_STATIC_INIT                          \
+    {                                                   \
+        .super = PMIX_OBJ_STATIC_INIT(pmix_mutex_t),    \
+        .m_lock_pthread = PTHREAD_MUTEX_INITIALIZER,    \
+    }
 
 /************************************************************************
  *

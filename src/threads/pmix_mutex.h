@@ -44,7 +44,6 @@ BEGIN_C_DECLS
  * Opaque mutex object
  */
 typedef struct pmix_mutex_t pmix_mutex_t;
-typedef struct pmix_mutex_t pmix_recursive_mutex_t;
 
 /**
  * Try to acquire a mutex.
