@@ -2360,6 +2360,10 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
 
 exit:
+    /* mirror pmix_server_iofreg: on an async SUCCESS the host owns cd and
+     * releases it via the callback; on any error path here it was never
+     * handed off, so release it (previously it leaked on every error). */
+    PMIX_RELEASE(cd);
     return rc;
 }
 
@@ -2472,9 +2476,15 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
     if (PMIX_SUCCESS
         != (rc = pmix_host_server.push_stdin(&source, cd->procs, cd->nprocs, cd->info, cd->ninfo,
                                              cd->bo, stdcbfunc, cd))) {
-        if (PMIX_OPERATION_SUCCEEDED != rc) {
-            goto error;
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            /* the host completed atomically and will not call back - invoke
+             * the callback ourselves (it sends the reply and releases cd)
+             * and tell the switchyard we are done. Previously this path
+             * leaked cd (its procs, info, and byte object). */
+            stdcbfunc(PMIX_SUCCESS, cd);
+            return PMIX_SUCCESS;
         }
+        goto error;
     }
     return rc;
 
@@ -2671,6 +2681,10 @@ pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd, pmix_buffer_t *
     return PMIX_SUCCESS;
 
 exit:
+    /* every path reaching here failed before handing qcd to an async
+     * callback, so release it (and its retained server caddy) here.
+     * The sibling pmix_server_fabric_register does the same. */
+    PMIX_RELEASE(qcd);
     return rc;
 }
 
@@ -2839,6 +2853,9 @@ pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
         PMIX_RELEASE(pbkt);
     }
 
+    /* we queued the reply ourselves and return SUCCESS, so the switchyard
+     * will not release the caddy - we must do so here */
+    PMIX_RELEASE(cd);
     return PMIX_SUCCESS;
 }
 

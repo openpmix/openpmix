@@ -3620,7 +3620,10 @@ static void _resopcbfunc(int sd, short args, void *cbdata)
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    return;
+    /* the PTL owns the reply on a successful send - fall through to
+     * release the caddies (previously this path returned early, leaking
+     * cd, scd, scd->nspace, and scdwrapper on every successful reply) */
+    reply = NULL;
 
     /* cleanup */
 cleanup:
