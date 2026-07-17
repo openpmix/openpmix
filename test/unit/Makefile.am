@@ -27,9 +27,9 @@ noinst_SCRIPTS = run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_grpme
 
 EXTRA_DIST = run_gds_fallback.pl.in run_simpcycle.pl.in run_toolcycle.pl.in run_grpmember.pl.in run_grpinvite.pl.in run_grptimeout.pl.in run_grpdecline.pl.in run_grpabort.pl.in run_grpmemberfail.pl.in run_grpleader.pl.in run_grpcabort.pl.in run_grpctimeout.pl.in run_monitor.pl.in
 
-check_PROGRAMS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback pmix_log collective_status client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support
+check_PROGRAMS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback pmix_log collective_status collect_job_info trk_complete tracker_match client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support
 
-TESTS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_grpmember.pl run_grpinvite.pl run_grptimeout.pl run_grpdecline.pl run_grpabort.pl run_grpmemberfail.pl run_grpleader.pl run_grpcabort.pl run_grpctimeout.pl run_monitor.pl pmix_log collective_status client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support
+TESTS = compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_grpmember.pl run_grpinvite.pl run_grptimeout.pl run_grpdecline.pl run_grpabort.pl run_grpmemberfail.pl run_grpleader.pl run_grpcabort.pl run_grpctimeout.pl run_monitor.pl pmix_log collective_status collect_job_info trk_complete tracker_match client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support
 
 compress_SOURCES =  \
         compress.c
@@ -73,6 +73,24 @@ collective_status_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 collective_status_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+collect_job_info_SOURCES = \
+        collect_job_info.c
+collect_job_info_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+collect_job_info_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+trk_complete_SOURCES = \
+        trk_complete.c
+trk_complete_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+trk_complete_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+tracker_match_SOURCES = \
+        tracker_match.c
+tracker_match_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+tracker_match_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 client_cycle_SOURCES = \
         client_cycle.c
 client_cycle_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -111,4 +129,4 @@ info_support_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 clean-local:
-	rm -f compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback pmix_log collective_status client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support
+	rm -f compress preg bfrops_regex2 bfrops_alloc_inherit gds_fallback pmix_log collective_status collect_job_info trk_complete tracker_match client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support
