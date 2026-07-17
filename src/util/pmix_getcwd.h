@@ -36,9 +36,9 @@ BEGIN_C_DECLS
  * @param buf Caller-allocated buffer to put the result
  * @param size Length of the buf array
  *
- * @retval PMIX_ERR_OUT_OF_RESOURCE If internal malloc() fails.
- * @retval PMIX_ERR_TEMP_OUT_OF_RESOURCE If the supplied buf buffer
- * was not long enough to handle the result.
+ * @retval PMIX_ERR_OUT_OF_RESOURCE If an internal malloc() fails, or if
+ * the supplied buf buffer was not long enough to hold the full result
+ * (in which case as much of the basename as fits is copied in).
  * @retval PMIX_ERR_BAD_PARAM If buf is NULL or size>INT_MAX
  * @retval PMIX_ERR_IN_ERRNO If an other error occurred
  * @retval PMIX_SUCCESS If all went well and a valid value was placed
