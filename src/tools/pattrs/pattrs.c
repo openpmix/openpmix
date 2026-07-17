@@ -186,7 +186,12 @@ int main(int argc, char **argv)
     pmix_cli_item_t *opt;
     char **fns = NULL, *ptr;
     size_t n, m;
-    myquery_data_t mq;
+    myquery_data_t mq = {
+        .lock = PMIX_LOCK_STATIC_INIT,
+        .status = 0,
+        .info = NULL,
+        .ninfo = 0
+    };
     pmix_query_t query;
     pmix_regattr_t *reg;
     char **ans = NULL;
@@ -440,6 +445,9 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != mq.status) {
         fprintf(stderr, "PMIx_Query_info returned: %s\n", PMIx_Error_string(mq.status));
         rc = mq.status;
+    } else if (0 == mq.ninfo || NULL == mq.info) {
+        fprintf(stderr, "PMIx_Query_info returned no results\n");
+        rc = PMIX_ERR_NOT_FOUND;
     } else if (!PMIX_CHECK_KEY(&mq.info[0], PMIX_QUERY_ATTRIBUTE_SUPPORT)) {
         fprintf(stderr, "PMIx_Query_info returned incorrect key: %s\n", mq.info[0].key);
         rc = PMIX_ERR_BAD_PARAM;
