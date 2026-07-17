@@ -15,14 +15,20 @@ noinst_SCRIPTS = \
 	run_sched.sh.in \
     server.py \
     sched.py \
-    client.py
+    client.py \
+    test_bindings.py
 
 #########################
 # Support for "make check"
 
 if WANT_PYTHON_BINDINGS
 
+# test_bindings.py is a self-contained unittest suite that needs no live
+# server; it locates the built extension itself and SKIPs (exit 77) if the
+# pmix module cannot be imported.  run_server.sh / run_sched.sh exercise the
+# connected client/server/scheduler round-trip paths.
 TESTS = \
+    test_bindings.py \
     run_server.sh \
     run_sched.sh
 
