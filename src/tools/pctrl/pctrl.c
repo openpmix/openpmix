@@ -442,6 +442,8 @@ int main(int argc, char **argv)
     } else {
         req->info = (pmix_info_t *) darray.array;
         req->ninfo = darray.size;
+        /* the caddy now owns this array - tell its destructor to free it */
+        req->infocopy = true;
     }
     PMIx_Info_list_release(options);
 
@@ -452,6 +454,8 @@ int main(int argc, char **argv)
         if (PMIX_OPERATION_SUCCEEDED == rc) {
             fprintf(stderr, "Job control request %s granted\n", req->key);
             PMIX_RELEASE(req);
+            /* avoid a second release of the same caddy at "done:" */
+            req = NULL;
             rc = PMIX_SUCCESS;
             goto done;
         }
@@ -496,6 +500,14 @@ static pmix_status_t convert_procs(const char *vals,
     for (n=0; NULL != p[n]; n++) {
         // find the nspace/rank delimiting ':'
         r = strrchr(p[n], ':');
+        if (NULL == r) {
+            // no rank was provided - this is a malformed target
+            fprintf(stderr, "%s: malformed target \"%s\" - expected <nspace>:<rank>\n",
+                    pmix_tool_basename, p[n]);
+            PMIx_Argv_free(p);
+            PMIx_Data_array_destruct(array);
+            return PMIX_ERR_BAD_PARAM;
+        }
         *r = '\0';
         ++r;  // step over the colon
         PMIX_LOAD_NSPACE(procs[n].nspace, p[n]);
@@ -505,6 +517,7 @@ static pmix_status_t convert_procs(const char *vals,
             procs[n].rank = strtoul(r, NULL, 10);
         }
     }
+    PMIx_Argv_free(p);
     return PMIX_SUCCESS;
 
 }
