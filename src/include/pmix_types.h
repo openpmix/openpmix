@@ -176,66 +176,6 @@ static inline void *pmix_ptr_ltop(uint64_t value)
     return (void *) (uintptr_t) value;
 }
 
-#if defined(WORDS_BIGENDIAN) || !defined(HAVE_UNIX_BYTESWAP)
-static inline uint16_t pmix_swap_bytes2(uint16_t val) __pmix_attribute_const__;
-static inline uint16_t pmix_swap_bytes2(uint16_t val)
-{
-    union {
-        uint16_t bigval;
-        uint8_t arrayval[2];
-    } w, r;
-
-    w.bigval = val;
-    r.arrayval[0] = w.arrayval[1];
-    r.arrayval[1] = w.arrayval[0];
-
-    return r.bigval;
-}
-
-static inline uint32_t pmix_swap_bytes4(uint32_t val) __pmix_attribute_const__;
-static inline uint32_t pmix_swap_bytes4(uint32_t val)
-{
-    union {
-        uint32_t bigval;
-        uint8_t arrayval[4];
-    } w, r;
-
-    w.bigval = val;
-    r.arrayval[0] = w.arrayval[3];
-    r.arrayval[1] = w.arrayval[2];
-    r.arrayval[2] = w.arrayval[1];
-    r.arrayval[3] = w.arrayval[0];
-
-    return r.bigval;
-}
-
-static inline uint64_t pmix_swap_bytes8(uint64_t val) __pmix_attribute_const__;
-static inline uint64_t pmix_swap_bytes8(uint64_t val)
-{
-    union {
-        uint64_t bigval;
-        uint8_t arrayval[8];
-    } w, r;
-
-    w.bigval = val;
-    r.arrayval[0] = w.arrayval[7];
-    r.arrayval[1] = w.arrayval[6];
-    r.arrayval[2] = w.arrayval[5];
-    r.arrayval[3] = w.arrayval[4];
-    r.arrayval[4] = w.arrayval[3];
-    r.arrayval[5] = w.arrayval[2];
-    r.arrayval[6] = w.arrayval[1];
-    r.arrayval[7] = w.arrayval[0];
-
-    return r.bigval;
-}
-
-#else
-#    define pmix_swap_bytes2 htons
-#    define pmix_swap_bytes4 htonl
-#    define pmix_swap_bytes8 hton64
-#endif /* WORDS_BIGENDIAN || !HAVE_UNIX_BYTESWAP */
-
 #define PMIX_EV_TIMEOUT EV_TIMEOUT
 #define PMIX_EV_READ    EV_READ
 #define PMIX_EV_WRITE   EV_WRITE
