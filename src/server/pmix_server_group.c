@@ -1223,6 +1223,11 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             grpcbfunc(PMIX_SUCCESS, NULL, 0, blk, NULL, NULL);
             return PMIX_SUCCESS;
         }
+        /* detach this caddy from the tracker before releasing the block:
+         * releasing the block destructs trk->local_cbs, which would release
+         * this caddy, and the switchyard also releases it on our non-SUCCESS
+         * return -- a double free. The sibling error paths above do the same. */
+        pmix_list_remove_item(&trk->local_cbs, &cd->super);
         /* remove the tracker from the list */
         pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
         PMIX_RELEASE(blk);

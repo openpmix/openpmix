@@ -183,7 +183,16 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
             /* ensure that the switchyard doesn't release the caddy */
             rc = PMIX_SUCCESS;
         } else if (NULL == pmix_host_server.disconnect) {
-            PMIX_RELEASE(trk);
+            /* the host cannot execute this operation. Detach this caddy so
+             * the switchyard can send the error to this caller, and drive the
+             * op completion function to notify all other participants and tear
+             * down the tracker (unlink from collectives + release, exactly
+             * once). Releasing the still-linked tracker directly here would
+             * leave a dangling collectives entry and double-free this caddy. */
+            pmix_list_remove_item(&trk->local_cbs, &cd->super);
+            cd->trk = NULL;
+            trk->host_called = false;
+            cbfunc(PMIX_ERR_NOT_SUPPORTED, trk);
             rc = PMIX_ERR_NOT_SUPPORTED;
             goto cleanup;
         } else {
@@ -412,7 +421,16 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
             /* ensure that the switchyard doesn't release the caddy */
             rc = PMIX_SUCCESS;
         } else if (NULL == pmix_host_server.connect) {
-            PMIX_RELEASE(trk);
+            /* the host cannot execute this operation. Detach this caddy so
+             * the switchyard can send the error to this caller, and drive the
+             * op completion function to notify all other participants and tear
+             * down the tracker (unlink from collectives + release, exactly
+             * once). Releasing the still-linked tracker directly here would
+             * leave a dangling collectives entry and double-free this caddy. */
+            pmix_list_remove_item(&trk->local_cbs, &cd->super);
+            cd->trk = NULL;
+            trk->host_called = false;
+            cbfunc(PMIX_ERR_NOT_SUPPORTED, trk);
             rc = PMIX_ERR_NOT_SUPPORTED;
             goto cleanup;
         } else {
