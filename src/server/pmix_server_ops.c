@@ -1118,7 +1118,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
                 2, pmix_server_globals.event_output,
                 "server register events: host server processing event registration");
             if (NULL != affected) {
-                free(affected);
+                PMIX_PROC_FREE(affected, naffected);
             }
             return rc;
         } else if (PMIX_OPERATION_SUCCEEDED == rc) {

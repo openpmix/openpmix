@@ -775,7 +775,7 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                 /* pack the returned kval's */
                 PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
                     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, kv, 1, PMIX_KVAL);
-                    if (rc != PMIX_SUCCESS) {
+                    if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_DESTRUCT(&cb);
                         PMIX_LIST_DESTRUCT(&rank_blobs);
