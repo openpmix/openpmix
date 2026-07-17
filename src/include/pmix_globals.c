@@ -390,6 +390,9 @@ static void scon(pmix_shift_caddy_t *p)
 static void scdes(pmix_shift_caddy_t *p)
 {
     PMIX_DESTRUCT_LOCK(&p->lock);
+    if (NULL != p->key) {
+        free((char *) p->key);
+    }
     if (NULL != p->peer) {
         PMIX_RELEASE(p->peer);
     }
