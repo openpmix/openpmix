@@ -197,6 +197,9 @@ char *pmix_path_findv(char *fname, int mode, char **envv, char *wrkdir)
                 free(dirv[i]);
                 dirv[i] = strdup(wrkdir);
                 if (NULL == dirv[i]) {
+                    /* free the partially-built path vector rather than
+                     * leaking it on this OOM path */
+                    PMIx_Argv_free(dirv);
                     return NULL;
                 }
             }
@@ -453,13 +456,18 @@ bool pmix_path_nfs(char *fname, char **fstype)
         }
 
         if (s.st_dev == dev) {
-            *fstype = strdup(mnt.mnt_type);
             close(fd);
             endmntent(fp);
             // check if this is a file system of concern
             for (n=0; NULL != fs_types[n]; n++) {
                 if (0 == strcmp(fs_types[n], mnt.mnt_type)) {
-                    // yep, this is a shared file system
+                    // yep, this is a shared file system. Per the contract,
+                    // *fstype is only valid (and owned by the caller) on a
+                    // true return - so only set it here, and not on any of
+                    // the false paths where it would leak.
+                    if (NULL != fstype) {
+                        *fstype = strdup(mnt.mnt_type);
+                    }
                     return true;
                 }
             }
@@ -477,7 +485,6 @@ bool pmix_path_nfs(char *fname, char **fstype)
 #else
     // cannot do anything
     PMIX_HIDE_UNUSED_PARAMS(fname, fstype);
-    *fstype = strdup("unknown");
     return false;
 #endif
 }
@@ -516,8 +523,11 @@ int pmix_path_df(const char *path, uint64_t *out_avail)
     }
 
     /* now set the amount of free space available on path */
-    /* sometimes buf.f_bavail is negative */
-    *out_avail = buf.f_bsize * ((int) buf.f_bavail < 0 ? 0 : buf.f_bavail);
+    /* f_bavail is signed on some platforms and can be negative; check the
+     * sign in a full-width signed type rather than truncating to int,
+     * which on a large filesystem would misread a valid 64-bit count as
+     * negative and report zero free space */
+    *out_avail = buf.f_bsize * (((int64_t) buf.f_bavail < 0) ? 0 : buf.f_bavail);
 
     pmix_output_verbose(10, 2,
                          "pmix_path_df: stat(v)fs states "
