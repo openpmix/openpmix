@@ -1239,7 +1239,15 @@ void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t *buf)
                 /* if all of the peers for this code are now gone, then remove it */
                 if (0 == pmix_list_get_size(&reginfo->peers)) {
                     pmix_list_remove_item(&pmix_server_globals.events, &reginfo->super);
-                    /* if this was registered with the host, then deregister it */
+                    /* NOTE: we intentionally do NOT call the host's
+                     * deregister_events here. The server does not
+                     * reference-count enviro/system event registrations against
+                     * the host, so it never tells the host to stop forwarding a
+                     * code - an event that continues to arrive with no matching
+                     * local handler is simply received and ignored by the
+                     * notification fan-out. Implementing the full
+                     * activate-on-first / deregister-on-last handshake with the
+                     * host is deferred - see openpmix/openpmix#4014. */
                     PMIX_RELEASE(reginfo);
                 }
             }
