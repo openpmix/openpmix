@@ -214,5 +214,16 @@ int pmix_util_compare_proc(const void *a, const void *b)
     if (nspace_dif != 0)
         return nspace_dif;
 
-    return proc_a->rank - proc_b->rank;
+    /* pmix_rank_t is uint32_t, and the special ranks (PMIX_RANK_WILDCARD,
+     * PMIX_RANK_UNDEF, ...) live at the top of the range. A plain
+     * subtraction would reduce mod 2^32 and can yield the wrong sign when
+     * the ranks differ by more than INT_MAX, mis-ordering a sort/search.
+     * Use an explicit three-way compare. */
+    if (proc_a->rank < proc_b->rank) {
+        return -1;
+    }
+    if (proc_a->rank > proc_b->rank) {
+        return 1;
+    }
+    return 0;
 }
