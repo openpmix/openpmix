@@ -234,7 +234,8 @@ void pmix_output_reopen_all(void)
         default_stderr_fd = -1;
     }
 
-    gethostname(hostname, sizeof(hostname));
+    gethostname(hostname, sizeof(hostname) - 1);
+    hostname[sizeof(hostname) - 1] = '\0';
     if (NULL != verbose.lds_prefix) {
         free(verbose.lds_prefix);
         verbose.lds_prefix = NULL;
@@ -638,17 +639,19 @@ static int open_file(int i)
         if (NULL == filename) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
-        pmix_strncpy(filename, output_dir, PMIX_PATH_MAX - 1);
-        strcat(filename, "/");
-        if (NULL != output_prefix) {
-            strcat(filename, output_prefix);
-        }
+        /* assemble dir/prefix+suffix with a single bounded write - the
+         * previous strncpy + unbounded strcat chain could overflow the
+         * PMIX_PATH_MAX buffer for a pathological output_dir/prefix */
+        const char *file_prefix = (NULL != output_prefix) ? output_prefix : "";
+        const char *file_suffix;
         if (pmix_output_info[i].ldi_file_suffix != NULL) {
-            strcat(filename, pmix_output_info[i].ldi_file_suffix);
+            file_suffix = pmix_output_info[i].ldi_file_suffix;
         } else {
             pmix_output_info[i].ldi_file_suffix = NULL;
-            strcat(filename, "output.txt");
+            file_suffix = "output.txt";
         }
+        snprintf(filename, PMIX_PATH_MAX, "%s/%s%s", output_dir, file_prefix,
+                 file_suffix);
         flags = O_CREAT | O_RDWR;
         if (!pmix_output_info[i].ldi_file_want_append) {
             flags |= O_TRUNC;
