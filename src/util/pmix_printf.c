@@ -112,7 +112,9 @@ static int guess_strlen(const char *fmt, va_list ap)
                     break;
 
                 case 'f':
-                    farg = (float) va_arg(ap, int);
+                    /* a float argument is promoted to double through
+                     * varargs; read it as a double, not an int */
+                    farg = (float) va_arg(ap, double);
                     /* Alloc for minus sign */
                     if (farg < 0) {
                         ++len;
@@ -128,7 +130,7 @@ static int guess_strlen(const char *fmt, va_list ap)
                     break;
 
                 case 'g':
-                    darg = va_arg(ap, int);
+                    darg = va_arg(ap, double);
                     /* Alloc for minus sign */
                     if (darg < 0) {
                         ++len;
@@ -150,7 +152,7 @@ static int guess_strlen(const char *fmt, va_list ap)
                         switch (fmt[i]) {
                             case 'x':
                             case 'X':
-                                larg = va_arg(ap, int);
+                                larg = va_arg(ap, long);
                                 /* Now get the log16 */
                                 do {
                                     ++len;
@@ -159,7 +161,7 @@ static int guess_strlen(const char *fmt, va_list ap)
                                 break;
 
                             case 'f':
-                                darg = va_arg(ap, int);
+                                darg = va_arg(ap, double);
                                 /* Alloc for minus sign */
                                 if (darg < 0) {
                                     ++len;
@@ -176,7 +178,7 @@ static int guess_strlen(const char *fmt, va_list ap)
 
                             case 'd':
                             default:
-                                larg = va_arg(ap, int);
+                                larg = va_arg(ap, long);
                                 /* Now get the log10 */
                                 do {
                                     ++len;
