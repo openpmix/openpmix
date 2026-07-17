@@ -179,26 +179,30 @@ static char str[INET_ADDRSTRLEN];
 const char *pmix_fd_get_peer_name(int fd)
 {
     const char *ret = NULL;
-    struct sockaddr sa;
+    /* use sockaddr_storage, not sockaddr: a bare struct sockaddr is only
+     * 16 bytes and cannot hold an IPv6 (sockaddr_in6, 28 bytes) address,
+     * so getpeername() of an IPv6 peer would truncate the address and the
+     * subsequent inet_ntop() would read past the end of the struct */
+    struct sockaddr_storage sa;
     socklen_t slt = (socklen_t) sizeof(sa);
     int rc;
 
     memset(str, 0, sizeof(str));
 
-    rc = getpeername(fd, &sa, &slt);
+    rc = getpeername(fd, (struct sockaddr *) &sa, &slt);
     if (0 != rc) {
         pmix_string_copy(str, "Unknown", sizeof(str) - 1);
         ret = str;
         return ret;
     }
 
-    if (sa.sa_family == AF_INET) {
+    if (sa.ss_family == AF_INET) {
         struct sockaddr_in *si;
         si = (struct sockaddr_in *) &sa;
         ret = inet_ntop(AF_INET, &(si->sin_addr), str, INET_ADDRSTRLEN);
     }
 #if PMIX_ENABLE_IPV6
-    else if (sa.sa_family == AF_INET6) {
+    else if (sa.ss_family == AF_INET6) {
         struct sockaddr_in6 *si6;
         si6 = (struct sockaddr_in6 *) &sa;
         ret = inet_ntop(AF_INET6, &(si6->sin6_addr), str, INET6_ADDRSTRLEN);
@@ -220,11 +224,11 @@ static int fdmax = -1;
  and the pipe up to the parent. */
 void pmix_close_open_file_descriptors(int protected_fd)
 {
-#if defined(__OSX__)
+#if defined(__APPLE__)
     DIR *dir = opendir("/dev/fd");
 #else  /* Linux */
     DIR *dir = opendir("/proc/self/fd");
-#endif  /* defined(__OSX__) */
+#endif  /* defined(__APPLE__) */
     struct dirent *files;
     int dir_scan_fd = -1;
 
