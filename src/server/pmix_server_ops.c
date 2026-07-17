@@ -1876,10 +1876,13 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                     }
                 }
                 if (!duplicate) {
-                    /* append it to the end of the list */
+                    /* append a copy to the end of the list - cf itself is a
+                     * member of the local ignorefiles list (destructed below),
+                     * so appending &cf->super would put one item on two lists
+                     * and leave a dangling entry when ignorefiles is freed */
                     cfptr = PMIX_NEW(pmix_cleanup_file_t);
                     cfptr->path = strdup(cf->path);
-                    pmix_list_append(&epicd->epi->ignores, &cf->super);
+                    pmix_list_append(&epicd->epi->ignores, &cfptr->super);
                 }
             }
         }
@@ -1938,9 +1941,9 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                     /* check for conflict with ignore */
                     PMIX_LIST_FOREACH (cf2, &epicd->epi->ignores, pmix_cleanup_file_t) {
                         if (0 == strcmp(cf->path, cf2->path)) {
-                            /* return an error */
+                            /* return an error - cachedirs was already
+                             * destructed above, so only cachefiles remains */
                             rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
-                            PMIX_LIST_DESTRUCT(&cachedirs);
                             PMIX_LIST_DESTRUCT(&cachefiles);
                             goto exit;
                         }
