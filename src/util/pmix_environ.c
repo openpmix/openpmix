@@ -263,13 +263,21 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars, pmix_list
 
     /* harvest envars to pass along */
     for (j = 0; NULL != incvars[j]; j++) {
+        bool inc_wild = false;
         len = strlen(incvars[j]);
-        /* guard the len-1 index against an empty include var ("") */
+        /* a trailing '*' makes this a prefix (wildcard) match; without it
+         * the entry is an exact environment-variable name. Guard the len-1
+         * index against an empty include var (""). */
         if (0 < len && '*' == incvars[j][len - 1]) {
             --len;
+            inc_wild = true;
         }
         for (i = 0; NULL != environ[i]; ++i) {
-            if (0 == strncmp(environ[i], incvars[j], len)) {
+            /* environ entries are "NAME=value"; for an exact (non-wildcard)
+             * name the character just past the match must be the '='
+             * boundary, so "PATH" does not also match "PATHFINDER=..." */
+            if (0 == strncmp(environ[i], incvars[j], len) &&
+                (inc_wild || '=' == environ[i][len])) {
                 cs_env = strdup(environ[i]);
                 string_key = strchr(cs_env, '=');
                 if (NULL == string_key) {
@@ -320,13 +328,23 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars, pmix_list
     /* now check the exclusions and remove any that match */
     if (NULL != excvars) {
         for (j = 0; NULL != excvars[j]; j++) {
+            bool exc_wild = false;
             len = strlen(excvars[j]);
-            /* guard the len-1 index against an empty exclude var ("") */
+            /* trailing '*' -> prefix match, else exact name. Guard the
+             * len-1 index against an empty exclude var (""). */
             if (0 < len && '*' == excvars[j][len - 1]) {
                 --len;
+                exc_wild = true;
             }
             PMIX_LIST_FOREACH_SAFE (kv, next, ilist, pmix_kval_t) {
-                if (0 == strncmp(kv->value->data.envar.envar, excvars[j], len)) {
+                /* the list is caller-supplied; only consider envar kvals */
+                if (PMIX_ENVAR != kv->value->type) {
+                    continue;
+                }
+                /* .envar is the bare name, so an exact match ends at the
+                 * name's terminating NUL */
+                if (0 == strncmp(kv->value->data.envar.envar, excvars[j], len) &&
+                    (exc_wild || '\0' == kv->value->data.envar.envar[len])) {
                     pmix_list_remove_item(ilist, &kv->super);
                     PMIX_RELEASE(kv);
                 }
