@@ -30,8 +30,10 @@
 #include "include/pmix_server.h"
 
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -46,6 +48,10 @@
 #include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
+
+/* translate a signal name (e.g. "SIGTERM") or number to its integer
+ * value; returns 0 for an unrecognized name */
+static int convert_signal(const char *val);
 
 static struct option pallocptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
@@ -425,7 +431,24 @@ int main(int argc, char **argv)
     }
 
     if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_SIGNAL))) {
-        PMIX_INFO_LIST_ADD(rc, options, PMIX_ALLOC_NODE_LIST, opt->values[0], PMIX_STRING);
+        /* the value has the form "<signal>[@seconds]" - split off any
+         * trailing "@seconds" (the pre-end warning time) and convert the
+         * signal name or number to its integer value */
+        char *at, *sigstr;
+        int sigval;
+        sigstr = strdup(opt->values[0]);
+        if (NULL != (at = strchr(sigstr, '@'))) {
+            *at = '\0';
+        }
+        sigval = convert_signal(sigstr);
+        free(sigstr);
+        if (0 == sigval) {
+            fprintf(stderr, "Unrecognized signal: %s\n", opt->values[0]);
+            PMIX_INFO_LIST_RELEASE(options);
+            rc = PMIX_ERR_BAD_PARAM;
+            goto done;
+        }
+        PMIX_INFO_LIST_ADD(rc, options, PMIX_SESSION_SIGNAL, &sigval, PMIX_INT);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "PMIx info list add failed: %s\n", PMIx_Error_string(rc));
             PMIX_INFO_LIST_RELEASE(options);
@@ -511,6 +534,8 @@ int main(int argc, char **argv)
     } else {
         req->info = (pmix_info_t *) darray.array;
         req->ninfo = darray.size;
+        /* the caddy now owns this array - tell its destructor to free it */
+        req->infocopy = true;
     }
     PMIX_INFO_LIST_RELEASE(options);
 
@@ -529,8 +554,12 @@ int main(int argc, char **argv)
                                     cbfunc, req);
     if (PMIX_SUCCESS != rc) {
         if (PMIX_OPERATION_SUCCEEDED == rc) {
-            fprintf(stderr, "Allocation %s granted\n", req->key);
+            /* the request completed synchronously, so no callback fired
+             * and no session ID was returned to us */
+            fprintf(stderr, "Allocation granted\n");
             PMIX_RELEASE(req);
+            /* avoid a second release of the same caddy at "done:" */
+            req = NULL;
             rc = PMIX_SUCCESS;
             goto done;
         }
@@ -545,7 +574,12 @@ int main(int argc, char **argv)
 
     PMIX_WAIT_THREAD(&req->lock);
     if (PMIX_SUCCESS == req->status) {
-        fprintf(stderr, "Allocation %s granted\n", req->key);
+        /* cbfunc records the returned session ID (if any) in req->sessionid */
+        if (UINT32_MAX == req->sessionid) {
+            fprintf(stderr, "Allocation granted\n");
+        } else {
+            fprintf(stderr, "Allocation granted: session %u\n", req->sessionid);
+        }
     } else {
         fprintf(stderr, "Allocation request failed: %s\n", PMIx_Error_string(req->status));
     }
@@ -557,4 +591,81 @@ done:
     PMIx_tool_finalize();
 
     return (rc);
+}
+
+typedef struct {
+    char *name;
+    int value;
+} pmix_signal_t;
+
+static pmix_signal_t sigs[] = {
+#ifdef SIGHUP
+    {"SIGHUP", SIGHUP},
+#endif
+#ifdef SIGABRT
+    {"SIGABRT", SIGABRT},
+#endif
+#ifdef SIGALRM
+    {"SIGALRM", SIGALRM},
+#endif
+#ifdef SIGKILL
+    {"SIGKILL", SIGKILL},
+#endif
+#ifdef SIGPIPE
+    {"SIGPIPE", SIGPIPE},
+#endif
+#ifdef SIGTERM
+    {"SIGTERM", SIGTERM},
+#endif
+#ifdef SIGSTOP
+    {"SIGSTOP", SIGSTOP},
+#endif
+#ifdef SIGTSTP
+    {"SIGTSTP", SIGTSTP},
+#endif
+#ifdef SIGCONT
+    {"SIGCONT", SIGCONT},
+#endif
+#ifdef SIGCHLD
+    {"SIGCHLD", SIGCHLD},
+#endif
+#ifdef SIGINFO
+    {"SIGINFO", SIGINFO},
+#endif
+#ifdef SIGUSR1
+    {"SIGUSR1", SIGUSR1},
+#endif
+#ifdef SIGUSR2
+    {"SIGUSR2", SIGUSR2},
+#endif
+#ifdef SIGINT
+    {"SIGINT", SIGINT},
+#endif
+#ifdef SIGTRAP
+    {"SIGTRAP", SIGTRAP},
+#endif
+    {NULL, 0}
+};
+
+static int convert_signal(const char *val)
+{
+    int n;
+    char *endp;
+    long sigval;
+
+    /* accept a raw signal number */
+    sigval = strtol(val, &endp, 10);
+    if (NULL != endp && '\0' == endp[0] && val != endp) {
+        return (int) sigval;
+    }
+
+    /* otherwise look up the signal by name */
+    n = 0;
+    while (NULL != sigs[n].name) {
+        if (0 == strcasecmp(val, sigs[n].name)) {
+            return sigs[n].value;
+        }
+        ++n;
+    }
+    return 0;
 }
