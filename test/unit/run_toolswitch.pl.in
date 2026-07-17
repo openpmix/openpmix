@@ -1,0 +1,114 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# Exercise the tool multi-server "switch" path - the code that moves
+# pmix_client_globals.myserver between the servers a tool is connected to
+# (pmix_tool_retry_attach, pmix_tool_retry_set, and disc). tool_server_switch
+# forks into two independent PMIx servers (A and B) plus a tool child that
+# loops: init (-> A), attach B as primary, query the server list, switch the
+# primary among B / A / self, disconnect both, finalize. A reference-count
+# slip around any of those switches double-frees a peer at finalize (or leaks
+# one), which surfaces as a crash, a failed API call, or a hang. See the
+# src/tool switch-path fixes and docs/how-things-work/init-finalize.rst.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen
+# hands us every possible component directory in
+# PMIX_COMPONENT_LIBRARY_PATHS; turn each into an absolute path to the
+# built component so the MCA base can find them without a prior install.
+# tool_server_switch re-execs itself as the server-B and tool children and
+# seeds their environment from its own, so this search path reaches them too.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# tool_server_switch re-execs itself by argv[0], so run from its directory.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise
+# arm a Perl alarm so a wedged run can never hang "make check" forever.
+my @cmd = ("./tool_server_switch");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run in a child we control, merging stderr into stdout, and slurp it.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec tool_server_switch: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: tool_server_switch exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The harness must exit 0: a crash (the double-free), a failed switch API
+# call, a wrong server count, or a hang drives a non-zero exit.
+if (0 != $status) {
+    print "FAIL: tool_server_switch did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm the switch loop actually ran and passed, so a vacuous pass (e.g.
+# server B never came up) cannot slip through.
+my $passed = ($output =~ /tool multi-server switch: PASS/);
+if (!$passed) {
+    print "FAIL: tool_server_switch did not report a clean switch cycle\n";
+    exit(1);
+}
+print "PASS: tool switched cleanly among multiple servers across all cycles\n";
+exit(0);
