@@ -408,9 +408,11 @@ static pmix_status_t pmix_ptl_close(void)
             }
         }
         free(pmix_ptl_base.rendezvous_filename);
+        pmix_ptl_base.rendezvous_filename = NULL;
     }
     if (NULL != pmix_ptl_base.uri) {
         free(pmix_ptl_base.uri);
+        pmix_ptl_base.uri = NULL;
     }
     if (NULL != pmix_ptl_base.urifile) {
         if (pmix_ptl_base.created_urifile) {
