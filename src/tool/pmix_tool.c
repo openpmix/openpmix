@@ -1067,10 +1067,13 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             return PMIX_ERR_UNREACH;
         }
 
-        /* save our parent ID */
+        /* save our parent ID - copy it into a heap-allocated proc so the
+         * kval destructor's PMIX_RELEASE below frees owned memory rather
+         * than the file-scope "myparent" static */
         PMIX_KVAL_NEW(kptr, PMIX_PARENT_ID);
         kptr->value->type = PMIX_PROC;
-        kptr->value->data.proc = &myparent;
+        PMIX_PROC_CREATE(kptr->value->data.proc, 1);
+        PMIx_Proc_load(kptr->value->data.proc, myparent.nspace, myparent.rank);
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
         PMIX_RELEASE(kptr); // maintain accounting
         if (PMIX_SUCCESS != rc) {
