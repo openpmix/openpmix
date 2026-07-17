@@ -242,7 +242,12 @@ const char *pmix_home_directory(uid_t uid)
     }
     if (NULL == home) {
         struct passwd *pw = getpwuid(uid);
-        home = pw->pw_dir;
+        /* getpwuid returns NULL when there is no passwd entry for uid
+         * (e.g. inside a container whose /etc/passwd lacks the running
+         * UID) - avoid dereferencing it */
+        if (NULL != pw) {
+            home = pw->pw_dir;
+        }
     }
 
     return home;
@@ -259,7 +264,8 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars, pmix_list
     /* harvest envars to pass along */
     for (j = 0; NULL != incvars[j]; j++) {
         len = strlen(incvars[j]);
-        if ('*' == incvars[j][len - 1]) {
+        /* guard the len-1 index against an empty include var ("") */
+        if (0 < len && '*' == incvars[j][len - 1]) {
             --len;
         }
         for (i = 0; NULL != environ[i]; ++i) {
@@ -315,7 +321,8 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars, pmix_list
     if (NULL != excvars) {
         for (j = 0; NULL != excvars[j]; j++) {
             len = strlen(excvars[j]);
-            if ('*' == excvars[j][len - 1]) {
+            /* guard the len-1 index against an empty exclude var ("") */
+            if (0 < len && '*' == excvars[j][len - 1]) {
                 --len;
             }
             PMIX_LIST_FOREACH_SAFE (kv, next, ilist, pmix_kval_t) {
