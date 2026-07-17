@@ -200,14 +200,15 @@ static void trim_name(char *buffer, const char *prefix, const char *suffix)
         }
     }
 
-    /* trim spaces at the beginning */
-    while (isspace(*pchr)) {
+    /* trim spaces at the beginning (cast to unsigned char: passing a
+     * possibly-negative char to isspace() is undefined behavior) */
+    while (isspace((unsigned char) *pchr)) {
         pchr++;
     }
 
     /* trim spaces at the end */
     echr = buffer + buffer_len;
-    while (echr > buffer && isspace(*(echr - 1))) {
+    while (echr > buffer && isspace((unsigned char) *(echr - 1))) {
         echr--;
     }
     echr[0] = '\0';
@@ -218,9 +219,11 @@ static void trim_name(char *buffer, const char *prefix, const char *suffix)
         echr -= suffix_len;
 
         if (0 == strncmp(echr, suffix, strlen(suffix))) {
+            /* bound the back-scan at buffer[0] so a value that is all
+             * whitespace up to the suffix cannot step before the buffer */
             do {
                 echr--;
-            } while (isspace(*echr));
+            } while (echr > buffer && isspace((unsigned char) *echr));
             echr[1] = '\0';
         }
     }
