@@ -85,6 +85,13 @@ void pmix_util_parse_range_options(char *inp, char ***output)
                 PMIx_Argv_free(r2);
                 goto cleanup;
             }
+            /* a token like "-" (or "--") splits to all-empty tokens, so
+             * PMIx_Argv_split returns NULL - guard against dereferencing
+             * r2[0] in that case rather than crashing */
+            if (0 == PMIx_Argv_count(r2)) {
+                PMIx_Argv_free(r2);
+                continue;
+            }
             start = strtol(r2[0], NULL, 10);
             end = start;
         }
