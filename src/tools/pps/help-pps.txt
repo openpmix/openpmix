@@ -39,6 +39,7 @@ PMIx Job and Process Status Tool
 -h|--help <arg0>                     Help for the specified option
 -v|--verbose                         Enable typical debug options
 -V|--version                         Print version and exit
+   --pmixmca <arg0> <arg1>           Set MCA parameter value
 
    --uri <arg0>                      Specify the URI of the server to which we are to connect, or
                                      the name of the file (specified as file:filename) that contains that info
@@ -53,6 +54,14 @@ PMIx Job and Process Status Tool
    --nodes                           Display Node Information
 
 Report bugs to %s
+#
+[pmixmca]
+
+Pass a PMIx MCA parameter
+
+Syntax: "pmixmca <key> <value>", where "key" is the parameter name
+and "value" is the parameter value.
+
 #
 [uri]
 Specify the URI of the PMIx server we are to contact, or the name of the file (specified as

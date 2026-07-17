@@ -27,9 +27,14 @@
  */
 
 /**
- * @fie
+ * @file
  * PMIX PS command
  *
+ * Report the processes running under the PMIx server(s) we can reach.
+ * With no options it connects to the local/system server, queries the
+ * set of active namespaces, and prints a process table for each. With
+ * "--nodes" it instead reports, per namespace, the set of nodes the
+ * job occupies and how many of its processes live on each.
  */
 
 #include "pmix_config.h"
@@ -41,34 +46,21 @@
 #    include <unistd.h>
 #endif /* HAVE_UNISTD_H */
 #include <stdlib.h>
-#ifdef HAVE_SYS_STAT_H
-#    include <sys/stat.h>
-#endif /* HAVE_SYS_STAT_H */
-#ifdef HAVE_SYS_TYPES_H
-#    include <sys/types.h>
-#endif /* HAVE_SYS_TYPES_H */
-#ifdef HAVE_SYS_WAIT_H
-#    include <sys/wait.h>
-#endif /* HAVE_SYS_WAIT_H */
 #include <string.h>
-#ifdef HAVE_DIRENT_H
-#    include <dirent.h>
-#endif /* HAVE_DIRENT_H */
 
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/pmix_threads.h"
-#include "src/util/pmix_basename.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/pmix_cmd_line.h"
 #include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_output.h"
-#include "src/util/pmix_environ.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 #include "include/pmix.h"
 #include "include/pmix_tool.h"
-#include "src/include/pmix_globals.h"
 
 typedef struct {
     pmix_lock_t lock;
@@ -79,31 +71,12 @@ typedef struct {
  * info from a query */
 typedef struct {
     mylock_t lock;
+    pmix_status_t status;
     pmix_info_t *info;
     size_t ninfo;
 } myquery_data_t;
 
 static pmix_proc_t myproc;
-
-/******************
- * Local Functions
- ******************/
-#if 0
-static int gather_information(pmix_ps_mpirun_info_t *hnpinfo);
-static int gather_active_jobs(pmix_ps_mpirun_info_t *hnpinfo);
-static int gather_nodes(pmix_ps_mpirun_info_t *hnpinfo);
-static int gather_vpid_info(pmix_ps_mpirun_info_t *hnpinfo);
-
-static int pretty_print(pmix_ps_mpirun_info_t *hnpinfo);
-static int pretty_print_nodes(pmix_node_t **nodes, pmix_std_cntr_t num_nodes);
-static int pretty_print_jobs(pmix_job_t **jobs, pmix_std_cntr_t num_jobs);
-static int pretty_print_vpids(pmix_job_t *job);
-static void pretty_print_dashed_line(int len);
-
-static char *pretty_node_state(pmix_node_state_t state);
-
-static int parseable_print(pmix_ps_mpirun_info_t *hnpinfo);
-#endif
 
 #define PMIX_CLI_NODES  "nodes"
 
@@ -111,6 +84,7 @@ static struct option ppsoptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERBOSE, PMIX_ARG_NONE, 'v'),
+    PMIX_OPTION_DEFINE(PMIX_CLI_PMIXMCA, PMIX_ARG_REQD),
 
     PMIX_OPTION_DEFINE(PMIX_CLI_SYS_SERVER_FIRST, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SYSTEM_SERVER, PMIX_ARG_NONE),
@@ -143,8 +117,8 @@ static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
 {
     myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
-    PMIX_HIDE_UNUSED_PARAMS(status);
 
+    mq->status = status;
     /* save the returned info - the PMIx library "owns" it
      * and will release it and perform other cleanup actions
      * when release_fn is called */
@@ -202,15 +176,186 @@ static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, voi
     PMIX_WAKEUP_THREAD(&lock->lock);
 }
 
+/* run a single PMIX_QUERY_PROC_TABLE query for the given namespace,
+ * returning the array of pmix_proc_info_t (owned by the caller, who
+ * must PMIX_INFO_FREE mq->info) via the mq structure */
+static pmix_status_t query_proctable(const char *nspace, myquery_data_t *mq)
+{
+    pmix_query_t query;
+    pmix_status_t rc;
+
+    PMIX_QUERY_CONSTRUCT(&query);
+    PMIx_Argv_append_nosize(&query.keys, PMIX_QUERY_PROC_TABLE);
+    PMIX_QUERY_QUALIFIERS_CREATE(&query, 1);
+    PMIX_INFO_LOAD(&query.qualifiers[0], PMIX_NSPACE, nspace, PMIX_STRING);
+
+    PMIX_CONSTRUCT_LOCK(&mq->lock.lock);
+    mq->status = PMIX_SUCCESS;
+    mq->info = NULL;
+    mq->ninfo = 0;
+    rc = PMIx_Query_info_nb(&query, 1, querycbfunc, (void *) mq);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_WAIT_THREAD(&mq->lock.lock);
+    }
+    PMIX_DESTRUCT_LOCK(&mq->lock.lock);
+    PMIX_QUERY_DESTRUCT(&query);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    return mq->status;
+}
+
+/* extract the pmix_proc_info_t array (if any) from a returned
+ * proc-table query result */
+static pmix_proc_info_t *get_proc_array(myquery_data_t *mq, size_t *np)
+{
+    *np = 0;
+    if (0 == mq->ninfo || NULL == mq->info) {
+        return NULL;
+    }
+    if (PMIX_DATA_ARRAY != mq->info[0].value.type ||
+        NULL == mq->info[0].value.data.darray ||
+        NULL == mq->info[0].value.data.darray->array) {
+        return NULL;
+    }
+    *np = mq->info[0].value.data.darray->size;
+    return (pmix_proc_info_t *) mq->info[0].value.data.darray->array;
+}
+
+static void print_proctable(const char *nspace, pmix_proc_info_t *pi, size_t np)
+{
+    size_t n;
+
+    printf("\nNamespace %s (%lu process%s)\n", nspace,
+           (unsigned long) np, (1 == np) ? "" : "es");
+    printf("    %8s  %8s  %-20s  %-14s  %s\n",
+           "Rank", "PID", "Node", "State", "Executable");
+    for (n = 0; n < np; n++) {
+        printf("    %8u  %8lu  %-20s  %-14s  %s\n",
+               (unsigned) pi[n].proc.rank,
+               (unsigned long) pi[n].pid,
+               (NULL == pi[n].hostname) ? "unknown" : pi[n].hostname,
+               PMIx_Proc_state_string(pi[n].state),
+               (NULL == pi[n].executable_name) ? "unknown" : pi[n].executable_name);
+    }
+}
+
+static void print_nodes(const char *nspace, pmix_proc_info_t *pi, size_t np)
+{
+    size_t n, m;
+    char **nodes = NULL;
+    int *counts = NULL;
+    int nnodes = 0;
+    const char *host;
+
+    /* aggregate the process count per unique node */
+    for (n = 0; n < np; n++) {
+        host = (NULL == pi[n].hostname) ? "unknown" : pi[n].hostname;
+        for (m = 0; (int) m < nnodes; m++) {
+            if (0 == strcmp(nodes[m], host)) {
+                counts[m]++;
+                break;
+            }
+        }
+        if ((int) m == nnodes) {
+            PMIx_Argv_append_nosize(&nodes, host);
+            counts = (int *) realloc(counts, (nnodes + 1) * sizeof(int));
+            counts[nnodes] = 1;
+            nnodes++;
+        }
+    }
+
+    printf("\nNamespace %s (%d node%s)\n", nspace, nnodes, (1 == nnodes) ? "" : "s");
+    printf("    %-20s  %s\n", "Node", "Processes");
+    for (m = 0; (int) m < nnodes; m++) {
+        printf("    %-20s  %d\n", nodes[m], counts[m]);
+    }
+    PMIx_Argv_free(nodes);
+    if (NULL != counts) {
+        free(counts);
+    }
+}
+
+/* build the connection directive(s) requested on the command line;
+ * returns a freshly-created info array (caller frees) and its size */
+static pmix_status_t set_connection(pmix_cli_result_t *results,
+                                    pmix_info_t **infoptr, size_t *ninfo)
+{
+    pmix_cli_item_t *opt;
+    pmix_info_t *info;
+
+    PMIX_INFO_CREATE(info, 1);
+    *infoptr = info;
+    *ninfo = 1;
+
+    if (NULL != (opt = pmix_cmd_line_get_param(results, PMIX_CLI_PID))) {
+        /* the value may be an integer pid or a "file:PATH" pointing at a
+         * rendezvous file holding the pid */
+        char *leftover, *param;
+        pid_t pid;
+        leftover = NULL;
+        pid = strtol(opt->values[0], &leftover, 10);
+        if (NULL == leftover || 0 == strlen(leftover)) {
+            PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pid, PMIX_PID);
+        } else if (0 == strncasecmp(opt->values[0], "file", 4)) {
+            FILE *fp;
+            param = strchr(opt->values[0], ':');
+            if (NULL == param) {
+                pmix_show_help("help-pquery.txt", "bad-option-input", true, "pps",
+                               "--pid", opt->values[0], "file:path");
+                PMIX_INFO_FREE(info, 1);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            ++param;
+            fp = fopen(param, "r");
+            if (NULL == fp) {
+                pmix_show_help("help-pquery.txt", "file-open-error", true, "pps",
+                               "--pid", opt->values[0], param);
+                PMIX_INFO_FREE(info, 1);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            if (1 != fscanf(fp, "%lu", (unsigned long *) &pid)) {
+                pmix_show_help("help-pquery.txt", "bad-file", true, "pps",
+                               "--pid", opt->values[0], param);
+                fclose(fp);
+                PMIX_INFO_FREE(info, 1);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            fclose(fp);
+            PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pid, PMIX_PID);
+        } else {
+            pmix_show_help("help-pquery.txt", "bad-option-input", true,
+                           "pps", "--pid", opt->values[0], "file:path");
+            PMIX_INFO_FREE(info, 1);
+            return PMIX_ERR_BAD_PARAM;
+        }
+    } else if (NULL != (opt = pmix_cmd_line_get_param(results, PMIX_CLI_NAMESPACE))) {
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_NSPACE, opt->values[0], PMIX_STRING);
+    } else if (NULL != (opt = pmix_cmd_line_get_param(results, PMIX_CLI_URI))) {
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_URI, opt->values[0], PMIX_STRING);
+    } else if (pmix_cmd_line_is_taken(results, PMIX_CLI_SYSTEM_SERVER)) {
+        PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SYSTEM, NULL, PMIX_BOOL);
+    } else {
+        /* default: use the system connection first, if available */
+        PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_SYSTEM_FIRST, NULL, PMIX_BOOL);
+    }
+    return PMIX_SUCCESS;
+}
+
 int main(int argc, char *argv[])
 {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_info_t *info;
+    size_t ninfo, n;
     pmix_query_t *query;
-    size_t nq;
     myquery_data_t myquery_data;
     mylock_t mylock;
     pmix_cli_result_t results;
+    pmix_cli_item_t *opt;
+    bool nodes;
+    char **nspaces = NULL;
+    pmix_proc_info_t *pi;
+    size_t np;
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
     /* protect against problems if someone passes us thru a pipe
@@ -258,12 +403,6 @@ int main(int argc, char *argv[])
         return PMIX_ERROR;
     }
 
-    /* register params for pmix */
-    if (PMIX_SUCCESS != (rc = pmix_register_params())) {
-        fprintf(stderr, "pmix_register_params failed with %d\n", rc);
-        return PMIX_ERROR;
-    }
-
     /* Parse the command line options */
     PMIX_CONSTRUCT(&results, pmix_cli_result_t);
     rc = pmix_cmd_line_parse(argv, ppsshorts, ppsoptions,
@@ -279,18 +418,36 @@ int main(int argc, char *argv[])
         exit(rc);
     }
 
-    /* if we were given the pid of a starter, then direct that
-     * we connect to it */
+    // handle relevant MCA params
+    PMIX_LIST_FOREACH(opt, &results.instances, pmix_cli_item_t) {
+        if (0 == strcmp(opt->key, PMIX_CLI_PMIXMCA)) {
+            for (n = 0; NULL != opt->values[n]; n++) {
+                pmix_expose_param(opt->values[n]);
+            }
+        }
+    }
 
-    /* otherwise, use the system connection first, if available */
-    PMIX_INFO_CREATE(info, 1);
-    PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_SYSTEM_FIRST, NULL, PMIX_BOOL);
-    /* init as a tool */
-    if (PMIX_SUCCESS != (rc = PMIx_tool_init(&myproc, info, 1))) {
-        fprintf(stderr, "PMIx_tool_init failed: %d\n", rc);
+    /* register params for pmix */
+    if (PMIX_SUCCESS != (rc = pmix_register_params())) {
+        fprintf(stderr, "pmix_register_params failed with %d\n", rc);
+        return PMIX_ERROR;
+    }
+
+    nodes = pmix_cmd_line_is_taken(&results, PMIX_CLI_NODES);
+
+    /* build the connection directive from the command line */
+    rc = set_connection(&results, &info, &ninfo);
+    if (PMIX_SUCCESS != rc) {
         exit(rc);
     }
-    PMIX_INFO_FREE(info, 1);
+
+    /* init as a tool */
+    if (PMIX_SUCCESS != (rc = PMIx_tool_init(&myproc, info, ninfo))) {
+        fprintf(stderr, "PMIx_tool_init failed: %s\n", PMIx_Error_string(rc));
+        PMIX_INFO_FREE(info, ninfo);
+        exit(rc);
+    }
+    PMIX_INFO_FREE(info, ninfo);
 
     /* register a default event handler */
     PMIX_CONSTRUCT_LOCK(&mylock.lock);
@@ -299,531 +456,71 @@ int main(int argc, char *argv[])
     PMIX_WAIT_THREAD(&mylock.lock);
     PMIX_DESTRUCT_LOCK(&mylock.lock);
 
-    /* if we were given a specific nspace to ask about, then do so */
-
-    /* if we were asked to provide the status of the nodes, then do that */
-
-    /* otherwise, query the active nspaces */
-    nq = 1;
-    PMIX_QUERY_CREATE(query, nq);
+    /* query the active namespaces */
+    PMIX_QUERY_CREATE(query, 1);
     PMIX_ARGV_APPEND(rc, query[0].keys, PMIX_QUERY_NAMESPACES);
-    /* setup the caddy to retrieve the data */
     PMIX_CONSTRUCT_LOCK(&myquery_data.lock.lock);
+    myquery_data.status = PMIX_SUCCESS;
     myquery_data.info = NULL;
     myquery_data.ninfo = 0;
-    /* execute the query */
-    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void *) &myquery_data))) {
-        fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
+    rc = PMIx_Query_info_nb(query, 1, querycbfunc, (void *) &myquery_data);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_WAIT_THREAD(&myquery_data.lock.lock);
+    }
+    PMIX_DESTRUCT_LOCK(&myquery_data.lock.lock);
+    PMIX_QUERY_FREE(query, 1);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "PMIx_Query_info failed: %s\n", PMIx_Error_string(rc));
         goto done;
     }
-    PMIX_WAIT_THREAD(&myquery_data.lock.lock);
-    PMIX_DESTRUCT_LOCK(&myquery_data.lock.lock);
+    if (PMIX_SUCCESS != myquery_data.status) {
+        fprintf(stderr, "PMIx_Query_info returned: %s\n", PMIx_Error_string(myquery_data.status));
+        rc = myquery_data.status;
+        goto done;
+    }
 
     /* we should have received back one info struct containing
      * a comma-delimited list of nspaces */
-    if (1 != myquery_data.ninfo) {
-        /* this is an error */
-        fprintf(stderr, "PMIx Query returned an incorrect number of results: %lu\n",
-                myquery_data.ninfo);
+    if (1 != myquery_data.ninfo || NULL == myquery_data.info ||
+        PMIX_STRING != myquery_data.info[0].value.type ||
+        NULL == myquery_data.info[0].value.data.string) {
+        fprintf(stderr, "No active namespaces were found\n");
         PMIX_INFO_FREE(myquery_data.info, myquery_data.ninfo);
         goto done;
     }
 
-    fprintf(stderr, "Active nspaces: %s\n", myquery_data.info[0].value.data.string);
+    nspaces = PMIx_Argv_split(myquery_data.info[0].value.data.string, ',');
+    PMIX_INFO_FREE(myquery_data.info, myquery_data.ninfo);
+
+    /* for each active namespace, query and print its process table */
+    for (n = 0; NULL != nspaces[n]; n++) {
+        myquery_data_t mq;
+        rc = query_proctable(nspaces[n], &mq);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "Namespace %s: query failed: %s\n",
+                    nspaces[n], PMIx_Error_string(rc));
+            /* the callback may still have handed us partial results */
+            PMIX_INFO_FREE(mq.info, mq.ninfo);
+            continue;
+        }
+        pi = get_proc_array(&mq, &np);
+        if (NULL == pi) {
+            printf("\nNamespace %s (no process information available)\n", nspaces[n]);
+        } else if (nodes) {
+            print_nodes(nspaces[n], pi, np);
+        } else {
+            print_proctable(nspaces[n], pi, np);
+        }
+        PMIX_INFO_FREE(mq.info, mq.ninfo);
+    }
+    PMIx_Argv_free(nspaces);
 
     /***************
      * Cleanup
      ***************/
 done:
+    PMIX_DESTRUCT(&results);
     PMIx_tool_finalize();
 
     return rc;
 }
-
-#if 0
-static int pretty_print(pmix_ps_mpirun_info_t *hnpinfo) {
-    char *header;
-    int len_hdr;
-
-    /*
-     * Print header and remember header length
-     */
-    len_hdr = asprintf(&header, "Information from mpirun %s", PMIX_JOBID_PRINT(hnpinfo->hnp->name.jobid));
-
-    printf("\n\n%s\n", header);
-    free(header);
-    pretty_print_dashed_line(len_hdr);
-
-    /*
-     * Print Node Information
-     */
-    if( pmix_ps_globals.nodes )
-        pretty_print_nodes(hnpinfo->nodes, hnpinfo->num_nodes);
-
-    /*
-     * Print Job Information
-     */
-    pretty_print_jobs(hnpinfo->jobs, hnpinfo->num_jobs);
-
-    return PMIX_SUCCESS;
-}
-
-static int pretty_print_nodes(pmix_node_t **nodes, pmix_std_cntr_t num_nodes) {
-    int line_len;
-    int len_name    = 0,
-        len_state   = 0,
-        len_slots   = 0,
-        len_slots_i = 0,
-        len_slots_m = 0;
-    pmix_node_t *node;
-    pmix_std_cntr_t i;
-
-    /*
-     * Calculate segment lengths
-     */
-    len_name    = (int) strlen("Node Name");
-    len_state   = (int) strlen("State");
-    len_slots   = (int) strlen("Slots");
-    len_slots_i = (int) strlen("Slots In Use");
-    len_slots_m = (int) strlen("Slots Max");
-
-    for(i=0; i < num_nodes; i++) {
-        node = nodes[i];
-
-        if( NULL != node->name &&
-            (int)strlen(node->name) > len_name)
-            len_name = (int) strlen(node->name);
-
-        if( (int)strlen(pretty_node_state(node->state)) > len_state )
-            len_state = (int)strlen(pretty_node_state(node->state));
-    }
-
-    line_len = (len_name    + 3 +
-                len_state   + 3 +
-                len_slots   + 3 +
-                len_slots_i + 3 +
-                len_slots_m) + 2;
-
-    /*
-     * Print the header
-     */
-    printf("%*s | ", len_name,    "Node Name");
-    printf("%*s | ", len_state,   "State");
-    printf("%*s | ", len_slots,   "Slots");
-    printf("%*s | ", len_slots_m, "Slots Max");
-    printf("%*s | ", len_slots_i, "Slots In Use");
-    printf("\n");
-
-    pretty_print_dashed_line(line_len);
-
-    /*
-     * Print Info
-     */
-    for(i=0; i < num_nodes; i++) {
-        node = nodes[i];
-
-        printf("%*s | ", len_name,    node->name);
-        printf("%*s | ", len_state,   pretty_node_state(node->state));
-        printf("%*d | ", len_slots,   (uint)node->slots);
-        printf("%*d | ", len_slots_m, (uint)node->slots_max);
-        printf("%*d | ", len_slots_i, (uint)node->slots_inuse);
-        printf("\n");
-
-    }
-
-    return PMIX_SUCCESS;
-}
-
-static int pretty_print_jobs(pmix_job_t **jobs, pmix_std_cntr_t num_jobs) {
-    int len_jobid = 0,
-        len_state = 0,
-        len_slots = 0,
-        len_vpid_r = 0,
-        len_ckpt_s = 0,
-        len_ckpt_r = 0,
-        len_ckpt_l = 0;
-    int line_len;
-    pmix_job_t *job;
-    pmix_std_cntr_t i;
-    char *jobstr;
-    pmix_jobid_t mask=0x0000ffff;
-
-    for(i=0; i < num_jobs; i++) {
-        job = jobs[i];
-
-        /* check the jobid to see if this is the daemons' job */
-        if ((0 == (mask & job->jobid)) && !pmix_ps_globals.daemons) {
-            continue;
-        }
-
-        /* setup the printed name - do -not- free this! */
-        jobstr = PMIX_JOBID_PRINT(job->jobid);
-
-        /*
-         * Calculate segment lengths
-         */
-        len_jobid  = strlen(jobstr);;
-        len_state  = (int) (strlen(pmix_job_state_to_str(job->state)) < strlen("State") ?
-                            strlen("State") :
-                            strlen(pmix_job_state_to_str(job->state)));
-        len_slots  = 6;
-        len_vpid_r = (int) strlen("Num Procs");
-        len_ckpt_s = -3;
-        len_ckpt_r = -3;
-        len_ckpt_l = -3;
-
-        line_len = (len_jobid  + 3 +
-                    len_state  + 3 +
-                    len_slots  + 3 +
-                    len_vpid_r + 3 +
-                    len_ckpt_s + 3 +
-                    len_ckpt_r + 3 +
-                    len_ckpt_l)
-                    + 2;
-
-        /*
-         * Print Header
-         */
-        printf("\n");
-        printf("%*s | ", len_jobid  , "JobID");
-        printf("%*s | ", len_state  , "State");
-        printf("%*s | ", len_slots  , "Slots");
-        printf("%*s | ", len_vpid_r , "Num Procs");
-        printf("\n");
-
-        pretty_print_dashed_line(line_len);
-
-        /*
-         * Print Info
-         */
-        printf("%*s | ",  len_jobid ,  PMIX_JOBID_PRINT(job->jobid));
-        printf("%*s | ",  len_state ,  pmix_job_state_to_str(job->state));
-        printf("%*d | ",  len_slots ,  (uint)job->total_slots_alloc);
-        printf("%*d | ",  len_vpid_r,  job->num_procs);
-        printf("\n");
-
-
-        pretty_print_vpids(job);
-        printf("\n\n"); /* give a little room between job outputs */
-    }
-
-    return PMIX_SUCCESS;
-}
-
-static int pretty_print_vpids(pmix_job_t *job) {
-    int len_o_proc_name = 0,
-        len_proc_name   = 0,
-        len_rank        = 0,
-        len_pid         = 0,
-        len_state       = 0,
-        len_node        = 0,
-        len_ckpt_s      = 0,
-        len_ckpt_r      = 0,
-        len_ckpt_l      = 0;
-    int i, line_len;
-    pmix_vpid_t v;
-    pmix_proc_t *vpid;
-    pmix_app_context_t *app;
-    char *o_proc_name;
-    char **nodename = NULL;
-
-    if (0 == job->num_procs) {
-        return PMIX_SUCCESS;
-    }
-
-    /*
-     * Calculate segment lengths
-     */
-    len_o_proc_name = (int)strlen("PMIX Name");
-    len_proc_name   = (int)strlen("Process Name");
-    len_rank        = (int)strlen("Local Rank");
-    len_pid         = 6;
-    len_state       = 0;
-    len_node        = 0;
-    len_ckpt_s      = -3;
-    len_ckpt_r      = -3;
-    len_ckpt_l      = -3;
-
-    nodename = (char **) calloc(job->num_procs, sizeof(char *));
-    for(v=0; v < job->num_procs; v++) {
-        char *rankstr;
-        vpid = (pmix_proc_t*)job->procs->addr[v];
-
-        /*
-         * Find my app context
-         */
-        if( 0 >= (int)job->num_apps ) {
-            if( 0 == vpid->name.vpid ) {
-                if( (int)strlen("pmixrun") > len_proc_name)
-                    len_proc_name = strlen("pmixrun");
-            }
-            else {
-                if( (int)strlen("pmixd") > len_proc_name)
-                    len_proc_name = strlen("pmixd");
-            }
-        }
-        for( i = 0; i < (int)job->num_apps; ++i) {
-            app = (pmix_app_context_t*)job->apps->addr[i];
-            if( app->idx == vpid->app_idx ) {
-                if( (int)strlen(app->app) > len_proc_name)
-                    len_proc_name = strlen(app->app);
-                break;
-            }
-        }
-
-        o_proc_name = pmix_util_print_name_args(&vpid->name);
-        if ((int)strlen(o_proc_name) > len_o_proc_name)
-            len_o_proc_name = strlen(o_proc_name);
-
-        asprintf(&rankstr, "%u", (uint)vpid->local_rank);
-        if ((int)strlen(rankstr) > len_rank)
-            len_rank = strlen(rankstr);
-        free(rankstr);
-
-        nodename[v] = NULL;
-        if( pmix_get_attribute(&vpid->attributes, PMIX_PROC_NODENAME, (void**)&nodename[v], PMIX_STRING) &&
-            (int)strlen(nodename[v]) > len_node) {
-            len_node = strlen(nodename[v]);
-        } else if ((int)strlen("Unknown") > len_node) {
-            len_node = strlen("Unknown");
-        }
-
-        if( (int)strlen(pmix_proc_state_to_str(vpid->state)) > len_state)
-            len_state = strlen(pmix_proc_state_to_str(vpid->state));
-
-    }
-
-    line_len = (len_o_proc_name + 3 +
-                len_proc_name   + 3 +
-                len_rank        + 3 +
-                len_pid         + 3 +
-                len_state       + 3 +
-                len_node        + 3 +
-                len_ckpt_s      + 3 +
-                len_ckpt_r      + 3 +
-                len_ckpt_l)
-                + 2;
-
-    /*
-     * Print Header
-     */
-    printf("\t");
-    printf("%*s | ", len_proc_name   , "Process Name");
-    printf("%*s | ", len_o_proc_name , "PMIX Name");
-    printf("%*s | ", len_rank        , "Local Rank");
-    printf("%*s | ", len_pid         , "PID");
-    printf("%*s | ", len_node        , "Node");
-    printf("%*s | ", len_state       , "State");
-    printf("\n");
-
-    printf("\t");
-    pretty_print_dashed_line(line_len);
-
-    /*
-     * Print Info
-     */
-    for(v=0; v < job->num_procs; v++) {
-        vpid = (pmix_proc_t*)job->procs->addr[v];
-
-        printf("\t");
-
-        if( 0 >= (int)job->num_apps ) {
-            if( 0 == vpid->name.vpid ) {
-                printf("%*s | ", len_proc_name, "pmixrun");
-            } else {
-                printf("%*s | ", len_proc_name, "pmixd");
-            }
-        }
-        for( i = 0; i < (int)job->num_apps; ++i) {
-            app = (pmix_app_context_t*)job->apps->addr[i];
-            if( app->idx == vpid->app_idx ) {
-                printf("%*s | ", len_proc_name, app->app);
-                break;
-            }
-        }
-
-        o_proc_name = pmix_util_print_name_args(&vpid->name);
-
-        printf("%*s | ",  len_o_proc_name, o_proc_name);
-        printf("%*u | ",  len_rank       , (uint)vpid->local_rank);
-        printf("%*d | ",  len_pid        , vpid->pid);
-        printf("%*s | ",  len_node       , (NULL == nodename[v]) ? "Unknown" : nodename[v]);
-        printf("%*s | ",  len_state      , pmix_proc_state_to_str(vpid->state));
-
-        if (NULL != nodename[v]) {
-            free(nodename[v]);
-        }
-        printf("\n");
-
-    }
-    if (NULL != nodename) {
-        free(nodename);
-    }
-    return PMIX_SUCCESS;
-}
-
-static void pretty_print_dashed_line(int len) {
-    static const char dashes[9] = "--------";
-
-    while (len >= 8) {
-        printf("%8.8s", dashes);
-        len -= 8;
-    }
-    printf("%*.*s\n", len, len, dashes);
-}
-
-static int gather_information(pmix_ps_mpirun_info_t *hnpinfo) {
-    int ret;
-
-    if( PMIX_SUCCESS != (ret = gather_active_jobs(hnpinfo) )) {
-        goto cleanup;
-    }
-
-    if( PMIX_SUCCESS != (ret = gather_nodes(hnpinfo) )) {
-        goto cleanup;
-    }
-
-    if( PMIX_SUCCESS != (ret = gather_vpid_info(hnpinfo) )) {
-        goto cleanup;
-    }
-
- cleanup:
-    return ret;
-}
-
-static int gather_active_jobs(pmix_ps_mpirun_info_t *hnpinfo) {
-    int ret;
-
-    if (PMIX_SUCCESS != (ret = pmix_util_comm_query_job_info(&(hnpinfo->hnp->name), pmix_ps_globals.jobid,
-                                                             &hnpinfo->num_jobs, &hnpinfo->jobs))) {
-        PMIX_ERROR_LOG(ret);
-    }
-
-    return ret;
-}
-
-static int gather_nodes(pmix_ps_mpirun_info_t *hnpinfo) {
-    int ret;
-
-    if (PMIX_SUCCESS != (ret = pmix_util_comm_query_node_info(&(hnpinfo->hnp->name), NULL,
-                                                             &hnpinfo->num_nodes, &hnpinfo->nodes))) {
-        PMIX_ERROR_LOG(ret);
-    }
-    pmix_output(0, "RECEIVED %d NODES", hnpinfo->num_nodes);
-    return ret;
-}
-
-static int gather_vpid_info(pmix_ps_mpirun_info_t *hnpinfo) {
-    int ret;
-    pmix_std_cntr_t i;
-    int cnt;
-    pmix_job_t *job;
-    pmix_proc_t **procs;
-
-    /*
-     * For each Job in the HNP
-     */
-    for(i=0; i < hnpinfo->num_jobs; i++) {
-        job = hnpinfo->jobs[i];
-
-        /*
-         * Skip getting the vpid's for the HNP, unless asked to do so
-         * The HNP is always the first in the array
-         */
-        if( 0 == i && !pmix_ps_globals.daemons) {
-            continue;
-        }
-
-        /* query the HNP for info on the procs in this job */
-        if (PMIX_SUCCESS != (ret = pmix_util_comm_query_proc_info(&(hnpinfo->hnp->name),
-                                                                  job->jobid,
-                                                                  PMIX_VPID_WILDCARD,
-                                                                  &cnt,
-                                                                  &procs))) {
-            PMIX_ERROR_LOG(ret);
-        }
-        job->procs->addr = (void**)procs;
-        job->procs->size = cnt;
-        job->num_procs = cnt;
-    }
-
-    return PMIX_SUCCESS;
-}
-
-static char *pretty_node_state(pmix_node_state_t state) {
-    switch(state) {
-    case PMIX_NODE_STATE_DOWN:
-        return strdup("Down");
-        break;
-    case PMIX_NODE_STATE_UP:
-        return strdup("Up");
-        break;
-    case PMIX_NODE_STATE_REBOOT:
-        return strdup("Reboot");
-        break;
-    case PMIX_NODE_STATE_UNKNOWN:
-    default:
-        return strdup("Unknown");
-        break;
-    }
-}
-
-static int parseable_print(pmix_ps_mpirun_info_t *hnpinfo)
-{
-    pmix_job_t **jobs;
-    pmix_node_t **nodes;
-    pmix_proc_t *proc;
-    pmix_app_context_t *app;
-    char *appname;
-    int i, j;
-    char *nodename;
-
-    /* don't include the daemon job in the number of jobs reppmixd */
-    printf("mpirun:%lu:num nodes:%d:num jobs:%d\n",
-           (unsigned long)hnpinfo->hnp->pid, hnpinfo->num_nodes, hnpinfo->num_jobs-1);
-
-    if (pmix_ps_globals.nodes) {
-        nodes = hnpinfo->nodes;
-        for (i=0; i < hnpinfo->num_nodes; i++) {
-            printf("node:%s:state:%s:slots:%d:in use:%d\n",
-                   nodes[i]->name, pretty_node_state(nodes[i]->state),
-                   nodes[i]->slots, nodes[i]->slots_inuse);
-        }
-    }
-
-    jobs = hnpinfo->jobs;
-    /* skip job=0 as that's the daemon job */
-    for (i=1; i < hnpinfo->num_jobs; i++) {
-        printf("jobid:%d:state:%s:slots:%d:num procs:%d\n",
-               PMIX_LOCAL_JOBID(jobs[i]->jobid),
-               pmix_job_state_to_str(jobs[i]->state),
-               jobs[i]->total_slots_alloc,
-               jobs[i]->num_procs);
-        /* print the proc info */
-        for (j=0; j < jobs[i]->procs->size; j++) {
-            if (NULL == (proc = (pmix_proc_t*)pmix_pointer_array_get_item(jobs[i]->procs, j))) {
-                continue;
-            }
-            app = (pmix_app_context_t*)pmix_pointer_array_get_item(jobs[i]->apps, proc->app_idx);
-            if (NULL == app) {
-                appname = strdup("NULL");
-            } else {
-                appname = pmix_basename(app->app);
-            }
-            nodename = NULL;
-            pmix_get_attribute(&proc->attributes, PMIX_PROC_NODENAME, (void**)&nodename, PMIX_STRING);
-            printf("process:%s:rank:%s:pid:%lu:node:%s:state:%s\n",
-                   appname, PMIX_VPID_PRINT(proc->name.vpid),
-                   (unsigned long)proc->pid,
-                   (NULL == nodename) ? "unknown" : nodename,
-                   pmix_proc_state_to_str(proc->state));
-            free(appname);
-            if (NULL != nodename) {
-                free(nodename);
-            }
-        }
-    }
-
-    return PMIX_SUCCESS;
-}
-#endif
