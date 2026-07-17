@@ -253,41 +253,58 @@ own commit. Recorded so they are not re-introduced by a future edit.
   past the end of the mapping. Now `pad_to_page(header) + pad_to_page(size)`.
   Masked today only because the sole caller pre-pads to a page multiple.
 
-## Known / latent issues not yet fixed
+A second pass then cleared the remaining latent/robustness items:
 
-These were surfaced by the same review but left as-is (latent,
-config-gated, or by-design). Fix opportunistically, as separate commits.
+- **`pmix_show_help.c` `get_content` `#include` parser.** The
+  `project == NULL` first branch mis-parsed an `#include#FILE#TOPIC` line
+  (`strrchr` re-found the same `#`, never NUL-terminated, so `file == topic`).
+  Now strdups the line and parses each `#`-delimited field like the second
+  (correct) branch, defaulting the project to `pmix`. Unreachable today (no
+  `help-*.txt` uses `#include`) but now correct if one does.
+- **`pmix_path.c`.** `pmix_path_df` checked the sign of `f_bavail` after
+  truncating it to `int` (could report 0 free on a large filesystem) — now
+  uses an `int64_t` sign test. `pmix_path_nfs` set `*fstype` on false
+  returns (a leak, against its "valid only if true" contract) and never
+  NULL-checked the pointer — now sets it only on the true path, guarded.
+  `pmix_path_findv` leaked the partial `dirv` on a `strdup` OOM — now frees it.
+- **`pmix_output.c`.** `open_file` assembled the filename with an unbounded
+  `strcat` chain into a `PMIX_PATH_MAX` buffer — now a single bounded
+  `snprintf`. `pmix_output_reopen_all` called `gethostname` without
+  guaranteeing NUL termination — now matches the init path.
+- **`pmix_environ.c`.** The include/exclude matcher treated a trailing `*`
+  as a wildcard but matched every entry as a prefix regardless, so `"PATH"`
+  also matched `"PATHFINDER"`. Now a bare name is an exact match (bounded at
+  the `=`/NUL) and only a trailing `*` prefix-matches — matching the
+  documented `"OMPI_*,OPAL_*"` convention. The exclusion loop also now skips
+  non-`PMIX_ENVAR` kvals before reading `data.envar`.
+- **OOM robustness / doc drift.** `pmix_os_path`, `pmix_os_dirpath_create`,
+  `pmix_path_findv`, and the `pmix_name_fns` TSD allocator now NULL-check
+  their allocations (the last unwinds partially-allocated buffers).
+  `pmix_getcwd` also NULL-checks `pmix_basename` before copying; its header
+  referenced a nonexistent `PMIX_ERR_TEMP_OUT_OF_RESOURCE` — the doc was
+  corrected to the real `PMIX_ERR_OUT_OF_RESOURCE`. `pmix_os_dirpath_destroy`
+  now returns `PMIX_ERR_NOT_FOUND` (not `PMIX_ERROR`) for a missing
+  directory, per its header.
+- **`pmix_printf.c`.** The `!HAVE_VASPRINTF` fallback `guess_strlen` read
+  `double`/`long` varargs via `va_arg(ap, int)` — now uses the correct
+  `double`/`long` types. Dead on modern platforms, but no longer UB.
+- **`pmix_tty.c`.** `pmix_settermios` verified a set via a full-struct
+  `memcmp` of `struct termios` (padding / canonicalized fields → spurious
+  failures) — now compares the individual POSIX fields (`c_iflag`,
+  `c_oflag`, `c_cflag`, `c_lflag`, `c_cc`).
 
-- **`pmix_show_help.c` `get_content` `#include` parser (latent).** The
-  first branch (the `project == NULL` path) mis-parses an
-  `#include#FILE#TOPIC` content line — `strrchr` re-finds the same `#`,
-  and it never NUL-terminates, so `file` == `topic`. It is unreachable
-  today because no `help-*.txt` uses `#include`, but it will silently
-  break the moment one does. The second branch is the correct reference.
-- **`pmix_path.c`.** `pmix_path_df` casts a 64-bit `f_bavail` to `int`
-  for its sign test → can report 0 bytes free on very large filesystems.
-  `pmix_path_nfs` sets/leaks `*fstype` even when returning `false` and
-  never NULL-checks `strdup`/`fstype`.
-- **`pmix_output.c`.** `open_file` does an unbounded `strcat` chain into a
-  `PMIX_PATH_MAX` buffer (pathological `TMPDIR`); `pmix_output_reopen_all`
-  uses `gethostname` without guaranteeing NUL termination (the init path
-  guards it).
-- **`pmix_environ.c`.** A non-wildcard include like `"PATH"` prefix-matches
-  `"PATHFINDER=…"` (`strncmp` over the key length); the exclusion loop
-  reads `data.envar` without checking `type == PMIX_ENVAR`.
-- **OOM robustness / doc drift.** Several helpers (`pmix_os_path`,
-  `pmix_os_dirpath_create`, `pmix_path_findv`, `pmix_name_fns` TSD alloc)
-  don't NULL-check `malloc`/`calloc`/`strdup`; `pmix_getcwd` and
-  `pmix_os_dirpath_*` return codes disagree with their header docs.
-- **`pmix_alfg.c`.** `pmix_srand` unconditionally clobbers the file-static
-  global `alfg_buffer` even when seeding a caller-supplied buffer, and
-  `pmix_random()` (unused today) is never auto-seeded.
-- **`pmix_printf.c`.** The `!HAVE_VASPRINTF` fallback `guess_strlen` reads
-  `double`/`long` args via `va_arg(ap, int)` (UB) — dead on any modern
-  platform, but wrong.
-- **`pmix_tty.c`.** `pmix_settermios` verifies via a full-struct `memcmp`
-  of `struct termios`, which can spuriously fail across libc/kernel
-  combos (padding / canonicalized fields).
+## Known issue left as-is (by design)
+
+- **`pmix_alfg.c`.** `pmix_srand(buff, seed)` also copies the seeded state
+  into the file-static `alfg_buffer` that `pmix_random()` reads. This looks
+  like a footgun (two callers seeding their own buffers stomp the shared
+  global), but it is the *only* way to seed `pmix_random`'s global — and
+  `util_alfg.c` deliberately tests that `pmix_srand` + `pmix_random` is
+  deterministic. It is left unchanged: `pmix_random` is unused in-tree and
+  the two real `pmix_srand` callers (`pnet/tcp`, `pnet/opa`) use their own
+  buffers and never call `pmix_random`, so the "last writer wins" hazard
+  is not actually reachable. Do not "fix" it by dropping the global copy
+  without also giving `pmix_random` another way to be seeded.
 
 ## When in doubt
 
