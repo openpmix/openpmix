@@ -1514,6 +1514,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_peer_t *peer;
     pmix_pfexec_child_t *child, *nxt;
     pmix_lock_t lock;
+    bool myserver_is_mypeer;
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -1655,11 +1656,20 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         pmix_server_globals.system_tmpdir = NULL;
     }
 
+    /* Capture whether our active server currently aliases our own peer
+     * BEFORE rte_finalize releases (and may NULL) mypeer. The switch paths
+     * (disc, pmix_tool_retry_set) point myserver back at pmix_globals.mypeer
+     * when we disconnect our primary, taking a reference on it. rte_finalize
+     * plus the mypeer release below already drop mypeer's references, so
+     * releasing myserver separately in that case would free mypeer a third
+     * time. */
+    myserver_is_mypeer = (pmix_client_globals.myserver == pmix_globals.mypeer);
+
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {
         PMIX_RELEASE(pmix_globals.mypeer);
     }
-    if (NULL != pmix_client_globals.myserver) {
+    if (!myserver_is_mypeer && NULL != pmix_client_globals.myserver) {
         PMIX_RELEASE(pmix_client_globals.myserver);
     }
 
