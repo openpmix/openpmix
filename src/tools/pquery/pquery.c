@@ -224,11 +224,6 @@ int main(int argc, char **argv)
         }
     }
 
-    // setup the base infrastructure
-    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
-        return PMIX_ERROR;
-    }
-
     /* get the argv array of keys they want us to query */
     qkeys = results.tail;
 
@@ -319,7 +314,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "PMIx_tool_init failed: %s\n", PMIx_Error_string(rc));
         exit(rc);
     }
-    PMIX_INFO_FREE(info, 1);
+    PMIX_INFO_FREE(info, n);
 
     /* they might be querying the system about a client, server, or tool
      * attribute, so register those - this will allow us to compare the
