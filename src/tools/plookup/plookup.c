@@ -24,10 +24,12 @@
  *
  */
 
-#define _GNU_SOURCE
+#include "pmix_config.h"
+
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -208,12 +210,60 @@ int main(int argc, char **argv)
     }
     ndata = count;
 
-    /* if we were given the pid of a starter, then direct that
-     * we connect to it */
-
-    /* otherwise, use the system connection first, if available */
     PMIX_INFO_CREATE(info, 1);
-    PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_SYSTEM_FIRST, NULL, PMIX_BOOL);
+    if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_PID))) {
+        /* if we were given the pid of a starter, then direct that
+         * we connect to it - the value may be an integer pid or a
+         * "file:PATH" pointing at a rendezvous file holding the pid */
+        char *leftover, *param;
+        pid_t pid;
+        leftover = NULL;
+        pid = strtol(opt->values[0], &leftover, 10);
+        if (NULL == leftover || 0 == strlen(leftover)) {
+            /* it is an integer */
+            PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pid, PMIX_PID);
+        } else if (0 == strncasecmp(opt->values[0], "file", 4)) {
+            FILE *fp;
+            /* step over the file: prefix */
+            param = strchr(opt->values[0], ':');
+            if (NULL == param) {
+                /* malformed input */
+                pmix_show_help("help-pquery.txt", "bad-option-input", true, pmix_tool_basename,
+                               "--pid", opt->values[0], "file:path");
+                PMIX_INFO_FREE(info, 1);
+                exit(PMIX_ERR_BAD_PARAM);
+            }
+            ++param;
+            fp = fopen(param, "r");
+            if (NULL == fp) {
+                pmix_show_help("help-pquery.txt", "file-open-error", true, pmix_tool_basename,
+                               "--pid", opt->values[0], param);
+                PMIX_INFO_FREE(info, 1);
+                exit(PMIX_ERR_BAD_PARAM);
+            }
+            rc = fscanf(fp, "%lu", (unsigned long *) &pid);
+            if (1 != rc) {
+                /* if we were unable to obtain the single conversion we
+                 * require, then error out */
+                pmix_show_help("help-pquery.txt", "bad-file", true, pmix_tool_basename,
+                               "--pid", opt->values[0], param);
+                fclose(fp);
+                PMIX_INFO_FREE(info, 1);
+                exit(PMIX_ERR_BAD_PARAM);
+            }
+            fclose(fp);
+            PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pid, PMIX_PID);
+        } else { /* a string that's neither an integer nor starts with 'file:' */
+            pmix_show_help("help-pquery.txt", "bad-option-input", true,
+                           pmix_tool_basename, "--pid",
+                           opt->values[0], "file:path");
+            PMIX_INFO_FREE(info, 1);
+            exit(PMIX_ERR_BAD_PARAM);
+        }
+    } else {
+        /* otherwise, use the system connection first, if available */
+        PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_SYSTEM_FIRST, NULL, PMIX_BOOL);
+    }
     /* init as a tool */
     if (PMIX_SUCCESS != (rc = PMIx_tool_init(&myproc, info, 1))) {
         fprintf(stderr, "PMIx_tool_init failed: %d\n", rc);
