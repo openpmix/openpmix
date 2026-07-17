@@ -94,13 +94,20 @@ pmix_status_t pmix_settermios(int fd, struct termios *terms)
     } else {
 
         /* check that it was fully successful - tcsetattr returns
-         * success if ANY change succeeded */
+         * success if ANY change succeeded. Compare the individual POSIX
+         * termios fields rather than memcmp'ing the whole struct: the
+         * struct carries padding and (on some platforms) speed fields the
+         * kernel canonicalizes, so a byte-exact compare gives spurious
+         * failures even when every requested setting was applied. */
         rc = pmix_gettermios(fd, &check);
         if (0 != rc) {
             return PMIX_ERROR;
         }
-        rc = memcmp(terms, &check, sizeof(struct termios));
-        if (0 != rc) {
+        if (terms->c_iflag != check.c_iflag ||
+            terms->c_oflag != check.c_oflag ||
+            terms->c_cflag != check.c_cflag ||
+            terms->c_lflag != check.c_lflag ||
+            0 != memcmp(terms->c_cc, check.c_cc, sizeof(terms->c_cc))) {
             errno = EINVAL;
             return PMIX_ERROR;
         }
