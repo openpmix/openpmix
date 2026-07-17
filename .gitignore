@@ -249,6 +249,9 @@ test/unit/bfrops_alloc_inherit
 test/unit/gds_fallback
 test/unit/pmix_log
 test/unit/collective_status
+test/unit/collect_job_info
+test/unit/trk_complete
+test/unit/tracker_match
 test/unit/client_cycle
 test/unit/tool_cycle
 test/unit/event_chain
