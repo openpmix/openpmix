@@ -309,6 +309,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
             /* pack it for transmission */
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
+            PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&pbkt);
@@ -831,6 +832,7 @@ static pmix_status_t get_job_data(char *nspace,
         PMIX_DESTRUCT(&pkt);
         /* pack it for transmission */
         PMIX_BFROPS_PACK(rc, cd->peer, pbkt, &bo, 1, PMIX_BYTE_OBJECT);
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&cb);
