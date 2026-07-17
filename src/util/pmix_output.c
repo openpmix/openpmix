@@ -153,7 +153,7 @@ bool pmix_output_init(void)
     gethostname(hostname, sizeof(hostname) - 1);
     hostname[sizeof(hostname) - 1] = '\0';
     if (0 > asprintf(&verbose.lds_prefix, "[%s:%05d] ", hostname, getpid())) {
-        return PMIX_ERR_NOMEM;
+        return false;
     }
 
     for (i = 0; i < PMIX_OUTPUT_MAX_STREAMS; ++i) {
@@ -728,7 +728,9 @@ static int make_string(char **out, char **no_newline_string, pmix_output_desc_t 
         return PMIX_ERR_NOMEM;
     }
     total_len = len = strlen(*no_newline_string);
-    if ('\n' != (*no_newline_string)[len - 1]) {
+    /* guard the len-1 index: an empty formatted string has no last
+     * character, and should simply get a trailing newline */
+    if (0 == len || '\n' != (*no_newline_string)[len - 1]) {
         want_newline = true;
         ++total_len;
     } else if (NULL != ldi->ldi_suffix) {
