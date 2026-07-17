@@ -211,9 +211,10 @@ def pypmix_credential_cbfunc(int rc, dict byteobject, list info, dict cbdata_dic
         return
 
     if PMIX_SUCCESS == rc:
-        c_byteobject.size = byteobject['size']
-        c_byteobject.bytes = <char *> malloc(byteobject['size'])
-        memcpy(c_byteobject.bytes, <void *> byteobject['bytes'], byteobject['size'])
+        size = byteobject['size']
+        c_byteobject.size = size
+        c_byteobject.bytes = <char *> malloc(size)
+        memcpy(c_byteobject.bytes, <void *> byteobject['bytes'], size)
 
         prc = pmix_alloc_info(&c_info, &ninfo, info)
         if PMIX_SUCCESS != prc:
@@ -465,7 +466,10 @@ cdef class PMIxClient:
         return PMIx_Initialized()
 
     def get_version(self):
-        return PMIx_Get_version()
+        cdef const char *v = PMIx_Get_version()
+        if NULL == v:
+            return None
+        return v.decode('ascii')
 
     # Initialize the PMIx client library, connecting
     # us to the local PMIx server
@@ -723,7 +727,10 @@ cdef class PMIxClient:
                 rc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
         if PMIX_SUCCESS == rc:
             val = pmix_unload_value(val_ptr)
-            pmix_free_value(self, val_ptr)
+            # val_ptr was allocated by the PMIx library (PMIX_VALUE_CREATE),
+            # so it must be released with the library's own allocator rather
+            # than PyMem_Free.
+            PMIx_Value_free(val_ptr, 1)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         return rc, val
@@ -772,9 +779,9 @@ cdef class PMIxClient:
         if pykeys is not None:
             nstrings = len(pykeys)
             if 0 < nstrings:
-                keys = <char **> PyMem_Malloc(nstrings * sizeof(char*))
+                keys = <char **> PyMem_Malloc((nstrings + 1) * sizeof(char*))
                 if not keys:
-                    PMIX_ERR_NOMEM
+                    return PMIX_ERR_NOMEM
             rc = pmix_load_argv(keys, pykeys)
             if PMIX_SUCCESS != rc:
                 n = 0
@@ -1478,7 +1485,10 @@ cdef class PMIxClient:
             pmix_free_info(info, ninfo)
         return rc
 
-    def register_event_handler(self, pycodes:list, pyinfo:list, hdlr):
+    def register_event_handler(self, pycodes, pyinfo, hdlr):
+        # pycodes/pyinfo are intentionally untyped: the body accepts either a
+        # list or None (None => register a default handler / no directives).
+        # A `:list` annotation would make Cython reject None at the boundary.
         cdef pmix_status_t *codes
         cdef size_t ncodes
         cdef pmix_info_t *info
@@ -1785,7 +1795,7 @@ def setmodulefn(k, f):
     permitted = ['clientconnected', 'clientfinalized', 'abort',
                  'fencenb', 'directmodex', 'publish', 'lookup', 'unpublish',
                  'spawn', 'connect', 'disconnect', 'registerevents',
-                 'deregisterevents', 'listener', 'notify_event', 'query',
+                 'deregisterevents', 'listener', 'notifyevent', 'query',
                  'toolconnected', 'log', 'allocate', 'jobcontrol',
                  'monitor', 'getcredential', 'validatecredential',
                  'iofpull', 'pushstdin', 'group', 'fabric', 'clientconnected2',
@@ -2012,7 +2022,7 @@ cdef class PMIxServer(PMIxClient):
         return
 
     # Register resources
-    def register_resources(directives:list):
+    def register_resources(self, directives:list):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -2027,7 +2037,7 @@ cdef class PMIxServer(PMIxClient):
         return rc
 
     # Deregister resources
-    def deregister_resources(directives:list):
+    def deregister_resources(self, directives:list):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -2141,7 +2151,7 @@ cdef class PMIxServer(PMIxClient):
             active.fetch_info(dataout)
         return (rc, dataout)
 
-    def register_attributes(function:str, attrs:list):
+    def register_attributes(self, function:str, attrs:list):
         cdef size_t nattrs
         cdef char *func
         cdef char **attarray
@@ -2173,7 +2183,7 @@ cdef class PMIxServer(PMIxClient):
             PyMem_Free(func)
         return PMIX_SUCCESS
 
-    def collect_inventory(pydirs:list):
+    def collect_inventory(self, pydirs:list):
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
         cdef size_t ndirs
@@ -2194,7 +2204,7 @@ cdef class PMIxServer(PMIxClient):
             active.fetch_info(dataout)
         return (rc, dataout)
 
-    def deliver_inventory(pyinfo:list, pydirs:list):
+    def deliver_inventory(self, pyinfo:list, pydirs:list):
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
         cdef pmix_info_t *info
@@ -2235,27 +2245,23 @@ cdef class PMIxServer(PMIxClient):
             active.wait()
         return rc
 
-    def iof_deliver(pysrc:dict, pychannel:int, pydata:dict, pydirs:list):
-        cdef pmix_proc_t *source
+    def iof_deliver(self, pysrc:dict, pychannel:int, pydata:dict, pydirs:list):
+        cdef pmix_proc_t source
         cdef pmix_iof_channel_t channel
-        cdef pmix_byte_object_t *bo
+        cdef pmix_byte_object_t bo
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
         cdef size_t ndirs
-        source  = NULL
         ndirs   = 0
         channel = pychannel
 
         # convert pysrc to pmix_proc_t
-        pmix_copy_nspace(source[0].nspace, pysrc['nspace'])
-        source[0].rank = pysrc['rank']
+        pmix_copy_nspace(source.nspace, pysrc['nspace'])
+        source.rank = pysrc['rank']
 
         # convert pydata to pmix_byte_object_t
-        bo = <pmix_byte_object_t*>PyMem_Malloc(sizeof(pmix_byte_object_t))
-        if not bo:
-            return PMIX_ERR_NOMEM
         data = bytes(pydata['bytes'], 'ascii')
-        bo.size = sizeof(data)
+        bo.size = len(data)
         bo.bytes = <char*> PyMem_Malloc(bo.size)
         if not bo.bytes:
             return PMIX_ERR_NOMEM
@@ -2267,11 +2273,14 @@ cdef class PMIxServer(PMIxClient):
         rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
 
         # call API
-        rc = PMIx_server_IOF_deliver(source, channel, bo, directives, ndirs,
+        rc = PMIx_server_IOF_deliver(&source, channel, &bo, directives, ndirs,
                                      NULL, NULL)
+        PyMem_Free(bo.bytes)
+        if 0 < ndirs:
+            pmix_free_info(directives, ndirs)
         return rc
 
-    def define_process_set(members:list, name:str):
+    def define_process_set(self, members:list, name:str):
         cdef pmix_proc_t *procs
         cdef size_t nprocs
         nprocs = 0
@@ -2294,7 +2303,7 @@ cdef class PMIxServer(PMIxClient):
         pmix_free_procs(procs, nprocs)
         return rc
 
-    def delete_process_set(name:str):
+    def delete_process_set(self, name:str):
 
         # convert set name
         pyset = name.encode('ascii')
@@ -2302,7 +2311,7 @@ cdef class PMIxServer(PMIxClient):
         rc = PMIx_server_delete_process_set(pyset)
         return rc
 
-    def session_control(sessionID:int, ilist:list):
+    def session_control(self, sessionID:int, ilist:list):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -3075,7 +3084,7 @@ cdef class PMIxTool(PMIxServer):
         return PMIx_tool_is_connected()
 
     # Disconnect from a server
-    def disconnect(server:dict):
+    def disconnect(self, server:dict):
         cdef pmix_proc_t srvr
 
         # convert the server name
@@ -3244,12 +3253,13 @@ cdef class PMIxTool(PMIxServer):
         # remove our local hdlr
         found = False
         n = 0
-        for h in myhdlrs and not found:
+        for h in myhdlrs:
             try:
                 if iofhdlr == h['refid']:
                     found = True
                     del myhdlrs[n]
-                else :
+                    break
+                else:
                     n = n + 1
             except:
                 pass
@@ -3330,8 +3340,9 @@ cdef class PMIxScheduler(PMIxTool):
         # init myname
         myname = {'nspace':'UNASSIGNED', 'rank':PMIX_RANK_UNDEF}
 
-        # init server module in case the scheduler uses it
-        self.server_module_init()
+        # init server module in case the scheduler uses it (wire whatever
+        # module functions were registered via set_server_module, if any)
+        self.server_module_init(list(pmixservermodule.keys()))
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
@@ -3356,7 +3367,7 @@ cdef class PMIxScheduler(PMIxTool):
         return rc
 
     # direct the RTE to instantiate a session
-    def assign_session(sessionID:int, allocID:str, ilist:list, applist:list):
+    def assign_session(self, sessionID:int, allocID:str, ilist:list, applist:list):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -3365,7 +3376,12 @@ cdef class PMIxScheduler(PMIxTool):
         rc = pmix_alloc_info(info_ptr, &sz, ilist)
         if PMIX_SUCCESS != rc:
             return rc
-        if sz == 0:
-            info = NULL
-        # convert the app list
+        # NOTE: the PMIx library does not yet expose a C entry point that lets
+        # a scheduler directly instantiate a session from an application list.
+        # When one is added, this method must convert applist and invoke it.
+        # Until then, release what we converted and report the gap rather than
+        # silently returning None. See MISSING_BINDINGS.md.
+        if 0 < sz:
+            pmix_free_info(info, sz)
+        return PMIX_ERR_NOT_SUPPORTED
 

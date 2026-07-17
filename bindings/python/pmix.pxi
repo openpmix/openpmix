@@ -136,7 +136,7 @@ cdef void pmix_convert_locality(pmix_locality_t loc, pyloc:list):
         pyloc.append(PMIX_LOCALITY_SHARE_NUMA)
     if PMIX_LOCALITY_SHARE_NODE & loc:
         pyloc.append(PMIX_LOCALITY_SHARE_NODE)
-    if 0 == pyloc.len():
+    if 0 == len(pyloc):
         pyloc.append(PMIX_LOCALITY_NONLOCAL)
     return
 
@@ -321,7 +321,6 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         for item in mylist:
             dptr[n] = float(item)
             n += 1
-            n += 1
     elif PMIX_TIMEVAL == mytype:
         # TODO: Not clear that "timeval" has the same size as
         # "struct timeval"
@@ -450,7 +449,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
             piptr[n].state = item['state']
             n += 1
     elif PMIX_DATA_ARRAY == mytype:
-        array[0].array = <pmix_data_array_t*> PyMem_Malloc(sizeof(pmix_data_array_t))
+        array[0].array = <pmix_data_array_t*> PyMem_Malloc(mysize * sizeof(pmix_data_array_t))
         if not array[0].array:
             return PMIX_ERR_NOMEM
         daptr = <pmix_data_array_t*>array[0].array
@@ -463,9 +462,12 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
                 return PMIX_ERR_NOMEM
             mydaptr = <pmix_data_array_t*>daptr[n].array
             try:
-                return pmix_load_darray(mydaptr, daptr[n].type, item['value'])
+                rc = pmix_load_darray(mydaptr, daptr[n].type, item['value'])
+                if PMIX_SUCCESS != rc:
+                    return rc
             except:
                 return PMIX_ERR_NOT_SUPPORTED
+            n += 1
     elif PMIX_ALLOC_DIRECTIVE == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_alloc_directive_t))
         if not array[0].array:
@@ -489,6 +491,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
                 pyns = enval
             pynsptr = <const char *>(pyns)
             envptr[n].envar = strdup(pynsptr)
+            enval = item['value']
             if isinstance(enval, str):
                 pyns = enval.encode('ascii')
             else:
@@ -788,17 +791,19 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             return PMIX_ERR_NOMEM
         daptr = <pmix_data_array_t*>array[0].array
         n = 0
+        list = []
         while n < array.size:
             if not daptr[n].array:
                 return PMIX_ERR_NOMEM
             mydaptr = <pmix_data_array_t*>daptr[n].array
             try:
-                rc = pmix_unload_darray(mydaptr)
-                if rc != PMIX_SUCCESS:
-                    return rc
+                d = pmix_unload_darray(mydaptr)
             except:
                 return PMIX_ERR_NOT_SUPPORTED
+            list.append(d)
             n += 1
+        darray = {'type':array.type, 'array':list}
+        return darray
     elif PMIX_ALLOC_DIRECTIVE == array.type:
         if not array[0].array:
             return PMIX_ERR_NOMEM
@@ -842,7 +847,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
     else:
         print("UNRECOGNIZED DATA TYPE IN ARRAY: "+str(array[0].type))
         return PMIX_ERR_NOT_SUPPORTED
-    return PMIX_SUCCESS
 
 # provide conversion programs that translate incoming
 # PMIx structures into Python dictionaries, and incoming
@@ -1083,7 +1087,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         value[0].data.tv.tv_usec = val['value']['usec']
 
     elif val['val_type'] == PMIX_TIME:
-        value[0].data.time = val['val_type']
+        value[0].data.time = val['value']
 
     elif val['val_type'] == PMIX_STATUS:
         if not isinstance(val['value'], int):
@@ -1407,6 +1411,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         osname = val['value']['osname']
         if isinstance(osname, str):
             pyosname = osname.encode('ascii')
+        else:
             pyosname = osname
         pyosnameptr = <const char *>(pyosname)
         value[0].data.devdist[0].osname = strdup(pyosnameptr)
@@ -1439,6 +1444,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         osname = val['value']['osname']
         if isinstance(osname, str):
             pyosname = osname.encode('ascii')
+        else:
             pyosname = osname
         pyosnameptr = <const char *>(pyosname)
         value[0].data.endpoint[0].osname = strdup(pyosnameptr)
@@ -1585,7 +1591,10 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         return {'value':{'nspace':pyns, 'rank':value[0].data.proc[0].rank}, 'val_type':PMIX_PROC}
 
     elif PMIX_BYTE_OBJECT == value[0].type:
-        mybytes = <bytes>value[0].data.bo.bytes[value[0].data.bo.size]
+        if NULL == value[0].data.bo.bytes:
+            mybytes = b''
+        else:
+            mybytes = value[0].data.bo.bytes[:value[0].data.bo.size]
         return {'value':{'bytes':mybytes, 'size':value[0].data.bo.size}, 'val_type':PMIX_BYTE_OBJECT}
 
     elif PMIX_REGEX == value[0].type:
@@ -1640,7 +1649,7 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
     elif PMIX_COORD == value[0].type:
         pyview = value[0].data.coord[0].view
         pydims = value[0].data.coord[0].dims
-        mybytes = <bytes>value[0].data.coord[0].coord[pydims]
+        mybytes = (<char*>value[0].data.coord[0].coord)[:pydims * sizeof(uint32_t)]
         return {'value': {'view': pyview, 'coord': mybytes, 'dims': pydims}, 'val_type': PMIX_COORD}
 
     elif PMIX_LINK_STATE == value[0].type:
@@ -1667,7 +1676,7 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         for n in range(pyncoord):
             pyview = value[0].data.geometry.coordinates[n].view
             pydims = value[0].data.geometry.coordinates[n].dims
-            mybytes = <bytes>value[0].data.geometry.coordinates[n].coord[pydims]
+            mybytes = (<char*>value[0].data.geometry.coordinates[n].coord)[:pydims * sizeof(uint32_t)]
             pyc = {'view': pyview, 'coord': mybytes, 'dims': pydims}
             pylist.append(pyc)
         return {'value': {'fabric': pyfabric, 'uuid': pyuuid, 'osname': pyosname, 'coords': pylist}, 'val_type': PMIX_GEOMETRY}
@@ -1690,8 +1699,11 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
     elif PMIX_ENDPOINT == value[0].type:
         pyuuid = (<bytes>value[0].data.endpoint[0].uuid).decode('UTF-8')
         pyosname = (<bytes>value[0].data.endpoint[0].osname).decode('UTF-8')
-        pysize = value[0].data.endpoint[0].size
-        mybytes = <bytes>value[0].data.endpoint[0].bytes[pysize]
+        pysize = value[0].data.endpoint[0].endpt.size
+        if NULL == value[0].data.endpoint[0].endpt.bytes:
+            mybytes = b''
+        else:
+            mybytes = value[0].data.endpoint[0].endpt.bytes[:pysize]
         pyval = {'uuid': pyuuid, 'osname': pyosname, 'endpt': {'bytes': mybytes, 'size': pysize}}
         return {'value': pyval, 'val_type': PMIX_ENDPOINT}
 
@@ -1897,12 +1909,14 @@ cdef void pmix_free_pdata(pmix_pdata_t *array, size_t sz):
 cdef int pmix_unload_queries(const pmix_query_t *queries, size_t nqueries, ilist:list):
     cdef char* kystr
     cdef size_t n = 0
-    keylist = []
-    qualist = []
-    query = {}
     while n < nqueries:
-        rc = pmix_unload_argv(queries[n].keys, keylist)
-        pmix_unload_info(queries[n].qualifiers, queries[n].nqual, qualist)
+        keylist = []
+        qualist = []
+        query = {}
+        if NULL != queries[n].keys:
+            pmix_unload_argv(queries[n].keys, keylist)
+        if NULL != queries[n].qualifiers:
+            pmix_unload_info(queries[n].qualifiers, queries[n].nqual, qualist)
         query['keys']       = keylist
         query['qualifiers'] = qualist
         ilist.append(query)
@@ -2028,14 +2042,14 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
             argv = <char**> malloc(m * sizeof(char*))
             if not argv:
                 return PMIX_ERR_NOMEM
-            memset(argv, 0, m)
+            memset(argv, 0, m * sizeof(char*))
             if p['argv'] is not None and 0 < len(p['argv']):
                 pmix_load_argv(argv, p['argv'])
             else:
                 pmix_load_argv(argv, [p['cmd']])
         except:
             argv = <char**> malloc(2 * sizeof(char*))
-            memset(argv, 0, 2)
+            memset(argv, 0, 2 * sizeof(char*))
             rc = pmix_load_argv(argv, [p['cmd']])
             if PMIX_SUCCESS != rc:
                 free(argv)
@@ -2048,7 +2062,7 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
                 env = <char**> malloc(m * sizeof(char*))
                 if not env:
                     return PMIX_ERR_NOMEM
-                memset(env, 0, m)
+                memset(env, 0, m * sizeof(char*))
                 pmix_load_argv(env, p['env'])
                 apps[n].env = env
         except:
