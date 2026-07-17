@@ -1726,7 +1726,15 @@ void pmix_tool_retry_attach(int sd, short args, void *cbdata)
         /* add the peer to our known clients */
         pmix_pointer_array_add(&pmix_server_globals.clients, peer);
         if (cb->checked) {
-            /* point our active server at this new one */
+            /* point our active server at this new one. myserver holds a
+             * reference of its own, independent of the clients-array
+             * entry (see PMIx_tool_init and PMIx_tool_finalize), so drop
+             * the outgoing server's myserver reference and take one on the
+             * new primary */
+            if (NULL != pmix_client_globals.myserver) {
+                PMIX_RELEASE(pmix_client_globals.myserver);
+            }
+            PMIX_RETAIN(peer);
             pmix_client_globals.myserver = peer;
             /* mark that we are connected */
             pmix_atomic_set_bool(&pmix_globals.connected);
@@ -1862,14 +1870,18 @@ static void disc(int sd, short args, void *cbdata)
      * "disconnected" state where we point the active server back at
      * ourselves - effectively the same as when we init without connecting */
     if (peer == pmix_client_globals.myserver) {
+        pmix_peer_t *departing = peer;
         PMIX_RETAIN(pmix_globals.mypeer);
         /* switch servers - we are in an event, so it is
          * safe to do so */
         pmix_client_globals.myserver = pmix_globals.mypeer;
         pmix_atomic_unset_bool(&pmix_globals.connected);
+        /* release the reference myserver held on the departing server,
+         * in addition to the clients-array reference dropped below */
+        PMIX_RELEASE(departing);
     }
 
-    /* now drop the connection */
+    /* now drop the connection - release the clients-array reference */
     PMIX_RELEASE(peer);
 
     cb->status = PMIX_SUCCESS;
@@ -2012,6 +2024,12 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
      * searching the array of clients - I definitely won't be there! */
     if (PMIX_CHECK_NSPACE(cb->proc->nspace, pmix_globals.myid.nspace)
         && PMIX_CHECK_RANK(cb->proc->rank, pmix_globals.myid.rank)) {
+        /* drop the outgoing server's myserver reference and take one on
+         * ourselves (see PMIx_tool_init and PMIx_tool_finalize) */
+        if (NULL != pmix_client_globals.myserver) {
+            PMIX_RELEASE(pmix_client_globals.myserver);
+        }
+        PMIX_RETAIN(pmix_globals.mypeer);
         pmix_client_globals.myserver = pmix_globals.mypeer;
         pmix_atomic_set_bool(&pmix_globals.connected);
         goto done;
@@ -2058,8 +2076,12 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
         return;
     }
 
-    /* switch the active server - we are in an event, so
-     * it is safe to do so */
+    /* switch the active server - we are in an event, so it is safe to do
+     * so. Drop the outgoing server's myserver reference and take one on
+     * the new primary */
+    if (NULL != pmix_client_globals.myserver) {
+        PMIX_RELEASE(pmix_client_globals.myserver);
+    }
     PMIX_RETAIN(peer);
     pmix_client_globals.myserver = peer;
     pmix_atomic_set_bool(&pmix_globals.connected);
