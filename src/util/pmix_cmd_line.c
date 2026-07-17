@@ -117,8 +117,14 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     optarg = NULL;
 
     if (1 == argc) {
-        // nothing to parse
-        goto done;
+        // nothing to parse - only the executable name is present, so
+        // there is no command "tail". Note we cannot "goto done" here:
+        // optind was just reset to 0, and the done: block would then
+        // copy argv[0] (the executable) into results->tail, leaving
+        // every caller to mistake the program name for a positional
+        // argument.
+        PMIx_Argv_free(argv);
+        return PMIX_SUCCESS;
     }
 
     // run the parser
