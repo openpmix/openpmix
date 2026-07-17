@@ -123,7 +123,7 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
-        return rc;
+        goto cleanup;
     }
     ninfo = ninf + 2;
     PMIX_INFO_CREATE(info, ninfo);
@@ -229,6 +229,9 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
     }
 
 cleanup:
+    if (NULL != procs) {
+        PMIX_PROC_FREE(procs, nprocs);
+    }
     if (NULL != info) {
         PMIX_INFO_FREE(info, ninfo);
     }
@@ -405,11 +408,28 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * notified when we are done */
     pmix_list_append(&trk->local_cbs, &cd->super);
 
+    /* if a timeout was specified, arm it once - guard against re-arming for
+     * each contributor. Do not retain the tracker: its collectives-list
+     * reference persists until completion, and completion deletes the timer
+     * before releasing (mirroring the fence family). */
+    if (0 < tv.tv_sec && !trk->event_active) {
+        PMIX_THREADSHIFT_DELAY(trk, connect_timeout, tv.tv_sec);
+        trk->event_active = true;
+    }
+
     /* if all local contributions have been received,
      * let the local host's server know that we are at the
      * "fence" point - they will callback once the [dis]connect
      * across all participants has been completed */
     if (pmix_server_trk_complete(trk)) {
+        /* delete the local-phase timer before handing the tracker to the
+         * host, so a late internal timeout cannot race the host completion
+         * (which could return the tracker after we released it). Once handed
+         * up, the host owns any further timeout. */
+        if (trk->event_active) {
+            pmix_event_del(&trk->ev);
+            trk->event_active = false;
+        }
         /* if all the participants are local, then we don't need the host */
         if (trk->local) {
             /* the operation is being atomically completed and the host will
@@ -463,12 +483,6 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         }
     } else {
         rc = PMIX_SUCCESS;
-    }
-    /* if a timeout was specified, set it */
-    if (PMIX_SUCCESS == rc && 0 < tv.tv_sec) {
-        PMIX_RETAIN(trk);
-        PMIX_THREADSHIFT_DELAY(trk, connect_timeout, tv.tv_sec);
-        trk->event_active = true;
     }
 
 cleanup:
