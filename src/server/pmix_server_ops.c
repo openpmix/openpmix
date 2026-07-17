@@ -2538,7 +2538,7 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t
     }
     /* unpack the directives */
     if (0 < qcd->ninfo) {
-        PMIX_INFO_CREATE(cd->info, qcd->ninfo);
+        PMIX_INFO_CREATE(qcd->info, qcd->ninfo);
         cnt = qcd->ninfo;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, qcd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
@@ -2862,7 +2862,7 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
     }
 
     scd = PMIX_NEW(pmix_setup_caddy_t);
-    if (NULL == cd) {
+    if (NULL == scd) {
         return PMIX_ERR_NOMEM;
     }
     scd->cbdata = cd;
@@ -2958,7 +2958,7 @@ pmix_status_t pmix_server_session_ctrl(pmix_server_caddy_t *cd,
     }
 
     scd = PMIX_NEW(pmix_shift_caddy_t);
-    if (NULL == cd) {
+    if (NULL == scd) {
         return PMIX_ERR_NOMEM;
     }
     scd->cbdata = cd;

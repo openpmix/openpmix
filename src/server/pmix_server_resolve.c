@@ -477,7 +477,7 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     pmix_cb_t cb;
     pmix_status_t rc, ret = PMIX_SUCCESS;
-    pmix_nspace_t nspace;
+    char *nspace;
     pmix_info_t info;
     pmix_proc_t proc;
     pmix_kval_t *kv;
@@ -487,6 +487,9 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
     size_t n;
     pmix_buffer_t *reply;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    // the first qualifier in the query has the nspace in it
+    nspace = cd->query->qualifiers[0].value.data.string;
 
     // restrict our search to already available info
     PMIX_INFO_LOAD(&info, PMIX_OPTIONAL, NULL, PMIX_BOOL);
@@ -503,7 +506,7 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
-            PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
             if (PMIX_SUCCESS != rc) {
                 continue;
             }
@@ -546,7 +549,7 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
 
     // looking for a specific nspace
     PMIX_LOAD_NSPACE(proc.nspace, nspace);
-    PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_DESTRUCT(&cb);
         ret = rc;
