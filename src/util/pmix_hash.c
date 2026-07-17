@@ -224,7 +224,9 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
         }
         if (0 < m) {
             darray = (pmix_data_array_t*)pmix_tma_malloc(tma, sizeof(pmix_data_array_t));
-            darray->array = (pmix_qual_t*)pmix_tma_malloc(tma, m * sizeof(pmix_qual_t));
+            /* zero-initialize so a partially-filled array can be safely
+             * released by erase_qualifiers() on an error path below */
+            darray->array = (pmix_qual_t*)pmix_tma_calloc(tma, m, sizeof(pmix_qual_t));
             darray->size = m;
             hv->qualindex = pmix_pointer_array_add(proc_data->quals, darray);
             qarray = (pmix_qual_t*)darray->array;
@@ -241,7 +243,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
                         pmix_dstor_release_tma(hv, tma);
                         return PMIX_ERR_BAD_PARAM;
                     }
-                    qarray[n].index = p->index;
+                    qarray[m].index = p->index;
                     rc = pmix_bfrops_base_tma_copy_value(&qarray[m].value, &qualifiers[n].value, PMIX_VALUE, tma);
                     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                         PMIX_ERROR_LOG(rc);
