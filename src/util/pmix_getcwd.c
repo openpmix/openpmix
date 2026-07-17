@@ -65,6 +65,11 @@ int pmix_getcwd(char *buf, size_t size)
          * of the basename as possible
          */
         shortened = pmix_basename(pwd);
+        if (NULL == shortened) {
+            /* pmix_basename failed to allocate - report it rather than
+             * passing a NULL src to pmix_string_copy */
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
         pmix_string_copy(buf, shortened, size);
         free(shortened);
         /* indicate that it isn't the full path */
