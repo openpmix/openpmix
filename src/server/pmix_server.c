@@ -669,6 +669,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     /* assign our internal bfrops module */
     pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
     if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
+        /* rc still holds SUCCESS from pmix_rte_init - report a real error */
+        rc = PMIX_ERR_INIT;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -688,6 +690,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     evar = getenv("PMIX_SECURITY_MODE");
     pmix_globals.mypeer->nptr->compat.psec = pmix_psec_base_assign_module(evar);
     if (NULL == pmix_globals.mypeer->nptr->compat.psec) {
+        /* rc still holds SUCCESS - report a real error */
+        rc = PMIX_ERR_INIT;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -696,7 +700,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, "hash", PMIX_STRING);
     pmix_globals.mypeer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
     if (NULL == pmix_globals.mypeer->nptr->compat.gds) {
+        /* rc still holds SUCCESS - report a real error */
+        rc = PMIX_ERR_INIT;
         PMIX_ERROR_LOG(rc);
+        PMIX_INFO_DESTRUCT(&ginfo);
         return rc;
     }
     PMIX_INFO_DESTRUCT(&ginfo);
