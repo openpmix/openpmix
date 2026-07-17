@@ -257,11 +257,14 @@ static void pmix_show_accumulated_duplicates(int fd, short event, void *context)
             pmix_asprintf(&buf, "%s-%s", tli->tli_filename, stamp);
             local_delivery(buf, tli->tli_topic, tmp);
             free(buf);
+            /* local_delivery copies the message, so we own tmp */
+            free(tmp);
             tli->tli_count_since_last_display = 0;
 
             if (first) {
                 pmix_asprintf(&tmp, "%s", "Set MCA parameter \"base_help_aggregate\" to 0 to see all help / error messages\n");
                 local_delivery(tli->tli_filename, tli->tli_topic, tmp);
+                free(tmp);
                 first = false;
             }
         }
