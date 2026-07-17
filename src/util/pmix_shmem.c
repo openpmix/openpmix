@@ -158,10 +158,15 @@ pmix_shmem_segment_create(
     const char *backing_path
 ) {
     int rc = PMIX_SUCCESS;
-    // Real size of the segment: add header plus extra to pad to page boundary.
-    const size_t real_size = pmix_shmem_utils_pad_to_page(
-        size + sizeof(pmix_shmem_header_t)
-    );
+    // Real size of the segment. The data region begins a full page in
+    // (data_addr_from_base() rounds the header up to a page boundary), so
+    // the segment must reserve that page-aligned header offset PLUS a
+    // page-rounded data region of the requested size. Rounding
+    // "size + sizeof(header)" as a single quantity would under-allocate the
+    // data region whenever size is not a page multiple, leaving the tail of
+    // the requested range past the end of the mapping.
+    const size_t real_size = pmix_shmem_utils_pad_to_page(sizeof(pmix_shmem_header_t))
+                             + pmix_shmem_utils_pad_to_page(size);
 
     const int fd = open(backing_path, O_CREAT | O_RDWR, 0600);
     if (fd == -1) {
