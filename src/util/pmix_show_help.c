@@ -452,15 +452,28 @@ static void get_content(char ***output,
                         // found a matching entry
                         for (m=0; NULL != ie->content[m]; m++) {
                             if (0 == strncmp(ie->content[m], "#include", strlen("#include"))) {
-                                // parse the project (if provided), file and topic being included
-                                p = strrchr(ie->content[m], '#');
+                                // parse the project (if provided), file and
+                                // topic being included. Work on a writable
+                                // copy so we can NUL-terminate each field -
+                                // ie->content[m] is a read-only string literal.
+                                line = strdup(ie->content[m]);
+                                p = strrchr(line, '#');
+                                *p = '\0';
                                 tp = p + 1;
-                                --p;
-                                p = strrchr(p, '#');
+                                p = strrchr(line, '#');
+                                *p = '\0';
                                 file = p + 1;
-                                --p;
-                                // project can only be "pmix"
-                                get_content(output, "pmix", file, tp);
+                                p = strrchr(line, '#');
+                                ++p;
+                                // if this isn't pointing at "include", then it
+                                // must be a project; otherwise default to pmix
+                                if (0 != strncmp(p, "include", strlen("include"))) {
+                                    pj = p;
+                                } else {
+                                    pj = "pmix";
+                                }
+                                get_content(output, pj, file, tp);
+                                free(line);
                             } else {
                                 PMIx_Argv_append_nosize(output, ie->content[m]);
                             }
