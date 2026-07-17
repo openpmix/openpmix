@@ -842,10 +842,13 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     if (NULL == pmix_globals.mypeer->nptr->nspace) {
         pmix_globals.mypeer->nptr->nspace = strdup(pmix_globals.myid.nspace);
     }
-    /* setup a rank_info object for us */
-    pmix_globals.mypeer->info = PMIX_NEW(pmix_rank_info_t);
-    if (NULL == pmix_globals.mypeer->info) {
-        return PMIX_ERR_NOMEM;
+    /* finish setting up the rank_info object we already allocated above,
+     * now that our identity has been finalized (connect/self-assign may
+     * have changed it). Reuse that object rather than allocating a second
+     * one - a fresh PMIX_NEW here would leak the first and discard the
+     * uid/gid/pid already stored on it. */
+    if (NULL != pmix_globals.mypeer->info->pname.nspace) {
+        free(pmix_globals.mypeer->info->pname.nspace);
     }
     pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
     pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
