@@ -397,7 +397,12 @@ int pmix_timing_report(pmix_timing_t *t, char *fname)
             buf[0] = '\0';
             buf_size = 0;
         }
-        snprintf(buf, PMIX_TIMING_STR_LEN, "%s%s", buf, line);
+        /* append at the current end using the real remaining capacity;
+         * the previous "snprintf(buf, STR_LEN, \"%s%s\", buf, line)" both
+         * aliased buf as source and destination (undefined behavior) and
+         * capped the whole buffer at PMIX_TIMING_STR_LEN (1024) rather than
+         * the OUTBUF_SIZE it was sized for, silently dropping output */
+        snprintf(buf + buf_size, (PMIX_TIMING_OUTBUF_SIZE + 1) - buf_size, "%s", line);
         buf_size += strlen(line);
         free(line);
     }
@@ -575,7 +580,10 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname)
                 goto err_exit;
             }
         }
-        snprintf(buf, PMIX_TIMING_STR_LEN, "%s%s", buf, line);
+        /* append at the current end using the real remaining capacity
+         * (see the matching fix in pmix_timing_report): the old form
+         * aliased buf as src+dst and ignored the grown buffer size */
+        snprintf(buf + buf_used, buf_size - buf_used, "%s", line);
         buf_used += line_size;
         free(line);
     }
