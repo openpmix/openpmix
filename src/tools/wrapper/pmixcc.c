@@ -64,7 +64,7 @@
 #define PMIX_LIBDIR_FLAG  "-L"
 
 static const char * filtered_args[] = { "-I/usr/include",
-                                        "-L/usr/lb",
+                                        "-L/usr/lib",
                                         "-L/usr/lib64",
                                         NULL };
 
