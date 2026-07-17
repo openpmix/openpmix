@@ -42,7 +42,14 @@
 #define PMIX_SCHEMA_INVALID_CHAR    '$'
 #define PMIX_SCHEMA_INVALID_STRING  "$"
 
-static bool fns_init = false;
+/* one-time creation of print_args_tsd_key is guarded by
+ * print_args_init_lock so that two threads racing the first call to
+ * get_print_name_buffer cannot both create the key (which would leak one
+ * of them). fns_init is atomic so the fast path can skip the lock once
+ * the key exists, while still ordering the key's publication against a
+ * concurrent reader. */
+static pmix_atomic_bool_t fns_init = false;
+static pthread_mutex_t print_args_init_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static pmix_tsd_key_t print_args_tsd_key;
 char *pmix_print_args_null = "NULL";
@@ -71,7 +78,7 @@ void pmix_name_fns_finalize(void)
      * by pmix_tsd_keys_destruct during finalize; clear our latch here so
      * that a subsequent PMIx_Init recreates and re-registers the key
      * rather than reusing one that no longer exists. */
-    fns_init = false;
+    pmix_atomic_unset_bool(&fns_init);
 }
 
 static pmix_print_args_buffers_t *get_print_name_buffer(void)
@@ -79,13 +86,20 @@ static pmix_print_args_buffers_t *get_print_name_buffer(void)
     pmix_print_args_buffers_t *ptr;
     int ret, i;
 
-    if (!fns_init) {
-        /* setup the print_args function */
-        if (PMIX_SUCCESS != (ret = pmix_tsd_key_create(&print_args_tsd_key, buffer_cleanup))) {
-            PMIX_ERROR_LOG(ret);
-            return NULL;
+    if (!pmix_atomic_check_bool(&fns_init)) {
+        /* setup the print_args function - serialize so only one thread
+         * creates the key, and re-check under the lock in case another
+         * thread won the race while we were blocked */
+        pthread_mutex_lock(&print_args_init_lock);
+        if (!pmix_atomic_check_bool(&fns_init)) {
+            if (PMIX_SUCCESS != (ret = pmix_tsd_key_create(&print_args_tsd_key, buffer_cleanup))) {
+                pthread_mutex_unlock(&print_args_init_lock);
+                PMIX_ERROR_LOG(ret);
+                return NULL;
+            }
+            pmix_atomic_set_bool(&fns_init);
         }
-        fns_init = true;
+        pthread_mutex_unlock(&print_args_init_lock);
     }
 
     ret = pmix_tsd_getspecific(print_args_tsd_key, (void **) &ptr);
