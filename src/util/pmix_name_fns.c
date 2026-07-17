@@ -108,11 +108,29 @@ static pmix_print_args_buffers_t *get_print_name_buffer(void)
 
     if (NULL == ptr) {
         ptr = (pmix_print_args_buffers_t *) malloc(sizeof(pmix_print_args_buffers_t));
+        if (NULL == ptr) {
+            return NULL;
+        }
         for (i = 0; i < PMIX_PRINT_NAME_ARG_NUM_BUFS; i++) {
             ptr->buffers[i] = (char *) calloc((PMIX_PRINT_NAME_ARGS_MAX_SIZE + 1), sizeof(char));
+            if (NULL == ptr->buffers[i]) {
+                /* unwind rather than hand back a struct with NULL buffers */
+                while (i-- > 0) {
+                    free(ptr->buffers[i]);
+                }
+                free(ptr);
+                return NULL;
+            }
         }
         ptr->cntr = 0;
         ret = pmix_tsd_setspecific(print_args_tsd_key, (void *) ptr);
+        if (PMIX_SUCCESS != ret) {
+            for (i = 0; i < PMIX_PRINT_NAME_ARG_NUM_BUFS; i++) {
+                free(ptr->buffers[i]);
+            }
+            free(ptr);
+            return NULL;
+        }
     }
 
     return (pmix_print_args_buffers_t *) ptr;
