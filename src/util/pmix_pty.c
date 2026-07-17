@@ -98,14 +98,15 @@
 
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_pty.h"
+#include "src/util/pmix_string_copy.h"
 
 
 #if PMIX_ENABLE_PTY_SUPPORT == 0
 
-PMIX_EXPORT int pmix_ptymopen(char *pts_name)
+PMIX_EXPORT int pmix_ptymopen(char *pts_name, size_t maxlen)
 {
-    PMIX_HIDE_UNUSED_PARAMS(pts_name);
-    return -1
+    PMIX_HIDE_UNUSED_PARAMS(pts_name, maxlen);
+    return -1;
 }
 
 PMIX_EXPORT int pmix_ptysopen(int fdm, char *pts_name)
@@ -285,7 +286,7 @@ int pmix_openpty(int *amaster, int *aslave, char *name,
                  struct termios *termp, struct winsize *winp)
 {
     char line[20];
-    *amaster = pmix_ptymopen(line);
+    *amaster = pmix_ptymopen(line, sizeof(line));
     if (*amaster < 0) {
         return -1;
     }
@@ -318,11 +319,10 @@ int pmix_openpty(int *amaster, int *aslave, char *name,
 
 #if PMIX_ENABLE_PTY_SUPPORT == 0
 
-pid_t pmix_forkpty(int *master, char *slave, size_t len,
-                   const struct termios *sterm,
-                   const struct winsize *sws)
+pid_t pmix_forkpty(int *master, char *slave,
+                   const void *sterm, const void *sws)
 {
-    PMIX_HIDE_UNUSED_PARAMS(master, slave, len, sterm, sws);
+    PMIX_HIDE_UNUSED_PARAMS(master, slave, sterm, sws);
     return -1;
 }
 
