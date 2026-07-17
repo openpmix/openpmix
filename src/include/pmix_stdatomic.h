@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
  *                         All Rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
@@ -24,9 +24,6 @@
 #ifdef HAVE_STDATOMIC_H
 #include <stdatomic.h>
 #endif
-
-typedef atomic_int pmix_atomic_int_t;
-typedef atomic_long pmix_atomic_long_t;
 
 typedef _Atomic bool pmix_atomic_bool_t;
 typedef _Atomic int32_t pmix_atomic_int32_t;

@@ -15,7 +15,7 @@
  *                         All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -90,7 +90,7 @@
  */
 
 /* Some handy constants to make the logic below a little more readable */
-#if defined(__cplusplus) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR >= 4))
+#if defined(__cplusplus) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 4))
 #    define GXX_ABOVE_3_4 1
 #else
 #    define GXX_ABOVE_3_4 0

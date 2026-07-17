@@ -17,7 +17,7 @@
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c)           Amazon.com, Inc. or its affiliates.  All Rights
  *                         reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
@@ -38,19 +38,8 @@
  *
  * http://www.freebsd.org/cgi/man.cgi?query=atomic&sektion=9
  *
- * Only the necessary subset of functions are implemented here.
- *
- * The following #defines will be true / false based on
- * assembly support:
- *
- *  - \c PMIX_HAVE_ATOMIC_MEM_BARRIER atomic memory barriers
- *  - \c PMIX_HAVE_ATOMIC_SPINLOCKS atomic spinlocks
- *  - \c PMIX_HAVE_ATOMIC_MATH_32 if 32 bit add/sub/compare-exchange can be done "atomically"
- *  - \c PMIX_HAVE_ATOMIC_MATH_64 if 64 bit add/sub/compare-exchange can be done "atomically"
- *
- * Note that for the Atomic math, atomic add/sub may be implemented as
- * C code using pmix_atomic_compare_exchange.  The appearance of atomic
- * operation will be upheld in these cases.
+ * Only the necessary subset of functions are implemented here on top
+ * of the C11 <stdatomic.h> primitives.
  */
 
 #ifndef PMIX_SYS_ATOMIC_H
@@ -68,14 +57,7 @@ static inline void pmix_atomic_wmb(void)
 
 static inline void pmix_atomic_rmb(void)
 {
-#    if defined(PMIX_ATOMIC_X86_64)
-    /* work around a bug in older gcc versions (observed in gcc 6.x)
-     * where acquire seems to get treated as a no-op instead of being
-     * equivalent to __asm__ __volatile__("": : :"memory") on x86_64 */
-    __asm__ __volatile__("" : : : "memory");
-#    else
     atomic_thread_fence(memory_order_acquire);
-#    endif
 }
 
 #define PMIX_ATOMIC_DEFINE_OP(type, bits, operator, name)                   \

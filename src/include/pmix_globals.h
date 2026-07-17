@@ -141,20 +141,6 @@ do {                                                                        \
         }                                                                   \
     }                                                                       \
 } while(0)
-#define PMIX_REGATTR_INPUT_FREE(a)      \
-do {                                    \
-    if (NULL != (a)) {                  \
-        if (NULL != (a)->name) {        \
-            free((a)->name);            \
-        }                               \
-        if (NULL != (a)->string)        \
-            free((a)->string);          \
-        }                               \
-        if (NULL != (a)->description) { \
-            free((a)->description);     \
-        }                               \
-    }                                   \
-} while(0)
 
 /* define a struct for holding entries in the
  * dictionary of event strings */
