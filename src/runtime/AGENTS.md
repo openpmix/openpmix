@@ -67,12 +67,12 @@ earlier ones being open, and `pmix_rte_finalize` must unwind in a
 compatible order. The spine is:
 
 1. **`pmix_init_util`** (idempotent, latched on
-   `pmix_globals.util_initialized`): registers the calling thread as
-   "main" (`pmix_thread_set_main` — required so TSD keys get cleaned up;
-   see the comment at the call site), then output → pinstalldirs →
+   `pmix_globals.util_initialized`): output → pinstalldirs →
    show_help → keyval parser → `mca_base_var` → `mca_base_open` →
    `pmix_net_init` → `pif`. Standalone tools call this directly instead
-   of `pmix_rte_init`.
+   of `pmix_rte_init`. (TSD keys created later, e.g. in `pmix_net_init`,
+   register themselves for finalize-time cleanup regardless of which
+   thread creates them — see `src/threads/thread.c`.)
 2. **`pmix_register_params`** — must come before anything reads an MCA
    value.
 3. **Directive scan** — walk the incoming `info[]` for the small set of

@@ -42,10 +42,6 @@ static void pmix_mutex_construct(pmix_mutex_t *m)
 
     pthread_mutex_init(&m->m_lock_pthread, &attr);
     pthread_mutexattr_destroy(&attr);
-
-    m->m_lock_debug = 0;
-    m->m_lock_file = NULL;
-    m->m_lock_line = 0;
 #else
 
     /* Without debugging, choose the fastest available mutexes */
@@ -60,23 +56,3 @@ static void pmix_mutex_destruct(pmix_mutex_t *m)
 }
 
 PMIX_CLASS_INSTANCE(pmix_mutex_t, pmix_object_t, pmix_mutex_construct, pmix_mutex_destruct);
-
-static void pmix_recursive_mutex_construct(pmix_recursive_mutex_t *m)
-{
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-
-#if PMIX_ENABLE_DEBUG
-    m->m_lock_debug = 0;
-    m->m_lock_file = NULL;
-    m->m_lock_line = 0;
-#endif
-
-    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-
-    pthread_mutex_init(&m->m_lock_pthread, &attr);
-    pthread_mutexattr_destroy(&attr);
-}
-
-PMIX_CLASS_INSTANCE(pmix_recursive_mutex_t, pmix_object_t, pmix_recursive_mutex_construct,
-                    pmix_mutex_destruct);

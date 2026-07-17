@@ -31,8 +31,6 @@ bool pmix_debug_threads = false;
 
 static void pmix_thread_construct(pmix_thread_t *t);
 
-static pthread_t pmix_main_thread;
-
 struct pmix_tsd_key_value {
     pmix_tsd_key_t key;
     pmix_tsd_destructor_t destructor;
@@ -40,6 +38,10 @@ struct pmix_tsd_key_value {
 
 static struct pmix_tsd_key_value *pmix_tsd_key_values = NULL;
 static int pmix_tsd_key_values_count = 0;
+/* protects the key registry above: pmix_tsd_key_create can run on any
+ * thread (its callers create their key lazily on first use), so the
+ * registry it mutates must be serialized */
+static pthread_mutex_t pmix_tsd_key_values_lock = PTHREAD_MUTEX_INITIALIZER;
 
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_thread_t, pmix_object_t, pmix_thread_construct, NULL);
 
@@ -74,35 +76,41 @@ int pmix_thread_join(pmix_thread_t *t, void **thr_return)
     return (rc == 0) ? PMIX_SUCCESS : PMIX_ERROR;
 }
 
-bool pmix_thread_self_compare(pmix_thread_t *t)
-{
-    return t->t_handle == pthread_self();
-}
-
-pmix_thread_t *pmix_thread_get_self(void)
-{
-    pmix_thread_t *t = PMIX_NEW(pmix_thread_t);
-    t->t_handle = pthread_self();
-    return t;
-}
-
-void pmix_thread_kill(pmix_thread_t *t, int sig)
-{
-    pthread_kill(t->t_handle, sig);
-}
-
 int pmix_tsd_key_create(pmix_tsd_key_t *key, pmix_tsd_destructor_t destructor)
 {
     int rc;
+    struct pmix_tsd_key_value *tmp;
+
     rc = pthread_key_create(key, destructor);
-    if ((0 == rc) && (pthread_self() == pmix_main_thread)) {
-        pmix_tsd_key_values = (struct pmix_tsd_key_value *)
-            realloc(pmix_tsd_key_values,
-                    (pmix_tsd_key_values_count + 1) * sizeof(struct pmix_tsd_key_value));
-        pmix_tsd_key_values[pmix_tsd_key_values_count].key = *key;
-        pmix_tsd_key_values[pmix_tsd_key_values_count].destructor = destructor;
-        pmix_tsd_key_values_count++;
+    if (0 != rc) {
+        return rc;
     }
+
+    /* Register the key so its slot can be reclaimed - and its
+     * destructor invoked for the finalizing thread's value - by
+     * pmix_tsd_keys_destruct at finalize. pthread never runs
+     * destructors for the main thread (there is no pthread_join of
+     * main), so without this the key and its PTHREAD_KEYS_MAX-limited
+     * slot would leak across every init/finalize cycle. Callers create
+     * their keys lazily on first use, which may land on any thread, so
+     * we register regardless of which thread we are on and serialize the
+     * registry with its own lock. */
+    pthread_mutex_lock(&pmix_tsd_key_values_lock);
+    tmp = (struct pmix_tsd_key_value *)
+        realloc(pmix_tsd_key_values,
+                (pmix_tsd_key_values_count + 1) * sizeof(struct pmix_tsd_key_value));
+    if (NULL == tmp) {
+        /* leave the existing registry intact; the key is still valid and
+         * usable, it simply will not be auto-cleaned at finalize */
+        pthread_mutex_unlock(&pmix_tsd_key_values_lock);
+        return rc;
+    }
+    pmix_tsd_key_values = tmp;
+    pmix_tsd_key_values[pmix_tsd_key_values_count].key = *key;
+    pmix_tsd_key_values[pmix_tsd_key_values_count].destructor = destructor;
+    pmix_tsd_key_values_count++;
+    pthread_mutex_unlock(&pmix_tsd_key_values_lock);
+
     return rc;
 }
 
@@ -110,6 +118,8 @@ int pmix_tsd_keys_destruct(void)
 {
     int i;
     void *ptr;
+
+    pthread_mutex_lock(&pmix_tsd_key_values_lock);
     for (i = 0; i < pmix_tsd_key_values_count; i++) {
         if (PMIX_SUCCESS == pmix_tsd_getspecific(pmix_tsd_key_values[i].key, &ptr)) {
             if (NULL != pmix_tsd_key_values[i].destructor) {
@@ -129,10 +139,7 @@ int pmix_tsd_keys_destruct(void)
         pmix_tsd_key_values = NULL;
         pmix_tsd_key_values_count = 0;
     }
-    return PMIX_SUCCESS;
-}
+    pthread_mutex_unlock(&pmix_tsd_key_values_lock);
 
-void pmix_thread_set_main(void)
-{
-    pmix_main_thread = pthread_self();
+    return PMIX_SUCCESS;
 }
