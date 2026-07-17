@@ -57,6 +57,9 @@ char *pmix_os_path(int relative, ...)
 
     if (0 == num_elements) { /* must be looking for a simple answer */
         path = (char *) malloc(3);
+        if (NULL == path) {
+            return (NULL);
+        }
         path[0] = '\0';
         if (relative) {
             strcpy(path, ".");

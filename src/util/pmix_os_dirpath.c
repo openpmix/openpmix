@@ -99,6 +99,10 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
        incoming path + 1 (for \0) */
 
     tmp = (char *) calloc((strlen(path) + 1), sizeof(char));
+    if (NULL == tmp) {
+        PMIx_Argv_free(parts);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     tmp[0] = '\0';
 
     /* Iterate through all the subdirectory names in the path,
@@ -169,7 +173,9 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
     /* Open up the directory */
     dp = opendir(path);
     if (NULL == dp) {
-        return PMIX_ERROR;
+        /* per the documented contract, a directory that does not exist is
+         * reported as NOT_FOUND; any other open failure is a generic error */
+        return (ENOENT == errno) ? PMIX_ERR_NOT_FOUND : PMIX_ERROR;
     }
 
     while (NULL != (ep = readdir(dp))) {
