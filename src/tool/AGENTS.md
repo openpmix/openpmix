@@ -316,16 +316,22 @@ as intended behavior.
    - `disc` released only the clients-array reference when disconnecting
      the primary, never the outgoing `myserver` reference.
 
-   Now every `myserver = X` reassignment is paired with `PMIX_RETAIN(X)`
-   and a `PMIX_RELEASE` of the outgoing `myserver` across all three
-   functions (in `disc` the departing primary drops both its `myserver`
-   and clients-array references, via a separate handle since
-   `PMIX_RELEASE` NULLs its argument). Smoke-tested with `simptest`,
-   `test/unit/tool_cycle` (1200 init/finalize cycles), and
-   `test/simple/simptoolcycle` (connect+finalize cycles). The **actual
-   multi-server switch path** (attach-as-primary → finalize) has no
-   dedicated automated test yet; when touching this code, add one or
-   validate under valgrind against a tool/debugger attach→finalize flow.
+   The fix has three parts: (a) every `myserver = X` reassignment in
+   `pmix_tool_retry_attach` / `pmix_tool_retry_set` / `disc` is now paired
+   with `PMIX_RETAIN(X)` and a `PMIX_RELEASE` of the outgoing `myserver`
+   (in `disc` the departing primary drops both its `myserver` and
+   clients-array references, via a separate handle since `PMIX_RELEASE`
+   NULLs its argument); (b) `PMIx_tool_finalize` no longer releases
+   `myserver` separately when it aliases `mypeer` (the disconnected-to-self
+   state), which would otherwise free `mypeer` a third time after
+   `pmix_rte_finalize` and the `mypeer` release; and (c) a companion
+   re-init bug where `pmix_ptl_base.uri` was freed but not NULLed on close
+   (`ptl_base_frame.c`), which failed the *next* init's reconnect after an
+   attach-by-URI. The **multi-server switch path is now covered** by
+   `test/simple/tool_server_switch` (make check via
+   `test/unit/run_toolswitch.pl`): two independent servers, a tool child
+   looping attach-as-primary → set_server(self/A/B) → disconnect →
+   finalize. It reproduced the double-free abort before the fix.
 
 ## Building
 
