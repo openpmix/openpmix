@@ -363,7 +363,11 @@ char *pmix_find_absolute_path(char *app_name)
         char *resolved_path = (char *) malloc(PMIX_PATH_MAX);
         if (NULL == realpath(abs_app_name, resolved_path)) {
             free(resolved_path);
-            free(abs_app_name);
+            /* only free abs_app_name if we allocated it - in the
+             * already-absolute case it aliases the caller's app_name */
+            if (abs_app_name != app_name) {
+                free(abs_app_name);
+            }
             return NULL;
         }
         if (abs_app_name != app_name) {
