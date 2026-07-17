@@ -331,7 +331,10 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         /* check for a timeout */
         for (n = 0; n < ninf; n++) {
             if (0 == strncmp(info[n].key, PMIX_TIMEOUT, PMIX_MAX_KEYLEN)) {
-                tv.tv_sec = info[n].value.data.uint32;
+                /* use the type-tolerant accessor rather than a raw union
+                 * read so any integer type for the timeout is accepted,
+                 * matching the fence family */
+                PMIx_Value_get_number(&info[n].value, &tv.tv_sec, PMIX_UINT32);
                 break;
             }
         }

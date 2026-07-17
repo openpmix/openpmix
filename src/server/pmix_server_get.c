@@ -743,9 +743,9 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
         }
 
         /*  If they asked for job level data, then the data was just registered */
-        if(cd->proc.rank == PMIX_RANK_WILDCARD){
+        if (PMIX_RANK_WILDCARD == cd->proc.rank) {
             found = true;
-        }else{
+        } else {
             PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
                 if (info->pname.rank == cd->proc.rank) {
                     found = true; // we will satisy this request upon commit from new proc
