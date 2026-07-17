@@ -372,7 +372,10 @@ int pmix_ifindextomask(int if_index, uint32_t *if_mask, int length)
          intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
          intf = (pmix_pif_t *) pmix_list_get_next(intf)) {
         if (intf->if_index == if_index) {
-            memcpy(if_mask, &intf->if_mask, length);
+            /* clamp to the size of if_mask so an over-large caller-supplied
+             * length cannot read past the field / overflow the caller's
+             * buffer (mirrors the other getters) */
+            memcpy(if_mask, &intf->if_mask, MIN((size_t) length, sizeof(intf->if_mask)));
             return PMIX_SUCCESS;
         }
     }
@@ -502,7 +505,7 @@ static int parse_ipv4_dots(const char *addr, uint32_t *net, int *dots)
 
     /* now assemble the address */
     for (i = 0; i < 4; i++) {
-        n[i] = strtoul(start, (char **) &end, 10);
+        unsigned long val = strtoul(start, (char **) &end, 10);
         if (end == start) {
             /* this is not an error, but indicates that
              * we were given a partial address - e.g.,
@@ -511,10 +514,14 @@ static int parse_ipv4_dots(const char *addr, uint32_t *net, int *dots)
              */
             break;
         }
-        /* did we read something sensible? */
-        if (n[i] > 255) {
+        /* did we read something sensible? Check the full parsed value
+         * before truncating into the uint32_t so an out-of-range octet
+         * that would wrap (e.g. 4294967296) is rejected rather than
+         * silently accepted as 0. */
+        if (val > 255) {
             return PMIX_ERR_FABRIC_NOT_PARSEABLE;
         }
+        n[i] = (uint32_t) val;
         /* skip all the . */
         for (start = end; '\0' != *start; start++)
             if ('.' != *start)
@@ -540,18 +547,30 @@ int pmix_iftupletoaddr(const char *inaddr, uint32_t *net, uint32_t *mask)
             ptr = ptr + 1; /* skip the / */
             /* is the mask a tuple? */
             if (NULL != strchr(ptr, '.')) {
-                /* yes - extract mask from it */
-                rc = parse_ipv4_dots(ptr, mask, &dots);
+                /* yes - extract mask from it. Must return on error here:
+                 * otherwise the rc is silently overwritten by the network
+                 * parse below and a bogus mask (e.g. from 256.0.0.0) is
+                 * accepted. */
+                if (PMIX_SUCCESS != (rc = parse_ipv4_dots(ptr, mask, &dots))) {
+                    return rc;
+                }
             } else {
                 /* no - must be an int telling us how much of the addr to use: e.g., /16
                  * For more information please read http://en.wikipedia.org/wiki/Subnetwork.
                  */
                 pval = strtol(ptr, NULL, 10);
-                if ((pval > 31) || (pval < 1)) {
+                /* a prefix length of 0..32 is valid CIDR: /0 matches
+                 * everything, /32 is an exact host match */
+                if ((pval > 32) || (pval < 0)) {
                     pmix_output(0, "pmix_iftupletoaddr: unknown mask");
                     return PMIX_ERR_FABRIC_NOT_PARSEABLE;
                 }
-                *mask = 0xFFFFFFFF << (32 - pval);
+                /* guard against a 32-bit shift-by-32 (undefined behavior) */
+                if (0 == pval) {
+                    *mask = 0;
+                } else {
+                    *mask = 0xFFFFFFFF << (32 - pval);
+                }
             }
         } else {
             /* use the number of dots to determine it */
@@ -634,7 +653,9 @@ int pmix_ifmatches(int kidx, char **nets)
          */
         named_if = false;
         for (j = 0; j < strlen(nets[i]); j++) {
-            if (isalpha(nets[i][j]) && '.' != nets[i][j]) {
+            /* cast to unsigned char: passing a plain (possibly negative)
+             * char to isalpha() is undefined behavior */
+            if (isalpha((unsigned char) nets[i][j]) && '.' != nets[i][j]) {
                 named_if = true;
                 break;
             }
