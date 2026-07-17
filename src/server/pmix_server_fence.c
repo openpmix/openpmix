@@ -586,7 +586,7 @@ static void _collect_job_info(int sd, short args, void *cbdata)
     bool found;
     pmix_proc_t proc;
     pmix_cb_t cb;
-    pmix_status_t ret;
+    pmix_status_t ret = PMIX_SUCCESS;
     pmix_buffer_t pbkt;
     pmix_kval_t *kptr;
     pmix_byte_object_t pbo;
@@ -684,7 +684,11 @@ static void _collect_job_info(int sd, short args, void *cbdata)
 
 
         PMIX_UNLOAD_BUFFER(&pbkt, pbo.bytes, pbo.size);
-        PMIX_BFROPS_PACK(ret, pmix_globals.mypeer, &cb.data, &pbo, 1, PMIX_BYTE_OBJECT);
+        /* accumulate into the caller's caddy (cbin), not the local cb that
+         * was just destructed above and re-created each iteration - the
+         * caller reads cbin->data, so packing into cb.data returned an empty
+         * job-info buffer to every consumer of PMIx_server_collect_job_info */
+        PMIX_BFROPS_PACK(ret, pmix_globals.mypeer, &cbin->data, &pbo, 1, PMIX_BYTE_OBJECT);
         PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
@@ -697,8 +701,9 @@ static void _collect_job_info(int sd, short args, void *cbdata)
 
 done:
     PMIx_Argv_free(nspaces);
+    cbin->status = ret;
+    PMIX_POST_OBJECT(cbin);
     PMIX_WAKEUP_THREAD(&cbin->lock);
-    PMIX_POST_OBJECT(cb);
 }
 
 pmix_status_t PMIx_server_collect_job_info(pmix_proc_t *procs, size_t nprocs,
