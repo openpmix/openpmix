@@ -2143,19 +2143,25 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
             /* nothing we can do with this info - no point in reactivating it */
             return;
         }
-        if (0 == bo.size) {
-            // our stdin fd has closed - nothing to do, and
-            // we don't reactivate the event
-            return;
-        }
         PMIX_BYTE_OBJECT_CREATE(boptr, 1);
         if (0 < bo.size) {
             boptr->bytes = (char*)malloc(bo.size);
             memcpy(boptr->bytes, bo.bytes, bo.size);
             boptr->size = bo.size;
         }
+        /* push this to the host even when it is empty - a zero-byte push is
+         * how the host learns that our stdin has closed so it can close the
+         * targets' stdin in turn. Dropping it leaves every target waiting on
+         * an EOF that never arrives
+         */
         rc = pmix_host_server.push_stdin(&pmix_globals.myid, rev->targets, rev->ntargets,
                                          rev->directives, rev->ndirs, boptr, opcbfn, (void*)boptr);
+        if (0 == bo.size) {
+            /* our stdin fd has closed - there is nothing left to read, so
+             * do not reactivate the event
+             */
+            return;
+        }
         goto reactivate;
     }
 
