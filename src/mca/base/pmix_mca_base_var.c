@@ -1123,7 +1123,7 @@ static int read_files(char *file_list, pmix_list_t *file_values, char sep)
 
     PMIx_Argv_free(tmp);
 
-    pmix_mca_base_internal_env_store();
+    pmix_mca_base_internal_env_store(file_values);
 
     return PMIX_SUCCESS;
 }

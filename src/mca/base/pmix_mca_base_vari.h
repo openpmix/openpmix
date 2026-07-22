@@ -138,7 +138,7 @@ PMIX_EXPORT int pmix_mca_base_var_generate_full_name4(const char *project, const
  *
  * Call save_value callback for generated internal mca parameter storing env variables
  */
-PMIX_EXPORT int pmix_mca_base_internal_env_store(void);
+PMIX_EXPORT int pmix_mca_base_internal_env_store(pmix_list_t *list);
 
 /**
  * \internal

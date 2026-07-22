@@ -31,25 +31,46 @@
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
 #include "src/mca/mca.h"
+#include "src/threads/pmix_threads.h"
 #include "src/util/pmix_keyval_parse.h"
 
 static void save_value(const char *file, int lineno,
                        const char *name, const char *value);
 
+/* the parser callback can only reach its target list through
+ * file-scope storage, so callers on different threads (e.g., the
+ * host's progress thread and our own) must be serialized across
+ * both the assignment and the parse itself */
+static pmix_mutex_t param_file_mutex = PMIX_MUTEX_STATIC_INIT;
 static char *file_being_read;
 static pmix_list_t *_param_list;
 
 int pmix_mca_base_parse_paramfile(const char *paramfile, pmix_list_t *list)
 {
+    int ret;
+
+    pmix_mutex_lock(&param_file_mutex);
     file_being_read = (char *) paramfile;
     _param_list = list;
 
-    return pmix_util_keyval_parse(paramfile, save_value);
+    ret = pmix_util_keyval_parse(paramfile, save_value);
+    pmix_mutex_unlock(&param_file_mutex);
+
+    return ret;
 }
 
-int pmix_mca_base_internal_env_store(void)
+int pmix_mca_base_internal_env_store(pmix_list_t *list)
 {
-    return pmix_util_keyval_save_internal_envars(save_value);
+    int ret;
+
+    pmix_mutex_lock(&param_file_mutex);
+    file_being_read = NULL;
+    _param_list = list;
+
+    ret = pmix_util_keyval_save_internal_envars(save_value);
+    pmix_mutex_unlock(&param_file_mutex);
+
+    return ret;
 }
 
 static void save_value(const char *file, int lineno,
