@@ -101,9 +101,36 @@ static PMIX_CLASS_INSTANCE(pmdl_nspace_t,
                            pmix_list_item_t,
                            nscon, NULL);
 
+/* Cache of the invariant harvest results (system and user MCA param
+ * files, the local envar harvest, and the OPAL_PREFIX derivation).
+ * These depend only on the server's environment and the requesting
+ * user's home directory, so we parse them once and keep the resulting
+ * kvals here, copying them into each caller's list on subsequent
+ * requests instead of re-reading and re-parsing the files.  The entry
+ * is keyed by uid because the user param file is resolved from the
+ * user's home directory, and a server may service more than one user. */
+typedef struct {
+    pmix_list_item_t super;
+    uint32_t uid;
+    pmix_list_t results;
+} pmdl_cache_t;
+static void ccon(pmdl_cache_t *p)
+{
+    p->uid = UINT32_MAX;
+    PMIX_CONSTRUCT(&p->results, pmix_list_t);
+}
+static void cdes(pmdl_cache_t *p)
+{
+    PMIX_LIST_DESTRUCT(&p->results);
+}
+static PMIX_CLASS_INSTANCE(pmdl_cache_t,
+                           pmix_list_item_t,
+                           ccon, cdes);
+
 /* internal variables */
 static pmix_list_t mynspaces;
 static pmix_list_t myenvars;
+static pmix_list_t mycache;
 
 static pmix_status_t ompi_init(void)
 {
@@ -111,6 +138,7 @@ static pmix_status_t ompi_init(void)
 
     PMIX_CONSTRUCT(&mynspaces, pmix_list_t);
     PMIX_CONSTRUCT(&myenvars, pmix_list_t);
+    PMIX_CONSTRUCT(&mycache, pmix_list_t);
 
     return PMIX_SUCCESS;
 }
@@ -119,6 +147,7 @@ static void ompi_finalize(void)
 {
     PMIX_LIST_DESTRUCT(&mynspaces);
     PMIX_LIST_DESTRUCT(&myenvars);
+    PMIX_LIST_DESTRUCT(&mycache);
 }
 
 static bool checkus(const pmix_info_t info[], size_t ninfo)
@@ -221,18 +250,188 @@ static pmix_status_t process_param_file(char *file, pmix_list_t *ilist)
     return PMIX_SUCCESS;
 }
 
+static pmdl_cache_t *find_cache(uint32_t uid)
+{
+    pmdl_cache_t *cache;
+
+    PMIX_LIST_FOREACH (cache, &mycache, pmdl_cache_t) {
+        if (uid == cache->uid) {
+            return cache;
+        }
+    }
+    return NULL;
+}
+
+/* copy the cached kvals into the caller's list - the caller takes
+ * ownership of and eventually destructs what it receives, so we must
+ * hand out fresh copies rather than the cached objects themselves */
+static pmix_status_t copy_cache(pmix_list_t *src, pmix_list_t *ilist)
+{
+    pmix_kval_t *kptr, *kv;
+
+    PMIX_LIST_FOREACH (kptr, src, pmix_kval_t) {
+        kv = PMIX_NEW(pmix_kval_t);
+        if (NULL == kv) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        kv->key = strdup(kptr->key);
+        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        if (NULL == kv->value) {
+            PMIX_RELEASE(kv);
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        kv->value->type = PMIX_ENVAR;
+        PMIX_ENVAR_LOAD(&kv->value->data.envar, kptr->value->data.envar.envar,
+                        kptr->value->data.envar.value, kptr->value->data.envar.separator);
+        pmix_list_append(ilist, &kv->super);
+    }
+    return PMIX_SUCCESS;
+}
+
+/* Parse the system and user MCA param files, harvest the local envars,
+ * and derive the OPAL_PREFIX side effects for this uid - once.  The
+ * result set is invariant for the life of the process, so we build it
+ * into a cache entry that later requests reuse via copy_cache().  The
+ * entry is only appended to mycache on full success, so a failure part
+ * way through never leaves a poisoned (partial) cache behind. */
+static pmix_status_t build_cache(uint32_t uid, pmdl_cache_t **out)
+{
+    pmdl_cache_t *cache;
+    pmix_status_t rc;
+    const char *home;
+    pmix_kval_t *kv, *kptr;
+    char *file, *evar, *tmp;
+
+    cache = PMIX_NEW(pmdl_cache_t);
+    if (NULL == cache) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    cache->uid = uid;
+
+    /* check if the user has set OMPIHOME in their environment */
+    if (NULL != (evar = getenv("OMPIHOME"))) {
+        /* look for the default MCA param file */
+        file = pmix_os_path(false, evar, "etc", "openmpi-mca-params.conf", NULL);
+        rc = process_param_file(file, &cache->results);
+        free(file);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
+        /* add an envar indicating that we did this so the OMPI
+         * processes won't duplicate it */
+        kv = PMIX_NEW(pmix_kval_t);
+        if (NULL == kv) {
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            goto error;
+        }
+        kv->key = strdup(PMIX_SET_ENVAR);
+        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        if (NULL == kv->value) {
+            PMIX_RELEASE(kv);
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            goto error;
+        }
+        kv->value->type = PMIX_ENVAR;
+        PMIX_ENVAR_LOAD(&kv->value->data.envar, "OPAL_SYS_PARAMS_GIVEN", "1", ':');
+        pmix_list_append(&cache->results, &kv->super);
+    }
+
+    /* try to get their home directory */
+    home = pmix_home_directory(uid);
+    if (NULL != home) {
+        file = pmix_os_path(false, home, ".openmpi", "mca-params.conf", NULL);
+        rc = process_param_file(file, &cache->results);
+        free(file);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
+        /* add an envar indicating that we did this so the OMPI
+         * processes won't duplicate it */
+        kv = PMIX_NEW(pmix_kval_t);
+        if (NULL == kv) {
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            goto error;
+        }
+        kv->key = strdup(PMIX_SET_ENVAR);
+        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        if (NULL == kv->value) {
+            PMIX_RELEASE(kv);
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            goto error;
+        }
+        kv->value->type = PMIX_ENVAR;
+        PMIX_ENVAR_LOAD(&kv->value->data.envar, "OPAL_USER_PARAMS_GIVEN", "1", ':');
+        pmix_list_append(&cache->results, &kv->super);
+    }
+
+    /* harvest our local envars */
+    if (NULL != pmix_mca_pmdl_ompi_component.include) {
+        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                            "pmdl: ompi harvesting envars %s excluding %s",
+                            (NULL == pmix_mca_pmdl_ompi_component.incparms)
+                                ? "NONE"
+                                : pmix_mca_pmdl_ompi_component.incparms,
+                            (NULL == pmix_mca_pmdl_ompi_component.excparms)
+                                ? "NONE"
+                                : pmix_mca_pmdl_ompi_component.excparms);
+        rc = pmix_util_harvest_envars(pmix_mca_pmdl_ompi_component.include,
+                                      pmix_mca_pmdl_ompi_component.exclude, &cache->results);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
+    }
+
+    /* check if one of the envars is OPAL_PREFIX as we need to
+     * do more to set that up.  Param-file values are always re-prefixed
+     * (OMPI_MCA_/PMIX_MCA_/PRTE_MCA_), so an unprefixed OPAL_PREFIX can
+     * only have come from the environment harvest above. */
+    PMIX_LIST_FOREACH (kptr, &cache->results, pmix_kval_t) {
+        if (PMIX_ENVAR != kptr->value->type) {
+            continue;
+        }
+        if (0 == strcmp(kptr->value->data.envar.envar, "OPAL_PREFIX")) {
+            // need to modify LD_LIBRARY_PATH as well - can only assume
+            // that they used the same libdir name as we did
+            evar = pmix_basename(pmix_pinstall_dirs.libdir);
+            PMIX_KVAL_NEW(kv, PMIX_PREPEND_ENVAR);
+            if (NULL == kv || NULL == kv->value) {
+                if (NULL != kv) {
+                    PMIX_RELEASE(kv);
+                }
+                free(evar);
+                rc = PMIX_ERR_OUT_OF_RESOURCE;
+                goto error;
+            }
+            kv->value->type = PMIX_ENVAR;
+            pmix_asprintf(&tmp, "%s/%s", kptr->value->data.envar.value, evar);
+            free(evar);
+            PMIX_ENVAR_LOAD(&kv->value->data.envar, "LD_LIBRARY_PATH", tmp, ':');
+            free(tmp);
+            pmix_list_append(&cache->results, &kv->super);
+            break;
+        }
+    }
+
+    pmix_list_append(&mycache, &cache->super);
+    *out = cache;
+    return PMIX_SUCCESS;
+
+error:
+    PMIX_RELEASE(cache);
+    return rc;
+}
+
 static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
                                     const pmix_info_t info[], size_t ninfo,
                                     pmix_list_t *ilist, char ***priors)
 {
     pmdl_nspace_t *ns, *ns2;
+    pmdl_cache_t *cache;
     pmix_status_t rc;
     uint32_t uid = UINT32_MAX;
-    const char *home;
     pmix_mca_base_var_file_value_t *fv;
-    pmix_kval_t *kv, *kptr;
+    pmix_kval_t *kv;
     size_t n;
-    char *file, *evar, *tmp;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                         "pmdl:ompi:harvest envars");
@@ -283,33 +482,8 @@ harvest:
         }
     }
 
-    /* check if the user has set OMPIHOME in their environment */
-    if (NULL != (evar = getenv("OMPIHOME"))) {
-        /* look for the default MCA param file */
-        file = pmix_os_path(false, evar, "etc", "openmpi-mca-params.conf", NULL);
-        rc = process_param_file(file, ilist);
-        free(file);
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-        /* add an envar indicating that we did this so the OMPI
-         * processes won't duplicate it */
-        kv = PMIX_NEW(pmix_kval_t);
-        if (NULL == kv) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        kv->key = strdup(PMIX_SET_ENVAR);
-        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-        if (NULL == kv->value) {
-            PMIX_RELEASE(kv);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        kv->value->type = PMIX_ENVAR;
-        PMIX_ENVAR_LOAD(&kv->value->data.envar, "OPAL_SYS_PARAMS_GIVEN", "1", ':');
-        pmix_list_append(ilist, &kv->super);
-    }
-
-    /* see if the user has a default MCA param file */
+    /* determine which user we are servicing - the user's default MCA
+     * param file is resolved from their home directory */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_USERID)) {
             rc = PMIx_Value_get_number(&info[n].value, &uid, PMIX_UINT32);
@@ -322,65 +496,20 @@ harvest:
     if (UINT32_MAX == uid) {
         uid = geteuid();
     }
-    /* try to get their home directory */
-    home = pmix_home_directory(uid);
-    if (NULL != home) {
-        file = pmix_os_path(false, home, ".openmpi", "mca-params.conf", NULL);
-        rc = process_param_file(file, ilist);
-        free(file);
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-        /* add an envar indicating that we did this so the OMPI
-         * processes won't duplicate it */
-        kv = PMIX_NEW(pmix_kval_t);
-        if (NULL == kv) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        kv->key = strdup(PMIX_SET_ENVAR);
-        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-        if (NULL == kv->value) {
-            PMIX_RELEASE(kv);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        kv->value->type = PMIX_ENVAR;
-        PMIX_ENVAR_LOAD(&kv->value->data.envar, "OPAL_USER_PARAMS_GIVEN", "1", ':');
-        pmix_list_append(ilist, &kv->super);
-    }
 
-    /* harvest our local envars */
-    if (NULL != pmix_mca_pmdl_ompi_component.include) {
-        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                            "pmdl: ompi harvesting envars %s excluding %s",
-                            (NULL == pmix_mca_pmdl_ompi_component.incparms)
-                            ? "NONE"
-                            : pmix_mca_pmdl_ompi_component.incparms,
-                            (NULL == pmix_mca_pmdl_ompi_component.excparms)
-                            ? "NONE"
-                            : pmix_mca_pmdl_ompi_component.excparms);
-        rc = pmix_util_harvest_envars(pmix_mca_pmdl_ompi_component.include,
-                                      pmix_mca_pmdl_ompi_component.exclude, ilist);
+    /* the param files and local envars are invariant for the life of
+     * the process, so parse them only once per user and reuse the
+     * result on subsequent requests */
+    cache = find_cache(uid);
+    if (NULL == cache) {
+        rc = build_cache(uid, &cache);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
     }
-
-    /* check if one of the envars is OPAL_PREFIX as we need to
-     * do more to set that up */
-    PMIX_LIST_FOREACH(kptr, ilist, pmix_kval_t) {
-        if (0 == strcmp(kptr->value->data.envar.envar, "OPAL_PREFIX")) {
-            // need to modify LD_LIBRARY_PATH as well - can only assume
-            // that they used the same libdir name as we did
-            evar = pmix_basename(pmix_pinstall_dirs.libdir);
-            PMIX_KVAL_NEW(kv, PMIX_PREPEND_ENVAR);
-            kv->value->type = PMIX_ENVAR;
-            pmix_asprintf(&tmp, "%s/%s", kptr->value->data.envar.value, evar);
-            free(evar);
-            PMIX_ENVAR_LOAD(&kv->value->data.envar, "LD_LIBRARY_PATH", tmp, ':');
-            free(tmp);
-            pmix_list_append(ilist, &kv->super);
-            break;
-        }
+    rc = copy_cache(&cache->results, ilist);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
 
     /* add in any OMPI-specific envars that were in an MCA
