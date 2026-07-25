@@ -39,9 +39,10 @@ static char *key_buffer = NULL;
 static size_t key_buffer_len = 0;
 static pmix_mutex_t keyval_mutex;
 
-static int parse_line(const char *filename, pmix_keyval_parse_fn_t callback);
+static int parse_line(const char *filename, pmix_keyval_parse_fn_t callback,
+                      void *cbdata);
 static int parse_line_new(const char *filename, int first_val,
-                          pmix_keyval_parse_fn_t callback);
+                          pmix_keyval_parse_fn_t callback, void *cbdata);
 static void parse_error(int num, const char *filename);
 
 static char *env_str = NULL;
@@ -63,11 +64,11 @@ int pmix_util_keyval_parse_init(void)
     return PMIX_SUCCESS;
 }
 
-int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback)
+int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback,
+                           void *cbdata)
 {
     int val;
     int ret = PMIX_SUCCESS;
-    ;
 
     pmix_mutex_lock(&keyval_mutex);
 
@@ -94,13 +95,13 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
                 break;
 
             case PMIX_UTIL_KEYVAL_PARSE_SINGLE_WORD:
-                parse_line(filename, callback);
+                parse_line(filename, callback, cbdata);
                 break;
 
             case PMIX_UTIL_KEYVAL_PARSE_MCAVAR:
             case PMIX_UTIL_KEYVAL_PARSE_ENVVAR:
             case PMIX_UTIL_KEYVAL_PARSE_ENVEQL:
-                parse_line_new(filename, val, callback);
+                parse_line_new(filename, val, callback, cbdata);
                 break;
 
             default:
@@ -117,11 +118,14 @@ cleanup:
     return ret;
 }
 
-static int parse_line(const char *filename, pmix_keyval_parse_fn_t callback)
+static int parse_line(const char *filename, pmix_keyval_parse_fn_t callback,
+                      void *cbdata)
 {
     int val;
+    int lineno;
 
-    pmix_util_keyval_parse_lineno = pmix_util_keyval_yylineno;
+    lineno = pmix_util_keyval_yylineno;
+    pmix_util_keyval_parse_lineno = lineno;
 
     /* Save the name name */
     if (key_buffer_len < strlen(pmix_util_keyval_yytext) + 1) {
@@ -151,7 +155,7 @@ static int parse_line(const char *filename, pmix_keyval_parse_fn_t callback)
 
     val = pmix_util_keyval_yylex();
     if (PMIX_UTIL_KEYVAL_PARSE_SINGLE_WORD == val || PMIX_UTIL_KEYVAL_PARSE_VALUE == val) {
-        callback(filename, 0, key_buffer, pmix_util_keyval_yytext);
+        callback(filename, lineno, key_buffer, pmix_util_keyval_yytext, cbdata);
 
         /* Now we need to see the newline */
 
@@ -164,7 +168,7 @@ static int parse_line(const char *filename, pmix_keyval_parse_fn_t callback)
     /* Did we get an EOL or EOF? */
 
     else if (PMIX_UTIL_KEYVAL_PARSE_DONE == val || PMIX_UTIL_KEYVAL_PARSE_NEWLINE == val) {
-        callback(filename, 0, key_buffer, NULL);
+        callback(filename, lineno, key_buffer, NULL, cbdata);
         return PMIX_SUCCESS;
     }
 
@@ -311,14 +315,18 @@ static int add_to_env_str(char *var, char *val)
 }
 
 static int parse_line_new(const char *filename, int first_val,
-                          pmix_keyval_parse_fn_t callback)
+                          pmix_keyval_parse_fn_t callback, void *cbdata)
 {
     int val;
     char *tmp;
     int rc;
+    int lineno;
 
     val = first_val;
     while (PMIX_UTIL_KEYVAL_PARSE_NEWLINE != val && PMIX_UTIL_KEYVAL_PARSE_DONE != val) {
+        lineno = pmix_util_keyval_yylineno;
+        pmix_util_keyval_parse_lineno = lineno;
+
         rc = save_param_name();
         if (PMIX_SUCCESS != rc) {
             return rc;
@@ -336,7 +344,7 @@ static int parse_line_new(const char *filename, int first_val,
                         trim_name(tmp, "\'", "\'");
                         trim_name(tmp, "\"", "\"");
                     }
-                    callback(filename, 0, key_buffer, tmp);
+                    callback(filename, lineno, key_buffer, tmp, cbdata);
                     free(tmp);
                 }
             } else {
@@ -370,12 +378,20 @@ static int parse_line_new(const char *filename, int first_val,
     return PMIX_SUCCESS;
 }
 
-int pmix_util_keyval_save_internal_envars(pmix_keyval_parse_fn_t callback)
+int pmix_util_keyval_save_internal_envars(pmix_keyval_parse_fn_t callback,
+                                          void *cbdata)
 {
+    /* env_str is accumulated by the parser under this same lock, so
+     * take it here as well - otherwise we can hand out (and free) the
+     * string while another thread's parse is still appending to it */
+    pmix_mutex_lock(&keyval_mutex);
+
     if (NULL != env_str && 0 < strlen(env_str)) {
-        callback(NULL, 0, "mca_base_env_list_internal", env_str);
+        callback(NULL, 0, "mca_base_env_list_internal", env_str, cbdata);
         free(env_str);
         env_str = NULL;
     }
+
+    pmix_mutex_unlock(&keyval_mutex);
     return PMIX_SUCCESS;
 }

@@ -358,9 +358,10 @@ static void filter_flags(char*** argvp)
 }
 
 static void data_callback(const char *file, int lineno,
-                          const char *key, const char *value)
+                          const char *key, const char *value,
+                          void *cbdata)
 {
-    PMIX_HIDE_UNUSED_PARAMS(file, lineno);
+    PMIX_HIDE_UNUSED_PARAMS(file, lineno, cbdata);
 
     /* handle case where text file does not contain any special
      compiler options field */
@@ -467,7 +468,7 @@ static int data_init(void)
     if (NULL == datafile)
         return PMIX_ERR_OUT_OF_RESOURCE;
 
-    ret = pmix_util_keyval_parse(datafile, data_callback);
+    ret = pmix_util_keyval_parse(datafile, data_callback, NULL);
     if (PMIX_SUCCESS != ret) {
         fprintf(stderr, "Cannot open configuration file %s\n", datafile);
     }
