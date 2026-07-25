@@ -31,60 +31,39 @@
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
 #include "src/mca/mca.h"
-#include "src/threads/pmix_threads.h"
 #include "src/util/pmix_keyval_parse.h"
 
 static void save_value(const char *file, int lineno,
-                       const char *name, const char *value);
-
-/* the parser callback can only reach its target list through
- * file-scope storage, so callers on different threads (e.g., the
- * host's progress thread and our own) must be serialized across
- * both the assignment and the parse itself */
-static pmix_mutex_t param_file_mutex = PMIX_MUTEX_STATIC_INIT;
-static char *file_being_read;
-static pmix_list_t *_param_list;
+                       const char *name, const char *value,
+                       void *cbdata);
 
 int pmix_mca_base_parse_paramfile(const char *paramfile, pmix_list_t *list)
 {
-    int ret;
-
-    pmix_mutex_lock(&param_file_mutex);
-    file_being_read = (char *) paramfile;
-    _param_list = list;
-
-    ret = pmix_util_keyval_parse(paramfile, save_value);
-    pmix_mutex_unlock(&param_file_mutex);
-
-    return ret;
+    return pmix_util_keyval_parse(paramfile, save_value, list);
 }
 
 int pmix_mca_base_internal_env_store(pmix_list_t *list)
 {
-    int ret;
-
-    pmix_mutex_lock(&param_file_mutex);
-    file_being_read = NULL;
-    _param_list = list;
-
-    ret = pmix_util_keyval_save_internal_envars(save_value);
-    pmix_mutex_unlock(&param_file_mutex);
-
-    return ret;
+    return pmix_util_keyval_save_internal_envars(save_value, list);
 }
 
+/* the parser hands us everything we need - the target list rides
+ * along in cbdata, and the origin of the pair comes in as file/lineno
+ * - so this callback touches no state shared with its caller and
+ * requires no serialization of its own */
 static void save_value(const char *file, int lineno,
-                       const char *name, const char *value)
+                       const char *name, const char *value,
+                       void *cbdata)
 {
+    pmix_list_t *param_list = (pmix_list_t *) cbdata;
     pmix_mca_base_var_file_value_t *fv;
     bool found = false;
-    PMIX_HIDE_UNUSED_PARAMS(file, lineno);
 
     /* First traverse through the list and ensure that we don't
        already have a param of this name.  If we do, just replace the
        value. */
 
-    PMIX_LIST_FOREACH (fv, _param_list, pmix_mca_base_var_file_value_t) {
+    PMIX_LIST_FOREACH (fv, param_list, pmix_mca_base_var_file_value_t) {
         if (0 == strcmp(name, fv->mbvfv_var)) {
             if (NULL != fv->mbvfv_value) {
                 free(fv->mbvfv_value);
@@ -102,10 +81,12 @@ static void save_value(const char *file, int lineno,
         }
 
         fv->mbvfv_var = strdup(name);
-        pmix_list_append(_param_list, &fv->super);
+        pmix_list_append(param_list, &fv->super);
     }
 
     fv->mbvfv_value = value ? strdup(value) : NULL;
-    fv->mbvfv_file = file_being_read;
-    fv->mbvfv_lineno = pmix_util_keyval_parse_lineno;
+    /* the file name is not ours to own - it belongs to the caller that
+     * asked for the file to be parsed, and outlives this list */
+    fv->mbvfv_file = (char *) file;
+    fv->mbvfv_lineno = lineno;
 }

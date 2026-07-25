@@ -35,27 +35,35 @@ PMIX_EXPORT extern int pmix_util_keyval_parse_lineno;
  * Callback triggered from pmix_util_keyval_parse for each key = value
  * pair.  Both key and value will be pointers into static buffers.
  * The buffers must not be free()ed and contents may be overwritten
- * immediately after the callback returns.
+ * immediately after the callback returns.  The \c file and \c lineno
+ * parameters identify where the pair came from, and \c cbdata is the
+ * opaque pointer the caller handed to the parser - the callback must
+ * take its context from these parameters rather than from any state
+ * shared with the caller.
  */
 typedef void (*pmix_keyval_parse_fn_t)(const char *file, int lineno,
                                        const char *name,
-                                       const char *value);
+                                       const char *value,
+                                       void *cbdata);
 
 /**
  * Parse \c filename, made up of key = value pairs.
  *
  * Parse \c filename, made up of key = value pairs.  For each line
  * that appears to contain a key = value pair, \c callback will be
- * called exactly once.  In a multithreaded context, calls to
- * pmix_util_keyval_parse() will serialize multiple calls.
+ * called exactly once, with \c cbdata passed through untouched.  In a
+ * multithreaded context, calls to pmix_util_keyval_parse() will
+ * serialize multiple calls.
  */
-PMIX_EXPORT int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback);
+PMIX_EXPORT int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback,
+                                       void *cbdata);
 
 PMIX_EXPORT int pmix_util_keyval_parse_init(void);
 
 PMIX_EXPORT void pmix_util_keyval_parse_finalize(void);
 
-PMIX_EXPORT int pmix_util_keyval_save_internal_envars(pmix_keyval_parse_fn_t callback);
+PMIX_EXPORT int pmix_util_keyval_save_internal_envars(pmix_keyval_parse_fn_t callback,
+                                                      void *cbdata);
 
 END_C_DECLS
 
