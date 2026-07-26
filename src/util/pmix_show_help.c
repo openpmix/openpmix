@@ -601,7 +601,9 @@ pmix_status_t pmix_show_help(const char *filename,
         return PMIX_SUCCESS;
     }
 
+    /* local_delivery copies the message, so we own the rendered string */
     local_delivery(filename, topic, output);
+    free(output);
     return PMIX_SUCCESS;
 }
 
