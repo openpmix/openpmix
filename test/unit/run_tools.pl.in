@@ -23,11 +23,13 @@
 use strict;
 use warnings;
 
-# Locate the build tree from this script's own path: test/unit/ -> root.
-use File::Basename;
-use Cwd 'abs_path';
-my $here = dirname(abs_path($0));
-my $root = abs_path("$here/../..");
+# The tools live in the *build* tree, which is not where this script lives
+# in a VPATH build, so take the location from configure rather than from
+# $0.  Deriving it from the script's own path meant every VPATH build
+# looked for the binaries under the source tree, found nothing, and exited
+# 77 -- so the whole test quietly skipped in the configuration most people
+# and most CI jobs build.
+my $root = "@PMIX_BUILT_TEST_PREFIX@";
 my $tdir = "$root/src/tools";
 
 # The tools are static (non-DSO) in this build, so they need no MCA
