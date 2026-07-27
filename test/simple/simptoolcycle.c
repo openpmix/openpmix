@@ -102,7 +102,7 @@ static pmix_server_module_t mymodule = {
 /* register a minimal but complete job so the client-tool phase can pull
  * real job info; a bare, unregistered nspace hands back an empty job blob
  * that PMIx_tool_init cannot unpack */
-static pmix_status_t register_job(const char *nspace)
+static pmix_status_t register_job(const char *name)
 {
     pmix_status_t rc;
     char *nodes, *ppn;
@@ -110,6 +110,13 @@ static pmix_status_t register_job(const char *nspace)
     pmix_info_t jinfo[1];
     pmix_proc_t client;
     uint32_t one = 1;
+    /* PMIx_server_register_nspace takes a pmix_nspace_t -- a
+     * PMIX_MAX_NSLEN+1 array, not a pointer -- so hand it one.  Passing a
+     * bare string draws -Wstringop-overread: the compiler reads the array
+     * parameter as a promise that all 256 bytes are there to be read. */
+    pmix_nspace_t nspace;
+
+    pmix_strncpy(nspace, name, PMIX_MAX_NSLEN);
 
     PMIx_generate_regex(pmix_globals.hostname, &nodes);
     PMIx_generate_ppn("0", &ppn);
