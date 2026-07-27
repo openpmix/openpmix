@@ -633,19 +633,26 @@ bool pmix_ifisloopback(int if_index)
  */
 int pmix_ifmatches(int kidx, char **nets)
 {
-    bool named_if;
+    bool named_if, known = false;
     int i, rc;
     size_t j;
     int kindex;
+    pmix_pif_t *intf;
     struct sockaddr_in inaddr;
     uint32_t addr, netaddr, netmask;
 
-    /* get the address info for the given network in case we need it */
-    if (PMIX_SUCCESS
-        != (rc = pmix_ifkindextoaddr(kidx, (struct sockaddr *) &inaddr, sizeof(inaddr)))) {
-        return rc;
+    /* confirm we actually know this interface - the address itself is
+     * fetched below, per entry, since an interface can carry more than one */
+    PMIX_LIST_FOREACH(intf, &pmix_if_list, pmix_pif_t)
+    {
+        if (intf->if_kernel_index == kidx) {
+            known = true;
+            break;
+        }
     }
-    addr = ntohl(inaddr.sin_addr.s_addr);
+    if (!known) {
+        return PMIX_ERROR;
+    }
 
     for (i = 0; NULL != nets[i]; i++) {
         /* if the specified interface contains letters in it, then it
@@ -672,8 +679,28 @@ int pmix_ifmatches(int kidx, char **nets)
                 pmix_show_help("help-pmix-util.txt", "invalid-net-mask", true, nets[i]);
                 return rc;
             }
-            if (netaddr == (addr & netmask)) {
-                return PMIX_SUCCESS;
+            /* Compare against every IPv4 address this kernel index carries.
+             * An interface that has both an IPv4 and an IPv6 address appears
+             * on pmix_if_list once per address, and both entries share the
+             * kernel index, so asking pmix_ifkindextoaddr() for "the" address
+             * returns whichever the discovery components found first - on
+             * Linux routinely the IPv6 one, always so for loopback.  Reading
+             * an IPv4 address out of that sockaddr_in6 yields its flow label
+             * rather than an address, so an interface named by subnet never
+             * matched itself. */
+            PMIX_LIST_FOREACH(intf, &pmix_if_list, pmix_pif_t)
+            {
+                if (intf->if_kernel_index != kidx) {
+                    continue;
+                }
+                if (AF_INET != ((struct sockaddr *) &intf->if_addr)->sa_family) {
+                    continue;
+                }
+                memcpy(&inaddr, &intf->if_addr, sizeof(inaddr));
+                addr = ntohl(inaddr.sin_addr.s_addr);
+                if (netaddr == (addr & netmask)) {
+                    return PMIX_SUCCESS;
+                }
             }
         }
     }

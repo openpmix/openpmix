@@ -163,6 +163,23 @@ PMIX_EXPORT int pmix_ifkindextoname(int if_kindex, char *if_name, int);
  *  @param size (IN)      Interface address buffer size
  */
 PMIX_EXPORT int pmix_ifindextoaddr(int if_index, struct sockaddr *, unsigned int);
+
+/**
+ *  Lookup an interface by kernel index and return its primary address.
+ *
+ *  Caution: a kernel index does not identify a single address.  An
+ *  interface carrying both an IPv4 and an IPv6 address occupies one
+ *  pmix_if_list entry per address, and those entries share a kernel
+ *  index, so this returns whichever address discovery found first -- on
+ *  Linux routinely the IPv6 one, always so for loopback.  Callers that
+ *  need an address of a particular family must walk pmix_if_list
+ *  themselves and check each entry's sa_family; they cannot assume the
+ *  answer here is IPv4.
+ *
+ *  @param if_kindex (IN) Interface kernel index
+ *  @param if_addr (OUT)  Interface address buffer
+ *  @param length (IN)    Interface address buffer size
+ */
 PMIX_EXPORT int pmix_ifkindextoaddr(int if_kindex, struct sockaddr *if_addr, unsigned int length);
 
 /**

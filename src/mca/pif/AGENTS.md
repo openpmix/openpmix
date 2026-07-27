@@ -219,6 +219,18 @@ index (as the `ptl` listener does).
 
 Most return `PMIX_SUCCESS`/`PMIX_ERROR` (not found).
 
+**A kernel index does not identify one address.** An interface holding
+both an IPv4 and an IPv6 address occupies *two* `pmix_if_list` entries
+(one per address, appended by two different components) that share a
+kernel index and differ in `if_index`. `pmix_ifkindextoaddr` returns
+whichever of them comes first — on Linux routinely the IPv6 one, and
+always so for loopback, since `linux_ipv6` reports `::1` ahead of
+`posix_ipv4`'s `127.0.0.1`. Code that needs an address *of a given
+family* must walk `pmix_if_list` and check each entry's `sa_family`
+itself; reading a `sockaddr_in` out of the answer yields an IPv6 flow
+label where it expected an address. This bit `pmix_ifmatches`, which
+silently refused to match any dual-stack interface named by subnet.
+
 ### Address resolution and matching
 
 These are the non-trivial ones:
@@ -240,7 +252,8 @@ These are the non-trivial ones:
   kernel index `kidx` matches any entry in a NULL-terminated `nets` argv,
   where each entry may be a named interface, an IP tuple, or a
   subnet+mask. Named entries are matched via `pmix_ifnametokindex`;
-  tuple/CIDR entries via `pmix_iftupletoaddr` + mask compare. Emits the
+  tuple/CIDR entries via `pmix_iftupletoaddr` + mask compare against
+  every IPv4 address the kernel index carries (see the caution above). Emits the
   `invalid-net-mask` `show_help` topic (from `help-pmix-util.txt`, in
   `src/util/` — not a `pif` help file) on an unparseable net. This backs
   `if_include`/`if_exclude` filtering.
