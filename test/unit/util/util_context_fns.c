@@ -87,7 +87,11 @@ static void test_check_cwd_chdir_success(void)
     rc = pmix_util_check_context_cwd(&p, true, false);
     report("check_cwd_chdir: /tmp succeeds", PMIX_SUCCESS == rc);
     free(p);
-    (void) chdir(saved); /* restore */
+    /* restore - and say so if we cannot, since every later test that
+     * touches a relative path would then be running somewhere else */
+    if (0 != chdir(saved)) {
+        report("check_cwd_chdir: restore cwd", 0);
+    }
 }
 
 static void test_check_cwd_chdir_bad_user(void)
