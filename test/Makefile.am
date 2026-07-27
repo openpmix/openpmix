@@ -66,6 +66,11 @@ noinst_PROGRAMS =
 #########################
 # Support for "make check"
 
+# Point the tests at the components in the build tree so that "make
+# check" does not require a prior "make install". See the comments in
+# test/pmix_test_env.sh.in.
+AM_TESTS_ENVIRONMENT = . $(abs_top_builddir)/test/pmix_test_env.sh;
+
 check_PROGRAMS = \
     pmix_test \
     pmix_client \
@@ -119,4 +124,4 @@ pmix_environ_SOURCES = pmix_environ.c
 pmix_environ_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 pmix_environ_LDADD = $(top_builddir)/src/libpmix.la
 
-EXTRA_DIST = $(noinst_SCRIPTS)
+EXTRA_DIST = $(noinst_SCRIPTS) pmix_test_env.sh.in

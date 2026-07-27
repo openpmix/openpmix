@@ -7,6 +7,11 @@
 # $HEADER$
 #
 
+# Point the tests at the components in the build tree so that "make
+# check" does not require a prior "make install". See the comments in
+# test/pmix_test_env.sh.in.
+AM_TESTS_ENVIRONMENT = . $(abs_top_builddir)/test/pmix_test_env.sh;
+
 check_PROGRAMS = util_hash util_name_fns \
     util_output util_error util_cmd_line \
     util_show_help util_timings util_context_fns \

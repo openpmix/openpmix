@@ -443,16 +443,32 @@ successfully.
    that `SPHINX_BUILD` in `config.status` names a valid executable, and
    that the summary at the end of configure includes the line
    "HTML docs and man pages: building and installing"
-3. **Quick smoke test.** After `make install`, change to the `test` directory
-   and run the test suite with:
+3. **Quick smoke test.** Change to the `test` directory and run the test
+   suite with:
 
 	```sh
 	make check
 	```
 
+	`make check` runs against the components in the build tree, so it does
+	not require a prior `make install` — even with `--enable-mca-dso`,
+	where every component is a run-time-loadable plugin. Each test picks up
+	the build-tree component search path by sourcing the generated
+	`test/pmix_test_env.sh` (wired in through `AM_TESTS_ENVIRONMENT`).
+
 	Then change to the `simple` directory below `test` and run:
 
 	```sh
+	./simptest
+	```
+
+	The `test/simple` programs are *not* part of `make check`, so nothing
+	sets that search path for them. In a tree where some components are
+	plugins, run them either after a `make install` or with the same
+	environment the test suite uses:
+
+	```sh
+	. ../pmix_test_env.sh
 	./simptest
 	```
 

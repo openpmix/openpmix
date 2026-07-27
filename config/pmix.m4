@@ -991,6 +991,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     pathfile=$PMIX_top_srcdir/config/mca_library_paths.txt
     PMIX_COMPONENT_LIBRARY_PATHS=`cat $pathfile`
     AC_SUBST(PMIX_COMPONENT_LIBRARY_PATHS)
+    # sourced by AM_TESTS_ENVIRONMENT so that "make check" finds the
+    # components in the build tree instead of requiring "make install" first
+    AC_CONFIG_FILES(pmix_config_prefix[test/pmix_test_env.sh])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests00.pl], [chmod +x test/run_tests00.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests01.pl], [chmod +x test/run_tests01.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests02.pl], [chmod +x test/run_tests02.pl])

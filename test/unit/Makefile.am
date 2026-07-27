@@ -23,6 +23,11 @@
 
 SUBDIRS = util class
 
+# Point the tests at the components in the build tree so that "make
+# check" does not require a prior "make install". See the comments in
+# test/pmix_test_env.sh.in.
+AM_TESTS_ENVIRONMENT = . $(abs_top_builddir)/test/pmix_test_env.sh;
+
 noinst_SCRIPTS = run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_toolswitch.pl run_grpmember.pl run_grpinvite.pl run_grptimeout.pl run_grpdecline.pl run_grpabort.pl run_grpmemberfail.pl run_grpleader.pl run_grpcabort.pl run_grpctimeout.pl run_monitor.pl run_tools.pl
 
 EXTRA_DIST = run_gds_fallback.pl.in run_simpcycle.pl.in run_toolcycle.pl.in run_toolswitch.pl.in run_grpmember.pl.in run_grpinvite.pl.in run_grptimeout.pl.in run_grpdecline.pl.in run_grpabort.pl.in run_grpmemberfail.pl.in run_grpleader.pl.in run_grpcabort.pl.in run_grpctimeout.pl.in run_monitor.pl.in run_tools.pl.in
