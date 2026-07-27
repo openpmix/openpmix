@@ -1,0 +1,56 @@
+# -*- shell-script -*-
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+#
+# $HEADER$
+#
+# Common environment for tests run out of the build tree.
+#
+# This file is meant to be *sourced*, not executed. "make check" pulls it
+# in via AM_TESTS_ENVIRONMENT so that every test -- not just the ones
+# wrapped in a run_*.pl script -- runs against the components we just
+# built.
+#
+# The MCA base only searches the *install* prefix ($pmixlibdir) for
+# components. Any component built as a run-time-loadable plugin rather
+# than being linked into libpmix therefore cannot be found from the build
+# tree, so a test binary would fail every PMIx_Init until "make install"
+# had been run. That bites hardest with --enable-mca-dso, where *all*
+# components are plugins, but it applies to the default build too: a few
+# components (pcompress, pnet-sshot) are plugins out of the box.
+#
+# Configure hands us the full list of possible component directories in
+# PMIX_COMPONENT_LIBRARY_PATHS. Turn each one that actually exists into an
+# absolute path to its build-tree .libs and give the whole list to the MCA
+# base. Directories holding no plugin (the usual case in a default build,
+# where the component is inside libpmix) are simply scanned and ignored,
+# so this is harmless there.
+#
+# A developer wanting to run one of the test/simple programs by hand can
+# source this file first to get the same behavior:
+#
+#     . <builddir>/test/pmix_test_env.sh
+
+pmix_test_env_builddir="@PMIX_BUILT_TEST_PREFIX@"
+pmix_test_env_paths=""
+
+for pmix_test_env_dir in `echo "@PMIX_COMPONENT_LIBRARY_PATHS@" | tr ':' ' '`; do
+    pmix_test_env_full="$pmix_test_env_builddir/$pmix_test_env_dir/.libs"
+    if test -d "$pmix_test_env_full"; then
+        if test -z "$pmix_test_env_paths"; then
+            pmix_test_env_paths="$pmix_test_env_full"
+        else
+            pmix_test_env_paths="$pmix_test_env_paths:$pmix_test_env_full"
+        fi
+    fi
+done
+
+if test -n "$pmix_test_env_paths"; then
+    PMIX_MCA_mca_base_component_path="$pmix_test_env_paths"
+    export PMIX_MCA_mca_base_component_path
+fi
+
+unset pmix_test_env_builddir pmix_test_env_paths pmix_test_env_dir pmix_test_env_full
