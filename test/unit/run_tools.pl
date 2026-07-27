@@ -75,6 +75,18 @@ foreach my $name (sort keys %bin) {
     }
 }
 
+# pmixcc reads its configuration from $pkgdatadir, which is only populated
+# by "make install".  Run straight out of a build tree it finds nothing and
+# exits 210 (PMIX_ERR_NOT_FOUND), so without this the four showme cases
+# below test only whether someone happened to install first -- they passed
+# on a platform whose CI job installs before running the suite and failed
+# on one that installs afterwards.  The generated data file sits beside the
+# binary in the build tree, so point pinstalldirs/env at it.
+my $wrapper_data = "$tdir/wrapper/pmixcc-wrapper-data.txt";
+if (-r $wrapper_data) {
+    $ENV{PMIX_PKGDATADIR} = "$tdir/wrapper";
+}
+
 my $fails = 0;
 
 # pmix_info: prints the version banner, exit 0.
@@ -84,13 +96,19 @@ $fails += run("pmix_info --version", [$bin{pmix_info}, "--version"],
 $fails += run("pmix_info -c", [$bin{pmix_info}, "-c"], 0, qr/Configured/);
 
 # pmixcc showme variants: each is a dry run, exit 0, non-empty where useful.
-$fails += run("pmixcc -showme:version", [$bin{pmixcc}, "-showme:version"],
-              0, qr/\(PMIx\)/);
-$fails += run("pmixcc -showme:compile", [$bin{pmixcc}, "-showme:compile"],
-              0, qr/\S/);
-$fails += run("pmixcc -showme:link", [$bin{pmixcc}, "-showme:link"],
-              0, qr/-lpmix/);
-$fails += run("pmixcc -showme:libs", [$bin{pmixcc}, "-showme:libs"], 0, undef);
+# Skipped rather than failed if the data file is nowhere to be found, since
+# the wrapper genuinely cannot answer without it.
+if (-r $wrapper_data) {
+    $fails += run("pmixcc -showme:version", [$bin{pmixcc}, "-showme:version"],
+                  0, qr/\(PMIx\)/);
+    $fails += run("pmixcc -showme:compile", [$bin{pmixcc}, "-showme:compile"],
+                  0, qr/\S/);
+    $fails += run("pmixcc -showme:link", [$bin{pmixcc}, "-showme:link"],
+                  0, qr/-lpmix/);
+    $fails += run("pmixcc -showme:libs", [$bin{pmixcc}, "-showme:libs"], 0, undef);
+} else {
+    print "SKIP [pmixcc]: no wrapper data file at $wrapper_data\n";
+}
 
 # pattrs function lists: use PMIX_TOOL_DO_NOT_CONNECT, exit 0.
 $fails += run("pattrs --client-fns", [$bin{pattrs}, "--client-fns"],
