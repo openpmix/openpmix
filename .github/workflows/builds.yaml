@@ -12,6 +12,19 @@ jobs:
       matrix:
         path: ['non-vpath', 'vpath']
         sphinx: ['no-sphinx', 'sphinx']
+        # The test/ tree is only built when symbol visibility is
+        # disabled (see test/Makefile.am: those tests reach for internal
+        # symbols that PMIX_EXPORT would otherwise hide), so a build
+        # that leaves visibility at its default never compiles or runs
+        # any of test/unit.  Cover both: 'hidden' is what users get,
+        # 'visible' is what exercises the unit tests.
+        visibility: ['hidden', 'visible']
+        exclude:
+          # visibility governs the C build and the docs axis does not
+          # touch it, so one visibility-disabled build per path is
+          # enough -- no need to pay for the sphinx cross as well
+          - visibility: 'visible'
+            sphinx: 'sphinx'
     steps:
     - name: Install dependencies
       run: brew install libevent hwloc autoconf automake libtool
@@ -41,6 +54,11 @@ jobs:
             sphinx=--enable-sphinx
         fi
 
+        visibility=
+        if test "${{ matrix.visibility }}" = visible; then
+            visibility=--disable-visibility
+        fi
+
         c=./configure
         if test "${{ matrix.path }}" = vpath; then
             mkdir build
@@ -48,7 +66,7 @@ jobs:
             c=../configure
         fi
 
-        $c --prefix=${PWD}/install $sphinx \
+        $c --prefix=${PWD}/install $sphinx $visibility \
             CPPFLAGS=$libevent_cppflags \
             LDFLAGS=$libevent_ldflags \
             --enable-devel-check
@@ -65,6 +83,15 @@ jobs:
       matrix:
         path: ['non-vpath', 'vpath']
         sphinx: ['no-sphinx', 'sphinx']
+        # see the note on the macos job: only a visibility-disabled
+        # build compiles the test/ tree at all
+        visibility: ['hidden', 'visible']
+        exclude:
+          # visibility governs the C build and the docs axis does not
+          # touch it, so one visibility-disabled build per path is
+          # enough -- no need to pay for the sphinx cross as well
+          - visibility: 'visible'
+            sphinx: 'sphinx'
     steps:
     - name: Install dependencies
       run: |
@@ -84,6 +111,11 @@ jobs:
             sphinx=--enable-sphinx
         fi
 
+        visibility=
+        if test "${{ matrix.visibility }}" = visible; then
+            visibility=--disable-visibility
+        fi
+
         c=./configure
         if test "${{ matrix.path }}" = vpath; then
             mkdir build
@@ -91,7 +123,7 @@ jobs:
             c=../configure
         fi
 
-        $c --prefix=${PWD}/install $sphinx --enable-devel-check
+        $c --prefix=${PWD}/install $sphinx $visibility --enable-devel-check
         make -j
         cd test
         make check
