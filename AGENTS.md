@@ -462,15 +462,19 @@ successfully.
 	./simptest
 	```
 
-	The `test/simple` programs are *not* part of `make check`, so nothing
-	sets that search path for them. In a tree where some components are
-	plugins, run them either after a `make install` or with the same
-	environment the test suite uses:
+	The `test/simple` programs are *not* part of `make check`, so running
+	one directly does not pick up that search path and will fail in a tree
+	that has never been installed. The build therefore generates a
+	`run_FOO.sh` wrapper beside each program; it supplies the path and
+	then execs the program with whatever arguments you pass:
 
 	```sh
-	. ../pmix_test_env.sh
-	./simptest
+	./run_simptest.sh
+	./run_simptest.sh -n 4      # arguments are passed straight through
 	```
+
+	Use the wrapper when working in an uninstalled tree; `./simptest`
+	itself is still the right thing to run against an installed PMIx.
 
 **Test across environments when you can.** Portability across a wide
 variety of environments is a core PMIx goal. The primary development
