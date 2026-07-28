@@ -276,6 +276,38 @@ PMIX_EXPORT pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels,
                                                pmix_iof_req_t *req);
 PMIX_EXPORT void pmix_iof_init_flags(pmix_iof_flags_t *flags);
 PMIX_EXPORT void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags);
+
+/* PMIX_IOF_FILE_PATTERN support.
+ *
+ * Without it, PMIX_IOF_OUTPUT_TO_FILE annotates the name it was given with
+ * the namespace and rank: "<file>.<nspace>.<rank>.out".  With it, the name
+ * is a pattern the caller controls, and these '%' conversions are expanded
+ * in it (anything else beginning with '%' is an error):
+ *
+ *   %n  the job's namespace
+ *   %r  the process's rank
+ *   %R  the rank, zero-padded to the width of the job's largest rank
+ *   %h  the hostname of the node writing the file
+ *   %%  a literal '%'
+ *
+ * The stream suffix (".out"/".err") is still appended, so stdout and stderr
+ * can never land on the same file. A pattern containing no '%' at all is
+ * therefore simply a fixed name - which is what "not annotated" means, and
+ * is the behavior this attribute had before the conversions existed.
+ *
+ * pmix_iof_check_pattern() reports whether a pattern is well formed without
+ * expanding it, so a launcher can reject a bad one while the user is still
+ * looking at their command line rather than at a failed job. On
+ * PMIX_ERR_BAD_PARAM it sets *bad (if non-NULL) to a malloc'd copy of the
+ * offending conversion for the diagnostic; the caller frees it.
+ */
+PMIX_EXPORT pmix_status_t pmix_iof_check_pattern(const char *pattern, char **bad);
+PMIX_EXPORT pmix_status_t pmix_iof_expand_pattern(const char *pattern,
+                                                  const char *nspace,
+                                                  pmix_rank_t rank,
+                                                  int numdigs,
+                                                  const char *suffix,
+                                                  char **result);
 PMIX_EXPORT void pmix_iof_flush_residuals(void);
 PMIX_EXPORT pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
                                                      pmix_iof_flags_t *myflags,
