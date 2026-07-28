@@ -339,6 +339,37 @@ static inline bool pmix_check_cli_option(char *ain, char *bin)
 #define PMIX_CHECK_CLI_OPTION(a, b) \
     pmix_check_cli_option(a, b)
 
+/* USAGE:
+ *  param "qual" is the input command line qualifier, e.g. "PE=2"
+ *
+ * Returns the value assigned to a qualifier - the text following its '=' -
+ * or NULL if it carries none.
+ *
+ * This is the companion to pmix_check_cli_option above, and exists because
+ * that function stops comparing at the '=' and then accepts any unambiguous
+ * prefix of the option's name. A caller therefore cannot know how long the
+ * name it just matched actually is: the user may have written "P=2" for
+ * "PE=2", or "F=path" for "FILE=path". Reading the value at an offset fixed
+ * to the option's full spelling reads the wrong bytes - or, for a qualifier
+ * written with no value at all, reads past the end of the string entirely.
+ */
+static inline char *pmix_cli_qualifier_value(char *qual)
+{
+    char *ptr;
+
+    if (NULL == qual) {
+        return NULL;
+    }
+    ptr = strchr(qual, '=');
+    if (NULL == ptr || '\0' == *(ptr + 1)) {
+        return NULL;
+    }
+    return ptr + 1;
+}
+
+#define PMIX_CLI_QUALIFIER_VALUE(q) \
+    pmix_cli_qualifier_value(q)
+
 static inline unsigned int pmix_convert_string_to_time(const char *t)
 {
     char **tmp = PMIx_Argv_split(t, ':');
