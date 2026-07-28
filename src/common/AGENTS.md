@@ -63,6 +63,33 @@ entry point.
 | `pmix_pfexec.c/.h` | (internal) `pmix_pfexec_base_*` | Local fork/exec: when PMIx itself launches processes (singleton, tool spawning children). Collapsed from the former `src/mca/pfexec` framework. |
 | `pmix_strings.c` | `PMIx_*_string` converters | Pure enum→string helpers, no threadshifting. Must stay in sync with the enums in `include/pmix_common.h.in`. |
 
+### Output-file naming lives here (`pmix_iof.c`)
+
+`pmix_iof_setup()` is what opens the per-process output sinks, and it is
+the only place that knows the namespace and rank at the moment a file is
+created — which is why the naming, and the `PMIX_IOF_FILE_PATTERN`
+expansion, are PMIx's job and not the launcher's.
+
+Two rules to keep when touching it:
+
+- **Default naming annotates; `PMIX_IOF_FILE_PATTERN` does not.** Without
+  the flag the name given in `PMIX_IOF_OUTPUT_TO_FILE` is a stem, written
+  as `<file>.<nspace>.<rank>.out`. With it, the name is the caller's own
+  and its `%` conversions (`%n`, `%r`, `%R`, `%h`, `%%` — see the contract
+  on `pmix_iof_check_pattern()` in `pmix_iof.h`) are expanded instead. The
+  stream suffix (`.out`/`.err`) is appended either way, so stdout and
+  stderr can never collide.
+- **Create the directory from the FINAL name, not the one you were
+  handed.** A pattern may put conversions in the directory part
+  (`%h/rank-%R`); taking `pmix_dirname()` of the raw pattern creates a
+  directory literally named `%h` and then fails to open the file in the
+  one the pattern actually named.
+
+`pmix_iof_check_pattern()` exists so a launcher can reject a bad pattern
+while the user is still looking at their command line. It shares its
+walker with the expander on purpose: a pattern the check accepts must
+never be one the expansion rejects, or expand differently.
+
 ### There is no separate `pfexec_linux.c`
 
 Historical note: a `pfexec_linux.c` used to live here — a stale leftover

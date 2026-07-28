@@ -822,6 +822,130 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntar
 
 }
 
+/*
+ * Expand the '%' conversions in an output-file pattern - see the contract
+ * on pmix_iof_check_pattern/pmix_iof_expand_pattern in pmix_iof.h.
+ *
+ * Both entry points share this one walker so a pattern can never be
+ * accepted by the check and then rejected (or, worse, expanded differently)
+ * when the file is actually opened. With expand == false it only validates,
+ * which is why nspace/rank/numdigs may be absent in that mode.
+ */
+static pmix_status_t process_pattern(const char *pattern, bool expand,
+                                     const char *nspace, pmix_rank_t rank,
+                                     int numdigs, const char *suffix,
+                                     char **result, char **bad)
+{
+    const char *p;
+    char *out = NULL, *tmp;
+    char conv[3];
+
+    if (NULL != bad) {
+        *bad = NULL;
+    }
+    if (NULL != result) {
+        *result = NULL;
+    }
+    if (NULL == pattern) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    if (expand) {
+        out = strdup("");
+        if (NULL == out) {
+            return PMIX_ERR_NOMEM;
+        }
+    }
+
+    for (p = pattern; '\0' != *p; ++p) {
+        if ('%' != *p) {
+            if (expand) {
+                pmix_asprintf(&tmp, "%s%c", out, *p);
+                free(out);
+                out = tmp;
+            }
+            continue;
+        }
+        ++p;
+        switch (*p) {
+            case 'n':
+                if (expand) {
+                    pmix_asprintf(&tmp, "%s%s", out, (NULL == nspace) ? "" : nspace);
+                    free(out);
+                    out = tmp;
+                }
+                break;
+            case 'r':
+                if (expand) {
+                    pmix_asprintf(&tmp, "%s%u", out, rank);
+                    free(out);
+                    out = tmp;
+                }
+                break;
+            case 'R':
+                if (expand) {
+                    pmix_asprintf(&tmp, "%s%0*u", out, numdigs, rank);
+                    free(out);
+                    out = tmp;
+                }
+                break;
+            case 'h':
+                if (expand) {
+                    pmix_asprintf(&tmp, "%s%s", out,
+                                  (NULL == pmix_globals.hostname) ? "" : pmix_globals.hostname);
+                    free(out);
+                    out = tmp;
+                }
+                break;
+            case '%':
+                if (expand) {
+                    pmix_asprintf(&tmp, "%s%%", out);
+                    free(out);
+                    out = tmp;
+                }
+                break;
+            default:
+                /* a trailing '%' leaves *p at the terminator - report the
+                 * bare '%' rather than reading past the end of the string */
+                conv[0] = '%';
+                conv[1] = *p;
+                conv[2] = '\0';
+                if ('\0' == *p) {
+                    conv[1] = '\0';
+                }
+                if (NULL != bad) {
+                    *bad = strdup(conv);
+                }
+                if (NULL != out) {
+                    free(out);
+                }
+                return PMIX_ERR_BAD_PARAM;
+        }
+    }
+
+    if (expand) {
+        if (NULL != suffix) {
+            pmix_asprintf(&tmp, "%s%s", out, suffix);
+            free(out);
+            out = tmp;
+        }
+        *result = out;
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_iof_check_pattern(const char *pattern, char **bad)
+{
+    return process_pattern(pattern, false, NULL, 0, 0, NULL, NULL, bad);
+}
+
+pmix_status_t pmix_iof_expand_pattern(const char *pattern, const char *nspace,
+                                      pmix_rank_t rank, int numdigs,
+                                      const char *suffix, char **result)
+{
+    return process_pattern(pattern, true, nspace, rank, numdigs, suffix, result, NULL);
+}
+
 static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                                               pmix_rank_t rank,
                                               pmix_iof_channel_t stream)
@@ -904,31 +1028,36 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
 
     /* see if we are to output to a file */
     if (NULL != nptr->iof_flags.file) {
-        /* construct the directory where the output files will go */
-        outdir = pmix_dirname(nptr->iof_flags.file);
-        /* ensure the directory exists */
-        rc = pmix_os_dirpath_create(outdir, S_IRWXU | S_IRGRP | S_IXGRP);
-        free(outdir);
-        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
-            PMIX_ERROR_LOG(rc);
-            return NULL;
-        }
         if (PMIX_FWD_STDOUT_CHANNEL & stream ||
             nptr->iof_flags.merge) {
             /* setup the stdout sink */
             if (nptr->iof_flags.pattern) {
-                /* if there are no '%' signs in the pattern, then it is just a literal string */
-                if (NULL == strchr(nptr->iof_flags.file, '%')) {
-                    /* setup the file */
-                    pmix_asprintf(&outfile, "%s.out", nptr->iof_flags.file);
-                } else {
-                    /* must process the pattern - for now, just take it literally */
-                    pmix_asprintf(&outfile, "%s.pattern.out", nptr->iof_flags.file);
+                /* the name is the caller's to compose - expand its
+                 * conversions and annotate it with nothing but the stream */
+                rc = pmix_iof_expand_pattern(nptr->iof_flags.file, nptr->nspace,
+                                             rank, numdigs, ".out", &outfile);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    return NULL;
                 }
             } else {
                 /* setup the file */
                 pmix_asprintf(&outfile, "%s.%s.%0*u.out", nptr->iof_flags.file,
                               nptr->nspace, numdigs, rank);
+            }
+            /* ensure the directory the file lands in exists.  This is taken
+             * from the FINAL name, not from the name we were handed: a
+             * pattern may put conversions in the directory part
+             * ("%h/rank-%R"), and creating the raw name's dirname would
+             * create a directory literally called "%h" and then fail to open
+             * the file in the one the pattern actually named. */
+            outdir = pmix_dirname(outfile);
+            rc = pmix_os_dirpath_create(outdir, S_IRWXU | S_IRGRP | S_IXGRP);
+            free(outdir);
+            if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
+                PMIX_ERROR_LOG(rc);
+                free(outfile);
+                return NULL;
             }
             fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
             free(outfile);
@@ -951,18 +1080,25 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
         } else {
             /* setup the stderr sink */
             if (nptr->iof_flags.pattern) {
-                /* if there are no '%' signs in the pattern, then it is just a literal string */
-                if (NULL == strchr(nptr->iof_flags.file, '%')) {
-                    /* setup the file */
-                    pmix_asprintf(&outfile, "%s.err", nptr->iof_flags.file);
-                } else {
-                    /* must process the pattern - for now, just take it literally */
-                    pmix_asprintf(&outfile, "%s.pattern.err", nptr->iof_flags.file);
+                rc = pmix_iof_expand_pattern(nptr->iof_flags.file, nptr->nspace,
+                                             rank, numdigs, ".err", &outfile);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    return NULL;
                 }
             } else {
                 /* setup the file */
                 pmix_asprintf(&outfile, "%s.%s.%0*u.err", nptr->iof_flags.file,
                               nptr->nspace, numdigs, rank);
+            }
+            /* see the note on the stdout sink above */
+            outdir = pmix_dirname(outfile);
+            rc = pmix_os_dirpath_create(outdir, S_IRWXU | S_IRGRP | S_IXGRP);
+            free(outdir);
+            if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
+                PMIX_ERROR_LOG(rc);
+                free(outfile);
+                return NULL;
             }
             fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
             free(outfile);

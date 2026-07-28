@@ -53,6 +53,7 @@
 #define PMIX_CAP_REGEX2          6
 #define PMIX_CAP_GROUP_FT        7
 #define PMIX_CAP_CLI_QUAL_VALUE  8
+#define PMIX_CAP_IOF_FILE_PATTERN 9
 
 
 /*****    DEPRECATED    *****/
