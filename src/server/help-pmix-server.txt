@@ -20,3 +20,24 @@ is not homogeneous - at least one participating node has a
 collection strategy (i.e., collect vs non-collect) that differs
 from the other nodes. This must be corrected in order for us
 to proceed.
+#
+[bad-singleton]
+The PMIx server was given a malformed value for the PMIX_SINGLETON
+directive:
+
+  Value: %s
+
+The value must be a string of the form "nspace.rank", where "rank"
+is a valid (non-negative) rank - for example, "singleton.0". The
+server cannot register the singleton and is unable to continue.
+#
+[bad-singleton-type]
+The PMIx server was given a PMIX_SINGLETON directive of the wrong
+data type:
+
+  Given type:    %s
+  Required type: PMIX_STRING
+
+The value must be a string of the form "nspace.rank" - for example,
+"singleton.0". The server cannot register the singleton and is
+unable to continue.
