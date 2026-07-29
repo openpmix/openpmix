@@ -173,7 +173,7 @@ cdef void pypmix_client_info_cbfunc(pmix_status_t status,
 # Build the caddy for a non-blocking group operation, taking ownership of
 # the group identifier and the info array. Returns NULL on failure, with
 # the reason stored in rcptr
-cdef pypmix_nb_cbdata_t* pypmix_nb_group_setup(pygrp, pyinfo:list, int *rcptr):
+cdef pypmix_nb_cbdata_t* pypmix_nb_group_setup(pygrp, pyinfo, int *rcptr):
     cdef pypmix_nb_cbdata_t *cd
     cdef pmix_info_t **info_ptr
 
@@ -638,7 +638,7 @@ cdef class PMIxClient:
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
     #
-    def init(self, dicts:list):
+    def init(self, dicts):
         cdef size_t klen
         global myname
         cdef pmix_info_t *info
@@ -657,7 +657,7 @@ cdef class PMIxClient:
         return rc, myname
 
     # Finalize the client library
-    def finalize(self, dicts:list):
+    def finalize(self, dicts):
         cdef size_t klen
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -684,7 +684,7 @@ cdef class PMIxClient:
     #
     # @procs [INPUT]
     #        - list of proc nspace,rank dicts
-    def abort(self, status, msg, peers:list):
+    def abort(self, status, msg, peers):
         cdef pmix_proc_t *procs
         cdef size_t sz
         # convert list of procs to array of pmix_proc_t's
@@ -738,7 +738,7 @@ cdef class PMIxClient:
     #
     # @value [INPUT]
     #        - a dict to be stored with keys (value, val_type)
-    def store_internal(self, pyproc:dict, pykey:str, pyval:dict):
+    def store_internal(self, pyproc, pykey:str, pyval:dict):
         cdef pmix_key_t key
         cdef pmix_proc_t proc
         cdef pmix_value_t value
@@ -788,7 +788,7 @@ cdef class PMIxClient:
         rc = PMIx_Commit()
         return rc
 
-    def fence(self, peers:list, dicts:list):
+    def fence(self, peers, dicts):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -849,7 +849,7 @@ cdef class PMIxClient:
     #            dictionary has a key, value, and val_type
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
-    def get(self, proc:dict, ky, dicts:list):
+    def get(self, proc, ky, dicts):
         cdef pmix_info_t *info;
         cdef pmix_info_t **info_ptr;
         cdef size_t ninfo;
@@ -899,7 +899,7 @@ cdef class PMIxClient:
     #          - a list of dictionaries, where
     #            a key, flags, value, and val_type
     #            can be defined as keys
-    def publish(self, dicts:list):
+    def publish(self, dicts):
         cdef pmix_info_t *info;
         cdef pmix_info_t **info_ptr;
         cdef size_t ninfo;
@@ -923,7 +923,7 @@ cdef class PMIxClient:
     #            can be defined as keys
     # @pykeys [INPUT]
     #          - list of python info key strings
-    def unpublish(self, pykeys:list, dicts:list):
+    def unpublish(self, pykeys, dicts):
         cdef pmix_info_t *info;
         cdef pmix_info_t **info_ptr;
         cdef size_t ninfo;
@@ -974,7 +974,7 @@ cdef class PMIxClient:
     #          - a list of dictionaries, where
     #            a key, flags, value, and val_type
     #            can be defined as keys
-    def lookup(self, data:list, dicts:list):
+    def lookup(self, data, dicts):
         cdef pmix_pdata_t *pdata;
         cdef pmix_info_t  *info;
         cdef pmix_info_t  **info_ptr;
@@ -1024,7 +1024,7 @@ cdef class PMIxClient:
     # Spawn a new job
     #
     #
-    def spawn(self, jobInfo:list, pyapps:list):
+    def spawn(self, jobInfo, pyapps):
         cdef pmix_info_t *jinfo;
         cdef pmix_info_t **jinfo_ptr;
         cdef pmix_app_t *apps;
@@ -1070,7 +1070,7 @@ cdef class PMIxClient:
             pyns = nspace.decode('ascii')
         return rc, pyns
 
-    def connect(self, peers:list, pyinfo:list):
+    def connect(self, peers, pyinfo):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1117,7 +1117,7 @@ cdef class PMIxClient:
             pmix_free_info(info, ninfo)
         return rc
 
-    def disconnect(self, peers:list, pyinfo:list):
+    def disconnect(self, peers, pyinfo):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1200,7 +1200,7 @@ cdef class PMIxClient:
             PyMem_Free(nodelist)
         return rc, pynodes
 
-    def query(self, pyq:list):
+    def query(self, pyq):
         cdef pmix_query_t *queries
         cdef size_t nqueries
         cdef pmix_info_t *results
@@ -1256,7 +1256,7 @@ cdef class PMIxClient:
         pmix_free_queries(queries, nqueries)
         return rc, pyresults
 
-    def log(self, pydata:list, pydirs:list):
+    def log(self, pydata, pydirs):
         cdef pmix_info_t *data
         cdef pmix_info_t **data_ptr
         cdef pmix_info_t *directives
@@ -1277,7 +1277,7 @@ cdef class PMIxClient:
             pmix_free_info(directives, ndirs)
         return rc
 
-    def allocation_request(self, directive, pyinfo:list):
+    def allocation_request(self, directive, pyinfo):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef pmix_info_t *results
@@ -1302,7 +1302,7 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
-    def job_control(self, pytargets:list, pydirs:list):
+    def job_control(self, pytargets, pydirs):
         cdef pmix_proc_t *targets
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
@@ -1360,7 +1360,7 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
-    def monitor(self, pymonitor_info:list, code:int, pydirs:list):
+    def monitor(self, pymonitor_info, code:int, pydirs):
         cdef pmix_info_t *monitor_info
         cdef pmix_info_t **monitor_info_ptr
         cdef pmix_info_t *directives
@@ -1402,7 +1402,7 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
-    def get_credential(self, pyinfo:list):
+    def get_credential(self, pyinfo):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef pmix_byte_object_t bo
@@ -1432,7 +1432,7 @@ cdef class PMIxClient:
             cred['size'] = bo.size
         return rc, cred
 
-    def validate_credential(self, pycred:dict, pyinfo:list):
+    def validate_credential(self, pycred:dict, pyinfo):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef pmix_byte_object_t *bo
@@ -1914,7 +1914,7 @@ cdef class PMIxClient:
         rc = PMIx_Deregister_event_handler(ref, NULL, NULL)
         return rc
 
-    def notify_event(self, status:int, pysrc:dict, range, pyinfo:list):
+    def notify_event(self, status:int, pysrc:dict, range, pyinfo):
         cdef pmix_proc_t proc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -2036,7 +2036,7 @@ cdef class PMIxClient:
         pystr = string
         return pystr.decode('ascii')
 
-    def fabric_register(self, dicts:list):
+    def fabric_register(self, dicts):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -2108,7 +2108,7 @@ cdef class PMIxClient:
                 pycpus['cpus'] = txt.split(",")
         return (rc, pycpus)
 
-    def compute_distances(self, pycpus:dict, dicts:list):
+    def compute_distances(self, pycpus:dict, dicts):
         cdef pmix_cpuset_t cpuset
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -2198,7 +2198,7 @@ cdef class PMIxServer(PMIxClient):
     #          - a dictionary of key-function pairs that map
     #            server module callback functions to provided
     #            implementations
-    def init(self, dicts:list, map:dict):
+    def init(self, dicts, map):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -2369,7 +2369,7 @@ cdef class PMIxServer(PMIxClient):
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
     #
-    def register_nspace(self, ns:str, nlocalprocs:int, dicts:list):
+    def register_nspace(self, ns:str, nlocalprocs:int, dicts):
         cdef pmix_nspace_t nspace
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -2402,7 +2402,7 @@ cdef class PMIxServer(PMIxClient):
         return
 
     # Register resources
-    def register_resources(self, directives:list):
+    def register_resources(self, directives):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -2417,7 +2417,7 @@ cdef class PMIxServer(PMIxClient):
         return rc
 
     # Deregister resources
-    def deregister_resources(self, directives:list):
+    def deregister_resources(self, directives):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -2510,7 +2510,7 @@ cdef class PMIxServer(PMIxClient):
             pybo = (data, sz)
         return rc, pybo
 
-    def setup_application(self, ns:str, dicts:list):
+    def setup_application(self, ns:str, dicts):
         global active
         cdef pmix_nspace_t nspace;
         cdef pmix_info_t *info
@@ -2531,7 +2531,7 @@ cdef class PMIxServer(PMIxClient):
             active.fetch_info(dataout)
         return (rc, dataout)
 
-    def register_attributes(self, function:str, attrs:list):
+    def register_attributes(self, function:str, attrs):
         cdef size_t nattrs
         cdef char *func
         cdef char **attarray
@@ -2563,7 +2563,7 @@ cdef class PMIxServer(PMIxClient):
             PyMem_Free(func)
         return PMIX_SUCCESS
 
-    def collect_inventory(self, pydirs:list):
+    def collect_inventory(self, pydirs):
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
         cdef size_t ndirs
@@ -2584,7 +2584,7 @@ cdef class PMIxServer(PMIxClient):
             active.fetch_info(dataout)
         return (rc, dataout)
 
-    def deliver_inventory(self, pyinfo:list, pydirs:list):
+    def deliver_inventory(self, pyinfo, pydirs):
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
         cdef pmix_info_t *info
@@ -2605,7 +2605,7 @@ cdef class PMIxServer(PMIxClient):
                                            NULL, NULL)
         return rc
 
-    def setup_local_support(self, ns:str, ilist:list):
+    def setup_local_support(self, ns:str, ilist):
         global active
         cdef pmix_nspace_t nspace;
         cdef pmix_info_t *info
@@ -2625,7 +2625,7 @@ cdef class PMIxServer(PMIxClient):
             active.wait()
         return rc
 
-    def iof_deliver(self, pysrc:dict, pychannel:int, pydata:dict, pydirs:list):
+    def iof_deliver(self, pysrc:dict, pychannel:int, pydata:dict, pydirs):
         cdef pmix_proc_t source
         cdef pmix_iof_channel_t channel
         cdef pmix_byte_object_t bo
@@ -2660,7 +2660,7 @@ cdef class PMIxServer(PMIxClient):
             pmix_free_info(directives, ndirs)
         return rc
 
-    def define_process_set(self, members:list, name:str):
+    def define_process_set(self, members, name:str):
         cdef pmix_proc_t *procs
         cdef size_t nprocs
         nprocs = 0
@@ -2691,7 +2691,7 @@ cdef class PMIxServer(PMIxClient):
         rc = PMIx_server_delete_process_set(pyset)
         return rc
 
-    def session_control(self, sessionID:int, ilist:list):
+    def session_control(self, sessionID:int, ilist):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -3435,7 +3435,7 @@ cdef class PMIxTool(PMIxServer):
     #            dictionary has a key, value, and val_type
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
-    def init(self, dicts:list):
+    def init(self, dicts):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -3489,7 +3489,7 @@ cdef class PMIxTool(PMIxServer):
     #            dictionary has a key, value, and val_type
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
-    def attach_to_server(self, dicts:list):
+    def attach_to_server(self, dicts):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -3524,7 +3524,7 @@ cdef class PMIxTool(PMIxServer):
         PyMem_Free(servers)
         return rc, pysrvrs
 
-    def set_server(self, server:dict, pyinfo:list):
+    def set_server(self, server:dict, pyinfo):
         cdef pmix_proc_t srvr
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -3550,7 +3550,7 @@ cdef class PMIxTool(PMIxServer):
 
     # Allow a tool to set server module callback functions
     # when it needs to also act as a server
-    def set_server_module(self, map:dict):
+    def set_server_module(self, map):
         # setup server module
         if map is None or 0 == len(map):
             print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
@@ -3566,7 +3566,7 @@ cdef class PMIxTool(PMIxServer):
         return PMIX_SUCCESS
 
 
-    def iof_pull(self, pyprocs:list, iof_channel:int, pydirs:list, hdlr):
+    def iof_pull(self, pyprocs, iof_channel:int, pydirs, hdlr):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
@@ -3621,7 +3621,7 @@ cdef class PMIxTool(PMIxServer):
         rc = PMIX_SUCCESS
         return rc, refid
 
-    def iof_deregister(self, regid:int, pydirs:list):
+    def iof_deregister(self, regid:int, pydirs):
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
         cdef size_t ndirs
@@ -3652,7 +3652,7 @@ cdef class PMIxTool(PMIxServer):
                 pass
         return rc
 
-    def iof_push(self, pytargets:list, data:dict, pydirs:list):
+    def iof_push(self, pytargets, data:dict, pydirs):
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
         cdef pmix_byte_object_t *bo
@@ -3718,7 +3718,7 @@ cdef class PMIxScheduler(PMIxTool):
     #            dictionary has a key, value, and val_type
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
-    def init(self, dicts:list):
+    def init(self, dicts):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -3754,7 +3754,7 @@ cdef class PMIxScheduler(PMIxTool):
         return rc
 
     # direct the RTE to instantiate a session
-    def assign_session(self, sessionID:int, allocID:str, ilist:list, applist:list):
+    def assign_session(self, sessionID:int, allocID:str, ilist, applist:list):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
