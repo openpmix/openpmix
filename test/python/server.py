@@ -5,6 +5,7 @@ import signal, time
 import os
 import select
 import subprocess
+import threading
 
 global killer
 
@@ -54,6 +55,39 @@ def clientfence(args, cbfunc, cbdata):
     cbfunc(PMIX_SUCCESS, bytearray(0), cbdata)
     return PMIX_SUCCESS
 
+# The PMIx constants are bytes while the keys handed to a handler are
+# str, so normalize before comparing them
+def keymatch(attr, key):
+    if isinstance(attr, bytes):
+        attr = attr.decode('ascii')
+    if isinstance(key, bytes):
+        key = key.decode('ascii')
+    return attr == key
+
+# Group operations are the one server-module upcall whose completion is
+# deliberately deferred here. The library allows the host to answer after
+# the handler has returned, and a real resource manager generally must -
+# it has to hear from its peers first. Completing from a timer thread
+# keeps that path under test.
+#
+# The host is responsible for reporting the final membership: the server
+# library relays it to the participants, and each participant records the
+# group locally on the strength of it. Omit it and a later leave/destruct
+# fails with PMIX_ERR_NOT_FOUND.
+def clientgroup(args, cbfunc, cbdata):
+    print("GROUP", args['op'], args['group'], args['procs'])
+    results = [{'key': PMIX_GROUP_MEMBERSHIP,
+                'value': {'type': PMIX_PROC, 'array': args['procs']},
+                'val_type': PMIX_DATA_ARRAY}]
+    # if the group asked for a context ID, make one up - a real host would
+    # allocate it from a system-wide space
+    for d in args.get('directives', []):
+        if keymatch(PMIX_GROUP_ASSIGN_CONTEXT_ID, d['key']):
+            results.append({'key': PMIX_GROUP_CONTEXT_ID,
+                            'value': 42, 'val_type': PMIX_SIZE})
+    threading.Timer(0.001, cbfunc, [PMIX_SUCCESS, results, cbdata]).start()
+    return PMIX_SUCCESS
+
 def main():
     try:
         foo = PMIxServer()
@@ -65,7 +99,8 @@ def main():
             {'key':'BLAST', 'value':7, 'val_type':PMIX_INT32}]
     map = {'clientconnected': clientconnected,
            'clientfinalized': clientfinalized,
-           'fencenb': clientfence}
+           'fencenb': clientfence,
+           'group': clientgroup}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()

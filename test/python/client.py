@@ -5,11 +5,27 @@ import time
 import threading
 
 termEvent = threading.Event()
+grpConstructed = threading.Event()
+grpDestructed = threading.Event()
+grpResults = []
 
 def default_evhandler(evhdlr:int, status:int,
                       source:dict, info:list, results:list):
     print("DEFAULT HANDLER")
     return PMIX_EVENT_ACTION_COMPLETE,None
+
+# Callbacks for the non-blocking group operations. These are executed on
+# the PMIx progress thread, so they do nothing but record the result and
+# release the waiter - a blocking PMIx call from here would deadlock.
+def group_construct_cb(status:int, results:list, cbdata):
+    global grpResults
+    print("GROUP CONSTRUCT CALLBACK", status)
+    grpResults = results
+    cbdata.set()
+
+def group_destruct_cb(status:int, cbdata):
+    print("GROUP DESTRUCT CALLBACK", status)
+    cbdata.set()
 
 def model_evhandler(evhdlr:int, status:int,
                     source:dict, info:list, results:list):
@@ -63,6 +79,26 @@ def main():
     info = [{'key': 'ARBITRARY', 'flags': PMIX_INFO_REQD, 'value':10, 'val_type':PMIX_INT}]
     rc = foo.fence(procs, info)
     print("Fence should be not supported:", foo.error_string(rc))
+    # construct a group asynchronously. Passing None for the peers means
+    # "everyone in my job"
+    print("GROUP CONSTRUCT NB")
+    dirs = [{'key': PMIX_GROUP_ASSIGN_CONTEXT_ID,
+             'value': True, 'val_type': PMIX_BOOL}]
+    rc = foo.group_construct_nb("mygroup", None, dirs,
+                                group_construct_cb, grpConstructed)
+    print("Group construct_nb result ", foo.error_string(rc))
+    if PMIX_SUCCESS == rc:
+        if not grpConstructed.wait(timeout=30):
+            print("GROUP CONSTRUCT TIMED OUT")
+        else:
+            print("Group construct results: ", grpResults)
+            # and tear it down again, also asynchronously
+            print("GROUP DESTRUCT NB")
+            rc = foo.group_destruct_nb("mygroup", None,
+                                       group_destruct_cb, grpDestructed)
+            print("Group destruct_nb result ", foo.error_string(rc))
+            if PMIX_SUCCESS == rc and not grpDestructed.wait(timeout=30):
+                print("GROUP DESTRUCT TIMED OUT")
     # wait for model event
     while not termEvent.is_set():
         time.sleep(0.001)
