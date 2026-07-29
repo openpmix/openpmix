@@ -3,3 +3,7 @@
 # volume, not on disk, so only the native-macOS trees need ignoring.
 vpath-macos-pmix/
 vpath-macos-prte/
+
+# Byte-compiled swarm client scripts (python/*.py), produced by any local
+# syntax check or by running them in place.
+python/__pycache__/

@@ -24,10 +24,15 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# python3-dev / python3-setuptools / cython3 are what --enable-python-bindings
+# needs: configure requires an importable Cython package (config/pmix_check_cython.py)
+# and setup.py needs setuptools plus Python.h.  The distro packages are used
+# deliberately rather than pip -- Ubuntu 24.04 marks its Python environment
+# "externally managed" (PEP 668), so a plain `pip install` refuses to run.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential gcc g++ make \
         autoconf automake libtool m4 flex \
-        perl python3 git \
+        perl python3 python3-dev python3-setuptools cython3 git \
         libevent-dev libhwloc-dev zlib1g-dev \
         openssh-server openssh-client \
         iproute2 iputils-ping procps less vim ca-certificates \
