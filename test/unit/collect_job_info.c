@@ -196,6 +196,20 @@ int main(int argc, char **argv)
 
     PMIX_DATA_BUFFER_DESTRUCT(&dbuf);
 
+    /* a request with no procs identifies no job to collect. The namespace
+     * list is then NULL, and the collection loop used to walk it - so this
+     * has to be rejected up front, not passed down */
+    PMIX_DATA_BUFFER_CONSTRUCT(&dbuf);
+    rc = PMIx_server_collect_job_info(procs, 0, &dbuf);
+    report("zero procs is rejected", PMIX_ERR_BAD_PARAM == rc);
+
+    rc = PMIx_server_collect_job_info(NULL, 1, &dbuf);
+    report("NULL proc array is rejected", PMIX_ERR_BAD_PARAM == rc);
+
+    rc = PMIx_server_collect_job_info(procs, 1, NULL);
+    report("NULL buffer is rejected", PMIX_ERR_BAD_PARAM == rc);
+    PMIX_DATA_BUFFER_DESTRUCT(&dbuf);
+
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
     PMIx_server_finalize();

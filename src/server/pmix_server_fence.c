@@ -616,6 +616,13 @@ static void _collect_job_info(int sd, short args, void *cbdata)
         }
     }
 
+    if (NULL == nspaces) {
+        // no procs were given, so there is nothing to collect - the
+        // loop below would dereference the NULL array
+        ret = PMIX_ERR_BAD_PARAM;
+        goto done;
+    }
+
     // cycle across the nspaces to collect their job info
     for (n = 0; NULL != nspaces[n]; n++) {
         // see if we have this nspace
@@ -713,6 +720,20 @@ pmix_status_t PMIx_server_collect_job_info(pmix_proc_t *procs, size_t nprocs,
     pmix_cb_t cb;
     pmix_byte_object_t bo;
     pmix_status_t rc;
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* the request is threadshifted below and we then block waiting for
+     * it, so there has to be a progress thread to execute it */
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    if (NULL == procs || 0 == nprocs || NULL == dbuf) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     // we need to threadshift this request as it accesses
     // global data

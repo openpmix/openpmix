@@ -631,6 +631,13 @@ void PMIx_Heartbeat(void)
     pmix_buffer_t *msg;
     pmix_status_t rc;
 
+    /* we have no server to send to until we have been initialized, and
+     * the send macro dereferences the peer without checking it */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        NULL == pmix_client_globals.myserver) {
+        return;
+    }
+
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return;
     }

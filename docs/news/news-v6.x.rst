@@ -7,6 +7,18 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Fixed three library entry points that crashed or hung when called
+   before PMIx_Init - reachable from C, but found while adding their
+   Python bindings, where a script naturally calls a method on a freshly
+   constructed object. PMIx_Heartbeat sent through a peer pointer that
+   is NULL until initialization, PMIx_Progress_thread_stop walked its
+   tracking list before that list was constructed, and
+   PMIx_server_collect_job_info thread-shifted its request and then
+   waited forever for a progress thread that did not exist
+ - PMIx_server_collect_job_info now rejects a request that names no
+   procs. There is no job to collect in that case, and the collection
+   loop walked the resulting NULL namespace list. A NULL proc array or
+   output buffer is likewise rejected rather than dereferenced
  - PMIx_Get_relative_locality now accepts the strings that
    PMIx_server_generate_locality_string actually produces. The generator
    emits a bare "SK0:L20:CR0:HT0" and a host environment stores exactly
