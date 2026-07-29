@@ -19,6 +19,14 @@ Detailed changes since v6.1.0:
    {'type': str, 'bytes': bytes, 'len': int} and a resource unit as
    {'type': PMIX_DEVTYPE_x, 'count': n}. What remains unbound is the
    non-blocking family and one deprecated tool API
+ - PMIx_Heartbeat is now a no-op for a process that has no server above
+   it. A heartbeat travels *up* to the server watching the caller, but a
+   PMIx server - and a tool that has not attached to one - is its own
+   server, so the message looped back into the process's own matching
+   code, found no posted receive for the heartbeat tag, and was reported
+   as an unexpected message. Each call therefore raised an error event
+   and grew the process. A heartbeat is likewise skipped once the
+   connection to the server has been lost
  - Fixed three library entry points that crashed or hung when called
    before PMIx_Init - reachable from C, but found while adding their
    Python bindings, where a script naturally calls a method on a freshly
