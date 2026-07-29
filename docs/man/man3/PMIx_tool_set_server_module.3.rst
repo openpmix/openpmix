@@ -67,6 +67,11 @@ acts as a server.
 The module may be set only once. A second call, after a module has already
 been installed, is rejected.
 
+``PMIx_tool_set_server_module`` must be called **after**
+:ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`. Marking the caller as a
+server requires a peer object, which does not exist until the library has
+been initialized; a call made before then returns ``PMIX_ERR_INIT``.
+
 
 CALLBACK FUNCTION
 -----------------

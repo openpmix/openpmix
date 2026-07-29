@@ -1455,6 +1455,16 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
 
 pmix_status_t PMIx_tool_set_server_module(pmix_server_module_t *module)
 {
+    /* we have no peer to mark as a server until the tool library has
+     * been initialized, so refuse rather than dereference a NULL */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
+    if (NULL == module) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     if (pmix_server_globals.module_set) {
         pmix_show_help("help-pmix-runtime.txt", "module-set", true,
                        __func__);
@@ -1575,8 +1585,14 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         pmix_output_verbose(2, pmix_globals.debug_output, "pmix:tool finalize sync received");
     }
 
-    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
-        PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+    /* Note the check on the pfexec framework itself rather than on our
+     * peer type. Init only opens it for a launcher or scheduler, but a
+     * plain tool can become a server after the fact by calling
+     * PMIx_tool_set_server_module - and then this branch would walk a
+     * children list that was never constructed */
+    if (pmix_pfexec_globals.initialized &&
+        (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
+         PMIX_PEER_IS_SERVER(pmix_globals.mypeer))) {
         /* if we have launched children, then we need to cleanly
          * terminate them - do this before stopping our progress
          * thread as we need it for terminating procs */

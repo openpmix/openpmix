@@ -105,13 +105,20 @@ pmix_pfexec_globals_t pmix_pfexec_globals = {
 
 int pmix_pfexec_base_close(void)
 {
+    /* nothing to tear down if we were never opened - the children list
+     * has not been constructed, so destructing it would walk garbage */
+    if (!pmix_pfexec_globals.initialized) {
+        return PMIX_SUCCESS;
+    }
     if (pmix_pfexec_globals.active) {
         pmix_event_del(pmix_pfexec_globals.handler);
         pmix_pfexec_globals.active = false;
     }
     PMIX_LIST_DESTRUCT(&pmix_pfexec_globals.children);
     free(pmix_pfexec_globals.handler);
+    pmix_pfexec_globals.handler = NULL;
     pmix_pfexec_globals.selected = false;
+    pmix_pfexec_globals.initialized = false;
 
     return PMIX_SUCCESS;
 }
@@ -183,6 +190,7 @@ int pmix_pfexec_base_open(void)
     /* setup the list of children */
     PMIX_CONSTRUCT(&pmix_pfexec_globals.children, pmix_list_t);
     pmix_pfexec_globals.nextid = 1;
+    pmix_pfexec_globals.initialized = true;
 
     /* Open up all available components */
     return PMIX_SUCCESS;
