@@ -2710,7 +2710,6 @@ cdef int allocate(const pmix_proc_t *client,
     if 'allocate' in keys:
         args = {}
         myproc = []
-        mydirs = {}
         keyvals = []
         if NULL == client:
             return PMIX_ERR_BAD_PARAM
@@ -2735,7 +2734,7 @@ cdef int jobcontrol(const pmix_proc_t *requestor,
         args = {}
         myproc = []
         mytargets = []
-        mydirs = {}
+        mydirs = []
         if NULL != requestor:
             pmix_unload_procs(requestor, 1, myproc)
             args['source'] = myproc[0]
@@ -2757,9 +2756,9 @@ cdef int monitor(const pmix_proc_t *requestor,
     keys = pmixservermodule.keys()
     if 'monitor' in keys:
         args = {}
-        mymon = {}
+        mymon = []
         myproc = []
-        mydirs = {}
+        mydirs = []
         blist = []
         if NULL == monitor:
             return PMIX_ERR_BAD_PARAM
@@ -2767,7 +2766,7 @@ cdef int monitor(const pmix_proc_t *requestor,
             pmix_unload_procs(requestor, 1, myproc)
             args['source'] = myproc[0]
         pmix_unload_info(monitor, 1, mymon)
-        args['monitor'] = mymon
+        args['monitor'] = mymon[0]
         args['error'] = error
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
@@ -2784,7 +2783,7 @@ cdef int getcredential(const pmix_proc_t *proc,
     if 'getcredential' in keys:
         args = {}
         myproc = []
-        mydirs = {}
+        mydirs = []
         if NULL != proc:
             pmix_unload_procs(proc, 1, myproc)
             args['source'] = myproc[0]
@@ -2805,7 +2804,7 @@ cdef int validatecredential(const pmix_proc_t *proc,
         args = {}
         keyvals = {}
         myproc = []
-        mydirs = {}
+        mydirs = []
         blist = []
         pycred = {}
         if NULL != proc:
@@ -2834,7 +2833,7 @@ cdef int iofpull(const pmix_proc_t procs[], size_t nprocs,
         args = {}
         keyvals = {}
         myprocs = []
-        mydirs = {}
+        mydirs = []
         pychannels = int(channels)
         args['channels'] = channels
         if NULL != procs:
@@ -2859,7 +2858,7 @@ cdef int pushstdin(const pmix_proc_t *source,
         keyvals = {}
         myproc = []
         mytargets = []
-        mydirs = {}
+        mydirs = []
         blist = []
         pyload = {}
         if NULL != source:
@@ -2883,12 +2882,18 @@ cdef int pushstdin(const pmix_proc_t *source,
     return PMIX_ERR_NOT_SUPPORTED
 
 
-# TODO: This function requires that the server execute the
-# provided callback function to return the group info, and
-# it is not allowed to do so until _after_ it returns from
-# this upcall. We'll need to figure out a way to 'save' the
-# cbfunc until the server calls us back, possibly by passing
-# an appropriate caddy object in 'cbdata'
+# The server library requires that the host complete a group operation by
+# executing the provided callback function, and the host is not required to
+# do so before returning from this upcall. A Python handler therefore has
+# two ways to respond:
+#
+#   * return PMIX_OPERATION_SUCCEEDED to decline the callback entirely - the
+#     server library will complete the operation itself with no results, or
+#   * return PMIX_SUCCESS and invoke the supplied callback exactly once with
+#     the results, either from within the handler or later from another
+#     thread. The 'cbdata_dict' passed to the handler holds only integers,
+#     so it may be saved and used after the handler returns, and the server
+#     library thread-shifts the callback, so any thread may drive it.
 cdef int group(pmix_group_operation_t op, char grp[],
                const pmix_proc_t procs[], size_t nprocs,
                const pmix_info_t directives[], size_t ndirs,
@@ -2896,12 +2901,14 @@ cdef int group(pmix_group_operation_t op, char grp[],
     keys = pmixservermodule.keys()
     if 'group' in keys:
         args = {}
-        keyvals = {}
         myprocs = []
-        mydirs = {}
+        mydirs = []
         args['op'] = op
-        args['group'] = str(grp)
-        pmix_unload_procs(procs, nprocs, myprocs)
+        if NULL == grp:
+            return PMIX_ERR_BAD_PARAM
+        args['group'] = grp.decode('ascii')
+        if NULL != procs:
+            pmix_unload_procs(procs, nprocs, myprocs)
         args['procs'] = myprocs
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
@@ -2922,7 +2929,7 @@ cdef int fabric(const pmix_proc_t *requestor,
         args = {}
         keyvals = {}
         myprocs = []
-        mydirs = {}
+        mydirs = []
         args['op'] = op
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
