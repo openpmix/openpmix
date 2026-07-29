@@ -41,6 +41,16 @@ Python Syntax
              'value': 10, 'val_type': PMIX_INT}]
   rc, value = foo.get(proc, "mykey", pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def valuecb(status, value, cbdata):
+      # value is a Python ``pmix_value_t`` dictionary, or None if the key
+      # was not found
+      print("get completed:", foo.error_string(status), value)
+  rc = foo.get_nb(proc, "mykey", pydirs, valuecb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

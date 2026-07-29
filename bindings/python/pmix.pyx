@@ -59,10 +59,24 @@ ctypedef mcbd pypmix_modex_cbdata_t
 # See docs/how-things-work/python_nonblocking.rst for the full picture.
 cdef struct nbcbd:
     char *grp             # strdup'd group identifier
+    char *ky              # strdup'd key (get_nb)
+    char *blk             # strdup'd resource block name
+    char **keys           # NULL-terminated argv (lookup_nb, unpublish_nb)
     pmix_proc_t *procs    # PyMem_Malloc'd by pmix_load_procs
     size_t nprocs
     pmix_info_t *info     # malloc'd by pmix_alloc_info
     size_t ninfo
+    pmix_info_t *dirs     # malloc'd by pmix_alloc_info - the second info
+    size_t ndirs          #   array carried by log/job_control/monitor
+    pmix_app_t *apps      # PyMem_Malloc'd, loaded by pmix_load_apps
+    size_t napps
+    pmix_query_t *queries # PyMem_Malloc'd
+    size_t nqueries
+    pmix_resource_unit_t *units  # PyMem_Malloc'd by pmix_alloc_units
+    size_t nunits
+    pmix_byte_object_t *cred     # PyMem_Malloc'd, as is its payload
+    pmix_cpuset_t cpuset  # constructed only when havecpuset is set
+    int havecpuset
     size_t idx            # key into the pynbcbs registry
 ctypedef nbcbd pypmix_nb_cbdata_t
 
@@ -73,13 +87,16 @@ pynbcbs = {}
 pynbidx = 0
 pynblock = threading.Lock()
 
-def pypmix_nb_register(cbfunc, cbdata):
-    # Record a Python callback pair and return its registry key
+def pypmix_nb_register(cbfunc, cbdata, obj=None):
+    # Record a Python callback pair and return its registry key. 'obj' is
+    # never read - it is held solely to keep an object alive for the
+    # duration of the operation, which the calls that hand the library a
+    # pointer into the class (the fabric object, the topology) rely on
     global pynbidx
     with pynblock:
         pynbidx += 1
         idx = pynbidx
-        pynbcbs[idx] = {'cbfunc': cbfunc, 'cbdata': cbdata}
+        pynbcbs[idx] = {'cbfunc': cbfunc, 'cbdata': cbdata, 'obj': obj}
     return idx
 
 def pypmix_nb_take(idx):
@@ -93,27 +110,42 @@ cdef pypmix_nb_cbdata_t* pypmix_nb_cbdata_new():
     cd = <pypmix_nb_cbdata_t *> malloc(sizeof(pypmix_nb_cbdata_t))
     if NULL == cd:
         return NULL
-    cd.grp    = NULL
-    cd.procs  = NULL
-    cd.nprocs = 0
-    cd.info   = NULL
-    cd.ninfo  = 0
-    cd.idx    = 0
+    memset(cd, 0, sizeof(pypmix_nb_cbdata_t))
     return cd
 
-# Release a caddy and everything it owns. Note that the group name, the
-# procs array and the info array each came from a different allocator -
-# strdup, PyMem_Malloc and malloc respectively - so each must go back to
-# its own
+# Release a caddy and everything it owns. The buffers it carries come
+# from several different allocators - strdup/malloc for the strings and
+# the info arrays, PyMem_Malloc for the arrays the bindings both build
+# and release - so each must go back to its own
 cdef void pypmix_nb_cbdata_free(pypmix_nb_cbdata_t *cd):
     if NULL == cd:
         return
     if NULL != cd.grp:
         free(cd.grp)
+    if NULL != cd.ky:
+        free(cd.ky)
+    if NULL != cd.blk:
+        free(cd.blk)
+    if NULL != cd.keys:
+        pmix_free_argv(cd.keys)
     if NULL != cd.procs:
         pmix_free_procs(cd.procs, cd.nprocs)
     if NULL != cd.info and 0 < cd.ninfo:
         pmix_free_info(cd.info, cd.ninfo)
+    if NULL != cd.dirs and 0 < cd.ndirs:
+        pmix_free_info(cd.dirs, cd.ndirs)
+    if NULL != cd.apps:
+        pmix_free_apps(cd.apps, cd.napps)
+    if NULL != cd.queries:
+        pmix_free_queries(cd.queries, cd.nqueries)
+    if NULL != cd.units:
+        pmix_free_units(cd.units, cd.nunits)
+    if NULL != cd.cred:
+        if NULL != cd.cred.bytes:
+            PyMem_Free(cd.cred.bytes)
+        PyMem_Free(cd.cred)
+    if 0 != cd.havecpuset:
+        pmix_destruct_cpuset(&cd.cpuset)
     free(cd)
 
 # The registry entry doubles as the ownership token for the caddy:
@@ -170,20 +202,186 @@ cdef void pypmix_client_info_cbfunc(pmix_status_t status,
     except:
         traceback.print_exc()
 
-# Build the caddy for a non-blocking group operation, taking ownership of
-# the group identifier and the info array. Returns NULL on failure, with
-# the reason stored in rcptr
-cdef pypmix_nb_cbdata_t* pypmix_nb_group_setup(pygrp, pyinfo, int *rcptr):
+# Trampoline for non-blocking APIs that take a pmix_value_cbfunc_t. The
+# value belongs to the library and is released as soon as we return, so
+# convert it here rather than handing the pointer onward
+cdef void pypmix_client_value_cbfunc(pmix_status_t status,
+                                     pmix_value_t *kv,
+                                     void *cbdata) noexcept with gil:
+    cdef pypmix_nb_cbdata_t *cd
+    pyval = None
+    if NULL != kv:
+        pyval = pmix_unload_value(kv)
+    if NULL == cbdata:
+        return
+    cd = <pypmix_nb_cbdata_t *> cbdata
+    entry = pypmix_nb_take(cd.idx)
+    if entry is None:
+        return
+    pypmix_nb_cbdata_free(cd)
+    # a callback that raises must not unwind into the library
+    try:
+        entry['cbfunc'](status, pyval, entry['cbdata'])
+    except:
+        traceback.print_exc()
+
+# Trampoline for non-blocking APIs that take a pmix_lookup_cbfunc_t. As
+# above, the returned pdata array is the library's
+cdef void pypmix_client_lookup_cbfunc(pmix_status_t status,
+                                      pmix_pdata_t data[], size_t ndata,
+                                      void *cbdata) noexcept with gil:
+    cdef pypmix_nb_cbdata_t *cd
+    pyresults = []
+    prc = PMIX_SUCCESS
+    if NULL != data and 0 < ndata:
+        prc = pmix_unload_pdata(data, ndata, pyresults)
+    if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
+        status = prc
+    if NULL == cbdata:
+        return
+    cd = <pypmix_nb_cbdata_t *> cbdata
+    entry = pypmix_nb_take(cd.idx)
+    if entry is None:
+        return
+    pypmix_nb_cbdata_free(cd)
+    # a callback that raises must not unwind into the library
+    try:
+        entry['cbfunc'](status, pyresults, entry['cbdata'])
+    except:
+        traceback.print_exc()
+
+# Trampoline for non-blocking APIs that take a pmix_spawn_cbfunc_t
+cdef void pypmix_client_spawn_cbfunc(pmix_status_t status,
+                                     pmix_nspace_t nspace,
+                                     void *cbdata) noexcept with gil:
+    cdef pypmix_nb_cbdata_t *cd
+    # the nspace is released by the library upon our return, so decode it
+    # into a Python string now. A failed spawn has no namespace to report,
+    # and the parameter is a bare array pointer that may be NULL
+    pyns = None
+    if PMIX_SUCCESS == status and NULL != nspace:
+        pyns = nspace.decode('ascii')
+    if NULL == cbdata:
+        return
+    cd = <pypmix_nb_cbdata_t *> cbdata
+    entry = pypmix_nb_take(cd.idx)
+    if entry is None:
+        return
+    pypmix_nb_cbdata_free(cd)
+    # a callback that raises must not unwind into the library
+    try:
+        entry['cbfunc'](status, pyns, entry['cbdata'])
+    except:
+        traceback.print_exc()
+
+# Trampoline for non-blocking APIs that take a pmix_credential_cbfunc_t
+cdef void pypmix_client_credential_cbfunc(pmix_status_t status,
+                                          pmix_byte_object_t *credential,
+                                          pmix_info_t info[], size_t ninfo,
+                                          void *cbdata) noexcept with gil:
+    cdef pypmix_nb_cbdata_t *cd
+    # both the credential and the info array belong to the library
+    cred = {}
+    if NULL != credential and NULL != credential.bytes and 0 < credential.size:
+        blist = []
+        pmix_unload_bytes(credential.bytes, credential.size, blist)
+        cred['bytes'] = bytearray(blist)
+        cred['size'] = credential.size
+    pyresults = []
+    prc = PMIX_SUCCESS
+    if NULL != info and 0 < ninfo:
+        prc = pmix_unload_info(info, ninfo, pyresults)
+    if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
+        status = prc
+    if NULL == cbdata:
+        return
+    cd = <pypmix_nb_cbdata_t *> cbdata
+    entry = pypmix_nb_take(cd.idx)
+    if entry is None:
+        return
+    pypmix_nb_cbdata_free(cd)
+    # a callback that raises must not unwind into the library
+    try:
+        entry['cbfunc'](status, cred, pyresults, entry['cbdata'])
+    except:
+        traceback.print_exc()
+
+# Trampoline for non-blocking APIs that take a pmix_validation_cbfunc_t.
+# Same shape as the info trampoline, but without a release function -
+# the library reclaims the array itself
+cdef void pypmix_client_validation_cbfunc(pmix_status_t status,
+                                          pmix_info_t info[], size_t ninfo,
+                                          void *cbdata) noexcept with gil:
+    cdef pypmix_nb_cbdata_t *cd
+    pyresults = []
+    prc = PMIX_SUCCESS
+    if NULL != info and 0 < ninfo:
+        prc = pmix_unload_info(info, ninfo, pyresults)
+    if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
+        status = prc
+    if NULL == cbdata:
+        return
+    cd = <pypmix_nb_cbdata_t *> cbdata
+    entry = pypmix_nb_take(cd.idx)
+    if entry is None:
+        return
+    pypmix_nb_cbdata_free(cd)
+    # a callback that raises must not unwind into the library
+    try:
+        entry['cbfunc'](status, pyresults, entry['cbdata'])
+    except:
+        traceback.print_exc()
+
+# Trampoline for non-blocking APIs that take a pmix_device_dist_cbfunc_t
+cdef void pypmix_client_devdist_cbfunc(pmix_status_t status,
+                                       pmix_device_distance_t *dist,
+                                       size_t ndist,
+                                       void *cbdata,
+                                       pmix_release_cbfunc_t release_fn,
+                                       void *release_cbdata) noexcept with gil:
+    cdef pypmix_nb_cbdata_t *cd
+    cdef size_t n
+    # convert the distances before telling the library we are done with them
+    pyresults = []
+    n = 0
+    while n < ndist:
+        pydist = {}
+        if NULL == dist[n].uuid:
+            pydist['uuid'] = None
+        else:
+            pydist['uuid'] = dist[n].uuid.decode('ascii')
+        if NULL == dist[n].osname:
+            pydist['osname'] = None
+        else:
+            pydist['osname'] = dist[n].osname.decode('ascii')
+        pydist['type'] = dist[n].type
+        pydist['mindist'] = dist[n].mindist
+        pydist['maxdist'] = dist[n].maxdist
+        pyresults.append(pydist)
+        n += 1
+    if NULL != release_fn:
+        release_fn(release_cbdata)
+    if NULL == cbdata:
+        return
+    cd = <pypmix_nb_cbdata_t *> cbdata
+    entry = pypmix_nb_take(cd.idx)
+    if entry is None:
+        return
+    pypmix_nb_cbdata_free(cd)
+    # a callback that raises must not unwind into the library
+    try:
+        entry['cbfunc'](status, pyresults, entry['cbdata'])
+    except:
+        traceback.print_exc()
+
+# Build the caddy for a non-blocking operation, taking ownership of the
+# info array. Returns NULL on failure, with the reason stored in rcptr
+cdef pypmix_nb_cbdata_t* pypmix_nb_setup(pyinfo, int *rcptr):
     cdef pypmix_nb_cbdata_t *cd
     cdef pmix_info_t **info_ptr
 
     cd = pypmix_nb_cbdata_new()
     if NULL == cd:
-        rcptr[0] = PMIX_ERR_NOMEM
-        return NULL
-    cd.grp = strdup(pygrp)
-    if NULL == cd.grp:
-        pypmix_nb_cbdata_free(cd)
         rcptr[0] = PMIX_ERR_NOMEM
         return NULL
     info_ptr = &cd.info
@@ -193,6 +391,62 @@ cdef pypmix_nb_cbdata_t* pypmix_nb_group_setup(pygrp, pyinfo, int *rcptr):
         rcptr[0] = rc
         return NULL
     rcptr[0] = PMIX_SUCCESS
+    return cd
+
+# Add the second info array carried by the operations that take one -
+# the directives that accompany the data being logged, the targets being
+# controlled, or the monitor being requested
+cdef int pypmix_nb_add_dirs(pypmix_nb_cbdata_t *cd, pydirs):
+    cdef pmix_info_t **dirs_ptr
+    dirs_ptr = &cd.dirs
+    return pmix_alloc_info(dirs_ptr, &cd.ndirs, pydirs)
+
+# Park the operation's target procs in the caddy. As in the blocking
+# forms, an absent or empty list means "this proc's entire job"
+cdef int pypmix_nb_add_procs(pypmix_nb_cbdata_t *cd, peers, nspace):
+    if peers is not None and 0 < len(peers):
+        cd.nprocs = len(peers)
+        cd.procs = <pmix_proc_t*> PyMem_Malloc(cd.nprocs * sizeof(pmix_proc_t))
+        if not cd.procs:
+            cd.nprocs = 0
+            return PMIX_ERR_NOMEM
+        return pmix_load_procs(cd.procs, peers)
+    cd.nprocs = 1
+    cd.procs = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
+    if not cd.procs:
+        cd.nprocs = 0
+        return PMIX_ERR_NOMEM
+    pmix_copy_nspace(cd.procs[0].nspace, nspace)
+    cd.procs[0].rank = PMIX_RANK_WILDCARD
+    return PMIX_SUCCESS
+
+# Park a NULL-terminated key array in the caddy. A None/empty list is
+# left as NULL, which the APIs that take one read as "all keys"
+cdef int pypmix_nb_add_keys(pypmix_nb_cbdata_t *cd, pykeys):
+    cdef size_t nstrings
+    if pykeys is None or 0 == len(pykeys):
+        return PMIX_SUCCESS
+    nstrings = len(pykeys)
+    cd.keys = <char **> malloc((nstrings + 1) * sizeof(char*))
+    if NULL == cd.keys:
+        return PMIX_ERR_NOMEM
+    memset(cd.keys, 0, (nstrings + 1) * sizeof(char*))
+    return pmix_load_argv(cd.keys, pykeys)
+
+# Build the caddy for a non-blocking group operation, taking ownership of
+# the group identifier and the info array. Returns NULL on failure, with
+# the reason stored in rcptr
+cdef pypmix_nb_cbdata_t* pypmix_nb_group_setup(pygrp, pyinfo, int *rcptr):
+    cdef pypmix_nb_cbdata_t *cd
+
+    cd = pypmix_nb_setup(pyinfo, rcptr)
+    if NULL == cd:
+        return NULL
+    cd.grp = strdup(pygrp)
+    if NULL == cd.grp:
+        pypmix_nb_cbdata_free(cd)
+        rcptr[0] = PMIX_ERR_NOMEM
+        return NULL
     return cd
 
 # Function to release pypmix_info_cbdata_t structure
@@ -1759,26 +2013,10 @@ cdef class PMIxClient:
             return prc
 
         # convert list of procs to array of pmix_proc_t's
-        if peers is not None and 0 < len(peers):
-            cd.nprocs = len(peers)
-            cd.procs = <pmix_proc_t*> PyMem_Malloc(cd.nprocs * sizeof(pmix_proc_t))
-            if not cd.procs:
-                cd.nprocs = 0
-                pypmix_nb_cbdata_free(cd)
-                return PMIX_ERR_NOMEM
-            prc = pmix_load_procs(cd.procs, peers)
-            if PMIX_SUCCESS != prc:
-                pypmix_nb_cbdata_free(cd)
-                return prc
-        else:
-            cd.nprocs = 1
-            cd.procs = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
-            if not cd.procs:
-                cd.nprocs = 0
-                pypmix_nb_cbdata_free(cd)
-                return PMIX_ERR_NOMEM
-            pmix_copy_nspace(cd.procs[0].nspace, self.myproc.nspace)
-            cd.procs[0].rank = PMIX_RANK_WILDCARD
+        prc = pypmix_nb_add_procs(cd, peers, self.myproc.nspace)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
 
         # record the callback so it stays alive, then call the library
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
@@ -1809,26 +2047,10 @@ cdef class PMIxClient:
             return prc
 
         # convert list of procs to array of pmix_proc_t's
-        if peers is not None and 0 < len(peers):
-            cd.nprocs = len(peers)
-            cd.procs = <pmix_proc_t*> PyMem_Malloc(cd.nprocs * sizeof(pmix_proc_t))
-            if not cd.procs:
-                cd.nprocs = 0
-                pypmix_nb_cbdata_free(cd)
-                return PMIX_ERR_NOMEM
-            prc = pmix_load_procs(cd.procs, peers)
-            if PMIX_SUCCESS != prc:
-                pypmix_nb_cbdata_free(cd)
-                return prc
-        else:
-            cd.nprocs = 1
-            cd.procs = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
-            if not cd.procs:
-                cd.nprocs = 0
-                pypmix_nb_cbdata_free(cd)
-                return PMIX_ERR_NOMEM
-            pmix_copy_nspace(cd.procs[0].nspace, self.myproc.nspace)
-            cd.procs[0].rank = PMIX_RANK_WILDCARD
+        prc = pypmix_nb_add_procs(cd, peers, self.myproc.nspace)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
 
         # record the callback so it stays alive, then call the library
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
@@ -1935,6 +2157,680 @@ cdef class PMIxClient:
                                         pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
             # no callback will be executed, so reclaim the operation here
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # Non-blocking forms of the remaining client operations. They follow
+    # the same contract as the group operations above: the method returns
+    # only the status of the request itself, the result is delivered later
+    # by executing 'cbfunc' on the library's progress thread, and a
+    # callback is executed if and only if the method returned
+    # PMIX_SUCCESS. The 'cbdata' object is handed back to the callback
+    # unmodified. Each callback signature is given with its method; all of
+    # them run on the progress thread, so none may call a blocking PMIx
+    # operation - record the result and wake another thread instead.
+
+    # cbfunc(status:int, cbdata)
+    def fence_nb(self, peers, dicts, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        # the library does not copy its input, so everything it will hold
+        # goes into a caddy that outlives this call
+        cd = pypmix_nb_setup(dicts, &prc)
+        if NULL == cd:
+            return prc
+        prc = pypmix_nb_add_procs(cd, peers, self.myproc.nspace)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        # record the callback so it stays alive, then call the library
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Fence_nb(cd.procs, cd.nprocs, cd.info, cd.ninfo,
+                               pypmix_client_op_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            # no callback will be executed, so reclaim the operation here
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, value:dict, cbdata) - 'value' is None if the key
+    # was not found. A None key requests all data for the given proc
+    def get_nb(self, proc, ky, dicts, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        cd = pypmix_nb_setup(dicts, &prc)
+        if NULL == cd:
+            return prc
+
+        # the proc and the key must outlive this call as well - a
+        # single-element proc array covers the former
+        cd.nprocs = 1
+        cd.procs = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
+        if not cd.procs:
+            cd.nprocs = 0
+            pypmix_nb_cbdata_free(cd)
+            return PMIX_ERR_NOMEM
+        if proc is None:
+            pmix_copy_nspace(cd.procs[0].nspace, self.myproc.nspace)
+            cd.procs[0].rank = self.myproc.rank
+        else:
+            pmix_copy_nspace(cd.procs[0].nspace, proc['nspace'])
+            cd.procs[0].rank = proc['rank']
+        if ky is not None:
+            if isinstance(ky, str):
+                pyky = ky.encode('ascii')
+            else:
+                pyky = ky
+            cd.ky = strdup(pyky)
+            if NULL == cd.ky:
+                pypmix_nb_cbdata_free(cd)
+                return PMIX_ERR_NOMEM
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Get_nb(&cd.procs[0], cd.ky, cd.info, cd.ninfo,
+                             pypmix_client_value_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, cbdata)
+    def publish_nb(self, dicts, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        cd = pypmix_nb_setup(dicts, &prc)
+        if NULL == cd:
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Publish_nb(cd.info, cd.ninfo,
+                                 pypmix_client_op_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, pdata:list, cbdata) - each entry of 'pdata' is a
+    # dict of proc/key/value/val_type. Note that the non-blocking form
+    # takes a list of key strings, not the pdata list its blocking
+    # counterpart takes, as that is what the C API accepts
+    def lookup_nb(self, pykeys, dicts, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        cd = pypmix_nb_setup(dicts, &prc)
+        if NULL == cd:
+            return prc
+        prc = pypmix_nb_add_keys(cd, pykeys)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Lookup_nb(cd.keys, cd.info, cd.ninfo,
+                                pypmix_client_lookup_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, cbdata) - a None/empty key list asks the server
+    # to remove everything this process published
+    def unpublish_nb(self, pykeys, dicts, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        cd = pypmix_nb_setup(dicts, &prc)
+        if NULL == cd:
+            return prc
+        prc = pypmix_nb_add_keys(cd, pykeys)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Unpublish_nb(cd.keys, cd.info, cd.ninfo,
+                                   pypmix_client_op_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, nspace:str, cbdata) - 'nspace' is the namespace
+    # assigned to the new job, or None if the spawn failed
+    def spawn_nb(self, jobInfo, pyapps, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+        # protect against bad input
+        if pyapps is None or 0 == len(pyapps):
+            return PMIX_ERR_BAD_PARAM
+
+        cd = pypmix_nb_setup(jobInfo, &prc)
+        if NULL == cd:
+            return prc
+
+        # convert the list of apps to an array of pmix_app_t
+        cd.napps = len(pyapps)
+        cd.apps = <pmix_app_t*> PyMem_Malloc(cd.napps * sizeof(pmix_app_t))
+        if not cd.apps:
+            cd.napps = 0
+            pypmix_nb_cbdata_free(cd)
+            return PMIX_ERR_NOMEM
+        prc = pmix_load_apps(cd.apps, pyapps)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Spawn_nb(cd.info, cd.ninfo, cd.apps, cd.napps,
+                               pypmix_client_spawn_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, cbdata)
+    def connect_nb(self, peers, pyinfo, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        cd = pypmix_nb_setup(pyinfo, &prc)
+        if NULL == cd:
+            return prc
+        prc = pypmix_nb_add_procs(cd, peers, self.myproc.nspace)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Connect_nb(cd.procs, cd.nprocs, cd.info, cd.ninfo,
+                                 pypmix_client_op_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, cbdata)
+    def disconnect_nb(self, peers, pyinfo, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        cd = pypmix_nb_setup(pyinfo, &prc)
+        if NULL == cd:
+            return prc
+        prc = pypmix_nb_add_procs(cd, peers, self.myproc.nspace)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Disconnect_nb(cd.procs, cd.nprocs, cd.info, cd.ninfo,
+                                    pypmix_client_op_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, results:list, cbdata) - 'results' is a list of
+    # info dicts. 'pyq' has the same shape as for query()
+    def query_nb(self, pyq, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+        cdef size_t nstrings
+        cdef size_t n
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        # this operation carries no info array of its own - the
+        # qualifiers ride along inside each query
+        cd = pypmix_nb_setup(None, &prc)
+        if NULL == cd:
+            return prc
+
+        if pyq is not None and 0 < len(pyq):
+            cd.nqueries = len(pyq)
+            cd.queries = <pmix_query_t*> PyMem_Malloc(cd.nqueries * sizeof(pmix_query_t))
+            if not cd.queries:
+                cd.nqueries = 0
+                pypmix_nb_cbdata_free(cd)
+                return PMIX_ERR_NOMEM
+            # zero it so a failure partway through leaves the untouched
+            # entries safe to release
+            memset(cd.queries, 0, cd.nqueries * sizeof(pmix_query_t))
+            n = 0
+            for q in pyq:
+                qkeys = q.get('keys')
+                if qkeys is not None and 0 < len(qkeys):
+                    nstrings = len(qkeys)
+                    cd.queries[n].keys = <char **> malloc((nstrings+1) * sizeof(char*))
+                    if not cd.queries[n].keys:
+                        pypmix_nb_cbdata_free(cd)
+                        return PMIX_ERR_NOMEM
+                    memset(cd.queries[n].keys, 0, (nstrings+1) * sizeof(char*))
+                    prc = pmix_load_argv(cd.queries[n].keys, qkeys)
+                    if PMIX_SUCCESS != prc:
+                        pypmix_nb_cbdata_free(cd)
+                        return prc
+                prc = pmix_alloc_info(&(cd.queries[n].qualifiers),
+                                      &(cd.queries[n].nqual),
+                                      q.get('qualifiers'))
+                if PMIX_SUCCESS != prc:
+                    pypmix_nb_cbdata_free(cd)
+                    return prc
+                n += 1
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Query_info_nb(cd.queries, cd.nqueries,
+                                    pypmix_client_info_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, cbdata)
+    def log_nb(self, pydata, pydirs, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        cd = pypmix_nb_setup(pydata, &prc)
+        if NULL == cd:
+            return prc
+        prc = pypmix_nb_add_dirs(cd, pydirs)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Log_nb(cd.info, cd.ninfo, cd.dirs, cd.ndirs,
+                             pypmix_client_op_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, results:list, cbdata)
+    def allocation_request_nb(self, directive, pyinfo, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+        cdef pmix_alloc_directive_t drctv
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+        drctv = directive
+
+        cd = pypmix_nb_setup(pyinfo, &prc)
+        if NULL == cd:
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Allocation_request_nb(drctv, cd.info, cd.ninfo,
+                                            pypmix_client_info_cbfunc,
+                                            <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, results:list, cbdata)
+    def job_control_nb(self, pytargets, pydirs, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        # the directives are this operation's info array
+        cd = pypmix_nb_setup(pydirs, &prc)
+        if NULL == cd:
+            return prc
+        prc = pypmix_nb_add_procs(cd, pytargets, self.myproc.nspace)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Job_control_nb(cd.procs, cd.nprocs, cd.info, cd.ninfo,
+                                     pypmix_client_info_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, results:list, cbdata). As in the blocking form,
+    # the monitor request is given as a list whose first element is the
+    # monitoring attribute the C API takes
+    def monitor_nb(self, pymonitor_info, code:int, pydirs, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef pmix_status_t ccode
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+        ccode = code
+
+        cd = pypmix_nb_setup(pymonitor_info, &prc)
+        if NULL == cd:
+            return prc
+        prc = pypmix_nb_add_dirs(cd, pydirs)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Process_monitor_nb(cd.info, ccode, cd.dirs, cd.ndirs,
+                                         pypmix_client_info_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, credential:dict, results:list, cbdata) - the
+    # credential is the usual byte-object dict of 'bytes' and 'size'
+    def get_credential_nb(self, pyinfo, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        cd = pypmix_nb_setup(pyinfo, &prc)
+        if NULL == cd:
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Get_credential_nb(cd.info, cd.ninfo,
+                                        pypmix_client_credential_cbfunc,
+                                        <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, results:list, cbdata) - a PMIX_SUCCESS status
+    # means the credential was accepted
+    def validate_credential_nb(self, pycred, pyinfo, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+        cdef const char *credptr
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+        if pycred is None:
+            return PMIX_ERR_BAD_PARAM
+
+        cd = pypmix_nb_setup(pyinfo, &prc)
+        if NULL == cd:
+            return prc
+
+        # the credential must outlive this call, so copy it into the caddy
+        cd.cred = <pmix_byte_object_t*> PyMem_Malloc(sizeof(pmix_byte_object_t))
+        if not cd.cred:
+            pypmix_nb_cbdata_free(cd)
+            return PMIX_ERR_NOMEM
+        cd.cred.bytes = NULL
+        cd.cred.size = 0
+        pybytes = pycred.get('bytes')
+        if pybytes is None:
+            pypmix_nb_cbdata_free(cd)
+            return PMIX_ERR_BAD_PARAM
+        if isinstance(pybytes, str):
+            pybytes = pybytes.encode('ascii')
+        else:
+            pybytes = bytes(pybytes)
+        if 0 < len(pybytes):
+            cd.cred.size = len(pybytes)
+            cd.cred.bytes = <char*> PyMem_Malloc(cd.cred.size)
+            if not cd.cred.bytes:
+                cd.cred.size = 0
+                pypmix_nb_cbdata_free(cd)
+                return PMIX_ERR_NOMEM
+            credptr = <const char*>pybytes
+            memcpy(cd.cred.bytes, credptr, cd.cred.size)
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Validate_credential_nb(cd.cred, cd.info, cd.ninfo,
+                                             pypmix_client_validation_cbfunc,
+                                             <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, cbdata). The fabric object lives in this class,
+    # so the registry holds a reference to us until the callback fires,
+    # and the "registered" flag is only set once the library says so
+    def fabric_register_nb(self, dicts, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+        cdef pmix_fabric_t *fab
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+        if 1 == self.fabric_set:
+            return PMIX_ERR_RESOURCE_BUSY
+
+        cd = pypmix_nb_setup(dicts, &prc)
+        if NULL == cd:
+            return prc
+
+        def regdone(status, ud):
+            if PMIX_SUCCESS == status:
+                self.fabric_set = 1
+            cbfunc(status, ud)
+
+        fab = &self.myfabric
+        cd.idx = pypmix_nb_register(regdone, cbdata, self)
+        with nogil:
+            rc = PMIx_Fabric_register_nb(fab, cd.info, cd.ninfo,
+                                         pypmix_client_op_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, cbdata) - the updated fabric information is read
+    # back through fabric_update()'s companion accessors once the
+    # callback reports success
+    def fabric_update_nb(self, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+        cdef pmix_fabric_t *fab
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+        if 0 == self.fabric_set:
+            return PMIX_ERR_INIT
+
+        cd = pypmix_nb_setup(None, &prc)
+        if NULL == cd:
+            return prc
+
+        fab = &self.myfabric
+        cd.idx = pypmix_nb_register(cbfunc, cbdata, self)
+        with nogil:
+            rc = PMIx_Fabric_update_nb(fab, pypmix_client_op_cbfunc,
+                                       <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, cbdata)
+    def fabric_deregister_nb(self, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+        cdef pmix_fabric_t *fab
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+        if 0 == self.fabric_set:
+            return PMIX_ERR_INIT
+
+        cd = pypmix_nb_setup(None, &prc)
+        if NULL == cd:
+            return prc
+
+        def deregdone(status, ud):
+            if PMIX_SUCCESS == status:
+                self.fabric_set = 0
+            cbfunc(status, ud)
+
+        fab = &self.myfabric
+        cd.idx = pypmix_nb_register(deregdone, cbdata, self)
+        with nogil:
+            rc = PMIx_Fabric_deregister_nb(fab, pypmix_client_op_cbfunc,
+                                           <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, distances:list, cbdata) - each entry is a dict of
+    # uuid/osname/type/mindist/maxdist, as compute_distances() returns
+    def compute_distances_nb(self, pycpus, dicts, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+        cdef pmix_topology_t *topo
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        # check that we loaded our topology
+        if NULL == self.topo.topology:
+            prc = self.load_topology()
+            if PMIX_SUCCESS != prc:
+                return prc
+
+        cd = pypmix_nb_setup(dicts, &prc)
+        if NULL == cd:
+            return prc
+
+        # the cpuset must outlive this call. Its loader constructs before
+        # it parses, so mark it for destruction regardless of the outcome
+        prc = pmix_load_cpuset(&cd.cpuset, pycpus)
+        cd.havecpuset = 1
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        topo = &self.topo
+        cd.idx = pypmix_nb_register(cbfunc, cbdata, self)
+        with nogil:
+            rc = PMIx_Compute_distances_nb(topo, &cd.cpuset,
+                                           cd.info, cd.ninfo,
+                                           pypmix_client_devdist_cbfunc,
+                                           <void *> cd)
+        if PMIX_SUCCESS != rc:
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    # cbfunc(status:int, cbdata). See resource_block() for the meaning of
+    # the directive, block name and resource unit list
+    def resource_block_nb(self, directive:int, block, pyunits, pyinfo,
+                          cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+        cdef pmix_resource_block_directive_t drctv
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+        if block is None:
+            return PMIX_ERR_BAD_PARAM
+        drctv = directive
+
+        cd = pypmix_nb_setup(pyinfo, &prc)
+        if NULL == cd:
+            return prc
+
+        # the block name and the units must outlive this call
+        if isinstance(block, str):
+            pyblock = block.encode('ascii')
+        else:
+            pyblock = block
+        cd.blk = strdup(pyblock)
+        if NULL == cd.blk:
+            pypmix_nb_cbdata_free(cd)
+            return PMIX_ERR_NOMEM
+        prc = pmix_alloc_units(&cd.units, &cd.nunits, pyunits)
+        if PMIX_SUCCESS != prc:
+            pypmix_nb_cbdata_free(cd)
+            return prc
+
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Resource_block_nb(drctv, cd.blk, cd.units, cd.nunits,
+                                        cd.info, cd.ninfo,
+                                        pypmix_client_op_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
             if pypmix_nb_take(cd.idx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc

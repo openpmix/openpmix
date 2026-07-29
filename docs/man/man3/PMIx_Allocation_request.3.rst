@@ -39,6 +39,16 @@ Python Syntax
              'value': 4, 'val_type': PMIX_UINT64}]
   rc, results = foo.allocation_request(PMIX_ALLOC_EXTEND, pyinfo)
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def resultcb(status, results, cbdata):
+      # results is a list of Python ``pmix_info_t`` dictionaries
+      print("allocation completed:", foo.error_string(status), results)
+  rc = foo.allocation_request_nb(PMIX_ALLOC_EXTEND, pyinfo,
+                                 resultcb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

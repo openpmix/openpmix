@@ -38,6 +38,14 @@ Python Syntax
   pydirs = []
   rc = foo.log(pydata, pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def donecb(status, cbdata):
+      print("log completed:", foo.error_string(status))
+  rc = foo.log_nb(pydata, pydirs, donecb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

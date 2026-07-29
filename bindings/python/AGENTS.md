@@ -193,25 +193,37 @@ Python server registers them via `PMIxServer.init(info, module_map)` where
 
 The reverse of §4b, and the newest of the three. A non-blocking client
 method hands a request to `libpmix` and returns immediately; the result
-arrives later on the progress thread. The group operations
-(`group_construct_nb` and friends) are the worked example — everything
-else in `MISSING_BINDINGS.md` §1.1 is meant to reuse this.
+arrives later on the progress thread. Every `_nb` API is bound this way
+— the group operations (`group_construct_nb` and friends) are the
+worked example, and `MISSING_BINDINGS.md` §1.1 tabulates the rest with
+their callback signatures.
 
 Three pieces, all in `pmix.pyx`:
 
 - **`nbcbd`, a keepalive caddy.** PMIx does not copy its input, so the
   blocking methods' habit of freeing `procs`/`info` the moment the C call
-  returns is a use-after-free here. The group identifier is worse:
+  returns is a use-after-free here. Strings are worse:
   `group.encode('ascii')` is a Python local, so its buffer dangles at
   return. All of it goes in the caddy, which is passed as the operation's
-  `cbdata` and released by the trampoline. Each field goes back to its own
-  allocator (`free` / `PyMem_Free` / `pmix_free_info`) — see §8.
+  `cbdata` and released by the trampoline. One struct serves every
+  operation — the trampolines cast any caddy to it to reach `idx` — so
+  it is zeroed at allocation and each field goes back to its own
+  allocator (`free` / `PyMem_Free` / `pmix_free_info` /
+  `pmix_free_argv`) — see §8.
 - **`pynbcbs`, a registry.** The caller's Python callback and `cbdata`
   live in a module-global dict keyed by an integer the caddy carries, so
-  no `PyObject *` crosses into C. Same technique as `myhdlrs`.
-- **`pypmix_client_op_cbfunc` / `pypmix_client_info_cbfunc`,
-  trampolines.** `noexcept with gil`, per the rules below, with the user's
-  callback wrapped in `try`/`except`.
+  no `PyObject *` crosses into C. Same technique as `myhdlrs`. The entry
+  can also carry an unread reference to an object that must outlive the
+  operation — which is how the calls that hand `libpmix` a pointer into
+  the class (`&self.myfabric`, `&self.topo`) keep it from dangling.
+- **Eight trampolines**, one per C callback type
+  (`pypmix_client_op_cbfunc`, `_info_`, `_value_`, `_lookup_`, `_spawn_`,
+  `_credential_`, `_validation_`, `_devdist_`). All are `noexcept with
+  gil`, per the rules below, with the user's callback wrapped in
+  `try`/`except`. **Everything the library hands a callback belongs to
+  the library**, and only the info and device-distance forms carry a
+  `release_fn` — the rest reclaim their data as soon as the callback
+  returns, so convert to Python before doing anything else.
 
 Two invariants are easy to miss:
 
@@ -227,7 +239,12 @@ Two invariants are easy to miss:
 Validate that `cbfunc` is callable before allocating anything — a callback
 that can never run strands the caddy for the life of the process.
 
-Full write-up, including how to add the remaining `_nb` bindings:
+To update class state from a completion, register a closure in place of
+the caller's callback rather than teaching a trampoline about the class
+— `fabric_register_nb` does this to flip `fabric_set` when the library
+reports success, not when the request is accepted.
+
+Full write-up, including how to add a further `_nb` binding:
 [`docs/how-things-work/python_nonblocking.rst`](../../docs/how-things-work/python_nonblocking.rst).
 
 ### Rules when touching callback code
@@ -358,6 +375,16 @@ internalizing so they are not reintroduced:
 - **`memset`/`malloc` counts must include `sizeof(T)`**, and NUL-terminated
   `char**` arrays need one extra slot. Byte counts vs element counts were a
   recurring source of overflow.
+- **Zero an array before you fill it entry by entry.** Every loader here
+  can fail partway (an unconvertible value type is enough), and the
+  caller then releases the *whole* array — destructing entries that were
+  never written. `pmix_load_info`, `pmix_load_apps` and the query builder
+  all zero first for that reason.
+- **An empty list must produce a NULL array, not a zero-length one.** The
+  C APIs read a non-NULL array with a count of zero as "terminated by an
+  end marker" and walk off the allocation looking for one. `malloc(0)`
+  returns a valid pointer, so this is easy to get wrong; `pmix_alloc_info`
+  gets it right and `pmix_load_apps` had to be fixed to match.
 - **Copy from the right key.** Loaders read from a value dict; getting the
   wrong key (`envar` vs `value`, `val_type` vs `value`) silently corrupts data.
 - **`setmodulefn`'s `permitted` list and `server_module_init`'s wiring names

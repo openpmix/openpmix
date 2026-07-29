@@ -41,6 +41,15 @@ Python Syntax
              'value': True, 'val_type': PMIX_BOOL}]
   rc, results = foo.job_control(targets, pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def resultcb(status, results, cbdata):
+      # results is a list of Python ``pmix_info_t`` dictionaries
+      print("job control completed:", foo.error_string(status), results)
+  rc = foo.job_control_nb(targets, pydirs, resultcb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

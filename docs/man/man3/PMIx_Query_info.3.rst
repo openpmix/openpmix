@@ -37,6 +37,15 @@ Python Syntax
   pyq = [{'keys': [PMIX_QUERY_NAMESPACES],
           'qualifiers': []}]
   rc, results = foo.query(pyq)
+
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def querycb(status, results, cbdata):
+      # results is a list of Python ``pmix_info_t`` dictionaries
+      print("query completed:", foo.error_string(status), results)
+  rc = foo.query_nb(pyq, querycb, "mycbdata")
   # results is a list of Python ``pmix_info_t`` dictionaries
 
 

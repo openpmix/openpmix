@@ -655,5 +655,139 @@ class TestGroupNonBlocking(unittest.TestCase):
                          "refused operations left entries in the registry")
 
 
+class TestClientNonBlocking(unittest.TestCase):
+    """The remaining non-blocking client bindings.
+
+    Same reasoning as TestGroupNonBlocking above: without a server none of
+    these can complete, but each one converts a full set of arguments into a
+    keepalive caddy before handing the request to the library, and the
+    library's pre-init refusal is precisely the path that has to unwind that
+    caddy by hand.  Running every case therefore covers the argument
+    marshaling and the error-path cleanup for all of them.
+    """
+
+    PEERS = ({'nspace': "testnspace", 'rank': 0},
+             {'nspace': "testnspace", 'rank': 1})
+    INFO = ({'key': "pmix.timeout", 'value': 10, 'val_type': 5},)
+    APPS = ({'cmd': "/bin/true", 'argv': ["true"], 'env': ["FOO=bar"],
+             'maxprocs': 1, 'info': []},)
+    QUERIES = ({'keys': ["pmix.qry.nslist"], 'qualifiers': None},)
+    UNITS = ({'type': 1, 'count': 2},)
+    CRED = {'bytes': b"somecredential"}
+    CPUS = {'source': "hwloc", 'cpus': [0, 1]}
+
+    #: name, args to place before the (cbfunc, cbdata) pair
+    CASES = (
+        ("fence_nb", (list(PEERS), list(INFO))),
+        ("get_nb", (PEERS[1], "mykey", list(INFO))),
+        # a None proc and a None key are both legal - "me" and "everything"
+        ("get_nb", (None, None, None)),
+        ("publish_nb", (list(INFO),)),
+        ("lookup_nb", (["key1", "key2"], list(INFO))),
+        ("unpublish_nb", (["key1"], list(INFO))),
+        # a None key list means "everything I published"
+        ("unpublish_nb", (None, None)),
+        ("spawn_nb", (list(INFO), list(APPS))),
+        ("connect_nb", (list(PEERS), list(INFO))),
+        ("disconnect_nb", (list(PEERS), list(INFO))),
+        ("query_nb", (list(QUERIES),)),
+        ("log_nb", (list(INFO), list(INFO))),
+        ("allocation_request_nb", (pmix.PMIX_ALLOC_NEW, list(INFO))),
+        ("job_control_nb", (list(PEERS), list(INFO))),
+        ("monitor_nb", (list(INFO), pmix.PMIX_ERR_TIMEOUT, list(INFO))),
+        ("get_credential_nb", (list(INFO),)),
+        ("validate_credential_nb", (CRED, list(INFO))),
+        ("fabric_register_nb", (list(INFO),)),
+        ("fabric_update_nb", ()),
+        ("fabric_deregister_nb", ()),
+        ("resource_block_nb", (pmix.PMIX_RESOURCE_BLOCK_DEFINE, "myblock",
+                               list(UNITS), list(INFO))),
+    )
+
+    #: these need a topology, which not every environment can supply, so
+    #: they are checked for "refused cleanly" rather than a specific status
+    LENIENT = ("compute_distances_nb", (CPUS, list(INFO)))
+
+    def setUp(self):
+        self.client = pmix.PMIxClient()
+        self.fired = []
+
+    def _cb(self, *args):
+        self.fired.append(args)
+
+    def test_methods_present(self):
+        for name, _ in self.CASES + (self.LENIENT,):
+            self.assertTrue(hasattr(pmix.PMIxClient, name),
+                            "PMIxClient.%s missing" % name)
+
+    def test_rejects_non_callable(self):
+        # A NULL C callback would strand the caddy forever, so a callback
+        # that cannot be executed must be refused up front
+        for name, args in self.CASES + (self.LENIENT,):
+            meth = getattr(self.client, name)
+            rc = meth(*(args + (None,)))
+            self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM,
+                             "%s accepted a non-callable callback" % name)
+            rc = meth(*(args + ("not-a-function",)))
+            self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM,
+                             "%s accepted a non-callable callback" % name)
+
+    def test_error_before_init(self):
+        # The library rejects the request, so the callback must NOT fire
+        # and the binding must reclaim the caddy itself
+        for name, args in self.CASES:
+            meth = getattr(self.client, name)
+            rc = meth(*(args + (self._cb, "opaque")))
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT,
+                             "%s returned %s" % (name, rc))
+        name, args = self.LENIENT
+        rc = getattr(self.client, name)(*(args + (self._cb, "opaque")))
+        self.assertNotEqual(rc, pmix.PMIX_SUCCESS,
+                            "%s was accepted before init" % name)
+        self.assertEqual(self.fired, [],
+                         "a callback fired for a request the library refused")
+
+    def test_repeated_requests_do_not_accumulate(self):
+        # Repeat the whole set enough times that a leak, a double free or a
+        # stranded registry entry would show up
+        for _ in range(32):
+            for name, args in self.CASES + (self.LENIENT,):
+                getattr(self.client, name)(*(args + (self._cb, "opaque")))
+        self.assertEqual(self.fired, [])
+        self.assertEqual(len(pmix.pynbcbs), 0,
+                         "refused operations left entries in the registry")
+
+    def test_bad_arguments_rejected(self):
+        # Arguments the binding itself has to police, before anything is
+        # handed to the library
+        self.assertEqual(
+            self.client.spawn_nb([], None, self._cb),
+            pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(
+            self.client.spawn_nb([], [], self._cb),
+            pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(
+            self.client.validate_credential_nb(None, [], self._cb),
+            pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(
+            self.client.validate_credential_nb({}, [], self._cb),
+            pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(
+            self.client.resource_block_nb(pmix.PMIX_RESOURCE_BLOCK_DEFINE,
+                                          None, [], [], self._cb),
+            pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(self.fired, [])
+        self.assertEqual(len(pmix.pynbcbs), 0)
+
+    def test_fabric_ops_require_registration(self):
+        # update/deregister are meaningless until a fabric is registered,
+        # and the binding says so rather than handing the library a fabric
+        # object it never saw
+        self.assertEqual(self.client.fabric_update_nb(self._cb),
+                         pmix.PMIX_ERR_INIT)
+        self.assertEqual(self.client.fabric_deregister_nb(self._cb),
+                         pmix.PMIX_ERR_INIT)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

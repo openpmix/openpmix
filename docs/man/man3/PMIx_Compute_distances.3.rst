@@ -41,11 +41,21 @@ Python Syntax
   # load the local topology first
   rc = foo.load_topology()
   # the cpuset is a Python dictionary describing the process location
-  pycpus = {'source': "hwloc", 'cpus': ["0", "1"]}
+  pycpus = {'source': "hwloc", 'cpus': [0, 1]}
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_DEVICE_TYPE,
              'value': PMIX_DEVTYPE_NETWORK, 'val_type': PMIX_UINT64}]
   rc, distances = foo.compute_distances(pycpus, pydirs)
+
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def distcb(status, distances, cbdata):
+      # distances is a list of dictionaries, each carrying uuid, osname,
+      # type, mindist and maxdist
+      print("distances:", foo.error_string(status), distances)
+  rc = foo.compute_distances_nb(pycpus, pydirs, distcb, "mycbdata")
 
 
 INPUT PARAMETERS

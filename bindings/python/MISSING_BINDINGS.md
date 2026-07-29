@@ -4,8 +4,9 @@ Tracking document for the PMIx Python bindings (`bindings/python/`). It has
 two parts:
 
 1. **Missing bindings** — real operational C APIs that have no Python method
-   yet. The unique blocking APIs (§§1.2–1.6) have all been bound; what
-   remains is the `_nb` family in §1.1 and one deprecated tool API.
+   yet. Every operational API is now bound in both its blocking and its
+   non-blocking form; the only thing deliberately left out is one
+   deprecated tool API (§1.4).
 2. **Defects** — bugs found in the *existing* bindings during the 2026-07 deep
    review. All are fixed.
 
@@ -28,39 +29,62 @@ Headers surveyed: `include/pmix.h`, `include/pmix_server.h`,
 
 ## Part 1 — Missing bindings
 
-### 1.1 Non-blocking (`_nb`) variants — the group family is bound
+### 1.1 Non-blocking (`_nb`) variants — **CLOSED**
 
-The five group operations now have non-blocking bindings
-(`group_construct_nb`, `group_invite_nb`, `group_join_nb`,
-`group_leave_nb`, `group_destruct_nb`). They brought the client-side
+The five group operations were bound first and brought the client-side
 async machinery with them — a keepalive caddy, a callback registry, and
-the two trampolines — so the remaining entries below are a mechanical
-follow-on rather than new infrastructure. See AGENTS.md §4c and
+two trampolines. The remaining twenty are built on exactly that
+machinery. See AGENTS.md §4c and
 [`docs/how-things-work/python_nonblocking.rst`](../../docs/how-things-work/python_nonblocking.rst).
 
-Every other operational client call is still bound **only** in its
-blocking form:
+Every one returns only the integer status of the *request*; the result
+arrives later by executing the caller's callback on the progress thread,
+and the callback runs **if and only if** the method returned
+`PMIX_SUCCESS`. The final `cbdata` argument is optional and is handed
+back to the callback unmodified.
 
-- `PMIx_Fence_nb`
-- `PMIx_Get_nb`
-- `PMIx_Publish_nb`
-- `PMIx_Lookup_nb`
-- `PMIx_Unpublish_nb`
-- `PMIx_Spawn_nb`
-- `PMIx_Connect_nb`
-- `PMIx_Disconnect_nb`
-- `PMIx_Query_info_nb`
-- `PMIx_Log_nb`
-- `PMIx_Allocation_request_nb`
-- `PMIx_Job_control_nb`
-- `PMIx_Process_monitor_nb`
-- `PMIx_Get_credential_nb`
-- `PMIx_Validate_credential_nb`
-- `PMIx_Fabric_register_nb`
-- `PMIx_Fabric_update_nb`
-- `PMIx_Fabric_deregister_nb`
-- `PMIx_Compute_distances_nb`
-- `PMIx_Resource_block_nb`
+| C API | Python method | Callback signature |
+|-------|---------------|--------------------|
+| `PMIx_Fence_nb` | `fence_nb(peers, dicts, cbfunc, cbdata=None)` | `(status, cbdata)` |
+| `PMIx_Get_nb` | `get_nb(proc, ky, dicts, cbfunc, cbdata=None)` | `(status, value, cbdata)` |
+| `PMIx_Publish_nb` | `publish_nb(dicts, cbfunc, cbdata=None)` | `(status, cbdata)` |
+| `PMIx_Lookup_nb` | `lookup_nb(pykeys, dicts, cbfunc, cbdata=None)` | `(status, pdata, cbdata)` |
+| `PMIx_Unpublish_nb` | `unpublish_nb(pykeys, dicts, cbfunc, cbdata=None)` | `(status, cbdata)` |
+| `PMIx_Spawn_nb` | `spawn_nb(jobInfo, pyapps, cbfunc, cbdata=None)` | `(status, nspace, cbdata)` |
+| `PMIx_Connect_nb` | `connect_nb(peers, pyinfo, cbfunc, cbdata=None)` | `(status, cbdata)` |
+| `PMIx_Disconnect_nb` | `disconnect_nb(peers, pyinfo, cbfunc, cbdata=None)` | `(status, cbdata)` |
+| `PMIx_Query_info_nb` | `query_nb(pyq, cbfunc, cbdata=None)` | `(status, results, cbdata)` |
+| `PMIx_Log_nb` | `log_nb(pydata, pydirs, cbfunc, cbdata=None)` | `(status, cbdata)` |
+| `PMIx_Allocation_request_nb` | `allocation_request_nb(directive, pyinfo, cbfunc, cbdata=None)` | `(status, results, cbdata)` |
+| `PMIx_Job_control_nb` | `job_control_nb(pytargets, pydirs, cbfunc, cbdata=None)` | `(status, results, cbdata)` |
+| `PMIx_Process_monitor_nb` | `monitor_nb(pymonitor_info, code, pydirs, cbfunc, cbdata=None)` | `(status, results, cbdata)` |
+| `PMIx_Get_credential_nb` | `get_credential_nb(pyinfo, cbfunc, cbdata=None)` | `(status, credential, results, cbdata)` |
+| `PMIx_Validate_credential_nb` | `validate_credential_nb(pycred, pyinfo, cbfunc, cbdata=None)` | `(status, results, cbdata)` |
+| `PMIx_Fabric_register_nb` | `fabric_register_nb(dicts, cbfunc, cbdata=None)` | `(status, cbdata)` |
+| `PMIx_Fabric_update_nb` | `fabric_update_nb(cbfunc, cbdata=None)` | `(status, cbdata)` |
+| `PMIx_Fabric_deregister_nb` | `fabric_deregister_nb(cbfunc, cbdata=None)` | `(status, cbdata)` |
+| `PMIx_Compute_distances_nb` | `compute_distances_nb(pycpus, dicts, cbfunc, cbdata=None)` | `(status, distances, cbdata)` |
+| `PMIx_Resource_block_nb` | `resource_block_nb(directive, block, pyunits, pyinfo, cbfunc, cbdata=None)` | `(status, cbdata)` |
+
+Four things this pass established that the group operations had not:
+
+- **`lookup_nb` takes a list of key strings**, not the `pmix_pdata_t`
+  dict list its blocking counterpart takes. That is what the C API
+  accepts, and there is nothing for the caller to fill in on input.
+- **Six new callback shapes needed six new trampolines** —
+  `pmix_value_cbfunc_t`, `pmix_lookup_cbfunc_t`, `pmix_spawn_cbfunc_t`,
+  `pmix_credential_cbfunc_t`, `pmix_validation_cbfunc_t` and
+  `pmix_device_dist_cbfunc_t`. Only the last carries a release function;
+  everything the other five hand back is released by the library as soon
+  as the callback returns, so each converts to Python before doing
+  anything else.
+- **The fabric and distance calls hand the library a pointer into the
+  class** (`myfabric`, `topo`), which would dangle if the Python object
+  were collected while the request was in flight. The registry entry now
+  carries an unread reference to the object for exactly that reason.
+- **`fabric_register_nb`/`fabric_deregister_nb` wrap the caller's
+  callback in a closure** so the class's "registered" flag flips when the
+  library reports the outcome, not when the request is accepted.
 
 ### 1.2 Client role (`PMIxClient`) — **CLOSED**
 
@@ -124,10 +148,16 @@ one of those two; an explicit `data_type` outside the pair returns
 
 ### 1.7 Coverage summary
 
-- Operational client/server/tool APIs bound: **~86** (blocking forms, tool
-  IOF, and the five `_nb` group operations).
-- Not bound: **25** `_nb` variants (§1.1), **1** deprecated tool API
-  (§1.4). Every unique blocking API in §§1.2–1.6 is now bound.
+- Operational client/server/tool APIs bound: **~106** — every blocking
+  form, tool IOF, and all 25 non-blocking variants.
+- Not bound: **1** deprecated tool API (§1.4), deliberately.
+
+Part 1 is closed. What remains open is not a *binding* gap:
+`PMIxScheduler.assign_session` is a well-formed stub because the C
+library exposes no entry point for it (§1.5), and `pmix_load_value` has
+no arm for `PMIX_POINTER` — a data type a Python caller cannot
+meaningfully produce, which surfaces as `PMIX_ERR_NOT_SUPPORTED` rather
+than a crash.
 
 ### 1.8 C-side hazards this pass surfaced (now fixed)
 
@@ -151,6 +181,31 @@ All three now return (or no-op) cleanly; the collect-job-info parameter
 checks are covered by `test/unit/collect_job_info.c`, and the pre-init
 behavior of all of them by `TestNewlyBoundAPIs` in
 `test/python/test_bindings.py`.
+
+### 1.9 Conversion-layer defects the `_nb` pass surfaced (now fixed)
+
+Binding twenty more APIs put argument shapes through the conversion
+helpers that no bound call had produced before, and four latent defects
+came out. None were in the new code; all are fixed:
+
+- **`pmix_load_argv` strdup's its entries**, but `query()` and
+  `unpublish()` allocated the array with `PyMem_Malloc` and
+  `pmix_free_queries` released the entries with `PyMem_Free`. Handing a
+  Python-arena block to `free()` aborts the process. All argv arrays now
+  come from the C allocator, released through a new `pmix_free_argv`.
+  `unpublish()` also leaked its key array on the success path.
+- **`pmix_free_apps` released neither the argv/env arrays nor the app
+  array** — an acknowledged in-code TODO.
+- **An empty per-app `info` list produced a non-NULL array with
+  `ninfo == 0`**, which the library reads as "terminated by an end
+  marker" and walks off the allocation looking for one. A `spawn` whose
+  app carried `'info': []` packed garbage and failed — this was found by
+  `spawn_nb` in the connected test, not by inspection.
+- **A partially-loaded array was released in full.** `pmix_load_info`,
+  `pmix_load_apps` and `query()` filled arrays entry by entry and freed
+  the whole thing on failure, destructing uninitialized memory. An
+  attribute carrying an unconvertible value type was enough to crash the
+  caller. Every such array is now zeroed before loading.
 
 ---
 

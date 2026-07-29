@@ -40,6 +40,14 @@ Python Syntax
              'value': PMIX_RANGE_SESSION, 'val_type': PMIX_UINT8}]
   rc = foo.unpublish(pykeys, pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def donecb(status, cbdata):
+      print("unpublish completed:", foo.error_string(status))
+  rc = foo.unpublish_nb(pykeys, pydirs, donecb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

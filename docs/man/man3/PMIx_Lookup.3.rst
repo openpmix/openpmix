@@ -41,6 +41,17 @@ Python Syntax
              'value': PMIX_RANGE_SESSION, 'val_type': PMIX_UINT8}]
   rc, data = foo.lookup(data, pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  # unlike the blocking method, the non-blocking one takes the keys
+  # directly - as the C API does - and delivers the ``pmix_pdata_t``
+  # dictionaries to the callback
+  def lookupcb(status, pdata, cbdata):
+      print("lookup completed:", foo.error_string(status), pdata)
+  rc = foo.lookup_nb(["mykey"], pydirs, lookupcb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------
