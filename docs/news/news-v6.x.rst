@@ -16,6 +16,12 @@ Detailed changes since v6.1.0:
    first non-blocking client bindings, and the machinery they introduce
    is documented in docs/how-things-work/python_nonblocking.rst for the
    remaining non-blocking APIs to reuse
+ - Fixed the server aborting when a host environment rejects an incoming
+   client connection. The error path in the connection handler released
+   a rank_info object owned by the namespace's rank list, driving its
+   refcount to zero while it was still on that list, and released the
+   pending-connection object twice. A host returning an error from its
+   client_connected callback now simply gets the connection refused
  - Fixed a group bug affecting every caller of PMIx_Group_construct_nb,
    in C as well as Python: the client recorded the constructed group
    only on the completion path used by the blocking wrapper, so a
