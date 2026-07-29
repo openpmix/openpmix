@@ -281,6 +281,19 @@ cdef int pmix_load_argv(char **keys, argv:list):
     keys[n] = NULL
     return PMIX_SUCCESS
 
+# Release a NULL-terminated argv array built by pmix_load_argv. Its
+# entries were strdup'd, so both they and the array itself belong to the
+# C allocator - callers must therefore malloc the array, not PyMem_Malloc
+# it
+cdef void pmix_free_argv(char **argv):
+    if NULL == argv:
+        return
+    n = 0
+    while NULL != argv[n]:
+        free(argv[n])
+        n += 1
+    free(argv)
+
 cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     cdef pmix_info_t *infoptr;
     cdef pmix_value_t *valptr;
@@ -1935,6 +1948,11 @@ cdef void pmix_free_value(self, pmix_value_t *value):
 #            [{key:y, value:val, val_type:ty}, … ]
 #
 cdef int pmix_load_info(pmix_info_t *array, dicts:list):
+    # zero the array first. This function can fail partway through - an
+    # unconvertible value type is enough - and the caller then releases
+    # the whole array, so every entry it never reached has to be safe to
+    # destruct
+    memset(array, 0, len(dicts) * sizeof(pmix_info_t))
     n = 0
     for d in dicts:
         pykey = str(d['key'])
@@ -2189,11 +2207,7 @@ cdef void pmix_free_queries(pmix_query_t *queries, size_t sz):
     n = 0
     while n < sz:
         if queries[n].keys != NULL:
-            j = 0
-            while NULL != queries[n].keys[j]:
-                PyMem_Free(queries[n].keys[j])
-                j += 1
-            PyMem_Free(queries[n].keys)
+            pmix_free_argv(queries[n].keys)
         if queries[n].qualifiers != NULL:
             pmix_free_info(queries[n].qualifiers, queries[n].nqual)
         n += 1
@@ -2246,14 +2260,18 @@ cdef void pmix_unload_bytes(char *data, size_t ndata, blist:list):
         n += 1
 
 cdef void pmix_free_apps(pmix_app_t *array, size_t sz):
+    if NULL == array:
+        return
     n = 0
     while n < sz:
         free(array[n].cmd)
-        # need to free the argv and env arrays
+        pmix_free_argv(array[n].argv)
+        pmix_free_argv(array[n].env)
         free(array[n].cwd)
         if 0 < array[n].ninfo:
             pmix_free_info(array[n].info, array[n].ninfo)
         n += 1
+    PyMem_Free(array)
 
 cdef void pmix_unload_apps(const pmix_app_t *apps, size_t napps, pyapps:list):
     cdef size_t n = 0
@@ -2280,6 +2298,9 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
     cdef size_t m
     cdef size_t n
     cdef char** argv
+    # zero the array first - this function can fail partway through, and
+    # the caller will then hand the whole array to pmix_free_apps
+    memset(apps, 0, len(pyapps) * sizeof(pmix_app_t))
     n = 0
     for p in pyapps:
         pycmd = str(p['cmd']).encode('ascii')
@@ -2333,7 +2354,11 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
         apps[n].info = NULL
         apps[n].ninfo = 0
         try:
-            if p['info'] is not None:
+            # an empty list must leave the array NULL: a non-NULL info
+            # with ninfo == 0 tells the library the array is terminated by
+            # an "end" marker, and it will walk off the allocation looking
+            # for one
+            if p['info'] is not None and 0 < len(p['info']):
                 apps[n].ninfo = len(p['info'])
                 apps[n].info =  <pmix_info_t*> malloc(apps[n].ninfo * sizeof(pmix_info_t))
                 if not apps[n].info:

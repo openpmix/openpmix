@@ -933,20 +933,19 @@ cdef class PMIxClient:
         ninfo    = 0
         nstrings = 0
 
-        # load pykeys into char **keys
+        # load pykeys into char **keys - the entries are strdup'd, so the
+        # array must come from the C allocator as well
         if pykeys is not None:
             nstrings = len(pykeys)
             if 0 < nstrings:
-                keys = <char **> PyMem_Malloc((nstrings + 1) * sizeof(char*))
+                keys = <char **> malloc((nstrings + 1) * sizeof(char*))
                 if not keys:
                     return PMIX_ERR_NOMEM
-            rc = pmix_load_argv(keys, pykeys)
-            if PMIX_SUCCESS != rc:
-                n = 0
-                while keys[n] != NULL:
-                    PyMem_Free(keys[n])
-                    n += 1
-                return rc
+                memset(keys, 0, (nstrings + 1) * sizeof(char*))
+                rc = pmix_load_argv(keys, pykeys)
+                if PMIX_SUCCESS != rc:
+                    pmix_free_argv(keys)
+                    return rc
         else:
             keys = NULL
 
@@ -961,6 +960,8 @@ cdef class PMIxClient:
         rc = PMIx_Unpublish(keys, info, ninfo)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
+        if NULL != keys:
+            pmix_free_argv(keys)
         return rc
 
     # lookup info published by this or another process
@@ -1220,13 +1221,18 @@ cdef class PMIxClient:
                 queries = <pmix_query_t*> PyMem_Malloc(nqueries * sizeof(pmix_query_t))
                 if not queries:
                     return PMIX_ERR_NOMEM,pyresults
+                # zero it so a failure partway through leaves the untouched
+                # entries safe for pmix_free_queries to walk
+                memset(queries, 0, nqueries * sizeof(pmix_query_t))
                 n = 0
                 for q in pyq:
                     queries[n].keys       = NULL
                     queries[n].qualifiers = NULL
                     nstrings = len(q['keys'])
                     if 0 < nstrings:
-                        queries[n].keys = <char **> PyMem_Malloc((nstrings+1) * sizeof(char*))
+                        # the entries are strdup'd, so the array must come
+                        # from the C allocator as well
+                        queries[n].keys = <char **> malloc((nstrings+1) * sizeof(char*))
                         if not queries[n].keys:
                             pmix_free_queries(queries, nqueries)
                             return PMIX_ERR_NOMEM,pyresults
