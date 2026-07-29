@@ -3120,6 +3120,495 @@ cdef class PMIxClient:
         free(output)
         return (rc, txt)
 
+    # Render one of the PMIx structs as a printable string. Unlike the
+    # *_string converters above, which translate a single enumerated
+    # value, these take a whole struct and are the C analogue of printing
+    # the Python dict - they are bound so a Python program can produce
+    # exactly the text the C library would.
+    #
+    # Each returns (rc, str). The library allocates the string, so each
+    # decodes it and hands the storage back.
+
+    # @pyinfo [INPUT] - a single info dict
+    def info_string(self, pyinfo):
+        cdef pmix_info_t info
+        cdef char *output
+
+        if not isinstance(pyinfo, dict) or 'key' not in pyinfo:
+            return (PMIX_ERR_BAD_PARAM, None)
+        memset(&info, 0, sizeof(pmix_info_t))
+        rc = pmix_load_info(&info, [pyinfo])
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_info(&info)
+            return (rc, None)
+        output = PMIx_Info_string(&info)
+        pmix_destruct_info(&info)
+        if NULL == output:
+            return (PMIX_ERROR, None)
+        txt = output.decode('ascii')
+        free(output)
+        return (PMIX_SUCCESS, txt)
+
+    # @pyval [INPUT] - a single value dict
+    def value_string(self, pyval):
+        cdef pmix_value_t value
+        cdef char *output
+
+        if not isinstance(pyval, dict):
+            return (PMIX_ERR_BAD_PARAM, None)
+        rc = pmix_load_value(&value, pyval)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_value(&value)
+            return (rc, None)
+        output = PMIx_Value_string(&value)
+        pmix_destruct_value(&value)
+        if NULL == output:
+            return (PMIX_ERROR, None)
+        txt = output.decode('ascii')
+        free(output)
+        return (PMIX_SUCCESS, txt)
+
+    # @pyproc [INPUT] - a proc dict of nspace and rank
+    def proc_string(self, pyproc):
+        cdef pmix_proc_t proc
+        cdef char *output
+
+        if not isinstance(pyproc, dict):
+            return (PMIX_ERR_BAD_PARAM, None)
+        memset(&proc, 0, sizeof(pmix_proc_t))
+        rc = pmix_load_procs(&proc, [pyproc])
+        if PMIX_SUCCESS != rc:
+            return (rc, None)
+        output = PMIx_Proc_string(&proc)
+        if NULL == output:
+            return (PMIX_ERROR, None)
+        txt = output.decode('ascii')
+        free(output)
+        return (PMIX_SUCCESS, txt)
+
+    # @pyapp [INPUT] - a single app dict, as spawn() takes
+    def app_string(self, pyapp):
+        cdef pmix_app_t app
+        cdef char *output
+
+        if not isinstance(pyapp, dict):
+            return (PMIX_ERR_BAD_PARAM, None)
+        memset(&app, 0, sizeof(pmix_app_t))
+        rc = pmix_load_apps(&app, [pyapp])
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_app(&app)
+            return (rc, None)
+        output = PMIx_App_string(&app)
+        pmix_destruct_app(&app)
+        if NULL == output:
+            return (PMIX_ERROR, None)
+        txt = output.decode('ascii')
+        free(output)
+        return (PMIX_SUCCESS, txt)
+
+    # @pyunit [INPUT] - a resource unit dict of type and count
+    def resource_unit_string(self, pyunit):
+        cdef pmix_resource_unit_t unit
+        cdef char *output
+
+        if not isinstance(pyunit, dict):
+            return (PMIX_ERR_BAD_PARAM, None)
+        memset(&unit, 0, sizeof(pmix_resource_unit_t))
+        rc = pmix_load_units(&unit, [pyunit])
+        if PMIX_SUCCESS != rc:
+            return (rc, None)
+        output = PMIx_Resource_unit_string(&unit)
+        if NULL == output:
+            return (PMIX_ERROR, None)
+        txt = output.decode('ascii')
+        free(output)
+        return (PMIX_SUCCESS, txt)
+
+    # Serialization. A Python data buffer is the dict
+    #
+    #     {'bytes': b'...', 'bytes_used': n, 'bytes_unpacked': m}
+    #
+    # mirroring the fields of a pmix_data_buffer_t that mean anything on
+    # this side of the boundary - the payload, and how far the unpack
+    # cursor has advanced through it. The three raw pointers the struct
+    # also carries are rebuilt from those offsets on each call, so a
+    # buffer can be carried across calls, stored, or sent somewhere as
+    # ordinary bytes. There is nothing to create or release: the dict is
+    # the buffer, and the C storage lives only for the duration of a call.
+    #
+    # As with data_print, the payload a Python caller can build is either
+    # a value dict or an info dict, deduced from the presence of a 'key';
+    # every other data type is reachable as the value of one of those.
+
+    # Pack a value into a data buffer, appending to whatever it holds
+    #
+    # @pybuf [INPUT/OUTPUT]
+    #        - the buffer dict to append to; None starts a new one
+    #
+    # @pysrc [INPUT]
+    #        - the value or info dict to pack
+    #
+    # @data_type [INPUT]
+    #            - PMIX_VALUE or PMIX_INFO; deduced when omitted
+    #
+    # @target [INPUT]
+    #         - proc dict naming the peer this buffer is destined for,
+    #           which selects the wire format. None means our own job
+    #
+    # Returns (rc, buffer dict) - the same dict, updated in place
+    def data_pack(self, pybuf, pysrc, data_type=None, target=None):
+        cdef pmix_data_buffer_t buf
+        cdef pmix_value_t value
+        cdef pmix_info_t info
+        cdef pmix_proc_t proc
+        cdef pmix_proc_t *tgt
+
+        if not isinstance(pysrc, dict):
+            return (PMIX_ERR_BAD_PARAM, pybuf)
+        if data_type is None:
+            if 'key' in pysrc:
+                data_type = PMIX_INFO
+            else:
+                data_type = PMIX_VALUE
+        if PMIX_VALUE != data_type and PMIX_INFO != data_type:
+            return (PMIX_ERR_NOT_SUPPORTED, pybuf)
+        if pybuf is None:
+            pybuf = {}
+        elif not isinstance(pybuf, dict):
+            return (PMIX_ERR_BAD_PARAM, pybuf)
+
+        tgt = NULL
+        if target is not None:
+            memset(&proc, 0, sizeof(pmix_proc_t))
+            rc = pmix_load_procs(&proc, [target])
+            if PMIX_SUCCESS != rc:
+                return (rc, pybuf)
+            tgt = &proc
+
+        rc = pmix_load_dbuf(&buf, pybuf)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_dbuf(&buf)
+            return (rc, pybuf)
+
+        if PMIX_VALUE == data_type:
+            rc = pmix_load_value(&value, pysrc)
+            if PMIX_SUCCESS == rc:
+                rc = PMIx_Data_pack(tgt, &buf, <void*>&value, 1, PMIX_VALUE)
+            pmix_destruct_value(&value)
+        else:
+            if 'key' not in pysrc:
+                pmix_destruct_dbuf(&buf)
+                return (PMIX_ERR_BAD_PARAM, pybuf)
+            memset(&info, 0, sizeof(pmix_info_t))
+            rc = pmix_load_info(&info, [pysrc])
+            if PMIX_SUCCESS == rc:
+                rc = PMIx_Data_pack(tgt, &buf, <void*>&info, 1, PMIX_INFO)
+            pmix_destruct_info(&info)
+
+        if PMIX_SUCCESS == rc:
+            pmix_unload_dbuf(&buf, pybuf)
+        pmix_destruct_dbuf(&buf)
+        return (rc, pybuf)
+
+    # Unpack the next value from a data buffer. The buffer's unpack
+    # cursor advances, so successive calls walk the payload
+    #
+    # @pybuf [INPUT/OUTPUT]
+    #        - the buffer dict to read from, updated in place
+    #
+    # @data_type [INPUT]
+    #            - PMIX_VALUE or PMIX_INFO, whichever was packed
+    #
+    # @target [INPUT]
+    #         - proc dict naming the peer that packed the buffer
+    #
+    # Returns (rc, value or info dict)
+    def data_unpack(self, pybuf, data_type=None, target=None):
+        cdef pmix_data_buffer_t buf
+        cdef pmix_value_t value
+        cdef pmix_info_t info
+        cdef pmix_proc_t proc
+        cdef pmix_proc_t *tgt
+        cdef int32_t cnt
+
+        if not isinstance(pybuf, dict):
+            return (PMIX_ERR_BAD_PARAM, None)
+        if data_type is None:
+            data_type = PMIX_VALUE
+        if PMIX_VALUE != data_type and PMIX_INFO != data_type:
+            return (PMIX_ERR_NOT_SUPPORTED, None)
+
+        tgt = NULL
+        if target is not None:
+            memset(&proc, 0, sizeof(pmix_proc_t))
+            rc = pmix_load_procs(&proc, [target])
+            if PMIX_SUCCESS != rc:
+                return (rc, None)
+            tgt = &proc
+
+        rc = pmix_load_dbuf(&buf, pybuf)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_dbuf(&buf)
+            return (rc, None)
+
+        cnt = 1
+        pyout = None
+        if PMIX_VALUE == data_type:
+            memset(&value, 0, sizeof(pmix_value_t))
+            rc = PMIx_Data_unpack(tgt, &buf, <void*>&value, &cnt, PMIX_VALUE)
+            if PMIX_SUCCESS == rc:
+                pyout = pmix_unload_value(&value)
+            pmix_destruct_value(&value)
+        else:
+            memset(&info, 0, sizeof(pmix_info_t))
+            rc = PMIx_Data_unpack(tgt, &buf, <void*>&info, &cnt, PMIX_INFO)
+            if PMIX_SUCCESS == rc:
+                ilist = []
+                rc = pmix_unload_info(&info, 1, ilist)
+                if PMIX_SUCCESS == rc and 0 < len(ilist):
+                    pyout = ilist[0]
+            pmix_destruct_info(&info)
+
+        # record how far the cursor moved, whatever the outcome, so a
+        # caller that stops on an error can see where it stopped
+        pmix_unload_dbuf(&buf, pybuf)
+        pmix_destruct_dbuf(&buf)
+        return (rc, pyout)
+
+    # Copy a value or info through the library's own copy function
+    #
+    # Returns (rc, dict)
+    def data_copy(self, pysrc, data_type=None):
+        cdef pmix_value_t value
+        cdef pmix_info_t info
+        cdef pmix_value_t *valdest
+        cdef pmix_info_t *infodest
+        cdef void **dest
+
+        if not isinstance(pysrc, dict):
+            return (PMIX_ERR_BAD_PARAM, None)
+        if data_type is None:
+            if 'key' in pysrc:
+                data_type = PMIX_INFO
+            else:
+                data_type = PMIX_VALUE
+
+        if PMIX_VALUE == data_type:
+            rc = pmix_load_value(&value, pysrc)
+            if PMIX_SUCCESS != rc:
+                pmix_destruct_value(&value)
+                return (rc, None)
+            valdest = NULL
+            dest = <void**>&valdest
+            rc = PMIx_Data_copy(dest, <void*>&value, PMIX_VALUE)
+            pmix_destruct_value(&value)
+            if PMIX_SUCCESS != rc or NULL == valdest:
+                return (rc, None)
+            pyout = pmix_unload_value(valdest)
+            # the copy came from the library, so it goes back to it
+            PMIx_Value_free(valdest, 1)
+            return (rc, pyout)
+        elif PMIX_INFO == data_type:
+            if 'key' not in pysrc:
+                return (PMIX_ERR_BAD_PARAM, None)
+            memset(&info, 0, sizeof(pmix_info_t))
+            rc = pmix_load_info(&info, [pysrc])
+            if PMIX_SUCCESS != rc:
+                pmix_destruct_info(&info)
+                return (rc, None)
+            infodest = NULL
+            dest = <void**>&infodest
+            rc = PMIx_Data_copy(dest, <void*>&info, PMIX_INFO)
+            pmix_destruct_info(&info)
+            if PMIX_SUCCESS != rc or NULL == infodest:
+                return (rc, None)
+            ilist = []
+            rc = pmix_unload_info(infodest, 1, ilist)
+            PMIx_Info_free(infodest, 1)
+            if PMIX_SUCCESS != rc or 0 == len(ilist):
+                return (rc, None)
+            return (rc, ilist[0])
+        return (PMIX_ERR_NOT_SUPPORTED, None)
+
+    # Append the unread portion of one buffer to another
+    #
+    # Returns (rc, destination buffer dict)
+    def data_copy_payload(self, pydest, pysrc):
+        cdef pmix_data_buffer_t dest
+        cdef pmix_data_buffer_t src
+
+        if pydest is None:
+            pydest = {}
+        elif not isinstance(pydest, dict):
+            return (PMIX_ERR_BAD_PARAM, pydest)
+
+        rc = pmix_load_dbuf(&dest, pydest)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_dbuf(&dest)
+            return (rc, pydest)
+        rc = pmix_load_dbuf(&src, pysrc)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_dbuf(&src)
+            pmix_destruct_dbuf(&dest)
+            return (rc, pydest)
+
+        rc = PMIx_Data_copy_payload(&dest, &src)
+        if PMIX_SUCCESS == rc:
+            pmix_unload_dbuf(&dest, pydest)
+        pmix_destruct_dbuf(&src)
+        pmix_destruct_dbuf(&dest)
+        return (rc, pydest)
+
+    # Extract a buffer's payload as a byte object, emptying the buffer.
+    # Note that the library returns only the portion that has not been
+    # unpacked yet
+    #
+    # Returns (rc, {'bytes': bytes, 'size': int})
+    def data_unload(self, pybuf):
+        cdef pmix_data_buffer_t buf
+        cdef pmix_byte_object_t bo
+
+        if not isinstance(pybuf, dict):
+            return (PMIX_ERR_BAD_PARAM, None)
+        rc = pmix_load_dbuf(&buf, pybuf)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_dbuf(&buf)
+            return (rc, None)
+
+        bo.bytes = NULL
+        bo.size = 0
+        rc = PMIx_Data_unload(&buf, &bo)
+        pyout = None
+        if PMIX_SUCCESS == rc:
+            pyout = {}
+            pmix_unload_bo(&bo, pyout)
+            # the payload was handed to us by the library
+            if NULL != bo.bytes:
+                free(bo.bytes)
+            # unload consumes the buffer, so report it empty
+            pmix_unload_dbuf(&buf, pybuf)
+        pmix_destruct_dbuf(&buf)
+        return (rc, pyout)
+
+    # Replace a buffer's payload with the provided byte object
+    #
+    # Returns (rc, buffer dict)
+    def data_load(self, pybuf, payload):
+        cdef pmix_data_buffer_t buf
+        cdef pmix_byte_object_t bo
+
+        if pybuf is None:
+            pybuf = {}
+        elif not isinstance(pybuf, dict):
+            return (PMIX_ERR_BAD_PARAM, pybuf)
+        rc = pmix_load_dbuf(&buf, pybuf)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_dbuf(&buf)
+            return (rc, pybuf)
+        # the library takes ownership of the payload it is given, which
+        # is why pmix_load_bo malloc's it
+        rc = pmix_load_bo(&bo, payload)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_dbuf(&buf)
+            return (rc, pybuf)
+        rc = PMIx_Data_load(&buf, &bo)
+        if PMIX_SUCCESS == rc:
+            pmix_unload_dbuf(&buf, pybuf)
+        elif NULL != bo.bytes:
+            # it was refused, so the payload is still ours
+            free(bo.bytes)
+        pmix_destruct_dbuf(&buf)
+        return (rc, pybuf)
+
+    # Embed a payload in a buffer. Identical to data_load except that the
+    # library copies the payload rather than taking ownership of it
+    #
+    # Returns (rc, buffer dict)
+    def data_embed(self, pybuf, payload):
+        cdef pmix_data_buffer_t buf
+        cdef pmix_byte_object_t bo
+
+        if pybuf is None:
+            pybuf = {}
+        elif not isinstance(pybuf, dict):
+            return (PMIX_ERR_BAD_PARAM, pybuf)
+        rc = pmix_load_dbuf(&buf, pybuf)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_dbuf(&buf)
+            return (rc, pybuf)
+        rc = pmix_load_bo(&bo, payload)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_dbuf(&buf)
+            return (rc, pybuf)
+        rc = PMIx_Data_embed(&buf, &bo)
+        if PMIX_SUCCESS == rc:
+            pmix_unload_dbuf(&buf, pybuf)
+        # embed copies, so the payload remains ours either way
+        if NULL != bo.bytes:
+            free(bo.bytes)
+        pmix_destruct_dbuf(&buf)
+        return (rc, pybuf)
+
+    # Compress a block of bytes with the library's loss-less compressor
+    #
+    # The C API answers a bool - whether it compressed the block at all,
+    # which it declines to do when no compression component is available
+    # or the block is below the threshold where compression would pay.
+    # That answer is reported here as PMIX_SUCCESS or
+    # PMIX_ERR_NOT_AVAILABLE, so the return follows the same (rc, data)
+    # shape as every other method
+    def data_compress(self, pybytes):
+        cdef uint8_t *inbytes
+        cdef uint8_t *outbytes
+        cdef size_t nbytes
+
+        if pybytes is None:
+            return (PMIX_ERR_BAD_PARAM, None)
+        if isinstance(pybytes, str):
+            pyin = pybytes.encode('ascii')
+        else:
+            pyin = bytes(pybytes)
+        if 0 == len(pyin):
+            return (PMIX_ERR_BAD_PARAM, None)
+        inbytes = <uint8_t*><const char*>pyin
+        outbytes = NULL
+        nbytes = 0
+        if not PMIx_Data_compress(inbytes, len(pyin), &outbytes, &nbytes):
+            return (PMIX_ERR_NOT_AVAILABLE, None)
+        if NULL == outbytes or 0 == nbytes:
+            return (PMIX_ERR_NOT_AVAILABLE, None)
+        blist = []
+        pmix_unload_bytes(<char*>outbytes, nbytes, blist)
+        free(outbytes)
+        return (PMIX_SUCCESS, bytes(bytearray(blist)))
+
+    # Decompress a block produced by data_compress. See that method for
+    # the meaning of the returned status
+    def data_decompress(self, pybytes):
+        cdef uint8_t *inbytes
+        cdef uint8_t *outbytes
+        cdef size_t nbytes
+
+        if pybytes is None:
+            return (PMIX_ERR_BAD_PARAM, None)
+        if isinstance(pybytes, str):
+            pyin = pybytes.encode('ascii')
+        else:
+            pyin = bytes(pybytes)
+        if 0 == len(pyin):
+            return (PMIX_ERR_BAD_PARAM, None)
+        inbytes = <uint8_t*><const char*>pyin
+        outbytes = NULL
+        nbytes = 0
+        if not PMIx_Data_decompress(inbytes, len(pyin), &outbytes, &nbytes):
+            return (PMIX_ERR_NOT_AVAILABLE, None)
+        if NULL == outbytes or 0 == nbytes:
+            return (PMIX_ERR_NOT_AVAILABLE, None)
+        blist = []
+        pmix_unload_bytes(<char*>outbytes, nbytes, blist)
+        free(outbytes)
+        return (PMIX_SUCCESS, bytes(bytearray(blist)))
+
     def fabric_register(self, dicts):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr

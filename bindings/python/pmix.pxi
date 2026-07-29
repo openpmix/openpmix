@@ -2266,6 +2266,150 @@ cdef void pmix_unload_bytes(char *data, size_t ndata, blist:list):
         blist.append(udata[n])
         n += 1
 
+# Convert a Python byte-object dict, {'bytes': b'...', 'size': n}, into a
+# pmix_byte_object_t. The payload is malloc'd, so it can be handed to a
+# library call that takes ownership of it - callers that retain ownership
+# must free it themselves
+cdef int pmix_load_bo(pmix_byte_object_t *bo, pybo):
+    cdef const char *ptr
+
+    bo[0].bytes = NULL
+    bo[0].size = 0
+    if pybo is None:
+        return PMIX_SUCCESS
+    if not isinstance(pybo, dict):
+        return PMIX_ERR_BAD_PARAM
+    pybytes = pybo.get('bytes')
+    if pybytes is None:
+        return PMIX_SUCCESS
+    if isinstance(pybytes, str):
+        pybytes = pybytes.encode('ascii')
+    else:
+        pybytes = bytes(pybytes)
+    if 0 == len(pybytes):
+        return PMIX_SUCCESS
+    bo[0].size = len(pybytes)
+    bo[0].bytes = <char*> malloc(bo[0].size)
+    if NULL == bo[0].bytes:
+        bo[0].size = 0
+        return PMIX_ERR_NOMEM
+    ptr = <const char*>pybytes
+    memcpy(bo[0].bytes, ptr, bo[0].size)
+    return PMIX_SUCCESS
+
+# Convert a pmix_byte_object_t into the Python dict, filling in pybo
+cdef void pmix_unload_bo(const pmix_byte_object_t *bo, pybo:dict):
+    blist = []
+    if NULL != bo[0].bytes and 0 < bo[0].size:
+        pmix_unload_bytes(bo[0].bytes, bo[0].size, blist)
+    pybo['bytes'] = bytes(bytearray(blist))
+    pybo['size'] = len(pybo['bytes'])
+
+# A pmix_data_buffer_t holds three raw pointers into one allocation plus
+# two sizes. Only two of those five fields mean anything on the Python
+# side - the payload itself, and how far the unpack cursor has advanced
+# through it - so a Python data buffer is the dict
+#
+#     {'bytes': b'...', 'bytes_used': n, 'bytes_unpacked': m}
+#
+# and the pointers are rebuilt from those offsets on every crossing.
+# 'bytes_used' is redundant with len(bytes) and is carried only because
+# the struct has it; the loader trusts the payload, not the count.
+#
+# Note that the library's own PMIx_Data_buffer_load cannot be used here:
+# it routes through PMIx_Data_load, which refuses to run before
+# PMIx_Init and discards its status, so a pre-init caller would silently
+# get an empty buffer
+cdef int pmix_load_dbuf(pmix_data_buffer_t *buf, pybuf):
+    cdef const char *ptr
+    cdef size_t sz
+    cdef size_t unpacked
+
+    PMIx_Data_buffer_construct(buf)
+    if pybuf is None:
+        return PMIX_SUCCESS
+    if not isinstance(pybuf, dict):
+        return PMIX_ERR_BAD_PARAM
+    pybytes = pybuf.get('bytes')
+    if pybytes is None:
+        return PMIX_SUCCESS
+    if isinstance(pybytes, str):
+        pybytes = pybytes.encode('ascii')
+    else:
+        pybytes = bytes(pybytes)
+    sz = len(pybytes)
+    if 0 == sz:
+        return PMIX_SUCCESS
+    # the buffer owns its payload and releases it with the C allocator
+    buf[0].base_ptr = <char*> malloc(sz)
+    if NULL == buf[0].base_ptr:
+        return PMIX_ERR_NOMEM
+    ptr = <const char*>pybytes
+    memcpy(buf[0].base_ptr, ptr, sz)
+    buf[0].bytes_allocated = sz
+    buf[0].bytes_used = sz
+    buf[0].pack_ptr = buf[0].base_ptr + sz
+    # restore the unpack cursor so successive unpacks resume where the
+    # last one stopped
+    unpacked = 0
+    try:
+        if pybuf.get('bytes_unpacked') is not None:
+            unpacked = pybuf['bytes_unpacked']
+    except:
+        unpacked = 0
+    if sz < unpacked:
+        return PMIX_ERR_BAD_PARAM
+    buf[0].unpack_ptr = buf[0].base_ptr + unpacked
+    return PMIX_SUCCESS
+
+# Render a pmix_data_buffer_t back into the Python dict, filling in pybuf
+cdef void pmix_unload_dbuf(const pmix_data_buffer_t *buf, pybuf:dict):
+    blist = []
+    if NULL != buf[0].base_ptr and 0 < buf[0].bytes_used:
+        pmix_unload_bytes(buf[0].base_ptr, buf[0].bytes_used, blist)
+    pybuf['bytes'] = bytes(bytearray(blist))
+    pybuf['bytes_used'] = len(pybuf['bytes'])
+    if NULL != buf[0].base_ptr and NULL != buf[0].unpack_ptr:
+        pybuf['bytes_unpacked'] = buf[0].unpack_ptr - buf[0].base_ptr
+    else:
+        pybuf['bytes_unpacked'] = 0
+
+# Release a data buffer built by pmix_load_dbuf. The library's destructor
+# frees the payload and tolerates a buffer that was never loaded
+cdef void pmix_destruct_dbuf(pmix_data_buffer_t *buf):
+    PMIx_Data_buffer_destruct(buf)
+
+# Release the allocated members of a single app struct, leaving the
+# struct itself alone - the counterpart of pmix_destruct_info, and the
+# right thing to call on an app that lives on the stack rather than in a
+# heap array
+cdef void pmix_destruct_app(pmix_app_t *app):
+    cdef size_t n
+    if NULL != app[0].cmd:
+        free(app[0].cmd)
+        app[0].cmd = NULL
+    if NULL != app[0].argv:
+        n = 0
+        while NULL != app[0].argv[n]:
+            free(app[0].argv[n])
+            n += 1
+        free(app[0].argv)
+        app[0].argv = NULL
+    if NULL != app[0].env:
+        n = 0
+        while NULL != app[0].env[n]:
+            free(app[0].env[n])
+            n += 1
+        free(app[0].env)
+        app[0].env = NULL
+    if NULL != app[0].cwd:
+        free(app[0].cwd)
+        app[0].cwd = NULL
+    if NULL != app[0].info and 0 < app[0].ninfo:
+        pmix_free_info(app[0].info, app[0].ninfo)
+        app[0].info = NULL
+        app[0].ninfo = 0
+
 cdef void pmix_free_apps(pmix_app_t *array, size_t sz):
     if NULL == array:
         return

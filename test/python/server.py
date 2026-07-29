@@ -201,6 +201,88 @@ def main():
     (rc, txt) = foo.data_print("VALUE: ", {'value': 42, 'val_type': PMIX_INT32})
     print("DataPrint: ", foo.error_string(rc), txt)
 
+    # render each of the structs the library knows how to print
+    aval = {'value': 42, 'val_type': PMIX_INT32}
+    ainfo = {'key': PMIX_JOB_SIZE, 'value': 4, 'val_type': PMIX_UINT32}
+    aproc = {'nspace': "testnspace", 'rank': 0}
+    anapp = {'cmd': "/bin/true", 'argv': ["true"], 'maxprocs': 1, 'info': []}
+    aunit = {'type': PMIX_DEVTYPE_GPU, 'count': 2}
+    for (label, result) in [("ValueString", foo.value_string(aval)),
+                            ("InfoString", foo.info_string(ainfo)),
+                            ("ProcString", foo.proc_string(aproc)),
+                            ("AppString", foo.app_string(anapp)),
+                            ("UnitString", foo.resource_unit_string(aunit))]:
+        (rc, txt) = result
+        print("%s: %s %s" % (label, foo.error_string(rc), repr(txt)))
+        if PMIX_SUCCESS != rc or txt is None:
+            print("%s FAILED" % label)
+            exit(1)
+
+    # exercise the serialization family. A Python data buffer is just a
+    # dict, so the round trip below also proves that a buffer can be
+    # carried as ordinary bytes and picked up again
+    sval = {'value': "hello world", 'val_type': PMIX_STRING}
+    (rc, buf) = foo.data_pack(None, aval)
+    if PMIX_SUCCESS == rc:
+        (rc, buf) = foo.data_pack(buf, sval)
+    if PMIX_SUCCESS == rc:
+        (rc, buf) = foo.data_pack(buf, ainfo)
+    print("DataPack: ", foo.error_string(rc), buf)
+    if PMIX_SUCCESS != rc:
+        print("DATA PACK FAILED")
+        exit(1)
+
+    # a fresh buffer built from nothing but the payload bytes must unpack
+    # to exactly what went in, in order
+    wire = {'bytes': buf['bytes'], 'bytes_used': buf['bytes_used'],
+            'bytes_unpacked': 0}
+    (rc, v1) = foo.data_unpack(wire, PMIX_VALUE)
+    (rc2, v2) = foo.data_unpack(wire, PMIX_VALUE)
+    (rc3, v3) = foo.data_unpack(wire, PMIX_INFO)
+    print("DataUnpack: ", foo.error_string(rc), v1, v2, v3)
+    if PMIX_SUCCESS != rc or PMIX_SUCCESS != rc2 or PMIX_SUCCESS != rc3:
+        print("DATA UNPACK FAILED")
+        exit(1)
+    # the constants are bytes while an unpacked key comes back as str
+    wantkey = ainfo['key']
+    if isinstance(wantkey, bytes):
+        wantkey = wantkey.decode('ascii')
+    if v1['value'] != aval['value'] or v2['value'] != sval['value'] \
+       or v3['key'] != wantkey or v3['value'] != ainfo['value']:
+        print("DATA UNPACK ROUND TRIP MISMATCH")
+        exit(1)
+    # and the buffer is now drained
+    (rc, extra) = foo.data_unpack(wire, PMIX_VALUE)
+    if PMIX_SUCCESS == rc:
+        print("DATA UNPACK RETURNED DATA PAST THE END")
+        exit(1)
+
+    # unload the payload out of a buffer and load it into another
+    (rc, buf2) = foo.data_pack(None, aval)
+    (rc, payload) = foo.data_unload(buf2)
+    print("DataUnload: ", foo.error_string(rc), payload, "buffer now", buf2)
+    if PMIX_SUCCESS != rc or 0 == payload['size']:
+        print("DATA UNLOAD FAILED")
+        exit(1)
+    (rc, buf3) = foo.data_load(None, payload)
+    (rc2, back) = foo.data_unpack(buf3, PMIX_VALUE)
+    print("DataLoad: ", foo.error_string(rc), back)
+    if PMIX_SUCCESS != rc or PMIX_SUCCESS != rc2 or back['value'] != aval['value']:
+        print("DATA LOAD ROUND TRIP FAILED")
+        exit(1)
+
+    # every byte value has to survive the crossing, not just ASCII
+    blob = bytes(range(256))
+    (rc, comp) = foo.data_compress(blob * 32)
+    print("DataCompress: ", foo.error_string(rc),
+          None if comp is None else len(comp))
+    if PMIX_SUCCESS == rc:
+        (rc, back) = foo.data_decompress(comp)
+        if PMIX_SUCCESS != rc or bytes(back) != blob * 32:
+            print("COMPRESSION ROUND TRIP FAILED")
+            exit(1)
+        print("DataDecompress: round trip verified")
+
     # register a client
     uid = os.getuid()
     gid = os.getgid()

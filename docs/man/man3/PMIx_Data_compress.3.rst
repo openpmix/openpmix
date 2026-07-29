@@ -22,6 +22,20 @@ SYNOPSIS
                            size_t *nbytes);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # the C API answers a bool - whether it compressed the block at all.
+  # That is reported here as PMIX_SUCCESS or PMIX_ERR_NOT_AVAILABLE so
+  # the return keeps the usual (rc, data) shape
+  rc, compressed = foo.data_compress(b'a big block of bytes')
+
 INPUT PARAMETERS
 ----------------
 

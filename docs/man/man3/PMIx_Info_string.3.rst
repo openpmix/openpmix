@@ -18,6 +18,18 @@ SYNOPSIS
    char* PMIx_Info_string(const pmix_info_t *info);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # the info is a Python ``pmix_info_t`` dictionary
+  pyinfo = {'key': PMIX_JOB_SIZE, 'value': 4, 'val_type': PMIX_UINT32}
+  rc, txt = foo.info_string(pyinfo)
+
 INPUT PARAMETERS
 ----------------
 

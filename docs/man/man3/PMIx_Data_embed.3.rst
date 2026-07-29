@@ -20,6 +20,20 @@ SYNOPSIS
                                  const pmix_byte_object_t *payload);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # as data_load, except that the library copies the payload rather
+  # than taking ownership of it
+  payload = {'bytes': b'...', 'size': 5}
+  rc, buf = foo.data_embed(None, payload)
+
 INPUT PARAMETERS
 ----------------
 

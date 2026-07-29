@@ -12,14 +12,18 @@ two parts:
 
 Utility/struct-helper C APIs with no meaningful Python analogue are
 intentionally **out of scope** and are *not* listed as missing:
-`PMIx_Argv_*`, `PMIx_Setenv`, `PMIx_Info_*`, `PMIx_Value_*`, `PMIx_Data_*`
-(struct helpers), `PMIx_Load_*`, `PMIx_Coord_*`, `PMIx_Topology_*`,
-`PMIx_Cpuset_*`, `PMIx_Device_*`, `PMIx_Geometry_*`, `PMIx_Endpoint_*`,
-`PMIx_Envar_*`, `PMIx_Pdata_*`, `PMIx_Proc_*`, `PMIx_App_*`,
-`PMIx_Byte_object_*`, `PMIx_Regattr_*`, `PMIx_Resource_unit_*`,
-`PMIx_Node_pid_*`, and all `*_construct/_destruct/_create/_free/_release/`
-`_load/_xfer` macro families. In Python these are handled by the
-dict/list conversion layer in `pmix.pxi`.
+`PMIx_Argv_*`, `PMIx_Setenv`, `PMIx_Load_*`, `PMIx_Coord_*`,
+`PMIx_Topology_*`, `PMIx_Cpuset_*`, `PMIx_Device_*`, `PMIx_Geometry_*`,
+`PMIx_Endpoint_*`, `PMIx_Envar_*`, `PMIx_Pdata_*`, `PMIx_Regattr_*`,
+`PMIx_Node_pid_*`, the `PMIx_Info_list_*` builder, the
+`PMIx_Check_*`/`PMIx_*_invalid`/`PMIx_*_valid` predicates, and all
+`*_construct/_destruct/_create/_free/_release/_load/_xfer` macro
+families. In Python these are handled by the dict/list conversion layer
+in `pmix.pxi`, or are one line of ordinary Python.
+
+Two families that *look* like struct helpers by prefix are **not** out of
+scope and are bound: the struct pretty-printers (§1.10) and the
+serialization calls (§1.11).
 
 Headers surveyed: `include/pmix.h`, `include/pmix_server.h`,
 `include/pmix_tool.h`, `include/pmix_deprecated.h`. Bindings surveyed:
@@ -109,6 +113,15 @@ Four things this pass established that the group operations had not:
 |-------|-------------|
 | `PMIx_tool_connect_to_server` | **Deprecated**; superseded by `PMIx_tool_attach_to_server` (bound). Deliberately left unbound. |
 
+`PMIx_tool_set_server_module` was listed here as bound because
+`PMIxTool.set_server_module` exists — but the method never called it. It
+validated the map, recorded the handlers in `pmixservermodule`, wired the
+trampolines into its own `pmix_server_module_t`, and returned
+`PMIX_SUCCESS` **without ever handing the module to the library**, so a
+Python tool acting as a server had its handlers silently never invoked.
+It now calls the API and reports what it says. Two library defects came
+out with it — see §1.12.
+
 ### 1.5 Scheduler role (`PMIxScheduler`) — **CLOSED**
 
 Both scheduler-role operations are reachable, through what the class
@@ -148,8 +161,9 @@ one of those two; an explicit `data_type` outside the pair returns
 
 ### 1.7 Coverage summary
 
-- Operational client/server/tool APIs bound: **~106** — every blocking
-  form, tool IOF, and all 25 non-blocking variants.
+- Operational client/server/tool APIs bound: **~120** — every blocking
+  form, tool IOF, all 25 non-blocking variants, the five struct
+  pretty-printers (§1.10) and the nine serialization calls (§1.11).
 - Not bound: **1** deprecated tool API (§1.4), deliberately.
 
 Part 1 is closed. What remains open is not a *binding* gap:
@@ -158,6 +172,13 @@ library exposes no entry point for it (§1.5), and `pmix_load_value` has
 no arm for `PMIX_POINTER` — a data type a Python caller cannot
 meaningfully produce, which surfaces as `PMIX_ERR_NOT_SUPPORTED` rather
 than a crash.
+
+A full sweep of the public headers (307 exported `PMIx_*` functions
+across `pmix.h`, `pmix_common.h.in`, `pmix_server.h`, `pmix_tool.h` and
+`pmix_deprecated.h`, each checked for a call site in `pmix.pyx`/`pmix.pxi`)
+found nothing else outstanding: every `PMIx_server_*` entry point is
+bound, and everything else unbound belongs to the helper families listed
+at the top of this file.
 
 ### 1.8 C-side hazards this pass surfaced (now fixed)
 
@@ -206,6 +227,109 @@ came out. None were in the new code; all are fixed:
   the whole thing on failure, destructing uninitialized memory. An
   attribute carrying an unconvertible value type was enough to crash the
   caller. Every such array is now zeroed before loading.
+
+### 1.10 Struct pretty-printers — **CLOSED**
+
+| C API | Python method |
+|-------|---------------|
+| `PMIx_Info_string` | `info_string(pyinfo)` |
+| `PMIx_Value_string` | `value_string(pyval)` |
+| `PMIx_Proc_string` | `proc_string(pyproc)` |
+| `PMIx_App_string` | `app_string(pyapp)` |
+| `PMIx_Resource_unit_string` | `resource_unit_string(pyunit)` |
+
+Each returns `(rc, str)`. These were being swept out of scope by the
+`PMIx_Info_*` / `PMIx_Value_*` / `PMIx_App_*` / `PMIx_Proc_*` /
+`PMIx_Resource_unit_*` prefix rule, which was aimed at the
+`_construct`/`_free` families — but they are converters, peers of
+`data_print` (bound in §1.6) rather than struct helpers, and each has its
+own man page. They render a whole struct the way the library itself
+would, which is not something a Python program can reproduce by printing
+a dict.
+
+They take no library state, so they work before `init()`. The library
+allocates the string it returns, so each decodes it and hands the storage
+back.
+
+### 1.11 Serialization — **CLOSED**
+
+| C API | Python method | Returns |
+|-------|---------------|---------|
+| `PMIx_Data_pack` | `data_pack(pybuf, pysrc, data_type=None, target=None)` | `(rc, buffer)` |
+| `PMIx_Data_unpack` | `data_unpack(pybuf, data_type=None, target=None)` | `(rc, value or info)` |
+| `PMIx_Data_copy` | `data_copy(pysrc, data_type=None)` | `(rc, dict)` |
+| `PMIx_Data_copy_payload` | `data_copy_payload(pydest, pysrc)` | `(rc, buffer)` |
+| `PMIx_Data_unload` | `data_unload(pybuf)` | `(rc, byte object)` |
+| `PMIx_Data_load` | `data_load(pybuf, payload)` | `(rc, buffer)` |
+| `PMIx_Data_embed` | `data_embed(pybuf, payload)` | `(rc, buffer)` |
+| `PMIx_Data_compress` | `data_compress(pybytes)` | `(rc, bytes)` |
+| `PMIx_Data_decompress` | `data_decompress(pybytes)` | `(rc, bytes)` |
+
+**The buffer.** A `pmix_data_buffer_t` holds three raw pointers into one
+allocation plus two sizes. Only two of those five fields mean anything on
+the Python side — the payload, and how far the unpack cursor has advanced
+through it — so a Python data buffer is the dict
+
+```python
+{'bytes': b'...', 'bytes_used': n, 'bytes_unpacked': m}
+```
+
+and the pointers are rebuilt from those offsets on every crossing.
+`bytes_used` is redundant with `len(bytes)` and is carried only because
+the struct has it; the loader trusts the payload, not the count.
+
+Three consequences worth knowing:
+
+- **There is nothing to create or release.** The dict *is* the buffer, and
+  the C storage lives only for the duration of a call. That is why
+  `PMIx_Data_buffer_create`/`_release`/`_construct`/`_destruct` are not
+  bound — there is no object for them to act on.
+- **A buffer is ordinary bytes.** Because the whole state is the payload
+  plus an offset, a buffer can be stored, sent somewhere, and picked up
+  again by building the dict from the bytes. `test/python/server.py`
+  round-trips one that way.
+- **The library's own `PMIx_Data_buffer_load` cannot be used** by the
+  conversion layer: it routes through `PMIx_Data_load`, which refuses to
+  run before `PMIx_Init` and discards its status, so a pre-init caller
+  would silently get an empty buffer. `pmix_load_dbuf` sets the fields
+  directly.
+
+As with `data_print`, the payload a Python caller can build is a value
+dict or an info dict, deduced from the presence of a `'key'`; every other
+data type is reachable as the value of one of those, and an explicit
+`data_type` outside the pair returns `PMIX_ERR_NOT_SUPPORTED`.
+
+`data_compress`/`data_decompress` answer a C `bool` — whether the library
+compressed the block at all, which it declines when no compression
+component is available or the block is below the threshold where
+compression would pay. That is reported as `PMIX_SUCCESS` or
+`PMIX_ERR_NOT_AVAILABLE` so the return keeps the `(rc, data)` shape every
+other method uses.
+
+### 1.12 Defects this pass surfaced (now fixed)
+
+- **`pmix_unload_bytes` returned signed bytes.** It read the payload
+  through a `char *`, which is signed on most platforms, so any byte at or
+  above `0x80` arrived as a negative number and `bytearray()` rejected the
+  whole list with `byte must be in range(0, 256)`. Every non-ASCII payload
+  hit this — credentials, IOF data, a packed buffer — and it is why
+  `data_compress` failed on its first real input. Now read through an
+  `unsigned char *`.
+- **`PMIx_tool_set_server_module` had no pre-init guard.** It marks the
+  caller's peer as a server, and `pmix_globals.mypeer` is NULL until
+  `PMIx_tool_init` — so the first Python call to the newly fixed
+  `set_server_module` segfaulted. It now returns `PMIX_ERR_INIT`, and
+  rejects a NULL module.
+- **`PMIx_tool_finalize` tore down a framework it never opened.** Init
+  opens the `pfexec` framework only for a launcher or a scheduler, but
+  finalize's teardown branch fires for a launcher *or a server* — and a
+  plain tool becomes a server exactly by calling
+  `PMIx_tool_set_server_module`. Finalize then walked an unconstructed
+  children list and crashed. `pmix_pfexec_globals` now records whether it
+  was opened, `pmix_pfexec_base_close` is a no-op if it was not, and the
+  finalize branch checks that rather than the peer type. This is
+  reachable from C, not just from Python: any tool that inits, sets a
+  server module, and finalizes hits it.
 
 ---
 

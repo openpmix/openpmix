@@ -22,6 +22,17 @@ SYNOPSIS
                              size_t *nbytes);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  rc, original = foo.data_decompress(compressed)
+
 INPUT PARAMETERS
 ----------------
 

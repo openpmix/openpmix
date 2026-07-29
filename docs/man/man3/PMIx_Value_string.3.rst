@@ -18,6 +18,18 @@ SYNOPSIS
    char* PMIx_Value_string(const pmix_value_t *value);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # the value is a Python ``pmix_value_t`` dictionary
+  pyval = {'value': 42, 'val_type': PMIX_INT32}
+  rc, txt = foo.value_string(pyval)
+
 INPUT PARAMETERS
 ----------------
 
