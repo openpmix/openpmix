@@ -13,6 +13,20 @@
 # lost-connection accounting run on several daemons at once, and let a group
 # span a multi-level daemon tree.
 
+# Pin the compose project.  Without this, the project name comes from the
+# directory - "dockerswarm" - which is also the name of PRRTE's identical
+# harness directory, so `docker compose up -d` run in either place adopts the
+# OTHER project's containers: it stops that swarm, renames its containers out
+# from under themselves, and then fails on the name collision, leaving one set
+# of nodes running the image they were created from while the image itself has
+# moved on.  A swarm whose containers predate the image is the single most
+# confusing state this harness can be in - the daemons run one PRRTE and the
+# PMIx in the volume was built for another - and the symptom is an
+# undefined-symbol failure in an unrelated test.  Verify with:
+#   docker inspect pmix-node1 --format '{{.Image}}'
+#   docker images --no-trunc --format '{{.ID}}' pmix-swarm:latest
+name: pmixswarm
+
 x-node: &node
   image: pmix-swarm:latest
   networks: [dvm]
