@@ -1940,6 +1940,16 @@ report:
     cb->ninfo = darray.size;
     PMIx_Info_list_release(ilist);
 
+    /* record the group locally now that its construction has succeeded.
+     * This must happen here, on the completion path shared by both forms
+     * of the API, and not in the callback the blocking wrapper installs -
+     * a caller of PMIx_Group_construct_nb supplies its own callback, and
+     * would otherwise never get the group registered, leaving every
+     * subsequent leave/destruct to fail with PMIX_ERR_NOT_FOUND */
+    if (PMIX_SUCCESS == ret && NULL != members) {
+        add_group(cb->grpid, ctxid, cb->notterm, members, nmembers);
+    }
+
 done:
     if (NULL != members) {
         PMIX_PROC_FREE(members, nmembers);
@@ -2055,6 +2065,16 @@ static pmix_status_t add_group(const char *grpid,
                                pmix_proc_t *members, size_t nmembers)
 {
     pmix_group_t *grp;
+
+    /* the construct completion path registers the group for every caller,
+     * while the callback the blocking wrapper installs still does so for
+     * the join path - so tolerate being asked twice for the same group
+     * rather than leaving a duplicate on the list */
+    PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
+        if (0 == strcmp(grpid, grp->grpid)) {
+            return PMIX_SUCCESS;
+        }
+    }
 
     /* since the group construction has finished, we can add
      * the group to out list of groups. Always sort the
