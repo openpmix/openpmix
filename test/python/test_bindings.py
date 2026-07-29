@@ -225,5 +225,107 @@ class TestMethodBinding(unittest.TestCase):
             self.assertIsNotNone(meth, "PMIxServer.%s missing" % name)
 
 
+class TestGroupNonBlocking(unittest.TestCase):
+    """The non-blocking group bindings.
+
+    Without a server we cannot complete a group operation, but every one of
+    these calls marshals its arguments into a keepalive caddy before handing
+    the request to the library.  Called before init() the library rejects the
+    request with PMIX_ERR_INIT, which is exactly the path that has to unwind
+    that caddy by hand (no callback is executed, so nothing else will).  These
+    tests therefore cover the argument conversion and the error-path cleanup.
+    """
+
+    #: name, args to place before the callback pair
+    CASES = (
+        ("group_construct_nb", ("mygroup", None, [])),
+        ("group_invite_nb", ("mygroup", None, [])),
+        ("group_join_nb", ("mygroup", None, 0, [])),
+        ("group_leave_nb", ("mygroup", [])),
+        ("group_destruct_nb", ("mygroup", [])),
+    )
+
+    def setUp(self):
+        self.client = pmix.PMIxClient()
+        self.fired = []
+
+    def _cb(self, *args):
+        self.fired.append(args)
+
+    def test_methods_present(self):
+        for name, _ in self.CASES:
+            self.assertTrue(hasattr(pmix.PMIxClient, name),
+                            "PMIxClient.%s missing" % name)
+
+    def test_methods_have_self(self):
+        # A cdef class method declared without an explicit self raises
+        # TypeError when called on an instance - the defect that made
+        # several older bindings unusable.
+        import inspect
+        for name, _ in self.CASES:
+            meth = getattr(pmix.PMIxClient, name)
+            try:
+                params = list(inspect.signature(meth).parameters)
+            except (TypeError, ValueError):
+                # Cython may not expose a signature; the call below in
+                # test_error_before_init covers it either way
+                continue
+            self.assertEqual(params[0], "self",
+                             "%s does not declare self first" % name)
+
+    def test_rejects_non_callable(self):
+        # A NULL C callback would strand the caddy forever, so a callback
+        # that cannot be executed must be refused up front
+        for name, args in self.CASES:
+            meth = getattr(self.client, name)
+            rc = meth(*(args + (None,)))
+            self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM,
+                             "%s accepted a non-callable callback" % name)
+            rc = meth(*(args + ("not-a-function",)))
+            self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM,
+                             "%s accepted a non-callable callback" % name)
+
+    def test_error_before_init(self):
+        # The library rejects the request, so the callback must NOT fire
+        # and the binding must reclaim the caddy itself
+        for name, args in self.CASES:
+            meth = getattr(self.client, name)
+            rc = meth(*(args + (self._cb,)))
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT,
+                             "%s returned %s" % (name, rc))
+        self.assertEqual(self.fired, [],
+                         "a callback fired for a request the library refused")
+
+    def test_error_before_init_with_info(self):
+        # Same path, but with a real info array and proc list to convert so
+        # the caddy actually owns allocations that have to be released
+        peers = [{'nspace': "testnspace", 'rank': 0},
+                 {'nspace': "testnspace", 'rank': 1}]
+        pyinfo = [{'key': pmix.PMIX_GROUP_ASSIGN_CONTEXT_ID,
+                   'value': True, 'val_type': pmix.PMIX_BOOL},
+                  {'key': pmix.PMIX_TIMEOUT,
+                   'value': 10, 'val_type': pmix.PMIX_INT}]
+        # repeat enough times that a leak or double free would be obvious
+        for _ in range(64):
+            rc = self.client.group_construct_nb("mygroup", peers, pyinfo,
+                                                self._cb, "opaque")
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+            rc = self.client.group_join_nb("mygroup", peers[0],
+                                           pmix.PMIX_GROUP_ACCEPT, pyinfo,
+                                           self._cb, "opaque")
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+            rc = self.client.group_destruct_nb("mygroup", pyinfo,
+                                               self._cb, "opaque")
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+        self.assertEqual(self.fired, [])
+
+    def test_no_operations_left_registered(self):
+        # Every refused request must have removed itself from the module's
+        # in-flight registry - otherwise the callback objects leak
+        self.client.group_leave_nb("mygroup", [], self._cb)
+        self.assertEqual(len(pmix.pynbcbs), 0,
+                         "refused operations left entries in the registry")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
