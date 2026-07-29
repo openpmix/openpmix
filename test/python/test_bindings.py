@@ -789,5 +789,31 @@ class TestClientNonBlocking(unittest.TestCase):
                          pmix.PMIX_ERR_INIT)
 
 
+class TestToolServerModule(unittest.TestCase):
+    """PMIxTool.set_server_module.
+
+    The method used to populate its module struct and return PMIX_SUCCESS
+    without ever handing it to the library, so a tool's handlers were never
+    called.  It now reports what the library says - which, before
+    PMIx_tool_init, is that there is no library to give it to.
+    """
+
+    @staticmethod
+    def _handler(request, cbfunc, cbdata):
+        return pmix.PMIX_SUCCESS
+
+    def test_refused_before_init(self):
+        # this used to segfault: the C entry point marked our peer as a
+        # server without checking that we had one
+        tool = pmix.PMIxTool()
+        rc = tool.set_server_module({'clientconnected': self._handler})
+        self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+
+    def test_empty_map_refused(self):
+        tool = pmix.PMIxTool()
+        self.assertEqual(tool.set_server_module({}), pmix.PMIX_ERR_INIT)
+        self.assertEqual(tool.set_server_module(None), pmix.PMIX_ERR_INIT)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
