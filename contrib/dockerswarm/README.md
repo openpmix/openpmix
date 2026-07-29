@@ -151,8 +151,66 @@ done
 |----------|----|
 | pick up a PMIx source edit | `./build.sh` (incremental into the volume) |
 | force a clean rebuild | `docker volume rm pmix-build && ./build.sh` |
-| rebuild the base image (new PRRTE branch) | `PRRTE_REF=v3.0.x ./build.sh image` |
+| move the baked PRRTE forward | `docker build --no-cache --build-arg PRRTE_REF=master -t pmix-swarm:latest .`, then wipe the volume's VPATH dirs and recreate the containers - see below |
+| rebuild the base image (different PRRTE branch) | `PRRTE_REF=v3.0.x ./build.sh image` |
 | tear down the swarm | `docker compose down` (the `pmix-build` volume persists) |
+
+### The image goes stale, and the containers go stale after it
+
+Two traps, and they compound. Both were hit for real.
+
+**`./build.sh image` does not necessarily move the baked PRRTE.** The
+Dockerfile builds the launcher's source from
+
+```dockerfile
+RUN git clone --recursive -b "$PRRTE_REF" "$PRRTE_REPO" /src/prrte
+```
+
+and docker caches that layer by its *text*, not by what the remote now
+contains - so a rebuild "succeeds" in seconds and bakes exactly the PRRTE
+you were trying to leave behind. This matters here more than it would in
+most images, because PRRTE master is what tracks new PMIx capability flags:
+an old baked PRRTE fails to `configure` against your PMIx, or builds and
+then cannot launch it.
+
+**The ten nodes are long-lived containers, so a rebuilt image does not
+reach them until they are recreated.** `build.sh` compiles PMIx and PRRTE
+inside a *new* container and installs them into the volume the *old*
+containers read, so the daemons load libraries built for a different
+launcher. The symptom is an undefined symbol, or a launcher that does not
+understand an option, in whichever case reaches it first - and nothing in
+the output mentions containers. `run-tests.sh`'s preflight now compares
+each container's image ID against `pmix-swarm:latest` and refuses to run
+when they differ.
+
+The full sequence when you want a current launcher:
+
+```sh
+docker build --no-cache --build-arg PRRTE_REF=master -t pmix-swarm:latest .
+docker run --rm -v pmix-build:/opt/prte pmix-swarm:latest \
+    rm -rf /opt/prte/vpath-pmix /opt/prte/vpath-prrte \
+           /opt/prte/pmix /opt/prte/prte
+./build.sh                                  # rebuild against the new image
+docker compose up -d --force-recreate
+```
+
+The volume wipe is not optional: `build.sh` reconfigures when the configure
+*arguments* change, and they do not change when only the image's PRRTE does.
+
+**Where you run `docker compose` matters.** The project name defaults to the
+directory name, `dockerswarm` - which is also the name of PRRTE's identical
+harness directory. Run it against the wrong project and compose adopts the
+other swarm: it stops those containers, renames these ones out from under
+themselves, and then fails on the name collision, leaving this swarm on the
+previous image. That is exactly how the state above was reached (from the
+PRRTE side). `docker-compose.yml` now pins `name: pmixswarm`, so a plain
+`docker compose` from this directory can only ever mean this swarm. Check by
+hand with:
+
+```sh
+docker inspect pmix-node1 --format '{{.Image}}'
+docker images --no-trunc --format '{{.ID}}' pmix-swarm:latest
+```
 
 ## 9. Topology reference
 

@@ -24,6 +24,8 @@ set -uo pipefail
 
 mode="${1:-linux}"
 pass=0 fail=0 skip=0
+# must match build.sh -- the preflight compares the containers against it
+IMAGE="${IMAGE:-pmix-swarm:latest}"
 ok()   { pass=$((pass+1)); printf '  \033[32mPASS\033[0m %s\n' "$1"; }
 bad()  { fail=$((fail+1)); printf '  \033[31mFAIL\033[0m %s\n' "$1"; }
 skp()  { skip=$((skip+1)); printf '  \033[33mSKIP\033[0m %s\n' "$1"; }
@@ -101,6 +103,31 @@ test_linux() {
         ok "prterun/prte/prun/pterm on PATH"
     else
         bad "tools missing -- did ./build.sh run?"; return
+    fi
+
+    # The nodes are long-lived containers while the install they read is
+    # replaced under them, and the LAUNCHER is baked into the image as source.
+    # So a rebuilt image -- which is how the baked PRRTE moves forward -- does
+    # not reach the running containers until they are recreated: build.sh then
+    # compiles PMIx and PRRTE inside a NEW container and installs them into the
+    # volume the OLD containers read.  What you see is an undefined symbol, or a
+    # launcher that does not understand an option this PMIx now needs, in
+    # whichever case happens to reach it first -- and nothing in the message
+    # mentions containers.
+    banner "preflight: containers are running the current image"
+    imgid=$(docker images --no-trunc --format '{{.ID}}' "$IMAGE" 2>/dev/null | head -1)
+    stalenodes=""
+    for imgn in $(seq 1 10); do
+        cimg=$(docker inspect "pmix-node$imgn" --format '{{.Image}}' 2>/dev/null)
+        [ "$cimg" = "$imgid" ] || stalenodes="$stalenodes node$imgn"
+    done
+    if [ -z "$stalenodes" ]; then
+        ok "all 10 containers are on the current $IMAGE"
+    else
+        bad "containers predate $IMAGE:$stalenodes"
+        echo "     Recreate them: docker compose up -d --force-recreate" >&2
+        echo "     (from contrib/dockerswarm, so the pinned project name applies)" >&2
+        return
     fi
 
     banner "multi-node launch smoke (real cross-daemon RML)"
