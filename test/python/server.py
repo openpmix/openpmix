@@ -33,6 +33,51 @@ def clientfinalized(proc, cbfunc, cbdata):
     cbfunc(PMIX_SUCCESS, cbdata)
     return PMIX_SUCCESS
 
+# A trivially small published-data store so the client can exercise the
+# publish/lookup/unpublish path. Keyed by the published key, holding the
+# publishing proc alongside the value.
+published = {}
+
+def normalize_key(ky):
+    # keys reach a handler as bytes, but the client hands us str
+    if isinstance(ky, bytes):
+        return ky.decode('ascii')
+    return ky
+
+def clientpublish(args, cbfunc, cbdata):
+    print("PUBLISH", args['proc'], args['directives'])
+    for d in args['directives']:
+        if 'pmix' in d['key']:
+            # a directive qualifying the request, not data to publish
+            continue
+        published[normalize_key(d['key'])] = {'proc': args['proc'],
+                                              'value': d['value'],
+                                              'val_type': d['val_type']}
+    cbfunc(PMIX_SUCCESS, cbdata)
+    return PMIX_SUCCESS
+
+def clientlookup(args, cbfunc, cbdata):
+    print("LOOKUP", args['proc'], args['keys'])
+    pdata = []
+    for ky in args['keys']:
+        ky = normalize_key(ky)
+        if ky in published:
+            d = published[ky]
+            pdata.append({'proc': d['proc'], 'key': ky,
+                          'value': d['value'], 'val_type': d['val_type']})
+    if 0 == len(pdata):
+        cbfunc(PMIX_ERR_NOT_FOUND, None, cbdata)
+    else:
+        cbfunc(PMIX_SUCCESS, pdata, cbdata)
+    return PMIX_SUCCESS
+
+def clientunpublish(args, cbfunc, cbdata):
+    print("UNPUBLISH", args['proc'], args['keys'])
+    for ky in args['keys']:
+        published.pop(normalize_key(ky), None)
+    cbfunc(PMIX_SUCCESS, cbdata)
+    return PMIX_SUCCESS
+
 def clientfence(args, cbfunc, cbdata):
     # check directives
     try:
@@ -100,6 +145,9 @@ def main():
     map = {'clientconnected': clientconnected,
            'clientfinalized': clientfinalized,
            'fencenb': clientfence,
+           'publish': clientpublish,
+           'lookup': clientlookup,
+           'unpublish': clientunpublish,
            'group': clientgroup}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")

@@ -11,10 +11,10 @@ to follow. The machinery lives in
 
 The non-blocking group operations - ``group_construct_nb``,
 ``group_invite_nb``, ``group_join_nb``, ``group_leave_nb`` and
-``group_destruct_nb`` - are the first bindings built on it, and are used
-as the worked example throughout. The remaining ``_nb`` entry points
-listed in ``bindings/python/MISSING_BINDINGS.md`` can be added by
-following the same pattern.
+``group_destruct_nb`` - were the first bindings built on it, and are
+used as the worked example throughout. Every other ``_nb`` entry point
+is now bound on the same machinery; ``bindings/python/MISSING_BINDINGS.md``
+§1.1 lists them with their callback signatures.
 
 
 The problem
@@ -67,27 +67,64 @@ method::
 
     cdef struct nbcbd:
         char *grp             # strdup'd group identifier
+        char *ky              # strdup'd key (get_nb)
+        char *blk             # strdup'd resource block name
+        char **keys           # NULL-terminated argv (lookup_nb, unpublish_nb)
         pmix_proc_t *procs    # PyMem_Malloc'd by pmix_load_procs
         size_t nprocs
         pmix_info_t *info     # malloc'd by pmix_alloc_info
         size_t ninfo
+        pmix_info_t *dirs     # the second info array, where an operation
+        size_t ndirs          #   carries one (log, job control, monitor)
+        pmix_app_t *apps      # PyMem_Malloc'd, loaded by pmix_load_apps
+        size_t napps
+        pmix_query_t *queries # PyMem_Malloc'd
+        size_t nqueries
+        pmix_resource_unit_t *units  # PyMem_Malloc'd by pmix_alloc_units
+        size_t nunits
+        pmix_byte_object_t *cred     # PyMem_Malloc'd, as is its payload
+        pmix_cpuset_t cpuset  # constructed only when havecpuset is set
+        int havecpuset
         size_t idx            # key into the pynbcbs registry
+
+One struct covers every operation rather than one per API, because the
+trampolines reach the registry through ``cd.idx`` and must be able to
+cast any caddy to the same type. ``pypmix_nb_cbdata_new`` zeroes it, so
+an operation simply leaves unused fields alone and
+``pypmix_nb_cbdata_free`` skips them.
 
 The caddy is passed to the library as the operation's ``cbdata``, so it
 comes back to the trampoline unchanged and can be released there.
 
-Note the comments on the allocators. The three buffers come from three
+Note the comments on the allocators. The buffers come from several
 different places and each must be returned to its own:
-``pypmix_nb_cbdata_free`` calls ``free`` on the identifier,
-``pmix_free_procs`` (which is ``PyMem_Free``) on the proc array, and
-``pmix_free_info`` on the info array. Crossing them is not a stylistic
-matter - Python's allocator serves small blocks from its own arenas, and
-handing one of those to ``free()`` aborts the process.
+``pypmix_nb_cbdata_free`` calls ``free`` on the strings and the info
+arrays, ``pmix_free_argv`` on the key arrays (whose entries are
+``strdup``'d), and ``pmix_free_procs`` / ``pmix_free_units`` (which are
+``PyMem_Free``) on the arrays the bindings both build and release.
+Crossing them is not a stylistic matter - Python's allocator serves small
+blocks from its own arenas, and handing one of those to ``free()`` aborts
+the process.
 
 ``group_join_nb`` takes a single ``const pmix_proc_t *leader`` rather
-than an array. It stores the leader as a one-element ``procs`` array and
-passes ``&cd.procs[0]``, so one set of fields covers all five
-operations.
+than an array, and ``get_nb`` a single ``const pmix_proc_t *proc``. Both
+store it as a one-element ``procs`` array and pass ``&cd.procs[0]``, so
+one set of fields covers every operation.
+
+Three helpers fill the caddy for the shapes that recur:
+``pypmix_nb_setup`` builds it and takes ownership of the primary info
+array, ``pypmix_nb_add_procs`` parks the target procs (defaulting, as the
+blocking forms do, to the caller's entire job), and
+``pypmix_nb_add_keys`` parks a key array. Anything more specific -
+apps, queries, a credential, a cpuset - is built by the method itself.
+
+Two operations hand the library a pointer *into the Python object*:
+``fabric_register_nb`` and friends pass ``&self.myfabric``, and
+``compute_distances_nb`` passes ``&self.topo``. Those would dangle if the
+interpreter collected the object while the request was in flight, so
+those methods pass ``self`` to ``pypmix_nb_register`` as a third
+argument. Nothing ever reads it; holding the reference is the whole
+point.
 
 
 The registry
@@ -119,8 +156,8 @@ same caddy.
 The trampolines
 ---------------
 
-Two C functions bridge back into Python, one per callback signature that
-the group APIs use::
+There is one C function per callback signature the bound APIs use. Two
+of them cover the group operations::
 
     cdef void pypmix_client_op_cbfunc(pmix_status_t status,
                                       void *cbdata) noexcept with gil
@@ -151,6 +188,44 @@ The Python-facing signatures are::
 
 where ``results`` is a list of info dictionaries and ``cbdata`` is
 whatever object the caller passed in, returned untouched.
+
+The other bound operations need six more, one per remaining C callback
+type:
+
+.. list-table::
+   :header-rows: 1
+
+   * - C callback type
+     - Trampoline
+     - Python signature
+   * - ``pmix_value_cbfunc_t``
+     - ``pypmix_client_value_cbfunc``
+     - ``cbfunc(status, value, cbdata)``
+   * - ``pmix_lookup_cbfunc_t``
+     - ``pypmix_client_lookup_cbfunc``
+     - ``cbfunc(status, pdata, cbdata)``
+   * - ``pmix_spawn_cbfunc_t``
+     - ``pypmix_client_spawn_cbfunc``
+     - ``cbfunc(status, nspace, cbdata)``
+   * - ``pmix_credential_cbfunc_t``
+     - ``pypmix_client_credential_cbfunc``
+     - ``cbfunc(status, credential, results, cbdata)``
+   * - ``pmix_validation_cbfunc_t``
+     - ``pypmix_client_validation_cbfunc``
+     - ``cbfunc(status, results, cbdata)``
+   * - ``pmix_device_dist_cbfunc_t``
+     - ``pypmix_client_devdist_cbfunc``
+     - ``cbfunc(status, distances, cbdata)``
+
+All six follow the same shape, and all six share one rule that is easy
+to get wrong: **everything the library hands a callback belongs to the
+library**. Only ``pmix_info_cbfunc_t`` and ``pmix_device_dist_cbfunc_t``
+carry an explicit ``release_fn``; for the rest the library reclaims the
+data the moment the callback returns. So each trampoline converts to
+Python *first* - a ``pmix_value_t`` through ``pmix_unload_value``, a
+``pmix_nspace_t`` through ``decode``, a credential through
+``pmix_unload_bytes`` - and never stores or frees the C pointer it was
+given.
 
 
 Putting it together
@@ -211,6 +286,28 @@ A callback is executed if and only if the method returned
 ``PMIX_SUCCESS``.
 
 
+State that lives in the class
+-----------------------------
+
+``fabric_register_nb`` and ``fabric_deregister_nb`` have a wrinkle the
+others do not: the class tracks whether a fabric is currently
+registered, and that flag must flip when the *library* says the
+operation finished - not when the request was accepted. The trampoline
+knows nothing about the class, so these methods register a small closure
+in place of the caller's callback::
+
+    def regdone(status, ud):
+        if PMIX_SUCCESS == status:
+            self.fabric_set = 1
+        cbfunc(status, ud)
+
+The closure captures ``self`` and the caller's callback, runs on the
+progress thread like any other, and invokes the caller's function
+unchanged. Anything else that has to update class state from a
+completion should do the same rather than teach the trampolines about
+it.
+
+
 Adding another non-blocking binding
 -----------------------------------
 
@@ -224,13 +321,11 @@ The machinery is not specific to groups. To bind another ``_nb`` API:
    Python object, which dies with the method - in a caddy. Add fields to
    ``nbcbd`` if the operation carries arguments the group operations do
    not, and extend ``pypmix_nb_cbdata_free`` to match.
-#. Reuse ``pypmix_client_op_cbfunc`` or ``pypmix_client_info_cbfunc`` if
-   the API takes ``pmix_op_cbfunc_t`` or ``pmix_info_cbfunc_t``. Other
-   callback types - ``pmix_lookup_cbfunc_t``, ``pmix_spawn_cbfunc_t``,
-   ``pmix_value_cbfunc_t`` - need a trampoline of their own, written to
-   the same shape: take the registry entry, convert, release what the
-   library owns, free the caddy, then call into Python inside a
-   ``try``/``except``.
+#. Reuse one of the eight existing trampolines. Between them they cover
+   every callback type the public APIs use, so a new binding should not
+   need a new one; if it does, write it to the same shape - convert what
+   the library owns *first*, take the registry entry, free the caddy,
+   then call into Python inside a ``try``/``except``.
 #. Follow the error-path rule exactly. It is the easiest part to get
    wrong and the hardest to notice, because the leak only shows up when
    the library refuses a request.

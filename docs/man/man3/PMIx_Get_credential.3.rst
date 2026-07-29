@@ -37,6 +37,16 @@ Python Syntax
   pydirs = [{'key': PMIX_TIMEOUT,
              'value': 10, 'val_type': PMIX_INT}]
   rc, cred = foo.get_credential(pydirs)
+
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def credcb(status, credential, results, cbdata):
+      # credential is the same dictionary the blocking form returns, and
+      # results is a list of Python ``pmix_info_t`` dictionaries
+      print("credential:", foo.error_string(status), credential)
+  rc = foo.get_credential_nb(pydirs, credcb, "mycbdata")
   # on success, cred is a dictionary with 'bytes' and 'size' members
 
 

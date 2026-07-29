@@ -45,6 +45,16 @@ Python Syntax
              'value': 5, 'val_type': PMIX_UINT32}]
   rc, results = foo.monitor(monitor, PMIX_MONITOR_HEARTBEAT_ALERT, pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def resultcb(status, results, cbdata):
+      # results is a list of Python ``pmix_info_t`` dictionaries
+      print("monitor completed:", foo.error_string(status), results)
+  rc = foo.monitor_nb(monitor, PMIX_MONITOR_HEARTBEAT_ALERT, pydirs,
+                      resultcb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

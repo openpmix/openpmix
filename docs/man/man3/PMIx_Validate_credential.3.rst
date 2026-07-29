@@ -42,6 +42,15 @@ Python Syntax
   pydirs = [{'key': PMIX_TIMEOUT,
              'value': 10, 'val_type': PMIX_INT}]
   rc, results = foo.validate_credential(pycred, pydirs)
+
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def resultcb(status, results, cbdata):
+      # a PMIX_SUCCESS status means the credential was accepted
+      print("validation completed:", foo.error_string(status), results)
+  rc = foo.validate_credential_nb(pycred, pydirs, resultcb, "mycbdata")
   # on success, results is a list of Python ``pmix_info_t`` dictionaries
 
 

@@ -43,6 +43,15 @@ Python Syntax
   units = [{'type': PMIX_DEVTYPE_GPU, 'count': 4}]
   rc = foo.resource_block(PMIX_RESOURCE_BLOCK_DEFINE, "myblock", units, [])
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def donecb(status, cbdata):
+      print("resource block completed:", foo.error_string(status))
+  rc = foo.resource_block_nb(PMIX_RESOURCE_BLOCK_DEFINE, "myblock",
+                             units, [], donecb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

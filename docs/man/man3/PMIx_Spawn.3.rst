@@ -43,6 +43,15 @@ Python Syntax
              'maxprocs': 4, 'info': []}]
   rc, nspace = foo.spawn(jobInfo, pyapps)
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def spawncb(status, nspace, cbdata):
+      # nspace names the new job, and is None if the spawn failed
+      print("spawn completed:", foo.error_string(status), nspace)
+  rc = foo.spawn_nb(jobInfo, pyapps, spawncb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

@@ -40,6 +40,14 @@ Python Syntax
              'value': True, 'val_type': PMIX_BOOL}]
   rc = foo.fence(peers, pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def donecb(status, cbdata):
+      print("fence completed:", foo.error_string(status))
+  rc = foo.fence_nb(peers, pydirs, donecb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

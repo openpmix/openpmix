@@ -42,6 +42,14 @@ Python Syntax
              'value': 10, 'val_type': PMIX_INT}]
   rc = foo.disconnect(peers, pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted
+  # and reports the result by executing a callback on the PMIx progress
+  # thread. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  def donecb(status, cbdata):
+      print("disconnect completed:", foo.error_string(status))
+  rc = foo.disconnect_nb(peers, pydirs, donecb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

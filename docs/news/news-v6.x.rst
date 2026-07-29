@@ -7,6 +7,33 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Completed the Python bindings for the non-blocking APIs. The twenty
+   remaining _nb entry points - fence_nb, get_nb, publish_nb, lookup_nb,
+   unpublish_nb, spawn_nb, connect_nb, disconnect_nb, query_nb, log_nb,
+   allocation_request_nb, job_control_nb, monitor_nb,
+   get_credential_nb, validate_credential_nb, fabric_register_nb,
+   fabric_update_nb, fabric_deregister_nb, compute_distances_nb and
+   resource_block_nb - join the group operations bound earlier. Each
+   returns only the status of the request and delivers its result to a
+   Python callback executed on the progress thread, which runs if and
+   only if the call returned PMIX_SUCCESS. Every operational PMIx API is
+   now reachable from Python in both forms
+ - Fixed four latent defects in the Python conversion layer, found by
+   putting new argument shapes through it. Key arrays built by
+   pmix_load_argv were allocated with Python's allocator but released
+   with free() (and vice versa), which aborts the process;
+   pmix_free_apps released neither the argv/env arrays nor the app
+   array; an application carrying an empty info list produced a
+   zero-length but non-NULL array, which the library reads as
+   "terminated by an end marker" and walks past the allocation looking
+   for one, so such a spawn packed garbage; and an attribute list
+   containing an unconvertible value type crashed the caller, because
+   the partially-filled array was released in full and the entries never
+   written were destructed as if they held real values
+ - Corrected every Python example in the man pages. All of them wrote an
+   attribute with its value nested in a second dictionary, a shape the
+   bindings do not accept - the examples raised KeyError rather than
+   running
  - Added Python bindings for the remaining unique blocking APIs. The
    client gains heartbeat, progress_thread_stop and resource_block; the
    server gains generate_regex2 and parse_regex2 - the current regex
