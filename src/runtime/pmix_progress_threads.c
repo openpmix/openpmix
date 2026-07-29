@@ -163,6 +163,12 @@ void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
     const char *name = NULL;
     pmix_progress_tracker_t *trk;
 
+    if (!inited) {
+        /* the tracking list has not been constructed, so there is
+         * nothing to stop - and walking it would dereference NULL */
+        return;
+    }
+
     for (n=0; n < ninfo; n++) {
         key = (char*)info[n].key;
         if (PMIx_Check_key(key, PMIX_PROGRESS_THREAD_FLUSH)) {
