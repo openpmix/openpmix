@@ -358,6 +358,21 @@ be reached:
 `pmix_ptl_base_start_listening` then registers the listen socket's accept
 event on the progress thread.
 
+**Known issue — "listener thread failed to start" from a stale
+`$TMPDIR`.** Those rendezvous files and session directories are removed
+at finalize; a run that is killed or crashes leaves its `pmix-*` /
+`pmix.*` entries behind. Once enough accumulate, a later server fails to
+set up its listener and dies with
+
+```
+The PMIx server's listener thread failed to start. We cannot continue.
+```
+
+taking every `simptest`-based test in `test/unit` down with it. That is
+environmental, not a defect in this framework — reproduce under
+`TMPDIR=$(mktemp -d)` before chasing it. See the *Building and Testing*
+section of the top-level [`AGENTS.md`](../../../AGENTS.md).
+
 ## MCA parameters (registered in `ptl_base_frame.c`)
 
 All under the `pmix_ptl_base_` prefix, most with deprecated
