@@ -29,7 +29,7 @@ Python Syntax
   foo = PMIxServer()
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_SERVER_NSPACE,
-             'value': {'value': "SERVER", 'val_type': PMIX_STRING}}]
+             'value': "SERVER", 'val_type': PMIX_STRING}]
   # map is a dictionary of server-module-function keys to Python
   # callback implementations (e.g. {'clientconnected': myconnfn, ...})
   rc = foo.init(pydirs, map)

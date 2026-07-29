@@ -28,11 +28,13 @@ Python Syntax
 
   from pmix import *
 
-  foo = PMIxClient()
+  # session control is bound on PMIxServer and inherited by PMIxTool and
+  # PMIxScheduler
+  foo = PMIxServer()
   # ... after a successful foo.init() ...
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_SESSION_APP,
-             'value': {'value': "myapp", 'val_type': PMIX_STRING}}]
+             'value': "myapp", 'val_type': PMIX_STRING}]
   rc = foo.session_control(1, pydirs)
 
 

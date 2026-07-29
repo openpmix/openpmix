@@ -36,12 +36,13 @@ Python Syntax
 
   foo = PMIxClient()
   # ... after a successful foo.init() ...
-  # the monitor action is a single Python ``pmix_info_t`` dictionary
-  monitor = {'key': PMIX_MONITOR_HEARTBEAT,
-             'value': {'value': True, 'val_type': PMIX_BOOL}}
+  # the monitor action is given as a list whose first element is the
+  # Python ``pmix_info_t`` dictionary naming the monitor
+  monitor = [{'key': PMIX_MONITOR_HEARTBEAT,
+              'value': True, 'val_type': PMIX_BOOL}]
   # the directives are a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_MONITOR_HEARTBEAT_TIME,
-             'value': {'value': 5, 'val_type': PMIX_UINT32}}]
+             'value': 5, 'val_type': PMIX_UINT32}]
   rc, results = foo.monitor(monitor, PMIX_MONITOR_HEARTBEAT_ALERT, pydirs)
 
 

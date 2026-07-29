@@ -29,7 +29,7 @@ Python Syntax
   foo = PMIxClient()
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_PROGRAMMING_MODEL,
-             'value': {'value': "MPI", 'val_type': PMIX_STRING}}]
+             'value': "MPI", 'val_type': PMIX_STRING}]
   rc, myname = foo.init(pydirs)
 
 

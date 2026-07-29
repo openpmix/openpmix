@@ -35,7 +35,7 @@ Python Syntax
   # dicts is a list of pmix_info_t dictionaries describing the job
   # (must include the process and node maps)
   dicts = [{'key': PMIX_SETUP_APP_ALL,
-            'value': {'value': True, 'val_type': PMIX_BOOL}}]
+            'value': True, 'val_type': PMIX_BOOL}]
   rc, dataout = foo.setup_application("myapp", dicts)
   # dataout is a list of pmix_info_t dictionaries to be distributed
   # with the application

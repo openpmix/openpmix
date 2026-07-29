@@ -33,7 +33,7 @@ Python Syntax
   # directives is a list of pmix_info_t dictionaries describing the
   # resources to register (this binding is blocking)
   directives = [{'key': PMIX_CLUSTER_ID,
-                 'value': {'value': "cluster-a", 'val_type': PMIX_STRING}}]
+                 'value': "cluster-a", 'val_type': PMIX_STRING}]
   rc = foo.register_resources(directives)
 
 

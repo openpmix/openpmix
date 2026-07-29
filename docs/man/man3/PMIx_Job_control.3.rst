@@ -38,7 +38,7 @@ Python Syntax
   targets = [{'nspace': "testnspace", 'rank': PMIX_RANK_WILDCARD}]
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_JOB_CTRL_KILL,
-             'value': {'value': True, 'val_type': PMIX_BOOL}}]
+             'value': True, 'val_type': PMIX_BOOL}]
   rc, results = foo.job_control(targets, pydirs)
 
 

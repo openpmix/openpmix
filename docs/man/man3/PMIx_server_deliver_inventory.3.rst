@@ -32,7 +32,7 @@ Python Syntax
   # ... after a successful foo.init() ...
   # info carries the inventory to store; directives scope the request
   pyinfo = [{'key': PMIX_HOSTNAME,
-             'value': {'value': "node01", 'val_type': PMIX_STRING}}]
+             'value': "node01", 'val_type': PMIX_STRING}]
   pydirs = []
   rc = foo.deliver_inventory(pyinfo, pydirs)
 

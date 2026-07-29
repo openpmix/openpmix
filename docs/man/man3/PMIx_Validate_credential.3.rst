@@ -40,7 +40,7 @@ Python Syntax
   pycred = {'bytes': "mycredential", 'size': 12}
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_TIMEOUT,
-             'value': {'value': 10, 'val_type': PMIX_INT}}]
+             'value': 10, 'val_type': PMIX_INT}]
   rc, results = foo.validate_credential(pycred, pydirs)
   # on success, results is a list of Python ``pmix_info_t`` dictionaries
 

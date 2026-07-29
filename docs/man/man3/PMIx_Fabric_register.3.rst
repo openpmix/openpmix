@@ -37,7 +37,7 @@ Python Syntax
   # ... after a successful foo.init() ...
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_FABRIC_VENDOR,
-             'value': {'value': "ACME", 'val_type': PMIX_STRING}}]
+             'value': "ACME", 'val_type': PMIX_STRING}]
   rc, fabricinfo = foo.fabric_register(pydirs)
 
 

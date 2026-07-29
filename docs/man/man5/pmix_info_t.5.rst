@@ -35,9 +35,9 @@ Python Syntax
 
    from pmix import *
 
-   foo = {'key': "string name", 'flags': u32, 'value': {'value': val, 'val_type': type}}
+   foo = {'key': "string name", 'flags': u32, 'value': val, 'val_type': type}
 
-where ``key`` is a string key (e.g., ``PMIX_TIMEOUT``), ``flags`` is a `uint32_t` value from the :ref:`pmix_info_directives_t <man5-pmix_info_directives_t>` table, and ``value`` is a Python version of a :ref:`pmix_value_t <man5-pmix_value_t>`.
+where ``key`` is a string key (e.g., ``PMIX_TIMEOUT``), ``flags`` is a `uint32_t` value from the :ref:`pmix_info_directives_t <man5-pmix_info_directives_t>` table, and the ``value``/``val_type`` pair is the Python version of a :ref:`pmix_value_t <man5-pmix_value_t>` |mdash| the two fields are carried directly in the info dictionary rather than in a nested one.
 
 
 DESCRIPTION

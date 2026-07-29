@@ -32,7 +32,7 @@ Python Syntax
   # ... after a successful foo.init() ...
   # only the keys of the directives are significant here
   directives = [{'key': PMIX_CLUSTER_ID,
-                 'value': {'value': "cluster-a", 'val_type': PMIX_STRING}}]
+                 'value': "cluster-a", 'val_type': PMIX_STRING}]
   rc = foo.deregister_resources(directives)
 
 

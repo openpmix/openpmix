@@ -33,7 +33,7 @@ Python Syntax
   foo = PMIxClient()
   # the data is a list of Python ``pmix_info_t`` dictionaries
   pydata = [{'key': PMIX_LOG_STDERR,
-             'value': {'value': "log this string", 'val_type': PMIX_STRING}}]
+             'value': "log this string", 'val_type': PMIX_STRING}]
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = []
   rc = foo.log(pydata, pydirs)

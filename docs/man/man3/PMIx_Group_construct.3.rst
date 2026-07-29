@@ -40,7 +40,7 @@ Python Syntax
            {'nspace': "testnspace", 'rank': 1}]
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_GROUP_ASSIGN_CONTEXT_ID,
-             'value': {'value': True, 'val_type': PMIX_BOOL}}]
+             'value': True, 'val_type': PMIX_BOOL}]
   rc, results = foo.group_construct("mygroup", peers, pydirs)
 
 The non-blocking form takes a Python callback in place of the returned

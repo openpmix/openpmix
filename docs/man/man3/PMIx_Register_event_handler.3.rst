@@ -36,7 +36,7 @@ Python Syntax
   codes = [PMIX_ERR_PROC_ABORTED]
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_EVENT_HDLR_NAME,
-             'value': {'value': "MY-HANDLER", 'val_type': PMIX_STRING}}]
+             'value': "MY-HANDLER", 'val_type': PMIX_STRING}]
   # myhdlr is a Python event-handler function
   rc, refid = foo.register_event_handler(codes, pydirs, myhdlr)
 

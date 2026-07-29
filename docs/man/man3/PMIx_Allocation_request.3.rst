@@ -36,7 +36,7 @@ Python Syntax
   # ... after a successful foo.init() ...
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pyinfo = [{'key': PMIX_ALLOC_NUM_NODES,
-             'value': {'value': 4, 'val_type': PMIX_UINT64}}]
+             'value': 4, 'val_type': PMIX_UINT64}]
   rc, results = foo.allocation_request(PMIX_ALLOC_EXTEND, pyinfo)
 
 

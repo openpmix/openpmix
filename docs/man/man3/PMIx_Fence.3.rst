@@ -37,7 +37,7 @@ Python Syntax
   peers = [{'nspace': "testnspace", 'rank': PMIX_RANK_WILDCARD}]
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_COLLECT_DATA,
-             'value': {'value': True, 'val_type': PMIX_BOOL}}]
+             'value': True, 'val_type': PMIX_BOOL}]
   rc = foo.fence(peers, pydirs)
 
 
