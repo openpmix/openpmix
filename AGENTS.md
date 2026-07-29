@@ -476,12 +476,17 @@ successfully.
 	Use the wrapper when working in an uninstalled tree; `./simptest`
 	itself is still the right thing to run against an installed PMIx.
 
-	**A stale `$TMPDIR` will fail these tests for reasons that have
+	**A stale `$TMPDIR` can fail these tests for reasons that have
 	nothing to do with your change.** A PMIx server drops a session
 	directory and rendezvous files under `$TMPDIR` and removes them at
 	finalize. A run that is killed, crashes, or times out leaves its
-	`pmix-*` / `pmix.*` entries behind, and once enough of them
-	accumulate a subsequent server fails to start its listener:
+	`pmix-*` / `pmix.*` entries behind. A leftover *rendezvous* file no
+	longer blocks a restart — the listener now reads the pid the file
+	records and reclaims the file if that process is gone — but the
+	session directories and tool connection files still accumulate, and
+	they can confuse a tool trying to discover which server to connect
+	to. When a server does fail to start, it says so specifically (e.g.,
+	naming the file and the live process that owns it); the generic
 
 	```
 	--------------------------------------------------------------------
@@ -491,12 +496,12 @@ successfully.
 	Init failed with error PMIX_ERR_INIT
 	```
 
-	Every `simptest`-based test then fails together — all the group
-	tests, `run_simpcycle.pl`, `run_toolcycle.pl`, `run_monitor.pl` and
-	so on — which looks alarming and is purely environmental. This is a
-	**known issue**; it is a property of the leftovers, not of the tree.
-	Before investigating a wholesale failure of the server-based tests,
-	rerun under a clean directory:
+	now means what it says — look at sockets and interfaces, not at
+	`$TMPDIR`. Every `simptest`-based test failing together — all the
+	group tests, `run_simpcycle.pl`, `run_toolcycle.pl`,
+	`run_monitor.pl` and so on — still looks alarming and is still
+	usually environmental. Before investigating a wholesale failure of
+	the server-based tests, rerun under a clean directory:
 
 	```sh
 	TMPDIR=$(mktemp -d) make check

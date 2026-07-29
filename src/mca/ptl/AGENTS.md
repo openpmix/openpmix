@@ -358,20 +358,30 @@ be reached:
 `pmix_ptl_base_start_listening` then registers the listen socket's accept
 event on the progress thread.
 
-**Known issue — "listener thread failed to start" from a stale
-`$TMPDIR`.** Those rendezvous files and session directories are removed
-at finalize; a run that is killed or crashes leaves its `pmix-*` /
-`pmix.*` entries behind. Once enough accumulate, a later server fails to
-set up its listener and dies with
+**Stale rendezvous files are reclaimed, not fatal.** A file is removed
+only by a clean `pmix_ptl_close`, so a server that is killed or that
+crashes leaves its file behind. `write_rndz_file` therefore treats an
+existing file as a question rather than an answer: it reads the pid the
+file records and, if that process is gone (or the file names no usable
+pid at all, as happens when its creator died partway thru writing it),
+unlinks the orphan and creates its own. If the recorded pid *is* alive,
+the file belongs to a running server, so we leave it strictly alone and
+fail — but with the `rndz-file-in-use` `show_help` topic naming the role,
+the file, and the owning pid, and returning `PMIX_ERR_SILENT` so the
+server's generic "listener thread failed to start" message does not bury
+it. `test/unit/rndz_stale.c` pins both halves of that boundary.
 
-```
-The PMIx server's listener thread failed to start. We cannot continue.
-```
+Note the asymmetry: a **tool** given a rendezvous file treats an existing
+file as its *server's* contact info and never writes one, so it never
+reaches this path.
 
-taking every `simptest`-based test in `test/unit` down with it. That is
-environmental, not a defect in this framework — reproduce under
-`TMPDIR=$(mktemp -d)` before chasing it. See the *Building and Testing*
-section of the top-level [`AGENTS.md`](../../../AGENTS.md).
+**Related environmental issue — a stale `$TMPDIR`.** Leftover session
+directories and tool connection files still accumulate under `$TMPDIR`
+when runs are killed, and can confuse *discovery* (see the
+`too-many-conns` topic). Reproduce under `TMPDIR=$(mktemp -d)` before
+chasing a wholesale failure of the server-based tests. See the *Building
+and Testing* section of the top-level
+[`AGENTS.md`](../../../AGENTS.md).
 
 ## MCA parameters (registered in `ptl_base_frame.c`)
 

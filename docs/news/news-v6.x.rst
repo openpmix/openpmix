@@ -7,6 +7,19 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Fixed a server taking the scheduler, system-controller or system-tool
+   role being unable to restart after it was killed or crashed. Those
+   roles publish a rendezvous file that is removed only by a clean
+   finalize, and the listener treated any pre-existing file as fatal -
+   so an orphaned file left by the dead server blocked the next one
+   until someone deleted it by hand, and the failure was reported as
+   "the listener thread failed to start", which points at sockets rather
+   than at a leftover file. The file records the pid that wrote it, so
+   the listener now reclaims a file whose owner is gone (or that carries
+   no usable pid, as happens when its creator died partway thru writing
+   it). A file whose owner is still running is left untouched, and the
+   init fails with a message naming the role, the file and the owning
+   pid
  - Fixed PMIxTool.set_server_module in the Python bindings, which built
    its server-function module and returned PMIX_SUCCESS without ever
    handing it to the library - so a Python tool acting as a server had

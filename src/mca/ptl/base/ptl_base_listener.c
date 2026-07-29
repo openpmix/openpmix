@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -44,6 +44,7 @@
 #    include <sys/types.h>
 #endif
 #include <ctype.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <event.h>
 #include <pthread.h>
@@ -63,6 +64,7 @@
 #include "src/util/pmix_parse_options.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
+#include "src/util/pmix_string_copy.h"
 
 #include "src/mca/ptl/base/base.h"
 
@@ -194,13 +196,79 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
 }
 
 
-static pmix_status_t write_rndz_file(char *filename, char *uri,
+/* A rendezvous file is removed by pmix_ptl_close when we finalize, so
+ * a server that was killed or that crashed leaves its file behind. As
+ * the file records the pid of the process that created it, we can tell
+ * a stale file from one belonging to a still-running server - and
+ * reclaim the stale one instead of refusing to start.
+ *
+ * Returns a string describing the live owner of the given file, or
+ * NULL if the file has no live owner (i.e., it is stale and can be
+ * reclaimed). The caller must free any returned string.
+ */
+static char *rndz_file_owner(char *filename)
+{
+    FILE *fp;
+    char *line, *endptr, *owner = NULL;
+    unsigned long pid = 0;
+    bool havepid = false;
+    int n;
+
+    /* the file holds the uri, the version, the pid of the process
+     * that wrote it, its uid:gid, and a timestamp - one per line.
+     * We only care about the pid */
+    fp = fopen(filename, "r");
+    if (NULL == fp) {
+        /* we cannot identify an owner, so treat it as stale - if it
+         * truly is in use, then the removal below will fail and we
+         * will report that instead */
+        return NULL;
+    }
+    for (n = 0; n < 3; n++) {
+        line = pmix_getline(fp);
+        if (NULL == line) {
+            /* the file was never completely written - e.g., its
+             * creator died partway thru doing so */
+            break;
+        }
+        if (2 == n) {
+            endptr = NULL;
+            errno = 0;
+            pid = strtoul(line, &endptr, 10);
+            if (0 == errno && NULL != endptr && endptr != line && 0 < pid) {
+                havepid = true;
+            }
+        }
+        free(line);
+    }
+    fclose(fp);
+
+    if (!havepid) {
+        return NULL;
+    }
+    /* if the recorded pid is our own, then the file cannot belong to
+     * a live owner - we did not write it, so it is a leftover from an
+     * earlier process that happened to be given the same pid */
+    if ((pid_t)pid == pmix_globals.pid) {
+        return NULL;
+    }
+    /* if that process is still running, then the file is in use and
+     * we must not touch it. Note that a "permission denied" response
+     * means the process does exist, but belongs to another user */
+    if (0 != kill((pid_t)pid, 0) && EPERM != errno) {
+        return NULL;
+    }
+    pmix_asprintf(&owner, "pid %lu", pid);
+    return owner;
+}
+
+static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role,
                                      bool *dir_created, bool *file_created)
 {
     int fd;
-    char *dirname, *tmp;
+    char *dirname, *tmp, *owner;
     time_t mytime;
-    int rc;
+    int rc, n;
     mode_t mode = 0;
 
     dirname = pmix_dirname(filename);
@@ -235,12 +303,43 @@ static pmix_status_t write_rndz_file(char *filename, char *uri,
     if (pmix_ptl_base.allow_foreign_tools) {
         mode |= S_IRGRP | S_IROTH;
     }
-    fd = open(filename, O_RDWR | O_CREAT | O_EXCL, mode);
+    /* two passes at most: if the file already exists, we get one
+     * chance to reclaim it as stale and try the create again */
+    for (n = 0; n < 2; n++) {
+        fd = open(filename, O_RDWR | O_CREAT | O_EXCL, mode);
+        if (0 <= fd || EEXIST != errno) {
+            break;
+        }
+        /* the file already exists - if a live process owns it, then
+         * another server holds this role and we must not disturb it */
+        owner = rndz_file_owner(filename);
+        if (NULL != owner) {
+            pmix_show_help("help-ptl-base.txt", "rndz-file-in-use", true,
+                           role, filename, owner);
+            free(owner);
+            *file_created = false;
+            /* we have explained the problem, so don't let our caller
+             * add a misleading message on top of it */
+            return PMIX_ERR_SILENT;
+        }
+        /* it was left behind by an instance that is no longer
+         * running, so reclaim it. Someone else beating us to the
+         * removal is fine - anything else is not */
+        if (0 != unlink(filename) && ENOENT != errno) {
+            pmix_show_help("help-ptl-base.txt", "rndz-file-stale", true,
+                           role, filename, strerror(errno));
+            *file_created = false;
+            return PMIX_ERR_SILENT;
+        }
+    }
     if (0 > fd) {
         if (EEXIST == errno) {
-            // the file already exists
+            /* another process recreated the file while we were
+             * reclaiming it */
+            pmix_show_help("help-ptl-base.txt", "rndz-file-in-use", true,
+                           role, filename, "another process");
             *file_created = false;
-            return PMIX_ERR_EXISTS;
+            return PMIX_ERR_SILENT;
         }
         pmix_output(0, "Impossible to open the file %s in write mode\n", filename);
         PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
@@ -817,6 +916,7 @@ complete:
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "WRITING RENDEZVOUS FILE %s", pmix_ptl_base.rendezvous_filename);
         rc = write_rndz_file(pmix_ptl_base.rendezvous_filename, lt->uri,
+                             "server",
                              &pmix_ptl_base.created_rendezvous_dir,
                              &pmix_ptl_base.created_rendezvous_file);
         if (PMIX_SUCCESS != rc) {
@@ -833,6 +933,7 @@ nextstep:
             goto sockerror;
         }
         rc = write_rndz_file(pmix_ptl_base.scheduler_filename, lt->uri,
+                             "scheduler",
                              &pmix_ptl_base.created_system_tmpdir,
                              &pmix_ptl_base.created_scheduler_filename);
         if (PMIX_SUCCESS != rc) {
@@ -847,6 +948,7 @@ nextstep:
             goto sockerror;
         }
         rc = write_rndz_file(pmix_ptl_base.sysctrlr_filename, lt->uri,
+                             "system controller",
                              &pmix_ptl_base.created_system_tmpdir,
                              &pmix_ptl_base.created_sysctrlr_filename);
         if (PMIX_SUCCESS != rc) {
@@ -860,6 +962,7 @@ nextstep:
                 goto sockerror;
             }
             rc = write_rndz_file(pmix_ptl_base.system_filename, lt->uri,
+                                 "system tool",
                                  &pmix_ptl_base.created_system_tmpdir,
                                  &pmix_ptl_base.created_system_filename);
             if (PMIX_SUCCESS != rc) {
@@ -876,6 +979,7 @@ nextstep:
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "WRITING SESSION TOOL FILE %s", pmix_ptl_base.session_filename);
             rc = write_rndz_file(pmix_ptl_base.session_filename, lt->uri,
+                                 "session tool",
                                  &pmix_ptl_base.created_session_tmpdir,
                                  &pmix_ptl_base.created_session_filename);
             if (PMIX_SUCCESS != rc) {
@@ -892,6 +996,7 @@ nextstep:
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "WRITING PID TOOL FILE %s",
                             pmix_ptl_base.pid_filename);
         rc = write_rndz_file(pmix_ptl_base.pid_filename, lt->uri,
+                             "tool (by pid)",
                              &pmix_ptl_base.created_session_tmpdir,
                              &pmix_ptl_base.created_pid_filename);
         if (PMIX_SUCCESS != rc) {
@@ -907,6 +1012,7 @@ nextstep:
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "WRITING NSPACE TOOL FILE %s", pmix_ptl_base.nspace_filename);
         rc = write_rndz_file(pmix_ptl_base.nspace_filename, lt->uri,
+                             "tool (by namespace)",
                              &pmix_ptl_base.created_session_tmpdir,
                              &pmix_ptl_base.created_nspace_filename);
         if (PMIX_SUCCESS != rc) {
