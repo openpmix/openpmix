@@ -11,6 +11,7 @@ from ctypes import addressof, c_int
 from cython.operator import address
 import signal, time, sys
 import threading, ctypes
+import traceback
 import queue
 import array
 import os
@@ -36,6 +37,163 @@ cdef struct mcbd:
     char *data
     size_t size
 ctypedef mcbd pypmix_modex_cbdata_t
+
+###############################################
+# Client-side non-blocking (async) operations
+#
+# A non-blocking PMIx API returns as soon as the request has been handed
+# to the library, and reports its result later by executing a callback
+# from the library's progress thread. Two things must therefore survive
+# the Python method that started the operation:
+#
+#   * the C input arrays. PMIx does not copy them - the caller must keep
+#     them valid until the callback fires - so they cannot be freed when
+#     the method returns the way the blocking methods free theirs. They
+#     are parked in the caddy below and released by the trampoline.
+#   * the caller's Python callback and cbdata object. Nothing else holds
+#     a reference to them, so they are stashed in a module-global
+#     registry (the same technique the bindings use to keep event
+#     handlers alive in 'myhdlrs') and the caddy carries only the
+#     integer key. No PyObject pointer ever crosses into C.
+#
+# See docs/how-things-work/python_nonblocking.rst for the full picture.
+cdef struct nbcbd:
+    char *grp             # strdup'd group identifier
+    pmix_proc_t *procs    # PyMem_Malloc'd by pmix_load_procs
+    size_t nprocs
+    pmix_info_t *info     # malloc'd by pmix_alloc_info
+    size_t ninfo
+    size_t idx            # key into the pynbcbs registry
+ctypedef nbcbd pypmix_nb_cbdata_t
+
+# Registry of in-flight non-blocking operations. Guarded by pynblock as
+# entries are added by the calling thread and removed by the progress
+# thread.
+pynbcbs = {}
+pynbidx = 0
+pynblock = threading.Lock()
+
+def pypmix_nb_register(cbfunc, cbdata):
+    # Record a Python callback pair and return its registry key
+    global pynbidx
+    with pynblock:
+        pynbidx += 1
+        idx = pynbidx
+        pynbcbs[idx] = {'cbfunc': cbfunc, 'cbdata': cbdata}
+    return idx
+
+def pypmix_nb_take(idx):
+    # Remove and return a registry entry, or None if it is already gone
+    with pynblock:
+        return pynbcbs.pop(idx, None)
+
+# Allocate a caddy for a non-blocking operation. Returns NULL on failure
+cdef pypmix_nb_cbdata_t* pypmix_nb_cbdata_new():
+    cdef pypmix_nb_cbdata_t *cd
+    cd = <pypmix_nb_cbdata_t *> malloc(sizeof(pypmix_nb_cbdata_t))
+    if NULL == cd:
+        return NULL
+    cd.grp    = NULL
+    cd.procs  = NULL
+    cd.nprocs = 0
+    cd.info   = NULL
+    cd.ninfo  = 0
+    cd.idx    = 0
+    return cd
+
+# Release a caddy and everything it owns. Note that the group name, the
+# procs array and the info array each came from a different allocator -
+# strdup, PyMem_Malloc and malloc respectively - so each must go back to
+# its own
+cdef void pypmix_nb_cbdata_free(pypmix_nb_cbdata_t *cd):
+    if NULL == cd:
+        return
+    if NULL != cd.grp:
+        free(cd.grp)
+    if NULL != cd.procs:
+        pmix_free_procs(cd.procs, cd.nprocs)
+    if NULL != cd.info and 0 < cd.ninfo:
+        pmix_free_info(cd.info, cd.ninfo)
+    free(cd)
+
+# The registry entry doubles as the ownership token for the caddy:
+# whoever pops it is responsible for releasing the caddy, and a pop that
+# comes up empty means someone else already did. That keeps the starting
+# method's error path and the trampoline from ever racing to free it.
+#
+# Trampoline for non-blocking APIs that take a pmix_op_cbfunc_t. This
+# fires on the library's progress thread, which is not a Python thread,
+# so the GIL must be acquired
+cdef void pypmix_client_op_cbfunc(pmix_status_t status,
+                                  void *cbdata) noexcept with gil:
+    cdef pypmix_nb_cbdata_t *cd
+    if NULL == cbdata:
+        return
+    cd = <pypmix_nb_cbdata_t *> cbdata
+    entry = pypmix_nb_take(cd.idx)
+    if entry is None:
+        return
+    pypmix_nb_cbdata_free(cd)
+    # a callback that raises must not unwind into the library
+    try:
+        entry['cbfunc'](status, entry['cbdata'])
+    except:
+        traceback.print_exc()
+
+# Trampoline for non-blocking APIs that take a pmix_info_cbfunc_t
+cdef void pypmix_client_info_cbfunc(pmix_status_t status,
+                                    pmix_info_t *info, size_t ninfo,
+                                    void *cbdata,
+                                    pmix_release_cbfunc_t release_fn,
+                                    void *release_cbdata) noexcept with gil:
+    cdef pypmix_nb_cbdata_t *cd
+    # the results belong to the library, so convert them to Python before
+    # telling it that we are done with them
+    pyresults = []
+    prc = PMIX_SUCCESS
+    if NULL != info and 0 < ninfo:
+        prc = pmix_unload_info(info, ninfo, pyresults)
+    if NULL != release_fn:
+        release_fn(release_cbdata)
+    if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
+        status = prc
+    if NULL == cbdata:
+        return
+    cd = <pypmix_nb_cbdata_t *> cbdata
+    entry = pypmix_nb_take(cd.idx)
+    if entry is None:
+        return
+    pypmix_nb_cbdata_free(cd)
+    # a callback that raises must not unwind into the library
+    try:
+        entry['cbfunc'](status, pyresults, entry['cbdata'])
+    except:
+        traceback.print_exc()
+
+# Build the caddy for a non-blocking group operation, taking ownership of
+# the group identifier and the info array. Returns NULL on failure, with
+# the reason stored in rcptr
+cdef pypmix_nb_cbdata_t* pypmix_nb_group_setup(pygrp, pyinfo:list, int *rcptr):
+    cdef pypmix_nb_cbdata_t *cd
+    cdef pmix_info_t **info_ptr
+
+    cd = pypmix_nb_cbdata_new()
+    if NULL == cd:
+        rcptr[0] = PMIX_ERR_NOMEM
+        return NULL
+    cd.grp = strdup(pygrp)
+    if NULL == cd.grp:
+        pypmix_nb_cbdata_free(cd)
+        rcptr[0] = PMIX_ERR_NOMEM
+        return NULL
+    info_ptr = &cd.info
+    rc = pmix_alloc_info(info_ptr, &cd.ninfo, pyinfo)
+    if PMIX_SUCCESS != rc:
+        pypmix_nb_cbdata_free(cd)
+        rcptr[0] = rc
+        return NULL
+    rcptr[0] = PMIX_SUCCESS
+    return cd
 
 # Function to release pypmix_info_cbdata_t structure
 cdef void op_release(pmix_status_t status, void *cbdata) noexcept nogil:
@@ -1487,6 +1645,217 @@ cdef class PMIxClient:
         rc = PMIx_Group_destruct(pygrp, info, ninfo)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
+        return rc
+
+    # Non-blocking forms of the group operations. Each returns only the
+    # integer status of the request itself - the result of the operation
+    # is delivered later by executing 'cbfunc' on the library's progress
+    # thread. The callback is passed the opaque 'cbdata' object handed in
+    # here, unmodified, and takes the form
+    #
+    #    cbfunc(status:int, results:list, cbdata)   # construct/invite/join
+    #    cbfunc(status:int, cbdata)                 # leave/destruct
+    #
+    # A callback is executed if and only if the method returns
+    # PMIX_SUCCESS. Note that it runs on the progress thread, so it must
+    # not call a blocking PMIx operation - hand the work to another
+    # thread instead.
+    def group_construct_nb(self, group:str, peers, pyinfo,
+                           cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        # convert group name and the info array into a caddy that will
+        # outlive this call - the library does not copy them, so they
+        # must remain valid until the callback fires
+        pygrp = group.encode('ascii')
+        cd = pypmix_nb_group_setup(pygrp, pyinfo, &prc)
+        if NULL == cd:
+            return prc
+
+        # convert list of procs to array of pmix_proc_t's
+        if peers is not None and 0 < len(peers):
+            cd.nprocs = len(peers)
+            cd.procs = <pmix_proc_t*> PyMem_Malloc(cd.nprocs * sizeof(pmix_proc_t))
+            if not cd.procs:
+                cd.nprocs = 0
+                pypmix_nb_cbdata_free(cd)
+                return PMIX_ERR_NOMEM
+            prc = pmix_load_procs(cd.procs, peers)
+            if PMIX_SUCCESS != prc:
+                pypmix_nb_cbdata_free(cd)
+                return prc
+        else:
+            cd.nprocs = 1
+            cd.procs = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
+            if not cd.procs:
+                cd.nprocs = 0
+                pypmix_nb_cbdata_free(cd)
+                return PMIX_ERR_NOMEM
+            pmix_copy_nspace(cd.procs[0].nspace, self.myproc.nspace)
+            cd.procs[0].rank = PMIX_RANK_WILDCARD
+
+        # record the callback so it stays alive, then call the library
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Group_construct_nb(cd.grp, cd.procs, cd.nprocs,
+                                         cd.info, cd.ninfo,
+                                         pypmix_client_info_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            # no callback will be executed, so reclaim the operation here
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    def group_invite_nb(self, group:str, peers, pyinfo,
+                        cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        # convert group name and the info array into a caddy that will
+        # outlive this call
+        pygrp = group.encode('ascii')
+        cd = pypmix_nb_group_setup(pygrp, pyinfo, &prc)
+        if NULL == cd:
+            return prc
+
+        # convert list of procs to array of pmix_proc_t's
+        if peers is not None and 0 < len(peers):
+            cd.nprocs = len(peers)
+            cd.procs = <pmix_proc_t*> PyMem_Malloc(cd.nprocs * sizeof(pmix_proc_t))
+            if not cd.procs:
+                cd.nprocs = 0
+                pypmix_nb_cbdata_free(cd)
+                return PMIX_ERR_NOMEM
+            prc = pmix_load_procs(cd.procs, peers)
+            if PMIX_SUCCESS != prc:
+                pypmix_nb_cbdata_free(cd)
+                return prc
+        else:
+            cd.nprocs = 1
+            cd.procs = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
+            if not cd.procs:
+                cd.nprocs = 0
+                pypmix_nb_cbdata_free(cd)
+                return PMIX_ERR_NOMEM
+            pmix_copy_nspace(cd.procs[0].nspace, self.myproc.nspace)
+            cd.procs[0].rank = PMIX_RANK_WILDCARD
+
+        # record the callback so it stays alive, then call the library
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Group_invite_nb(cd.grp, cd.procs, cd.nprocs,
+                                      cd.info, cd.ninfo,
+                                      pypmix_client_info_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            # no callback will be executed, so reclaim the operation here
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    def group_join_nb(self, group:str, leader, opt:int, pyinfo,
+                      cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+        cdef pmix_group_opt_t copt
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+        copt = opt
+
+        # convert group name and the info array into a caddy that will
+        # outlive this call
+        pygrp = group.encode('ascii')
+        cd = pypmix_nb_group_setup(pygrp, pyinfo, &prc)
+        if NULL == cd:
+            return prc
+
+        # the leader must outlive this call as well, so park it in the
+        # caddy as a single-element proc array
+        cd.nprocs = 1
+        cd.procs = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
+        if not cd.procs:
+            cd.nprocs = 0
+            pypmix_nb_cbdata_free(cd)
+            return PMIX_ERR_NOMEM
+        if leader is not None:
+            pmix_copy_nspace(cd.procs[0].nspace, leader['nspace'])
+            cd.procs[0].rank = leader['rank']
+        else:
+            pmix_copy_nspace(cd.procs[0].nspace, self.myproc.nspace)
+            cd.procs[0].rank = self.myproc.rank
+
+        # record the callback so it stays alive, then call the library
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Group_join_nb(cd.grp, &cd.procs[0], copt,
+                                    cd.info, cd.ninfo,
+                                    pypmix_client_info_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            # no callback will be executed, so reclaim the operation here
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    def group_leave_nb(self, group:str, pyinfo, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        # convert group name and the info array into a caddy that will
+        # outlive this call
+        pygrp = group.encode('ascii')
+        cd = pypmix_nb_group_setup(pygrp, pyinfo, &prc)
+        if NULL == cd:
+            return prc
+
+        # record the callback so it stays alive, then call the library
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Group_leave_nb(cd.grp, cd.info, cd.ninfo,
+                                     pypmix_client_op_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            # no callback will be executed, so reclaim the operation here
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
+        return rc
+
+    def group_destruct_nb(self, group:str, pyinfo, cbfunc, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+
+        if not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+
+        # convert group name and the info array into a caddy that will
+        # outlive this call
+        pygrp = group.encode('ascii')
+        cd = pypmix_nb_group_setup(pygrp, pyinfo, &prc)
+        if NULL == cd:
+            return prc
+
+        # record the callback so it stays alive, then call the library
+        cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        with nogil:
+            rc = PMIx_Group_destruct_nb(cd.grp, cd.info, cd.ninfo,
+                                        pypmix_client_op_cbfunc, <void *> cd)
+        if PMIX_SUCCESS != rc:
+            # no callback will be executed, so reclaim the operation here
+            if pypmix_nb_take(cd.idx) is not None:
+                pypmix_nb_cbdata_free(cd)
         return rc
 
     def register_event_handler(self, pycodes, pyinfo, hdlr):
