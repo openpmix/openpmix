@@ -29,9 +29,9 @@ Python Syntax
   foo = PMIxTool()
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_TOOL_NSPACE,
-             'value': {'value': "mytool", 'val_type': PMIX_STRING}},
+             'value': "mytool", 'val_type': PMIX_STRING},
             {'key': PMIX_TOOL_RANK,
-             'value': {'value': 0, 'val_type': PMIX_PROC_RANK}}]
+             'value': 0, 'val_type': PMIX_PROC_RANK}]
   rc, myname = foo.init(pydirs)
 
 

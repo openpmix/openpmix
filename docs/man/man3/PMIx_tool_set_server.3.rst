@@ -31,7 +31,7 @@ Python Syntax
   # ... after a successful foo.init() and attachment to one or more servers ...
   server = {'nspace': "server-nspace", 'rank': 0}
   pydirs = [{'key': PMIX_WAIT_FOR_CONNECTION,
-             'value': {'value': True, 'val_type': PMIX_BOOL}}]
+             'value': True, 'val_type': PMIX_BOOL}]
   rc = foo.set_server(server, pydirs)
 
 

@@ -44,7 +44,7 @@ Python Syntax
   pycpus = {'source': "hwloc", 'cpus': ["0", "1"]}
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_DEVICE_TYPE,
-             'value': {'value': PMIX_DEVTYPE_NETWORK, 'val_type': PMIX_UINT64}}]
+             'value': PMIX_DEVTYPE_NETWORK, 'val_type': PMIX_UINT64}]
   rc, distances = foo.compute_distances(pycpus, pydirs)
 
 

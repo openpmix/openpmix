@@ -40,7 +40,7 @@ Python Syntax
            {'nspace': "othernspace", 'rank': PMIX_RANK_WILDCARD}]
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_TIMEOUT,
-             'value': {'value': 10, 'val_type': PMIX_INT}}]
+             'value': 10, 'val_type': PMIX_INT}]
   rc = foo.connect(peers, pydirs)
 
 

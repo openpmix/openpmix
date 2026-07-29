@@ -36,7 +36,7 @@ Python Syntax
   src = {'nspace': "testnspace", 'rank': 0}
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pyinfo = [{'key': PMIX_EVENT_NON_DEFAULT,
-             'value': {'value': True, 'val_type': PMIX_BOOL}}]
+             'value': True, 'val_type': PMIX_BOOL}]
   rc = foo.notify_event(PMIX_ERR_PROC_ABORTED, src, PMIX_RANGE_NAMESPACE, pyinfo)
 
 

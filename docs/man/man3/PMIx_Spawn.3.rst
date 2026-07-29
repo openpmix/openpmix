@@ -36,7 +36,7 @@ Python Syntax
   # ... after a successful foo.init() ...
   # jobInfo is a list of Python ``pmix_info_t`` dictionaries
   jobInfo = [{'key': PMIX_NOTIFY_COMPLETION,
-              'value': {'value': True, 'val_type': PMIX_BOOL}}]
+              'value': True, 'val_type': PMIX_BOOL}]
   # pyapps is a list of Python ``pmix_app_t`` dictionaries; each app
   # provides at least a command and its argv, plus optional per-app info
   pyapps = [{'cmd': "hello", 'argv': ["hello", "world"],

@@ -37,7 +37,7 @@ Python Syntax
   pykeys = ["mykey"]
   # directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_RANGE,
-             'value': {'value': PMIX_RANGE_SESSION, 'val_type': PMIX_UINT8}}]
+             'value': PMIX_RANGE_SESSION, 'val_type': PMIX_UINT8}]
   rc = foo.unpublish(pykeys, pydirs)
 
 

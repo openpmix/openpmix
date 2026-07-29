@@ -32,9 +32,9 @@ Python Syntax
   # ... after a successful foo.init(pydirs, map) ...
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_UNIV_SIZE,
-             'value': {'value': 4, 'val_type': PMIX_UINT32}},
+             'value': 4, 'val_type': PMIX_UINT32},
             {'key': PMIX_JOB_SIZE,
-             'value': {'value': 4, 'val_type': PMIX_UINT32}}]
+             'value': 4, 'val_type': PMIX_UINT32}]
   rc = foo.register_nspace("myjob", 4, pydirs)
 
 

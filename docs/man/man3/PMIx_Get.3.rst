@@ -38,7 +38,7 @@ Python Syntax
   proc = {'nspace': "testnspace", 'rank': 0}
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_TIMEOUT,
-             'value': {'value': 10, 'val_type': PMIX_INT}}]
+             'value': 10, 'val_type': PMIX_INT}]
   rc, value = foo.get(proc, "mykey", pydirs)
 
 

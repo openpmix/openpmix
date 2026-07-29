@@ -36,7 +36,7 @@ Python Syntax
   # the procs is a list of Python ``pmix_proc_t`` dictionaries
   pyprocs = [{'nspace': "target-nspace", 'rank': PMIX_RANK_WILDCARD}]
   pydirs = [{'key': PMIX_IOF_TAG_OUTPUT,
-             'value': {'value': True, 'val_type': PMIX_BOOL}}]
+             'value': True, 'val_type': PMIX_BOOL}]
   channel = PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL
   # myhdlr is a Python IOF delivery function
   rc, refid = foo.iof_pull(pyprocs, channel, pydirs, myhdlr)

@@ -34,11 +34,11 @@ Python Syntax
   # ... after a successful foo.init() ...
   # data is a list of Python ``pmix_pdata_t`` dictionaries; only the
   # ``key`` field is used on input to name the values to retrieve
-  data = [{'key': "mykey", 'value': {'value': None, 'val_type': PMIX_UNDEF},
+  data = [{'key': "mykey", 'value': None, 'val_type': PMIX_UNDEF,
            'proc': {'nspace': "", 'rank': 0}}]
   # directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_RANGE,
-             'value': {'value': PMIX_RANGE_SESSION, 'val_type': PMIX_UINT8}}]
+             'value': PMIX_RANGE_SESSION, 'val_type': PMIX_UINT8}]
   rc, data = foo.lookup(data, pydirs)
 
 

@@ -35,7 +35,7 @@ Python Syntax
   # ... after a successful foo.init() ...
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_TIMEOUT,
-             'value': {'value': 10, 'val_type': PMIX_INT}}]
+             'value': 10, 'val_type': PMIX_INT}]
   rc, cred = foo.get_credential(pydirs)
   # on success, cred is a dictionary with 'bytes' and 'size' members
 

@@ -32,7 +32,7 @@ Python Syntax
   rc, myname = foo.init(None)
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_CONNECT_TO_SYSTEM,
-             'value': {'value': True, 'val_type': PMIX_BOOL}}]
+             'value': True, 'val_type': PMIX_BOOL}]
   rc, myname, mysrvr = foo.attach_to_server(pydirs)
 
 

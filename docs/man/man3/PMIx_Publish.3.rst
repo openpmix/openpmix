@@ -34,9 +34,9 @@ Python Syntax
   # the data to publish is a list of Python ``pmix_info_t`` dictionaries;
   # each entry carries the key/value to publish, plus any directives
   pydata = [{'key': "mykey",
-             'value': {'value': "myvalue", 'val_type': PMIX_STRING}},
+             'value': "myvalue", 'val_type': PMIX_STRING},
             {'key': PMIX_RANGE,
-             'value': {'value': PMIX_RANGE_SESSION, 'val_type': PMIX_UINT8}}]
+             'value': PMIX_RANGE_SESSION, 'val_type': PMIX_UINT8}]
   rc = foo.publish(pydata)
 
 
