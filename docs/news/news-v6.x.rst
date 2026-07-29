@@ -7,6 +7,16 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Fixed a segmentation fault in PMIx_server_generate_cpuset_string and
+   PMIx_server_generate_locality_string. Both compared the cpuset's
+   source string with strncasecmp before checking it for NULL, so a host
+   environment passing a cpuset that carried a bitmap but no source -
+   or simply a zeroed struct, in the locality case, which did not check
+   the cpuset pointer either - crashed the library. A NULL source is
+   legal on an input cpuset the caller wants filled in, but not on one
+   being serialized, so both now report PMIX_ERR_BAD_PARAM. They also
+   set the returned string to NULL on every failure path; the
+   "not my cpuset" path previously left the caller's pointer untouched
  - Implemented the Python cpuset bindings, which had been stubs that
    returned PMIX_ERR_NOT_SUPPORTED no matter what they were passed:
    parse_cpuset_string, generate_cpuset_string and
