@@ -2092,23 +2092,50 @@ cdef class PMIxClient:
             pmix_convert_locality(locality, pyloc)
         return (rc, pyloc)
 
-    def parse_cpuset_string(self, csetstr:str):
-        return (PMIX_ERR_NOT_SUPPORTED, None)
+    # Parse a cpuset string of the form "<source>:<range-list>" (e.g.
+    # "hwloc:0-3,8") into the Python cpuset dict described in pmix.pxi.
+    #
+    # @csetstr [INPUT]
+    #          - the cpuset string (string)
+    #
+    # Returns (rc, {'source': str, 'cpus': [int, ...]})
+    #
+    # NOTE: csetstr is deliberately left unannotated - a ":str" annotation
+    # makes Cython reject None at the call boundary before the body's own
+    # check can report PMIX_ERR_BAD_PARAM.
+    def parse_cpuset_string(self, csetstr):
+        cdef pmix_cpuset_t cpuset
+
+        pycpus = {}
+        if csetstr is None:
+            return (PMIX_ERR_BAD_PARAM, pycpus)
+        if isinstance(csetstr, str):
+            pycset = csetstr.encode('ascii')
+        else:
+            pycset = csetstr
+        # let the library do the parsing so we honor whatever providers
+        # it supports, then render the result back through our converter.
+        # the parser can allocate before it detects a malformed range, so
+        # destruct unconditionally
+        PMIx_Cpuset_construct(&cpuset)
+        rc = PMIx_Parse_cpuset_string(pycset, &cpuset)
+        if PMIX_SUCCESS == rc:
+            rc = pmix_unload_cpuset(&cpuset, pycpus)
+        pmix_destruct_cpuset(&cpuset)
+        return (rc, pycpus)
 
     def get_cpuset(self, ref:int):
         cdef pmix_cpuset_t cpuset
-        cdef char* csetstr
+
         pycpus = {}
+        PMIx_Cpuset_construct(&cpuset)
         rc = PMIx_Get_cpuset(&cpuset, ref)
         if PMIX_SUCCESS == rc:
-            rc = PMIx_server_generate_cpuset_string(&cpuset, &csetstr)
-            if PMIX_SUCCESS == rc:
-                pycpus['source'] = strdup(cpuset.source)
-                txt = csetstr.decode('ascii')
-                pycpus['cpus'] = txt.split(",")
+            rc = pmix_unload_cpuset(&cpuset, pycpus)
+        pmix_destruct_cpuset(&cpuset)
         return (rc, pycpus)
 
-    def compute_distances(self, pycpus:dict, dicts):
+    def compute_distances(self, pycpus, dicts):
         cdef pmix_cpuset_t cpuset
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -2131,13 +2158,21 @@ cdef class PMIxClient:
             return (rc, results)
 
         # convert the cpuset
-        csetstr = pycpus['cpus'].encode('ascii')
-        rc = PMIx_Parse_cpuset_string(csetstr, &cpuset);
+        rc = pmix_load_cpuset(&cpuset, pycpus)
         if PMIX_SUCCESS != rc:
+            pmix_destruct_cpuset(&cpuset)
+            if 0 < sz:
+                pmix_free_info(info, sz)
             return (rc, results)
 
         # compute distances
         rc = PMIx_Compute_distances(&self.topo, &cpuset, info, sz, &distances, &ndist)
+
+        # the library is done with our inputs
+        pmix_destruct_cpuset(&cpuset)
+        if 0 < sz:
+            pmix_free_info(info, sz)
+
         if PMIX_SUCCESS != rc:
             return (rc, results)
 
@@ -2349,11 +2384,61 @@ cdef class PMIxServer(PMIxClient):
             ba = bytearray(ppn)
         return (rc, ba)
 
-    def generate_cpuset_string(self, cpuset:dict):
-        return (PMIX_ERR_NOT_SUPPORTED, None)
+    # Render a Python cpuset dict into the library's cpuset string, the
+    # form in which a cpuset is passed between servers and stored as the
+    # PMIX_CPUSET attribute of a process.
+    #
+    # @pycpus [INPUT]
+    #         - cpuset dict: {'source': str, 'cpus': [int, ...]}
+    #
+    # Returns (rc, cpuset_string)
+    def generate_cpuset_string(self, pycpus):
+        cdef pmix_cpuset_t cpuset
+        cdef char *csetstr = NULL
 
-    def generate_locality_string(self, cpuset:dict):
-        return (PMIX_ERR_NOT_SUPPORTED, None)
+        rc = pmix_load_cpuset(&cpuset, pycpus)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_cpuset(&cpuset)
+            return (rc, None)
+        rc = PMIx_server_generate_cpuset_string(&cpuset, &csetstr)
+        pmix_destruct_cpuset(&cpuset)
+        if PMIX_SUCCESS != rc or NULL == csetstr:
+            return (rc, None)
+        txt = csetstr.decode('ascii')
+        free(csetstr)
+        return (rc, txt)
+
+    # Compute the locality string for a process bound to the given cpuset.
+    # This is the string a host environment passes as PMIX_LOCALITY_STRING
+    # so peers can compute their relative locality.
+    #
+    # @pycpus [INPUT]
+    #         - cpuset dict: {'source': str, 'cpus': [int, ...]}
+    #
+    # Returns (rc, locality_string). An unbound process has no locality,
+    # in which case the string is None and rc is PMIX_SUCCESS.
+    def generate_locality_string(self, pycpus):
+        cdef pmix_cpuset_t cpuset
+        cdef char *locality = NULL
+
+        # the locality computation walks the topology, so be sure we
+        # have one loaded before asking for it
+        if NULL == self.topo.topology:
+            rc = self.load_topology()
+            if PMIX_SUCCESS != rc:
+                return (rc, None)
+
+        rc = pmix_load_cpuset(&cpuset, pycpus)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_cpuset(&cpuset)
+            return (rc, None)
+        rc = PMIx_server_generate_locality_string(&cpuset, &locality)
+        pmix_destruct_cpuset(&cpuset)
+        if PMIX_SUCCESS != rc or NULL == locality:
+            return (rc, None)
+        txt = locality.decode('ascii')
+        free(locality)
+        return (rc, txt)
 
     # Register a namespace
     #

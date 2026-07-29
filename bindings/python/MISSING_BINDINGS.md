@@ -75,7 +75,7 @@ blocking form:
 |-------|-------------|
 | `PMIx_generate_regex2` | Current regex generator producing a `pmix_regex2_t`. Only the **deprecated** `PMIx_generate_regex` is bound (as `generate_regex`). |
 | `PMIx_parse_regex2` | Parse a `pmix_regex2_t` back into its node/host list. Counterpart to `generate_regex2`. |
-| `PMIx_server_generate_cpuset` | Build a `pmix_cpuset_t` from a cpuset string. Only the `_string` form is bound (and it is a stub — see Defects). |
+| `PMIx_server_generate_cpuset` | Build a `pmix_cpuset_t` from a cpuset string. No *distinct* binding, but the capability is reachable: `parse_cpuset_string` performs the same conversion through the equivalent client entry point `PMIx_Parse_cpuset_string`, and the internal `pmix_load_cpuset` helper builds a `pmix_cpuset_t` from a Python dict for every method that needs one. Bind separately only if a caller needs the server-side entry point specifically. |
 | `PMIx_server_collect_job_info` | Collect job-level info for a set of procs, for packaging/forwarding to a remote server. |
 
 ### 1.4 Tool role (`PMIxTool`)
@@ -107,13 +107,18 @@ Non-operational pretty-printers; add only if a caller needs them:
 
 ## Part 2 — Defects in existing bindings
 
-Found during the 2026-07 deep review. **Status: D1–D21 and D23 were fixed in
-the follow-up pass** (the source cythonizes warning-free, the standalone unit
-suite passes, and the connected server↔client round-trip below succeeds).
-**D22 remains** — it is an unimplemented feature (honest stub), not a bug.
-Line numbers are against the originally reviewed `pmix.pyx` / `pmix.pxi` and
-drift as the files are edited; they are kept for historical traceability and
-as a map of the fragile spots.
+Found during the 2026-07 deep review. **Status: all of D1–D23 are now
+fixed.** D1–D21 and D23 were fixed in the first follow-up pass; **D22 — the
+cpuset stubs — was closed in a second pass** that implemented the missing
+conversion layer (see below). The source cythonizes warning-free, the
+standalone unit suite passes, and the connected server↔client round-trip
+below succeeds. Line numbers are against the originally reviewed `pmix.pyx` /
+`pmix.pxi` and drift as the files are edited; they are kept for historical
+traceability and as a map of the fragile spots.
+
+The one item still outstanding is **not** a defect: `PMIxScheduler.assign_session`
+remains a well-formed stub returning `PMIX_ERR_NOT_SUPPORTED` because the C
+library exposes no entry point for it (tracked in Part 1, not here).
 
 **End-to-end verification.** After clearing a pre-existing environmental
 blocker (a stale `pmix.sched.<host>` rendezvous file that made the PMIx
@@ -166,7 +171,50 @@ reference pattern.)
 | D19 | `pmix.pyx` `pypmix_credential_cbfunc` (~205, 226) | `size` is initialized to 0 and never updated, so `if 0 < size: free(c_byteobject.bytes)` never runs → credential bytes leak. |
 | D20 | `pmix.pyx` `PMIxClient.unpublish` (~777) | On alloc failure `PMIX_ERR_NOMEM` is evaluated but **not returned** (missing `return`); the code proceeds to use a possibly-NULL `keys`. |
 | D21 | `pmix.pyx` `get_version` | Returns `bytes`, not `str`, unlike the other accessors — callers must decode. Minor API inconsistency. |
-| D22 | `pmix.pyx` `PMIxServer.generate_cpuset_string` / `generate_locality_string` (~1962) | **NOT fixed (feature, not bug).** Honest stubs returning `PMIX_ERR_NOT_SUPPORTED`; the cpuset conversion layer they need is itself unimplemented. `PMIxScheduler.assign_session` is likewise now a well-formed stub (the truncation bug D2 is fixed) pending a C entry point — see Part 1. |
+| D22 | `pmix.pyx` `PMIxServer.generate_cpuset_string` / `generate_locality_string` (~1962), `PMIxClient.parse_cpuset_string` | **FIXED.** Were stubs returning `PMIX_ERR_NOT_SUPPORTED` unconditionally, because the cpuset conversion layer they need was unimplemented. That layer now exists in `pmix.pxi` (`pmix_cpuset_from_string` / `pmix_cpuset_to_string` / `pmix_load_cpuset` / `pmix_unload_cpuset` / `pmix_destruct_cpuset`) and all three methods do real work. See §2.4. `PMIxScheduler.assign_session` is still a well-formed stub (the truncation bug D2 is fixed) pending a C entry point — see Part 1. |
+
+### 2.4 The cpuset layer (closing D22)
+
+D22 was the last open defect. Closing it required building the conversion
+layer the three stubs depended on, which in turn exposed several adjacent
+defects in the methods that were *already* supposed to consume that layer.
+
+**The representation.** A `pmix_cpuset_t` carries an opaque provider bitmap
+that Python cannot construct, so every crossing goes through the library's
+string form, `"<source>:<range-list>"` (e.g. `"hwloc:0-3,8"`). The Python
+side is a dict:
+
+```python
+{'source': 'hwloc', 'cpus': [0, 1, 2, 3, 8]}
+```
+
+`pmix_cpuset_from_string` / `pmix_cpuset_to_string` are deliberately plain
+module-level `def`s, not `cdef` helpers, so the range expansion — the only
+part with real logic — is unit-testable without a server
+(`TestCpusetConverters` in `test/python/test_bindings.py`). `to_string`
+accepts a list of indices, a list of range tokens (`'0-3'`), or an
+already-formatted range list, since callers had used all three.
+
+| # | Location | Defect |
+|---|----------|--------|
+| D24 | `pmix.pyx` `PMIxClient.get_cpuset` | Returned `strdup(cpuset.source)` — a `char*` that Cython converts to **bytes** while leaking the `strdup` copy — and set `cpus` to `txt.split(",")` on the *whole* string, leaving the `hwloc:` prefix glued to the first entry (`['hwloc:0-3', '8']`). The `pmix_cpuset_t` was never destructed, leaking the provider bitmap on every call. |
+| D25 | `pmix.pyx` `PMIxClient.compute_distances` | Read `pycpus['cpus'].encode('ascii')`, i.e. expected `cpus` to be a **string** — a shape no other method produced, so a dict from `get_cpuset` raised `AttributeError`. It also returned early on failure without freeing the info array, and never destructed the cpuset. |
+| D27 | `pmix.pyx` `parse_cpuset_string` | The `csetstr:str` annotation made the body's own `None` check unreachable (Cython rejects `None` at the call boundary first) — the same defect class as D23. The annotations were dropped from the cpuset methods so their validation can report `PMIX_ERR_BAD_PARAM`. |
+
+**A latent C-side hazard, guarded but not fixed here.**
+`pmix_hwloc_generate_cpuset_string` rejects a NULL `bitmap` but then reads
+`cpuset->source` with `strncasecmp` without a NULL check, so a cpuset with a
+bitmap but no source segfaults. No binding path produces that combination
+(both `PMIx_Parse_cpuset_string` and `PMIx_Get_cpuset` set `source`), but
+`pmix_unload_cpuset` guards against it rather than relying on that.
+
+**What is verifiable on macOS.** `parse_cpuset_string`,
+`generate_cpuset_string` and `generate_locality_string` all return correct
+results live. `get_cpuset` returns `PMIX_ERR_NOT_FOUND` and
+`compute_distances` returns `PMIX_ERR_UNREACH` — both **environmental**:
+macOS exposes no CPU-binding API for `hwloc_get_cpubind`, and a standalone
+server has no upstream to forward the distance request to. Neither reflects
+the bindings; exercising those two paths needs Linux.
 
 ---
 
