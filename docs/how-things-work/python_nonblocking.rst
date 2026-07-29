@@ -13,8 +13,8 @@ The non-blocking group operations - ``group_construct_nb``,
 ``group_invite_nb``, ``group_join_nb``, ``group_leave_nb`` and
 ``group_destruct_nb`` - were the first bindings built on it, and are
 used as the worked example throughout. Every other ``_nb`` entry point
-is now bound on the same machinery; ``bindings/python/MISSING_BINDINGS.md``
-§1.1 lists them with their callback signatures.
+is now bound on the same machinery; they are tabulated with their
+callback signatures under `The bound non-blocking APIs`_ below.
 
 
 The problem
@@ -308,6 +308,102 @@ completion should do the same rather than teach the trampolines about
 it.
 
 
+The bound non-blocking APIs
+---------------------------
+
+Every non-blocking PMIx entry point is bound. Each returns only the
+integer status of the *request*; the result arrives later by executing
+the caller's callback on the progress thread. The trailing ``cbdata``
+argument is optional and is handed back to the callback unmodified.
+
+.. list-table::
+   :header-rows: 1
+
+   * - C API
+     - Python method
+     - Callback signature
+   * - ``PMIx_Fence_nb``
+     - ``fence_nb(peers, dicts, cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Get_nb``
+     - ``get_nb(proc, ky, dicts, cbfunc, cbdata=None)``
+     - ``(status, value, cbdata)``
+   * - ``PMIx_Publish_nb``
+     - ``publish_nb(dicts, cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Lookup_nb``
+     - ``lookup_nb(pykeys, dicts, cbfunc, cbdata=None)``
+     - ``(status, pdata, cbdata)``
+   * - ``PMIx_Unpublish_nb``
+     - ``unpublish_nb(pykeys, dicts, cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Spawn_nb``
+     - ``spawn_nb(jobInfo, pyapps, cbfunc, cbdata=None)``
+     - ``(status, nspace, cbdata)``
+   * - ``PMIx_Connect_nb``
+     - ``connect_nb(peers, pyinfo, cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Disconnect_nb``
+     - ``disconnect_nb(peers, pyinfo, cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Query_info_nb``
+     - ``query_nb(pyq, cbfunc, cbdata=None)``
+     - ``(status, results, cbdata)``
+   * - ``PMIx_Log_nb``
+     - ``log_nb(pydata, pydirs, cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Allocation_request_nb``
+     - ``allocation_request_nb(directive, pyinfo, cbfunc, cbdata=None)``
+     - ``(status, results, cbdata)``
+   * - ``PMIx_Job_control_nb``
+     - ``job_control_nb(pytargets, pydirs, cbfunc, cbdata=None)``
+     - ``(status, results, cbdata)``
+   * - ``PMIx_Process_monitor_nb``
+     - ``monitor_nb(pymonitor_info, code, pydirs, cbfunc, cbdata=None)``
+     - ``(status, results, cbdata)``
+   * - ``PMIx_Get_credential_nb``
+     - ``get_credential_nb(pyinfo, cbfunc, cbdata=None)``
+     - ``(status, credential, results, cbdata)``
+   * - ``PMIx_Validate_credential_nb``
+     - ``validate_credential_nb(pycred, pyinfo, cbfunc, cbdata=None)``
+     - ``(status, results, cbdata)``
+   * - ``PMIx_Fabric_register_nb``
+     - ``fabric_register_nb(dicts, cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Fabric_update_nb``
+     - ``fabric_update_nb(cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Fabric_deregister_nb``
+     - ``fabric_deregister_nb(cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Compute_distances_nb``
+     - ``compute_distances_nb(pycpus, dicts, cbfunc, cbdata=None)``
+     - ``(status, distances, cbdata)``
+   * - ``PMIx_Resource_block_nb``
+     - ``resource_block_nb(directive, block, pyunits, pyinfo, cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Group_construct_nb``
+     - ``group_construct_nb(group, peers, pyinfo, cbfunc, cbdata=None)``
+     - ``(status, results, cbdata)``
+   * - ``PMIx_Group_invite_nb``
+     - ``group_invite_nb(group, peers, pyinfo, cbfunc, cbdata=None)``
+     - ``(status, results, cbdata)``
+   * - ``PMIx_Group_join_nb``
+     - ``group_join_nb(group, leader, opt, pyinfo, cbfunc, cbdata=None)``
+     - ``(status, results, cbdata)``
+   * - ``PMIx_Group_leave_nb``
+     - ``group_leave_nb(group, pyinfo, cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+   * - ``PMIx_Group_destruct_nb``
+     - ``group_destruct_nb(group, pyinfo, cbfunc, cbdata=None)``
+     - ``(status, cbdata)``
+
+One signature differs from its blocking counterpart on purpose:
+``lookup_nb`` takes a list of key strings, not the ``pmix_pdata_t`` dict
+list ``lookup`` takes, because that is what the C API accepts and there
+is nothing for the caller to fill in on input.
+
+
 Adding another non-blocking binding
 -----------------------------------
 
@@ -343,6 +439,5 @@ Related reading
 * ``bindings/python/AGENTS.md`` - conventions for the bindings as a
   whole, including the data conversion model and the upcall
   trampolines that run in the opposite direction.
-* ``bindings/python/MISSING_BINDINGS.md`` - the remaining unbound APIs.
 * The *Thread Safety and the Progress Thread* section of the top-level
   developer guide - the C-side contract these bindings are honoring.

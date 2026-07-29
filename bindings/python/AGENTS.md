@@ -53,9 +53,29 @@ adds session/allocation direction. The classes are Cython `cdef class`es;
 their C-level state (`pmix_proc_t myproc`, `pmix_server_module_t myserver`,
 …) is declared with `cdef` at class scope and is not visible from Python.
 
-Method → C-API coverage (and the gaps) is tracked in
-[`MISSING_BINDINGS.md`](MISSING_BINDINGS.md). Consult it before adding a new
-method so you match the existing naming and don't duplicate work.
+### What is bound, and what deliberately is not
+
+**Every operational C API is bound**, in both its blocking and its
+non-blocking form. Before concluding something is missing, check
+`pmix.pyx` — and read the two exclusions below, because they are
+choices, not gaps.
+
+**Struct and utility helper families are out of scope.** They are *not*
+missing bindings and should not be added: `PMIx_Argv_*`, `PMIx_Setenv`,
+`PMIx_Load_*`, `PMIx_Xfer_*`, `PMIx_Coord_*`, `PMIx_Topology_*`,
+`PMIx_Cpuset_*`, `PMIx_Device_*`, `PMIx_Geometry_*`, `PMIx_Endpoint_*`,
+`PMIx_Envar_*`, `PMIx_Pdata_*`, `PMIx_Regattr_*`, `PMIx_Node_pid_*`,
+`PMIx_Value_load/unload/xfer/compare`, the `PMIx_Info_list_*` builder,
+the `PMIx_Check_*` / `PMIx_*_valid` / `PMIx_*_invalid` predicates, and
+every `*_construct/_destruct/_create/_free/_release/_load/_xfer` macro
+family. In Python these are either handled by the dict/list conversion
+layer in `pmix.pxi` (§3) or are one line of ordinary Python. Two
+families that *look* like helpers by prefix are **not** excluded and
+are bound: the struct pretty-printers and the serialization calls.
+
+**One deprecated API is skipped on purpose:**
+`PMIx_tool_connect_to_server`, superseded by `PMIx_tool_attach_to_server`
+(which is bound). Leave it unbound.
 
 ---
 
@@ -197,8 +217,8 @@ The reverse of §4b, and the newest of the three. A non-blocking client
 method hands a request to `libpmix` and returns immediately; the result
 arrives later on the progress thread. Every `_nb` API is bound this way
 — the group operations (`group_construct_nb` and friends) are the
-worked example, and `MISSING_BINDINGS.md` §1.1 tabulates the rest with
-their callback signatures.
+worked example, and the RST linked at the end of this section tabulates
+all of them with their callback signatures.
 
 Three pieces, all in `pmix.pyx`:
 
@@ -352,11 +372,10 @@ case.
 
 A deep review (2026-07) found ~22 real bugs in the conversion and method
 code; all were fixed, most in one pass and the cpuset stubs in a follow-on
-that had to build the conversion layer they depended on (§8a). The full
-catalogue — with file/line, severity, and what was wrong — is retained in
-[`MISSING_BINDINGS.md`](MISSING_BINDINGS.md) (§Defects) as history and as a
-map of the fragile spots. The patterns that caused them are worth
-internalizing so they are not reintroduced:
+that had to build the conversion layer they depended on (§8a). The
+per-defect catalogue lives in the git history of that work. The patterns
+that caused them are worth internalizing so they are not reintroduced —
+they map the fragile spots in this code:
 
 - **A `cdef class` method needs an explicit `self`.** Several methods were
   declared `def foo(arg):` and raised `TypeError` when called. Cython does not
@@ -395,8 +414,8 @@ internalizing so they are not reintroduced:
   Python script can call any method the moment it constructs the class,
   and the natural first thing a test does is call it before `init()`.
   Four C entry points had no `pmix_globals.initialized` guard and
-  crashed or hung on that path the first time they were bound (see
-  MISSING_BINDINGS.md §1.8 and §1.12). When you bind a new API, call it
+  crashed or hung on that path the first time they were bound. When you
+  bind a new API, call it
   before `init()` and with empty/None arguments *before* you call it for
   real — and fix the guard in the C library rather than papering over it
   in the binding.
