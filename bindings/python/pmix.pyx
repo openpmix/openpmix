@@ -1316,7 +1316,11 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
-    def group_construct(self, group:str, peers:list, pyinfo:list):
+    # Note: 'peers' and 'pyinfo' are deliberately left unannotated. Cython
+    # treats a parameter annotation as a type declaration that rejects
+    # None, which would make the "no peers given" default below - and the
+    # documented ability to pass None for the attributes - unreachable.
+    def group_construct(self, group:str, peers, pyinfo):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1364,7 +1368,7 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
-    def group_invite(self, group:str, peers:list, pyinfo:list):
+    def group_invite(self, group:str, peers, pyinfo):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1412,7 +1416,7 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
-    def group_join(self, group:str, leader:dict, opt:int, pyinfo:list):
+    def group_join(self, group:str, leader, opt:int, pyinfo):
         cdef pmix_proc_t proc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1447,7 +1451,7 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
-    def group_leave(self, group:str, pyinfo:list):
+    def group_leave(self, group:str, pyinfo):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t ninfo
@@ -1466,7 +1470,7 @@ cdef class PMIxClient:
             pmix_free_info(info, ninfo)
         return rc
 
-    def group_destruct(self, group:str, pyinfo:list):
+    def group_destruct(self, group:str, pyinfo):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t ninfo
