@@ -121,6 +121,38 @@ def main():
     rc = foo.register_nspace("testnspace", 1, kvals)
     print("RegNspace ", foo.error_string(rc))
 
+    # exercise the current regex interface - the round trip has to give
+    # back exactly the list we handed in, in the same order
+    nodes = ["test000", "test001", "test002"]
+    (rc, rgx) = foo.generate_regex2(nodes)
+    print("Regex2: ", foo.error_string(rc), rgx)
+    if PMIX_SUCCESS != rc:
+        print("GENERATE_REGEX2 FAILED")
+        exit(1)
+    (rc, back) = foo.parse_regex2(rgx)
+    print("ParseRegex2: ", foo.error_string(rc), back)
+    if PMIX_SUCCESS != rc or back != nodes:
+        print("REGEX2 ROUND TRIP FAILED")
+        exit(1)
+
+    # convert a cpuset string into the Python cpuset dict and back
+    (rc, cpus) = foo.generate_cpuset("hwloc:0-3,8")
+    print("Cpuset: ", foo.error_string(rc), cpus)
+    (rc, csetstr) = foo.generate_cpuset_string(cpus)
+    print("CpusetStr: ", foo.error_string(rc), csetstr)
+
+    # collect the job info for the nspace we just registered - this is
+    # what a host forwards to a remote server
+    (rc, blob) = foo.collect_job_info([{'nspace': "testnspace", 'rank': 0}])
+    print("CollectJobInfo: ", foo.error_string(rc), blob['size'], "bytes")
+    if PMIX_SUCCESS != rc or 0 == blob['size']:
+        print("COLLECT_JOB_INFO RETURNED NO DATA")
+        exit(1)
+
+    # print a value and an info the way the library itself renders them
+    (rc, txt) = foo.data_print("VALUE: ", {'value': 42, 'val_type': PMIX_INT32})
+    print("DataPrint: ", foo.error_string(rc), txt)
+
     # register a client
     uid = os.getuid()
     gid = os.getgid()

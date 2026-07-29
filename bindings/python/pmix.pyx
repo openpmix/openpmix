@@ -1302,6 +1302,68 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
+    # Define, extend, reduce or delete a block of resources. The request is
+    # relayed to the scheduler, so it is the caller's server (not the caller
+    # itself) that must be the scheduler - a process running as the
+    # scheduler gets PMIX_ERR_NOT_SUPPORTED as there is no one to ask.
+    #
+    # @directive [INPUT]
+    #            - one of the PMIX_RESOURCE_BLOCK_ values (int)
+    #
+    # @block [INPUT]
+    #        - name of the resource block, unique within the requestor's
+    #          session (string)
+    #
+    # @pyunits [INPUT]
+    #          - a list of resource unit dictionaries, each of the form
+    #            {'type': PMIX_DEVTYPE_x, 'count': n}
+    #
+    # @pyinfo [INPUT]
+    #         - a list of dictionaries, where each
+    #           dictionary has a key, value, and val_type
+    #           defined as such:
+    #           [{key:y, value:val, val_type:ty}, … ]
+    def resource_block(self, directive:int, block, pyunits, pyinfo):
+        cdef pmix_resource_unit_t *units
+        cdef size_t nunits
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef size_t ninfo
+        cdef char *blk
+        cdef pmix_resource_block_directive_t drctv
+
+        if block is None:
+            return PMIX_ERR_BAD_PARAM
+        if isinstance(block, str):
+            pyblock = block.encode('ascii')
+        else:
+            pyblock = block
+        blk = <char*>pyblock
+        drctv = directive
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        if PMIX_SUCCESS != rc:
+            return rc
+
+        # convert the resource units
+        rc = pmix_alloc_units(&units, &nunits, pyunits)
+        if PMIX_SUCCESS != rc:
+            if 0 < ninfo:
+                pmix_free_info(info, ninfo)
+            return rc
+
+        # call the API - it blocks until the scheduler responds, and the
+        # response may have to pass through a server module written in
+        # Python, so the GIL cannot be held across it
+        with nogil:
+            rc = PMIx_Resource_block(drctv, blk, units, nunits, info, ninfo)
+        pmix_free_units(units, nunits)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        return rc
+
     def job_control(self, pytargets, pydirs):
         cdef pmix_proc_t *targets
         cdef pmix_info_t *directives
@@ -1401,6 +1463,19 @@ cdef class PMIxClient:
             rc = pmix_unload_info(results, nresults, pyres)
             pmix_free_info(results, nresults)
         return rc, pyres
+
+    # Send a heartbeat to our server, feeding whatever process health
+    # monitor was established with the PMIX_MONITOR_HEARTBEAT attribute
+    # (see monitor() above). The heartbeat is fire-and-forget: the C API
+    # returns nothing, so this reports PMIX_SUCCESS once the message has
+    # been handed to the library.
+    #
+    # @dicts [INPUT]
+    #        - accepted for future directives; the C API defines none
+    #          today, so anything provided here is ignored
+    def heartbeat(self, dicts=None):
+        PMIx_Heartbeat()
+        return PMIX_SUCCESS
 
     def get_credential(self, pyinfo):
         cdef pmix_info_t *info
@@ -2036,6 +2111,113 @@ cdef class PMIxClient:
         pystr = string
         return pystr.decode('ascii')
 
+    def value_comparison_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Value_comparison_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    def group_operation_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Group_operation_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    def resource_block_directive_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Resource_block_directive_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    def alloc_inheritance_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Alloc_inheritance_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    # The inverse of error_string: map the name of a PMIx status back to
+    # its numeric value. Returns PMIX_ERR_NOT_FOUND for an unknown name
+    #
+    # @errname [INPUT]
+    #          - the symbolic name of a status, e.g. "PMIX_ERR_TIMEOUT"
+    def error_code(self, errname):
+        if errname is None:
+            return PMIX_ERR_BAD_PARAM
+        if isinstance(errname, str):
+            pyname = errname.encode('ascii')
+        else:
+            pyname = errname
+        return PMIx_Error_code(pyname)
+
+    # Render a value or an info into the library's printable form. This is
+    # the library's own pretty-printer, so what comes back is exactly what
+    # PMIx debug output shows for the same data.
+    #
+    # @prefix [INPUT]
+    #         - string to prepend to the output, or None
+    #
+    # @pysrc [INPUT]
+    #        - a value dict ({'value':val, 'val_type':ty}) or an info dict
+    #          (the same plus a 'key')
+    #
+    # @data_type [INPUT]
+    #            - PMIX_VALUE or PMIX_INFO. Defaults to whichever shape
+    #              pysrc has. The C API accepts any registered data type,
+    #              but a Python caller can only hand us a value or an info
+    #              - every other type is reachable as the value of one
+    #
+    # Returns (rc, string)
+    def data_print(self, prefix, pysrc, data_type=None):
+        cdef pmix_value_t value
+        cdef pmix_info_t info
+        cdef char *output = NULL
+        cdef char *pfx = NULL
+
+        if not isinstance(pysrc, dict):
+            return (PMIX_ERR_BAD_PARAM, None)
+        if data_type is None:
+            if 'key' in pysrc:
+                data_type = PMIX_INFO
+            else:
+                data_type = PMIX_VALUE
+        if prefix is not None:
+            if isinstance(prefix, str):
+                pypfx = prefix.encode('ascii')
+            else:
+                pypfx = prefix
+            pfx = <char*>pypfx
+
+        if PMIX_VALUE == data_type:
+            rc = pmix_load_value(&value, pysrc)
+            if PMIX_SUCCESS != rc:
+                pmix_destruct_value(&value)
+                return (rc, None)
+            rc = PMIx_Data_print(&output, pfx, <void*>&value, PMIX_VALUE)
+            pmix_destruct_value(&value)
+        elif PMIX_INFO == data_type:
+            if 'key' not in pysrc:
+                return (PMIX_ERR_BAD_PARAM, None)
+            memset(&info, 0, sizeof(pmix_info_t))
+            rc = pmix_load_info(&info, [pysrc])
+            if PMIX_SUCCESS != rc:
+                pmix_destruct_info(&info)
+                return (rc, None)
+            rc = PMIx_Data_print(&output, pfx, <void*>&info, PMIX_INFO)
+            pmix_destruct_info(&info)
+        else:
+            return (PMIX_ERR_NOT_SUPPORTED, None)
+
+        # the library allocated the string, so decode and hand it back
+        if PMIX_SUCCESS != rc or NULL == output:
+            return (rc, None)
+        txt = output.decode('ascii')
+        free(output)
+        return (rc, txt)
+
     def fabric_register(self, dicts):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -2205,6 +2387,41 @@ cdef class PMIxClient:
         PMIx_Progress()
         return
 
+    # Stop the library's internal progress thread. Once stopped, the
+    # library only makes progress when progress() is called, so this is
+    # meant for callers that want to drive the event loop themselves.
+    #
+    # @dicts [INPUT]
+    #        - a list of dictionaries, where each
+    #          dictionary has a key, value, and val_type
+    #          defined as such:
+    #          [{key:y, value:val, val_type:ty}, … ]
+    #          e.g. PMIX_PROGRESS_THREAD_FLUSH to complete all pending
+    #          events before stopping, or PMIX_PROGRESS_THREAD_NAME to
+    #          stop one named thread instead of the shared one
+    #
+    # The C API returns nothing, so PMIX_SUCCESS is reported once the
+    # thread has been stopped; a directive that could not be converted is
+    # reported instead.
+    def progress_thread_stop(self, dicts=None):
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef size_t ninfo
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
+        if PMIX_SUCCESS != rc:
+            return rc
+
+        # this joins the progress thread, so the GIL must be released -
+        # the thread may need it to complete a pending Python callback
+        with nogil:
+            PMIx_Progress_thread_stop(info, ninfo)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        return PMIX_SUCCESS
+
 pmixservermodule = {}
 def setmodulefn(k, f):
     global pmixservermodule
@@ -2361,6 +2578,106 @@ cdef class PMIxServer(PMIxClient):
         ba = pmix_convert_regex(regex)
         return (rc, ba)
 
+    # Compress a list of node names into the current regular expression
+    # form, a pmix_regex2_t. This is the generator to use in new code -
+    # generate_regex above is the deprecated interface, which produces a
+    # bare string and cannot say which component encoded it.
+    #
+    # @hosts [INPUT]
+    #        - a list of node names, or an already comma-delimited string
+    #
+    # @dicts [INPUT]
+    #        - a list of dictionaries, where each
+    #          dictionary has a key, value, and val_type
+    #          defined as such:
+    #          [{key:y, value:val, val_type:ty}, … ]
+    #
+    # Returns (rc, {'type': str, 'bytes': bytes, 'len': int}), the dict
+    # being what parse_regex2 takes back
+    def generate_regex2(self, hosts, dicts=None):
+        cdef pmix_regex2_t regex
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef size_t ninfo
+
+        if hosts is None:
+            return (PMIX_ERR_BAD_PARAM, None)
+        if isinstance(hosts, str):
+            myhosts = hosts
+        elif isinstance(hosts, bytes):
+            myhosts = hosts.decode('ascii')
+        else:
+            mycomma = ","
+            myhosts = mycomma.join(hosts)
+        pyhosts = myhosts.encode('ascii')
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
+        if PMIX_SUCCESS != rc:
+            return (rc, None)
+
+        PMIx_Regex2_construct(&regex)
+        rc = PMIx_generate_regex2(pyhosts, info, ninfo, &regex)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        if PMIX_SUCCESS != rc:
+            # a component can fail after setting a field, so release
+            # whatever was built before converting nothing
+            PMIx_Regex2_destruct(&regex)
+            return (rc, None)
+        pyregex = pmix_unload_regex2(&regex)
+        PMIx_Regex2_destruct(&regex)
+        return (rc, pyregex)
+
+    # Expand a pmix_regex2_t produced by generate_regex2 back into the
+    # list of values it encodes, preserving their original order.
+    #
+    # @pyregex [INPUT]
+    #          - regex dict: {'type': str, 'bytes': bytes, 'len': int}
+    #
+    # @dicts [INPUT]
+    #        - a list of dictionaries, where each
+    #          dictionary has a key, value, and val_type
+    #          defined as such:
+    #          [{key:y, value:val, val_type:ty}, … ]
+    #
+    # Returns (rc, [name, name, ...])
+    def parse_regex2(self, pyregex, dicts=None):
+        cdef pmix_regex2_t regex
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef size_t ninfo
+        cdef char *output = NULL
+
+        names = []
+        # the loader constructs the regex first, so it is safe to destruct
+        # on every path from here on
+        rc = pmix_load_regex2(&regex, pyregex)
+        if PMIX_SUCCESS != rc:
+            PMIx_Regex2_destruct(&regex)
+            return (rc, names)
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
+        if PMIX_SUCCESS != rc:
+            PMIx_Regex2_destruct(&regex)
+            return (rc, names)
+
+        rc = PMIx_parse_regex2(&regex, info, ninfo, &output)
+        PMIx_Regex2_destruct(&regex)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        if PMIX_SUCCESS != rc or NULL == output:
+            return (rc, names)
+        # the parser hands back a comma-delimited string it allocated
+        txt = output.decode('ascii')
+        free(output)
+        if 0 < len(txt):
+            names = txt.split(',')
+        return (rc, names)
+
     def generate_ppn(self, procs:list):
         cdef char *ppn = NULL
         mysemi = ";"
@@ -2415,6 +2732,35 @@ cdef class PMIxServer(PMIxClient):
         txt = csetstr.decode('ascii')
         free(csetstr)
         return (rc, txt)
+
+    # The inverse of generate_cpuset_string: convert the library's cpuset
+    # string form into the Python cpuset dict. This is the server-side
+    # entry point; PMIxClient.parse_cpuset_string performs the same
+    # conversion through the client entry point.
+    #
+    # @csetstr [INPUT]
+    #          - cpuset string of the form "<source>:<range-list>",
+    #            e.g. "hwloc:0-3,8"
+    #
+    # Returns (rc, {'source': str, 'cpus': [int, ...]})
+    def generate_cpuset(self, csetstr):
+        cdef pmix_cpuset_t cpuset
+
+        pycpus = {}
+        if csetstr is None:
+            return (PMIX_ERR_BAD_PARAM, pycpus)
+        if isinstance(csetstr, str):
+            pycset = csetstr.encode('ascii')
+        else:
+            pycset = csetstr
+        # the parser can allocate before it detects a malformed range, so
+        # construct up front and destruct on every path
+        PMIx_Cpuset_construct(&cpuset)
+        rc = PMIx_server_generate_cpuset(pycset, &cpuset)
+        if PMIX_SUCCESS == rc:
+            rc = pmix_unload_cpuset(&cpuset, pycpus)
+        pmix_destruct_cpuset(&cpuset)
+        return (rc, pycpus)
 
     # Compute the locality string for a process bound to the given cpuset.
     # This is the string a host environment passes as PMIX_LOCALITY_STRING
@@ -2783,6 +3129,58 @@ cdef class PMIxServer(PMIxClient):
         # delete the set
         rc = PMIx_server_delete_process_set(pyset)
         return rc
+
+    # Collect the job-level information this server holds for the jobs
+    # the given procs belong to, packaged as an opaque blob. A host
+    # environment forwards the blob to a remote PMIx server, which feeds
+    # it back into the library so its own clients can see that job data.
+    #
+    # @peers [INPUT]
+    #        - a list of proc dicts ({'nspace': str, 'rank': int}). Only
+    #          the namespaces matter; the ranks are ignored. The list
+    #          cannot be empty - there would be no job to collect
+    #
+    # Returns (rc, {'bytes': bytes, 'size': int}) - the byte-object form
+    # every other blob in these bindings uses
+    def collect_job_info(self, peers):
+        cdef pmix_proc_t *procs
+        cdef size_t nprocs
+        cdef pmix_data_buffer_t dbuf
+        cdef char *blob = NULL
+        cdef size_t nblob
+
+        pyblob = {'bytes': b'', 'size': 0}
+        if peers is None or 0 == len(peers):
+            return (PMIX_ERR_BAD_PARAM, pyblob)
+
+        # convert list of procs to array of pmix_proc_t's
+        nprocs = len(peers)
+        procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+        if not procs:
+            return (PMIX_ERR_NOMEM, pyblob)
+        rc = pmix_load_procs(procs, peers)
+        if PMIX_SUCCESS != rc:
+            pmix_free_procs(procs, nprocs)
+            return (rc, pyblob)
+
+        # the collection is performed on the progress thread and this
+        # call blocks until it completes, so release the GIL
+        PMIx_Data_buffer_construct(&dbuf)
+        with nogil:
+            rc = PMIx_server_collect_job_info(procs, nprocs, &dbuf)
+        pmix_free_procs(procs, nprocs)
+
+        if PMIX_SUCCESS == rc:
+            # unload transfers ownership of the payload to us
+            nblob = 0
+            PMIx_Data_buffer_unload(&dbuf, &blob, &nblob)
+            if NULL != blob:
+                if 0 < nblob:
+                    pyblob['bytes'] = blob[:nblob]
+                    pyblob['size'] = nblob
+                free(blob)
+        PMIx_Data_buffer_destruct(&dbuf)
+        return (rc, pyblob)
 
     def session_control(self, sessionID:int, ilist):
         cdef pmix_info_t *info
@@ -3799,6 +4197,19 @@ cdef class PMIxTool(PMIxServer):
             pmix_free_info(directives, ndirs)
         return rc
 
+# The scheduler is a tool that owns the system's resources, so it
+# inherits every client, server and tool method and adds session
+# direction on top. Two operations make up the scheduler role proper,
+# and both reach it through what it inherits:
+#
+#   * resource blocks - the scheduler does not call resource_block (a
+#     process that IS the scheduler has no one to ask, and the library
+#     returns PMIX_ERR_NOT_SUPPORTED). It SERVICES the requests other
+#     processes make, by registering a 'resourceblock' handler in the
+#     server module map it passes to set_server_module.
+#   * session control - likewise serviced through the 'sessioncontrol'
+#     module key, while the scheduler's own directives to a session go
+#     out through the inherited session_control method.
 cdef class PMIxScheduler(PMIxTool):
     def __cinit__(self):
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))

@@ -75,6 +75,19 @@ def main():
     rc, get_val = foo.get({'nspace':"testnspace", 'rank': 0}, "mykey", info)
     print("Get result: ", foo.error_string(rc))
     print("Get value returned: ", get_val)
+    # send a heartbeat to our server - this is the fire-and-forget path
+    # that feeds a process health monitor, so there is nothing to wait for
+    print("HEARTBEAT")
+    rc = foo.heartbeat()
+    print("Heartbeat result ", foo.error_string(rc))
+    # ask the scheduler to define a resource block. Our server is not a
+    # scheduler and has no scheduler above it, so the library has no one
+    # to ask - what is under test here is that the request converts and
+    # comes back with a status rather than hanging or crashing
+    print("RESOURCE BLOCK")
+    units = [{'type': PMIX_DEVTYPE_GPU, 'count': 2}]
+    rc = foo.resource_block(PMIX_RESOURCE_BLOCK_DEFINE, "myblock", units, [])
+    print("Resource block result ", foo.error_string(rc))
     # test a fence that should return not_supported because
     # we pass a required attribute that doesn't exist
     procs = []

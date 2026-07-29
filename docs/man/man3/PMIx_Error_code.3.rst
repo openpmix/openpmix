@@ -19,6 +19,18 @@ SYNOPSIS
    pmix_status_t PMIx_Error_code(const char *errname);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # the inverse of error_string - returns the integer status code
+  status = foo.error_code("PMIX_ERR_NOT_FOUND")
+
+
 INPUT PARAMETERS
 ----------------
 

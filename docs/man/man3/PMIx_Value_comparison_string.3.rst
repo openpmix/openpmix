@@ -19,6 +19,17 @@ SYNOPSIS
    const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  string = foo.value_comparison_string(PMIX_VALUE1_GREATER)
+
+
 INPUT PARAMETERS
 ----------------
 

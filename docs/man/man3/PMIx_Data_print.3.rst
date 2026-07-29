@@ -19,6 +19,20 @@ SYNOPSIS
                                  void *src, pmix_data_type_t type);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # the source is a Python value dictionary, or an info dictionary if it
+  # carries a 'key' - the data type is deduced from its shape
+  rc, string = foo.data_print("VALUE: ", {'value': 42, 'val_type': PMIX_INT32})
+
+
 INPUT PARAMETERS
 ----------------
 

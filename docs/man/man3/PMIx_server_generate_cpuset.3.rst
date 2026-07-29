@@ -23,7 +23,14 @@ SYNOPSIS
 Python Syntax
 ^^^^^^^^^^^^^
 
-No Python equivalent
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxServer()
+  # ... after a successful foo.init() ...
+  rc, pycpus = foo.generate_cpuset("hwloc:0-3,8")
+  # pycpus is {'source': 'hwloc', 'cpus': [0, 1, 2, 3, 8]}
 
 
 INPUT PARAMETERS

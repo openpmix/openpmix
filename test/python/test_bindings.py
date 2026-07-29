@@ -199,6 +199,41 @@ class TestStringConverters(unittest.TestCase):
             name = name.decode("utf-8", "replace")
         self.assertIsInstance(name, str)
 
+    def test_value_comparison_string(self):
+        self._check(self.c.value_comparison_string(pmix.PMIX_EQUAL))
+        self._check(self.c.value_comparison_string(pmix.PMIX_VALUE1_GREATER))
+
+    def test_group_operation_string(self):
+        self._check(self.c.group_operation_string(pmix.PMIX_GROUP_CONSTRUCT))
+        self._check(self.c.group_operation_string(pmix.PMIX_GROUP_DESTRUCT))
+
+    def test_resource_block_directive_string(self):
+        self._check(self.c.resource_block_directive_string(
+            pmix.PMIX_RESOURCE_BLOCK_DEFINE))
+        self._check(self.c.resource_block_directive_string(
+            pmix.PMIX_RESOURCE_BLOCK_DELETE))
+
+    def test_alloc_inheritance_string(self):
+        self._check(self.c.alloc_inheritance_string(
+            pmix.PMIX_ALLOC_INHERIT_NONE))
+        self._check(self.c.alloc_inheritance_string(
+            pmix.PMIX_ALLOC_INHERIT_CHILD))
+
+    def test_error_code_is_inverse_of_error_string(self):
+        # error_code is the one converter that runs the other way
+        for code in (pmix.PMIX_SUCCESS, pmix.PMIX_ERR_NOT_SUPPORTED,
+                     pmix.PMIX_ERR_TIMEOUT, pmix.PMIX_ERR_BAD_PARAM):
+            name = self.c.error_string(code)
+            if isinstance(name, bytes):
+                name = name.decode("utf-8", "replace")
+            self.assertEqual(self.c.error_code(name), code,
+                             "error_code(%s) did not return %d" % (name, code))
+
+    def test_error_code_rejects_bad_input(self):
+        self.assertEqual(self.c.error_code(None), pmix.PMIX_ERR_BAD_PARAM)
+        # an unknown name is simply not found - it must not raise
+        self.assertIsInstance(self.c.error_code("NO_SUCH_STATUS_NAME"), int)
+
 
 class TestCpusetConverters(unittest.TestCase):
     """The cpuset dict <-> string converters. These are pure Python helpers
@@ -325,6 +360,197 @@ class TestMethodBinding(unittest.TestCase):
         for name in names:
             meth = getattr(pmix.PMIxServer, name, None)
             self.assertIsNotNone(meth, "PMIxServer.%s missing" % name)
+
+
+class TestNewlyBoundAPIs(unittest.TestCase):
+    """The client/server APIs bound to close the gaps in MISSING_BINDINGS.md
+    sections 1.2, 1.3, 1.5 and 1.6.
+
+    Without a server none of these can complete, but each one converts its
+    arguments before handing them to the library and has to release what it
+    converted when the library refuses the request (PMIX_ERR_INIT) - the
+    same error-path cleanup the non-blocking group tests below cover.  The
+    binding's own validation (PMIX_ERR_BAD_PARAM) is fully testable here.
+    """
+
+    def setUp(self):
+        self.c = pmix.PMIxClient()
+        self.s = pmix.PMIxServer()
+
+    def test_methods_present(self):
+        for name in ("heartbeat", "progress_thread_stop", "resource_block",
+                     "error_code", "value_comparison_string",
+                     "group_operation_string",
+                     "resource_block_directive_string",
+                     "alloc_inheritance_string", "data_print"):
+            self.assertTrue(hasattr(pmix.PMIxClient, name),
+                            "PMIxClient.%s missing" % name)
+        for name in ("generate_regex2", "parse_regex2", "generate_cpuset",
+                     "collect_job_info"):
+            self.assertTrue(hasattr(pmix.PMIxServer, name),
+                            "PMIxServer.%s missing" % name)
+
+    def test_methods_have_self(self):
+        # a cdef class method declared without an explicit self shifts its
+        # arguments and raises TypeError when called on an instance
+        import inspect
+        cases = [(pmix.PMIxClient, n) for n in
+                 ("heartbeat", "progress_thread_stop", "resource_block",
+                  "error_code", "data_print")]
+        cases += [(pmix.PMIxServer, n) for n in
+                  ("generate_regex2", "parse_regex2", "generate_cpuset",
+                   "collect_job_info")]
+        for cls, name in cases:
+            meth = getattr(cls, name)
+            try:
+                params = list(inspect.signature(meth).parameters)
+            except (TypeError, ValueError):
+                continue
+            self.assertEqual(params[0], "self",
+                             "%s does not declare self first" % name)
+
+    def test_heartbeat_before_init(self):
+        # nothing to send to yet, but it must neither raise nor crash
+        self.assertEqual(self.c.heartbeat(), pmix.PMIX_SUCCESS)
+
+    def test_progress_thread_stop_before_init(self):
+        # no progress thread has been started, so this is a no-op - it must
+        # not hang or crash on the unbuilt tracking list
+        self.assertEqual(self.c.progress_thread_stop([]), pmix.PMIX_SUCCESS)
+        self.assertEqual(
+            self.c.progress_thread_stop(
+                [{'key': pmix.PMIX_PROGRESS_THREAD_FLUSH, 'value': True,
+                  'val_type': pmix.PMIX_BOOL}]),
+            pmix.PMIX_SUCCESS)
+
+    def test_resource_block_validates_block_name(self):
+        rc = self.c.resource_block(pmix.PMIX_RESOURCE_BLOCK_DEFINE, None,
+                                   [], [])
+        self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+
+    def test_resource_block_before_init(self):
+        # repeat enough times that a leak or double free in the unit/info
+        # conversion would be obvious
+        units = [{'type': pmix.PMIX_DEVTYPE_GPU, 'count': 4},
+                 {'type': pmix.PMIX_DEVTYPE_NETWORK, 'count': 1}]
+        info = [{'key': pmix.PMIX_TIMEOUT, 'value': 10,
+                 'val_type': pmix.PMIX_INT}]
+        for _ in range(64):
+            rc = self.c.resource_block(pmix.PMIX_RESOURCE_BLOCK_DEFINE,
+                                       "myblock", units, info)
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+        # a missing unit list is legal - the directive may not need one
+        self.assertEqual(
+            self.c.resource_block(pmix.PMIX_RESOURCE_BLOCK_DELETE, "myblock",
+                                  None, None),
+            pmix.PMIX_ERR_INIT)
+
+    def test_resource_block_rejects_bad_units(self):
+        for bad in ([{'type': "gpu", 'count': 1}],
+                    [{'type': pmix.PMIX_DEVTYPE_GPU, 'count': "many"}],
+                    ["not-a-dict"]):
+            rc = self.c.resource_block(pmix.PMIX_RESOURCE_BLOCK_DEFINE,
+                                       "myblock", bad, [])
+            self.assertIn(rc, (pmix.PMIX_ERR_BAD_PARAM,
+                               pmix.PMIX_ERR_TYPE_MISMATCH),
+                          "bad resource unit returned %d" % rc)
+
+    def test_data_print_validates_input(self):
+        rc, txt = self.c.data_print(None, "not-a-dict")
+        self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+        self.assertIsNone(txt)
+        # only a value or an info can be built from a Python dict
+        rc, txt = self.c.data_print(None, {'value': 1,
+                                           'val_type': pmix.PMIX_INT},
+                                    pmix.PMIX_PROC)
+        self.assertEqual(rc, pmix.PMIX_ERR_NOT_SUPPORTED)
+        # PMIX_INFO was asked for but there is no key to build it from
+        rc, txt = self.c.data_print(None, {'value': 1,
+                                           'val_type': pmix.PMIX_INT},
+                                    pmix.PMIX_INFO)
+        self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+
+    def test_data_print_before_init(self):
+        # the library refuses before init; the conversion still has to run
+        # and be released
+        for _ in range(64):
+            rc, txt = self.c.data_print("X: ", {'value': 'hello',
+                                                'val_type': pmix.PMIX_STRING})
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+            rc, txt = self.c.data_print(None, {'key': pmix.PMIX_UNIV_SIZE,
+                                               'value': 16,
+                                               'val_type': pmix.PMIX_UINT32})
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+
+    def test_generate_regex2_validates_input(self):
+        rc, rgx = self.s.generate_regex2(None)
+        self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+        self.assertIsNone(rgx)
+
+    def test_generate_regex2_before_init(self):
+        for _ in range(64):
+            rc, rgx = self.s.generate_regex2(["n1", "n2", "n3"])
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+
+    def test_parse_regex2_validates_input(self):
+        # not a dict, no type, and no bytes are all bad input - and each
+        # must be reported rather than reaching the library
+        for bad in (None, "notadict", {}, {'type': 'raw'},
+                    {'bytes': b'n1,n2'}):
+            rc, names = self.s.parse_regex2(bad)
+            self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM,
+                             "parse_regex2(%s) returned %d" % (bad, rc))
+            self.assertEqual(names, [])
+
+    def test_parse_regex2_before_init(self):
+        rgx = {'type': 'raw', 'bytes': b'n1,n2,n3'}
+        for _ in range(64):
+            rc, names = self.s.parse_regex2(rgx)
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+            self.assertEqual(names, [])
+        # an explicit length shorter than the buffer is honored, and one
+        # longer than it is clamped rather than read past the end
+        for ln in (0, 3, 8, 99):
+            rc, names = self.s.parse_regex2({'type': 'raw',
+                                             'bytes': b'n1,n2,n3', 'len': ln})
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+
+    def test_generate_cpuset_validates_input(self):
+        rc, cpus = self.s.generate_cpuset(None)
+        self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(cpus, {})
+
+    def test_generate_cpuset_before_init(self):
+        rc, cpus = self.s.generate_cpuset("hwloc:0-3,8")
+        self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+
+    def test_collect_job_info_requires_procs(self):
+        # with no procs there is no job to collect, and the library would
+        # walk a NULL namespace list
+        for bad in (None, []):
+            rc, blob = self.s.collect_job_info(bad)
+            self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+            self.assertEqual(blob['size'], 0)
+            self.assertEqual(blob['bytes'], b'')
+
+    def test_collect_job_info_before_init(self):
+        procs = [{'nspace': "testnspace", 'rank': 0},
+                 {'nspace': "testnspace", 'rank': 1}]
+        for _ in range(64):
+            rc, blob = self.s.collect_job_info(procs)
+            self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+            self.assertEqual(blob['size'], 0)
+
+    def test_scheduler_role_operations(self):
+        # section 1.5: the scheduler drives resource blocks and sessions
+        # through what it inherits - both must be reachable on the class
+        sched = pmix.PMIxScheduler()
+        self.assertTrue(hasattr(sched, "resource_block"))
+        self.assertTrue(hasattr(sched, "session_control"))
+        self.assertEqual(
+            sched.resource_block(pmix.PMIX_RESOURCE_BLOCK_DEFINE, None,
+                                 [], []),
+            pmix.PMIX_ERR_BAD_PARAM)
 
 
 class TestGroupNonBlocking(unittest.TestCase):

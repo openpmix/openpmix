@@ -24,7 +24,16 @@ SYNOPSIS
 Python Syntax
 ^^^^^^^^^^^^^
 
-No Python equivalent
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxServer()
+  # ... after a successful foo.init() ...
+  # the input may be a list of values or an already comma-delimited string
+  # the directives are a list of Python ``pmix_info_t`` dictionaries
+  rc, regex = foo.generate_regex2(["node001", "node002", "node003"], [])
+  # regex is {'type': str, 'bytes': bytes, 'len': int}
 
 
 INPUT PARAMETERS

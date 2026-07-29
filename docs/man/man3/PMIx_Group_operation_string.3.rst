@@ -19,6 +19,17 @@ SYNOPSIS
    const char* PMIx_Group_operation_string(pmix_group_operation_t op);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  string = foo.group_operation_string(PMIX_GROUP_CONSTRUCT)
+
+
 INPUT PARAMETERS
 ----------------
 

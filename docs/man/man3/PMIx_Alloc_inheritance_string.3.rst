@@ -19,6 +19,17 @@ SYNOPSIS
    const char* PMIx_Alloc_inheritance_string(pmix_alloc_inheritance_t inheritance);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  string = foo.alloc_inheritance_string(PMIX_ALLOC_INHERIT_CHILD)
+
+
 INPUT PARAMETERS
 ----------------
 
