@@ -7,6 +7,19 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Implemented the Python cpuset bindings, which had been stubs that
+   returned PMIX_ERR_NOT_SUPPORTED no matter what they were passed:
+   parse_cpuset_string, generate_cpuset_string and
+   generate_locality_string now do real work. They rest on a new
+   conversion layer that represents a cpuset as the dict
+   {'source': str, 'cpus': [int, ...]} and translates it to and from the
+   library's "<source>:<range-list>" string form. get_cpuset, which had
+   returned the provider name as undecoded bytes and left the source
+   prefix embedded in the first CPU entry, now returns that same dict,
+   and compute_distances - which expected a cpuset shape no other method
+   produced - accepts it. Both also stop leaking the cpuset and the info
+   array, and the device-distance array is now released by the library
+   that allocated it rather than by Python's allocator
  - Added Python bindings for the non-blocking group operations -
    group_construct_nb, group_invite_nb, group_join_nb, group_leave_nb
    and group_destruct_nb. Each takes a Python callback that is executed

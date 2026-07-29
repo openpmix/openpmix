@@ -140,6 +140,129 @@ cdef void pmix_convert_locality(pmix_locality_t loc, pyloc:list):
         pyloc.append(PMIX_LOCALITY_NONLOCAL)
     return
 
+# The Python representation of a pmix_cpuset_t is a dict of the form
+#
+#     {'source': str, 'cpus': [int, int, ...]}
+#
+# where 'source' names the provider that generated the bitmap (the library
+# currently only supports "hwloc") and 'cpus' is the list of CPU indices in
+# the set. The bitmap itself is an opaque provider object that Python cannot
+# construct, so every crossing goes through the library's string form,
+# "<source>:<range-list>" - e.g. "hwloc:0-3,8". The two converters below
+# translate between that string and the dict. They are deliberately plain
+# module-level functions rather than cdef helpers so the range expansion,
+# which is where the interesting logic lives, can be unit tested without a
+# server.
+
+# Expand a cpuset string into the Python cpuset dict. Returns None if the
+# string is not of the expected "<source>:<range-list>" form.
+def pmix_cpuset_from_string(csetstr):
+    if isinstance(csetstr, bytes):
+        csetstr = csetstr.decode('ascii')
+    if not isinstance(csetstr, str):
+        return None
+    # the source is everything ahead of the first ':' delimiter
+    source, sep, ranges = csetstr.partition(':')
+    if '' == sep:
+        # no delimiter - not a cpuset string
+        return None
+    cpus = []
+    for token in ranges.split(','):
+        token = token.strip()
+        if '' == token:
+            continue
+        if '-' in token:
+            lo, _, hi = token.partition('-')
+            try:
+                start = int(lo)
+                end = int(hi)
+            except ValueError:
+                return None
+            if end < start:
+                return None
+            cpus.extend(range(start, end + 1))
+        else:
+            try:
+                cpus.append(int(token))
+            except ValueError:
+                return None
+    return {'source': source, 'cpus': cpus}
+
+# Render a Python cpuset dict into the library's cpuset string. The 'cpus'
+# entry may be a list of indices, a list of range tokens ('0-3'), or an
+# already-formatted range list string - callers have used all three. A
+# missing 'source' defaults to the only provider the library implements.
+# Returns None if the dict cannot be interpreted.
+def pmix_cpuset_to_string(pycpus):
+    if not isinstance(pycpus, dict):
+        return None
+    source = pycpus.get('source', 'hwloc')
+    if isinstance(source, bytes):
+        source = source.decode('ascii')
+    if not isinstance(source, str) or '' == source:
+        return None
+    cpus = pycpus.get('cpus', [])
+    if isinstance(cpus, bytes):
+        cpus = cpus.decode('ascii')
+    if isinstance(cpus, str):
+        # already a formatted range list
+        ranges = cpus
+    else:
+        try:
+            tokens = [x.decode('ascii') if isinstance(x, bytes) else str(x) for x in cpus]
+        except TypeError:
+            return None
+        ranges = ','.join(tokens)
+    return source + ':' + ranges
+
+# Build a pmix_cpuset_t from the Python dict. The caller owns the result
+# and must release it with pmix_destruct_cpuset once the library is done
+# with it. On any failure the cpuset is left empty and safe to destruct.
+cdef int pmix_load_cpuset(pmix_cpuset_t *cpuset, pycpus):
+    PMIx_Cpuset_construct(cpuset)
+    csetstr = pmix_cpuset_to_string(pycpus)
+    if csetstr is None:
+        return PMIX_ERR_BAD_PARAM
+    pycset = csetstr.encode('ascii')
+    return PMIx_Parse_cpuset_string(pycset, cpuset)
+
+# Convert a pmix_cpuset_t into the Python dict, filling in pycpus. The
+# library renders the bitmap for us and hands back a malloc'd string that
+# we own.
+cdef int pmix_unload_cpuset(const pmix_cpuset_t *cpuset, pycpus:dict):
+    cdef char *csetstr = NULL
+
+    # the library's renderer reads the source without checking it, so do
+    # not hand it a cpuset that carries a bitmap but no provider name
+    if NULL == cpuset[0].source:
+        pycpus['source'] = ''
+        pycpus['cpus'] = []
+        return PMIX_SUCCESS
+    rc = PMIx_server_generate_cpuset_string(cpuset, &csetstr)
+    if PMIX_SUCCESS != rc:
+        return rc
+    if NULL == csetstr:
+        # an unbound process has no cpus in its set
+        pycpus['source'] = ''
+        pycpus['cpus'] = []
+        return PMIX_SUCCESS
+    txt = csetstr.decode('ascii')
+    free(csetstr)
+    converted = pmix_cpuset_from_string(txt)
+    if converted is None:
+        return PMIX_ERR_BAD_PARAM
+    pycpus['source'] = converted['source']
+    pycpus['cpus'] = converted['cpus']
+    return PMIX_SUCCESS
+
+# Release the contents of a cpuset built by pmix_load_cpuset or returned
+# by the library. Both the source string and the provider bitmap belong to
+# the library, so hand them back to it rather than freeing them here. The
+# library's destructor tolerates NULL fields, so this is safe to call on a
+# cpuset whose construction failed partway through.
+cdef void pmix_destruct_cpuset(pmix_cpuset_t *cpuset):
+    PMIx_Cpuset_destruct(cpuset)
+
 cdef void pmix_unload_argv(char **keys, argv:list):
     n = 0
     while NULL != keys[n]:

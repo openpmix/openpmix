@@ -311,8 +311,9 @@ case.
 ## 8. Defects found and fixed, and gotchas
 
 A deep review (2026-07) found ~22 real bugs in the conversion and method
-code; all but one (see below) were fixed in the same pass. The full catalogue
-— with file/line, severity, and what was wrong — is retained in
+code; all were fixed, most in one pass and the cpuset stubs in a follow-on
+that had to build the conversion layer they depended on (§8a). The full
+catalogue — with file/line, severity, and what was wrong — is retained in
 [`MISSING_BINDINGS.md`](MISSING_BINDINGS.md) (§Defects) as history and as a
 map of the fragile spots. The patterns that caused them are worth
 internalizing so they are not reintroduced:
@@ -341,14 +342,46 @@ internalizing so they are not reintroduced:
 - **`setmodulefn`'s `permitted` list and `server_module_init`'s wiring names
   must stay in lockstep** (§4b).
 
-The one **not** fixed is a genuine unimplemented feature, not a bug:
-`PMIxScheduler.assign_session` and `PMIxServer.generate_cpuset_string` /
-`generate_locality_string` are honest stubs that return
-`PMIX_ERR_NOT_SUPPORTED` because the underlying capability isn't wired to a C
-entry point yet. They are tracked in [`MISSING_BINDINGS.md`](MISSING_BINDINGS.md).
+The one remaining stub is a genuine unimplemented feature, not a bug:
+`PMIxScheduler.assign_session` returns `PMIX_ERR_NOT_SUPPORTED` because the
+C library exposes no entry point for it yet. It is tracked in
+[`MISSING_BINDINGS.md`](MISSING_BINDINGS.md).
 
 Do **not** work around a defect by weakening a test — fix the code (see the
 top-level guidance on never bending a test to a bug).
+
+### 8a. Cpuset conversion
+
+A `pmix_cpuset_t` carries an opaque provider bitmap that Python cannot build,
+so **every crossing goes through the library's string form**,
+`"<source>:<range-list>"` — e.g. `"hwloc:0-3,8"`. The Python side is a dict:
+
+```python
+{'source': 'hwloc', 'cpus': [0, 1, 2, 3, 8]}
+```
+
+`pmix.pxi` provides the layer: `pmix_cpuset_from_string` /
+`pmix_cpuset_to_string` (plain module-level `def`s, so the range expansion is
+unit-testable with no server), plus `pmix_load_cpuset` /
+`pmix_unload_cpuset` / `pmix_destruct_cpuset` for the C boundary. Use them
+rather than hand-rolling a conversion — the methods that predated the layer
+each invented a different, mutually incompatible shape.
+
+Two things to respect when touching this code:
+
+- **A cpuset the bindings build must be destructed.** `pmix_load_cpuset`
+  produces a library-owned `source` string and provider bitmap.
+  `PMIx_Parse_cpuset_string` can also allocate *before* it rejects a
+  malformed range, so construct up front and destruct unconditionally on
+  every path, not just the success path.
+- **The library allocates the strings it hands back** (`pmix_asprintf`), so
+  decode and then `free()` them. Do not `strdup` a `char *` into a dict: the
+  copy leaks and Cython silently stores it as `bytes`, not `str`.
+
+Note that `get_cpuset` and `compute_distances` cannot be verified on macOS —
+it has no CPU-binding API for `hwloc_get_cpubind`, so they return
+`PMIX_ERR_NOT_FOUND` / `PMIX_ERR_UNREACH` regardless of the bindings. Test
+those two on Linux.
 
 ### Style / conventions specific to these bindings
 

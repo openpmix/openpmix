@@ -200,6 +200,108 @@ class TestStringConverters(unittest.TestCase):
         self.assertIsInstance(name, str)
 
 
+class TestCpusetConverters(unittest.TestCase):
+    """The cpuset dict <-> string converters. These are pure Python helpers
+    exposed at module scope precisely so the range expansion - the only part
+    with real logic - can be covered without a server."""
+
+    def test_from_string_range(self):
+        self.assertEqual(pmix.pmix_cpuset_from_string("hwloc:0-3,8"),
+                         {"source": "hwloc", "cpus": [0, 1, 2, 3, 8]})
+
+    def test_from_string_single(self):
+        self.assertEqual(pmix.pmix_cpuset_from_string("hwloc:5"),
+                         {"source": "hwloc", "cpus": [5]})
+
+    def test_from_string_empty_set(self):
+        self.assertEqual(pmix.pmix_cpuset_from_string("hwloc:"),
+                         {"source": "hwloc", "cpus": []})
+
+    def test_from_string_accepts_bytes(self):
+        self.assertEqual(pmix.pmix_cpuset_from_string(b"hwloc:1,2"),
+                         {"source": "hwloc", "cpus": [1, 2]})
+
+    def test_from_string_rejects_missing_delimiter(self):
+        self.assertIsNone(pmix.pmix_cpuset_from_string("nodelimiter"))
+
+    def test_from_string_rejects_reversed_range(self):
+        self.assertIsNone(pmix.pmix_cpuset_from_string("hwloc:5-2"))
+
+    def test_from_string_rejects_non_numeric(self):
+        self.assertIsNone(pmix.pmix_cpuset_from_string("hwloc:a-b"))
+        self.assertIsNone(pmix.pmix_cpuset_from_string("hwloc:zero"))
+
+    def test_from_string_rejects_non_string(self):
+        self.assertIsNone(pmix.pmix_cpuset_from_string(None))
+        self.assertIsNone(pmix.pmix_cpuset_from_string(17))
+
+    def test_to_string_from_indices(self):
+        self.assertEqual(
+            pmix.pmix_cpuset_to_string({"source": "hwloc", "cpus": [0, 1, 2, 8]}),
+            "hwloc:0,1,2,8")
+
+    def test_to_string_from_range_tokens(self):
+        self.assertEqual(
+            pmix.pmix_cpuset_to_string({"source": "hwloc", "cpus": ["0-3", "8"]}),
+            "hwloc:0-3,8")
+
+    def test_to_string_from_preformatted(self):
+        self.assertEqual(
+            pmix.pmix_cpuset_to_string({"source": "hwloc", "cpus": "0-3,8"}),
+            "hwloc:0-3,8")
+
+    def test_to_string_defaults_source(self):
+        self.assertEqual(pmix.pmix_cpuset_to_string({"cpus": [1]}), "hwloc:1")
+
+    def test_to_string_rejects_non_dict(self):
+        self.assertIsNone(pmix.pmix_cpuset_to_string("notadict"))
+        self.assertIsNone(pmix.pmix_cpuset_to_string(None))
+
+    def test_to_string_rejects_empty_source(self):
+        self.assertIsNone(pmix.pmix_cpuset_to_string({"source": "", "cpus": [0]}))
+
+    def test_roundtrip(self):
+        cpus = {"source": "hwloc", "cpus": [0, 1, 2, 8]}
+        self.assertEqual(
+            pmix.pmix_cpuset_from_string(pmix.pmix_cpuset_to_string(cpus)), cpus)
+
+
+class TestCpusetMethods(unittest.TestCase):
+    """The cpuset methods were once unconditional PMIX_ERR_NOT_SUPPORTED
+    stubs. They now do real work, so before init() they must report a status
+    that reflects the actual attempt - never NOT_SUPPORTED."""
+
+    def setUp(self):
+        self.s = pmix.PMIxServer()
+
+    def test_methods_present(self):
+        for name in ("parse_cpuset_string", "get_cpuset", "compute_distances",
+                     "generate_cpuset_string", "generate_locality_string"):
+            self.assertTrue(hasattr(pmix.PMIxServer, name),
+                            "PMIxServer.%s missing" % name)
+
+    def test_bad_input_is_bad_param(self):
+        # These reach the binding's own validation before any C call, so they
+        # are meaningful with no init().
+        rc, val = self.s.parse_cpuset_string(None)
+        self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+        rc, val = self.s.generate_cpuset_string(None)
+        self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+        self.assertIsNone(val)
+        rc, val = self.s.generate_cpuset_string({"source": "", "cpus": [0]})
+        self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+
+    def test_no_longer_stubbed(self):
+        # A well-formed cpuset must get past the binding and into the library,
+        # which - not being initialized - reports PMIX_ERR_INIT. The old stubs
+        # returned PMIX_ERR_NOT_SUPPORTED no matter what was passed.
+        good = {"source": "hwloc", "cpus": [0, 1]}
+        rc, val = self.s.generate_cpuset_string(good)
+        self.assertNotEqual(rc, pmix.PMIX_ERR_NOT_SUPPORTED)
+        rc, val = self.s.parse_cpuset_string("hwloc:0-1")
+        self.assertNotEqual(rc, pmix.PMIX_ERR_NOT_SUPPORTED)
+
+
 class TestMethodBinding(unittest.TestCase):
     """Regression tests for methods that were previously unusable because they
     were declared without a `self` parameter (or were truncated). These reach
