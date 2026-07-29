@@ -5609,8 +5609,10 @@ cdef class PMIxTool(PMIxServer):
 #     processes make, by registering a 'resourceblock' handler in the
 #     server module map it passes to set_server_module.
 #   * session control - likewise serviced through the 'sessioncontrol'
-#     module key, while the scheduler's own directives to a session go
-#     out through the inherited session_control method.
+#     module key, while the scheduler's own directives to a session -
+#     including assigning a session to the RTE - go out through the
+#     inherited session_control method (PMIx_Session_control). There is
+#     no separate session-assignment method, and none should be added.
 cdef class PMIxScheduler(PMIxTool):
     def __cinit__(self):
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
@@ -5657,23 +5659,4 @@ cdef class PMIxScheduler(PMIxTool):
         # finalize
         rc = PMIx_tool_finalize()
         return rc
-
-    # direct the RTE to instantiate a session
-    def assign_session(self, sessionID:int, allocID:str, ilist, applist:list):
-        cdef pmix_info_t *info
-        cdef pmix_info_t **info_ptr
-        cdef size_t sz
-        # convert the info list
-        info_ptr = &info
-        rc = pmix_alloc_info(info_ptr, &sz, ilist)
-        if PMIX_SUCCESS != rc:
-            return rc
-        # NOTE: the PMIx library does not yet expose a C entry point that lets
-        # a scheduler directly instantiate a session from an application list.
-        # When one is added, this method must convert applist and invoke it.
-        # Until then, release what we converted and report the gap rather than
-        # silently returning None. See MISSING_BINDINGS.md.
-        if 0 < sz:
-            pmix_free_info(info, sz)
-        return PMIX_ERR_NOT_SUPPORTED
 

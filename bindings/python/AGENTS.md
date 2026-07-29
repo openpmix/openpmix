@@ -404,18 +404,21 @@ internalizing so they are not reintroduced:
   `PMIxTool.set_server_module` built its module struct, returned
   `PMIX_SUCCESS`, and never handed it to `libpmix`, so a tool's handlers
   were silently never invoked. When adding or reviewing a method, check
-  that it actually reaches a `PMIx_*` entry point; the only two that
-  legitimately do not are `server_module_init` (internal wiring) and
-  `PMIxScheduler.assign_session` (no C entry point exists).
+  that it actually reaches a `PMIx_*` entry point; the only one that
+  legitimately does not is `server_module_init` (internal wiring).
 - **Bytes are unsigned.** Reading a payload through a `char *` yields
   negative values for anything at or above `0x80`, and `bytearray()`
   rejects the list. `pmix_unload_bytes` casts to `unsigned char *` for
   that reason — anything new that walks a raw buffer must too.
-
-The one remaining stub is a genuine unimplemented feature, not a bug:
-`PMIxScheduler.assign_session` returns `PMIX_ERR_NOT_SUPPORTED` because the
-C library exposes no entry point for it yet. It is tracked in
-[`MISSING_BINDINGS.md`](MISSING_BINDINGS.md).
+- **Don't invent a method for something that is an attribute.** PMIx
+  extends its APIs through attributes, not new entry points, and the
+  bindings must not paper over that with methods the library does not
+  have. `PMIxScheduler` briefly carried an `assign_session` method; it
+  was removed, because assigning a session to the RTE is a directive
+  passed to the inherited `session_control` (`PMIx_Session_control`),
+  not an API of its own. If a method you are about to add has no
+  `PMIx_*` entry point behind it, that is the signal to look for the
+  attribute that already covers it.
 
 Do **not** work around a defect by weakening a test — fix the code (see the
 top-level guidance on never bending a test to a bug).

@@ -342,13 +342,6 @@ class TestMethodBinding(unittest.TestCase):
     were declared without a `self` parameter (or were truncated). These reach
     an early return before any C call, so they run with no server."""
 
-    def test_assign_session_is_bound_and_complete(self):
-        # Previously truncated (returned None) and missing self. It must now
-        # accept its four args and return a real status.
-        sched = pmix.PMIxScheduler()
-        rc = sched.assign_session(0, "alloc-0", [], [])
-        self.assertEqual(rc, pmix.PMIX_ERR_NOT_SUPPORTED)
-
     def test_server_methods_have_self(self):
         # Every method that was missing self must now declare it as the first
         # parameter. Verify via signature introspection where possible.
@@ -547,6 +540,9 @@ class TestNewlyBoundAPIs(unittest.TestCase):
         sched = pmix.PMIxScheduler()
         self.assertTrue(hasattr(sched, "resource_block"))
         self.assertTrue(hasattr(sched, "session_control"))
+        # assigning a session to the RTE is a session_control directive -
+        # there must be no separate method for it
+        self.assertFalse(hasattr(sched, "assign_session"))
         self.assertEqual(
             sched.resource_block(pmix.PMIX_RESOURCE_BLOCK_DEFINE, None,
                                  [], []),
