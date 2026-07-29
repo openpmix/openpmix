@@ -1771,7 +1771,11 @@ cdef int pmix_load_info(pmix_info_t *array, dicts:list):
 #            defined as such:
 #            [{key:y, value:val, val_type:ty}, … ]
 #
-cdef int pmix_alloc_info(pmix_info_t **info_ptr, size_t *ninfo, dicts:list):
+# Note: 'dicts' is deliberately left unannotated. Cython treats a
+# parameter annotation as a type declaration that rejects None, and
+# callers are explicitly allowed to pass None to mean "no attributes" -
+# the branch below depends on it
+cdef int pmix_alloc_info(pmix_info_t **info_ptr, size_t *ninfo, dicts):
     # Convert any provided dictionary to an array of pmix_info_t
     if dicts is not None:
         ninfo[0] = len(dicts)
