@@ -83,30 +83,24 @@ def main():
     if PMIX_SUCCESS == rc and isinstance(loc, str):
         # Two localities from the same cpuset must share everything.
         #
-        # KNOWN LIBRARY DEFECT -- this check currently FAILS, and that is the
-        # point of having it.  pmix.h documents PMIx_Get_relative_locality's
-        # arguments as "String returned by the PMIx_server_generate_locality_string
-        # API", but the generator emits a bare "SK0:CR0:HT0" while
-        # pmix_hwloc_get_relative_locality requires an "hwloc:" prefix and
-        # otherwise returns PMIX_ERR_TAKE_NEXT_OPTION (-1366).  So the
-        # documented usage yields no locality at all.  PRRTE stores the
-        # generator's output verbatim as PMIX_LOCALITY_STRING, so every
-        # consumer of that attribute hits this.
-        #
-        # Do NOT "fix" this by prepending the prefix here -- that would hide
-        # the defect.  See README.md, "Known failing check".
+        # This is the regression test for the defect this harness found: the
+        # generator emits a bare "SK0:CR0:HT0", but the comparison routine used
+        # to require an "hwloc:" prefix and returned PMIX_ERR_TAKE_NEXT_OPTION
+        # without it -- so the usage pmix.h documents ("String returned by the
+        # PMIx_server_generate_locality_string API") produced no locality at
+        # all, and every consumer of PMIX_LOCALITY_STRING, which is stored as
+        # exactly this string, saw unrelated processes.  Feed the consumer the
+        # producer's real output; do not substitute a literal of your own.
         rc2, loc2 = srv.generate_locality_string({'source': 'hwloc', 'cpus': [0]})
         if PMIX_SUCCESS == rc2:
             rc3, bits = srv.get_relative_locality(loc, loc2)
             check("get_relative_locality accepts generate_locality_string output",
                   PMIX_SUCCESS == rc3 and isinstance(bits, list) and len(bits) > 0,
-                  "rc=%d bits=%s -- KNOWN DEFECT, see README" % (rc3, bits))
-            # the same comparison works once the prefix is supplied by hand,
-            # which is what pins the diagnosis on the missing prefix
+                  "rc=%d bits=%s" % (rc3, bits))
+            # both spellings must agree
             rc4, bits4 = srv.get_relative_locality("hwloc:" + loc, "hwloc:" + loc2)
-            check("get_relative_locality works when 'hwloc:' is prepended",
-                  PMIX_SUCCESS == rc4 and isinstance(bits4, list) and len(bits4) > 0,
-                  bits4)
+            check("get_relative_locality: bare and 'hwloc:'-prefixed agree",
+                  PMIX_SUCCESS == rc4 and bits4 == bits, "%s vs %s" % (bits4, bits))
 
     # --- malformed input must be reported, not crash ----------------------
     #
