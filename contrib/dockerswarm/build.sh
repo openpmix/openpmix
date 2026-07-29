@@ -106,13 +106,30 @@ build_linux() {
             echo ">>>> PMIx from bind-mounted /pmix-src -> /opt/prte/pmix"
             mkdir -p /opt/prte/vpath-pmix && cd /opt/prte/vpath-pmix
             [ -f config.status ] || /pmix-src/configure --prefix=/opt/prte/pmix --enable-debug
-            make -j"$jobs" && make install
+            # NOTE: deliberately two statements, not "make && make install".
+            # set -e does NOT fire for a failing command in a non-final
+            # position of an && list, so the old form swallowed a build
+            # failure and went on to report success with a stale install.
+            make -j"$jobs"
+            make install
 
             echo ">>>> PRRTE (baked master) VPATH build -> /opt/prte/prte"
             mkdir -p /opt/prte/vpath-prte && cd /opt/prte/vpath-prte
+            # A rebuilt image re-clones PRRTE, so a build directory left by an
+            # older image is stale: its Makefiles carry the previous clone`s
+            # timestamps and maintainer mode then tries to regenerate the build
+            # system with whatever aclocal/automake version the image happens to
+            # have, which fails on the unexpanded OAC macros. Start over
+            # whenever the baked source is newer than this build directory.
+            if [ -f config.status ] && [ /src/prrte/configure -nt config.status ]; then
+                echo "   (baked PRRTE source is newer -- reconfiguring from scratch)"
+                cd / && rm -rf /opt/prte/vpath-prte && mkdir -p /opt/prte/vpath-prte
+                cd /opt/prte/vpath-prte
+            fi
             [ -f config.status ] || /src/prrte/configure \
                 --prefix=/opt/prte/prte --with-pmix=/opt/prte/pmix --enable-debug
-            make -j"$jobs" && make install
+            make -j"$jobs"
+            make install
 
             echo ">>>> group example clients -> /opt/prte/tests"
             mkdir -p /opt/prte/tests
