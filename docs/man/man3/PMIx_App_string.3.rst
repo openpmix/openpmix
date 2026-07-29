@@ -18,6 +18,19 @@ SYNOPSIS
    char* PMIx_App_string(const pmix_app_t *app);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # the app is a Python ``pmix_app_t`` dictionary, as spawn() takes
+  pyapp = {'cmd': "hello", 'argv': ["hello", "world"],
+           'maxprocs': 4, 'info': []}
+  rc, txt = foo.app_string(pyapp)
+
 INPUT PARAMETERS
 ----------------
 

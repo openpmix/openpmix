@@ -19,6 +19,19 @@ SYNOPSIS
                                 pmix_data_type_t type);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # the source is a value or info dictionary; the type is deduced from
+  # the presence of a 'key'
+  rc, copy = foo.data_copy({'value': 42, 'val_type': PMIX_INT32})
+
 INPUT PARAMETERS
 ----------------
 

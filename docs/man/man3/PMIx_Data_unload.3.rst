@@ -20,6 +20,19 @@ SYNOPSIS
                                   pmix_byte_object_t *payload);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # the buffer is emptied, and its unread payload handed back as a
+  # Python ``pmix_byte_object_t`` dictionary
+  rc, payload = foo.data_unload(buf)
+
 INPUT PARAMETERS
 ----------------
 

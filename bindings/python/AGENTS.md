@@ -96,6 +96,8 @@ field names, so the mapping is mechanical:
 {'bytes': b'...', 'size': 12}                     # pmix_byte_object_t
 {'type': 'raw', 'bytes': b'n1,n2', 'len': 6}      # pmix_regex2_t
 {'type': PMIX_DEVTYPE_GPU, 'count': 4}            # pmix_resource_unit_t
+{'bytes': b'...', 'bytes_used': 43,               # pmix_data_buffer_t
+ 'bytes_unpacked': 22}                            #   (§8b)
 ```
 
 The regex2 `bytes` are *not* necessarily NUL-terminated, which is why the
@@ -392,12 +394,23 @@ internalizing so they are not reintroduced:
 - **Binding an API exposes it to callers a C program never produced.** A
   Python script can call any method the moment it constructs the class,
   and the natural first thing a test does is call it before `init()`.
-  Three C entry points had no `pmix_globals.initialized` guard and
+  Four C entry points had no `pmix_globals.initialized` guard and
   crashed or hung on that path the first time they were bound (see
-  MISSING_BINDINGS.md §1.8). When you bind a new API, call it before
-  `init()` and with empty/None arguments *before* you call it for real —
-  and fix the guard in the C library rather than papering over it in the
-  binding.
+  MISSING_BINDINGS.md §1.8 and §1.12). When you bind a new API, call it
+  before `init()` and with empty/None arguments *before* you call it for
+  real — and fix the guard in the C library rather than papering over it
+  in the binding.
+- **A method that never calls the library is worse than a missing one.**
+  `PMIxTool.set_server_module` built its module struct, returned
+  `PMIX_SUCCESS`, and never handed it to `libpmix`, so a tool's handlers
+  were silently never invoked. When adding or reviewing a method, check
+  that it actually reaches a `PMIx_*` entry point; the only two that
+  legitimately do not are `server_module_init` (internal wiring) and
+  `PMIxScheduler.assign_session` (no C entry point exists).
+- **Bytes are unsigned.** Reading a payload through a `char *` yields
+  negative values for anything at or above `0x80`, and `bytearray()`
+  rejects the list. `pmix_unload_bytes` casts to `unsigned char *` for
+  that reason — anything new that walks a raw buffer must too.
 
 The one remaining stub is a genuine unimplemented feature, not a bug:
 `PMIxScheduler.assign_session` returns `PMIX_ERR_NOT_SUPPORTED` because the
@@ -439,6 +452,40 @@ Note that `get_cpuset` and `compute_distances` cannot be verified on macOS —
 it has no CPU-binding API for `hwloc_get_cpubind`, so they return
 `PMIX_ERR_NOT_FOUND` / `PMIX_ERR_UNREACH` regardless of the bindings. Test
 those two on Linux.
+
+### 8b. Data-buffer conversion
+
+A `pmix_data_buffer_t` holds three raw pointers into one allocation plus
+two sizes. Only two of those five fields mean anything on the Python side —
+the payload, and how far the unpack cursor has advanced through it — so a
+Python data buffer is the dict
+
+```python
+{'bytes': b'...', 'bytes_used': 43, 'bytes_unpacked': 22}
+```
+
+and `pmix_load_dbuf` / `pmix_unload_dbuf` / `pmix_destruct_dbuf` in
+`pmix.pxi` rebuild the pointers from those offsets on each crossing.
+`bytes_used` is redundant with `len(bytes)`; the loader trusts the payload,
+not the count.
+
+Three things to respect:
+
+- **There is no buffer object to create or release.** The dict *is* the
+  buffer and the C storage lives only for the duration of a call, which is
+  why `PMIx_Data_buffer_create`/`_release` are not bound. `data_pack` and
+  friends take the dict, build a C buffer, call the library, write the
+  state back, and destruct.
+- **Do not reach for `PMIx_Data_buffer_load`.** It routes through
+  `PMIx_Data_load`, which refuses to run before `PMIx_Init` *and discards
+  its status*, so a pre-init caller would silently get an empty buffer.
+  `pmix_load_dbuf` sets `base_ptr`/`pack_ptr`/`unpack_ptr` itself.
+- **The payload must come from `malloc`** — the library's buffer destructor
+  frees it with the C allocator.
+
+`data_unload` is the one method whose semantics differ from a plain "give
+me the bytes": the library hands back only the portion that has *not* been
+unpacked, and consumes the buffer in the process.
 
 ### Style / conventions specific to these bindings
 

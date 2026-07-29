@@ -18,6 +18,18 @@ SYNOPSIS
    char* PMIx_Resource_unit_string(const pmix_resource_unit_t *unit);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # the unit is a Python ``pmix_resource_unit_t`` dictionary
+  pyunit = {'type': PMIX_DEVTYPE_GPU, 'count': 4}
+  rc, txt = foo.resource_unit_string(pyunit)
+
 INPUT PARAMETERS
 ----------------
 

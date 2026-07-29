@@ -7,6 +7,46 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Fixed PMIxTool.set_server_module in the Python bindings, which built
+   its server-function module and returned PMIX_SUCCESS without ever
+   handing it to the library - so a Python tool acting as a server had
+   the handlers it registered silently never invoked. It now calls
+   PMIx_tool_set_server_module and reports what the library says
+ - PMIx_tool_set_server_module no longer segfaults when called before
+   PMIx_tool_init. It marks the caller's peer as a server, and there is
+   no peer until the library has been initialized; it now returns
+   PMIX_ERR_INIT, and rejects a NULL module
+ - Fixed a segmentation fault in PMIx_tool_finalize for any tool that
+   became a server after initializing. PMIx_tool_init opens the
+   fork/exec framework only for a launcher or a scheduler, but the
+   finalize path tore it down for a launcher or a *server* - and a plain
+   tool becomes a server precisely by calling
+   PMIx_tool_set_server_module. Finalize then walked a children list
+   that was never constructed. The framework now records whether it was
+   opened, its close is a no-op if it was not, and finalize checks that
+   rather than the peer type
+ - Added Python bindings for the five struct pretty-printers -
+   info_string, value_string, proc_string, app_string and
+   resource_unit_string. These render a whole struct the way the library
+   itself does, which a Python program cannot reproduce by printing a
+   dict, and each has its own man page; they had been swept out of scope
+   by a prefix rule aimed at the construct/free helper families
+ - Added Python bindings for the serialization APIs - data_pack,
+   data_unpack, data_copy, data_copy_payload, data_load, data_unload,
+   data_embed, data_compress and data_decompress. A data buffer crosses
+   as the dict {'bytes': ..., 'bytes_used': n, 'bytes_unpacked': m},
+   mirroring the fields of a pmix_data_buffer_t that mean anything on
+   the Python side; the three raw pointers the struct also carries are
+   rebuilt from those offsets on each call. There is no buffer object to
+   create or release, and because the whole state is a payload plus an
+   offset, a buffer can be stored or sent somewhere as ordinary bytes
+   and picked up again
+ - Fixed the Python conversion layer returning signed bytes. Payloads
+   were read through a char pointer, which is signed on most platforms,
+   so any byte at or above 0x80 arrived as a negative number and
+   bytearray() rejected the whole buffer with "byte must be in
+   range(0, 256)". Every non-ASCII payload hit this - credentials,
+   forwarded I/O, a packed buffer
  - Completed the Python bindings for the non-blocking APIs. The twenty
    remaining _nb entry points - fence_nb, get_nb, publish_nb, lookup_nb,
    unpublish_nb, spawn_nb, connect_nb, disconnect_nb, query_nb, log_nb,

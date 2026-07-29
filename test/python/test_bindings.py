@@ -789,6 +789,149 @@ class TestClientNonBlocking(unittest.TestCase):
                          pmix.PMIX_ERR_INIT)
 
 
+class TestStructPrinters(unittest.TestCase):
+    """The struct pretty-printers.
+
+    Unlike the *_string converters, which translate one enumerated value,
+    these render a whole struct.  They touch no library state, so - like the
+    converters - they are fully testable without a server.
+    """
+
+    VALUE = {'value': 42, 'val_type': pmix.PMIX_INT32}
+    INFO = {'key': "pmix.job.size", 'value': 4, 'val_type': pmix.PMIX_UINT32}
+    PROC = {'nspace': "testnspace", 'rank': 3}
+    APP = {'cmd': "/bin/true", 'argv': ["true", "-x"], 'env': ["FOO=bar"],
+           'maxprocs': 2, 'info': []}
+    UNIT = {'type': pmix.PMIX_DEVTYPE_GPU, 'count': 4}
+
+    #: name, argument, a substring the rendering must contain
+    CASES = (
+        ("value_string", VALUE, "42"),
+        ("info_string", INFO, "pmix.job.size"),
+        ("proc_string", PROC, "testnspace"),
+        ("app_string", APP, "/bin/true"),
+        ("resource_unit_string", UNIT, "4"),
+    )
+
+    def setUp(self):
+        self.client = pmix.PMIxClient()
+
+    def test_renders_the_struct(self):
+        for name, arg, needle in self.CASES:
+            rc, txt = getattr(self.client, name)(arg)
+            self.assertEqual(rc, pmix.PMIX_SUCCESS, "%s returned %s" % (name, rc))
+            self.assertIsInstance(txt, str, "%s did not return a str" % name)
+            self.assertIn(needle, txt, "%s rendered %r" % (name, txt))
+
+    def test_rejects_non_dict(self):
+        for name, _, _ in self.CASES:
+            for bad in (None, "not-a-dict", 7, []):
+                rc, txt = getattr(self.client, name)(bad)
+                self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM,
+                                 "%s accepted %r" % (name, bad))
+                self.assertIsNone(txt)
+
+    def test_info_requires_a_key(self):
+        # an info without a key is a value, not an info
+        rc, txt = self.client.info_string({'value': 1,
+                                           'val_type': pmix.PMIX_INT32})
+        self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+        self.assertIsNone(txt)
+
+    def test_repeated_calls_are_stable(self):
+        # each of these builds a struct, renders it, and has to release
+        # both the struct and the string the library allocated
+        for _ in range(200):
+            for name, arg, _ in self.CASES:
+                rc, txt = getattr(self.client, name)(arg)
+                self.assertEqual(rc, pmix.PMIX_SUCCESS)
+
+
+class TestDataBindings(unittest.TestCase):
+    """The serialization family.
+
+    A Python data buffer is a dict, so these need no C object to be created
+    or released - but every one of them does need an initialized library, so
+    without a server all that can be checked here is that they marshal their
+    arguments, refuse cleanly, and release what they built.  The round trip
+    itself is exercised in server.py, which has a live library.
+    """
+
+    VALUE = {'value': 42, 'val_type': pmix.PMIX_INT32}
+    INFO = {'key': "pmix.job.size", 'value': 4, 'val_type': pmix.PMIX_UINT32}
+    BUF = {'bytes': b"abcd", 'bytes_used': 4, 'bytes_unpacked': 0}
+    PAYLOAD = {'bytes': b"payload", 'size': 7}
+
+    def setUp(self):
+        self.client = pmix.PMIxClient()
+
+    def test_methods_present(self):
+        for name in ("data_pack", "data_unpack", "data_copy",
+                     "data_copy_payload", "data_load", "data_unload",
+                     "data_embed", "data_compress", "data_decompress"):
+            self.assertTrue(hasattr(pmix.PMIxClient, name),
+                            "PMIxClient.%s missing" % name)
+
+    def test_error_before_init(self):
+        # the library refuses every one of these until it is initialized;
+        # what matters is that they report it rather than crashing
+        self.assertEqual(self.client.data_pack(None, self.VALUE)[0],
+                         pmix.PMIX_ERR_INIT)
+        self.assertEqual(self.client.data_pack(dict(self.BUF), self.INFO)[0],
+                         pmix.PMIX_ERR_INIT)
+        self.assertEqual(self.client.data_unpack(dict(self.BUF))[0],
+                         pmix.PMIX_ERR_INIT)
+        self.assertEqual(self.client.data_copy(self.VALUE)[0],
+                         pmix.PMIX_ERR_INIT)
+        self.assertEqual(
+            self.client.data_copy_payload(None, dict(self.BUF))[0],
+            pmix.PMIX_ERR_INIT)
+        self.assertEqual(self.client.data_unload(dict(self.BUF))[0],
+                         pmix.PMIX_ERR_INIT)
+        self.assertEqual(self.client.data_load(None, self.PAYLOAD)[0],
+                         pmix.PMIX_ERR_INIT)
+        self.assertEqual(self.client.data_embed(None, self.PAYLOAD)[0],
+                         pmix.PMIX_ERR_INIT)
+
+    def test_bad_arguments_rejected(self):
+        # arguments the binding polices itself, before the library is asked
+        self.assertEqual(self.client.data_pack(None, None)[0],
+                         pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(self.client.data_pack("not-a-buffer", self.VALUE)[0],
+                         pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(
+            self.client.data_pack(None, self.VALUE, pmix.PMIX_PROC)[0],
+            pmix.PMIX_ERR_NOT_SUPPORTED)
+        self.assertEqual(self.client.data_unpack(None)[0],
+                         pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(
+            self.client.data_unpack(dict(self.BUF), pmix.PMIX_PROC)[0],
+            pmix.PMIX_ERR_NOT_SUPPORTED)
+        self.assertEqual(self.client.data_copy(None)[0],
+                         pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(self.client.data_unload(None)[0],
+                         pmix.PMIX_ERR_BAD_PARAM)
+        for bad in (None, b""):
+            self.assertEqual(self.client.data_compress(bad)[0],
+                             pmix.PMIX_ERR_BAD_PARAM)
+            self.assertEqual(self.client.data_decompress(bad)[0],
+                             pmix.PMIX_ERR_BAD_PARAM)
+
+    def test_buffer_dict_is_not_corrupted(self):
+        # a refused call must leave the caller's buffer readable
+        buf = dict(self.BUF)
+        self.client.data_pack(buf, self.VALUE)
+        self.assertEqual(buf['bytes'], b"abcd")
+        self.assertEqual(buf['bytes_unpacked'], 0)
+
+    def test_repeated_calls_are_stable(self):
+        for _ in range(200):
+            self.client.data_pack(dict(self.BUF), self.VALUE)
+            self.client.data_unpack(dict(self.BUF), pmix.PMIX_VALUE)
+            self.client.data_load(None, self.PAYLOAD)
+            self.client.data_embed(None, self.PAYLOAD)
+
+
 class TestToolServerModule(unittest.TestCase):
     """PMIxTool.set_server_module.
 

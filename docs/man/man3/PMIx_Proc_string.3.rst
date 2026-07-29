@@ -18,6 +18,18 @@ SYNOPSIS
    char* PMIx_Proc_string(const pmix_proc_t *proc);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # the proc is a Python ``pmix_proc_t`` dictionary
+  pyproc = {'nspace': "testnspace", 'rank': 0}
+  rc, txt = foo.proc_string(pyproc)
+
 INPUT PARAMETERS
 ----------------
 

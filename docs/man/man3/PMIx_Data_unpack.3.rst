@@ -22,6 +22,23 @@ SYNOPSIS
                                   pmix_data_type_t type);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # a Python data buffer is a dict mirroring the fields of a
+  # pmix_data_buffer_t that mean anything on this side - the payload,
+  # and how far the unpack cursor has advanced through it. There is
+  # nothing to create or release: the dict is the buffer
+  # the buffer is updated in place, so successive calls walk the payload
+  rc, value = foo.data_unpack(buf, PMIX_VALUE)
+  rc, info = foo.data_unpack(buf, PMIX_INFO)
+
 INPUT PARAMETERS
 ----------------
 

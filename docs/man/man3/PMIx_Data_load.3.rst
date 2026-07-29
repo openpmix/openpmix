@@ -20,6 +20,19 @@ SYNOPSIS
                                 pmix_byte_object_t *payload);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # the payload is a Python ``pmix_byte_object_t`` dictionary
+  payload = {'bytes': b'...', 'size': 5}
+  rc, buf = foo.data_load(None, payload)
+
 INPUT PARAMETERS
 ----------------
 
