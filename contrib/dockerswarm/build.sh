@@ -62,6 +62,14 @@ GROUP_EXAMPLES="group group_bootstrap group_dmodex group_lcl_cid asyncgroup mult
 EVENT_EXAMPLES="group_invite group_invite_timeout group_invite_decline group_invite_abort group_destruct_die group_construct_abort group_daemon_fail"
 BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die group_leave $EVENT_EXAMPLES"
 
+# The Python bindings are built with PMIx (--enable-python-bindings) and staged,
+# together with the maintained test scripts from test/python and the swarm's own
+# Python clients, into /opt/prte/tests-python.  Driven by run-python.sh.  This is
+# the only place the bindings get exercised on Linux and across real nodes: the
+# in-tree `make check` suite is single-host, and several cpuset/topology methods
+# cannot run on macOS at all (no CPU-binding API behind hwloc_get_cpubind).
+PYTHON_BINDINGS="${PYTHON_BINDINGS:-yes}"
+
 mode="${1:-linux}"
 
 # --- make the source tree VPATH-ready (idempotent) --------------------------
@@ -100,12 +108,26 @@ build_linux() {
         -v "$root":/pmix-src:ro \
         -v "$VOLUME":/opt/prte \
         -e BUILD_EXAMPLES="$BUILD_EXAMPLES" \
+        -e PYTHON_BINDINGS="$PYTHON_BINDINGS" \
         "$IMAGE" bash -euo pipefail -c '
             jobs=$(nproc)
 
+            pyopt=""
+            [ "$PYTHON_BINDINGS" = yes ] && pyopt="--enable-python-bindings"
+
             echo ">>>> PMIx from bind-mounted /pmix-src -> /opt/prte/pmix"
             mkdir -p /opt/prte/vpath-pmix && cd /opt/prte/vpath-pmix
-            [ -f config.status ] || /pmix-src/configure --prefix=/opt/prte/pmix --enable-debug
+            # Reconfigure when the build directory was configured with a
+            # different set of options than we want now -- otherwise flipping
+            # PYTHON_BINDINGS would be silently ignored, since the guard below
+            # only asks whether *a* configure has ever run here.
+            if [ -f config.status ] && ! ./config.status --config 2>/dev/null | grep -qF -- "${pyopt:-__none__}"; then
+                if [ -n "$pyopt" ] || ./config.status --config 2>/dev/null | grep -q -- --enable-python-bindings; then
+                    echo "   (configure options changed -- reconfiguring)"
+                    rm -f config.status
+                fi
+            fi
+            [ -f config.status ] || /pmix-src/configure --prefix=/opt/prte/pmix --enable-debug $pyopt
             # NOTE: deliberately two statements, not "make && make install".
             # set -e does NOT fire for a failing command in a non-final
             # position of an && list, so the old form swallowed a build
@@ -141,8 +163,33 @@ build_linux() {
                 && echo "   built $ex" || echo "   FAILED to build $ex"
             done
 
+            # Python bindings + their test scripts -> /opt/prte/tests-python
+            #
+            # The built extension is staged by copying rather than by pointing
+            # PYTHONPATH at the VPATH build directory: the nodes mount the
+            # volume read-only, and a single directory holding both pmix*.so and
+            # the scripts keeps the run-time environment to one PYTHONPATH entry.
+            # We do NOT use `make install` for this -- its install-exec-local
+            # runs `setup.py install`, which newer setuptools have removed.
+            if [ "$PYTHON_BINDINGS" = yes ]; then
+                echo ">>>> Python bindings + test scripts -> /opt/prte/tests-python"
+                rm -rf /opt/prte/tests-python
+                mkdir -p /opt/prte/tests-python
+                so=$(ls -d /opt/prte/vpath-pmix/bindings/python/build/lib.*/pmix*.so 2>/dev/null | head -1)
+                if [ -n "$so" ]; then
+                    cp "$so" /opt/prte/tests-python/
+                    # the maintained scripts, plus the swarm-specific clients
+                    cp /pmix-src/test/python/*.py /opt/prte/tests-python/ 2>/dev/null || true
+                    cp /pmix-src/contrib/dockerswarm/python/*.py /opt/prte/tests-python/ 2>/dev/null || true
+                    chmod +x /opt/prte/tests-python/*.py 2>/dev/null || true
+                    echo "   staged $(basename "$so") + $(ls /opt/prte/tests-python/*.py | wc -l) scripts"
+                else
+                    echo "   FAILED: no pmix*.so was built -- check the configure summary above"
+                fi
+            fi
+
             # runtime env for login shells (node-entrypoint handles ld.so)
-            printf "export PATH=/opt/prte/prte/bin:/opt/prte/tests:\$PATH\nexport LD_LIBRARY_PATH=/opt/prte/prte/lib:/opt/prte/pmix/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\n" \
+            printf "export PATH=/opt/prte/prte/bin:/opt/prte/tests:\$PATH\nexport LD_LIBRARY_PATH=/opt/prte/prte/lib:/opt/prte/pmix/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\nexport PYTHONPATH=/opt/prte/tests-python\${PYTHONPATH:+:\$PYTHONPATH}\n" \
                 > /opt/prte/env.sh
             echo ">>>> done: PMIx in /opt/prte/pmix, PRRTE in /opt/prte/prte, tests in /opt/prte/tests"
         '

@@ -27,6 +27,8 @@ is only the nickname.
 | `build.sh` | Builds PMIx from your **live** tree (VPATH) plus PRRTE master against it: into a shared volume for the Linux swarm, or natively for macOS. Start here. |
 | `run-tests.sh` | Runs the group **construction-method** example programs (plus the construct/connect loss and voluntary-leave cases) and reports PASS/FAIL: full multi-node suite on Linux, single-host subset on macOS. |
 | `run-group-events.sh` | Runs the **dynamic, event-driven** group exercisers and their fault paths (invite/join, member lost during destruct, ...); kept separate from `run-tests.sh` so the event/fault matrix can grow independently. Same `linux`/`macos` modes. |
+| `run-python.sh` | Runs the **Python bindings**: the standalone unit suite, the connected client/server round-trip, and Python PMIx clients spread across nodes. Same `linux`/`macos` modes. See §10. |
+| `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`) — launched by `prterun` as ordinary PMIx clients. |
 | `Dockerfile` | Base image: toolchain, PRRTE master *source* (autogen'd), SSH wiring, node entrypoint. It contains **no** PMIx and **no** built PRRTE. |
 | `docker-compose.yml` | The ten nodes `pmix-node1`..`pmix-node10`, each mounting the shared `pmix-build` volume. |
 
@@ -75,11 +77,13 @@ is only the nickname.
 docker compose up -d       # start pmix-node1 .. pmix-node10
 ./run-tests.sh linux       # multi-node group construction suite
 ./run-group-events.sh linux # dynamic invite/join + group fault paths
+./run-python.sh linux      # Python bindings: units, round-trip, multi-node
 
 # ---- native macOS (single host) ----
 ./build.sh macos           # native PMIx + PRRTE build under vpath-macos-*
 ./run-tests.sh macos       # single-host group smoke
 ./run-group-events.sh macos # single-host dynamic-group smoke
+./run-python.sh macos      # single-host bindings smoke (most checks SKIP)
 ```
 
 Rebuild after editing PMIx: rerun `./build.sh` (incremental). No image rebuild
@@ -159,6 +163,86 @@ done
 
 Network: bridge `dvm`. All nodes mount the shared `pmix-build` volume read-only
 at `/opt/prte`, where `build.sh` installs PMIx (`/opt/prte/pmix`), PRRTE
-(`/opt/prte/prte`), the group clients (`/opt/prte/tests`), and writes
-`/opt/prte/env.sh`. To add or remove nodes, copy or delete a service block in
-`docker-compose.yml` (and adjust the `seq 1 10` loops in `run-tests.sh`).
+(`/opt/prte/prte`), the group clients (`/opt/prte/tests`), the Python bindings
+and their scripts (`/opt/prte/tests-python`), and writes `/opt/prte/env.sh`. To
+add or remove nodes, copy or delete a service block in `docker-compose.yml`
+(and adjust the `seq 1 10` loops in `run-tests.sh`).
+
+---
+
+## 10. Python bindings
+
+`build.sh` configures PMIx with `--enable-python-bindings` and stages the built
+extension, the maintained scripts from [`test/python/`](../../test/python/), and
+the swarm's own clients from [`python/`](python/) into `/opt/prte/tests-python`.
+`env.sh` puts that directory on `PYTHONPATH`, so any node can just
+`import pmix`. Drive it with `./run-python.sh linux`.
+
+**Why here and not only in `make check`.** Two gaps this closes:
+
+- **Linux coverage.** The bindings are normally built only on a developer's
+  machine and in CI. This gives them a real Linux build (Ubuntu 24.04, distro
+  Cython) on every `./build.sh`.
+- **Real multi-node clients.** The in-tree `server.py`/`client.py` round-trip
+  runs a client and server in one process tree on one host, so every
+  `PMIx_Get` is answered out of the local datastore. Under the swarm, a rank's
+  peers sit behind a *different* `prted`, so a peer get is a genuine server
+  round trip and travels through the bindings' unload path.
+
+There is a third gap that only Linux can close: **several cpuset and topology
+methods cannot run on macOS at all.** Darwin exposes no CPU-binding API, so
+`hwloc_get_cpubind` fails and `get_cpuset` returns `PMIX_ERR_NOT_FOUND` while
+`compute_distances` returns `PMIX_ERR_UNREACH` regardless of what the bindings
+do. `swarm_client.py` exercises them for real here.
+
+| Script | What it covers |
+|--------|----------------|
+| `test_bindings.py` (from `test/python/`) | the standalone unit suite — import, class hierarchy, constants, the stateless `*_string` and cpuset converters |
+| `server.py` + `client.py` (from `test/python/`) | the connected round-trip; the only script driving the **server** bindings (`register_nspace`/`register_client`/`setup_fork`) and the upcall path |
+| `python/swarm_client.py` | multi-node client: `put`/`commit`/`fence`/`get` of every peer's data across nodes, then the client-role topology calls — `load_topology`, `get_cpuset`, `compute_distances`, `parse_cpuset_string`, `get_relative_locality` |
+| `python/swarm_cpuset.py` | the **server-role** cpuset calls against real hwloc — `generate_cpuset_string`, `generate_locality_string` — which a launched client rank cannot reach (they wrap `PMIx_server_generate_*`), plus their malformed-input guards. Runs standalone, no launcher |
+| `python/swarm_group.py` | multi-node groups from Python, both `group_construct`/`_destruct` and the non-blocking `_nb` forms whose callbacks run on the progress thread |
+
+Each swarm client prints one `PMIXPY <rank> <PASS|FAIL> <name>` line per check
+and a final `PMIXPY <rank> DONE <nfail>`; a client exits non-zero if any check
+on its rank failed.
+
+**The `DONE` line is load-bearing.** A client that dies partway — an
+exception, a segfault — simply stops printing, so a driver that counts only
+PASS/FAIL lines reports a clean run for a client that never finished. That is
+not hypothetical: it hid a `TypeError` in these very scripts. `run-python.sh`
+requires one `DONE` per expected rank. Keep that contract if you add a client.
+
+Build the bindings out with `PYTHON_BINDINGS=no ./build.sh` if you want a
+faster PMIx build and do not care about them.
+
+### Known failing check: locality-string round trip
+
+`swarm_cpuset.py` currently reports one failure, and it is a **real library
+defect this harness found**, not a harness problem. Do not silence it:
+
+- `PMIx_server_generate_locality_string` emits a bare string,
+  `SK0:L20:L10:CR0:HT0:NM0` — with no `hwloc:` prefix. PRRTE stores exactly
+  that as `PMIX_LOCALITY_STRING`.
+- `PMIx_Get_relative_locality` *requires* a `hwloc:` prefix
+  (`pmix_hwloc_get_relative_locality` checks it and otherwise returns
+  `PMIX_ERR_TAKE_NEXT_OPTION`).
+- But [`include/pmix.h`](../../include/pmix.h) documents that function's
+  arguments as *"String returned by the `PMIx_server_generate_locality_string`
+  API"*.
+
+So a caller following the documented contract gets `-1366`
+(`PMIX_ERR_TAKE_NEXT_OPTION`) and no locality bits at all. Prepending
+`hwloc:` by hand makes it return the correct sharing bits, which is how you
+can confirm the diagnosis. The in-tree unit test misses this because it uses
+hand-written `"hwloc:NM0:SK0:CR0:HT0"` literals rather than the generator's
+output.
+
+Either the generator should emit the prefix or the consumer should tolerate
+its absence; the latter is the compatible fix, since changing the emitted
+string changes what every existing host environment already stores.
+
+> **Note:** adding Python to the image changed the `Dockerfile`, so the first
+> run after picking this up needs `./build.sh image` (or any `./build.sh` on a
+> machine with no `pmix-swarm` image yet). That re-clones PRRTE and takes a
+> while; subsequent builds are incremental as before.
