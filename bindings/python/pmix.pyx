@@ -4943,6 +4943,12 @@ cdef class PMIxTool(PMIxServer):
 
     # Allow a tool to set server module callback functions
     # when it needs to also act as a server
+    # Provide the server function pointer module by which this tool will
+    # service requests from processes that connect to it
+    #
+    # @map [INPUT]
+    #      - a dictionary of server-module key to Python handler, as
+    #        PMIxServer.init takes
     def set_server_module(self, map):
         # setup server module
         if map is None or 0 == len(map):
@@ -4956,7 +4962,11 @@ cdef class PMIxTool(PMIxServer):
                 print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
                 return PMIX_ERR_INIT
         self.server_module_init(kvkeys)
-        return PMIX_SUCCESS
+        # wiring the trampolines into our own struct only prepares the
+        # module - the library has to be given it, or none of the
+        # handlers registered above is ever called
+        rc = PMIx_tool_set_server_module(&self.myserver)
+        return rc
 
 
     def iof_pull(self, pyprocs, iof_channel:int, pydirs, hdlr):
