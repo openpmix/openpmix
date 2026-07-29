@@ -146,6 +146,11 @@ static void _regcbfunc(int sd, short args, void *cbdata)
             pmix_list_remove_item(rb->list, &rb->hdlr->super);
             PMIX_RELEASE(rb->hdlr);
         }
+        /* our host rejected the request, so give back the interest
+         * we recorded on its behalf when we made it */
+        if (NULL != cd) {
+            pmix_server_deactivate_events(cd->codes, cd->ncodes);
+        }
         rc = PMIX_ERR_SERVER_FAILED_REQUEST;
         index = SIZE_MAX;
     }
@@ -245,7 +250,7 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
 {
     pmix_rshift_caddy_t *cd2;
     pmix_info_caddy_t *ixfer;
-    size_t n;
+    size_t n, nactive = 0;
     bool registered, need_register = false;
     pmix_active_code_t *active;
     pmix_status_t rc;
@@ -342,12 +347,18 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
     }
 
     /* if we are a server and are registering for events, then we only contact
-     * our host if we want environmental events */
+     * our host if we want environmental events - and then only for the codes
+     * it isn't already forwarding on behalf of a prior registrant, be that
+     * one of our local clients or ourselves. Those codes are sorted to the
+     * front of the array so we can hand the host just that subset */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)
         && cd->enviro && NULL != pmix_host_server.register_events) {
+        nactive = pmix_server_activate_events(cd->codes, cd->ncodes);
+    }
+    if (0 < nactive) {
         pmix_output_verbose(2, pmix_client_globals.event_output,
                             "pmix: _add_hdlr registering with server");
-        rc = pmix_host_server.register_events(cd->codes, cd->ncodes, cd2->info, cd2->ninfo,
+        rc = pmix_host_server.register_events(cd->codes, nactive, cd2->info, cd2->ninfo,
                                               reg_cbfunc, cd2);
         if (PMIX_SUCCESS == rc) {
             /* the host will call us back when the registration
@@ -360,15 +371,18 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
         }
         PMIX_RELEASE(cd2);
         if (PMIX_OPERATION_SUCCEEDED != rc) {
+            /* our host rejected the request, so give back the
+             * interest we just recorded on its behalf */
+            pmix_server_deactivate_events(cd->codes, cd->ncodes);
             return rc;
         }
         return PMIX_SUCCESS;
-    } else {
-        if (NULL != cd2->info) {
-            PMIX_INFO_FREE(cd2->info, cd2->ninfo);
-        }
-        PMIX_RELEASE(cd2);
     }
+
+    if (NULL != cd2->info) {
+        PMIX_INFO_FREE(cd2->info, cd2->ninfo);
+    }
+    PMIX_RELEASE(cd2);
 
     return PMIX_SUCCESS;
 }
@@ -979,6 +993,32 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
     return rc;
 }
 
+/* If we are a server that asked its host to forward the environmental
+ * codes this handler wanted, then release that interest - the host will
+ * be told to stop forwarding any code that no longer has a registrant,
+ * be that one of our local clients or ourselves. */
+static void release_enviro_codes(pmix_event_hdlr_t *ev)
+{
+    if (NULL == ev->codes) {
+        /* a default handler - nothing was ever registered with the host */
+        return;
+    }
+    if (PMIX_RANGE_PROC_LOCAL == ev->rng.range) {
+        /* this registration never left the process, so it never
+         * recorded an interest for us to give back */
+        return;
+    }
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        return;
+    }
+    if (NULL == pmix_host_server.register_events) {
+        /* we could not have registered these with the host */
+        return;
+    }
+    pmix_server_deactivate_events(ev->codes, ev->ncodes);
+}
+
 pmix_status_t pmix_deregister_event_hdlr(size_t event_hdlr_ref,
                                          pmix_buffer_t *msg)
 {
@@ -1040,6 +1080,7 @@ pmix_status_t pmix_deregister_event_hdlr(size_t event_hdlr_ref,
         } else {
             pmix_globals.events.last = NULL;
         }
+        release_enviro_codes(ev);
         PMIX_RELEASE(ev);
         return PMIX_SUCCESS;
     }
@@ -1088,6 +1129,7 @@ pmix_status_t pmix_deregister_event_hdlr(size_t event_hdlr_ref,
                     break;
                 }
             }
+            release_enviro_codes(evhdlr);
             PMIX_RELEASE(evhdlr);
             return PMIX_SUCCESS;
         }
@@ -1118,6 +1160,7 @@ pmix_status_t pmix_deregister_event_hdlr(size_t event_hdlr_ref,
                     }
                 }
             }
+            release_enviro_codes(evhdlr);
             PMIX_RELEASE(evhdlr);
             return PMIX_SUCCESS;
         }

@@ -904,6 +904,178 @@ static void regevopcbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
+/* the host is done processing our request to stop forwarding a code -
+ * all we carried across the up-call was the array of codes itself */
+static void deregevopcbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_status_t *codes = (pmix_status_t *) cbdata;
+
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
+    free(codes);
+}
+
+/* ask our host to stop forwarding the given event codes - takes
+ * ownership of the (malloc'd) codes array */
+static void stop_forwarding(pmix_status_t *codes, size_t ncodes)
+{
+    pmix_status_t rc;
+
+    if (NULL == pmix_host_server.deregister_events) {
+        free(codes);
+        return;
+    }
+    pmix_output_verbose(2, pmix_server_globals.event_output,
+                        "server deregister events: telling host to stop forwarding %lu code(s)",
+                        (unsigned long) ncodes);
+    rc = pmix_host_server.deregister_events(codes, ncodes, deregevopcbfunc, codes);
+    if (PMIX_SUCCESS != rc) {
+        /* the host either completed the operation itself or rejected
+         * it - either way, no callback is coming */
+        free(codes);
+    }
+}
+
+bool pmix_server_prune_reginfo(pmix_regevents_info_t *reginfo)
+{
+    pmix_status_t *codes;
+
+    if (0 < pmix_list_get_size(&reginfo->peers) || 0 < reginfo->nmine) {
+        /* somebody still wants this code */
+        return false;
+    }
+
+    pmix_list_remove_item(&pmix_server_globals.events, &reginfo->super);
+    if (reginfo->active) {
+        codes = (pmix_status_t *) malloc(sizeof(pmix_status_t));
+        if (NULL != codes) {
+            codes[0] = reginfo->code;
+            stop_forwarding(codes, 1);
+        }
+    }
+    PMIX_RELEASE(reginfo);
+    return true;
+}
+
+/* find the tracking object for the given code, creating it if necessary */
+static pmix_regevents_info_t *get_reginfo(pmix_status_t code)
+{
+    pmix_regevents_info_t *reginfo;
+
+    PMIX_LIST_FOREACH (reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
+        if (code == reginfo->code) {
+            return reginfo;
+        }
+    }
+    reginfo = PMIX_NEW(pmix_regevents_info_t);
+    if (NULL == reginfo) {
+        return NULL;
+    }
+    reginfo->code = code;
+    pmix_list_append(&pmix_server_globals.events, &reginfo->super);
+    return reginfo;
+}
+
+/* Mark the codes our host is not already forwarding, sorting them to
+ * the front of the array, and return their number. The array is treated
+ * as an unordered set by everything downstream, so the reordering only
+ * lets us hand the host the subset it needs to act upon. */
+static size_t mark_activations(pmix_status_t *codes, size_t ncodes)
+{
+    pmix_regevents_info_t *reginfo;
+    pmix_status_t tmp;
+    size_t n, nactive = 0;
+
+    for (n = 0; n < ncodes; n++) {
+        if (!PMIX_SYSTEM_EVENT(codes[n])) {
+            continue;
+        }
+        PMIX_LIST_FOREACH (reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
+            if (codes[n] != reginfo->code) {
+                continue;
+            }
+            if (!reginfo->active) {
+                reginfo->active = true;
+                tmp = codes[nactive];
+                codes[nactive] = codes[n];
+                codes[n] = tmp;
+                ++nactive;
+            }
+            break;
+        }
+    }
+    return nactive;
+}
+
+/* our host rejected the request, so it is not forwarding these codes
+ * after all - let the next registration ask it again */
+static void undo_activations(pmix_status_t *codes, size_t nactive)
+{
+    pmix_regevents_info_t *reginfo;
+    size_t n;
+
+    for (n = 0; n < nactive; n++) {
+        PMIX_LIST_FOREACH (reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
+            if (codes[n] == reginfo->code) {
+                reginfo->active = false;
+                break;
+            }
+        }
+    }
+}
+
+size_t pmix_server_activate_events(pmix_status_t *codes, size_t ncodes)
+{
+    pmix_regevents_info_t *reginfo;
+    size_t n;
+
+    if (NULL == codes) {
+        return 0;
+    }
+
+    /* record our own interest in each of the system codes */
+    for (n = 0; n < ncodes; n++) {
+        if (!PMIX_SYSTEM_EVENT(codes[n])) {
+            continue;
+        }
+        reginfo = get_reginfo(codes[n]);
+        if (NULL == reginfo) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            continue;
+        }
+        ++reginfo->nmine;
+    }
+
+    return mark_activations(codes, ncodes);
+}
+
+void pmix_server_deactivate_events(pmix_status_t *codes, size_t ncodes)
+{
+    pmix_regevents_info_t *reginfo, *regnext;
+    size_t n;
+
+    if (NULL == codes) {
+        return;
+    }
+
+    for (n = 0; n < ncodes; n++) {
+        if (!PMIX_SYSTEM_EVENT(codes[n])) {
+            continue;
+        }
+        PMIX_LIST_FOREACH_SAFE (reginfo, regnext, &pmix_server_globals.events,
+                                pmix_regevents_info_t) {
+            if (codes[n] != reginfo->code) {
+                continue;
+            }
+            if (0 < reginfo->nmine) {
+                --reginfo->nmine;
+            }
+            pmix_server_prune_reginfo(reginfo);
+            break;
+        }
+    }
+}
+
 pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
                                           pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -919,6 +1091,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
     bool found;
     pmix_proc_t *affected = NULL;
     size_t naffected = 0;
+    size_t nactive = 0;
 
     pmix_output_verbose(2, pmix_server_globals.event_output,
                         "recvd register events for peer %s:%d",
@@ -1088,8 +1261,16 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
     }
 
-    /* if they asked for enviro events, call the local server */
+    /* find the system codes in this request that our host is not
+     * already forwarding on behalf of another local registrant (or of
+     * ourselves) - those are the only ones we need to ask it about */
     if (enviro_events) {
+        nactive = mark_activations(codes, ncodes);
+    }
+
+    /* if they asked for enviro events our host isn't already sending
+     * us, then call the local server */
+    if (enviro_events && 0 < nactive) {
         /* if they don't support this, then we cannot do it */
         if (NULL == pmix_host_server.register_events) {
             rc = PMIX_ERR_NOT_SUPPORTED;
@@ -1099,6 +1280,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
          * host RM is done with them */
         scd = PMIX_NEW(pmix_setup_caddy_t);
         if (NULL == scd) {
+            undo_activations(codes, nactive);
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
@@ -1110,8 +1292,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         scd->ninfo = ninfo;
         scd->opcbfunc = cbfunc;
         scd->cbdata = cbdata;
+        /* only the codes needing activation were sorted to the front of
+         * the array, so that is all we hand the host - the caddy still
+         * carries the full array as the cached-event check needs it */
         if (PMIX_SUCCESS
-            == (rc = pmix_host_server.register_events(scd->codes, scd->ncodes, scd->info,
+            == (rc = pmix_host_server.register_events(scd->codes, nactive, scd->info,
                                                       scd->ninfo, regevopcbfunc, scd))) {
             /* the host will call us back when completed */
             pmix_output_verbose(
@@ -1159,6 +1344,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
             pmix_output_verbose(2, pmix_server_globals.event_output,
                                 "server register events: host server reg events returned rc =%d",
                                 rc);
+            undo_activations(codes, nactive);
             PMIX_RELEASE(scd);
             goto cleanup;
         }
@@ -1236,20 +1422,10 @@ void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t *buf)
                         break;
                     }
                 }
-                /* if all of the peers for this code are now gone, then remove it */
-                if (0 == pmix_list_get_size(&reginfo->peers)) {
-                    pmix_list_remove_item(&pmix_server_globals.events, &reginfo->super);
-                    /* NOTE: we intentionally do NOT call the host's
-                     * deregister_events here. The server does not
-                     * reference-count enviro/system event registrations against
-                     * the host, so it never tells the host to stop forwarding a
-                     * code - an event that continues to arrive with no matching
-                     * local handler is simply received and ignored by the
-                     * notification fan-out. Implementing the full
-                     * activate-on-first / deregister-on-last handshake with the
-                     * host is deferred - see openpmix/openpmix#4014. */
-                    PMIX_RELEASE(reginfo);
-                }
+                /* if nobody is left registered for this code - not the
+                 * server itself, nor any of our local clients - then
+                 * remove it and tell our host to stop forwarding it */
+                pmix_server_prune_reginfo(reginfo);
             }
         }
         cnt = 1;
@@ -3319,6 +3495,9 @@ PMIX_CLASS_INSTANCE(pmix_peer_events_info_t,
 static void regcon(pmix_regevents_info_t *p)
 {
     PMIX_CONSTRUCT(&p->peers, pmix_list_t);
+    p->code = PMIX_MAX_ERR_CONSTANT;
+    p->nmine = 0;
+    p->active = false;
 }
 static void regdes(pmix_regevents_info_t *p)
 {
