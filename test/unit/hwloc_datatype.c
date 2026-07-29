@@ -423,6 +423,65 @@ step2:
                 PMIx_Error_string(rc), (unsigned) loc);
     }
     report("relative locality: identical strings share hwthread", ok);
+
+    /* The bare, unprefixed form -- which is what
+     * PMIx_server_generate_locality_string actually emits and what a host
+     * environment stores as PMIX_LOCALITY_STRING. The literals above all
+     * carry an "hwloc:" prefix, which is exactly why this gap survived: the
+     * consumer demanded a prefix the producer never wrote, so the usage
+     * documented for PMIx_Get_relative_locality returned
+     * PMIX_ERR_TAKE_NEXT_OPTION and no locality at all. */
+    ok = 0;
+    rc = PMIx_Get_relative_locality("NM0:SK0:CR0:HT0", "NM0:SK0:CR0:HT1", &loc);
+    if (PMIX_SUCCESS == rc &&
+        (loc & PMIX_LOCALITY_SHARE_NUMA) && (loc & PMIX_LOCALITY_SHARE_PACKAGE) &&
+        (loc & PMIX_LOCALITY_SHARE_CORE) && !(loc & PMIX_LOCALITY_SHARE_HWTHREAD)) {
+        ok = 1;
+    } else {
+        fprintf(stdout, "    unprefixed locality rejected: rc=%s bits=0x%x\n",
+                PMIx_Error_string(rc), (unsigned) loc);
+    }
+    report("relative locality: unprefixed strings are accepted", ok);
+
+    /* both spellings must yield the same answer */
+    ok = 0;
+    {
+        pmix_locality_t bare = 0, pref = 0;
+        pmix_status_t rc1, rc2;
+        rc1 = PMIx_Get_relative_locality("SK0:L20:L10:CR1:HT1:NM0",
+                                         "SK0:L20:L10:CR0:HT0:NM0", &bare);
+        rc2 = PMIx_Get_relative_locality("hwloc:SK0:L20:L10:CR1:HT1:NM0",
+                                         "hwloc:SK0:L20:L10:CR0:HT0:NM0", &pref);
+        if (PMIX_SUCCESS == rc1 && PMIX_SUCCESS == rc2 && bare == pref && 0 != bare) {
+            ok = 1;
+        } else {
+            fprintf(stdout, "    bare=0x%x (%s) vs prefixed=0x%x (%s)\n",
+                    (unsigned) bare, PMIx_Error_string(rc1),
+                    (unsigned) pref, PMIx_Error_string(rc2));
+        }
+    }
+    report("relative locality: bare and prefixed agree", ok);
+
+    /* a string belonging to some other provider must still be passed along,
+     * not misparsed as one of ours */
+    ok = 0;
+    rc = PMIx_Get_relative_locality("someoneelse:NM0:SK0",
+                                    "someoneelse:NM0:SK0", &loc);
+    if (PMIX_ERR_TAKE_NEXT_OPTION == rc) {
+        ok = 1;
+    } else {
+        fprintf(stdout, "    foreign locality was not passed on: rc=%s\n",
+                PMIx_Error_string(rc));
+    }
+    report("relative locality: a foreign provider's string is passed on", ok);
+
+    /* and a NULL must be reported rather than dereferenced */
+    ok = 0;
+    rc = PMIx_Get_relative_locality(NULL, "NM0:SK0", &loc);
+    if (PMIX_SUCCESS != rc) {
+        ok = 1;
+    }
+    report("relative locality: NULL input is rejected, not dereferenced", ok);
 }
 
 /* ------------------------------------------------------------------ */

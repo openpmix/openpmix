@@ -28,7 +28,7 @@ is only the nickname.
 | `run-tests.sh` | Runs the group **construction-method** example programs (plus the construct/connect loss and voluntary-leave cases) and reports PASS/FAIL: full multi-node suite on Linux, single-host subset on macOS. |
 | `run-group-events.sh` | Runs the **dynamic, event-driven** group exercisers and their fault paths (invite/join, member lost during destruct, ...); kept separate from `run-tests.sh` so the event/fault matrix can grow independently. Same `linux`/`macos` modes. |
 | `run-python.sh` | Runs the **Python bindings**: the standalone unit suite, the connected client/server round-trip, and Python PMIx clients spread across nodes. Same `linux`/`macos` modes. See §10. |
-| `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`) — launched by `prterun` as ordinary PMIx clients. |
+| `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`). |
 | `Dockerfile` | Base image: toolchain, PRRTE master *source* (autogen'd), SSH wiring, node entrypoint. It contains **no** PMIx and **no** built PRRTE. |
 | `docker-compose.yml` | The ten nodes `pmix-node1`..`pmix-node10`, each mounting the shared `pmix-build` volume. |
 
@@ -216,31 +216,30 @@ requires one `DONE` per expected rank. Keep that contract if you add a client.
 Build the bindings out with `PYTHON_BINDINGS=no ./build.sh` if you want a
 faster PMIx build and do not care about them.
 
-### Known failing check: locality-string round trip
+### A defect this harness found
 
-`swarm_cpuset.py` currently reports one failure, and it is a **real library
-defect this harness found**, not a harness problem. Do not silence it:
+`swarm_cpuset.py` is where a real library defect surfaced, and the checks
+there are now its regression test:
 
 - `PMIx_server_generate_locality_string` emits a bare string,
   `SK0:L20:L10:CR0:HT0:NM0` — with no `hwloc:` prefix. PRRTE stores exactly
   that as `PMIX_LOCALITY_STRING`.
-- `PMIx_Get_relative_locality` *requires* a `hwloc:` prefix
-  (`pmix_hwloc_get_relative_locality` checks it and otherwise returns
-  `PMIX_ERR_TAKE_NEXT_OPTION`).
+- `PMIx_Get_relative_locality` *required* a `hwloc:` prefix and otherwise
+  returned `PMIX_ERR_TAKE_NEXT_OPTION`.
 - But [`include/pmix.h`](../../include/pmix.h) documents that function's
   arguments as *"String returned by the `PMIx_server_generate_locality_string`
   API"*.
 
-So a caller following the documented contract gets `-1366`
-(`PMIX_ERR_TAKE_NEXT_OPTION`) and no locality bits at all. Prepending
-`hwloc:` by hand makes it return the correct sharing bits, which is how you
-can confirm the diagnosis. The in-tree unit test misses this because it uses
-hand-written `"hwloc:NM0:SK0:CR0:HT0"` literals rather than the generator's
-output.
+So a caller following the documented contract got `-1366` and no locality
+bits at all — every consumer of `PMIX_LOCALITY_STRING` saw unrelated
+processes. Fixed by teaching the consumer to accept either spelling
+(`pmix_hwloc_locality_payload`); see `src/hwloc/AGENTS.md` item 8.
 
-Either the generator should emit the prefix or the consumer should tolerate
-its absence; the latter is the compatible fix, since changing the emitted
-string changes what every existing host environment already stores.
+The in-tree unit test had missed this for years because it used hand-written
+`"hwloc:NM0:SK0:CR0:HT0"` literals rather than the generator's output. That
+is the lesson worth keeping: **when testing a consumer, feed it the
+producer's real output.** The multi-node harness caught it because the
+Python clients do exactly that.
 
 > **Note:** adding Python to the image changed the `Dockerfile`, so the first
 > run after picking this up needs `./build.sh image` (or any `./build.sh` on a

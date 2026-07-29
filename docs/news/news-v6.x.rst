@@ -7,6 +7,17 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - PMIx_Get_relative_locality now accepts the strings that
+   PMIx_server_generate_locality_string actually produces. The generator
+   emits a bare "SK0:L20:CR0:HT0" and a host environment stores exactly
+   that as PMIX_LOCALITY_STRING, but the comparison routine required an
+   "hwloc:" prefix and otherwise returned PMIX_ERR_TAKE_NEXT_OPTION - so
+   the usage the header documents, passing it the generator's output,
+   reported no locality at all and every consumer of PMIX_LOCALITY_STRING
+   silently saw unrelated processes. Both spellings are now accepted, and
+   a string carrying some other provider's prefix is still passed along
+   rather than misparsed. A NULL locality is also now reported instead of
+   being dereferenced
  - Fixed a segmentation fault in PMIx_server_generate_cpuset_string and
    PMIx_server_generate_locality_string. Both compared the cpuset's
    source string with strncasecmp before checking it for NULL, so a host

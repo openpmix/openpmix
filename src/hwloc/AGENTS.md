@@ -90,10 +90,19 @@ matched by the 5-char `strncasecmp(..., "hwloc", 5)` test:
   shmem-adopted topologies (`pmix_asprintf(&source, "hwloc:%s",
   HWLOC_VERSION)`).
 
-`pmix_hwloc_generate_cpuset_string` and the locality strings prepend the
-`hwloc:` tag to the string form so the parse/relative-locality routines
-can re-check provenance from the string alone (`"hwloc:0-3"`, then
-locality tokens like `"NM0:SK0:CR2:HT5"`).
+`pmix_hwloc_generate_cpuset_string` prepends the `hwloc:` tag to its string
+form (`"hwloc:0-3"`) so `parse_cpuset_string` can re-check provenance from
+the string alone.
+
+**The locality strings do not.** `pmix_hwloc_generate_locality_string`
+returns bare tokens — `"NM0:SK0:CR2:HT5"`, no tag — and that is what a host
+environment stores as `PMIX_LOCALITY_STRING`. There is no room for one: the
+token separator is itself `:`, so a leading `hwloc:` is indistinguishable
+from a token unless you know to look for it. `get_relative_locality`
+therefore accepts *either* spelling and identifies an unprefixed string by
+its leading two-letter type code (`pmix_hwloc_locality_payload`). Requiring
+the tag is what broke the documented use of `PMIx_Get_relative_locality` —
+see item 8 below.
 
 ## Topology provenance model (`pmix_globals.topology`)
 
@@ -305,7 +314,26 @@ not lost and so a future refactor does not silently reintroduce them:
    (the `TAKE_NEXT_OPTION` path previously left the caller's pointer
    untouched). Covered by `test_cpuset_string_bad_source` in the unit test.
 
-Items 5, 6 and 7 were caught by the `hwloc_datatype` unit test
+8. **`get_relative_locality` demanded a prefix the generator never wrote**
+   — `pmix_hwloc_generate_locality_string` emits a bare
+   `SK0:L20:CR0:HT0` with no `hwloc:` tag, and a host environment stores
+   that verbatim as `PMIX_LOCALITY_STRING`. But
+   `pmix_hwloc_get_relative_locality` tested for an `hwloc:` prefix and
+   returned `PMIX_ERR_TAKE_NEXT_OPTION` without it — so the usage
+   [`include/pmix.h`](../../include/pmix.h) documents for
+   `PMIx_Get_relative_locality` ("String returned by the
+   `PMIx_server_generate_locality_string` API") yielded no locality at all,
+   and every consumer saw unrelated processes. It now accepts either
+   spelling via `pmix_hwloc_locality_payload`, which claims an unprefixed
+   string only when it starts with one of our type codes so another
+   provider's string is still passed on. That helper also NULL-checks, which
+   the old `strncasecmp` did not. Found by the dockerswarm Python harness
+   (`contrib/dockerswarm/run-python.sh`); the unit test had missed it for
+   years by using hand-written `"hwloc:NM0:SK0:CR0:HT0"` literals instead of
+   the generator's output — **when testing a consumer, feed it the
+   producer's real output, not a literal you wrote to match.**
+
+Items 5, 6, 7 and 8 were caught by the `hwloc_datatype` unit test
 ([`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c), wired
 into `make check`), which round-trips and prints topologies and cpusets
 through the public API. Extend it when you touch this directory.
