@@ -2253,10 +2253,17 @@ cdef int pmix_unload_procs(const pmix_proc_t *procs, size_t nprocs, peers:list):
 cdef void pmix_free_procs(pmix_proc_t *array, size_t sz):
     PyMem_Free(array)
 
+# Convert a raw byte buffer into a list of integers suitable for
+# bytearray(). Read it through an unsigned pointer: 'char' is signed on
+# most platforms, so any byte at or above 0x80 would otherwise arrive as
+# a negative number and bytearray() would reject the whole list with
+# "byte must be in range(0, 256)". Every payload that is not plain ASCII
+# hits this - credentials, IOF data, a packed buffer
 cdef void pmix_unload_bytes(char *data, size_t ndata, blist:list):
     cdef size_t n = 0
+    cdef unsigned char *udata = <unsigned char*>data
     while n < ndata:
-        blist.append(data[n])
+        blist.append(udata[n])
         n += 1
 
 cdef void pmix_free_apps(pmix_app_t *array, size_t sz):
