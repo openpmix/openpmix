@@ -18,6 +18,20 @@ SYNOPSIS
    void PMIx_Heartbeat(void);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # the C API returns void, so the binding reports PMIX_SUCCESS once the
+  # heartbeat has been handed to the library
+  rc = foo.heartbeat()
+
+
 DESCRIPTION
 -----------
 

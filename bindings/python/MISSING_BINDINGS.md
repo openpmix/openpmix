@@ -4,9 +4,10 @@ Tracking document for the PMIx Python bindings (`bindings/python/`). It has
 two parts:
 
 1. **Missing bindings** — real operational C APIs that have no Python method
-   yet, to be implemented in a later pass.
+   yet. The unique blocking APIs (§§1.2–1.6) have all been bound; what
+   remains is the `_nb` family in §1.1 and one deprecated tool API.
 2. **Defects** — bugs found in the *existing* bindings during the 2026-07 deep
-   review, to be fixed in a later pass.
+   review. All are fixed.
 
 Utility/struct-helper C APIs with no meaningful Python analogue are
 intentionally **out of scope** and are *not* listed as missing:
@@ -61,47 +62,95 @@ blocking form:
 - `PMIx_Compute_distances_nb`
 - `PMIx_Resource_block_nb`
 
-### 1.2 Client role (`PMIxClient`) — unique unbound APIs
+### 1.2 Client role (`PMIxClient`) — **CLOSED**
 
-| C API | Description |
-|-------|-------------|
-| `PMIx_Heartbeat` | Send a heartbeat to the server to feed process health/monitoring. No args. |
-| `PMIx_Progress_thread_stop` | Stop the internal progress thread (accepts directives, e.g. `PMIX_PROGRESS_THREAD_FLUSH`). |
-| `PMIx_Resource_block` | Request/manipulate a block of resources per a `pmix_resource_block_directive_t`. Scheduler-facing. (`_nb` form also unbound — see §1.1.) |
+| C API | Python method | Notes |
+|-------|---------------|-------|
+| `PMIx_Heartbeat` | `heartbeat(dicts=None)` | Fire-and-forget; returns `PMIX_SUCCESS` once handed to the library (the C API returns `void`). Takes an ignored attribute list so it can grow one. |
+| `PMIx_Progress_thread_stop` | `progress_thread_stop(dicts=None)` | Accepts `PMIX_PROGRESS_THREAD_FLUSH` / `PMIX_PROGRESS_THREAD_NAME`. Releases the GIL across the join. |
+| `PMIx_Resource_block` | `resource_block(directive, block, pyunits, pyinfo)` | `pyunits` is a list of resource-unit dicts, `{'type': PMIX_DEVTYPE_x, 'count': n}` — converted by `pmix_load_units`/`pmix_alloc_units` in `pmix.pxi`. Blocking, so the GIL is released across the call. The `_nb` form remains part of §1.1. |
 
-### 1.3 Server role (`PMIxServer`) — unbound APIs
+### 1.3 Server role (`PMIxServer`) — **CLOSED**
 
-| C API | Description |
-|-------|-------------|
-| `PMIx_generate_regex2` | Current regex generator producing a `pmix_regex2_t`. Only the **deprecated** `PMIx_generate_regex` is bound (as `generate_regex`). |
-| `PMIx_parse_regex2` | Parse a `pmix_regex2_t` back into its node/host list. Counterpart to `generate_regex2`. |
-| `PMIx_server_generate_cpuset` | Build a `pmix_cpuset_t` from a cpuset string. No *distinct* binding, but the capability is reachable: `parse_cpuset_string` performs the same conversion through the equivalent client entry point `PMIx_Parse_cpuset_string`, and the internal `pmix_load_cpuset` helper builds a `pmix_cpuset_t` from a Python dict for every method that needs one. Bind separately only if a caller needs the server-side entry point specifically. |
-| `PMIx_server_collect_job_info` | Collect job-level info for a set of procs, for packaging/forwarding to a remote server. |
+| C API | Python method | Notes |
+|-------|---------------|-------|
+| `PMIx_generate_regex2` | `generate_regex2(hosts, dicts=None)` | Returns `(rc, {'type': str, 'bytes': bytes, 'len': int})`. `hosts` may be a list or an already comma-delimited string. |
+| `PMIx_parse_regex2` | `parse_regex2(pyregex, dicts=None)` | Returns `(rc, [name, ...])`, the inverse of the above and order-preserving. |
+| `PMIx_server_generate_cpuset` | `generate_cpuset(csetstr)` | Returns the same cpuset dict as `PMIxClient.parse_cpuset_string`, through the server-side entry point. |
+| `PMIx_server_collect_job_info` | `collect_job_info(peers)` | Returns `(rc, {'bytes': bytes, 'size': int})`. An empty proc list is rejected with `PMIX_ERR_BAD_PARAM` — there is no job to collect. |
 
 ### 1.4 Tool role (`PMIxTool`)
 
 | C API | Description |
 |-------|-------------|
-| `PMIx_tool_connect_to_server` | **Deprecated**; superseded by `PMIx_tool_attach_to_server` (bound). Safe to leave unbound. |
+| `PMIx_tool_connect_to_server` | **Deprecated**; superseded by `PMIx_tool_attach_to_server` (bound). Deliberately left unbound. |
 
-### 1.5 Scheduler role (`PMIxScheduler`)
+### 1.5 Scheduler role (`PMIxScheduler`) — **CLOSED**
 
-The scheduler's core operation is `PMIx_Resource_block` /
-`PMIx_Resource_block_nb` (see §1.2) — unbound. `PMIx_Session_control` is
-bound, but on `PMIxServer`, not surfaced as a distinct scheduler method.
+Both scheduler-role operations are reachable, through what the class
+inherits rather than through methods of its own:
 
-### 1.6 Low-priority unbound string/utility converters
+- **Resource blocks.** `resource_block` is bound on `PMIxClient` (§1.2),
+  which is where it belongs: a process that *is* the scheduler gets
+  `PMIX_ERR_NOT_SUPPORTED` from the library, because there is no one
+  above it to ask. A scheduler **services** these requests by registering
+  a `'resourceblock'` handler in its server-module map.
+- **Session control.** Likewise serviced through the `'sessioncontrol'`
+  module key; the scheduler's own directives to a session go out through
+  the inherited `session_control` method.
 
-Non-operational pretty-printers; add only if a caller needs them:
-`PMIx_Error_code`, `PMIx_Group_operation_string`,
-`PMIx_Value_comparison_string`, `PMIx_Resource_block_directive_string`,
-`PMIx_Alloc_inheritance_string`, `PMIx_Data_print`.
+The class header comment in `pmix.pyx` records this so the next reader
+does not go looking for methods that should not exist.
+`PMIxScheduler.assign_session` remains a well-formed stub returning
+`PMIX_ERR_NOT_SUPPORTED` — the C library exposes no entry point for it.
+
+### 1.6 String/utility converters — **CLOSED**
+
+| C API | Python method |
+|-------|---------------|
+| `PMIx_Error_code` | `error_code(errname)` — the inverse of `error_string` |
+| `PMIx_Group_operation_string` | `group_operation_string(op)` |
+| `PMIx_Value_comparison_string` | `value_comparison_string(cmp)` |
+| `PMIx_Resource_block_directive_string` | `resource_block_directive_string(directive)` |
+| `PMIx_Alloc_inheritance_string` | `alloc_inheritance_string(inheritance)` |
+| `PMIx_Data_print` | `data_print(prefix, pysrc, data_type=None)` — returns `(rc, str)` |
+
+`data_print` covers the two shapes a Python caller can hand across the
+boundary: a value dict (`PMIX_VALUE`) and an info dict (`PMIX_INFO`),
+auto-detected from the presence of a `'key'`. The C API accepts any
+registered data type, but every other type is reachable as the *value* of
+one of those two; an explicit `data_type` outside the pair returns
+`PMIX_ERR_NOT_SUPPORTED`.
 
 ### 1.7 Coverage summary
 
-- Operational client/server/tool APIs bound: **~75** (blocking forms + tool IOF).
-- Not bound: **25** `_nb` variants, **3** unique client APIs, **4** server
-  APIs, **1** deprecated tool API.
+- Operational client/server/tool APIs bound: **~86** (blocking forms, tool
+  IOF, and the five `_nb` group operations).
+- Not bound: **25** `_nb` variants (§1.1), **1** deprecated tool API
+  (§1.4). Every unique blocking API in §§1.2–1.6 is now bound.
+
+### 1.8 C-side hazards this pass surfaced (now fixed)
+
+Binding an API means calling it from a program that has not necessarily
+done everything a C caller would have. Three entry points had no guard
+against that, and each one crashed or hung the moment a Python script
+touched it before `init()`:
+
+- `PMIx_Heartbeat` sent through `PMIX_PTL_SEND_ONEWAY`, which
+  dereferences the peer, without checking that the library was
+  initialized — so `pmix_client_globals.myserver` was still NULL.
+- `PMIx_Progress_thread_stop` walked its static tracking list before that
+  list had been constructed.
+- `PMIx_server_collect_job_info` had no `initialized` check at all, so it
+  thread-shifted a request and then blocked forever waiting for a
+  progress thread that did not exist; separately, a request naming no
+  procs produced a NULL namespace list that the collection loop then
+  walked.
+
+All three now return (or no-op) cleanly; the collect-job-info parameter
+checks are covered by `test/unit/collect_job_info.c`, and the pre-init
+behavior of all of them by `TestNewlyBoundAPIs` in
+`test/python/test_bindings.py`.
 
 ---
 

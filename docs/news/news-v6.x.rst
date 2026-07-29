@@ -7,6 +7,18 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Added Python bindings for the remaining unique blocking APIs. The
+   client gains heartbeat, progress_thread_stop and resource_block; the
+   server gains generate_regex2 and parse_regex2 - the current regex
+   interface, of which only the deprecated generate_regex had been bound
+   - plus generate_cpuset and collect_job_info; and the pretty-print
+   family gains error_code (the inverse of error_string), data_print,
+   value_comparison_string, group_operation_string,
+   resource_block_directive_string and alloc_inheritance_string. A
+   regular expression crosses to Python as
+   {'type': str, 'bytes': bytes, 'len': int} and a resource unit as
+   {'type': PMIX_DEVTYPE_x, 'count': n}. What remains unbound is the
+   non-blocking family and one deprecated tool API
  - Fixed three library entry points that crashed or hung when called
    before PMIx_Init - reachable from C, but found while adding their
    Python bindings, where a script naturally calls a method on a freshly

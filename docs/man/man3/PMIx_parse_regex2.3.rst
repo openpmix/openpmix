@@ -24,7 +24,17 @@ SYNOPSIS
 Python Syntax
 ^^^^^^^^^^^^^
 
-No Python equivalent
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxServer()
+  # ... after a successful foo.init() ...
+  # the regex is the dictionary returned by generate_regex2:
+  # {'type': str, 'bytes': bytes, 'len': int}
+  # the directives are a list of Python ``pmix_info_t`` dictionaries
+  rc, names = foo.parse_regex2(regex, [])
+  # names is the list of values the regex encodes, in their original order
 
 
 INPUT PARAMETERS

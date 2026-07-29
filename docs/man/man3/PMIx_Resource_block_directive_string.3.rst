@@ -19,6 +19,17 @@ SYNOPSIS
    const char* PMIx_Resource_block_directive_string(pmix_resource_block_directive_t directive);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  string = foo.resource_block_directive_string(PMIX_RESOURCE_BLOCK_DEFINE)
+
+
 INPUT PARAMETERS
 ----------------
 

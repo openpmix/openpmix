@@ -28,6 +28,22 @@ SYNOPSIS
                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # the resource units are a list of Python dictionaries, each naming a
+  # device type and a count; the directives are a list of Python
+  # ``pmix_info_t`` dictionaries
+  units = [{'type': PMIX_DEVTYPE_GPU, 'count': 4}]
+  rc = foo.resource_block(PMIX_RESOURCE_BLOCK_DEFINE, "myblock", units, [])
+
+
 INPUT PARAMETERS
 ----------------
 

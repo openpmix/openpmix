@@ -18,6 +18,20 @@ SYNOPSIS
    void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # ... after a successful foo.init() ...
+  # the directives are a list of Python ``pmix_info_t`` dictionaries
+  rc = foo.progress_thread_stop([{'key': PMIX_PROGRESS_THREAD_FLUSH,
+                                  'value': True, 'val_type': PMIX_BOOL}])
+
+
 INPUT PARAMETERS
 ----------------
 

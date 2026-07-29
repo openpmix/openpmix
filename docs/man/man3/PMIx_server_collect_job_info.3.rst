@@ -23,7 +23,16 @@ SYNOPSIS
 Python Syntax
 ^^^^^^^^^^^^^
 
-No Python equivalent
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxServer()
+  # ... after a successful foo.init() and register_nspace() ...
+  # the procs are a list of Python proc dictionaries - only their
+  # namespaces matter, and the list cannot be empty
+  rc, blob = foo.collect_job_info([{'nspace': "myjob", 'rank': 0}])
+  # blob is a byte object, {'bytes': bytes, 'size': int}
 
 
 INPUT PARAMETERS

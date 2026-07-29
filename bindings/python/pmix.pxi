@@ -1058,6 +1058,76 @@ cdef bytearray pmix_convert_regex(char *regex):
         ba = bytearray(regex)
     return ba
 
+# The pmix_regex2_t crosses to Python as a dict carrying the three fields
+# of the struct:
+#
+#   {'type': str, 'bytes': bytes, 'len': int}
+#
+# 'type' names the encoding method (the preg component that produced it -
+# e.g. "raw" or "compress"); it is what tells the parser which component
+# can decode the blob. 'bytes' is the encoded representation and is NOT
+# necessarily NUL-terminated, so it is carried as a Python bytes object
+# sliced to 'len' rather than as a string.
+
+# Convert a pmix_regex2_t into its Python dict form
+cdef dict pmix_unload_regex2(const pmix_regex2_t *regex):
+    d = {}
+    if NULL == regex[0].type:
+        d['type'] = None
+    else:
+        d['type'] = regex[0].type.decode('ascii')
+    if NULL == regex[0].bytes or 0 == regex[0].len:
+        d['bytes'] = b''
+        d['len']   = 0
+    else:
+        d['bytes'] = (<char*>regex[0].bytes)[:regex[0].len]
+        d['len']   = regex[0].len
+    return d
+
+# Build a pmix_regex2_t from the Python dict. The struct is constructed
+# first, so the caller can release it with PMIx_Regex2_destruct on every
+# path - including a failure that left it partly built
+cdef int pmix_load_regex2(pmix_regex2_t *regex, pyregex):
+    cdef const char *typeptr
+    cdef const char *byteptr
+
+    PMIx_Regex2_construct(regex)
+    if not isinstance(pyregex, dict):
+        return PMIX_ERR_BAD_PARAM
+    mytype = pyregex.get('type')
+    if mytype is None:
+        return PMIX_ERR_BAD_PARAM
+    if isinstance(mytype, str):
+        pytype = mytype.encode('ascii')
+    else:
+        pytype = mytype
+    typeptr = <const char *>pytype
+    regex[0].type = strdup(typeptr)
+    if NULL == regex[0].type:
+        return PMIX_ERR_NOMEM
+    mybytes = pyregex.get('bytes')
+    if mybytes is None:
+        return PMIX_ERR_BAD_PARAM
+    if isinstance(mybytes, str):
+        mybytes = mybytes.encode('ascii')
+    else:
+        mybytes = bytes(mybytes)
+    # honor an explicitly provided length, but never read past the end of
+    # the buffer we were actually handed
+    mylen = pyregex.get('len', len(mybytes))
+    if not isinstance(mylen, pmix_int_types) or 0 > mylen or len(mybytes) < mylen:
+        mylen = len(mybytes)
+    if 0 == mylen:
+        regex[0].len = 0
+        return PMIX_SUCCESS
+    regex[0].bytes = <uint8_t*> malloc(mylen)
+    if NULL == regex[0].bytes:
+        return PMIX_ERR_NOMEM
+    byteptr = <const char *>mybytes
+    memcpy(regex[0].bytes, byteptr, mylen)
+    regex[0].len = mylen
+    return PMIX_SUCCESS
+
 # provide a function for transferring a Python 'value'
 # object (a dict with value and val_type as keys)
 # to a pmix_value_t
@@ -1970,6 +2040,60 @@ cdef int pmix_unload_units(const pmix_resource_unit_t *units, size_t nunits, ili
         ilist.append(d)
         n += 1
     return PMIX_SUCCESS
+
+
+# Convert a python list of resource unit dicts into an array of
+# pmix_resource_unit_t structs
+#
+# @array [INPUT]
+#        - allocated array of pmix_resource_unit_t structs
+#
+# @units [INPUT]
+#        - a list of dictionaries, each with a 'type' (a PMIX_DEVTYPE_
+#          value) and a 'count'
+cdef int pmix_load_units(pmix_resource_unit_t *array, units:list):
+    n = 0
+    for d in units:
+        if not isinstance(d, dict):
+            return PMIX_ERR_BAD_PARAM
+        mytype = d.get('type', PMIX_DEVTYPE_UNKNOWN)
+        mycount = d.get('count', 0)
+        if not isinstance(mytype, pmix_int_types) or not isinstance(mycount, pmix_int_types):
+            return PMIX_ERR_TYPE_MISMATCH
+        if 0 > mycount:
+            return PMIX_ERR_BAD_PARAM
+        array[n].type = mytype
+        array[n].count = mycount
+        n += 1
+    return PMIX_SUCCESS
+
+# Allocate and load an array of pmix_resource_unit_t from a python list -
+# the resource-unit counterpart of pmix_alloc_info. A None or empty list
+# yields a NULL array of length zero, which the APIs accept
+cdef int pmix_alloc_units(pmix_resource_unit_t **units_ptr, size_t *nunits, units):
+    nunits[0] = 0
+    units_ptr[0] = NULL
+    if units is None:
+        return PMIX_SUCCESS
+    if 0 == len(units):
+        return PMIX_SUCCESS
+    units_ptr[0] = <pmix_resource_unit_t*> PyMem_Malloc(len(units) * sizeof(pmix_resource_unit_t))
+    if not units_ptr[0]:
+        return PMIX_ERR_NOMEM
+    rc = pmix_load_units(units_ptr[0], units)
+    if PMIX_SUCCESS != rc:
+        pmix_free_units(units_ptr[0], len(units))
+        units_ptr[0] = NULL
+        return rc
+    nunits[0] = len(units)
+    return PMIX_SUCCESS
+
+# Free an array of pmix_resource_unit_t. The struct carries no allocated
+# members, so the array itself is all there is to release - and as the
+# bindings both allocate and release it (the APIs that take one do not
+# retain it), it stays on the Python allocator
+cdef void pmix_free_units(pmix_resource_unit_t *array, size_t sz):
+    PyMem_Free(array)
 
 
 # Convert list of python pmix_pdata_t dicts into an

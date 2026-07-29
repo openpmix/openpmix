@@ -88,6 +88,20 @@ attributes".
 methods default to *this proc's whole job* (`self.myproc.nspace`,
 `PMIX_RANK_WILDCARD`).
 
+**A few structs have their own dict shape.** They follow the struct's own
+field names, so the mapping is mechanical:
+
+```python
+{'source': 'hwloc', 'cpus': [0, 1, 2, 3, 8]}      # pmix_cpuset_t   (§8a)
+{'bytes': b'...', 'size': 12}                     # pmix_byte_object_t
+{'type': 'raw', 'bytes': b'n1,n2', 'len': 6}      # pmix_regex2_t
+{'type': PMIX_DEVTYPE_GPU, 'count': 4}            # pmix_resource_unit_t
+```
+
+The regex2 `bytes` are *not* necessarily NUL-terminated, which is why the
+struct carries a length and the dict keeps it — treat the payload as
+`bytes`, never as a string.
+
 **Return convention:** most methods return the integer `rc` (a `PMIX_*`
 status). Methods that also produce data return a **tuple**, e.g.
 `get()` → `(rc, value_dict)`, `spawn()` → `(rc, nspace)`,
@@ -102,6 +116,13 @@ status). Methods that also produce data return a **tuple**, e.g.
   — info dict lists ↔ `pmix_info_t[]`. `pmix_alloc_info` is the standard
   "malloc + load" entry point used by nearly every method.
 - `pmix_load_darray` / `pmix_unload_darray` — nested `PMIX_DATA_ARRAY`.
+- `pmix_load_units` / `pmix_unload_units` / `pmix_alloc_units` /
+  `pmix_free_units` — resource unit dict lists ↔ `pmix_resource_unit_t[]`.
+  The struct has no allocated members and the APIs that take one do not
+  retain it, so the array stays on `PyMem_*`.
+- `pmix_load_regex2` / `pmix_unload_regex2` — regex dict ↔ `pmix_regex2_t`.
+  The loader constructs the struct first, so the caller can (and must)
+  `PMIx_Regex2_destruct` it on every path, including a partial failure.
 - `pmix_load_procs` / `pmix_unload_procs`, `pmix_load_pdata`, `pmix_load_apps`,
   etc. — the remaining structured types.
 
@@ -341,6 +362,15 @@ internalizing so they are not reintroduced:
   wrong key (`envar` vs `value`, `val_type` vs `value`) silently corrupts data.
 - **`setmodulefn`'s `permitted` list and `server_module_init`'s wiring names
   must stay in lockstep** (§4b).
+- **Binding an API exposes it to callers a C program never produced.** A
+  Python script can call any method the moment it constructs the class,
+  and the natural first thing a test does is call it before `init()`.
+  Three C entry points had no `pmix_globals.initialized` guard and
+  crashed or hung on that path the first time they were bound (see
+  MISSING_BINDINGS.md §1.8). When you bind a new API, call it before
+  `init()` and with empty/None arguments *before* you call it for real —
+  and fix the guard in the C library rather than papering over it in the
+  binding.
 
 The one remaining stub is a genuine unimplemented feature, not a bug:
 `PMIxScheduler.assign_session` returns `PMIX_ERR_NOT_SUPPORTED` because the
