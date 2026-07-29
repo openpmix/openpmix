@@ -2305,21 +2305,28 @@ cdef class PMIxServer(PMIxClient):
         return PMIx_server_finalize()
 
     def generate_regex(self, hosts:list):
-        cdef char *regex;
+        cdef char *regex = NULL
         mycomma = ","
         myhosts = mycomma.join(hosts)
         pyhosts = myhosts.encode('ascii')
         rc = PMIx_generate_regex(pyhosts, &regex)
+        # the library leaves the output pointer untouched when it fails,
+        # so there is nothing to convert
+        if PMIX_SUCCESS != rc or NULL == regex:
+            return (rc, bytearray(0))
         # load regex appropriately into python bytearray
         ba = pmix_convert_regex(regex)
         return (rc, ba)
 
     def generate_ppn(self, procs:list):
-        cdef char *ppn;
+        cdef char *ppn = NULL
         mysemi = ";"
         myprocs = mysemi.join(procs)
         pyprocs = myprocs.encode('ascii')
         rc = PMIx_generate_ppn(pyprocs, &ppn)
+        # the library leaves the output pointer untouched when it fails
+        if PMIX_SUCCESS != rc or NULL == ppn:
+            return (rc, bytearray(0))
         if "pmix" == ppn[:4].decode("ascii"):
             if b'\x00' in ppn:
                 ppn.replace(b'\x00', '')
