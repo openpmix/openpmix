@@ -50,6 +50,15 @@ Detailed changes since v6.1.0:
    first non-blocking client bindings, and the machinery they introduce
    is documented in docs/how-things-work/python_nonblocking.rst for the
    remaining non-blocking APIs to reuse
+ - Fixed a segmentation fault in PMIx_server_init when the PMIX_SINGLETON
+   directive carries a malformed value. The parser assumed the value
+   always contained the "nspace.rank" separator and dereferenced the
+   result of its search for it, so a value with no '.' faulted the
+   server; values that did contain a '.' but were otherwise invalid (an
+   empty nspace, a non-numeric or out-of-range rank) were silently
+   accepted and registered a bogus singleton. The directive is now
+   validated, and a bad value is reported through show_help and rejected
+   with PMIX_ERR_BAD_PARAM
  - Fixed the server aborting when a host environment rejects an incoming
    client connection. The error path in the connection handler released
    a rank_info object owned by the namespace's rank list, driving its
