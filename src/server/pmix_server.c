@@ -1444,9 +1444,9 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
                     && PMIX_CHECK_NAMES(proc, &prev->peer->info->pname))) {
                 pmix_list_remove_item(&reginfo->peers, &prev->super);
                 PMIX_RELEASE(prev);
-                if (0 == pmix_list_get_size(&reginfo->peers)) {
-                    pmix_list_remove_item(&pmix_server_globals.events, &reginfo->super);
-                    PMIX_RELEASE(reginfo);
+                /* if nobody is left registered for this code, then drop
+                 * it and tell our host to stop forwarding it */
+                if (pmix_server_prune_reginfo(reginfo)) {
                     break;
                 }
             }

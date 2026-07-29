@@ -50,6 +50,14 @@
  *      exactly once whether the host returns PMIX_OPERATION_SUCCEEDED
  *      or PMIX_SUCCESS followed by its own callback.
  *
+ *  enviro event handshake: a system code is activated with the host on
+ *      the first registration for it and deactivated when the last one
+ *      goes away, counting the server's own registrations and those of
+ *      its local clients together; intervening registrations do not
+ *      repeat the host call, a code is re-activated if it is registered
+ *      again after deactivation, and non-system codes are never handed
+ *      to the host.
+ *
  *  first-overall handler with multiple codes honors its
  *      affected-proc interest list.
  */
@@ -711,6 +719,241 @@ static void test_host_regevents(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Enviro event activation/deactivation handshake with the host        */
+/* ------------------------------------------------------------------ */
+
+#define EVUT_MAX_HSCODES 8
+
+static volatile int hs_regs = 0;
+static volatile int hs_deregs = 0;
+static size_t hs_last_ncodes = 0;
+static pmix_status_t hs_last_codes[EVUT_MAX_HSCODES];
+
+static void hs_record(pmix_status_t codes[], size_t ncodes)
+{
+    size_t n;
+
+    hs_last_ncodes = ncodes;
+    for (n = 0; n < ncodes && n < EVUT_MAX_HSCODES; n++) {
+        hs_last_codes[n] = codes[n];
+    }
+}
+
+static pmix_status_t hs_regevs(pmix_status_t codes[], size_t ncodes,
+                               const pmix_info_t info[], size_t ninfo,
+                               pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo, cbfunc, cbdata);
+    ++hs_regs;
+    hs_record(codes, ncodes);
+    return PMIX_OPERATION_SUCCEEDED;
+}
+
+static pmix_status_t hs_deregevs(pmix_status_t codes[], size_t ncodes,
+                                 pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(cbfunc, cbdata);
+    ++hs_deregs;
+    hs_record(codes, ncodes);
+    return PMIX_OPERATION_SUCCEEDED;
+}
+
+/* Drive the server-side handlers for a client's REGEVENTS_CMD /
+ * DEREGEVENTS_CMD on the progress thread, using this process's own peer
+ * to stand in for a local client. Those handlers touch
+ * pmix_server_globals directly, so they must not be called from here. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_status_t *codes;
+    size_t ncodes;
+    pmix_status_t status;
+} evut_clreq_t;
+
+static void do_client_reg(int sd, short args, void *cbdata)
+{
+    evut_clreq_t *r = (evut_clreq_t *) cbdata;
+    pmix_buffer_t buf;
+    size_t ninfo = 0;
+    pmix_status_t rc;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &r->ncodes, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, r->codes, r->ncodes, PMIX_STATUS);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &ninfo, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_server_register_events(pmix_globals.mypeer, &buf, NULL, NULL);
+    }
+    PMIX_DESTRUCT(&buf);
+    r->status = rc;
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+static void do_client_dereg(int sd, short args, void *cbdata)
+{
+    evut_clreq_t *r = (evut_clreq_t *) cbdata;
+    pmix_buffer_t buf;
+    pmix_status_t rc = PMIX_SUCCESS;
+    size_t n;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    for (n = 0; n < r->ncodes && PMIX_SUCCESS == rc; n++) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &r->codes[n], 1, PMIX_STATUS);
+    }
+    if (PMIX_SUCCESS == rc) {
+        pmix_server_deregister_events(pmix_globals.mypeer, &buf);
+    }
+    PMIX_DESTRUCT(&buf);
+    r->status = rc;
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+static pmix_status_t client_evreq(pmix_status_t *codes, size_t ncodes, bool dereg)
+{
+    evut_clreq_t req;
+    pmix_status_t rc;
+
+    memset(&req, 0, sizeof(req));
+    PMIX_CONSTRUCT_LOCK(&req.lock);
+    req.codes = codes;
+    req.ncodes = ncodes;
+    if (dereg) {
+        PMIX_THREADSHIFT(&req, do_client_dereg);
+    } else {
+        PMIX_THREADSHIFT(&req, do_client_reg);
+    }
+    PMIX_WAIT_THREAD(&req.lock);
+    rc = req.status;
+    PMIX_DESTRUCT_LOCK(&req.lock);
+    return rc;
+}
+
+static void test_enviro_handshake(void)
+{
+    pmix_status_t s1 = PMIX_EVENT_SYS_BASE;
+    pmix_status_t s2 = PMIX_EVENT_SYS_OTHER;
+    pmix_status_t mixed[2] = {EVUT_CODE_ORDER, PMIX_EVENT_SYS_OTHER};
+    pmix_data_range_t local = PMIX_RANGE_PROC_LOCAL;
+    pmix_info_t info;
+    size_t a, b, c;
+    pmix_status_t rc;
+
+    hs_regs = 0;
+    hs_deregs = 0;
+    pmix_host_server.register_events = hs_regevs;
+    pmix_host_server.deregister_events = hs_deregevs;
+
+    /* the first registration for a system code activates it */
+    a = reghdlr(&s1, 1, NULL, 0, count_hdlr);
+    report("enviro: first registration accepted", SIZE_MAX != a);
+    report("enviro: first registration activates the code",
+           1 == hs_regs && 1 == hs_last_ncodes && s1 == hs_last_codes[0]);
+
+    /* a second registration for the same code must not repeat it */
+    b = reghdlr(&s1, 1, NULL, 0, count_hdlr);
+    report("enviro: second registration accepted", SIZE_MAX != b);
+    report("enviro: second registration does not repeat the host call",
+           1 == hs_regs);
+
+    /* a code the host is not yet forwarding is activated even when it
+     * arrives alongside one that it already is - and the non-system
+     * code it is bundled with is never handed to the host */
+    c = reghdlr(mixed, 2, NULL, 0, count_hdlr);
+    report("enviro: mixed registration accepted", SIZE_MAX != c);
+    report("enviro: only the unactivated system code is sent to the host",
+           2 == hs_regs && 1 == hs_last_ncodes && s2 == hs_last_codes[0]);
+
+    /* dropping one of two registrants leaves the code active */
+    if (SIZE_MAX != a) {
+        PMIx_Deregister_event_handler(a, NULL, NULL);
+    }
+    report("enviro: code stays active while a registrant remains",
+           0 == hs_deregs);
+
+    /* dropping the last registrant for a code deactivates just it */
+    if (SIZE_MAX != b) {
+        PMIx_Deregister_event_handler(b, NULL, NULL);
+    }
+    report("enviro: last registrant deactivates the code",
+           1 == hs_deregs && 1 == hs_last_ncodes && s1 == hs_last_codes[0]);
+
+    /* registering again after deactivation re-activates the code */
+    a = reghdlr(&s1, 1, NULL, 0, count_hdlr);
+    report("enviro: re-registration accepted", SIZE_MAX != a);
+    report("enviro: re-registration re-activates the code",
+           3 == hs_regs && 1 == hs_last_ncodes && s1 == hs_last_codes[0]);
+
+    /* a local client registering a code the server itself already holds
+     * must not repeat the host call, and must not release the code when
+     * it goes away while the server is still registered */
+    rc = client_evreq(&s1, 1, false);
+    report("enviro: client registration accepted",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    report("enviro: client does not repeat the host call for a held code",
+           3 == hs_regs);
+    rc = client_evreq(&s1, 1, true);
+    report("enviro: client deregistration processed", PMIX_SUCCESS == rc);
+    report("enviro: client departure leaves the server's code active",
+           1 == hs_deregs);
+
+    /* conversely, the server dropping its own registration must not
+     * release a code a local client still wants */
+    rc = client_evreq(&s1, 1, false);
+    report("enviro: second client registration accepted",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    if (SIZE_MAX != a) {
+        PMIx_Deregister_event_handler(a, NULL, NULL);
+    }
+    report("enviro: code stays active while a client wants it",
+           1 == hs_deregs);
+    rc = client_evreq(&s1, 1, true);
+    report("enviro: last client departure deactivates the code",
+           2 == hs_deregs && 1 == hs_last_ncodes && s1 == hs_last_codes[0]);
+
+    /* a PMIX_RANGE_PROC_LOCAL registration never leaves the process, so
+     * it neither activates a code nor releases anyone else's interest
+     * in one when it goes away */
+    PMIX_INFO_LOAD(&info, PMIX_RANGE, &local, PMIX_DATA_RANGE);
+    a = reghdlr(&s1, 1, &info, 1, count_hdlr);
+    PMIX_INFO_DESTRUCT(&info);
+    report("enviro: proc-local registration accepted", SIZE_MAX != a);
+    report("enviro: proc-local registration does not reach the host",
+           3 == hs_regs);
+    b = reghdlr(&s1, 1, NULL, 0, count_hdlr);
+    report("enviro: registration alongside proc-local accepted", SIZE_MAX != b);
+    report("enviro: registration alongside proc-local activates the code",
+           4 == hs_regs && 1 == hs_last_ncodes && s1 == hs_last_codes[0]);
+    if (SIZE_MAX != a) {
+        PMIx_Deregister_event_handler(a, NULL, NULL);
+    }
+    report("enviro: proc-local departure does not release the code",
+           2 == hs_deregs);
+    if (SIZE_MAX != b) {
+        PMIx_Deregister_event_handler(b, NULL, NULL);
+    }
+    report("enviro: code released once the real registrant departs",
+           3 == hs_deregs && 1 == hs_last_ncodes && s1 == hs_last_codes[0]);
+
+    /* and the mixed registration still holds the remaining code */
+    if (SIZE_MAX != c) {
+        PMIx_Deregister_event_handler(c, NULL, NULL);
+    }
+    report("enviro: final deregistration releases the remaining code",
+           4 == hs_deregs && 1 == hs_last_ncodes && s2 == hs_last_codes[0]);
+
+    pmix_host_server.register_events = NULL;
+    pmix_host_server.deregister_events = NULL;
+}
+
+/* ------------------------------------------------------------------ */
 /* First-overall handler honors its affected-proc interests            */
 /* ------------------------------------------------------------------ */
 
@@ -784,6 +1027,7 @@ int main(int argc, char **argv)
     test_cached_replay();
     test_range_rm_completion();
     test_host_regevents();
+    test_enviro_handshake();
     test_first_affected();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

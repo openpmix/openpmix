@@ -288,9 +288,16 @@ register_events
 ``register_events`` (``pmix_server_register_events_fn_t``) |mdash| Part of the
 support for :ref:`PMIx_Register_event_handler(3) <man3-PMIx_Register_event_handler>`.
 Tells the host that the library wishes to receive notification of the specified
-(typically environmental) event codes; the host translates its internal codes to
+system (environmental) event codes; the host translates its internal codes to
 the corresponding PMIx codes when it later notifies. Completion is reported
 through a ``pmix_op_cbfunc_t``.
+
+The library reference-counts each code across all of its local clients and its
+own registrations, and calls this function only for the codes that acquire
+their *first* registrant |mdash| so a code the host is already forwarding is
+never requested again, and only the codes needing action appear in the array.
+Non-system codes are never passed to the host: the host is required to report
+events relating to a registered namespace regardless of any registration.
 
 deregister_events
 ^^^^^^^^^^^^^^^^^
@@ -300,6 +307,13 @@ companion to ``register_events`` (see
 :ref:`PMIx_Deregister_event_handler(3) <man3-PMIx_Deregister_event_handler>`).
 Cancels a prior registration for the specified event codes. The host remains
 obligated to report job-related events regardless.
+
+This is called when a code loses its *last* registrant, counting the library's
+local clients and its own registrations together, so the host can stop
+forwarding a code nothing is listening for. A subsequent registration for that
+code will call ``register_events`` again. A host that provides
+``register_events`` should provide this as well; leaving it NULL simply means
+the host keeps forwarding codes the library no longer wants.
 
 listener
 ^^^^^^^^

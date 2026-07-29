@@ -144,6 +144,11 @@ typedef struct {
     pmix_list_item_t super;
     pmix_list_t peers; // list of pmix_peer_events_info_t
     int code;
+    /* number of registrations the server itself has made for this
+     * code - registrations by local clients are counted by "peers" */
+    size_t nmine;
+    /* true if we have asked our host to forward this code to us */
+    bool active;
 } pmix_regevents_info_t;
 PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
 
@@ -346,6 +351,30 @@ PMIX_EXPORT void pmix_server_message_handler(struct pmix_peer_t *pr, pmix_ptl_hd
                                              pmix_buffer_t *buf, void *cbdata);
 
 PMIX_EXPORT void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc);
+
+/* Record that the server itself has registered for the given event
+ * codes. Only system (environmental) codes are tracked as those are the
+ * only ones we ask our host to forward. The codes our host is not
+ * already forwarding are sorted to the front of the array - the array is
+ * treated as an unordered set everywhere else, so the reordering is
+ * harmless - and their number is returned. A return of zero means every
+ * requested code is already being forwarded and the host need not be
+ * called. */
+PMIX_EXPORT size_t pmix_server_activate_events(pmix_status_t *codes, size_t ncodes);
+
+/* Release a registration the server itself made for the given event
+ * codes. Any code that is left without a registrant - neither the server
+ * nor any local client - is dropped, and our host is told to stop
+ * forwarding it. Also used to undo a pmix_server_activate_events call
+ * whose host up-call was rejected. */
+PMIX_EXPORT void pmix_server_deactivate_events(pmix_status_t *codes, size_t ncodes);
+
+/* If no registrant remains for the code tracked by this object - neither
+ * a local client nor the server itself - then remove it from the server's
+ * event registration store, tell our host to stop forwarding the code if
+ * we had asked it to start, and release it. Returns true if the object
+ * was released. */
+PMIX_EXPORT bool pmix_server_prune_reginfo(pmix_regevents_info_t *reginfo);
 
 /* Handle the departure of a cleanly-finalized local client peer whose
  * socket has dropped: decrement the rank's live-process count and leave

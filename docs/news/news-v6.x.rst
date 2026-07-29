@@ -7,6 +7,19 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Completed the server-to-host handshake for system (environmental)
+   event registration. The server now reference-counts each system
+   event code across all of its local clients and its own
+   registrations: it calls the host's register_events only for the
+   codes acquiring their first registrant - rather than on every
+   registration for a code it had already asked for - and calls the
+   host's deregister_events, which previously had no callers at all,
+   when a code loses its last registrant. A code registered again
+   after being released is re-activated with the host. Only system
+   codes are handed to the host, which was always the contract for
+   these entry points. Hosts that implement register_events should
+   also implement deregister_events; leaving it NULL simply means the
+   host keeps forwarding codes nothing is listening for
  - Fixed a server taking the scheduler, system-controller or system-tool
    role being unable to restart after it was killed or crashed. Those
    roles publish a rendezvous file that is removed only by a clean
