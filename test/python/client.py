@@ -8,6 +8,7 @@ termEvent = threading.Event()
 grpConstructed = threading.Event()
 grpDestructed = threading.Event()
 grpResults = []
+grpStatus = PMIX_ERR_NOT_SUPPORTED
 
 def default_evhandler(evhdlr:int, status:int,
                       source:dict, info:list, results:list):
@@ -18,8 +19,9 @@ def default_evhandler(evhdlr:int, status:int,
 # the PMIx progress thread, so they do nothing but record the result and
 # release the waiter - a blocking PMIx call from here would deadlock.
 def group_construct_cb(status:int, results:list, cbdata):
-    global grpResults
+    global grpResults, grpStatus
     print("GROUP CONSTRUCT CALLBACK", status)
+    grpStatus = status
     grpResults = results
     cbdata.set()
 
@@ -90,6 +92,10 @@ def main():
     if PMIX_SUCCESS == rc:
         if not grpConstructed.wait(timeout=30):
             print("GROUP CONSTRUCT TIMED OUT")
+        elif PMIX_SUCCESS != grpStatus:
+            # the host may not support group operations at all - the
+            # scheduler test server, for one, does not
+            print("Group construct failed: ", foo.error_string(grpStatus))
         else:
             print("Group construct results: ", grpResults)
             # and tear it down again, also asynchronously

@@ -17,16 +17,24 @@ class GracefulKiller:
   def exit_gracefully(self,signum, frame):
     self.kill_now = True
 
-def clientconnected(proc:tuple is not None):
+# Server-module upcall handlers. The binding invokes each registered
+# handler with three arguments: the converted request, a Python wrapper
+# around the C completion callback, and an opaque cbdata dict. A handler
+# drives completion by invoking that callback and returns PMIX_SUCCESS.
+def clientconnected(proc, cbfunc, cbdata):
     print("CLIENT CONNECTED", proc)
+    cbfunc(PMIX_SUCCESS, cbdata)
     return PMIX_SUCCESS
 
-def clientfinalized(proc:tuple is not None):
+def clientfinalized(proc, cbfunc, cbdata):
     print("CLIENT FINALIZED", proc)
+    cbfunc(PMIX_SUCCESS, cbdata)
     return PMIX_SUCCESS
 
-def clientfence(args:dict is not None):
+def clientfence(args, cbfunc, cbdata):
     print("SERVER FENCE", args)
+    # no data to return from this (empty) fence
+    cbfunc(PMIX_SUCCESS, bytearray(0), cbdata)
     return PMIX_SUCCESS
 
 def main():
