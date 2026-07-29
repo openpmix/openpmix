@@ -3842,7 +3842,11 @@ static void _lkupcbfunc(int sd, short args, void *cbdata)
             PMIX_RELEASE(reply);
             goto cleanup;
         }
-        PMIX_PDATA_FREE(scd->pdata, scd->npdata);
+        /* the array was created with ndata, and npdata is never assigned
+         * anywhere - it is zero from the constructor, and PMIx_Pdata_free()
+         * does nothing at all for a count of zero, so this leaked the whole
+         * array and every value in it on every lookup that returned data */
+        PMIX_PDATA_FREE(scd->pdata, scd->ndata);
     }
 
     /* the function that created the server_caddy did a

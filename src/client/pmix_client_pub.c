@@ -542,6 +542,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     /* set the defaults */
     pdata = NULL;
     ndata = 0;
+    ret = PMIX_SUCCESS;
 
     if (NULL == cb->cbfunc.lookupfn) {
         /* nothing we can do with this */
@@ -549,13 +550,13 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         return;
     }
     if (NULL == buf) {
-        rc = PMIX_ERR_BAD_PARAM;
+        ret = PMIX_ERR_BAD_PARAM;
         goto report;
     }
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
     if (PMIX_BUFFER_IS_EMPTY(buf)) {
-        rc = PMIX_ERR_UNREACH;
+        ret = PMIX_ERR_UNREACH;
         goto report;
     }
 
@@ -565,13 +566,15 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
+        goto report;
     }
-    if (PMIX_SUCCESS != ret) {
-        if (NULL != cb->cbfunc.lookupfn) {
-            cb->cbfunc.lookupfn(ret, NULL, 0, cb->cbdata);
-        }
-        PMIX_RELEASE(cb);
-        return;
+    /* PMIX_ERR_PARTIAL_SUCCESS is a data-carrying status: the server found
+     * some of the requested keys and is returning them alongside it. Treating
+     * every non-SUCCESS status as "no data" discarded exactly those values -
+     * and lookup_cbfunc() below explicitly handles PARTIAL_SUCCESS, so it
+     * could never see them. */
+    if (PMIX_SUCCESS != ret && PMIX_ERR_PARTIAL_SUCCESS != ret) {
+        goto report;
     }
 
     /* unpack the number of returned values */
@@ -579,8 +582,9 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ndata, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(cb);
-        return;
+        ret = rc;
+        ndata = 0;
+        goto report;
     }
     if (0 < ndata) {
         /* create the array storage */
@@ -590,17 +594,25 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, pdata, &cnt, PMIX_PDATA);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            goto cleanup;
+            /* report the failure rather than falling into cleanup: that
+             * path never invoked the callback, so the caller waited on its
+             * lock forever. pdata is left for cleanup to free - the
+             * callback ignores it for a failing status. */
+            ret = rc;
+            goto report;
         }
     }
 
 report:
     if (NULL != cb->cbfunc.lookupfn) {
-        cb->cbfunc.lookupfn(rc, pdata, ndata, cb->cbdata);
+        /* hand back the status the SERVER returned, not the status of our
+         * last unpack - they are both PMIX_SUCCESS on the path that used to
+         * reach here, which is why reporting the wrong one went unnoticed */
+        cb->cbfunc.lookupfn(ret, pdata, ndata, cb->cbdata);
     }
 
-cleanup:
-    /* cleanup */
+    /* cleanup - every exit now runs the callback first and falls through
+     * here, so there is nothing left to jump to */
     if (NULL != pdata) {
         PMIX_PDATA_FREE(pdata, ndata);
     }
