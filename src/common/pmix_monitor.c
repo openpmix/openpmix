@@ -638,6 +638,21 @@ void PMIx_Heartbeat(void)
         return;
     }
 
+    /* a heartbeat is something a process sends *up* to the server that
+     * is watching it. A server - and a tool that has not attached to
+     * one - is its own "server", so there is nobody to hear it. The
+     * message would loop back into our own matching code, find no
+     * posted receive for the heartbeat tag, and be reported as an
+     * unexpected message */
+    if (pmix_globals.mypeer == pmix_client_globals.myserver) {
+        return;
+    }
+
+    /* likewise if the connection to our server has been lost */
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+        return;
+    }
+
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return;
     }
