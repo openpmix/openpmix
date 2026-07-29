@@ -356,8 +356,8 @@ class TestMethodBinding(unittest.TestCase):
 
 
 class TestNewlyBoundAPIs(unittest.TestCase):
-    """The client/server APIs bound to close the gaps in MISSING_BINDINGS.md
-    sections 1.2, 1.3, 1.5 and 1.6.
+    """The client/server/scheduler APIs and the string converters bound in
+    the coverage pass that closed out the last of the unbound C entry points.
 
     Without a server none of these can complete, but each one converts its
     arguments before handing them to the library and has to release what it
