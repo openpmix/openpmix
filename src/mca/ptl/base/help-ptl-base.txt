@@ -130,3 +130,26 @@ The PMIx messaging system has received an unexpected message:
 
 The message cannot be processed and will be ignored. Please
 report this error to the PMIx developers.
+#
+[rndz-file-in-use]
+A PMIx server was unable to create the rendezvous file by which its
+peers locate it because that file already exists and belongs to a
+process that is still running:
+
+  Role:   %s
+  File:   %s
+  Owner:  %s
+
+Only one server can fill a given role on a node at a time. If the
+indicated process is no longer serving in this role, then terminate
+it (or remove the above file) and try again.
+#
+[rndz-file-stale]
+A PMIx server found a stale rendezvous file left behind by an
+instance that is no longer running, but was unable to remove it:
+
+  Role:   %s
+  File:   %s
+  Error:  %s
+
+Please remove the file and try again.
