@@ -476,6 +476,38 @@ successfully.
 	Use the wrapper when working in an uninstalled tree; `./simptest`
 	itself is still the right thing to run against an installed PMIx.
 
+	**A stale `$TMPDIR` will fail these tests for reasons that have
+	nothing to do with your change.** A PMIx server drops a session
+	directory and rendezvous files under `$TMPDIR` and removes them at
+	finalize. A run that is killed, crashes, or times out leaves its
+	`pmix-*` / `pmix.*` entries behind, and once enough of them
+	accumulate a subsequent server fails to start its listener:
+
+	```
+	--------------------------------------------------------------------
+	The PMIx server's listener thread failed to start. We cannot
+	continue.
+	--------------------------------------------------------------------
+	Init failed with error PMIX_ERR_INIT
+	```
+
+	Every `simptest`-based test then fails together — all the group
+	tests, `run_simpcycle.pl`, `run_toolcycle.pl`, `run_monitor.pl` and
+	so on — which looks alarming and is purely environmental. This is a
+	**known issue**; it is a property of the leftovers, not of the tree.
+	Before investigating a wholesale failure of the server-based tests,
+	rerun under a clean directory:
+
+	```sh
+	TMPDIR=$(mktemp -d) make check
+	```
+
+	If that passes, the failures were stale state. Clearing the old
+	`pmix*` entries out of your usual `$TMPDIR` fixes it for subsequent
+	runs. Note that a long `$TMPDIR` can fail the same way for a
+	different reason — a Unix socket path is limited to about 100
+	characters, and the session directory is built underneath it.
+
 **Test across environments when you can.** Portability across a wide
 variety of environments is a core PMIx goal. The primary development
 environments are common Linux distributions and macOS, but the code is
