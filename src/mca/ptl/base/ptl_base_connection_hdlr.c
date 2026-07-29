@@ -182,6 +182,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     void *ilist;
     pmix_data_array_t darray;
     pmix_peer_t *stale;
+    bool counted = false;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -466,6 +467,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     nptr->epilog.uid = info->uid;
     nptr->epilog.gid = info->gid;
     info->proc_cnt++; /* increase number of processes on this rank */
+    counted = true;
     peer->sd = pnd->sd;
     if (0 > (peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer))) {
         goto error;
@@ -611,6 +613,10 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            /* the error path below closes the socket and releases pnd, so
+             * detach it from the caddy first - the caddy's destructor
+             * would otherwise release it out from under us */
+            ch->pnd = NULL;
             PMIX_RELEASE(ch);
             goto error;
         }
@@ -625,6 +631,8 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            /* as above - the error path owns pnd from here on */
+            ch->pnd = NULL;
             PMIX_RELEASE(ch);
             goto error;
         }
@@ -637,9 +645,15 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     return;
 
 error:
-    if (NULL != info) {
+    /* 'info' is a member of the namespace's rank list, not something we
+     * own - the only reference this function took on it is the one it
+     * gave the peer, which PMIX_RELEASE(peer) below gives back. Releasing
+     * it here as well drove its refcount to zero while it was still on
+     * that list, which aborts the server in a debug build and leaves the
+     * list holding freed memory in an optimized one. Undo the count we
+     * added and leave the object alone. */
+    if (NULL != info && counted) {
         info->proc_cnt--;
-        PMIX_RELEASE(info);
     }
     if (NULL != msg) {
         free(msg);
@@ -651,7 +665,13 @@ error:
         PMIX_INFO_FREE(iblob, nblob);
     }
     if (NULL != peer) {
-        pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
+        if (0 <= peer->index) {
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
+            /* the rank was pointed at the slot we just emptied */
+            if (NULL != info && info->peerid == peer->index) {
+                info->peerid = -1;
+            }
+        }
         PMIX_RELEASE(peer);
     }
     CLOSE_THE_SOCKET(pnd->sd);
