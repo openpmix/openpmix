@@ -202,12 +202,17 @@ already-formatted range list, since callers had used all three.
 | D26 | `pmix.pyx` `PMIxClient.compute_distances` | Released the device-distance array with `PyMem_Free`, but the library allocates it with the C allocator — the same allocator mismatch as D18. Now released with `PMIx_Device_distance_free`. The per-result strings were stored as leaked `strdup` copies (which Cython stores as `bytes`, not `str`), and the `type` field was dropped entirely. |
 | D27 | `pmix.pyx` `parse_cpuset_string` | The `csetstr:str` annotation made the body's own `None` check unreachable (Cython rejects `None` at the call boundary first) — the same defect class as D23. The annotations were dropped from the cpuset methods so their validation can report `PMIX_ERR_BAD_PARAM`. |
 
-**A latent C-side hazard, guarded but not fixed here.**
-`pmix_hwloc_generate_cpuset_string` rejects a NULL `bitmap` but then reads
+**A C-side hazard this surfaced (now fixed).**
+`pmix_hwloc_generate_cpuset_string` rejected a NULL `bitmap` but then read
 `cpuset->source` with `strncasecmp` without a NULL check, so a cpuset with a
-bitmap but no source segfaults. No binding path produces that combination
-(both `PMIx_Parse_cpuset_string` and `PMIx_Get_cpuset` set `source`), but
-`pmix_unload_cpuset` guards against it rather than relying on that.
+bitmap but no source segfaulted; `pmix_hwloc_generate_locality_string` had
+the same flaw and did not check the `cpuset` pointer at all. Both now return
+`PMIX_ERR_BAD_PARAM` and NULL the output string on every failure path — see
+`src/hwloc/AGENTS.md` item 7 and `test_cpuset_string_bad_source` in
+[`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c). No binding
+path produced that combination (both `PMIx_Parse_cpuset_string` and
+`PMIx_Get_cpuset` set `source`), but `pmix_unload_cpuset` still guards
+against it rather than relying on the layer below.
 
 **What is verifiable on macOS.** `parse_cpuset_string`,
 `generate_cpuset_string` and `generate_locality_string` all return correct

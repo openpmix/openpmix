@@ -293,8 +293,19 @@ not lost and so a future refactor does not silently reintroduce them:
    `0` on success as its header comment claims, so the `0 != rc` checks
    treated every bound (non-empty) cpuset as a failure. They now test for
    a negative return.
+7. **`generate_cpuset_string` / `generate_locality_string` read
+   `cpuset->source` without a NULL check** — both compared the source with
+   `strncasecmp` before validating it, so a cpuset carrying a bitmap but no
+   source segfaulted. `generate_locality_string` did not check the `cpuset`
+   pointer itself either. Both are reachable only through the public
+   `PMIx_server_generate_*_string` APIs, i.e. from arbitrary host-environment
+   input, so the crash was reachable from outside the library. They now
+   return `PMIX_ERR_BAD_PARAM`, matching what `pmix_hwloc_compute_distances`
+   already did, and set the output string to NULL on every failure path
+   (the `TAKE_NEXT_OPTION` path previously left the caller's pointer
+   untouched). Covered by `test_cpuset_string_bad_source` in the unit test.
 
-Items 5 and 6 were caught by the `hwloc_datatype` unit test
+Items 5, 6 and 7 were caught by the `hwloc_datatype` unit test
 ([`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c), wired
 into `make check`), which round-trips and prints topologies and cpusets
 through the public API. Extend it when you touch this directory.

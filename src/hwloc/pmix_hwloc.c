@@ -714,13 +714,18 @@ pmix_status_t pmix_hwloc_generate_cpuset_string(const pmix_cpuset_t *cpuset,
 {
     char *tmp;
 
-    if (NULL == cpuset || NULL == cpuset->bitmap) {
+    /* we are being asked to serialize this cpuset, so it must tell us
+     * who produced its bitmap - an unlabeled bitmap is not something we
+     * can claim. A NULL source is only legal on an input cpuset we are
+     * being asked to fill in. */
+    if (NULL == cpuset || NULL == cpuset->bitmap || NULL == cpuset->source) {
         *cpuset_string = NULL;
         return PMIX_ERR_BAD_PARAM;
     }
 
     /* if we aren't the source, then nothing we can do */
     if (0 != strncasecmp(cpuset->source, "hwloc", 5)) {
+        *cpuset_string = NULL;
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -767,13 +772,21 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
     hwloc_cpuset_t result;
     hwloc_obj_type_t type;
 
+    /* we are being asked to interpret this cpuset, so it must tell us
+     * who produced its bitmap - see the note in generate_cpuset_string */
+    if (NULL == cpuset || NULL == cpuset->source) {
+        *loc = NULL;
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* if we aren't the source, then pass */
     if (0 != strncasecmp(cpuset->source, "hwloc", 5)) {
+        *loc = NULL;
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
     /* if this proc is not bound, then there is no locality. We
-     * know it isn't bound if the cpuset is NULL, or if it is
+     * know it isn't bound if the bitmap is NULL, or if it is
      * all 1's */
     if (NULL == cpuset->bitmap || hwloc_bitmap_isfull(cpuset->bitmap)) {
         *loc = NULL;

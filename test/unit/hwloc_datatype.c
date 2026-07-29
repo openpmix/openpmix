@@ -426,6 +426,90 @@ step2:
 }
 
 /* ------------------------------------------------------------------ */
+/* malformed cpusets handed to the string generators                   */
+/* ------------------------------------------------------------------ */
+
+/* A cpuset carries a "source" naming the provider that produced its
+ * bitmap. A NULL source is legal on an input cpuset the caller wants
+ * filled in, but not on one we are asked to serialize or interpret:
+ * both generators used to read it with strncasecmp before checking it,
+ * so a host handing over a bitmap it had built itself - or simply a
+ * zeroed struct - crashed the library. They must report an error. */
+static void test_cpuset_string_bad_source(void)
+{
+    pmix_cpuset_t cpuset;
+    pmix_status_t rc;
+    char *str;
+    int ok;
+
+    /* a bitmap with no source at all */
+    PMIX_CPUSET_CONSTRUCT(&cpuset);
+    if (PMIX_SUCCESS != PMIx_Parse_cpuset_string("hwloc:0-3", &cpuset)) {
+        report("cpuset generators reject a NULL source (setup)", 0);
+        return;
+    }
+    free(cpuset.source);
+    cpuset.source = NULL;
+
+    str = (char *) 0x1;
+    rc = PMIx_server_generate_cpuset_string(&cpuset, &str);
+    ok = (PMIX_SUCCESS != rc && NULL == str);
+    if (!ok) {
+        fprintf(stdout, "    generate_cpuset_string(NULL source): rc=%s str=%p\n",
+                PMIx_Error_string(rc), (void *) str);
+    }
+    report("generate_cpuset_string rejects a NULL source", ok);
+
+    str = (char *) 0x1;
+    rc = PMIx_server_generate_locality_string(&cpuset, &str);
+    ok = (PMIX_SUCCESS != rc && NULL == str);
+    if (!ok) {
+        fprintf(stdout, "    generate_locality_string(NULL source): rc=%s str=%p\n",
+                PMIx_Error_string(rc), (void *) str);
+    }
+    report("generate_locality_string rejects a NULL source", ok);
+
+    /* restore a source so the destructor reclaims the bitmap */
+    cpuset.source = strdup("hwloc");
+    PMIX_CPUSET_DESTRUCT(&cpuset);
+
+    /* a NULL cpuset pointer */
+    str = (char *) 0x1;
+    rc = PMIx_server_generate_cpuset_string(NULL, &str);
+    ok = (PMIX_SUCCESS != rc && NULL == str);
+    report("generate_cpuset_string rejects a NULL cpuset", ok);
+
+    str = (char *) 0x1;
+    rc = PMIx_server_generate_locality_string(NULL, &str);
+    ok = (PMIX_SUCCESS != rc && NULL == str);
+    report("generate_locality_string rejects a NULL cpuset", ok);
+
+    /* a source naming some other provider - not an error, but the
+     * output pointer must still not be left holding garbage */
+    PMIX_CPUSET_CONSTRUCT(&cpuset);
+    if (PMIX_SUCCESS != PMIx_Parse_cpuset_string("hwloc:0-3", &cpuset)) {
+        report("cpuset generators handle a foreign source (setup)", 0);
+        return;
+    }
+    free(cpuset.source);
+    cpuset.source = strdup("someoneelse");
+
+    str = (char *) 0x1;
+    rc = PMIx_server_generate_cpuset_string(&cpuset, &str);
+    ok = (PMIX_SUCCESS != rc && NULL == str);
+    report("generate_cpuset_string passes on a foreign source", ok);
+
+    str = (char *) 0x1;
+    rc = PMIx_server_generate_locality_string(&cpuset, &str);
+    ok = (PMIX_SUCCESS != rc && NULL == str);
+    report("generate_locality_string passes on a foreign source", ok);
+
+    /* the destructor only reclaims what it recognizes as its own */
+    hwloc_bitmap_free((hwloc_bitmap_t) cpuset.bitmap);
+    free(cpuset.source);
+}
+
+/* ------------------------------------------------------------------ */
 
 /* Run the full topology datatype battery against one topology. */
 static void run_topology_suite(pmix_topology_t *topo, const char *label, int this_system)
@@ -465,6 +549,7 @@ int main(int argc, char **argv)
     /* type-level tests that do not need a specific topology */
     test_cpuset_pack_unpack();
     test_cpuset_copy();
+    test_cpuset_string_bad_source();
     test_relative_locality();
 
     /* the machine's own topology */
