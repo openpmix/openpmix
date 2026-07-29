@@ -199,6 +199,7 @@ already-formatted range list, since callers had used all three.
 |---|----------|--------|
 | D24 | `pmix.pyx` `PMIxClient.get_cpuset` | Returned `strdup(cpuset.source)` — a `char*` that Cython converts to **bytes** while leaking the `strdup` copy — and set `cpus` to `txt.split(",")` on the *whole* string, leaving the `hwloc:` prefix glued to the first entry (`['hwloc:0-3', '8']`). The `pmix_cpuset_t` was never destructed, leaking the provider bitmap on every call. |
 | D25 | `pmix.pyx` `PMIxClient.compute_distances` | Read `pycpus['cpus'].encode('ascii')`, i.e. expected `cpus` to be a **string** — a shape no other method produced, so a dict from `get_cpuset` raised `AttributeError`. It also returned early on failure without freeing the info array, and never destructed the cpuset. |
+| D26 | `pmix.pyx` `PMIxClient.compute_distances` | Released the device-distance array with `PyMem_Free`, but the library allocates it with the C allocator — the same allocator mismatch as D18. Now released with `PMIx_Device_distance_free`. The per-result strings were stored as leaked `strdup` copies (which Cython stores as `bytes`, not `str`), and the `type` field was dropped entirely. |
 | D27 | `pmix.pyx` `parse_cpuset_string` | The `csetstr:str` annotation made the body's own `None` check unreachable (Cython rejects `None` at the call boundary first) — the same defect class as D23. The annotations were dropped from the cpuset methods so their validation can report `PMIX_ERR_BAD_PARAM`. |
 
 **A latent C-side hazard, guarded but not fixed here.**

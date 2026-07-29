@@ -2180,15 +2180,23 @@ cdef class PMIxClient:
         n = 0
         while n < ndist:
             pydist = {}
-            pydist['uuid'] = strdup(distances[n].uuid)
-            pydist['osname'] = strdup(distances[n].osname)
+            if NULL == distances[n].uuid:
+                pydist['uuid'] = None
+            else:
+                pydist['uuid'] = distances[n].uuid.decode('ascii')
+            if NULL == distances[n].osname:
+                pydist['osname'] = None
+            else:
+                pydist['osname'] = distances[n].osname.decode('ascii')
+            pydist['type'] = distances[n].type
             pydist['mindist'] = distances[n].mindist
             pydist['maxdist'] = distances[n].maxdist
             results.append(pydist)
             n += 1
 
-        # free the memory
-        PyMem_Free(distances)
+        # the distance array was allocated by the library, so it must be
+        # released by the library
+        PMIx_Device_distance_free(distances, ndist)
 
         # return result
         return (rc, results)
