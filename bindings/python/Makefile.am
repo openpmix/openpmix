@@ -49,11 +49,29 @@ constants_files = \
         pmix_constants.pxd \
         pmix_constants.pxi
 
+constants_stamp = pmix_constants.stamp
+
 # Create pmix_constants.pxd and pmix_constants.pxi by harvesting a
 # bunch of PMIx header files These will be generated in the PMIx build
 # dir.
-$(constants_files): construct.py $(harvested_headers)
+#
+# A single run of construct.py produces both files. Listing them as the
+# targets of one rule would let a parallel make start one run per target,
+# and each run truncates the files the other is writing, so drive the
+# generation from a stamp file instead. This is the "multiple outputs"
+# idiom from the Automake manual.
+$(constants_stamp): construct.py $(harvested_headers)
+	@rm -f $(constants_stamp).tmp
+	@touch $(constants_stamp).tmp
 	$(PYTHON) $(top_srcdir)/bindings/python/construct.py --src="$(top_builddir)/include" --include-dir="$(top_srcdir)/include"
+	@mv -f $(constants_stamp).tmp $(constants_stamp)
+
+$(constants_files): $(constants_stamp)
+## Recover from the removal of a generated file while the stamp survived
+	@if test -f $@; then :; else \
+	    rm -f $(constants_stamp); \
+	    $(MAKE) $(AM_MAKEFLAGS) $(constants_stamp); \
+	fi
 
 # Cython does not natively understand VPATH builds.  Specifically,
 # Cython will build things in the same tree where it finds
@@ -135,7 +153,7 @@ uninstall-hook:
 	fi
 	rm -rf $(pythondir)/pypmix*
 
-CLEANFILES += $(constants_files)
+CLEANFILES += $(constants_files) $(constants_stamp) $(constants_stamp).tmp
 
 # Also delete the other files and dirs that Cython creates during its
 # "setup.py build_ext ..." step.  We need to use clean-local because
