@@ -43,6 +43,26 @@ Python Syntax
              'value': {'value': True, 'val_type': PMIX_BOOL}}]
   rc, results = foo.group_construct("mygroup", peers, pydirs)
 
+The non-blocking form takes a Python callback in place of the returned
+results, and reports only the status of the request itself:
+
+.. code-block:: python3
+
+  from pmix import *
+
+  # the callback is executed on the PMIx progress thread once the group
+  # has formed. It must not make a blocking PMIx call - hand the result
+  # to another thread instead
+  def mycb(status:int, results:list, cbdata):
+      print("CONSTRUCT COMPLETE", status, results)
+      cbdata.set()
+
+  foo = PMIxClient()
+  done = threading.Event()
+  # passing None for the peers means "everyone in my job"
+  rc = foo.group_construct_nb("mygroup", None, pydirs, mycb, done)
+  # mycb is executed only if rc is PMIX_SUCCESS
+
 
 INPUT PARAMETERS
 ----------------

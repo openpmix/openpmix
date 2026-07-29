@@ -7,6 +7,29 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Added Python bindings for the non-blocking group operations -
+   group_construct_nb, group_invite_nb, group_join_nb, group_leave_nb
+   and group_destruct_nb. Each takes a Python callback that is executed
+   on the progress thread when the operation completes, which is what
+   lets a Python program accept a group invitation from inside an event
+   handler - the blocking form must not be called there. These are the
+   first non-blocking client bindings, and the machinery they introduce
+   is documented in docs/how-things-work/python_nonblocking.rst for the
+   remaining non-blocking APIs to reuse
+ - Fixed a group bug affecting every caller of PMIx_Group_construct_nb,
+   in C as well as Python: the client recorded the constructed group
+   only on the completion path used by the blocking wrapper, so a
+   non-blocking caller's subsequent leave or destruct failed with
+   PMIX_ERR_NOT_FOUND against a group it had just built
+ - Fixed several defects in the Python bindings found while adding the
+   above: values handed to the library were allocated with Python's
+   allocator and freed with the C one, which aborted the process when a
+   Python server returned a data array; parameter annotations rejected
+   None on optional arguments, making documented defaults unreachable;
+   the server-module upcalls could not pass directives to a Python
+   handler; and the regex/ppn generators read their output pointer
+   without checking for failure. The Python test scripts also never ran,
+   as the search path they were given was left unexpanded
  - Added the --enable-test-build configure option. It force-builds the
    test and environment-specific components - the GPU vendor components,
    the NVIDIA/simptest/TCP transports, the pgpu test component, and the

@@ -168,6 +168,47 @@ callback — that class of mismatch bit the `notifyevent` key historically). A
 Python server registers them via `PMIxServer.init(info, module_map)` where
 `module_map` is `{'clientconnected': fn, 'fencenb': fn, ...}`.
 
+### 4c. Downcalls: a client `_nb` API → a Python callback
+
+The reverse of §4b, and the newest of the three. A non-blocking client
+method hands a request to `libpmix` and returns immediately; the result
+arrives later on the progress thread. The group operations
+(`group_construct_nb` and friends) are the worked example — everything
+else in `MISSING_BINDINGS.md` §1.1 is meant to reuse this.
+
+Three pieces, all in `pmix.pyx`:
+
+- **`nbcbd`, a keepalive caddy.** PMIx does not copy its input, so the
+  blocking methods' habit of freeing `procs`/`info` the moment the C call
+  returns is a use-after-free here. The group identifier is worse:
+  `group.encode('ascii')` is a Python local, so its buffer dangles at
+  return. All of it goes in the caddy, which is passed as the operation's
+  `cbdata` and released by the trampoline. Each field goes back to its own
+  allocator (`free` / `PyMem_Free` / `pmix_free_info`) — see §8.
+- **`pynbcbs`, a registry.** The caller's Python callback and `cbdata`
+  live in a module-global dict keyed by an integer the caddy carries, so
+  no `PyObject *` crosses into C. Same technique as `myhdlrs`.
+- **`pypmix_client_op_cbfunc` / `pypmix_client_info_cbfunc`,
+  trampolines.** `noexcept with gil`, per the rules below, with the user's
+  callback wrapped in `try`/`except`.
+
+Two invariants are easy to miss:
+
+- **The registry entry is the ownership token for the caddy.** Whoever
+  pops it frees the caddy; a pop that returns `None` means someone else
+  already did. This is what keeps the trampoline and the method's error
+  path from double-freeing.
+- **A failed C call means no callback, ever.** When the `_nb` API returns
+  anything but `PMIX_SUCCESS` the request was not accepted, so the method
+  must reclaim the caddy itself before returning. Forgetting this leaks
+  silently and only on the error path.
+
+Validate that `cbfunc` is callable before allocating anything — a callback
+that can never run strands the caddy for the life of the process.
+
+Full write-up, including how to add the remaining `_nb` bindings:
+[`docs/how-things-work/python_nonblocking.rst`](../../docs/how-things-work/python_nonblocking.rst).
+
 ### Rules when touching callback code
 
 - Trampolines that call back into Python **must** be `cdef ... with gil`.
@@ -283,6 +324,15 @@ internalizing so they are not reintroduced:
   paths had several `.size`/`.bytes`/`[index]` mistakes that compiled cleanly
   and only failed (or silently returned garbage) at runtime. When you touch an
   unload arm, exercise it on real data.
+- **Anything `libpmix` will free must come from `malloc`, not
+  `PyMem_Malloc`.** Python's allocator serves small blocks out of its own
+  arenas, so passing one to `free()` is not a mismatch the system tolerates
+  — it aborts the process. The load paths (`pmix_load_value`,
+  `pmix_load_darray`) build values the library takes ownership of and
+  therefore use `malloc`; buffers the bindings both allocate and release
+  themselves (the proc array, the query array) stay on `PyMem_*`, where
+  they are self-consistent. Getting this backwards is invisible until a
+  Python program passes a `PMIX_DATA_ARRAY` into the library.
 - **`memset`/`malloc` counts must include `sizeof(T)`**, and NUL-terminated
   `char**` arrays need one extra slot. Byte counts vs element counts were a
   recurring source of overflow.

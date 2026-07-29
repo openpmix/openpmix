@@ -36,6 +36,22 @@ Python Syntax
   pyinfo = []
   rc = foo.group_destruct("mygroup", pyinfo)
 
+The non-blocking form takes a Python callback, and reports only the
+status of the request itself:
+
+.. code-block:: python3
+
+  from pmix import *
+
+  # the callback is executed on the PMIx progress thread once every
+  # member has called destruct. It must not make a blocking PMIx call
+  def mycb(status:int, cbdata):
+      print("DESTRUCT COMPLETE", status)
+
+  foo = PMIxClient()
+  rc = foo.group_destruct_nb("mygroup", pyinfo, mycb, None)
+  # mycb is executed only if rc is PMIX_SUCCESS
+
 
 INPUT PARAMETERS
 ----------------

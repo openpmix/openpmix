@@ -27,13 +27,18 @@ Headers surveyed: `include/pmix.h`, `include/pmix_server.h`,
 
 ## Part 1 — Missing bindings
 
-### 1.1 Non-blocking (`_nb`) variants — none are bound
+### 1.1 Non-blocking (`_nb`) variants — the group family is bound
 
-Every operational client call is bound **only** in its blocking form. None of
-the callback-style non-blocking variants exist in Python. Adding these is the
-single largest coverage gap and would let Python programs drive PMIx
-asynchronously (they would need the callback-trampoline machinery already used
-for the server module — see AGENTS.md §4).
+The five group operations now have non-blocking bindings
+(`group_construct_nb`, `group_invite_nb`, `group_join_nb`,
+`group_leave_nb`, `group_destruct_nb`). They brought the client-side
+async machinery with them — a keepalive caddy, a callback registry, and
+the two trampolines — so the remaining entries below are a mechanical
+follow-on rather than new infrastructure. See AGENTS.md §4c and
+[`docs/how-things-work/python_nonblocking.rst`](../../docs/how-things-work/python_nonblocking.rst).
+
+Every other operational client call is still bound **only** in its
+blocking form:
 
 - `PMIx_Fence_nb`
 - `PMIx_Get_nb`
@@ -50,11 +55,6 @@ for the server module — see AGENTS.md §4).
 - `PMIx_Process_monitor_nb`
 - `PMIx_Get_credential_nb`
 - `PMIx_Validate_credential_nb`
-- `PMIx_Group_construct_nb`
-- `PMIx_Group_destruct_nb`
-- `PMIx_Group_invite_nb`
-- `PMIx_Group_join_nb`
-- `PMIx_Group_leave_nb`
 - `PMIx_Fabric_register_nb`
 - `PMIx_Fabric_update_nb`
 - `PMIx_Fabric_deregister_nb`

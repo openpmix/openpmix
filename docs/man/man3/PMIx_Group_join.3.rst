@@ -44,6 +44,26 @@ Python Syntax
   pyinfo = []
   rc, results = foo.group_join("mygroup", leader, PMIX_GROUP_ACCEPT, pyinfo)
 
+An invitation is delivered in an event handler, and the blocking form
+must not be called from one. The non-blocking form is therefore the
+usual way to respond: it takes a Python callback in place of the
+returned results, and reports only the status of the request itself:
+
+.. code-block:: python3
+
+  from pmix import *
+
+  # the callback is executed on the PMIx progress thread once the group
+  # has formed. It must not make a blocking PMIx call
+  def mycb(status:int, results:list, cbdata):
+      print("JOIN COMPLETE", status, results)
+
+  def myinvitehdlr(evhdlr:int, status:int,
+                   source:dict, info:list, results:list):
+      # accepting from within the handler is safe in this form
+      foo.group_join_nb("mygroup", source, PMIX_GROUP_ACCEPT, [], mycb, None)
+      return PMIX_EVENT_ACTION_COMPLETE, None
+
 
 INPUT PARAMETERS
 ----------------
