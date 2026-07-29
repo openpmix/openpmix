@@ -334,16 +334,48 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
 
 static pmix_status_t register_singleton(char *name)
 {
-    char *tmp, *ptr;
+    char *tmp, *ptr, *endptr;
     pmix_namespace_t *nptr;
     pmix_rank_t rank;
     pmix_rank_info_t *rinfo;
+    unsigned long val;
+    size_t nslen;
 
+    /* the value must be the string representation of a proc ID -
+     * i.e., of the form "nspace.rank". Anything else is a mistake
+     * on the part of whoever passed it to us, so tell them about
+     * it instead of faulting */
+    if (NULL == name) {
+        pmix_show_help("help-pmix-server.txt", "bad-singleton", true, "NULL");
+        return PMIX_ERR_BAD_PARAM;
+    }
+    ptr = strrchr(name, '.');
+    if (NULL == ptr || ptr == name || '\0' == ptr[1]) {
+        /* no separator, no nspace, or no rank */
+        pmix_show_help("help-pmix-server.txt", "bad-singleton", true, name);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    nslen = (size_t) (ptr - name);
+    if (PMIX_MAX_NSLEN < nslen) {
+        pmix_show_help("help-pmix-server.txt", "bad-singleton", true, name);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* the rank must be a simple non-negative number - note that
+     * strtoul returns ULONG_MAX on overflow, which the validity
+     * check below rejects */
+    val = strtoul(&ptr[1], &endptr, 10);
+    if ('\0' != *endptr || !PMIX_RANK_IS_VALID(val)) {
+        pmix_show_help("help-pmix-server.txt", "bad-singleton", true, name);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    rank = (pmix_rank_t) val;
+
+    /* take a private copy and split it at the separator */
     tmp = strdup(name);
-    ptr = strrchr(tmp, '.');
-    *ptr = '\0';
-    ++ptr;
-    rank = strtoul(ptr, NULL, 10);
+    if (NULL == tmp) {
+        return PMIX_ERR_NOMEM;
+    }
+    tmp[nslen] = '\0';
 
     nptr = PMIX_NEW(pmix_namespace_t);
     if (NULL == nptr) {
@@ -353,13 +385,14 @@ static pmix_status_t register_singleton(char *name)
     nptr->nspace = strdup(tmp);
     nptr->nlocalprocs = 1;
     nptr->nprocs = 1;
-    pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     /* add this rank */
     rinfo = PMIX_NEW(pmix_rank_info_t);
     if (NULL == rinfo) {
+        PMIX_RELEASE(nptr);
         free(tmp);
         return PMIX_ERR_NOMEM;
     }
+    pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     rinfo->pname.nspace = strdup(tmp);
     rinfo->pname.rank = rank;
     rinfo->realuid = getuid();
@@ -591,6 +624,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 outputio = PMIX_INFO_TRUE(&info[n]);
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SINGLETON)) {
+                if (PMIX_STRING != info[n].value.type) {
+                    pmix_show_help("help-pmix-server.txt", "bad-singleton-type", true,
+                                   PMIx_Data_type_string(info[n].value.type));
+                    return PMIX_ERR_BAD_PARAM;
+                }
                 singleton = info[n].value.data.string;
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_MAU)) {
