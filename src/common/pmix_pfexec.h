@@ -66,6 +66,11 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pfexec_child_t);
 typedef struct {
     pmix_event_t *handler;
     bool active;
+    /* set by pmix_pfexec_base_open, cleared by pmix_pfexec_base_close.
+     * The children list below only exists between those two calls, and
+     * not every role opens this framework, so anything that walks or
+     * tears down that list must check this first */
+    bool initialized;
     pmix_list_t children;
     int timeout_before_sigkill;
     size_t nextid;
