@@ -42,6 +42,22 @@ Python Syntax
   pyinfo = []
   rc, results = foo.group_invite("mygroup", peers, pyinfo)
 
+The non-blocking form takes a Python callback in place of the returned
+results, and reports only the status of the request itself:
+
+.. code-block:: python3
+
+  from pmix import *
+
+  # the callback is executed on the PMIx progress thread once every
+  # invitee has responded. It must not make a blocking PMIx call
+  def mycb(status:int, results:list, cbdata):
+      print("INVITE COMPLETE", status, results)
+
+  foo = PMIxClient()
+  rc = foo.group_invite_nb("mygroup", peers, pyinfo, mycb, None)
+  # mycb is executed only if rc is PMIX_SUCCESS
+
 
 INPUT PARAMETERS
 ----------------

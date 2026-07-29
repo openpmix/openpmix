@@ -22,3 +22,4 @@ find information on that subject here.
    regex.rst
    ptl.rst
    pstat.rst
+   python_nonblocking.rst

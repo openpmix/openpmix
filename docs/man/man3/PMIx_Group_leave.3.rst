@@ -36,6 +36,23 @@ Python Syntax
   pyinfo = []
   rc = foo.group_leave("mygroup", pyinfo)
 
+The non-blocking form takes a Python callback, and reports only the
+status of the request itself:
+
+.. code-block:: python3
+
+  from pmix import *
+
+  # the callback is executed on the PMIx progress thread once the
+  # departure event has been locally generated. It must not make a
+  # blocking PMIx call
+  def mycb(status:int, cbdata):
+      print("LEAVE COMPLETE", status)
+
+  foo = PMIxClient()
+  rc = foo.group_leave_nb("mygroup", pyinfo, mycb, None)
+  # mycb is executed only if rc is PMIX_SUCCESS
+
 
 INPUT PARAMETERS
 ----------------
