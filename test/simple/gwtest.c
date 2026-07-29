@@ -910,7 +910,10 @@ static pmix_status_t register_event_fn(pmix_status_t *codes, size_t ncodes,
 static pmix_status_t deregister_events(pmix_status_t *codes, size_t ncodes, pmix_op_cbfunc_t cbfunc,
                                        void *cbdata)
 {
-    PMIX_HIDE_UNUSED_PARAMS(codes, ncodes, cbfunc, cbdata);
+    PMIX_HIDE_UNUSED_PARAMS(codes, ncodes);
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 
