@@ -849,6 +849,11 @@ static pmix_status_t process_pattern(const char *pattern, bool expand,
     if (NULL == pattern) {
         return PMIX_ERR_BAD_PARAM;
     }
+    /* validation mode has no answer to hand back, but expansion does -
+     * refuse rather than expand a name into nowhere */
+    if (expand && NULL == result) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     if (expand) {
         out = strdup("");
