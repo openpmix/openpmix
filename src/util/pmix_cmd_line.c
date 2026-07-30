@@ -249,16 +249,20 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         // --show-version option with no args
                         mystore(myoptions[option_index].name, optarg, results);
                         break;
-                    } else if (NULL != argv[optind]) {
-                            if (NULL == argv[optind+1]) {
-                            // one arg
-                            mystore(myoptions[option_index].name, argv[optind], results);
-                        } else {
-                            // two args
-                            mystore(myoptions[option_index].name, argv[optind], results);
-                            mystore(myoptions[option_index].name, argv[optind+1], results);
-                            ++optind;
-                        }
+                    }
+                    /* Takes up to two trailing tokens - a
+                     * "framework[:component]" and an optional modifier (see
+                     * pmix_info). Every token we claim has to be consumed:
+                     * this used to advance optind by one when it took TWO
+                     * and not at all when it took one, so the last argument
+                     * of a --show-version was also reported back to the
+                     * caller as the start of the command tail. */
+                    mystore(myoptions[option_index].name, argv[optind], results);
+                    ++optind;
+                    if (NULL != argv[optind] &&
+                        !is_option_token(argv[optind], shorts, myoptions)) {
+                        mystore(myoptions[option_index].name, argv[optind], results);
+                        ++optind;
                     }
                     break;
                 }
