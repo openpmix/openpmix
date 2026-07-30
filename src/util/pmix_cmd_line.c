@@ -56,6 +56,69 @@ static int endswith(const char *str, const char *suffix)
     return PMIX_ERR_BAD_PARAM;
 }
 
+/* Does this token name one of the options this tool registered?
+ *
+ * Two places below have to tell "the user omitted my argument and what
+ * follows is the next option" from "my argument merely looks option-ish".
+ * Both used to answer it by testing argv[n][1] for a dash, which is wrong
+ * in both directions: it rejects any value whose SECOND character is a dash
+ * (so "--pmixmca hwloc_default_cpu_list 0-1" was reported as a missing
+ * argument) while letting every short option through (so "--show-version -v"
+ * took "-v" to be a version argument).
+ *
+ * Testing argv[n][0] instead is no good either - it would reject a value
+ * that legitimately starts with a dash, and negative MCA values are real
+ * (prte_max_vm_size and prte_progress_thread_debug_level both use -1).
+ *
+ * So ask the option table. A token is an option only if it actually names
+ * one, which is the question we meant to ask all along.
+ */
+static bool is_option_token(const char *arg, const char *shorts,
+                            struct option myoptions[])
+{
+    const char *ptr;
+    size_t n, len;
+
+    if (NULL == arg || '-' != arg[0] || '\0' == arg[1]) {
+        /* not even shaped like an option - a bare "-" included, which
+         * conventionally means stdin rather than an option */
+        return false;
+    }
+
+    if ('-' == arg[1]) {
+        /* A bare "--" separates the launcher's directives from the
+         * application, so it is certainly not this option's value. */
+        if ('\0' == arg[2]) {
+            return true;
+        }
+        /* Long form. Stop at '=' so "--foo=bar" is recognized, and match on
+         * a prefix, as getopt_long itself does for unambiguous
+         * abbreviations. */
+        ptr = arg + 2;
+        len = strcspn(ptr, "=");
+        for (n = 0; NULL != myoptions[n].name; n++) {
+            if (0 == strncmp(ptr, myoptions[n].name, len)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /* Short form, possibly a cluster such as "-vvv". Every character has to
+     * be a registered short option for the token to be one - that is what
+     * keeps "-1" and "-n4" out. Skip the ':' argument markers in the shorts
+     * string; they are modifiers, not options. */
+    if (NULL == shorts) {
+        return false;
+    }
+    for (ptr = arg + 1; '\0' != *ptr; ++ptr) {
+        if (':' == *ptr || NULL == strchr(shorts, *ptr)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void check_store(const char *name, const char *option,
                         pmix_cli_result_t *results)
 {
@@ -143,7 +206,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     /* format mca params as param:value - the optind value
                      * will have been incremented since the MCA param options
                      * require an argument */
-                    if (NULL == argv[optind] || '-' == argv[optind][1]) {
+                    if (NULL == argv[optind] ||
+                        is_option_token(argv[optind], shorts, myoptions)) {
                         // missing the required second argument
                         str = pmix_show_help_string("help-cli.txt", "not-enough-arguments", true,
                                                     pmix_tool_basename, myoptions[option_index].name,
@@ -179,7 +243,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     break;
                 }
                 if (0 == strcmp(myoptions[option_index].name, PMIX_CLI_INFO_VERSION)) {
-                    if (NULL == argv[optind] || '-' == argv[optind][1]) {
+                    if (NULL == argv[optind] ||
+                        is_option_token(argv[optind], shorts, myoptions)) {
                         // --show-version option with no args
                         mystore(myoptions[option_index].name, optarg, results);
                         break;
