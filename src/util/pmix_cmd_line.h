@@ -101,6 +101,21 @@ PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 
 #define PMIX_OPTION_END  {0, 0, 0, 0}
 
+/* A note on the options marked "requires TWO" below.
+ *
+ * getopt is told those options take ONE argument, and the parser then takes
+ * a second token of its own accord from argv[optind]. Deciding whether that
+ * token is the value or the next option is therefore the parser's problem,
+ * not getopt's, and it is answered by asking this table whether the token
+ * names a registered option (see is_option_token() in pmix_cmd_line.c).
+ *
+ * It must not be answered by looking for a dash. A value may legitimately
+ * contain one ("0-1") or begin with one ("-1" - negative MCA values are
+ * real), and a short option is a single dash, so neither argv[n][0] nor
+ * argv[n][1] separates the two cases. Both spellings have been tried and
+ * both broke a working command line.
+ */
+
 //      NAME                            STRING                      ARGUMENT
 
 // Basic options
