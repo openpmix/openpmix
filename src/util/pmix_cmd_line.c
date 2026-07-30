@@ -149,6 +149,78 @@ static void check_store(const char *name, const char *option,
     return;
 }
 
+/* Bring every item's record of where its values were given up to date
+ * with the values it actually holds.
+ *
+ * If "record" is set, the new values are numbered with the next
+ * command-line positions; otherwise they are marked as being of unknown
+ * position. The parse makes one un-recorded pass before it starts so that
+ * anything a caller had already put into the results - which did not come
+ * from this command line, and so has no position on it - is not later
+ * mistaken for something we stored.
+ *
+ * Note what this does NOT do: ask the store function what it stored. The
+ * store function is replaceable, and a replacement is free to file a value
+ * under a different key than the one it was handed, under several keys, or
+ * to drop it. Nothing here has to know: whatever grew, grew, and a value
+ * an item holds beyond the extent of its seq array is by definition one
+ * that was just added. That is what keeps this bookkeeping invisible to a
+ * caller with a store function of its own.
+ */
+static void stamp_occurrences(pmix_cli_result_t *results, bool record)
+{
+    pmix_cli_item_t *opt;
+    int n, nvals, *tmp;
+
+    PMIX_LIST_FOREACH(opt, &results->instances, pmix_cli_item_t) {
+        nvals = PMIx_Argv_count(opt->values);
+        if (nvals <= opt->nseq) {
+            // nothing new was stored against this option
+            continue;
+        }
+        tmp = (int *) realloc(opt->seq, nvals * sizeof(int));
+        if (NULL == tmp) {
+            // out of memory - leave the positions we already have
+            return;
+        }
+        opt->seq = tmp;
+        for (n = opt->nseq; n < nvals; n++) {
+            opt->seq[n] = record ? results->nseq++ : -1;
+        }
+        opt->nseq = nvals;
+        if (0 > opt->firstseq) {
+            opt->firstseq = opt->seq[0];
+        }
+    }
+    return;
+}
+
+/* Store one option occurrence and record where on the command line it
+ * was given. */
+static void store_occurrence(pmix_cmd_line_store_fn_t storefn,
+                             const char *name, const char *option,
+                             pmix_cli_result_t *results)
+{
+    pmix_cli_item_t *opt;
+    size_t nitems;
+
+    nitems = pmix_list_get_size(&results->instances);
+    storefn(name, option, results);
+    stamp_occurrences(results, true);
+
+    if (pmix_list_get_size(&results->instances) > nitems) {
+        /* An option we had not seen before. If it was stored without a
+         * value - a boolean option, whose presence is the whole of what
+         * it says - then no value grew and the loop above had nothing to
+         * number, so record the position on the item itself. */
+        opt = (pmix_cli_item_t *) pmix_list_get_last(&results->instances);
+        if (0 > opt->firstseq) {
+            opt->firstseq = results->nseq++;
+        }
+    }
+    return;
+}
+
 int pmix_cmd_line_parse(char **pargv, char *shorts,
                         struct option myoptions[],
                         pmix_cmd_line_store_fn_t storefn,
@@ -191,6 +263,12 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
         return PMIX_SUCCESS;
     }
 
+    /* Anything already in the results did not come from the command line
+     * we are about to read, so it has no position on it - say so before
+     * we start numbering, or the first thing we store would be credited
+     * with a value someone else put there. */
+    stamp_occurrences(results, false);
+
     // run the parser
     while (1) {
         argind = optind;
@@ -224,7 +302,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         return PMIX_ERR_SILENT;
                     }
                     pmix_asprintf(&str, "%s=%s", argv[optind-1], argv[optind]);
-                    mystore(myoptions[option_index].name, str, results);
+                    store_occurrence(mystore, myoptions[option_index].name,
+                                     str, results);
                     free(str);
                     ++optind;
                     break;
@@ -233,21 +312,25 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 // that describe what to do
                 if (0 == strcmp(myoptions[option_index].name, PMIX_CLI_PREPEND_ENVAR) ||
                     0 == strcmp(myoptions[option_index].name, PMIX_CLI_APPEND_ENVAR)) {
-                    mystore(myoptions[option_index].name, argv[optind-1], results);
-                    mystore(myoptions[option_index].name, argv[optind], results);
+                    store_occurrence(mystore, myoptions[option_index].name,
+                                     argv[optind-1], results);
+                    store_occurrence(mystore, myoptions[option_index].name,
+                                     argv[optind], results);
                     ++optind;
                     break;
                 }
                 if (0 == strcmp(myoptions[option_index].name, PMIX_CLI_UNSET_ENVAR)) {
                     // unset-env option only takes one argument
-                    mystore(myoptions[option_index].name, optarg, results);
+                    store_occurrence(mystore, myoptions[option_index].name,
+                                     optarg, results);
                     break;
                 }
                 if (0 == strcmp(myoptions[option_index].name, PMIX_CLI_INFO_VERSION)) {
                     if (NULL == argv[optind] ||
                         is_option_token(argv[optind], shorts, myoptions)) {
                         // --show-version option with no args
-                        mystore(myoptions[option_index].name, optarg, results);
+                        store_occurrence(mystore, myoptions[option_index].name,
+                                         optarg, results);
                         break;
                     }
                     /* Takes up to two trailing tokens - a
@@ -257,17 +340,20 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                      * and not at all when it took one, so the last argument
                      * of a --show-version was also reported back to the
                      * caller as the start of the command tail. */
-                    mystore(myoptions[option_index].name, argv[optind], results);
+                    store_occurrence(mystore, myoptions[option_index].name,
+                                     argv[optind], results);
                     ++optind;
                     if (NULL != argv[optind] &&
                         !is_option_token(argv[optind], shorts, myoptions)) {
-                        mystore(myoptions[option_index].name, argv[optind], results);
+                        store_occurrence(mystore, myoptions[option_index].name,
+                                         argv[optind], results);
                         ++optind;
                     }
                     break;
                 }
                 /* otherwise, store actual option */
-                mystore(myoptions[option_index].name, optarg, results);
+                store_occurrence(mystore, myoptions[option_index].name,
+                                 optarg, results);
                 break;
             case 'h':
                 /* the "help" option can optionally take an argument. Since
@@ -411,7 +497,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     break;
                 }
                 pmix_asprintf(&str, "%d", n);
-                mystore(optname, str, results);
+                store_occurrence(mystore, optname, str, results);
                 free(str);
                 break;
             default:
@@ -473,7 +559,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                     ptr = argv[optind];
                                     ++optind;
                                 }
-                                mystore(myoptions[m].name, ptr, results);
+                                store_occurrence(mystore, myoptions[m].name, ptr, results);
                                 found = true;
                                 break;
                             }
@@ -562,10 +648,98 @@ done:
     return PMIX_SUCCESS;
 }
 
+/* Is occurrence "a" to be reported after occurrence "b"?
+ *
+ * A value whose position was never recorded (seq < 0) has no place in the
+ * ordering, so it goes after everything that does have one. */
+static bool occurs_after(const pmix_cli_occurrence_t *a,
+                         const pmix_cli_occurrence_t *b)
+{
+    if (0 > a->seq) {
+        return (0 <= b->seq);
+    }
+    if (0 > b->seq) {
+        return false;
+    }
+    return (a->seq > b->seq);
+}
+
+int pmix_cmd_line_get_ordered(pmix_cli_result_t *results,
+                              pmix_cli_occurrence_t **occurrences,
+                              size_t *nocc)
+{
+    pmix_cli_item_t *opt;
+    pmix_cli_occurrence_t *array, tmp;
+    size_t n, m, num;
+    int i, nvals;
+
+    if (NULL == results || NULL == occurrences || NULL == nocc) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *occurrences = NULL;
+    *nocc = 0;
+
+    // how many occurrences are there to report?
+    num = 0;
+    PMIX_LIST_FOREACH(opt, &results->instances, pmix_cli_item_t) {
+        nvals = PMIx_Argv_count(opt->values);
+        /* an option given without a value still occurred, and is
+         * reported as one entry carrying no value */
+        num += (0 == nvals) ? 1 : (size_t) nvals;
+    }
+    if (0 == num) {
+        return PMIX_SUCCESS;
+    }
+    array = (pmix_cli_occurrence_t *) malloc(num * sizeof(pmix_cli_occurrence_t));
+    if (NULL == array) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
+    n = 0;
+    PMIX_LIST_FOREACH(opt, &results->instances, pmix_cli_item_t) {
+        nvals = PMIx_Argv_count(opt->values);
+        if (0 == nvals) {
+            array[n].key = opt->key;
+            array[n].value = NULL;
+            array[n].seq = opt->firstseq;
+            ++n;
+            continue;
+        }
+        for (i = 0; i < nvals; i++) {
+            array[n].key = opt->key;
+            array[n].value = opt->values[i];
+            array[n].seq = (i < opt->nseq) ? opt->seq[i] : -1;
+            ++n;
+        }
+    }
+
+    /* Sort into the order the options were given. An insertion sort, and
+     * not qsort, because it is stable: the entries with no recorded
+     * position are all "equal" and there is no better order to give them
+     * than the one they came in with. A command line is a handful of
+     * options long, so the cost of that choice is nothing. */
+    for (n = 1; n < num; n++) {
+        tmp = array[n];
+        m = n;
+        while (0 < m && occurs_after(&array[m - 1], &tmp)) {
+            array[m] = array[m - 1];
+            --m;
+        }
+        array[m] = tmp;
+    }
+
+    *occurrences = array;
+    *nocc = num;
+    return PMIX_SUCCESS;
+}
+
 static void icon(pmix_cli_item_t *p)
 {
     p->key = NULL;
     p->values = NULL;
+    p->seq = NULL;
+    p->nseq = 0;
+    p->firstseq = -1;
 }
 static void ides(pmix_cli_item_t *p)
 {
@@ -574,6 +748,9 @@ static void ides(pmix_cli_item_t *p)
     }
     if (NULL != p->values) {
         PMIx_Argv_free(p->values);
+    }
+    if (NULL != p->seq) {
+        free(p->seq);
     }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cli_item_t,
@@ -584,6 +761,7 @@ static void ocon(pmix_cli_result_t *p)
 {
     PMIX_CONSTRUCT(&p->instances, pmix_list_t);
     p->tail = NULL;
+    p->nseq = 0;
 }
 static void odes(pmix_cli_result_t *p)
 {

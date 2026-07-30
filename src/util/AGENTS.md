@@ -97,7 +97,16 @@ is manipulated without locking and assumes progress-thread-only callers.
 
 A `getopt_long` wrapper that copies argv (getopt reorders in place),
 walks options, and stashes results in a `pmix_cli_result_t` (a list of
-`pmix_cli_item_t` plus a `tail` of positionals). It is intricate and
+`pmix_cli_item_t` plus a `tail` of positionals). Each stored value also
+carries the position at which it was given (`opt->seq[n]`, `-1` if the
+value was added by the caller after the parse rather than by the parser),
+because the grouped view cannot express the interleaving of two repeated
+options — see `pmix_cmd_line_get_nth_seq` and `pmix_cmd_line_get_ordered`.
+The stamping is done by the parser around the store call, not inside
+`check_store`, so it keeps working when a caller supplies a store
+function of its own.
+
+The parser is intricate and
 carries several special cases (`-v` repeat counting, `--` separator,
 MCA-param option pairs, the `-np` shortcut, optional `-h` argument). Two
 parser quirks that bit `src/tools` and are worth remembering: a bare
