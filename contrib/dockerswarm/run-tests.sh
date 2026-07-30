@@ -24,8 +24,6 @@ set -uo pipefail
 
 mode="${1:-linux}"
 pass=0 fail=0 skip=0
-# must match build.sh -- the preflight compares the containers against it
-IMAGE="${IMAGE:-pmix-swarm:latest}"
 ok()   { pass=$((pass+1)); printf '  \033[32mPASS\033[0m %s\n' "$1"; }
 bad()  { fail=$((fail+1)); printf '  \033[31mFAIL\033[0m %s\n' "$1"; }
 skp()  { skip=$((skip+1)); printf '  \033[33mSKIP\033[0m %s\n' "$1"; }
@@ -38,19 +36,10 @@ GROUP_EXAMPLES="${GROUP_EXAMPLES:-group group_bootstrap group_dmodex group_lcl_c
 # Linux: the full 10-node swarm
 ########################################################################
 
-# run a command on the head node (login env so PATH/LD_LIBRARY_PATH are set)
-RUN() { docker exec -e PRTE_ALLOW_RUN_AS_ROOT=1 -e PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1 \
-            pmix-node1 bash -lc ". /opt/prte/env.sh; $*"; }
-ON()  { docker exec "pmix-node$1" bash -lc ". /opt/prte/env.sh 2>/dev/null; ${*:2}"; }
-
-cleanup_swarm() {
-    for n in $(seq 1 10); do
-        docker exec "pmix-node$n" sh -c \
-            'pkill -9 -x prted 2>/dev/null; pkill -9 -x prte 2>/dev/null;
-             pkill -9 prterun 2>/dev/null; rm -rf /tmp/prte.* /tmp/prun.session.* /tmp/pmix* 2>/dev/null; true'
-    done
-}
-prted_count() { local c=0 n; for n in "$@"; do ON "$n" 'pgrep -x prted' >/dev/null 2>&1 && c=$((c+1)); done; echo "$c"; }
+# RUN/ON/prted_count, cleanup_swarm, swarm_up_or_die and the swarm naming
+# (PMIX_SWARM, NODE, IMAGE, VOLUME) all live in one place -- these three
+# runners carried their own copies once, and the copies drifted.
+. "$(dirname "$0")/swarm-common.sh"
 
 # Per-example launch geometry ($NP ranks spread over $HOSTS) and the marker that
 # signals the group actually formed.  The defaults suit the common case -- four
@@ -94,9 +83,7 @@ launch() {
 }
 
 test_linux() {
-    if ! docker ps --format '{{.Names}}' | grep -qx pmix-node1; then
-        echo "swarm not up -- run: docker compose up -d" >&2; exit 2
-    fi
+    swarm_up_or_die
 
     banner "preflight: install present in shared volume"
     if RUN 'command -v prterun prte prun pterm >/dev/null'; then
@@ -118,14 +105,14 @@ test_linux() {
     imgid=$(docker images --no-trunc --format '{{.ID}}' "$IMAGE" 2>/dev/null | head -1)
     stalenodes=""
     for imgn in $(seq 1 10); do
-        cimg=$(docker inspect "pmix-node$imgn" --format '{{.Image}}' 2>/dev/null)
+        cimg=$(docker inspect "$NODE$imgn" --format '{{.Image}}' 2>/dev/null)
         [ "$cimg" = "$imgid" ] || stalenodes="$stalenodes node$imgn"
     done
     if [ -z "$stalenodes" ]; then
         ok "all 10 containers are on the current $IMAGE"
     else
         bad "containers predate $IMAGE:$stalenodes"
-        echo "     Recreate them: docker compose up -d --force-recreate" >&2
+        echo "     Recreate them: ${SWARM_ENV}docker compose up -d --force-recreate" >&2
         echo "     (from contrib/dockerswarm, so the pinned project name applies)" >&2
         return
     fi
@@ -253,16 +240,20 @@ test_macos() {
     if [ ! -x "$prefix/bin/prterun" ]; then
         echo "native build missing -- run: ./build.sh macos" >&2; exit 2
     fi
-    export PATH="$prefix/bin:$PATH"
     export DYLD_LIBRARY_PATH="$prefix/lib:$root/vpath-macos-pmix/install/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
     export PRTE_ALLOW_RUN_AS_ROOT=1 PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1
-    macpk() { pkill -9 prterun 2>/dev/null; pkill -9 -x prte 2>/dev/null; pkill -9 -x prted 2>/dev/null; true; }
+    # This runs on the developer's own machine, so it must not reach another
+    # clone running the same script: mac_isolate gives PRRTE a private TMPDIR
+    # and points macpk at THIS install's bin, which every tool and example
+    # below is launched from by absolute path ($MAC_BIN, not PATH).  See
+    # swarm-common.sh.
+    mac_isolate "$prefix"
 
     banner "macOS: single-host group construction"
     for ex in $GROUP_EXAMPLES; do
         [ -x "$prefix/bin/$ex" ] || { skp "$ex (not built)"; continue; }
         macpk; sleep 1
-        out="$(prterun -np 4 --timeout 60 "$prefix/bin/$ex" 2>&1)"
+        out="$("$MAC_BIN/prterun" -np 4 --timeout 60 "$prefix/bin/$ex" 2>&1)"
         if echo "$out" | grep -qiE 'Group construct complete|construct.*succe'; then
             ok "$ex: group constructed (single host)"
         else

@@ -80,19 +80,10 @@ banner() { printf '\n=== %s ===\n' "$1"; }
 # Linux: the full 10-node swarm
 ########################################################################
 
-# run a command on the head node (login env so PATH/LD_LIBRARY_PATH are set)
-RUN() { docker exec -e PRTE_ALLOW_RUN_AS_ROOT=1 -e PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1 \
-            pmix-node1 bash -lc ". /opt/prte/env.sh; $*"; }
-ON()  { docker exec "pmix-node$1" bash -lc ". /opt/prte/env.sh 2>/dev/null; ${*:2}"; }
-
-cleanup_swarm() {
-    for n in $(seq 1 10); do
-        docker exec "pmix-node$n" sh -c \
-            'pkill -9 -x prted 2>/dev/null; pkill -9 -x prte 2>/dev/null;
-             pkill -9 prterun 2>/dev/null; rm -rf /tmp/prte.* /tmp/prun.session.* /tmp/pmix* 2>/dev/null; true'
-    done
-}
-prted_count() { local c=0 n; for n in "$@"; do ON "$n" 'pgrep -x prted' >/dev/null 2>&1 && c=$((c+1)); done; echo "$c"; }
+# RUN/ON/prted_count, cleanup_swarm, swarm_up_or_die and the swarm naming
+# (PMIX_SWARM, NODE, IMAGE, VOLUME) all live in one place -- these three
+# runners carried their own copies once, and the copies drifted.
+. "$(dirname "$0")/swarm-common.sh"
 
 # Markers of a launch that hung until the DVM/job timeout fired. Match only the
 # launcher's genuine timeout-expiry text -- NOT the bare word "timeout", which
@@ -101,9 +92,7 @@ prted_count() { local c=0 n; for n in "$@"; do ON "$n" 'pgrep -x prted' >/dev/nu
 hung() { echo "$1" | grep -qiE 'time limit for job|timed out|DVM timeout'; }
 
 test_linux() {
-    if ! docker ps --format '{{.Names}}' | grep -qx pmix-node1; then
-        echo "swarm not up -- run: docker compose up -d" >&2; exit 2
-    fi
+    swarm_up_or_die
 
     banner "preflight: install present in shared volume"
     if RUN 'command -v prterun prte prun pterm >/dev/null'; then
@@ -383,15 +372,19 @@ test_macos() {
     if [ ! -x "$prefix/bin/prterun" ]; then
         echo "native build missing -- run: ./build.sh macos" >&2; exit 2
     fi
-    export PATH="$prefix/bin:$PATH"
     export DYLD_LIBRARY_PATH="$prefix/lib:$root/vpath-macos-pmix/install/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
     export PRTE_ALLOW_RUN_AS_ROOT=1 PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1
-    macpk() { pkill -9 prterun 2>/dev/null; pkill -9 -x prte 2>/dev/null; pkill -9 -x prted 2>/dev/null; true; }
+    # This runs on the developer's own machine, so it must not reach another
+    # clone running the same script: mac_isolate gives PRRTE a private TMPDIR
+    # and points macpk at THIS install's bin, which every tool and example
+    # below is launched from by absolute path ($MAC_BIN, not PATH).  See
+    # swarm-common.sh.
+    mac_isolate "$prefix"
 
     banner "macOS: invite/join happy path (single host)"
     if [ -x "$prefix/bin/group_invite" ]; then
         macpk; sleep 1
-        out="$(prterun -np 4 --timeout 60 "$prefix/bin/group_invite" 2>&1)"
+        out="$("$MAC_BIN/prterun" -np 4 --timeout 60 "$prefix/bin/group_invite" 2>&1)"
         npass=$(echo "$out" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
         if echo "$out" | grep -qiE 'FAILED|timeout|timed out'; then
             skp "group_invite: not clean (native Darwin DVM can be flaky): $(echo "$out" | tr '\n' ' ' | tail -c 160)"
@@ -407,7 +400,7 @@ test_macos() {
     banner "macOS: invite timeout (single host)"
     if [ -x "$prefix/bin/group_invite_timeout" ]; then
         macpk; sleep 1
-        out="$(prterun -np 4 --timeout 60 "$prefix/bin/group_invite_timeout" 2>&1)"
+        out="$("$MAC_BIN/prterun" -np 4 --timeout 60 "$prefix/bin/group_invite_timeout" 2>&1)"
         nfail=$(echo "$out" | grep -c 'INVITE_FAILED for non-responder: PASS')
         npass=$(echo "$out" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
         if echo "$out" | grep -qiE 'FAILED -|timeout|timed out'; then
@@ -424,7 +417,7 @@ test_macos() {
     banner "macOS: invite declined (single host)"
     if [ -x "$prefix/bin/group_invite_decline" ]; then
         macpk; sleep 1
-        out="$(prterun -np 4 --timeout 60 "$prefix/bin/group_invite_decline" 2>&1)"
+        out="$("$MAC_BIN/prterun" -np 4 --timeout 60 "$prefix/bin/group_invite_decline" 2>&1)"
         nfail=$(echo "$out" | grep -c 'INVITE_FAILED for decliner: PASS')
         npass=$(echo "$out" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
         if echo "$out" | grep -qiE 'FAILED -|timeout|timed out'; then
@@ -441,7 +434,7 @@ test_macos() {
     banner "macOS: invite aborted (single host)"
     if [ -x "$prefix/bin/group_invite_abort" ]; then
         macpk; sleep 1
-        out="$(prterun -np 4 --timeout 60 "$prefix/bin/group_invite_abort" 2>&1)"
+        out="$("$MAC_BIN/prterun" -np 4 --timeout 60 "$prefix/bin/group_invite_abort" 2>&1)"
         nleader=$(echo "$out" | grep -c 'PMIx_Group_invite returned CONSTRUCT_ABORT: PASS')
         nabort=$(echo "$out" | grep -c 'PMIX_GROUP_CONSTRUCT_ABORT received: PASS')
         if echo "$out" | grep -qiE 'FAILED -|timeout|timed out'; then
@@ -458,7 +451,7 @@ test_macos() {
     banner "macOS: member lost during destruct (single host)"
     if [ -x "$prefix/bin/group_destruct_die" ]; then
         macpk; sleep 1
-        out="$(prterun --rtos recoverable -np 4 --timeout 60 "$prefix/bin/group_destruct_die" 2>&1)"
+        out="$("$MAC_BIN/prterun" --rtos recoverable -np 4 --timeout 60 "$prefix/bin/group_destruct_die" 2>&1)"
         n=$(echo "$out" | grep -c 'destruct complete on survivors')
         if echo "$out" | grep -qiE 'timeout|timed out'; then
             skp "group_destruct_die: not clean (native Darwin DVM can be flaky)"
@@ -474,7 +467,7 @@ test_macos() {
     banner "macOS: member lost mid-construct (single host)"
     if [ -x "$prefix/bin/group_construct_abort" ]; then
         macpk; sleep 1
-        out="$(prterun --rtos recoverable -np 4 --timeout 60 "$prefix/bin/group_construct_abort" 2>&1)"
+        out="$("$MAC_BIN/prterun" --rtos recoverable -np 4 --timeout 60 "$prefix/bin/group_construct_abort" 2>&1)"
         n=$(echo "$out" | grep -c 'construct ABORT on member loss: PASS')
         if echo "$out" | grep -qiE 'timeout|timed out'; then
             skp "group_construct_abort: not clean (native Darwin DVM can be flaky)"

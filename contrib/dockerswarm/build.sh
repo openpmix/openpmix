@@ -22,6 +22,10 @@
 #   ./build.sh macos    # build natively on this host (single-host smoke)
 #   ./build.sh image    # (re)build just the base container image
 #
+# Two clones on one host: export PMIX_SWARM (see swarm-common.sh) and each
+# gets its own containers, volume, and network.  The macOS build is already
+# per-clone -- it lives under <repo>/vpath-macos-*.
+#
 # Because a VPATH configure refuses to run while the source tree still has an
 # in-tree build, this script runs `make distclean` (once) at the repo root and
 # then `./autogen.pl`.  After that, ALL builds are out-of-tree and your
@@ -34,8 +38,11 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(git -C "$here" rev-parse --show-toplevel)"     # the openpmix tree
 
-IMAGE="${IMAGE:-pmix-swarm:latest}"
-VOLUME="${VOLUME:-pmix-build}"
+# PMIX_SWARM, IMAGE, VOLUME -- which swarm this build is for.  Set PMIX_SWARM
+# in the whole shell and a second clone of openpmix gets its own containers,
+# volume, and network instead of fighting over this one.
+. "$here/swarm-common.sh"
+
 PRRTE_REF="${PRRTE_REF:-master}"        # baked-image PRRTE branch
 PRRTE_REPO="${PRRTE_REPO:-https://github.com/openpmix/prrte.git}"
 
@@ -194,7 +201,16 @@ build_linux() {
             echo ">>>> done: PMIx in /opt/prte/pmix, PRRTE in /opt/prte/prte, tests in /opt/prte/tests"
         '
     echo ">>> Linux build complete."
-    echo ">>> next: docker compose up -d && ./run-tests.sh linux"
+    if [ -z "$SWARM_ENV" ]; then
+        echo ">>> next: docker compose up -d && ./run-tests.sh linux"
+    else
+        # Say it with the variable: compose reads PMIX_SWARM from the
+        # environment of the compose command, and a plain `docker compose
+        # up -d` brings up the DEFAULT swarm against the default volume,
+        # leaving this build sitting in $VOLUME unused.
+        echo ">>> next: ${SWARM_ENV}docker compose up -d && ${SWARM_ENV}./run-tests.sh linux"
+        echo ">>>       (swarm '$PMIX_SWARM': containers ${NODE}1..10, volume $VOLUME)"
+    fi
 }
 
 # --- macOS build (native, on this host; single-host smoke) ------------------
