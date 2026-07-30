@@ -159,6 +159,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     int n, m, opt, argc, argind;
     bool found;
     char *ptr, *str, **argv;
+    const char *optname;
     pmix_cmd_line_store_fn_t mystore;
 
     /* the getopt_long parser reorders the input argv array, so
@@ -368,18 +369,45 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 PMIx_Argv_free(argv);
                 return PMIX_OPERATION_SUCCEEDED;
             case 'v':
-                /* if the argv at this point is not pointing at a string
-                 * starting with "-v", then we just ignore it - the user
-                 * has passed a string with multiple 'v's in it and we
-                 * need to wait until the end */
-                if (0 != strncmp(argv[optind-1], "-v", 2)) {
+                /* Name the option from the character getopt handed back, not
+                 * from option_index: getopt_long only sets option_index when
+                 * it matched a LONG option, so on "-v" it still holds the
+                 * last long option matched - or zero, the FIRST entry in the
+                 * table, which is how the verbosity count came to be
+                 * recorded against "help". */
+                optname = NULL;
+                for (m = 0; NULL != myoptions[m].name; m++) {
+                    if (opt == myoptions[m].val) {
+                        optname = myoptions[m].name;
+                        break;
+                    }
+                }
+                if (NULL == optname) {
+                    // 'v' is not in this tool's table - nothing to record
                     break;
                 }
-                /* we store the 'v' option with a value equal to the
-                 * number of 'v's the user provided */
-                n = strlen(&argv[optind-1][1]);
+                if ('-' == argv[optind-1][0] && '-' == argv[optind-1][1] &&
+                    0 == strncmp(&argv[optind-1][2], optname,
+                                 strlen(&argv[optind-1][2]))) {
+                    /* The long form ("--verbose", or any unambiguous
+                     * abbreviation of it) is a single request. It used to be
+                     * dropped on the floor: this arm demanded a token
+                     * beginning "-v", which "--verbose" does not. */
+                    n = 1;
+                } else if (0 == strncmp(argv[optind-1], "-v", 2)) {
+                    /* Short form. getopt hands us 'v' once per character of
+                     * a cluster ("-vvv") but only steps optind past the
+                     * cluster on the last one, so the earlier calls still
+                     * see the PREVIOUS argv entry - hence the test that the
+                     * token is actually ours. The verbosity is then the
+                     * number of v's given. */
+                    n = strlen(&argv[optind-1][1]);
+                } else {
+                    // an interim call for a cluster we have not finished
+                    break;
+                }
                 pmix_asprintf(&str, "%d", n);
-                mystore(myoptions[option_index].name, str, results);
+                mystore(optname, str, results);
                 free(str);
                 break;
             default:
