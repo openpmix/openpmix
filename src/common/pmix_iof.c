@@ -823,6 +823,31 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntar
 }
 
 /*
+ * Grow the accumulated name, replacing it with the formatted result and
+ * releasing the old buffer. The format is expected to lead with a "%s" fed
+ * by the current *out - i.e. it appends. On allocation failure the
+ * accumulator is freed and set to NULL, so a caller need only test the
+ * return value to know it owns nothing.
+ */
+static bool append_to_pattern(char **out, const char *fmt, ...)
+__pmix_attribute_format__(__printf__, 2, 3);
+
+static bool append_to_pattern(char **out, const char *fmt, ...)
+{
+    char *tmp = NULL;
+    va_list ap;
+
+    va_start(ap, fmt);
+    /* pmix_vasprintf guarantees tmp is NULL on error */
+    pmix_vasprintf(&tmp, fmt, ap);
+    va_end(ap);
+
+    free(*out);
+    *out = tmp;
+    return (NULL != tmp);
+}
+
+/*
  * Expand the '%' conversions in an output-file pattern - see the contract
  * on pmix_iof_check_pattern/pmix_iof_expand_pattern in pmix_iof.h.
  *
@@ -837,7 +862,7 @@ static pmix_status_t process_pattern(const char *pattern, bool expand,
                                      char **result, char **bad)
 {
     const char *p;
-    char *out = NULL, *tmp;
+    char *out = NULL;
     char conv[3];
 
     if (NULL != bad) {
@@ -865,9 +890,9 @@ static pmix_status_t process_pattern(const char *pattern, bool expand,
     for (p = pattern; '\0' != *p; ++p) {
         if ('%' != *p) {
             if (expand) {
-                pmix_asprintf(&tmp, "%s%c", out, *p);
-                free(out);
-                out = tmp;
+                if (!append_to_pattern(&out, "%s%c", out, *p)) {
+                    return PMIX_ERR_NOMEM;
+                }
             }
             continue;
         }
@@ -875,38 +900,40 @@ static pmix_status_t process_pattern(const char *pattern, bool expand,
         switch (*p) {
             case 'n':
                 if (expand) {
-                    pmix_asprintf(&tmp, "%s%s", out, (NULL == nspace) ? "" : nspace);
-                    free(out);
-                    out = tmp;
+                    if (!append_to_pattern(&out, "%s%s", out,
+                                           (NULL == nspace) ? "" : nspace)) {
+                        return PMIX_ERR_NOMEM;
+                    }
                 }
                 break;
             case 'r':
                 if (expand) {
-                    pmix_asprintf(&tmp, "%s%u", out, rank);
-                    free(out);
-                    out = tmp;
+                    if (!append_to_pattern(&out, "%s%u", out, rank)) {
+                        return PMIX_ERR_NOMEM;
+                    }
                 }
                 break;
             case 'R':
                 if (expand) {
-                    pmix_asprintf(&tmp, "%s%0*u", out, numdigs, rank);
-                    free(out);
-                    out = tmp;
+                    if (!append_to_pattern(&out, "%s%0*u", out, numdigs, rank)) {
+                        return PMIX_ERR_NOMEM;
+                    }
                 }
                 break;
             case 'h':
                 if (expand) {
-                    pmix_asprintf(&tmp, "%s%s", out,
-                                  (NULL == pmix_globals.hostname) ? "" : pmix_globals.hostname);
-                    free(out);
-                    out = tmp;
+                    if (!append_to_pattern(&out, "%s%s", out,
+                                           (NULL == pmix_globals.hostname)
+                                               ? "" : pmix_globals.hostname)) {
+                        return PMIX_ERR_NOMEM;
+                    }
                 }
                 break;
             case '%':
                 if (expand) {
-                    pmix_asprintf(&tmp, "%s%%", out);
-                    free(out);
-                    out = tmp;
+                    if (!append_to_pattern(&out, "%s%%", out)) {
+                        return PMIX_ERR_NOMEM;
+                    }
                 }
                 break;
             default:
@@ -930,9 +957,9 @@ static pmix_status_t process_pattern(const char *pattern, bool expand,
 
     if (expand) {
         if (NULL != suffix) {
-            pmix_asprintf(&tmp, "%s%s", out, suffix);
-            free(out);
-            out = tmp;
+            if (!append_to_pattern(&out, "%s%s", out, suffix)) {
+                return PMIX_ERR_NOMEM;
+            }
         }
         *result = out;
     }
