@@ -69,6 +69,33 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
                         void *cbdata);
 static void spawn_cbfunc(pmix_status_t status, char nspace[], void *cbdata);
 
+/* Hold a spawn's output-formatting flags where output can find them before
+ * the reply names the namespace they belong to.
+ *
+ * Only meaningful for a tool: a tool receives forwarded output for the jobs
+ * it spawned, so output arriving for a namespace it has not been told about
+ * yet can only be from the spawn it just issued. Until this existed, that
+ * output fell back to the process-wide defaults and came out unformatted -
+ * so "prun --output tag" lost the tag on whichever rank happened to be
+ * quickest, which showed up as an intermittent failure whenever anything
+ * slowed the reply down (two pruns against one DVM was enough).
+ *
+ * The string members are not copied: this stand-in owns nothing.
+ */
+static void stash_spawn_iof_flags(pmix_iof_flags_t *flags)
+{
+    if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer) || !flags->set) {
+        return;
+    }
+    memcpy(&pmix_globals.spawn_iof_flags, flags, sizeof(pmix_iof_flags_t));
+    pmix_globals.spawn_iof_flags.file = NULL;
+    pmix_globals.spawn_iof_flags.directory = NULL;
+    /* as in the reply handler: for a non-server, nocopy means no local output */
+    if (flags->nocopy) {
+        pmix_globals.spawn_iof_flags.local_output = false;
+    }
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
                                      const pmix_app_t apps[], size_t napps, pmix_nspace_t nspace)
 {
@@ -392,6 +419,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
          * of job termination so we can setup the event registration */
         pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
                                  fcd->info, fcd->ninfo);
+        stash_spawn_iof_flags(&fcd->flags);
 
         /* call the local host */
         rc = pmix_host_server.spawn(&pmix_globals.myid,
@@ -466,6 +494,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     /* check for IOF flags */
     pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
                              fcd->info, fcd->ninfo);
+    stash_spawn_iof_flags(&fcd->flags);
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) fcd);
@@ -561,6 +590,10 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
             if (fcd->flags.nocopy) {
                 nptr->iof_flags.local_output = false;
             }
+            /* the namespace now carries its own flags, so the stand-in for
+             * output that arrived before this reply is no longer wanted */
+            pmix_iof_init_flags(&pmix_globals.spawn_iof_flags);
+            pmix_globals.spawn_iof_flags.set = false;
         }
     }
 

@@ -123,6 +123,7 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .external_topology = false,
     .external_progress = false,
     .iof_flags = PMIX_IOF_FLAGS_STATIC_INIT,
+    .spawn_iof_flags = PMIX_IOF_FLAGS_STATIC_INIT,
     .keyindex = PMIX_KEYINDEX_STATIC_INIT
 };
 

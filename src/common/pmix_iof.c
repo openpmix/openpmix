@@ -1743,6 +1743,19 @@ process:
     return PMIX_SUCCESS;
 }
 
+/* What to format output with when the namespace it came from has nothing to
+ * say about it. A tool that has a spawn in flight has already parsed that
+ * spawn's directives (see stash_spawn_iof_flags() in pmix_client_spawn.c);
+ * output that beat the reply here belongs to that spawn, so those flags are
+ * the right answer rather than the process-wide default. */
+static pmix_iof_flags_t spawn_or_global_flags(void)
+{
+    if (pmix_globals.spawn_iof_flags.set) {
+        return pmix_globals.spawn_iof_flags;
+    }
+    return pmix_globals.iof_flags;
+}
+
 pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
                                     pmix_iof_channel_t stream,
                                     const pmix_byte_object_t *bo)
@@ -1840,10 +1853,10 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
             }
             myflags = nptr->iof_flags;
         } else {
-            myflags = pmix_globals.iof_flags;
+            myflags = spawn_or_global_flags();
         }
     } else {
-        myflags = pmix_globals.iof_flags;
+        myflags = spawn_or_global_flags();
     }
 
     if (!outputio) {

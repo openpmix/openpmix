@@ -869,6 +869,18 @@ typedef struct {
     bool external_topology;
     bool external_progress;
     pmix_iof_flags_t iof_flags;
+    /* Output-formatting flags belonging to a spawn we have issued but whose
+     * namespace we have not been told yet. A tool's spawn directives are
+     * parsed before the request goes out (see pmix_server_spawn_parser() in
+     * PMIx_Spawn_nb, "helps to catch any early output"), but they can only be
+     * recorded against the namespace once the reply names it - and a proc
+     * that writes and exits immediately can get its output to us first. That
+     * output has nowhere to look for its format, so it came out unformatted.
+     * Holding the flags here gives it somewhere. Cleared once the reply has
+     * been processed and the per-namespace flags are in place. Note the file
+     * and directory members are deliberately left NULL: this copy does not
+     * own strings, it only carries the formatting decisions. */
+    pmix_iof_flags_t spawn_iof_flags;
     pmix_keyindex_t keyindex;
 } pmix_globals_t;
 
