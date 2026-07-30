@@ -38,6 +38,7 @@
 #include "pmix.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_cmd_line.h"
+#include "src/util/pmix_printf.h"
 
 static int npass = 0;
 static int nfail = 0;
@@ -532,6 +533,205 @@ static void run_table(void)
     }
 }
 
+/* ================================================================== */
+/* Occurrence order                                                   */
+/* ================================================================== */
+
+/* The grouped view of a parse result - one item per option, every
+ * occurrence of that option on it - cannot express the interleaving of
+ * two repeated options. These check the record that can: the position
+ * stamped on each stored value, and the ordered view built from it.
+ *
+ * The environment options are the reason this matters, so they are what
+ * is tested with: --set-env replaces a value outright while
+ * --prepend-env edits the one already there, so the order they are
+ * applied in is the difference between FOO=2 and FOO=x:2. */
+static struct option ordopts[] = {
+    PMIX_OPTION_DEFINE(PMIX_CLI_SET_ENVAR, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_PREPEND_ENVAR, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_UNSET_ENVAR, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_TIMEOUT, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_PARSABLE, PMIX_ARG_NONE),
+    PMIX_OPTION_END
+};
+
+/* Render the ordered view as "key:value" entries joined by '|'. An
+ * option given without a value renders its value as "-". */
+static char *render_ordered(pmix_cli_result_t *res)
+{
+    pmix_cli_occurrence_t *occ = NULL;
+    size_t nocc = 0, n;
+    char **tmp = NULL;
+    char *entry, *out;
+
+    if (PMIX_SUCCESS != pmix_cmd_line_get_ordered(res, &occ, &nocc)) {
+        return NULL;
+    }
+    for (n = 0; n < nocc; n++) {
+        pmix_asprintf(&entry, "%s:%s", occ[n].key,
+                      (NULL == occ[n].value) ? "-" : occ[n].value);
+        PMIx_Argv_append_nosize(&tmp, entry);
+        free(entry);
+    }
+    if (NULL != occ) {
+        free(occ);
+    }
+    if (NULL == tmp) {
+        return strdup("");
+    }
+    out = PMIx_Argv_join(tmp, '|');
+    PMIx_Argv_free(tmp);
+    return (NULL == out) ? strdup("") : out;
+}
+
+static void check_ordered(const char *desc, pmix_cli_result_t *res,
+                          const char *expected)
+{
+    char *got;
+
+    got = render_ordered(res);
+    if (NULL == got) {
+        fprintf(stdout, "  FAIL: %s [get_ordered failed]\n", desc);
+        nfail++;
+        return;
+    }
+    if (0 != strcmp(got, expected)) {
+        fprintf(stdout, "  FAIL: %s\n        wanted \"%s\"\n        got    \"%s\"\n",
+                desc, expected, got);
+        nfail++;
+    } else {
+        fprintf(stdout, "  PASS: %s\n", desc);
+        npass++;
+    }
+    free(got);
+}
+
+/* THE case from the issue: an option repeated after another has
+ * intervened. The grouped view files the second --set-env behind the
+ * first, so walking it in list order applies both sets and then the
+ * prepend - arriving at FOO=x:2 where the user asked for FOO=2. */
+static void test_order_interleaved(void)
+{
+    char *argv[] = {"prog", "--set-env", "FOO=1", "--prepend-env", "FOO[:]",
+                    "x", "--set-env", "FOO=2", NULL};
+    pmix_cli_result_t res;
+    pmix_cli_item_t *opt;
+    int rc;
+
+    PMIX_CONSTRUCT(&res, pmix_cli_result_t);
+    rc = pmix_cmd_line_parse(argv, "", ordopts, NULL, &res, NULL);
+    report("order_interleaved: returns SUCCESS", PMIX_SUCCESS == rc);
+
+    /* the grouped view is exactly what it always was - this record is
+     * additional, not a replacement */
+    opt = pmix_cmd_line_get_param(&res, PMIX_CLI_SET_ENVAR);
+    report("order_interleaved: set-env still groups both values",
+           NULL != opt && 2 == PMIx_Argv_count(opt->values)
+               && 0 == strcmp(opt->values[0], "FOO=1")
+               && 0 == strcmp(opt->values[1], "FOO=2"));
+    opt = pmix_cmd_line_get_param(&res, PMIX_CLI_PREPEND_ENVAR);
+    report("order_interleaved: prepend-env still holds its two tokens",
+           NULL != opt && 2 == PMIx_Argv_count(opt->values)
+               && 0 == strcmp(opt->values[0], "FOO[:]")
+               && 0 == strcmp(opt->values[1], "x"));
+
+    /* ...and the order is now recoverable */
+    report("order_interleaved: first set-env precedes the prepend",
+           pmix_cmd_line_get_nth_seq(&res, PMIX_CLI_SET_ENVAR, 0)
+               < pmix_cmd_line_get_nth_seq(&res, PMIX_CLI_PREPEND_ENVAR, 0));
+    report("order_interleaved: second set-env follows the prepend",
+           pmix_cmd_line_get_nth_seq(&res, PMIX_CLI_SET_ENVAR, 1)
+               > pmix_cmd_line_get_nth_seq(&res, PMIX_CLI_PREPEND_ENVAR, 1));
+
+    check_ordered("order_interleaved: ordered view is command-line order",
+                  &res,
+                  "set-env:FOO=1|prepend-env:FOO[:]|prepend-env:x|set-env:FOO=2");
+    PMIX_DESTRUCT(&res);
+}
+
+/* The mirror image: the same options the other way round must not come
+ * back looking the same. */
+static void test_order_reversed(void)
+{
+    char *argv[] = {"prog", "--prepend-env", "FOO[:]", "x",
+                    "--set-env", "FOO=1", NULL};
+    pmix_cli_result_t res;
+
+    PMIX_CONSTRUCT(&res, pmix_cli_result_t);
+    pmix_cmd_line_parse(argv, "", ordopts, NULL, &res, NULL);
+    check_ordered("order_reversed: prepend first, then set", &res,
+                  "prepend-env:FOO[:]|prepend-env:x|set-env:FOO=1");
+    report("order_reversed: set-env follows the prepend",
+           pmix_cmd_line_get_nth_seq(&res, PMIX_CLI_SET_ENVAR, 0)
+               > pmix_cmd_line_get_nth_seq(&res, PMIX_CLI_PREPEND_ENVAR, 0));
+    PMIX_DESTRUCT(&res);
+}
+
+/* An option that takes no value stores nothing, so it has no value to
+ * stamp - its position is recorded on the option itself. */
+static void test_order_valueless(void)
+{
+    char *argv[] = {"prog", "--timeout", "30", "--parsable",
+                    "--timeout", "60", NULL};
+    pmix_cli_result_t res;
+
+    PMIX_CONSTRUCT(&res, pmix_cli_result_t);
+    pmix_cmd_line_parse(argv, "", ordopts, NULL, &res, NULL);
+    check_ordered("order_valueless: flag sits between the two timeouts",
+                  &res, "timeout:30|parsable:-|timeout:60");
+    report("order_valueless: flag follows the first timeout",
+           pmix_cmd_line_get_first_seq(&res, PMIX_CLI_PARSABLE)
+               > pmix_cmd_line_get_nth_seq(&res, PMIX_CLI_TIMEOUT, 0));
+    report("order_valueless: flag precedes the second timeout",
+           pmix_cmd_line_get_first_seq(&res, PMIX_CLI_PARSABLE)
+               < pmix_cmd_line_get_nth_seq(&res, PMIX_CLI_TIMEOUT, 1));
+    report("order_valueless: an option not given has no position",
+           -1 == pmix_cmd_line_get_first_seq(&res, PMIX_CLI_SET_ENVAR));
+    PMIX_DESTRUCT(&res);
+}
+
+/* A value a caller adds to the results itself was never on the command
+ * line, so it has no position there. It must not be given one - it is
+ * reported last, and says so. */
+static void test_order_added_after_parse(void)
+{
+    char *argv[] = {"prog", "--set-env", "FOO=1", "--timeout", "30", NULL};
+    pmix_cli_result_t res;
+    pmix_cli_item_t *opt;
+
+    PMIX_CONSTRUCT(&res, pmix_cli_result_t);
+    pmix_cmd_line_parse(argv, "", ordopts, NULL, &res, NULL);
+
+    /* PRRTE's schizo does exactly this when it converts a deprecated
+     * option into a current one */
+    opt = pmix_cmd_line_get_param(&res, PMIX_CLI_SET_ENVAR);
+    PMIx_Argv_append_nosize(&opt->values, "BAR=2");
+
+    report("order_added: added value has no recorded position",
+           -1 == pmix_cmd_line_get_nth_seq(&res, PMIX_CLI_SET_ENVAR, 1));
+    check_ordered("order_added: added value is reported last", &res,
+                  "set-env:FOO=1|timeout:30|set-env:BAR=2");
+    PMIX_DESTRUCT(&res);
+}
+
+static void test_order_empty(void)
+{
+    char *argv[] = {"prog", NULL};
+    pmix_cli_occurrence_t *occ = (pmix_cli_occurrence_t *) 1;
+    pmix_cli_result_t res;
+    size_t nocc = 99;
+    int rc;
+
+    PMIX_CONSTRUCT(&res, pmix_cli_result_t);
+    pmix_cmd_line_parse(argv, "", ordopts, NULL, &res, NULL);
+    rc = pmix_cmd_line_get_ordered(&res, &occ, &nocc);
+    report("order_empty: returns SUCCESS", PMIX_SUCCESS == rc);
+    report("order_empty: reports nothing", 0 == nocc && NULL == occ);
+    report("order_empty: rejects a NULL argument",
+           PMIX_ERR_BAD_PARAM == pmix_cmd_line_get_ordered(&res, NULL, &nocc));
+    PMIX_DESTRUCT(&res);
+}
+
 /* ------------------------------------------------------------------ */
 /* pmix_check_cli_option (inline abbreviation matching)               */
 /* ------------------------------------------------------------------ */
@@ -606,6 +806,12 @@ int main(int argc, char **argv)
     fprintf(stdout, "\n--- command-line table ---\n");
     run_table();
     fprintf(stdout, "\n");
+
+    test_order_interleaved();
+    test_order_reversed();
+    test_order_valueless();
+    test_order_added_after_parse();
+    test_order_empty();
 
     test_check_cli_option();
     test_convert_time();
