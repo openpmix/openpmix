@@ -28,9 +28,10 @@ is only the nickname.
 | `run-tests.sh` | Runs the group **construction-method** example programs (plus the construct/connect loss and voluntary-leave cases) and reports PASS/FAIL: full multi-node suite on Linux, single-host subset on macOS. |
 | `run-group-events.sh` | Runs the **dynamic, event-driven** group exercisers and their fault paths (invite/join, member lost during destruct, ...); kept separate from `run-tests.sh` so the event/fault matrix can grow independently. Same `linux`/`macos` modes. |
 | `run-python.sh` | Runs the **Python bindings**: the standalone unit suite, the connected client/server round-trip, and Python PMIx clients spread across nodes. Same `linux`/`macos` modes. See §10. |
+| `swarm-common.sh` | Sourced by all four scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
 | `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`). |
 | `Dockerfile` | Base image: toolchain, PRRTE master *source* (autogen'd), SSH wiring, node entrypoint. It contains **no** PMIx and **no** built PRRTE. |
-| `docker-compose.yml` | The ten nodes `pmix-node1`..`pmix-node10`, each mounting the shared `pmix-build` volume. |
+| `docker-compose.yml` | The ten nodes `pmix-node1`..`pmix-node10`, each mounting the shared `pmix-build` volume. Every one of those names derives from `$PMIX_SWARM`, so two clones can each run a swarm — see §4. |
 
 ## 2. How it works
 
@@ -89,6 +90,58 @@ docker compose up -d       # start pmix-node1 .. pmix-node10
 Rebuild after editing PMIx: rerun `./build.sh` (incremental). No image rebuild
 and no `docker compose` restart needed — the nodes read the shared volume.
 
+### Two clones on one host: `PMIX_SWARM`
+
+Every global name this harness claims — the compose project, the ten container
+names, the build volume, the docker network — is derived from `$PMIX_SWARM`, so
+a second clone (or a second agent) can drive its own swarm:
+
+```sh
+export PMIX_SWARM=alt      # for the WHOLE shell; see the warning below
+./build.sh                 # -> volume alt-build
+docker compose up -d       # -> project altswarm, containers alt-node1..10
+./run-tests.sh linux       #    on network altswarm_dvm
+```
+
+Unset, it is `pmix` and every name is exactly what it has always been: project
+`pmixswarm`, containers `pmix-node1..10`, volume `pmix-build`.
+
+Both swarms contain a container whose **hostname is `node1`**, and that is
+fine: each user-defined bridge network runs its own embedded DNS serving only
+the containers attached to it, so `node2` inside a swarm can only ever mean
+that swarm's node2. No test needs changing — `--host node1:2,node2:2` means the
+right machines in either.
+
+> **Export it, don't prefix one command.** `docker compose` interpolates
+> `docker-compose.yml` itself, so `PMIX_SWARM` has to be in *that* command's
+> environment. A `docker compose up -d` without it quietly brings up the
+> **default** swarm instead, against the default volume, and your build sits in
+> `alt-build` unused. The runners say which swarm they looked for when they
+> find nothing, and `build.sh` prints the exact next command including the
+> variable.
+
+The name is a host-wide namespace, and PRRTE's identical harness uses the same
+mechanism (`PRTE_SWARM`) — so `PMIX_SWARM=alt` here and `PRTE_SWARM=alt` there
+would both want a container called `alt-node1`. Pick something of your own
+(your initials, the branch you are on) rather than a generic word.
+
+**What is still shared, and what that costs.** The base image
+(`pmix-swarm:latest`) is read-only to a running swarm and expensive to build —
+it clones and autogens PRRTE — so both instances use the same one. Rebuilding
+it moves it under the other swarm's feet, and that swarm's containers then fail
+the "containers are running the current image" preflight until they are
+recreated (§8). Nothing else crosses: separate containers, separate `/tmp`,
+separate install, separate network.
+
+**The macOS subsets need no such knob** — their build is already per-clone
+(`vpath-macos-pmix`, `vpath-macos-prte`) — but they isolate the two things that
+are not. They start `prterun` and every example by absolute path out of their
+own install and match on that path when reaping strays (a bare `pkill -9
+prterun` kills the other clone's launcher, and a bare `pgrep -x prte` is worse:
+it reports the other clone's DVM as this one's and passes a case on it), and
+they run PRRTE under a private `TMPDIR` they create and remove, so no session
+directory they delete was ever anyone else's.
+
 ## 5. Driving it by hand
 
 `run-tests.sh` automates this, but to poke at it yourself:
@@ -136,14 +189,38 @@ alongside the group loss-accounting fix.
 ## 7. Cleanup hygiene
 
 `run-tests.sh` cleans up between tests; if you drive things by hand, clear
-stale state on **every** node between DVM runs:
+stale state on **every** node between DVM runs — the same sweep `cleanup_swarm`
+does (`swarm-common.sh`):
 
 ```sh
 for n in $(seq 1 10); do
-  docker exec pmix-node$n sh -c 'pkill -9 -x prted; pkill -9 -x prte;
-    pkill -9 prterun; rm -rf /tmp/prte.* /tmp/prun.session.* /tmp/pmix*; true'
+  docker exec pmix-node$n sh -c '
+    for t in prted prte prterun prun pterm; do pkill -9 -x $t; done
+    rm -rf /tmp/prte.* /tmp/prted.* /tmp/prtrn.* /tmp/prun.* /tmp/ompi.* /tmp/pmix*
+    find /tmp -maxdepth 2 -name "pmix*" -prune -exec rm -rf {} +
+    true'
 done
 ```
+
+**Every tool has its own session-dir prefix, and one missed prefix is enough.**
+`prte.<pid>` is the HNP, `prtrn.<pid>` is `prterun`, `prted.<pid>` is a daemon
+standing on its own, `prun.<pid>` is `prun` itself, `ompi.<pid>` is anything run
+under the ompi personality. Each holds a `pmix.*` server rendezvous file, a
+system-level server drops one straight into `/tmp`, and any one left behind
+makes the next tool report *"multiple possible servers … connection handles have
+been read from files named pmix.\*"* and fail to find the DVM. That is why the
+sweep ends with a `find`: it catches the rendezvous file of a session dir whose
+prefix this list has not heard of. (PRRTE hit exactly this —
+[prrte#2526](https://github.com/openpmix/prrte/issues/2526) — where a
+hand-driven `prterun` before a suite run made later cases fail for reasons that
+had nothing to do with the code.)
+
+The tools are killed, not just the daemons: a live `prun` or `pterm` holds a
+rendezvous file of its own, and reaping it is the point of a teardown.
+
+If you are running a second swarm (`PMIX_SWARM`, §4), the loop above is
+per-swarm — use that swarm's container names. Nothing in it can reach the other
+swarm's `/tmp`, because the containers are different containers.
 
 ## 8. Rebuilding / resetting
 
@@ -154,6 +231,7 @@ done
 | move the baked PRRTE forward | `docker build --no-cache --build-arg PRRTE_REF=master -t pmix-swarm:latest .`, then wipe the volume's VPATH dirs and recreate the containers - see below |
 | rebuild the base image (different PRRTE branch) | `PRRTE_REF=v3.0.x ./build.sh image` |
 | tear down the swarm | `docker compose down` (the `pmix-build` volume persists) |
+| run a second, independent swarm | `export PMIX_SWARM=alt` and repeat the quick start — see §4. Every command in this table then names that swarm's volume (`alt-build`) and containers (`alt-node*`), and **a `docker compose down` without the variable takes down the *default* swarm** |
 
 ### The image goes stale, and the containers go stale after it
 
@@ -219,12 +297,16 @@ docker images --no-trunc --format '{{.ID}}' pmix-swarm:latest
 | `pmix-node1` | node1 | head node — start the DVM here, run all tools here |
 | `pmix-node2`..`pmix-node10` | node2..node10 | additional daemon nodes |
 
-Network: bridge `dvm`. All nodes mount the shared `pmix-build` volume read-only
+Network: bridge `pmixswarm_dvm`. All nodes mount the shared `pmix-build` volume read-only
 at `/opt/prte`, where `build.sh` installs PMIx (`/opt/prte/pmix`), PRRTE
 (`/opt/prte/prte`), the group clients (`/opt/prte/tests`), the Python bindings
 and their scripts (`/opt/prte/tests-python`), and writes `/opt/prte/env.sh`. To
 add or remove nodes, copy or delete a service block in `docker-compose.yml`
-(and adjust the `seq 1 10` loops in `run-tests.sh`).
+(and adjust the `seq 1 10` loops in `swarm-common.sh` and the runners).
+
+The container, volume, and network names above are the `PMIX_SWARM=pmix`
+default; under another name they all shift together (§4). The **hostnames**
+never do — `node1`..`node10` is what the tests name, in every swarm.
 
 ---
 

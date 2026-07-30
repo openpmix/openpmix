@@ -38,16 +38,10 @@ banner() { printf '\n=== %s ===\n' "$1"; }
 
 PYDIR=/opt/prte/tests-python
 
-RUN() { docker exec -e PRTE_ALLOW_RUN_AS_ROOT=1 -e PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1 \
-            pmix-node1 bash -lc ". /opt/prte/env.sh; $*"; }
-
-cleanup_swarm() {
-    for n in $(seq 1 10); do
-        docker exec "pmix-node$n" sh -c \
-            'pkill -9 -x prted 2>/dev/null; pkill -9 -x prte 2>/dev/null;
-             pkill -9 prterun 2>/dev/null; rm -rf /tmp/prte.* /tmp/prun.session.* /tmp/pmix* 2>/dev/null; true'
-    done
-}
+# RUN/ON/prted_count, cleanup_swarm, swarm_up_or_die and the swarm naming
+# (PMIX_SWARM, NODE, IMAGE, VOLUME) all live in one place -- these three
+# runners carried their own copies once, and the copies drifted.
+. "$(dirname "$0")/swarm-common.sh"
 
 # Count the PMIXPY PASS/FAIL lines a client emitted.  Every swarm client prints
 # "PMIXPY <rank> <PASS|FAIL> <name>" per check and, once it has run to the end,
@@ -83,9 +77,7 @@ tally() {
 ########################################################################
 
 test_linux() {
-    if ! docker ps --format '{{.Names}}' | grep -qx pmix-node1; then
-        echo "swarm not up -- run: docker compose up -d" >&2; exit 2
-    fi
+    swarm_up_or_die
 
     banner "preflight: bindings present and importable"
     if ! RUN "test -d $PYDIR"; then
@@ -102,7 +94,7 @@ test_linux() {
     # otherwise a multi-node launch fails in a confusing way
     missing=""
     for n in 1 2 3 4; do
-        docker exec "pmix-node$n" bash -lc \
+        docker exec "$NODE$n" bash -lc \
             '. /opt/prte/env.sh; python3 -c "import pmix"' >/dev/null 2>&1 \
             || missing="$missing node$n"
     done
