@@ -300,6 +300,10 @@ PMIX_EXPORT void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags
  * looking at their command line rather than at a failed job. On
  * PMIX_ERR_BAD_PARAM it sets *bad (if non-NULL) to a malloc'd copy of the
  * offending conversion for the diagnostic; the caller frees it.
+ *
+ * pmix_iof_expand_pattern() requires a non-NULL result; it returns the
+ * expanded name there as a malloc'd string the caller frees, and
+ * PMIX_ERR_BAD_PARAM if given no place to put it.
  */
 PMIX_EXPORT pmix_status_t pmix_iof_check_pattern(const char *pattern, char **bad);
 PMIX_EXPORT pmix_status_t pmix_iof_expand_pattern(const char *pattern,
