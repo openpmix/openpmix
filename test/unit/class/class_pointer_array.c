@@ -192,6 +192,143 @@ static void test_grow_via_set_item(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Regressions                                                          */
+/* ------------------------------------------------------------------ */
+
+/* init() sized the initial allocation from the caller's raw block_size
+ * rather than the normalized one, so init(a, 0, max, 0) allocated nothing
+ * while a->block_size claimed 8. */
+static void test_init_zero_block_size(void)
+{
+    pmix_pointer_array_t arr;
+    int idx;
+
+    PMIX_CONSTRUCT(&arr, pmix_pointer_array_t);
+    report("init with 0 initial and 0 block size: PMIX_SUCCESS",
+           PMIX_SUCCESS == pmix_pointer_array_init(&arr, 0, INT_MAX, 0));
+    report("init with 0 block size: array has room", 0 < arr.size);
+
+    idx = pmix_pointer_array_add(&arr, (void *) 0x1);
+    report("init with 0 block size: add yields a valid index", 0 <= idx);
+    report("init with 0 block size: item reads back",
+           (void *) 0x1 == pmix_pointer_array_get_item(&arr, idx));
+
+    PMIX_DESTRUCT(&arr);
+}
+
+/* grow_table() bumped number_free before growing free_bits. Cross several
+ * 64-slot free_bits words so both reallocs run repeatedly, and confirm the
+ * indices and the free accounting stay in step. */
+static void test_growth_across_bit_words(void)
+{
+    pmix_pointer_array_t arr;
+    int idx[300];
+    int i;
+    bool ok = true;
+
+    PMIX_CONSTRUCT(&arr, pmix_pointer_array_t);
+    pmix_pointer_array_init(&arr, 2, INT_MAX, 2);
+
+    for (i = 0; i < 300; i++) {
+        idx[i] = pmix_pointer_array_add(&arr, (void *) (intptr_t) (i + 1));
+        if (0 > idx[i]) {
+            ok = false;
+            break;
+        }
+    }
+    report("growth: 300 adds across many free_bits words succeed", ok);
+
+    ok = true;
+    for (i = 0; i < 300; i++) {
+        if ((void *) (intptr_t) (i + 1) != pmix_pointer_array_get_item(&arr, idx[i])) {
+            ok = false;
+            break;
+        }
+    }
+    report("growth: every item readable at its index", ok);
+
+    /* indices must be unique */
+    ok = true;
+    for (i = 1; i < 300; i++) {
+        if (idx[i] == idx[i - 1]) {
+            ok = false;
+            break;
+        }
+    }
+    report("growth: no index handed out twice", ok);
+
+    /* Free a hole well inside the array, then confirm the next add reuses
+     * it -- which only works if lowest_free and free_bits agree. */
+    pmix_pointer_array_set_item(&arr, idx[100], NULL);
+    report("growth: freed slot is reused by the next add",
+           idx[100] == pmix_pointer_array_add(&arr, (void *) 0xabc));
+
+    PMIX_DESTRUCT(&arr);
+}
+
+/* set_item beyond the current extent grows the array; repeated sparse sets
+ * exercise grow_table's realloc-of-free_bits branch on its own. */
+static void test_sparse_set_item(void)
+{
+    pmix_pointer_array_t arr;
+    bool ok = true;
+    int i;
+
+    PMIX_CONSTRUCT(&arr, pmix_pointer_array_t);
+    pmix_pointer_array_init(&arr, 4, INT_MAX, 4);
+
+    for (i = 0; i < 512; i += 64) {
+        if (PMIX_SUCCESS != pmix_pointer_array_set_item(&arr, i, (void *) (intptr_t) (i + 1))) {
+            ok = false;
+            break;
+        }
+    }
+    report("sparse set_item: every sparse index accepted", ok);
+
+    ok = true;
+    for (i = 0; i < 512; i += 64) {
+        if ((void *) (intptr_t) (i + 1) != pmix_pointer_array_get_item(&arr, i)) {
+            ok = false;
+            break;
+        }
+    }
+    report("sparse set_item: every sparse index reads back", ok);
+
+    report("sparse set_item: an untouched index is NULL",
+           NULL == pmix_pointer_array_get_item(&arr, 63));
+    report("sparse set_item: an out-of-range index is NULL",
+           NULL == pmix_pointer_array_get_item(&arr, 100000));
+    report("sparse set_item: a negative index is rejected",
+           PMIX_SUCCESS != pmix_pointer_array_set_item(&arr, -1, (void *) 0x1));
+
+    PMIX_DESTRUCT(&arr);
+}
+
+/* max_size caps growth; the array has to refuse rather than overrun. */
+static void test_max_size_cap(void)
+{
+    pmix_pointer_array_t arr;
+    int i, idx, added = 0;
+
+    PMIX_CONSTRUCT(&arr, pmix_pointer_array_t);
+    report("max_size: init with max 8 succeeds",
+           PMIX_SUCCESS == pmix_pointer_array_init(&arr, 4, 8, 4));
+
+    for (i = 0; i < 32; i++) {
+        idx = pmix_pointer_array_add(&arr, (void *) (intptr_t) (i + 1));
+        if (0 > idx) {
+            break;
+        }
+        added++;
+    }
+    report("max_size: adds stop at the cap", added <= 8);
+    report("max_size: the array did fill up to the cap", 0 < added);
+    report("max_size: the add past the cap reports failure", 32 > added);
+
+    PMIX_DESTRUCT(&arr);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -206,6 +343,10 @@ int main(int argc, char **argv)
     test_remove_all();
     test_set_size();
     test_grow_via_set_item();
+    test_init_zero_block_size();
+    test_growth_across_bit_words();
+    test_sparse_set_item();
+    test_max_size_cap();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

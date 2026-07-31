@@ -177,6 +177,80 @@ static void test_poke(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Regressions                                                          */
+/* ------------------------------------------------------------------ */
+
+/* init() used to check only for a NULL ring. A non-positive size sailed
+ * through to calloc(), which returned a zero-byte block, and the first
+ * push() wrote through addr[0]. */
+static void test_init_bad_params(void)
+{
+    pmix_ring_buffer_t ring;
+
+    PMIX_CONSTRUCT(&ring, pmix_ring_buffer_t);
+
+    report("init NULL ring: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_ring_buffer_init(NULL, 4));
+    report("init size 0: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_ring_buffer_init(&ring, 0));
+    report("init negative size: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_ring_buffer_init(&ring, -1));
+    report("rejected init leaves no allocation", NULL == ring.addr);
+    report("rejected init leaves size 0", 0 == ring.size);
+
+    /* and a good size still works afterwards */
+    report("init size 4 after rejections: PMIX_SUCCESS",
+           PMIX_SUCCESS == pmix_ring_buffer_init(&ring, 4));
+    report("size 4 ring accepts a push", NULL == pmix_ring_buffer_push(&ring, (void *) 0x1));
+
+    PMIX_DESTRUCT(&ring);
+}
+
+/* A ring of one is the degenerate case: every push displaces the previous
+ * occupant. */
+static void test_size_one(void)
+{
+    pmix_ring_buffer_t ring;
+    void *evicted;
+
+    PMIX_CONSTRUCT(&ring, pmix_ring_buffer_t);
+    report("size 1: init succeeds", PMIX_SUCCESS == pmix_ring_buffer_init(&ring, 1));
+
+    report("size 1: first push displaces nothing",
+           NULL == pmix_ring_buffer_push(&ring, (void *) 0x11));
+    evicted = pmix_ring_buffer_push(&ring, (void *) 0x22);
+    report("size 1: second push displaces the first", (void *) 0x11 == evicted);
+    report("size 1: pop returns the survivor", (void *) 0x22 == pmix_ring_buffer_pop(&ring));
+    report("size 1: pop of an empty ring is NULL", NULL == pmix_ring_buffer_pop(&ring));
+
+    PMIX_DESTRUCT(&ring);
+}
+
+/* The destructor has to leave nothing addressing the freed ring. Calling
+ * PMIX_DESTRUCT twice is a contract violation the object system's
+ * magic-ID assert catches under --enable-debug, so it is not exercised;
+ * what is checked is that no dangling state survives. */
+static void test_destruct_leaves_constructed_state(void)
+{
+    pmix_ring_buffer_t ring;
+
+    PMIX_CONSTRUCT(&ring, pmix_ring_buffer_t);
+    pmix_ring_buffer_init(&ring, 4);
+    pmix_ring_buffer_push(&ring, (void *) 0x1);
+
+    PMIX_DESTRUCT(&ring);
+    report("destruct: size reset to 0", 0 == ring.size);
+    report("destruct: addr reset to NULL", NULL == ring.addr);
+
+    /* re-usable afterwards */
+    PMIX_CONSTRUCT(&ring, pmix_ring_buffer_t);
+    report("re-init after destruct: PMIX_SUCCESS", PMIX_SUCCESS == pmix_ring_buffer_init(&ring, 4));
+    report("re-init after destruct: push works", NULL == pmix_ring_buffer_push(&ring, (void *) 0x2));
+    report("re-init after destruct: pop returns it", (void *) 0x2 == pmix_ring_buffer_pop(&ring));
+    PMIX_DESTRUCT(&ring);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -189,6 +263,9 @@ int main(int argc, char **argv)
     test_wraparound();
     test_multiple_wraps();
     test_poke();
+    test_init_bad_params();
+    test_size_one();
+    test_destruct_leaves_constructed_state();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

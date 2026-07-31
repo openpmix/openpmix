@@ -198,6 +198,97 @@ static void test_class_sizeof(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Regressions                                                          */
+/* ------------------------------------------------------------------ */
+
+/* PMIX_NEW() carried its own copy of the TMA-clearing code and set seven
+ * of pmix_tma_t's eight members, leaving tma_memmove holding whatever
+ * malloc() returned. pmix_obj_get_tma() keys off tma_malloc, so the stray
+ * member never showed up as a crash -- it just meant every heap object in
+ * the library had one uninitialized field for anything that copied or
+ * inspected the whole struct. */
+static void test_new_clears_whole_tma(void)
+{
+    pmix_list_item_t *obj = PMIX_NEW(pmix_list_item_t);
+    pmix_object_t *base = (pmix_object_t *) obj;
+
+    report("PMIX_NEW: allocation succeeded", NULL != obj);
+    if (NULL == obj) {
+        return;
+    }
+
+    report("PMIX_NEW: tma_malloc cleared", NULL == base->obj_tma.tma_malloc);
+    report("PMIX_NEW: tma_calloc cleared", NULL == base->obj_tma.tma_calloc);
+    report("PMIX_NEW: tma_realloc cleared", NULL == base->obj_tma.tma_realloc);
+    report("PMIX_NEW: tma_strdup cleared", NULL == base->obj_tma.tma_strdup);
+    report("PMIX_NEW: tma_memmove cleared", NULL == base->obj_tma.tma_memmove);
+    report("PMIX_NEW: tma_free cleared", NULL == base->obj_tma.tma_free);
+    report("PMIX_NEW: data_context cleared", NULL == base->obj_tma.data_context);
+    report("PMIX_NEW: data_ptr cleared", NULL == base->obj_tma.data_ptr);
+    report("PMIX_NEW: reports no custom allocator", NULL == pmix_obj_get_tma(base));
+
+    PMIX_RELEASE(obj);
+}
+
+/* PMIX_CONSTRUCT() has always gone through pmix_obj_construct_tma(); check
+ * it agrees with PMIX_NEW() now that they share the code. */
+static void test_construct_clears_whole_tma(void)
+{
+    pmix_list_item_t item;
+    pmix_object_t *base = (pmix_object_t *) &item;
+
+    memset(&item, 0xa5, sizeof(item)); /* poison, so "cleared" means cleared */
+    PMIX_CONSTRUCT(&item, pmix_list_item_t);
+
+    report("PMIX_CONSTRUCT: tma_malloc cleared", NULL == base->obj_tma.tma_malloc);
+    report("PMIX_CONSTRUCT: tma_memmove cleared", NULL == base->obj_tma.tma_memmove);
+    report("PMIX_CONSTRUCT: tma_free cleared", NULL == base->obj_tma.tma_free);
+    report("PMIX_CONSTRUCT: data_ptr cleared", NULL == base->obj_tma.data_ptr);
+    report("PMIX_CONSTRUCT: reports no custom allocator", NULL == pmix_obj_get_tma(base));
+    report("PMIX_CONSTRUCT: refcount is 1", 1 == base->obj_reference_count);
+
+    PMIX_DESTRUCT(&item);
+}
+
+/* A statically initialized object has to describe the same state that
+ * PMIX_CONSTRUCT would produce -- PMIX_OBJ_STATIC_INIT no longer carries a
+ * PTHREAD_MUTEX_INITIALIZER now that the count is a C11 atomic. */
+static pmix_list_item_t static_item = PMIX_LIST_ITEM_STATIC_INIT;
+
+static void test_static_init(void)
+{
+    pmix_object_t *base = (pmix_object_t *) &static_item;
+
+    report("static init: refcount is 1", 1 == base->obj_reference_count);
+    report("static init: class is set", NULL != base->obj_class);
+    report("static init: no custom allocator", NULL == pmix_obj_get_tma(base));
+
+    /* retain/release still has to work on it */
+    PMIX_RETAIN(&static_item);
+    report("static init: retain reaches 2", 2 == base->obj_reference_count);
+    pmix_obj_update(base, -1);
+    report("static init: back to 1", 1 == base->obj_reference_count);
+}
+
+/* pmix_obj_update() returns the *new* count in both directions. That is
+ * what PMIX_RELEASE tests against zero to decide whether to run the
+ * destructors, so an off-by-one here is a leak or a double free. */
+static void test_obj_update_returns_new_value(void)
+{
+    pmix_list_item_t *obj = PMIX_NEW(pmix_list_item_t);
+
+    report("obj_update: +1 returns 2", 2 == pmix_obj_update((pmix_object_t *) obj, 1));
+    report("obj_update: +1 again returns 3", 3 == pmix_obj_update((pmix_object_t *) obj, 1));
+    report("obj_update: -1 returns 2", 2 == pmix_obj_update((pmix_object_t *) obj, -1));
+    report("obj_update: -2 returns 0", 0 == pmix_obj_update((pmix_object_t *) obj, -2));
+
+    /* count is back to 0; put it back to 1 so PMIX_RELEASE frees it once */
+    pmix_obj_update((pmix_object_t *) obj, 1);
+    PMIX_RELEASE(obj);
+    report("obj_update: object released cleanly", NULL == obj);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -216,6 +307,10 @@ int main(int argc, char **argv)
     test_class_parent();
     test_hierarchy_depth();
     test_class_sizeof();
+    test_new_clears_whole_tma();
+    test_construct_clears_whole_tma();
+    test_static_init();
+    test_obj_update_returns_new_value();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;
