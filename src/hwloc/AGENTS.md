@@ -95,8 +95,16 @@ form (`"hwloc:0-3"`) so `parse_cpuset_string` can re-check provenance from
 the string alone.
 
 **The locality strings do not.** `pmix_hwloc_generate_locality_string`
-returns bare tokens — `"NM0:SK0:CR2:HT5"`, no tag — and that is what a host
-environment stores as `PMIX_LOCALITY_STRING`. There is no room for one: the
+returns bare tokens — a real one off a 4-core Mac is
+`"SK0:L20:L13:CR3:HT3:NM0"`, no tag — and that is what a host
+environment stores as `PMIX_LOCALITY_STRING`. Note the ordering: the depth
+loop walks the topology top-down (`SK`, `L3`, `L2`, `L1`, `CR`, `HT`) and the
+**NUMA token is appended last**, because in hwloc 2.x NUMA nodes live at a
+special negative depth (`HWLOC_TYPE_DEPTH_NUMANODE`) and are handled by a
+separate call after the loop. Do not assume `NM` comes first. (The
+`HWLOC_OBJ_NUMANODE` case inside the depth loop is consequently dead but
+harmless — `hwloc_get_depth_type` never returns it for a positive depth.)
+There is no room for a provider tag: the
 token separator is itself `:`, so a leading `hwloc:` is indistinguishable
 from a token unless you know to look for it. `get_relative_locality`
 therefore accepts *either* spelling and identifies an unprefixed string by
@@ -178,6 +186,15 @@ and `PMIX_TOPO` (`pmix_topology_t`); see
   reserved for the topology PMIx actually binds against, which is
   established in `pmix_hwloc.c`. This is what lets the print handler
   distinguish a real local machine from a support-less import.
+- **`get_*_size` reports the storage the object carries BEYOND its struct.**
+  The callers — `PMIx_Value_get_size` and the `data_array` size walker in
+  [`bfrop_base_fns.c`](../mca/bfrops/base/bfrop_base_fns.c) — add
+  `sizeof(pmix_topology_t)` / `sizeof(pmix_cpuset_t)` themselves (and
+  `PMIx_Value_get_size` adds `sizeof(pmix_value_t)` on top, so the number a
+  caller sees is larger than what this layer returns). A topology reports
+  `hwloc_shmem_topology_get_length`; a cpuset reports the length of its
+  list-format string, i.e. exactly what `pack_cpuset` writes. Anything that
+  ignores its argument is wrong by construction — see item 10 below.
 - **`destruct` frees the innards; `release(ptr, sz)` loops destruct over
   an array and then frees the array block itself.** Both
   `pmix_hwloc_release_cpuset` and `pmix_hwloc_release_topology` end with a
@@ -273,6 +290,21 @@ a normal build does exercise it.
   the only object covering the cpuset is the whole machine (common in
   odd containers), and `PMIX_ERR_NOT_FOUND` when no matching devices
   exist — neither is a hard failure.
+- **`compute_distances` has one exit path, `cleanup:`.** It builds two heap
+  things — the `dists` list and the `devids` argv from `PMIX_DEVICE_ID` — and
+  the function has a dozen error returns scattered through a doubly-nested
+  loop. Every one of them must reach `cleanup:` (set `rc`, `goto cleanup`).
+  Adding a bare `return` there is how `devids` came to leak on *every* call,
+  success included (item 12).
+- **Render into `char string[PMIX_HWLOC_MAX_STRING]` and pass
+  `sizeof(string)`.** The print handler formats object names, attributes and
+  cpusets into one fixed stack buffer. Never hand a length constant that is
+  not the buffer's own size — the two silently drifted apart once and a
+  machine wide enough to need the full length smashed the stack (item 11).
+- **`hwloc_bitmap_weight()` returns `-1` on an infinitely-set bitmap**, not a
+  count. Any bitmap that has been through `hwloc_bitmap_fill()` is infinite.
+  Assigning that to a `size_t` yields `SIZE_MAX` and every arithmetic use
+  downstream overflows.
 
 ## Auditing history (recently fixed — kept as landmarks)
 
@@ -333,10 +365,93 @@ not lost and so a future refactor does not silently reintroduce them:
    the generator's output — **when testing a consumer, feed it the
    producer's real output, not a literal you wrote to match.**
 
-Items 5, 6, 7 and 8 were caught by the `hwloc_datatype` unit test
+A second audit (July 2026) of the same directory found these:
+
+9. **`pmix_hwloc_finalize` never reclaimed the shmem segment it created.**
+   The cleanup block was gated on a `topo_in_shmem` flag that was set *only*
+   on the ADOPT path — the client. But a client never sets `shmemfile` or
+   `shmemfd`; the process that owns those is the **server** that *wrote* the
+   segment in `setup_topology`, and it never takes the adopt path. So the
+   block was unreachable for the only process it applied to: the descriptor
+   and the path string leaked at every server finalize, and removal of the
+   backing file was left entirely to session-dir teardown. The cleanup is now
+   unconditional and runs before the external-topology early-out; the flag,
+   having no remaining reader, is gone.
+10. **`pmix_hwloc_get_cpuset_size` ignored its argument and returned
+    `SIZE_MAX`.** It measured `hwloc_bitmap_weight()` of a *filled* bitmap —
+    which is infinitely set, so hwloc returns `-1` — and cast that to
+    `size_t`. `PMIx_Value_get_size` then added `sizeof(pmix_cpuset_t)` and
+    wrapped; the `data_array` walker in `bfrops` accumulated `SIZE_MAX` per
+    element. It now reports the length of the cpuset's list-format string,
+    which is what actually goes on the wire.
+11. **Stack buffer overflow in the topology print handler.**
+    `print_hwloc_obj` declared `char string[1024]` and then passed
+    `PMIX_HWLOC_MAX_STRING` (2048) as the length to
+    `hwloc_bitmap_snprintf`. A machine with enough PUs for the machine-level
+    cpuset to render past 1024 characters overwrote `tmp`/`tmp2`/`pfx` and
+    the frame beyond. The buffer is now `PMIX_HWLOC_MAX_STRING` and every
+    call takes `sizeof(string)`. Covered by `test_topology_print_wide`,
+    which builds a 4096-PU synthetic topology; it segfaults against the old
+    code.
+12. **`compute_distances` leaked its `devids` argv on every path** — the
+    array built from `PMIX_DEVICE_ID` info was freed nowhere, success
+    included, and several error returns also skipped the `dists` list. The
+    function now has a single `cleanup:` exit that releases both.
+13. **Missing NULL screening on public entry points.**
+    `PMIx_Parse_cpuset_string` passes its arguments straight through, so a
+    NULL string reached `strchr` and crashed; `PMIx_Get_cpuset`,
+    `PMIx_Compute_distances` and `pmix_hwloc_check_vendor` dereferenced
+    caller-supplied pointers unchecked. A failed
+    `pmix_hwloc_parse_cpuset_string` also left a half-built bitmap and source
+    on the caller's struct, which the caller had no reason to destruct.
+14. **`setup_topology` did `strdup(topo->source)` on a host-provided
+    `PMIX_TOPOLOGY2`.** A host is not required to label the topology it hands
+    over, and `strdup(NULL)` is undefined. It now falls back to the
+    unversioned `"hwloc"` spelling, as the deprecated `PMIX_TOPOLOGY` path
+    already did, and skips an entry with no topology at all.
+15. **`generate_cpuset_string` did not check
+    `hwloc_bitmap_list_asprintf`** — the same misread corrected in
+    `pack_cpuset`/`print_cpuset` (item 6), left behind in the third caller.
+    On failure the output pointer was uninitialized.
+
+Not defects, but worth knowing before you "fix" them:
+
+- **`compute_distances` always reports `mindist == maxdist`.** The inner loop
+  over PUs recomputes `hwloc_get_common_ancestor_obj(topo, obj, tgt)` — and
+  neither `obj` (the object covering the whole cpuset) nor `tgt` (the device)
+  varies with the loop index, so every iteration yields the same distance.
+  The PU is used only to decide whether to iterate at all. Changing this
+  changes reported distances for every consumer; treat it as a design
+  question, not a cleanup.
+- **`PMIX_PREFETCH`-style silent no-ops.** `hwloc_get_type_depth(...,
+  HWLOC_OBJ_PU)` is cast to `unsigned`; if PU is absent it returns
+  `HWLOC_TYPE_DEPTH_UNKNOWN` (-1) and the cast makes `width` zero, so the
+  loop simply does not run. Safe, but not obviously so.
+
+Items 5, 6, 7, 8 and 10–15 are covered by the `hwloc_datatype` unit test
 ([`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c), wired
 into `make check`), which round-trips and prints topologies and cpusets
 through the public API. Extend it when you touch this directory.
+
+**What the unit test structurally cannot reach** — and where the multi-node
+harness comes in:
+
+| Not testable in one process | Covered by |
+|---|---|
+| the topology **handoff** (a launched client adopts the segment/XML its local server published; it never discovers its own) | [`examples/topology.c`](../../examples/topology.c) via `contrib/dockerswarm/run-topology.sh` |
+| `PMIX_LOCALITY_STRING` **as the host stores it**, fed to `PMIx_Get_relative_locality` | same |
+| the **multi-node answer** — on one host every peer is a node-mate, so a run cannot distinguish a correct result from "everything is local" | same (the exerciser fails itself if it finds no off-node peer) |
+| the **XML fallback** when no VM hole is available (`hwloc_hole_kind=none`) | `run-topology.sh` runs the whole suite a second time with shmem disabled |
+| the shmem segment actually being **reclaimed** at daemon teardown | `run-topology.sh` checks for a surviving `hwloc.sm` |
+
+Item 8 is the cautionary tale for all of this: the unit test had hand-written
+`"hwloc:NM0:SK0:CR0:HT0"` literals that matched what the *consumer* wanted
+rather than what the *producer* emits, so it passed for years against a
+producer/consumer format mismatch that left every process reporting no shared
+locality with its own node-mates. **When testing a consumer, feed it the
+producer's real output, not a literal you wrote to match.**
+`test_locality_generator_to_consumer` and `examples/topology.c` both do that
+now.
 
 If you find a genuine bug here, fix it in the source as a standalone,
 signed-off commit per the contribution rules — never bend a test to make
