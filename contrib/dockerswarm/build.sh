@@ -190,13 +190,27 @@ build_linux() {
                     cp /pmix-src/contrib/dockerswarm/python/*.py /opt/prte/tests-python/ 2>/dev/null || true
                     chmod +x /opt/prte/tests-python/*.py 2>/dev/null || true
                     echo "   staged $(basename "$so") + $(ls /opt/prte/tests-python/*.py | wc -l) scripts"
+                    # The Python ports of the C examples get their own
+                    # directory: examples/python and test/python both carry a
+                    # client.py and a server.py, so they cannot share one.
+                    rm -rf /opt/prte/tests-examples
+                    mkdir -p /opt/prte/tests-examples
+                    cp /pmix-src/examples/python/*.py /opt/prte/tests-examples/ 2>/dev/null || true
+                    # the extension goes here too, so a script in this
+                    # directory imports pmix by Python`s script-directory rule
+                    # with no PYTHONPATH at all. That matters for the examples
+                    # that PMIx_Spawn a child job: the child is a new job and
+                    # does not inherit prterun`s -x forwarding.
+                    cp "$so" /opt/prte/tests-examples/
+                    chmod +x /opt/prte/tests-examples/*.py 2>/dev/null || true
+                    echo "   staged $(ls /opt/prte/tests-examples/*.py | wc -l) example ports"
                 else
                     echo "   FAILED: no pmix*.so was built -- check the configure summary above"
                 fi
             fi
 
             # runtime env for login shells (node-entrypoint handles ld.so)
-            printf "export PATH=/opt/prte/prte/bin:/opt/prte/tests:\$PATH\nexport LD_LIBRARY_PATH=/opt/prte/prte/lib:/opt/prte/pmix/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\nexport PYTHONPATH=/opt/prte/tests-python\${PYTHONPATH:+:\$PYTHONPATH}\n" \
+            printf "export PATH=/opt/prte/prte/bin:/opt/prte/tests:\$PATH\nexport LD_LIBRARY_PATH=/opt/prte/prte/lib:/opt/prte/pmix/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\nexport PYTHONPATH=/opt/prte/tests-python:/opt/prte/tests-examples\${PYTHONPATH:+:\$PYTHONPATH}\n" \
                 > /opt/prte/env.sh
             echo ">>>> done: PMIx in /opt/prte/pmix, PRRTE in /opt/prte/prte, tests in /opt/prte/tests"
         '
