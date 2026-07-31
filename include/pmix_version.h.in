@@ -55,6 +55,7 @@
 #define PMIX_CAP_CLI_QUAL_VALUE  8
 #define PMIX_CAP_IOF_FILE_PATTERN 9
 #define PMIX_CAP_CLI_ORDER       10
+#define PMIX_CAP_TOOL_FINALIZED  11
 
 
 /*****    DEPRECATED    *****/

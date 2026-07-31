@@ -6023,9 +6023,18 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
         /* purge events */
         pmix_server_purge_events(peer, NULL);
         PMIX_GDS_CADDY(cd, peer, tag);
-        /* call the local server, if supported */
+        /* Call the local server, if supported. A tool counts here just as a
+         * client does: the host was told when the tool connected, and this
+         * is the only notice it will ever get that the tool has gone. The
+         * connection drop that follows cannot serve instead - the peer is
+         * marked finalized by then, so no lost-connection event is raised
+         * for it - so a host that skipped this call would carry the tool's
+         * state, and anything the tool was granted, for the rest of its own
+         * lifetime. peer->info is set for a tool peer exactly as it is for
+         * a client; server_object is simply NULL for one the host never
+         * registered, which the host must already tolerate. */
         if (NULL != pmix_host_server.client_finalized &&
-            PMIX_PEER_IS_CLIENT(peer)) {
+            (PMIX_PEER_IS_CLIENT(peer) || PMIX_PEER_IS_TOOL(peer))) {
             pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
             proc.rank = peer->info->pname.rank;
             /* now tell the host server */

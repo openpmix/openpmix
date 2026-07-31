@@ -294,6 +294,21 @@ resolve ranks through `info->peerid` — from racing peer teardown. Do not
 scrubs a departing peer from the event-registration store and pending
 notifications.
 
+**A tool's finalize is upcalled too** (`PMIX_CAP_TOOL_FINALIZED`). The
+`PMIX_FINALIZE_CMD` arm of the switchyard calls
+`pmix_host_server.client_finalized` for a peer that is a client *or* a
+tool, because for a tool this is the host's only notice that it has
+gone: a tool is nobody's child, so no waitpid reaches the host, and the
+connection drop that follows raises no `PMIX_ERR_LOST_CONNECTION` —
+`pmix_ptl_base_lost_connection` suppresses that for a peer already marked
+finalized, and `op_cbfunc2` marks it. A host that skipped the call would
+carry the tool's state, and anything it had been granted, for the rest of
+its own lifetime; PRRTE stranded the nodes of every command-line elastic
+grow that way. `peer->info` is set for a tool peer exactly as for a
+client, so the `pname` read is safe; `server_object` is simply NULL for a
+peer the host never registered as a client, which hosts already handle
+(and is what lets PRRTE tell the two apart).
+
 ## IOF forwarding
 
 Standard-I/O forwarding is buffered through `pmix_server_globals.iof`
