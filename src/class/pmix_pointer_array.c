@@ -197,7 +197,11 @@ int pmix_pointer_array_init(pmix_pointer_array_t *array, int initial_allocation,
     array->block_size = (0 == block_size ? 8 : block_size);
     array->lowest_free = 0;
 
-    num_bytes = (0 < initial_allocation ? initial_allocation : block_size);
+    /* Fall back on the *normalized* block size. Reading the caller's raw
+     * block_size here meant init(array, 0, max, 0) allocated nothing while
+     * array->block_size was quietly set to 8. */
+    num_bytes = (0 < initial_allocation ? (size_t) initial_allocation
+                                        : (size_t) array->block_size);
 
     /* Allocate and set the array to NULL */
     array->addr = (void **) pmix_tma_calloc(tma, num_bytes, sizeof(void *));
@@ -420,7 +424,6 @@ static bool grow_table(pmix_pointer_array_t *table, int at_least)
         return false;
     }
 
-    table->number_free += (new_size - table->size);
     table->addr = (void **) p;
     for (i = table->size; i < new_size; ++i) {
         table->addr[i] = NULL;
@@ -429,6 +432,12 @@ static bool grow_table(pmix_pointer_array_t *table, int at_least)
     if ((int) (TYPE_ELEM_COUNT(uint64_t, table->size)) != new_size_int) {
         p = (uint64_t *) pmix_tma_realloc(tma, table->free_bits, new_size_int * sizeof(uint64_t));
         if (NULL == p) {
+            /* The pointer array itself did grow, but without matching
+             * free_bits the two are out of step, so report failure and
+             * leave the accounting describing the *old* extent. Bumping
+             * number_free before this point (as the code used to) left the
+             * table claiming free slots that FIND_FIRST_ZERO would then go
+             * looking for past the end of free_bits. */
             return false;
         }
         table->free_bits = (uint64_t *) p;
@@ -436,6 +445,7 @@ static bool grow_table(pmix_pointer_array_t *table, int at_least)
             table->free_bits[i] = 0;
         }
     }
+    table->number_free += (new_size - table->size);
     table->size = new_size;
 #if 0
     pmix_output(0, "grow_table %p to %d (max_size %d, block %d, number_free %d)\n",

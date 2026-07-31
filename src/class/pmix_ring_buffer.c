@@ -65,13 +65,17 @@ static void pmix_ring_buffer_destruct(pmix_ring_buffer_t *ring)
  */
 int pmix_ring_buffer_init(pmix_ring_buffer_t *ring, int size)
 {
-    /* check for errors */
-    if (NULL == ring) {
+    /* Check for errors. A non-positive size used to be accepted: calloc()
+     * would hand back a zero-byte (or wildly mis-sized) block and the very
+     * first pmix_ring_buffer_push() would write through addr[0]. */
+    if (NULL == ring || size <= 0) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* Allocate and set the ring to NULL */
-    ring->addr = (char **) calloc(size * sizeof(char *), 1);
+    /* Allocate and set the ring to NULL. Pass the count and the element
+     * size as calloc()'s two arguments, in that order, so that calloc()
+     * can do the multiplication overflow check it exists to do. */
+    ring->addr = (char **) calloc((size_t) size, sizeof(char *));
     if (NULL == ring->addr) { /* out of memory */
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
