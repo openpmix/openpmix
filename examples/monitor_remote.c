@@ -160,7 +160,7 @@ int main(int argc, char **argv)
     PMIX_PROC_CONSTRUCT(&proc);
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
 
-    fprintf(stderr, "Client %s:%d node %sn", myproc.nspace, myproc.rank, hostname);
+    fprintf(stderr, "Client %s:%d node %s\n", myproc.nspace, myproc.rank, hostname);
 
     /* call fence to synchronize with our peers - no need to
      * collect any info as we didn't "put" anything */
