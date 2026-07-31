@@ -1181,28 +1181,52 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
 
     /* if they didn't send us any codes, then they are registering a
-     * default event handler. In that case, check only for default
-     * handlers and add this request to it, if not already present */
+     * default event handler. In that case, look only at the default
+     * entry - creating it if this is the first default registration we
+     * have seen - and add this request to it.
+     *
+     * Creating it is not optional. This used to walk the list and, if it
+     * found no PMIX_MAX_ERR_CONSTANT entry, fall out of the loop and
+     * return PMIX_OPERATION_SUCCEEDED having recorded nothing at all: the
+     * peer was told its registration succeeded and was never added to any
+     * dispatch list, so _notify_client_event() could not find it. The
+     * whole point of a default handler is to catch codes nobody asked for
+     * by name, so there is frequently no other registration to have
+     * created the entry first - and the very first client or tool to
+     * attach to a server necessarily finds the list empty. That client
+     * then silently received no default-routed event for its lifetime.
+     * The code != 0 path below has always created a missing entry; this
+     * one simply has to do the same. */
     if (0 == ncodes) {
-        PMIX_LIST_FOREACH (reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
-            if (PMIX_MAX_ERR_CONSTANT == reginfo->code) {
-                /* both are default handlers */
-                prev = PMIX_NEW(pmix_peer_events_info_t);
-                if (NULL == prev) {
-                    rc = PMIX_ERR_NOMEM;
-                    goto cleanup;
-                }
-                PMIX_RETAIN(peer);
-                prev->peer = peer;
-                if (NULL != affected) {
-                    PMIX_PROC_CREATE(prev->affected, naffected);
-                    prev->naffected = naffected;
-                    memcpy(prev->affected, affected, naffected * sizeof(pmix_proc_t));
-                }
-                pmix_list_append(&reginfo->peers, &prev->super);
+        reginfo = NULL;
+        PMIX_LIST_FOREACH (rptr, &pmix_server_globals.events, pmix_regevents_info_t) {
+            if (PMIX_MAX_ERR_CONSTANT == rptr->code) {
+                reginfo = rptr;
                 break;
             }
         }
+        if (NULL == reginfo) {
+            reginfo = PMIX_NEW(pmix_regevents_info_t);
+            if (NULL == reginfo) {
+                rc = PMIX_ERR_NOMEM;
+                goto cleanup;
+            }
+            reginfo->code = PMIX_MAX_ERR_CONSTANT;
+            pmix_list_append(&pmix_server_globals.events, &reginfo->super);
+        }
+        prev = PMIX_NEW(pmix_peer_events_info_t);
+        if (NULL == prev) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        PMIX_RETAIN(peer);
+        prev->peer = peer;
+        if (NULL != affected) {
+            PMIX_PROC_CREATE(prev->affected, naffected);
+            prev->naffected = naffected;
+            memcpy(prev->affected, affected, naffected * sizeof(pmix_proc_t));
+        }
+        pmix_list_append(&reginfo->peers, &prev->super);
         rc = PMIX_OPERATION_SUCCEEDED;
         goto cleanup;
     }
@@ -3476,6 +3500,9 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_local_t,
 static void prevcon(pmix_peer_events_info_t *p)
 {
     p->peer = NULL;
+    /* PMIX_NEW does not zero the allocation, and the default-handler
+     * registration path never assigns this one */
+    p->enviro_events = false;
     p->affected = NULL;
     p->naffected = 0;
 }
