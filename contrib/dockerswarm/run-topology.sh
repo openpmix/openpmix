@@ -114,30 +114,56 @@ test_linux() {
     fi
 
     # --- with the shared-memory topology path disabled ---------------------
-    # hole_kind=none makes the server skip the shmem segment entirely, so every
-    # client falls back to the XML string.  Both paths have to produce a
-    # topology that answers the same questions -- and the XML path is the one
-    # that runs whenever a VM hole cannot be found, which is common enough in
-    # containers that it must not be the untested one.
+    # pmix_hwloc_hole_kind=none makes the server skip the shmem segment
+    # entirely, so every client falls back to the XML string.  Both paths have
+    # to produce a topology that answers the same questions -- and the XML path
+    # is the one that runs whenever a VM hole cannot be found, which is common
+    # enough in containers that it must not be the untested one.
+    #
+    # PROVE the path actually changed before believing the result.  A wrong
+    # parameter name is accepted in silence and simply leaves you on the shmem
+    # path, so a green run here would mean the default case ran twice.  (That
+    # is not hypothetical: this case was first written with the parameter
+    # spelled "hwloc_hole_kind" -- the name the guide gave -- and passed
+    # without ever exercising XML.  The registered name is
+    # pmix_hwloc_hole_kind; ask pmix_info, do not guess.)  A persistent DVM
+    # rather than prterun, so the daemons are up and inspectable while the
+    # segment either exists or does not.
     banner "same, with the shmem topology path disabled (XML fallback)"
     cleanup_swarm
-    OUT="$(RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 120 --pmixmca hwloc_hole_kind none /opt/prte/tests/topology 2>&1')"
-    read -r summaries failed <<<"$(tally "$OUT")"
-    if echo "$OUT" | grep -qiE 'time limit for job|timed out|DVM timeout'; then
-        bad "HUNG on the XML fallback path"
-    elif [ "$summaries" != 4 ]; then
-        bad "only $summaries of 4 ranks reported on the XML path"
-    elif [ "$failed" != 0 ]; then
-        bad "$failed checks failed on the XML path:"
-        echo "$OUT" | grep 'TOPO rank .*FAIL' | sed 's/^/       /'
+    RUN 'prte --daemonize --host node1:2,node2:2 --pmixmca pmix_hwloc_hole_kind none >/dev/null 2>&1; sleep 3'
+    stillshmem=""
+    for n in 1 2; do
+        ON "$n" 'find /tmp -maxdepth 3 -name hwloc.sm 2>/dev/null | grep -q .' \
+            && stillshmem="$stillshmem node$n"
+    done
+    if [ -n "$stillshmem" ]; then
+        bad "shmem still enabled on:$stillshmem -- the XML path was NOT exercised"
     else
-        ok "all 4 ranks agreed on locality with shmem disabled"
+        ok "no shmem segment: the clients must use the XML string"
+        OUT="$(RUN 'prun -np 4 --map-by node --timeout 120 /opt/prte/tests/topology 2>&1')"
+        read -r summaries failed <<<"$(tally "$OUT")"
+        if echo "$OUT" | grep -qiE 'time limit for job|timed out|DVM timeout'; then
+            bad "HUNG on the XML fallback path"
+        elif [ "$summaries" != 4 ]; then
+            bad "only $summaries of 4 ranks reported on the XML path"
+        elif [ "$failed" != 0 ]; then
+            bad "$failed checks failed on the XML path:"
+            echo "$OUT" | grep 'TOPO rank .*FAIL' | sed 's/^/       /'
+        else
+            ok "all 4 ranks agreed on locality with shmem disabled"
+        fi
     fi
+    RUN 'pterm >/dev/null 2>&1'
+    cleanup_swarm
 
     # --- the server leaves nothing behind ----------------------------------
-    # setup_topology writes the shmem segment into the session dir and the
-    # daemon is expected to reclaim it.  A leftover hwloc.sm after the daemons
-    # are gone means the finalize path missed it.
+    # setup_topology writes the shmem segment into the session dir.  This
+    # checks the user-visible property -- nothing named hwloc.sm survives a
+    # clean teardown -- which the session-dir removal also delivers; it does
+    # not isolate pmix_hwloc_finalize's own unlink.  Still worth having: a
+    # segment left behind after the daemons are gone is a real leak whichever
+    # layer was supposed to remove it.
     banner "shmem segment is reclaimed at teardown"
     cleanup_swarm
     RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 120 /opt/prte/tests/topology >/dev/null 2>&1'
