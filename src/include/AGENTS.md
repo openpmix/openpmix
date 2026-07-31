@@ -162,6 +162,26 @@ Open-MPI-lineage portability boilerplate:
   Code under `#if PMIX_BUILDING` is internal-only; the `#else` half is
   what leaks into consumers that include a PMIx `config.h`.
 
+  **Known dead plumbing in `pmix_config_bottom.h`** (inherited from the
+  Open MPI lineage; catalogued here so it is not "rediscovered" as a bug,
+  and so nobody builds on it):
+  - `#undef PMIX_LINUX_SYS`, `#undef PMIX_HAVE_CPU_SET`,
+    `#undef PMIX_HAVE_WINDOWS_H`, `#undef pmix_pid_t`, `#undef pmix_thread_t`
+    near the top. None of these is ever `AC_DEFINE`d, and none is
+    referenced anywhere, so all five are no-ops. They are also the exact
+    shape the top-level golden rule warns against ("`#define` logical
+    macros to `0`/`1`; never `#undef` them") — and they sit *below*
+    `pmix_config.h`'s own defines, so if configure ever did define one,
+    this header would silently erase it. Note `pmix_thread_t` **is** a
+    real type (`struct pmix_thread_t` in `src/threads/pmix_threads.h`);
+    the `#undef` is harmless only because it is not a macro.
+  - `#define PMIX_HAVE_THREADS (PMIX_HAVE_POSIX_THREADS)` — the
+    right-hand side is never defined, so `#if PMIX_HAVE_THREADS`
+    evaluates to `0`. Nothing tests it. Do not start.
+  - `#include "src/include/pmix_config.h"` inside the `HAVE_STDINT_H`
+    branch — this file is included *from the bottom of* `pmix_config.h`,
+    so the include guard makes it a no-op.
+
 ## Portability & type headers
 
 - **`pmix_stdint.h`** — Open-MPI-derived. Includes `<stdint.h>` and
@@ -179,13 +199,44 @@ Open-MPI-lineage portability boilerplate:
 - **`pmix_socket_errno.h`** — trivial: `#define pmix_socket_errno errno`
   (a Windows-portability vestige). Nothing to see.
 - **`pmix_hash_string.h`** — `PMIX_HASH_STR` / `PMIX_HASH_STRLEN`
-  (Jenkins one-at-a-time hash). Used by `src/util/pmix_hash.c`.
+  (Jenkins one-at-a-time hash). **Dead: it has zero consumers anywhere in
+  the tree** — nothing includes it and neither macro is referenced. (An
+  earlier revision of this file claimed `src/util/pmix_hash.c` used it; it
+  does not, and never has in this tree.) It is nevertheless *installed*
+  (`headers` in `Makefile.am`), so an out-of-tree consumer could in
+  principle be reaching for it — which is why it is still here rather than
+  deleted. Two things to know if you ever revive it: the macros use the
+  `register` storage class (archaic, and invalid C++17 if a consumer
+  compiles as C++), and they accumulate `*_str++` where `_str` is a plain
+  `char *` — so bytes ≥ 0x80 sign-extend on platforms with signed `char`
+  and not on those with unsigned `char`. The hash value is therefore
+  **platform-dependent** and must never be put on the wire or compared
+  across peers.
 
 ## Atomics: `pmix_atomic.h` / `pmix_stdatomic.h`
 
-Both are hand-written and built on C11 `<stdatomic.h>`, and both are
-**widely depended upon** (`pmix_atomic_check_bool` alone appears in ~30
-files) — changing a typedef or macro signature ripples across the tree.
+**C11 atomics are a hard requirement of PMIx, not a build option.** There
+is no fallback path, no "if the compiler lacks them" branch, and none is
+wanted. `configure` enforces this directly: the *Check required atomics*
+block in [`config/pmix.m4`](../../config/pmix.m4) compiles five probes —
+`atomic_store`, `__atomic_store_n`, `__atomic_load_n`,
+`__atomic_fetch_add`, `__atomic_test_and_set` — and each failure is an
+`AC_MSG_ERROR([Cannot continue])`, not a feature flag. `PMIX_C_HAVE_C11`
+and friends in [`config/pmix_setup_cc.m4`](../../config/pmix_setup_cc.m4)
+record *which* conveniences exist; they do not make atomics optional.
+
+Consequently `<stdatomic.h>` is included **unconditionally** here. It used
+to sit behind `#ifdef HAVE_STDATOMIC_H`, which advertised a fallback that
+does not exist: had the guard ever been false, the typedefs below, the
+`atomic_store`/`atomic_load` macros, and the bare `atomic_bool` fields in
+`pmix_globals_t` (which reach `<stdatomic.h>` *only* through this header,
+via `src/threads/pmix_threads.h`) would all have failed with a cascade of
+unknown-type errors deep in the build instead of the clear configure
+error the user should get. Do not reintroduce the guard.
+
+Both headers are hand-written and **widely depended upon**
+(`pmix_atomic_check_bool` alone appears in ~30 files) — changing a typedef
+or macro signature ripples across the tree.
 
 - **`pmix_stdatomic.h`** — the atomic *typedefs* (`pmix_atomic_int32_t`,
   `pmix_atomic_bool_t`, `pmix_atomic_size_t`, …, thin `_Atomic` wrappers)
@@ -197,24 +248,32 @@ files) — changing a typedef or macro signature ripples across the tree.
   `pmix_shmem.c`). Includes `pmix_stdatomic.h`.
 
 **Design note — the `__atomic_*` builtins in `pmix_stdatomic.h` are
-deliberate, not a bug.** Four of its convenience macros
-(`pmix_atomic_store_int`, `pmix_atomic_load_int`, `pmix_atomic_fetch_add`,
-`pmix_atomic_test_and_set`) use the GCC/Clang `__atomic_*` builtins
-rather than C11 `<stdatomic.h>` — this is the *only* place in the tree
-that does. The reason: their callers operate atomically on **ordinary,
-non-`_Atomic`-qualified** globals (`pmix_show_help_enabled`,
-`server_init_cntr`/`client_init_cntr`/`tool_init_cntr` — all plain
-`int` — and `pmix_globals.init_called`, a plain `bool`). The `__atomic_*`
-builtins accept a pointer to a non-atomic object; the C11 `atomic_*`
-functions do not. Do **not** naively "port" these to C11 — a correct
-port would require `_Atomic`-qualifying all of those globals across
-`src/server`, `src/client`, `src/tool`, and `src/util`. Every compiler
-PMIx actually targets (GCC, Clang, icc/icx, nvhpc, armclang) provides
-`__atomic_*`, so the practical portability exposure is nil. Note the
-memory ordering differs on purpose: `pmix_atomic_fetch_add` here is
-`SEQ_CST` (init/finalize counters), whereas the differently-named
-`pmix_atomic_fetch_add_32` in `pmix_atomic.h` is relaxed (shared-memory
-refcounts in `pmix_shmem.c`).
+deliberate, not a bug, and are equally required.** Four of its convenience
+macros (`pmix_atomic_store_int`, `pmix_atomic_load_int`,
+`pmix_atomic_fetch_add`, `pmix_atomic_test_and_set`) use the GCC/Clang
+`__atomic_*` builtins rather than the C11 generic functions — this is the
+*only* place in the tree that does. The reason: their callers operate
+atomically on **ordinary, non-`_Atomic`-qualified** globals
+(`pmix_show_help_enabled`, `server_init_cntr`/`client_init_cntr`/
+`tool_init_cntr` — all plain `int` — and `pmix_globals.init_called`, a
+plain `bool`). The `__atomic_*` builtins accept a pointer to a non-atomic
+object; the C11 `atomic_*` functions do not. Do **not** naively "port"
+these to the C11 spellings — a correct port would require
+`_Atomic`-qualifying all of those globals across `src/server`,
+`src/client`, `src/tool`, and `src/util`. `configure` requires the
+builtins outright (see the probe list above), so this is not a portability
+compromise. Note the memory ordering differs on purpose:
+`pmix_atomic_fetch_add` here is `SEQ_CST` (init/finalize counters),
+whereas the differently-named `pmix_atomic_fetch_add_32` in
+`pmix_atomic.h` is relaxed (shared-memory refcounts in `pmix_shmem.c`).
+
+**Inconsistency to be aware of:** `pmix_globals_t` declares its flags as
+bare C11 `atomic_bool` (`initialized`, `util_initialized`, `connected`,
+`progress_thread_stopped`) rather than the `pmix_atomic_bool_t` typedef
+this header exists to provide, while the accessors used on them
+(`pmix_atomic_check_bool` and friends) *are* from here. The two spellings
+are the same type, so nothing is broken — but new state should use the
+`pmix_atomic_*_t` typedefs so the abstraction has one entry point.
 
 ## Platform detection: `pmix_portable_platform*.h`
 
@@ -283,6 +342,33 @@ A review of this directory turned up several defects, all now fixed on
   **Atomics** for why.
 - **Removed a stray `pmix_config.h.in~` editor backup** from the working
   tree.
+
+A second review (July 2026) covering this directory alongside `src/hwloc`
+changed one thing and catalogued the rest:
+
+- **Dropped the `#ifdef HAVE_STDATOMIC_H` guard** in `pmix_stdatomic.h`.
+  C11 atomics are required — `configure` hard-errors without them — so the
+  guard described a fallback that does not exist and would have converted a
+  clear configure error into unknown-type errors throughout the build. See
+  the **Atomics** section.
+- Everything else found was documented rather than changed: the dead
+  `#undef` cluster and `PMIX_HAVE_THREADS` in `pmix_config_bottom.h`, the
+  unreferenced-but-installed `pmix_hash_string.h`, and the bare
+  `atomic_bool` fields in `pmix_globals_t`. Each is described in place
+  above; none is worth an ABI-visible change on its own, but none should
+  be built upon either.
+
+Two hazards in `pmix_globals.h` worth restating because they have no
+compile-time check behind them:
+
+- **`pmix_check_local()` and the `pmix_check_*_info()` classifiers take a
+  raw `const char *` and never NULL-check it.** `pmix_check_local` also
+  reads `pmix_globals.hostname` unguarded. All are `static inline` and
+  reachable from key-handling paths that see host-supplied strings.
+- **The classifier tables are hand-maintained lists of attribute names.**
+  When a new node-, app-, or session-scoped attribute is added to the
+  Standard, the matching table here needs an entry and nothing will tell
+  you if you forget — the key simply lands in the wrong realm.
 
 ## Building
 
