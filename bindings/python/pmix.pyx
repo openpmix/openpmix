@@ -18,6 +18,15 @@ import os
 from typing import Callable
 from threading import Timer
 
+# The C "bool". construct.py rewrites every bool in the generated .pxd to
+# Cython's bint, which is a C int - correct for a struct field, where the C
+# compiler still sees the real declaration and does the store, but wrong for
+# an array the bindings allocate and walk themselves. A PMIX_BOOL data array
+# is bool-sized on the wire (pmix_bfrops_base_pack_bool reads a bool *), so
+# the loaders need the real type to size and stride it.
+cdef extern from "stdbool.h":
+    ctypedef bint c_bool "bool"
+
 # pull in all the constant definitions - we
 # store them in a separate file for neatness
 include "pmix_constants.pxi"
@@ -1036,9 +1045,14 @@ cdef class PMIxClient:
     def put(self, scope, ky, val):
         cdef pmix_key_t key
         cdef pmix_value_t value
-        # convert the keyval tuple to a pmix_info_t
+        # convert the keyval tuple to a pmix_info_t. Zero it first so a
+        # loader that fails partway leaves something safe to destruct
         pmix_copy_key(key, ky)
-        pmix_load_value(&value, val)
+        memset(&value, 0, sizeof(pmix_value_t))
+        rc = pmix_load_value(&value, val)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_value(&value)
+            return rc
         # pass it into the PMIx_Put function
         rc = PMIx_Put(scope, key, &value)
         pmix_destruct_value(&value)
