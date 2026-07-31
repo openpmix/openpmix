@@ -81,15 +81,25 @@ CLIENT_EXAMPLES="${CLIENT_EXAMPLES:-client dmodex nodeinfo pub resolve dynamic}"
 cl_geom() {
     HOSTS="node1:2,node2:2"; NP=4
     WANT='PMIx_Finalize successfully completed'
+    EXTRA=""
     case "$1" in
         dmodex)
             HOSTS="node1:2,node2:2"; NP=4 ;;
         dynamic)
             HOSTS="node1:4,node2:4"; NP=2 ;;
         resolve)
-            HOSTS="node1:2,node2:2,node3:2"; NP=6
-            # resolve.c reports through its exit code rather than a banner
-            WANT='' ;;
+            # resolve.c PMIx_Spawn's a two-proc child job and then resolves
+            # both namespaces, so the allocation must leave slots free for
+            # the child -- fill it and the spawn blocks to the timeout.
+            # It signals completion with its own "Bye." rather than the
+            # finalize banner the other examples print.
+            HOSTS="node1:4,node2:4,node3:4"; NP=3
+            # ...and it spawns the child by the RELATIVE path "./resolve", so
+            # the job has to run with that directory as its cwd or the launch
+            # fails and the non-spawning ranks wait out the timeout for a
+            # child that never appears.
+            EXTRA="--wdir /opt/prte/tests-client"
+            WANT='Bye\.' ;;
     esac
 }
 
@@ -104,6 +114,7 @@ PMIX_PREFIX=/opt/prte/pmix
 
 OUT=""
 WANT=""
+EXTRA=""
 RC=0
 # Launch a client through a transient DVM with the geometry cl_geom picks.
 # The program is named by absolute path because prterun ships the resolved
@@ -113,7 +124,7 @@ RC=0
 launch() {
     local prog="$1"; shift
     cl_geom "$prog"
-    OUT="$(RUN "prterun --host $HOSTS -np $NP --map-by node --timeout 60 /opt/prte/tests-client/$prog $* 2>&1")"
+    OUT="$(RUN "prterun --host $HOSTS -np $NP --map-by node $EXTRA --timeout 60 /opt/prte/tests-client/$prog $* 2>&1")"
     RC=$?
 }
 
@@ -133,8 +144,15 @@ judge() {
         bad "$name: exit $RC (output: $(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
         return
     fi
-    if echo "$OUT" | grep -qiE 'PMIX_ERROR|PMIX_ERR_|connection refused|Segmentation'; then
-        bad "$name: completed but reported an error: $(echo "$OUT" | grep -iE 'PMIX_ERROR|PMIX_ERR_|Segmentation' | head -1)"
+    # Only a crash, a lost connection, or the example's OWN failure banner
+    # counts. Deliberately NOT "any line mentioning a PMIX_ERR_*": several of
+    # these examples query things the swarm has no provider for -- nodeinfo
+    # asks for PMIX_FABRIC_COORDINATES, and with no fabric plugin loaded
+    # PMIX_ERR_NOT_FOUND is the correct answer, which is why the example
+    # prints it and carries on rather than bailing out. Grepping for the
+    # error name turned that into a spurious failure.
+    if echo "$OUT" | grep -qiE 'Segmentation|core dumped|connection refused|: ERROR!'; then
+        bad "$name: $(echo "$OUT" | grep -iE 'Segmentation|core dumped|connection refused|: ERROR!' | head -1)"
         return
     fi
     ok "$name: $what"
