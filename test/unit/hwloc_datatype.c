@@ -597,26 +597,73 @@ cleanup:
 /* compute_distances argument screening                                */
 /* ------------------------------------------------------------------ */
 
+/* NOTE what is deliberately NOT tested here: a NULL topology or a NULL
+ * cpuset. PMIx_Compute_distances(3) documents both as meaning "use the local
+ * node's" / "use the caller's own location", so the library substitutes its
+ * own and the call may well succeed. An earlier version of this file asserted
+ * that a NULL topology was rejected; that contradicted the documented
+ * contract and passed only where hwloc happens to discover no OS devices -
+ * macOS, and inside a container. On a machine that reports a NIC it failed,
+ * which is what a correct implementation should do.
+ *
+ * What IS invalid is an object that names a provider we are not, or one that
+ * names no provider at all. Both are rejected before any device is examined,
+ * so the outcome does not depend on what hardware the test happens to run
+ * on. */
 static void test_compute_distances_bad_params(void)
 {
-    pmix_device_distance_t *dist = (pmix_device_distance_t *) 0x1;
-    size_t ndist = 1;
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_device_distance_t *dist = NULL;
+    size_t ndist = 0;
     pmix_cpuset_t cpuset;
     pmix_status_t rc;
+    char path[2048];
     int ok;
 
+#ifndef PMIX_TEST_TOPO_DIR
+    return;
+#else
+    snprintf(path, sizeof(path), "%s/test-topo.xml", PMIX_TEST_TOPO_DIR);
+    if (0 != load_topo_file(path, &topo)) {
+        fprintf(stdout, "  SKIP: could not load %s\n", path);
+        return;
+    }
     PMIX_CPUSET_CONSTRUCT(&cpuset);
     if (PMIX_SUCCESS != PMIx_Parse_cpuset_string("hwloc:0", &cpuset)) {
         report("compute_distances screens its arguments (setup)", 0);
+        PMIx_Topology_destruct(&topo);
         return;
     }
 
-    /* a NULL topology must be reported, not dereferenced */
-    rc = PMIx_Compute_distances(NULL, &cpuset, NULL, 0, &dist, &ndist);
+    /* a cpuset that names no provider cannot be interpreted */
+    free(cpuset.source);
+    cpuset.source = NULL;
+    rc = PMIx_Compute_distances(&topo, &cpuset, NULL, 0, &dist, &ndist);
     ok = (PMIX_SUCCESS != rc);
-    report("compute_distances rejects a NULL topology", ok);
+    if (!ok) {
+        fprintf(stdout, "    sourceless cpuset accepted: rc=%s\n", PMIx_Error_string(rc));
+    }
+    report("compute_distances rejects a cpuset with no source", ok);
 
+    /* a topology belonging to some other provider is not ours to measure */
+    cpuset.source = strdup("hwloc");
+    free(topo.source);
+    topo.source = strdup("someoneelse");
+    dist = NULL;
+    ndist = 0;
+    rc = PMIx_Compute_distances(&topo, &cpuset, NULL, 0, &dist, &ndist);
+    ok = (PMIX_SUCCESS != rc);
+    if (!ok) {
+        fprintf(stdout, "    foreign topology accepted: rc=%s\n", PMIx_Error_string(rc));
+    }
+    report("compute_distances passes on a foreign topology", ok);
+
+    /* restore a source we recognize so the destructor reclaims the topology */
+    free(topo.source);
+    topo.source = strdup("hwloc");
     PMIX_CPUSET_DESTRUCT(&cpuset);
+    PMIx_Topology_destruct(&topo);
+#endif
 }
 
 /* pmix_device_distance_t(5) says mindist and maxdist exist "to support cases
@@ -942,14 +989,21 @@ static void test_locality_generator_to_consumer(void)
     }
 
     rc = PMIx_server_generate_locality_string(&c1, &loc1);
-    if (PMIX_SUCCESS != rc || NULL == loc1) {
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_server_generate_locality_string(&c2, &loc2);
+    }
+    if (PMIX_SUCCESS != rc || NULL == loc1 || NULL == loc2) {
+        /* A machine can legitimately have no locality to report for cpu 0 -
+         * an unbound single-PU container, for one. That is a SKIP, and it
+         * must leave through a path that does not call report(): falling into
+         * the cleanup label below would have counted it as a failure. */
         fprintf(stdout, "  SKIP: no locality for cpu 0 on this machine (rc=%s)\n",
                 PMIx_Error_string(rc));
-        goto cleanup;
-    }
-    rc = PMIx_server_generate_locality_string(&c2, &loc2);
-    if (PMIX_SUCCESS != rc || NULL == loc2) {
-        goto cleanup;
+        free(loc1);
+        free(loc2);
+        PMIX_CPUSET_DESTRUCT(&c1);
+        PMIX_CPUSET_DESTRUCT(&c2);
+        return;
     }
 
     /* the generator writes a bare, unprefixed token list - if that ever
