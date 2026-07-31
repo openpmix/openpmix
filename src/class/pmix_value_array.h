@@ -94,13 +94,16 @@ static inline int pmix_value_array_init(pmix_value_array_t *array, size_t item_s
 static inline int pmix_value_array_reserve(pmix_value_array_t *array, size_t size)
 {
     if (size > array->array_alloc_size) {
-        array->array_items = (unsigned char *) realloc(array->array_items,
-                                                       array->array_item_sizeof * size);
-        if (NULL == array->array_items) {
-            array->array_size = 0;
-            array->array_alloc_size = 0;
+        /* Hold the new pointer aside: on failure realloc() leaves the old
+         * allocation valid, and the previous code overwrote it with NULL -
+         * leaking the buffer and discarding elements the caller still
+         * owned, purely because it could not grow. */
+        unsigned char *grown = (unsigned char *) realloc(array->array_items,
+                                                         array->array_item_sizeof * size);
+        if (NULL == grown) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
+        array->array_items = grown;
         array->array_alloc_size = size;
     }
     return PMIX_SUCCESS;
@@ -250,13 +253,18 @@ static inline int pmix_value_array_append_item(pmix_value_array_t *array, const 
 
 static inline int pmix_value_array_remove_item(pmix_value_array_t *array, size_t item_index)
 {
-#if PMIX_ENABLE_DEBUG
+    /* This bound is checked unconditionally. It used to be debug-only, but
+     * the length the memmove() below computes is
+     * (array_size - item_index - 1) in size_t arithmetic: an out-of-range
+     * index does not read one element too far, it wraps to an enormous
+     * count and walks the heap. One compare is not worth that. */
     if (item_index >= array->array_size) {
+#if PMIX_ENABLE_DEBUG
         pmix_output(0, "pmix_value_array_remove_item: invalid index %lu\n",
                     (unsigned long) item_index);
+#endif
         return PMIX_ERR_BAD_PARAM;
     }
-#endif
     memmove(array->array_items + (array->array_item_sizeof * item_index),
             array->array_items + (array->array_item_sizeof * (item_index + 1)),
             array->array_item_sizeof * (array->array_size - item_index - 1));
