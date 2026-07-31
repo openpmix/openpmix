@@ -949,7 +949,19 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
         }
     }
 
-    /* register an event handler specifically to respond to accept responses */
+    /* Register an event handler specifically to respond to accept responses.
+     *
+     * WARNING - this handler can be silently pre-empted, and when it is, this
+     * invitation never resolves. invite_handler() is the only thing that
+     * counts answers and calls invite_wake(), but it lands in the multi-code
+     * handler category, and the event chain runs single-code handlers first.
+     * An application that registers its own handler for
+     * PMIX_GROUP_INVITE_ACCEPTED - to log who joined, say - and returns
+     * PMIX_EVENT_ACTION_COMPLETE from it ends the chain before we are
+     * reached, and PMIx_Group_invite blocks forever unless the caller
+     * supplied a PMIX_TIMEOUT. Same exposure as the leader watch below, but
+     * a hang rather than a missed teardown. See the note there for the
+     * demonstration and the intended fix. */
     PMIX_INFO_LOAD(&myinfo[0], PMIX_EVENT_RETURN_OBJECT, cb, PMIX_POINTER);
     PMIX_INFO_LOAD(&myinfo[1], PMIX_EVENT_HDLR_PREPEND, NULL, PMIX_BOOL);
     ncodes = sizeof(codes) / sizeof(pmix_status_t);
