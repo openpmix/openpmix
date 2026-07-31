@@ -302,3 +302,13 @@ docs/code-of-conduct.rst
 # Common Python virtual environment directory names
 venv
 py??
+
+# Out-of-tree (VPATH) build trees the contrib/dockerswarm scripts create at
+# the repo root.  contrib/dockerswarm/.gitignore names two of these, but a
+# .gitignore only governs its own directory downward and these are built up
+# here, so they have to be listed at the root to actually be ignored.
+#   build.sh macos        -> vpath-macos-pmix, vpath-macos-prte
+#   run-class-tests.sh    -> vpath-macos-pmix-opt (the --disable-debug tree)
+vpath-macos-pmix/
+vpath-macos-pmix-opt/
+vpath-macos-prte/

@@ -29,7 +29,8 @@ is only the nickname.
 | `run-group-events.sh` | Runs the **dynamic, event-driven** group exercisers and their fault paths (invite/join, member lost during destruct, ...); kept separate from `run-tests.sh` so the event/fault matrix can grow independently. Same `linux`/`macos` modes. |
 | `run-topology.sh` | Runs the **topology + locality** exerciser across real nodes: each rank loads the topology its *local* server published (hwloc shmem, with XML as the fallback) and compares `PMIX_LOCALITY_STRING` with every peer. The only place `src/hwloc` gets a multi-node answer -- on one host every peer is a node-mate, so a single-host run cannot tell a correct result from one that claims everything is local. Same `linux`/`macos` modes. |
 | `run-python.sh` | Runs the **Python bindings**: the standalone unit suite, the connected client/server round-trip, and Python PMIx clients spread across nodes. Same `linux`/`macos` modes. See §10. |
-| `swarm-common.sh` | Sourced by all five scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
+| `run-class-tests.sh` | Runs `test/unit/class` in the two configurations a developer's own `make check` does not cover: **Linux**, and **`--disable-debug`** with default symbol visibility. Deliberately *not* a multi-node test — see §11. |
+| `swarm-common.sh` | Sourced by all six scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
 | `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`). |
 | `Dockerfile` | Base image: toolchain, PRRTE master *source* (autogen'd), SSH wiring, node entrypoint. It contains **no** PMIx and **no** built PRRTE. |
 | `docker-compose.yml` | The ten nodes `pmix-node1`..`pmix-node10`, each mounting the shared `pmix-build` volume. Every one of those names derives from `$PMIX_SWARM`, so two clones can each run a swarm — see §4. |
@@ -388,3 +389,68 @@ Python clients do exactly that.
 > run after picking this up needs `./build.sh image` (or any `./build.sh` on a
 > machine with no `pmix-swarm` image yet). That re-clones PRRTE and takes a
 > while; subsequent builds are incremental as before.
+
+---
+
+## 11. The `src/class` unit suite (`run-class-tests.sh`)
+
+```
+./run-class-tests.sh linux    # both configurations, in the container
+./run-class-tests.sh macos    # both configurations, natively
+```
+
+**This is not a multi-node test, and it is not trying to be.** Everything
+in [`src/class`](../../src/class) — the object model, list, hash table,
+pointer array, hotel, ring buffer, value array, bitmap — is a
+single-process, in-memory data structure. Spreading a linked list over ten
+containers tells you nothing that running it once does not. The distributed
+dimension of these classes is *cross-process on one node*:
+`pmix_hash_table_t` and `pmix_pointer_array_t` are TMA-aware precisely so
+`gds/shmem2` can build them inside an mmap'd segment a server shares with
+its local clients — and that path is exercised by `run-tests.sh`, whose
+group cases drive a real datastore on each node.
+
+What this script is for is the two configurations `make check` on a
+developer's machine does not produce:
+
+1. **Linux.** The primary development host is macOS. This code has
+   platform-sensitive corners: the width of `unsigned long` under a shift,
+   C11 atomic codegen, what `calloc(0, n)` and `realloc(p, 0)` return,
+   pthread scheduling.
+
+2. **`--disable-debug`, default symbol visibility.** This is the bigger
+   one. Several guards in `src/class` used to be compiled out unless
+   `--enable-debug`, so the bugs they catch were only reachable in a build
+   nobody tested — an un-init'd hash table divided by zero;
+   `pmix_value_array_remove_item()` `memmove`'d a wrapped `size_t` length.
+   And *every* tree in this workflow (yours, and `build.sh`'s) configures
+   `--enable-debug`; the maintainer's also uses `--disable-visibility`.
+
+### A defect this half found
+
+The first run of the `--disable-debug`, default-visibility build failed to
+link:
+
+```
+Undefined symbols for architecture arm64:
+  "_pmix_ring_buffer_t_class", referenced from: _main in class_ring_buffer.o
+```
+
+`pmix_ring_buffer_t` was the one class in the directory whose descriptor
+carried no `PMIX_EXPORT` — not on the declaration, not on the
+`PMIX_CLASS_INSTANCE`. So `PMIX_NEW(pmix_ring_buffer_t)` cannot link
+outside `libpmix` in any normal build. It went unnoticed because the class
+has **no callers in the tree at all**, and the one consumer that would have
+caught it is normally built against a `--disable-visibility` tree.
+
+Same lesson as §10, one level down: **a test that only ever runs in the
+maintainer's configuration only ever tests the maintainer's
+configuration.**
+
+> **Note on the `macos` half.** Autoconf refuses an out-of-tree build while
+> the source directory itself holds a `config.status`. `build.sh` resolves
+> that by running `make distclean` on your tree; a test script has no
+> business doing that to a working build, so the optimized half *skips*
+> with an explanation instead. Run `./build.sh macos` first (which
+> distcleans), or use the `linux` half, which has no such restriction — the
+> container builds both configurations against a read-only bind mount.
