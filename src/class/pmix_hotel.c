@@ -20,6 +20,9 @@
 #include <event.h>
 #include "src/class/pmix_hotel.h"
 
+static void constructor(pmix_hotel_t *h);
+static void destructor(pmix_hotel_t *h);
+
 static void local_eviction_callback(int fd, short flags, void *arg)
 {
     (void) fd;
@@ -54,6 +57,11 @@ pmix_status_t pmix_hotel_init(pmix_hotel_t *h, int num_rooms, pmix_event_base_t 
     if (num_rooms <= 0 || NULL == evict_callback_fn) {
         return PMIX_ERR_BAD_PARAM;
     }
+
+    /* Re-initializing a live hotel used to overwrite all three array
+     * pointers and leak everything they addressed. Tear the old one down
+     * first; on a freshly constructed hotel this does nothing. */
+    destructor(h);
 
     h->num_rooms = num_rooms;
     h->evbase = evbase;
@@ -137,6 +145,11 @@ static void destructor(pmix_hotel_t *h)
     if (NULL != h->unoccupied_rooms) {
         free(h->unoccupied_rooms);
     }
+
+    /* Leave the hotel in the state the constructor produces, so that a
+     * second PMIX_DESTRUCT does not free the same three arrays again and
+     * so nothing walks a dangling rooms[] looking for occupants. */
+    constructor(h);
 }
 
 PMIX_CLASS_INSTANCE(pmix_hotel_t, pmix_object_t, constructor, destructor);

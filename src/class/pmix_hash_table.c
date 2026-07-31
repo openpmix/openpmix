@@ -89,6 +89,11 @@ static void pmix_hash_table_destruct(pmix_hash_table_t *ht)
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
     pmix_hash_table_remove_all(ht);
     pmix_tma_free(tma, ht->ht_table);
+    /* Back to the constructed state. Leaving ht_table dangling with a
+     * non-zero ht_capacity meant a second PMIX_DESTRUCT freed it again,
+     * and any stray lookup indexed freed memory instead of failing the
+     * capacity check. */
+    pmix_hash_table_construct(ht);
 }
 
 /*
@@ -283,12 +288,18 @@ pmix_hash_table_get_value_uint32(pmix_hash_table_t *ht, uint32_t key, void **val
     size_t ii, capacity = ht->ht_capacity;
     pmix_hash_element_t *elt;
 
+    /* An un-init'd table has no slots, and every lookup below starts
+     * with "key % capacity" -- a division by zero. This check used to
+     * live inside the PMIX_ENABLE_DEBUG block below, so an optimized
+     * build took the SIGFPE instead of the error return. */
+    if (PMIX_UNLIKELY(0 == capacity)) {
 #if PMIX_ENABLE_DEBUG
-    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint32:"
                        "pmix_hash_table_init() has not been called");
+#endif
         return PMIX_ERROR;
     }
+#if PMIX_ENABLE_DEBUG
     // First check if the hash table is using a non-standard heap manager. Skip
     // this debug check because use of a shared-memory TMA may trigger an error
     // since some processes may have not yet updated their function pointers
@@ -326,12 +337,18 @@ pmix_hash_table_set_value_uint32(pmix_hash_table_t *ht, uint32_t key, void *valu
     pmix_hash_element_t *elt;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
+    /* An un-init'd table has no slots, and every lookup below starts
+     * with "key % capacity" -- a division by zero. This check used to
+     * live inside the PMIX_ENABLE_DEBUG block below, so an optimized
+     * build took the SIGFPE instead of the error return. */
+    if (PMIX_UNLIKELY(0 == capacity)) {
 #if PMIX_ENABLE_DEBUG
-    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_set_value_uint32:"
                        "pmix_hash_table_init() has not been called");
+#endif
         return PMIX_ERR_BAD_PARAM;
     }
+#if PMIX_ENABLE_DEBUG
     // First check if the hash table is using a non-standard heap manager. Skip
     // this debug check because use of a shared-memory TMA may trigger an error
     // since some processes may have not yet updated their function pointers
@@ -377,12 +394,18 @@ int pmix_hash_table_remove_value_uint32(pmix_hash_table_t *ht, uint32_t key)
 {
     size_t ii, capacity = ht->ht_capacity;
 
+    /* An un-init'd table has no slots, and every lookup below starts
+     * with "key % capacity" -- a division by zero. This check used to
+     * live inside the PMIX_ENABLE_DEBUG block below, so an optimized
+     * build took the SIGFPE instead of the error return. */
+    if (PMIX_UNLIKELY(0 == capacity)) {
 #if PMIX_ENABLE_DEBUG
-    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint32:"
                        "pmix_hash_table_init() has not been called");
+#endif
         return PMIX_ERROR;
     }
+#if PMIX_ENABLE_DEBUG
     // First check if the hash table is using a non-standard heap manager. Skip
     // this debug check because use of a shared-memory TMA may trigger an error
     // since some processes may have not yet updated their function pointers
@@ -428,12 +451,18 @@ pmix_hash_table_get_value_uint64(pmix_hash_table_t *ht, uint64_t key, void **val
     size_t capacity = ht->ht_capacity;
     pmix_hash_element_t *elt;
 
+    /* An un-init'd table has no slots, and every lookup below starts
+     * with "key % capacity" -- a division by zero. This check used to
+     * live inside the PMIX_ENABLE_DEBUG block below, so an optimized
+     * build took the SIGFPE instead of the error return. */
+    if (PMIX_UNLIKELY(0 == capacity)) {
 #if PMIX_ENABLE_DEBUG
-    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint64:"
                        "pmix_hash_table_init() has not been called");
+#endif
         return PMIX_ERROR;
     }
+#if PMIX_ENABLE_DEBUG
     // First check if the hash table is using a non-standard heap manager. Skip
     // this debug check because use of a shared-memory TMA may trigger an error
     // since some processes may have not yet updated their function pointers
@@ -471,12 +500,18 @@ pmix_hash_table_set_value_uint64(pmix_hash_table_t *ht, uint64_t key, void *valu
     pmix_hash_element_t *elt;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
+    /* An un-init'd table has no slots, and every lookup below starts
+     * with "key % capacity" -- a division by zero. This check used to
+     * live inside the PMIX_ENABLE_DEBUG block below, so an optimized
+     * build took the SIGFPE instead of the error return. */
+    if (PMIX_UNLIKELY(0 == capacity)) {
 #if PMIX_ENABLE_DEBUG
-    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_set_value_uint64:"
                        "pmix_hash_table_init() has not been called");
+#endif
         return PMIX_ERR_BAD_PARAM;
     }
+#if PMIX_ENABLE_DEBUG
     // First check if the hash table is using a non-standard heap manager. Skip
     // this debug check because use of a shared-memory TMA may trigger an error
     // since some processes may have not yet updated their function pointers
@@ -522,12 +557,18 @@ pmix_hash_table_remove_value_uint64(pmix_hash_table_t *ht, uint64_t key)
 {
     size_t ii, capacity = ht->ht_capacity;
 
+    /* An un-init'd table has no slots, and every lookup below starts
+     * with "key % capacity" -- a division by zero. This check used to
+     * live inside the PMIX_ENABLE_DEBUG block below, so an optimized
+     * build took the SIGFPE instead of the error return. */
+    if (PMIX_UNLIKELY(0 == capacity)) {
 #if PMIX_ENABLE_DEBUG
-    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint64:"
                        "pmix_hash_table_init() has not been called");
+#endif
         return PMIX_ERROR;
     }
+#if PMIX_ENABLE_DEBUG
     // First check if the hash table is using a non-standard heap manager. Skip
     // this debug check because use of a shared-memory TMA may trigger an error
     // since some processes may have not yet updated their function pointers
@@ -600,12 +641,18 @@ pmix_hash_table_get_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
     size_t ii, capacity = ht->ht_capacity;
     pmix_hash_element_t *elt;
 
+    /* An un-init'd table has no slots, and every lookup below starts
+     * with "key % capacity" -- a division by zero. This check used to
+     * live inside the PMIX_ENABLE_DEBUG block below, so an optimized
+     * build took the SIGFPE instead of the error return. */
+    if (PMIX_UNLIKELY(0 == capacity)) {
 #if PMIX_ENABLE_DEBUG
-    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_ptr:"
                        "pmix_hash_table_init() has not been called");
+#endif
         return PMIX_ERROR;
     }
+#if PMIX_ENABLE_DEBUG
     // First check if the hash table is using a non-standard heap manager. Skip
     // this debug check because use of a shared-memory TMA may trigger an error
     // since some processes may have not yet updated their function pointers
@@ -644,12 +691,18 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
     pmix_hash_element_t *elt;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
+    /* An un-init'd table has no slots, and every lookup below starts
+     * with "key % capacity" -- a division by zero. This check used to
+     * live inside the PMIX_ENABLE_DEBUG block below, so an optimized
+     * build took the SIGFPE instead of the error return. */
+    if (PMIX_UNLIKELY(0 == capacity)) {
 #if PMIX_ENABLE_DEBUG
-    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_set_value_ptr:"
                        "pmix_hash_table_init() has not been called");
+#endif
         return PMIX_ERR_BAD_PARAM;
     }
+#if PMIX_ENABLE_DEBUG
     // First check if the hash table is using a non-standard heap manager. Skip
     // this debug check because use of a shared-memory TMA may trigger an error
     // since some processes may have not yet updated their function pointers
@@ -703,12 +756,18 @@ pmix_hash_table_remove_value_ptr(pmix_hash_table_t *ht, const void *key, size_t 
 {
     size_t ii, capacity = ht->ht_capacity;
 
+    /* An un-init'd table has no slots, and every lookup below starts
+     * with "key % capacity" -- a division by zero. This check used to
+     * live inside the PMIX_ENABLE_DEBUG block below, so an optimized
+     * build took the SIGFPE instead of the error return. */
+    if (PMIX_UNLIKELY(0 == capacity)) {
 #if PMIX_ENABLE_DEBUG
-    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_ptr:"
                        "pmix_hash_table_init() has not been called");
+#endif
         return PMIX_ERROR;
     }
+#if PMIX_ENABLE_DEBUG
     // First check if the hash table is using a non-standard heap manager. Skip
     // this debug check because use of a shared-memory TMA may trigger an error
     // since some processes may have not yet updated their function pointers

@@ -148,7 +148,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_hotel_t);
     .rooms = NULL,                                  \
     .eviction_args = NULL,                          \
     .unoccupied_rooms = NULL,                       \
-    .last_unoccupied_room = 0                       \
+    .last_unoccupied_room = -1                      \
 }
 
 
@@ -163,9 +163,10 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_hotel_t);
  * @param evict_callback_fn Callback function invoked if an occupant
  * does not check out before the eviction_timeout.
  *
- * NOTE: If the callback function is NULL, then no eviction timer
- * will be set - occupants will remain checked into the hotel until
- * explicitly checked out.
+ * NOTE: evict_callback_fn is required; passing NULL returns
+ * PMIX_ERR_BAD_PARAM. To keep occupants checked in until they are
+ * explicitly checked out, pass a NULL evbase instead - no eviction timer
+ * is then armed and the callback is never invoked.
  *
  * Also note: the eviction_callback_fn should absolutely not call any
  * of the hotel checkout functions.  Specifically: the occupant has
