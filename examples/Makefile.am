@@ -22,6 +22,63 @@
 #
 headers = examples.h
 
+# The Python ports of these examples. They are not built - they are
+# scripts - but they must ship in the tarball.
+EXTRA_DIST = \
+	python/README.md \
+	python/examples.py \
+	python/abi_no_init.py \
+	python/abi_with_init.py \
+	python/abort.py \
+	python/alloc.py \
+	python/asyncgroup.py \
+	python/bad_exit.py \
+	python/client.py \
+	python/client2.py \
+	python/client3.py \
+	python/client4.py \
+	python/connect_die.py \
+	python/debugger.py \
+	python/debuggerd.py \
+	python/dmodex.py \
+	python/dynamic.py \
+	python/fault.py \
+	python/group.py \
+	python/group_bootstrap.py \
+	python/group_construct_abort.py \
+	python/group_daemon_fail.py \
+	python/group_destruct_die.py \
+	python/group_die.py \
+	python/group_dmodex.py \
+	python/group_invite.py \
+	python/group_invite_abort.py \
+	python/group_invite_decline.py \
+	python/group_invite_timeout.py \
+	python/group_lcl_cid.py \
+	python/group_leave.py \
+	python/hello.py \
+	python/jctrl.py \
+	python/launcher.py \
+	python/log.py \
+	python/monitor.py \
+	python/monitor_multi.py \
+	python/monitor_remote.py \
+	python/multi_nspace_group.py \
+	python/nodeinfo.py \
+	python/pset.py \
+	python/pub.py \
+	python/pub2.py \
+	python/pubi.py \
+	python/pubstress.py \
+	python/resolve.py \
+	python/server.py \
+	python/simple.py \
+	python/simple_resolve.py \
+	python/simple_server.py \
+	python/spawn_group.py \
+	python/tool.py \
+	python/toolqry.py
+
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
 
 noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
