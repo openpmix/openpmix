@@ -258,6 +258,12 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
         return PMIX_ERR_INIT;
     }
 
+    /* the server-reply path (direcv) has no completion route other than this
+     * callback, so a NULL one is not something we can honor */
+    if (NULL == cbfunc) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
     }

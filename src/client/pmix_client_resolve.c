@@ -173,6 +173,12 @@ static void resolve_peers(int sd, short args, void *cbdata)
      * with a key equal to the nodename */
     if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
         PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)) {
+        /* NOTE: pre-v3.2 servers filed this under the wildcard rank keyed by
+         * the node name, but the reset below puts the rank back to UNDEF for
+         * both branches, so this assignment has no effect. try_fetch() retries
+         * an UNDEF rank as WILDCARD, which is why the legacy path still
+         * resolves; the dead store is left as-is rather than "fixed" blind,
+         * since no pre-v3.2 server is available to test the difference. */
         proc.rank = PMIX_RANK_WILDCARD;
         key = cd->nodename;
         ninfo = 1;
@@ -358,6 +364,9 @@ static void respeer(pmix_status_t status, pmix_info_t info[], size_t ninfo, void
     if (PMIX_SUCCESS == status) {
         cb->ninfo = ninfo;
         PMIX_INFO_CREATE(cb->info, ninfo);
+        /* this is our copy, so mark it as such - otherwise the caddy
+         * destructor leaves the whole array behind */
+        cb->infocopy = true;
         for (n=0; n < ninfo; n++) {
             PMIX_INFO_XFER(&cb->info[n], &info[n]);
         }
@@ -439,9 +448,11 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
                     } else {
                         *procs = (pmix_proc_t*)val->data.darray->array;
                         *nprocs = val->data.darray->size;
-                        // protect the returned data
-                        cb.info = NULL;
-                        cb.ninfo = 0;
+                        /* detach just the proc array we are handing back, so
+                         * destructing the caddy still reclaims the info array
+                         * and the data-array wrapper around it */
+                        val->data.darray->array = NULL;
+                        val->data.darray->size = 0;
                         PMIX_DESTRUCT(&cb);
                         return rc;
                     }
@@ -518,6 +529,8 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     cd = PMIX_NEW(pmix_resolve_caddy_t);
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_peers_cbfunc, (void *) cd);
     if (PMIX_SUCCESS != rc) {
+        /* a refused send never took the message, so it is still ours */
+        PMIX_RELEASE(msg);
         PMIX_RELEASE(cd);
         return rc;
     }
@@ -687,6 +700,8 @@ static void resnode(pmix_status_t status, pmix_info_t info[], size_t ninfo, void
     if (PMIX_SUCCESS == status) {
         cb->ninfo = ninfo;
         PMIX_INFO_CREATE(cb->info, ninfo);
+        /* our copy - see respeer() above */
+        cb->infocopy = true;
         for (n=0; n < ninfo; n++) {
             PMIX_INFO_XFER(&cb->info[n], &info[n]);
         }
@@ -752,7 +767,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
                 // string return should be in first info
                 if (0 < cb.ninfo) {
                     val = &cb.info[0].value;
-                    if (PMIX_STRING != val->type) {
+                    if (PMIX_STRING != val->type || NULL == val->data.string) {
                         PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
                     } else {
                         *nodelist = strdup(val->data.string);
@@ -821,6 +836,8 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
     cd = PMIX_NEW(pmix_resolve_caddy_t);
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_node_cbfunc, (void *) cd);
     if (PMIX_SUCCESS != rc) {
+        /* a refused send never took the message, so it is still ours */
+        PMIX_RELEASE(msg);
         PMIX_RELEASE(cd);
         return rc;
     }

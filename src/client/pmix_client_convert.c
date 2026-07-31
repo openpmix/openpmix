@@ -54,7 +54,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
     pmix_proclist_t *nm;
     pmix_group_t *grp;
     size_t n, i, cnt, sz;
-    bool match;
+    bool match, found;
     uint32_t jsize;
     pmix_status_t rc;
     pmix_kval_t *kv;
@@ -67,6 +67,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
      * a PMIx group */
     for (n = 0; n < insize; n++) {
         match = false;
+        found = false;
         PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
             if (PMIX_CHECK_NSPACE(grp->grpid, inprocs[n].nspace)) {
                 match = true;
@@ -77,7 +78,8 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                     for (i=0; i < grp->nmbrs; i++) {
                         append_unique(&cache, &grp->members[i]);
                     }
-                    continue;
+                    found = true;
+                    break;
                 }
 
                 /* if the rank isn't wildcard, then we want a specific
@@ -123,6 +125,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                             PMIX_LOAD_NSPACE(proc.nspace, grp->members[i].nspace);
                             proc.rank = inprocs[n].rank - cnt;
                             append_unique(&cache, &proc);
+                            found = true;
                             break;
                         } else {
                             /* increment the count */
@@ -134,6 +137,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                          * it matches the one they asked for */
                         if (cnt == inprocs[n].rank) {
                             append_unique(&cache, &grp->members[i]);
+                            found = true;
                             break;
                         } else {
                             /* increment the count */
@@ -150,6 +154,15 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
         if (!match) {
             /* xfer the incoming proc across to the cache */
             append_unique(&cache, &inprocs[n]);
+        } else if (!found) {
+            /* the nspace named a group we belong to, but the requested group
+             * rank lies beyond its membership. Say so - dropping the entry
+             * silently produced a short participant list that then failed
+             * much further downstream (as PMIX_ERR_NOT_A_MEMBER, or as a
+             * collective that never completes) with nothing pointing back
+             * here. */
+            PMIX_LIST_DESTRUCT(&cache);
+            return PMIX_ERR_NOT_FOUND;
         }
     }
 
