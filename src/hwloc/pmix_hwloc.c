@@ -1366,18 +1366,35 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
                 } else {
                     tgt = device;
                 }
-                /* loop over the PUs on this node */
+                /* Loop over the PUs the process is bound to, measuring each
+                 * one's distance to this device.
+                 *
+                 * The min/max pair exists precisely because a process may be
+                 * bound to more than one location and those locations may sit
+                 * at different distances from the device - that is what
+                 * pmix_device_distance_t(5) says the two fields are for. So
+                 * the ancestor has to be taken between THIS PU and the device.
+                 * It used to be taken between `obj` - the single lowest object
+                 * covering the entire cpuset - and the device, which does not
+                 * vary with w at all: every iteration recomputed the same
+                 * value, the PU was fetched and then ignored, and mindist and
+                 * maxdist came out equal for every device on every machine.
+                 * The documented multi-location case could not be
+                 * represented. `obj` is still what tells us the cpuset covers
+                 * something below the machine (checked far above); it is not
+                 * the thing to measure from. */
                 maxdist = 0;
                 mindist = UINT_MAX;
                 for (w = 0; w < width; w++) {
                     /* get the pu at this index */
                     pu = hwloc_get_obj_by_depth(topo->topology, pudepth, w);
                     /* is this PU in our cpuset? */
-                    if (!hwloc_bitmap_intersects(pu->cpuset, cpuset->bitmap)) {
+                    if (NULL == pu || NULL == pu->cpuset ||
+                        !hwloc_bitmap_intersects(pu->cpuset, cpuset->bitmap)) {
                         continue;
                     }
-                    /* find the common ancestor between the cpuset and NIC objects */
-                    ancestor = hwloc_get_common_ancestor_obj(topo->topology, obj, tgt);
+                    /* find the common ancestor between this location and the device */
+                    ancestor = hwloc_get_common_ancestor_obj(topo->topology, pu, tgt);
                     if (NULL != ancestor) {
                         if (0 == ancestor->depth) {
                             /* we only share the machine - need to do something more
@@ -1386,10 +1403,11 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
                              * distance - it is all typically given in terms of NUMA
                              * domains, which is no longer a valid way of looking at
                              * locations due to overlapping domains. For now, we will
-                             * just take the depth of the device in its package and
-                             * add that to the depth of the object in its package
-                             * plus the depth of a package to ensure it is further away */
-                            dp = obj->depth + depth;
+                             * just take the depth of this location and add the depth
+                             * of the topology to ensure it sorts further away than
+                             * anything that shares an ancestor below the machine
+                             * (those are all < depth) */
+                            dp = pu->depth + depth;
                         } else {
                             /* the depth value can be used as an indicator of relative
                              * locality - the higher the value, the closer the device.
@@ -1409,8 +1427,18 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
                         maxdist = dp;
                     }
                 }
-                d->dist.mindist = mindist;
-                d->dist.maxdist = maxdist;
+                if (UINT_MAX == mindist) {
+                    /* no location in the cpuset lies in this topology, so we
+                     * measured nothing. Report the documented "distance is
+                     * unknown" sentinel in BOTH fields - leaving maxdist at 0
+                     * claimed the device was as close as possible while
+                     * mindist said it was unknown, and min > max besides. */
+                    d->dist.mindist = UINT16_MAX;
+                    d->dist.maxdist = UINT16_MAX;
+                } else {
+                    d->dist.mindist = mindist;
+                    d->dist.maxdist = maxdist;
+                }
             }
             device = hwloc_get_next_osdev(topo->topology, device);
         }
