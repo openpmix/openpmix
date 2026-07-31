@@ -67,7 +67,15 @@ PRRTE_REPO="${PRRTE_REPO:-https://github.com/openpmix/prrte.git}"
 # must complete on the survivors -- the destruct analog of group_die).
 GROUP_EXAMPLES="group group_bootstrap group_dmodex group_lcl_cid asyncgroup multi_nspace_group"
 EVENT_EXAMPLES="group_invite group_invite_timeout group_invite_decline group_invite_abort group_destruct_die group_construct_abort group_daemon_fail"
-BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die group_leave $EVENT_EXAMPLES"
+# The topology/locality exerciser, driven by run-topology.sh: every rank loads
+# the topology its LOCAL server handed it (the hwloc shmem segment, or XML as
+# the fallback -- neither path exists in a standalone process) and then compares
+# PMIX_LOCALITY_STRING with every peer. It has to run across real nodes: a
+# single-host run cannot tell a correct answer from one that calls everything
+# local, and the producer/consumer mismatch this catches made every process
+# report NO shared locality with its own node-mates.
+TOPO_EXAMPLES="topology"
+BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die group_leave $EVENT_EXAMPLES $TOPO_EXAMPLES"
 
 # The Python bindings are built with PMIx (--enable-python-bindings) and staged,
 # together with the maintained test scripts from test/python and the swarm's own

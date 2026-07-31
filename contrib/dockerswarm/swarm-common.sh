@@ -6,7 +6,8 @@
 #
 # $HEADER$
 #
-# Shared by build.sh, run-tests.sh, run-group-events.sh and run-python.sh.
+# Shared by build.sh, run-tests.sh, run-group-events.sh, run-topology.sh and
+# run-python.sh.
 # SOURCED, never executed:  . "$(dirname "$0")/swarm-common.sh"
 #
 # Two things live here because all four scripts need them to agree.
@@ -18,7 +19,7 @@
 #    of fighting over this one.  Unset, it is "pmix" and every name is exactly
 #    what it has always been.
 #
-# 2. HOW A NODE IS CLEANED.  The three runners each used to carry their own
+# 2. HOW A NODE IS CLEANED.  The runners each used to carry their own
 #    copy of cleanup_swarm, and the copies had already drifted.  One copy is
 #    one place to fix, which is the whole point: an incomplete sweep does not
 #    fail the case that caused it, it fails the next several with a message
