@@ -250,6 +250,44 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
     PMIX_WAKEUP_THREAD(lock);
 }
 
+/* Completion of a commit: unlike the generic wait_cbfunc above, this one
+ * reads the reply. The server acks PMIX_COMMIT_CMD with the status of the
+ * store it just performed, and discarding that reported every commit as a
+ * success - including one the server rejected, which is precisely the case
+ * the caller needs to hear about, since the data it thinks it published is
+ * not there. */
+static void commit_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                          pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    pmix_status_t rc, ret;
+    int32_t cnt;
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
+
+    PMIX_ACQUIRE_OBJECT(cb);
+
+    /* a NULL or zero-byte buffer means the connection was lost and this
+     * recv is being completed synthetically */
+    if (NULL == buf || PMIX_BUFFER_IS_EMPTY(buf)) {
+        ret = PMIX_ERR_UNREACH;
+    } else {
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            ret = rc;
+        }
+    }
+
+    pmix_output_verbose(2, pmix_client_globals.base_output,
+                        "pmix:client commit completed with status %s",
+                        PMIx_Error_string(ret));
+
+    cb->pstatus = ret;
+    PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
 /* callback to receive job info */
 static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                      pmix_buffer_t *buf, void *cbdata)
@@ -1605,11 +1643,11 @@ static void _commitfn(int sd, short args, void *cbdata)
 
     /* always send, even if we have nothing to contribute, so the server knows
      * that we contributed whatever we had */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msgout, wait_cbfunc, (void *) &cb->lock);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msgout, commit_cbfunc, (void *) cb);
     if (PMIX_SUCCESS == rc) {
-        /* we should wait for the callback, so don't
-         * modify the active flag */
-        cb->pstatus = PMIX_SUCCESS;
+        /* wait for the reply - commit_cbfunc sets pstatus from the status
+         * the server returns and wakes the caller, so do not pre-declare
+         * success here */
         return;
     }
     /* the send was refused without taking the message */
