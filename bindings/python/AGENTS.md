@@ -31,10 +31,14 @@ change is silently discarded on the next build.
 | `Makefile`, `Makefile.in` | **Generated** by Autotools. | ❌ |
 | `build/`, `pypmix.egg-info/` | **Generated** build products. | ❌ |
 
-`tests/` under this directory holds a small Cython round-trip smoke test
-(`tests/cython/`) and legacy copies of the connected test scripts
-(`tests/python/`). The *maintained* test scripts live in the top-level
-[`test/python/`](../../test/python/) directory (see §7).
+**All of the tests live in the top-level
+[`test/python/`](../../test/python/) directory** (see §7) — that is the
+one place to add or fix one. Duplicate copies used to sit under
+`bindings/python/tests/python/`; they were deleted because they drifted
+out of sync with the bindings and only CI ran them, so a change could
+pass `make check` and still break CI. The one thing left under `tests/`
+is `tests/cython/`, an old Cython round-trip smoke test that nothing
+compiles or runs.
 
 ---
 

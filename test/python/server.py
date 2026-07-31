@@ -22,7 +22,8 @@ class GracefulKiller:
 # handler with three arguments: the converted request (proc/args dict),
 # a Python wrapper around the C completion callback, and an opaque cbdata
 # dict. A handler drives completion by invoking that callback and returns
-# PMIX_SUCCESS. (See bindings/python/tests/python/server_upcalls.py.)
+# PMIX_SUCCESS. The full set of upcalls, and the wiring that dispatches
+# them, is in the "permitted" list of setmodulefn in bindings/python/pmix.pyx.
 def clientconnected(proc, cbfunc, cbdata):
     print("CLIENT CONNECTED", proc)
     cbfunc(PMIX_SUCCESS, cbdata)

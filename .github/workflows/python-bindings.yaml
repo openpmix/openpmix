@@ -50,11 +50,32 @@ jobs:
           echo "PYTHONPATH=$(find "$PWD/bindings/python" -type f -name '*.so' -exec dirname {} \; -quit)" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$RUNNER_TEMP/pmixinstall/lib" >> "$GITHUB_ENV"
 
-      - name: Run python bindings test
+      # The tests all live under test/python, which is also what
+      # "make check" runs.  Each script is invoked directly here so a
+      # failure names the test that broke.
+      - name: Run python bindings unit tests
         env:
           PYTHONPATH: ${{ env.PYTHONPATH }}
           LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
-        working-directory: ./bindings/python/tests/python
+        working-directory: ./test/python
+        timeout-minutes: 5
+        run: |
+          python3 test_bindings.py
+
+      - name: Run python bindings server test
+        env:
+          PYTHONPATH: ${{ env.PYTHONPATH }}
+          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
+        working-directory: ./test/python
         timeout-minutes: 5
         run: |
           python3 server.py
+
+      - name: Run python bindings scheduler test
+        env:
+          PYTHONPATH: ${{ env.PYTHONPATH }}
+          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
+        working-directory: ./test/python
+        timeout-minutes: 5
+        run: |
+          python3 sched.py
