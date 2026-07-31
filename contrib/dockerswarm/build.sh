@@ -172,9 +172,18 @@ build_linux() {
             mkdir -p /opt/prte/tests
             for ex in $BUILD_EXAMPLES; do
                 [ -f "/pmix-src/examples/$ex.c" ] || { echo "   (skip $ex: no source)"; continue; }
+                # -rpath, not just -L: these binaries are launched by prted,
+                # which does NOT give its children a login shell, so the
+                # LD_LIBRARY_PATH that env.sh sets is not in scope for them.
+                # With PMIx installed outside the default loader directories
+                # the result is "libpmix.so.2: cannot open shared object file"
+                # on every rank -- which surfaces as a whole suite of group
+                # tests failing with exit code 127 and nothing pointing at the
+                # link line.  (No apostrophes in here: this block is the body
+                # of a single-quoted bash -c argument.)
                 gcc -O0 -g -o "/opt/prte/tests/$ex" "/pmix-src/examples/$ex.c" \
                     -I/opt/prte/pmix/include -I/pmix-src/examples \
-                    -L/opt/prte/pmix/lib -lpmix \
+                    -L/opt/prte/pmix/lib -lpmix -Wl,-rpath,/opt/prte/pmix/lib \
                 && echo "   built $ex" || echo "   FAILED to build $ex"
             done
 
@@ -260,8 +269,10 @@ build_macos() {
     echo ">>> group example clients -> $root/vpath-macos-prte/install/bin"
     for ex in $BUILD_EXAMPLES; do
         [ -f "$root/examples/$ex.c" ] || continue
+        # see the Linux build above for why this needs -rpath and not just -L
         gcc -O0 -g -o "$root/vpath-macos-prte/install/bin/$ex" "$root/examples/$ex.c" \
             -I"$pfx/include" -I"$root/examples" -L"$pfx/lib" -lpmix \
+            -Wl,-rpath,"$pfx/lib" \
         && echo "   built $ex" || echo "   FAILED to build $ex"
     done
     echo ">>> macOS build complete."
