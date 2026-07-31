@@ -21,9 +21,15 @@
 #include "pmix_stdint.h"
 #include <stdbool.h>
 
-#ifdef HAVE_STDATOMIC_H
+/* C11 atomics are a hard REQUIREMENT for PMIx, not a probed option: configure
+ * (see the "Check required atomics" block in config/pmix.m4) errors out when
+ * the compiler cannot provide them, and this header's own typedefs and macros
+ * - along with the bare atomic_bool fields in pmix_globals_t, which reach
+ * <stdatomic.h> only through here - do not compile without the header. So
+ * include it unconditionally. Guarding it on HAVE_STDATOMIC_H suggested a
+ * fallback that does not exist and would have turned a clear "no C11 atomics"
+ * configure error into a pile of unknown-type errors deep in the build. */
 #include <stdatomic.h>
-#endif
 
 typedef _Atomic bool pmix_atomic_bool_t;
 typedef _Atomic int32_t pmix_atomic_int32_t;
