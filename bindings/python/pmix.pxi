@@ -521,7 +521,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
             pyptr = <const char*> pyarr
             memcpy(boptr[n].bytes, pyptr, boptr[n].size)
             n += 1
-    elif PMIX_PERSISTENCE == mytype:
+    elif PMIX_PERSIST == mytype:
         array[0].array = malloc(mysize * sizeof(pmix_persistence_t))
         if not array[0].array:
             return PMIX_ERR_NOMEM
@@ -539,7 +539,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         for item in mylist:
             scptr[n] = item
             n += 1
-    elif PMIX_RANGE == mytype:
+    elif PMIX_DATA_RANGE == mytype:
         array[0].array = malloc(mysize * sizeof(pmix_data_range_t))
         if not array[0].array:
             return PMIX_ERR_NOMEM
@@ -864,7 +864,7 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             n += 1
         darray = {'type':array.type, 'array':list}
         return darray
-    elif PMIX_PERSISTENCE == array.type:
+    elif PMIX_PERSIST == array.type:
         if not array[0].array:
             return PMIX_ERR_NOMEM
         n = 0
@@ -886,7 +886,7 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             n += 1
         darray = {'type':array.type, 'array':list}
         return darray
-    elif PMIX_RANGE == array.type:
+    elif PMIX_DATA_RANGE == array.type:
         if not array[0].array:
             return PMIX_ERR_NOMEM
         n = 0
@@ -1354,7 +1354,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         pyptr = <char*>ba
         memcpy(value[0].data.bo.bytes, pyptr, value[0].data.bo.size)
 
-    elif val['val_type'] == PMIX_PERSISTENCE:
+    elif val['val_type'] == PMIX_PERSIST:
         # pmix_persistence_t is defined as uint8
         if not isinstance(val['value'], pmix_int_types):
             print("uint8 value declared but non-integer provided")
@@ -1374,7 +1374,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
             return PMIX_ERR_BAD_PARAM
         value[0].data.scope = val['value']
 
-    elif val['val_type'] == PMIX_RANGE:
+    elif val['val_type'] == PMIX_DATA_RANGE:
         # pmix_data_range_t is defined as uint8
         if not isinstance(val['value'], pmix_int_types):
             print("uint8 value declared but non-integer provided")
@@ -1809,14 +1809,14 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
     elif PMIX_REGEX == value[0].type:
         return {'value': value[0].data.bo.bytes, 'val_type': PMIX_REGEX}
 
-    elif PMIX_PERSISTENCE == value[0].type:
-        return {'value':value[0].data.persist, 'val_type':PMIX_PERSISTENCE}
+    elif PMIX_PERSIST == value[0].type:
+        return {'value':value[0].data.persist, 'val_type':PMIX_PERSIST}
 
     elif PMIX_SCOPE == value[0].type:
         return {'value':value[0].data.scope, 'val_type':PMIX_SCOPE}
 
-    elif PMIX_RANGE == value[0].type:
-        return {'value':value[0].data.range, 'val_type':PMIX_RANGE}
+    elif PMIX_DATA_RANGE == value[0].type:
+        return {'value':value[0].data.range, 'val_type':PMIX_DATA_RANGE}
 
     elif PMIX_PROC_STATE == value[0].type:
         return {'value':value[0].data.state, 'val_type':PMIX_PROC_STATE}
@@ -1930,10 +1930,6 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
 cdef void pmix_destruct_value(pmix_value_t *value):
     if value[0].type == PMIX_STRING:
         free(value[0].data.string);
-
-cdef void pmix_free_value(self, pmix_value_t *value):
-    pmix_destruct_value(value);
-    PyMem_Free(value)
 
 # Convert a dictionary of key-value pairs into an
 # array of pmix_info_t structs
