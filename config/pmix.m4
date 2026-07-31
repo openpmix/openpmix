@@ -35,6 +35,27 @@ dnl
 dnl $HEADER$
 dnl
 
+# PMIX_REQUIRE_ATOMIC(NAME, PROLOGUE, BODY)
+# -----------------------------------------
+# Compile-test one atomic primitive that PMIx cannot be built without, and
+# abort the configure naming it if the compiler cannot provide it.
+#
+# There is no "action if not found" argument on purpose: C11 atomics are a
+# requirement of PMIx, not a feature it adapts to. Anything that belongs here
+# is fatal; anything optional does not belong here.
+AC_DEFUN([PMIX_REQUIRE_ATOMIC],[
+    AC_MSG_CHECKING([for $1])
+    AC_COMPILE_IFELSE(
+        [AC_LANG_PROGRAM([$2], [$3])],
+        [AC_MSG_RESULT([found])],
+        [AC_MSG_RESULT([not found])
+         AC_MSG_WARN([PMIx requires C11 atomic support, which is not])
+         AC_MSG_WARN([optional - there is no fallback implementation.])
+         AC_MSG_WARN([This compiler does not provide $1.])
+         AC_MSG_WARN([Please select a compiler with C11 atomic support.])
+         AC_MSG_ERROR([Cannot continue])])
+])
+
 AC_DEFUN([PMIX_SETUP_CORE],[
 
     AC_REQUIRE([AC_USE_SYSTEM_EXTENSIONS])
@@ -369,90 +390,86 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Check required atomics
     ##################################
 
-    AC_MSG_CHECKING([for __atomic_store_n])
-    AC_COMPILE_IFELSE(
-        [AC_LANG_SOURCE([
-            #include <stdatomic.h>
-            void test_atomic_store() {
-                int value = 0;
-                __atomic_store_n(&value, 1, __ATOMIC_RELAXED);
-            }
-        ])],
-        [AC_MSG_RESULT([found])],
-        [AC_MSG_RESULT([not found])
-         AC_MSG_WARN([PMIx requires some minimal C11 atomic support. This was])
-         AC_MSG_WARN([not found in the current compiler. Please select a compiler])
-         AC_MSG_WARN([with the required support])
-         AC_MSG_ERROR([Cannot continue])]
-    )
+    # C11 atomics are a REQUIREMENT of PMIx, not an option. There is no
+    # fallback implementation and none is wanted: <stdatomic.h> is included
+    # unconditionally by src/include/pmix_stdatomic.h, the _Atomic keyword and
+    # the atomic convenience types appear in structures the whole library
+    # dereferences (pmix_globals_t among them), and src/include/pmix_atomic.h
+    # is written directly on the C11 primitives.
+    #
+    # So every one of these is fatal. A compiler that cannot provide them
+    # cannot build PMIx, and the user needs to learn that here - with the name
+    # of the missing primitive - rather than from a wall of unknown-type
+    # errors somewhere deep in the tree.
+    #
+    # The list is not a sample: it is what the code actually uses. Keep it in
+    # step with src/include/pmix_atomic.h and src/include/pmix_stdatomic.h.
+    # The check itself is PMIX_REQUIRE_ATOMIC, defined at the top of this
+    # file -- it has to live at file scope, because $1..$3 inside a macro
+    # defined *within* another macro's body bind to the enclosing macro's
+    # arguments instead of its own.
 
-    AC_MSG_CHECKING([for atomic_store])
-    AC_COMPILE_IFELSE(
-        [AC_LANG_SOURCE([
-            #include <stdatomic.h>
-            void test_atomic_store() {
-                atomic_bool value = 0;
-                atomic_store(&value, 1);
-            }
-        ])],
-        [AC_MSG_RESULT([found])],
-        [AC_MSG_RESULT([not found])
-         AC_MSG_WARN([PMIx requires some minimal C11 atomic support. This was])
-         AC_MSG_WARN([not found in the current compiler. Please select a compiler])
-         AC_MSG_WARN([with the required support])
-         AC_MSG_ERROR([Cannot continue])]
-    )
+    # --- the C11 keyword and the convenience types -------------------------
+    # pmix_stdatomic.h typedefs _Atomic over the fixed-width and pointer-sized
+    # integer types; pmix_globals_t declares bare atomic_bool fields.
+    PMIX_REQUIRE_ATOMIC([the C11 _Atomic keyword],
+        [[#include <stdatomic.h>
+          #include <stdint.h>]],
+        [[static _Atomic uint64_t foo = 1; ++foo;]])
 
-    AC_MSG_CHECKING([for __atomic_load_n])
-    AC_COMPILE_IFELSE(
-        [AC_LANG_SOURCE([
-            #include <stdatomic.h>
-            void test_atomic_load() {
-                int value = 0;
-                __atomic_load_n(&value, __ATOMIC_RELAXED);
-            }
-        ])],
-        [AC_MSG_RESULT([found])],
-        [AC_MSG_RESULT([not found])
-         AC_MSG_WARN([PMIx requires some minimal C11 atomic support. This was])
-         AC_MSG_WARN([not found in the current compiler. Please select a compiler])
-         AC_MSG_WARN([with the required support])
-         AC_MSG_ERROR([Cannot continue])]
-    )
+    PMIX_REQUIRE_ATOMIC([C11 atomic convenience types],
+        [[#include <stdatomic.h>]],
+        [[static atomic_bool flag = 0; static atomic_long ctr = 1;
+          atomic_store(&flag, 1); ++ctr;]])
 
-    AC_MSG_CHECKING([for __atomic_fetch_add])
-    AC_COMPILE_IFELSE(
-        [AC_LANG_SOURCE([
-            #include <stdatomic.h>
-            void test_atomic_fetch_add() {
-                int value = 0;
-                __atomic_fetch_add(&value, 1, __ATOMIC_SEQ_CST);
-            }
-        ])],
-        [AC_MSG_RESULT([found])],
-        [AC_MSG_RESULT([not found])
-         AC_MSG_WARN([PMIx requires some minimal C11 atomic support. This was])
-         AC_MSG_WARN([not found in the current compiler. Please select a compiler])
-         AC_MSG_WARN([with the required support])
-         AC_MSG_ERROR([Cannot continue])]
-    )
+    # --- the generic C11 functions -----------------------------------------
+    PMIX_REQUIRE_ATOMIC([atomic_store],
+        [[#include <stdatomic.h>]],
+        [[atomic_bool value = 0; atomic_store(&value, 1);]])
 
-    AC_MSG_CHECKING([for __atomic_test_and_set])
-    AC_COMPILE_IFELSE(
-        [AC_LANG_SOURCE([
-            #include <stdatomic.h>
-            void test_atomic_test_and_set() {
-                _Bool flag = 0;
-                __atomic_test_and_set(&flag, __ATOMIC_SEQ_CST);
-            }
-        ])],
-        [AC_MSG_RESULT([found])],
-        [AC_MSG_RESULT([not found])
-         AC_MSG_WARN([PMIx requires some minimal C11 atomic support. This was])
-         AC_MSG_WARN([not found in the current compiler. Please select a compiler])
-         AC_MSG_WARN([with the required support])
-         AC_MSG_ERROR([Cannot continue])]
-    )
+    PMIX_REQUIRE_ATOMIC([atomic_load],
+        [[#include <stdatomic.h>]],
+        [[atomic_bool value = 0; (void) atomic_load(&value);]])
+
+    # pmix_atomic.h builds its memory barriers on these
+    PMIX_REQUIRE_ATOMIC([atomic_thread_fence and the memory_order constants],
+        [[#include <stdatomic.h>]],
+        [[atomic_thread_fence(memory_order_release);
+          atomic_thread_fence(memory_order_acquire);]])
+
+    # the PMIX_ATOMIC_DEFINE_OP family in pmix_atomic.h
+    PMIX_REQUIRE_ATOMIC([the atomic_fetch_*_explicit family],
+        [[#include <stdatomic.h>
+          #include <stdint.h>]],
+        [[_Atomic int32_t a = 0; int32_t b = 1;
+          (void) atomic_fetch_add_explicit(&a, b, memory_order_relaxed);
+          (void) atomic_fetch_sub_explicit(&a, b, memory_order_relaxed);
+          (void) atomic_fetch_and_explicit(&a, b, memory_order_relaxed);
+          (void) atomic_fetch_or_explicit(&a, b, memory_order_relaxed);
+          (void) atomic_fetch_xor_explicit(&a, b, memory_order_relaxed);]])
+
+    # --- the __atomic_* builtins -------------------------------------------
+    # These are equally required, and deliberately so: the four convenience
+    # macros in pmix_stdatomic.h that use them operate on ORDINARY,
+    # non-_Atomic-qualified globals (the init counters, the show_help flag,
+    # pmix_globals.init_called). The generic C11 functions cannot take a
+    # pointer to a non-atomic object; the builtins can. See the design note in
+    # src/include/AGENTS.md before proposing to "port" them.
+    PMIX_REQUIRE_ATOMIC([__atomic_store_n],
+        [[#include <stdatomic.h>]],
+        [[int value = 0; __atomic_store_n(&value, 1, __ATOMIC_RELAXED);]])
+
+    PMIX_REQUIRE_ATOMIC([__atomic_load_n],
+        [[#include <stdatomic.h>]],
+        [[int value = 0; (void) __atomic_load_n(&value, __ATOMIC_RELAXED);]])
+
+    PMIX_REQUIRE_ATOMIC([__atomic_fetch_add],
+        [[#include <stdatomic.h>]],
+        [[int value = 0; (void) __atomic_fetch_add(&value, 1, __ATOMIC_SEQ_CST);]])
+
+    PMIX_REQUIRE_ATOMIC([__atomic_test_and_set],
+        [[#include <stdatomic.h>]],
+        [[_Bool flag = 0; (void) __atomic_test_and_set(&flag, __ATOMIC_SEQ_CST);]])
 
     ##################################
     # Header files
