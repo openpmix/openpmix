@@ -93,18 +93,21 @@ int pmix_bitmap_init(pmix_bitmap_t *bm, int size)
         return PMIX_ERR_BAD_PARAM;
     }
 
-    bm->array_size = nwords;
     if (NULL != bm->bitmap) {
         free(bm->bitmap);
-        if (bm->max_size < bm->array_size)
-            bm->max_size = bm->array_size;
+        bm->bitmap = NULL;
     }
-    bm->bitmap = (uint64_t *) calloc(bm->array_size, sizeof(uint64_t));
+    /* Leave array_size describing what bitmap actually points at: an
+     * allocation failure that left a non-zero size behind a NULL pointer
+     * would send every subsequent accessor through bm->bitmap[index]. */
+    bm->array_size = 0;
+    bm->bitmap = (uint64_t *) calloc(nwords, sizeof(uint64_t));
     if (NULL == bm->bitmap) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
+    bm->array_size = nwords;
 
-    pmix_bitmap_clear_all_bits(bm);
+    /* calloc already zeroed the words */
     return PMIX_SUCCESS;
 }
 
@@ -153,8 +156,10 @@ int pmix_bitmap_set_bit(pmix_bitmap_t *bm, int bit)
         bm->array_size = new_size;
     }
 
-    /* Now set the bit */
-    bm->bitmap[index] |= (1UL << offset);
+    /* Now set the bit. The shift has to be done in a 64-bit type: offset
+     * runs to 63, and unsigned long is only 32 bits wide on 32-bit Linux
+     * and on Windows, where "1UL << 32" and beyond is undefined. */
+    bm->bitmap[index] |= (((uint64_t) 1) << offset);
 
     return PMIX_SUCCESS;
 }
@@ -170,7 +175,7 @@ int pmix_bitmap_clear_bit(pmix_bitmap_t *bm, int bit)
     index = bit / SIZE_OF_BASE_TYPE;
     offset = bit % SIZE_OF_BASE_TYPE;
 
-    bm->bitmap[index] &= ~(1UL << offset);
+    bm->bitmap[index] &= ~(((uint64_t) 1) << offset);
     return PMIX_SUCCESS;
 }
 
@@ -185,7 +190,7 @@ bool pmix_bitmap_is_set_bit(pmix_bitmap_t *bm, int bit)
     index = bit / SIZE_OF_BASE_TYPE;
     offset = bit % SIZE_OF_BASE_TYPE;
 
-    if (0 != (bm->bitmap[index] & (1UL << offset))) {
+    if (0 != (bm->bitmap[index] & (((uint64_t) 1) << offset))) {
         return true;
     }
 
@@ -198,7 +203,11 @@ int pmix_bitmap_clear_all_bits(pmix_bitmap_t *bm)
         return PMIX_ERR_BAD_PARAM;
     }
 
-    memset(bm->bitmap, 0, bm->array_size * sizeof(uint64_t));
+    /* An un-init'd bitmap has no words; memset(NULL, ..., 0) is still
+     * undefined, so say nothing to do rather than relying on it. */
+    if (NULL != bm->bitmap) {
+        memset(bm->bitmap, 0, bm->array_size * sizeof(uint64_t));
+    }
     return PMIX_SUCCESS;
 }
 
@@ -208,7 +217,9 @@ int pmix_bitmap_set_all_bits(pmix_bitmap_t *bm)
         return PMIX_ERR_BAD_PARAM;
     }
 
-    memset(bm->bitmap, 0xff, bm->array_size * sizeof(uint64_t));
+    if (NULL != bm->bitmap) {
+        memset(bm->bitmap, 0xff, bm->array_size * sizeof(uint64_t));
+    }
 
     return PMIX_SUCCESS;
 }
@@ -325,10 +336,12 @@ bool pmix_bitmap_are_different(pmix_bitmap_t *left, pmix_bitmap_t *right)
     int i;
 
     /*
-     * Sanity check
+     * Sanity check. This returns bool, so there is no error code to hand
+     * back: report a bad argument as "different", which is the answer that
+     * keeps a caller from acting on a comparison it never really made.
      */
     if (NULL == left || NULL == right) {
-        return PMIX_ERR_BAD_PARAM;
+        return true;
     }
 
     if (pmix_bitmap_size(left) != pmix_bitmap_size(right)) {
@@ -394,8 +407,10 @@ int pmix_bitmap_num_set_bits(pmix_bitmap_t *bm, int len)
         if (0 == (val = bm->bitmap[i]))
             continue;
         if (i == i_len - 1 && len % SIZE_OF_BASE_TYPE != 0) {
-            /* mask out the bits above len */
-            val = val & ((1LL << (len - i * SIZE_OF_BASE_TYPE)) - 1);
+            /* Mask out the bits above len. The shift distance runs to 63,
+             * so it has to be applied to an unsigned 64-bit value: shifting
+             * a signed 1LL by 63 overflows the sign bit and is undefined. */
+            val = val & ((1ULL << (len - i * SIZE_OF_BASE_TYPE)) - 1);
             if (0 == val)
                 continue;
         }
@@ -412,6 +427,10 @@ int pmix_bitmap_num_set_bits(pmix_bitmap_t *bm, int len)
 bool pmix_bitmap_is_clear(pmix_bitmap_t *bm)
 {
     int i;
+
+    if (NULL == bm) {
+        return true;
+    }
 
     for (i = 0; i < bm->array_size; ++i) {
         if (0 != bm->bitmap[i]) {
