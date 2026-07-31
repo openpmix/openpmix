@@ -29,6 +29,7 @@ is only the nickname.
 | `run-group-events.sh` | Runs the **dynamic, event-driven** group exercisers and their fault paths (invite/join, member lost during destruct, ...); kept separate from `run-tests.sh` so the event/fault matrix can grow independently. Same `linux`/`macos` modes. |
 | `run-topology.sh` | Runs the **topology + locality** exerciser across real nodes: each rank loads the topology its *local* server published (hwloc shmem, with XML as the fallback) and compares `PMIX_LOCALITY_STRING` with every peer. The only place `src/hwloc` gets a multi-node answer -- on one host every peer is a node-mate, so a single-host run cannot tell a correct result from one that claims everything is local. Same `linux`/`macos` modes. |
 | `run-python.sh` | Runs the **Python bindings**: the standalone unit suite, the connected client/server round-trip, and Python PMIx clients spread across nodes. Same `linux`/`macos` modes. See §10. |
+| `run-client-tests.sh` | Runs the `src/client` API surface across the swarm, so the ranks sit behind **different** PMIx servers. This is the multi-node case for the client library: everything in `src/client` either answers locally or round-trips to a server, and a singleton exercises none of the second half. See §12. |
 | `run-class-tests.sh` | Runs `test/unit/class` in the two configurations a developer's own `make check` does not cover: **Linux**, and **`--disable-debug`** with default symbol visibility. Deliberately *not* a multi-node test — see §11. |
 | `swarm-common.sh` | Sourced by all six scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
 | `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`). |
@@ -82,6 +83,7 @@ docker compose up -d       # start pmix-node1 .. pmix-node10
 ./run-group-events.sh linux # dynamic invite/join + group fault paths
 ./run-topology.sh linux    # topology handoff + cross-node locality
 ./run-python.sh linux      # Python bindings: units, round-trip, multi-node
+./run-client-tests.sh linux # src/client APIs across separate PMIx servers
 
 # ---- native macOS (single host) ----
 ./build.sh macos           # native PMIx + PRRTE build under vpath-macos-*
@@ -89,6 +91,7 @@ docker compose up -d       # start pmix-node1 .. pmix-node10
 ./run-group-events.sh macos # single-host dynamic-group smoke
 ./run-topology.sh macos    # single-host topology-handoff smoke
 ./run-python.sh macos      # single-host bindings smoke (most checks SKIP)
+./run-client-tests.sh macos # single-host client smoke (one server, not the point)
 ```
 
 Rebuild after editing PMIx: rerun `./build.sh` (incremental). No image rebuild
@@ -462,3 +465,66 @@ are installed, and things build against them.
 > with an explanation instead. Run `./build.sh macos` first (which
 > distcleans), or use the `linux` half, which has no such restriction — the
 > container builds both configurations against a read-only bind mount.
+
+---
+
+## 12. The `src/client` API suite (`run-client-tests.sh`)
+
+```
+./run-client-tests.sh linux    # across the swarm: several PMIx servers
+./run-client-tests.sh macos    # natively: one server, a smoke pass
+```
+
+**This one *is* a multi-node test, and that is the whole point** — the
+opposite of §11. Almost every function in [`src/client`](../../src/client)
+is an instance of "the request could not be answered locally, so pack a
+command and round-trip to the server". A singleton reaches none of it:
+`PMIx_Fence` and `PMIx_Commit` short-circuit to success, `PMIx_Get` never
+leaves the local datastore, and publish/lookup/spawn/connect all stop at
+the "am I connected?" check. The in-tree
+[`test/unit/client_api.c`](../../test/unit/client_api.c) covers what a
+client can decide by itself; this covers what it cannot.
+
+Spreading the ranks over several nodes matters because **each node runs its
+own `prted`, hence its own PMIx server**. That is what makes these paths
+real rather than loopback:
+
+| Case | What it actually exercises |
+|------|---------------------------|
+| `client` | put/commit/fence/get where the answer lives behind another server |
+| `dmodex` | direct modex: rank 0 delays its commit, so the other ranks' gets sit in the client's pending-request list — the coalescing path, where only the first requester sends and the rest are satisfied from the one reply |
+| `nodeinfo` | the node/app/session realm directives, whose answers differ per node — the densest parser in the directory |
+| `pub` | publish/lookup/unpublish resolving up through the daemons |
+| `resolve` | `PMIx_Resolve_peers` / `PMIx_Resolve_nodes` with something to resolve that is not just "this node" |
+| `dynamic` | `PMIx_Spawn` plus `PMIx_Connect`/`PMIx_Disconnect`, i.e. the multi-nspace job-info exchange in `PMIx_Connect_nb` |
+
+A final wide `dmodex` run (10 ranks over 5 nodes) drives the pending-request
+list deep enough for the coalescing to matter.
+
+### Prerequisite: the clients must link *your* PMIx
+
+The examples are **compiled in a throwaway builder container** and **run in
+the long-lived node containers**. Only the shared volume is guaranteed to be
+the same in both, so the script insists on `/opt/prte/pmix` — what
+`./build.sh` installs — and refuses to fall back to a PMIx baked into the
+image. It also repeats `run-tests.sh`'s "containers are running the current
+image" preflight. Both failures are otherwise invisible: you get a missing
+`pmix_common.h`, or an undefined symbol, and nothing in either message
+mentions containers.
+
+So the full sequence from a cold start is:
+
+```sh
+./build.sh                              # installs your PMIx into the volume
+docker compose up -d --force-recreate   # if the nodes predate the image
+./run-client-tests.sh linux
+```
+
+### macOS mode
+
+`./run-client-tests.sh macos` compiles the same clients against the in-tree
+library and runs them under a single local `prterun`. That still drives the
+connected paths a singleton cannot reach — a real server, real
+`PMIX_PTL_SEND_RECV` round-trips — but with one server it is a regression
+smoke pass, not the multi-server case above. Use it when you have changed
+`src/client` and want a quick answer before spending a swarm run.
