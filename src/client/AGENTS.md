@@ -415,15 +415,28 @@ regression coverage in `test/unit/client_api.c`.
   not fire at all**. Both have one cause, and it is *not* the one the
   comment above `pmix_group_leader_watches` gives.
 
-  The library observes group lifecycle events by registering an ordinary
-  handler (`setup_leader_watch`). That registration lands in the
-  **multi-code** category, and the chain visits `first` → `single-code` →
-  `multi-code` → `default` → `last`. An application handler registered
-  for a *single* code therefore runs first, and if it returns
-  `PMIX_EVENT_ACTION_COMPLETE` — the normal way to say "handled" — the
-  chain ends and the library's own handler is never reached. Any
-  application that watches `PMIX_GROUP_CONSTRUCT_COMPLETE`, which an
-  invite/join application must, blinds the library to it.
+  The library observes group lifecycle events by registering ordinary
+  handlers. Those registrations land in the **multi-code** category, and
+  the chain visits `first` → `single-code` → `multi-code` → `default` →
+  `last`. An application handler registered for a *single* code therefore
+  runs first, and if it returns `PMIX_EVENT_ACTION_COMPLETE` — the normal
+  way to say "handled" — the chain ends and the library's own handler is
+  never reached. Any application that watches
+  `PMIX_GROUP_CONSTRUCT_COMPLETE`, which an invite/join application must,
+  blinds the library to it.
+
+  **Both multi-code registrations in this file are affected**, and the
+  worse one is not the watch. `invite_setup`'s `invite_handler` is the
+  only thing that counts invitation answers, so a *leader* whose
+  application also watches `PMIX_GROUP_INVITE_ACCEPTED` never resolves
+  its invitation: `PMIx_Group_invite` hangs forever without a
+  `PMIX_TIMEOUT`, and the group never forms. Reproduced by adding such a
+  handler to `examples/group_invite.c`. The three `PMIX_DEBUGGER_RELEASE`
+  registrations (client, server, tool) are in the single-code category and
+  safe — but only because they register inside init and block there, so
+  the application never gets a window to compete. A handler with no
+  ordering directive is *prepended*, so a later application registration
+  would otherwise win.
 
   Demonstrated with `test/unit/run_grpinvite.pl`: every acceptor's
   application handler receives the event while not one of the library's
