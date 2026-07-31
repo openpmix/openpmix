@@ -611,7 +611,7 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *tma)
         } while (0)
 #endif
 
-PMIX_CLASS_DECLARATION(pmix_object_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_object_t);
 
 /* declarations *******************************************************/
 
