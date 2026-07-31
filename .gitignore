@@ -74,6 +74,7 @@ bindings/python/dist/
 bindings/python/pypmix.egg-info/
 bindings/python/tests/python/__pycache__/
 
+examples/python/__pycache__/
 examples/alloc
 examples/client
 examples/client2
