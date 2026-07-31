@@ -54,7 +54,7 @@ typedef struct pmix_ring_buffer_t pmix_ring_buffer_t;
 /**
  * Class declaration
  */
-PMIX_CLASS_DECLARATION(pmix_ring_buffer_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_ring_buffer_t);
 
 /**
  * Initialize the ring buffer, defining its size.
