@@ -349,11 +349,15 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
                 pykey = item.encode('ascii')
             else:
                 pykey = item
-            try:
-                strptr[n] = strdup(pykey)
-            except:
-                print("String value declared but non-string provided")
-                return PMIX_ERR_TYPE_MISMATCH
+            if item is None:
+                # a NULL entry - see the scalar PMIX_STRING arm
+                strptr[n] = NULL
+            else:
+                try:
+                    strptr[n] = strdup(pykey)
+                except:
+                    print("String value declared but non-string provided")
+                    return PMIX_ERR_TYPE_MISMATCH
             n += 1
     elif PMIX_SIZE == mytype:
         array[0].array = malloc(mysize * sizeof(size_t))
@@ -681,10 +685,13 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
         strptr = <char**> array[0].array
         strlist = []
         while n < array.size:
-            pyb = strptr[n]
-            pystr = pyb.decode("ascii")
-            strlist.append(pystr)
-            free(strptr[n])
+            # entries may be NULL - see the scalar PMIX_STRING arm
+            if NULL == strptr[n]:
+                strlist.append(None)
+            else:
+                pyb = strptr[n]
+                strlist.append(pyb.decode("ascii"))
+                free(strptr[n])
             n += 1
         darray = {'type':array.type, 'array':strlist}
         return darray
@@ -841,7 +848,10 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
         prcptr = <pmix_proc_t*> array[0].array
         list = []
         while n < array.size:
-            d = {'nspace': prcptr[n].nspace, 'rank': prcptr[n].rank}
+            # decode, as pmix_unload_procs does - a proc dict must look the
+            # same whether it arrived on its own or inside a data array
+            d = {'nspace': prcptr[n].nspace.decode('ascii'),
+                 'rank': prcptr[n].rank}
             list.append(d)
             n += 1
         darray = {'type':array.type, 'array':list}
@@ -915,9 +925,13 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
         piptr = <pmix_proc_info_t*> array[0].array
         list = []
         while n < array.size:
-            d = {'proc': {'nspace':piptr[n].proc.nspace,
-            'rank':piptr[n].proc.rank}, 'hostname':piptr[n].hostname,
-            'executable':piptr[n].executable_name, 'pid':piptr[n].pid,
+            d = {'proc': {'nspace':piptr[n].proc.nspace.decode('ascii'),
+            'rank':piptr[n].proc.rank},
+            'hostname':piptr[n].hostname.decode('ascii')
+                if NULL != piptr[n].hostname else None,
+            'executable':piptr[n].executable_name.decode('ascii')
+                if NULL != piptr[n].executable_name else None,
+            'pid':piptr[n].pid,
             'exitcode':piptr[n].exit_code, 'state':piptr[n].state}
             list.append(d)
             free(piptr[n].hostname)
@@ -1163,15 +1177,20 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         value[0].data.byte = val['value']
 
     elif val['val_type'] == PMIX_STRING:
-        if isinstance(val['value'], str):
-            pykey = val['value'].encode('ascii')
+        # None is the Python spelling of a NULL string, which the C side
+        # both produces and accepts - round-tripping one must not fail
+        if val['value'] is None:
+            value[0].data.string = NULL
         else:
-            pykey = val['value']
-        try:
-            value[0].data.string = strdup(pykey)
-        except:
-            print("String value declared but non-string provided")
-            return PMIX_ERR_TYPE_MISMATCH
+            if isinstance(val['value'], str):
+                pykey = val['value'].encode('ascii')
+            else:
+                pykey = val['value']
+            try:
+                value[0].data.string = strdup(pykey)
+            except:
+                print("String value declared but non-string provided")
+                return PMIX_ERR_TYPE_MISMATCH
 
     elif val['val_type'] == PMIX_SIZE:
         if not isinstance(val['value'], pmix_int_types):
@@ -1726,6 +1745,10 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         return {'value':value[0].data.byte, 'val_type':PMIX_BYTE}
 
     elif PMIX_STRING == value[0].type:
+        # a PMIX_STRING is allowed to carry a NULL pointer, and converting
+        # one to bytes walks off address zero - guard before touching it
+        if NULL == value[0].data.string:
+            return {'value':None, 'val_type':PMIX_STRING}
         pyb = value[0].data.string
         try:
             pystr = pyb.decode("ascii")
