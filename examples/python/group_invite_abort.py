@@ -73,7 +73,7 @@ def complete_handler(evhdlr, status, source, info, results):
 
 # PMIX_GROUP_CONSTRUCT_ABORT handler - the construct was aborted
 def abort_handler(evhdlr, status, source, info, results):
-    eprint("%s:%d NOTIFIED that the group construct was aborted"
+    eprint("%s:%d NOTIFIED that group construct was ABORTED"
            % (myproc['nspace'], myproc['rank']))
     abort_seen.set()
     return PMIX_EVENT_ACTION_COMPLETE, None

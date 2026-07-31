@@ -80,7 +80,7 @@ def failed_handler(evhdlr, status, source, info, results):
     global failed_proc
 
     failed_proc = find_key(info, PMIX_EVENT_AFFECTED_PROC) or {}
-    eprint("%s:%d NOTIFIED that %s:%d failed to respond"
+    eprint("%s:%d NOTIFIED that %s:%d failed to respond to the invitation"
            % (myproc['nspace'], myproc['rank'], failed_proc.get('nspace'),
               failed_proc.get('rank', PMIX_RANK_UNDEF)))
     failed_seen.set()

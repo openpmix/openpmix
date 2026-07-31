@@ -140,7 +140,7 @@ def main():
 
     for m in range(2):
         if 0 == myproc['rank']:
-            eprint("ITERATION %zu" % m)
+            eprint("ITERATION %d" % m)
         proc = {'nspace': myproc['nspace'], 'rank': PMIX_RANK_WILDCARD}
         client.fence([proc], None)
         for n in range(nprocs):
