@@ -227,6 +227,38 @@ def main():
                % (myproc['nspace'], myproc['rank']))
         return done(refid)
 
+    # check for modex data to have been exchanged
+    tinfo = [{'key': PMIX_IMMEDIATE, 'value': True, 'val_type': PMIX_BOOL}]
+    for member in members:
+        # ignore my own nspace
+        if member['nspace'] == myproc['nspace']:
+            continue
+        if PMIX_RANK_WILDCARD == member['rank']:
+            # get the size of the other nspace
+            other = {'nspace': member['nspace'], 'rank': PMIX_RANK_WILDCARD}
+            rc, val = client.get(other, PMIX_JOB_SIZE, tinfo)
+            if PMIX_SUCCESS != rc:
+                eprint("Client ns %s rank %d: PMIx_Get job size failed for "
+                       "nspace %s: %s"
+                       % (myproc['nspace'], myproc['rank'],
+                          member['nspace'], client.error_string(rc)))
+                return done(refid)
+            nprocs = val['value']
+            # cycle across the procs and get their modex data
+            for m in range(nprocs):
+                other['rank'] = m
+                tmp = "%s-%u-remote" % (other['nspace'], m)
+                rc, val = client.get(other, tmp, tinfo)
+                if PMIX_SUCCESS != rc:
+                    eprint("Client ns %s rank %d: PMIx_Get %s failed: %s"
+                           % (myproc['nspace'], myproc['rank'], tmp,
+                              client.error_string(rc)))
+                else:
+                    eprint("Client ns %s rank %d: Get modex for proc %s:%u "
+                           "returned %lu"
+                           % (myproc['nspace'], myproc['rank'],
+                              other['nspace'], m, val['value']))
+
     return done(refid)
 
 
