@@ -182,11 +182,57 @@ finalize, after the progress thread has stopped).
   singleton path.** A process with no server still initializes; callers
   must treat `PMIX_ERR_UNREACH` from init as "up but unconnected," not as
   failure.
+- **`PMIX_RELEASE` dereferences its argument — it is *not* a no-op on
+  `NULL`.** (`pmix_obj_update()` reads the reference count straight off
+  the pointer.) Any caddy field that is only sometimes populated —
+  `cb->lg`, `cb->info`, a tracker's `members` — must be `NULL`-checked
+  before release. This is not a defensive nicety; it is the difference
+  between a working call and a segfault, and it is exactly how
+  `PMIx_Get_nb(NULL, PMIX_PROCID, …)` used to crash.
+- **Anything a caddy hands to the request parser must be initialized
+  first.** `process_request()` both reads and writes through the `val`
+  pointer it is given (`PMIX_GET_STATIC_VALUES` dereferences it to find
+  the caller's storage), so passing an uninitialized local means the
+  parser's own "did they provide storage?" test reads the stack.
+- **Every server round-trip must gate on being connected.** The pattern
+  is `pmix_client_globals.singleton ||
+  !pmix_atomic_check_bool(&pmix_globals.connected)`. A helper that packs a
+  command without that check (`refresh_cache` did) will happily build a
+  message for a peer that was never given a transport.
+- **`PMIX_PTL_SEND_RECV` only fails when the peer is already
+  `finalized`, and in that case it has *not* taken the buffer.** So the
+  send site owns the message on the failure path and must `PMIX_RELEASE`
+  it — but must *not* release it on success, where the transport frees it.
+  Several sites in this directory leaked the message here.
+- **A `PMIX_WAIT_THREAD` after a call that might not have fired its
+  callback is a hang.** `PMIx_Notify_event` and
+  `PMIx_Register_event_handler` invoke the completion callback only when
+  they return `PMIX_SUCCESS`; waiting on the lock unconditionally (as the
+  group invite path did) blocks forever on any error. Guard every wait
+  with `if (PMIX_SUCCESS == rc)`.
 - **A zero-byte recv buffer means the connection was lost.** Every PTL
   recv callback must check `PMIX_BUFFER_IS_EMPTY(buf)` before unpacking.
   Note `PMIX_BUFFER_IS_EMPTY` dereferences its argument — a NULL `buf`
   must be guarded separately (some callbacks do, some do not — be
   consistent when you touch one).
+- **A recv callback that gives up must still complete every waiter.**
+  The pending-request list in `pmix_client_get.c` is shared: the caddy the
+  reply was addressed to is itself on that list, and other gets for the
+  same `nspace:rank` were coalesced behind it. Releasing the caddy and
+  returning (as the status-unpack failure path did) both strands a
+  blocking `PMIx_Get` on a lock nothing will ever wake and frees the
+  object it is still waiting on. Fall into the delivery loop instead.
+- **The `_nb` entry points use `cbfunc == NULL` to mean "the caddy is in
+  `cbdata`".** That is an internal convention of their blocking wrappers
+  (`PMIx_Fabric_register_nb`, `PMIx_Fabric_update_nb`), but these are
+  *public* APIs, so user code can call them with both arguments NULL and
+  reach a `cb = (pmix_cb_t *) cbdata` that yields NULL. Validate the pair
+  up front. Where the API genuinely has no other completion route — as in
+  `PMIx_Compute_distances_nb`, whose reply handler calls the callback
+  unconditionally — reject a NULL `cbfunc` outright.
+- **An out-parameter the caller may hand you as NULL is a crash, not a
+  courtesy.** `PMIx_Get` writes `*val` on both the success and the failure
+  path, so it has to reject `val == NULL` before doing anything else.
 - **Realm directives change where data comes from.** In `PMIx_Get`, the
   `PMIX_NODE_INFO` / `PMIX_APP_INFO` / `PMIX_SESSION_INFO` directives and
   the hostname/nodeid/appnum/sessionid qualifiers redirect the lookup to a
@@ -219,6 +265,114 @@ finalize, after the progress thread has stopped).
   trailing reads (older peers), and never reorder — see the top-level
   "Version Interoperability" rules.
 
+## Testing
+
+There are two tiers, and the split is forced by the architecture: almost
+every function here either answers locally or round-trips to a server, so
+a test with no server can only reach the first half.
+
+**Tier 1 — `test/unit/client_api.c` (in `make check`).** Runs as a
+singleton. Covers what a client decides by itself: the `PMIx_Get`
+shortcuts that `process_request` answers outright, the pointer/static
+value forms, and the parameter validation on `PMIx_Get[_nb]`,
+`PMIx_Compute_distances_nb` and the fabric APIs. Every case in it is a
+regression for a specific defect listed below; several of them segfaulted
+before. See [`test/unit/AGENTS.md`](../../test/unit/AGENTS.md).
+
+**Tier 2 — `contrib/dockerswarm/run-client-tests.sh`.** Drives the
+`examples/` clients through PRRTE across the ten-container swarm, so the
+ranks sit behind *different* PMIx servers. That is the only way to
+exercise the real subject of this directory: a `PMIx_Get` whose answer is
+on another node takes the whole
+pack → `PMIX_PTL_SEND_RECV` → `_getnb_cbfunc` → GDS-store → deliver path,
+including the pending-request coalescing; `PMIx_Fence` has something to
+modex; publish/lookup resolves up through the daemons; `PMIx_Spawn` plus
+`PMIx_Connect` exercise the multi-nspace job-info exchange. Requires
+`./build.sh` first, so the clients link the PMIx you are reviewing rather
+than one baked into the image.
+
+Do not diagnose functional failures against an `--enable-test-build`
+tree — its shimmed `pcompress`/`psec` components are non-functional (see
+the top-level guide).
+
+## Defects found in the July 2026 review
+
+Recorded so the same ground is not re-covered, and because each one names
+a pattern worth checking whenever you touch a sibling function. All are
+fixed on `topic/client-review`; the first three are the ones with
+regression coverage in `test/unit/client_api.c`.
+
+*Crashes:*
+
+- `gcbfn()` released `cb->lg` unconditionally, but the caddy built for a
+  locally-answered request never has one — so **every**
+  `PMIx_Get_nb(NULL, PMIX_PROCID, …)` (and the `PMIX_VERSION_NUMERIC` and
+  `PMIX_RANK` shortcuts) segfaulted.
+- `PMIx_Get_nb` passed an uninitialized `val` to `process_request`, which
+  dereferences it under `PMIX_GET_STATIC_VALUES`.
+- `refresh_cache()` dereferenced the caller's `proc`, which `PMIx_Get`
+  explicitly allows to be NULL, and packed a message with no server to
+  send it to.
+- `PMIx_Get` wrote through `val` without checking it for NULL.
+- `PMIx_Spawn_nb` called `pmix_basename(aptr->cmd)` on the branch where
+  the caller supplied `argv` but no `cmd` — a documented-legal
+  combination, and `pmix_basename(NULL)` returns NULL straight into a
+  `strcmp`.
+- `PMIx_Spawn` copied `cb->pname.nspace` without checking it, which the
+  server-role path leaves NULL when the spawn fails.
+- The fabric `_nb` entry points and `PMIx_Compute_distances_nb`
+  dereferenced a NULL caddy / callback (see the invariant above).
+
+*Hangs and use-after-free:*
+
+- `_getnb_cbfunc()` released the caddy and returned when the status
+  unpack failed, stranding blocked callers on a freed lock.
+- `invite_setup()` waited on a lock unconditionally after
+  `PMIx_Register_event_handler` and after `PMIx_Notify_event`.
+
+*Leaks and lifetime:*
+
+- `PMIX_PTL_SEND_RECV` failure paths leaked the message in `PMIx_Init`,
+  `PMIx_Finalize`, `PMIx_Abort`, `_commitfn`, `get_data`,
+  `refresh_cache`, `fallback_to_next_gds` and both `PMIx_Resolve_*`.
+- `get_data()` left `cb2` undestructed when a GDS fetch failed.
+- `PMIx_Connect_nb` leaked `cb2` on the info-list error paths, and
+  constructed a `pmix_buffer_t pbkt` it never used.
+- `respeer()`/`resnode()` allocated `cb->info` without setting
+  `cb->infocopy`, so the caddy destructor never freed it.
+- `PMIx_Fabric_deregister` freed `fabric->info` but left the pointer
+  dangling, so a second deregister freed it again.
+- `construct_cbfunc()` adopted `darray` from `PMIx_Info_list_convert`
+  without checking the return, handing the tracker an uninitialized
+  pointer for its destructor to free.
+
+*Correctness:*
+
+- `pmix_client_convert_group_procs()` silently dropped a proc whose group
+  rank was past the end of the membership, producing a short participant
+  list that failed much later as `PMIX_ERR_NOT_A_MEMBER` or as a
+  collective that never completed. It now returns `PMIX_ERR_NOT_FOUND`.
+  Its wildcard branch also `continue`d the group loop where it meant to
+  `break`.
+- Several GDS fetches took `pmix_list_remove_first()` without a NULL
+  check on paths where the siblings around them have one.
+
+*Known, left alone (deliberately):*
+
+- `resolve_peers()` sets `proc.rank = PMIX_RANK_WILDCARD` for a pre-v3.2
+  server and then unconditionally resets it to `PMIX_RANK_UNDEF` two
+  lines later, so the legacy branch is dead. `try_fetch()` retries an
+  UNDEF rank as WILDCARD, which is why the path still works. Not changed
+  without a pre-v3.2 server to test against; see the comment in the code.
+- `pmix_client_globals.groups` is read and mutated from both the caller's
+  thread (`PMIx_Group_leave_nb`, `PMIx_Group_destruct_nb`) and the
+  progress thread (`add_group` from `construct_cbfunc`), with no lock.
+  Concurrent multithreaded use of the group APIs is unsafe.
+- `_commitfn()` ignores the server's reply status, so a failed commit is
+  reported to the caller as success.
+- `PMIx_Group_join` declares `results`/`nresults` and never touches them,
+  leaving the caller's pointers uninitialized.
+
 ## Building
 
 `src/client` compiles straight into `libpmix` via `Makefile.include`
@@ -229,9 +383,9 @@ the top-level guide's "Test-building your changes." You do **not** need
 `autogen.pl`/`configure` unless you add or remove a source file (adding
 one to `Makefile.include` then needs a `make`, which regenerates the
 top-level `Makefile`). After a build, smoke-test with `make check` in
-`test/` and `./simptest` in `test/simple/`. Do not diagnose functional
-failures against an `--enable-test-build` tree — its shimmed
-`pcompress`/`psec` components are non-functional (see the top-level guide).
+`test/` and `./simptest` in `test/simple/`, then see
+[Testing](#testing) above for the two tiers that actually cover this
+directory.
 
 ## When modifying code here
 
