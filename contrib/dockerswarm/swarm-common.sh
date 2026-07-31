@@ -10,7 +10,7 @@
 # run-python.sh.
 # SOURCED, never executed:  . "$(dirname "$0")/swarm-common.sh"
 #
-# Two things live here because all four scripts need them to agree.
+# Two things live here because all seven scripts need them to agree.
 #
 # 1. WHICH SWARM.  Every global name this harness claims -- the compose
 #    project, the ten container names, the build volume, and (by way of the
