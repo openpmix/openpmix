@@ -62,7 +62,6 @@
 #include "pmix_hwloc.h"
 #include <hwloc/shmem.h>
 
-static bool topo_in_shmem = false;
 static bool passed_thru = false;
 static char *vmhole = "biggest";
 static pmix_vmem_hole_kind_t hole_kind = VMEM_HOLE_BIGGEST;
@@ -135,22 +134,30 @@ pmix_status_t pmix_hwloc_register(void)
 
 void pmix_hwloc_finalize(void)
 {
+    /* Reclaim the shmem segment we created, if we created one. This is NOT
+     * gated on a "did we adopt a shmem topology" flag, as it once was. That
+     * flag was set only on the ADOPT path (the client), and a client never
+     * sets shmemfile or shmemfd; the process that owns those two is the server
+     * that WROTE the segment in setup_topology, and it never took the adopt
+     * path. Gating on the flag therefore made this cleanup unreachable for the
+     * only process it applies to, leaking the descriptor and the path string
+     * and relying entirely on session-dir teardown to remove the file. Do it
+     * unconditionally, and do it before the early-out below so it also runs
+     * when the topology itself is externally owned. */
+    if (NULL != shmemfile) {
+        unlink(shmemfile);
+        free(shmemfile);
+        shmemfile = NULL;
+        shmemsize = 0;
+    }
+    if (0 <= shmemfd) {
+        close(shmemfd);
+        shmemfd = -1;
+    }
+
     if (NULL == pmix_globals.topology.topology ||
         pmix_globals.external_topology) {
         return;
-    }
-
-    if (topo_in_shmem) {
-        if (NULL != shmemfile) {
-            unlink(shmemfile);
-            free(shmemfile);
-            shmemfile = NULL;
-            shmemsize = 0;
-        }
-        if (0 <= shmemfd) {
-            close(shmemfd);
-            shmemfd = -1;
-        }
     }
 
     hwloc_topology_destroy(pmix_globals.topology.topology);
@@ -195,11 +202,18 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
                 continue;
             }
             /* prefer this option */
+            topo = info[n].value.data.topo;
+            if (NULL == topo || NULL == topo->topology) {
+                /* nothing usable was handed to us */
+                continue;
+            }
             if (NULL != pmix_globals.topology.source) {
                 free(pmix_globals.topology.source);
             }
-            topo = info[n].value.data.topo;
-            pmix_globals.topology.source = strdup(topo->source);
+            /* the host is not required to label the topology it gives us,
+             * and strdup(NULL) is undefined - fall back to the unversioned
+             * spelling, exactly as the deprecated PMIX_TOPOLOGY path does */
+            pmix_globals.topology.source = strdup((NULL == topo->source) ? "hwloc" : topo->source);
             pmix_globals.topology.topology = topo->topology;
             pmix_globals.external_topology = true;
             found = true;
@@ -305,7 +319,6 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, &kv);
         pmix_output_verbose(2, pmix_hwloc_output, "%s:%s stored", __FILE__,
                             __func__);
-        topo_in_shmem = true;
         return PMIX_SUCCESS;
     }
 
@@ -729,7 +742,13 @@ pmix_status_t pmix_hwloc_generate_cpuset_string(const pmix_cpuset_t *cpuset,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    hwloc_bitmap_list_asprintf(&tmp, cpuset->bitmap);
+    /* the return is the character count, with -1 signalling error - see the
+     * note in pmix_hwloc_pack_cpuset. On error tmp is not set, so it must not
+     * be handed to pmix_asprintf. */
+    if (0 > hwloc_bitmap_list_asprintf(&tmp, cpuset->bitmap)) {
+        *cpuset_string = NULL;
+        return PMIX_ERROR;
+    }
     pmix_asprintf(cpuset_string, "hwloc:%s", tmp);
     free(tmp);
 
@@ -740,6 +759,13 @@ pmix_status_t pmix_hwloc_parse_cpuset_string(const char *cpuset_string, pmix_cpu
 {
     const char *src;
     int hrc;
+
+    /* both of these come straight from the caller of the public
+     * PMIx_Parse_cpuset_string, which does not screen them - a NULL string
+     * used to be handed to strchr and crash the library */
+    if (NULL == cpuset_string || NULL == cpuset) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     /* the string is formatted as "<source>:<bitmap>" - find the delimiter */
     src = strchr(cpuset_string, ':');
@@ -760,6 +786,13 @@ pmix_status_t pmix_hwloc_parse_cpuset_string(const char *cpuset_string, pmix_cpu
     cpuset->bitmap = hwloc_bitmap_alloc();
     hrc = hwloc_bitmap_list_sscanf(cpuset->bitmap, src);
     if (0 != hrc) {
+        /* leave nothing half-built behind: a caller that gets an error back
+         * has no reason to destruct the cpuset, so anything we allocated here
+         * would simply leak */
+        hwloc_bitmap_free(cpuset->bitmap);
+        cpuset->bitmap = NULL;
+        free(cpuset->source);
+        cpuset->source = NULL;
         return PMIX_ERR_BAD_PARAM;
     }
     return PMIX_SUCCESS;
@@ -1021,6 +1054,11 @@ pmix_status_t pmix_hwloc_get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envelope_t 
 {
     int rc, flag;
 
+    /* reachable from the public PMIx_Get_cpuset with whatever the caller
+     * passed, so screen it here rather than dereferencing blind */
+    if (NULL == cpuset) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     if (NULL != cpuset->source && 0 != strncasecmp(cpuset->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
@@ -1146,6 +1184,11 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     pmix_device_type_t type = 0;
     char **devids = NULL;
     bool found;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    if (NULL == topo || NULL == cpuset || NULL == dist || NULL == ndist) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     if (NULL == topo->source || NULL == cpuset->source) {
         return PMIX_ERR_BAD_PARAM;
@@ -1179,6 +1222,13 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
         }
     }
 
+    /* Construct the result list here, before the first failure exit below, so
+     * every path out of this function can share the single cleanup block at
+     * the bottom. That block is also what releases devids: the argv array
+     * assembled from PMIX_DEVICE_ID above used to be freed on no path at all,
+     * success included, so every call that named a device leaked it. */
+    PMIX_CONSTRUCT(&dists, pmix_list_t);
+
     /* find the max depth of this topology */
     depth = hwloc_topology_get_depth(topo->topology);
 
@@ -1196,14 +1246,13 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
          * this means we are in some odd container where every
          * PU is in its own package. There is nothing useful
          * that can be done here */
-        return PMIX_ERR_NOT_AVAILABLE;
+        rc = PMIX_ERR_NOT_AVAILABLE;
+        goto cleanup;
     }
 
     /* get the PU depth */
     pudepth = (unsigned) hwloc_get_type_depth(topo->topology, HWLOC_OBJ_PU);
     width = hwloc_get_nbobjs_by_depth(topo->topology, pudepth);
-
-    PMIX_CONSTRUCT(&dists, pmix_list_t);
 
     /* loop over the specified devices in the topology */
     for (n = 0; n < ntypes; n++) {
@@ -1236,8 +1285,8 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
                     }
                     if (NULL == addr) {
                         /* couldn't find an address - report it as an error */
-                        PMIX_LIST_DESTRUCT(&dists);
-                        return PMIX_ERROR;
+                        rc = PMIX_ERROR;
+                        goto cleanup;
                     }
                     /* could be IPv4 or IPv6 */
                     cnt = countcolons(addr);
@@ -1247,8 +1296,8 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
                         pmix_asprintf(&d->dist.uuid, "ipv6://%s", addr);
                     } else {
                         /* unknown address type */
-                        PMIX_LIST_DESTRUCT(&dists);
-                        return PMIX_ERROR;
+                        rc = PMIX_ERROR;
+                        goto cleanup;
                     }
                 } else if (HWLOC_OBJ_OSDEV_OPENFABRICS == table[n].hwtype) {
                     char *ngid = NULL;
@@ -1262,8 +1311,8 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
                         }
                     }
                     if (NULL == ngid || NULL == sgid) {
-                        PMIX_LIST_DESTRUCT(&dists);
-                        return PMIX_ERROR;
+                        rc = PMIX_ERROR;
+                        goto cleanup;
                     }
                     pmix_asprintf(&d->dist.uuid, "fab://%s::%s", ngid, sgid);
                 } else if (HWLOC_OBJ_OSDEV_GPU == table[n].hwtype) {
@@ -1311,8 +1360,8 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
                         tgt = tgt->parent;
                     }
                     if (NULL == tgt) {
-                        PMIX_LIST_DESTRUCT(&dists);
-                        return PMIX_ERR_NOT_FOUND;
+                        rc = PMIX_ERR_NOT_FOUND;
+                        goto cleanup;
                     }
                 } else {
                     tgt = device;
@@ -1350,8 +1399,8 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
                         }
                     } else {
                         /* shouldn't happen - consider this an error condition */
-                        PMIX_LIST_DESTRUCT(&dists);
-                        return PMIX_ERROR;
+                        rc = PMIX_ERROR;
+                        goto cleanup;
                     }
                     if (mindist > dp) {
                         mindist = dp;
@@ -1371,7 +1420,8 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     n = pmix_list_get_size(&dists);
     if (0 == n) {
         /* no devices found */
-        return PMIX_ERR_NOT_FOUND;
+        rc = PMIX_ERR_NOT_FOUND;
+        goto cleanup;
     }
     PMIX_DEVICE_DIST_CREATE(array, n);
     *ndist = n;
@@ -1384,10 +1434,14 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
         array[n].maxdist = d->dist.maxdist;
         ++n;
     }
-    PMIX_LIST_DESTRUCT(&dists);
     *dist = array;
 
-    return PMIX_SUCCESS;
+cleanup:
+    PMIX_LIST_DESTRUCT(&dists);
+    if (NULL != devids) {
+        PMIx_Argv_free(devids);
+    }
+    return rc;
 }
 
 pmix_status_t pmix_hwloc_check_vendor(pmix_topology_t *topo,
@@ -1396,6 +1450,9 @@ pmix_status_t pmix_hwloc_check_vendor(pmix_topology_t *topo,
 {
     hwloc_obj_t device;
 
+    if (NULL == topo || NULL == topo->topology) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     if (NULL == topo->source || 0 != strncasecmp(topo->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
