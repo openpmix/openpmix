@@ -88,14 +88,10 @@ recurring cases:
   `value_string`, `proc_string`, `app_string` and `data_print` are
   unpacked as a tuple.
 
-## Two deviations worth calling out
+## One deviation worth calling out
 
-- **`simple_server.py`** registers one trivial module function. The C
-  version declares a server module whose every entry is NULL, which the C
-  API accepts; the Python binding deliberately refuses an empty module
-  map. What the example exercises — repeated init/finalize of a server —
-  is unchanged.
-
-- **`pmi1client.c` has no Python counterpart.** It is written against the
-  legacy PMI-1 API (`pmi.h`), not against PMIx. The bindings wrap PMIx
-  only, so there is nothing to port it to.
+`simple_server.py` registers one trivial module function. The C version
+declares a server module whose every entry is NULL, which the C API
+accepts; the Python binding deliberately refuses an empty module map.
+What the example exercises — repeated init/finalize of a server — is
+unchanged.
