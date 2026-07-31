@@ -169,13 +169,39 @@ void pmix_ploc_base_release_cpuset(pmix_cpuset_t *cpuset, size_t n)
 
 pmix_status_t pmix_hwloc_get_cpuset_size(pmix_cpuset_t *ptr, size_t *sz)
 {
-    hwloc_bitmap_t test;
-    PMIX_HIDE_UNUSED_PARAMS(ptr);
+    char *tmp;
+    int len;
 
-    test = hwloc_bitmap_alloc();
-    hwloc_bitmap_fill(test);
-    *sz = (size_t)hwloc_bitmap_weight(test);
-    hwloc_bitmap_free(test);
+    /* This reports the storage a cpuset carries BEYOND sizeof(pmix_cpuset_t) -
+     * the caller (PMIx_Value_get_size / the data_array size walker in
+     * bfrop_base_fns.c) has already counted the struct itself. What the cpuset
+     * actually costs to carry is its serialized form, which is what
+     * pmix_hwloc_pack_cpuset writes: the list-format string.
+     *
+     * This used to measure hwloc_bitmap_weight() of a FILLED bitmap, which
+     * ignored ptr entirely and - because a filled bitmap is infinitely set -
+     * made hwloc_bitmap_weight return -1. Cast to size_t that handed every
+     * caller SIZE_MAX, and the array walker then overflowed its running total.
+     */
+    *sz = 0;
+    if (NULL == ptr) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* only report a size for a cpuset we own */
+    if (NULL != ptr->source && 0 != strncasecmp(ptr->source, "hwloc", 5)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    if (NULL == ptr->bitmap) {
+        /* unbound - packs as a NULL string */
+        return PMIX_SUCCESS;
+    }
+    /* as elsewhere, the return is the character count, with -1 on error */
+    len = hwloc_bitmap_list_asprintf(&tmp, ptr->bitmap);
+    if (0 > len) {
+        return PMIX_ERROR;
+    }
+    *sz = (size_t) len + 1; // include the terminating NUL
+    free(tmp);
     return PMIX_SUCCESS;
 }
 
@@ -309,17 +335,22 @@ pmix_status_t pmix_hwloc_copy_topology(pmix_topology_t *dest, pmix_topology_t *s
 static void print_hwloc_obj(char **output, char *prefix, hwloc_topology_t topo, hwloc_obj_t obj)
 {
     hwloc_obj_t obj2;
-    char string[1024], *tmp, *tmp2, *pfx;
+    /* PMIX_HWLOC_MAX_STRING, not a smaller literal: the cpuset render below
+     * was handed PMIX_HWLOC_MAX_STRING as its length while this buffer was
+     * only half that, so a machine with enough PUs to need more than the
+     * buffer's real size overran the stack. Every snprintf-style call here
+     * now takes sizeof(string) so the two can never disagree again. */
+    char string[PMIX_HWLOC_MAX_STRING], *tmp, *tmp2, *pfx;
     unsigned i;
     struct hwloc_topology_support *support;
 
     /* print the object type */
-    hwloc_obj_type_snprintf(string, 1024, obj, 1);
+    hwloc_obj_type_snprintf(string, sizeof(string), obj, 1);
     pmix_asprintf(&pfx, "\n%s\t", (NULL == prefix) ? "" : prefix);
     pmix_asprintf(&tmp, "%sType: %s Number of child objects: %u%sName=%s",
                   (NULL == prefix) ? "" : prefix, string, obj->arity, pfx,
                   (NULL == obj->name) ? "NULL" : obj->name);
-    if (0 < hwloc_obj_attr_snprintf(string, 1024, obj, pfx, 1)) {
+    if (0 < hwloc_obj_attr_snprintf(string, sizeof(string), obj, pfx, 1)) {
         /* print the attributes */
         pmix_asprintf(&tmp2, "%s%s%s", tmp, pfx, string);
         free(tmp);
@@ -329,7 +360,7 @@ static void print_hwloc_obj(char **output, char *prefix, hwloc_topology_t topo, 
      * have cpusets, so protect ourselves here
      */
     if (NULL != obj->cpuset) {
-        hwloc_bitmap_snprintf(string, PMIX_HWLOC_MAX_STRING, obj->cpuset);
+        hwloc_bitmap_snprintf(string, sizeof(string), obj->cpuset);
         pmix_asprintf(&tmp2, "%s%sCpuset:  %s", tmp, pfx, string);
         free(tmp);
         tmp = tmp2;
