@@ -164,18 +164,33 @@ static inline int pmix_bitmap_size(pmix_bitmap_t *bm)
  *
  * @param dest Pointer to the destination bitmap
  * @param src Pointer to the source bitmap
- * @ return PMIX error code if something goes wrong
+ * @return PMIX_SUCCESS, or PMIX_ERR_BAD_PARAM / PMIX_ERR_OUT_OF_RESOURCE.
+ *         On failure dest is left as it was found, not half-copied.
  */
-static inline void pmix_bitmap_copy(pmix_bitmap_t *dest, pmix_bitmap_t *src)
+static inline int pmix_bitmap_copy(pmix_bitmap_t *dest, pmix_bitmap_t *src)
 {
-    if (dest->array_size < src->array_size) {
-        if (NULL != dest->bitmap)
-            free(dest->bitmap);
-        dest->max_size = src->max_size;
-        dest->bitmap = (uint64_t *) calloc(src->array_size, sizeof(uint64_t));
+    if (NULL == dest || NULL == src) {
+        return PMIX_ERR_BAD_PARAM;
     }
-    memcpy(dest->bitmap, src->bitmap, src->array_size * sizeof(uint64_t));
+    if (dest->array_size < src->array_size) {
+        /* Grow first and only commit once the allocation succeeded: the
+         * old code freed dest->bitmap, then memcpy'd into whatever calloc
+         * returned without looking at it. */
+        uint64_t *grown = (uint64_t *) calloc(src->array_size, sizeof(uint64_t));
+        if (NULL == grown) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        if (NULL != dest->bitmap) {
+            free(dest->bitmap);
+        }
+        dest->bitmap = grown;
+        dest->max_size = src->max_size;
+    }
+    if (0 < src->array_size) {
+        memcpy(dest->bitmap, src->bitmap, src->array_size * sizeof(uint64_t));
+    }
     dest->array_size = src->array_size;
+    return PMIX_SUCCESS;
 }
 
 /**
