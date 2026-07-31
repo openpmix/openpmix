@@ -85,6 +85,11 @@ static int load_topo_file(const char *path, pmix_topology_t *topo)
         hwloc_topology_destroy(t);
         return -1;
     }
+    /* keep the I/O objects: pmix_hwloc.c loads every topology with
+     * HWLOC_TYPE_FILTER_KEEP_IMPORTANT, and without it the imported topology
+     * has no OS devices at all - which silently turns the device-distance
+     * cases into no-ops */
+    (void) hwloc_topology_set_io_types_filter(t, HWLOC_TYPE_FILTER_KEEP_IMPORTANT);
     (void) hwloc_topology_set_flags(t, HWLOC_TOPOLOGY_FLAG_INCLUDE_DISALLOWED);
     if (0 != hwloc_topology_load(t)) {
         hwloc_topology_destroy(t);
@@ -614,6 +619,120 @@ static void test_compute_distances_bad_params(void)
     PMIX_CPUSET_DESTRUCT(&cpuset);
 }
 
+/* pmix_device_distance_t(5) says mindist and maxdist exist "to support cases
+ * where the process may be bound to more than one location, and those
+ * locations are at different distances from the device". The implementation
+ * could not produce that: it took the common ancestor between the device and
+ * the single lowest object covering the WHOLE cpuset, inside a loop over the
+ * PUs - so the value did not vary with the loop index and every device on
+ * every machine came back with mindist == maxdist.
+ *
+ * Drive it from a fixture that has both several packages and real network
+ * devices, and derive the cpusets from the topology rather than writing bit
+ * lists by hand. Two properties are asserted: one location yields one
+ * distance, and a multi-location binding whose locations really do sit at
+ * different distances yields a range. */
+static void test_compute_distances_range(void)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    hwloc_topology_t t = NULL;
+    hwloc_obj_t pkg;
+    pmix_cpuset_t wide, single;
+    pmix_device_distance_t *dist = NULL;
+    size_t ndist = 0, n;
+    char path[2048], *list = NULL, spec[4096];
+    int invariant_ok = 0, range_ok = 0, single_ok = 0;
+
+#ifndef PMIX_TEST_TOPO_DIR
+    return;
+#else
+    PMIX_CPUSET_CONSTRUCT(&wide);
+    PMIX_CPUSET_CONSTRUCT(&single);
+
+    snprintf(path, sizeof(path), "%s/test-topo.xml", PMIX_TEST_TOPO_DIR);
+    if (0 != load_topo_file(path, &topo)) {
+        fprintf(stdout, "  SKIP: could not load %s\n", path);
+        return;
+    }
+    t = (hwloc_topology_t) topo.topology;
+
+    /* one whole package: several locations, and on this fixture they sit at
+     * different depths of common ancestry with the NICs */
+    pkg = hwloc_get_obj_by_type(t, HWLOC_OBJ_PACKAGE, 0);
+    if (NULL == pkg || NULL == pkg->cpuset || 0 > hwloc_bitmap_list_asprintf(&list, pkg->cpuset)) {
+        fprintf(stdout, "  SKIP: fixture has no package cpuset\n");
+        goto cleanup;
+    }
+    snprintf(spec, sizeof(spec), "hwloc:%s", list);
+    free(list);
+    list = NULL;
+    if (PMIX_SUCCESS != PMIx_Parse_cpuset_string(spec, &wide)) {
+        fprintf(stdout, "  SKIP: could not parse the package cpuset\n");
+        goto cleanup;
+    }
+
+    if (PMIX_SUCCESS != PMIx_Compute_distances(&topo, &wide, NULL, 0, &dist, &ndist) ||
+        0 == ndist) {
+        fprintf(stdout, "  SKIP: fixture reported no devices for package 0\n");
+        goto cleanup;
+    }
+
+    invariant_ok = 1;
+    for (n = 0; n < ndist; n++) {
+        if (dist[n].mindist > dist[n].maxdist) {
+            fprintf(stdout, "    %s: mindist %u > maxdist %u\n", dist[n].osname,
+                    dist[n].mindist, dist[n].maxdist);
+            invariant_ok = 0;
+        }
+        if (dist[n].mindist < dist[n].maxdist) {
+            range_ok = 1;
+        }
+    }
+    report("device distances never report mindist > maxdist", invariant_ok);
+    if (!range_ok) {
+        fprintf(stdout, "    no device reported a range across the %u PUs of package 0;\n"
+                        "    every location measured the same distance\n",
+                hwloc_bitmap_weight(pkg->cpuset));
+    }
+    report("a multi-location binding yields a distance range", range_ok);
+    PMIX_DEVICE_DIST_FREE(dist, ndist);
+    dist = NULL;
+    ndist = 0;
+
+    /* and the converse: bound to exactly one PU, there is one distance */
+    if (0 > hwloc_bitmap_list_asprintf(&list, hwloc_get_obj_by_type(t, HWLOC_OBJ_PU, 0)->cpuset)) {
+        goto cleanup;
+    }
+    snprintf(spec, sizeof(spec), "hwloc:%s", list);
+    free(list);
+    list = NULL;
+    if (PMIX_SUCCESS != PMIx_Parse_cpuset_string(spec, &single) ||
+        PMIX_SUCCESS != PMIx_Compute_distances(&topo, &single, NULL, 0, &dist, &ndist) ||
+        0 == ndist) {
+        fprintf(stdout, "  SKIP: no devices for a single-PU cpuset\n");
+        goto cleanup;
+    }
+    single_ok = 1;
+    for (n = 0; n < ndist; n++) {
+        if (dist[n].mindist != dist[n].maxdist) {
+            fprintf(stdout, "    %s: single location gave min=%u max=%u\n", dist[n].osname,
+                    dist[n].mindist, dist[n].maxdist);
+            single_ok = 0;
+        }
+    }
+    report("a single-location binding yields a single distance", single_ok);
+
+cleanup:
+    if (NULL != dist) {
+        PMIX_DEVICE_DIST_FREE(dist, ndist);
+    }
+    free(list);
+    PMIX_CPUSET_DESTRUCT(&wide);
+    PMIX_CPUSET_DESTRUCT(&single);
+    PMIx_Topology_destruct(&topo);
+#endif
+}
+
 /* ------------------------------------------------------------------ */
 /* relative locality                                                   */
 /* ------------------------------------------------------------------ */
@@ -904,6 +1023,7 @@ int main(int argc, char **argv)
     test_relative_locality();
     test_locality_generator_to_consumer();
     test_compute_distances_bad_params();
+    test_compute_distances_range();
     test_topology_print_wide();
 
     /* the machine's own topology */
