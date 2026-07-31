@@ -209,6 +209,165 @@ static void test_get_base(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Regressions                                                          */
+/* ------------------------------------------------------------------ */
+
+/* set_size() grew by doubling array_alloc_size in place. On an array whose
+ * alloc size is still 0 -- constructed but not init'd, built from
+ * PMIX_VALUE_ARRAY_STATIC_INIT, or zeroed by a reserve() that ran out of
+ * memory -- "0 <<= 1" is 0 and the loop never terminated. A regression
+ * here hangs rather than failing, so keep it early in the run. */
+static void test_set_size_zero_alloc_does_not_hang(void)
+{
+    pmix_value_array_t va;
+
+    PMIX_CONSTRUCT(&va, pmix_value_array_t);
+    /* Item size is zero as well here, which is its own error... */
+    report("set_size on un-init'd array: PMIX_ERR_BAD_PARAM (all builds)",
+           PMIX_ERR_BAD_PARAM == pmix_value_array_set_size(&va, 4));
+
+    /* ...so drive the doubling loop itself: a valid item size with no
+     * allocation behind it, which is exactly the state a failed reserve()
+     * used to leave. This call must return, not spin. */
+    va.array_item_sizeof = sizeof(int);
+    va.array_alloc_size = 0;
+    report("set_size with zero alloc size: returns PMIX_SUCCESS",
+           PMIX_SUCCESS == pmix_value_array_set_size(&va, 100));
+    report("set_size with zero alloc size: size is 100",
+           100 == (int) pmix_value_array_get_size(&va));
+
+    PMIX_VALUE_ARRAY_SET_ITEM(&va, int, 99, 4242);
+    report("set_size with zero alloc size: last slot is usable",
+           4242 == PMIX_VALUE_ARRAY_GET_ITEM(&va, int, 99));
+
+    PMIX_DESTRUCT(&va);
+}
+
+/* remove_item()'s bounds check used to be compiled out unless
+ * --enable-debug, but the memmove length it guards is
+ * (array_size - item_index - 1) computed in size_t: one past the end wraps
+ * to an enormous count. */
+static void test_remove_item_out_of_range(void)
+{
+    pmix_value_array_t va;
+    int v;
+
+    PMIX_CONSTRUCT(&va, pmix_value_array_t);
+    pmix_value_array_init(&va, sizeof(int));
+    for (v = 0; v < 3; v++) {
+        pmix_value_array_append_item(&va, &v);
+    }
+
+    report("remove_item at size: PMIX_ERR_BAD_PARAM (all builds)",
+           PMIX_ERR_BAD_PARAM == pmix_value_array_remove_item(&va, 3));
+    report("remove_item well past end: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_value_array_remove_item(&va, 9999));
+    report("remove_item out of range: size unchanged", 3 == (int) pmix_value_array_get_size(&va));
+    report("remove_item out of range: contents intact",
+           0 == PMIX_VALUE_ARRAY_GET_ITEM(&va, int, 0)
+               && 2 == PMIX_VALUE_ARRAY_GET_ITEM(&va, int, 2));
+
+    report("remove_item last valid index: PMIX_SUCCESS",
+           PMIX_SUCCESS == pmix_value_array_remove_item(&va, 2));
+    report("remove_item last valid index: size is 2", 2 == (int) pmix_value_array_get_size(&va));
+
+    PMIX_DESTRUCT(&va);
+}
+
+/* The destructor now returns the array to its constructed state, so
+ * nothing is left addressing the freed buffer. Calling PMIX_DESTRUCT twice
+ * is a contract violation the object system's magic-ID assert catches
+ * under --enable-debug, so it is not exercised here. */
+static void test_destruct_leaves_constructed_state(void)
+{
+    pmix_value_array_t va;
+    int v = 7;
+
+    PMIX_CONSTRUCT(&va, pmix_value_array_t);
+    pmix_value_array_init(&va, sizeof(int));
+    pmix_value_array_append_item(&va, &v);
+
+    PMIX_DESTRUCT(&va);
+    report("destruct: size reset to 0", 0 == (int) pmix_value_array_get_size(&va));
+    report("destruct: items pointer cleared", NULL == va.array_items);
+    report("destruct: alloc size reset to 0", 0 == (int) va.array_alloc_size);
+
+    /* and the corpse is still re-usable */
+    PMIX_CONSTRUCT(&va, pmix_value_array_t);
+    report("re-init after destruct: PMIX_SUCCESS",
+           PMIX_SUCCESS == pmix_value_array_init(&va, sizeof(int)));
+    report("re-init after destruct: append works",
+           PMIX_SUCCESS == pmix_value_array_append_item(&va, &v));
+    report("re-init after destruct: value reads back",
+           7 == PMIX_VALUE_ARRAY_GET_ITEM(&va, int, 0));
+    PMIX_DESTRUCT(&va);
+}
+
+/* A reserve() that cannot grow must leave the array exactly as it found
+ * it. It used to overwrite array_items with realloc's NULL -- leaking the
+ * buffer and losing every element -- and zero both size fields. */
+static void test_reserve_failure_preserves_contents(void)
+{
+    pmix_value_array_t va;
+    int v, rc;
+
+    PMIX_CONSTRUCT(&va, pmix_value_array_t);
+    pmix_value_array_init(&va, sizeof(int));
+    for (v = 0; v < 5; v++) {
+        pmix_value_array_append_item(&va, &v);
+    }
+
+    /* Ask for an allocation no allocator can satisfy. If the platform does
+     * somehow honor it, the reserve simply succeeds and the checks below
+     * still describe a correct array. */
+    rc = pmix_value_array_reserve(&va, (size_t) -1 / sizeof(int));
+    report("reserve of an absurd size: reports failure or succeeds honestly",
+           PMIX_ERR_OUT_OF_RESOURCE == rc || PMIX_SUCCESS == rc);
+    if (PMIX_ERR_OUT_OF_RESOURCE == rc) {
+        report("failed reserve: size preserved", 5 == (int) pmix_value_array_get_size(&va));
+        report("failed reserve: contents preserved",
+               0 == PMIX_VALUE_ARRAY_GET_ITEM(&va, int, 0)
+                   && 4 == PMIX_VALUE_ARRAY_GET_ITEM(&va, int, 4));
+        report("failed reserve: array still usable",
+               PMIX_SUCCESS == pmix_value_array_append_item(&va, &v));
+    }
+
+    PMIX_DESTRUCT(&va);
+}
+
+/* Growth across several doublings, checking every element survives each
+ * realloc. */
+static void test_many_appends(void)
+{
+    pmix_value_array_t va;
+    int i;
+    bool ok = true;
+
+    PMIX_CONSTRUCT(&va, pmix_value_array_t);
+    pmix_value_array_init(&va, sizeof(int));
+
+    for (i = 0; i < 1000; i++) {
+        if (PMIX_SUCCESS != pmix_value_array_append_item(&va, &i)) {
+            ok = false;
+            break;
+        }
+    }
+    report("1000 appends: all succeed", ok);
+    report("1000 appends: size is 1000", 1000 == (int) pmix_value_array_get_size(&va));
+
+    ok = true;
+    for (i = 0; i < 1000; i++) {
+        if (i != PMIX_VALUE_ARRAY_GET_ITEM(&va, int, i)) {
+            ok = false;
+            break;
+        }
+    }
+    report("1000 appends: every element survived the reallocs", ok);
+
+    PMIX_DESTRUCT(&va);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -224,6 +383,11 @@ int main(int argc, char **argv)
     test_append_item();
     test_remove_item();
     test_get_base();
+    test_set_size_zero_alloc_does_not_hang();
+    test_remove_item_out_of_range();
+    test_destruct_leaves_constructed_state();
+    test_reserve_failure_preserves_contents();
+    test_many_appends();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

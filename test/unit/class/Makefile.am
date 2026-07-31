@@ -13,10 +13,12 @@
 AM_TESTS_ENVIRONMENT = . $(abs_top_builddir)/test/pmix_test_env.sh;
 
 check_PROGRAMS = class_object class_list class_bitmap class_hash_table \
-    class_pointer_array class_ring_buffer class_value_array class_hotel
+    class_pointer_array class_ring_buffer class_value_array class_hotel \
+    class_refcount
 
 TESTS = class_object class_list class_bitmap class_hash_table \
-    class_pointer_array class_ring_buffer class_value_array class_hotel
+    class_pointer_array class_ring_buffer class_value_array class_hotel \
+    class_refcount
 
 class_object_SOURCES = class_object.c
 class_object_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -58,6 +60,16 @@ class_hotel_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 class_hotel_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+# The reference count is the one class contract documented as safe from
+# any thread, so this test spawns some. No per-target thread flags are
+# needed: PMIX_CONFIG_THREADS folds them into the global CFLAGS/LDFLAGS/
+# LIBS at configure time (config/pmix_config_threads.m4).
+class_refcount_SOURCES = class_refcount.c
+class_refcount_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+class_refcount_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 clean-local:
 	rm -f class_object class_list class_bitmap class_hash_table \
-	    class_pointer_array class_ring_buffer class_value_array class_hotel
+	    class_pointer_array class_ring_buffer class_value_array class_hotel \
+	    class_refcount

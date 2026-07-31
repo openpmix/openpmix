@@ -240,6 +240,114 @@ static void test_room_reuse(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Regressions                                                          */
+/* ------------------------------------------------------------------ */
+
+/* PMIX_HOTEL_STATIC_INIT set last_unoccupied_room to 0 while the
+ * constructor sets it to -1. -1 is the "no rooms" sentinel checkin() tests,
+ * so a statically initialized hotel claimed room 0 was free and then
+ * indexed a NULL unoccupied_rooms array. pmix_globals.notifications is
+ * built exactly this way, which is why this has to hold before
+ * pmix_hotel_init() has ever been called. */
+static pmix_hotel_t static_hotel = PMIX_HOTEL_STATIC_INIT;
+
+static void test_static_init(void)
+{
+    int room = 12345;
+    void *occupant = (void *) 0x1;
+
+    report("static init: reports empty", pmix_hotel_is_empty(&static_hotel));
+    report("static init: checkin declines rather than faulting",
+           PMIX_ERR_OUT_OF_RESOURCE == pmix_hotel_checkin(&static_hotel, occupant, &room));
+    report("static init: declined checkin returns room -1", -1 == room);
+
+    /* checkout of a room nobody holds must also be a no-op */
+    pmix_hotel_checkout(&static_hotel, -1);
+    report("static init: checkout of -1 is a no-op", true);
+
+    occupant = (void *) 0xdeadbeef;
+    pmix_hotel_knock(&static_hotel, -1, &occupant);
+    report("static init: knock on -1 yields NULL", NULL == occupant);
+}
+
+/* The destructor freed rooms/eviction_args/unoccupied_rooms and left all
+ * three pointers in place. It now returns the hotel to exactly the state
+ * the constructor produces, so nothing is left addressing freed memory.
+ *
+ * Note what is NOT exercised here: calling PMIX_DESTRUCT twice. That is a
+ * contract violation of the object system, and --enable-debug builds abort
+ * on the magic-ID assert when you try - correctly. What matters is that
+ * the class leaves no dangling state behind for anything that does reach
+ * it, which is what these checks describe. */
+static void test_destruct_leaves_constructed_state(void)
+{
+    pmix_hotel_t h;
+    int room = -1;
+
+    PMIX_CONSTRUCT(&h, pmix_hotel_t);
+    report("destruct: init succeeds",
+           PMIX_SUCCESS == pmix_hotel_init(&h, 4, NULL, 0, dummy_evict));
+    pmix_hotel_checkin(&h, (void *) 0x1, &room);
+
+    PMIX_DESTRUCT(&h);
+    report("destruct: rooms pointer cleared", NULL == h.rooms);
+    report("destruct: eviction_args pointer cleared", NULL == h.eviction_args);
+    report("destruct: unoccupied_rooms pointer cleared", NULL == h.unoccupied_rooms);
+    report("destruct: num_rooms reset to 0", 0 == h.num_rooms);
+    report("destruct: last_unoccupied_room back to the -1 sentinel",
+           -1 == h.last_unoccupied_room);
+
+    /* checkin against the torn-down hotel must decline, not fault */
+    room = 12345;
+    report("after destruct: checkin declines",
+           PMIX_ERR_OUT_OF_RESOURCE == pmix_hotel_checkin(&h, (void *) 0x1, &room));
+
+    /* and the object is re-usable */
+    PMIX_CONSTRUCT(&h, pmix_hotel_t);
+    report("re-init after destruct: PMIX_SUCCESS",
+           PMIX_SUCCESS == pmix_hotel_init(&h, 4, NULL, 0, dummy_evict));
+    report("re-init after destruct: checkin works",
+           PMIX_SUCCESS == pmix_hotel_checkin(&h, (void *) 0x1, &room));
+    PMIX_DESTRUCT(&h);
+}
+
+/* Re-initializing a live hotel used to overwrite all three array pointers
+ * and leak everything they addressed. */
+static void test_reinit(void)
+{
+    pmix_hotel_t h;
+    int room = -1, i;
+    void *occupant;
+    bool ok = true;
+
+    PMIX_CONSTRUCT(&h, pmix_hotel_t);
+    report("reinit: first init succeeds",
+           PMIX_SUCCESS == pmix_hotel_init(&h, 2, NULL, 0, dummy_evict));
+    pmix_hotel_checkin(&h, (void *) 0x1, &room);
+    report("reinit: first hotel took a guest", 0 <= room);
+
+    report("reinit: second init succeeds",
+           PMIX_SUCCESS == pmix_hotel_init(&h, 8, NULL, 0, dummy_evict));
+    report("reinit: re-initialized hotel is empty", pmix_hotel_is_empty(&h));
+
+    /* all eight rooms of the new hotel must be usable */
+    for (i = 0; i < 8; ++i) {
+        if (PMIX_SUCCESS != pmix_hotel_checkin(&h, (void *) (intptr_t) (i + 1), &room)) {
+            ok = false;
+            break;
+        }
+    }
+    report("reinit: all 8 new rooms check in", ok);
+    report("reinit: ninth checkin declines",
+           PMIX_ERR_OUT_OF_RESOURCE == pmix_hotel_checkin(&h, (void *) 0x99, &room));
+
+    pmix_hotel_knock(&h, 0, &occupant);
+    report("reinit: room 0 has an occupant", NULL != occupant);
+
+    PMIX_DESTRUCT(&h);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -255,6 +363,9 @@ int main(int argc, char **argv)
     test_hotel_full();
     test_multiple_guests();
     test_room_reuse();
+    test_static_init();
+    test_destruct_leaves_constructed_state();
+    test_reinit();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

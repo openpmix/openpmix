@@ -354,6 +354,162 @@ static void test_get_string(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Regressions                                                          */
+/* ------------------------------------------------------------------ */
+
+/* The bitmap words are uint64_t, so the mask shift runs to 63. It used to
+ * be built as "1UL << offset", which is undefined above 31 wherever
+ * unsigned long is 32 bits (32-bit Linux, Windows) and in practice folded
+ * bit N back onto bit N-32. On an LP64 host this passes either way; it is
+ * here so the 32-bit builds have something that fails when it regresses. */
+static void test_high_bit_shifts(void)
+{
+    pmix_bitmap_t bm;
+    int bit;
+    bool ok = true;
+
+    PMIX_CONSTRUCT(&bm, pmix_bitmap_t);
+    pmix_bitmap_init(&bm, 128);
+
+    for (bit = 32; bit < 64; ++bit) {
+        if (PMIX_SUCCESS != pmix_bitmap_set_bit(&bm, bit)) {
+            ok = false;
+        }
+    }
+    report("high bits: set 32..63 all succeed", ok);
+
+    ok = true;
+    for (bit = 32; bit < 64; ++bit) {
+        if (!pmix_bitmap_is_set_bit(&bm, bit)) {
+            ok = false;
+        }
+    }
+    report("high bits: 32..63 all read back set", ok);
+
+    /* If the shift had wrapped, setting bit 32+ would have lit bit 0+ */
+    ok = true;
+    for (bit = 0; bit < 32; ++bit) {
+        if (pmix_bitmap_is_set_bit(&bm, bit)) {
+            ok = false;
+        }
+    }
+    report("high bits: 0..31 left untouched (no shift wrap)", ok);
+
+    report("high bits: 32 set bits counted", 32 == pmix_bitmap_num_set_bits(&bm, 64));
+
+    /* clear_bit builds the same mask */
+    pmix_bitmap_clear_bit(&bm, 63);
+    report("high bits: clear_bit 63 clears 63", !pmix_bitmap_is_set_bit(&bm, 63));
+    report("high bits: clear_bit 63 spared 31", !pmix_bitmap_is_set_bit(&bm, 31));
+    report("high bits: 31 set bits remain", 31 == pmix_bitmap_num_set_bits(&bm, 64));
+
+    PMIX_DESTRUCT(&bm);
+}
+
+/* num_set_bits masks the final partial word with (1 << (len % 64)) - 1.
+ * With len == 63 that shift distance is 63, which overflowed the sign bit
+ * of the signed 1LL the code used to shift. */
+static void test_num_set_bits_boundaries(void)
+{
+    pmix_bitmap_t bm;
+
+    PMIX_CONSTRUCT(&bm, pmix_bitmap_t);
+    pmix_bitmap_init(&bm, 128);
+    pmix_bitmap_set_all_bits(&bm);
+
+    report("num_set_bits len=1: 1", 1 == pmix_bitmap_num_set_bits(&bm, 1));
+    report("num_set_bits len=32: 32", 32 == pmix_bitmap_num_set_bits(&bm, 32));
+    report("num_set_bits len=63: 63", 63 == pmix_bitmap_num_set_bits(&bm, 63));
+    report("num_set_bits len=64: 64", 64 == pmix_bitmap_num_set_bits(&bm, 64));
+    report("num_set_bits len=65: 65", 65 == pmix_bitmap_num_set_bits(&bm, 65));
+    report("num_set_bits len=127: 127", 127 == pmix_bitmap_num_set_bits(&bm, 127));
+    report("num_set_bits len=128: 128", 128 == pmix_bitmap_num_set_bits(&bm, 128));
+    report("num_unset_bits len=63: 0", 0 == pmix_bitmap_num_unset_bits(&bm, 63));
+
+    PMIX_DESTRUCT(&bm);
+}
+
+/* pmix_bitmap_copy() now reports what it did instead of returning void and
+ * memcpy'ing through whatever calloc handed back. */
+static void test_copy_status(void)
+{
+    pmix_bitmap_t src, dst;
+
+    PMIX_CONSTRUCT(&src, pmix_bitmap_t);
+    PMIX_CONSTRUCT(&dst, pmix_bitmap_t);
+    pmix_bitmap_init(&src, 256);
+    pmix_bitmap_init(&dst, 64); /* deliberately smaller: forces the grow path */
+
+    pmix_bitmap_set_bit(&src, 200);
+    report("copy: grow path returns PMIX_SUCCESS", PMIX_SUCCESS == pmix_bitmap_copy(&dst, &src));
+    report("copy: grown dst holds bit 200", pmix_bitmap_is_set_bit(&dst, 200));
+    report("copy: grown dst size matches src",
+           pmix_bitmap_size(&dst) == pmix_bitmap_size(&src));
+    report("copy: bitmaps compare equal", !pmix_bitmap_are_different(&dst, &src));
+
+    report("copy: NULL dst is PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_bitmap_copy(NULL, &src));
+    report("copy: NULL src is PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_bitmap_copy(&dst, NULL));
+
+    PMIX_DESTRUCT(&src);
+    PMIX_DESTRUCT(&dst);
+}
+
+/* Every accessor has to tolerate a bitmap that was constructed but never
+ * init'd (no words at all) and a NULL bitmap. */
+static void test_uninitialized_and_null(void)
+{
+    pmix_bitmap_t bm;
+
+    PMIX_CONSTRUCT(&bm, pmix_bitmap_t);
+
+    report("un-init'd: size is 0", 0 == pmix_bitmap_size(&bm));
+    report("un-init'd: is_clear is true", pmix_bitmap_is_clear(&bm));
+    report("un-init'd: clear_all_bits succeeds", PMIX_SUCCESS == pmix_bitmap_clear_all_bits(&bm));
+    report("un-init'd: set_all_bits succeeds", PMIX_SUCCESS == pmix_bitmap_set_all_bits(&bm));
+    report("un-init'd: is_set_bit(0) is false", !pmix_bitmap_is_set_bit(&bm, 0));
+    report("un-init'd: clear_bit(0) is PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_bitmap_clear_bit(&bm, 0));
+    report("un-init'd: set_bit(0) grows and succeeds",
+           PMIX_SUCCESS == pmix_bitmap_set_bit(&bm, 0));
+    report("un-init'd: bit 0 now reads set", pmix_bitmap_is_set_bit(&bm, 0));
+
+    report("NULL: is_clear is true", pmix_bitmap_is_clear(NULL));
+    report("NULL: clear_all_bits is PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_bitmap_clear_all_bits(NULL));
+    report("NULL: set_all_bits is PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_bitmap_set_all_bits(NULL));
+    report("NULL: set_bit is PMIX_ERR_BAD_PARAM", PMIX_ERR_BAD_PARAM == pmix_bitmap_set_bit(NULL, 0));
+    report("NULL: is_set_bit is false", !pmix_bitmap_is_set_bit(NULL, 0));
+    /* bool-returning comparison has no error code: "different" is the
+     * answer that stops a caller acting on a comparison never made */
+    report("NULL: are_different reports true", pmix_bitmap_are_different(NULL, &bm));
+    report("NULL: get_string returns NULL", NULL == pmix_bitmap_get_string(NULL));
+
+    PMIX_DESTRUCT(&bm);
+}
+
+/* Re-init has to release the old words and leave size and contents
+ * describing the new allocation, with no stale bits showing through. */
+static void test_reinit(void)
+{
+    pmix_bitmap_t bm;
+
+    PMIX_CONSTRUCT(&bm, pmix_bitmap_t);
+    pmix_bitmap_init(&bm, 256);
+    pmix_bitmap_set_all_bits(&bm);
+    report("reinit: 256 bits before", 256 == pmix_bitmap_size(&bm));
+
+    report("reinit: second init succeeds", PMIX_SUCCESS == pmix_bitmap_init(&bm, 128));
+    report("reinit: size is now 128", 128 == pmix_bitmap_size(&bm));
+    report("reinit: comes back cleared", pmix_bitmap_is_clear(&bm));
+    report("reinit: no set bits", 0 == pmix_bitmap_num_set_bits(&bm, 128));
+
+    PMIX_DESTRUCT(&bm);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -375,6 +531,11 @@ int main(int argc, char **argv)
     test_bitwise_xor();
     test_copy_and_compare();
     test_get_string();
+    test_high_bit_shifts();
+    test_num_set_bits_boundaries();
+    test_copy_status();
+    test_uninitialized_and_null();
+    test_reinit();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

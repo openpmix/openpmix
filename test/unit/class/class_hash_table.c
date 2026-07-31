@@ -231,6 +231,142 @@ static void test_sizeof_hash_element(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Regressions                                                          */
+/* ------------------------------------------------------------------ */
+
+/* Every lookup begins with "key % capacity", and capacity is 0 until
+ * pmix_hash_table_init() runs. The guard that caught that used to sit
+ * inside #if PMIX_ENABLE_DEBUG, so an optimized build took a SIGFPE where
+ * a debug build returned an error. Each of these nine entry points must
+ * report a failure and come back. */
+static void test_uninitialized_table(void)
+{
+    pmix_hash_table_t ht;
+    void *value = NULL;
+    const char *key = "k";
+
+    PMIX_CONSTRUCT(&ht, pmix_hash_table_t);
+
+    report("un-init'd: get uint32 fails cleanly",
+           PMIX_SUCCESS != pmix_hash_table_get_value_uint32(&ht, 1, &value));
+    report("un-init'd: set uint32 fails cleanly",
+           PMIX_SUCCESS != pmix_hash_table_set_value_uint32(&ht, 1, (void *) 0x1));
+    report("un-init'd: remove uint32 fails cleanly",
+           PMIX_SUCCESS != pmix_hash_table_remove_value_uint32(&ht, 1));
+
+    report("un-init'd: get uint64 fails cleanly",
+           PMIX_SUCCESS != pmix_hash_table_get_value_uint64(&ht, 1, &value));
+    report("un-init'd: set uint64 fails cleanly",
+           PMIX_SUCCESS != pmix_hash_table_set_value_uint64(&ht, 1, (void *) 0x1));
+    report("un-init'd: remove uint64 fails cleanly",
+           PMIX_SUCCESS != pmix_hash_table_remove_value_uint64(&ht, 1));
+
+    report("un-init'd: get ptr fails cleanly",
+           PMIX_SUCCESS != pmix_hash_table_get_value_ptr(&ht, key, 1, &value));
+    report("un-init'd: set ptr fails cleanly",
+           PMIX_SUCCESS != pmix_hash_table_set_value_ptr(&ht, key, 1, (void *) 0x1));
+    report("un-init'd: remove ptr fails cleanly",
+           PMIX_SUCCESS != pmix_hash_table_remove_value_ptr(&ht, key, 1));
+
+    PMIX_DESTRUCT(&ht);
+}
+
+/* The destructor used to free ht_table and leave the pointer in place
+ * behind a non-zero ht_capacity, so a stray lookup indexed freed memory
+ * instead of failing the capacity check. Calling PMIX_DESTRUCT twice is a
+ * contract violation the object system's magic-ID assert catches under
+ * --enable-debug, so it is not exercised here. */
+static void test_destruct_leaves_constructed_state(void)
+{
+    pmix_hash_table_t ht;
+    void *value = NULL;
+
+    PMIX_CONSTRUCT(&ht, pmix_hash_table_t);
+    pmix_hash_table_init(&ht, 32);
+    pmix_hash_table_set_value_uint32(&ht, 7, (void *) 0x77);
+
+    PMIX_DESTRUCT(&ht);
+    report("destruct: lookup on the corpse fails cleanly",
+           PMIX_SUCCESS != pmix_hash_table_get_value_uint32(&ht, 7, &value));
+    report("destruct: size reset to 0", 0 == (int) pmix_hash_table_get_size(&ht));
+
+    /* and it is re-usable */
+    PMIX_CONSTRUCT(&ht, pmix_hash_table_t);
+    report("re-init after destruct: PMIX_SUCCESS", PMIX_SUCCESS == pmix_hash_table_init(&ht, 32));
+    report("re-init after destruct: set works",
+           PMIX_SUCCESS == pmix_hash_table_set_value_uint32(&ht, 7, (void *) 0x77));
+    report("re-init after destruct: get works",
+           PMIX_SUCCESS == pmix_hash_table_get_value_uint32(&ht, 7, &value)
+               && (void *) 0x77 == value);
+    PMIX_DESTRUCT(&ht);
+}
+
+/* Enough insertions to drive several pmix_hash_grow() passes, then verify
+ * every key survived rehashing, and that removal's backshift keeps the
+ * remaining probe runs findable. */
+static void test_growth_and_backshift(void)
+{
+    pmix_hash_table_t ht;
+    void *value;
+    uint64_t k;
+    bool ok = true;
+
+    PMIX_CONSTRUCT(&ht, pmix_hash_table_t);
+    pmix_hash_table_init(&ht, 4); /* deliberately tiny: forces repeated growth */
+
+    for (k = 1; k <= 500; k++) {
+        if (PMIX_SUCCESS != pmix_hash_table_set_value_uint64(&ht, k, (void *) (intptr_t) (k * 3))) {
+            ok = false;
+            break;
+        }
+    }
+    report("growth: 500 inserts into a 4-slot table succeed", ok);
+
+    ok = true;
+    for (k = 1; k <= 500; k++) {
+        if (PMIX_SUCCESS != pmix_hash_table_get_value_uint64(&ht, k, &value)
+            || (void *) (intptr_t) (k * 3) != value) {
+            ok = false;
+            break;
+        }
+    }
+    report("growth: every key survived rehashing", ok);
+    report("growth: size reports 500", 500 == (int) pmix_hash_table_get_size(&ht));
+
+    /* Remove every other key; the backshift has to keep the rest reachable */
+    ok = true;
+    for (k = 2; k <= 500; k += 2) {
+        if (PMIX_SUCCESS != pmix_hash_table_remove_value_uint64(&ht, k)) {
+            ok = false;
+            break;
+        }
+    }
+    report("backshift: removing 250 keys succeeds", ok);
+    report("backshift: size reports 250", 250 == (int) pmix_hash_table_get_size(&ht));
+
+    ok = true;
+    for (k = 1; k <= 500; k += 2) {
+        if (PMIX_SUCCESS != pmix_hash_table_get_value_uint64(&ht, k, &value)
+            || (void *) (intptr_t) (k * 3) != value) {
+            ok = false;
+            break;
+        }
+    }
+    report("backshift: every surviving key is still findable", ok);
+
+    ok = true;
+    for (k = 2; k <= 500; k += 2) {
+        if (PMIX_ERR_NOT_FOUND != pmix_hash_table_get_value_uint64(&ht, k, &value)) {
+            ok = false;
+            break;
+        }
+    }
+    report("backshift: every removed key reports NOT_FOUND", ok);
+
+    PMIX_DESTRUCT(&ht);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -246,6 +382,9 @@ int main(int argc, char **argv)
     test_remove_all();
     test_uint32_iteration();
     test_sizeof_hash_element();
+    test_uninitialized_table();
+    test_destruct_leaves_constructed_state();
+    test_growth_and_backshift();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;
