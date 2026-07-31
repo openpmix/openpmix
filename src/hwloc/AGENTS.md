@@ -127,9 +127,11 @@ order:
    owned — `pmix_hwloc_finalize()` must **not** destroy it.
 2. **hwloc shared-memory segment** (`PMIX_HWLOC_SHMEM_FILE` / `_ADDR` /
    `_SIZE` fetched from the server via GDS, then
-   `hwloc_shmem_topology_adopt`). Sets `topo_in_shmem = true`. This is
-   the "instant on"/no-copy path: every client mmaps the *same* physical
-   pages the server wrote.
+   `hwloc_shmem_topology_adopt`). This is the "instant on"/no-copy path:
+   every client mmaps the *same* physical pages the server wrote. (There
+   used to be a `topo_in_shmem` flag set here; it gated the finalize-time
+   cleanup of a segment only the *server* ever creates, so it made that
+   cleanup unreachable — see item 9.)
 3. **XML string** — `PMIX_HWLOC_XML_V2`, then `PMIX_HWLOC_XML_V1`
    (`hwloc_topology_set_xmlbuffer` + load). The v1 fallback exists to
    talk to peers built against hwloc 1.x.
@@ -414,21 +416,42 @@ A second audit (July 2026) of the same directory found these:
     `pack_cpuset`/`print_cpuset` (item 6), left behind in the third caller.
     On failure the output pointer was uninitialized.
 
-Not defects, but worth knowing before you "fix" them:
+16. **`compute_distances` could not produce a distance *range*.** It
+    measured `hwloc_get_common_ancestor_obj(topo, obj, tgt)` inside the
+    loop over PUs — but `obj` is the single lowest object covering the
+    *whole* cpuset and `tgt` is the device, so neither varies with the
+    loop index. Every iteration computed the same value, the PU was
+    fetched and then ignored, and `mindist == maxdist` came back for every
+    device on every machine.
+    [`pmix_device_distance_t(5)`](../../docs/man/man5/pmix_device_distance_t.5.rst)
+    is explicit that the pair exists "to support cases where the process
+    may be bound to more than one location, and those locations are at
+    different distances from the device" — a case the implementation could
+    not express. The ancestor is now taken between **this PU** and the
+    device. `obj` still serves its other purpose: proving the cpuset
+    covers something below the machine (the `PMIX_ERR_NOT_AVAILABLE`
+    early-out). Additionally, when no PU in the topology intersects the
+    cpuset nothing was measured and the result was `mindist = UINT16_MAX,
+    maxdist = 0` — simultaneously "unknown" and "as close as possible",
+    and `min > max` besides; both fields now report the documented
+    `UINT16_MAX` sentinel. Covered by `test_compute_distances_range`,
+    which drives `test/topologies/test-topo.xml` (two packages, real
+    NICs) and fails against the old code.
 
-- **`compute_distances` always reports `mindist == maxdist`.** The inner loop
-  over PUs recomputes `hwloc_get_common_ancestor_obj(topo, obj, tgt)` — and
-  neither `obj` (the object covering the whole cpuset) nor `tgt` (the device)
-  varies with the loop index, so every iteration yields the same distance.
-  The PU is used only to decide whether to iterate at all. Changing this
-  changes reported distances for every consumer; treat it as a design
-  question, not a cleanup.
-- **`PMIX_PREFETCH`-style silent no-ops.** `hwloc_get_type_depth(...,
-  HWLOC_OBJ_PU)` is cast to `unsigned`; if PU is absent it returns
-  `HWLOC_TYPE_DEPTH_UNKNOWN` (-1) and the cast makes `width` zero, so the
-  loop simply does not run. Safe, but not obviously so.
+Not a defect, but worth knowing before you "fix" it:
 
-Items 5, 6, 7, 8 and 10–15 are covered by the `hwloc_datatype` unit test
+- **`hwloc_get_type_depth(..., HWLOC_OBJ_PU)` is cast to `unsigned`.** If
+  PU is absent it returns `HWLOC_TYPE_DEPTH_UNKNOWN` (-1); the cast makes
+  `width` zero and the loop simply does not run. Safe, but not obviously
+  so.
+- **A cpuset spanning the topology's top-level children yields
+  `PMIX_ERR_NOT_AVAILABLE`.** `dsearch` looks for a *single* object at
+  each depth that completely covers the cpuset, so a binding spanning two
+  packages finds none at depth 1 and `obj` stays NULL. That is the
+  documented "nothing useful can be done" case, not the range case — a
+  range needs multiple locations *under* one covering object.
+
+Items 5, 6, 7, 8 and 10–16 are covered by the `hwloc_datatype` unit test
 ([`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c), wired
 into `make check`), which round-trips and prints topologies and cpusets
 through the public API. Extend it when you touch this directory.

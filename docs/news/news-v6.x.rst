@@ -296,6 +296,46 @@ Detailed changes since v6.1.0:
    This affected all XML-formatted stdout/stderr output
  - plog/smtp: fix the "body_suffix" MCA parameter, which was mistakenly
    registered under the name "body_prefix" and so could not be set
+ - configure now refuses to build PMIx with a compiler that does not
+   provide C11 atomics, instead of quietly reconfiguring for C99 and
+   carrying on. That fallback could never have worked: the library uses
+   _Atomic, the C11 atomic convenience types and <stdatomic.h>
+   unconditionally, so a C99 build failed on the first translation unit
+   with unknown-type errors that named neither C11 nor the compiler. The
+   required-atomics check was also widened from a sample of four
+   primitives to the full set the code actually uses, and each failure
+   now names the missing primitive
+ - Fixed the device distances reported by PMIx_Compute_distances, which
+   always came back with mindist equal to maxdist. The two fields exist
+   to describe a process bound to more than one location where those
+   locations sit at different distances from the device, but the
+   distance was measured from the single lowest object covering the
+   whole cpuset rather than from each location, so it did not vary and
+   the documented case could not be expressed. A binding that spans
+   locations at differing distances now reports a real range. A cpuset
+   that matches no location in the topology reports UINT16_MAX - the
+   "distance unknown" sentinel - in both fields, rather than a minimum
+   of UINT16_MAX with a maximum of zero
+ - Fixed PMIx_Value_get_size returning a wrapped, meaningless size for a
+   PMIX_PROC_CPUSET value. The size was computed from the weight of a
+   filled hwloc bitmap - which is infinitely set, so hwloc returns -1 -
+   giving SIZE_MAX regardless of the cpuset. Callers sizing an array of
+   cpusets overflowed their running total. The reported size now
+   reflects the cpuset's serialized form
+ - Fixed a stack buffer overflow when printing a topology. Each object's
+   cpuset was rendered into a buffer half the size of the length passed
+   to hwloc, so a machine with enough processing units to exceed the
+   buffer's real size overwrote the stack
+ - Fixed a crash in PMIx_Parse_cpuset_string when passed a NULL string,
+   and added the same screening to PMIx_Get_cpuset and
+   PMIx_Compute_distances. A failed parse no longer leaves a partially
+   built cpuset on the caller's struct
+ - Fixed the hwloc shared-memory topology segment not being reclaimed
+   when a server finalized: the cleanup was gated on a condition only a
+   client could satisfy, so the server that created the segment leaked
+   its descriptor and never removed the backing file itself
+ - Removed the internal header src/include/pmix_hash_string.h. Nothing
+   in PMIx or PRRTE used either macro it defined
 
 6.0.0 -- TBD
 ------------
