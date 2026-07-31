@@ -298,6 +298,12 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     cdef pmix_info_t *infoptr;
     cdef pmix_value_t *valptr;
     mysize = len(mylist)
+    # start from a NULL array. Every arm below can fail - an unconvertible
+    # element is enough, and an unrecognized type never allocates at all -
+    # and the caller then destructs the value, so what it finds here has to
+    # be releasable. The arms that fill in pointers zero their allocation
+    # for the same reason
+    array[0].array = NULL
     if PMIX_INFO == mytype:
         array[0].array = malloc(mysize * sizeof(pmix_info_t))
         if not array[0].array:
@@ -308,14 +314,17 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         array[0].array = malloc(mysize * sizeof(pmix_value_t))
         if not array[0].array:
             return PMIX_ERR_NOMEM
+        memset(array[0].array, 0, mysize * sizeof(pmix_value_t))
         valptr = <pmix_value_t*>array[0].array
         rc = pmix_load_value(valptr, mylist)
     elif PMIX_BOOL == mytype:
-        array[0].array = malloc(mysize * sizeof(int*))
+        # a bool array is bool-sized, not int-sized - see the c_bool note
+        # in pmix.pyx
+        array[0].array = malloc(mysize * sizeof(c_bool))
         n = 0
         if not array[0].array:
             return PMIX_ERR_NOMEM
-        boolptr = <int*>array[0].array
+        boolptr = <c_bool*>array[0].array
         for item in mylist:
             int_bool = pmix_bool_convert(item)
             if int_bool != 0 and int_bool != 1:
@@ -323,7 +332,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
             boolptr[n] = int_bool
             n += 1
     elif PMIX_BYTE == mytype:
-        array[0].array = malloc(mysize * sizeof(uint8_t*))
+        array[0].array = malloc(mysize * sizeof(uint8_t))
         n = 0
         # byte val is uint8 type
         if not array[0].array:
@@ -342,6 +351,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         array[0].array = malloc(mysize * sizeof(char*))
         if not array[0].array:
             return PMIX_ERR_NOMEM
+        memset(array[0].array, 0, mysize * sizeof(char*))
         n = 0
         strptr = <char**> array[0].array
         for item in mylist:
@@ -514,6 +524,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         array[0].array = malloc(mysize * sizeof(pmix_byte_object_t))
         if not array[0].array:
             return PMIX_ERR_NOMEM
+        memset(array[0].array, 0, mysize * sizeof(pmix_byte_object_t))
         n = 0
         boptr = <pmix_byte_object_t*>array[0].array
         for item in mylist:
@@ -565,6 +576,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         array[0].array = malloc(mysize * sizeof(pmix_proc_info_t))
         if not array[0].array:
             return PMIX_ERR_NOMEM
+        memset(array[0].array, 0, mysize * sizeof(pmix_proc_info_t))
         n = 0
         piptr = <pmix_proc_info_t*> array[0].array
         for item in mylist:
@@ -592,6 +604,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         array[0].array = <pmix_data_array_t*> malloc(mysize * sizeof(pmix_data_array_t))
         if not array[0].array:
             return PMIX_ERR_NOMEM
+        memset(array[0].array, 0, mysize * sizeof(pmix_data_array_t))
         daptr = <pmix_data_array_t*>array[0].array
         n = 0
         for item in mylist:
@@ -621,6 +634,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         array[0].array = malloc(mysize * sizeof(pmix_envar_t))
         if not array[0].array:
             return PMIX_ERR_NOMEM
+        memset(array[0].array, 0, mysize * sizeof(pmix_envar_t))
         n = 0
         envptr = <pmix_envar_t*> array[0].array
         for item in mylist:
@@ -646,6 +660,15 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         return PMIX_ERR_NOT_SUPPORTED
     return PMIX_SUCCESS
 
+# Convert a pmix_data_array_t into a Python dict of the form
+# {'type': <type>, 'array': [...]}.
+#
+# This only reads the array - it never releases any part of it. Ownership
+# stays with whoever allocated it: the library frees the arrays it hands
+# to an upcall or returns from PMIx_Get, and pmix_destruct_value frees the
+# ones the bindings built. Freeing an entry here handed those owners a
+# pointer they would free a second time.
+#
 cdef dict pmix_unload_darray(pmix_data_array_t *array):
     cdef pmix_info_t *infoptr;
     if PMIX_INFO == array.type:
@@ -658,11 +681,12 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
     elif PMIX_BOOL == array.type:
         if not array[0].array:
             return PMIX_ERR_NOMEM
-        boolptr = <int*>array[0].array
+        boolptr = <c_bool*>array[0].array
         list = []
         n = 0
         while n < array.size:
-            list.append(boolptr[n])
+            # hand back a bool, as the scalar PMIX_BOOL arm does
+            list.append(True if boolptr[n] else False)
             n += 1
         darray = {'type':array.type, 'array':list}
         return darray
@@ -691,7 +715,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             else:
                 pyb = strptr[n]
                 strlist.append(pyb.decode("ascii"))
-                free(strptr[n])
             n += 1
         darray = {'type':array.type, 'array':strlist}
         return darray
@@ -934,8 +957,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             'pid':piptr[n].pid,
             'exitcode':piptr[n].exit_code, 'state':piptr[n].state}
             list.append(d)
-            free(piptr[n].hostname)
-            free(piptr[n].executable_name)
             n += 1
         darray = {'type':array.type, 'array':list}
         return darray
@@ -975,13 +996,16 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
         envptr = <pmix_envar_t*> array[0].array
         list = []
         while n < array.size:
-            pyenv = envptr[n].envar
-            pyval = envptr[n].value
-            pysep = envptr[n].separator
+            # decode, and hand back the separator as the one-character
+            # string the loader expects, so what comes out of here can be
+            # passed straight back in
+            pyenv = envptr[n].envar.decode('ascii') \
+                if NULL != envptr[n].envar else None
+            pyval = envptr[n].value.decode('ascii') \
+                if NULL != envptr[n].value else None
+            pysep = chr(envptr[n].separator)
             d = {'envar':pyenv, 'value':pyval, 'separator':pysep}
             list.append(d)
-            free(envptr[n].value)
-            free(envptr[n].envar)
             n += 1
         darray = {'type':array.type, 'array':list}
         return darray
@@ -1458,10 +1482,14 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         value[0].data.darray[0].type = val['value']['type']
         value[0].data.darray[0].size = len(val['value']['array'])
         try:
-            # assume pmix_load_darray does own type checks
-            # it should return with an error code inside that
-            # function if there is one
-            pmix_load_darray(value[0].data.darray, value[0].data.darray[0].type, val['value']['array'])
+            # pmix_load_darray does its own type checks and returns an
+            # error code when one fails - pass it on, or the caller is
+            # handed a value whose array was never filled in
+            rc = pmix_load_darray(value[0].data.darray,
+                                  value[0].data.darray[0].type,
+                                  val['value']['array'])
+            if PMIX_SUCCESS != rc:
+                return rc
         except:
             return PMIX_ERR_NOT_SUPPORTED
 
@@ -1869,9 +1897,13 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         return {'value':value[0].data.rbdir, 'val_type':PMIX_RESBLOCK_DIRECTIVE}
 
     elif PMIX_ENVAR == value[0].type:
-        pyenv = (<bytes>value[0].data.envar.envar).decode('UTF-8')
-        pyval = (<bytes>value[0].data.envar.value).decode('UTF-8')
-        pysep = value[0].data.envar.separator
+        # either string may be NULL, and the separator goes back as the
+        # one-character string the loader expects rather than its ordinal
+        pyenv = (<bytes>value[0].data.envar.envar).decode('UTF-8') \
+            if NULL != value[0].data.envar.envar else None
+        pyval = (<bytes>value[0].data.envar.value).decode('UTF-8') \
+            if NULL != value[0].data.envar.value else None
+        pysep = chr(value[0].data.envar.separator)
         pyenvans = {'envar': pyenv, 'value': pyval, 'separator': pysep}
         return {'value':pyenvans, 'val_type':PMIX_ENVAR}
 
@@ -1947,9 +1979,20 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         print("Unload_value: provided type is unknown", value[0].type)
         return {'value': None, 'val_type': PMIX_UNDEF}
 
+# Release everything a loaded value owns.
+#
+# pmix_load_value deliberately allocates with malloc (see the bindings
+# AGENTS.md) precisely so the result can be handed to the library, which
+# means the library's own destructor is the right one to release it. It
+# covers every type - the byte objects, envars, procs, proc_infos and data
+# arrays that a string-only destruct silently leaked on every put(),
+# store_internal() and data_*() call.
+#
+# The value must be zeroed before it is loaded, so that a load which fails
+# partway leaves the untouched members NULL rather than stack garbage.
+#
 cdef void pmix_destruct_value(pmix_value_t *value):
-    if value[0].type == PMIX_STRING:
-        free(value[0].data.string);
+    PMIx_Value_destruct(value)
 
 # Convert a dictionary of key-value pairs into an
 # array of pmix_info_t structs
