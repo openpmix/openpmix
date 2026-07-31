@@ -172,7 +172,10 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             lg->nodeinfo = false;
             lg->appinfo = false;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
-            lg->hostname = info[n].value.data.string;
+            /* must copy - lgdes() frees this field, and the info array
+             * belongs to the caller. Every other assignment to
+             * lg->hostname strdup's for the same reason */
+            lg->hostname = strdup(info[n].value.data.string);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
             rc = PMIx_Value_get_number(&info[n].value, &lg->nodeid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
