@@ -916,6 +916,9 @@ static inline bool pmix_check_node_info(const char *key)
     };
     size_t n;
 
+    if (NULL == key) {
+        return false;
+    }
     for (n = 0; NULL != keys[n]; n++) {
         if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
             return true;
@@ -933,6 +936,9 @@ static inline bool pmix_check_app_info(const char *key)
     };
     size_t n;
 
+    if (NULL == key) {
+        return false;
+    }
     for (n = 0; NULL != keys[n]; n++) {
         if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
             return true;
@@ -951,6 +957,9 @@ static inline bool pmix_check_session_info(const char *key)
     };
     size_t n;
 
+    if (NULL == key) {
+        return false;
+    }
     for (n = 0; NULL != keys[n]; n++) {
         if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
             return true;
@@ -968,6 +977,9 @@ static inline bool pmix_check_special_key(const char *key)
     };
     size_t n;
 
+    if (NULL == key) {
+        return false;
+    }
     for (n = 0; NULL != keys[n]; n++) {
         if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
             return true;
@@ -979,6 +991,14 @@ static inline bool pmix_check_special_key(const char *key)
 static inline bool pmix_check_local(const char *hostname)
 {
     size_t n;
+
+    /* the name being tested comes from wherever the caller got it -- a
+     * host-supplied info key, an unpacked message -- and our own hostname is
+     * not set until pmix_init has run. Neither is safe to hand to strcmp
+     * unchecked. A name we cannot compare is not local. */
+    if (NULL == hostname || NULL == pmix_globals.hostname) {
+        return false;
+    }
 
     // first do simple check
     if (0 == strcmp(pmix_globals.hostname, hostname)) {
