@@ -807,6 +807,9 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             }
         }
         if (NULL != members && NULL != grpid) {
+            /* the caller's thread reads this list - see the grouplock note
+             * in src/client/pmix_client_ops.h */
+            pmix_mutex_lock(&pmix_client_globals.grouplock);
             // see if we already know this group
             grp = NULL;
             PMIX_LIST_FOREACH(gp, &pmix_client_globals.groups, pmix_group_t) {
@@ -826,6 +829,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                 grp->ctxid = ctxid;
                 pmix_list_append(&pmix_client_globals.groups, &grp->super);
             }
+            pmix_mutex_unlock(&pmix_client_globals.grouplock);
         }
     }
 
@@ -842,6 +846,10 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             }
         }
         if (NULL != grpid && NULL != affected) {
+            /* this shifts a live membership array down underneath anything
+             * reading it from the caller's thread (a collective expanding a
+             * group reference, say), so it has to be held */
+            pmix_mutex_lock(&pmix_client_globals.grouplock);
             PMIX_LIST_FOREACH(gp, &pmix_client_globals.groups, pmix_group_t) {
                 if (0 != strcmp(grpid, gp->grpid)) {
                     continue;
@@ -858,6 +866,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                 }
                 break;
             }
+            pmix_mutex_unlock(&pmix_client_globals.grouplock);
         }
     }
 

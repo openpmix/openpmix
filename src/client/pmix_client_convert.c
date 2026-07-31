@@ -63,6 +63,13 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
 
     PMIX_CONSTRUCT(&cache, pmix_list_t);
 
+    /* The groups list, and the membership arrays hanging off it, can be
+     * changed by the progress thread while we walk them - a construct
+     * completing appends a group, and a PMIX_GROUP_LEFT event shifts a
+     * departed member out of an existing one. Every exit below goes through
+     * "unlock" so the lock is dropped exactly once. */
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+
     /* cycle thru the procs and check to see if any reference
      * a PMIx group */
     for (n = 0; n < insize; n++) {
@@ -102,23 +109,22 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
                         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
                             /* couldn't get the job size, so have to abort */
-                            PMIX_LIST_DESTRUCT(&cache);
                             PMIX_DESTRUCT(&cb2);
-                            return rc;
+                            goto unlock;
                         }
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
                         if (NULL == kv) {  // should never be NULL
                             /* couldn't retrieve the size, so we have
                              * to abort */
-                            PMIX_LIST_DESTRUCT(&cache);
-                            return PMIX_ERR_NOT_FOUND;
+                            rc = PMIX_ERR_NOT_FOUND;
+                            goto unlock;
                         }
                         rc = PMIx_Value_get_number(kv->value, &jsize, PMIX_UINT32);
                         PMIX_RELEASE(kv);
                         if (PMIX_SUCCESS != rc) {
-                            PMIX_LIST_DESTRUCT(&cache);
-                            return PMIX_ERR_BAD_PARAM;
+                            rc = PMIX_ERR_BAD_PARAM;
+                            goto unlock;
                         }
                         if (cnt + jsize > inprocs[n].rank) {
                             /* the specified rank is within this job */
@@ -161,10 +167,11 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
              * much further downstream (as PMIX_ERR_NOT_A_MEMBER, or as a
              * collective that never completes) with nothing pointing back
              * here. */
-            PMIX_LIST_DESTRUCT(&cache);
-            return PMIX_ERR_NOT_FOUND;
+            rc = PMIX_ERR_NOT_FOUND;
+            goto unlock;
         }
     }
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
 
     /* we have to return the cached array because
      * we might have replaced some of the entries */
@@ -179,6 +186,11 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
     *outprocs = procs;
     *outsize = sz;
     return PMIX_SUCCESS;
+
+unlock:
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+    PMIX_LIST_DESTRUCT(&cache);
+    return rc;
 }
 
 /* Return true if pmix_globals.myid is covered by the resolved procs array.
