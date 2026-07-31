@@ -439,13 +439,21 @@ Undefined symbols for architecture arm64:
 `pmix_ring_buffer_t` was the one class in the directory whose descriptor
 carried no `PMIX_EXPORT` — not on the declaration, not on the
 `PMIX_CLASS_INSTANCE`. So `PMIX_NEW(pmix_ring_buffer_t)` cannot link
-outside `libpmix` in any normal build. It went unnoticed because the class
-has **no callers in the tree at all**, and the one consumer that would have
-caught it is normally built against a `--disable-visibility` tree.
+outside `libpmix` in any normal build.
 
-Same lesson as §10, one level down: **a test that only ever runs in the
-maintainer's configuration only ever tests the maintainer's
-configuration.**
+That is not a theoretical break: this class's consumers are **downstream
+projects building against PMIx's installed internal headers**, which is
+exactly the population the missing export locks out. What kept it hidden
+is that no code *inside* this repository uses the class, so the only
+in-tree consumer able to catch it is `test/unit/class` — normally built
+against a `--disable-visibility` tree, where nothing is hidden and it
+links fine.
+
+Two lessons, both worth carrying. The one from §10, a level down: **a
+test that only ever runs in the maintainer's configuration only ever
+tests the maintainer's configuration.** And: **an in-tree grep is not
+evidence that an interface is unused** — `libpmix`'s internal headers
+are installed, and things build against them.
 
 > **Note on the `macos` half.** Autoconf refuses an out-of-tree build while
 > the source directory itself holds a `config.status`. `build.sh` resolves

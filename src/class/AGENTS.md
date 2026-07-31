@@ -240,10 +240,13 @@ mostly spelled out in the header's opening comment:
   `pmix_list_join` are O(N) only because they must fix that count.
 - `pmix_list_sort` sorts via an array of pointers + `qsort`; its compare
   function receives **double pointers** (`pmix_list_item_t **`).
-- **`pmix_list_insert` cannot append.** It rejects `idx >= length`, so
-  the one-past-the-end position a caller would expect to mean "append"
-  fails. The header says "greater than the length"; the code means
-  "greater than or equal". Use `pmix_list_append`.
+- **`pmix_list_insert` cannot append.** It inserts *before* an existing
+  item, so `idx` must be strictly less than the length: the
+  one-past-the-end position that would mean "append" is rejected, and an
+  empty list rejects every `idx`. Use `pmix_list_append` (O(1)) for the
+  back and `pmix_list_prepend` for the front. The header used to say
+  "greater than the length" where the code means "greater than or
+  equal"; it now says so plainly.
 
 > ### `PMIX_LIST_STATIC_INIT` does not produce a usable list
 >
@@ -333,16 +336,21 @@ Push/pop/poke over a fixed ring of `size` pointers; pushing into a full
 ring returns the displaced oldest entry (NACK-style schemes, per the
 hotel header's cross-reference). Small and self-contained; not TMA-aware.
 
-**It has no callers.** Nothing in `src/`, `test/` (beyond its own unit
-test), `bindings/` or `examples/` uses this class; the only reference is
-the aspirational mention in `pmix_hotel.h`'s opening comment. That is
-worth knowing before you spend effort on it — and it is why its class
-descriptor was missing `PMIX_EXPORT` for years without anyone noticing
-(the symbol is hidden in any build that does not pass
-`--disable-visibility`, so `PMIX_NEW(pmix_ring_buffer_t)` could not link
-outside `libpmix`). If you find yourself reaching for it, check first
-whether a hotel or a list fits; if it stays unused indefinitely,
-removing it is a reasonable proposal to raise on an issue.
+**Its consumers are outside this repository.** Nothing in `src/`,
+`test/` (beyond its own unit test), `bindings/` or `examples/` uses this
+class, but projects that build against PMIx's installed internal headers
+do. Do not read the empty in-tree grep as "dead code" and do not propose
+removing it — this class is part of the consumable internal surface and
+is on the same do-not-break footing as everything else here.
+
+That external-only usage is exactly why its class descriptor was missing
+`PMIX_EXPORT` for so long. `pmix_ring_buffer_t_class` is hidden in any
+build that does not pass `--disable-visibility`, so
+`PMIX_NEW(pmix_ring_buffer_t)` failed to link for precisely the callers
+that exist — and nothing in this tree could notice, because the one
+in-tree consumer is a unit test normally built against a
+`--disable-visibility` tree. Keep that in mind for the whole directory:
+**an in-tree grep is not evidence that a class is unused.**
 
 Note also that `pmix_ring_buffer_push`'s tail bookkeeping is only
 correct because `tail == head` whenever the ring is full. That invariant

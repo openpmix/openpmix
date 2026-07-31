@@ -810,8 +810,16 @@ static inline void pmix_list_insert_pos(pmix_list_t *list, pmix_list_item_t *pos
  * Example: if idx = 2 and list = item1->item2->item3->item4, then
  * after insert, list = item1->item2->item->item3->item4.
  *
- * If index is greater than the length of the list, no action is
- * performed and false is returned.
+ * The item is always inserted *before* an existing item, so idx must
+ * identify one: it has to be strictly less than the current list
+ * length.  Otherwise no action is performed and false is returned.
+ *
+ * In particular, this function CANNOT APPEND.  idx == the list length
+ * -- the one-past-the-end position that would mean "put it at the
+ * back" -- is rejected along with everything above it, and an empty
+ * list rejects every idx including 0.  Use pmix_list_append() to add
+ * at the back and pmix_list_prepend() to add at the front; both are
+ * O(1), where this is O(N).
  */
 PMIX_EXPORT bool pmix_list_insert(pmix_list_t *list,
                                   pmix_list_item_t *item,
