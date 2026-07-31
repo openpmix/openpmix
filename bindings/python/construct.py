@@ -318,7 +318,16 @@ def harvest_constants(options, src, constants, definitions):
 
     # start by pretty-printing the string constants
     # prepended with an underscore to avoid conflicts
-    # with the Python version of the name
+    # with the Python version of the name.
+    #
+    # The underscored name is a "const char*", which Cython converts to
+    # bytes. Decode it so the Python-visible constant is a str: keys that
+    # come back from the library are decoded, so a bytes constant could
+    # never compare equal to one, and
+    #     if PMIX_ALLOC_STATUS == info[n]['key']:
+    # would silently never match. The conversion layer accepts either
+    # form on the way in, so a str constant works everywhere a bytes one
+    # did.
     if takeconst and len(strconsts) > 0:
         if not defsrc:
             definitions.write("cdef extern from \"" + src + "\":\n")
@@ -337,7 +346,7 @@ def harvest_constants(options, src, constants, definitions):
             constants.write(const)
             for i in range (4 + strconstlen - len(const)):
                 constants.write(" ")
-            constants.write("= " + defname + "\n")
+            constants.write("= " + defname + ".decode('ascii')\n")
         # add some space
         definitions.write("\n")
         constants.write("\n")

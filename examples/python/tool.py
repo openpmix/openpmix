@@ -114,14 +114,13 @@ def main():
         # find the response
         if PMIX_SUCCESS == mydata.status:
             # should be in the first key
-            if mydata.info and key_is(mydata.info[0]['key'],
-                                      PMIX_SERVER_URI):
+            if mydata.info and PMIX_SERVER_URI == mydata.info[0]['key']:
                 eprint("PMIx server URI for node %s: %s"
                        % (hostname if nodename is None else nodename,
                           mydata.info[0]['value']))
             else:
                 eprint("Query returned wrong info key at first posn: %s"
-                       % (as_key(mydata.info[0]['key'])
+                       % (mydata.info[0]['key']
                           if mydata.info else None))
         else:
             eprint("Query returned error:",
@@ -163,8 +162,8 @@ def main():
         # find the response
         if PMIX_SUCCESS == mydata.status:
             # should be in the first key
-            if mydata.info and key_is(mydata.info[0]['key'],
-                                      PMIX_QUERY_NAMESPACE_INFO):
+            if (mydata.info
+                    and PMIX_QUERY_NAMESPACE_INFO == mydata.info[0]['key']):
                 darray = mydata.info[0]['value']
                 eprint("ACTIVE NSPACES:")
                 if darray is None or 0 == len(darray.get('array', [])):
@@ -177,14 +176,14 @@ def main():
                                    % ("NULL" if dptr is None else "NON-NULL"))
                             break
                         for item in dptr['array']:
-                            if key_is(item['key'], PMIX_PROC_INFO_ARRAY):
+                            if PMIX_PROC_INFO_ARRAY == item['key']:
                                 eprint("")
                             _, txt = tool.info_string(item)
                             eprint("\t%s" % txt, end='')
                         eprint("\n")
             else:
                 eprint("Query returned wrong info key at first posn: %s"
-                       % (as_key(mydata.info[0]['key'])
+                       % (mydata.info[0]['key']
                           if mydata.info else None))
         else:
             eprint("Query returned error:",
@@ -204,12 +203,12 @@ def main():
         # find the response
         if PMIX_SUCCESS == mydata.status:
             # should be in the first key
-            if mydata.info and key_is(mydata.info[0]['key'], PMIX_JOB_SIZE):
+            if mydata.info and PMIX_JOB_SIZE == mydata.info[0]['key']:
                 eprint("JOB SIZE FOR NSPACE %s: %lu"
                        % (nspace, mydata.info[0]['value']))
             else:
                 eprint("Query returned wrong info key at first posn: %s"
-                       % (as_key(mydata.info[0]['key'])
+                       % (mydata.info[0]['key']
                           if mydata.info else None))
         else:
             eprint("Query returned error:",

@@ -79,9 +79,10 @@ recurring cases:
   one line of ordinary Python. Where a C example uses one, the port just
   does the Python thing.
 
-- **Attribute constants are `bytes`; returned keys are `str`.** So
-  `PMIX_ALLOC_STATUS == info[n]['key']` is never true. Use `key_is()` and
-  `find_key()` from `examples.py`, which normalize both sides.
+- **Attribute constants and returned keys are both `str`**, so
+  `PMIX_ALLOC_STATUS == info[n]['key']` reads exactly as the C
+  `PMIX_CHECK_KEY` does. `find_key()` in `examples.py` wraps the usual
+  loop over an info list.
 
 - **`error_string()` and friends return a plain string, but the struct
   pretty-printers return `(rc, string)`** — so `info_string`,

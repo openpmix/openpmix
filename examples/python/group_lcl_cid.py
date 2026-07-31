@@ -113,14 +113,14 @@ def main():
     idassigned = False
     if results:
         for item in results:
-            if key_is(item['key'], PMIX_GROUP_CONTEXT_ID):
+            if PMIX_GROUP_CONTEXT_ID == item['key']:
                 cid = item['value']
                 idassigned = True
                 break
         eprint("Rank %d Group construct complete with status %s KEY %s "
                "CID assigned: %s value: %lu"
                % (myproc['rank'], client.error_string(rc),
-                  as_key(results[0]['key']), "T" if idassigned else "F", cid))
+                  results[0]['key'], "T" if idassigned else "F", cid))
     else:
         eprint("Rank %d Group construct complete, but no CID returned"
                % myproc['rank'])
