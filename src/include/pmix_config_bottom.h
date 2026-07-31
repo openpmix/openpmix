@@ -53,9 +53,6 @@
  *
  **********************************************************************/
 
-/* Do we have posix thread lib */
-#define PMIX_HAVE_THREADS (PMIX_HAVE_POSIX_THREADS)
-
 /*
  * BEGIN_C_DECLS should be used at the beginning of your declarations,
  * so that C++ compilers don't mangle their names.  Use END_C_DECLS at
@@ -70,17 +67,6 @@
 #    define BEGIN_C_DECLS /* empty */
 #    define END_C_DECLS   /* empty */
 #endif
-
-/* Defined to 1 on Linux */
-#undef PMIX_LINUX_SYS
-
-/* Defined to 1 if the CPU_SET macro works */
-#undef PMIX_HAVE_CPU_SET
-
-/* Defined to 1 if you have the `windows.h' header. */
-#undef PMIX_HAVE_WINDOWS_H
-#undef pmix_pid_t
-#undef pmix_thread_t
 
 /*
  * Note: this is public.  We can not assume anything from the compiler used
@@ -187,7 +173,7 @@
 #endif
 
 #if PMIX_HAVE_ATTRIBUTE_FORMAT
-    #    define __pmix_attribute_format__(a, b, c) __attribute__((__format__(a, b, c)))
+#    define __pmix_attribute_format__(a, b, c) __attribute__((__format__(a, b, c)))
 #else
 #    define __pmix_attribute_format__(a, b, c)
 #endif
@@ -296,7 +282,7 @@
 #endif
 
 #if PMIX_HAVE_ATTRIBUTE_SENTINEL
-    #    define __pmix_attribute_sentinel__ __attribute__((__sentinel__))
+#    define __pmix_attribute_sentinel__ __attribute__((__sentinel__))
 #else
 #    define __pmix_attribute_sentinel__
 #endif
@@ -355,7 +341,6 @@
    including stdint.h */
 #        define __STDC_LIMIT_MACROS
 #    endif
-#    include "src/include/pmix_config.h"
 #    include <stdint.h>
 #else
 #    include "src/include/pmix_stdint.h"
