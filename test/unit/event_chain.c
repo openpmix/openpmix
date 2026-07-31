@@ -60,6 +60,12 @@
  *
  *  first-overall handler with multiple codes honors its
  *      affected-proc interest list.
+ *
+ *  default-handler registration: a client registering with no codes is
+ *      recorded against the server's PMIX_MAX_ERR_CONSTANT entry, which
+ *      is created if this is the first such registration; a second one
+ *      joins the same entry; and deregistration finds what registration
+ *      created.
  */
 
 #include "src/include/pmix_config.h"
@@ -781,7 +787,9 @@ static void do_client_reg(int sd, short args, void *cbdata)
 
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &r->ncodes, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS == rc) {
+    /* zero codes is a default-handler registration - the server unpacks
+     * the code array only when the count is non-zero, so do not pack one */
+    if (PMIX_SUCCESS == rc && 0 < r->ncodes) {
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, r->codes, r->ncodes, PMIX_STATUS);
     }
     if (PMIX_SUCCESS == rc) {
@@ -834,6 +842,80 @@ static pmix_status_t client_evreq(pmix_status_t *codes, size_t ncodes, bool dere
     rc = req.status;
     PMIX_DESTRUCT_LOCK(&req.lock);
     return rc;
+}
+
+/* Count how many peers are recorded against the server's default-handler
+ * entry, and say whether the entry exists at all. */
+static size_t default_reg_peers(bool *exists)
+{
+    pmix_regevents_info_t *reginfo;
+    pmix_peer_events_info_t *pr;
+    size_t n = 0;
+
+    *exists = false;
+    PMIX_LIST_FOREACH (reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
+        if (PMIX_MAX_ERR_CONSTANT != reginfo->code) {
+            continue;
+        }
+        *exists = true;
+        PMIX_LIST_FOREACH (pr, &reginfo->peers, pmix_peer_events_info_t) {
+            ++n;
+        }
+        break;
+    }
+    return n;
+}
+
+/* A client registering a DEFAULT handler - no codes at all - has to be
+ * recorded in the server's dispatch list, including when it is the first
+ * such registration the server has seen.
+ *
+ * This is the case that was broken: the handler walked the list looking
+ * for an existing PMIX_MAX_ERR_CONSTANT entry and, finding none, returned
+ * PMIX_OPERATION_SUCCEEDED having stored nothing. The peer was told its
+ * registration succeeded and then received no default-routed event ever
+ * again, which is precisely the fate of the first client or tool to
+ * attach to a server - it necessarily finds the list empty.
+ *
+ * Run this before anything else registers, so the entry really is absent
+ * to begin with. */
+static void test_default_registration(void)
+{
+    pmix_status_t wildcard = PMIX_MAX_ERR_CONSTANT;
+    size_t before, after;
+    bool existed = false, exists = false;
+    pmix_status_t rc;
+
+    fprintf(stdout, "default-handler registration:\n");
+
+    before = default_reg_peers(&existed);
+    report("no default entry exists yet", !existed && 0 == before);
+
+    rc = client_evreq(NULL, 0, false);
+    report("registering with no codes succeeds",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+
+    after = default_reg_peers(&exists);
+    report("the default entry was created", exists);
+    report("the registrant is on it", 1 == after);
+
+    /* a second default registration joins the same entry rather than
+     * making another one */
+    rc = client_evreq(NULL, 0, false);
+    after = default_reg_peers(&exists);
+    report("a second default registration joins the same entry",
+           exists && 2 == after);
+
+    /* and deregistration finds what registration created. A client drops a
+     * default handler by naming PMIX_MAX_ERR_CONSTANT explicitly, not by
+     * sending an empty code list - see pmix_deregister_event_hdlr(). */
+    rc = client_evreq(&wildcard, 1, true);
+    after = default_reg_peers(&exists);
+    report("deregistering removes one registrant", 1 == after);
+
+    rc = client_evreq(&wildcard, 1, true);
+    after = default_reg_peers(&exists);
+    report("deregistering the last one empties the entry", 0 == after);
 }
 
 static void test_enviro_handshake(void)
@@ -1015,6 +1097,10 @@ int main(int argc, char **argv)
     /* pure predicate checks */
     test_check_affected();
     test_check_range();
+
+    /* must run before anything registers, so the default entry really is
+     * absent when we ask for one */
+    test_default_registration();
 
     /* registration placement and chain progression */
     test_chain_order();
