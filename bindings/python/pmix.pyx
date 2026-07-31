@@ -862,6 +862,45 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
         threading.Timer(0.001, event_cache_cb, [cb, rc]).start()
     return
 
+# Round-trip a value dict through the C conversion layer and back.
+#
+# pmix_load_value and pmix_unload_value are cdef, so Python cannot reach
+# them and the conversion arms - above all the PMIX_DATA_ARRAY ones, whose
+# struct-member mistakes Cython cannot catch because it silently converts
+# a C struct to a dict - were coverable only by a connected round trip
+# through a live server. This exposes just enough of the pair for
+# test/python/test_bindings.py to check every arm with no server at all:
+# it loads the dict into a pmix_value_t, converts that back to a dict, and
+# releases the value.
+#
+# Returns (rc, value dict); the dict is None if the load failed.
+#
+# Note that this needs no initialized library, with one exception: the
+# storage behind a PMIX_REGEX value belongs to the preg framework, so
+# releasing one before PMIx_Init would walk an unbuilt module list. Such a
+# value is refused rather than leaked or crashed on.
+def pmix_value_roundtrip(pyval):
+    cdef pmix_value_t value
+
+    if not isinstance(pyval, dict):
+        return (PMIX_ERR_BAD_PARAM, None)
+    if 'value' not in pyval or 'val_type' not in pyval:
+        return (PMIX_ERR_BAD_PARAM, None)
+    if PMIX_REGEX == pyval['val_type']:
+        return (PMIX_ERR_NOT_SUPPORTED, None)
+
+    # zero it first so a loader that fails partway leaves something safe
+    # to destruct
+    memset(&value, 0, sizeof(pmix_value_t))
+    rc = pmix_load_value(&value, pyval)
+    if PMIX_SUCCESS != rc:
+        pmix_destruct_value(&value)
+        return (rc, None)
+    pyout = pmix_unload_value(&value)
+    pmix_destruct_value(&value)
+    return (PMIX_SUCCESS, pyout)
+
+
 cdef class PMIxClient:
     cdef pmix_proc_t myproc;
     cdef pmix_fabric_t myfabric;
