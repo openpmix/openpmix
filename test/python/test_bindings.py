@@ -843,6 +843,268 @@ class TestStructPrinters(unittest.TestCase):
                 self.assertEqual(rc, pmix.PMIX_SUCCESS)
 
 
+class TestValueConversion(unittest.TestCase):
+    """The value load/unload conversion layer.
+
+    pmix_load_value and pmix_unload_value are cdef and so unreachable from
+    Python; pmix_value_roundtrip is the hook that exposes them, loading a
+    value dict into a pmix_value_t, converting it back, and releasing the
+    value.  Nothing here needs a live library.
+
+    The cases come from the old bindings/python/tests/cython smoke test,
+    which could only print what it produced - so a wrong struct member or a
+    freed-twice pointer looked exactly like a correct conversion.  Here the
+    result is checked.
+    """
+
+    #: name, input value dict, dict it must convert back to
+    SCALARS = (
+        # the loader takes the string spelling of a bool; what comes back
+        # is the canonical Python one
+        ("bool-str", {'value': 'True', 'val_type': pmix.PMIX_BOOL},
+         {'value': True, 'val_type': pmix.PMIX_BOOL}),
+        ("bool", {'value': False, 'val_type': pmix.PMIX_BOOL}, None),
+        ("byte", {'value': 1, 'val_type': pmix.PMIX_BYTE}, None),
+        ("string", {'value': "foo", 'val_type': pmix.PMIX_STRING}, None),
+        # a PMIX_STRING is allowed to carry a NULL
+        ("string-none", {'value': None, 'val_type': pmix.PMIX_STRING}, None),
+        ("size", {'value': 45, 'val_type': pmix.PMIX_SIZE}, None),
+        ("pid", {'value': 3, 'val_type': pmix.PMIX_PID}, None),
+        ("int", {'value': 11, 'val_type': pmix.PMIX_INT}, None),
+        ("int8", {'value': 2, 'val_type': pmix.PMIX_INT8}, None),
+        ("int16", {'value': 127, 'val_type': pmix.PMIX_INT16}, None),
+        ("int32", {'value': 100, 'val_type': pmix.PMIX_INT32}, None),
+        ("int64", {'value': 500, 'val_type': pmix.PMIX_INT64}, None),
+        ("uint", {'value': 250, 'val_type': pmix.PMIX_UINT}, None),
+        ("uint8", {'value': 201, 'val_type': pmix.PMIX_UINT8}, None),
+        ("uint16", {'value': 700, 'val_type': pmix.PMIX_UINT16}, None),
+        ("uint32", {'value': 301, 'val_type': pmix.PMIX_UINT32}, None),
+        ("uint64", {'value': 301, 'val_type': pmix.PMIX_UINT64}, None),
+        ("double", {'value': 201.25, 'val_type': pmix.PMIX_DOUBLE}, None),
+        ("timeval", {'value': {'sec': 2, 'usec': 3},
+                     'val_type': pmix.PMIX_TIMEVAL}, None),
+        ("time", {'value': 100, 'val_type': pmix.PMIX_TIME}, None),
+        ("status", {'value': -34, 'val_type': pmix.PMIX_STATUS}, None),
+        ("rank", {'value': 15, 'val_type': pmix.PMIX_PROC_RANK}, None),
+        ("proc", {'value': {'nspace': "testnspace", 'rank': 0},
+                  'val_type': pmix.PMIX_PROC}, None),
+        ("byte-object", {'value': {'bytes': b"\x01\x02\xff", 'size': 3},
+                         'val_type': pmix.PMIX_BYTE_OBJECT}, None),
+        ("persist", {'value': 18, 'val_type': pmix.PMIX_PERSIST}, None),
+        ("scope", {'value': 1, 'val_type': pmix.PMIX_SCOPE}, None),
+        ("range", {'value': 5, 'val_type': pmix.PMIX_DATA_RANGE}, None),
+        ("proc-state", {'value': 45, 'val_type': pmix.PMIX_PROC_STATE}, None),
+        ("proc-info", {'value': {'proc': {'nspace': "fakenspace", 'rank': 0},
+                                 'hostname': "myhostname",
+                                 'executable': "testexec",
+                                 'pid': 2, 'exitcode': 0, 'state': 0},
+                       'val_type': pmix.PMIX_PROC_INFO}, None),
+        ("alloc-directive", {'value': 19,
+                             'val_type': pmix.PMIX_ALLOC_DIRECTIVE}, None),
+        ("envar", {'value': {'envar': "TEST_ENVAR", 'value': "TEST_VAL",
+                             'separator': ':'},
+                   'val_type': pmix.PMIX_ENVAR}, None),
+    )
+
+    def _check(self, name, given, expect):
+        rc, got = pmix.pmix_value_roundtrip(given)
+        self.assertEqual(rc, pmix.PMIX_SUCCESS,
+                         "%s failed to convert: %s" % (name, rc))
+        self.assertEqual(got, expect if expect is not None else given,
+                         "%s came back as %r" % (name, got))
+        return got
+
+    def test_scalar_round_trip(self):
+        for name, given, expect in self.SCALARS:
+            self._check(name, given, expect)
+
+    def test_float_round_trip(self):
+        # a PMIX_FLOAT is single precision, so this one cannot be exact
+        rc, got = pmix.pmix_value_roundtrip({'value': 301.1,
+                                             'val_type': pmix.PMIX_FLOAT})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['val_type'], pmix.PMIX_FLOAT)
+        self.assertAlmostEqual(got['value'], 301.1, places=4)
+
+    def test_output_can_be_fed_back_in(self):
+        # what comes out must be loadable again, unchanged - a converter
+        # that renders a member in a shape the loader will not take (an
+        # envar separator as its ordinal, say) breaks any handler that
+        # echoes back what it was given
+        for name, given, expect in self.SCALARS:
+            once = self._check(name, given, expect)
+            rc, twice = pmix.pmix_value_roundtrip(once)
+            self.assertEqual(rc, pmix.PMIX_SUCCESS,
+                             "%s did not reload: %s" % (name, rc))
+            self.assertEqual(twice, once, "%s is not stable" % name)
+
+    def test_bad_arguments_rejected(self):
+        for bad in (None, "not-a-dict", 7, [], {}, {'value': 1},
+                    {'val_type': pmix.PMIX_INT}):
+            rc, got = pmix.pmix_value_roundtrip(bad)
+            self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM,
+                             "accepted %r" % (bad,))
+            self.assertIsNone(got)
+
+    def test_repeated_calls_are_stable(self):
+        # every one of these allocates, and the value has to be released
+        # again on each pass
+        for _ in range(200):
+            for name, given, expect in self.SCALARS:
+                rc, _got = pmix.pmix_value_roundtrip(given)
+                self.assertEqual(rc, pmix.PMIX_SUCCESS)
+
+
+class TestDataArrayConversion(unittest.TestCase):
+    """PMIX_DATA_ARRAY, the conversion arm with the most places to go wrong.
+
+    Cython converts a C struct to a Python dict on the fly, so a misspelled
+    struct member in one of these arms compiles cleanly and only misbehaves
+    at run time (see the bindings AGENTS.md).  Every element type the loader
+    claims to support is round-tripped here.
+    """
+
+    INFO_ARRAY = {'type': pmix.PMIX_INFO,
+                  'array': [{'key': "pmix.alloc.netid",
+                             'value': "SIMPSCHED.net",
+                             'val_type': pmix.PMIX_STRING},
+                            {'key': "pmix.alloc.nsec", 'value': 'T',
+                             'val_type': pmix.PMIX_BOOL}]}
+    # what the info array above converts back to: an unload always reports
+    # the info flags, and the bool arrives canonicalized
+    INFO_ARRAY_OUT = {'type': pmix.PMIX_INFO,
+                      'array': [{'key': "pmix.alloc.netid", 'flags': 0,
+                                 'value': "SIMPSCHED.net",
+                                 'val_type': pmix.PMIX_STRING},
+                                {'key': "pmix.alloc.nsec", 'flags': 0,
+                                 'value': True,
+                                 'val_type': pmix.PMIX_BOOL}]}
+
+    #: name, array dict, the array dict it must convert back to
+    ARRAYS = (
+        ("info", INFO_ARRAY, INFO_ARRAY_OUT),
+        # an array nested inside an info inside an array
+        ("nested",
+         {'type': pmix.PMIX_INFO,
+          'array': [{'key': "foo", 'value': INFO_ARRAY,
+                     'val_type': pmix.PMIX_DATA_ARRAY}]},
+         {'type': pmix.PMIX_INFO,
+          'array': [{'key': "foo", 'flags': 0, 'value': INFO_ARRAY_OUT,
+                     'val_type': pmix.PMIX_DATA_ARRAY}]}),
+        ("string", {'type': pmix.PMIX_STRING,
+                    'array': ["abc", "def", "efg"]}, None),
+        ("bool", {'type': pmix.PMIX_BOOL, 'array': ['False', 'True']},
+         {'type': pmix.PMIX_BOOL, 'array': [False, True]}),
+        ("byte", {'type': pmix.PMIX_BYTE, 'array': [1, 2, 255]}, None),
+        ("size", {'type': pmix.PMIX_SIZE, 'array': [45, 46, 47]}, None),
+        ("pid", {'type': pmix.PMIX_PID, 'array': [3, 4, 5]}, None),
+        ("int", {'type': pmix.PMIX_INT, 'array': [1, 2, 3]}, None),
+        ("int8", {'type': pmix.PMIX_INT8, 'array': [1, 2]}, None),
+        ("int16", {'type': pmix.PMIX_INT16, 'array': [300, 400]}, None),
+        ("int32", {'type': pmix.PMIX_INT32, 'array': [-1, 2]}, None),
+        ("int64", {'type': pmix.PMIX_INT64, 'array': [1 << 40, 2]}, None),
+        ("uint32", {'type': pmix.PMIX_UINT32, 'array': [7, 8]}, None),
+        ("uint64", {'type': pmix.PMIX_UINT64, 'array': [7, 8]}, None),
+        ("float", {'type': pmix.PMIX_FLOAT, 'array': [1.5, 2.5]}, None),
+        ("double", {'type': pmix.PMIX_DOUBLE, 'array': [1.25, 2.5]}, None),
+        ("timeval", {'type': pmix.PMIX_TIMEVAL,
+                     'array': [{'sec': 2, 'usec': 3},
+                               {'sec': 1, 'usec': 2}]}, None),
+        ("time", {'type': pmix.PMIX_TIME, 'array': [100, 200]}, None),
+        ("status", {'type': pmix.PMIX_STATUS, 'array': [-1, -2]}, None),
+        ("rank", {'type': pmix.PMIX_PROC_RANK, 'array': [0, 1]}, None),
+        ("proc", {'type': pmix.PMIX_PROC,
+                  'array': [{'nspace': "testnspace", 'rank': 0},
+                            {'nspace': "newnspace", 'rank': 1}]}, None),
+        ("byte-object", {'type': pmix.PMIX_BYTE_OBJECT,
+                         'array': [{'bytes': b"\x01", 'size': 1},
+                                   {'bytes': b"\x02\xfe", 'size': 2}]}, None),
+        ("persist", {'type': pmix.PMIX_PERSIST, 'array': [1, 2]}, None),
+        ("scope", {'type': pmix.PMIX_SCOPE, 'array': [1, 2]}, None),
+        ("range", {'type': pmix.PMIX_DATA_RANGE, 'array': [1, 2]}, None),
+        ("proc-state", {'type': pmix.PMIX_PROC_STATE, 'array': [0, 1]}, None),
+        ("alloc-directive", {'type': pmix.PMIX_ALLOC_DIRECTIVE,
+                             'array': [1, 2]}, None),
+        ("proc-info", {'type': pmix.PMIX_PROC_INFO,
+                       'array': [{'proc': {'nspace': "fakenspace", 'rank': 0},
+                                  'hostname': "myhostname",
+                                  'executable': "testexec",
+                                  'pid': 2, 'exitcode': 0,
+                                  'state': 0}]}, None),
+        ("envar", {'type': pmix.PMIX_ENVAR,
+                   'array': [{'envar': "TEST_ENVAR", 'value': "TEST_VAL",
+                              'separator': ':'}]}, None),
+    )
+
+    @staticmethod
+    def _value(array):
+        return {'value': array, 'val_type': pmix.PMIX_DATA_ARRAY}
+
+    def test_round_trip(self):
+        for name, given, expect in self.ARRAYS:
+            rc, got = pmix.pmix_value_roundtrip(self._value(given))
+            self.assertEqual(rc, pmix.PMIX_SUCCESS,
+                             "%s array failed to convert: %s" % (name, rc))
+            self.assertEqual(got, self._value(expect if expect is not None
+                                              else given),
+                             "%s array came back as %r" % (name, got))
+
+    def test_output_can_be_fed_back_in(self):
+        for name, given, expect in self.ARRAYS:
+            rc, once = pmix.pmix_value_roundtrip(self._value(given))
+            self.assertEqual(rc, pmix.PMIX_SUCCESS)
+            rc, twice = pmix.pmix_value_roundtrip(once)
+            self.assertEqual(rc, pmix.PMIX_SUCCESS,
+                             "%s array did not reload: %s" % (name, rc))
+            self.assertEqual(twice, once, "%s array is not stable" % name)
+
+    def test_element_count_preserved(self):
+        for name, given, expect in self.ARRAYS:
+            rc, got = pmix.pmix_value_roundtrip(self._value(given))
+            self.assertEqual(rc, pmix.PMIX_SUCCESS)
+            self.assertEqual(len(got['value']['array']),
+                             len(given['array']),
+                             "%s array changed length" % name)
+
+    def test_empty_array(self):
+        rc, got = pmix.pmix_value_roundtrip(
+            self._value({'type': pmix.PMIX_STRING, 'array': []}))
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value']['array'], [])
+
+    def test_null_string_element(self):
+        # a NULL entry is legal in a string array, as it is in a scalar
+        rc, got = pmix.pmix_value_roundtrip(
+            self._value({'type': pmix.PMIX_STRING, 'array': ["a", None]}))
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value']['array'], ["a", None])
+
+    def test_unconvertible_array_reports_an_error(self):
+        # a failed load has to be reported rather than handed back as a
+        # value whose array was never filled in
+        bad = (
+            # no loader arm for this element type at all
+            {'type': pmix.PMIX_COORD, 'array': [1]},
+            # right type, wrong element
+            {'type': pmix.PMIX_STRING, 'array': ["abc", 42]},
+            {'type': pmix.PMIX_BOOL, 'array': ["yes"]},
+            {'type': pmix.PMIX_BYTE, 'array': [1, 999]},
+        )
+        for array in bad:
+            rc, got = pmix.pmix_value_roundtrip(self._value(array))
+            self.assertNotEqual(rc, pmix.PMIX_SUCCESS,
+                                "accepted %r" % (array,))
+            self.assertIsNone(got)
+
+    def test_repeated_calls_are_stable(self):
+        # each pass allocates the array and every pointer in it, and has to
+        # give all of it back
+        for _ in range(100):
+            for name, given, expect in self.ARRAYS:
+                rc, _got = pmix.pmix_value_roundtrip(self._value(given))
+                self.assertEqual(rc, pmix.PMIX_SUCCESS)
+
+
 class TestDataBindings(unittest.TestCase):
     """The serialization family.
 

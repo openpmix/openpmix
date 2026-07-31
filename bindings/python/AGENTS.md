@@ -33,12 +33,13 @@ change is silently discarded on the next build.
 
 **All of the tests live in the top-level
 [`test/python/`](../../test/python/) directory** (see §7) — that is the
-one place to add or fix one. Duplicate copies used to sit under
-`bindings/python/tests/python/`; they were deleted because they drifted
-out of sync with the bindings and only CI ran them, so a change could
-pass `make check` and still break CI. The one thing left under `tests/`
-is `tests/cython/`, an old Cython round-trip smoke test that nothing
-compiles or runs.
+one place to add or fix one. There is deliberately nothing under
+`bindings/python/tests/`: it held duplicate copies of the connected
+scripts that drifted out of sync with the bindings (only CI ran them, so
+a change could pass `make check` and still break CI), plus a Cython
+round-trip smoke test that nothing compiled or ran. The conversion cases
+that smoke test carried now live in `test/python/test_bindings.py`,
+reachable from Python through the `pmix_value_roundtrip` hook (§7).
 
 ---
 
@@ -363,12 +364,28 @@ PYTHONPATH=<repo>/bindings/python/build/lib.<platform> ./test_bindings.py
 
 **Where unit tests can and can't reach:** the `*_string` converters and
 constant/version accessors are pure and testable without a server. The
-conversion helpers (`pmix_load_value`, …) are `cdef` and **not importable from
-Python**, so they can't be unit-tested directly — the practical way to cover
-them is a round-trip through a connected client/server (put→get,
-publish→lookup), which belongs in the integration scripts. When adding a new
-stateless helper, prefer exposing enough of it to add a `test_bindings.py`
-case.
+conversion helpers (`pmix_load_value`, …) are `cdef` and **not importable
+from Python** — so `pmix.pyx` exposes one module-level hook,
+**`pmix_value_roundtrip(value_dict)`**, which loads a value dict into a
+`pmix_value_t`, converts it back, releases the value, and returns
+`(rc, dict)`. That is what makes the load/unload arms — above all the
+`PMIX_DATA_ARRAY` ones, where a struct-member typo compiles cleanly (§3) —
+coverable with no server at all; see `TestValueConversion` and
+`TestDataArrayConversion` in `test_bindings.py`. The hook needs no
+initialized library, with one exception: a `PMIX_REGEX` value's storage
+belongs to the `preg` framework, so it is refused rather than released
+against an unbuilt module list.
+
+A round trip through the hook is *necessary but not sufficient*: it
+exercises the loader and the unloader against each other, so a mistake
+both of them make — the element **size** of an array, say — cancels out
+and looks correct. The authority for a layout is the C side that will
+read it (`pmix_bfrops_base_pack_*`), not the other half of the binding.
+Anything the library itself must interpret still wants a connected
+round trip (put→get, publish→lookup) in the integration scripts.
+
+When adding a new stateless helper, prefer exposing enough of it to add a
+`test_bindings.py` case.
 
 ---
 
