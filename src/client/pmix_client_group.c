@@ -1484,7 +1484,29 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
 
-    PMIX_HIDE_UNUSED_PARAMS(results, nresults);
+    /* Set the default response before anything can fail. These are OUT
+     * parameters the caller is entitled to read on return, and both are
+     * documented as optional, so honor a NULL for either.
+     *
+     * NOTE: they are always returned empty today. The man page says this
+     * call returns "once the group has been completely constructed", with
+     * the construct results available here - but the implementation
+     * completes as soon as the accept/decline notification has been handed
+     * to the local event system, which is much earlier and carries no group
+     * data. Completing at the documented point would mean waiting for the
+     * leader's PMIX_GROUP_CONSTRUCT_COMPLETE, and that event is not
+     * guaranteed to reach an acceptor at all (see the leader-watch registry
+     * near the top of this file) - so waiting for it here would hang the
+     * common case rather than fix it. The gap is recorded in
+     * src/client/AGENTS.md; closing it is a protocol change, not a local
+     * one. Until then the group results reach the application through its
+     * PMIX_GROUP_CONSTRUCT_COMPLETE handler. */
+    if (NULL != results) {
+        *results = NULL;
+    }
+    if (NULL != nresults) {
+        *nresults = 0;
+    }
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -1513,6 +1535,16 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
     /* wait for the group construction to complete */
     PMIX_WAIT_THREAD(&cb->lock);
     rc = cb->status;
+    /* hand over anything the completion collected. Nothing does today, per
+     * the note above, but the transfer belongs here rather than being
+     * grafted on later - and it keeps this wrapper structurally identical
+     * to PMIx_Group_construct. */
+    if (PMIX_SUCCESS == rc && NULL != results && NULL != nresults) {
+        *results = cb->results;
+        *nresults = cb->nresults;
+        cb->results = NULL;
+        cb->nresults = 0;
+    }
     PMIX_RELEASE(cb);
 
     pmix_output_verbose(2, pmix_client_globals.group_output,
@@ -1816,7 +1848,13 @@ static void op_cbfunc_rel(pmix_status_t status, void *cbdata)
 
     cb->status = status;
     if (NULL != cb->cbfunc) {
-        cb->cbfunc(status, cb->info, cb->ninfo, cb->cbdata, relfn, cb);
+        /* Report no results, not cb->info: the info on this tracker is the
+         * custom range we used to aim the accept/decline notification at the
+         * leader. That is our own event plumbing, and handing it back as the
+         * "results" of the join would present a PMIX_EVENT_CUSTOM_RANGE to
+         * the caller as if it were group data. There genuinely are no
+         * results at this point - see PMIx_Group_join. */
+        cb->cbfunc(status, NULL, 0, cb->cbdata, relfn, cb);
     } else {
         PMIX_RELEASE(cb);
     }

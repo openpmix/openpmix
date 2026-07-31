@@ -251,6 +251,36 @@ static void test_compute_distances(void)
           "PMIx_Compute_distances_nb(cbfunc=NULL) returns PMIX_ERR_BAD_PARAM");
 }
 
+static void test_group_join_outparams(void)
+{
+    pmix_info_t *results;
+    size_t nresults;
+    pmix_proc_t leader;
+    pmix_status_t rc;
+
+    fprintf(stdout, "\n-- PMIx_Group_join out-parameters --\n");
+
+    /* Poison them: they are OUT parameters the caller reads on return, and
+     * this call used to declare them unused, so whatever was on the stack
+     * was what the caller got back. A singleton cannot actually join
+     * anything, which is the point - the defaults must be established
+     * before the call can fail for any reason. */
+    results = (pmix_info_t *) (uintptr_t) 0xdeadbeef;
+    nresults = 12345;
+    PMIX_LOAD_PROCID(&leader, "no.such.nspace", 0);
+
+    rc = PMIx_Group_join("nosuchgroup", &leader, PMIX_GROUP_ACCEPT, NULL, 0,
+                         &results, &nresults);
+    check(PMIX_SUCCESS != rc, "PMIx_Group_join fails cleanly with no server");
+    check(NULL == results, "PMIx_Group_join defined *results on the failure path");
+    check(0 == nresults, "PMIx_Group_join defined *nresults on the failure path");
+
+    /* both are documented as optional, so a caller that does not want the
+     * values must be able to say so */
+    rc = PMIx_Group_join("nosuchgroup", &leader, PMIX_GROUP_ACCEPT, NULL, 0, NULL, NULL);
+    check(PMIX_SUCCESS != rc, "PMIx_Group_join accepts NULL results/nresults");
+}
+
 /* Hammer the paths that take the group-list lock. PMIx_Get with an explicit
  * namespace runs the caller's thread through
  * pmix_client_convert_group_procs(), which walks the group list under that
@@ -377,6 +407,7 @@ int main(int argc, char **argv)
     test_get_pointer_and_static();
     test_compute_distances();
     test_fabric();
+    test_group_join_outparams();
     test_group_lock_concurrency();
 
     rc = PMIx_Finalize(NULL, 0);
