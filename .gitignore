@@ -72,7 +72,6 @@ bindings/python/pmix_constants.stamp
 bindings/python/tests/__pycache__/
 bindings/python/dist/
 bindings/python/pypmix.egg-info/
-bindings/python/tests/python/__pycache__/
 
 examples/python/__pycache__/
 examples/alloc

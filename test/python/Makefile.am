@@ -16,6 +16,7 @@ noinst_SCRIPTS = \
     server.py \
     sched.py \
     client.py \
+    tool.py \
     test_bindings.py
 
 #########################
