@@ -562,6 +562,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
     pmix_info_t *dinfo = (pmix_info_t *) info;
     size_t ndinfo = ninfo, n;
     bool freeinfo = false, notterm = false;
+    /* snapshot of the group taken under the lock - see below */
+    pmix_proc_t *mbrs = NULL;
+    size_t nmbrs = 0;
+    bool grpnotterm = false;
 
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_destruct_nb called");
@@ -584,7 +588,13 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* find this group */
+    /* Find this group and take a copy of what we need from it. We hold the
+     * lock only for the lookup and the copy: the progress thread can append
+     * to this list, remove from it, and trim a departed proc out of a
+     * group's membership, so neither the list nor grp->members can be
+     * relied on once we let go. Packing from a copy also keeps the lock off
+     * the bfrops path entirely. */
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
     grp = NULL;
     PMIX_LIST_FOREACH(pgrp, &pmix_client_globals.groups, pmix_group_t) {
         if (0 == strcmp(grpid, pgrp->grpid)) {
@@ -593,8 +603,20 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
         }
     }
     if (NULL == grp) {
+        pmix_mutex_unlock(&pmix_client_globals.grouplock);
         return PMIX_ERR_NOT_FOUND;
     }
+    grpnotterm = grp->notterm;
+    nmbrs = grp->nmbrs;
+    if (0 < nmbrs) {
+        PMIX_PROC_CREATE(mbrs, nmbrs);
+        if (NULL == mbrs) {
+            pmix_mutex_unlock(&pmix_client_globals.grouplock);
+            return PMIX_ERR_NOMEM;
+        }
+        memcpy(mbrs, grp->members, nmbrs * sizeof(pmix_proc_t));
+    }
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
 
     /* the group's failure policy was chosen at construct time; re-apply
      * PMIX_GROUP_NOTIFY_TERMINATION here so the server (which keeps no group
@@ -602,7 +624,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
      * group was constructed with the flag and the caller did not itself provide
      * it, append it to the info we send. A caller that explicitly passes the
      * attribute overrides the remembered policy. */
-    if (grp->notterm) {
+    if (grpnotterm) {
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_NOTIFY_TERMINATION)) {
                 notterm = true;
@@ -639,12 +661,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
     /* pack the membership - the server isn't storing it,
      * so we have to send it so that the server can
      * track when all local procs have participated */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &grp->nmbrs, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nmbrs, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
     }
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, grp->members, grp->nmbrs, PMIX_PROC);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, mbrs, nmbrs, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
@@ -686,6 +708,9 @@ done:
     }
     if (freeinfo) {
         PMIX_INFO_FREE(dinfo, ndinfo);
+    }
+    if (NULL != mbrs) {
+        PMIX_PROC_FREE(mbrs, nmbrs);
     }
     return rc;
 }
@@ -1458,6 +1483,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
 {
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
+
     PMIX_HIDE_UNUSED_PARAMS(results, nresults);
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
@@ -1649,7 +1675,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
     pmix_group_t *grpobj, *pgrp;
     pmix_proc_t *range = NULL;
     pmix_data_array_t darray;
-    size_t n, m, nrange;
+    size_t n, m, nrange, nmbrs;
 
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_leave_nb called");
@@ -1672,19 +1698,6 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* find this group in our local list - we can only leave a group
-     * we belong to, and we need its membership to know who to notify */
-    grpobj = NULL;
-    PMIX_LIST_FOREACH(pgrp, &pmix_client_globals.groups, pmix_group_t) {
-        if (0 == strcmp(grp, pgrp->grpid)) {
-            grpobj = pgrp;
-            break;
-        }
-    }
-    if (NULL == grpobj) {
-        return PMIX_ERR_NOT_FOUND;
-    }
-
     cb = PMIX_NEW(pmix_group_tracker_t);
     cb->opcbfunc = cbfunc;
     cb->cbdata = cbdata;
@@ -1701,20 +1714,51 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
         return PMIX_ERR_NOMEM;
     }
 
+    /* Find this group in our local list - we can only leave a group we
+     * belong to, and we need its membership to know who to notify - copy
+     * that membership out, and drop the group, all under the lock. The
+     * progress thread owns this list too, and the PMIX_GROUP_LEFT handler
+     * on that side shifts members out of exactly this array.
+     *
+     * Everything that can fail and everything that can block is kept
+     * outside the lock: the allocations above are already done, and the
+     * notification below must not be issued while holding it - the handler
+     * it drives needs this same lock. */
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+    grpobj = NULL;
+    PMIX_LIST_FOREACH(pgrp, &pmix_client_globals.groups, pmix_group_t) {
+        if (0 == strcmp(grp, pgrp->grpid)) {
+            grpobj = pgrp;
+            break;
+        }
+    }
+    if (NULL == grpobj) {
+        pmix_mutex_unlock(&pmix_client_globals.grouplock);
+        PMIX_RELEASE(cb);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
     /* the custom range is the membership, excluding ourselves */
-    PMIX_PROC_CREATE(range, grpobj->nmbrs);
+    nmbrs = grpobj->nmbrs;
+    PMIX_PROC_CREATE(range, nmbrs);
     if (NULL == range) {
+        pmix_mutex_unlock(&pmix_client_globals.grouplock);
         PMIX_RELEASE(cb);
         return PMIX_ERR_NOMEM;
     }
     nrange = 0;
-    for (m = 0; m < grpobj->nmbrs; m++) {
+    for (m = 0; m < nmbrs; m++) {
         if (PMIX_CHECK_PROCID(&grpobj->members[m], &pmix_globals.myid)) {
             continue;
         }
         PMIX_XFER_PROCID(&range[nrange], &grpobj->members[m]);
         ++nrange;
     }
+
+    /* we are no longer a member - drop the group from our local list */
+    pmix_list_remove_item(&pmix_client_globals.groups, &grpobj->super);
+    PMIX_RELEASE(grpobj);
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
 
     n = 0;
     darray.type = PMIX_PROC;
@@ -1734,11 +1778,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
         PMIX_INFO_XFER(&cb->info[n], &info[m]);
         ++n;
     }
-    PMIX_PROC_FREE(range, grpobj->nmbrs);
-
-    /* we are no longer a member - drop the group from our local list */
-    pmix_list_remove_item(&pmix_client_globals.groups, &grpobj->super);
-    PMIX_RELEASE(grpobj);
+    PMIX_PROC_FREE(range, nmbrs);
 
     /* generate the event - the callback fires once it has been locally
      * generated, which is when the operation is complete */
@@ -2005,8 +2045,10 @@ static void destruct_cbfunc(struct pmix_peer_t *pr,
         goto report;
     }
 
-    /* find this group */
+    /* find this group and drop it - the caller's thread reads this list too
+     * (see the grouplock note in pmix_client_ops.h) */
     grp = NULL;
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
     PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
         if (0 == strcmp(cb->grpid, grp->grpid)) {
             pmix_list_remove_item(&pmix_client_globals.groups, &grp->super);
@@ -2014,6 +2056,7 @@ static void destruct_cbfunc(struct pmix_peer_t *pr,
             break;
         }
     }
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -2087,12 +2130,18 @@ static pmix_status_t add_group(const char *grpid,
 {
     pmix_group_t *grp;
 
+    /* the caller's thread reads this list, so the lookup and the append have
+     * to be one atomic step - two racing completions would otherwise both
+     * miss and both append */
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+
     /* the construct completion path registers the group for every caller,
      * while the callback the blocking wrapper installs still does so for
      * the join path - so tolerate being asked twice for the same group
      * rather than leaving a duplicate on the list */
     PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
         if (0 == strcmp(grpid, grp->grpid)) {
+            pmix_mutex_unlock(&pmix_client_globals.grouplock);
             return PMIX_SUCCESS;
         }
     }
@@ -2111,6 +2160,7 @@ static pmix_status_t add_group(const char *grpid,
      * re-apply PMIX_GROUP_NOTIFY_TERMINATION on the caller's behalf */
     grp->notterm = notterm;
     pmix_list_append(&pmix_client_globals.groups, &grp->super);
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
 
     return PMIX_SUCCESS;
 }

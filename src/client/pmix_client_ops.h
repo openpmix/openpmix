@@ -29,6 +29,21 @@ typedef struct {
     pmix_list_t pending_requests; // list of pmix_cb_t pending data requests
     pmix_pointer_array_t peers;   // array of pmix_peer_t cached for data ops
     pmix_list_t groups;           // list of groups this client is part of
+    /* Guards "groups" - both the list spine and the membership arrays of the
+     * pmix_group_t objects on it. Unlike pending_requests, this list is not
+     * confined to the progress thread: it is appended and edited there (when
+     * a construct completes, and when a PMIX_GROUP_LEFT event trims a
+     * departed member out of an existing group), but it is read and removed
+     * from on the caller's thread by PMIx_Group_leave_nb,
+     * PMIx_Group_destruct_nb, and every collective that expands a group
+     * reference through pmix_client_convert_group_procs(). Hold this across
+     * any traversal, and across any use of a group's members - the
+     * GROUP_LEFT path shifts that array down underneath a reader.
+     *
+     * Never hold it across a call that waits on the progress thread (a
+     * blocking PMIx_Notify_event, say): the handler on the other side may
+     * need this same lock. Copy out what you need and release it first. */
+    pmix_mutex_t grouplock;
     // verbosity for client get operations
     int get_output;
     int get_verbose;

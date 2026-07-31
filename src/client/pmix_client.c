@@ -211,6 +211,7 @@ pmix_client_globals_t pmix_client_globals = {
     .pending_requests = PMIX_LIST_STATIC_INIT,
     .peers = PMIX_POINTER_ARRAY_STATIC_INIT,
     .groups = PMIX_LIST_STATIC_INIT,
+    .grouplock = PMIX_MUTEX_STATIC_INIT,
     .get_output = -1,
     .get_verbose = 0,
     .connect_output = -1,

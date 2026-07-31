@@ -58,8 +58,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define REPEAT 200
+
+/* concurrency smoke: threads x gets, all driving the group-list lock */
+#define NTHREADS 8
+#define NGETS    400
 
 static int nfail = 0;
 
@@ -246,6 +251,57 @@ static void test_compute_distances(void)
           "PMIx_Compute_distances_nb(cbfunc=NULL) returns PMIX_ERR_BAD_PARAM");
 }
 
+/* Hammer the paths that take the group-list lock. PMIx_Get with an explicit
+ * namespace runs the caller's thread through
+ * pmix_client_convert_group_procs(), which walks the group list under that
+ * lock - so this is a direct test that the lock is released on every exit.
+ * A missed unlock hangs here on the second acquisition rather than
+ * corrupting something subtly later. The list is empty in a singleton, so
+ * this proves the locking discipline, not the group logic itself. */
+static void *get_hammer(void *arg)
+{
+    pmix_proc_t proc;
+    pmix_value_t *val;
+    long which = (long) (intptr_t) arg;
+    int i;
+
+    PMIX_LOAD_PROCID(&proc, "some.other.nspace", (pmix_rank_t) which);
+    for (i = 0; i < NGETS; i++) {
+        val = NULL;
+        /* expected to fail - we only care that it returns */
+        (void) PMIx_Get(&proc, "client.api.absent.key", NULL, 0, &val);
+        if (NULL != val) {
+            PMIX_VALUE_RELEASE(val);
+        }
+    }
+    return NULL;
+}
+
+static void test_group_lock_concurrency(void)
+{
+    pthread_t tid[NTHREADS];
+    long n;
+    int rc;
+
+    fprintf(stdout, "\n-- group-list lock under concurrent callers --\n");
+
+    for (n = 0; n < NTHREADS; n++) {
+        rc = pthread_create(&tid[n], NULL, get_hammer, (void *) (intptr_t) n);
+        if (0 != rc) {
+            check(0, "pthread_create");
+            /* join whatever we did start before giving up */
+            while (0 < n--) {
+                pthread_join(tid[n], NULL);
+            }
+            return;
+        }
+    }
+    for (n = 0; n < NTHREADS; n++) {
+        pthread_join(tid[n], NULL);
+    }
+    check(1, "8 threads x 400 gets through the group-list lock completed");
+}
+
 static void test_fabric(void)
 {
     pmix_fabric_t fabric;
@@ -321,6 +377,7 @@ int main(int argc, char **argv)
     test_get_pointer_and_static();
     test_compute_distances();
     test_fabric();
+    test_group_lock_concurrency();
 
     rc = PMIx_Finalize(NULL, 0);
     if (PMIX_SUCCESS != rc) {
