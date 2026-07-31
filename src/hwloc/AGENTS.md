@@ -54,9 +54,20 @@ that history survive and you must respect them:
    preserve the exported symbol names (the `/**** PRESERVE ABI ****/`
    block). Each is a one-line forwarder to its `pmix_hwloc_*` twin. Do
    not delete them and do not add logic to them.
-3. MCA parameter names are still registered under the `hwloc` component
-   (`pmix_hwloc_verbose`, `..._hole_kind`, `..._topo_file`,
-   `..._test_cpuset`), reachable as e.g. `PMIX_MCA_hwloc_hole_kind`.
+3. MCA parameter names are still registered under the `hwloc` component:
+   `pmix_mca_base_var_register("pmix", "pmix", "hwloc", "hole_kind", …)`.
+   **The registered name is `pmix_hwloc_hole_kind`** — framework *and*
+   component — so the environment variable is
+   `PMIX_MCA_pmix_hwloc_hole_kind` and the launcher form is
+   `--pmixmca pmix_hwloc_hole_kind <value>`. Likewise
+   `pmix_hwloc_verbose`, `pmix_hwloc_topo_file`, `pmix_hwloc_test_cpuset`.
+   An earlier revision of this file gave the shorter
+   `PMIX_MCA_hwloc_hole_kind`, which does not exist — and an unrecognized
+   MCA parameter is accepted **in silence**, leaving you on the default
+   path while you believe you have changed it. That is not hypothetical:
+   the dockerswarm XML-fallback case was written against the wrong name
+   and passed while still running on shmem. Confirm a name with
+   `pmix_info --all | grep <param>` rather than reading it off a doc.
 
 ## The single most important concept: the `source` string
 
