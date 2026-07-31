@@ -1008,13 +1008,19 @@ cdef class PMIxClient:
         # convert key,val to pmix_value_t and pmix_key_t
         pmix_copy_key(key, pykey)
 
-        # convert the dict to a pmix_value_t
+        # convert the dict to a pmix_value_t. Zero it first so a loader
+        # that fails partway leaves something safe to destruct
+        memset(&value, 0, sizeof(pmix_value_t))
         rc = pmix_load_value(&value, pyval)
+        if PMIX_SUCCESS != rc:
+            pmix_destruct_value(&value)
+            return rc
 
-        # call API
+        # call API - the library copies the value, so release our copy on
+        # every path. Note that "value" lives on the stack: it must be
+        # destructed, never freed
         rc = PMIx_Store_internal(&proc, key, &value)
-        if rc == PMIX_SUCCESS:
-            pmix_free_value(self, &value)
+        pmix_destruct_value(&value)
         return rc
 
     # put a value into the keystore
@@ -1043,6 +1049,7 @@ cdef class PMIxClient:
         return rc
 
     def fence(self, peers, dicts):
+        cdef pmix_status_t _rc
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1083,7 +1090,13 @@ cdef class PMIxClient:
             return rc
 
         # pass it into the fence API
-        rc = PMIx_Fence(procs, nprocs, info, ninfo)
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Fence(procs, nprocs, info, ninfo)
+        rc = _rc
         if 0 < nprocs:
             pmix_free_procs(procs, nprocs)
         if 0 < ninfo:
@@ -1154,6 +1167,7 @@ cdef class PMIxClient:
     #            a key, flags, value, and val_type
     #            can be defined as keys
     def publish(self, dicts):
+        cdef pmix_status_t _rc
         cdef pmix_info_t *info;
         cdef pmix_info_t **info_ptr;
         cdef size_t ninfo;
@@ -1164,7 +1178,13 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
 
         # pass it into the publish API
-        rc = PMIx_Publish(info, ninfo)
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Publish(info, ninfo)
+        rc = _rc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         return rc
@@ -1178,6 +1198,7 @@ cdef class PMIxClient:
     # @pykeys [INPUT]
     #          - list of python info key strings
     def unpublish(self, pykeys, dicts):
+        cdef pmix_status_t _rc
         cdef pmix_info_t *info;
         cdef pmix_info_t **info_ptr;
         cdef size_t ninfo;
@@ -1211,7 +1232,13 @@ cdef class PMIxClient:
             info = NULL
 
         # pass it into the unpublish API
-        rc = PMIx_Unpublish(keys, info, ninfo)
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Unpublish(keys, info, ninfo)
+        rc = _rc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         if NULL != keys:
@@ -1230,6 +1257,7 @@ cdef class PMIxClient:
     #            a key, flags, value, and val_type
     #            can be defined as keys
     def lookup(self, data, dicts):
+        cdef pmix_status_t _rc
         cdef pmix_pdata_t *pdata;
         cdef pmix_info_t  *info;
         cdef pmix_info_t  **info_ptr;
@@ -1244,7 +1272,7 @@ cdef class PMIxClient:
             info_ptr = &info
             rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
             if PMIX_SUCCESS != rc:
-                return rc
+                return rc, []
         else:
             info = NULL
 
@@ -1255,7 +1283,10 @@ cdef class PMIxClient:
             if 0 < npdata:
                 pdata = <pmix_pdata_t*> PyMem_Malloc(npdata * sizeof(pmix_pdata_t))
                 if not pdata:
-                    return PMIX_ERR_NOMEM
+                    if 0 < ninfo:
+                        pmix_free_info(info, ninfo)
+                    return PMIX_ERR_NOMEM, []
+                memset(pdata, 0, npdata * sizeof(pmix_pdata_t))
                 n = 0
                 for d in data:
                     pykey = d['key']
@@ -1266,15 +1297,25 @@ cdef class PMIxClient:
         else:
             pdata = NULL
 
-        # pass it into the lookup API
-        rc = PMIx_Lookup(pdata, npdata, info, ninfo)
+        # pass it into the lookup API. Unload into a fresh list rather than
+        # appending to the caller's: the results are one per requested key,
+        # so mixing them in with the requests leaves the two indistinguishable
+        # as soon as more than one key is looked up
+        results = []
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Lookup(pdata, npdata, info, ninfo)
+        rc = _rc
         if PMIX_SUCCESS == rc:
-            rc = pmix_unload_pdata(pdata, npdata, data)
-            # remove the first element, which is just the key
-            data.pop(0)
+            rc = pmix_unload_pdata(pdata, npdata, results)
+        if 0 < ninfo:
             pmix_free_info(info, ninfo)
+        if 0 < npdata:
             pmix_free_pdata(pdata, npdata)
-        return rc, data
+        return rc, results
 
     # Spawn a new job
     #
@@ -1326,6 +1367,7 @@ cdef class PMIxClient:
         return rc, pyns
 
     def connect(self, peers, pyinfo):
+        cdef pmix_status_t _rc
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1365,7 +1407,13 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
 
         # Call the library
-        rc = PMIx_Connect(procs, nprocs, info, ninfo)
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Connect(procs, nprocs, info, ninfo)
+        rc = _rc
         if 0 < nprocs:
             pmix_free_procs(procs, nprocs)
         if 0 < ninfo:
@@ -1373,6 +1421,7 @@ cdef class PMIxClient:
         return rc
 
     def disconnect(self, peers, pyinfo):
+        cdef pmix_status_t _rc
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1412,14 +1461,25 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
 
         # Call the library
-        rc = PMIx_Disconnect(procs, nprocs, info, ninfo)
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Disconnect(procs, nprocs, info, ninfo)
+        rc = _rc
         if 0 < nprocs:
             pmix_free_procs(procs, nprocs)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         return rc
 
-    def resolve_peers(self, pynode:str, pyns:str):
+    # NOTE: pynode and pyns are deliberately left unannotated. A ":str"
+    # annotation is a Cython type declaration that rejects None at the call
+    # boundary, and None is meaningful here: a NULL nodename means "any
+    # node" and a NULL nspace means "every namespace this server knows".
+    # The body's own checks depend on being reachable with None.
+    def resolve_peers(self, pynode, pyns):
         cdef pmix_nspace_t nspace
         cdef char *nodename
         cdef pmix_proc_t *procs
@@ -1440,19 +1500,25 @@ cdef class PMIxClient:
             pmix_free_procs(procs, nprocs)
         return rc, peers
 
-    def resolve_nodes(self, pyns:str):
+    # NOTE: pyns is deliberately left unannotated - see resolve_peers above.
+    # None means "every namespace this server knows about"
+    def resolve_nodes(self, pyns):
         cdef pmix_nspace_t nspace
         cdef char *nodelist
 
         nodelist = NULL
+        # the failure paths must still have something to return
+        pynodes = None
         memset(nspace, 0, sizeof(nspace))
         if pyns is not None:
             pmix_copy_nspace(nspace, pyns)
         rc = PMIx_Resolve_nodes(nspace, &nodelist)
-        if PMIX_SUCCESS == rc:
+        if PMIX_SUCCESS == rc and NULL != nodelist:
             pyn = nodelist
             pynodes = pyn.decode('ascii')
-            PyMem_Free(nodelist)
+            # the library allocated this string with the C allocator, so
+            # it goes back to free() - not to Python's allocator
+            free(nodelist)
         return rc, pynodes
 
     def query(self, pyq):
@@ -1538,6 +1604,8 @@ cdef class PMIxClient:
         return rc
 
     def allocation_request(self, directive, pyinfo):
+        cdef pmix_status_t _rc
+        cdef pmix_alloc_directive_t _directive
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef pmix_info_t *results
@@ -1553,7 +1621,14 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
 
         # call the API
-        rc = PMIx_Allocation_request(directive, info, ninfo, &results, &nresults)
+        _directive = directive
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Allocation_request(_directive, info, ninfo, &results, &nresults)
+        rc = _rc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         if PMIX_SUCCESS == rc and 0 < nresults:
@@ -1625,6 +1700,7 @@ cdef class PMIxClient:
         return rc
 
     def job_control(self, pytargets, pydirs):
+        cdef pmix_status_t _rc
         cdef pmix_proc_t *targets
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
@@ -1671,7 +1747,13 @@ cdef class PMIxClient:
             return rc
 
         # call the API
-        rc = PMIx_Job_control(targets, ntargets, directives, ndirs, &results, &nresults)
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Job_control(targets, ntargets, directives, ndirs, &results, &nresults)
+        rc = _rc
         if 0 < ndirs:
             pmix_free_info(directives, ndirs)
         if 0 < ntargets:
@@ -1683,6 +1765,8 @@ cdef class PMIxClient:
         return rc, pyres
 
     def monitor(self, pymonitor_info, code:int, pydirs):
+        cdef pmix_status_t _rc
+        cdef pmix_status_t _code
         cdef pmix_info_t *monitor_info
         cdef pmix_info_t **monitor_info_ptr
         cdef pmix_info_t *directives
@@ -1713,7 +1797,14 @@ cdef class PMIxClient:
             return rc
 
         # call the API
-        rc = PMIx_Process_monitor(monitor_info, code, directives, ndirs, &results, &nresults)
+        _code = code
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Process_monitor(monitor_info, _code, directives, ndirs, &results, &nresults)
+        rc = _rc
         if 0 < ndirs:
             pmix_free_info(directives, ndirs)
         if 0 < nmonitor:
@@ -1814,6 +1905,8 @@ cdef class PMIxClient:
     # None, which would make the "no peers given" default below - and the
     # documented ability to pass None for the attributes - unreachable.
     def group_construct(self, group:str, peers, pyinfo):
+        cdef pmix_status_t _rc
+        cdef char *_grp
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1849,19 +1942,33 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
 
         # Call the library
-        rc = PMIx_Group_construct(pygrp, procs, nprocs, info, ninfo, &results, &nresults)
+        # the library only sets these on success, so start them
+        # empty - otherwise a failed call leaves stack garbage
+        # that the conversion below would walk
+        results = NULL
+        nresults = 0
+        _grp = <char *>pygrp
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Group_construct(_grp, procs, nprocs, info, ninfo, &results, &nresults)
+        rc = _rc
         if 0 < nprocs:
             pmix_free_procs(procs, nprocs)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         pyres = []
-        if 0 < nresults:
+        if PMIX_SUCCESS == rc and NULL != results and 0 < nresults:
             # convert results
             pmix_unload_info(results, nresults, pyres)
             pmix_free_info(results, nresults)
         return rc, pyres
 
     def group_invite(self, group:str, peers, pyinfo):
+        cdef pmix_status_t _rc
+        cdef char *_grp
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1897,19 +2004,34 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
 
         # Call the library
-        rc = PMIx_Group_invite(pygrp, procs, nprocs, info, ninfo, &results, &nresults)
+        # the library only sets these on success, so start them
+        # empty - otherwise a failed call leaves stack garbage
+        # that the conversion below would walk
+        results = NULL
+        nresults = 0
+        _grp = <char *>pygrp
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Group_invite(_grp, procs, nprocs, info, ninfo, &results, &nresults)
+        rc = _rc
         if 0 < nprocs:
             pmix_free_procs(procs, nprocs)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         pyres = []
-        if 0 < nresults:
+        if PMIX_SUCCESS == rc and NULL != results and 0 < nresults:
             # convert results
             pmix_unload_info(results, nresults, pyres)
             pmix_free_info(results, nresults)
         return rc, pyres
 
     def group_join(self, group:str, leader, opt:int, pyinfo):
+        cdef pmix_status_t _rc
+        cdef char *_grp
+        cdef pmix_group_opt_t _opt
         cdef pmix_proc_t proc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1934,17 +2056,32 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
 
         # Call the library
-        rc = PMIx_Group_join(pygrp, &proc, opt, info, ninfo, &results, &nresults)
+        # the library only sets these on success, so start them
+        # empty - otherwise a failed call leaves stack garbage
+        # that the conversion below would walk
+        results = NULL
+        nresults = 0
+        _grp = <char *>pygrp
+        _opt = opt
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Group_join(_grp, &proc, _opt, info, ninfo, &results, &nresults)
+        rc = _rc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         pyres = []
-        if 0 < nresults:
+        if PMIX_SUCCESS == rc and NULL != results and 0 < nresults:
             # convert results
             pmix_unload_info(results, nresults, pyres)
             pmix_free_info(results, nresults)
         return rc, pyres
 
     def group_leave(self, group:str, pyinfo):
+        cdef pmix_status_t _rc
+        cdef char *_grp
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t ninfo
@@ -1958,12 +2095,21 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
 
         # Call the library
-        rc = PMIx_Group_leave(pygrp, info, ninfo)
+        _grp = <char *>pygrp
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Group_leave(_grp, info, ninfo)
+        rc = _rc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         return rc
 
     def group_destruct(self, group:str, pyinfo):
+        cdef pmix_status_t _rc
+        cdef char *_grp
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t ninfo
@@ -1977,7 +2123,14 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
 
         # Call the library
-        rc = PMIx_Group_destruct(pygrp, info, ninfo)
+        _grp = <char *>pygrp
+        # release the GIL across the collective. These block until the
+        # server completes the operation, and this process's own event
+        # handlers and _nb callbacks are Python code that needs the GIL
+        # to run - holding it here deadlocks the caller against itself
+        with nogil:
+            _rc = PMIx_Group_destruct(_grp, info, ninfo)
+        rc = _rc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         return rc
