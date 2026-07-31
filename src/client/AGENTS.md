@@ -156,6 +156,10 @@ and torn down in `PMIx_Finalize`. The load-bearing fields:
   `singleton`, or it will double-free or leak. See the comment blocks in
   `PMIx_Init`/`PMIx_Finalize`. (A prior latent crash traced to exactly
   this conflation.)
+- **`grouplock`** (`pmix_mutex_t`) — guards `groups` (below). The one
+  piece of client state that is genuinely shared between the caller's
+  thread and the progress thread; see the rules under
+  [Invariants](#invariants-and-gotchas).
 - **`pending_requests`** (`pmix_list_t` of `pmix_cb_t`) — outstanding
   `PMIx_Get` requests awaiting a server reply. Multiple gets for the same
   `nspace:rank` are **coalesced**: only the first sends; the rest are
@@ -163,7 +167,9 @@ and torn down in `PMIx_Finalize`. The load-bearing fields:
   `pmix_client_get.c`).
 - **`groups`** (`pmix_list_t` of `pmix_group_t`) — PMIx groups this client
   currently belongs to; consulted by `pmix_client_convert_group_procs` to
-  expand group references in collective calls.
+  expand group references in collective calls. **Always hold `grouplock`
+  across a traversal and across any use of a group's `members`** — unlike
+  `pending_requests`, this list is not confined to the progress thread.
 - **`peers`** (`pmix_pointer_array_t`) — cached peer objects for data ops.
 - **`iof_stdout` / `iof_stderr`** — the two static IOF sinks for forwarded
   output.
@@ -233,6 +239,22 @@ finalize, after the progress thread has stopped).
 - **An out-parameter the caller may hand you as NULL is a crash, not a
   courtesy.** `PMIx_Get` writes `*val` on both the success and the failure
   path, so it has to reject `val == NULL` before doing anything else.
+  Define every OUT parameter *before* the first thing that can fail, so
+  the caller can read it on an error return too.
+- **The groups list is the one piece of client state that is not
+  single-threaded.** `pmix_client_globals.groups` is touched by both the
+  progress thread and the caller's thread, so
+  `pmix_client_globals.grouplock` guards it — the list spine *and* the
+  `members` array of every group on it, because the `PMIX_GROUP_LEFT`
+  handler shifts that array down underneath a reader. Two rules:
+  **(1)** never hold it across anything that waits on the progress
+  thread — a blocking `PMIx_Notify_event`, say — because the handler on
+  the other side wants the same lock; copy out what you need and release
+  it first, as `PMIx_Group_destruct_nb` and `PMIx_Group_leave_nb` do.
+  **(2)** it is a plain, non-recursive mutex, so nothing called while
+  holding it may take it again. Do allocations and anything that can
+  fail before acquiring, so error paths do not have to unwind through
+  it.
 - **Realm directives change where data comes from.** In `PMIx_Get`, the
   `PMIX_NODE_INFO` / `PMIX_APP_INFO` / `PMIX_SESSION_INFO` directives and
   the hostname/nodeid/appnum/sessionid qualifiers redirect the lookup to a
@@ -357,6 +379,30 @@ regression coverage in `test/unit/client_api.c`.
 - Several GDS fetches took `pmix_list_remove_first()` without a NULL
   check on paths where the siblings around them have one.
 
+*Concurrency and API contract (second pass):*
+
+- **`pmix_client_globals.groups` had no lock**, but is not confined to
+  one thread: the progress thread appends to it (`add_group` from
+  `construct_cbfunc`, and the `PMIX_GROUP_CONSTRUCT_COMPLETE` handler in
+  `src/event/pmix_event_notification.c`) and *edits a live membership
+  array in place* (the `PMIX_GROUP_LEFT` handler shifts a departed proc
+  out), while the caller's thread reads and removes from it in
+  `PMIx_Group_leave_nb`, `PMIx_Group_destruct_nb`, and every collective
+  that expands a group reference through
+  `pmix_client_convert_group_procs()`. It is now guarded by
+  `pmix_client_globals.grouplock` — see the rules below.
+- `_commitfn()` ignored the server's reply. The generic `wait_cbfunc` it
+  used discards the buffer, so the status the server returns for
+  `PMIX_COMMIT_CMD` was thrown away and every commit reported success —
+  including one the server rejected, which is exactly the case a caller
+  needs to hear about. It now has its own `commit_cbfunc` that unpacks
+  the reply.
+- `PMIx_Group_join` declared `results`/`nresults` unused, leaving the
+  caller's pointers as whatever was on the stack. Both are now defined
+  before anything can fail, and a NULL for either is honored (the man
+  page documents them as optional). See the known gap below for why they
+  come back empty.
+
 *Known, left alone (deliberately):*
 
 - `resolve_peers()` sets `proc.rank = PMIX_RANK_WILDCARD` for a pre-v3.2
@@ -364,14 +410,22 @@ regression coverage in `test/unit/client_api.c`.
   lines later, so the legacy branch is dead. `try_fetch()` retries an
   UNDEF rank as WILDCARD, which is why the path still works. Not changed
   without a pre-v3.2 server to test against; see the comment in the code.
-- `pmix_client_globals.groups` is read and mutated from both the caller's
-  thread (`PMIx_Group_leave_nb`, `PMIx_Group_destruct_nb`) and the
-  progress thread (`add_group` from `construct_cbfunc`), with no lock.
-  Concurrent multithreaded use of the group APIs is unsafe.
-- `_commitfn()` ignores the server's reply status, so a failed commit is
-  reported to the caller as success.
-- `PMIx_Group_join` declares `results`/`nresults` and never touches them,
-  leaving the caller's pointers uninitialized.
+- **`PMIx_Group_join` completes earlier than its man page says, and so
+  returns no results.** `docs/man/man3/PMIx_Group_join.3.rst` states the
+  call returns "once the group has been completely constructed", with
+  the construct results available in `results`. The implementation
+  completes as soon as the accept/decline notification has been handed to
+  the local event system — much earlier, and carrying no group data.
+  Closing that gap means waiting for the leader's
+  `PMIX_GROUP_CONSTRUCT_COMPLETE`, and **that event is not guaranteed to
+  reach an acceptor at all** — the leader-watch registry comment at the
+  top of `pmix_client_group.c` records that in the common single-server
+  case it often does not arrive before the acceptor finalizes. Waiting
+  on it here would therefore hang the common case rather than fix it.
+  This needs a protocol-level fix (guaranteed delivery of the construct
+  result to every acceptor), not a local one. Until then an application
+  gets the membership and context ID from its own
+  `PMIX_GROUP_CONSTRUCT_COMPLETE` handler.
 
 ## Building
 
