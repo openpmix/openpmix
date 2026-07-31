@@ -886,13 +886,20 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
         boptr = <pmix_byte_object_t*>array[0].array
         list = []
         while n < array.size:
-            if not boptr[n].bytes:
-                return PMIX_ERR_NOMEM
+            # a byte object payload is not a string - it can contain NUL
+            # bytes and need not be terminated by one, so it must be sliced
+            # to its recorded size. Letting Cython convert the bare char*
+            # runs strlen over it and returns whatever follows in memory.
+            # A zero-length object legitimately carries no payload at all
+            if NULL == boptr[n].bytes:
+                mybytes = b''
+            else:
+                mybytes = boptr[n].bytes[:boptr[n].size]
             # the conversion above copied the bytes into a Python object.
             # The array itself still belongs to whoever handed it to us -
             # every other arm of this function leaves it alone, and this
             # one used to free it through the wrong allocator
-            d = {'bytes': boptr[n].bytes, 'size': boptr[n].size}
+            d = {'bytes': mybytes, 'size': boptr[n].size}
             list.append(d)
             n += 1
         darray = {'type':array.type, 'array':list}
@@ -1855,7 +1862,13 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         return {'value':{'bytes':mybytes, 'size':value[0].data.bo.size}, 'val_type':PMIX_BYTE_OBJECT}
 
     elif PMIX_REGEX == value[0].type:
-        return {'value': value[0].data.bo.bytes, 'val_type': PMIX_REGEX}
+        # a regex is carried in a byte object and a compressed one is
+        # binary, so it gets the same length-respecting treatment
+        if NULL == value[0].data.bo.bytes:
+            mybytes = b''
+        else:
+            mybytes = value[0].data.bo.bytes[:value[0].data.bo.size]
+        return {'value': mybytes, 'val_type': PMIX_REGEX}
 
     elif PMIX_PERSIST == value[0].type:
         return {'value':value[0].data.persist, 'val_type':PMIX_PERSIST}
