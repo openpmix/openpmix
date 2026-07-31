@@ -126,7 +126,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
         /* note: the call may have returned PMIX_OPERATION_SUCCEEDED thus indicating
          * that the spawn was atomically completed */
         if (PMIX_OPERATION_SUCCEEDED == rc) {
-            PMIX_LOAD_NSPACE(nspace, cb->pname.nspace);
+            if (NULL != cb->pname.nspace) {
+                PMIX_LOAD_NSPACE(nspace, cb->pname.nspace);
+            }
             rc = PMIX_SUCCESS;
         }
         PMIX_RELEASE(cb);
@@ -136,7 +138,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     /* wait for the result */
     PMIX_WAIT_THREAD(&cb->lock);
     rc = cb->status;
-    if (NULL != nspace) {
+    /* a failed spawn reports no namespace, so leave the caller's (already
+     * zeroed) buffer empty rather than copying from a NULL */
+    if (NULL != cb->pname.nspace) {
         pmix_strncpy(nspace, cb->pname.nspace, PMIX_MAX_NSLEN);
     }
     PMIX_RELEASE(cb);
@@ -320,7 +324,11 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             fcd->apps[n].argv[1] = NULL;
         } else {
             fcd->apps[n].argv = PMIx_Argv_copy(aptr->argv);
-            tmp = pmix_basename(aptr->cmd);
+            /* take the basename from our own copy of the cmd, not from
+             * aptr->cmd: the caller is allowed to supply argv without a cmd
+             * (we filled it in from argv[0] above), and pmix_basename(NULL)
+             * returns NULL, which the strcmp below would then dereference */
+            tmp = pmix_basename(fcd->apps[n].cmd);
             t2 = pmix_basename(aptr->argv[0]);
             if (0 != strcmp(tmp, t2)) {
                 // assume that the user may have put the argv

@@ -73,7 +73,7 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata);
 
 static pmix_status_t process_values(pmix_cb_t *cb);
 
-static pmix_status_t refresh_cache(const pmix_proc_t *proc);
+static pmix_status_t refresh_cache(const pmix_proc_t *p);
 
 static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
                                      const pmix_info_t info[], size_t ninfo,
@@ -318,6 +318,11 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
         return PMIX_ERR_INIT;
     }
 
+    /* we have no way to hand back the answer without this */
+    if (NULL == val) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
@@ -338,12 +343,16 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
         return rc;
     }
 
-    /* if we are to refresh the cache, go do that */
+    /* if we are to refresh the cache, go do that. Use the resolved target in
+     * "lg", not the caller's "proc" - the latter is allowed to be NULL (a
+     * globally-unique key in our own nspace), and process_request has already
+     * filled lg->p with the nspace/rank the request actually refers to */
     if (lg->refresh_cache) {
-        rc = refresh_cache(proc);
+        rc = refresh_cache(&lg->p);
         if (PMIX_SUCCESS != rc) {
             // couldn't refresh for some reason
             PMIX_RELEASE(lg);
+            *val = NULL;
             return rc;
         }
     }
@@ -392,7 +401,13 @@ static void gcbfn(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     cb->cbfunc.valuefn(cb->status, cb->value, cb->cbdata);
-    PMIX_RELEASE(cb->lg);
+    /* the caddy does not always carry a logic object - the path that answers
+     * a request entirely from process_request builds a bare caddy purely to
+     * deliver the result. PMIX_RELEASE dereferences its argument, so a
+     * missing "lg" is a segfault, not a no-op */
+    if (NULL != cb->lg) {
+        PMIX_RELEASE(cb->lg);
+    }
     PMIX_RELEASE(cb);
 }
 
@@ -403,7 +418,11 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     pmix_cb_t *cb;
     pmix_status_t rc;
     pmix_get_logic_t *lg;
-    pmix_value_t *val;
+    /* process_request both reads and writes through this pointer - the
+     * PMIX_GET_STATIC_VALUES check dereferences it before assigning - so it
+     * must start life as a known-NULL "no storage provided" rather than
+     * whatever happened to be on the stack */
+    pmix_value_t *val = NULL;
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -440,9 +459,10 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         return rc;
     }
 
-    /* if we are to refresh the cache, go do that */
+    /* if we are to refresh the cache, go do that - see the note in PMIx_Get
+     * on why this uses the resolved lg->p rather than the caller's proc */
     if (lg->refresh_cache) {
-        rc = refresh_cache(proc);
+        rc = refresh_cache(&lg->p);
         if (PMIX_SUCCESS != rc) {
             // couldn't refresh for some reason
             PMIX_RELEASE(lg);
@@ -616,9 +636,13 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
-        PMIX_RELEASE(cb);
-        return;
+        /* fall into the delivery loop below rather than quietly dropping the
+         * request: every waiter registered against this proc must be told the
+         * request failed. Releasing the caddy here instead both stranded a
+         * blocking PMIx_Get on its lock forever and freed the object it was
+         * still waiting on. */
+        ret = rc;
+        goto done;
     }
 
     if (PMIX_SUCCESS != ret) {
@@ -875,7 +899,6 @@ static void get_data(int sd, short args, void *cbdata)
                     }
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                        PMIX_DESTRUCT(&cb2);
                         if (NULL != kv) {  // will never be NULL
                             lg->hostname = strdup(kv->value->data.string);
                             PMIX_RELEASE(kv);
@@ -883,6 +906,10 @@ static void get_data(int sd, short args, void *cbdata)
                             lg->hostname = strdup("unknown");
                         }
                     }
+                    /* destruct on every outcome - a failed fetch used to leave
+                     * the caddy (and anything the GDS had put on its list)
+                     * behind */
+                    PMIX_DESTRUCT(&cb2);
                 }
                 if (UINT32_MAX == lg->nodeid) {
                     /* try for the nodeid */
@@ -909,6 +936,10 @@ static void get_data(int sd, short args, void *cbdata)
                             cb->status = rc;
                             goto done;
                         }
+                    } else {
+                        /* see the hostname fetch above - the caddy must be
+                         * torn down on the failure path too */
+                        PMIX_DESTRUCT(&cb2);
                     }
                 }
                 // set the rank to undefined since this request is
@@ -1003,6 +1034,10 @@ static void get_data(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
+                        if (NULL == kv) {  // should never happen
+                            cb->status = PMIX_ERR_NOT_FOUND;
+                            goto done;
+                        }
                         rc = PMIx_Value_get_number(kv->value, &lg->appnum, PMIX_UINT32);
                         PMIX_RELEASE(kv);
                         if (PMIX_SUCCESS != rc) {
@@ -1078,6 +1113,10 @@ static void get_data(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
+                        if (NULL == kv) {  // should never happen
+                            cb->status = PMIX_ERR_NOT_FOUND;
+                            goto done;
+                        }
                         rc = PMIx_Value_get_number(kv->value, &lg->sessionid, PMIX_UINT32);
                         PMIX_RELEASE(kv);
                         if (PMIX_SUCCESS != rc) {
@@ -1251,6 +1290,9 @@ doget:
     /* send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, _getnb_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
+        /* the transport only refuses a send it never took ownership of, so
+         * the message is still ours to release */
+        PMIX_RELEASE(msg);
         pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
         cb->status = PMIX_ERROR;
         goto done;
@@ -1342,6 +1384,16 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p)
                         PMIX_NAME_PRINT(&pmix_globals.myid),
                         PMIX_NAME_PRINT(p));
 
+    /* only the server can refresh our cache, so there is nothing to do (and
+     * nothing to pack a message against) if we have no server. Every other
+     * server round-trip in this file gates on this; without it a singleton
+     * asking for PMIX_GET_REFRESH_CACHE packed a message for a peer that was
+     * never given a transport. */
+    if (pmix_client_globals.singleton ||
+        !pmix_atomic_check_bool(&pmix_globals.connected)) {
+        return PMIX_SUCCESS;
+    }
+
     /* pack a quick message to the server asking it
      * to refresh our cache */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -1373,6 +1425,7 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p)
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, refcb, (void *)cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
         return rc;
     }

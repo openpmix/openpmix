@@ -215,6 +215,19 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
         return PMIX_ERR_INIT;
     }
 
+    if (NULL == fabric) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* When no callback is given, the caddy is expected to have been supplied
+     * by the blocking wrapper as cbdata - that is the internal convention
+     * these _nb entry points are built on. A user calling the public API with
+     * both NULL has no way to learn the answer and would leave us
+     * dereferencing a NULL caddy in the recv handler. */
+    if (NULL == cbfunc && NULL == cbdata) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
@@ -337,6 +350,16 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
         return PMIX_ERR_INIT;
     }
 
+    if (NULL == fabric) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* see PMIx_Fabric_register_nb: a NULL cbfunc means "the caddy is in
+     * cbdata", so both cannot be NULL */
+    if (NULL == cbfunc && NULL == cbdata) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* if I am a scheduler server, then I should be able
      * to support this myself */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
@@ -451,6 +474,10 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric, pmix_
 
     PMIX_HIDE_UNUSED_PARAMS(cbfunc, cbdata);
 
+    if (NULL == fabric) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* if I am a scheduler server, then I should be able
      * to support this myself */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
@@ -464,6 +491,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric, pmix_
     /* otherwise, just remove any storage in it */
     if (NULL != fabric->info) {
         PMIX_INFO_FREE(fabric->info, fabric->ninfo);
+        /* the caller's object outlives this call, so leave it in the same
+         * state PMIx_Fabric_construct would - otherwise a second deregister
+         * (or a destructor) frees the array again */
+        fabric->info = NULL;
+        fabric->ninfo = 0;
     }
 
     return PMIX_OPERATION_SUCCEEDED;

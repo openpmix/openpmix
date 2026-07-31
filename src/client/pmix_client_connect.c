@@ -114,7 +114,6 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     pmix_status_t rc;
     pmix_cb_t *cb, cb2;
     pmix_byte_object_t bo;
-    pmix_buffer_t pbkt;
     pmix_info_t xfer;
     pmix_kval_t *kv;
     void *ilist;
@@ -218,7 +217,6 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
     if (PMIX_SUCCESS == rc) {
         ilist = PMIx_Info_list_start();
-        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
         // start with our procID
         PMIx_Info_list_add(ilist, PMIX_PROCID, &pmix_globals.myid, PMIX_PROC);
         // now add the kvals
@@ -237,6 +235,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
                 PMIx_Info_list_release(ilist);
+                PMIX_DESTRUCT(&cb2);
                 PMIX_PROC_FREE(rgs, nrg);
                 return rc;
             }
@@ -250,6 +249,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
                 PMIx_Info_list_release(ilist);
+                PMIX_DESTRUCT(&cb2);
                 PMIX_PROC_FREE(rgs, nrg);
                 return rc;
             }
@@ -329,6 +329,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(msg);
                     PMIx_Info_list_release(ilist);
+                    PMIX_DESTRUCT(&cb2);
                     PMIX_PROC_FREE(rgs, nrg);
                     return rc;
                 }

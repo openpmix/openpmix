@@ -437,6 +437,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* check for bozo input - the group ID names the collective and is
+     * strdup'd onto the tracker below */
+    if (NULL == grp) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* An "add members" or "bootstrap" construct does not list all
      * participants in the procs array - the remaining members are
      * supplied separately (via PMIX_GROUP_ADD_MEMBERS) or join later,
@@ -910,10 +916,16 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
     PMIX_INFO_LOAD(&myinfo[1], PMIX_EVENT_HDLR_PREPEND, NULL, PMIX_BOOL);
     ncodes = sizeof(codes) / sizeof(pmix_status_t);
     PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
-    PMIx_Register_event_handler(codes, ncodes, myinfo, 2, invite_handler, regcbfunc, &lock);
-    PMIX_WAIT_THREAD(&lock.lock);
-    rc = lock.status;
-    cb->ref = lock.ref;
+    rc = PMIx_Register_event_handler(codes, ncodes, myinfo, 2,
+                                     invite_handler, regcbfunc, &lock);
+    /* only wait if the registration was actually accepted - regcbfunc is the
+     * only thing that ever wakes this lock, and it does not fire when the
+     * call itself failed */
+    if (PMIX_SUCCESS == rc) {
+        PMIX_WAIT_THREAD(&lock.lock);
+        rc = lock.status;
+        cb->ref = lock.ref;
+    }
     PMIX_DESTRUCT(&lock);
     PMIX_INFO_DESTRUCT(&myinfo[0]);
     PMIX_INFO_DESTRUCT(&myinfo[1]);
@@ -963,8 +975,13 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
     PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
     rc = PMIx_Notify_event(PMIX_GROUP_INVITED, &pmix_globals.myid, PMIX_RANGE_CUSTOM,
                            cb->info, cb->ninfo, op_cbfunc, (void *) &lock);
-    PMIX_WAIT_THREAD(&lock.lock);
-    rc = lock.status;
+    /* as with the registration above, op_cbfunc is the only thing that wakes
+     * this lock and it does not run when the notify call itself failed -
+     * waiting unconditionally hung the caller on an error */
+    if (PMIX_SUCCESS == rc) {
+        PMIX_WAIT_THREAD(&lock.lock);
+        rc = lock.status;
+    }
     PMIX_DESTRUCT(&lock);
     if (PMIX_SUCCESS != rc) {
         return rc;
@@ -1935,9 +1952,13 @@ report:
             goto done;
         }
     }
-    PMIx_Info_list_convert(ilist, &darray);
-    cb->info = (pmix_info_t*)darray.array;
-    cb->ninfo = darray.size;
+    /* on failure darray is left untouched, so adopting it unchecked handed
+     * the tracker an uninitialized pointer that its destructor then freed */
+    rc = PMIx_Info_list_convert(ilist, &darray);
+    if (PMIX_SUCCESS == rc) {
+        cb->info = (pmix_info_t*)darray.array;
+        cb->ninfo = darray.size;
+    }
     PMIx_Info_list_release(ilist);
 
     /* record the group locally now that its construction has succeeded.

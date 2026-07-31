@@ -354,6 +354,7 @@ static pmix_status_t fallback_to_next_gds(void)
     PMIX_PTL_SEND_RECV(rc, myserver, req, job_data, (void *) &cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(req);
         PMIX_DESTRUCT(&cb);
         return rc;
     }
@@ -891,6 +892,10 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, req, job_data, (void *) &cb);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            /* the transport refused the message without taking it, and the
+             * recv callback will never fire, so unwind both here */
+            PMIX_RELEASE(req);
+            PMIX_DESTRUCT(&cb);
             free(suri);
             return rc;
         }
@@ -1219,7 +1224,9 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, finwait_cbfunc, (void *) &tev);
         if (PMIX_SUCCESS != rc) {
             /* the recv callback will not fire, so cancel the timer and
-             * tear down the lock before we return */
+             * tear down the lock before we return - and reclaim the message
+             * the transport declined to take */
+            PMIX_RELEASE(msg);
             pmix_event_del(&tev.ev);
             PMIX_DESTRUCT_LOCK(&tev.lock);
             return rc;
@@ -1372,6 +1379,7 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     PMIX_CONSTRUCT_LOCK(&reglock);
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, bfr, wait_cbfunc, (void *) &reglock);
     if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(bfr);
         PMIX_DESTRUCT_LOCK(&reglock);
         return rc;
     }
@@ -1603,6 +1611,8 @@ static void _commitfn(int sd, short args, void *cbdata)
         cb->pstatus = PMIX_SUCCESS;
         return;
     }
+    /* the send was refused without taking the message */
+    PMIX_RELEASE(msgout);
 
 error:
     cb->pstatus = rc;
