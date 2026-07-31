@@ -89,7 +89,7 @@ def main():
     # check the results
     cid = None
     for item in results:
-        if key_is(item['key'], PMIX_GROUP_CONTEXT_ID):
+        if PMIX_GROUP_CONTEXT_ID == item['key']:
             cid = item['value']
             eprint("%d Group construct complete with status %s CID %lu"
                    % (myproc['rank'], client.error_string(PMIX_SUCCESS), cid))

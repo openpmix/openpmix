@@ -34,7 +34,7 @@ myproc = {}
 # the key that was provided in the query.
 def querycbfunc(status, results, mq):
     for item in results:
-        eprint("Transferring %s" % as_key(item['key']))
+        eprint("Transferring %s" % item['key'])
     mq.info = results
     # release the block
     mq.wakeup(status)

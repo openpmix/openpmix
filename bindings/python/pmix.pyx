@@ -4901,10 +4901,10 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
         pykeys = []
         pmix_unload_procs(proc, 1, myprocs)
         args['proc'] = myprocs[0]
-        n = 0
-        while NULL != keys[n]:
-            pykeys.append(keys[n])
-            n += 1
+        # decode, as the unpublish upcall and the query builder do - a
+        # handler must not have to guess whether its keys are str or bytes
+        if NULL != keys:
+            pmix_unload_argv(keys, pykeys)
         args['keys'] = pykeys
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)

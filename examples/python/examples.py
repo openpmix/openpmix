@@ -140,30 +140,6 @@ def eprint(*args, **kwargs):
     sys.stderr.flush()
 
 
-def as_key(key):
-    """Normalize a key to str for comparison.
-
-    Worth knowing: the generated PMIX_* attribute constants are **bytes**
-    (b'pmix.alloc.status'), because that is the form the conversion layer
-    hands to C. Keys coming *back* from the library have been decoded to
-    str. So the obvious
-
-        if PMIX_ALLOC_STATUS == info[n]['key']:
-
-    is never true - it compares bytes to str and silently finds nothing.
-    Everything below goes through here so the comparison works whichever
-    side supplies which.
-    """
-    if isinstance(key, bytes):
-        return key.decode('ascii')
-    return key
-
-
-def key_is(key, name):
-    """True if an info dict's key is the PMIx attribute 'name'."""
-    return as_key(key) == as_key(name)
-
-
 def find_key(info, key):
     """Return the value carried by 'key' in an info list, or None.
 
@@ -174,6 +150,6 @@ def find_key(info, key):
     if info is None:
         return None
     for item in info:
-        if key_is(item['key'], key):
+        if key == item['key']:
             return item['value']
     return None

@@ -59,13 +59,6 @@ def ok(rc):
     return PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc
 
 
-def normalize_key(ky):
-    """Keys reach a handler as bytes; the client hands us str."""
-    if isinstance(ky, bytes):
-        return ky.decode('ascii')
-    return ky
-
-
 def connected(proc, cbfunc, cbdata):
     cbfunc(PMIX_SUCCESS, cbdata)
     return PMIX_SUCCESS
@@ -120,7 +113,7 @@ def dmodex_fn(args, cbfunc, cbdata):
 def publish_fn(args, cbfunc, cbdata):
     eprint("SERVER: PUBLISH")
     for d in args['directives']:
-        key = normalize_key(d['key'])
+        key = d['key']
         if "pmix" in key:
             # a directive qualifying the request, not data to publish
             continue
@@ -134,7 +127,6 @@ def lookup_fn(args, cbfunc, cbdata):
     eprint("SERVER: LOOKUP")
     pdata = []
     for ky in args['keys']:
-        ky = normalize_key(ky)
         if ky in pubdata:
             d = pubdata[ky]
             pdata.append({'proc': d['proc'], 'key': ky,
@@ -151,7 +143,7 @@ def unpublish_fn(args, cbfunc, cbdata):
     keys = args['keys']
     if keys:
         for ky in keys:
-            pubdata.pop(normalize_key(ky), None)
+            pubdata.pop(ky, None)
     else:
         # no keys means "remove everything this proc published"
         pubdata.clear()
@@ -207,7 +199,7 @@ def query_fn(args, cbfunc, cbdata):
     # keep this simple - answer each query with its own index
     info = []
     for n, q in enumerate(args['queries']):
-        info.append({'key': normalize_key(q['keys'][0]), 'value': "%d" % n,
+        info.append({'key': q['keys'][0], 'value': "%d" % n,
                      'val_type': PMIX_STRING})
     cbfunc(PMIX_SUCCESS, info, cbdata)
     return PMIX_SUCCESS

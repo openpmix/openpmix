@@ -112,13 +112,13 @@ def main():
         # we should have a single results object
         if results:
             for item in results:
-                if key_is(item['key'], PMIX_GROUP_CONTEXT_ID):
+                if PMIX_GROUP_CONTEXT_ID == item['key']:
                     eprint("%d Group construct complete with status %s "
                            "KEY %s CID %lu"
                            % (myproc['rank'],
                               client.error_string(PMIX_SUCCESS),
-                              as_key(item['key']), item['value']))
-                elif key_is(item['key'], PMIX_GROUP_MEMBERSHIP):
+                              item['key'], item['value']))
+                elif PMIX_GROUP_MEMBERSHIP == item['key']:
                     parray = item['value']['array']
                     eprint("[%u] NUM MEMBERS: %u MEMBERSHIP:"
                            % (myproc['rank'], len(parray)))

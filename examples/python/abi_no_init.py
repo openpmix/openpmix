@@ -33,10 +33,10 @@ def main():
 
     print("--> Query returned (ninfo %d)" % len(info))
     for item in info:
-        print("--> KEY: %s" % as_key(item['key']))
-        if key_is(item['key'], PMIX_QUERY_STABLE_ABI_VERSION):
+        print("--> KEY: %s" % item['key'])
+        if PMIX_QUERY_STABLE_ABI_VERSION == item['key']:
             print("----> ABI (Stable): String: %s" % item['value'])
-        elif key_is(item['key'], PMIX_QUERY_PROVISIONAL_ABI_VERSION):
+        elif PMIX_QUERY_PROVISIONAL_ABI_VERSION == item['key']:
             print("----> ABI (Provisional): String: %s" % item['value'])
 
     return 0

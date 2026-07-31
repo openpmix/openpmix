@@ -79,10 +79,10 @@ def main():
         return done(tool, rc)
 
     # should be in the first key
-    if not mydata.info or not key_is(mydata.info[0]['key'],
-                                     PMIX_QUERY_NAMESPACE_INFO):
+    if (not mydata.info
+            or PMIX_QUERY_NAMESPACE_INFO != mydata.info[0]['key']):
         eprint("Query returned wrong info key at first posn: %s"
-               % (as_key(mydata.info[0]['key']) if mydata.info else None))
+               % (mydata.info[0]['key'] if mydata.info else None))
         return done(tool, PMIX_ERROR)
 
     darray = mydata.info[0]['value']

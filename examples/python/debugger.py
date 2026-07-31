@@ -31,7 +31,7 @@ waiting_for_debugger = MyLock()
 # the key that was provided in the query.
 def querycbfunc(status, results, mq):
     for item in results:
-        eprint("Transferring %s" % as_key(item['key']))
+        eprint("Transferring %s" % item['key'])
     mq.info = results
     # release the block
     mq.wakeup(status)
@@ -209,11 +209,11 @@ def main():
     cospawn = False
     stop_on_exec = False
     for item in myquery_data.info:
-        if key_is(item['key'], PMIX_QUERY_SPAWN_SUPPORT):
+        if PMIX_QUERY_SPAWN_SUPPORT == item['key']:
             # see if the cospawn attribute is included
-            cospawn = as_key(PMIX_COSPAWN_APP) in item['value']
-        elif key_is(item['key'], PMIX_QUERY_DEBUG_SUPPORT):
-            stop_on_exec = as_key(PMIX_DEBUG_STOP_ON_EXEC) in item['value']
+            cospawn = PMIX_COSPAWN_APP in item['value']
+        elif PMIX_QUERY_DEBUG_SUPPORT == item['key']:
+            stop_on_exec = PMIX_DEBUG_STOP_ON_EXEC in item['value']
 
     # if cospawn is true, then we can launch both the app and the debugger
     # daemons at the same time

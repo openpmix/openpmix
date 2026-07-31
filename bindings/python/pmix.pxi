@@ -1032,19 +1032,16 @@ cdef void pmix_copy_nspace(pmix_nspace_t nspace, ns):
 # the pmix_key_t structure that guarantees the
 # array is NULL-terminated
 cdef void pmix_copy_key(pmix_key_t key, ky):
-    klen = len(ky)
-    if PMIX_MAX_KEYLEN < klen:
-        klen = PMIX_MAX_KEYLEN
     if isinstance(ky, str):
         pykey = ky.encode('ascii')
     else:
         pykey = ky
+    klen = len(pykey)
+    if PMIX_MAX_KEYLEN < klen:
+        klen = PMIX_MAX_KEYLEN
     pykeyptr = <const char *>(pykey)
     memset(key, 0, PMIX_MAX_KEYLEN+1)
-    if 'b' == ky[0]:
-        memcpy(key, &pykeyptr[2], klen-3)
-    else:
-        memcpy(key, pykeyptr, klen)
+    memcpy(key, pykeyptr, klen)
 
 # loads a python pmix regex into a python bytearray
 cdef bytearray pmix_convert_regex(char *regex):
@@ -1951,8 +1948,7 @@ cdef int pmix_load_info(pmix_info_t *array, dicts:list):
     memset(array, 0, len(dicts) * sizeof(pmix_info_t))
     n = 0
     for d in dicts:
-        pykey = str(d['key'])
-        pmix_copy_key(array[n].key, pykey)
+        pmix_copy_key(array[n].key, d['key'])
         try:
             array[n].flags = d['flags']
         except:
@@ -2123,8 +2119,7 @@ cdef void pmix_free_units(pmix_resource_unit_t *array, size_t sz):
 cdef int pmix_load_pdata(pmix_pdata_t *array, data:list):
     n = 0
     for d in data:
-        pykey = str(d['key'])
-        pmix_copy_key(array[n].key, pykey)
+        pmix_copy_key(array[n].key, d['key'])
         val = {'value':d['value'], 'val_type':d['val_type']}
         rc = pmix_load_value(&array[n].value, val)
         array[n].proc.rank = d['proc']['rank']
