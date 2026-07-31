@@ -411,20 +411,36 @@ regression coverage in `test/unit/client_api.c`.
   UNDEF rank as WILDCARD, which is why the path still works. Not changed
   without a pre-v3.2 server to test against; see the comment in the code.
 - **`PMIx_Group_join` completes earlier than its man page says, and so
-  returns no results.** `docs/man/man3/PMIx_Group_join.3.rst` states the
-  call returns "once the group has been completely constructed", with
-  the construct results available in `results`. The implementation
-  completes as soon as the accept/decline notification has been handed to
-  the local event system — much earlier, and carrying no group data.
-  Closing that gap means waiting for the leader's
-  `PMIX_GROUP_CONSTRUCT_COMPLETE`, and **that event is not guaranteed to
-  reach an acceptor at all** — the leader-watch registry comment at the
-  top of `pmix_client_group.c` records that in the common single-server
-  case it often does not arrive before the acceptor finalizes. Waiting
-  on it here would therefore hang the common case rather than fix it.
-  This needs a protocol-level fix (guaranteed delivery of the construct
-  result to every acceptor), not a local one. Until then an application
-  gets the membership and context ID from its own
+  returns no results** — and the invitee-side **leader-failure watch does
+  not fire at all**. Both have one cause, and it is *not* the one the
+  comment above `pmix_group_leader_watches` gives.
+
+  The library observes group lifecycle events by registering an ordinary
+  handler (`setup_leader_watch`). That registration lands in the
+  **multi-code** category, and the chain visits `first` → `single-code` →
+  `multi-code` → `default` → `last`. An application handler registered
+  for a *single* code therefore runs first, and if it returns
+  `PMIX_EVENT_ACTION_COMPLETE` — the normal way to say "handled" — the
+  chain ends and the library's own handler is never reached. Any
+  application that watches `PMIX_GROUP_CONSTRUCT_COMPLETE`, which an
+  invite/join application must, blinds the library to it.
+
+  Demonstrated with `test/unit/run_grpinvite.pl`: every acceptor's
+  application handler receives the event while not one of the library's
+  watches does, in the same process and the same run; flipping only the
+  example's return to `PMIX_EVENT_NO_ACTION_TAKEN` makes all three
+  watches receive it. It is not a delivery problem and not a
+  registration race (reordering the watch ahead of the accept changes
+  nothing).
+
+  So join cannot complete at the documented point until the library can
+  see the construct event. The fix is local, not protocol-level: the
+  pre-chain block in `pmix_invoke_local_event_hdlr()`
+  (`src/event/pmix_event_notification.c`) already maintains
+  `pmix_client_globals.groups` on these same codes, unconditionally and
+  ahead of the chain, and that is where the library's interest belongs.
+  Written up for discussion before implementing. Until then an
+  application takes the membership from its own
   `PMIX_GROUP_CONSTRUCT_COMPLETE` handler.
 
 ## Building

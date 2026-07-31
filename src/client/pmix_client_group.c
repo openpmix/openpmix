@@ -155,12 +155,25 @@ PMIX_CLASS_INSTANCE(pmix_group_tracker_t, pmix_list_item_t, gtcon, gtdes);
 
 /* Registry of active leader-watch trackers. Each acceptor of a group
  * invitation registers a persistent event handler (see setup_leader_watch)
- * that must live until the group construct completes. The construct-complete
- * (or construct-abort) event that would trigger teardown is not guaranteed to
- * reach the acceptor before it finalizes - in practice, for the common
- * single-server case, it often does not. Rather than leak the tracker (and its
- * registered handler) in that case, we record each active watch here and
- * release any survivors at finalize. Access is confined to the progress thread
+ * that must live until the group construct completes. That teardown event
+ * frequently never reaches the handler - but NOT because it fails to arrive.
+ * It arrives at the process reliably; the library just cannot see it. This
+ * watch is a multi-code handler, and the event chain runs single-code
+ * handlers first, so an application handler for PMIX_GROUP_CONSTRUCT_COMPLETE
+ * that returns PMIX_EVENT_ACTION_COMPLETE - the normal way to say "handled" -
+ * ends the chain before this handler is reached. An invite/join application
+ * has to register for that code, so this is the common case, not the corner
+ * one. (Demonstrated with test/unit/run_grpinvite.pl: the application handler
+ * fires on every acceptor while none of these watches do; changing only the
+ * example's return value to PMIX_EVENT_NO_ACTION_TAKEN makes them all fire.
+ * It is not a registration race either - moving this registration ahead of
+ * the acceptance notification changes nothing.) The real fix is to observe
+ * these codes from the pre-chain block in pmix_invoke_local_event_hdlr(),
+ * which already maintains pmix_client_globals.groups on the same events and
+ * cannot be pre-empted; that is a separate change, under discussion.
+ *
+ * Meanwhile, rather than leak the tracker (and its registered handler), we
+ * record each active watch here and release any survivors at finalize. Access is confined to the progress thread
  * (watches are added in watch_regcb and removed in watch_teardown, both of
  * which run there) and to finalize after the progress thread has stopped, so
  * no lock is required - the same discipline used for pending_requests. The
