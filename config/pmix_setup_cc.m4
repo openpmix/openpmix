@@ -178,36 +178,36 @@ AC_DEFUN([PMIX_SETUP_CC],[
     PMIX_CHECK_CC_IQUOTE
 
     if test $pmix_cv_c11_supported = no ; then
-        # It is not currently an error if C11 support is not available. Uncomment the
-        # following lines and update the warning when we require a C11 compiler.
-        # AC_MSG_WARNING([PMIx requires a C11 (or newer) compiler])
-        # AC_MSG_ERROR([Aborting.])
-        # We require a C99 compliant compiler
-        # with autoconf 2.70 AC_PROG_CC makes AC_PROG_CC_C99 obsolete
-        m4_version_prereq([2.70],
-            [],
-            [AC_PROG_CC_C99])
-        # The C99 result of AC_PROG_CC is stored in ac_cv_prog_cc_c99
-        if test "x$ac_cv_prog_cc_c99" = xno ; then
-            AC_MSG_WARN([PMIx requires a C99 (or newer) compiler. C11 is recommended.])
-            AC_MSG_ERROR([Aborting.])
-        fi
-
-        # Get the correct result for C11 support flags now that the compiler flags have
-        # changed
-        PMIX_PROG_CC_C11_HELPER([],[],[])
+        # C11 is a REQUIREMENT, not a preference. There used to be a fallback
+        # here that quietly reconfigured the build for C99 and carried on; it
+        # could not work. PMIx uses _Atomic, the atomic convenience types and
+        # <stdatomic.h> unconditionally throughout - see the required-atomics
+        # block in config/pmix.m4 and src/include/pmix_stdatomic.h - so a C99
+        # build got as far as the first translation unit and then failed with
+        # unknown-type errors that named neither C11 nor the compiler.
+        # Refuse here instead, while the message can still be useful.
+        AC_MSG_WARN([PMIx requires a C11 (or newer) compiler.])
+        AC_MSG_WARN([C11 support is not optional: the library uses _Atomic,])
+        AC_MSG_WARN([the C11 atomic convenience types and <stdatomic.h>])
+        AC_MSG_WARN([unconditionally, and has no fallback implementation.])
+        AC_MSG_WARN([Please select a C11-capable compiler.])
+        AC_MSG_ERROR([Cannot continue])
     fi
 
     # Check if compiler support __thread
+    #
+    # Unlike everything else here this one really is optional - __thread is a
+    # GCC extension that predates C11, kept for the informational define below.
     PMIX_CC_HELPER([if $CC $1 supports __thread], [pmix_prog_cc__thread_available],
                     [],[[static __thread int  foo = 1;++foo;]])
 
-
-    PMIX_CC_HELPER([if $CC $1 supports C11 _Thread_local], [pmix_prog_cc_c11_helper__Thread_local_available],
-                   [],[[static _Thread_local int  foo = 1;++foo;]])
-
-    dnl At this time, PMIx only needs thread local and the atomic convenience types for C11 support. These
-    dnl will likely be required in the future.
+    dnl These record which C11 features the compiler has. Everything except
+    dnl PMIX_C_HAVE___THREAD is now guaranteed to be 1: PMIX_PROG_CC_C11 above
+    dnl aborts the configure without _Thread_local and the atomic convenience
+    dnl types, and config/pmix.m4 aborts it without the rest of the atomics.
+    dnl They are retained, rather than dropped, only because they are emitted
+    dnl into the installed pmix_config.h where an external consumer may test
+    dnl them. Do not add code inside PMIx that branches on them.
     AC_DEFINE_UNQUOTED([PMIX_C_HAVE__THREAD_LOCAL], [$pmix_prog_cc_c11_helper__Thread_local_available],
                        [Whether C compiler supports __Thread_local])
 
