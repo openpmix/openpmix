@@ -63,7 +63,6 @@ headers = pmix_globals.h
 
 headers += \
         pmix_atomic.h \
-        pmix_hash_string.h \
         pmix_socket_errno.h \
         pmix_stdatomic.h \
         pmix_stdint.h \
