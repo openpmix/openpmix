@@ -385,6 +385,235 @@ cleanup:
     report("cpuset is deep-copied by PMIx_Value_xfer", ok);
 }
 
+/* PMIx_Value_get_size on a PMIX_PROC_CPUSET must report the storage the
+ * cpuset actually carries. It used to ignore the cpuset entirely and measure
+ * hwloc_bitmap_weight() of a FILLED bitmap - which is infinitely set, so
+ * hwloc returns -1, which became SIZE_MAX on the way into a size_t and then
+ * wrapped when the caller added sizeof(pmix_cpuset_t). Two different cpusets
+ * therefore reported the same absurd size, and the data_array size walker in
+ * bfrops overflowed its running total. Assert both properties: the size is
+ * sane, and it tracks the content. */
+static void test_cpuset_get_size(void)
+{
+    pmix_value_t val;
+    pmix_cpuset_t small, big;
+    size_t szsmall = 0, szbig = 0;
+    int ok = 0;
+
+    PMIX_CPUSET_CONSTRUCT(&small);
+    PMIX_CPUSET_CONSTRUCT(&big);
+    if (PMIX_SUCCESS != PMIx_Parse_cpuset_string("hwloc:0", &small) ||
+        PMIX_SUCCESS != PMIx_Parse_cpuset_string("hwloc:0-7,16-23,64-71", &big)) {
+        report("cpuset size is finite and tracks content (setup)", 0);
+        goto cleanup;
+    }
+
+    PMIX_VALUE_CONSTRUCT(&val);
+    val.type = PMIX_PROC_CPUSET;
+    val.data.cpuset = &small;
+    if (PMIX_SUCCESS != PMIx_Value_get_size(&val, &szsmall)) {
+        fprintf(stdout, "    get_size(small) failed\n");
+        goto cleanup;
+    }
+    val.data.cpuset = &big;
+    if (PMIX_SUCCESS != PMIx_Value_get_size(&val, &szbig)) {
+        fprintf(stdout, "    get_size(big) failed\n");
+        goto cleanup;
+    }
+
+    /* PMIx_Value_get_size reports the value struct plus the type's own
+     * storage, so the floor is sizeof(pmix_value_t) + sizeof(pmix_cpuset_t).
+     * The load-bearing assertion is szbig > szsmall: the old code returned the
+     * same (wrapped) number for every cpuset, so any test that only bounded
+     * one measurement would have passed against it. */
+    if (szsmall > sizeof(pmix_value_t) + sizeof(pmix_cpuset_t) &&
+        szbig > szsmall && szbig < 4096) {
+        ok = 1;
+    } else {
+        fprintf(stdout, "    implausible sizes: small=%zu big=%zu (floor=%zu)\n",
+                szsmall, szbig, sizeof(pmix_value_t) + sizeof(pmix_cpuset_t));
+    }
+
+cleanup:
+    PMIX_CPUSET_DESTRUCT(&small);
+    PMIX_CPUSET_DESTRUCT(&big);
+    report("cpuset size is finite and tracks content", ok);
+}
+
+/* An unbound cpuset packs as a NULL string, so it adds nothing beyond the
+ * struct - but it must still be reported, not treated as an error. */
+static void test_cpuset_get_size_unbound(void)
+{
+    pmix_value_t val;
+    pmix_cpuset_t cpuset;
+    size_t want = sizeof(pmix_value_t) + sizeof(pmix_cpuset_t);
+    size_t sz = SIZE_MAX;
+    int ok;
+
+    PMIX_CPUSET_CONSTRUCT(&cpuset);
+    cpuset.source = strdup("hwloc");
+    cpuset.bitmap = NULL;
+
+    PMIX_VALUE_CONSTRUCT(&val);
+    val.type = PMIX_PROC_CPUSET;
+    val.data.cpuset = &cpuset;
+
+    ok = (PMIX_SUCCESS == PMIx_Value_get_size(&val, &sz) && sz == want);
+    if (!ok) {
+        fprintf(stdout, "    unbound cpuset size=%zu (want %zu)\n", sz, want);
+    }
+    free(cpuset.source);
+    report("unbound cpuset reports just the struct size", ok);
+}
+
+/* ------------------------------------------------------------------ */
+/* parse_cpuset_string edge cases                                      */
+/* ------------------------------------------------------------------ */
+
+/* PMIx_Parse_cpuset_string hands its arguments straight through to
+ * src/hwloc with no screening of its own, so anything a caller can pass has
+ * to be handled here. A NULL string used to reach strchr and crash. */
+static void test_cpuset_parse_bad_input(void)
+{
+    pmix_cpuset_t cpuset;
+    pmix_status_t rc;
+    int ok;
+
+    PMIX_CPUSET_CONSTRUCT(&cpuset);
+    rc = PMIx_Parse_cpuset_string(NULL, &cpuset);
+    ok = (PMIX_SUCCESS != rc);
+    report("parse_cpuset_string rejects a NULL string, not dereferenced", ok);
+
+    rc = PMIx_Parse_cpuset_string("hwloc:0-3", NULL);
+    ok = (PMIX_SUCCESS != rc);
+    report("parse_cpuset_string rejects a NULL cpuset, not dereferenced", ok);
+
+    /* no delimiter at all */
+    PMIX_CPUSET_CONSTRUCT(&cpuset);
+    rc = PMIx_Parse_cpuset_string("no-delimiter-here", &cpuset);
+    ok = (PMIX_SUCCESS != rc);
+    report("parse_cpuset_string rejects a string with no delimiter", ok);
+
+    /* another provider's string is "not mine", which is not an error */
+    PMIX_CPUSET_CONSTRUCT(&cpuset);
+    rc = PMIx_Parse_cpuset_string("someoneelse:0-3", &cpuset);
+    ok = (PMIX_ERR_TAKE_NEXT_OPTION == rc);
+    if (!ok) {
+        fprintf(stdout, "    foreign source gave rc=%s\n", PMIx_Error_string(rc));
+    }
+    report("parse_cpuset_string passes on a foreign provider's string", ok);
+
+    /* a well-formed prefix with an unparseable payload must leave nothing
+     * half-built behind - the caller has no reason to destruct after an
+     * error, so anything allocated here would simply leak */
+    PMIX_CPUSET_CONSTRUCT(&cpuset);
+    rc = PMIx_Parse_cpuset_string("hwloc:not-a-bitmap", &cpuset);
+    if (PMIX_SUCCESS == rc) {
+        /* hwloc tolerated it; nothing to assert about the failure path */
+        PMIX_CPUSET_DESTRUCT(&cpuset);
+        ok = 1;
+    } else {
+        ok = (NULL == cpuset.bitmap && NULL == cpuset.source);
+        if (!ok) {
+            fprintf(stdout, "    failed parse left bitmap=%p source=%p behind\n",
+                    cpuset.bitmap, (void *) cpuset.source);
+        }
+    }
+    report("a failed parse leaves no allocation behind", ok);
+}
+
+/* ------------------------------------------------------------------ */
+/* printing a topology far wider than the render buffer                */
+/* ------------------------------------------------------------------ */
+
+/* The print handler renders each object's cpuset into a fixed stack buffer.
+ * It used to declare that buffer half the size it then passed as the length
+ * to hwloc_bitmap_snprintf, so a machine with enough PUs to need more than
+ * the buffer's real size overran the stack. Build a synthetic topology whose
+ * machine-level cpuset renders well past that boundary and confirm the render
+ * is both complete and correct - a truncated (or corrupted) render is the
+ * observable symptom short of an actual crash. */
+static void test_topology_print_wide(void)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    hwloc_topology_t t = NULL;
+    char *output = NULL;
+    char *expected = NULL;
+    int len;
+    int ok = 0;
+
+    if (0 != hwloc_topology_init(&t)) {
+        report("wide topology prints its full cpuset (setup)", 0);
+        return;
+    }
+    /* 4096 PUs -> a machine cpuset rendering to ~1400 characters */
+    if (0 != hwloc_topology_set_synthetic(t, "pack:64 core:16 pu:4") ||
+        0 != hwloc_topology_load(t)) {
+        hwloc_topology_destroy(t);
+        fprintf(stdout, "  SKIP: hwloc would not build the synthetic topology\n");
+        return;
+    }
+    topo.source = strdup("hwloc");
+    topo.topology = (void *) t;
+
+    /* what a correct render of the root cpuset looks like */
+    len = hwloc_bitmap_snprintf(NULL, 0, hwloc_get_root_obj(t)->cpuset);
+    if (0 >= len) {
+        goto cleanup;
+    }
+    expected = malloc((size_t) len + 1);
+    if (NULL == expected) {
+        goto cleanup;
+    }
+    hwloc_bitmap_snprintf(expected, (size_t) len + 1, hwloc_get_root_obj(t)->cpuset);
+    if (1024 >= len) {
+        fprintf(stdout, "  NOTE: synthetic cpuset is only %d chars - not past the old bound\n",
+                len);
+    }
+
+    if (PMIX_SUCCESS != PMIx_Data_print(&output, NULL, &topo, PMIX_TOPO) || NULL == output) {
+        fprintf(stdout, "    print of the wide topology failed\n");
+        goto cleanup;
+    }
+    if (NULL != strstr(output, expected)) {
+        ok = 1;
+    } else {
+        fprintf(stdout, "    %d-char cpuset was not rendered intact\n", len);
+    }
+
+cleanup:
+    free(expected);
+    free(output);
+    PMIx_Topology_destruct(&topo);
+    report("wide topology prints its full cpuset", ok);
+}
+
+/* ------------------------------------------------------------------ */
+/* compute_distances argument screening                                */
+/* ------------------------------------------------------------------ */
+
+static void test_compute_distances_bad_params(void)
+{
+    pmix_device_distance_t *dist = (pmix_device_distance_t *) 0x1;
+    size_t ndist = 1;
+    pmix_cpuset_t cpuset;
+    pmix_status_t rc;
+    int ok;
+
+    PMIX_CPUSET_CONSTRUCT(&cpuset);
+    if (PMIX_SUCCESS != PMIx_Parse_cpuset_string("hwloc:0", &cpuset)) {
+        report("compute_distances screens its arguments (setup)", 0);
+        return;
+    }
+
+    /* a NULL topology must be reported, not dereferenced */
+    rc = PMIx_Compute_distances(NULL, &cpuset, NULL, 0, &dist, &ndist);
+    ok = (PMIX_SUCCESS != rc);
+    report("compute_distances rejects a NULL topology", ok);
+
+    PMIX_CPUSET_DESTRUCT(&cpuset);
+}
+
 /* ------------------------------------------------------------------ */
 /* relative locality                                                   */
 /* ------------------------------------------------------------------ */
@@ -568,6 +797,66 @@ static void test_cpuset_string_bad_source(void)
     free(cpuset.source);
 }
 
+/* The producer/consumer pair, driven end to end with no literals in the
+ * middle. The unit test missed the prefix mismatch between
+ * PMIx_server_generate_locality_string and PMIx_Get_relative_locality for
+ * years precisely because it hand-wrote "hwloc:NM0:..." strings that matched
+ * what the consumer wanted rather than what the producer emits. Build the
+ * cpusets here, run them through the real generator, and hand the generator's
+ * own output to the consumer. */
+static void test_locality_generator_to_consumer(void)
+{
+    pmix_cpuset_t c1, c2;
+    char *loc1 = NULL, *loc2 = NULL;
+    pmix_locality_t bits = 0;
+    pmix_status_t rc;
+    int ok = 0;
+
+    PMIX_CPUSET_CONSTRUCT(&c1);
+    PMIX_CPUSET_CONSTRUCT(&c2);
+
+    /* two single-PU cpusets on this machine's own topology */
+    if (PMIX_SUCCESS != PMIx_Parse_cpuset_string("hwloc:0", &c1) ||
+        PMIX_SUCCESS != PMIx_Parse_cpuset_string("hwloc:0", &c2)) {
+        report("generator output is accepted by get_relative_locality (setup)", 0);
+        goto cleanup;
+    }
+
+    rc = PMIx_server_generate_locality_string(&c1, &loc1);
+    if (PMIX_SUCCESS != rc || NULL == loc1) {
+        fprintf(stdout, "  SKIP: no locality for cpu 0 on this machine (rc=%s)\n",
+                PMIx_Error_string(rc));
+        goto cleanup;
+    }
+    rc = PMIx_server_generate_locality_string(&c2, &loc2);
+    if (PMIX_SUCCESS != rc || NULL == loc2) {
+        goto cleanup;
+    }
+
+    /* the generator writes a bare, unprefixed token list - if that ever
+     * changes, the assertion below is the thing that should be revisited,
+     * not quietly relaxed */
+    if (0 == strncasecmp(loc1, "hwloc:", 6)) {
+        fprintf(stdout, "  NOTE: generator now emits a prefixed string (%s)\n", loc1);
+    }
+
+    rc = PMIx_Get_relative_locality(loc1, loc2, &bits);
+    if (PMIX_SUCCESS == rc && (bits & PMIX_LOCALITY_SHARE_NODE) &&
+        (bits & PMIX_LOCALITY_SHARE_HWTHREAD)) {
+        ok = 1;
+    } else {
+        fprintf(stdout, "    generator output '%s' rejected/misread: rc=%s bits=0x%x\n",
+                loc1, PMIx_Error_string(rc), (unsigned) bits);
+    }
+
+cleanup:
+    free(loc1);
+    free(loc2);
+    PMIX_CPUSET_DESTRUCT(&c1);
+    PMIX_CPUSET_DESTRUCT(&c2);
+    report("generator output is accepted by get_relative_locality", ok);
+}
+
 /* ------------------------------------------------------------------ */
 
 /* Run the full topology datatype battery against one topology. */
@@ -608,8 +897,14 @@ int main(int argc, char **argv)
     /* type-level tests that do not need a specific topology */
     test_cpuset_pack_unpack();
     test_cpuset_copy();
+    test_cpuset_get_size();
+    test_cpuset_get_size_unbound();
+    test_cpuset_parse_bad_input();
     test_cpuset_string_bad_source();
     test_relative_locality();
+    test_locality_generator_to_consumer();
+    test_compute_distances_bad_params();
+    test_topology_print_wide();
 
     /* the machine's own topology */
     run_topology_suite(&topo, "local", 1);
