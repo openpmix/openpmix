@@ -125,6 +125,7 @@ examples/group_invite
 examples/group_invite_timeout
 examples/group_invite_decline
 examples/group_invite_abort
+examples/topology
 examples/group_construct_abort
 examples/group_daemon_fail
 

@@ -88,7 +88,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   pub2 toolqry simple_resolve pubstress monitor monitor_remote monitor_multi \
                   simple simple_server abort group_die connect_die group_leave \
                   group_destruct_die group_invite group_invite_timeout group_invite_decline \
-                  group_invite_abort
+                  group_invite_abort topology
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -221,6 +221,10 @@ group_lcl_cid_LDADD =  $(top_builddir)/src/libpmix.la
 nodeinfo_SOURCES = nodeinfo.c examples.h
 nodeinfo_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 nodeinfo_LDADD =  $(top_builddir)/src/libpmix.la
+
+topology_SOURCES = topology.c examples.h
+topology_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+topology_LDADD =  $(top_builddir)/src/libpmix.la
 
 pset_SOURCES = pset.c examples.h
 pset_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)

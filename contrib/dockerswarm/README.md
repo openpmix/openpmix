@@ -27,8 +27,9 @@ is only the nickname.
 | `build.sh` | Builds PMIx from your **live** tree (VPATH) plus PRRTE master against it: into a shared volume for the Linux swarm, or natively for macOS. Start here. |
 | `run-tests.sh` | Runs the group **construction-method** example programs (plus the construct/connect loss and voluntary-leave cases) and reports PASS/FAIL: full multi-node suite on Linux, single-host subset on macOS. |
 | `run-group-events.sh` | Runs the **dynamic, event-driven** group exercisers and their fault paths (invite/join, member lost during destruct, ...); kept separate from `run-tests.sh` so the event/fault matrix can grow independently. Same `linux`/`macos` modes. |
+| `run-topology.sh` | Runs the **topology + locality** exerciser across real nodes: each rank loads the topology its *local* server published (hwloc shmem, with XML as the fallback) and compares `PMIX_LOCALITY_STRING` with every peer. The only place `src/hwloc` gets a multi-node answer -- on one host every peer is a node-mate, so a single-host run cannot tell a correct result from one that claims everything is local. Same `linux`/`macos` modes. |
 | `run-python.sh` | Runs the **Python bindings**: the standalone unit suite, the connected client/server round-trip, and Python PMIx clients spread across nodes. Same `linux`/`macos` modes. See §10. |
-| `swarm-common.sh` | Sourced by all four scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
+| `swarm-common.sh` | Sourced by all five scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
 | `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`). |
 | `Dockerfile` | Base image: toolchain, PRRTE master *source* (autogen'd), SSH wiring, node entrypoint. It contains **no** PMIx and **no** built PRRTE. |
 | `docker-compose.yml` | The ten nodes `pmix-node1`..`pmix-node10`, each mounting the shared `pmix-build` volume. Every one of those names derives from `$PMIX_SWARM`, so two clones can each run a swarm — see §4. |
@@ -78,12 +79,14 @@ is only the nickname.
 docker compose up -d       # start pmix-node1 .. pmix-node10
 ./run-tests.sh linux       # multi-node group construction suite
 ./run-group-events.sh linux # dynamic invite/join + group fault paths
+./run-topology.sh linux    # topology handoff + cross-node locality
 ./run-python.sh linux      # Python bindings: units, round-trip, multi-node
 
 # ---- native macOS (single host) ----
 ./build.sh macos           # native PMIx + PRRTE build under vpath-macos-*
 ./run-tests.sh macos       # single-host group smoke
 ./run-group-events.sh macos # single-host dynamic-group smoke
+./run-topology.sh macos    # single-host topology-handoff smoke
 ./run-python.sh macos      # single-host bindings smoke (most checks SKIP)
 ```
 
