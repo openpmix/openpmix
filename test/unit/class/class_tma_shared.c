@@ -458,6 +458,54 @@ static void test_objects_land_in_the_segment(void)
                && (unsigned char *) sh->pa->free_bits < hi);
 }
 
+/* The key-type check in pmix_hash_table.c is now unconditional -- it used
+ * to be compiled out unless --enable-debug, so in an optimized build there
+ * was nothing for a TMA table to be exempt *from*. Now there is, and the
+ * "NULL == pmix_obj_get_tma(&ht->super)" clause is the only thing keeping
+ * gds/shmem3's tables working in the builds that ship.
+ *
+ * Why the exemption has to exist: ht_type_methods points at a static in
+ * whichever process last touched the table. In a segment shared between a
+ * server and its clients that address means nothing to a peer, so a peer
+ * comparing it against its own would reject every lookup of a table it can
+ * read perfectly well. This case pins that: a TMA-backed table answers
+ * lookups regardless of what its methods pointer currently says.
+ *
+ * Deleting the exemption makes these fail here, and makes gds/shmem3
+ * unusable in an optimized build. */
+static void test_tma_table_is_exempt_from_the_key_type_check(void)
+{
+    void *val = NULL;
+    const char *pkey = "shared-ptr-key";
+    const struct pmix_hash_type_methods_t *saved;
+
+    report("tma exemption: the table really is TMA-backed",
+           NULL != pmix_obj_get_tma(&sh->ht->super));
+
+    /* a uint32 lookup, then a ptr lookup, on the one table -- each retargets
+     * ht_type_methods, and neither may be refused because the table is in a
+     * shared segment */
+    report("tma exemption: uint32 lookup answered",
+           PMIX_SUCCESS == pmix_hash_table_get_value_uint32(sh->ht, 1, &val));
+    saved = sh->ht->ht_type_methods;
+    report("tma exemption: ptr lookup answered on the same table",
+           PMIX_SUCCESS == pmix_hash_table_get_value_ptr(sh->ht, pkey, strlen(pkey), &val));
+    report("tma exemption: the methods pointer did move",
+           saved != sh->ht->ht_type_methods);
+    report("tma exemption: uint32 lookup still answered afterwards",
+           PMIX_SUCCESS == pmix_hash_table_get_value_uint32(sh->ht, 2, &val));
+
+    /* and a methods pointer that means nothing in this address space -- what
+     * a peer mapping another process's segment actually sees -- must not
+     * make the table unreadable either */
+    sh->ht->ht_type_methods = (const struct pmix_hash_type_methods_t *) (uintptr_t) 0xdeadbeef;
+    report("tma exemption: a foreign methods pointer does not block a lookup",
+           PMIX_SUCCESS == pmix_hash_table_get_value_uint32(sh->ht, 3, &val));
+    report("tma exemption: the lookup repaired the methods pointer",
+           (const struct pmix_hash_type_methods_t *) (uintptr_t) 0xdeadbeef
+               != sh->ht->ht_type_methods);
+}
+
 /* ------------------------------------------------------------------ */
 
 static int build_shared_state(void)
@@ -539,6 +587,7 @@ int main(int argc, char **argv)
     }
 
     test_objects_land_in_the_segment();
+    test_tma_table_is_exempt_from_the_key_type_check();
     test_containers_read_from_another_process();
     test_child_writes_visible_to_parent();
     test_refcount_across_processes();
