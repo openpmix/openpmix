@@ -66,6 +66,13 @@
  *      is created if this is the first such registration; a second one
  *      joins the same entry; and deregistration finds what registration
  *      created.
+ *
+ *  internal observers (openpmix#4059): a library observer records the
+ *      same per-code interest a handler does, sees an event even when an
+ *      application handler ends the chain with PMIX_EVENT_ACTION_COMPLETE,
+ *      runs ahead of the entire chain, may deregister itself from inside
+ *      its own callback, and hands its object back through the release
+ *      callback the registry holds for it.
  */
 
 #include "src/include/pmix_config.h"
@@ -94,6 +101,8 @@
 #define EVUT_CODE_FIRSTAFF -9008
 #define EVUT_CODE_FIRSTAFF2 -9009
 #define EVUT_CODE_PROCLOCAL -9010
+#define EVUT_CODE_OBSERVER  -9011
+#define EVUT_CODE_OBSERVER2 -9012
 
 static int npass = 0;
 static int nfail = 0;
@@ -1079,6 +1088,205 @@ static void test_first_affected(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Library-internal observers (openpmix#4059)                          */
+/* ------------------------------------------------------------------ */
+
+static volatile int observed = 0;
+static volatile int obs_order = -1;
+static volatile int obs_released = 0;
+static size_t obs_selfid = SIZE_MAX;
+static volatile int obs_self_ran = 0;
+
+/* record that we saw the event, and where in the sequence */
+static void count_obs(pmix_status_t status, const pmix_proc_t *source,
+                      const pmix_info_t info[], size_t ninfo,
+                      const pmix_proc_t *affected, size_t naffected,
+                      void *cbobject)
+{
+    (void) status;
+    (void) source;
+    (void) info;
+    (void) ninfo;
+    (void) affected;
+    (void) naffected;
+    (void) cbobject;
+
+    obs_order = norder;
+    ++observed;
+}
+
+/* an observer that removes itself the first time it fires */
+static void self_dereg_obs(pmix_status_t status, const pmix_proc_t *source,
+                           const pmix_info_t info[], size_t ninfo,
+                           const pmix_proc_t *affected, size_t naffected,
+                           void *cbobject)
+{
+    (void) status;
+    (void) source;
+    (void) info;
+    (void) ninfo;
+    (void) affected;
+    (void) naffected;
+    (void) cbobject;
+
+    ++obs_self_ran;
+    if (SIZE_MAX != obs_selfid) {
+        pmix_event_deregister_observer(obs_selfid, NULL, NULL);
+        obs_selfid = SIZE_MAX;
+    }
+}
+
+/* release callback for an observer object owned by the registry */
+static void obs_relfn(void *cbdata)
+{
+    free(cbdata);
+    ++obs_released;
+}
+
+static void obsregcb(pmix_status_t status, size_t refid, void *cbdata)
+{
+    size_t *idp = (size_t *) cbdata;
+
+    *idp = (PMIX_SUCCESS == status) ? refid : SIZE_MAX;
+}
+
+/* register an observer and wait for the registration to land - the
+ * entry point is non-blocking by design */
+static size_t regobs(const char *name, pmix_status_t *codes, size_t ncodes,
+                     pmix_event_observer_fn_t fn, void *cbobject,
+                     pmix_release_cbfunc_t relfn)
+{
+    volatile size_t id = SIZE_MAX - 1;
+    pmix_status_t rc;
+    int i;
+
+    rc = pmix_event_register_observer(name, codes, ncodes, fn, cbobject, relfn,
+                                      obsregcb, (void *) &id);
+    if (PMIX_SUCCESS != rc) {
+        return SIZE_MAX;
+    }
+    for (i = 0; i < 500 && (SIZE_MAX - 1) == id; i++) {
+        usleep(10000);
+    }
+    return id;
+}
+
+/* count the entries in the actives list for a given code */
+static size_t actives_for(pmix_status_t code)
+{
+    pmix_active_code_t *active;
+    size_t n = 0;
+
+    PMIX_LIST_FOREACH (active, &pmix_globals.events.actives, pmix_active_code_t) {
+        if (active->code == code) {
+            n += active->nregs;
+        }
+    }
+    return n;
+}
+
+static void test_observer(void)
+{
+    pmix_status_t code = EVUT_CODE_OBSERVER;
+    pmix_status_t code2 = EVUT_CODE_OBSERVER2;
+    size_t obsid, hdlrid, hdlrid2;
+    size_t nactive;
+    char *owned;
+    pmix_status_t rc;
+
+    fprintf(stdout, "internal observers:\n");
+
+    /* an observer must name at least one code, and must have a function */
+    rc = pmix_event_register_observer("bad", NULL, 0, count_obs, NULL, NULL, NULL, NULL);
+    report("observer: registration with no codes rejected", PMIX_ERR_BAD_PARAM == rc);
+    rc = pmix_event_register_observer("bad", &code, 1, NULL, NULL, NULL, NULL, NULL);
+    report("observer: registration with no callback rejected", PMIX_ERR_BAD_PARAM == rc);
+
+    /* an observer records the same per-code interest a handler does -
+     * without it, the server would never forward the code at all */
+    nactive = actives_for(code);
+    obsid = regobs("evut-observer", &code, 1, count_obs, NULL, NULL);
+    report("observer: registration succeeded", SIZE_MAX != obsid);
+    report("observer: registration recorded an active code",
+           nactive + 1 == actives_for(code));
+
+    /* THE regression: an application handler that ends the chain the
+     * normal way must not be able to suppress the library's observer.
+     *
+     * Two application handlers, so the ordering assertion below has
+     * something to measure: the terminating one is registered first and
+     * so ends up behind the counting one (registration prepends), which
+     * means the chain really does advance norder before it stops. */
+    observed = 0;
+    completed = 0;
+    norder = 0;
+    obs_order = -1;
+    hdlrid = reghdlr(&code, 1, NULL, 0, complete_hdlr);
+    hdlrid2 = reghdlr(&code, 1, NULL, 0, chain_hdlr);
+    report("observer: application handlers registered",
+           SIZE_MAX != hdlrid && SIZE_MAX != hdlrid2);
+
+    notify_nocache(code, NULL, 0);
+    wait_for_count(&observed, 1);
+    wait_for_count(&completed, 1);
+    grace();
+
+    report("observer: application handler ran and ended the chain",
+           1 == completed && 1 == norder);
+    report("observer: observer saw the event anyway", 1 == observed);
+
+    /* and it saw it first - observers run ahead of the entire chain, so
+     * no handler had advanced norder by the time the observer ran */
+    report("observer: observer ran before the chain", 0 == obs_order);
+
+    if (SIZE_MAX != hdlrid) {
+        PMIx_Deregister_event_handler(hdlrid, NULL, NULL);
+    }
+    if (SIZE_MAX != hdlrid2) {
+        PMIx_Deregister_event_handler(hdlrid2, NULL, NULL);
+    }
+
+    /* deregistration removes it, and gives back the code interest */
+    observed = 0;
+    rc = pmix_event_deregister_observer(obsid, NULL, NULL);
+    report("observer: deregistration accepted", PMIX_SUCCESS == rc);
+    grace();
+    report("observer: deregistration released the active code",
+           nactive == actives_for(code));
+
+    notify_nocache(code, NULL, 0);
+    grace();
+    report("observer: not invoked after deregistration", 0 == observed);
+
+    /* an observer may tear itself down from inside its own callback */
+    obs_self_ran = 0;
+    obs_selfid = regobs("evut-self", &code2, 1, self_dereg_obs, NULL, NULL);
+    report("observer: self-dereg registration succeeded", SIZE_MAX != obs_selfid);
+
+    notify_nocache(code2, NULL, 0);
+    wait_for_count(&obs_self_ran, 1);
+    grace();
+    report("observer: self-deregistering observer ran once", 1 == obs_self_ran);
+
+    notify_nocache(code2, NULL, 0);
+    grace();
+    report("observer: self-deregistered observer did not run again",
+           1 == obs_self_ran);
+
+    /* the registry owns the observer's object when given a release fn,
+     * so a subsystem does not need its own survivor list for finalize */
+    obs_released = 0;
+    owned = strdup("owned-by-the-registry");
+    obsid = regobs("evut-owned", &code, 1, count_obs, owned, obs_relfn);
+    report("observer: registration with an owned object succeeded",
+           SIZE_MAX != obsid);
+    pmix_event_deregister_observer(obsid, NULL, NULL);
+    grace();
+    report("observer: the registry released the observer's object",
+           1 == obs_released);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -1115,6 +1323,9 @@ int main(int argc, char **argv)
     test_host_regevents();
     test_enviro_handshake();
     test_first_affected();
+
+    /* library-internal observers */
+    test_observer();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 

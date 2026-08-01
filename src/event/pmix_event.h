@@ -51,6 +51,37 @@ BEGIN_C_DECLS
  * infinite loop */
 #define PMIX_SERVER_INTERNAL_NOTIFY "pmix.srvr.internal.notify"
 
+/* Callback signature for a library-internal event observer.
+ *
+ * An observer is how PMIx itself watches an event it requires for its own
+ * correctness. It is deliberately NOT an event handler: it has no return
+ * value and no completion callback, so it cannot end the event chain, cannot
+ * defer, and cannot alter the results the chain accumulates. Observers are
+ * run - all of them, in registration order - before the application-visible
+ * chain begins, so nothing an application handler does can suppress one.
+ * See openpmix#4059 for why this exists.
+ *
+ * Four rules bind an observer, all of them because it runs inline on the
+ * progress thread ahead of the chain:
+ *
+ * 1. It must not block. Bookkeeping, waking a lock, firing a caller's
+ *    callback, posting a PMIX_THREADSHIFT, or issuing a *non-blocking*
+ *    PMIx_Notify_event are all fine; PMIX_WAIT_THREAD and the blocking
+ *    public APIs are not.
+ * 2. It must not synchronously drive another event chain - that would
+ *    re-enter the sweep.
+ * 3. It must be idempotent. A cached notification replayed by
+ *    check_cached_events() runs the whole delivery path again, so an
+ *    observer can legitimately see the same event twice.
+ * 4. It may deregister itself. Deregistration threadshifts, so the removal
+ *    lands after the sweep has finished with the list.
+ */
+typedef void (*pmix_event_observer_fn_t)(pmix_status_t status,
+                                         const pmix_proc_t *source,
+                                         const pmix_info_t info[], size_t ninfo,
+                                         const pmix_proc_t *affected, size_t naffected,
+                                         void *cbobject);
+
 /* define a struct for tracking registration ranges */
 typedef struct {
     pmix_data_range_t range;
@@ -91,6 +122,15 @@ typedef struct {
     pmix_proc_t *affected;
     size_t naffected;
     pmix_notification_fn_t evhdlr;
+    /* If obsfn is non-NULL this registration is a library-internal
+     * observer rather than an event handler: it lives on the observers
+     * list, is run ahead of the chain, and evhdlr is unused. relfn, if
+     * given, releases cbobject when the registration goes away - which
+     * lets the registry own the observer's tracker rather than making
+     * every subsystem keep its own survivor list for finalize.
+     */
+    pmix_event_observer_fn_t obsfn;
+    pmix_release_cbfunc_t relfn;
     void *cbobject;
     pmix_status_t *codes;
     size_t ncodes;
@@ -110,6 +150,8 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_event_hdlr_t);
     .affected = NULL,                       \
     .naffected = 0,                         \
     .evhdlr = NULL,                         \
+    .obsfn = NULL,                          \
+    .relfn = NULL,                          \
     .cbobject = NULL,                       \
     .codes = NULL,                          \
     .ncodes = 0                             \
@@ -137,6 +179,9 @@ typedef struct {
     pmix_list_t single_events;
     pmix_list_t multi_events;
     pmix_list_t default_events;
+    /* library-internal observers - not part of the chain, and not
+     * reachable by anything the application can register */
+    pmix_list_t observers;
 } pmix_events_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_events_t);
 
@@ -149,7 +194,8 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_events_t);
     .actives = PMIX_LIST_STATIC_INIT,               \
     .single_events = PMIX_LIST_STATIC_INIT,         \
     .multi_events = PMIX_LIST_STATIC_INIT,          \
-    .default_events = PMIX_LIST_STATIC_INIT         \
+    .default_events = PMIX_LIST_STATIC_INIT,        \
+    .observers = PMIX_LIST_STATIC_INIT              \
 }
 
 /* define an object for chaining event notifications thru
@@ -214,6 +260,15 @@ typedef struct {
     pmix_proc_t *affected;
     size_t naffected;
     pmix_notification_fn_t evhdlr;
+    /* Internal-observer registrations pass no info array - there is no
+     * caller to hold one alive across the threadshift - so the name and
+     * return object they would otherwise carry as directives ride here
+     * instead. A non-NULL obsfn is what marks the caddy as an observer.
+     */
+    pmix_event_observer_fn_t obsfn;
+    pmix_release_cbfunc_t relfn;
+    void *cbobject;
+    char *name;
     pmix_hdlr_reg_cbfunc_t evregcbfn;
     void *cbdata;
 } pmix_rshift_caddy_t;
@@ -237,6 +292,35 @@ PMIX_EXPORT bool pmix_notify_check_affected(pmix_proc_t *interested, size_t nint
 
 PMIX_EXPORT pmix_status_t pmix_deregister_event_hdlr(size_t event_hdlr_ref,
                                                      pmix_buffer_t *msg);
+
+/* Register a library-internal observer for the given codes. Read the
+ * contract on pmix_event_observer_fn_t before writing one.
+ *
+ * At least one code must be given - there is no "default" observer, as an
+ * observer that wanted every event would be watching for something it has
+ * no business deciding. The name is used only in debug output. cbobject is
+ * handed back to the observer on every callback; if relfn is non-NULL the
+ * registry calls it on cbobject when the registration is torn down, either
+ * by deregistration or at finalize.
+ *
+ * This is non-blocking by design: it may be called from the progress
+ * thread (registering a watch from inside an event handler is the common
+ * case), where waiting for the registration to complete would deadlock.
+ * cbfunc reports the outcome and the observer id used to deregister.
+ */
+PMIX_EXPORT pmix_status_t pmix_event_register_observer(const char *name,
+                                                       const pmix_status_t codes[], size_t ncodes,
+                                                       pmix_event_observer_fn_t obsfn,
+                                                       void *cbobject,
+                                                       pmix_release_cbfunc_t relfn,
+                                                       pmix_hdlr_reg_cbfunc_t cbfunc,
+                                                       void *cbdata);
+
+/* Remove an observer registration. Non-blocking for the same reason;
+ * cbfunc may be NULL if the caller does not need to know when it is gone. */
+PMIX_EXPORT pmix_status_t pmix_event_deregister_observer(size_t obsid,
+                                                         pmix_op_cbfunc_t cbfunc,
+                                                         void *cbdata);
 
 /* invoke the server event notification handler */
 PMIX_EXPORT pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
