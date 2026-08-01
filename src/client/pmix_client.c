@@ -20,6 +20,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include "src/include/pmix_prefetch.h"
+
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_stdint.h"
 
@@ -120,7 +122,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
 
     /* start the local notification chain */
     chain = PMIX_NEW(pmix_event_chain_t);
-    if (NULL == chain) {
+    if (PMIX_UNLIKELY(NULL == chain)) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return;
     }
@@ -129,7 +131,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
 
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &cmd, &cnt, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(chain);
         goto error;
@@ -137,7 +139,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
     /* unpack the status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &chain->status, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(chain);
         goto error;
@@ -146,7 +148,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
     /* unpack the source of the event */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &chain->source, &cnt, PMIX_PROC);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(chain);
         goto error;
@@ -155,7 +157,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
     /* unpack the info that might have been provided */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ninfo, &cnt, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(chain);
         goto error;
@@ -164,7 +166,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
     /* we always leave space for event hdlr name and a callback object */
     chain->nallocated = ninfo + 2;
     PMIX_INFO_CREATE(chain->info, chain->nallocated);
-    if (NULL == chain->info) {
+    if (PMIX_UNLIKELY(NULL == chain->info)) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         PMIX_RELEASE(chain);
         return;
@@ -174,7 +176,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
         chain->ninfo = ninfo;
         cnt = ninfo;
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, chain->info, &cnt, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(chain);
             goto error;
@@ -196,7 +198,7 @@ error:
                         "%s pmix:client_notify_recv - unpack error status =%s, calling def errhandler",
                         PMIX_NAME_PRINT(&pmix_globals.myid), PMIx_Error_string(rc));
     chain = PMIX_NEW(pmix_event_chain_t);
-    if (NULL == chain) {
+    if (PMIX_UNLIKELY(NULL == chain)) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return;
     }
@@ -242,12 +244,12 @@ static pmix_status_t unpack_ack(pmix_buffer_t *buf)
     pmix_status_t rc, ret;
     int32_t cnt;
 
-    if (NULL == buf || PMIX_BUFFER_IS_EMPTY(buf)) {
+    if (PMIX_UNLIKELY(NULL == buf || PMIX_BUFFER_IS_EMPTY(buf))) {
         return PMIX_ERR_UNREACH;
     }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -386,11 +388,11 @@ static pmix_status_t fallback_to_next_gds(void)
     myserver->nptr->compat.gds = fb;
 
     req = PMIX_NEW(pmix_buffer_t);
-    if (NULL == req) {
+    if (PMIX_UNLIKELY(NULL == req)) {
         return PMIX_ERR_NOMEM;
     }
     PMIX_BFROPS_PACK(rc, myserver, req, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(req);
         return rc;
@@ -398,14 +400,14 @@ static pmix_status_t fallback_to_next_gds(void)
     /* tell the server which module we switched to */
     modname = (char *) fb->name;
     PMIX_BFROPS_PACK(rc, myserver, req, &modname, 1, PMIX_STRING);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(req);
         return rc;
     }
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     PMIX_PTL_SEND_RECV(rc, myserver, req, job_data, (void *) &cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(req);
         PMIX_DESTRUCT(&cb);
@@ -461,7 +463,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
             }
         }
         /* if the object wasn't returned, then that is an error */
-        if (NULL == lock) {
+        if (PMIX_UNLIKELY(NULL == lock)) {
             pmix_output_verbose(2, pmix_client_globals.base_output,
                                 "event handler %s failed to return object",
                                 (NULL == name) ? "NULL" : name);
@@ -507,12 +509,12 @@ static void _check_for_notify(pmix_info_t info[], size_t ninfo)
     if (0 < m) {
         /* notify anyone listening that a model has been declared */
         scd = PMIX_NEW(pmix_shift_caddy_t);
-        if (NULL == scd) {
+        if (PMIX_UNLIKELY(NULL == scd)) {
              /* nothing we can do */
             return;
         }
         PMIX_INFO_CREATE(scd->info, m + 1);
-        if (NULL == scd->info) {
+        if (PMIX_UNLIKELY(NULL == scd->info)) {
             PMIX_RELEASE(scd);
             return;
         }
@@ -577,25 +579,25 @@ static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
 
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &source, &cnt, PMIX_PROC);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return;
     }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &channel, &cnt, PMIX_IOF_CHANNEL);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return;
     }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &cnt, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return;
     }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return;
     }
@@ -603,14 +605,14 @@ static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         PMIX_INFO_CREATE(info, ninfo);
         cnt = ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
     }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
@@ -663,7 +665,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         // did the prior call get far enough? We might be in a tight
         // race between multiple calls to PMIx_Init - bad programming
         // technique, but all we can do is try to protect against it
-        if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
             return PMIX_ERR_INIT;
         }
         // return our proc name if they requested it
@@ -678,7 +680,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         }
         /* if we were given connection info, then we should try
          * to connect if are currently unconnected */
-        if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+        if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
             rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver, info,
                                           ninfo, &suri);
             if (PMIX_SUCCESS == rc) {
@@ -714,7 +716,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* setup the runtime - this init's the globals,
      * opens and initializes the required frameworks */
     rc = pmix_rte_init(PMIX_PROC_CLIENT, info, ninfo, pmix_client_notify_recv);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -758,18 +760,18 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     PMIX_CONSTRUCT(&pmix_client_globals.peers, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
     pmix_client_globals.myserver = PMIX_NEW(pmix_peer_t);
-    if (NULL == pmix_client_globals.myserver) {
+    if (PMIX_UNLIKELY(NULL == pmix_client_globals.myserver)) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return PMIX_ERR_NOMEM;
     }
     pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_namespace_t);
-    if (NULL == pmix_client_globals.myserver->nptr) {
+    if (PMIX_UNLIKELY(NULL == pmix_client_globals.myserver->nptr)) {
         PMIX_RELEASE(pmix_client_globals.myserver);
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return PMIX_ERR_NOMEM;
     }
     pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
-    if (NULL == pmix_client_globals.myserver->info) {
+    if (PMIX_UNLIKELY(NULL == pmix_client_globals.myserver->info)) {
         PMIX_RELEASE(pmix_client_globals.myserver);
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return PMIX_ERR_NOMEM;
@@ -821,7 +823,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_globals.pindex = -1;
     /* setup a rank_info object for us */
     pmix_globals.mypeer->info = PMIX_NEW(pmix_rank_info_t);
-    if (NULL == pmix_globals.mypeer->info) {
+    if (PMIX_UNLIKELY(NULL == pmix_globals.mypeer->info)) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return PMIX_ERR_NOMEM;
     }
@@ -840,7 +842,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
      * to us at launch */
     evar = getenv("PMIX_SECURITY_MODE");
     pmix_globals.mypeer->nptr->compat.psec = pmix_psec_base_assign_module(evar);
-    if (NULL == pmix_globals.mypeer->nptr->compat.psec) {
+    if (PMIX_UNLIKELY(NULL == pmix_globals.mypeer->nptr->compat.psec)) {
         PMIX_ERROR_LOG(PMIX_ERR_INIT);
         return PMIX_ERR_INIT;
     }
@@ -874,7 +876,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     } else {
         pmix_client_globals.myserver->nptr->compat.gds = pmix_gds_base_assign_module(NULL, 0);
     }
-    if (NULL == pmix_client_globals.myserver->nptr->compat.gds) {
+    if (PMIX_UNLIKELY(NULL == pmix_client_globals.myserver->nptr->compat.gds)) {
         PMIX_ERROR_LOG(PMIX_ERR_INIT);
         return PMIX_ERR_INIT;
     }
@@ -895,7 +897,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, "hash", PMIX_STRING);
     }
     pmix_globals.mypeer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
-    if (NULL == pmix_globals.mypeer->nptr->compat.gds) {
+    if (PMIX_UNLIKELY(NULL == pmix_globals.mypeer->nptr->compat.gds)) {
         PMIX_INFO_DESTRUCT(&ginfo);
         PMIX_ERROR_LOG(PMIX_ERR_INIT);
         return PMIX_ERR_INIT;
@@ -905,12 +907,12 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* attempt to connect to a server */
     rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver,
                                    info, ninfo, &suri);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         /* mark that we couldn't connect to a server */
         pmix_client_globals.singleton = true;
         /* initialize our data values */
         rc = pmix_tool_init_info();
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -934,7 +936,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
          * blocking operations and error out if we try them. */
         req = PMIX_NEW(pmix_buffer_t);
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, req, &cmd, 1, PMIX_COMMAND);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(req);
             free(suri);
@@ -943,7 +945,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         /* send to the server */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, req, job_data, (void *) &cb);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             /* the transport refused the message without taking it, and the
              * recv callback will never fire, so unwind both here */
@@ -961,7 +963,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
              * this client; fall back to the next module and re-request */
             rc = fallback_to_next_gds();
         }
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             return rc;
         }
     }
@@ -976,7 +978,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         kptr->value->type = PMIX_STRING;
         kptr->value->data.string = strdup(pmix_client_globals.myserver->info->pname.nspace);
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -988,7 +990,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         kptr->value->data.rank = pmix_client_globals.myserver->info->pname.rank;
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
         PMIX_RELEASE(kptr); // maintain accounting
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -1002,7 +1004,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         free(suri);
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
         PMIX_RELEASE(kptr); // maintain accounting
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -1015,7 +1017,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     if (!pmix_globals.external_topology &&
         NULL == pmix_globals.topology.topology) {
         rc = pmix_hwloc_setup_topology(NULL, 0);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -1038,7 +1040,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
 
         kv = (pmix_kval_t*)pmix_list_remove_first(&cb.kvs);
         PMIX_DESTRUCT(&cb);
-        if (NULL == kv) {
+        if (PMIX_UNLIKELY(NULL == kv)) {
             /* a successful fetch that returned nothing - treat it the same
              * as "no debugger waiting" rather than dereferencing the NULL */
             PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
@@ -1126,7 +1128,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             PMIX_INFO_DESTRUCT(&evinfo[1]);
             PMIX_INFO_DESTRUCT(&evinfo[2]);
             PMIX_INFO_DESTRUCT(&evinfo[3]);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 // failed to notify ready-for-debug
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT_LOCK(&releaselock);
@@ -1152,7 +1154,7 @@ nodebugger:
 
     /* register the client supported attrs */
     rc = pmix_register_client_attrs();
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -1221,7 +1223,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     pmix_peer_t *peer;
     int i;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
     i = pmix_atomic_fetch_add(&client_init_cntr, -1);
@@ -1248,7 +1250,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
                 if (0 == strcmp(PMIX_EMBED_BARRIER, info[n].key)) {
                     if (PMIX_INFO_TRUE(&info[n])) {
                         rc = PMIx_Fence(NULL, 0, NULL, 0);
-                        if (PMIX_SUCCESS != rc) {
+                        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                             PMIX_ERROR_LOG(rc);
                         }
                     }
@@ -1262,7 +1264,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         msg = PMIX_NEW(pmix_buffer_t);
         /* pack the cmd */
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return rc;
@@ -1283,7 +1285,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         pmix_event_add(&tev.ev, &tv);
         /* send to the server */
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, finwait_cbfunc, (void *) &tev);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             /* the recv callback will not fire, so cancel the timer and
              * tear down the lock before we return - and reclaim the message
              * the transport declined to take */
@@ -1368,11 +1370,11 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     pmix_output_verbose(2, pmix_client_globals.base_output,
                         "pmix:client abort called");
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -1392,7 +1394,7 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
     }
 
@@ -1400,28 +1402,28 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     bfr = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, bfr, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(bfr);
         return rc;
     }
     /* pack the status flag */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, bfr, &flag, 1, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(bfr);
         return rc;
     }
     /* pack the string message - a NULL is okay */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, bfr, &msg, 1, PMIX_STRING);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(bfr);
         return rc;
     }
     /* pack the number of procs */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, bfr, &nprocs, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(bfr);
         return rc;
@@ -1429,7 +1431,7 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     /* pack any provided procs */
     if (0 < nprocs) {
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, bfr, procs, nprocs, PMIX_PROC);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(bfr);
             return rc;
@@ -1439,7 +1441,7 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     /* send to the server */
     cb = PMIX_NEW(pmix_cb_t);
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, bfr, abort_cbfunc, (void *) cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_RELEASE(bfr);
         PMIX_RELEASE(cb);
         return rc;
@@ -1482,7 +1484,7 @@ static void _putfn(int sd, short args, void *cbdata)
     if (PMIX_STRING_SIZE_CHECK(cb->value)) {
         /* compress large strings */
         if (pmix_compress.compress_string(cb->value->data.string, &tmp, &len)) {
-            if (NULL == tmp) {
+            if (PMIX_UNLIKELY(NULL == tmp)) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
@@ -1498,14 +1500,14 @@ static void _putfn(int sd, short args, void *cbdata)
     } else {
         PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, kv->value, cb->value);
     }
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto done;
     }
 
     /* store it */
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, cb->scope, kv);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
 
@@ -1530,7 +1532,7 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
     pmix_cb_t *cb;
     pmix_status_t rc;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
@@ -1539,7 +1541,7 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
      * arguments are evaluated whether or not the channel is enabled - so a
      * NULL for either used to crash here, ahead of the check that was meant
      * to catch it. _putfn() then dereferences the value again. */
-    if (NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key) || NULL == val) {
+    if (PMIX_UNLIKELY(NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key) || NULL == val)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -1547,7 +1549,7 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
                           "pmix: executing put for key %s type %s",
                           key, PMIx_Data_type_string(val->type));
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -1585,7 +1587,7 @@ static void _commitfn(int sd, short args, void *cbdata)
     msgout = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msgout);
         goto error;
@@ -1604,7 +1606,7 @@ static void _commitfn(int sd, short args, void *cbdata)
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
         if (PMIX_SUCCESS == rc) {
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &scope, 1, PMIX_SCOPE);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msgout);
                 goto error;
@@ -1612,7 +1614,7 @@ static void _commitfn(int sd, short args, void *cbdata)
             PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
             PMIX_LIST_FOREACH(kv, &cb->kvs, pmix_kval_t) {
                 PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, &bkt, kv, 1, PMIX_KVAL);
-                if (PMIX_SUCCESS != rc) {
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&bkt);
                     PMIX_RELEASE(msgout);
@@ -1622,7 +1624,7 @@ static void _commitfn(int sd, short args, void *cbdata)
             /* now pack the result */
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &bkt, 1, PMIX_BUFFER);
             PMIX_DESTRUCT(&bkt);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msgout);
                 goto error;
@@ -1642,7 +1644,7 @@ static void _commitfn(int sd, short args, void *cbdata)
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
         if (PMIX_SUCCESS == rc) {
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &scope, 1, PMIX_SCOPE);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msgout);
                 goto error;
@@ -1650,7 +1652,7 @@ static void _commitfn(int sd, short args, void *cbdata)
             PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
             PMIX_LIST_FOREACH(kv, &cb->kvs, pmix_kval_t) {
                 PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, &bkt, kv, 1, PMIX_KVAL);
-                if (PMIX_SUCCESS != rc) {
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&bkt);
                     PMIX_RELEASE(msgout);
@@ -1660,7 +1662,7 @@ static void _commitfn(int sd, short args, void *cbdata)
             /* now pack the result */
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &bkt, 1, PMIX_BUFFER);
             PMIX_DESTRUCT(&bkt);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msgout);
                 goto error;
@@ -1695,7 +1697,7 @@ PMIX_EXPORT pmix_status_t PMIx_Commit(void)
     pmix_cb_t *cb;
     pmix_status_t rc;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
@@ -1704,7 +1706,7 @@ PMIX_EXPORT pmix_status_t PMIx_Commit(void)
         return PMIX_SUCCESS;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -1713,7 +1715,7 @@ PMIX_EXPORT pmix_status_t PMIx_Commit(void)
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         return PMIX_SUCCESS; // not an error
     }
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
     }
 

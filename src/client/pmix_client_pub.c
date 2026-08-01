@@ -18,6 +18,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include "src/include/pmix_prefetch.h"
+
 #include "src/include/pmix_stdint.h"
 
 #include "include/pmix.h"
@@ -70,16 +72,16 @@ PMIX_EXPORT pmix_status_t PMIx_Publish(const pmix_info_t info[], size_t ninfo)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: publish called");
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -111,21 +113,21 @@ PMIX_EXPORT pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: publish called");
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* check for bozo cases */
-    if (NULL == info) {
+    if (PMIX_UNLIKELY(NULL == info)) {
         /* nothing to publish */
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
@@ -135,14 +137,14 @@ PMIX_EXPORT pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     /* pack our effective userid - will be used to constrain lookup */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &pmix_globals.uid, 1, PMIX_UINT32);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -150,7 +152,7 @@ PMIX_EXPORT pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo
     /* pass the number of info structs - needed on remote end so
      * space can be malloc'd for the values */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -158,7 +160,7 @@ PMIX_EXPORT pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo
     if (0 < ninfo) {
         /* pack the info structs */
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return rc;
@@ -174,7 +176,7 @@ PMIX_EXPORT pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
     }
@@ -193,21 +195,21 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata, const 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: lookup called");
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* bozo protection */
-    if (NULL == pdata) {
+    if (PMIX_UNLIKELY(NULL == pdata)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -254,21 +256,21 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: lookup_nb called");
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* check for bozo cases */
-    if (NULL == keys) {
+    if (PMIX_UNLIKELY(NULL == keys)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -276,14 +278,14 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     /* pack our effective userid - will be used to constrain lookup */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &pmix_globals.uid, 1, PMIX_UINT32);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -291,7 +293,7 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
     /* pack the keys */
     nkeys = PMIx_Argv_count(keys);
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nkeys, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -299,7 +301,7 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
     if (0 < nkeys) {
         for (n = 0; n < nkeys; n++) {
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &keys[n], 1, PMIX_STRING);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
                 return rc;
@@ -309,7 +311,7 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
     /* pass the number of info structs - needed on remote end so
      * space can be malloc'd for the values */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -317,7 +319,7 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
     if (0 < ninfo) {
         /* pack the info structs */
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return rc;
@@ -333,7 +335,7 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
 
     /* send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_lookup_cbfunc, (void *) cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
     }
@@ -349,16 +351,16 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish(char **keys, const pmix_info_t info[], 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: unpublish called");
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -393,16 +395,16 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: unpublish called");
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -410,14 +412,14 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     /* pack our effective userid - will be used to constrain lookup */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &pmix_globals.uid, 1, PMIX_UINT32);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -425,7 +427,7 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
     /* pack the number of keys */
     i = PMIx_Argv_count(keys);
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &i, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -433,7 +435,7 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
     if (0 < i) {
         for (j = 0; j < i; j++) {
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &keys[j], 1, PMIX_STRING);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
                 return rc;
@@ -443,7 +445,7 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
     /* pass the number of info structs - needed on remote end so
      * space can be malloc'd for the values */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -451,7 +453,7 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
     if (0 < ninfo) {
         /* pack the info structs */
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return rc;
@@ -465,7 +467,7 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
 
     /* send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
     }
@@ -488,7 +490,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
-    if (NULL == buf) {
+    if (PMIX_UNLIKELY(NULL == buf)) {
         ret = PMIX_ERR_BAD_PARAM;
         goto report;
     }
@@ -502,7 +504,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
     /* unpack the returned status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
@@ -544,12 +546,12 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     ndata = 0;
     ret = PMIX_SUCCESS;
 
-    if (NULL == cb->cbfunc.lookupfn) {
+    if (PMIX_UNLIKELY(NULL == cb->cbfunc.lookupfn)) {
         /* nothing we can do with this */
         PMIX_RELEASE(cb);
         return;
     }
-    if (NULL == buf) {
+    if (PMIX_UNLIKELY(NULL == buf)) {
         ret = PMIX_ERR_BAD_PARAM;
         goto report;
     }
@@ -563,7 +565,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     /* unpack the returned status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
         goto report;
@@ -580,7 +582,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     /* unpack the number of returned values */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ndata, &cnt, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
         ndata = 0;
@@ -592,7 +594,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         cnt = ndata;
         /* unpack the returned values into the pdata array */
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, pdata, &cnt, PMIX_PDATA);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             /* report the failure rather than falling into cleanup: that
              * path never invoked the callback, so the caller waited on its
@@ -643,7 +645,7 @@ static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t nda
                      * actual transfer failure */
                     PMIX_BFROPS_VALUE_XFER(rc, pmix_client_globals.myserver,
                                            &tgt[j].value, &pdata[i].value);
-                    if (PMIX_SUCCESS != rc) {
+                    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                         cb->status = rc;
                     }
                     break;

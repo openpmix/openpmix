@@ -19,6 +19,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include "src/include/pmix_prefetch.h"
+
 #include "src/include/pmix_stdint.h"
 
 #include "include/pmix.h"
@@ -95,7 +97,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
      *
      * Either case is supported. However, we don't currently
      * support the case where -both- values are NULL */
-    if (NULL == proc && NULL == key) {
+    if (PMIX_UNLIKELY(NULL == proc && NULL == key)) {
         pmix_output_verbose(2, pmix_client_globals.get_output,
                             "pmix: get_nb value error - both proc and key are NULL");
         return PMIX_ERR_BAD_PARAM;
@@ -123,13 +125,13 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_GET_POINTER_VALUES)) {
             /* they want a pointer to the answer */
-            if (NULL == val) {
+            if (PMIX_UNLIKELY(NULL == val)) {
                 return PMIX_ERR_BAD_PARAM;
             }
             lg->pntrval = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GET_STATIC_VALUES)) {
             /* they want a static response (i.e., they provided the storage) */
-            if (NULL == val || NULL == *val) {
+            if (PMIX_UNLIKELY(NULL == val || NULL == *val)) {
                 return PMIX_ERR_BAD_PARAM;
             }
             lg->stval = PMIX_INFO_TRUE(&info[n]);
@@ -184,19 +186,19 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             lg->hostname = strdup(info[n].value.data.string);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
             rc = PMIx_Value_get_number(&info[n].value, &lg->nodeid, PMIX_UINT32);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_APPNUM)) {
             rc = PMIx_Value_get_number(&info[n].value, &lg->appnum, PMIX_UINT32);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
             rc = PMIx_Value_get_number(&info[n].value, &lg->sessionid, PMIX_UINT32);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
@@ -214,7 +216,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             (*val) = &pmix_globals.myidval;
         } else {
             PMIX_VALUE_CREATE(ival, 1);
-            if (NULL == ival) {
+            if (PMIX_UNLIKELY(NULL == ival)) {
                 return PMIX_ERR_NOMEM;
             }
             ival->type = PMIX_PROC;
@@ -233,7 +235,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             ival->data.uint32 = PMIX_NUMERIC_VERSION;
         } else {
             PMIX_VALUE_CREATE(ival, 1);
-            if (NULL == ival) {
+            if (PMIX_UNLIKELY(NULL == ival)) {
                 return PMIX_ERR_NOMEM;
             }
             ival->type = PMIX_UINT32;
@@ -277,7 +279,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             (*val) = &pmix_globals.myrankval;
         } else {
             PMIX_VALUE_CREATE(ival, 1);
-            if (NULL == ival) {
+            if (PMIX_UNLIKELY(NULL == ival)) {
                 return PMIX_ERR_NOMEM;
             }
             ival->type = PMIX_PROC_RANK;
@@ -292,7 +294,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
     if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         NULL != proc && 0 != strlen(proc->nspace)) {
         rc = pmix_client_convert_group_procs(proc, 1, &procs, &nprocs);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             return rc;
         }
         if (1 < nprocs) {
@@ -320,16 +322,16 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
                         (NULL == proc) ? "NULL" : PMIX_NAME_PRINT(proc),
                         (NULL == key) ? "NULL" : key);
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
     /* we have no way to hand back the answer without this */
-    if (NULL == val) {
+    if (PMIX_UNLIKELY(NULL == val)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -343,7 +345,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
         /* the value has already been prepped */
         PMIX_RELEASE(lg);
         return PMIX_SUCCESS;
-    } else if (PMIX_SUCCESS != rc) {
+    } else if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         *val = NULL;
         PMIX_RELEASE(lg);
         return rc;
@@ -355,7 +357,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
      * filled lg->p with the nspace/rank the request actually refers to */
     if (lg->refresh_cache) {
         rc = refresh_cache(&lg->p);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             // couldn't refresh for some reason
             PMIX_RELEASE(lg);
             *val = NULL;
@@ -439,16 +441,16 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
      * whatever happened to be on the stack */
     pmix_value_t *val = NULL;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (NULL == cbfunc) {
+    if (PMIX_UNLIKELY(NULL == cbfunc)) {
         /* no way to return the result! */
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -468,7 +470,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         PMIX_THREADSHIFT(cb, gcbfn);
         PMIX_RELEASE(lg);
         return PMIX_SUCCESS;
-    } else if (PMIX_SUCCESS != rc) {
+    } else if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         /* it's a true error */
         PMIX_RELEASE(lg);
         return rc;
@@ -478,7 +480,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
      * on why this uses the resolved lg->p rather than the caller's proc */
     if (lg->refresh_cache) {
         rc = refresh_cache(&lg->p);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             // couldn't refresh for some reason
             PMIX_RELEASE(lg);
             return rc;
@@ -521,7 +523,7 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata)
      * a copy when we are handed a value we do not already own. */
     if (PMIX_SUCCESS == status && kv != cb->value) {
         PMIX_BFROPS_COPY(rc, pmix_client_globals.myserver, (void **)&cb->value, kv, PMIX_VALUE);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
         }
     }
@@ -543,7 +545,7 @@ static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the get cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
@@ -551,13 +553,13 @@ static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
     /* pack the request information - we'll get the entire blob
      * for this proc, so we don't need to pass the key */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nspace, 1, PMIX_STRING);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
     }
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &rank, 1, PMIX_PROC_RANK);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
@@ -583,14 +585,14 @@ static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
         cb->infocopy = true;
     }
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cb->ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
     }
     if (0 < cb->ninfo) {
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, cb->info, cb->ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return NULL;
@@ -599,7 +601,7 @@ static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
     if (NULL != cb->key) {
         /* pack the key */
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cb->key, 1, PMIX_STRING);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return NULL;
@@ -631,7 +633,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix: get_nb callback recvd");
 
-    if (NULL == cb || NULL == cb->lg) {
+    if (PMIX_UNLIKELY(NULL == cb || NULL == cb->lg)) {
         /* nothing we can do */
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
@@ -649,7 +651,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     /* unpack the status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         /* fall into the delivery loop below rather than quietly dropping the
          * request: every waiter registered against this proc must be told the
@@ -660,7 +662,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
         goto done;
     }
 
-    if (PMIX_SUCCESS != ret) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != ret)) {
         pmix_output_verbose(2, pmix_client_globals.get_output,
                             "pmix: get_nb server returned %s",
                             PMIx_Error_string(ret));
@@ -691,7 +693,7 @@ done:
              * never deliver a value already handed to a previous one */
             val = NULL;
             pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
-            if (PMIX_SUCCESS != ret) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != ret)) {
                 if (cb->checked) {
                     cb->status = ret;
                     gcbfn(0, 0, cb);
@@ -720,7 +722,7 @@ done:
                 }
                 cb->proc->rank = saverank;
             }
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                /* if we are both using the "hash" component, then the server's peer
                 * will simply be pointing at the same hash tables as my peer - no
                 * no point in checking there again */
@@ -804,7 +806,7 @@ static pmix_status_t process_values(pmix_cb_t *cb)
             // be released normally when the cb is destructed.
             iptr = (pmix_info_t*)kv->value->data.darray->array;
             PMIX_VALUE_CREATE(cb->value, 1);
-            if (NULL == cb->value) {
+            if (PMIX_UNLIKELY(NULL == cb->value)) {
                 return PMIX_ERR_NOMEM;
             }
             PMIx_Value_xfer(cb->value, &iptr[0].value);
@@ -818,12 +820,12 @@ static pmix_status_t process_values(pmix_cb_t *cb)
     /* we will return the data as an array of pmix_info_t
      * in the kvs pmix_value_t */
     PMIX_VALUE_CREATE(val, 1);
-    if (NULL == val) {
+    if (PMIX_UNLIKELY(NULL == val)) {
         return PMIX_ERR_NOMEM;
     }
     val->type = PMIX_DATA_ARRAY;
     val->data.darray = (pmix_data_array_t *) malloc(sizeof(pmix_data_array_t));
-    if (NULL == val->data.darray) {
+    if (PMIX_UNLIKELY(NULL == val->data.darray)) {
         PMIX_VALUE_RELEASE(val);
         return PMIX_ERR_NOMEM;
     }
@@ -832,7 +834,7 @@ static pmix_status_t process_values(pmix_cb_t *cb)
     val->data.darray->array = NULL;
     ninfo = pmix_list_get_size(kvs);
     PMIX_INFO_CREATE(info, ninfo);
-    if (NULL == info) {
+    if (PMIX_UNLIKELY(NULL == info)) {
         PMIX_VALUE_RELEASE(val);
         return PMIX_ERR_NOMEM;
     }
@@ -947,7 +949,7 @@ static void get_data(int sd, short args, void *cbdata)
                         } else {
                             rc = PMIX_ERROR;
                         }
-                        if (PMIX_SUCCESS != rc) {
+                        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                             cb->status = rc;
                             goto done;
                         }
@@ -1049,13 +1051,13 @@ static void get_data(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
-                        if (NULL == kv) { // should never happen
+                        if (PMIX_UNLIKELY(NULL == kv)) { // should never happen
                             cb->status = PMIX_ERR_NOT_FOUND;
                             goto done;
                         }
                         rc = PMIx_Value_get_number(kv->value, &lg->appnum, PMIX_UINT32);
                         PMIX_RELEASE(kv);
-                        if (PMIX_SUCCESS != rc) {
+                        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                             cb->status = rc;
                             goto done;
                         }
@@ -1128,13 +1130,13 @@ static void get_data(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
-                        if (NULL == kv) { // should never happen
+                        if (PMIX_UNLIKELY(NULL == kv)) { // should never happen
                             cb->status = PMIX_ERR_NOT_FOUND;
                             goto done;
                         }
                         rc = PMIx_Value_get_number(kv->value, &lg->sessionid, PMIX_UINT32);
                         PMIX_RELEASE(kv);
-                        if (PMIX_SUCCESS != rc) {
+                        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                             cb->status = rc;
                             goto done;
                         }
@@ -1289,7 +1291,7 @@ doget:
 
     /* we don't have a pending request, so let's create one */
     msg = _pack_get(cb, proc.rank, PMIX_GETNB_CMD);
-    if (NULL == msg) {
+    if (PMIX_UNLIKELY(NULL == msg)) {
         cb->status = PMIX_ERROR;
         PMIX_ERROR_LOG(cb->status);
         goto done;
@@ -1304,7 +1306,7 @@ doget:
     pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
     /* send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, _getnb_cbfunc, (void *) cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         /* the transport only refuses a send it never took ownership of, so
          * the message is still ours to release */
         PMIX_RELEASE(msg);
@@ -1337,7 +1339,7 @@ static void refcb(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
 
     PMIX_ACQUIRE_OBJECT(cb);
 
-    if (NULL == cb) {
+    if (PMIX_UNLIKELY(NULL == cb)) {
         /* nothing we can do */
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
@@ -1354,7 +1356,7 @@ static void refcb(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     /* unpack the status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
         goto done;
@@ -1413,7 +1415,7 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p)
      * to refresh our cache */
     msg = PMIX_NEW(pmix_buffer_t);
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -1421,13 +1423,13 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p)
 
 
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nspace, 1, PMIX_STRING);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &p->rank, 1, PMIX_PROC_RANK);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -1438,7 +1440,7 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p)
 
     /* send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, refcb, (void *)cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
