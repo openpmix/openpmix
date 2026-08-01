@@ -146,6 +146,20 @@ the export rule in [`src/class/AGENTS.md`](../../src/class/AGENTS.md)),
 not a condition here that removes the tree from `make check` without a
 word.
 
+**These tests do not run in parallel, deliberately.**
+[`Makefile.am`](Makefile.am) is marked `.NOTPARALLEL:`. Most of `TESTS`
+drives a real PMIx server through `test/simple`'s `simptest`, which comes
+up in the **scheduler** role — a node-wide singleton that claims a fixed
+`$TMPDIR/pmix.sched.<host>` rendezvous file. Automake's parallel harness
+gives each test its own `.log` target, so `make -j check` starts several
+at once and every one but the winner dies with `PMIX_ERR_INIT` and "Only
+one server can fill a given role on a node at a time". That is the server
+enforcing a real invariant, not flakiness. Do not paper over it by giving
+each test a private `$TMPDIR`: two schedulers on one node is exactly the
+configuration PMIx forbids, so a suite arranged that way would be testing
+something users cannot have. If you want concurrency here, the tests have
+to stop being schedulers.
+
 **Do not run this suite against an `--enable-test-build` tree.** Its
 shimmed `pcompress`/`psec` components are non-functional by design, so
 `preg` and `compress` will fail for reasons that are not defects.

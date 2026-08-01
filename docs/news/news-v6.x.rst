@@ -7,6 +7,17 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Stopped "make -j check" from failing test/unit. Most of that
+   directory's tests drive a real PMIx server through simptest, which
+   comes up in the scheduler role - a node-wide singleton that claims a
+   fixed rendezvous file, so the second server to want it is refused by
+   design. Automake's parallel harness starts several at once, and all
+   but one lost the race. The directory is now marked .NOTPARALLEL,
+   which costs nothing measurable: the whole suite still runs under -j
+   in well under a minute. This was not a new defect, only an
+   unreachable one - the CI job that builds with "make -j check"
+   configures with default visibility, and so never descended into
+   test/unit until the SUBDIRS gate above was removed
  - Made "make check" actually run the test suite. test/Makefile.am
    wrapped its whole SUBDIRS line in "if !WANT_HIDDEN", so unless the
    tree was configured --disable-visibility a top-level make check ran
