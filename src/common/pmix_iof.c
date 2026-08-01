@@ -1788,6 +1788,30 @@ static pmix_iof_flags_t spawn_or_global_flags(void)
     return pmix_globals.iof_flags;
 }
 
+/* The stand-in above answers two questions, and both of its answers have to
+ * be used or the second one is silently the process-wide default instead.
+ * HOW to format the output is one; WHETHER to write it at all is the other,
+ * and that is the one that was being dropped.
+ *
+ * A tool that spawned a job with an output-to-file directive is told not to
+ * write that job's output locally - PMIX_IOF_FILE_ONLY, which is the default
+ * for such a spawn, becomes local_output=false on the namespace when the
+ * spawn reply lands. Output that arrives BEFORE that reply finds no namespace
+ * record, so it fell through to pmix_globals.iof_flags.local_output - true
+ * for a tool - and went to the terminal after all. The result was that a
+ * nondeterministic subset of the job's output appeared on a terminal the user
+ * had asked to keep clean: whichever ranks' first chunk beat the reply.
+ */
+static pmix_iof_flags_t stand_in_flags(bool *outputio)
+{
+    pmix_iof_flags_t flags = spawn_or_global_flags();
+
+    if (flags.local_output_given) {
+        *outputio = flags.local_output;
+    }
+    return flags;
+}
+
 pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
                                     pmix_iof_channel_t stream,
                                     const pmix_byte_object_t *bo)
@@ -1885,10 +1909,10 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
             }
             myflags = nptr->iof_flags;
         } else {
-            myflags = spawn_or_global_flags();
+            myflags = stand_in_flags(&outputio);
         }
     } else {
-        myflags = spawn_or_global_flags();
+        myflags = stand_in_flags(&outputio);
     }
 
     if (!outputio) {
