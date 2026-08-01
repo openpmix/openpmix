@@ -72,6 +72,24 @@ and several of them segfaulted before being fixed:
 - `PMIx_Fabric_deregister` twice in a row, which used to free the info
   array a second time.
 
+The August 2026 second sweep of that directory added:
+
+- `PMIx_Put` with a NULL value or a NULL key — both were dereferenced by
+  a `pmix_output_verbose()` call that sat above the validation.
+- The OUT parameters of `PMIx_Compute_distances`, `PMIx_Resolve_peers`
+  and `PMIx_Resolve_nodes`, each of which wrote a default through an
+  unchecked pointer.
+- `PMIx_Group_construct` / `PMIx_Group_invite` out-parameters, both
+  poisoned before the call and passed as NULL, matching the
+  `PMIx_Group_join` cases already here.
+- `PMIx_Spawn[_nb]` with no apps array.
+- A malformed `PMIX_HOSTNAME` qualifier on `PMIx_Get`, which the request
+  parser used to hand straight to `strdup()`.
+- `PMIx_Fabric_construct(NULL)` and `PMIx_Fabric_deregister[_nb]`
+  **before `PMIx_Init`** — that one runs at the top of `main()`, ahead of
+  init, because the defect was a missing `initialized` gate in front of a
+  `pmix_globals.mypeer` dereference. Keep it there.
+
 **What it cannot cover, and why.** A singleton has no server, so every
 path that round-trips — which is most of `src/client` — short-circuits
 before it starts. `PMIx_Fence` and `PMIx_Commit` return success without
@@ -82,6 +100,28 @@ That half of the directory is covered by
 different PMIx servers. Do not try to grow `client_api.c` into it: a
 test that needs a server belongs in the swarm suite or in a `run_*.pl`
 against `test/simple`.
+
+The same short-circuit is why the *parameter* coverage here is uneven,
+and the unevenness is not an oversight. Most entry points run
+`initialized` → `connected` → `progress_thread_stopped` before they look
+at their arguments, so in a singleton the state checks answer first and
+the argument checks are dead code. The APIs above are exactly those that
+validate before (or without) gating on `connected`. Do not reorder a
+check in `src/client` to make it reachable from here — put the case in
+a `run_*.pl` or the swarm suite instead.
+
+### `run_grpinviteothers.pl` — a leader that is not a member
+
+[`run_grpinviteothers.pl.in`](run_grpinviteothers.pl.in) is the sibling
+of `run_grpinvite.pl`: same four-client simptest run, but rank 0 invites
+ranks 1..3 and does **not** join, so the group forms on the invitees
+alone. The library credits the leader's own answer against the
+membership, which is right only when the leader is itself an invitee;
+crediting it here resolves the invitation one answer early and — the
+construct being all-or-nothing — aborts it. The driver greps for
+`CONSTRUCT_ABORT` explicitly so that regression reports itself rather
+than showing up as a timeout. See `invite_setup()` in
+[`src/client/pmix_client_group.c`](../../src/client/pmix_client_group.c).
 
 ## Running
 

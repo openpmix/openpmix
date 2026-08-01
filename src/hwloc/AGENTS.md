@@ -183,6 +183,19 @@ and `PMIX_TOPO` (`pmix_topology_t`); see
 
 - **cpuset is packed as its `hwloc_bitmap_list_asprintf` string.** A NULL
   bitmap (unbound process) packs as a NULL string. Symmetric on unpack.
+- **"absent" is expressed as an empty object, not a NULL pointer.** Both
+  packers handle a NULL `src` by writing a NULL string, but **a caller
+  can never reach that branch**: `pmix_bfrops_base_pack()` rejects
+  `NULL == src && 0 < num_vals` with `PMIX_ERR_BAD_PARAM` before
+  dispatching to the type handler. So a caller saying "I have no
+  topology, use yours" has to pass a zeroed `pmix_topology_t` — which is
+  why `pmix_hwloc_pack_topology()` treats `NULL == src->topology` the
+  same as `NULL == src`. `PMIx_Compute_distances_nb` passed the NULL
+  pointer and its whole ask-the-server fallback failed with BAD_PARAM
+  rather than sending; see
+  [`src/client/AGENTS.md`](../client/AGENTS.md). `pack_cpuset` already
+  handled the equivalent (`NULL == src->bitmap`). Keep both symmetric,
+  and keep the wire form identical between the two spellings.
 - **topology is packed as an XML string only.** hwloc 2.3+ embeds the
   `hwloc_topology_support` flags in the exported XML, and the unpacker
   recovers them by loading with `HWLOC_TOPOLOGY_FLAG_IMPORT_SUPPORT`

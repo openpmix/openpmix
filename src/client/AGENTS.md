@@ -286,6 +286,45 @@ finalize, after the progress thread has stopped).
   only at the end, tolerate `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER` on
   trailing reads (older peers), and never reorder — see the top-level
   "Version Interoperability" rules.
+- **Tolerating a short read is not the same as reporting one.** A recv
+  callback that treats `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER` as
+  acceptable — the server had nothing more to send — must then *reset*
+  `rc`, because that value is usually what gets handed to the user's
+  callback. `frecv` and `direcv` both tested for it and then fell
+  through to the completion with it still set, so a fabric register or a
+  distance computation the server said had succeeded was reported to the
+  application as an unpack error.
+- **A blocking API that discards the server's reply always returns
+  success.** Two entry points used a generic "just wake the caller"
+  recv callback that throws the buffer away — `PMIx_Commit` (fixed in
+  the first pass) and `PMIx_Abort` (fixed in the second). The server
+  packs a status for both. If you add a command whose reply carries a
+  status, give it a callback that unpacks one; `unpack_ack()` in
+  `pmix_client.c` is the shared helper.
+- **`pmix_output_verbose()` is a function call, so its arguments are
+  always evaluated** — including when the channel is off, and including
+  when the call sits above the parameter checks that were supposed to
+  make them safe. `PMIx_Put` printed `key` and dereferenced `val->type`
+  before validating either. Put the verbose line *after* the checks.
+- **`PMIX_BFROPS_PACK` rejects a NULL source before the type-specific
+  packer sees it.** `pmix_bfrops_base_pack()` fails `NULL == src && 0 <
+  num_vals` with `PMIX_ERR_BAD_PARAM`, so a packer that handles NULL
+  (`pmix_hwloc_pack_topology`, `pmix_hwloc_pack_cpuset`) can never be
+  reached that way. To send "I have none of this, use yours", pack an
+  *empty object* — a zeroed `pmix_topology_t`/`pmix_cpuset_t` — not a
+  NULL pointer. `PMIx_Compute_distances_nb` had exactly this wrong and
+  its entire ask-the-server fallback failed with BAD_PARAM instead of
+  sending.
+- **A recv callback that fills a caller-owned object must free what was
+  already in it.** `PMIx_Fabric_update` refreshes a `pmix_fabric_t` that
+  `PMIx_Fabric_register` already populated, and both `frecv` and `fcb`
+  simply `PMIX_INFO_CREATE`d over `fabric->info`, orphaning the previous
+  array on every update.
+- **Ownership flags govern the caddy, not everything the caddy touched.**
+  `cbdes()` does *not* release `cb->value`, so any path that copies out
+  of it rather than handing it over owns the original. `PMIx_Get` under
+  `PMIX_GET_STATIC_VALUES` xfers into the caller's storage and used to
+  walk away from the library's copy.
 
 ## Testing
 
@@ -297,9 +336,32 @@ a test with no server can only reach the first half.
 singleton. Covers what a client decides by itself: the `PMIx_Get`
 shortcuts that `process_request` answers outright, the pointer/static
 value forms, and the parameter validation on `PMIx_Get[_nb]`,
-`PMIx_Compute_distances_nb` and the fabric APIs. Every case in it is a
-regression for a specific defect listed below; several of them segfaulted
-before. See [`test/unit/AGENTS.md`](../../test/unit/AGENTS.md).
+`PMIx_Put`, `PMIx_Spawn[_nb]`, `PMIx_Compute_distances[_nb]`,
+`PMIx_Resolve_peers`/`PMIx_Resolve_nodes`, the group out-parameters and
+the fabric APIs. Every case in it is a regression for a specific defect
+listed below; several of them segfaulted before. See
+[`test/unit/AGENTS.md`](../../test/unit/AGENTS.md).
+
+> **Know what a singleton can and cannot reach.** Most entry points here
+> check `initialized` → `connected` → `progress_thread_stopped` *before*
+> validating their arguments, so with no server the state checks answer
+> first and the parameter checks are unreachable. That is why the
+> coverage above is exactly the set of APIs that validate before (or
+> without) gating on `connected` — `PMIx_Get`, `PMIx_Put`,
+> `PMIx_Compute_distances`, the resolve pair, the fabric calls, and
+> `PMIx_Spawn`, whose apps check deliberately precedes its connected
+> check. For the group APIs only the OUT-parameter defaults are
+> testable, because those are established ahead of every check. Don't
+> "fix" a group parameter check by hoisting it above the state checks
+> just to make it testable — the ordering is the convention here.
+
+**Tier 1a — `test/unit/run_grpinviteothers.pl` (in `make check`).**
+Drives `examples/group_invite_others` through `test/simple/simptest`:
+four clients, with rank 0 inviting ranks 1..3 and *not* joining. That
+shape is what distinguishes it from `run_grpinvite.pl` — see the
+`invite_setup()` entry in the August 2026 defect list. The test fails
+loudly (an aborted construct) rather than hanging when the invitation
+resolves early.
 
 **Tier 2 — `contrib/dockerswarm/run-client-tests.sh`.** Drives the
 `examples/` clients through PRRTE across the ten-container swarm, so the
@@ -455,6 +517,145 @@ regression coverage in `test/unit/client_api.c`.
   Written up for discussion before implementing. Until then an
   application takes the membership from its own
   `PMIX_GROUP_CONSTRUCT_COMPLETE` handler.
+
+## Defects found in the August 2026 review (second sweep)
+
+A second pass over the same directory. Grouped the same way; everything
+here is fixed on `topic/client-review-2` unless the entry says otherwise.
+The regression cases are in `test/unit/client_api.c` and (for the group
+one) `test/unit/run_grpinviteothers.pl` plus the swarm suite.
+
+*Crashes on inputs the API permits:*
+
+- `PMIx_Put` dereferenced `val->type` and printed `key` in a
+  `pmix_output_verbose()` that sat **above** the validation meant to
+  catch them — and never checked `val` at all, so `_putfn` dereferenced
+  it again. Both NULLs were segfaults.
+- `PMIx_Compute_distances`, `PMIx_Resolve_peers` and `PMIx_Resolve_nodes`
+  each set their OUT parameters to a default on the way in without
+  checking them, so a NULL for any of them was a store to address zero.
+- `PMIx_Group_construct` and `PMIx_Group_invite[_nb]` wrote `*results` /
+  `*nresults` unchecked, though the man page documents both as optional
+  (this is the same defect fixed in `PMIx_Group_join` last pass, in the
+  three siblings that were missed).
+- `PMIx_Group_join[_nb]` never validated `grp`, and `setup_leader_watch()`
+  hands it straight to `strdup()`.
+- `PMIx_Spawn[_nb]` never validated `apps`/`napps` before walking the
+  array, so `apps == NULL` with `napps > 0` dereferenced NULL. An `argv`
+  whose first element is NULL reached `strdup()`/`pmix_basename()` the
+  same way.
+- `PMIx_Fabric_deregister[_nb]` was the one fabric entry point with no
+  `initialized` gate, yet it reaches `PMIX_PEER_IS_SCHEDULER(mypeer)` —
+  and `mypeer` does not exist until `PMIx_Init` has run.
+  `PMIx_Fabric_construct(NULL)` dereferenced its argument.
+- `PMIx_Init` took `pmix_list_remove_first()` for the debugger-stop key
+  without a NULL check and then dereferenced `kv->value` (and leaked
+  `kv` on the unrecognized-type return).
+- `process_request()` `strdup`'d a `PMIX_HOSTNAME` qualifier's string
+  without checking its type or the string itself.
+
+*Functional defects:*
+
+- **`PMIx_Compute_distances_nb` could never ask the server.** The
+  fallback deliberately passes a NULL topology (and, on one path, a NULL
+  cpuset) to mean "use your own" — which the server explicitly supports
+  — but `pmix_bfrops_base_pack()` rejects a NULL source before the
+  hwloc packer that understands it is reached. Every request that could
+  not be answered locally therefore returned `PMIX_ERR_BAD_PARAM`
+  instead of being sent. Now packs empty objects, and
+  `pmix_hwloc_pack_topology()` treats an empty topology the same as the
+  NULL it already handled. **No automated coverage** — forcing a client
+  whose local hwloc computation fails is not something the test
+  environments can arrange; verified against the server handler
+  (`pmix_server_device_dists`) by inspection.
+- **`PMIX_GROUP_NOTIFY_TERMINATION` was never recorded on a group.**
+  `PMIx_Group_construct` scanned the directives and stored the flag on
+  its own wrapper tracker; `construct_cbfunc` reads it from the *inner*
+  tracker built by `PMIx_Group_construct_nb`, where it was always false.
+  Worse, `construct_cbfunc` calls `add_group()` first and `add_group()`
+  ignores a repeat request for a group it already holds — so the
+  correctly-flagged call that followed from `info_cbfunc` could not
+  correct it. `PMIx_Group_destruct` therefore never re-applied the
+  policy for anybody. The scan now happens in `_nb`, on the tracker that
+  is actually consulted.
+- **`invite_setup()` resolved an invitation one answer early whenever
+  the leader was not itself an invitee.** It credited the leader's own
+  answer unconditionally (`nanswered = 1`) but only set the matching
+  per-member flag if it found itself in the `procs` array. A leader
+  inviting only the others therefore started one ahead of the
+  membership: the last accept arrived after the decision, was recorded
+  as a non-responder, and — the default construct being
+  all-or-nothing — aborted the whole thing. Covered by
+  `examples/group_invite_others.c`.
+- `PMIx_Abort` discarded the server's reply and always returned
+  `PMIX_SUCCESS`, so a host that refused the abort (or does not support
+  one) never reached the caller. Same shape as the `_commitfn` defect
+  from the first pass.
+
+*Leaks and lifetime:*
+
+- `PMIx_Fabric_update` orphaned the fabric's previous info array —
+  `frecv()` and `fcb()` both `PMIX_INFO_CREATE`d straight over
+  `fabric->info`, and update is precisely the call made against an
+  already-populated fabric.
+- `PMIx_Get` under `PMIX_GET_STATIC_VALUES` copied into the caller's
+  storage and abandoned `cb->value`, which no destructor frees.
+- `resolve_peers()` leaked its `tmp` argv when the aggregate walk
+  collected entries but resolved no peers (an nspace whose local-peer
+  list is an empty string).
+
+*Correctness, lesser:*
+
+- `frecv()` and `direcv()` tolerated a trailing
+  `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER` and then reported it to the
+  caller as the result of an operation the server had said succeeded.
+- `PMIx_Connect_nb` ignored the pack status when appending the
+  job-level info array, silently sending a message missing the data the
+  server waits for. Every other pack in that function is checked.
+- `destruct_cbfunc()` dropped the group from the local list on the
+  empty-buffer path but not on the NULL-buffer path.
+- `PMIx_Spawn_nb`'s "find the end sentinel" loop tested `m < SIZE_MAX`
+  *after* dereferencing `aptr->info[m]`, so the guard below it was dead.
+- `PMIx_Group_join_nb` carried a `PMIX_TIMEOUT` loop that recognized the
+  directive and did nothing with it. Removed, and the unused parameters
+  named as such — join takes no directives today.
+
+*Known, left alone (deliberately):*
+
+- **`PMIx_Group_invite_nb` never announces the outcome, and leaks its
+  tracker and event-handler registration.** `invite_announce()` and
+  `invite_teardown()` are reached only from the blocking
+  `PMIx_Group_invite`. The non-blocking form resolves the invitation
+  (`invite_wake` fires the caller's callback) and then stops: no
+  `PMIX_GROUP_INVITE_FAILED`, no `PMIX_GROUP_CONSTRUCT_COMPLETE`, no
+  `PMIX_GROUP_CONSTRUCT_ABORT` — so **no group forms** — and nothing
+  releases the tracker or deregisters `invite_handler`.
+
+  It is structural rather than an oversight. `invite_wake()` runs on the
+  progress thread, and `invite_announce()` is built out of *blocking*
+  `PMIx_Notify_event` calls, which would deadlock there; the blocking
+  wrapper gets away with it only because it announces on the caller's
+  own thread after waking. Fixing it means rewriting `invite_announce()`
+  as a chain of non-blocking notifications (the shape `emit_leader_failed`
+  already uses from the progress thread), with the teardown hung off the
+  last completion. That is a real change to the invite state machine and
+  wants review on its own, not a drive-by. Until then, treat
+  `PMIx_Group_invite_nb` as unimplemented.
+- The two `resolve_peers()` items and the event-chain pre-emption
+  problem from the first pass are unchanged — see the previous section.
+
+## Coding conventions specific to this directory
+
+- **Mark the exceptional branch.** Error checks, parameter validation,
+  allocation failures and the "should never happen" guards are wrapped
+  in `PMIX_UNLIKELY()` (from
+  [`src/include/pmix_prefetch.h`](../include/pmix_prefetch.h), which
+  every file here includes explicitly). This is the idiom the rest of
+  the tree uses; match it when you add a check. `PMIX_UNLIKELY` is for
+  branches that really are rare — do **not** put it on ordinary control
+  flow such as `NULL == proc` in `process_request()` (a documented,
+  common way to call `PMIx_Get`) or `NULL == tp` in
+  `PMIx_Compute_distances_nb` (the usual case, meaning "use mine").
 
 ## Building
 

@@ -541,6 +541,26 @@ real rather than loopback:
 A final wide `dmodex` run (10 ranks over 5 nodes) drives the pending-request
 list deep enough for the coalescing to matter.
 
+**The group side of `src/client` is covered by `run-group-events.sh`, not
+here.** That suite drives the invite/join negotiation, which is realized
+entirely through cross-server event notification. Its
+`group_invite_others` case belongs to this review: the leader invites the
+other ranks and does *not* join, so the group forms on the invitees alone.
+The library credits the leader's own answer against the membership — right
+only when the leader is itself an invitee — and crediting it in this shape
+resolves the invitation one answer early, marks the last accept a
+non-responder, and aborts the (all-or-nothing) construct. Ranks are split
+across two nodes precisely so the last accept has to cross a server
+boundary to reach the leader, which is what makes it the late one.
+
+**What this suite still does not reach.** `PMIx_Fabric_*` needs a fabric
+provider the swarm does not have, so the fabric register/update paths are
+covered only by the parameter-validation cases in `client_api.c`.
+`PMIx_Compute_distances`'s relay-to-the-server fallback only runs when the
+client's own hwloc computation fails, which no test environment here can
+arrange. Both gaps are recorded in
+[`src/client/AGENTS.md`](../../src/client/AGENTS.md).
+
 ### Prerequisite: the clients must link *your* PMIx
 
 The examples are **compiled in a throwaway builder container** and **run in
