@@ -165,14 +165,12 @@ PMIX_CLASS_INSTANCE(pmix_group_tracker_t, pmix_list_item_t, gtcon, gtdes);
  * that returns PMIX_EVENT_ACTION_COMPLETE - the normal way to say "handled" -
  * ends the chain before this handler is reached. An invite/join application
  * has to register for that code, so this is the common case, not the corner
- * one. (Demonstrated with test/unit/run_grpinvite.pl: the application handler
- * fires on every acceptor while none of these watches do; changing only the
- * example's return value to PMIX_EVENT_NO_ACTION_TAKEN makes them all fire.
- * It is not a registration race either - moving this registration ahead of
- * the acceptance notification changes nothing.) The real fix is to observe
- * these codes from the pre-chain block in pmix_invoke_local_event_hdlr(),
- * which already maintains pmix_client_globals.groups on the same events and
- * cannot be pre-empted; that is a separate change, under discussion.
+ * one.
+ *
+ * The reproducers, the sweep of every library-internal registration in the
+ * tree, what was ruled out, and the options for a fix are all in
+ * https://github.com/openpmix/openpmix/issues/4059 - read that rather than
+ * re-deriving any of it here.
  *
  * Meanwhile, rather than leak the tracker (and its registered handler), we
  * record each active watch here and release any survivors at finalize. Access is confined to the progress thread
@@ -983,9 +981,9 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
      * PMIX_GROUP_INVITE_ACCEPTED - to log who joined, say - and returns
      * PMIX_EVENT_ACTION_COMPLETE from it ends the chain before we are
      * reached, and PMIx_Group_invite blocks forever unless the caller
-     * supplied a PMIX_TIMEOUT. Same exposure as the leader watch below, but
-     * a hang rather than a missed teardown. See the note there for the
-     * demonstration and the intended fix. */
+     * supplied a PMIX_TIMEOUT. Same exposure as the leader watch above, but
+     * a hang rather than a missed teardown; see
+     * https://github.com/openpmix/openpmix/issues/4059 */
     PMIX_INFO_LOAD(&myinfo[0], PMIX_EVENT_RETURN_OBJECT, cb, PMIX_POINTER);
     PMIX_INFO_LOAD(&myinfo[1], PMIX_EVENT_HDLR_PREPEND, NULL, PMIX_BOOL);
     ncodes = sizeof(codes) / sizeof(pmix_status_t);

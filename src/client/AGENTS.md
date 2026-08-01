@@ -472,51 +472,30 @@ regression coverage in `test/unit/client_api.c`.
   lines later, so the legacy branch is dead. `try_fetch()` retries an
   UNDEF rank as WILDCARD, which is why the path still works. Not changed
   without a pre-v3.2 server to test against; see the comment in the code.
-- **`PMIx_Group_join` completes earlier than its man page says, and so
-  returns no results** — and the invitee-side **leader-failure watch does
-  not fire at all**. Both have one cause, and it is *not* the one the
-  comment above `pmix_group_leader_watches` gives.
-
-  The library observes group lifecycle events by registering ordinary
-  handlers. Those registrations land in the **multi-code** category, and
-  the chain visits `first` → `single-code` → `multi-code` → `default` →
-  `last`. An application handler registered for a *single* code therefore
-  runs first, and if it returns `PMIX_EVENT_ACTION_COMPLETE` — the normal
-  way to say "handled" — the chain ends and the library's own handler is
-  never reached. Any application that watches
-  `PMIX_GROUP_CONSTRUCT_COMPLETE`, which an invite/join application must,
-  blinds the library to it.
-
-  **Both multi-code registrations in this file are affected**, and the
-  worse one is not the watch. `invite_setup`'s `invite_handler` is the
-  only thing that counts invitation answers, so a *leader* whose
-  application also watches `PMIX_GROUP_INVITE_ACCEPTED` never resolves
-  its invitation: `PMIx_Group_invite` hangs forever without a
-  `PMIX_TIMEOUT`, and the group never forms. Reproduced by adding such a
-  handler to `examples/group_invite.c`. The three `PMIX_DEBUGGER_RELEASE`
-  registrations (client, server, tool) are in the single-code category and
-  safe — but only because they register inside init and block there, so
-  the application never gets a window to compete. A handler with no
-  ordering directive is *prepended*, so a later application registration
-  would otherwise win.
-
-  Demonstrated with `test/unit/run_grpinvite.pl`: every acceptor's
-  application handler receives the event while not one of the library's
-  watches does, in the same process and the same run; flipping only the
-  example's return to `PMIX_EVENT_NO_ACTION_TAKEN` makes all three
-  watches receive it. It is not a delivery problem and not a
-  registration race (reordering the watch ahead of the accept changes
-  nothing).
-
-  So join cannot complete at the documented point until the library can
-  see the construct event. The fix is local, not protocol-level: the
-  pre-chain block in `pmix_invoke_local_event_hdlr()`
-  (`src/event/pmix_event_notification.c`) already maintains
-  `pmix_client_globals.groups` on these same codes, unconditionally and
-  ahead of the chain, and that is where the library's interest belongs.
-  Written up for discussion before implementing. Until then an
+- **The library's own event handlers can be silently suppressed by the
+  application — [openpmix#4059][i4059].** Both multi-code registrations
+  in `pmix_client_group.c` (`invite_setup`'s `invite_handler` and
+  `setup_leader_watch`'s watch) land in the **multi-code** category,
+  and the chain visits `first` → `single-code` → `multi-code` →
+  `default` → `last`, so an application handler registered for a
+  *single* one of those codes runs first and ends the chain with the
+  ordinary `PMIX_EVENT_ACTION_COMPLETE`. Consequences you will meet
+  here: `PMIx_Group_invite` can hang forever, the invitee-side
+  leader-failure watch never fires, and `PMIx_Group_join` cannot
+  complete at the point its man page documents (so it returns no
+  results). Read the issue before touching any of it — it carries the
+  reproducers, the sweep of every internal registration in the tree,
+  what was ruled out (not delivery, not a registration race, not a
+  filter mismatch), and the options for a fix. Until then an
   application takes the membership from its own
   `PMIX_GROUP_CONSTRUCT_COMPLETE` handler.
+
+  Do **not** re-derive this from the code: an earlier comment in this
+  file blamed the construct event "not being guaranteed to reach the
+  acceptor", which sent readers after a protocol problem that does not
+  exist. The event arrives reliably; the library just cannot see it.
+
+[i4059]: https://github.com/openpmix/openpmix/issues/4059
 
 ## Defects found in the August 2026 review (second sweep)
 
@@ -641,8 +620,17 @@ one) `test/unit/run_grpinviteothers.pl` plus the swarm suite.
   last completion. That is a real change to the invite state machine and
   wants review on its own, not a drive-by. Until then, treat
   `PMIx_Group_invite_nb` as unimplemented.
-- The two `resolve_peers()` items and the event-chain pre-emption
-  problem from the first pass are unchanged — see the previous section.
+
+  **Distinct from [openpmix#4059][i4059], but landing on the same
+  code.** That issue is about the library's handlers being suppressed;
+  this is the non-blocking path never running the announcement at all,
+  and it would still be broken with #4059 fixed. Whoever reworks this
+  machinery will meet both, and the same rewrite — announcement driven
+  by non-blocking notifications — is what #4059's follow-on behavior
+  change (completing a pending join from the construct event) also
+  needs. Noted on that issue.
+- The two `resolve_peers()` items and the handler-suppression problem
+  from the first pass are unchanged — see the previous section.
 
 ## Coding conventions specific to this directory
 
