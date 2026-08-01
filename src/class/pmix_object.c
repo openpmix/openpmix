@@ -80,7 +80,7 @@ PMIX_EXPORT pmix_class_t pmix_object_t_class = {
     sizeof(pmix_object_t)           /* size of the pmix object */
 };
 
-int pmix_class_init_epoch = 1;
+pmix_atomic_int32_t pmix_class_init_epoch = 1;
 
 /*
  * Local variables
@@ -115,9 +115,12 @@ void pmix_class_initialize(pmix_class_t *cls)
 
     /* If another thread initializing this same class came in at
        roughly the same time, it may have gotten the lock and
-       initialized.  So check again. */
+       initialized.  So check again.  Relaxed is enough here: we hold the
+       mutex, so the winner's release store already happened-before this
+       point by way of the lock. */
 
-    if (pmix_class_init_epoch == cls->cls_initialized) {
+    if (atomic_load_explicit(&cls->cls_initialized, memory_order_relaxed)
+        == atomic_load_explicit(&pmix_class_init_epoch, memory_order_relaxed)) {
         pthread_mutex_unlock(&class_mutex);
         return;
     }
@@ -175,7 +178,16 @@ void pmix_class_initialize(pmix_class_t *cls)
     }
     *cls_destruct_array = NULL; /* end marker for the destructors */
 
-    cls->cls_initialized = pmix_class_init_epoch;
+    /* Publish LAST, and with release semantics.  This is the store the
+       unlocked PMIX_CLASS_IS_INITIALIZED() fast path acquires: every write
+       above -- cls_depth, cls_construct_array, cls_destruct_array and the
+       entries in them -- must be visible to any thread that observes this
+       epoch, or that thread calls through a half-built array.  Unlocking
+       the mutex below is not sufficient: the fast-path reader never takes
+       it. */
+    atomic_store_explicit(&cls->cls_initialized,
+                          atomic_load_explicit(&pmix_class_init_epoch, memory_order_relaxed),
+                          memory_order_release);
     save_class(cls);
 
     /* All done */
@@ -189,12 +201,18 @@ void pmix_class_initialize(pmix_class_t *cls)
 int pmix_class_finalize(void)
 {
     int i;
+    int32_t epoch;
 
-    if (INT_MAX == pmix_class_init_epoch) {
-        pmix_class_init_epoch = 1;
+    /* Documented as the absolute last call in a role, so there is no
+       contention to order against here -- but the fast path reads this
+       without the mutex, so the update is still an atomic store. */
+    epoch = atomic_load_explicit(&pmix_class_init_epoch, memory_order_relaxed);
+    if (INT_MAX == epoch) {
+        epoch = 1;
     } else {
-        pmix_class_init_epoch++;
+        epoch++;
     }
+    atomic_store_explicit(&pmix_class_init_epoch, epoch, memory_order_relaxed);
 
     if (NULL != classes) {
         for (i = 0; i < num_classes; ++i) {
