@@ -150,7 +150,19 @@ if [ "$jenkins_test_build" = "yes" ]; then
     cd test
     export PMIX_MCA_pcompress_base_silence_warning=1
     echo "Running make check ..."
-    make $make_opt check || (cat test-suite.log && exit 12)
+    # On failure, dump every test-suite.log there is -- not just this
+    # directory's. "make check" here recurses into unit/, unit/class/ and
+    # unit/util/, and a failure in one of those writes its log there, so
+    # the old "cat test-suite.log" printed "No such file or directory"
+    # and the CI output carried no diagnostics at all. (It also swallowed
+    # the intended exit 12, since the && never fired once cat failed.)
+    if ! make $make_opt check; then
+        for log in $(find . -name test-suite.log -print); do
+            echo "======================== $log ========================"
+            cat "$log"
+        done
+        exit 12
+    fi
     echo "Make check complete"
     echo "========================  TEST COMPLETE  ========================="
 fi
