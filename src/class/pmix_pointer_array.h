@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2017      Intel, Inc. All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -205,8 +205,12 @@ PMIX_EXPORT bool pmix_pointer_array_test_and_set_item(pmix_pointer_array_t *tabl
 static inline void pmix_pointer_array_remove_all(pmix_pointer_array_t *array)
 {
     int i;
-    if (array->number_free == array->size)
-        return; /* nothing to do here this time (the array is already empty) */
+    if (array->number_free == array->size) {
+        /* nothing to do here this time (the array is already empty).
+         * This also covers the un-init'd array, where both are 0 and
+         * free_bits/addr are still NULL. */
+        return;
+    }
 
     array->lowest_free = 0;
     array->number_free = array->size;

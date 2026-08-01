@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,7 +54,7 @@ int pmix_value_array_set_size(pmix_value_array_t *array, size_t size)
      * zero one is fatal, not a debug-only curiosity. It used to be checked
      * only under --enable-debug, which left an optimized build computing
      * every address as items + index*0. */
-    if (0 == array->array_item_sizeof) {
+    if (PMIX_UNLIKELY(0 == array->array_item_sizeof)) {
         return PMIX_ERR_BAD_PARAM;
     }
 

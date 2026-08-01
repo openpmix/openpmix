@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2010      Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,6 +29,7 @@
 #include "src/include/pmix_config.h"
 
 #include "src/class/pmix_object.h"
+#include "src/include/pmix_prefetch.h"
 #include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
@@ -91,6 +92,11 @@ PMIX_EXPORT int pmix_ring_buffer_init(pmix_ring_buffer_t *ring, int size);
  *
  * @return Pointer to displaced item, NULL if ring
  *         is not yet full
+ *
+ * NULL is also returned, and nothing is stored, if the ring has no
+ * storage -- it was never pmix_ring_buffer_init()'ed, or it has been
+ * destructed. The two cases are indistinguishable in the return value;
+ * this signature has nowhere else to put the distinction.
  */
 PMIX_EXPORT void *pmix_ring_buffer_push(pmix_ring_buffer_t *ring, void *ptr);
 

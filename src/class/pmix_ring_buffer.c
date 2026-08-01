@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2010      Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -106,6 +106,22 @@ void *pmix_ring_buffer_push(pmix_ring_buffer_t *ring, void *ptr)
 {
     char *p = NULL;
 
+    /* There is no storage until pmix_ring_buffer_init() has run, and none
+     * again after the destructor has run. Both of the other accessors
+     * already survive that state -- pop() tests "tail == -1" and poke()
+     * tests "size <= i" -- but this one went straight to addr[head] and
+     * dereferenced NULL. It is the easiest of the three to reach: a ring
+     * that was only PMIX_NEW'd, or one being pushed to on a teardown path
+     * that has already destructed it.
+     *
+     * Answering NULL is the same answer as "the ring was not full", which
+     * is unfortunate but is the only value this signature has to give. It
+     * is still strictly better than the fault, and a caller that pushes
+     * into an un-init'd ring has a bug either way. */
+    if (PMIX_UNLIKELY(NULL == ring || NULL == ring->addr || 0 >= ring->size)) {
+        return NULL;
+    }
+
     if (NULL != ring->addr[ring->head]) {
         p = (char *) ring->addr[ring->head];
         if (ring->tail == ring->size - 1) {
@@ -130,6 +146,9 @@ void *pmix_ring_buffer_pop(pmix_ring_buffer_t *ring)
 {
     char *p = NULL;
 
+    if (PMIX_UNLIKELY(NULL == ring)) {
+        return NULL;
+    }
     if (-1 == ring->tail) {
         /* nothing has been put on the ring yet */
         p = NULL;
@@ -154,6 +173,9 @@ void *pmix_ring_buffer_poke(pmix_ring_buffer_t *ring, int i)
     char *p = NULL;
     int offset;
 
+    if (PMIX_UNLIKELY(NULL == ring)) {
+        return NULL;
+    }
     if (ring->size <= i || -1 == ring->tail) {
         p = NULL;
     } else if (i < 0) {

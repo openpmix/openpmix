@@ -12,7 +12,7 @@
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -329,18 +329,29 @@ pmix_hash_table_get_value_uint32(pmix_hash_table_t *ht, uint32_t key, void **val
 #endif
         return PMIX_ERROR;
     }
+    /* A table holds exactly one key type at a time, and this check is the
+     * only thing that enforces it. It used to sit inside
+     * "#if PMIX_ENABLE_DEBUG", so in every build that ships, mixing key
+     * types was silent: the assignment below simply retargets
+     * ht_type_methods, and from that point on a ptr-keyed table has no
+     * elt_destructor (every copied key leaks) while pmix_hash_grow() and
+     * pmix_hash_table_remove_elt_at() rehash its elements through
+     * key.u32 -- the low bytes of a key pointer -- scattering live
+     * entries to slots no later lookup will probe. One pointer compare,
+     * on a path that already does a division, does not buy that. Only
+     * the diagnostic belongs behind the debug switch.
+     *
+     * The TMA exemption is real and stays: a table living in a shared
+     * segment may carry method pointers another process installed, which
+     * mean nothing in this address space. */
+    if (PMIX_UNLIKELY(NULL == pmix_obj_get_tma(&ht->super) && NULL != ht->ht_type_methods
+                      && &pmix_hash_type_methods_uint32 != ht->ht_type_methods)) {
 #if PMIX_ENABLE_DEBUG
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
-    if (NULL == pmix_obj_get_tma(&ht->super) &&
-        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_uint32:"
                        "hash table is for a different key type");
+#endif
         return PMIX_ERROR;
     }
-#endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint32;
     for (ii = key % capacity;; ii += 1) {
@@ -378,18 +389,17 @@ pmix_hash_table_set_value_uint32(pmix_hash_table_t *ht, uint32_t key, void *valu
 #endif
         return PMIX_ERR_BAD_PARAM;
     }
+    /* One key type per table; see pmix_hash_table_get_value_uint32() for
+     * why this check is not inside "#if PMIX_ENABLE_DEBUG" and why the
+     * TMA exemption is. */
+    if (PMIX_UNLIKELY(NULL == pmix_obj_get_tma(&ht->super) && NULL != ht->ht_type_methods
+                      && &pmix_hash_type_methods_uint32 != ht->ht_type_methods)) {
 #if PMIX_ENABLE_DEBUG
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
-    if (NULL == pmix_obj_get_tma(&ht->super) &&
-        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_uint32:"
                        "hash table is for a different key type");
+#endif
         return PMIX_ERROR;
     }
-#endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint32;
     for (ii = key % capacity;; ii += 1) {
@@ -435,24 +445,24 @@ int pmix_hash_table_remove_value_uint32(pmix_hash_table_t *ht, uint32_t key)
 #endif
         return PMIX_ERROR;
     }
+    /* One key type per table; see pmix_hash_table_get_value_uint32() for
+     * why this check is not inside "#if PMIX_ENABLE_DEBUG" and why the
+     * TMA exemption is. */
+    if (PMIX_UNLIKELY(NULL == pmix_obj_get_tma(&ht->super) && NULL != ht->ht_type_methods
+                      && &pmix_hash_type_methods_uint32 != ht->ht_type_methods)) {
 #if PMIX_ENABLE_DEBUG
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
-    if (NULL == pmix_obj_get_tma(&ht->super) &&
-        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_uint32:"
                        "hash table is for a different key type");
+#endif
         return PMIX_ERROR;
     }
-#endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint32;
     for (ii = key % capacity;; ii += 1) {
         pmix_hash_element_t *elt;
-        if (ii == capacity)
+        if (ii == capacity) {
             ii = 0;
+        }
         elt = &ht->ht_table[ii];
         if (!elt->valid) {
             return PMIX_ERR_NOT_FOUND;
@@ -492,18 +502,17 @@ pmix_hash_table_get_value_uint64(pmix_hash_table_t *ht, uint64_t key, void **val
 #endif
         return PMIX_ERROR;
     }
+    /* One key type per table; see pmix_hash_table_get_value_uint32() for
+     * why this check is not inside "#if PMIX_ENABLE_DEBUG" and why the
+     * TMA exemption is. */
+    if (PMIX_UNLIKELY(NULL == pmix_obj_get_tma(&ht->super) && NULL != ht->ht_type_methods
+                      && &pmix_hash_type_methods_uint64 != ht->ht_type_methods)) {
 #if PMIX_ENABLE_DEBUG
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
-    if (NULL == pmix_obj_get_tma(&ht->super) &&
-        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_uint64:"
                        "hash table is for a different key type");
+#endif
         return PMIX_ERROR;
     }
-#endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint64;
     for (ii = key % capacity;; ii += 1) {
@@ -541,18 +550,17 @@ pmix_hash_table_set_value_uint64(pmix_hash_table_t *ht, uint64_t key, void *valu
 #endif
         return PMIX_ERR_BAD_PARAM;
     }
+    /* One key type per table; see pmix_hash_table_get_value_uint32() for
+     * why this check is not inside "#if PMIX_ENABLE_DEBUG" and why the
+     * TMA exemption is. */
+    if (PMIX_UNLIKELY(NULL == pmix_obj_get_tma(&ht->super) && NULL != ht->ht_type_methods
+                      && &pmix_hash_type_methods_uint64 != ht->ht_type_methods)) {
 #if PMIX_ENABLE_DEBUG
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
-    if (NULL == pmix_obj_get_tma(&ht->super) &&
-        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_uint64:"
                        "hash table is for a different key type");
+#endif
         return PMIX_ERROR;
     }
-#endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint64;
     for (ii = key % capacity;; ii += 1) {
@@ -598,18 +606,17 @@ pmix_hash_table_remove_value_uint64(pmix_hash_table_t *ht, uint64_t key)
 #endif
         return PMIX_ERROR;
     }
+    /* One key type per table; see pmix_hash_table_get_value_uint32() for
+     * why this check is not inside "#if PMIX_ENABLE_DEBUG" and why the
+     * TMA exemption is. */
+    if (PMIX_UNLIKELY(NULL == pmix_obj_get_tma(&ht->super) && NULL != ht->ht_type_methods
+                      && &pmix_hash_type_methods_uint64 != ht->ht_type_methods)) {
 #if PMIX_ENABLE_DEBUG
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
-    if (NULL == pmix_obj_get_tma(&ht->super) &&
-        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_uint64:"
                        "hash table is for a different key type");
+#endif
         return PMIX_ERROR;
     }
-#endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint64;
     for (ii = key % capacity;; ii += 1) {
@@ -682,18 +689,28 @@ pmix_hash_table_get_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
 #endif
         return PMIX_ERROR;
     }
+    /* The ptr family hashes and memcmp's the caller's key bytes, and the
+     * setter memcpy's them into storage it owns. A NULL key walks into
+     * pmix_hash_hash_key_ptr() and dereferences it; a zero key_size makes
+     * every key compare equal to every other (memcmp of 0 bytes is 0) and
+     * asks the allocator for a 0-byte block, whose answer is
+     * implementation-defined -- NULL on some platforms, which this code
+     * would report as an out-of-memory that never happened. Neither is a
+     * usable key, so say so. */
+    if (PMIX_UNLIKELY(NULL == key || 0 == key_size)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* One key type per table; see pmix_hash_table_get_value_uint32() for
+     * why this check is not inside "#if PMIX_ENABLE_DEBUG" and why the
+     * TMA exemption is. */
+    if (PMIX_UNLIKELY(NULL == pmix_obj_get_tma(&ht->super) && NULL != ht->ht_type_methods
+                      && &pmix_hash_type_methods_ptr != ht->ht_type_methods)) {
 #if PMIX_ENABLE_DEBUG
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
-    if (NULL == pmix_obj_get_tma(&ht->super) &&
-        NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_ptr:"
                        "hash table is for a different key type");
+#endif
         return PMIX_ERROR;
     }
-#endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_ptr;
     for (ii = pmix_hash_hash_key_ptr(key, key_size) % capacity;; ii += 1) {
@@ -732,18 +749,20 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
 #endif
         return PMIX_ERR_BAD_PARAM;
     }
+    if (PMIX_UNLIKELY(NULL == key || 0 == key_size)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* One key type per table; see pmix_hash_table_get_value_uint32() for
+     * why this check is not inside "#if PMIX_ENABLE_DEBUG" and why the
+     * TMA exemption is. */
+    if (PMIX_UNLIKELY(NULL == pmix_obj_get_tma(&ht->super) && NULL != ht->ht_type_methods
+                      && &pmix_hash_type_methods_ptr != ht->ht_type_methods)) {
 #if PMIX_ENABLE_DEBUG
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
-    if (NULL == pmix_obj_get_tma(&ht->super) &&
-        NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_ptr:"
                        "hash table is for a different key type");
+#endif
         return PMIX_ERROR;
     }
-#endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_ptr;
     for (ii = pmix_hash_hash_key_ptr(key, key_size) % capacity;; ii += 1) {
@@ -797,18 +816,20 @@ pmix_hash_table_remove_value_ptr(pmix_hash_table_t *ht, const void *key, size_t 
 #endif
         return PMIX_ERROR;
     }
+    if (PMIX_UNLIKELY(NULL == key || 0 == key_size)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* One key type per table; see pmix_hash_table_get_value_uint32() for
+     * why this check is not inside "#if PMIX_ENABLE_DEBUG" and why the
+     * TMA exemption is. */
+    if (PMIX_UNLIKELY(NULL == pmix_obj_get_tma(&ht->super) && NULL != ht->ht_type_methods
+                      && &pmix_hash_type_methods_ptr != ht->ht_type_methods)) {
 #if PMIX_ENABLE_DEBUG
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
-    if (NULL == pmix_obj_get_tma(&ht->super) &&
-        NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_ptr:"
                        "hash table is for a different key type");
+#endif
         return PMIX_ERROR;
     }
-#endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_ptr;
     for (ii = pmix_hash_hash_key_ptr(key, key_size) % capacity;; ii += 1) {

@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,6 +29,7 @@
 #endif /* HAVE_STRINGS_H */
 
 #include "src/class/pmix_object.h"
+#include "src/include/pmix_prefetch.h"
 #if PMIX_ENABLE_DEBUG
 #    include "src/util/pmix_output.h"
 #endif
@@ -80,7 +81,7 @@ static inline int pmix_value_array_init(pmix_value_array_t *array, size_t item_s
     /* Every offset in this class is computed from the item size, so a zero
      * one makes the array silently degenerate: each element lands at the
      * same address and remove_item memmoves nothing. */
-    if (0 == item_sizeof) {
+    if (PMIX_UNLIKELY(0 == item_sizeof)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -110,6 +111,19 @@ static inline int pmix_value_array_init(pmix_value_array_t *array, size_t item_s
 
 static inline int pmix_value_array_reserve(pmix_value_array_t *array, size_t size)
 {
+    /* The sibling of the check pmix_value_array_init() and
+     * pmix_value_array_set_size() already carry; this one was missed, and
+     * it is the worst place to miss it. On an array that was only
+     * PMIX_CONSTRUCT'd, array_item_sizeof is 0, so the realloc() below asks
+     * for 0 bytes -- and glibc answers realloc(NULL, 0) with a non-NULL
+     * pointer to a zero-byte block. This function then reported success and
+     * committed array_alloc_size = size over it, after which set_size()
+     * saw enough room to skip growing and PMIX_VALUE_ARRAY_SET_ITEM wrote
+     * straight into the heap past that empty block. */
+    if (PMIX_UNLIKELY(0 == array->array_item_sizeof)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     if (size > array->array_alloc_size) {
         /* Hold the new pointer aside: on failure realloc() leaves the old
          * allocation valid, and the previous code overwrote it with NULL -
@@ -187,8 +201,9 @@ PMIX_EXPORT int pmix_value_array_set_size(pmix_value_array_t *array, size_t size
 static inline void *pmix_value_array_get_item(pmix_value_array_t *array, size_t item_index)
 {
     if (item_index >= array->array_size
-        && pmix_value_array_set_size(array, item_index + 1) != PMIX_SUCCESS)
+        && PMIX_SUCCESS != pmix_value_array_set_size(array, item_index + 1)) {
         return NULL;
+    }
     return array->array_items + (item_index * array->array_item_sizeof);
 }
 
@@ -230,8 +245,9 @@ static inline int pmix_value_array_set_item(pmix_value_array_t *array, size_t it
 {
     int rc;
     if (item_index >= array->array_size
-        && (rc = pmix_value_array_set_size(array, item_index + 1)) != PMIX_SUCCESS)
+        && PMIX_SUCCESS != (rc = pmix_value_array_set_size(array, item_index + 1))) {
         return rc;
+    }
     memcpy(array->array_items + (item_index * array->array_item_sizeof), item,
            array->array_item_sizeof);
     return PMIX_SUCCESS;
@@ -275,7 +291,7 @@ static inline int pmix_value_array_remove_item(pmix_value_array_t *array, size_t
      * (array_size - item_index - 1) in size_t arithmetic: an out-of-range
      * index does not read one element too far, it wraps to an enormous
      * count and walks the heap. One compare is not worth that. */
-    if (item_index >= array->array_size) {
+    if (PMIX_UNLIKELY(item_index >= array->array_size)) {
 #if PMIX_ENABLE_DEBUG
         pmix_output(0, "pmix_value_array_remove_item: invalid index %lu\n",
                     (unsigned long) item_index);
