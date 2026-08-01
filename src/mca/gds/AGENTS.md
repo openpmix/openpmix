@@ -18,7 +18,7 @@ described there all apply here and are not repeated. This file covers what
 is specific to `gds`: what the framework stores, the unusual
 "assign-on-demand per peer" way its modules are selected, the large module
 interface every component fills in, how the base routes calls through the
-`PMIX_GDS_*` macros, and the two shipped components (`hash` and `shmem2`).
+`PMIX_GDS_*` macros, and the two shipped components (`hash` and `shmem3`).
 Each component subdirectory carries its own `AGENTS.md` with
 component-specific detail.
 
@@ -53,7 +53,7 @@ Everything about the *transport* of this data (sockets, framing,
 handshake) belongs to `ptl`; the *serialization* belongs to `bfrops`; the
 *node/proc-map regex* belongs to `preg`. `gds` is purely the store and the
 retrieval logic layered on top of `src/util/pmix_hash.c` and (for
-`shmem2`) `src/util/pmix_shmem.c`.
+`shmem3`) `src/util/pmix_shmem.c`.
 
 ## The single most important structural fact: assign-on-demand per peer
 
@@ -90,8 +90,8 @@ The binding works like this:
 So a module's `assign_module` return value — not the component's static
 priority — is what actually decides who serves a peer, and it can depend on
 the directives. With the two shipped components, when the caller does not
-name a module, `shmem2` (priority 20) is assigned over `hash` (priority 10)
-wherever `shmem2` is available; when the caller passes
+name a module, `shmem3` (priority 20) is assigned over `hash` (priority 10)
+wherever `shmem3` is available; when the caller passes
 `PMIX_GDS_MODULE="hash"`, `hash` bids 100 and wins.
 
 ### The per-peer override and the fallback path
@@ -107,7 +107,7 @@ is what [`PMIX_GDS_PEER_MODULE(p)`](gds.h) exists for:
 
 If `peer->gds` is set it wins; otherwise the nspace default is used. The
 one case that sets `peer->gds` today is the **GDS fallback**: if a client
-was assigned `shmem2` but cannot attach the shared segment at the required
+was assigned `shmem3` but cannot attach the shared segment at the required
 fixed address, `fallback_to_next_gds()` (in `src/client/pmix_client.c`)
 calls `pmix_gds_base_get_fallback_module()` — the highest-priority active
 module *other than* the failing one — points `myserver->gds` (and, on the
@@ -126,7 +126,7 @@ explicit fallbacks for the `NULL` case (see below).
 
 | Field | Signature (typedef) | Role | Purpose |
 |-------|---------------------|------|---------|
-| `name` | `const char *` | both | module name string (`"hash"`, `"shmem2"`) — the identity used in `assign_module` and the handshake |
+| `name` | `const char *` | both | module name string (`"hash"`, `"shmem3"`) — the identity used in `assign_module` and the handshake |
 | `is_tsafe` | `const bool` | both | whether `fetch` may run outside the progress thread; both shipped modules set `false` |
 | `init` / `finalize` | `init_fn_t` / `fini_fn_t` | both | per-module setup/teardown; `init` may reject (module can't run) |
 | `assign_module` | `assign_module_fn_t` | both | bid to serve a peer given its directives; returns a priority (see selection) |
@@ -168,7 +168,7 @@ you are touching:
    the peer's module, then: if that module leaves the slot `NULL`, they
    return `PMIX_ERR_NOT_SUPPORTED` *if the module is `"hash"`*, otherwise
    they retry through `pmix_globals.mypeer->nptr->compat.gds` (the local
-   server's own module). This is not cosmetic — `shmem2` deliberately sets
+   server's own module). This is not cosmetic — `shmem3` deliberately sets
    `store`, `assemb_kvs_req`, and `accept_kvs_resp` to `NULL`, so these
    operations fall through to the local module. Do not "clean up" the
    fallback without understanding that a live component relies on it.
@@ -198,7 +198,7 @@ e.g., to special-case `"hash"` behavior.
   global `pmix_gds_globals` state, and defines the `PMIX_CLASS_INSTANCE`
   for `pmix_gds_base_active_module_t`. Note the fourth argument is `NULL` —
   **the framework registers no MCA parameters of its own** (the only `gds`
-  MCA parameters live in the `shmem2` component). `pmix_gds_open` opens all
+  MCA parameters live in the `shmem3` component). `pmix_gds_open` opens all
   components and constructs the `actives` list; `pmix_gds_close` finalizes
   each active module, tears the list down, and frees `all_mods`.
 - **`base/gds_base_select.c`** (`pmix_gds_base_select`, guarded by
@@ -216,7 +216,7 @@ Component priorities (from each component's `component_query`, before any
 
 | Component | `component_query` priority | Runnable when |
 |-----------|----------------------------|---------------|
-| `shmem2`  | 20 | `/proc/self/maps` exists (Linux) *and* it was built (64-bit, non-Apple) |
+| `shmem3`  | 20 | `/proc/self/maps` exists (Linux) *and* it was built (64-bit, non-Apple) |
 | `hash`    | 10 | always |
 
 Remember these are just the *default* priorities that seed the actives
@@ -239,7 +239,7 @@ the selection story above:
   active module whose `name` differs from `failing->name`, chosen purely by
   the recorded component priority (it does **not** consult `assign_module`).
   No module names are hard-coded; with today's two modules this returns
-  `hash` when `shmem2` fails. Used by the client fallback path.
+  `hash` when `shmem3` fails. Used by the client fallback path.
 - **`pmix_gds_base_setup_fork(proc, &env)`** — rotates across *all* active
   modules, giving each its `setup_fork` turn (a fan-out, like
   add/del_nspace), tolerating `PMIX_ERR_NOT_AVAILABLE`.
@@ -295,7 +295,7 @@ src/mca/gds/
 │   ├── gds_base_select.c   query components → build priority-ordered actives list
 │   └── gds_base_fns.c      available-modules, assign/fallback module, setup_fork, store_modex
 ├── hash/                   in-process hash-table store (always available)
-└── shmem2/                 shared-memory store (server writes, clients read-only)
+└── shmem3/                 shared-memory store (server writes, clients read-only)
 ```
 
 ## Threading
@@ -319,10 +319,10 @@ The framework core (`base/`) is always built into `libpmix`. Each component
 builds as a standard MCA component and is wired through the generated
 `base/static-components.h`. **Both** components ship a `configure.m4`:
 `hash` is "always available" (its `configure.m4` unconditionally enables
-it), while `shmem2` only builds on a **64-bit, non-Apple** host (it relies
+it), while `shmem3` only builds on a **64-bit, non-Apple** host (it relies
 on a large virtual address space and the `/proc/self/maps`-based VM-hole
 finder). On macOS, therefore, only `hash` exists; on 64-bit Linux both
-build and `shmem2` is preferred at runtime when `/proc/self/maps` is
+build and `shmem3` is preferred at runtime when `/proc/self/maps` is
 present. Adding a component means creating `src/mca/gds/<name>/` with the
 usual `Makefile.am` and (if it has build prerequisites) a `configure.m4`, a
 component struct opened with `PMIX_GDS_BASE_VERSION_1_0_0`, and a module;
@@ -349,7 +349,7 @@ golden rule does not usually bite here.
   only when the caller explicitly names you (via `PMIX_GDS_MODULE`) or when
   you can genuinely serve the directives, and to disqualify yourself
   (priority 0) when the caller named a *different* module — exactly as
-  `shmem2` does.
+  `shmem3` does.
 - **A `NULL` module slot is a real design choice with a defined fallback.**
   If you leave `store` / `assemb_kvs_req` / `accept_kvs_resp` `NULL`,
   understand you are opting into the local-module fallback in the macros.

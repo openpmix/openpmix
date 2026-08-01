@@ -78,7 +78,7 @@ typedef pmix_status_t (*pmix_gds_base_assign_module_fn_t)(pmix_info_t *info, siz
 /* Resolve the GDS module to use for a given peer. A peer may carry its
  * own module (peer->gds) that overrides the nspace-level default in
  * nptr->compat.gds - this happens when a client falls back to a
- * different module than the rest of its nspace (e.g. shmem2 attach
+ * different module than the rest of its nspace (e.g. shmem3 attach
  * failed and the client switched to hash). When peer->gds is NULL, the
  * nspace-level module is used. */
 #define PMIX_GDS_PEER_MODULE(p) \

@@ -128,7 +128,7 @@ The obvious fix is a C11 atomic: PMIx hard-requires them
 then **pulled back out**, because it is not local:
 
 > Dropping `obj_lock` shrinks `pmix_object_t` from 168 bytes to 104,
-> which shifts every field of every derived class. `gds/shmem2` builds
+> which shifts every field of every derived class. `gds/shmem3` builds
 > `pmix_list_t` and `pmix_hash_table_t` *inside the segment it shares
 > with client processes*, and that segment carries no layout guard — so
 > a client from an older release maps the segment, reads
@@ -147,7 +147,7 @@ together in its own change.
 
 **So: do not "fix" the mutex here in isolation.** Any change to the size
 or layout of `pmix_object_t`, or of anything derived from it, is a
-cross-version compatibility change because of the `gds/shmem2` segment.
+cross-version compatibility change because of the `gds/shmem3` segment.
 Check that first.
 
 
@@ -187,7 +187,7 @@ Every object embeds a `pmix_tma_t obj_tma` — a struct of
 plus context. When the pointers are `NULL` (the overwhelmingly common
 case) the object uses libc `malloc`/`free`. When they are set, the object
 and everything it allocates live in a **caller-provided memory arena** —
-this is how the shared-memory datastore (`src/mca/gds/shmem2`, and
+this is how the shared-memory datastore (`src/mca/gds/shmem3`, and
 helpers in `src/util/pmix_hash.c`, `src/mca/bfrops/base/bfrop_base_tma.h`)
 places PMIx objects into an mmap'd segment shared between processes.
 
@@ -438,7 +438,7 @@ this directory has had:
   non-trivial change here.
 - A multi-*node* test is not meaningful for this directory — these are
   single-process data structures. The genuinely distributed dimension is
-  the cross-process TMA path (`gds/shmem2`), which the group tests in
+  the cross-process TMA path (`gds/shmem3`), which the group tests in
   `contrib/dockerswarm/run-tests.sh` exercise.
 
 ## Threading

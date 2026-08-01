@@ -29,10 +29,10 @@
  * entire components just to query their version and parameters.
  */
 
-#include "gds_shmem2.h"
+#include "gds_shmem3.h"
 
 static int
-gds_shmem2_component_register(void);
+gds_shmem3_component_register(void);
 
 static int
 component_query(pmix_mca_base_module_t **module,
@@ -45,8 +45,8 @@ component_query(pmix_mca_base_module_t **module,
         *module = NULL;
         return PMIX_ERROR;
     }
-    *priority = PMIX_GDS_SHMEM2_DEFAULT_PRIORITY;
-    *module = (pmix_mca_base_module_t *)&pmix_shmem2_module;
+    *priority = PMIX_GDS_SHMEM3_DEFAULT_PRIORITY;
+    *module = (pmix_mca_base_module_t *)&pmix_shmem3_module;
     return PMIX_SUCCESS;
 }
 
@@ -54,11 +54,11 @@ component_query(pmix_mca_base_module_t **module,
  * Instantiate the public struct with all of our public
  * information and pointers to our public functions in it.
  */
-pmix_gds_shmem2_component_t pmix_mca_gds_shmem2_component = {
+pmix_gds_shmem3_component_t pmix_mca_gds_shmem3_component = {
     .super = {
         PMIX_GDS_BASE_VERSION_1_0_0,
         /** Component name and version. */
-        .pmix_mca_component_name = PMIX_GDS_SHMEM2_NAME,
+        .pmix_mca_component_name = PMIX_GDS_SHMEM3_NAME,
         PMIX_MCA_BASE_MAKE_VERSION(
             component,
             PMIX_MAJOR_VERSION,
@@ -66,7 +66,7 @@ pmix_gds_shmem2_component_t pmix_mca_gds_shmem2_component = {
             PMIX_RELEASE_VERSION
         ),
         /** Component register. */
-        .pmix_mca_register_component_params = gds_shmem2_component_register,
+        .pmix_mca_register_component_params = gds_shmem3_component_register,
         /** Component query function. */
         .pmix_mca_query_component = component_query,
         .reserved = {0}
@@ -75,44 +75,44 @@ pmix_gds_shmem2_component_t pmix_mca_gds_shmem2_component = {
     .sessions = PMIX_LIST_STATIC_INIT
 };
 
-double pmix_gds_shmem2_segment_size_multiplier = 1.0;
+double pmix_gds_shmem3_segment_size_multiplier = 1.0;
 
-bool pmix_gds_shmem2_force_client_attach_failure = false;
+bool pmix_gds_shmem3_force_client_attach_failure = false;
 
 static int
-gds_shmem2_component_register(void)
+gds_shmem3_component_register(void)
 {
     int varidx;
 
     varidx = pmix_mca_base_component_var_register(
-        &pmix_mca_gds_shmem2_component.super,
+        &pmix_mca_gds_shmem3_component.super,
         "segment_size_multiplier",
         "Multiplier that influences the ultimate sizes of the shared-memory "
         "segments used for gds data storage. As a percentage, values less or "
         "greater than 1.0 decrease or increase the final segment sizes, "
         "respectively.",
         PMIX_MCA_BASE_VAR_TYPE_DOUBLE,
-        &pmix_gds_shmem2_segment_size_multiplier
+        &pmix_gds_shmem3_segment_size_multiplier
     );
     if (varidx < 0) {
         return PMIX_ERROR;
     }
 
     varidx = pmix_mca_base_component_var_register(
-        &pmix_mca_gds_shmem2_component.super,
+        &pmix_mca_gds_shmem3_component.super,
         "force_client_attach_failure",
         "(Testing only) Force a client's fixed-address segment attach to "
         "fail so the graceful fallback to the next GDS module can be "
         "exercised. Do not set this in production.",
         PMIX_MCA_BASE_VAR_TYPE_BOOL,
-        &pmix_gds_shmem2_force_client_attach_failure
+        &pmix_gds_shmem3_force_client_attach_failure
     );
     if (varidx < 0) {
         return PMIX_ERROR;
     }
     return PMIX_SUCCESS;
 }
-PMIX_MCA_BASE_COMPONENT_INIT(pmix, gds, shmem2)
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, gds, shmem3)
 
 /*
  * vim: ft=cpp ts=4 sts=4 sw=4 expandtab

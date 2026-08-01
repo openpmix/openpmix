@@ -14,8 +14,8 @@
  * $HEADER$
  */
 
-#include "gds_shmem2_fetch.h"
-#include "gds_shmem2_utils.h"
+#include "gds_shmem3_fetch.h"
+#include "gds_shmem3_utils.h"
 
 #include "src/util/pmix_hash.h"
 #include "src/mca/ptl/base/base.h"
@@ -23,7 +23,7 @@
 
 // TODO(skg) Avoid copies where appropriate.
 
-static pmix_gds_shmem2_nodeinfo_t *
+static pmix_gds_shmem3_nodeinfo_t *
 get_nodeinfo_by_nodename(
     pmix_list_t *nodes,
     const char *hostname
@@ -34,9 +34,9 @@ get_nodeinfo_by_nodename(
         return NULL;
     }
     // First, just check all the node names as this is the most likely match.
-    pmix_gds_shmem2_nodeinfo_t *ni;
-    PMIX_LIST_FOREACH (ni, nodes, pmix_gds_shmem2_nodeinfo_t) {
-        if (pmix_gds_shmem2_hostnames_eq(ni->hostname, hostname)) {
+    pmix_gds_shmem3_nodeinfo_t *ni;
+    PMIX_LIST_FOREACH (ni, nodes, pmix_gds_shmem3_nodeinfo_t) {
+        if (pmix_gds_shmem3_hostnames_eq(ni->hostname, hostname)) {
             return ni;
         }
         if (!pmix_list_is_empty(ni->aliases)) {
@@ -48,10 +48,10 @@ get_nodeinfo_by_nodename(
         return NULL;
     }
     // If a match wasn't found, then we have to try the aliases.
-    PMIX_LIST_FOREACH (ni, nodes, pmix_gds_shmem2_nodeinfo_t) {
-        pmix_gds_shmem2_host_alias_t *nai = NULL;
-        PMIX_LIST_FOREACH (nai, ni->aliases, pmix_gds_shmem2_host_alias_t) {
-            if (pmix_gds_shmem2_hostnames_eq(nai->name, hostname)) {
+    PMIX_LIST_FOREACH (ni, nodes, pmix_gds_shmem3_nodeinfo_t) {
+        pmix_gds_shmem3_host_alias_t *nai = NULL;
+        PMIX_LIST_FOREACH (nai, ni->aliases, pmix_gds_shmem3_host_alias_t) {
+            if (pmix_gds_shmem3_hostnames_eq(nai->name, hostname)) {
                 return ni;
             }
         }
@@ -66,7 +66,7 @@ get_nodeinfo_by_nodename(
 static pmix_status_t
 fetch_all_node_info(
     char *key,
-    pmix_gds_shmem2_nodeinfo_t *nodeinfo,
+    pmix_gds_shmem3_nodeinfo_t *nodeinfo,
     pmix_list_t *kvs
 ) {
     size_t i = 0;
@@ -106,7 +106,7 @@ fetch_all_node_info(
     }
     pmix_kval_t *kvi;
     PMIX_LIST_FOREACH (kvi, nodeinfo->info, pmix_kval_t) {
-        PMIX_GDS_SHMEM2_VVOUT(
+        PMIX_GDS_SHMEM3_VVOUT(
             "%s:%s adding key=%s", __func__,
             PMIX_NAME_PRINT(&pmix_globals.myid), kvi->key
         );
@@ -137,8 +137,8 @@ fetch_all_node_info_from_list(
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
-    pmix_gds_shmem2_nodeinfo_t *ni;
-    PMIX_LIST_FOREACH (ni, nodeinfos, pmix_gds_shmem2_nodeinfo_t) {
+    pmix_gds_shmem3_nodeinfo_t *ni;
+    PMIX_LIST_FOREACH (ni, nodeinfos, pmix_gds_shmem3_nodeinfo_t) {
         char *key = NULL;
         // If the proc's version is earlier than v3.1, then the info must be
         // provided as a data_array with a key of the node's name as earlier
@@ -173,12 +173,12 @@ fetch_nodeinfo(
     pmix_list_t *kvs
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_gds_shmem2_nodeinfo_t *nodeinfo = NULL;
+    pmix_gds_shmem3_nodeinfo_t *nodeinfo = NULL;
     uint32_t nid = UINT32_MAX;
     char *hostname = NULL;
     bool found = false;
 
-    PMIX_GDS_SHMEM2_VOUT(
+    PMIX_GDS_SHMEM3_VOUT(
         "%s:%s key=%s", __func__,
         PMIX_NAME_PRINT(&pmix_globals.myid),
         (NULL == key) ? "NULL" : key
@@ -210,8 +210,8 @@ fetch_nodeinfo(
     }
     // Scan the list of nodes to find the matching entry.
     if (UINT32_MAX != nid) {
-        pmix_gds_shmem2_nodeinfo_t *ndi;
-        PMIX_LIST_FOREACH (ndi, nodeinfos, pmix_gds_shmem2_nodeinfo_t) {
+        pmix_gds_shmem3_nodeinfo_t *ndi;
+        PMIX_LIST_FOREACH (ndi, nodeinfos, pmix_gds_shmem3_nodeinfo_t) {
             if (UINT32_MAX != ndi->nodeid &&
                 nid == ndi->nodeid) {
                 nodeinfo = ndi;
@@ -263,7 +263,7 @@ fetch_nodeinfo(
         if (!PMIX_CHECK_KEY(kvi, key)) {
             continue;
         }
-        PMIX_GDS_SHMEM2_VOUT(
+        PMIX_GDS_SHMEM3_VOUT(
             "%s:%s: adding key=%s",
             PMIX_NAME_PRINT(&pmix_globals.myid),
             __func__, kvi->key
@@ -291,8 +291,8 @@ fetch_all_app_info(
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
-    pmix_gds_shmem2_app_t *appi;
-    PMIX_LIST_FOREACH (appi, apps, pmix_gds_shmem2_app_t) {
+    pmix_gds_shmem3_app_t *appi;
+    PMIX_LIST_FOREACH (appi, apps, pmix_gds_shmem3_app_t) {
         pmix_data_array_t *darray = NULL;
         size_t i = 0;
 
@@ -346,11 +346,11 @@ fetch_appinfo(
     pmix_list_t *kvs
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_gds_shmem2_app_t *app = NULL;
+    pmix_gds_shmem3_app_t *app = NULL;
     uint32_t appnum = 0;
     bool found = false;
 
-    PMIX_GDS_SHMEM2_VOUT(
+    PMIX_GDS_SHMEM3_VOUT(
         "%s FETCHING APP INFO WITH NAPPS=%zd",
         PMIX_NAME_PRINT(&pmix_globals.myid),
         pmix_list_get_size(target)
@@ -381,8 +381,8 @@ fetch_appinfo(
         appnum = pmix_globals.appnum;
     }
     // Scan the list of apps to find the matching entry.
-    pmix_gds_shmem2_app_t *appi;
-    PMIX_LIST_FOREACH (appi, target, pmix_gds_shmem2_app_t) {
+    pmix_gds_shmem3_app_t *appi;
+    PMIX_LIST_FOREACH (appi, target, pmix_gds_shmem3_app_t) {
         if (appnum == appi->appnum) {
             app = appi;
             break;
@@ -427,7 +427,7 @@ fetch_appinfo(
 static pmix_status_t
 xfer_sessioninfo(
     pmix_peer_t *peer,
-    pmix_gds_shmem2_session_t *sesh,
+    pmix_gds_shmem3_session_t *sesh,
     const char *key,
     pmix_list_t *kvs
 ) {
@@ -498,14 +498,14 @@ static pmix_status_t
 fetch_sessioninfo(
     pmix_peer_t *peer,
     const char *key,
-    pmix_gds_shmem2_job_t *job,
+    pmix_gds_shmem3_job_t *job,
     pmix_info_t *info,
     size_t ninfo,
     pmix_list_t *kvs
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
-    PMIX_GDS_SHMEM2_VOUT("%s: FETCHING SESSION INFO", __func__);
+    PMIX_GDS_SHMEM3_VOUT("%s: FETCHING SESSION INFO", __func__);
 
     // Scan for the session ID to identify which session they are asking about.
     uint32_t sid = UINT32_MAX;
@@ -519,8 +519,8 @@ fetch_sessioninfo(
         }
     }
 
-    pmix_gds_shmem2_session_t *sesh;
-    sesh = pmix_gds_shmem2_get_session_tracker(job, sid, false);
+    pmix_gds_shmem3_session_t *sesh;
+    sesh = pmix_gds_shmem3_get_session_tracker(job, sid, false);
     if (PMIX_UNLIKELY(NULL == sesh)) {
         return PMIX_ERR_NOT_FOUND;
     }
@@ -530,7 +530,7 @@ fetch_sessioninfo(
 
 // TODO(skg) This needs plenty of work.
 pmix_status_t
-pmix_gds_shmem2_fetch(
+pmix_gds_shmem3_fetch(
     struct pmix_peer_t *pr,
     const pmix_proc_t *proc,
     pmix_scope_t scope,
@@ -540,7 +540,7 @@ pmix_gds_shmem2_fetch(
     size_t nqual,
     pmix_list_t *kvs
 ) {
-    PMIX_GDS_SHMEM2_VVOUT_HERE();
+    PMIX_GDS_SHMEM3_VVOUT_HERE();
 
     pmix_peer_t *peer = (pmix_peer_t*)pr;
     pmix_status_t rc = PMIX_SUCCESS;
@@ -553,7 +553,7 @@ pmix_gds_shmem2_fetch(
 
     PMIX_HIDE_UNUSED_PARAMS(copy);
 
-    PMIX_GDS_SHMEM2_VOUT(
+    PMIX_GDS_SHMEM3_VOUT(
         "%s:%s key=%s for proc=%s on scope=%s on behalf of %s", __func__,
         PMIX_NAME_PRINT(&pmix_globals.myid), !key ? "NULL" : key,
         PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope),
@@ -561,9 +561,9 @@ pmix_gds_shmem2_fetch(
     );
 
     // Get the tracker for this job. We should have already created one, so
-    // that's why we pass false in pmix_gds_shmem2_get_job_tracker().
-    pmix_gds_shmem2_job_t *job;
-    rc = pmix_gds_shmem2_get_job_tracker(proc->nspace, false, &job);
+    // that's why we pass false in pmix_gds_shmem3_get_job_tracker().
+    pmix_gds_shmem3_job_t *job;
+    rc = pmix_gds_shmem3_get_job_tracker(proc->nspace, false, &job);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         return rc;
     }
@@ -571,8 +571,8 @@ pmix_gds_shmem2_fetch(
     pmix_hash_table_t *const local_ht = job->smdata->local_hashtab;
 
     // Modex data ready for use?
-    const bool mdrfu = pmix_gds_shmem2_has_status(
-        job, PMIX_GDS_SHMEM2_MODEX_ID, PMIX_GDS_SHMEM2_READY_FOR_USE
+    const bool mdrfu = pmix_gds_shmem3_has_status(
+        job, PMIX_GDS_SHMEM3_MODEX_ID, PMIX_GDS_SHMEM3_READY_FOR_USE
     );
     // Modex data are stored in PMIX_REMOTE.
     pmix_hash_table_t *const remote_ht = mdrfu ? job->smmodex->hashtab : NULL;

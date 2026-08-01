@@ -122,7 +122,7 @@ Backs the `gds` framework. Stores `pmix_dstor_t` values per rank in a
 auto-registers unknown string keys). Values can carry **qualifiers**
 (a `pmix_qual_t[]` in a side pointer-array). All allocation goes through
 the table's **TMA** (`pmix_tma_*` off `pmix_obj_get_tma`) so the same code
-serves both the normal-heap and shared-memory (`gds/shmem2`) cases —
+serves both the normal-heap and shared-memory (`gds/shmem3`) cases —
 never call raw libc `malloc`/`free` on data that lives in a hash table.
 When constructing the qualifier array, remember the count of *actual*
 qualifiers (`PMIX_INFO_IS_QUALIFIER`) can be smaller than `nquals`: index

@@ -14,8 +14,8 @@
  * $HEADER$
  */
 
-#include "gds_shmem2_store.h"
-#include "gds_shmem2_utils.h"
+#include "gds_shmem3_store.h"
+#include "gds_shmem3_utils.h"
 
 #include "src/util/pmix_hash.h"
 
@@ -75,8 +75,8 @@ set_host_aliases_from_cds(
     }
 
     for (size_t i = 0; NULL != tmp[i]; i++) {
-        pmix_gds_shmem2_host_alias_t *alias;
-        alias = PMIX_NEW(pmix_gds_shmem2_host_alias_t, tma);
+        pmix_gds_shmem3_host_alias_t *alias;
+        alias = PMIX_NEW(pmix_gds_shmem3_host_alias_t, tma);
         if (PMIX_UNLIKELY(!alias)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -101,13 +101,13 @@ cache_node_info(
     pmix_info_t *info,
     size_t ninfo,
     pmix_list_t *cache,
-    pmix_gds_shmem2_nodeinfo_t **nodeinfo
+    pmix_gds_shmem3_nodeinfo_t **nodeinfo
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_tma_t *const tma = pmix_obj_get_tma(&cache->super);
     bool have_node_id_info = false;
 
-    pmix_gds_shmem2_nodeinfo_t *iinfo = PMIX_NEW(pmix_gds_shmem2_nodeinfo_t, tma);
+    pmix_gds_shmem3_nodeinfo_t *iinfo = PMIX_NEW(pmix_gds_shmem3_nodeinfo_t, tma);
     if (PMIX_UNLIKELY(!iinfo)) {
         rc = PMIX_ERR_NOMEM;
         PMIX_ERROR_LOG(rc);
@@ -115,7 +115,7 @@ cache_node_info(
     }
     // Cache the values while searching for the nodeid and/or hostname.
     for (size_t j = 0; j < ninfo; j++) {
-        PMIX_GDS_SHMEM2_VVOUT(
+        PMIX_GDS_SHMEM3_VVOUT(
             "%s:%s for key=%s", __func__,
             PMIX_NAME_PRINT(&pmix_globals.myid), info[j].key
         );
@@ -217,7 +217,7 @@ store_node_array(
         return rc;
     }
 
-    pmix_gds_shmem2_nodeinfo_t *nodeinfo;
+    pmix_gds_shmem3_nodeinfo_t *nodeinfo;
     rc = cache_node_info(
         (pmix_info_t *)val->data.darray->array,
         val->data.darray->size, cache, &nodeinfo
@@ -239,11 +239,11 @@ out:
 
 static pmix_status_t
 store_app_array(
-    pmix_gds_shmem2_job_t *job,
+    pmix_gds_shmem3_job_t *job,
     pmix_value_t *val
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_gds_shmem2_app_t *app = NULL;
+    pmix_gds_shmem3_app_t *app = NULL;
 
     // Apps must belong to a job.
     if (PMIX_UNLIKELY(!job)) {
@@ -257,7 +257,7 @@ store_app_array(
         return PMIX_ERR_TYPE_MISMATCH;
     }
 
-    pmix_tma_t *const tma = pmix_gds_shmem2_get_job_tma(job);
+    pmix_tma_t *const tma = pmix_gds_shmem3_get_job_tma(job);
     // Setup arrays and lists.
     pmix_list_t *app_cache = PMIX_NEW(pmix_list_t, tma);
     if (PMIX_UNLIKELY(!app_cache)) {
@@ -277,7 +277,7 @@ store_app_array(
     const size_t size = val->data.darray->size;
     pmix_info_t *info = (pmix_info_t *)val->data.darray->array;
     for (size_t j = 0; j < size; j++) {
-        PMIX_GDS_SHMEM2_VVOUT(
+        PMIX_GDS_SHMEM3_VVOUT(
             "%s:%s for key=%s", __func__,
             PMIX_NAME_PRINT(&pmix_globals.myid), info[j].key
         );
@@ -296,7 +296,7 @@ store_app_array(
                 PMIX_ERROR_LOG(rc);
                 goto out;
             }
-            app = PMIX_NEW(pmix_gds_shmem2_app_t, tma);
+            app = PMIX_NEW(pmix_gds_shmem3_app_t, tma);
             if (PMIX_UNLIKELY(!app)) {
                 rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
@@ -332,7 +332,7 @@ store_app_array(
         // Per the standard, they don't have to provide us with
         // an appnum so long as only one app is in the job.
         if (0 == pmix_list_get_size(job->smdata->appinfo)) {
-            app = PMIX_NEW(pmix_gds_shmem2_app_t, tma);
+            app = PMIX_NEW(pmix_gds_shmem3_app_t, tma);
             if (PMIX_UNLIKELY(!app)) {
                 rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
@@ -363,8 +363,8 @@ store_app_array(
         pmix_list_append(app->appinfo, &akv->super);
     }
     // Transfer the associated node-level data across.
-    pmix_gds_shmem2_nodeinfo_t *nd;
-    while ((nd = (pmix_gds_shmem2_nodeinfo_t *)pmix_list_remove_first(node_cache))) {
+    pmix_gds_shmem3_nodeinfo_t *nd;
+    while ((nd = (pmix_gds_shmem3_nodeinfo_t *)pmix_list_remove_first(node_cache))) {
         pmix_list_append(app->nodeinfo, &nd->super);
     }
 out:
@@ -375,7 +375,7 @@ out:
 
 static pmix_status_t
 store_proc_data(
-    pmix_gds_shmem2_job_t *job,
+    pmix_gds_shmem3_job_t *job,
     const pmix_kval_t *kval
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
@@ -410,7 +410,7 @@ store_proc_data(
         pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
         kv->key = info[j].key;
         kv->value = &info[j].value;
-        PMIX_GDS_SHMEM2_VVOUT(
+        PMIX_GDS_SHMEM3_VVOUT(
             "%s:%s for nspace=%s rank=%u key=%s",
             __func__, PMIX_NAME_PRINT(&pmix_globals.myid),
             job->nspace_id, rank, kv->key
@@ -427,7 +427,7 @@ store_proc_data(
 
 static pmix_status_t
 store_session_array(
-    pmix_gds_shmem2_job_t *job,
+    pmix_gds_shmem3_job_t *job,
     pmix_value_t *val
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
@@ -452,15 +452,15 @@ store_session_array(
         return rc;
     }
 
-    pmix_gds_shmem2_session_t *sesh;
-    sesh = pmix_gds_shmem2_get_session_tracker(job, sid, false);
+    pmix_gds_shmem3_session_t *sesh;
+    sesh = pmix_gds_shmem3_get_session_tracker(job, sid, false);
     if (PMIX_UNLIKELY(!sesh)) {
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
-    pmix_tma_t *const tma = pmix_gds_shmem2_get_session_tma(job);
+    pmix_tma_t *const tma = pmix_gds_shmem3_get_session_tma(job);
     pmix_list_t *ncache = PMIX_NEW(pmix_list_t, tma);
     if (PMIX_UNLIKELY(!ncache)) {
         rc = PMIX_ERR_NOMEM;
@@ -470,7 +470,7 @@ store_session_array(
 
     const size_t size = val->data.darray->size;
     for (size_t j = 1; j < size; j++) {
-        PMIX_GDS_SHMEM2_VVOUT(
+        PMIX_GDS_SHMEM3_VVOUT(
             "%s:%s key=%s", __func__,
             PMIX_NAME_PRINT(&pmix_globals.myid),
             info[j].key
@@ -499,8 +499,8 @@ store_session_array(
         }
     }
 
-    pmix_gds_shmem2_nodeinfo_t *ni;
-    while ((ni = (pmix_gds_shmem2_nodeinfo_t *)pmix_list_remove_first(ncache))) {
+    pmix_gds_shmem3_nodeinfo_t *ni;
+    while ((ni = (pmix_gds_shmem3_nodeinfo_t *)pmix_list_remove_first(ncache))) {
         pmix_list_append(sesh->smdata->nodeinfo, &ni->super);
     }
 out:
@@ -509,7 +509,7 @@ out:
 }
 
 pmix_status_t
-pmix_gds_shmem2_store_qualified(
+pmix_gds_shmem3_store_qualified(
     pmix_hash_table_t *ht,
     pmix_rank_t rank,
     pmix_value_t *value
@@ -553,8 +553,8 @@ out:
 }
 
 pmix_status_t
-pmix_gds_shmem2_store_local_job_data_in_shmem2(
-    pmix_gds_shmem2_job_t *job,
+pmix_gds_shmem3_store_local_job_data_in_shmem3(
+    pmix_gds_shmem3_job_t *job,
     pmix_list_t *job_data
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
@@ -563,7 +563,7 @@ pmix_gds_shmem2_store_local_job_data_in_shmem2(
 
     pmix_kval_t *kvi;
     PMIX_LIST_FOREACH (kvi, job_data, pmix_kval_t) {
-        PMIX_GDS_SHMEM2_VVOUT("%s: key=%s", __func__, kvi->key);
+        PMIX_GDS_SHMEM3_VVOUT("%s: key=%s", __func__, kvi->key);
         // We support the following data array keys.
         if (PMIX_CHECK_KEY(kvi, PMIX_APP_INFO_ARRAY)) {
             rc = store_app_array(job, kvi->value);
@@ -621,13 +621,13 @@ pmix_gds_shmem2_store_local_job_data_in_shmem2(
     }
     if (PMIX_SUCCESS == rc) {
         // Segments are ready for use.
-        pmix_gds_shmem2_set_status(
-            job, PMIX_GDS_SHMEM2_JOB_ID,
-            PMIX_GDS_SHMEM2_READY_FOR_USE
+        pmix_gds_shmem3_set_status(
+            job, PMIX_GDS_SHMEM3_JOB_ID,
+            PMIX_GDS_SHMEM3_READY_FOR_USE
         );
-        pmix_gds_shmem2_set_status(
-            job, PMIX_GDS_SHMEM2_SESSION_ID,
-            PMIX_GDS_SHMEM2_READY_FOR_USE
+        pmix_gds_shmem3_set_status(
+            job, PMIX_GDS_SHMEM3_SESSION_ID,
+            PMIX_GDS_SHMEM3_READY_FOR_USE
         );
     }
     return rc;
