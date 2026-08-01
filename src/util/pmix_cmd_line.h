@@ -75,7 +75,7 @@ typedef struct {
     int nseq;       // number of entries in seq
     int firstseq;   // position at which this option first appeared
 } pmix_cli_item_t;
-PMIX_CLASS_DECLARATION(pmix_cli_item_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_cli_item_t);
 
 typedef struct {
     pmix_object_t super;
@@ -83,7 +83,7 @@ typedef struct {
     char **tail;  // remainder of argv
     int nseq;  // number of occurrences recorded so far
 } pmix_cli_result_t;
-PMIX_CLASS_DECLARATION(pmix_cli_result_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 
 #define PMIX_CLI_RESULT_STATIC_INIT                 \
 {                                                   \

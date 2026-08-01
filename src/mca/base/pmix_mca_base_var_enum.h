@@ -188,7 +188,7 @@ typedef struct pmix_mca_base_var_enum_flag_t pmix_mca_base_var_enum_flag_t;
 /**
  * Object declaration for pmix_mca_base_var_enum_t
  */
-PMIX_CLASS_DECLARATION(pmix_mca_base_var_enum_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_mca_base_var_enum_t);
 
 /**
  * Create a new default enumerator

@@ -98,7 +98,7 @@ typedef struct {
     pmix_list_item_t super;
     pmix_name_t *pname;
 } pmix_namelist_t;
-PMIX_CLASS_DECLARATION(pmix_namelist_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_namelist_t);
 
 /* define structs for holding entries in the
  * show-help matrix */
@@ -204,7 +204,7 @@ typedef struct {
     char *source;
     void *object;
 } pmix_topo_obj_t;
-PMIX_CLASS_DECLARATION(pmix_topo_obj_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_topo_obj_t);
 
 /* define a command type for communicating to the
  * pmix server */
@@ -299,7 +299,7 @@ typedef struct {
     pmix_list_item_t super;
     char *path;
 } pmix_cleanup_file_t;
-PMIX_CLASS_DECLARATION(pmix_cleanup_file_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_cleanup_file_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -307,7 +307,7 @@ typedef struct {
     bool recurse;
     bool leave_topdir;
 } pmix_cleanup_dir_t;
-PMIX_CLASS_DECLARATION(pmix_cleanup_dir_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_cleanup_dir_t);
 
 /* define a struct to hold booleans controlling the
  * format/contents of the output */
@@ -381,7 +381,7 @@ typedef struct {
     pmix_iof_flags_t iof_flags;   // output formatting flags
     pmix_list_t sinks;   // IOF write events for output to files or directories
 } pmix_namespace_t;
-PMIX_CLASS_DECLARATION(pmix_namespace_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_namespace_t);
 
 /* define a caddy for quickly creating a list of pmix_namespace_t
  * objects for local, dedicated purposes */
@@ -389,20 +389,20 @@ typedef struct {
     pmix_list_item_t super;
     pmix_namespace_t *ns;
 } pmix_nspace_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_nspace_caddy_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_nspace_caddy_t);
 
 typedef struct {
     pmix_list_item_t super;
     pmix_namespace_t *ns;
     pmix_list_t envars;
 } pmix_nspace_env_cache_t;
-PMIX_CLASS_DECLARATION(pmix_nspace_env_cache_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_nspace_env_cache_t);
 
 typedef struct {
     pmix_list_item_t super;
     pmix_envar_t envar;
 } pmix_envar_list_item_t;
-PMIX_CLASS_DECLARATION(pmix_envar_list_item_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_envar_list_item_t);
 
 
 typedef struct pmix_rank_info_t {
@@ -418,7 +418,7 @@ typedef struct pmix_rank_info_t {
     int proc_cnt;        // #clones of this rank we know about
     void *server_object; // pointer to rank-specific object provided by server
 } pmix_rank_info_t;
-PMIX_CLASS_DECLARATION(pmix_rank_info_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_rank_info_t);
 
 /* define a very simple caddy for dealing with pmix_info_t
  * and pmix_query_t objects when transferring portions of arrays */
@@ -427,25 +427,25 @@ typedef struct {
     pmix_info_t *info;
     size_t ninfo;
 } pmix_info_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_info_caddy_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_info_caddy_t);
 
 typedef struct {
     pmix_list_item_t super;
     pmix_info_t info;
 } pmix_infolist_t;
-PMIX_CLASS_DECLARATION(pmix_infolist_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_infolist_t);
 
 typedef struct {
     pmix_list_item_t super;
     pmix_query_t query;
 } pmix_querylist_t;
-PMIX_CLASS_DECLARATION(pmix_querylist_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_querylist_t);
 
 typedef struct {
     pmix_list_item_t super;
     pmix_proc_t proc;
 } pmix_proclist_t;
-PMIX_CLASS_DECLARATION(pmix_proclist_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_proclist_t);
 
 /* object for tracking peers - each peer can have multiple
  * connections. This can occur if the initial app executes
@@ -480,13 +480,13 @@ typedef struct pmix_peer_t {
     uint32_t dyn_tags_current; // current tag for sendrecvs to this peer
     uint32_t dyn_tags_end; // upper limit of valid tags for sendrecvs to this peer
 } pmix_peer_t;
-PMIX_CLASS_DECLARATION(pmix_peer_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_peer_t);
 
 typedef struct {
     pmix_list_item_t super;
     pmix_peer_t *peer;
 } pmix_peerlist_t;
-PMIX_CLASS_DECLARATION(pmix_peerlist_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_peerlist_t);
 
 typedef struct {
     pmix_object_t super;
@@ -495,7 +495,7 @@ typedef struct {
     bool active;
     void *payload;
 } pmix_timer_t;
-PMIX_CLASS_DECLARATION(pmix_timer_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_timer_t);
 
 /* tracker for IOF requests */
 typedef struct {
@@ -516,7 +516,7 @@ typedef struct {
     pmix_hdlr_reg_cbfunc_t regcbfunc;
     void *cbdata;
 } pmix_iof_req_t;
-PMIX_CLASS_DECLARATION(pmix_iof_req_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_req_t);
 
 /* caddy for query requests */
 typedef struct {
@@ -544,7 +544,7 @@ typedef struct {
     pmix_validation_cbfunc_t validcbfunc;
     void *cbdata;
 } pmix_query_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -558,14 +558,14 @@ typedef struct {
      * requested and re-attach it to the destruct request. */
     bool notterm;
 } pmix_group_t;
-PMIX_CLASS_DECLARATION(pmix_group_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_group_t);
 
 typedef struct {
     pmix_list_item_t super;
     pmix_proc_t proc;
     pmix_byte_object_t blob;  // packed blob of info provided by this proc
 } pmix_grpinfo_t;
-PMIX_CLASS_DECLARATION(pmix_grpinfo_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_grpinfo_t);
 
 /* define a tracker for collective operations
  * - instanced in pmix_server_ops.c */
@@ -603,7 +603,7 @@ typedef struct {
     pmix_info_cbfunc_t info_cbfunc;
     void *cbdata;
 } pmix_server_trkr_t;
-PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
 
 /* define an object for moving a send
  * request into the server's event base and
@@ -621,7 +621,7 @@ typedef struct {
     pmix_query_t *query;
     char *key;
 } pmix_server_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 
 /****    THREAD-RELATED    ****/
 /* define a caddy for thread-shifting operations */
@@ -669,7 +669,7 @@ typedef struct {
     void *relcbdata;
     size_t ref;
 } pmix_shift_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_shift_caddy_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_shift_caddy_t);
 
 typedef struct {
     pmix_object_t super;
@@ -692,7 +692,7 @@ typedef struct {
     bool appdirective;
     uint32_t appnum;
 } pmix_get_logic_t;
-PMIX_CLASS_DECLARATION(pmix_get_logic_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_get_logic_t);
 
 /* struct for tracking ops */
 typedef struct {
@@ -737,7 +737,7 @@ typedef struct {
     pmix_fabric_t *fabric;
     pmix_topology_t *topo;
 } pmix_cb_t;
-PMIX_CLASS_DECLARATION(pmix_cb_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_cb_t);
 
 #define PMIX_THREADSHIFT(r, c)                                                      \
     do {                                                                            \
@@ -800,7 +800,7 @@ typedef struct {
     pmix_op_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_notify_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
 
 typedef struct {
     pmix_object_t super;
@@ -809,7 +809,7 @@ typedef struct {
     /** Stores the next ID. */
     uint32_t next_id;
 } pmix_keyindex_t;
-PMIX_CLASS_DECLARATION(pmix_keyindex_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_keyindex_t);
 
 #define PMIX_KEYINDEX_STATIC_INIT                 \
 {                                                 \

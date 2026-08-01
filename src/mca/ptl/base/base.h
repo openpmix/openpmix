@@ -119,7 +119,7 @@ typedef struct {
     char *uri;
     char *version;
 } pmix_connection_t;
-PMIX_CLASS_DECLARATION(pmix_connection_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_connection_t);
 
 /* API stubs */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_notification_cbfunc(pmix_ptl_cbfunc_t cbfunc);

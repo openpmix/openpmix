@@ -35,7 +35,7 @@ struct pmix_mca_base_alias_item_t {
 
 typedef struct pmix_mca_base_alias_item_t pmix_mca_base_alias_item_t;
 
-PMIX_CLASS_DECLARATION(pmix_mca_base_alias_item_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_mca_base_alias_item_t);
 
 struct pmix_mca_base_alias_t {
     pmix_object_t super;
@@ -45,7 +45,7 @@ struct pmix_mca_base_alias_t {
 
 typedef struct pmix_mca_base_alias_t pmix_mca_base_alias_t;
 
-PMIX_CLASS_DECLARATION(pmix_mca_base_alias_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_mca_base_alias_t);
 
 /**
  * @brief Create a alias for a component name.

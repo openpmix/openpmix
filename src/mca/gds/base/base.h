@@ -68,7 +68,7 @@ struct pmix_gds_base_active_module_t {
     pmix_gds_base_component_t *component;
 };
 typedef struct pmix_gds_base_active_module_t pmix_gds_base_active_module_t;
-PMIX_CLASS_DECLARATION(pmix_gds_base_active_module_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_base_active_module_t);
 
 /* framework globals */
 struct pmix_gds_globals_t {

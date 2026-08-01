@@ -38,7 +38,7 @@ typedef struct {
     pmix_event_t ev;
     pmix_server_trkr_t *trk;
 } pmix_trkr_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_trkr_caddy_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_trkr_caddy_t);
 
 typedef struct {
     pmix_object_t super;
@@ -80,7 +80,7 @@ typedef struct {
     pmix_spawn_cbfunc_t spcbfunc;
     void *cbdata;
 } pmix_setup_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_setup_caddy_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_setup_caddy_t);
 
 /* define a callback function returning inventory */
 typedef void (*pmix_inventory_cbfunc_t)(pmix_status_t status, pmix_list_t *inventory, void *cbdata);
@@ -101,13 +101,13 @@ typedef struct {
     pmix_op_cbfunc_t opcbfunc;
     void *cbdata;
 } pmix_inventory_rollup_t;
-PMIX_CLASS_DECLARATION(pmix_inventory_rollup_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_inventory_rollup_t);
 
 typedef struct {
     pmix_list_item_t super;
     pmix_setup_caddy_t *cd;
 } pmix_dmdx_remote_t;
-PMIX_CLASS_DECLARATION(pmix_dmdx_remote_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_dmdx_remote_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -117,7 +117,7 @@ typedef struct {
     pmix_info_t *info;    // array of info structs for this request
     size_t ninfo;         // number of info structs
 } pmix_dmdx_local_t;
-PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -128,7 +128,7 @@ typedef struct {
     pmix_modex_cbfunc_t cbfunc; // cbfunc to be executed when data is available
     void *cbdata;
 } pmix_dmdx_request_t;
-PMIX_CLASS_DECLARATION(pmix_dmdx_request_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_dmdx_request_t);
 
 /* event/error registration book keeping */
 typedef struct {
@@ -138,7 +138,7 @@ typedef struct {
     pmix_proc_t *affected;
     size_t naffected;
 } pmix_peer_events_info_t;
-PMIX_CLASS_DECLARATION(pmix_peer_events_info_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_peer_events_info_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -150,7 +150,7 @@ typedef struct {
     /* true if we have asked our host to forward this code to us */
     bool active;
 } pmix_regevents_info_t;
-PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -158,7 +158,7 @@ typedef struct {
     pmix_rank_t rank;
     size_t idx;
 } pmix_group_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_group_caddy_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_group_caddy_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -168,7 +168,7 @@ typedef struct {
     pmix_info_t *info;
     size_t ninfo;
 } pmix_iof_cache_t;
-PMIX_CLASS_DECLARATION(pmix_iof_cache_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_cache_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -176,7 +176,7 @@ typedef struct {
     pmix_proc_t *members;
     size_t nmembers;
 } pmix_pset_t;
-PMIX_CLASS_DECLARATION(pmix_pset_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pset_t);
 
 typedef struct {
     bool module_set;    // pmix_host_server has been set

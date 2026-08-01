@@ -154,7 +154,7 @@ typedef struct {
 	pmix_ndstats_t ndstats;
     pmix_cb_t *cb;
 } pmix_pstat_op_t;
-PMIX_CLASS_DECLARATION(pmix_pstat_op_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pstat_op_t);
 
 // p - pmix_pstat_op_t*
 // s - time in seconds

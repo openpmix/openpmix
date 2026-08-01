@@ -47,7 +47,7 @@ typedef struct {
     pmix_psensor_base_module_t *module;
     int priority;
 } pmix_psensor_active_module_t;
-PMIX_CLASS_DECLARATION(pmix_psensor_active_module_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_psensor_active_module_t);
 
 PMIX_EXPORT extern pmix_psensor_base_t pmix_psensor_base;
 
