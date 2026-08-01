@@ -347,6 +347,63 @@ static void test_reinit(void)
     PMIX_DESTRUCT(&h);
 }
 
+/* Regression (all builds): the upper bound on room_num used to be an
+ * assert() and nothing else, so in every build that ships -- config/pmix.m4
+ * adds -DNDEBUG whenever --enable-debug is off -- a room number at or above
+ * num_rooms was not checked at all. checkout() then *wrote* through
+ * rooms[room_num] past the end of the array, and pushed a second
+ * out-of-bounds write into unoccupied_rooms[] by way of
+ * ++last_unoccupied_room. The lower bound was always an "if".
+ *
+ * These cases are written against observable bookkeeping rather than
+ * against a fault, so they say something in an optimized build: an
+ * out-of-range room must leave occupancy exactly as it found it. Backing
+ * the fix out aborts on the assert in a debug build and corrupts
+ * last_unoccupied_room here in an optimized one. */
+static void test_out_of_range_room_number(void)
+{
+    pmix_hotel_t h;
+    int room = -1;
+    int saved;
+    void *occupant = (void *) 0xdeadbeef;
+
+    PMIX_CONSTRUCT(&h, pmix_hotel_t);
+    report("out-of-range: init succeeds",
+           PMIX_SUCCESS == pmix_hotel_init(&h, 4, NULL, 0, dummy_evict));
+    report("out-of-range: checkin works", PMIX_SUCCESS == pmix_hotel_checkin(&h, (void *) 0x1, &room));
+    saved = h.last_unoccupied_room;
+
+    /* one past the end, and far past the end */
+    pmix_hotel_checkout(&h, 4);
+    pmix_hotel_checkout(&h, 99999);
+    report("out-of-range: checkout past the end changes no bookkeeping",
+           saved == h.last_unoccupied_room);
+    report("out-of-range: the real occupant is still checked in", !pmix_hotel_is_empty(&h));
+
+    pmix_hotel_checkout_and_return_occupant(&h, 4, &occupant);
+    report("out-of-range: checkout_and_return past the end yields NULL", NULL == occupant);
+    occupant = (void *) 0xdeadbeef;
+    pmix_hotel_knock(&h, 77, &occupant);
+    report("out-of-range: knock past the end yields NULL", NULL == occupant);
+    report("out-of-range: still no bookkeeping change", saved == h.last_unoccupied_room);
+
+    /* the room that really is occupied still works */
+    pmix_hotel_knock(&h, room, &occupant);
+    report("out-of-range: the in-range room still answers", (void *) 0x1 == occupant);
+
+    PMIX_DESTRUCT(&h);
+
+    /* A destructed hotel has num_rooms 0 and a NULL rooms[]; room 0 is
+     * "in range" by the old lower-bound-only test and dereferenced NULL. */
+    occupant = (void *) 0xdeadbeef;
+    pmix_hotel_checkout(&h, 0);
+    pmix_hotel_checkout_and_return_occupant(&h, 0, &occupant);
+    report("destructed hotel: checkout of room 0 is a no-op, not a fault", NULL == occupant);
+    occupant = (void *) 0xdeadbeef;
+    pmix_hotel_knock(&h, 0, &occupant);
+    report("destructed hotel: knock at room 0 is a no-op, not a fault", NULL == occupant);
+}
+
 /* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
@@ -366,6 +423,7 @@ int main(int argc, char **argv)
     test_static_init();
     test_destruct_leaves_constructed_state();
     test_reinit();
+    test_out_of_range_room_number();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

@@ -431,6 +431,49 @@ static void test_reinit_over_a_populated_array(void)
     PMIX_DESTRUCT(&va);
 }
 
+/* Regression (all builds): pmix_value_array_reserve() was the one member of
+ * the init/reserve/set_size trio still missing the "item size is zero"
+ * check, and it is the worst place to miss it. On an array that has only
+ * been PMIX_CONSTRUCT'd, array_item_sizeof is 0, so reserve() asked
+ * realloc() for 0 * size == 0 bytes -- and glibc answers realloc(NULL, 0)
+ * with a non-NULL pointer to a zero-byte block. reserve() then reported
+ * success and committed array_alloc_size = size over that empty block,
+ * after which set_size() saw enough capacity to skip growing and every
+ * subsequent element write went into the heap past the end of it.
+ *
+ * The visible symptom without the fix is that reserve() succeeds; with it,
+ * PMIX_ERR_BAD_PARAM. (Under a hardened allocator the old code may instead
+ * abort in the eventual write, which is also a fail.) */
+static void test_reserve_requires_an_item_size(void)
+{
+    pmix_value_array_t va;
+    int v = 42;
+
+    PMIX_CONSTRUCT(&va, pmix_value_array_t);
+
+    report("reserve before init: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_value_array_reserve(&va, 100));
+    report("rejected reserve committed no capacity", 0 == va.array_alloc_size);
+    report("rejected reserve left the buffer alone", NULL == va.array_items);
+
+    /* the sibling checks, for the record: both already had this guard */
+    report("set_size before init: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_value_array_set_size(&va, 100));
+    report("init with item size 0: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_value_array_init(&va, 0));
+
+    /* once the array really has an item size, reserve works as before */
+    report("init succeeds", PMIX_SUCCESS == pmix_value_array_init(&va, sizeof(int)));
+    report("reserve after init: PMIX_SUCCESS", PMIX_SUCCESS == pmix_value_array_reserve(&va, 100));
+    report("reserve after init: capacity committed", 100 <= va.array_alloc_size);
+    report("reserve after init: size unchanged", 0 == pmix_value_array_get_size(&va));
+    report("reserved array accepts an append",
+           PMIX_SUCCESS == pmix_value_array_append_item(&va, &v));
+    report("reserved array reads it back", 42 == PMIX_VALUE_ARRAY_GET_ITEM(&va, int, 0));
+
+    PMIX_DESTRUCT(&va);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -452,6 +495,7 @@ int main(int argc, char **argv)
     test_many_appends();
     test_init_argument_checking();
     test_reinit_over_a_populated_array();
+    test_reserve_requires_an_item_size();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

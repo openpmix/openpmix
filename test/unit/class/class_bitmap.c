@@ -572,6 +572,48 @@ static void test_static_init_matches_constructor(void)
     PMIX_DESTRUCT(&ctor);
 }
 
+/* Regression: pmix_bitmap_set_max_size() was the one entry point in this
+ * file that did not validate its argument. The cap is stored as a word
+ * count, converted with "((size_t) max_size + 63) / 64" -- so a negative
+ * bit count became (size_t) -1, whose "+ 63" wrapped round to 62, which
+ * divided down to a stored cap of *zero words*. The call reported success
+ * and every later init() and set_bit() then failed with
+ * PMIX_ERR_BAD_PARAM, a long way from the call that actually got it
+ * wrong. Zero was accepted the same way.
+ *
+ * (all builds -- this was never gated on PMIX_ENABLE_DEBUG, just absent) */
+static void test_set_max_size_argument_checking(void)
+{
+    pmix_bitmap_t bm;
+
+    PMIX_CONSTRUCT(&bm, pmix_bitmap_t);
+
+    report("set_max_size(-1): PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_bitmap_set_max_size(&bm, -1));
+    report("set_max_size(0): PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_bitmap_set_max_size(&bm, 0));
+    report("set_max_size(NULL): PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_bitmap_set_max_size(NULL, 64));
+
+    /* the rejected calls must not have touched the cap: the bitmap is
+     * still uncapped and a plain init still works. Before the fix the
+     * negative call left max_size at 0 and this init returned BAD_PARAM. */
+    report("rejected set_max_size left the bitmap usable",
+           PMIX_SUCCESS == pmix_bitmap_init(&bm, 128));
+    report("rejected set_max_size left the size right", 128 <= pmix_bitmap_size(&bm));
+    report("rejected set_max_size left growth working",
+           PMIX_SUCCESS == pmix_bitmap_set_bit(&bm, 4095));
+
+    /* a real cap still behaves */
+    report("set_max_size(256): PMIX_SUCCESS", PMIX_SUCCESS == pmix_bitmap_set_max_size(&bm, 256));
+    report("capped: a bit inside the cap is accepted",
+           PMIX_SUCCESS == pmix_bitmap_set_bit(&bm, 255));
+    report("capped: a bit beyond the cap is refused",
+           PMIX_ERR_BAD_PARAM == pmix_bitmap_set_bit(&bm, 4096));
+
+    PMIX_DESTRUCT(&bm);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -599,6 +641,7 @@ int main(int argc, char **argv)
     test_reinit();
     test_count_bits_null_guard();
     test_static_init_matches_constructor();
+    test_set_max_size_argument_checking();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

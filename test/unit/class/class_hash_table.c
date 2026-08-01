@@ -466,6 +466,91 @@ static void test_next_poweroftwo(void)
     report("next_poweroftwo(INT_MIN) is 0", 0 == pmix_next_poweroftwo(INT_MIN));
 }
 
+/* Regression (all builds): "one key type per table" is enforced by a single
+ * pointer compare that used to sit inside "#if PMIX_ENABLE_DEBUG". In every
+ * build that ships, mixing key types was therefore silent -- the entry point
+ * simply retargeted ht_type_methods, and from that moment a ptr-keyed table
+ * had no elt_destructor (so every copied key leaked) while pmix_hash_grow()
+ * and pmix_hash_table_remove_elt_at() rehashed its elements through
+ * key.u32, i.e. the low bytes of a key pointer, scattering live entries to
+ * slots no later lookup would probe.
+ *
+ * The check is unconditional now, so the wrong-type call is refused and the
+ * table is left exactly as it was. Backing the fix out makes the "declines"
+ * cases fail in an optimized build; the "still intact" cases are what
+ * demonstrates the corruption it was hiding. */
+static void test_key_type_mixing_is_refused(void)
+{
+    pmix_hash_table_t ht;
+    const char *key = "the-key";
+    void *val = NULL;
+    uint32_t k32;
+    void *node = NULL;
+
+    PMIX_CONSTRUCT(&ht, pmix_hash_table_t);
+    report("mixing: init succeeds", PMIX_SUCCESS == pmix_hash_table_init(&ht, 8));
+    report("mixing: ptr set succeeds",
+           PMIX_SUCCESS == pmix_hash_table_set_value_ptr(&ht, key, strlen(key), (void *) 0x1234));
+
+    /* Every uint32/uint64 entry point must refuse this table, and refuse
+     * it with PMIX_ERROR specifically: a plain "not PMIX_SUCCESS" is not
+     * a discriminating assertion here, because without the check a get
+     * simply probes past the ptr entry and reports PMIX_ERR_NOT_FOUND. */
+    report("mixing: uint32 get declines",
+           PMIX_ERROR == pmix_hash_table_get_value_uint32(&ht, 1, &val));
+    report("mixing: uint32 set declines",
+           PMIX_ERROR == pmix_hash_table_set_value_uint32(&ht, 1, (void *) 0x1));
+    report("mixing: uint32 remove declines",
+           PMIX_ERROR == pmix_hash_table_remove_value_uint32(&ht, 1));
+    report("mixing: uint64 get declines",
+           PMIX_ERROR == pmix_hash_table_get_value_uint64(&ht, 1, &val));
+    report("mixing: uint64 set declines",
+           PMIX_ERROR == pmix_hash_table_set_value_uint64(&ht, 1, (void *) 0x1));
+    report("mixing: uint64 remove declines",
+           PMIX_ERROR == pmix_hash_table_remove_value_uint64(&ht, 1));
+
+    /* and the ptr table is intact: the rejected calls neither retargeted
+     * the methods nor added an entry of their own. Note the refused set
+     * above is what this catches -- without the check it inserts, and the
+     * matching refused remove would have taken it away again, so check
+     * the count here rather than after a set/remove pair. */
+    report("mixing: the table still holds exactly one entry",
+           1 == pmix_hash_table_get_size(&ht));
+
+    /* the reverse direction too: a uint32 table refuses ptr and uint64 */
+    report("mixing: remove_all resets the key type",
+           PMIX_SUCCESS == pmix_hash_table_remove_all(&ht));
+    report("mixing: uint32 set on the reused table",
+           PMIX_SUCCESS == pmix_hash_table_set_value_uint32(&ht, 7, (void *) 0x77));
+    report("mixing: ptr get on a uint32 table declines",
+           PMIX_ERROR == pmix_hash_table_get_value_ptr(&ht, key, strlen(key), &val));
+    report("mixing: uint64 set on a uint32 table declines",
+           PMIX_ERROR == pmix_hash_table_set_value_uint64(&ht, 7, (void *) 0x77));
+    report("mixing: the uint32 table still holds exactly one entry",
+           1 == pmix_hash_table_get_size(&ht));
+    k32 = 0;
+    report("mixing: the uint32 entry is still there",
+           PMIX_SUCCESS == pmix_hash_table_get_first_key_uint32(&ht, &k32, &val, &node));
+    report("mixing: it is the key we stored", 7 == k32 && (void *) 0x77 == val);
+
+    /* the ptr family also rejects an unusable key outright: a NULL one is
+     * dereferenced by the hash, and a zero-length one compares equal to
+     * every other key while asking the allocator for a 0-byte block. */
+    report("mixing: remove_all again", PMIX_SUCCESS == pmix_hash_table_remove_all(&ht));
+    report("ptr key: NULL key is refused",
+           PMIX_ERR_BAD_PARAM == pmix_hash_table_set_value_ptr(&ht, NULL, 4, (void *) 0x1));
+    report("ptr key: zero-length key is refused",
+           PMIX_ERR_BAD_PARAM == pmix_hash_table_set_value_ptr(&ht, key, 0, (void *) 0x1));
+    report("ptr key: NULL key refused on get",
+           PMIX_ERR_BAD_PARAM == pmix_hash_table_get_value_ptr(&ht, NULL, 4, &val));
+    report("ptr key: zero-length key refused on remove",
+           PMIX_ERR_BAD_PARAM == pmix_hash_table_remove_value_ptr(&ht, key, 0));
+    report("ptr key: a real key still works",
+           PMIX_SUCCESS == pmix_hash_table_set_value_ptr(&ht, key, strlen(key), (void *) 0x9));
+
+    PMIX_DESTRUCT(&ht);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -486,6 +571,7 @@ int main(int argc, char **argv)
     test_construct_initializes_label();
     test_init2_rejects_bad_ratios();
     test_next_poweroftwo();
+    test_key_type_mixing_is_refused();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

@@ -339,6 +339,55 @@ static void test_static_init_matches_constructor(void)
     PMIX_DESTRUCT(&ctor);
 }
 
+/* Regression (all builds): push() was the one accessor with no guard at
+ * all. pop() has always tested "tail == -1" and poke() "size <= i", but
+ * push() went straight to addr[head] -- so a ring that had only been
+ * PMIX_NEW'd/PMIX_CONSTRUCT'd, or one already destructed, dereferenced the
+ * NULL addr instead of declining. That is the easiest state in this class
+ * to reach by accident: a teardown path that pushes one last item after
+ * the ring is gone.
+ *
+ * Backing the fix out segfaults here in every configuration -- there is no
+ * assert on this path in either one. */
+static void test_push_without_storage(void)
+{
+    pmix_ring_buffer_t ring;
+    pmix_ring_buffer_t stat = PMIX_RING_BUFFER_STATIC_INIT;
+
+    PMIX_CONSTRUCT(&ring, pmix_ring_buffer_t);
+    report("no storage: push on a constructed-but-un-init'd ring declines",
+           NULL == pmix_ring_buffer_push(&ring, (void *) 0x1));
+    report("no storage: nothing was recorded", NULL == ring.addr && 0 == ring.size);
+    report("no storage: pop still says empty", NULL == pmix_ring_buffer_pop(&ring));
+
+    report("no storage: push on a STATIC_INIT ring declines",
+           NULL == pmix_ring_buffer_push(&stat, (void *) 0x2));
+
+    /* and after a destruct, which is the same state by a different route */
+    report("no storage: init succeeds", PMIX_SUCCESS == pmix_ring_buffer_init(&ring, 4));
+    pmix_ring_buffer_push(&ring, (void *) 0x3);
+    PMIX_DESTRUCT(&ring);
+    report("no storage: push on a destructed ring declines",
+           NULL == pmix_ring_buffer_push(&ring, (void *) 0x4));
+    report("no storage: destructed ring still reports empty",
+           NULL == pmix_ring_buffer_pop(&ring));
+
+    /* a NULL ring is answered rather than dereferenced, in all three */
+    report("NULL ring: push returns NULL", NULL == pmix_ring_buffer_push(NULL, (void *) 0x5));
+    report("NULL ring: pop returns NULL", NULL == pmix_ring_buffer_pop(NULL));
+    report("NULL ring: poke returns NULL", NULL == pmix_ring_buffer_poke(NULL, 0));
+
+    /* the ring is still usable once it really has storage. Reconstruct
+     * first -- PMIX_DESTRUCT twice on one object is a contract violation
+     * the object system's magic-ID assert catches, and this suite does
+     * not do it. */
+    PMIX_CONSTRUCT(&ring, pmix_ring_buffer_t);
+    report("no storage: re-init succeeds", PMIX_SUCCESS == pmix_ring_buffer_init(&ring, 2));
+    report("no storage: push then works", NULL == pmix_ring_buffer_push(&ring, (void *) 0x6));
+    report("no storage: pop returns it", (void *) 0x6 == pmix_ring_buffer_pop(&ring));
+    PMIX_DESTRUCT(&ring);
+}
+
 /* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
@@ -358,6 +407,7 @@ int main(int argc, char **argv)
     test_destruct_resets_head_and_tail();
     test_reinit_without_reconstruct();
     test_static_init_matches_constructor();
+    test_push_without_storage();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;
