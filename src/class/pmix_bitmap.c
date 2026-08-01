@@ -25,10 +25,12 @@
 #include "src/include/pmix_config.h"
 
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #include "pmix_common.h"
 #include "src/class/pmix_bitmap.h"
+#include "src/include/pmix_prefetch.h"
 
 /* The number of bits in the underlying type of the bitmap field
  * in the pmix_bitmap_t struct
@@ -57,7 +59,14 @@ static void pmix_bitmap_destruct(pmix_bitmap_t *bm)
 
 int pmix_bitmap_set_max_size(pmix_bitmap_t *bm, int max_size)
 {
-    if (NULL == bm) {
+    /* A non-positive cap is not a cap. Left unchecked, the conversion
+     * below ran it through size_t: max_size == -1 became (size_t) -1,
+     * which the "+ 63" wrapped to 62, which divided down to 0 -- a stored
+     * cap of zero words, so every later pmix_bitmap_init() and
+     * pmix_bitmap_set_bit() returned PMIX_ERR_BAD_PARAM from a long way
+     * away from the call that actually got it wrong. Every other entry
+     * point in this file validates its arguments unconditionally. */
+    if (PMIX_UNLIKELY(NULL == bm || max_size <= 0)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -139,8 +148,9 @@ int pmix_bitmap_set_bit(pmix_bitmap_t *bm, int bit)
          valid and we simply expand the bitmap */
 
         new_size = index + 1;
-        if (new_size > bm->max_size)
+        if (new_size > bm->max_size) {
             new_size = bm->max_size;
+        }
 
         /* New size is just a multiple of the original size to fit in
          the index. Hold the grown pointer aside until it is in hand:
@@ -234,7 +244,10 @@ int pmix_bitmap_set_all_bits(pmix_bitmap_t *bm)
 int pmix_bitmap_find_and_set_first_unset_bit(pmix_bitmap_t *bm, int *position)
 {
     int i = 0;
-    uint64_t temp, all_ones = 0xffffffffffffffffUL;
+    /* UINT64_MAX, not 0xffffffffffffffffUL: unsigned long is 32 bits on
+     * 32-bit Linux and on Windows, and the literal form invites exactly
+     * the width mistake this file has had before. */
+    uint64_t temp, all_ones = UINT64_MAX;
 
     if (NULL == bm) {
         return PMIX_ERR_BAD_PARAM;
@@ -421,15 +434,17 @@ int pmix_bitmap_num_set_bits(pmix_bitmap_t *bm, int len)
     i_len = len / SIZE_OF_BASE_TYPE + (len % SIZE_OF_BASE_TYPE == 0 ? 0 : 1);
 
     for (i = 0; i < i_len && i < bm->array_size; ++i) {
-        if (0 == (val = bm->bitmap[i]))
+        if (0 == (val = bm->bitmap[i])) {
             continue;
+        }
         if (i == i_len - 1 && len % SIZE_OF_BASE_TYPE != 0) {
             /* Mask out the bits above len. The shift distance runs to 63,
              * so it has to be applied to an unsigned 64-bit value: shifting
              * a signed 1LL by 63 overflows the sign bit and is undefined. */
             val = val & ((1ULL << (len - i * SIZE_OF_BASE_TYPE)) - 1);
-            if (0 == val)
+            if (0 == val) {
                 continue;
+            }
         }
         /*  Peter Wegner in CACM 3 (1960), 322. This method goes through as many
          *  iterations as there are set bits. */

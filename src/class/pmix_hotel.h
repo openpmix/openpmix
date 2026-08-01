@@ -6,7 +6,7 @@
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -227,6 +227,13 @@ static inline pmix_status_t pmix_hotel_checkin(pmix_hotel_t *hotel, void *occupa
 /**
  * Same as pmix_hotel_checkin(), but slightly optimized for when the
  * caller *knows* that there is a room available.
+ *
+ * "Knows" is load-bearing and unchecked: on a full hotel this reads
+ * unoccupied_rooms[-1] and drives last_unoccupied_room further negative.
+ * There is no error channel here by design -- that is the whole
+ * difference from pmix_hotel_checkin(). If you cannot prove a room is
+ * free at the call site, call pmix_hotel_checkin() instead; the saving
+ * is one predictable branch.
  */
 static inline void pmix_hotel_checkin_with_res(pmix_hotel_t *hotel, void *occupant, int *room_num)
 {
@@ -259,9 +266,17 @@ static inline void pmix_hotel_checkout(pmix_hotel_t *hotel, int room_num)
 {
     pmix_hotel_room_t *room;
 
-    /* Bozo check */
-    assert(room_num < hotel->num_rooms);
-    if (0 > room_num) {
+    /* Bozo check. Both bounds are tested unconditionally: an assert() is
+     * not a guard here, because config/pmix.m4 adds -DNDEBUG whenever
+     * --enable-debug is off, so in every build that ships the upper bound
+     * used to be no check at all. A room_num at or above num_rooms then
+     * indexed past rooms[] and this function *wrote* through it
+     * (room->occupant = NULL), deleted an event out of garbage, and pushed
+     * a second out-of-bounds write into unoccupied_rooms[]. A destructed
+     * or never-init'd hotel -- num_rooms 0, rooms NULL -- reached the same
+     * place through room_num 0. Callers hand in a cached cd->room, which
+     * is exactly the kind of value that goes stale. */
+    if (PMIX_UNLIKELY(0 > room_num || room_num >= hotel->num_rooms)) {
         /* occupant wasn't checked in */
         return;
     }
@@ -302,9 +317,10 @@ static inline void pmix_hotel_checkout_and_return_occupant(pmix_hotel_t *hotel, 
 {
     pmix_hotel_room_t *room;
 
-    /* Bozo check */
-    assert(room_num < hotel->num_rooms);
-    if (0 > room_num) {
+    /* Bozo check -- both bounds, unconditionally. See the note in
+     * pmix_hotel_checkout() for why an assert() on the upper bound was
+     * not one in any build that ships. */
+    if (PMIX_UNLIKELY(0 > room_num || room_num >= hotel->num_rooms)) {
         /* occupant wasn't checked in */
         *occupant = NULL;
         return;
@@ -338,10 +354,11 @@ static inline void pmix_hotel_checkout_and_return_occupant(pmix_hotel_t *hotel, 
  */
 static inline bool pmix_hotel_is_empty(pmix_hotel_t *hotel)
 {
-    if (hotel->last_unoccupied_room == hotel->num_rooms - 1)
+    if (hotel->last_unoccupied_room == hotel->num_rooms - 1) {
         return true;
-    else
+    } else {
         return false;
+    }
 }
 
 /**
@@ -358,11 +375,12 @@ static inline void pmix_hotel_knock(pmix_hotel_t *hotel, int room_num, void **oc
 {
     pmix_hotel_room_t *room;
 
-    /* Bozo check */
-    assert(room_num < hotel->num_rooms);
-
+    /* Bozo check -- both bounds, unconditionally. See the note in
+     * pmix_hotel_checkout(). This one only reads, but reading rooms[]
+     * out of bounds is still a fault waiting to happen, and every caller
+     * of this function walks an index range it computed elsewhere. */
     *occupant = NULL;
-    if (0 > room_num) {
+    if (PMIX_UNLIKELY(0 > room_num || room_num >= hotel->num_rooms)) {
         /* occupant wasn't checked in */
         return;
     }

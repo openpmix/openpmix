@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Voltaire All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -124,8 +124,9 @@ bool pmix_list_insert(pmix_list_t *list, pmix_list_item_t *item, long long idx)
 #endif
         /* pointer to element 0 */
         ptr = list->pmix_list_sentinel.pmix_list_next;
-        for (i = 0; i < idx - 1; i++)
+        for (i = 0; i < idx - 1; i++) {
             ptr = ptr->pmix_list_next;
+        }
 
         next = ptr->pmix_list_next;
         item->pmix_list_next = next;
