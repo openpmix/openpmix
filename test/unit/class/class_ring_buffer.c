@@ -250,6 +250,95 @@ static void test_destruct_leaves_constructed_state(void)
     PMIX_DESTRUCT(&ring);
 }
 
+/* The destructor freed addr and zeroed size but left head and tail where
+ * the last push put them. tail is this class's "is anything on the ring"
+ * flag, so a destructed ring still answered "yes" and pop() dereferenced
+ * addr[tail] -- through the NULL the destructor had just installed.
+ *
+ * (all builds -- there is no assert on this path in either configuration) */
+static void test_destruct_resets_head_and_tail(void)
+{
+    pmix_ring_buffer_t ring;
+
+    PMIX_CONSTRUCT(&ring, pmix_ring_buffer_t);
+    pmix_ring_buffer_init(&ring, 4);
+    pmix_ring_buffer_push(&ring, (void *) 0xa1);
+    pmix_ring_buffer_push(&ring, (void *) 0xa2);
+
+    PMIX_DESTRUCT(&ring);
+    report("destruct: head back to 0", 0 == ring.head);
+    report("destruct: tail back to -1 (ring reads as empty)", -1 == ring.tail);
+
+    /* The payoff: this used to segfault rather than return NULL. */
+    report("pop on a destructed ring returns NULL", NULL == pmix_ring_buffer_pop(&ring));
+    report("poke on a destructed ring returns NULL", NULL == pmix_ring_buffer_poke(&ring, 0));
+}
+
+/* pmix_ring_buffer_init() never touched head or tail, so re-initializing a
+ * ring that had been used before leaked the old storage and handed back a
+ * "fresh" ring that still claimed the previous one's occupancy: the first
+ * pop() returned a slot that had never been written.
+ *
+ * Note that this deliberately does *not* re-CONSTRUCT between the two
+ * inits -- re-constructing resets head/tail and hides the defect, which is
+ * why the neighbouring teardown case does not catch it. */
+static void test_reinit_without_reconstruct(void)
+{
+    pmix_ring_buffer_t ring;
+    void *out;
+
+    PMIX_CONSTRUCT(&ring, pmix_ring_buffer_t);
+
+    pmix_ring_buffer_init(&ring, 4);
+    pmix_ring_buffer_push(&ring, (void *) 0xb1);
+    pmix_ring_buffer_push(&ring, (void *) 0xb2);
+    pmix_ring_buffer_push(&ring, (void *) 0xb3);
+
+    report("re-init over a used ring: PMIX_SUCCESS",
+           PMIX_SUCCESS == pmix_ring_buffer_init(&ring, 4));
+    report("re-init: head back to 0", 0 == ring.head);
+    report("re-init: tail back to -1", -1 == ring.tail);
+
+    out = pmix_ring_buffer_pop(&ring);
+    report("re-init: the ring really is empty", NULL == out);
+
+    /* and it behaves normally from there */
+    report("re-init: push then pop round-trips",
+           NULL == pmix_ring_buffer_push(&ring, (void *) 0xb9));
+    report("re-init: pop returns what was pushed", (void *) 0xb9 == pmix_ring_buffer_pop(&ring));
+
+    PMIX_DESTRUCT(&ring);
+}
+
+/* Every other class here carries a PMIX_*_STATIC_INIT; this one did not.
+ * The value of the macro is entirely in agreeing with the constructor --
+ * in particular tail must be -1, not the 0 a plain zero-initializer gives,
+ * or the "empty" ring reports an occupant. */
+static void test_static_init_matches_constructor(void)
+{
+    pmix_ring_buffer_t stat = PMIX_RING_BUFFER_STATIC_INIT;
+    pmix_ring_buffer_t ctor;
+
+    PMIX_CONSTRUCT(&ctor, pmix_ring_buffer_t);
+
+    report("static init: head matches the constructor", stat.head == ctor.head);
+    report("static init: tail matches the constructor", stat.tail == ctor.tail);
+    report("static init: size matches the constructor", stat.size == ctor.size);
+    report("static init: addr matches the constructor", stat.addr == ctor.addr);
+
+    /* usable without a construct: reads answer "empty" rather than faulting */
+    report("static init: pop returns NULL", NULL == pmix_ring_buffer_pop(&stat));
+    report("static init: poke returns NULL", NULL == pmix_ring_buffer_poke(&stat, 0));
+
+    /* and init makes it a working ring */
+    report("static init: init succeeds", PMIX_SUCCESS == pmix_ring_buffer_init(&stat, 2));
+    report("static init: push works", NULL == pmix_ring_buffer_push(&stat, (void *) 0xc1));
+    report("static init: pop returns it", (void *) 0xc1 == pmix_ring_buffer_pop(&stat));
+
+    PMIX_DESTRUCT(&stat);
+    PMIX_DESTRUCT(&ctor);
+}
+
 /* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
@@ -266,6 +355,9 @@ int main(int argc, char **argv)
     test_init_bad_params();
     test_size_one();
     test_destruct_leaves_constructed_state();
+    test_destruct_resets_head_and_tail();
+    test_reinit_without_reconstruct();
+    test_static_init_matches_constructor();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

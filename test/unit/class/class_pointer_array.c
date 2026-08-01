@@ -330,6 +330,85 @@ static void test_max_size_cap(void)
 
 /* ------------------------------------------------------------------ */
 
+/* pmix_pointer_array_test_and_set_item() guarded its index with a bare
+ * assert(index >= 0). That is not a guard in any build that ships:
+ * configure adds -DNDEBUG whenever --enable-debug is off
+ * (config/pmix.m4), so the check vanished and a negative index wrote
+ * through table->addr below the start of the allocation -- and then ran
+ * SET_BIT on it, corrupting free_bits too. Its sibling
+ * pmix_pointer_array_set_item() has always rejected negatives outright.
+ *
+ * (all builds -- in a debug build the old code aborted on the assert
+ * rather than returning false, so this only distinguishes old from new
+ * when compiled --disable-debug) */
+static void test_test_and_set_negative_index(void)
+{
+    pmix_pointer_array_t arr;
+    int before_free, before_size;
+
+    PMIX_CONSTRUCT(&arr, pmix_pointer_array_t);
+    pmix_pointer_array_init(&arr, 8, 64, 8);
+    pmix_pointer_array_add(&arr, (void *) 0x1);
+
+    before_free = arr.number_free;
+    before_size = arr.size;
+
+    report("test_and_set at -1: returns false",
+           !pmix_pointer_array_test_and_set_item(&arr, -1, (void *) 0xbad));
+    report("test_and_set at -1: number_free untouched", before_free == arr.number_free);
+    report("test_and_set at -1: size untouched", before_size == arr.size);
+
+    report("test_and_set at INT_MIN-ish: returns false",
+           !pmix_pointer_array_test_and_set_item(&arr, -1000000, (void *) 0xbad));
+    report("test_and_set: rejected calls left the array usable",
+           (void *) 0x1 == pmix_pointer_array_get_item(&arr, 0));
+
+    /* a valid index still works */
+    report("test_and_set at 3: succeeds",
+           pmix_pointer_array_test_and_set_item(&arr, 3, (void *) 0x3));
+    report("test_and_set at 3: reads back",
+           (void *) 0x3 == pmix_pointer_array_get_item(&arr, 3));
+
+    PMIX_DESTRUCT(&arr);
+}
+
+/* PMIX_POINTER_ARRAY_STATIC_INIT set max_size and block_size to 0 where
+ * the constructor sets INT_MAX and 8. grow_table() divides by block_size,
+ * so an array that reached pmix_pointer_array_add() on a static
+ * initializer -- without the pmix_pointer_array_init() that every in-tree
+ * use happens to perform first -- took SIGFPE.
+ *
+ * (all builds -- an integer divide by zero, not an assert) */
+static void test_static_init_matches_constructor(void)
+{
+    pmix_pointer_array_t stat = PMIX_POINTER_ARRAY_STATIC_INIT;
+    pmix_pointer_array_t ctor;
+    int idx;
+
+    PMIX_CONSTRUCT(&ctor, pmix_pointer_array_t);
+
+    report("static init: lowest_free matches the constructor",
+           stat.lowest_free == ctor.lowest_free);
+    report("static init: number_free matches the constructor",
+           stat.number_free == ctor.number_free);
+    report("static init: size matches the constructor", stat.size == ctor.size);
+    report("static init: max_size matches the constructor", stat.max_size == ctor.max_size);
+    report("static init: block_size matches the constructor",
+           stat.block_size == ctor.block_size);
+    report("static init: free_bits matches the constructor", stat.free_bits == ctor.free_bits);
+    report("static init: addr matches the constructor", stat.addr == ctor.addr);
+
+    /* The payoff: add() on a never-init'd array grows from nothing rather
+     * than dividing by a zero block size. */
+    idx = pmix_pointer_array_add(&stat, (void *) 0x55);
+    report("static init: add without init returns a valid index", 0 <= idx);
+    report("static init: the pointer reads back",
+           (void *) 0x55 == pmix_pointer_array_get_item(&stat, idx));
+
+    PMIX_DESTRUCT(&stat);
+    PMIX_DESTRUCT(&ctor);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -347,6 +426,8 @@ int main(int argc, char **argv)
     test_growth_across_bit_words();
     test_sparse_set_item();
     test_max_size_cap();
+    test_test_and_set_negative_index();
+    test_static_init_matches_constructor();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

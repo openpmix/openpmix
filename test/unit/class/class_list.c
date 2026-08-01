@@ -346,6 +346,89 @@ static void test_list_release(void)
 
 /* ------------------------------------------------------------------ */
 
+/* pmix_list_insert() checked only the upper bound. A negative idx sailed
+ * past "idx >= length", failed the "0 == idx" prepend test, and fell into
+ * the walk -- whose "for (i = 0; i < idx - 1; i++)" ran zero times. The
+ * item was spliced in after element 0 and the call returned true, so a
+ * caller passing a computed index that went negative silently got a list
+ * in an order it never asked for. */
+static void test_insert_negative_index(void)
+{
+    pmix_list_t list;
+    int_item_t *victim;
+    bool ok;
+
+    PMIX_CONSTRUCT(&list, pmix_list_t);
+    pmix_list_append(&list, (pmix_list_item_t *) make_item(10));
+    pmix_list_append(&list, (pmix_list_item_t *) make_item(20));
+    pmix_list_append(&list, (pmix_list_item_t *) make_item(30));
+
+    victim = make_item(99);
+    ok = pmix_list_insert(&list, (pmix_list_item_t *) victim, -1);
+    report("insert at -1: rejected", !ok);
+    report("insert at -1: length unchanged", 3 == pmix_list_get_size(&list));
+
+    if (!ok) {
+        /* rejected, so we still own it */
+        PMIX_RELEASE(victim);
+    }
+
+    victim = make_item(98);
+    ok = pmix_list_insert(&list, (pmix_list_item_t *) victim, -100);
+    report("insert at -100: rejected", !ok);
+    report("insert at -100: length unchanged", 3 == pmix_list_get_size(&list));
+    if (!ok) {
+        PMIX_RELEASE(victim);
+    }
+
+    /* the list is still in the order we built it */
+    {
+        int_item_t *it;
+        int expect[3] = {10, 20, 30};
+        int i = 0, good = 1;
+        PMIX_LIST_FOREACH (it, &list, int_item_t) {
+            if (i > 2 || it->value != expect[i]) {
+                good = 0;
+                break;
+            }
+            i++;
+        }
+        report("insert at negative idx: order untouched", good && 3 == i);
+    }
+
+    /* an empty list rejects every index, negative ones included */
+    PMIX_LIST_DESTRUCT(&list);
+    PMIX_CONSTRUCT(&list, pmix_list_t);
+    victim = make_item(1);
+    ok = pmix_list_insert(&list, (pmix_list_item_t *) victim, -1);
+    report("insert at -1 into an empty list: rejected", !ok);
+    report("insert at -1 into an empty list: still empty", pmix_list_is_empty(&list));
+    if (!ok) {
+        PMIX_RELEASE(victim);
+    }
+    PMIX_LIST_DESTRUCT(&list);
+}
+
+/* PMIX_LIST_ITEM_STATIC_INIT disagreed with pmix_list_item_construct()
+ * about item_free -- 0 against 1. That field has since been deleted (it was
+ * read nowhere), but a STATIC_INIT that drifts from its constructor is the
+ * shape of bug PMIX_HOTEL_STATIC_INIT's last_unoccupied_room actually was,
+ * so the two are still compared field for field here. */
+static void test_item_static_init_matches_constructor(void)
+{
+    pmix_list_item_t stat = PMIX_LIST_ITEM_STATIC_INIT;
+    pmix_list_item_t ctor;
+
+    PMIX_CONSTRUCT(&ctor, pmix_list_item_t);
+
+    report("item static init: pmix_list_next matches the constructor",
+           stat.pmix_list_next == ctor.pmix_list_next);
+    report("item static init: pmix_list_prev matches the constructor",
+           stat.pmix_list_prev == ctor.pmix_list_prev);
+
+    PMIX_DESTRUCT(&ctor);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -364,6 +447,8 @@ int main(int argc, char **argv)
     test_sort();
     test_join();
     test_list_release();
+    test_insert_negative_index();
+    test_item_static_init_matches_constructor();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

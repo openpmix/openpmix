@@ -369,6 +369,68 @@ static void test_many_appends(void)
 
 /* ------------------------------------------------------------------ */
 
+/* pmix_value_array_init() assigned realloc()'s result straight back into
+ * array_items. On failure that leaks whatever the array already owned and
+ * leaves a NULL buffer behind the item size and alloc size the same call
+ * has just committed -- the array then claims one element of capacity it
+ * does not have. The identical correction was already made in
+ * pmix_value_array_reserve() and pmix_value_array_set_size(); init was
+ * missed. A zero item size is now rejected outright too: every offset in
+ * the class is index * array_item_sizeof, so a zero collapses the whole
+ * array onto one address. */
+static void test_init_argument_checking(void)
+{
+    pmix_value_array_t va;
+
+    PMIX_CONSTRUCT(&va, pmix_value_array_t);
+
+    report("init with item size 0: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_value_array_init(&va, 0));
+    report("rejected init leaves no allocation", NULL == va.array_items);
+    report("rejected init leaves item size 0", 0 == va.array_item_sizeof);
+    report("rejected init leaves alloc size 0", 0 == va.array_alloc_size);
+
+    /* a good init still works afterwards */
+    report("init(sizeof(int)) after rejection: PMIX_SUCCESS",
+           PMIX_SUCCESS == pmix_value_array_init(&va, sizeof(int)));
+    report("good init: item size recorded", sizeof(int) == va.array_item_sizeof);
+    report("good init: capacity seeded to 1", 1 == va.array_alloc_size);
+    report("good init: size is 0", 0 == pmix_value_array_get_size(&va));
+
+    PMIX_DESTRUCT(&va);
+}
+
+/* Re-initializing a live array must not lose the elements it is holding on
+ * the way to a clean, empty one, and must not leak the old buffer. */
+static void test_reinit_over_a_populated_array(void)
+{
+    pmix_value_array_t va;
+    int v;
+
+    PMIX_CONSTRUCT(&va, pmix_value_array_t);
+    pmix_value_array_init(&va, sizeof(int));
+
+    v = 11; pmix_value_array_append_item(&va, &v);
+    v = 22; pmix_value_array_append_item(&va, &v);
+    v = 33; pmix_value_array_append_item(&va, &v);
+    report("populated: size is 3", 3 == pmix_value_array_get_size(&va));
+
+    report("re-init over a populated array: PMIX_SUCCESS",
+           PMIX_SUCCESS == pmix_value_array_init(&va, sizeof(long)));
+    report("re-init: size back to 0", 0 == pmix_value_array_get_size(&va));
+    report("re-init: item size is the new one", sizeof(long) == va.array_item_sizeof);
+    report("re-init: buffer is live", NULL != va.array_items);
+
+    {
+        long l = 7;
+        report("re-init: append works", PMIX_SUCCESS == pmix_value_array_append_item(&va, &l));
+        report("re-init: element reads back",
+               7 == PMIX_VALUE_ARRAY_GET_ITEM(&va, long, 0));
+    }
+
+    PMIX_DESTRUCT(&va);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -388,6 +450,8 @@ int main(int argc, char **argv)
     test_destruct_leaves_constructed_state();
     test_reserve_failure_preserves_contents();
     test_many_appends();
+    test_init_argument_checking();
+    test_reinit_over_a_populated_array();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

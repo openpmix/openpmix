@@ -10,9 +10,9 @@
  *   PMIX_NEW, PMIX_RETAIN, PMIX_RELEASE, PMIX_CONSTRUCT, PMIX_DESTRUCT,
  *   reference counting, and class hierarchy.
  *
- * pmix_object_t is a pure base class and cannot be instantiated directly
- * (its cls_construct_array is pre-set to NULL).  All tests use
- * pmix_list_item_t, the simplest derived class, as a concrete subject.
+ * pmix_object_t is a pure base class with no constructor or destructor of
+ * its own, so most tests use pmix_list_item_t, the simplest derived class,
+ * as a concrete subject.
  *
  * Exit 0 if all tests pass, 1 otherwise.
  */
@@ -291,6 +291,43 @@ static void test_obj_update_returns_new_value(void)
 
 /* ------------------------------------------------------------------ */
 
+/* Every PMIX_*_STATIC_INIT expands to PMIX_OBJ_STATIC_INIT(pmix_object_t),
+ * which tags the object with the *base* class descriptor rather than the
+ * derived one. That descriptor is pre-marked initialized, so
+ * pmix_class_initialize() never runs for it and never builds its
+ * constructor/destructor arrays -- they stayed NULL, and
+ * pmix_obj_run_destructors() walks its array with "while (NULL != *p)".
+ *
+ * So PMIX_DESTRUCT on a statically initialized object that had not yet
+ * been PMIX_CONSTRUCT'ed dereferenced NULL and took SIGSEGV: exactly the
+ * "defined state, so an early failure path can tear it down" case those
+ * macros exist for. The base class now carries empty, terminated arrays,
+ * making it the correct no-op.
+ *
+ * (all builds -- this is a NULL dereference, not an assert) */
+static void test_destruct_of_static_init_object(void)
+{
+    /* Deliberately NOT PMIX_CONSTRUCT'ed: that is the whole point. */
+    pmix_list_t sl = PMIX_LIST_STATIC_INIT;
+    pmix_object_t so = PMIX_OBJ_STATIC_INIT(pmix_object_t);
+
+    report("base class carries a non-NULL constructor array",
+           NULL != pmix_object_t_class.cls_construct_array);
+    report("base class carries a non-NULL destructor array",
+           NULL != pmix_object_t_class.cls_destruct_array);
+    report("base class constructor array is empty (immediate end marker)",
+           NULL == *pmix_object_t_class.cls_construct_array);
+    report("base class destructor array is empty (immediate end marker)",
+           NULL == *pmix_object_t_class.cls_destruct_array);
+
+    /* The payoff: neither of these used to return. */
+    PMIX_DESTRUCT(&sl);
+    report("PMIX_DESTRUCT of a never-constructed STATIC_INIT list survives", true);
+
+    PMIX_DESTRUCT(&so);
+    report("PMIX_DESTRUCT of a never-constructed static pmix_object_t survives", true);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -312,6 +349,7 @@ int main(int argc, char **argv)
     test_construct_clears_whole_tma();
     test_static_init();
     test_obj_update_returns_new_value();
+    test_destruct_of_static_init_object();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

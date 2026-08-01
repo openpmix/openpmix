@@ -7,3 +7,4 @@ class_ring_buffer
 class_value_array
 class_hotel
 class_refcount
+class_tma_shared
