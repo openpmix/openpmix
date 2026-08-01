@@ -3056,10 +3056,13 @@ static void _iofdeliver(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_iof_req_t *req;
     bool found = false;
+    bool outputlocal;
     pmix_iof_cache_t *iof;
     int i;
     size_t n;
-    pmix_status_t rc;
+    /* the local write used to be unconditional and was what first set this;
+     * skipping it must not leave the completion status undefined */
+    pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -3070,10 +3073,27 @@ static void _iofdeliver(int sd, short args, void *cbdata)
                         PMIx_IOF_channel_string(cd->channels),
                         (int)cd->bo->size);
 
+    /* The host may be handing us output that is not ours to emit - a runtime
+     * relaying another node's output to us solely because a tool attached
+     * here asked for it is the case this exists for. Writing it out again
+     * here would duplicate whatever the server that owns those processes
+     * already wrote, and with output-to-file directives in play that means
+     * two servers writing the same file. So let the host say so per
+     * delivery, using the same attribute that says it at registration. */
+    outputlocal = true;
+    for (n = 0; n < cd->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&cd->info[n], PMIX_IOF_LOCAL_OUTPUT)) {
+            outputlocal = PMIX_INFO_TRUE(&cd->info[n]);
+            break;
+        }
+    }
+
     /* output it locally if requested */
-    rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
-    if (0 > rc) {
-        goto done;
+    if (outputlocal) {
+        rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
+        if (0 > rc) {
+            goto done;
+        }
     }
 
     /* cycle across our list of IOF requests and see who wants

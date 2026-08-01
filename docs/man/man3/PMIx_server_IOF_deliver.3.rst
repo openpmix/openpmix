@@ -98,6 +98,19 @@ forwarded data. Unrecognized attributes are ignored.
 * ``PMIX_IOF_XML_OUTPUT`` (bool) |mdash| the output should be formatted in XML.
 * ``PMIX_IOF_OUTPUT_RAW`` (bool) |mdash| deliver the output without buffering it
   into complete lines.
+* ``PMIX_IOF_LOCAL_OUTPUT`` (bool) |mdash| whether this server is to write the
+  payload to its own ``stdout``/``stderr`` and to any output files the source
+  namespace was registered with, in addition to delivering it to registered
+  clients. Absent this attribute the server writes locally exactly as it does
+  for the processes it hosts, which is what a host normally wants. Pass it as
+  ``false`` when the payload is **not this server's to emit** |mdash| a host
+  that relays another server's output here solely because a tool attached here
+  asked for it, for example. Without it the relaying and the hosting server
+  both emit the same bytes, and with an output-file directive in effect that
+  means two servers writing the same file. This governs only the local emit;
+  delivery to registered clients is unaffected, and the attribute reaches them
+  with the rest of the ``info`` array, where it carries no meaning |mdash| a
+  client decides its own local output from its own configuration.
 
 
 CALLBACK FUNCTION
