@@ -57,6 +57,12 @@ static void pmix_ring_buffer_destruct(pmix_ring_buffer_t *ring)
         ring->addr = NULL;
     }
 
+    /* Return to the constructed state, head and tail included. Clearing
+     * only addr and size left tail holding a live index over a NULL addr,
+     * so pmix_ring_buffer_pop() on a destructed ring took its "something is
+     * on the ring" branch and dereferenced addr[tail]. */
+    ring->head = 0;
+    ring->tail = -1;
     ring->size = 0;
 }
 
@@ -72,6 +78,15 @@ int pmix_ring_buffer_init(pmix_ring_buffer_t *ring, int size)
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* Re-initializing a ring that has been used before leaked its old
+     * storage and, worse, kept the old head/tail, so the fresh ring started
+     * out claiming entries that were not in it. */
+    if (NULL != ring->addr) {
+        free(ring->addr);
+        ring->addr = NULL;
+    }
+    ring->size = 0;
+
     /* Allocate and set the ring to NULL. Pass the count and the element
      * size as calloc()'s two arguments, in that order, so that calloc()
      * can do the multiplication overflow check it exists to do. */
@@ -80,6 +95,9 @@ int pmix_ring_buffer_init(pmix_ring_buffer_t *ring, int size)
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     ring->size = size;
+    /* An empty ring: nothing has been pushed, so there is no oldest entry. */
+    ring->head = 0;
+    ring->tail = -1;
 
     return PMIX_SUCCESS;
 }
