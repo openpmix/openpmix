@@ -49,9 +49,18 @@ Detailed changes since v6.1.0:
    its working list when the aggregate walk collected entries but
    resolved no peers. Also stopped the fabric and device-distance reply
    handlers from reporting a tolerated short read to the application as
-   the result of an operation the server had said succeeded, and stopped
-   PMIx_Connect_nb from silently sending a message missing the job-level
-   info when that pack failed
+   the result of an operation the server had said succeeded
+ - Fixed PMIx_Connect_nb's handling of the two optional trailing info
+   blobs it appends - the caller's endpoint data and the job-level data
+   its namespace contributes. Both are a data array of info structs,
+   which a pre-v4 peer's bfrops cannot pack at all, and both were packed
+   straight into the message: the failure is partial, so the wire got a
+   half-encoded field that the receiver had to trip over and skip. They
+   are now packed through a scratch buffer and appended only if that
+   succeeds, so a peer that cannot represent one simply does not receive
+   it - which is a state the receiver already handles, since it reads
+   each with a trailing unpack. A genuine failure to append data that
+   did pack is now reported rather than passing silently
  - Added regression coverage for the above: the new cases in
    test/unit/client_api.c (which segfaults against the unfixed library),
    and a new test/unit/run_grpinviteothers.pl plus
