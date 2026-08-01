@@ -106,7 +106,11 @@ bool pmix_list_insert(pmix_list_t *list, pmix_list_item_t *item, long long idx)
     int i;
     volatile pmix_list_item_t *ptr, *next;
 
-    if (idx >= (long long) list->pmix_list_length) {
+    /* idx has to name an existing item to insert before. A negative one used
+     * to slip past the upper-bound test alone: the walk below then ran zero
+     * times, the item landed at position 1 (or into an empty list), and the
+     * call reported success. */
+    if (idx < 0 || idx >= (long long) list->pmix_list_length) {
         return false;
     }
 

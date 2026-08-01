@@ -33,6 +33,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include <limits.h>
+
 #include "src/class/pmix_object.h"
 #include "src/include/pmix_prefetch.h"
 
@@ -63,14 +65,21 @@ struct pmix_pointer_array_t {
     void **addr;
 };
 
+/* Keep this in step with pmix_pointer_array_construct(), field for field.
+ * max_size and block_size used to be zero here where the constructor sets
+ * INT_MAX and 8, so a statically initialized array that reached
+ * pmix_pointer_array_add() before pmix_pointer_array_init() divided by a
+ * zero block_size in grow_table() and took SIGFPE. Every in-tree use of
+ * this macro is followed by an init that overwrites both -- which is what
+ * kept that latent -- but the macro must still describe a usable object. */
 #define PMIX_POINTER_ARRAY_STATIC_INIT              \
 {                                                   \
     .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
     .lowest_free = 0,                               \
     .number_free = 0,                               \
     .size = 0,                                      \
-    .max_size = 0,                                  \
-    .block_size = 0,                                \
+    .max_size = INT_MAX,                            \
+    .block_size = 8,                                \
     .free_bits = NULL,                              \
     .addr = NULL                                    \
 }

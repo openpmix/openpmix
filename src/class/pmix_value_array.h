@@ -75,12 +75,29 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_value_array_t);
 
 static inline int pmix_value_array_init(pmix_value_array_t *array, size_t item_sizeof)
 {
+    unsigned char *grown;
+
+    /* Every offset in this class is computed from the item size, so a zero
+     * one makes the array silently degenerate: each element lands at the
+     * same address and remove_item memmoves nothing. */
+    if (0 == item_sizeof) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* Hold the new pointer aside. Assigning a failed realloc() straight into
+     * array_items leaks whatever the array already owned and leaves a NULL
+     * buffer behind the item size and alloc size this call just committed --
+     * the same defect already corrected in pmix_value_array_reserve() and
+     * pmix_value_array_set_size(), missed here. */
+    grown = (unsigned char *) realloc(array->array_items, item_sizeof);
+    if (NULL == grown) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    array->array_items = grown;
     array->array_item_sizeof = item_sizeof;
     array->array_alloc_size = 1;
     array->array_size = 0;
-    array->array_items = (unsigned char *) realloc(array->array_items,
-                                                   item_sizeof * array->array_alloc_size);
-    return (NULL != array->array_items) ? PMIX_SUCCESS : PMIX_ERR_OUT_OF_RESOURCE;
+    return PMIX_SUCCESS;
 }
 
 /**

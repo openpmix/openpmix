@@ -56,6 +56,21 @@ typedef struct pmix_ring_buffer_t pmix_ring_buffer_t;
  */
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_ring_buffer_t);
 
+/* Static initializer, matching pmix_ring_buffer_construct() field for
+ * field. Note that tail is -1, not 0: -1 is how this class spells "nothing
+ * has been pushed yet", and a zero there would make pop() return addr[0]
+ * off a NULL ring. Unlike PMIX_LIST_STATIC_INIT this does produce a usable
+ * (empty) object, but pmix_ring_buffer_init() is still required before any
+ * push -- there is no storage until then. */
+#define PMIX_RING_BUFFER_STATIC_INIT                \
+{                                                   \
+    .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
+    .head = 0,                                      \
+    .tail = -1,                                     \
+    .size = 0,                                      \
+    .addr = NULL                                    \
+}
+
 /**
  * Initialize the ring buffer, defining its size.
  *

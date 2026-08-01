@@ -343,7 +343,15 @@ int pmix_pointer_array_set_item(pmix_pointer_array_t *table, int index, void *va
 bool pmix_pointer_array_test_and_set_item(pmix_pointer_array_t *table, int index, void *value)
 {
     assert(table != NULL);
-    assert(index >= 0);
+
+    /* A bare assert() is not a guard here: configure adds -DNDEBUG whenever
+     * --enable-debug is off (config/pmix.m4), so in every build that ships
+     * this compiled away and a negative index wrote through table->addr
+     * below the start of the allocation. The sibling
+     * pmix_pointer_array_set_item() has always rejected it outright. */
+    if (PMIX_UNLIKELY(0 > index)) {
+        return false;
+    }
 
 #if 0
     pmix_output(0,"pmix_pointer_array_test_and_set_item: IN:  "

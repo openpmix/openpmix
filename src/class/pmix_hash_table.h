@@ -366,26 +366,44 @@ pmix_hash_table_sizeof_hash_element(void);
  *
  * @returns The next power of two
  *
- * WARNING: *NO* error checking is performed.  This is meant to be a
- * fast inline function.
+ * WARNING: minimal error checking is performed.  This is meant to be a
+ * fast inline function.  A negative value, or one whose answer will not
+ * fit in a positive int, yields 0 -- there is no representable result.
  * Using __builtin_clz (count-leading-zeros) uses 4 cycles instead of 77
  * compared to the loop-version (on Intel Nehalem -- with icc-12.1.0 -O2).
+ *
+ * Note that both arms compute this in *unsigned* arithmetic. The shift
+ * distance reaches 31 for the largest inputs, and "1 << 31" on a signed
+ * int overflows into the sign bit, which is undefined; so did the
+ * __builtin_clz arm's shift by 32 for a negative value, whose leading-zero
+ * count is 0.
  */
 static inline int pmix_next_poweroftwo(int value)
 {
-    int power2;
+    unsigned int power2;
+
+    if (PMIX_UNLIKELY(0 >= value)) {
+        /* 0 has no set bits to round up past; a negative value has no
+         * power-of-two successor representable in an int. */
+        return (0 == value) ? 1 : 0;
+    }
+    if (PMIX_UNLIKELY(value >= (int) (1u << 30))) {
+        /* This function returns the power of two strictly *above* its
+         * argument, so 1<<30 already wants 1<<31 -- not a positive int. */
+        return 0;
+    }
 
 #if PMIX_C_HAVE_BUILTIN_CLZ
-    if (PMIX_UNLIKELY(0 == value)) {
-        return 1;
-    }
-    power2 = 1 << (8 * sizeof(int) - __builtin_clz(value));
+    power2 = 1u << (8 * sizeof(int) - (unsigned int) __builtin_clz((unsigned int) value));
 #else
-    for (power2 = 1; value > 0; value >>= 1, power2 <<= 1) /* empty */
-        ;
+    {
+        unsigned int v = (unsigned int) value;
+        for (power2 = 1u; 0 != v; v >>= 1, power2 <<= 1) /* empty */
+            ;
+    }
 #endif
 
-    return power2;
+    return (int) power2;
 }
 
 /**

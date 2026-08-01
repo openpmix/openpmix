@@ -36,20 +36,48 @@
 #include "src/class/pmix_object.h"
 
 /*
+ * Empty (NULL-terminated) constructor and destructor arrays for the base
+ * class.
+ *
+ * These have to be real, terminated arrays rather than NULL. Because
+ * pmix_object_t_class is pre-marked initialized, pmix_class_initialize()
+ * never runs for it and never fills these in -- so whatever is here is
+ * what pmix_obj_run_constructors()/_destructors() will walk, and both walk
+ * with "while (NULL != *array)". A NULL array meant they dereferenced NULL
+ * instead of finding an immediate end marker.
+ *
+ * That is reachable: every PMIX_*_STATIC_INIT macro expands to
+ * PMIX_OBJ_STATIC_INIT(pmix_object_t), which tags the object with *this*
+ * descriptor rather than the derived one. So PMIX_DESTRUCT (or a
+ * PMIX_RELEASE that reaches zero) on a statically initialized object that
+ * has not yet been PMIX_CONSTRUCT'ed segfaulted -- precisely the "give a
+ * file-scope object a defined state so an early failure path can tear it
+ * down" case those macros exist for. With an empty array it is the correct
+ * no-op: a statically initialized object owns nothing to release.
+ *
+ * Note this does not make PMIX_DESTRUCT run the *derived* destructor for
+ * such an object -- obj_class still says pmix_object_t. Once the object
+ * has been PMIX_CONSTRUCT'ed the class descriptor is the real one and the
+ * full destructor chain runs as usual.
+ */
+static pmix_construct_t pmix_object_t_construct_array[] = {NULL};
+static pmix_destruct_t pmix_object_t_destruct_array[] = {NULL};
+
+/*
  * Instantiation of class descriptor for the base class.  This is
  * special, since be mark it as already initialized, with no parent
  * and no constructor or destructor.
  */
 PMIX_EXPORT pmix_class_t pmix_object_t_class = {
-    "pmix_object_t",      /* name */
-    NULL,                 /* parent class */
-    NULL,                 /* constructor */
-    NULL,                 /* destructor */
-    1,                    /* initialized  -- this class is preinitialized */
-    0,                    /* class hierarchy depth */
-    NULL,                 /* array of constructors */
-    NULL,                 /* array of destructors */
-    sizeof(pmix_object_t) /* size of the pmix object */
+    "pmix_object_t",                /* name */
+    NULL,                           /* parent class */
+    NULL,                           /* constructor */
+    NULL,                           /* destructor */
+    1,                              /* initialized  -- this class is preinitialized */
+    0,                              /* class hierarchy depth */
+    pmix_object_t_construct_array,  /* array of constructors (empty) */
+    pmix_object_t_destruct_array,   /* array of destructors (empty) */
+    sizeof(pmix_object_t)           /* size of the pmix object */
 };
 
 int pmix_class_init_epoch = 1;

@@ -143,11 +143,18 @@ int pmix_bitmap_set_bit(pmix_bitmap_t *bm, int bit)
             new_size = bm->max_size;
 
         /* New size is just a multiple of the original size to fit in
-         the index. */
-        bm->bitmap = (uint64_t *) realloc(bm->bitmap, new_size * sizeof(uint64_t));
-        if (NULL == bm->bitmap) {
+         the index. Hold the grown pointer aside until it is in hand:
+         assigning a failed realloc() straight back into bm->bitmap both
+         leaks the old allocation and leaves a NULL pointer behind a
+         non-zero array_size, so every later is_set_bit/clear_bit/
+         num_set_bits indexed NULL instead of reporting the failure. The
+         same correction was already made in pmix_bitmap_init() and
+         pmix_bitmap_copy(); this path was missed. */
+        uint64_t *grown = (uint64_t *) realloc(bm->bitmap, new_size * sizeof(uint64_t));
+        if (NULL == grown) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
+        bm->bitmap = grown;
 
         /* zero out the new elements */
         memset(&bm->bitmap[bm->array_size], 0, (new_size - bm->array_size) * sizeof(uint64_t));
@@ -388,6 +395,11 @@ char *pmix_bitmap_get_string(pmix_bitmap_t *bitmap)
 
 int pmix_bitmap_num_unset_bits(pmix_bitmap_t *bm, int len)
 {
+    /* Answer for a bad argument the same way num_set_bits() does, rather
+     * than reporting "len bits are unset" for a bitmap that does not exist. */
+    if ((len < 0) || NULL == bm) {
+        return 0;
+    }
     return (len - pmix_bitmap_num_set_bits(bm, len));
 }
 
@@ -395,13 +407,18 @@ int pmix_bitmap_num_set_bits(pmix_bitmap_t *bm, int len)
 {
     int i, cnt = 0;
     uint64_t val;
-    int i_len = len / SIZE_OF_BASE_TYPE + (len % SIZE_OF_BASE_TYPE == 0 ? 0 : 1);
+    int i_len;
 
-#if PMIX_ENABLE_DEBUG
+    /* This guard used to sit inside "#if PMIX_ENABLE_DEBUG", so the only
+     * builds that had it were the ones nobody ships: an optimized library
+     * read bm->array_size straight off a NULL bm. Every other entry point
+     * in this file rejects a NULL bitmap unconditionally. Only the
+     * diagnostic belongs behind the debug switch, never the check. */
     if ((len < 0) || NULL == bm) {
         return 0;
     }
-#endif
+
+    i_len = len / SIZE_OF_BASE_TYPE + (len % SIZE_OF_BASE_TYPE == 0 ? 0 : 1);
 
     for (i = 0; i < i_len && i < bm->array_size; ++i) {
         if (0 == (val = bm->bitmap[i]))

@@ -44,6 +44,7 @@
 
 #include "src/include/pmix_config.h"
 
+#include <limits.h>
 #include <string.h>
 
 #include "src/class/pmix_object.h"
@@ -54,12 +55,28 @@ struct pmix_bitmap_t {
     pmix_object_t super; /**< Subclass of pmix_object_t */
     uint64_t *bitmap;    /**< The actual bitmap array of characters */
     int array_size;      /**< The actual array size that maintains the bitmap */
-    int max_size;        /**< The maximum size that this bitmap may grow (optional) */
+    int max_size;        /**< The maximum size that this bitmap may grow (optional),
+                              held internally as a count of 64-bit words, not
+                              of bits -- see pmix_bitmap_set_max_size() */
 };
 
 typedef struct pmix_bitmap_t pmix_bitmap_t;
 
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_bitmap_t);
+
+/* Static initializer, matching pmix_bitmap_construct() field for field.
+ * max_size is INT_MAX (i.e. effectively uncapped) because that is what the
+ * constructor sets; a zero there would reject every subsequent
+ * pmix_bitmap_init() and pmix_bitmap_set_bit(). This yields a usable but
+ * empty bitmap -- set_bit() will grow it from nothing, so an explicit
+ * pmix_bitmap_init() is optional rather than mandatory. */
+#define PMIX_BITMAP_STATIC_INIT                     \
+{                                                   \
+    .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
+    .bitmap = NULL,                                 \
+    .array_size = 0,                                \
+    .max_size = INT_MAX                             \
+}
 
 /**
  * Set the maximum size of the bitmap.

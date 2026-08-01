@@ -77,6 +77,14 @@ PMIX_CLASS_INSTANCE(pmix_hash_table_t, pmix_object_t, pmix_hash_table_construct,
 
 static void pmix_hash_table_construct(pmix_hash_table_t *ht)
 {
+    /* ht_label is a real, read field, not decoration: src/util/pmix_hash.c
+     * prints it as "(NULL == table->ht_label) ? "UNKNOWN" : table->ht_label"
+     * at several verbosity-gated sites. Leaving it out of the constructor
+     * meant every table that does not set one carried whatever malloc()
+     * returned -- PMIX_NEW does not zero its allocation -- so that NULL test
+     * passed on garbage and the %s dereferenced a wild pointer. gds/shmem3
+     * and the mca base tables are all built this way. */
+    ht->ht_label = NULL;
     ht->ht_table = NULL;
     ht->ht_capacity = ht->ht_size = ht->ht_growth_trigger = 0;
     ht->ht_density_numer = ht->ht_density_denom = 0;
@@ -113,8 +121,30 @@ pmix_hash_table_init2(pmix_hash_table_t *ht, size_t estimated_max_size, int dens
                       int density_denom, int growth_numer, int growth_denom)
 {
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
-    size_t est_capacity = estimated_max_size * density_denom / density_numer;
-    size_t capacity = pmix_hash_round_capacity_up(est_capacity);
+    size_t est_capacity, capacity;
+
+    /* Validate the two ratios before dividing by either denominator. This
+     * is a PMIX_EXPORT entry point ("this could be the new init if people
+     * wanted a more general API"), so it has to survive its arguments:
+     *
+     *  - a zero density_numer divides by zero right below;
+     *  - a zero growth_denom divides by zero in pmix_hash_grow();
+     *  - a growth factor that does not actually grow (numer <= denom) leaves
+     *    pmix_hash_grow() returning a table no larger than the one it
+     *    replaced, so the table eventually fills completely and the
+     *    unbounded linear probe in every get/set/remove spins forever.
+     *  - a density of 1/1 or worse lets the table fill before the growth
+     *    trigger ever fires, with the same result.
+     */
+    if (0 >= density_numer || 0 >= density_denom || density_numer >= density_denom) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (0 >= growth_numer || 0 >= growth_denom || growth_numer <= growth_denom) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    est_capacity = estimated_max_size * density_denom / density_numer;
+    capacity = pmix_hash_round_capacity_up(est_capacity);
     ht->ht_table = (pmix_hash_element_t *)pmix_tma_calloc(tma, capacity, sizeof(pmix_hash_element_t));
     if (PMIX_UNLIKELY(NULL == ht->ht_table)) {
         return PMIX_ERR_OUT_OF_RESOURCE;

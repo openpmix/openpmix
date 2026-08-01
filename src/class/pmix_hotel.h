@@ -197,8 +197,9 @@ PMIX_EXPORT pmix_status_t pmix_hotel_init(pmix_hotel_t *hotel, int num_rooms,
  *
  * @return PMIX_SUCCESS if the occupant is successfully checked in,
  * and the room parameter will contain a valid value.
- * @return PMIX_ERR_TEMP_OUT_OF_RESOURCE is the hotel is full.  Try
- * again later.
+ * @return PMIX_ERR_OUT_OF_RESOURCE if the hotel is full (room_num is set
+ * to -1).  Try again later.  Note that this is a transient condition, not
+ * an allocation failure -- rooms free up as occupants check out.
  */
 static inline pmix_status_t pmix_hotel_checkin(pmix_hotel_t *hotel, void *occupant, int *room_num)
 {
