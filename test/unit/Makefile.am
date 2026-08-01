@@ -26,6 +26,29 @@ SUBDIRS = util class
 # Point the tests at the components in the build tree so that "make
 # check" does not require a prior "make install". See the comments in
 # test/pmix_test_env.sh.in.
+# Run this directory's tests one at a time, even under "make -j".
+#
+# Most of TESTS below drives a real PMIx server through test/simple's
+# simptest, and simptest comes up in the *scheduler* role. A scheduler is
+# a node-wide singleton: it claims a fixed rendezvous file
+# ($TMPDIR/pmix.sched.<host>), and the second server to want that file is
+# refused by design, with "Only one server can fill a given role on a node
+# at a time". Automake's parallel test harness gives each test its own
+# .log target, so "make -j check" starts several of them at once and all
+# but one lose the race. The failure is not flaky and not environmental --
+# it is the server correctly enforcing its own invariant.
+#
+# This was invisible for as long as test/Makefile.am's SUBDIRS was gated
+# on !WANT_HIDDEN, because the CI job that builds with "make -j check"
+# configures with default visibility and so never descended in here.
+#
+# Do not "fix" this by giving each test a private TMPDIR to hide the
+# collision: two schedulers on one node is precisely the configuration
+# PMIx forbids, and a test suite that arranges one is testing something
+# users cannot have. If you want these to run concurrently, they need to
+# stop being schedulers, not stop seeing each other.
+.NOTPARALLEL:
+
 AM_TESTS_ENVIRONMENT = . $(abs_top_builddir)/test/pmix_test_env.sh;
 
 noinst_SCRIPTS = run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_toolswitch.pl run_grpmember.pl run_grpinvite.pl run_grptimeout.pl run_grpdecline.pl run_grpabort.pl run_grpmemberfail.pl run_grpleader.pl run_grpcabort.pl run_grpctimeout.pl run_monitor.pl run_tools.pl
