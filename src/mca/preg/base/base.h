@@ -64,7 +64,7 @@ struct pmix_preg_base_active_module_t {
     pmix_mca_base_component_t *component;
 };
 typedef struct pmix_preg_base_active_module_t pmix_preg_base_active_module_t;
-PMIX_CLASS_DECLARATION(pmix_preg_base_active_module_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_preg_base_active_module_t);
 
 /* framework globals */
 struct pmix_preg_globals_t {

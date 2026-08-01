@@ -64,7 +64,7 @@ struct pmix_psec_base_active_module_t {
     pmix_psec_base_component_t *component;
 };
 typedef struct pmix_psec_base_active_module_t pmix_psec_base_active_module_t;
-PMIX_CLASS_DECLARATION(pmix_psec_base_active_module_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_psec_base_active_module_t);
 
 /* framework globals */
 struct pmix_psec_globals_t {

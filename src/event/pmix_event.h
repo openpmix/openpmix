@@ -95,7 +95,7 @@ typedef struct {
     pmix_status_t *codes;
     size_t ncodes;
 } pmix_event_hdlr_t;
-PMIX_CLASS_DECLARATION(pmix_event_hdlr_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_event_hdlr_t);
 
 #define PMIX_EVENT_HDLR_STATIC_INIT         \
 {                                           \
@@ -123,7 +123,7 @@ typedef struct {
     size_t nregs;
     void *peer; // (pmix_peer_t *)
 } pmix_active_code_t;
-PMIX_CLASS_DECLARATION(pmix_active_code_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_active_code_t);
 
 /* define an object for housing the different lists of events
  * we have registered so we can easily scan them in precedent
@@ -138,7 +138,7 @@ typedef struct {
     pmix_list_t multi_events;
     pmix_list_t default_events;
 } pmix_events_t;
-PMIX_CLASS_DECLARATION(pmix_events_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_events_t);
 
 #define PMIX_EVENTS_STATIC_INIT                     \
 {                                                   \
@@ -193,7 +193,7 @@ typedef struct pmix_event_chain_t {
     pmix_op_cbfunc_t final_cbfunc;
     void *final_cbdata;
 } pmix_event_chain_t;
-PMIX_CLASS_DECLARATION(pmix_event_chain_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_event_chain_t);
 
 typedef struct {
     pmix_object_t super;
@@ -217,7 +217,7 @@ typedef struct {
     pmix_hdlr_reg_cbfunc_t evregcbfn;
     void *cbdata;
 } pmix_rshift_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_rshift_caddy_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_rshift_caddy_t);
 
 /* prepare a chain for processing by cycling across provided
  * info structs and translating those supported by the event

@@ -95,7 +95,7 @@ typedef struct pmix_mca_base_var_file_value_t pmix_mca_base_var_file_value_t;
 /**
  * Object declaration for pmix_mca_base_var_file_value_t
  */
-PMIX_CLASS_DECLARATION(pmix_mca_base_var_file_value_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_mca_base_var_file_value_t);
 
 /**
  * \internal

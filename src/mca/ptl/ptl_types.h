@@ -244,7 +244,7 @@ typedef struct {
     char *sdptr;
     size_t sdbytes;
 } pmix_ptl_send_t;
-PMIX_CLASS_DECLARATION(pmix_ptl_send_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_ptl_send_t);
 
 /* structure for recving a message */
 typedef struct {
@@ -258,7 +258,7 @@ typedef struct {
     char *rdptr;
     size_t rdbytes;
 } pmix_ptl_recv_t;
-PMIX_CLASS_DECLARATION(pmix_ptl_recv_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_ptl_recv_t);
 
 /* structure for tracking posted recvs */
 typedef struct {
@@ -269,7 +269,7 @@ typedef struct {
     pmix_ptl_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_ptl_posted_recv_t;
-PMIX_CLASS_DECLARATION(pmix_ptl_posted_recv_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_ptl_posted_recv_t);
 
 /* struct for posting send/recv request */
 typedef struct {
@@ -282,7 +282,7 @@ typedef struct {
     pmix_ptl_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_ptl_sr_t;
-PMIX_CLASS_DECLARATION(pmix_ptl_sr_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_ptl_sr_t);
 
 typedef struct {
     pmix_object_t super;
@@ -292,7 +292,7 @@ typedef struct {
     pmix_buffer_t *buf;
     pmix_ptl_tag_t tag;
 } pmix_ptl_queue_t;
-PMIX_CLASS_DECLARATION(pmix_ptl_queue_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_ptl_queue_t);
 
 /* define listener protocol types */
 typedef uint16_t pmix_listener_protocol_t;
@@ -327,7 +327,7 @@ typedef struct {
     gid_t gid;
     pmix_proc_type_t proc_type;
 } pmix_pending_connection_t;
-PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
 
 /* listener objects */
 typedef struct pmix_listener_t {
@@ -345,7 +345,7 @@ typedef struct pmix_listener_t {
     uint32_t mode;
     pmix_ptl_pending_cbfunc_t cbfunc;
 } pmix_listener_t;
-PMIX_CLASS_DECLARATION(pmix_listener_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_listener_t);
 
 #define PMIX_LISTENER_STATIC_INIT           \
 {                                           \

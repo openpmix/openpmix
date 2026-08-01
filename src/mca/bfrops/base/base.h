@@ -66,7 +66,7 @@ struct pmix_bfrops_base_active_module_t {
     pmix_bfrops_base_component_t *component;
 };
 typedef struct pmix_bfrops_base_active_module_t pmix_bfrops_base_active_module_t;
-PMIX_CLASS_DECLARATION(pmix_bfrops_base_active_module_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_bfrops_base_active_module_t);
 
 /* framework globals */
 struct pmix_bfrops_globals_t {
