@@ -82,6 +82,22 @@ The tree everyone develops in — and the one
   [`src/class/AGENTS.md`](../../../src/class/AGENTS.md), including why
   grepping the headers for `PMIX_EXPORT` gives the wrong answer.
 
+**And in a default-visibility tree, `make check` from the top does not
+run this suite at all.** `test/Makefile.am` wraps its whole `SUBDIRS`
+line in `if !WANT_HIDDEN` — these programs use internal symbols, so the
+tree is only descended into when configured `--disable-visibility`.
+Configure without it and a top-level `make check` runs the 15 programs
+in `test/` itself, reports `# FAIL: 0`, and never enters `unit/`,
+`unit/class/`, `unit/util/` or `simple/`. Nothing warns you. That is why
+`contrib/dockerswarm/run-class-tests.sh` invokes
+`make -C test/unit/class check` directly rather than relying on the
+recursion — and why, when you want to know whether this suite passes in
+an optimized default-visibility build, you have to say so explicitly:
+
+```sh
+make -C test/unit/class check      # not "make check" from the top
+```
+
 So a green run here proves less than it looks like it does. Several
 cases in the suite are labelled `(all builds)` precisely because they
 only distinguish old code from new in an *optimized* build.
@@ -100,12 +116,39 @@ touching the script. It is not a multi-node test and does not pretend to
 be — with the single exception of `class_tma_shared`, these are
 single-process data structures.
 
+One caveat about its ten-node contention pass: it used to fail on all ten
+nodes for a reason that had nothing to do with the library. It staged
+`test/unit/class/$p`, which in an uninstalled libtool build is a `/bin/sh`
+**wrapper**, not the executable — that lives under `.libs/`. The copied
+wrapper then reported `.libs/$p does not exist` and exited 1 everywhere,
+so that pass had never actually run anything. It stages `.libs/$p` now,
+falling back to the plain path. If you add a runner that ships
+`check_PROGRAMS` to another machine, remember this.
+
 A third gap worth knowing about: **a bare `assert()` is debug-only here
 too.** `config/pmix.m4` adds `-DNDEBUG` whenever `--enable-debug` is off,
 so asserts vanish in every shipping build exactly as a
 `#if PMIX_ENABLE_DEBUG` block does. A case that only proves "the assert
 fires" proves nothing about the library users get; write it against the
 return value instead.
+
+The most recent sweep of `src/class` turned up five more defects of
+exactly these two shapes, and every one of them is now pinned by a case
+that was *verified by reintroducing it in the optimized build*:
+
+| Case | Program | What backing the fix out does |
+|------|---------|-------------------------------|
+| `out-of-range room number` | `class_hotel` | **SIGSEGV** — `pmix_hotel_checkout`'s upper bound was an `assert()` only, so it wrote past `rooms[]` |
+| `push without storage` | `class_ring_buffer` | **SIGSEGV** — `pmix_ring_buffer_push` had no guard at all, unlike `pop`/`poke` |
+| `reserve requires an item size` | `class_value_array` | `reserve` succeeds on a zero item size, committing capacity over a 0-byte block |
+| `key type mixing is refused` | `class_hash_table` | 8 cases fail — the check was inside `#if PMIX_ENABLE_DEBUG` |
+| `set_max_size argument checking` | `class_bitmap` | 5 cases fail — a negative cap silently stored 0 and bricked the bitmap |
+
+Note the shape of the hash-table case in particular: asserting merely
+`PMIX_SUCCESS != rc` there is **not** discriminating, because without the
+check a wrong-type *get* simply probes past the entry and reports
+`PMIX_ERR_NOT_FOUND`. It has to assert `PMIX_ERROR == rc`. Watch for that
+whenever "the call fails" is the property under test — pick the code.
 
 ## What these tests deliberately do not do
 
@@ -173,6 +216,25 @@ inside it, and forks. Children read the containers back; one child writes
 and the parent reads the result; and six children hammer retain/release on
 one object and drop one net reference each, after which the parent checks
 that exactly its own reference survives.
+
+It now also pins the **TMA exemption** in `pmix_hash_table.c`'s key-type
+check. That exemption only became load-bearing when the check stopped
+being debug-only: before, an optimized build had nothing for a TMA table
+to be exempt *from*. Now the `NULL == pmix_obj_get_tma(&ht->super)`
+clause is the only thing keeping `gds/shmem3`'s tables readable in the
+builds that ship, because `ht_type_methods` points at a file-scope static
+in whichever process last touched the table and that address is
+meaningless to a peer. Delete the clause and this program does not even
+get through `build_shared_state()`.
+
+That case is also why this program deliberately puts **both** `uint32`
+and `ptr` keys in one table — a thing no other test here does, and a
+thing that would be a caller bug on an ordinary heap-backed table
+(the ptr key storage would never be freed, and a later grow or removal
+would rehash those elements through `key.u32`). It is safe here only
+because the table never grows or removes after the mixing, and it is
+present on purpose, to demonstrate the exemption. Do not copy the
+pattern into the other programs.
 
 Two things to preserve if you extend it:
 

@@ -454,6 +454,35 @@ Two more things about this class that will surprise you:
   reading concurrently is a data race, and a table mapped read-only in
   a shared segment would fault on a lookup. If you ever need a genuinely
   const lookup, that assignment is what has to move.
+- **The "one key type per table" rule is enforced by one pointer
+  compare, and that compare used to be debug-only.** It sat inside
+  `#if PMIX_ENABLE_DEBUG`, so in every build that ships, mixing key
+  types was *silent*: the entry point simply retargeted
+  `ht_type_methods`, after which a ptr-keyed table had no
+  `elt_destructor` — every copied key leaked — while `pmix_hash_grow`
+  and `pmix_hash_table_remove_elt_at` rehashed its elements through
+  `key.u32`, i.e. the low bytes of a key *pointer*, scattering live
+  entries to slots no later lookup would probe. It is unconditional
+  now; only the `pmix_output` is still behind the switch.
+
+  **The TMA exemption in that check is load-bearing and must stay.**
+  `ht_type_methods` points at a file-scope static in whichever process
+  last touched the table, and that address means nothing to a peer that
+  has mapped the same `gds/shmem3` segment — a peer comparing it against
+  its own would refuse every lookup of a table it can read perfectly
+  well. The condition is `NULL == pmix_obj_get_tma(&ht->super) && ...`
+  for exactly that reason. Making the check unconditional is what turned
+  this from documentation into a live dependency: before, an optimized
+  build had nothing for a TMA table to be exempt *from*.
+  `test/unit/class/class_tma_shared` pins it, and deleting the exemption
+  makes that program fail to build its shared state at all.
+- **The ptr family validates its key.** A NULL key walks straight into
+  `pmix_hash_hash_key_ptr()` and is dereferenced; a zero `key_size`
+  makes every key compare equal to every other (`memcmp` of 0 bytes is
+  0) and asks the allocator for a 0-byte block, whose answer is
+  implementation-defined — NULL on some platforms, which the setter
+  would have reported as an out-of-memory that never happened. All three
+  ptr entry points now return `PMIX_ERR_BAD_PARAM` for either.
 - Every entry point starts with `key % capacity`, and capacity is zero
   until `pmix_hash_table_init` runs. The guard that catches that used to
   be `#if PMIX_ENABLE_DEBUG`, so an optimized build took a SIGFPE where
@@ -504,6 +533,17 @@ correct because `tail == head` whenever the ring is full. That invariant
 is not asserted anywhere. Do not "simplify" that function without
 convincing yourself of it.
 
+**`pmix_ring_buffer_push` was the one accessor with no guard at all.**
+`pop` has always tested `tail == -1` and `poke` `size <= i`, but `push`
+went straight to `addr[ring->head]` — so a ring that had only been
+`PMIX_NEW`'d or `PMIX_CONSTRUCT`'d, or one already destructed,
+dereferenced the NULL `addr` instead of declining. Given this class's
+consumers are out of tree (see above), that is the least forgivable place
+to leave a hole. It now returns NULL when there is no storage, which is
+the same answer as "the ring was not full" — an unfortunate conflation,
+but the only value the signature has to give, and strictly better than
+the fault. All three accessors also tolerate a NULL ring now.
+
 `tail == -1` is this class's "nothing has been pushed yet" flag, and it is
 the field the teardown and re-init paths kept forgetting: the destructor
 freed `addr` and zeroed `size` but left `head`/`tail` alone, so
@@ -529,6 +569,18 @@ slot), and holds the grown buffer aside rather than assigning a failed
 `realloc` back over the live one — the correction `reserve` and
 `set_size` already carried.
 
+**`pmix_value_array_reserve` was the last member of the
+init/reserve/set_size trio still missing that zero-item-size check, and
+it is the worst place to miss it.** On an array that has only been
+`PMIX_CONSTRUCT`'d, `array_item_sizeof` is 0, so `reserve` asked
+`realloc()` for `0 * size` bytes — and glibc answers `realloc(NULL, 0)`
+with a *non-NULL* pointer to a zero-byte block. `reserve` then reported
+success and committed `array_alloc_size = size` over that empty block,
+after which `set_size` saw enough capacity to skip growing and every
+element write went into the heap past the end of it. When you add a
+guard to one member of a family here, check the siblings in the same
+edit; this directory has now had the same omission four times.
+
 ### `pmix_bitmap_t` — auto-expanding bit array
 
 A bitmap over `uint64_t` words. `set_bit` auto-expands the array to fit
@@ -537,6 +589,15 @@ A bitmap over `uint64_t` words. `set_bit` auto-expands the array to fit
 rather than expanding. Provides find-first-unset-and-set, whole-bitmap
 and/or/xor, population counts, copy, compare, and a `_get_string`
 debugging dump. Not TMA-aware.
+
+`pmix_bitmap_set_max_size` was the one entry point in the file that did
+not validate its argument. Because the stored cap is a *word* count
+converted with `((size_t) max_size + 63) / 64`, a negative bit count
+became `(size_t) -1`, whose `+ 63` wrapped round to 62, which divided
+down to a stored cap of **zero words** — the call reported success and
+every later `init`/`set_bit` then failed with `PMIX_ERR_BAD_PARAM` a long
+way from the call that actually got it wrong. It rejects `max_size <= 0`
+now.
 
 `max_size` is a public *bit* count on the way in and a **word** count once
 stored (`pmix_bitmap_set_max_size` converts); the constructor and
@@ -690,8 +751,20 @@ consumable internal surface — keep them clean.
   `pmix_pointer_array_test_and_set_item` guarded its index with
   `assert(index >= 0)` alone, so a negative index wrote below the start
   of `addr` in exactly the builds that matter — while its sibling
-  `pmix_pointer_array_set_item` had always rejected it outright. If the
-  check is about *caller input*, write an `if` and return an error.
+  `pmix_pointer_array_set_item` had always rejected it outright. The
+  hotel's three room-number accessors had the same shape and were worse:
+  `pmix_hotel_checkout`, `pmix_hotel_checkout_and_return_occupant` and
+  `pmix_hotel_knock` each tested the *lower* bound with an `if` and the
+  *upper* bound with `assert(room_num < hotel->num_rooms)`, so a shipped
+  build did not check it at all — and `checkout` then **wrote** through
+  `rooms[room_num]` past the end of the array and pushed a second
+  out-of-bounds write into `unoccupied_rooms[]` via
+  `++last_unoccupied_room`. A destructed hotel (`num_rooms` 0, `rooms`
+  NULL) reached the same place through room 0, and every caller passes a
+  cached `cd->room`. All three now test both bounds unconditionally. If
+  the check is about *caller input*, write an `if` and return an error —
+  and wrap it in `PMIX_UNLIKELY()` so the branch predictor pays for the
+  path that never happens, not the one that always does.
 - **Leave objects in the constructed state when you destruct them.**
   The destructors here now do (`pmix_list_destruct` always did — it
   calls the constructor). Freeing a pointer and leaving it in the struct
