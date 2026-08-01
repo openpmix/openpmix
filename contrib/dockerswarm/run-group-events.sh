@@ -30,6 +30,12 @@
 #                             forms, and every member receives
 #                             PMIX_GROUP_CONSTRUCT_COMPLETE and can fence across
 #                             the group.
+#   * group_invite_others  -- the leader invites the other ranks and does not
+#                             join. The group forms on the invitees alone, so
+#                             the leader's own answer must not be counted
+#                             against a membership it is not part of -- doing so
+#                             resolves the invitation one answer early and
+#                             aborts the (all-or-nothing) construct.
 #   * group_invite_timeout -- an invitee never responds; the leader's
 #                             PMIX_TIMEOUT fires, reports the non-responder via
 #                             PMIX_GROUP_INVITE_FAILED, and forms the group on
@@ -129,6 +135,43 @@ test_linux() {
         skp "group_invite not built"
     fi
     [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] || bad "group_invite: stray prted left behind"
+    cleanup_swarm
+
+    #############################################################
+    # invite whose leader is not one of the invitees
+    #############################################################
+    banner "leader-excluded invite (group forms on the invitees alone)"
+    cleanup_swarm
+    # group_invite_others: rank 0 invites ranks 1..N-1 and does NOT join. The
+    # library credits the leader's own answer when it is itself an invitee;
+    # crediting it unconditionally starts the count one ahead of the
+    # membership here, so the invitation resolves one answer early, the last
+    # invitee's accept lands after the decision and is recorded as a
+    # non-responder, and - the construct being all-or-nothing - the whole
+    # thing aborts. The invitees say so explicitly rather than timing out.
+    #
+    # Spread over two nodes so the last accept has to cross servers to reach
+    # the leader, which is what makes it the late one.
+    if RUN 'test -x /opt/prte/tests/group_invite_others'; then
+        OUT="$(RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_invite_others 2>&1')"
+        npass=$(echo "$OUT" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
+        nfence=$(echo "$OUT" | grep -c 'group fence complete')
+        nabort=$(echo "$OUT" | grep -c 'CONSTRUCT_ABORT')
+        if hung "$OUT"; then
+            bad "group_invite_others HUNG (the invitation never resolved)"
+        elif [ "$nabort" -gt 0 ]; then
+            bad "group_invite_others: construct ABORTED - the invitation resolved before every invitee answered"
+        elif echo "$OUT" | grep -qiE 'ERROR!|FAILED -'; then
+            bad "group_invite_others: a member reported failure: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
+        elif [ "$npass" -ge 3 ] && [ "$nfence" -ge 3 ]; then
+            ok "group formed on all 3 invitees with the leader outside it"
+        else
+            bad "group_invite_others: only $npass completed / $nfence fenced: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+        fi
+    else
+        skp "group_invite_others not built"
+    fi
+    [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] || bad "group_invite_others: stray prted left behind"
     cleanup_swarm
 
     #############################################################

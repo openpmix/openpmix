@@ -1031,6 +1031,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_toolswitch.pl], [chmod +x test/unit/run_toolswitch.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grpmember.pl], [chmod +x test/unit/run_grpmember.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grpinvite.pl], [chmod +x test/unit/run_grpinvite.pl])
+    AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grpinviteothers.pl], [chmod +x test/unit/run_grpinviteothers.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grptimeout.pl], [chmod +x test/unit/run_grptimeout.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grpdecline.pl], [chmod +x test/unit/run_grpdecline.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grpabort.pl], [chmod +x test/unit/run_grpabort.pl])

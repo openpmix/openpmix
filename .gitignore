@@ -125,6 +125,7 @@ examples/group_invite
 examples/group_invite_timeout
 examples/group_invite_decline
 examples/group_invite_abort
+examples/group_invite_others
 examples/topology
 examples/group_construct_abort
 examples/group_daemon_fail
@@ -272,6 +273,7 @@ test/unit/run_toolcycle.pl
 test/unit/run_toolswitch.pl
 test/unit/run_grpmember.pl
 test/unit/run_grpinvite.pl
+test/unit/run_grpinviteothers.pl
 test/unit/run_grptimeout.pl
 test/unit/run_grpdecline.pl
 test/unit/run_grpabort.pl
