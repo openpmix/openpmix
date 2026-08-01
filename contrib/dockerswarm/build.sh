@@ -142,6 +142,30 @@ build_linux() {
                     rm -f config.status
                 fi
             fi
+            # Reconfigure when the *component set* has changed under us.
+            # Automake records every configure.m4 it folded into aclocal.m4
+            # as a prerequisite of aclocal.m4. Rename or delete a component
+            # directory -- gds/shmem2 -> gds/shmem3, say -- and one of those
+            # prerequisites no longer exists, so GNU make decides aclocal.m4
+            # must be remade, shells out to aclocal-1.<n>, and dies: this
+            # image ships no autotools. The build directory is then wedged
+            # for good, and the message ("aclocal-1.18 is missing") points
+            # nowhere near the cause. A stale prerequisite means the tree
+            # has to be configured again from scratch.
+            if [ -f config.status ] && [ -f Makefile ]; then
+                _ts=$(sed -n "s/^top_srcdir *= *//p" Makefile | head -1)
+                _stale=""
+                for _m in $(sed -n "/^am__aclocal_m4_deps *=/,/[^\\\\]$/p" Makefile \
+                            | tr " " "\n" | grep "\.m4$"); do
+                    _m=${_m//\$(top_srcdir)/$_ts}
+                    [ -e "$_m" ] || { _stale="$_m"; break; }
+                done
+                if [ -n "$_stale" ]; then
+                    echo "   (component set changed -- $_stale is gone; reconfiguring)"
+                    find . -name config.cache -delete 2>/dev/null || true
+                    rm -f config.status
+                fi
+            fi
             [ -f config.status ] || /pmix-src/configure --prefix=/opt/prte/pmix --enable-debug $pyopt
             # NOTE: deliberately two statements, not "make && make install".
             # set -e does NOT fire for a failing command in a non-final
