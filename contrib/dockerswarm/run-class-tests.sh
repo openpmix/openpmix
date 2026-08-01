@@ -117,7 +117,14 @@ test_linux() {
             # Stage them so the nodes can run the same binaries.
             mkdir -p /opt/prte/tests-class/debug
             for p in $PROGS; do
-                cp "test/unit/class/$p" /opt/prte/tests-class/debug/ 2>/dev/null || true
+                # Stage the real ELF binary, not the libtool wrapper.
+                # An uninstalled libtool target leaves a /bin/sh wrapper at
+                # test/unit/class/$p and puts the executable under .libs/.
+                # Copying the wrapper anywhere else gives you a script that
+                # says .libs/$p does not exist and exits 1 -- which is what
+                # the ten-node pass below was reporting on every node.
+                cp "test/unit/class/.libs/$p" /opt/prte/tests-class/debug/ 2>/dev/null \
+                    || cp "test/unit/class/$p" /opt/prte/tests-class/debug/ 2>/dev/null || true
             done
         '
     rc=$?
@@ -143,7 +150,14 @@ test_linux() {
             make -j"$(nproc)" -C test/unit/class check
             mkdir -p /opt/prte/tests-class/opt
             for p in $PROGS; do
-                cp "test/unit/class/$p" /opt/prte/tests-class/opt/ 2>/dev/null || true
+                # Stage the real ELF binary, not the libtool wrapper.
+                # An uninstalled libtool target leaves a /bin/sh wrapper at
+                # test/unit/class/$p and puts the executable under .libs/.
+                # Copying the wrapper anywhere else gives you a script that
+                # says .libs/$p does not exist and exits 1 -- which is what
+                # the ten-node pass below was reporting on every node.
+                cp "test/unit/class/.libs/$p" /opt/prte/tests-class/opt/ 2>/dev/null \
+                    || cp "test/unit/class/$p" /opt/prte/tests-class/opt/ 2>/dev/null || true
             done
         '
     rc=$?
