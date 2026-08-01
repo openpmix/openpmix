@@ -124,14 +124,14 @@
 
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
+#include "src/include/pmix_atomic.h"
 
 #include <assert.h>
 #ifdef HAVE_STDLIB_H
 #    include <stdlib.h>
 #endif /* HAVE_STDLIB_H */
-#include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
-#include <errno.h>
 
 BEGIN_C_DECLS
 
@@ -319,7 +319,6 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
         {                                           \
             .obj_magic_id = PMIX_OBJ_MAGIC_ID,      \
             .obj_class = PMIX_CLASS(BASE_CLASS),    \
-            .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
             .obj_reference_count = 1,               \
             .obj_tma = {                            \
                 .tma_malloc = NULL,                 \
@@ -338,7 +337,6 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
 #    define PMIX_OBJ_STATIC_INIT(BASE_CLASS)        \
         {                                           \
             .obj_class = PMIX_CLASS(BASE_CLASS),    \
-            .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
             .obj_reference_count = 1,               \
             .obj_tma = {                            \
                 .tma_malloc = NULL,                 \
@@ -364,9 +362,8 @@ struct pmix_object_t {
         struct's memory */
     uint64_t obj_magic_id;
 #endif
-    pthread_mutex_t obj_lock;
     pmix_class_t *obj_class;                 /**< class descriptor */
-    int32_t obj_reference_count;             /**< reference count */
+    pmix_atomic_int32_t obj_reference_count; /**< reference count */
     pmix_tma_t obj_tma;                      /**< allocator for this object */
 #if PMIX_ENABLE_DEBUG
     const char *cls_init_file_name; /**< In debug mode store the file where the object get constructed */
@@ -704,39 +701,9 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
         pmix_class_initialize(cls);
     }
     if (NULL != object) {
-#if PMIX_ENABLE_DEBUG
-        pthread_mutexattr_t attr;
-        pthread_mutexattr_init(&attr);
-
-        /* set type to ERRORCHECK so that we catch recursive locks */
-#    if PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK_NP
-        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK_NP);
-#    elif PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK
-        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
-#    endif /* PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK_NP */
-
-        pthread_mutex_init(&object->obj_lock, &attr);
-        pthread_mutexattr_destroy(&attr);
-
-#else
-
-        /* Without debugging, choose the fastest available mutexes */
-        pthread_mutex_init(&object->obj_lock, NULL);
-
-#endif /* PMIX_ENABLE_DEBUG */
         object->obj_class = cls;
-        object->obj_reference_count = 1;
-        if (NULL == tma) {
-            object->obj_tma.tma_malloc = NULL;
-            object->obj_tma.tma_calloc = NULL;
-            object->obj_tma.tma_realloc = NULL;
-            object->obj_tma.tma_strdup = NULL;
-            object->obj_tma.tma_free = NULL;
-            object->obj_tma.data_context = NULL;
-            object->obj_tma.data_ptr = NULL;
-        } else {
-            object->obj_tma = *tma;
-        }
+        atomic_init(&object->obj_reference_count, 1);
+        pmix_obj_construct_tma(object, tma);
         pmix_obj_run_constructors(object);
     }
     return object;
@@ -748,6 +715,18 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
  * This function should not be used directly: it is called via the
  * macros PMIX_RETAIN and PMIX_RELEASE
  *
+ * PMIx requires C11 atomics (configure refuses to build without them), so
+ * this is a single lock-free read-modify-write rather than a mutex
+ * acquire/release pair. The ordering is acq_rel because this one function
+ * serves both directions: the release side must publish everything the
+ * dropping thread wrote before the count reaches zero, and the thread that
+ * observes zero (and therefore runs the destructors) must acquire those
+ * writes. Anything weaker races the destructor against the last user.
+ *
+ * Being lock-free also makes the count correct for objects that live in a
+ * TMA-backed shared-memory segment, where a plain (non PROCESS_SHARED)
+ * mutex embedded in the object was never valid across processes.
+ *
  * @param object        Pointer to the object
  * @param inc           Increment by which to update reference count
  * @return              New value of the reference count
@@ -755,15 +734,9 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
 static inline int pmix_obj_update(pmix_object_t *object, int inc) __pmix_attribute_always_inline__;
 static inline int pmix_obj_update(pmix_object_t *object, int inc)
 {
-    int ret = pthread_mutex_lock(&object->obj_lock);
-    if (ret == EDEADLK) {
-        errno = ret;
-        perror("pthread_mutex_lock()");
-        abort();
-    }
-    ret = (object->obj_reference_count += inc);
-    pthread_mutex_unlock(&object->obj_lock);
-    return ret;
+    return (int) atomic_fetch_add_explicit(&object->obj_reference_count, (int32_t) inc,
+                                           memory_order_acq_rel)
+           + inc;
 }
 
 /**
