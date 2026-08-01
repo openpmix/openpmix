@@ -18,6 +18,15 @@ Detailed changes since v6.1.0:
    to the size of pmix_object_t (see below); without it, an older peer
    mapping the segment segfaults. The component was renamed once before,
    from gds/shmem to gds/shmem2, for exactly this reason
+ - gds/shmem3 segments now carry a layout stamp, and a client whose
+   in-memory layout differs from the server's declines the segment and
+   falls back to hash instead of reading every field at the wrong
+   offset. The component name guards this across releases, but two
+   builds of the same source can still disagree: --enable-debug adds a
+   magic ID to the front of pmix_object_t, so a debug server and a
+   default-build client differ by 24 bytes in the base class and 56 in
+   pmix_list_t. The stamp is computed from the sizes of the types that
+   go in the segment rather than hand-maintained
  - Replaced the per-object pthread_mutex_t used to guard the object
    reference count with a C11 atomic. The mutex was initialized and
    never destroyed, so it leaked on any platform where init allocates;

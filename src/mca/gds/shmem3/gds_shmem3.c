@@ -1040,7 +1040,8 @@ shmem3_attach(
     }
 
     rc = pmix_shmem_segment_attach(
-        shmem3, req_addr, PMIX_SHMEM_MUST_MAP_AT_RADDR
+        shmem3, req_addr, PMIX_SHMEM_MUST_MAP_AT_RADDR,
+        PMIX_GDS_SHMEM3_LAYOUT_ID
     );
     if (PMIX_UNLIKELY(pmix_gds_shmem3_force_client_attach_failure)) {
         // Testing only: pretend the fixed-address attach failed so the
@@ -1060,6 +1061,20 @@ shmem3_attach(
                 "%s: could not attach segment at required address 0x%zx; "
                 "falling back to the next GDS module",
                 __func__, (size_t)req_addr
+            );
+            rc = PMIX_ERR_TAKE_NEXT_OPTION;
+        }
+        else if (PMIX_ERR_NOT_SUPPORTED == rc) {
+            // The segment was written by a process that lays these
+            // structures out differently than we do - most often a
+            // --enable-debug build talking to a default one, since that
+            // moves obj_magic_id into the front of pmix_object_t. Reading
+            // it would put every field at the wrong offset, so decline the
+            // segment and let this client use hash instead.
+            PMIX_GDS_SHMEM3_VOUT(
+                "%s: segment layout does not match ours (expected 0x%08x); "
+                "falling back to the next GDS module",
+                __func__, (unsigned)PMIX_GDS_SHMEM3_LAYOUT_ID
             );
             rc = PMIX_ERR_TAKE_NEXT_OPTION;
         }
@@ -1215,7 +1230,7 @@ shmem3_segment_create_and_attach(
     }
     // Create a shared-memory segment backing store at the given path.
     rc = pmix_shmem_segment_create(
-        shmem3, real_segsize, segment_path
+        shmem3, real_segsize, segment_path, PMIX_GDS_SHMEM3_LAYOUT_ID
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -1254,7 +1269,8 @@ shmem3_segment_create_and_attach(
             __func__, segment_name, base_addr, attempt
         );
         rc = pmix_shmem_segment_attach(
-            shmem3, (uintptr_t)base_addr, PMIX_SHMEM_MUST_MAP_AT_RADDR
+            shmem3, (uintptr_t)base_addr, PMIX_SHMEM_MUST_MAP_AT_RADDR,
+            PMIX_GDS_SHMEM3_LAYOUT_ID
         );
         if (PMIX_LIKELY(PMIX_SUCCESS == rc)) {
             break;

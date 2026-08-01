@@ -57,6 +57,52 @@ them, and they fall back to `hash`. That fallback is the whole point, and
 it is why the rename must land in the *same* change as the layout it
 protects, never after it.
 
+### ...and the name alone is not enough — the segment is stamped
+
+Renaming guards *released* peers, which is all it can do: it works because
+an old client does not recognize the new name. It cannot guard two builds
+that both call themselves `shmem3` and still lay these structures out
+differently. That is not hypothetical — the most common case needs no code
+change at all:
+
+**`--enable-debug` changes `pmix_object_t`.** It adds `obj_magic_id` at the
+*front* and two fields at the back, so a debug build and a default build of
+the very same commit disagree:
+
+| | `--enable-debug` | default |
+|---|---|---|
+| `sizeof(pmix_object_t)` | 104 | 80 |
+| `sizeof(pmix_list_t)` | 248 | 192 |
+| `offsetof(pmix_list_t, pmix_list_length)` | 240 | 184 |
+
+A debug server sharing a segment with a default-build client corrupts it
+exactly as an old peer would. So does any struct here gaining a field
+mid-series without a rename.
+
+Every segment therefore carries `PMIX_GDS_SHMEM3_LAYOUT_ID` in its header,
+and `pmix_shmem_segment_attach()` refuses a segment whose stamp differs,
+returning `PMIX_ERR_NOT_SUPPORTED`. `shmem3_attach()` turns that into
+`PMIX_ERR_TAKE_NEXT_OPTION` — the same fallback the fixed-address failure
+already used — so the client quietly uses `hash` instead.
+
+Two properties of that ID matter:
+
+- **It is computed, not maintained.** It folds the `sizeof()` of every type
+  that goes in the segment, with distinct prime multipliers so a growth in
+  one cannot cancel a shrink in another. A hand-maintained version number is
+  one somebody has to remember to bump, and the history of this component is
+  that it does not get bumped — that is how the layout change got as far as
+  CI. **Extend the list when a new type starts living in the segment**;
+  types reached only through a pointer count too.
+- **The header holding it must never move.** `pmix_shmem_header_t` is
+  fixed-width and free of any class-derived type or `PMIX_ENABLE_DEBUG`
+  conditional, on purpose: a stamp that can itself shift cannot detect a
+  shift. Keep it that way.
+
+The stamp and the rename cover different halves of the problem and neither
+replaces the other: the rename reaches peers built before the stamp existed;
+the stamp catches everything that calls itself `shmem3`.
+
 The component has been renamed twice for exactly this reason:
 
 - `shmem` → `shmem2` (Feb 2024), to stop v5.0.0/v5.0.1 attaching a revised
