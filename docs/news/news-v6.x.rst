@@ -7,6 +7,57 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Repaired a second round of defects in the client library, found on a
+   follow-up sweep of src/client. Several were crashes on inputs the
+   APIs document as legal or that a careless caller can easily produce:
+   PMIx_Put dereferenced the value's type and printed the key from a
+   pmix_output_verbose() call placed above the validation meant to catch
+   them, and never checked the value at all; PMIx_Compute_distances,
+   PMIx_Resolve_peers and PMIx_Resolve_nodes each stored a default
+   through their OUT parameters without checking them; PMIx_Group_construct
+   and PMIx_Group_invite wrote results/nresults unchecked although the
+   man pages document both as optional; PMIx_Group_join did not validate
+   the group ID before strdup'ing it; PMIx_Spawn walked the apps array
+   without checking it was there; and PMIx_Fabric_deregister was the one
+   fabric entry point with no "library initialized" gate in front of a
+   dereference of state that init creates
+ - Fixed PMIx_Compute_distances_nb, which could never fall back to
+   asking the server. The fallback passes a NULL topology (and sometimes
+   a NULL cpuset) to mean "use your own", which the server supports, but
+   the generic pack entry point rejects a NULL source before the packer
+   that understands it is reached - so every request that could not be
+   answered locally returned PMIX_ERR_BAD_PARAM instead of being sent
+ - Fixed PMIX_GROUP_NOTIFY_TERMINATION, which was never recorded against
+   a group. PMIx_Group_construct captured the directive onto a tracker
+   the completion path does not consult, so the group was always
+   registered with the flag clear and PMIx_Group_destruct never
+   re-applied the policy for anyone
+ - Fixed a group invitation resolving one answer early whenever the
+   leader was not itself among the invitees. The leader's own answer was
+   credited unconditionally, so a leader inviting only the others started
+   the count one ahead of the membership: the last accept arrived after
+   the decision, was recorded as a non-responder, and - the default
+   construct being all-or-nothing - aborted the whole thing
+ - PMIx_Abort now reports the status the server returned rather than
+   always reporting success, so a host that refuses the abort, or does
+   not support one, reaches the caller. This is the same defect fixed
+   earlier in PMIx_Commit
+ - Plugged three leaks in the client: PMIx_Fabric_update orphaned the
+   fabric's previous info array on every refresh, PMIx_Get under
+   PMIX_GET_STATIC_VALUES abandoned the library's copy of the value after
+   copying it into the caller's storage, and PMIx_Resolve_peers leaked
+   its working list when the aggregate walk collected entries but
+   resolved no peers. Also stopped the fabric and device-distance reply
+   handlers from reporting a tolerated short read to the application as
+   the result of an operation the server had said succeeded, and stopped
+   PMIx_Connect_nb from silently sending a message missing the job-level
+   info when that pack failed
+ - Added regression coverage for the above: the new cases in
+   test/unit/client_api.c (which segfaults against the unfixed library),
+   and a new test/unit/run_grpinviteothers.pl plus
+   examples/group_invite_others exercising an invitation whose leader is
+   not one of the invitees. Both are in "make check", and the swarm
+   suite gained the multi-node form of the invite case
  - Stopped "make -j check" from failing test/unit. Most of that
    directory's tests drive a real PMIx server through simptest, which
    comes up in the scheduler role - a node-wide singleton that claims a
