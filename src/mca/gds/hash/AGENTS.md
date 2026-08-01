@@ -42,18 +42,18 @@ if (info names PMIX_GDS_MODULE == "hash") {
 }
 ```
 
-So `hash` bids its low default (and loses to `shmem2`'s 20 where `shmem2`
+So `hash` bids its low default (and loses to `shmem3`'s 20 where `shmem3`
 is available) unless the caller passes `PMIX_GDS_MODULE="hash"`, in which
-case it bids 100 and wins. On macOS, or any host where `shmem2` did not
+case it bids 100 and wins. On macOS, or any host where `shmem3` did not
 build or cannot run, `hash` is the only active module and is always
 assigned. It is also the module the framework falls back to when a client's
-`shmem2` attach fails.
+`shmem3` attach fails.
 
 ## The module
 
 `hash` fills in **every** slot of `pmix_gds_base_module_t` except that it is
 `is_tsafe = false`. Notably it implements `store`, `assemb_kvs_req`,
-`accept_kvs_resp`, and `fetch_arrays` — the very slots `shmem2` leaves
+`accept_kvs_resp`, and `fetch_arrays` — the very slots `shmem3` leaves
 `NULL` — which is why the framework's macro fallbacks name `"hash"` as the
 "no fallback available, return `PMIX_ERR_NOT_SUPPORTED`" terminus.
 

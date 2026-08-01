@@ -133,7 +133,7 @@ AND INIT/FINALIZE THE GLOBAL CLASSES."* It is almost entirely
 - `pmix_dstor_new_tma()` / `pmix_dstor_release_tma()` and the
   `keyindex` con/destructor — note these are **TMA-aware** (they honor a
   `pmix_tma_t` custom allocator so the objects can live in shared
-  memory for the `gds/shmem2` component). If you touch object memory
+  memory for the `gds/shmem3` component). If you touch object memory
   management here, preserve the TMA path.
 
 When you add an internal object type, the pattern is: declare the struct
@@ -432,7 +432,7 @@ top-level guide.
 - New wire command → append `PMIX_*_CMD` at the end of the list; never
   renumber; update `pmix_command_string()`.
 - Preserve the TMA-aware allocation paths (`pmix_tma_*`) — they let
-  objects live in `gds/shmem2` shared memory.
+  objects live in `gds/shmem3` shared memory.
 - Treat `pmix_portable_platform_real.h` as read-only vendored code.
 - Reach for the `__pmix_attribute_*__` wrappers (defined in
   `pmix_config_bottom.h`) rather than bare `__attribute__`.

@@ -39,7 +39,7 @@
  *
  * These exercise the framework primitives that let a single client fall
  * back to another GDS module at runtime. The full two-process,
- * attach-failure-driven fallback path (a shmem2 client that cannot map a
+ * attach-failure-driven fallback path (a shmem3 client that cannot map a
  * fixed-address segment and re-requests its job data via hash) depends on
  * divergent per-process virtual-memory layouts and is an integration
  * scenario, not something this unit test can reproduce.
@@ -100,7 +100,7 @@ int main(int argc, char **argv)
     /* Exercise the selection logic deterministically by injecting two
      * synthetic active modules. This is necessary because some platforms
      * activate only a single real GDS module -- e.g. macOS has no
-     * /proc/self/maps, so shmem2's component_query fails and it never
+     * /proc/self/maps, so shmem3's component_query fails and it never
      * activates -- which would otherwise leave the multi-module path
      * untested. The synthetic modules are given the two highest
      * priorities so the expected fallbacks are unambiguous regardless of

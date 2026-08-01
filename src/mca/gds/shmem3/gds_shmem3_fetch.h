@@ -8,13 +8,13 @@
  * $HEADER$
  */
 
-#ifndef PMIX_GDS_SHMEM2_FETCH_H
-#define PMIX_GDS_SHMEM2_FETCH_H
+#ifndef PMIX_GDS_SHMEM3_FETCH_H
+#define PMIX_GDS_SHMEM3_FETCH_H
 
-#include "gds_shmem2.h"
+#include "gds_shmem3.h"
 
 PMIX_EXPORT pmix_status_t
-pmix_gds_shmem2_fetch(
+pmix_gds_shmem3_fetch(
     struct pmix_peer_t *peer,
     const pmix_proc_t *proc,
     pmix_scope_t scope,

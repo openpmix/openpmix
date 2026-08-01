@@ -284,7 +284,7 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     }
 
     /* decode it - leave cb->status set to the store result so the caller
-     * sees a storage failure (e.g. PMIX_ERR_TAKE_NEXT_OPTION when a shmem2
+     * sees a storage failure (e.g. PMIX_ERR_TAKE_NEXT_OPTION when a shmem3
      * segment cannot be attached) rather than having it masked as success */
     PMIX_GDS_STORE_JOB_INFO(cb->status, pmix_client_globals.myserver, nspace, buf);
 
@@ -294,7 +294,7 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
 }
 
 /* The GDS module chosen at connect time could not deliver our job data to
- * this client (e.g. shmem2 could not attach its fixed-address segment in
+ * this client (e.g. shmem3 could not attach its fixed-address segment in
  * our address space). Switch our server connection to the next-priority
  * GDS module and re-request the job data in that module's format, telling
  * the server which module we switched to via PMIX_GDS_FALLBACK_CMD.

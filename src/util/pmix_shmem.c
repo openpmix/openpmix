@@ -78,7 +78,7 @@ segment_attach(
         goto out;
     }
 
-    // When the caller requires a specific base address (gds/shmem2 stores
+    // When the caller requires a specific base address (gds/shmem3 stores
     // absolute pointers, so every process must map the segment at the same
     // address), use MAP_FIXED_NOREPLACE: the kernel either honors the address
     // exactly or fails with EEXIST. A bare address is only a hint that the
@@ -107,7 +107,7 @@ segment_attach(
         // The mapping succeeded, just at the wrong address; unmap it here.
         // The error path below calls pmix_shmem_segment_detach(), which only
         // unmaps once shmem->attached is set (success only), so the mapping
-        // would otherwise leak -- once per attempt under the gds/shmem2 retry.
+        // would otherwise leak -- once per attempt under the gds/shmem3 retry.
         (void)munmap(mmap_addr, shmem->size);
         mmap_addr = MAP_FAILED;
         rc = PMIX_ERR_NOT_AVAILABLE;

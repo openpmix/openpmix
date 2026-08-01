@@ -7,6 +7,25 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Renamed the gds/shmem2 component to gds/shmem3. The component shares
+   memory layout rather than a wire format - the server builds the job's
+   data structures inside a segment its local clients map and read in
+   place - so any change to the size or layout of those structures
+   silently repoints every field an older client reads. The version
+   number in the name is what prevents that: a client selects its gds
+   module by name, so a client from an older release does not recognize
+   the new one and falls back to hash. This rename accompanies a change
+   to the size of pmix_object_t (see below); without it, an older peer
+   mapping the segment segfaults. The component was renamed once before,
+   from gds/shmem to gds/shmem2, for exactly this reason
+ - Replaced the per-object pthread_mutex_t used to guard the object
+   reference count with a C11 atomic. The mutex was initialized and
+   never destroyed, so it leaked on any platform where init allocates;
+   and objects allocated from a touchable-memory allocator live in a
+   segment shared between processes, where the mutex was never created
+   PTHREAD_PROCESS_SHARED - so cross-process retain/release was
+   undefined. An atomic int32 in shared memory is well defined. Every
+   object in the tree also shrinks by the size of a pthread_mutex_t
  - Completed the server-to-host handshake for system (environmental)
    event registration. The server now reference-counts each system
    event code across all of its local clients and its own

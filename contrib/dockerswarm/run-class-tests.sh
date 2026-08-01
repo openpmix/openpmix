@@ -22,7 +22,7 @@
 # another node, so spreading it over ten containers would tell you nothing
 # that running it once does not.  The distributed dimension of these classes
 # is *cross-process, same node*: pmix_hash_table_t and pmix_pointer_array_t
-# are TMA-aware precisely so gds/shmem2 can build them inside an mmap'd
+# are TMA-aware precisely so gds/shmem3 can build them inside an mmap'd
 # segment a server shares with its local clients.  That path is already
 # covered by run-tests.sh, whose group cases drive a real datastore on each
 # node -- not by anything a class unit test could do on its own.

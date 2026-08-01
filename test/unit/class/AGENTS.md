@@ -103,7 +103,7 @@ not pretend to be — these are single-process data structures.
   bugs; a test that trips one is a broken test.
 - **They do not test the TMA path.** Everything runs with the default
   (libc) allocator. Exercising a real TMA means a shared-memory segment
-  and a second process, which is `gds/shmem2`'s territory — see the
+  and a second process, which is `gds/shmem3`'s territory — see the
   group tests under `contrib/dockerswarm`. If you add TMA coverage here,
   it needs a purpose-built allocator, not a partially filled-in
   `pmix_tma_t` (see `pmix_obj_get_tma`'s convention).

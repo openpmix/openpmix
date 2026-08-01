@@ -73,7 +73,7 @@ pmix_gds_base_module_t *pmix_gds_base_assign_module(pmix_info_t *info, size_t ni
  * failing one, selecting purely by the recorded component priority
  * (active->pri). Unlike pmix_gds_base_assign_module(), this does not
  * consult each module's assign_module callback. No module names are
- * hard-coded. With the modules that ship today (shmem2 at higher priority
+ * hard-coded. With the modules that ship today (shmem3 at higher priority
  * than hash) the failing module is the highest priority, so this returns
  * the next one down; the general contract is "the highest-priority active
  * module other than the failing one." */

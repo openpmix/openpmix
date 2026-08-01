@@ -11,18 +11,18 @@
 # $HEADER$
 #
 
-AC_DEFUN([MCA_pmix_gds_shmem2_CONFIG], [
-    AC_CONFIG_FILES([src/mca/gds/shmem2/Makefile])
-    dnl We rely on large virtual address spaces in gds/shmem2, so make sure that
+AC_DEFUN([MCA_pmix_gds_shmem3_CONFIG], [
+    AC_CONFIG_FILES([src/mca/gds/shmem3/Makefile])
+    dnl We rely on large virtual address spaces in gds/shmem3, so make sure that
     dnl we are dealing with a 64-bit architecture. For example, a 32-bit virtual
     dnl address space is probably too small for the 'virtual memory hole'
     dnl finding that we do here. Below assumes support for only 32- and 64-bit
     dnl architectures.
     AS_IF([test $ac_cv_sizeof_void_p -ne 4 && test $oac_have_apple = 0],
           [$1
-           pmix_gds_shmem2=yes],
+           pmix_gds_shmem3=yes],
           [$2
-           pmix_gds_shmem2=no])
+           pmix_gds_shmem3=no])
 
-    PMIX_SUMMARY_ADD([GDS], [Shared-Memory], [], [$pmix_gds_shmem2])
+    PMIX_SUMMARY_ADD([GDS], [Shared-Memory], [], [$pmix_gds_shmem3])
 ])dnl
