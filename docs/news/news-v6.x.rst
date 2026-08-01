@@ -7,6 +7,42 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Closed five more argument-checking holes in the src/class container
+   classes, all of them invisible in the configuration developers build
+   in. The hotel's three room-number accessors - pmix_hotel_checkout,
+   pmix_hotel_checkout_and_return_occupant and pmix_hotel_knock - tested
+   the lower bound of room_num with an if and the upper bound with an
+   assert, and configure adds -DNDEBUG whenever --enable-debug is off, so
+   no build that ships checked it: checkout then wrote through rooms[]
+   past the end of the array and pushed a second out-of-bounds write into
+   unoccupied_rooms[]. Callers pass a cached cd->room, and a destructed
+   hotel reached the same place through room 0. pmix_ring_buffer_push had
+   no guard at all where pop and poke both have one, so pushing to a ring
+   that was never initialized, or one already destructed, dereferenced a
+   NULL addr. pmix_value_array_reserve was missing the zero-item-size
+   check its two siblings carry, and since glibc answers realloc(NULL, 0)
+   with a non-NULL zero-byte block it reported success and committed a
+   capacity over storage that did not exist. The hash table's "one key
+   type per table" check sat inside PMIX_ENABLE_DEBUG, so mixing key
+   types was silent in a shipping build - leaking every copied ptr key
+   and rehashing live entries through the low bytes of a key pointer; it
+   is unconditional now, with only its diagnostic still behind the switch,
+   and its TMA exemption (needed because a shared segment's method
+   pointers mean nothing to a peer) is now covered by a cross-process
+   test. The ptr key family also rejects a NULL or zero-length key rather
+   than dereferencing it. pmix_bitmap_set_max_size did not validate its
+   argument, and because the cap is stored as a word count a negative bit
+   count wrapped round to a stored cap of zero, failing every later init
+   and set_bit far from the call that was actually wrong
+ - Fixed the dockerswarm class-test harness, whose ten-node pass had
+   never actually run anything: it staged the libtool wrapper script
+   rather than the executable under .libs, so every node reported that
+   the binary did not exist. contrib/dockerswarm/build.sh now also
+   detects a build directory whose component set has changed underneath
+   it - the gds/shmem2 to gds/shmem3 rename left every pre-existing tree
+   permanently unbuildable, because a configure.m4 recorded as a
+   prerequisite of aclocal.m4 no longer existed and make tried to run an
+   aclocal the image does not carry
  - Repaired a set of init, teardown and argument-checking defects in the
    src/class container classes. pmix_hash_table_construct() left ht_label
    uninitialized, and that field is read and printed by src/util/pmix_hash.c

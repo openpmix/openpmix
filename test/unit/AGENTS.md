@@ -105,6 +105,23 @@ reasons.** If the whole `run_*.pl` family fails at once, rerun under
 `TMPDIR=$(mktemp -d) make check` before investigating; see the top-level
 guide's "Building and Testing".
 
+**In a default-visibility tree, a top-level `make check` never reaches
+this directory at all.** `test/Makefile.am` wraps its `SUBDIRS` line in
+`if !WANT_HIDDEN` — these programs use internal symbols, so the tree is
+only descended into when configured `--disable-visibility`. Without it,
+`make check` runs the 15 programs in `test/` itself, prints `# FAIL: 0`,
+and silently skips `unit/`, `unit/class/`, `unit/util/` and `simple/`.
+Two consequences worth knowing:
+
+- To exercise this suite in an optimized default-visibility build you
+  must name the directory: `make -C test/unit check`.
+- Doing that alone gives you 13 failures in the `run_grp*.pl` /
+  `run_monitor.pl` family, all reporting `./simptest: No such file or
+  directory` (exit 127) — because `test/simple` was skipped by the same
+  guard and never built. `make -C test/simple` first, then the suite is
+  green. That failure signature is *not* the stale-`$TMPDIR` one above,
+  and not a defect; check whether the binary exists before chasing it.
+
 **Do not run this suite against an `--enable-test-build` tree.** Its
 shimmed `pcompress`/`psec` components are non-functional by design, so
 `preg` and `compress` will fail for reasons that are not defects.

@@ -473,6 +473,31 @@ tests the maintainer's configuration.** And: **an in-tree grep is not
 evidence that an interface is unused** — `libpmix`'s internal headers
 are installed, and things build against them.
 
+### Two defects in the harness itself
+
+Worth knowing about, because both hid behind a green-looking run.
+
+**The ten-node contention pass had never run anything.** It staged the
+programs with `cp test/unit/class/$p`, but in an uninstalled libtool build
+that path is a `/bin/sh` **wrapper**; the executable is under `.libs/`.
+The copied wrapper looked for `.libs/$p` relative to its new home, did not
+find it, and exited 1 — on all ten nodes, every time, with a message the
+runner discarded. It stages `.libs/$p` now (falling back to the plain
+path). If you write a runner that ships `check_PROGRAMS` anywhere else,
+remember this.
+
+**A component rename wedges every pre-existing build directory.**
+Automake records each component's `configure.m4` as a prerequisite of
+`aclocal.m4`. Rename or delete a component directory — `gds/shmem2` →
+`gds/shmem3` — and one of those prerequisites no longer exists, so GNU
+make decides `aclocal.m4` must be remade, shells out to `aclocal-1.<n>`,
+and dies: this image ships no autotools. The build directory is then
+unusable for good, and the error ("`aclocal-1.18` is missing") points
+nowhere near the cause. `build.sh` now checks the recorded prerequisites
+and reconfigures from scratch when one has gone missing. If you hit this
+in a tree `build.sh` does not manage, the fix is the same: delete
+`config.status` and re-run `configure`.
+
 > **Note on the `macos` half.** Autoconf refuses an out-of-tree build while
 > the source directory itself holds a `config.status`. `build.sh` resolves
 > that by running `make distclean` on your tree; a test script has no
