@@ -7,6 +7,54 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Repaired a set of init, teardown and argument-checking defects in the
+   src/class container classes. pmix_hash_table_construct() left ht_label
+   uninitialized, and that field is read and printed by src/util/pmix_hash.c
+   behind only a NULL test, so every table that does not set its own label
+   carried garbage there. The base class descriptor carried NULL
+   constructor and destructor arrays, so PMIX_DESTRUCT on a statically
+   initialized object that had not yet been constructed dereferenced NULL.
+   The ring buffer's destructor left head and tail behind a freed array, so
+   a pop after destruct followed them; its init never set them, so
+   re-initializing a used ring returned one still claiming the old
+   occupancy. Two failed-realloc paths (pmix_bitmap_set_bit,
+   pmix_value_array_init) leaked the old block and left a NULL pointer
+   behind a non-zero size. Two guards - the NULL check in
+   pmix_bitmap_num_set_bits, and a negative-index assert in
+   pmix_pointer_array_test_and_set_item - were absent from every build
+   that ships, the first because it sat inside PMIX_ENABLE_DEBUG and the
+   second because configure adds -DNDEBUG whenever --enable-debug is off.
+   pmix_list_insert accepted a negative index and inserted anyway,
+   pmix_hash_table_init2 used its two ratios without validating them, and
+   pmix_next_poweroftwo shifted a signed int by 31 and by 32
+ - Made the double-checked lock behind lazy class initialization correct.
+   Every PMIX_NEW and PMIX_CONSTRUCT tests whether a class is initialized
+   without taking the class mutex, and both that flag and the epoch were
+   plain int, so a thread could observe the new epoch with nothing
+   ordering it against the constructor array the initializing thread had
+   just built. Both are C11 atomics now, published with a release store
+   after the arrays are written and read with an acquire. This does not
+   change the size of pmix_class_t, so consumers that declare their own
+   classes are unaffected. ThreadSanitizer reports seven data races in
+   pmix_class_initialize against the old code and none against the new
+ - Removed two dead members of the object model: pmix_tma_t's tma_memmove
+   and pmix_list_item_t's item_free. Both were written and never read, and
+   there was no helper through which tma_memmove could even be called.
+   Both live in structures gds/shmem3 builds inside the segment it shares
+   with its local clients, so dropping them moves every field below - a
+   cross-version change, made now while the gds/shmem2 to gds/shmem3
+   rename earlier in this cycle still covers it, since that rename has not
+   yet appeared in a release. pmix_object_t shrinks from 104 to 96 bytes
+   and pmix_list_t from 248 to 232 (measured --enable-debug)
+ - Gave a default-visibility descriptor to every class declared in an
+   installed header. Without it a consumer can include the header but
+   cannot link PMIX_NEW or PMIX_CONSTRUCT on the class, and the failure is
+   invisible in a tree configured --disable-visibility - which is how
+   these are usually built. PRRTE has no object system of its own and uses
+   this one directly, and one of the descriptors it needs
+   (pmix_mca_base_var_file_value_t) was hidden; test/unit could not link
+   at all against a default-visibility build. Classes declared only in
+   headers that are not installed remain hidden
  - Renamed the gds/shmem2 component to gds/shmem3. The component shares
    memory layout rather than a wire format - the server builds the job's
    data structures inside a segment its local clients map and read in

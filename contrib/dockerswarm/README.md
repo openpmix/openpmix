@@ -410,8 +410,23 @@ containers tells you nothing that running it once does not. The distributed
 dimension of these classes is *cross-process on one node*:
 `pmix_hash_table_t` and `pmix_pointer_array_t` are TMA-aware precisely so
 `gds/shmem3` can build them inside an mmap'd segment a server shares with
-its local clients — and that path is exercised by `run-tests.sh`, whose
-group cases drive a real datastore on each node.
+its local clients.
+
+That cross-process dimension is covered directly by
+`test/unit/class/class_tma_shared`, which this script picks up
+automatically (the program list is read out of `Makefile.am`). It builds
+those containers, and an object several processes retain and release at
+once, inside a real `MAP_SHARED` segment, and verifies from a second
+process that the storage and the reference count are genuinely shared —
+the two claims `src/class/AGENTS.md` makes about the TMA path. It is also
+the one member of the suite for which the ten-node contention pass below
+is more than a load test. What it does *not* model is segment negotiation
+and attach between **unrelated** processes: its second process comes from
+`fork()`, so the segment lands at the same address and the embedded
+`pmix_tma_t`'s function pointers stay valid. Real `gds/shmem3` peers do
+neither, which is why `pmix_hash_table.c` skips its key-type assert for
+TMA tables. That half stays with `run-tests.sh`, whose group cases drive a
+real datastore on each node.
 
 What this script is for is the two configurations `make check` on a
 developer's machine does not produce:

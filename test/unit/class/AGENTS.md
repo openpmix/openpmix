@@ -21,7 +21,8 @@ warning-free under `--enable-devel-check`) apply here too.
 
 ## Layout
 
-One program per class, plus one for concurrency:
+One program per class, plus two for concurrency — one across threads and
+one across processes:
 
 | Program | Subject |
 |---------|---------|
@@ -34,6 +35,7 @@ One program per class, plus one for concurrency:
 | `class_ring_buffer` | `pmix_ring_buffer_t` |
 | `class_hotel` | `pmix_hotel_t` (no event base — eviction timers are disabled) |
 | `class_refcount` | The reference count under concurrent threads |
+| `class_tma_shared` | The object model and the TMA-aware containers across a **process** boundary, in a shared `mmap` segment |
 
 Each is a standalone `main()` that prints `PASS:`/`FAIL:` per assertion
 via a local `report()` helper and exits non-zero if anything failed.
@@ -71,7 +73,14 @@ The tree everyone develops in — and the one
   an optimized build; `pmix_value_array_remove_item` rejected a bad index
   here and `memmove`'d a wrapped `size_t` length there.
 - A class descriptor missing `PMIX_EXPORT` **links**, because nothing is
-  hidden. `pmix_ring_buffer_t_class` was missing it for years.
+  hidden. `pmix_ring_buffer_t_class` was missing it for years, and
+  `pmix_server_trkr_t` / `pmix_server_caddy_t` / the `gds` active-module
+  class kept `test/unit` from linking at all on a default-visibility
+  tree — which nobody noticed, because nobody builds one. If you add a
+  test that names a library class, build it once without
+  `--disable-visibility` before you trust it. See the export rule in
+  [`src/class/AGENTS.md`](../../../src/class/AGENTS.md), including why
+  grepping the headers for `PMIX_EXPORT` gives the wrong answer.
 
 So a green run here proves less than it looks like it does. Several
 cases in the suite are labelled `(all builds)` precisely because they
@@ -85,8 +94,18 @@ contrib/dockerswarm/run-class-tests.sh linux    # or macos
 
 which builds and runs this suite `--disable-debug` with default symbol
 visibility (see `contrib/dockerswarm/README.md` §11). Run it after any
-non-trivial change to `src/class`. It is not a multi-node test and does
-not pretend to be — these are single-process data structures.
+non-trivial change to `src/class`. It reads the program list out of
+[`Makefile.am`](Makefile.am), so a new `class_*` test is picked up without
+touching the script. It is not a multi-node test and does not pretend to
+be — with the single exception of `class_tma_shared`, these are
+single-process data structures.
+
+A third gap worth knowing about: **a bare `assert()` is debug-only here
+too.** `config/pmix.m4` adds `-DNDEBUG` whenever `--enable-debug` is off,
+so asserts vanish in every shipping build exactly as a
+`#if PMIX_ENABLE_DEBUG` block does. A case that only proves "the assert
+fires" proves nothing about the library users get; write it against the
+return value instead.
 
 ## What these tests deliberately do not do
 
@@ -101,12 +120,13 @@ not pretend to be — these are single-process data structures.
   plain `PMIX_LIST_FOREACH`, and do not otherwise poke the debug
   spot-checks to see what happens. Those asserts exist to catch caller
   bugs; a test that trips one is a broken test.
-- **They do not test the TMA path.** Everything runs with the default
-  (libc) allocator. Exercising a real TMA means a shared-memory segment
-  and a second process, which is `gds/shmem3`'s territory — see the
-  group tests under `contrib/dockerswarm`. If you add TMA coverage here,
-  it needs a purpose-built allocator, not a partially filled-in
-  `pmix_tma_t` (see `pmix_obj_get_tma`'s convention).
+- **The per-class programs do not test the TMA path.** They all run with
+  the default (libc) allocator; TMA coverage lives in `class_tma_shared`
+  and nowhere else. Do not sprinkle a TMA through the others — a
+  half-hearted one is worse than none, because `pmix_obj_get_tma()`
+  decides "this object has a custom allocator" by testing `tma_malloc`
+  alone, so a partially filled-in `pmix_tma_t` reads as valid and then
+  calls through a NULL member.
 
 ## Writing a good case here
 
@@ -118,15 +138,59 @@ not pretend to be — these are single-process data structures.
   *hangs* without its fix, and the hotel static-init case takes SIGSEGV;
   both were verified by reintroducing the bug. A case that would only
   produce a subtly wrong number is worth less.
+- **Verify it by reintroducing the defect.** That is the standard here,
+  not a nicety: revert the fix, build (in the *optimized* configuration
+  if the guard was ever debug-gated), and confirm the case fails. Four of
+  the current regression cases crash outright when their fix is backed
+  out — `class_object`'s STATIC_INIT destruct, `class_bitmap`'s NULL
+  count, `class_pointer_array`'s negative index, `class_ring_buffer`'s
+  pop-after-destruct — which is how you know they are load-bearing.
 - **Do not bend a test to accommodate a bug.** If a case fails, the
   default assumption is that `src/class` is wrong. See the top-level
   guide.
 - **Keep white-box pokes rare and justified.** A couple of cases reach
   into struct members (`va.array_alloc_size`, `ring.addr`,
-  `base->obj_tma.tma_memmove`) because the state they describe is not
+  `base->obj_tma.tma_malloc`) because the state they describe is not
   reachable through the API. That is fine when the alternative is not
   testing a hang or an uninitialized field at all — but reach for the
   public call first.
+
+## `class_tma_shared`
+
+This is the only cross-**process** program in the suite, and the only one
+that exercises a TMA. It exists because two claims in
+[`src/class/AGENTS.md`](../../../src/class/AGENTS.md) were load-bearing
+and untested: that the C11 reference count is well defined for processes
+sharing a TMA segment (the `pthread_mutex_t` it replaced was never
+`PTHREAD_PROCESS_SHARED`, so this was undefined), and that
+`pmix_hash_table_t` and `pmix_pointer_array_t` allocate through
+`pmix_obj_get_tma()` rather than libc so a second process can read what
+the first built.
+
+It mmaps a `MAP_SHARED` segment, lays a bump allocator over it with every
+`pmix_tma_t` member filled in, builds the containers and an object
+inside it, and forks. Children read the containers back; one child writes
+and the parent reads the result; and six children hammer retain/release on
+one object and drop one net reference each, after which the parent checks
+that exactly its own reference survives.
+
+Two things to preserve if you extend it:
+
+- **The start barrier is not decoration.** Without it the children tend to
+  run one after another and a deliberately broken (non-atomic) count
+  survives by luck; with it, reintroducing a non-atomic `pmix_obj_update`
+  fails the case on every run. Verified both ways.
+- **Only one process mutates a container at a time.** These classes are
+  not internally synchronized and are not meant to be. The subject is
+  whether the *storage* is shared, not whether concurrent mutation is
+  safe — it is not.
+
+What it deliberately does not model: segment negotiation and attach
+between unrelated processes. Its second process comes from `fork()`, so
+the segment lands at the same address and the function pointers inside the
+embedded `pmix_tma_t` stay valid. Real `gds/shmem3` peers get neither —
+which is exactly why `pmix_hash_table.c` skips its key-type assert for TMA
+tables. That half belongs to `gds/shmem3` and the swarm group tests.
 
 ## `class_refcount`
 
@@ -145,6 +209,31 @@ a thread made before its last release are visible to that destructor
 (the `acq_rel` ordering). The test is written against the properties
 rather than the mechanism, so it does not need to change if the
 mechanism does.
+
+It carries one more case that is not about the refcount at all: **"class
+init race"**, which puts N threads on the first-ever use of a
+never-instantiated class so they all race into `pmix_class_initialize`.
+Lazy class init is a double-checked lock whose fast path is unlocked (see
+[`src/class/AGENTS.md`](../../../src/class/AGENTS.md)), and nothing else
+in this suite ever has two threads in it at once.
+
+**Be honest about what that case proves on its own: very little.** It
+cannot reliably fail on x86-64 or arm64 even with the release/acquire
+pair removed, because both give the plain load enough ordering in
+practice. Its value is that it creates the concurrency for a race
+detector to find. The real signal is ThreadSanitizer:
+
+```sh
+./configure --enable-debug CC=clang \
+    CFLAGS="-fsanitize=thread -g -O1" LDFLAGS="-fsanitize=thread"
+make && make -C test/unit/class class_refcount
+./test/unit/class/class_refcount
+```
+
+Against the plain-`int` version of `cls_initialized` that reports seven
+data races inside `pmix_class_initialize` and aborts; against the current
+code it reports none. If you change anything about class initialization,
+that is the check to run — not this program's exit status.
 
 The barrier is hand-rolled from a mutex and condvar because macOS has no
 `pthread_barrier_t`. No per-target thread flags are needed —

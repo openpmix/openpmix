@@ -23,9 +23,19 @@
 # that running it once does not.  The distributed dimension of these classes
 # is *cross-process, same node*: pmix_hash_table_t and pmix_pointer_array_t
 # are TMA-aware precisely so gds/shmem3 can build them inside an mmap'd
-# segment a server shares with its local clients.  That path is already
-# covered by run-tests.sh, whose group cases drive a real datastore on each
-# node -- not by anything a class unit test could do on its own.
+# segment a server shares with its local clients.
+#
+# That dimension is now tested directly.  test/unit/class/class_tma_shared
+# builds those containers, and an object whose reference count several
+# processes hammer at once, inside a real MAP_SHARED segment, and checks
+# from a second process that the storage and the count are genuinely
+# shared.  It comes along automatically in the run below (the program list
+# is read out of Makefile.am), and being multi-process it is the one member
+# of the suite for which the ten-node contention pass below is more than a
+# load test.  What it does NOT cover is segment negotiation and attach
+# between *unrelated* processes -- its second process comes from fork().
+# That remains gds/shmem3's, exercised by run-tests.sh's group cases
+# driving a real datastore on each node.
 #
 # WHAT THE SWARM DOES BUY
 #
