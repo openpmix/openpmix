@@ -340,6 +340,16 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                 PMIX_DATA_ARRAY_DESTRUCT(&darray);
                 PMIX_INFO_DESTRUCT(&xfer);
                 PMIx_Info_list_release(ilist);
+                /* every other pack in this function is checked; letting this
+                 * one through silently sent the server a message that was
+                 * missing the job-level info it is waiting for */
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(msg);
+                    PMIX_DESTRUCT(&cb2);
+                    PMIX_PROC_FREE(rgs, nrg);
+                    return rc;
+                }
             }
             /* release the job-info fetch results (the error paths above
              * destruct cb2 before jumping to moveon, so this only runs on

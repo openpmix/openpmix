@@ -56,6 +56,9 @@
 
 void PMIx_Fabric_construct(pmix_fabric_t *p)
 {
+    if (NULL == p) {
+        return;
+    }
     p->name = NULL;
     p->index = SIZE_MAX;
     p->info = NULL;
@@ -71,6 +74,14 @@ static void fcb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
 
     cb->status = status;
     if (PMIX_SUCCESS == status && 0 < ninfo) {
+        /* an update refreshes a fabric that was already registered, so
+         * discard whatever the previous round left in it - overwriting the
+         * pointer orphaned that array */
+        if (NULL != cb->fabric->info) {
+            PMIX_INFO_FREE(cb->fabric->info, cb->fabric->ninfo);
+            cb->fabric->info = NULL;
+            cb->fabric->ninfo = 0;
+        }
         PMIX_INFO_CREATE(cb->fabric->info, ninfo);
         cb->fabric->ninfo = ninfo;
         for (n = 0; n < ninfo; n++) {
@@ -121,10 +132,26 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
         goto complete;
     }
 
-    /* unpack any returned data */
+    /* discard anything a previous register/update left in the caller's
+     * fabric object - what follows replaces it, and simply overwriting the
+     * pointer orphaned the old array */
+    if (NULL != cb->fabric->info) {
+        PMIX_INFO_FREE(cb->fabric->info, cb->fabric->ninfo);
+        cb->fabric->info = NULL;
+    }
+    cb->fabric->ninfo = 0;
+
+    /* unpack any returned data. A server with nothing to add ends the
+     * message here; that is not an error the caller should be told about,
+     * since the server already reported the operation itself succeeded. */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cb->fabric->ninfo, &cnt, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        cb->fabric->ninfo = 0;
+        rc = PMIX_SUCCESS;
+        goto complete;
+    }
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
@@ -473,6 +500,13 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric, pmix_
     pmix_status_t rc;
 
     PMIX_HIDE_UNUSED_PARAMS(cbfunc, cbdata);
+
+    /* every sibling in this file gates on this, and this one must too:
+     * PMIX_PEER_IS_SCHEDULER below dereferences pmix_globals.mypeer, which
+     * does not exist until the library has been initialized */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
 
     if (NULL == fabric) {
         return PMIX_ERR_BAD_PARAM;

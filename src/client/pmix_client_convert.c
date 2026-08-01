@@ -114,7 +114,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                         }
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
-                        if (NULL == kv) {  // should never be NULL
+                        if (NULL == kv) { // should never be NULL
                             /* couldn't retrieve the size, so we have
                              * to abort */
                             rc = PMIX_ERR_NOT_FOUND;

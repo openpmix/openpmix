@@ -217,6 +217,12 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* check for bozo input - the apps array is walked below and there is
+     * nothing to spawn without one */
+    if (NULL == apps || 0 == napps) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* if we aren't connected, don't attempt to send */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         /* if I am a launcher, we default to local fork/exec */
@@ -289,8 +295,11 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     fcd->copied = true;
     for (n = 0; n < napps; n++) {
         aptr = (pmix_app_t *) &apps[n];
-        /* protect against bozo case */
-        if (NULL == aptr->cmd && NULL == aptr->argv) {
+        /* protect against bozo case - an argv whose first element is NULL
+         * is as empty as no argv at all, and would otherwise reach
+         * strdup()/pmix_basename() as a NULL below */
+        if ((NULL == aptr->cmd && NULL == aptr->argv) ||
+            (NULL != aptr->argv && NULL == aptr->argv[0])) {
             /* they gave us nothing to spawn! */
             PMIX_RELEASE(fcd);
             return PMIX_ERR_BAD_PARAM;
@@ -351,9 +360,11 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
          * the ninfo field has been set */
         if (NULL != aptr->info) {
             if (0 == aptr->ninfo) {
-                /* look for the info marked as "end" */
+                /* look for the info marked as "end" - test the bound
+                 * before the dereference, or the guard below can never
+                 * be reached (we would have walked off the array first) */
                 m = 0;
-                while (!(PMIX_INFO_IS_END(&aptr->info[m])) && m < SIZE_MAX) {
+                while (m < SIZE_MAX && !(PMIX_INFO_IS_END(&aptr->info[m]))) {
                     ++m;
                 }
                 if (SIZE_MAX == m) {
