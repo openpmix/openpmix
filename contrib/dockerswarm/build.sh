@@ -62,11 +62,14 @@ PRRTE_REPO="${PRRTE_REPO:-https://github.com/openpmix/prrte.git}"
 # declines, so the construct resolves immediately -- no timeout -- reporting the
 # decliner and forming the group on those that accepted), group_invite_abort (an
 # invitee declines an all-or-nothing invite -- no PMIX_GROUP_OPTIONAL -- so the
-# whole construct aborts and every participant is notified), and
+# whole construct aborts and every participant is notified),
+# group_invite_others (the leader invites the others and does NOT join, so the
+# group forms on the invitees alone -- a shape in which the leader's own answer
+# must NOT be credited against the membership), and
 # group_destruct_die (a member is lost mid PMIx_Group_destruct, so the destruct
 # must complete on the survivors -- the destruct analog of group_die).
 GROUP_EXAMPLES="group group_bootstrap group_dmodex group_lcl_cid asyncgroup multi_nspace_group"
-EVENT_EXAMPLES="group_invite group_invite_timeout group_invite_decline group_invite_abort group_destruct_die group_construct_abort group_daemon_fail"
+EVENT_EXAMPLES="group_invite group_invite_others group_invite_timeout group_invite_decline group_invite_abort group_destruct_die group_construct_abort group_daemon_fail"
 # The topology/locality exerciser, driven by run-topology.sh: every rank loads
 # the topology its LOCAL server handed it (the hwloc shmem segment, or XML as
 # the fallback -- neither path exists in a standalone process) and then compares

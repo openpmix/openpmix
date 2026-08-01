@@ -372,6 +372,187 @@ static void test_fabric(void)
     check(PMIX_SUCCESS == rc, "second PMIx_Fabric_deregister is a safe no-op");
 }
 
+/* PMIx_Put screened its key only after a verbose call had already printed
+ * it and dereferenced the value's type - and never screened the value at
+ * all. pmix_output_verbose() is an ordinary function, so its arguments are
+ * evaluated whether or not the channel is enabled: both NULLs crashed
+ * before any check could reject them. */
+static void test_put_bad_params(void)
+{
+    pmix_value_t val;
+    pmix_status_t rc;
+    char longkey[PMIX_MAX_KEYLEN + 32];
+
+    fprintf(stdout, "\n-- PMIx_Put parameter validation --\n");
+
+    PMIX_VALUE_LOAD(&val, "somevalue", PMIX_STRING);
+
+    rc = PMIx_Put(PMIX_GLOBAL, "client.api.putkey", NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Put(val=NULL) rejected rather than crashing");
+
+    rc = PMIx_Put(PMIX_GLOBAL, NULL, &val);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Put(key=NULL) rejected rather than crashing");
+
+    memset(longkey, 'k', sizeof(longkey) - 1);
+    longkey[sizeof(longkey) - 1] = '\0';
+    rc = PMIx_Put(PMIX_GLOBAL, longkey, &val);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Put(oversized key) rejected");
+
+    /* and the well-formed call still works */
+    rc = PMIx_Put(PMIX_GLOBAL, "client.api.putkey", &val);
+    check(PMIX_SUCCESS == rc, "PMIx_Put with valid arguments succeeds");
+
+    PMIX_VALUE_DESTRUCT(&val);
+}
+
+/* Every one of these writes through its OUT parameters on the way in, to
+ * establish a default the caller can read on an error return - so a NULL
+ * for any of them was a store to address zero, not a rejected call. */
+static void test_out_parameter_checks(void)
+{
+    pmix_device_distance_t *dist;
+    pmix_proc_t *procs;
+    char *nodelist;
+    size_t n;
+    pmix_status_t rc;
+    /* pmix_nspace_t is a fixed-size char array, so these calls have to be
+     * handed one - a bare string literal is a short read to the compiler */
+    pmix_nspace_t nspace;
+
+    fprintf(stdout, "\n-- OUT parameters must be screened, not written --\n");
+
+    PMIX_LOAD_NSPACE(nspace, "no.such.nspace");
+
+    rc = PMIx_Compute_distances(NULL, NULL, NULL, 0, NULL, &n);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Compute_distances(distances=NULL) rejected");
+    rc = PMIx_Compute_distances(NULL, NULL, NULL, 0, &dist, NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Compute_distances(ndist=NULL) rejected");
+
+    rc = PMIx_Resolve_peers(NULL, NULL, NULL, &n);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Resolve_peers(procs=NULL) rejected");
+    rc = PMIx_Resolve_peers(NULL, NULL, &procs, NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Resolve_peers(nprocs=NULL) rejected");
+
+    rc = PMIx_Resolve_nodes(NULL, NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Resolve_nodes(nodelist=NULL) rejected");
+
+    /* the well-formed forms must still define their defaults before any
+     * failure, so a caller can read them on the error return */
+    procs = (pmix_proc_t *) (uintptr_t) 0xdeadbeef;
+    n = 12345;
+    (void) PMIx_Resolve_peers("no.such.host", nspace, &procs, &n);
+    check(NULL == procs && 0 == n, "PMIx_Resolve_peers defines its OUT params on failure");
+
+    nodelist = (char *) (uintptr_t) 0xdeadbeef;
+    (void) PMIx_Resolve_nodes(nspace, &nodelist);
+    check(NULL == nodelist, "PMIx_Resolve_nodes defines its OUT param on failure");
+}
+
+/* A qualifier the request parser hands straight to strdup(). The array
+ * belongs to the caller, so the parser has to verify a PMIX_HOSTNAME
+ * really carries a string before copying it. */
+static void test_get_hostname_qualifier(void)
+{
+    pmix_info_t info;
+    pmix_value_t *val = NULL;
+    pmix_status_t rc;
+
+    fprintf(stdout, "\n-- PMIx_Get with a malformed PMIX_HOSTNAME qualifier --\n");
+
+    /* right key, right type, no string */
+    PMIX_INFO_CONSTRUCT(&info);
+    PMIx_Load_key(info.key, PMIX_HOSTNAME);
+    info.value.type = PMIX_STRING;
+    info.value.data.string = NULL;
+    rc = PMIx_Get(NULL, "client.api.absent.key", &info, 1, &val);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIX_HOSTNAME qualifier with a NULL string rejected");
+    check(NULL == val, "the OUT value is still defined on that rejection");
+    PMIX_INFO_DESTRUCT(&info);
+
+    /* right key, wrong type */
+    PMIX_INFO_LOAD(&info, PMIX_HOSTNAME, &rc, PMIX_INT);
+    val = NULL;
+    rc = PMIx_Get(NULL, "client.api.absent.key", &info, 1, &val);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIX_HOSTNAME qualifier of the wrong type rejected");
+    PMIX_INFO_DESTRUCT(&info);
+}
+
+/* PMIx_Spawn walks the apps array before it can know whether it will send
+ * or fork, so an absent array has to be caught up front. */
+static void test_spawn_bad_params(void)
+{
+    pmix_nspace_t nspace;
+    pmix_status_t rc;
+
+    fprintf(stdout, "\n-- PMIx_Spawn parameter validation --\n");
+
+    rc = PMIx_Spawn(NULL, 0, NULL, 1, nspace);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Spawn(apps=NULL, napps=1) rejected");
+    rc = PMIx_Spawn_nb(NULL, 0, NULL, 1, NULL, NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Spawn_nb(apps=NULL, napps=1) rejected");
+    rc = PMIx_Spawn_nb(NULL, 0, NULL, 0, NULL, NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Spawn_nb(napps=0) rejected");
+}
+
+/* Both of these are documented as optional OUT parameters. Like
+ * PMIx_Group_join, they must be defined before anything can fail and must
+ * tolerate a NULL. A singleton cannot construct or invite, which is
+ * exactly what makes this a test of the failure path. */
+static void test_group_construct_invite_outparams(void)
+{
+    pmix_info_t *results;
+    size_t nresults;
+    pmix_proc_t procs[2];
+    pmix_status_t rc;
+
+    fprintf(stdout, "\n-- PMIx_Group_construct/invite out-parameters --\n");
+
+    PMIX_LOAD_PROCID(&procs[0], "no.such.nspace", 0);
+    PMIX_LOAD_PROCID(&procs[1], "no.such.nspace", 1);
+
+    results = (pmix_info_t *) (uintptr_t) 0xdeadbeef;
+    nresults = 12345;
+    rc = PMIx_Group_construct("nosuchgroup", procs, 2, NULL, 0, &results, &nresults);
+    check(PMIX_SUCCESS != rc, "PMIx_Group_construct fails cleanly with no server");
+    check(NULL == results, "PMIx_Group_construct defined *results on the failure path");
+    check(0 == nresults, "PMIx_Group_construct defined *nresults on the failure path");
+
+    rc = PMIx_Group_construct("nosuchgroup", procs, 2, NULL, 0, NULL, NULL);
+    check(PMIX_SUCCESS != rc, "PMIx_Group_construct accepts NULL results/nresults");
+
+    results = (pmix_info_t *) (uintptr_t) 0xdeadbeef;
+    nresults = 12345;
+    rc = PMIx_Group_invite("nosuchgroup", procs, 2, NULL, 0, &results, &nresults);
+    check(PMIX_SUCCESS != rc, "PMIx_Group_invite fails cleanly with no server");
+    check(NULL == results, "PMIx_Group_invite defined *results on the failure path");
+    check(0 == nresults, "PMIx_Group_invite defined *nresults on the failure path");
+
+    rc = PMIx_Group_invite("nosuchgroup", procs, 2, NULL, 0, NULL, NULL);
+    check(PMIX_SUCCESS != rc, "PMIx_Group_invite accepts NULL results/nresults");
+}
+
+/* PMIx_Fabric_deregister was the one fabric entry point with no
+ * "initialized" gate, yet it reaches PMIX_PEER_IS_SCHEDULER(mypeer) - and
+ * mypeer does not exist until PMIx_Init has run. Must be called before
+ * init, so it lives outside the block below. */
+static void test_fabric_before_init(void)
+{
+    pmix_fabric_t fabric;
+    pmix_status_t rc;
+
+    fprintf(stdout, "\n-- fabric API before PMIx_Init --\n");
+
+    /* must not dereference the argument it is handed */
+    PMIx_Fabric_construct(NULL);
+    check(1, "PMIx_Fabric_construct(NULL) is a no-op rather than a crash");
+
+    PMIx_Fabric_construct(&fabric);
+    rc = PMIx_Fabric_deregister(&fabric);
+    check(PMIX_ERR_INIT == rc, "PMIx_Fabric_deregister before init reports PMIX_ERR_INIT");
+    rc = PMIx_Fabric_deregister_nb(&fabric, NULL, NULL);
+    check(PMIX_ERR_INIT == rc, "PMIx_Fabric_deregister_nb before init reports PMIX_ERR_INIT");
+}
+
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
@@ -392,6 +573,9 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "\n=== src/client API regression test ===\n");
 
+    /* this one has to run before the library comes up */
+    test_fabric_before_init();
+
     /* a singleton reports PMIX_ERR_UNREACH from init - it is fully
      * initialized, it just has no server */
     rc = PMIx_Init(&myproc, NULL, 0);
@@ -405,9 +589,14 @@ int main(int argc, char **argv)
     test_get_refresh_cache();
     test_get_bad_params();
     test_get_pointer_and_static();
+    test_get_hostname_qualifier();
+    test_put_bad_params();
+    test_out_parameter_checks();
     test_compute_distances();
+    test_spawn_bad_params();
     test_fabric();
     test_group_join_outparams();
+    test_group_construct_invite_outparams();
     test_group_lock_concurrency();
 
     rc = PMIx_Finalize(NULL, 0);
