@@ -286,6 +286,35 @@ finalize, after the progress thread has stopped).
   only at the end, tolerate `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER` on
   trailing reads (older peers), and never reorder — see the top-level
   "Version Interoperability" rules.
+- **An optional trailing field must be packed through a scratch buffer,
+  and a pack failure on one is not necessarily an error.** The receiver
+  reads these with a trailing unpack and treats
+  `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER` as "the peer sent none", so
+  *omitting* one is a supported wire state — and sometimes the only
+  possible one. A `PMIX_DATA_ARRAY` of `PMIX_INFO` (which is what both
+  of `PMIx_Connect_nb`'s trailing blobs are) **cannot be packed for a
+  pre-v4 peer at all**: its bfrops has no registered array-element
+  handler for `PMIX_INFO`. Two consequences:
+  - Packing straight into the message is wrong even when you ignore the
+    status, because the failure is partial — the element type and count
+    are written before the elements fail — so the wire gets a
+    half-encoded field the receiver has to trip over and skip.
+  - Turning that failure into a hard error breaks cross-version connect
+    outright. This is not hypothetical: it is what the
+    `run-xversion` v3.2 job caught (`--test-resolve-peers`, which drives
+    a multi-nspace connect, hung).
+
+  `append_optional()` in `pmix_client_connect.c` is the pattern: pack to
+  a scratch `pmix_buffer_t`, `PMIX_BFROPS_COPY_PAYLOAD` it onto the
+  message only if that succeeded, and report success either way. Reserve
+  a hard error for failing to append something you *did* manage to pack.
+- **Reproduce cross-version failures locally rather than guessing.** The
+  `run-xversion` workflow just runs `test/pmix_test` from one build
+  against `test/pmix_client` from the other, so a checkout of the release
+  branch beside your tree reproduces any of its cases directly, e.g.
+  `…/v3.2/test/pmix_test -n 5 --test-resolve-peers --ns-dist "1:2:2" -e
+  …/master/test/pmix_client`. Run it both directions — the two are
+  separate CI steps and fail independently.
 - **Tolerating a short read is not the same as reporting one.** A recv
   callback that treats `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER` as
   acceptable — the server had nothing more to send — must then *reset*
@@ -591,6 +620,13 @@ one) `test/unit/run_grpinviteothers.pl` plus the swarm suite.
 - `PMIx_Connect_nb` ignored the pack status when appending the
   job-level info array, silently sending a message missing the data the
   server waits for. Every other pack in that function is checked.
+  **Simply checking it was wrong too** — see the optional-trailing-field
+  invariant above. Both of its trailing blobs now go through
+  `append_optional()`, which omits what a peer cannot represent and
+  errors only on a genuine failure. The first attempt at this fix broke
+  connect against every pre-v4 server; caught by the `run-xversion` v3.2
+  job, and the endpoint blob had the same latent exposure even before
+  this pass.
 - `destruct_cbfunc()` dropped the group from the local list on the
   empty-buffer path but not on the NULL-buffer path.
 - `PMIx_Spawn_nb`'s "find the end sentinel" loop tested `m < SIZE_MAX`

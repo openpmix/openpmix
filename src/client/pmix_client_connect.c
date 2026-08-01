@@ -64,6 +64,45 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
                         void *cbdata);
 static void op_cbfunc(pmix_status_t status, void *cbdata);
 
+/* Append one of the connect message's OPTIONAL trailing info blobs - the
+ * caller's endpoint data, or the job-level data its namespace contributes.
+ *
+ * Optional is meant literally, and the server relies on it: it reads each of
+ * these with a trailing unpack and treats
+ * PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER as "the client sent none" (see
+ * pmix_server_connect). A peer whose wire format cannot represent the blob
+ * must therefore still be able to connect - and such peers exist. Both blobs
+ * are a PMIX_DATA_ARRAY of PMIX_INFO, and a pre-v4 peer's bfrops has no
+ * registered array-element handler for PMIX_INFO, so the array cannot be
+ * packed for it at all.
+ *
+ * So pack through a scratch buffer and append only what packed cleanly.
+ * Packing straight into the message could not do that: the element type and
+ * count are written before the elements themselves fail, leaving a
+ * half-encoded info on the wire for the server to trip over and skip.
+ *
+ * Returns PMIX_SUCCESS whether or not the blob was appended - being unable
+ * to express it for this peer is not an error. Only failing to append
+ * something we did manage to pack is. */
+static pmix_status_t append_optional(pmix_buffer_t *msg, pmix_info_t *xfer)
+{
+    pmix_buffer_t pbkt;
+    pmix_status_t rc;
+
+    PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, &pbkt, xfer, 1, PMIX_INFO);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        pmix_output_verbose(2, pmix_client_globals.connect_output,
+                            "pmix:connect omitting %s: this peer cannot represent it (%s)",
+                            xfer->key, PMIx_Error_string(rc));
+        PMIX_DESTRUCT(&pbkt);
+        return PMIX_SUCCESS;
+    }
+    PMIX_BFROPS_COPY_PAYLOAD(rc, pmix_client_globals.myserver, msg, &pbkt);
+    PMIX_DESTRUCT(&pbkt);
+    return rc;
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
                                        const pmix_info_t info[], size_t ninfo)
 {
@@ -244,8 +283,8 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
             // insert into a pmix_info_t for packing
             PMIX_INFO_LOAD(&xfer, PMIX_PROC_DATA, &darray, PMIX_DATA_ARRAY);
             PMIX_DATA_ARRAY_DESTRUCT(&darray);
-            // pack the result
-            PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &xfer, 1, PMIX_INFO);
+            // append it if this peer can carry it
+            rc = append_optional(msg, &xfer);
             PMIX_INFO_DESTRUCT(&xfer);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
@@ -337,14 +376,16 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                 }
                 // insert into a pmix_info_t for packing
                 PMIX_INFO_LOAD(&xfer, PMIX_JOB_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
-                // pack the result
-                PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &xfer, 1, PMIX_INFO);
+                // append it if this peer can carry it
+                rc = append_optional(msg, &xfer);
                 PMIX_DATA_ARRAY_DESTRUCT(&darray);
                 PMIX_INFO_DESTRUCT(&xfer);
                 PMIx_Info_list_release(ilist);
-                /* every other pack in this function is checked; letting this
-                 * one through silently sent the server a message that was
-                 * missing the job-level info it is waiting for */
+                /* every other pack in this function is checked, and this one
+                 * used to go unexamined - so a genuine failure to append data
+                 * the server is waiting for passed silently. Note that
+                 * "this peer cannot represent it" is NOT such a failure;
+                 * append_optional() reports success for that case. */
                 if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(msg);
