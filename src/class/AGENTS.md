@@ -101,9 +101,47 @@ Rules that trip people up:
 - **Never call `pmix_obj_run_constructors`/`_destructors` or
   `pmix_obj_new_tma` directly** — always go through the macros.
 - Every class provides a **`PMIX_*_STATIC_INIT`** macro for
-  file-scope/stack objects that must be usable before any constructor
-  runs (e.g. `PMIX_LIST_STATIC_INIT`, `PMIX_HASH_TABLE_STATIC_INIT`).
-  Prefer it to `PMIX_CONSTRUCT` for statics.
+  file-scope/stack objects that need a defined state before any
+  constructor runs (e.g. `PMIX_LIST_STATIC_INIT`,
+  `PMIX_HASH_TABLE_STATIC_INIT`). Read the box below before relying on
+  one: they are **not** a substitute for `PMIX_CONSTRUCT`, and for
+  `pmix_list_t` the statically initialized object is not even usable.
+
+> ### A `PMIX_*_STATIC_INIT` object is tagged with the *base* class
+>
+> Every one of these macros expands to
+> `PMIX_OBJ_STATIC_INIT(pmix_object_t)`, which sets `obj_class` to
+> `&pmix_object_t_class` — **not** to the derived class's descriptor. Two
+> consequences, neither obvious from the macro:
+>
+> - `PMIX_DESTRUCT` on such an object does **not** run the derived
+>   destructor. It runs `pmix_object_t`'s (empty) chain. For a statically
+>   initialized object that is the right answer — it owns nothing yet —
+>   but it means a STATIC_INIT is not interchangeable with a construct.
+> - `pmix_object_t_class` is pre-marked initialized, so
+>   `pmix_class_initialize` never runs for it and never builds its
+>   constructor/destructor arrays. Those arrays used to be `NULL`, and
+>   both `pmix_obj_run_constructors` and `_destructors` walk them with
+>   `while (NULL != *array)` — so `PMIX_DESTRUCT` (or a `PMIX_RELEASE`
+>   reaching zero) on a never-constructed STATIC_INIT object
+>   **dereferenced NULL and took SIGSEGV**. They are now empty,
+>   terminated arrays and it is a correct no-op. Do not set them back to
+>   `NULL`; `test/unit/class/class_object.c` pins this.
+>
+> The invariant to hold onto: a STATIC_INIT gives the object a *defined*
+> state, and the matching `PMIX_CONSTRUCT` at init time is what makes it
+> a live instance of its own class. Every in-tree use does both.
+
+**When you add a `STATIC_INIT` macro, diff it against the constructor
+field by field.** This has been wrong four separate times —
+`PMIX_HOTEL_STATIC_INIT` disagreed about `last_unoccupied_room` (a live
+bug: `pmix_globals.notifications` reported a free room before
+`pmix_hotel_init` ran), `PMIX_POINTER_ARRAY_STATIC_INIT` had `max_size`
+and `block_size` at 0 against the constructor's `INT_MAX` and 8 (a
+divide-by-zero in `grow_table`), and `PMIX_LIST_ITEM_STATIC_INIT` had
+`item_free` at 0 against the constructor's 1 (that field has since been
+deleted as dead). Each class's unit test now compares the two structs
+member by member; keep that up for new ones.
 
 ### Reference counting is a C11 atomic
 
@@ -163,6 +201,28 @@ and it needs the shared-memory component renamed in the same commit
 series.** This applies to *any* class here, not just the base — a field
 added to `pmix_list_t` has exactly the same effect.
 
+Two dead fields were deleted on top of the `shmem3` rename, before it
+shipped, which moved the layout again (measured `--enable-debug`,
+arm64):
+
+| | before | after |
+|---|---|---|
+| `pmix_tma_t` | 64 | 56 |
+| `pmix_object_t` | 104 | 96 |
+| `pmix_list_item_t` | 136 | 128 |
+| `pmix_list_t` | 248 | 232 |
+| `pmix_list_length` offset | 240 | 224 |
+
+**No further rename was needed, and the reason is worth understanding
+rather than copying.** The `shmem2` → `shmem3` rename in this same
+development cycle had not appeared in any release — every release branch
+(`v5.0`, `v6.0`, `v6.1`) still shipped `shmem2`, and no tag contained the
+rename. One rename covers every layout change made before the new name
+ships, because what protects an old peer is not recognising the *name*.
+Check that before assuming you get a free ride: `git tag --contains` the
+rename commit and look at what the release branches actually carry. Once
+`shmem3` is released, the next layout change needs `shmem4`.
+
 
 In `--enable-debug` builds each object carries a magic ID
 (`PMIX_OBJ_MAGIC_ID`) plus the file/line of last construction; the
@@ -177,7 +237,33 @@ pattern. Do not write tests that do it.
 
 `pmix_class_initialize` records every initialized class's allocated
 descriptor arrays in a global `classes[]` table (guarded by a private
-`class_mutex`). `pmix_class_finalize()` frees them all. It is called
+`class_mutex`). `pmix_class_finalize()` frees them all.
+
+**Lazy class init is a double-checked lock, and the fast path is
+unlocked.** Every `PMIX_NEW`/`PMIX_CONSTRUCT` tests
+`PMIX_CLASS_IS_INITIALIZED(cls)` *without* taking `class_mutex`, and only
+calls `pmix_class_initialize` when the class looks stale. That makes the
+ordering rules load-bearing:
+
+- `cls_initialized` and `pmix_class_init_epoch` are
+  `pmix_atomic_int32_t`, not `int`.
+- `pmix_class_initialize` publishes with a **release** store, and it does
+  so **last** — after `cls_depth`, `cls_construct_array`,
+  `cls_destruct_array` and their contents are all written.
+- `PMIX_CLASS_IS_INITIALIZED` **acquires**. Unlocking the mutex is not
+  enough to order this, because the reader never takes the mutex.
+
+These were plain `int` accesses, which is the textbook broken
+double-checked lock: a thread could observe the new epoch and then call
+through a `cls_construct_array` it had no ordering against. ThreadSanitizer
+reports seven data races inside `pmix_class_initialize` against the old
+code and none against the current code; `class_refcount`'s
+"class init race" case is what drives it (see
+[`test/unit/class/AGENTS.md`](../../test/unit/class/AGENTS.md)). Note this
+did **not** change `sizeof(pmix_class_t)` — a lock-free `_Atomic int32_t`
+matches `int` in size and alignment — so external consumers with their own
+`PMIX_CLASS_INSTANCE` are unaffected. If you touch this, keep the
+release/acquire pair and keep the publish last. It is called
 exactly once per role, as the **absolute last** thing before exit
 (`src/server/pmix_server.c`, `src/client/pmix_client.c`,
 `src/tool/pmix_tool.c`), purely so valgrind/purify report a clean
@@ -222,10 +308,20 @@ What this means when working in `src/class`:
   `tma_malloc` is non-NULL. Because of that convention, a partially
   filled-in TMA is a bug. Copy an existing static-init block verbatim,
   or better, call `pmix_obj_construct_tma()` — which is the *one* place
-  that clears all eight `pmix_tma_t` members. `pmix_obj_new_tma()` used
-  to carry its own copy of that code and cleared only seven, leaving
-  `tma_memmove` holding whatever `malloc` returned in every heap object
-  in the library. Do not write a second copy.
+  that clears every `pmix_tma_t` member. `pmix_obj_new_tma()` used to
+  carry its own copy of that code and cleared one member fewer, leaving a
+  stray function pointer holding whatever `malloc` returned in every heap
+  object in the library. Do not write a second copy.
+- **`pmix_tma_t` has seven members and a TMA must fill in all of them.**
+  It briefly had an eighth, `tma_memmove`, which was declared, cleared in
+  three places, asserted clear by the unit test — and never assigned or
+  called anywhere. There was no `pmix_tma_memmove()` helper beside the
+  other five, so nothing could reach it; `gds/shmem3` filled in the other
+  five and skipped it. It has been deleted (see the layout note above for
+  why that was affordable). If you ever want it back, add the
+  `pmix_tma_*` inline and wire up every TMA implementation in the same
+  change — a member nothing sets is a member that reads as garbage the
+  moment someone starts calling it.
 
 ## The container classes
 
@@ -263,6 +359,16 @@ mostly spelled out in the header's opening comment:
   `pmix_list_join` are O(N) only because they must fix that count.
 - `pmix_list_sort` sorts via an array of pointers + `qsort`; its compare
   function receives **double pointers** (`pmix_list_item_t **`).
+- **`pmix_list_insert` rejects a negative index.** It used to check only
+  the upper bound, so a computed index that went negative fell through
+  the walk (which ran zero times) and landed the item at position 1,
+  returning `true`.
+- `pmix_list_item_t` briefly carried an `item_free` field that the
+  constructor set and nothing ever read. It has been deleted along with
+  `tma_memmove` (see the layout note above). If you find yourself wanting
+  a per-item flag, note that the debug-only `pmix_list_item_refcount` /
+  `pmix_list_item_belong_to` pair already answers "is this item on a
+  list", and adding a field here is a layout change.
 - **`pmix_list_insert` cannot append.** It inserts *before* an existing
   item, so `idx` must be strictly less than the length: the
   one-past-the-end position that would mean "append" is rejected, and an
@@ -322,7 +428,25 @@ Grows when density crosses `ht_growth_trigger` (default 1/2, doubling).
 Iterate with `PMIX_HASH_TABLE_FOREACH(key, uint32|uint64|ptr, val, ht)`;
 do not remove during a foreach. TMA-aware.
 
-Two things about this class that will surprise you:
+`ht_label` is a debugging label the table itself never sets and never
+reads — but `src/util/pmix_hash.c` prints it at four sites as
+`(NULL == table->ht_label) ? "UNKNOWN" : table->ht_label`. That NULL test
+is the only thing between `%s` and a wild pointer, and the constructor
+used to skip the field entirely: `PMIX_NEW` mallocs without zeroing, so
+every table that does not set its own label (`gds/shmem3`'s, the mca
+base's) carried garbage there. The constructor now clears it. If you add
+a member to this struct, add it to the constructor in the same edit —
+that is the whole defence.
+
+`pmix_hash_table_init2` is a `PMIX_EXPORT` entry point taking two ratios,
+and it now validates them. A zero `density_numer` divided by zero on its
+first line and a zero `growth_denom` did the same inside
+`pmix_hash_grow`; less loudly, a growth factor that does not grow, or a
+density of 1/1 or looser, lets the table fill completely — and since
+every get/set/remove probes with an unbounded `for (;; ii += 1)`, a full
+table is an infinite loop rather than an error.
+
+Two more things about this class that will surprise you:
 
 - **A "get" writes to the table.** Every `pmix_hash_table_get_value_*`
   assigns `ht->ht_type_methods` before probing — that is how the table
@@ -380,6 +504,17 @@ correct because `tail == head` whenever the ring is full. That invariant
 is not asserted anywhere. Do not "simplify" that function without
 convincing yourself of it.
 
+`tail == -1` is this class's "nothing has been pushed yet" flag, and it is
+the field the teardown and re-init paths kept forgetting: the destructor
+freed `addr` and zeroed `size` but left `head`/`tail` alone, so
+`pmix_ring_buffer_pop` on a destructed ring took its "something is on the
+ring" branch and dereferenced the NULL `addr` the destructor had just
+installed; and `pmix_ring_buffer_init` never set them at all, so
+re-initializing a used ring both leaked the old storage and handed back a
+"fresh" ring still claiming the old one's occupancy. Both now reset the
+pair, and `PMIX_RING_BUFFER_STATIC_INIT` (added alongside) spells `tail`
+as `-1` rather than the `0` a plain zero-initializer would give.
+
 ### `pmix_value_array_t` — by-value dynamic array
 
 A growable array that stores elements **by value** (contiguous
@@ -387,7 +522,12 @@ A growable array that stores elements **by value** (contiguous
 `pmix_value_array_init(&a, sizeof(elem))`. Get/set by index (auto-growing
 on set), append, remove-with-shift. `PMIX_VALUE_ARRAY_GET_ITEM` /
 `_SET_ITEM` / `_GET_BASE` are unchecked, fast, typed macros — the caller
-owns bounds-checking. Not TMA-aware.
+owns bounds-checking. Not TMA-aware. `pmix_value_array_init` rejects a
+zero `item_sizeof` (every address in the class is
+`index * array_item_sizeof`, so a zero collapses the array onto one
+slot), and holds the grown buffer aside rather than assigning a failed
+`realloc` back over the live one — the correction `reserve` and
+`set_size` already carried.
 
 ### `pmix_bitmap_t` — auto-expanding bit array
 
@@ -397,6 +537,18 @@ A bitmap over `uint64_t` words. `set_bit` auto-expands the array to fit
 rather than expanding. Provides find-first-unset-and-set, whole-bitmap
 and/or/xor, population counts, copy, compare, and a `_get_string`
 debugging dump. Not TMA-aware.
+
+`max_size` is a public *bit* count on the way in and a **word** count once
+stored (`pmix_bitmap_set_max_size` converts); the constructor and
+`PMIX_BITMAP_STATIC_INIT` both leave it at `INT_MAX`, i.e. uncapped. Two
+things here were the directory's standing anti-patterns in miniature:
+`pmix_bitmap_set_bit`'s growth path assigned a failed `realloc` straight
+back into `bm->bitmap`, leaking the old block and leaving a NULL pointer
+behind a non-zero `array_size` for every later accessor to index (the same
+correction `pmix_bitmap_init` and `pmix_bitmap_copy` had already had); and
+`pmix_bitmap_num_set_bits`'s NULL/negative-length guard sat inside
+`#if PMIX_ENABLE_DEBUG`, so an optimized library read `bm->array_size`
+off a NULL pointer. Both are unconditional now.
 
 ## Directory layout
 
@@ -414,8 +566,9 @@ src/class/
 └── Makefile.am                builds noinst libpmix_class.la; installs headers
 
 test/unit/class/               one make-check program per class, plus
-                               class_refcount for the concurrent count;
-                               see its AGENTS.md
+                               class_refcount for the concurrent count and
+                               class_tma_shared for the cross-process TMA
+                               path; see its AGENTS.md
 contrib/dockerswarm/run-class-tests.sh
                                runs that suite --disable-debug with
                                default visibility, on Linux
@@ -451,15 +604,25 @@ this directory has had:
   non-trivial change here.
 - A multi-*node* test is not meaningful for this directory — these are
   single-process data structures. The genuinely distributed dimension is
-  the cross-process TMA path (`gds/shmem3`), which the group tests in
-  `contrib/dockerswarm/run-tests.sh` exercise.
+  the cross-process TMA path, and that now has a direct test:
+  `test/unit/class/class_tma_shared` builds a `pmix_hash_table_t`, a
+  `pmix_pointer_array_t` and a reference-counted object inside a real
+  `MAP_SHARED` segment and checks from a second process that the storage
+  and the count are genuinely shared. It is in `make check` and, being
+  multi-process, is the one member of the suite the swarm's ten-node
+  contention pass says something about. It stops short of segment
+  negotiation and attach between *unrelated* processes — its second
+  process comes from `fork()` — which stays with `gds/shmem3` and the
+  group tests in `contrib/dockerswarm/run-tests.sh`.
 
 ## Threading
 
 With one exception, these classes are **not internally synchronized**.
 The exception is the `pmix_object_t` reference count, which is a C11
 atomic so `PMIX_RETAIN`/`PMIX_RELEASE` are safe from any thread and from
-any process sharing a TMA segment. That is the whole of the guarantee:
+any process sharing a TMA segment (`class_refcount` and
+`class_tma_shared` pin those two halves respectively). That is the whole
+of the guarantee:
 the count is safe, the *object* is not. Two threads that both hold a
 reference still race on every field below `pmix_object_t`.
 
@@ -518,6 +681,17 @@ consumable internal surface — keep them clean.
   `pmix_output` belongs inside the `#if`. Several defects in this
   directory were exactly this mistake, and they are invisible in the
   configuration everyone develops in.
+- **A bare `assert()` is a debug-only check too.** `config/pmix.m4` adds
+  `-DNDEBUG` to `CFLAGS` whenever `--enable-debug` is off, so every
+  `assert` in this directory compiles to nothing in every build that
+  ships. That is fine for a spot-check on an invariant the code
+  establishes itself; it is not fine as the only thing standing between a
+  caller's argument and an out-of-bounds write.
+  `pmix_pointer_array_test_and_set_item` guarded its index with
+  `assert(index >= 0)` alone, so a negative index wrote below the start
+  of `addr` in exactly the builds that matter — while its sibling
+  `pmix_pointer_array_set_item` had always rejected it outright. If the
+  check is about *caller input*, write an `if` and return an error.
 - **Leave objects in the constructed state when you destruct them.**
   The destructors here now do (`pmix_list_destruct` always did — it
   calls the constructor). Freeing a pointer and leaving it in the struct
@@ -533,6 +707,65 @@ consumable internal surface — keep them clean.
   descriptor is hidden outside `libpmix` and `PMIX_NEW(pmix_foo_t)` will
   not link for any consumer — a failure you cannot see locally if your
   tree is configured `--disable-visibility`.
+
+  **The rule, stated as a boundary:** every class declared in an
+  **installed** header must have an exported descriptor. An installed
+  header *is* the consumable surface — `PRRTE` has no object system of
+  its own and drives PMIx's directly (hundreds of `PMIX_NEW` sites, plus
+  its own classes declared with `PMIX_CLASS_DECLARATION`) — so a class
+  you can `#include` but not link is simply broken as shipped. Classes in
+  headers that are *not* installed should stay hidden; exporting those
+  only grows the dynamic symbol table and wrongly advertises them as
+  consumable. The exception is a class an in-tree `test/unit` program
+  needs, since those link against `libpmix` from outside it too
+  (`pmix_gds_base_active_module_t` is the one such case today).
+
+  **Two places can do the exporting, and that is why this is hard to
+  audit.** Either the declaration in the header:
+
+  ```c
+  PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_foo_t);   /* pmix_foo.h */
+  ```
+
+  or the definition in the `.c`:
+
+  ```c
+  PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_foo_t, ...); /* pmix_foo.c */
+  ```
+
+  Either one gives the symbol default visibility, so **grepping the
+  headers overcounts what is actually broken** — of 59 bare declarations
+  in installed headers, only 31 were genuinely hidden; the rest were
+  exported at the definition site. Prefer the declaration form (it is
+  what the header promises the reader), but when you want the truth, ask
+  the library rather than the source:
+
+  ```sh
+  nm -m src/.libs/libpmix.dylib | grep '_class$' | grep non-external   # macOS
+  readelf -sW src/.libs/libpmix.so | grep '_class$' | grep LOCAL       # Linux
+  ```
+
+  Do that against a tree configured **without** `--disable-visibility`,
+  or every symbol looks fine.
+
+  **And determine "installed" from the install tree, not from the
+  `Makefile.am`s.** Headers reach `$(pmixincludedir)` through several
+  variables and conditional blocks, and a hand-rolled parse of the
+  `headers =` lists undercounts badly — it missed 36 of the 115 headers
+  PMIx actually installs, including `src/server/pmix_server_ops.h`,
+  `src/event/pmix_event.h` and every framework `base/base.h`. Just
+  `make install` to a scratch prefix and look:
+
+  ```sh
+  find $PREFIX/include/pmix -name '*.h' | sed "s|$PREFIX/include/pmix/||"
+  ```
+
+  As of this sweep, 134 class descriptors are defined in `libpmix`, 103
+  are exported, and the 31 that remain hidden are correctly hidden: 27
+  are private to a single `.c` (no header declaration at all) and 4 are
+  `gds/hash` component internals (`pmix_session_t`, `pmix_job_t`,
+  `pmix_apptrkr_t`, `pmix_nodeinfo_t`) whose header is not installed. No
+  class declared in an installed header is hidden.
 - **Keep it warning-free and portable.** This code runs on every platform
   PMIx supports and is compiled with `-Werror` in CI. Use the
   `__pmix_attribute_*__` wrappers and `PMIX_HIDE_UNUSED_PARAMS` rather
