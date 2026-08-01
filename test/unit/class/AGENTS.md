@@ -82,21 +82,17 @@ The tree everyone develops in — and the one
   [`src/class/AGENTS.md`](../../../src/class/AGENTS.md), including why
   grepping the headers for `PMIX_EXPORT` gives the wrong answer.
 
-**And in a default-visibility tree, `make check` from the top does not
-run this suite at all.** `test/Makefile.am` wraps its whole `SUBDIRS`
-line in `if !WANT_HIDDEN` — these programs use internal symbols, so the
-tree is only descended into when configured `--disable-visibility`.
-Configure without it and a top-level `make check` runs the 15 programs
-in `test/` itself, reports `# FAIL: 0`, and never enters `unit/`,
-`unit/class/`, `unit/util/` or `simple/`. Nothing warns you. That is why
-`contrib/dockerswarm/run-class-tests.sh` invokes
-`make -C test/unit/class check` directly rather than relying on the
-recursion — and why, when you want to know whether this suite passes in
-an optimized default-visibility build, you have to say so explicitly:
-
-```sh
-make -C test/unit/class check      # not "make check" from the top
-```
+**Until recently, a default-visibility tree did not run this suite at
+all.** `test/Makefile.am` wrapped its whole `SUBDIRS` line in
+`if !WANT_HIDDEN`, so unless you configured `--disable-visibility`, a
+top-level `make check` ran the 15 programs in `test/` itself, reported
+`# FAIL: 0`, and never entered `unit/class/`. The configuration this
+suite most needs to be run in was the one it was never run in, and
+nothing warned you. The condition is gone (see
+[`../AGENTS.md`](../AGENTS.md) for what replaced it), and
+`contrib/dockerswarm/run-class-tests.sh` still invokes
+`make -C test/unit/class check` directly, which is why its coverage was
+real throughout.
 
 So a green run here proves less than it looks like it does. Several
 cases in the suite are labelled `(all builds)` precisely because they
