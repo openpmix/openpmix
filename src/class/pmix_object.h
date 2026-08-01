@@ -225,12 +225,6 @@ typedef struct pmix_tma {
      */
     /** Pointer to the TMA's strdup() function. */
     char *(*tma_strdup)(struct pmix_tma *, const char *s);
-    /**
-     * A memmove()-like function that copies the provided contents to an
-     * appropriate location in the memory area maintained by the allocator.
-     * Like memmove(), it returns a pointer to the content's destination.
-     */
-    void *(*tma_memmove)(struct pmix_tma *tma, const void *src, size_t n);
     /** Pointer to the TMA's free() function. */
     void (*tma_free)(struct pmix_tma *, void *);
     /** Points to a user-defined TMA context. */
@@ -356,7 +350,6 @@ PMIX_EXPORT extern pmix_atomic_int32_t pmix_class_init_epoch;
                 .tma_calloc = NULL,                 \
                 .tma_realloc = NULL,                \
                 .tma_strdup = NULL,                 \
-                .tma_memmove = NULL,                \
                 .tma_free = NULL,                   \
                 .data_context = NULL,               \
                 .data_ptr = NULL                    \
@@ -374,7 +367,6 @@ PMIX_EXPORT extern pmix_atomic_int32_t pmix_class_init_epoch;
                 .tma_calloc = NULL,                 \
                 .tma_realloc = NULL,                \
                 .tma_strdup = NULL,                 \
-                .tma_memmove = NULL,                \
                 .tma_free = NULL,                   \
                 .data_context = NULL,               \
                 .data_ptr = NULL                    \
@@ -581,7 +573,6 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *tma)
         obj->obj_tma.tma_calloc = NULL;
         obj->obj_tma.tma_realloc = NULL;
         obj->obj_tma.tma_strdup = NULL;
-        obj->obj_tma.tma_memmove = NULL;
         obj->obj_tma.tma_free = NULL;
         obj->obj_tma.data_context = NULL;
         obj->obj_tma.data_ptr = NULL;

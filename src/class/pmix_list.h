@@ -105,7 +105,6 @@ struct pmix_list_item_t {
     /**< Pointer to next list item */
     volatile struct pmix_list_item_t *pmix_list_prev;
     /**< Pointer to previous list item */
-    int32_t item_free;
 
 #if PMIX_ENABLE_DEBUG
     /** Atomic reference count for debugging */
@@ -119,13 +118,14 @@ struct pmix_list_item_t {
  */
 typedef struct pmix_list_item_t pmix_list_item_t;
 
-/* static initializer for pmix_list_t */
+/* static initializer for pmix_list_item_t.
+ *
+ * Keep this in step with pmix_list_item_construct(), field for field. */
 #define PMIX_LIST_ITEM_STATIC_INIT                      \
     {                                                   \
         .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
         .pmix_list_next = NULL,                         \
-        .pmix_list_prev = NULL,                         \
-        .item_free = 0                                  \
+        .pmix_list_prev = NULL                          \
     }
 
 /**

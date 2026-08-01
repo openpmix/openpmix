@@ -49,7 +49,6 @@ PMIX_CLASS_INSTANCE(pmix_list_t, pmix_object_t, pmix_list_construct, pmix_list_d
 static void pmix_list_item_construct(pmix_list_item_t *item)
 {
     item->pmix_list_next = item->pmix_list_prev = NULL;
-    item->item_free = 1;
 #if PMIX_ENABLE_DEBUG
     item->pmix_list_item_refcount = 0;
     item->pmix_list_item_belong_to = NULL;

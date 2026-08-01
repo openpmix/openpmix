@@ -201,12 +201,15 @@ static void test_class_sizeof(void)
 /* Regressions                                                          */
 /* ------------------------------------------------------------------ */
 
-/* PMIX_NEW() carried its own copy of the TMA-clearing code and set seven
- * of pmix_tma_t's eight members, leaving tma_memmove holding whatever
- * malloc() returned. pmix_obj_get_tma() keys off tma_malloc, so the stray
- * member never showed up as a crash -- it just meant every heap object in
- * the library had one uninitialized field for anything that copied or
- * inspected the whole struct. */
+/* PMIX_NEW() carried its own copy of the TMA-clearing code and cleared one
+ * fewer member than pmix_obj_construct_tma() did, leaving a stray
+ * uninitialized function pointer in every heap object in the library.
+ * pmix_obj_get_tma() keys off tma_malloc alone, so it never showed up as a
+ * crash -- it just meant anything copying or inspecting the whole struct
+ * read garbage. The offending member (tma_memmove) has since been deleted
+ * as dead weight, but the invariant it broke is the one that matters:
+ * PMIX_NEW and PMIX_CONSTRUCT must leave *every* pmix_tma_t member
+ * cleared, and both must do it through the one shared helper. */
 static void test_new_clears_whole_tma(void)
 {
     pmix_list_item_t *obj = PMIX_NEW(pmix_list_item_t);
@@ -221,7 +224,6 @@ static void test_new_clears_whole_tma(void)
     report("PMIX_NEW: tma_calloc cleared", NULL == base->obj_tma.tma_calloc);
     report("PMIX_NEW: tma_realloc cleared", NULL == base->obj_tma.tma_realloc);
     report("PMIX_NEW: tma_strdup cleared", NULL == base->obj_tma.tma_strdup);
-    report("PMIX_NEW: tma_memmove cleared", NULL == base->obj_tma.tma_memmove);
     report("PMIX_NEW: tma_free cleared", NULL == base->obj_tma.tma_free);
     report("PMIX_NEW: data_context cleared", NULL == base->obj_tma.data_context);
     report("PMIX_NEW: data_ptr cleared", NULL == base->obj_tma.data_ptr);
@@ -241,7 +243,6 @@ static void test_construct_clears_whole_tma(void)
     PMIX_CONSTRUCT(&item, pmix_list_item_t);
 
     report("PMIX_CONSTRUCT: tma_malloc cleared", NULL == base->obj_tma.tma_malloc);
-    report("PMIX_CONSTRUCT: tma_memmove cleared", NULL == base->obj_tma.tma_memmove);
     report("PMIX_CONSTRUCT: tma_free cleared", NULL == base->obj_tma.tma_free);
     report("PMIX_CONSTRUCT: data_ptr cleared", NULL == base->obj_tma.data_ptr);
     report("PMIX_CONSTRUCT: reports no custom allocator", NULL == pmix_obj_get_tma(base));
