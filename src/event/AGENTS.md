@@ -70,7 +70,9 @@ and each partition is a separate list in `pmix_globals.events`:
 | last overall | `events.last` | single handler invoked after everything (`PMIX_EVENT_HDLR_LAST`) |
 
 An incoming event walks these in the order shown: first → single →
-multi → default → last. Within a list, position is controlled at
+multi → default → last. A sixth list, `events.observers`, is **not** part
+of that walk — see [Internal observers](#internal-observers) below.
+Within a list, position is controlled at
 registration time by `PMIX_EVENT_HDLR_PREPEND`/`APPEND`,
 `FIRST_IN_CATEGORY`/`LAST_IN_CATEGORY`, or `BEFORE`/`AFTER` a *named*
 handler; the resolved position is recorded in `pmix_event_hdlr_t.precedence`
@@ -159,6 +161,79 @@ adds the group (id, sorted membership, context id) to
 `pmix_client_globals.groups`, and `PMIX_GROUP_LEFT` removes the
 departing member — keep these in sync with the group code in
 `src/client/pmix_client_group.c` and `src/common/pmix_pgroup.c`.
+
+## Internal observers
+
+**When PMIx itself needs to see an event, it registers an observer, not
+an event handler.** This is not a style preference: an event handler —
+including one the library registers — can be silently suppressed by an
+ordinary application handler that returns `PMIX_EVENT_ACTION_COMPLETE`,
+which is the documented way for an application to say "I handled this".
+That cost the group code an unbounded hang in `PMIx_Group_invite` and a
+safety net that never fired; the whole story, the reproducers, and the
+options weighed is [openpmix#4059][i4059].
+
+An observer is a registration on `pmix_globals.events.observers` with a
+`pmix_event_observer_fn_t` callback. The list is **not** a sixth chain
+bucket. `sweep_observers()` runs every matching observer inline, in
+registration order, from `pmix_invoke_local_event_hdlr` *before*
+`events.first` is consulted — the same pre-chain position the group
+bookkeeping above already occupies, and for the same reason: nothing
+reached from there can be pre-empted.
+
+The guarantee lives in the signature. An observer returns `void` and is
+given no completion callback, so it has nowhere to express "end the
+chain", nowhere to defer, and nothing to contribute to
+`chain->results`. Four rules follow from running inline on the progress
+thread ahead of the chain, and they are repeated on the typedef in
+`pmix_event.h`:
+
+1. **Never block.** Bookkeeping, waking a lock, firing a caller's
+   callback, posting a `PMIX_THREADSHIFT`, or a *non-blocking*
+   `PMIx_Notify_event` are all fine. `PMIX_WAIT_THREAD` and the blocking
+   public APIs are not.
+2. **Never synchronously drive another chain** — that re-enters the
+   sweep.
+3. **Be idempotent.** `check_cached_events()` replays a cached
+   notification through the whole delivery path, so an observer can
+   legitimately see the same event twice.
+4. **Self-deregistration is legal.** `pmix_event_deregister_observer`
+   threadshifts, so the removal lands after the sweep is done with the
+   list; the sweep also walks SAFE so that is not load-bearing.
+
+Registration and deregistration deliberately reuse the ordinary
+pipeline (`pmix_internal_reg_event_hdlr` / `pmix_deregister_event_hdlr`,
+diverted by a non-NULL `cd->obsfn`), because **a local registration is
+not enough**: the server only forwards a code to a process that asked
+for it, and that per-code refcounting lives in `events.actives` /
+`_add_hdlr`. An observer holds exactly the same interest a handler does
+and gives it back the same way. Two differences from a handler
+registration: an observer passes no info array at all — its name and
+return object ride on the caddy, since there is no caller to keep an
+array alive across the threadshift — and it takes no ordering
+directives, so it never reaches the placement logic or the
+`first`/`last` slots.
+
+An observer must name at least one code; there is no default observer.
+If it supplies a `relfn`, the registry owns its `cbobject` from a
+successful `pmix_event_register_observer()` onward and releases it
+exactly once from `sevdes()` — on deregistration, on a failed
+registration, and at finalize when the list is destructed. That
+ownership is what lets a subsystem drop the private "survivor list" it
+would otherwise need to reclaim watches that outlive their event.
+
+Coverage is in `test/unit/event_chain.c` (`test_observer`): the
+suppression regression itself, the pre-chain ordering, the active-code
+bookkeeping across register/deregister, self-deregistration, and the
+release callback.
+
+Note that `sweep_observers()` applies the same source-range and
+affected-proc filters as the chain, but no registration path populates
+either field on an observer today, so both currently pass vacuously.
+They are wired up so that an observer that ever needs them gets the
+same semantics a handler has, rather than silently getting none.
+
+[i4059]: https://github.com/openpmix/openpmix/issues/4059
 
 ## Registration flow
 
@@ -352,6 +427,10 @@ suite — most of this directory is unit-testable without a launcher.
 - **Match the surrounding pattern exactly** — pick the nearest sibling
   branch (client vs. server vs. tool) that already does what you need
   and mirror its ownership discipline.
+- **If the library needs to see an event, use an observer** — see
+  [Internal observers](#internal-observers). Registering an ordinary
+  handler for internal purposes is the defect in
+  [openpmix#4059][i4059], not a shortcut around it.
 - **Prefer a new attribute over a new API** (top-level "Role of
   Attributes") — event behavior is extended by adding
   `PMIX_EVENT_*` directives parsed in

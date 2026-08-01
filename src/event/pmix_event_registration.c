@@ -42,6 +42,10 @@ static void rscon(pmix_rshift_caddy_t *p)
     p->affected = NULL;
     p->naffected = 0;
     p->evhdlr = NULL;
+    p->obsfn = NULL;
+    p->relfn = NULL;
+    p->cbobject = NULL;
+    p->name = NULL;
     p->evregcbfn = NULL;
     p->cbdata = NULL;
 }
@@ -50,6 +54,14 @@ static void rsdes(pmix_rshift_caddy_t *p)
     PMIX_DESTRUCT_LOCK(&p->lock);
     if (0 < p->ncodes) {
         free(p->codes);
+    }
+    if (NULL != p->name) {
+        free(p->name);
+    }
+    /* an observer registration that never got as far as building its
+     * handler object still owns the object it was given */
+    if (NULL != p->relfn && NULL != p->cbobject) {
+        p->relfn(p->cbobject);
     }
     if (NULL != p->cd) {
         PMIX_RELEASE(p->cd);
@@ -606,6 +618,16 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
         }
     }
 
+    /* An internal observer carries no info array - it has no caller to
+     * hold one alive across the threadshift - so pick up the two things
+     * it would otherwise have expressed as directives. It takes no
+     * ordering directives at all, which is why nothing below can route it
+     * into the "first"/"last" slots or the placement logic. */
+    if (NULL != cd->obsfn) {
+        name = cd->name;
+        cbobject = cd->cbobject;
+    }
+
     /* check the codes for system events */
     for (n = 0; n < cd->ncodes; n++) {
         if (PMIX_SYSTEM_EVENT(cd->codes[n])) {
@@ -730,7 +752,38 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
         memcpy(evhdlr->affected, cd->affected, cd->naffected * sizeof(pmix_proc_t));
     }
     evhdlr->evhdlr = cd->evhdlr;
+    evhdlr->obsfn = cd->obsfn;
+    evhdlr->relfn = cd->relfn;
     evhdlr->cbobject = cbobject;
+    /* ownership of an observer's object passes to the handler object here,
+     * and is discharged by its destructor - on a failed registration just
+     * as on deregistration. Clear it from the caddy so the caddy destructor,
+     * which covers the paths that die before we reach this point, does not
+     * release it a second time. */
+    cd->relfn = NULL;
+    cd->cbobject = NULL;
+    if (NULL != cd->obsfn) {
+        /* a library-internal observer - it is not part of the event chain,
+         * so it goes on its own list and takes no placement directives.
+         * It still needs its codes recorded below, and still has to tell
+         * the server it wants them forwarded, exactly like a handler. */
+        evhdlr->codes = (pmix_status_t *) malloc(cd->ncodes * sizeof(pmix_status_t));
+        if (NULL == evhdlr->codes) {
+            PMIX_RELEASE(evhdlr);
+            index = SIZE_MAX;
+            rc = PMIX_ERR_EVENT_REGISTRATION;
+            goto ack;
+        }
+        memcpy(evhdlr->codes, cd->codes, cd->ncodes * sizeof(pmix_status_t));
+        evhdlr->ncodes = cd->ncodes;
+        cd->index = index;
+        cd->hdlr = evhdlr;
+        cd->firstoverall = false;
+        cd->list = &pmix_globals.events.observers;
+        /* observers run in registration order */
+        pmix_list_append(cd->list, &evhdlr->super);
+        goto tellserver;
+    }
     if (NULL == cd->codes) {
         /* this is a default handler */
         cd->list = &pmix_globals.events.default_events;
@@ -993,6 +1046,68 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
     return rc;
 }
 
+/* Used when an observer registration is made without a completion
+ * callback - pmix_internal_reg_event_hdlr only releases the caddy from
+ * inside the callback branch, so there always has to be one. */
+static void obs_regcb(pmix_status_t status, size_t refid, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(status, refid, cbdata);
+}
+
+pmix_status_t pmix_event_register_observer(const char *name,
+                                           const pmix_status_t codes[], size_t ncodes,
+                                           pmix_event_observer_fn_t obsfn,
+                                           void *cbobject,
+                                           pmix_release_cbfunc_t relfn,
+                                           pmix_hdlr_reg_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_rshift_caddy_t *cd;
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* an observer must name the codes it wants - there is no default
+     * observer, and a NULL codes array is how a default handler is spelled */
+    if (NULL == obsfn || NULL == codes || 0 == ncodes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* thread shift so we can touch the registration lists */
+    cd = PMIX_NEW(pmix_rshift_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->codes = (pmix_status_t *) malloc(ncodes * sizeof(pmix_status_t));
+    if (NULL == cd->codes) {
+        PMIX_RELEASE(cd);
+        return PMIX_ERR_NOMEM;
+    }
+    memcpy(cd->codes, codes, ncodes * sizeof(pmix_status_t));
+    cd->ncodes = ncodes;
+    cd->obsfn = obsfn;
+    cd->cbobject = cbobject;
+    /* from here on the registration owns cbobject: every path out of
+     * pmix_internal_reg_event_hdlr discharges relfn exactly once, so the
+     * caller must not release it after a successful return */
+    cd->relfn = relfn;
+    if (NULL != name) {
+        cd->name = strdup(name);
+    }
+    cd->evregcbfn = (NULL == cbfunc) ? obs_regcb : cbfunc;
+    cd->cbdata = cbdata;
+
+    pmix_output_verbose(2, pmix_client_globals.event_output,
+                        "pmix_event_register_observer shifting to progress thread");
+    PMIX_THREADSHIFT(cd, pmix_internal_reg_event_hdlr);
+
+    return PMIX_SUCCESS;
+}
+
 /* If we are a server that asked its host to forward the environmental
  * codes this handler wanted, then release that interest - the host will
  * be told to stop forwarding any code that no longer has a registrant,
@@ -1165,6 +1280,40 @@ pmix_status_t pmix_deregister_event_hdlr(size_t event_hdlr_ref,
             return PMIX_SUCCESS;
         }
     }
+    /* finally, the library's own observers - they are not on the chain, but
+     * they hold the same per-code interest with the server that a handler
+     * does, so they have to give it back the same way */
+    PMIX_LIST_FOREACH (evhdlr, &pmix_globals.events.observers, pmix_event_hdlr_t) {
+        if (evhdlr->index == event_hdlr_ref) {
+            /* found it */
+            pmix_list_remove_item(&pmix_globals.events.observers, &evhdlr->super);
+            for (n = 0; n < evhdlr->ncodes; n++) {
+                /* see if this is the last registration we have for this code */
+                PMIX_LIST_FOREACH (active, &pmix_globals.events.actives, pmix_active_code_t) {
+                    if (active->code == evhdlr->codes[n]) {
+                        --active->nregs;
+                        if (0 == active->nregs) {
+                            pmix_list_remove_item(&pmix_globals.events.actives, &active->super);
+                            if (NULL != msg) {
+                                /* tell the server to dereg this code */
+                                PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg,
+                                                 &active->code, 1, PMIX_STATUS);
+                                if (PMIX_SUCCESS != rc) {
+                                    PMIX_RELEASE(active);
+                                    return rc;
+                                }
+                            }
+                            PMIX_RELEASE(active);
+                        }
+                        break;
+                    }
+                }
+            }
+            release_enviro_codes(evhdlr);
+            PMIX_RELEASE(evhdlr);
+            return PMIX_SUCCESS;
+        }
+    }
     return PMIX_SUCCESS;
 }
 
@@ -1208,6 +1357,36 @@ cleanup:
         cd->cbfunc.opcbfn(rc, cd->cbdata);
     }
     PMIX_RELEASE(cd);
+}
+
+pmix_status_t pmix_event_deregister_observer(size_t obsid,
+                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_shift_caddy_t *cd;
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* always non-blocking: the usual caller is an observer removing itself,
+     * which is already running on the progress thread */
+    cd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->cbfunc.opcbfn = cbfunc;
+    cd->cbdata = cbdata;
+    cd->ref = obsid;
+
+    pmix_output_verbose(2, pmix_client_globals.event_output,
+                        "pmix_event_deregister_observer shifting to progress thread");
+    PMIX_THREADSHIFT(cd, dereg_event_hdlr);
+
+    return PMIX_SUCCESS;
 }
 
 static void myopcb(pmix_status_t status, void *cbdata)

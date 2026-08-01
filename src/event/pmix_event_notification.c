@@ -726,6 +726,53 @@ static void progress_local_event_hdlr(pmix_status_t status, pmix_info_t *results
     PMIX_THREADSHIFT(chain, cycle_events);
 }
 
+/* Run every library-internal observer that matches this event.
+ *
+ * This is deliberately not part of the chain walk. The chain is the
+ * application's: it is ordered by directives the application supplies, and
+ * any handler on it may end it with PMIX_EVENT_ACTION_COMPLETE - the normal
+ * way to say "I handled this". An observer is the library watching an event
+ * it needs for its own correctness, so it runs here, ahead of the chain,
+ * where nothing the application does can reach it. See openpmix#4059.
+ *
+ * Observers are subject to the same three filters as a handler - code match,
+ * source range, affected-proc overlap - but not to chain->nondefault, which
+ * governs whether an event may fall through to a *default* handler and has
+ * no bearing on a registration for specific codes. No registration path
+ * populates an observer's range or affected list today, so those two
+ * checks currently pass vacuously; they are applied so that an observer
+ * which someday needs them gets a handler's semantics rather than none.
+ *
+ * Walked SAFE because an observer is allowed to tear itself down. In
+ * practice deregistration threadshifts, so the removal lands after this
+ * returns; the SAFE walk keeps that from being load-bearing.
+ */
+static void sweep_observers(pmix_event_chain_t *chain)
+{
+    pmix_event_hdlr_t *obs, *nxt;
+    size_t n;
+
+    PMIX_LIST_FOREACH_SAFE (obs, nxt, &pmix_globals.events.observers, pmix_event_hdlr_t) {
+        for (n = 0; n < obs->ncodes; n++) {
+            if (obs->codes[n] != chain->status) {
+                continue;
+            }
+            if (!pmix_notify_check_range(&obs->rng, &chain->source) ||
+                !pmix_notify_check_affected(obs->affected, obs->naffected,
+                                            chain->affected, chain->naffected)) {
+                break;
+            }
+            pmix_output_verbose(2, pmix_client_globals.event_output,
+                                "%s INVOKING OBSERVER %s",
+                                PMIX_NAME_PRINT(&pmix_globals.myid),
+                                (NULL == obs->name) ? "NULL" : obs->name);
+            obs->obsfn(chain->status, &chain->source, chain->info, chain->ninfo,
+                       chain->affected, chain->naffected, obs->cbobject);
+            break;
+        }
+    }
+}
+
 /* given notification of an event, cycle thru our list of
  * registered callbacks and invoke the matching ones. Note
  * that we will invoke the callbacks in order from single
@@ -869,6 +916,12 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             pmix_mutex_unlock(&pmix_client_globals.grouplock);
         }
     }
+
+    /* Give the library's own observers the event before the application
+     * chain gets a chance to end it. This runs after the group bookkeeping
+     * above so an observer sees the same view of pmix_client_globals.groups
+     * that a handler would. */
+    sweep_observers(chain);
 
     /* if we registered a "first" handler, and it fits the given range,
      * then invoke it first */
@@ -1609,12 +1662,21 @@ static void sevcon(pmix_event_hdlr_t *p)
     p->affected = NULL;
     p->naffected = 0;
     p->evhdlr = NULL;
+    p->obsfn = NULL;
+    p->relfn = NULL;
     p->cbobject = NULL;
     p->codes = NULL;
     p->ncodes = 0;
 }
 static void sevdes(pmix_event_hdlr_t *p)
 {
+    /* an observer can ask the registry to own its object - this is the
+     * one place that ownership is discharged, and it is reached from
+     * both deregistration and the finalize-time list destruct */
+    if (NULL != p->relfn && NULL != p->cbobject) {
+        p->relfn(p->cbobject);
+        p->cbobject = NULL;
+    }
     if (NULL != p->name) {
         free(p->name);
     }
@@ -1649,6 +1711,7 @@ static void evcon(pmix_events_t *p)
     PMIX_CONSTRUCT(&p->single_events, pmix_list_t);
     PMIX_CONSTRUCT(&p->multi_events, pmix_list_t);
     PMIX_CONSTRUCT(&p->default_events, pmix_list_t);
+    PMIX_CONSTRUCT(&p->observers, pmix_list_t);
 }
 static void evdes(pmix_events_t *p)
 {
@@ -1662,6 +1725,7 @@ static void evdes(pmix_events_t *p)
     PMIX_LIST_DESTRUCT(&p->single_events);
     PMIX_LIST_DESTRUCT(&p->multi_events);
     PMIX_LIST_DESTRUCT(&p->default_events);
+    PMIX_LIST_DESTRUCT(&p->observers);
 }
 PMIX_CLASS_INSTANCE(pmix_events_t,
                     pmix_object_t,
