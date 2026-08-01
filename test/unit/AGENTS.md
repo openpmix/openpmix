@@ -105,22 +105,46 @@ reasons.** If the whole `run_*.pl` family fails at once, rerun under
 `TMPDIR=$(mktemp -d) make check` before investigating; see the top-level
 guide's "Building and Testing".
 
-**In a default-visibility tree, a top-level `make check` never reaches
-this directory at all.** `test/Makefile.am` wraps its `SUBDIRS` line in
-`if !WANT_HIDDEN` — these programs use internal symbols, so the tree is
-only descended into when configured `--disable-visibility`. Without it,
-`make check` runs the 15 programs in `test/` itself, prints `# FAIL: 0`,
-and silently skips `unit/`, `unit/class/`, `unit/util/` and `simple/`.
-Two consequences worth knowing:
+**This directory was invisible to `make check` in any tree not
+configured `--disable-visibility`, and that has been fixed — know the
+shape of it.** `test/Makefile.am` wrapped its whole `SUBDIRS` line in
+`if !WANT_HIDDEN`, on the grounds that these programs use internal
+symbols. The effect was that a default-visibility build ran the 15
+programs in `test/` itself, printed `# FAIL: 0`, and silently skipped
+`unit/`, `unit/class/`, `unit/util/`, `simple/` and `topologies/`. So the
+optimized configuration these tests exist to cover was never actually
+tested by `make check`, and nothing said so.
 
-- To exercise this suite in an optimized default-visibility build you
-  must name the directory: `make -C test/unit check`.
-- Doing that alone gives you 13 failures in the `run_grp*.pl` /
-  `run_monitor.pl` family, all reporting `./simptest: No such file or
-  directory` (exit 127) — because `test/simple` was skipped by the same
-  guard and never built. `make -C test/simple` first, then the suite is
-  green. That failure signature is *not* the stale-`$TMPDIR` one above,
-  and not a defect; check whether the binary exists before chasing it.
+The condition is gone: every internal symbol these programs reach is now
+exported, and all five subdirectories build and pass with visibility on.
+Verified in five configurations across both primary platforms —
+Linux/gcc (`--enable-debug --disable-visibility`, `--enable-debug`,
+`--disable-debug`) and macOS/clang (`--enable-debug`, `--disable-debug`)
+— 80 tests passing and zero warnings in every one. The macOS
+default-visibility build also confirms the symbol state the whole thing
+rests on, using the `nm` audit described in
+[`src/class/AGENTS.md`](../../src/class/AGENTS.md): 134 class
+descriptors, 103 exported, and the 31 hidden ones all private to a
+single `.c` or to `gds/hash`, whose header is not installed. **No class
+declared in an installed header is hidden** — which is precisely why
+these programs link now and did not before.
+
+Two things guard against a repeat, and both were tested by triggering
+them:
+
+- `test/Makefile.am` has a `check-local` that **fails** if `SUBDIRS` ever
+  comes out empty, rather than letting `make check` recurse into nothing
+  and report success.
+- The top-level `Makefile.am` prints a loud "no tests were run" notice
+  when the tree is configured `--without-tests-examples`, which drops
+  `test/` from `SUBDIRS` one level up and produces exactly the same
+  silent, successful nothing.
+
+If you hit a test that genuinely cannot link without
+`--disable-visibility`, the fix is `PMIX_EXPORT` on what it needs (see
+the export rule in [`src/class/AGENTS.md`](../../src/class/AGENTS.md)),
+not a condition here that removes the tree from `make check` without a
+word.
 
 **Do not run this suite against an `--enable-test-build` tree.** Its
 shimmed `pcompress`/`psec` components are non-functional by design, so

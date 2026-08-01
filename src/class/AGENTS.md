@@ -838,7 +838,18 @@ consumable internal surface — keep them clean.
   are private to a single `.c` (no header declaration at all) and 4 are
   `gds/hash` component internals (`pmix_session_t`, `pmix_job_t`,
   `pmix_apptrkr_t`, `pmix_nodeinfo_t`) whose header is not installed. No
-  class declared in an installed header is hidden.
+  class declared in an installed header is hidden. Re-confirmed since,
+  with the `nm -m` recipe above, against a native macOS/clang
+  default-visibility build — same 134/103/31.
+
+  **That state is now load-bearing for the test suite, not just for
+  downstream consumers.** `test/Makefile.am` used to skip its entire
+  `SUBDIRS` unless the tree was configured `--disable-visibility`,
+  because these programs reach internal symbols; completing the exports
+  is what made the condition removable, and `make check` now descends
+  into `test/unit` in every configuration. If you hide a descriptor that
+  an installed header declares, you will break the suite as well as
+  PRRTE.
 - **Keep it warning-free and portable.** This code runs on every platform
   PMIx supports and is compiled with `-Werror` in CI. Use the
   `__pmix_attribute_*__` wrappers and `PMIX_HIDE_UNUSED_PARAMS` rather

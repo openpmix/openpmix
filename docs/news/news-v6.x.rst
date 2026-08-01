@@ -7,6 +7,24 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Made "make check" actually run the test suite. test/Makefile.am
+   wrapped its whole SUBDIRS line in "if !WANT_HIDDEN", so unless the
+   tree was configured --disable-visibility a top-level make check ran
+   the 15 programs in test/ itself, printed "# FAIL: 0", and silently
+   skipped test/unit, test/unit/class, test/unit/util, test/simple and
+   test/topologies. The optimized, default-visibility configuration -
+   the one those tests most need to cover, and the one users get - was
+   therefore never exercised by make check, and nothing said so. The
+   condition is no longer true now that the class descriptors declared
+   in installed headers are exported: all five subdirectories build and
+   pass with symbol visibility on, verified in five configurations
+   across both primary platforms - Linux/gcc and macOS/clang, debug and
+   optimized - with 80 tests passing and no warnings in every one. Two guards against a repeat: test/Makefile.am now fails
+   check-local if SUBDIRS ever comes out empty rather than recursing
+   into nothing and reporting success, and the top-level Makefile.am
+   prints a "no tests were run" notice when configured
+   --without-tests-examples, which produces the same silent success one
+   level up
  - Closed five more argument-checking holes in the src/class container
    classes, all of them invisible in the configuration developers build
    in. The hotel's three room-number accessors - pmix_hotel_checkout,

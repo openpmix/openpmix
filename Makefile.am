@@ -44,6 +44,24 @@ if PMIX_TESTS_EXAMPLES
 SUBDIRS += . test examples
 endif
 
+# Say so when "make check" has nothing to run. Without this, configuring
+# --without-tests-examples leaves test/ out of SUBDIRS entirely, so "make
+# check" recurses into nothing and exits 0 -- a result identical to a
+# clean full run. The same silent-skip shape (a conditional SUBDIRS) hid
+# the whole of test/ from every default-visibility build for as long as
+# the WANT_HIDDEN condition was there; see the note in test/Makefile.am.
+if !PMIX_TESTS_EXAMPLES
+check-local:
+	@echo "==============================================================="
+	@echo "NOTE: no tests were run."
+	@echo ""
+	@echo "This tree was configured --without-tests-examples, so test/ is"
+	@echo "not in SUBDIRS and 'make check' had nothing to descend into."
+	@echo "This is a success only in the sense that nothing failed."
+	@echo "Reconfigure with --with-tests-examples to run the suite."
+	@echo "==============================================================="
+endif
+
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
 
