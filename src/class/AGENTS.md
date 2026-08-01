@@ -105,41 +105,51 @@ Rules that trip people up:
   runs (e.g. `PMIX_LIST_STATIC_INIT`, `PMIX_HASH_TABLE_STATIC_INIT`).
   Prefer it to `PMIX_CONSTRUCT` for statics.
 
-### Reference counting is a C11 atomic
+### Reference counting is mutex-guarded — and that is a known problem
 
-`obj_reference_count` is a `pmix_atomic_int32_t`, and `pmix_obj_update`
-is a single `atomic_fetch_add_explicit(..., memory_order_acq_rel)`.
-**PMIx requires C11 atomics — `config/pmix.m4` fails configure outright
-without them — so there is never a question of whether they are
-available.** Do not reintroduce a lock here, and do not propose a
-fallback path for compilers that lack `<stdatomic.h>`; such a compiler
-cannot build PMIx at all.
+`obj_reference_count` is a plain `int32_t`, and `pmix_obj_update()` takes
+a per-object `pthread_mutex_t obj_lock` around every `PMIX_RETAIN` and
+`PMIX_RELEASE`. It is correct for threads within one process, and it is
+what the concurrency test in `test/unit/class/class_refcount.c` pins.
 
-The ordering is `acq_rel` because the one function serves both
-directions: the thread dropping the last reference must publish its
-writes before the count reaches zero, and whichever thread *observes*
-zero — and therefore runs the destructors and frees the storage — must
-acquire them. Anything weaker races the destructor against the last
-user. If you touch this, keep it `acq_rel`; a "relaxed is enough for a
-refcount" simplification is only true for the increment.
+Two defects come with it, and neither can be fixed in this directory
+alone:
 
-This replaced a per-object `pthread_mutex_t obj_lock` that was taken and
-released on every `PMIX_RETAIN`/`PMIX_RELEASE`. Three things came with
-that change, worth knowing if you are reading older code or an older
-branch:
+- The mutex is `pthread_mutex_init`'d in `pmix_obj_new_tma()` and
+  **never destroyed**, so it leaks on any platform where init allocates.
+- Objects allocated from a TMA live in an mmap'd segment shared between
+  processes (see the TMA section below), but the embedded mutex is never
+  created `PTHREAD_PROCESS_SHARED` — so **cross-process retain/release
+  on a shared object is undefined behavior today**.
 
-- The mutex was `pthread_mutex_init`'d and **never destroyed**, so it
-  leaked on any platform where init allocates.
-- Objects allocated from a TMA live in a shared-memory segment, and the
-  embedded mutex was never `PTHREAD_PROCESS_SHARED` — cross-process
-  retain/release was undefined. An atomic `int32_t` in shared memory is
-  well defined, which is what makes the TMA path below actually sound.
-- Every object in the tree shrank by the size of a `pthread_mutex_t`
-  (40 bytes on glibc, 64 on macOS), and `PMIX_OBJ_STATIC_INIT` no longer
-  carries `PTHREAD_MUTEX_INITIALIZER`.
+The obvious fix is a C11 atomic: PMIx hard-requires them
+(`config/pmix.m4` fails configure outright without them), and an atomic
+`int32_t` in shared memory is well defined. That change was written and
+then **pulled back out**, because it is not local:
 
-Retain/release is now cheap, but it is still an atomic RMW with full
-fencing — do not treat it as free in a tight loop.
+> Dropping `obj_lock` shrinks `pmix_object_t` from 168 bytes to 104,
+> which shifts every field of every derived class. `gds/shmem2` builds
+> `pmix_list_t` and `pmix_hash_table_t` *inside the segment it shares
+> with client processes*, and that segment carries no layout guard — so
+> a client from an older release maps the segment, reads
+> `pmix_list_length` at offset 368 where the server wrote it at 240, and
+> segfaults. `src/class/pmix_object.h` is also an installed header, so a
+> companion build such as PRRTE has the same exposure.
+
+Padding the mutex away does not help: an older peer does not merely
+expect 40-64 bytes at that offset, it expects a *working* mutex and will
+lock it. The mitigation has to make an older peer decline the segment
+entirely, which means the shared-memory component has to be invisible to
+it. That work — the atomic, plus renaming the component so pre-existing
+clients fall back to `hash`, plus ideally a layout stamp on the segment
+so future class changes are caught rather than crashing — belongs
+together in its own change.
+
+**So: do not "fix" the mutex here in isolation.** Any change to the size
+or layout of `pmix_object_t`, or of anything derived from it, is a
+cross-version compatibility change because of the `gds/shmem2` segment.
+Check that first.
+
 
 In `--enable-debug` builds each object carries a magic ID
 (`PMIX_OBJ_MAGIC_ID`) plus the file/line of last construction; the

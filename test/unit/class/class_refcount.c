@@ -12,20 +12,26 @@
  * touch from any thread: everything else in the directory (list links,
  * hash-table slots, pointer-array indices, hotel rooms) assumes the caller
  * serializes, which in PMIx means the progress thread.  So the count is
- * what is worth hammering, and it is what changed when the per-object
- * pthread_mutex_t was replaced by a C11 atomic.
+ * what is worth hammering.
  *
- * Three properties are checked:
+ * The three properties below are what pmix_obj_update() has to provide,
+ * whatever it is built on.  Today that is the per-object
+ * pthread_mutex_t; a C11 atomic would provide the same three and fix two
+ * defects the mutex carries, but it cannot be swapped in without
+ * changing the size of pmix_object_t, which is a cross-version
+ * compatibility change -- see the reference-counting section of
+ * src/class/AGENTS.md.  This test is written against the properties
+ * rather than the mechanism, so it holds either way.
  *
  *   1. Balanced retain/release from N threads leaves the count exactly
- *      where it started.  A non-atomic read-modify-write loses updates
- *      here and the count drifts low.
+ *      where it started.  An unserialized read-modify-write loses
+ *      updates here and the count drifts low.
  *   2. The thread that drives the count to zero is the only one that sees
  *      zero, so exactly one destructor runs -- this is what keeps
  *      PMIX_RELEASE from double-freeing.
  *   3. Whatever a thread wrote into the object before its final release
- *      is visible to the destructor.  This is the acq_rel ordering; under
- *      relaxed ordering the destructor may read stale fields.
+ *      is visible to the destructor.  Under a mechanism with no
+ *      release/acquire ordering the destructor may read stale fields.
  *
  * Exit 0 if all tests pass, 1 otherwise.
  */

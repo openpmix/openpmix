@@ -137,12 +137,17 @@ the one place threads belong in this suite. Do not add threads to the
 other programs to "improve coverage" — you would be testing a contract
 the classes do not offer.
 
-It checks three properties, all of which the C11 atomic in
-`pmix_obj_update` is responsible for: balanced retain/release from N
-threads leaves the count exactly where it started; exactly one thread
+It checks three properties, all of which `pmix_obj_update()` is
+responsible for however it is implemented: balanced retain/release from
+N threads leaves the count exactly where it started; exactly one thread
 observes zero and therefore exactly one destructor runs; and the writes
-a thread made before its last release are visible to that destructor
-(the `acq_rel` ordering).
+a thread made before its last release are visible to that destructor.
+The mechanism is currently the per-object `pthread_mutex_t`; see the
+reference-counting section of
+[`src/class/AGENTS.md`](../../../src/class/AGENTS.md) for why replacing
+it with a C11 atomic is a cross-version compatibility change rather than
+a local one. The test is written against the properties, not the
+mechanism, so it does not need to change with them.
 
 The barrier is hand-rolled from a mutex and condvar because macOS has no
 `pthread_barrier_t`. No per-target thread flags are needed —
