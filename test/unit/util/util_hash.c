@@ -64,8 +64,15 @@ static pmix_kval_t *make_kval_str(const char *key, const char *val)
 static void drain_list(pmix_list_t *lst)
 {
     pmix_kval_t *kv;
-    while (!pmix_list_is_empty(lst)) {
-        kv = (pmix_kval_t *) pmix_list_remove_first(lst);
+
+    /* Take the removal result as the loop condition rather than testing
+     * emptiness first. The two are equivalent at run time, but the compiler
+     * cannot connect pmix_list_is_empty() to what pmix_list_remove_first()
+     * returns, so it has to assume the NULL - and then warns that
+     * PMIX_RELEASE writes the reference count "into a region of size 0"
+     * (-Wstringop-overflow), which is an error under --enable-devel-check.
+     * This is also the idiom the rest of the tree uses. */
+    while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(lst))) {
         PMIX_RELEASE(kv);
     }
 }
