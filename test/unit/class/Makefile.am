@@ -14,11 +14,11 @@ AM_TESTS_ENVIRONMENT = . $(abs_top_builddir)/test/pmix_test_env.sh;
 
 check_PROGRAMS = class_object class_list class_bitmap class_hash_table \
     class_pointer_array class_ring_buffer class_value_array class_hotel \
-    class_refcount
+    class_refcount class_tma_shared
 
 TESTS = class_object class_list class_bitmap class_hash_table \
     class_pointer_array class_ring_buffer class_value_array class_hotel \
-    class_refcount
+    class_refcount class_tma_shared
 
 class_object_SOURCES = class_object.c
 class_object_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -69,7 +69,15 @@ class_refcount_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 class_refcount_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+# The one cross-process program in the suite: it exercises the object model
+# and the TMA-aware containers inside a shared mmap'd segment, from a second
+# process. That is the only genuinely distributed dimension src/class has.
+class_tma_shared_SOURCES = class_tma_shared.c
+class_tma_shared_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+class_tma_shared_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 clean-local:
 	rm -f class_object class_list class_bitmap class_hash_table \
 	    class_pointer_array class_ring_buffer class_value_array class_hotel \
-	    class_refcount
+	    class_refcount class_tma_shared

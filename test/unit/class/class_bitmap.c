@@ -511,6 +511,67 @@ static void test_reinit(void)
 
 /* ------------------------------------------------------------------ */
 
+/* The NULL/negative-length guard in pmix_bitmap_num_set_bits() used to sit
+ * inside "#if PMIX_ENABLE_DEBUG", so the only builds that had it were the
+ * ones nobody ships: an optimized library read bm->array_size straight off
+ * the NULL pointer. pmix_bitmap_num_unset_bits() inherited it, and worse,
+ * answered "len bits are unset" for a bitmap that does not exist.
+ *
+ * (all builds -- in a debug build the old code returned 0 too, so this
+ * case only distinguishes old from new when compiled --disable-debug) */
+static void test_count_bits_null_guard(void)
+{
+    report("num_set_bits(NULL): returns 0 rather than faulting",
+           0 == pmix_bitmap_num_set_bits(NULL, 64));
+    report("num_unset_bits(NULL): returns 0, not len",
+           0 == pmix_bitmap_num_unset_bits(NULL, 64));
+    report("num_set_bits(NULL, 0): returns 0", 0 == pmix_bitmap_num_set_bits(NULL, 0));
+
+    {
+        pmix_bitmap_t bm;
+        PMIX_CONSTRUCT(&bm, pmix_bitmap_t);
+        pmix_bitmap_init(&bm, 64);
+        pmix_bitmap_set_bit(&bm, 0);
+        report("num_set_bits(bm, negative len): returns 0",
+               0 == pmix_bitmap_num_set_bits(&bm, -1));
+        report("num_unset_bits(bm, negative len): returns 0",
+               0 == pmix_bitmap_num_unset_bits(&bm, -1));
+        PMIX_DESTRUCT(&bm);
+    }
+}
+
+/* pmix_bitmap_t was one of two classes with no PMIX_*_STATIC_INIT. The
+ * value of having one is that it agrees with the constructor: max_size in
+ * particular is INT_MAX there, and a zero would have made the resulting
+ * bitmap reject every init() and every set_bit(). */
+static void test_static_init_matches_constructor(void)
+{
+    pmix_bitmap_t stat = PMIX_BITMAP_STATIC_INIT;
+    pmix_bitmap_t ctor;
+    int pos = -1;
+
+    PMIX_CONSTRUCT(&ctor, pmix_bitmap_t);
+
+    report("static init: bitmap matches the constructor", stat.bitmap == ctor.bitmap);
+    report("static init: array_size matches the constructor",
+           stat.array_size == ctor.array_size);
+    report("static init: max_size matches the constructor", stat.max_size == ctor.max_size);
+
+    /* reads on the empty bitmap answer rather than faulting */
+    report("static init: is_set_bit(0) is false", !pmix_bitmap_is_set_bit(&stat, 0));
+    report("static init: is_clear is true", pmix_bitmap_is_clear(&stat));
+    report("static init: size is 0", 0 == pmix_bitmap_size(&stat));
+
+    /* and it is usable: set_bit auto-expands from nothing */
+    report("static init: set_bit(5) succeeds", PMIX_SUCCESS == pmix_bitmap_set_bit(&stat, 5));
+    report("static init: bit 5 reads back set", pmix_bitmap_is_set_bit(&stat, 5));
+    report("static init: find_and_set finds bit 0",
+           PMIX_SUCCESS == pmix_bitmap_find_and_set_first_unset_bit(&stat, &pos) && 0 == pos);
+
+    PMIX_DESTRUCT(&stat);
+    PMIX_DESTRUCT(&ctor);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -536,6 +597,8 @@ int main(int argc, char **argv)
     test_copy_status();
     test_uninitialized_and_null();
     test_reinit();
+    test_count_bits_null_guard();
+    test_static_init_matches_constructor();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

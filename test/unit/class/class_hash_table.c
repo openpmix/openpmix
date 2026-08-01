@@ -16,6 +16,7 @@
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -368,6 +369,103 @@ static void test_growth_and_backshift(void)
 
 /* ------------------------------------------------------------------ */
 
+/* pmix_hash_table_construct() initialized every member except ht_label.
+ * That is not a decorative field: src/util/pmix_hash.c prints it at four
+ * sites as "(NULL == table->ht_label) ? "UNKNOWN" : table->ht_label", so
+ * the NULL test is what stands between %s and a wild pointer. PMIX_NEW
+ * mallocs without zeroing, and PMIX_CONSTRUCT initializes in place, so
+ * every table that does not set its own label -- gds/shmem3's and the mca
+ * base's among them -- carried garbage there.
+ *
+ * (all builds -- there was never an assert on this) */
+static void test_construct_initializes_label(void)
+{
+    pmix_hash_table_t *heap;
+    pmix_hash_table_t stack;
+    pmix_hash_table_t stat = PMIX_HASH_TABLE_STATIC_INIT;
+
+    /* The heap case is the one that had garbage: PMIX_NEW does not zero. */
+    heap = PMIX_NEW(pmix_hash_table_t);
+    report("PMIX_NEW: allocation succeeded", NULL != heap);
+    if (NULL != heap) {
+        report("PMIX_NEW: ht_label is NULL, not garbage", NULL == heap->ht_label);
+        PMIX_RELEASE(heap);
+    }
+
+    PMIX_CONSTRUCT(&stack, pmix_hash_table_t);
+    report("PMIX_CONSTRUCT: ht_label is NULL", NULL == stack.ht_label);
+    report("static init: ht_label matches the constructor",
+           stat.ht_label == stack.ht_label);
+    PMIX_DESTRUCT(&stack);
+}
+
+/* pmix_hash_table_init2() is a PMIX_EXPORT entry point that took two
+ * ratios and used them without looking. A zero density_numer divided by
+ * zero on its first line; a zero growth_denom did the same inside
+ * pmix_hash_grow(). Worse silently: a growth factor that does not grow, or
+ * a density of 1/1 or looser, lets the table fill completely -- and every
+ * get/set/remove probes with an unbounded "for (;; ii += 1)" loop, so a
+ * full table is an infinite loop, not an error. */
+static void test_init2_rejects_bad_ratios(void)
+{
+    pmix_hash_table_t ht;
+
+    PMIX_CONSTRUCT(&ht, pmix_hash_table_t);
+
+    report("init2 density_numer 0: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_hash_table_init2(&ht, 16, 0, 2, 2, 1));
+    report("init2 density_denom 0: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_hash_table_init2(&ht, 16, 1, 0, 2, 1));
+    report("init2 density 1/1 (table can fill): PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_hash_table_init2(&ht, 16, 1, 1, 2, 1));
+    report("init2 growth_denom 0: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_hash_table_init2(&ht, 16, 1, 2, 2, 0));
+    report("init2 growth 1/1 (does not grow): PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_hash_table_init2(&ht, 16, 1, 2, 1, 1));
+    report("init2 negative growth_numer: PMIX_ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_hash_table_init2(&ht, 16, 1, 2, -2, 1));
+
+    report("rejected init2 left the table un-init'd", 0 == ht.ht_capacity);
+    report("rejected init2 left no allocation", NULL == ht.ht_table);
+
+    /* the sane ratios still work, and so does the default init */
+    report("init2 with 1/2 and 3/2: PMIX_SUCCESS",
+           PMIX_SUCCESS == pmix_hash_table_init2(&ht, 16, 1, 2, 3, 2));
+    report("accepted init2: capacity is non-zero", 0 < ht.ht_capacity);
+    PMIX_DESTRUCT(&ht);
+
+    PMIX_CONSTRUCT(&ht, pmix_hash_table_t);
+    report("plain init still works", PMIX_SUCCESS == pmix_hash_table_init(&ht, 16));
+    PMIX_DESTRUCT(&ht);
+}
+
+/* pmix_next_poweroftwo() computed "1 << (32 - clz(value))" in *signed*
+ * arithmetic. For any value at or above 0x40000000 that shift lands on bit
+ * 31 of an int -- signed overflow, undefined; for a negative value clz is
+ * 0 and the shift distance is 32, also undefined. The two arms disagreed
+ * on negatives as well. It is computed unsigned now, and inputs with no
+ * representable answer say so with 0 rather than inventing one. */
+static void test_next_poweroftwo(void)
+{
+    report("next_poweroftwo(0) is 1", 1 == pmix_next_poweroftwo(0));
+    report("next_poweroftwo(1) is 2", 2 == pmix_next_poweroftwo(1));
+    report("next_poweroftwo(3) is 4", 4 == pmix_next_poweroftwo(3));
+    report("next_poweroftwo(8) is 16", 16 == pmix_next_poweroftwo(8));
+    report("next_poweroftwo(1000) is 1024", 1024 == pmix_next_poweroftwo(1000));
+
+    /* the boundary that used to be undefined */
+    report("next_poweroftwo(1<<29) is 1<<30",
+           (1 << 30) == pmix_next_poweroftwo(1 << 29));
+    report("next_poweroftwo(1<<30) has no positive answer -> 0",
+           0 == pmix_next_poweroftwo(1 << 30));
+    report("next_poweroftwo(INT_MAX) has no positive answer -> 0",
+           0 == pmix_next_poweroftwo(INT_MAX));
+
+    /* negatives are answered, not shifted by 32 */
+    report("next_poweroftwo(-1) is 0", 0 == pmix_next_poweroftwo(-1));
+    report("next_poweroftwo(INT_MIN) is 0", 0 == pmix_next_poweroftwo(INT_MIN));
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -385,6 +483,9 @@ int main(int argc, char **argv)
     test_uninitialized_table();
     test_destruct_leaves_constructed_state();
     test_growth_and_backshift();
+    test_construct_initializes_label();
+    test_init2_rejects_bad_ratios();
+    test_next_poweroftwo();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;
