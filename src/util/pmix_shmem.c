@@ -30,9 +30,22 @@
 #define MAP_FIXED_NOREPLACE 0
 #endif
 
+/* Marks a segment as one of ours, so a stale or foreign backing file is
+ * rejected rather than interpreted. */
+#define PMIX_SHMEM_HEADER_MAGIC 0x504d5853u /* "PMXS" */
+
+/* This header sits at the segment base and is the ONE structure both ends
+ * must agree on before anything else can be trusted. Keep every field
+ * fixed-width and keep it free of any type whose layout can change - no
+ * pmix_object_t, no class-derived type, nothing behind PMIX_ENABLE_DEBUG.
+ * If this struct can shift, it cannot be used to detect a shift. */
 typedef struct pmix_shmem_header_t {
     /** Reference count. */
     pmix_atomic_int32_t ref_count;
+    /** Identifies this as a PMIx segment. */
+    uint32_t magic;
+    /** Layout of what the creator stored - see pmix_shmem_segment_create. */
+    uint32_t layout_id;
 } pmix_shmem_header_t;
 
 static void *
@@ -131,7 +144,8 @@ out:
 
 static pmix_status_t
 add_internal_segment_header(
-    pmix_shmem_t *shmem
+    pmix_shmem_t *shmem,
+    uint32_t layout_id
 ) {
     int rc = PMIX_SUCCESS;
     // The base address here is inconsequential because this is a temporary,
@@ -143,7 +157,9 @@ add_internal_segment_header(
     }
     // Add the header.
     pmix_shmem_header_t shmem_header = {
-        .ref_count = 0
+        .ref_count = 0,
+        .magic = PMIX_SHMEM_HEADER_MAGIC,
+        .layout_id = layout_id
     };
     memmove(shmem->hdr_address, &shmem_header, sizeof(shmem_header));
     // Done with internal mapping, so detach.
@@ -155,7 +171,8 @@ pmix_status_t
 pmix_shmem_segment_create(
     pmix_shmem_t *shmem,
     size_t size,
-    const char *backing_path
+    const char *backing_path,
+    uint32_t layout_id
 ) {
     int rc = PMIX_SUCCESS;
     // Real size of the segment. The data region begins a full page in
@@ -182,7 +199,7 @@ pmix_shmem_segment_create(
     shmem->size = real_size;
     pmix_string_copy(shmem->backing_path, backing_path, PMIX_PATH_MAX);
     // Add internal segment header.
-    rc = add_internal_segment_header(shmem);
+    rc = add_internal_segment_header(shmem, layout_id);
 out:
     if (-1 != fd) {
         (void)close(fd);
@@ -197,15 +214,36 @@ pmix_status_t
 pmix_shmem_segment_attach(
     pmix_shmem_t *shmem,
     uintptr_t desired_base_address,
-    pmix_shmem_flags_t flags
+    pmix_shmem_flags_t flags,
+    uint32_t expected_layout_id
 ) {
-    const pmix_status_t rc = segment_attach(
+    pmix_status_t rc = segment_attach(
         shmem, desired_base_address, flags
     );
-
-    if (PMIX_SUCCESS == rc) {
-        inc_ref_count(shmem->hdr_address);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
+
+    // The mapping succeeded, which says nothing about whether we can read
+    // what is in it. Check the stamp BEFORE taking a reference or letting
+    // the caller near the data: the whole point is to reject a segment
+    // written by a process that lays these structures out differently, and
+    // every read past this point assumes they match.
+    const pmix_shmem_header_t *header = (pmix_shmem_header_t *)shmem->hdr_address;
+    if (PMIX_SHMEM_HEADER_MAGIC != header->magic ||
+        expected_layout_id != header->layout_id) {
+        pmix_output_verbose(
+            2, pmix_globals.debug_output,
+            "shmem: refusing segment %s - magic 0x%08x (want 0x%08x), "
+            "layout 0x%08x (want 0x%08x)",
+            shmem->backing_path, header->magic, PMIX_SHMEM_HEADER_MAGIC,
+            header->layout_id, expected_layout_id
+        );
+        (void)pmix_shmem_segment_detach(shmem);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    inc_ref_count(shmem->hdr_address);
     return rc;
 }
 

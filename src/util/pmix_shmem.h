@@ -46,18 +46,45 @@ typedef struct pmix_shmem_t {
 } pmix_shmem_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_shmem_t);
 
+/**
+ * Create a segment, stamping it with the caller's layout ID.
+ *
+ * The layout ID identifies the in-memory shape of whatever the caller
+ * intends to store in the segment. A segment is shared between processes
+ * that read those structures *in place*, so the two ends must agree on that
+ * shape exactly; if they do not, every field the reader touches is at the
+ * wrong offset. pmix_shmem_segment_attach() refuses a segment whose stamp
+ * does not match what the attaching process expects, which is the only
+ * thing standing between a layout disagreement and silent corruption.
+ *
+ * The ID is opaque here - only the caller knows what it stores - but it
+ * must be derived from the layout itself (sizeof/offsetof of the types that
+ * go in), not hand-maintained. A number someone has to remember to bump is
+ * a number that will not get bumped.
+ */
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_create(
     pmix_shmem_t *shmem,
     size_t size,
-    const char *backing_path
+    const char *backing_path,
+    uint32_t layout_id
 );
 
+/**
+ * Attach to a segment, requiring its stamp to equal expected_layout_id.
+ *
+ * Returns PMIX_ERR_NOT_SUPPORTED if the segment was written by a process
+ * whose layout differs from ours - distinct from the PMIX_ERR_NOT_AVAILABLE
+ * a failed fixed-address map returns, so the caller can say which happened.
+ * Callers are expected to treat either as "this datastore is unusable to
+ * me" and fall back, not as fatal.
+ */
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_attach(
     pmix_shmem_t *shmem,
     uintptr_t desired_base_address,
-    pmix_shmem_flags_t flags
+    pmix_shmem_flags_t flags,
+    uint32_t expected_layout_id
 );
 
 PMIX_EXPORT pmix_status_t

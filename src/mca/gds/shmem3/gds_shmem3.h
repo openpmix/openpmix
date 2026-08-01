@@ -31,6 +31,59 @@
 #define PMIX_GDS_SHMEM3_NAME "shmem3"
 
 /**
+ * Identifies the in-memory layout of everything this component puts in a
+ * shared segment.
+ *
+ * The server builds these structures inside the segment and its clients read
+ * them *in place*, so both ends must lay them out identically. The name of
+ * the component guards that across releases - an older client does not
+ * recognize "shmem3" and falls back to hash - but it cannot guard two builds
+ * that both call themselves shmem3 and still disagree. They disagree more
+ * easily than one might expect:
+ *
+ *   - --enable-debug adds obj_magic_id to the FRONT of pmix_object_t, plus
+ *     two fields at the back. A debug server and a default-build client
+ *     differ by 24 bytes in the base class alone - pmix_list_t is 248 bytes
+ *     against 192, and pmix_list_length sits at offset 240 against 184.
+ *   - Any struct here gaining or losing a field during a development series,
+ *     without the component being renamed.
+ *
+ * Both produce exactly the corruption the rename exists to prevent, so the
+ * segment carries this ID and a mismatched peer declines it (see
+ * pmix_shmem_segment_attach) and falls back.
+ *
+ * It is COMPUTED, deliberately. A hand-maintained version number is a number
+ * someone has to remember to bump, and the history of this component is that
+ * it does not get bumped. Distinct prime multipliers keep a growth in one
+ * type from cancelling a shrink in another.
+ *
+ * Extend the list when a new type starts living in the segment. Types
+ * reached only through a pointer still count - they are allocated in the
+ * segment too. The trailing version term is for changes that alter meaning
+ * without altering any size.
+ */
+#define PMIX_GDS_SHMEM3_LAYOUT_VERSION 1u
+
+#define PMIX_GDS_SHMEM3_LAYOUT_ID                                            \
+    ((uint32_t)(                                                             \
+        PMIX_GDS_SHMEM3_LAYOUT_VERSION                                       \
+      +   3u * (uint32_t)sizeof(pmix_object_t)                               \
+      +   5u * (uint32_t)sizeof(pmix_list_t)                                 \
+      +   7u * (uint32_t)sizeof(pmix_list_item_t)                            \
+      +  11u * (uint32_t)sizeof(pmix_hash_table_t)                           \
+      +  13u * (uint32_t)sizeof(pmix_tma_t)                                  \
+      +  17u * (uint32_t)sizeof(pmix_value_t)                                \
+      +  19u * (uint32_t)sizeof(pmix_info_t)                                 \
+      +  23u * (uint32_t)sizeof(pmix_kval_t)                                 \
+      +  29u * (uint32_t)sizeof(pmix_gds_shmem3_shared_session_data_t)       \
+      +  31u * (uint32_t)sizeof(pmix_gds_shmem3_shared_job_data_t)           \
+      +  37u * (uint32_t)sizeof(pmix_gds_shmem3_shared_modex_data_t)         \
+      +  41u * (uint32_t)sizeof(pmix_gds_shmem3_nodeinfo_t)                  \
+      +  43u * (uint32_t)sizeof(pmix_gds_shmem3_app_t)                       \
+      +  47u * (uint32_t)sizeof(pmix_gds_shmem3_host_alias_t)                \
+    ))
+
+/**
  * Default component/module priority.
  */
 #define PMIX_GDS_SHMEM3_DEFAULT_PRIORITY 20
