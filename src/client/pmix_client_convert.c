@@ -18,6 +18,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include "src/include/pmix_prefetch.h"
+
 #include "include/pmix.h"
 
 #include "src/class/pmix_object.h"
@@ -107,14 +109,14 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                         cb2.proc = (pmix_proc_t*)&grp->members[i];
                         cb2.key = PMIX_JOB_SIZE;
                         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
-                        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+                        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc)) {
                             /* couldn't get the job size, so have to abort */
                             PMIX_DESTRUCT(&cb2);
                             goto unlock;
                         }
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
-                        if (NULL == kv) { // should never be NULL
+                        if (PMIX_UNLIKELY(NULL == kv)) { // should never be NULL
                             /* couldn't retrieve the size, so we have
                              * to abort */
                             rc = PMIX_ERR_NOT_FOUND;
@@ -122,7 +124,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                         }
                         rc = PMIx_Value_get_number(kv->value, &jsize, PMIX_UINT32);
                         PMIX_RELEASE(kv);
-                        if (PMIX_SUCCESS != rc) {
+                        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                             rc = PMIX_ERR_BAD_PARAM;
                             goto unlock;
                         }

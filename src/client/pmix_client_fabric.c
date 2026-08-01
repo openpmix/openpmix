@@ -17,6 +17,8 @@
  */
 
 #include "src/include/pmix_config.h"
+
+#include "src/include/pmix_prefetch.h"
 #include "include/pmix.h"
 
 #include "src/include/pmix_socket_errno.h"
@@ -56,7 +58,7 @@
 
 void PMIx_Fabric_construct(pmix_fabric_t *p)
 {
-    if (NULL == p) {
+    if (PMIX_UNLIKELY(NULL == p)) {
         return;
     }
     p->name = NULL;
@@ -121,7 +123,7 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
     /* unpack the status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cb->status, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
@@ -151,7 +153,7 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
         rc = PMIX_SUCCESS;
         goto complete;
     }
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
@@ -159,7 +161,7 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
         PMIX_INFO_CREATE(cb->fabric->info, cb->fabric->ninfo);
         cnt = cb->fabric->ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cb->fabric->info, &cnt, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             goto complete;
         }
@@ -196,11 +198,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:fabric register");
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -212,7 +214,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         PMIX_DESTRUCT(&cb);
         return PMIX_SUCCESS;
-    } else if (PMIX_SUCCESS != rc) {
+    } else if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         /* got an error */
         PMIX_DESTRUCT(&cb);
         return rc;
@@ -238,11 +240,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FABRIC_REGISTER_CMD;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (NULL == fabric) {
+    if (PMIX_UNLIKELY(NULL == fabric)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -251,11 +253,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
      * these _nb entry points are built on. A user calling the public API with
      * both NULL has no way to learn the answer and would leave us
      * dereferencing a NULL caddy in the recv handler. */
-    if (NULL == cbfunc && NULL == cbdata) {
+    if (PMIX_UNLIKELY(NULL == cbfunc && NULL == cbdata)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -270,7 +272,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
 
     /* otherwise, I need to send it to
      * a daemon for processing */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
     }
 
@@ -278,7 +280,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -286,14 +288,14 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
 
     /* pack the directives */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ndirs, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     if (NULL != directives && 0 < ndirs) {
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, directives, ndirs, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return rc;
@@ -314,7 +316,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, frecv, (void *) cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_RELEASE(msg);
         if (NULL != cbfunc) {
             PMIX_RELEASE(cb);
@@ -328,11 +330,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric)
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -349,7 +351,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric)
          * scheduler and handled it ourselves); no callback will fire */
         PMIX_DESTRUCT(&cb);
         return PMIX_SUCCESS;
-    } else if (PMIX_SUCCESS != rc) {
+    } else if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_DESTRUCT(&cb);
         return rc;
     }
@@ -373,17 +375,17 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FABRIC_UPDATE_CMD;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (NULL == fabric) {
+    if (PMIX_UNLIKELY(NULL == fabric)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
     /* see PMIx_Fabric_register_nb: a NULL cbfunc means "the caddy is in
      * cbdata", so both cannot be NULL */
-    if (NULL == cbfunc && NULL == cbdata) {
+    if (PMIX_UNLIKELY(NULL == cbfunc && NULL == cbdata)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -393,7 +395,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
         /* update_fabric is synchronous and takes no callback, so we must
          * bridge its result to the (non)blocking completion contract */
         rc = pmix_pnet.update_fabric(fabric);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             /* error: no callback fires, caller sees the error return */
             return rc;
         }
@@ -406,7 +408,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
         return PMIX_OPERATION_SUCCEEDED;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -414,7 +416,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
      * it up to our host so they can send it to the scheduler */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-        if (NULL == pmix_host_server.fabric) {
+        if (PMIX_UNLIKELY(NULL == pmix_host_server.fabric)) {
             return PMIX_ERR_NOT_SUPPORTED;
         }
         if (NULL != cbfunc) {
@@ -439,7 +441,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
 
     /* finally, if I am a tool or client, then I need to send it to
      * a daemon for processing */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
     }
 
@@ -447,14 +449,14 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     /* pack the fabric index */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &fabric->index, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -474,7 +476,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, frecv, (void *) cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_RELEASE(msg);
         if (NULL != cbfunc) {
             PMIX_RELEASE(cb);
@@ -504,11 +506,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric, pmix_
     /* every sibling in this file gates on this, and this one must too:
      * PMIX_PEER_IS_SCHEDULER below dereferences pmix_globals.mypeer, which
      * does not exist until the library has been initialized */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (NULL == fabric) {
+    if (PMIX_UNLIKELY(NULL == fabric)) {
         return PMIX_ERR_BAD_PARAM;
     }
 

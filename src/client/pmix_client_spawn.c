@@ -18,6 +18,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include "src/include/pmix_prefetch.h"
+
 #include "src/include/pmix_stdint.h"
 
 #include "include/pmix.h"
@@ -106,11 +108,11 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
                         "%s pmix: spawn called",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -209,22 +211,22 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                         "%s pmix: spawn_nb called",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* check for bozo input - the apps array is walked below and there is
      * nothing to spawn without one */
-    if (NULL == apps || 0 == napps) {
+    if (PMIX_UNLIKELY(NULL == apps || 0 == napps)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         /* if I am a launcher, we default to local fork/exec */
         if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
             forkexec = true;
@@ -246,7 +248,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             if (PMIX_CHECK_KEY(&job_info[n], PMIX_SETUP_APP_ENVARS)) {
                 PMIX_CONSTRUCT(&ilist, pmix_list_t);
                 rc = pmix_pmdl.harvest_envars(NULL, job_info, ninfo, &ilist);
-                if (PMIX_SUCCESS != rc) {
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                     PMIX_LIST_DESTRUCT(&ilist);
                     PMIX_RELEASE(fcd);
                     return rc;
@@ -266,7 +268,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                 proxy = true;
             }
             rc = PMIx_Info_list_xfer(xlist, &job_info[n]);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIx_Info_list_release(xlist);
                 PMIX_RELEASE(fcd);
                 return rc;
@@ -274,7 +276,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         }
         // convert the list to an array
         rc = PMIx_Info_list_convert(xlist, &darray);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIx_Info_list_release(xlist);
             PMIX_RELEASE(fcd);
             return rc;
@@ -316,7 +318,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
          * take the one we are in */
         if (NULL == aptr->cwd) {
             rc = pmix_getcwd(cwd, sizeof(cwd));
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_RELEASE(fcd);
                 return rc;
             }
@@ -390,7 +392,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                 if (PMIX_CHECK_KEY(&fcd->apps[n].info[m], PMIX_SETUP_APP_ENVARS)) {
                     PMIX_CONSTRUCT(&ilist, pmix_list_t);
                     rc = pmix_pmdl.harvest_envars(NULL, fcd->apps[n].info, fcd->apps[n].ninfo, &ilist);
-                    if (PMIX_SUCCESS != rc) {
+                    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                         PMIX_LIST_DESTRUCT(&ilist);
                         PMIX_RELEASE(fcd);
                         return rc;
@@ -412,7 +414,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
 
-        if (NULL == pmix_host_server.spawn) {
+        if (PMIX_UNLIKELY(NULL == pmix_host_server.spawn)) {
             PMIX_RELEASE(fcd);
             return PMIX_ERR_NOT_SUPPORTED;
         }
@@ -422,7 +424,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         if (proxy) {
             /* find the parent's peer object */
             fcd->peer = pmix_get_peer_object(&parent);
-            if (NULL == fcd->peer) {
+            if (PMIX_UNLIKELY(NULL == fcd->peer)) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
                 PMIX_RELEASE(fcd);
                 return PMIX_ERR_NOT_FOUND;
@@ -445,7 +447,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                                     fcd->info, fcd->ninfo,
                                     fcd->apps, fcd->napps,
                                     localcbfunc, fcd);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_RELEASE(fcd);
         }
         return rc;
@@ -458,7 +460,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 
     if (forkexec) {
         rc = pmix_pfexec_base_spawn_job(fcd);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_RELEASE(fcd);
         }
         return rc;
@@ -467,7 +469,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(fcd);
@@ -476,7 +478,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 
     /* pack the job-level directives */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &fcd->ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(fcd);
@@ -484,7 +486,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     }
     if (0 < fcd->ninfo) {
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, fcd->info, fcd->ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             PMIX_RELEASE(fcd);
@@ -494,7 +496,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 
     /* pack the apps */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &fcd->napps, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(fcd);
@@ -502,7 +504,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     }
     if (0 < fcd->napps) {
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, fcd->apps, fcd->napps, PMIX_APP);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             PMIX_RELEASE(fcd);
@@ -517,7 +519,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) fcd);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(fcd);
     }
@@ -546,7 +548,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
     /* init */
     memset(nspace, 0, PMIX_MAX_NSLEN + 1);
 
-    if (NULL == buf) {
+    if (PMIX_UNLIKELY(NULL == buf)) {
         ret = PMIX_ERR_BAD_PARAM;
         goto report;
     }
@@ -560,14 +562,14 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
     /* unpack the returned status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
     /* unpack the namespace */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &n2, &cnt, PMIX_STRING);
-    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc)) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
@@ -580,7 +582,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
         free(n2);
         PMIX_GDS_STORE_JOB_INFO(rc, pmix_globals.mypeer, nspace, buf);
         /* extract and process any job-related info for this nspace */
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             ret = rc;
         }

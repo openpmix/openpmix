@@ -17,6 +17,8 @@
  */
 
 #include "src/include/pmix_config.h"
+
+#include "src/include/pmix_prefetch.h"
 #include "include/pmix.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -38,11 +40,11 @@ PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo)
     pmix_status_t rc;
     pmix_cb_t cb;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -62,7 +64,7 @@ PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string, pm
 {
     pmix_status_t rc;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
@@ -74,7 +76,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envel
 {
     pmix_status_t rc;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
@@ -87,7 +89,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_relative_locality(const char *locality1, cons
 {
     pmix_status_t rc;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
@@ -138,17 +140,17 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuse
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
     /* both are OUT parameters we write on every path, including the error
      * ones, so there is no way to honor a NULL for either */
-    if (NULL == distances || NULL == ndist) {
+    if (PMIX_UNLIKELY(NULL == distances || NULL == ndist)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -161,7 +163,7 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuse
      * the non-blocking operation is complete */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     rc = PMIx_Compute_distances_nb(topo, cpuset, info, ninfo, distcb, &cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_DESTRUCT(&cb);
         return rc;
     }
@@ -217,7 +219,7 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
     /* unpack the status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cb->status, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
@@ -237,7 +239,7 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
         rc = PMIX_SUCCESS;
         goto complete;
     }
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
@@ -245,7 +247,7 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
         PMIX_DEVICE_DIST_CREATE(cb->dist, cb->nvals);
         cnt = cb->nvals;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cb->dist, &cnt, PMIX_DEVICE_DIST);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             goto complete;
         }
@@ -277,17 +279,17 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
     pmix_topology_t notopo = {NULL, NULL};
     pmix_cpuset_t nocpuset = {NULL, NULL};
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
     /* the server-reply path (direcv) has no completion route other than this
      * callback, so a NULL one is not something we can honor */
-    if (NULL == cbfunc) {
+    if (PMIX_UNLIKELY(NULL == cbfunc)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -300,7 +302,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
         if (NULL == pmix_globals.topology.topology) {
             /* if our topology is NULL, try to get it */
             rc = pmix_hwloc_load_topology(&pmix_globals.topology);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 /* try to ask our server if they can do it */
                 goto request;
             }
@@ -315,7 +317,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
          * that we haven't yet gotten our cpuset. Try to get it. */
         if (NULL == pmix_globals.cpuset.bitmap) {
             rc = pmix_hwloc_get_cpuset(&pmix_globals.cpuset, PMIX_CPUBIND_PROCESS);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 /* try to ask our server if they can do it */
                 goto request;
             }
@@ -355,7 +357,7 @@ request:
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
@@ -364,7 +366,7 @@ request:
 
     /* pack the topology we want them to use */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, topo, 1, PMIX_TOPO);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
@@ -372,7 +374,7 @@ request:
     }
     /* pack the cpuset */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, cpuset, 1, PMIX_PROC_CPUSET);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
@@ -381,7 +383,7 @@ request:
 
     /* pack the directives */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
@@ -389,7 +391,7 @@ request:
     }
     if (0 < ninfo) {
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             PMIX_RELEASE(cb);
@@ -399,7 +401,7 @@ request:
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, direcv, (void *) cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
     }

@@ -18,6 +18,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include "src/include/pmix_prefetch.h"
+
 #include "src/include/pmix_stdint.h"
 
 #include "include/pmix.h"
@@ -205,7 +207,7 @@ static void resolve_peers(int sd, short args, void *cbdata)
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
             rc = try_fetch(&cb);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 continue;
             }
 
@@ -248,7 +250,7 @@ static void resolve_peers(int sd, short args, void *cbdata)
         if (0 < np) {
             /* allocate the proc array */
             PMIX_PROC_CREATE(pa, np);
-            if (NULL == pa) {
+            if (PMIX_UNLIKELY(NULL == pa)) {
                 rc = PMIX_ERR_NOMEM;
                 PMIx_Argv_free(tmp);
                 goto done;
@@ -332,7 +334,7 @@ process:
 
     /* allocate the proc array */
     PMIX_PROC_CREATE(pa, np);
-    if (NULL == pa) {
+    if (PMIX_UNLIKELY(NULL == pa)) {
         rc = PMIX_ERR_NOMEM;
         PMIx_Argv_free(p);
         goto done;
@@ -397,7 +399,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
 
     /* both are OUT parameters we write on every path - there is no way to
      * return an answer without them */
-    if (NULL == procs || NULL == nprocs) {
+    if (PMIX_UNLIKELY(NULL == procs || NULL == nprocs)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -405,11 +407,11 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     *procs = NULL;
     *nprocs = 0;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -494,7 +496,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
      * provide our local understanding of the situation.
      * Threadshift to compute it as we will be accessing
      * global info */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         cd = PMIX_NEW(pmix_resolve_caddy_t);
         cd->nodename = nd;
         PMIX_LOAD_NSPACE(cd->nspace, nspace);
@@ -517,21 +519,21 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     /* pack the request information */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nd, 1, PMIX_STRING);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     str = (char*)nspace;
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &str, 1, PMIX_STRING);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -539,7 +541,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
 
     cd = PMIX_NEW(pmix_resolve_caddy_t);
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_peers_cbfunc, (void *) cd);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         /* a refused send never took the message, so it is still ours */
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cd);
@@ -613,7 +615,7 @@ static void resolve_nodes(int sd, short args, void *cbdata)
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
             rc = try_fetch(&cb);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 continue;
             }
 
@@ -738,18 +740,18 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
 
     /* the OUT parameter is how the answer gets back, and we write it on
      * every path - a NULL leaves us nothing to do */
-    if (NULL == nodelist) {
+    if (PMIX_UNLIKELY(NULL == nodelist)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
     /* set default response */
     *nodelist = NULL;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -815,7 +817,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
      * provide our local understanding of the situation.
      * Threadshift to compute it as we will be accessing
      * global info */
-    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+    if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         cd = PMIX_NEW(pmix_resolve_caddy_t);
         PMIX_LOAD_NSPACE(cd->nspace, nspace);
         PMIX_THREADSHIFT(cd, resolve_nodes);
@@ -835,7 +837,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -844,7 +846,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
     /* pack the request information */
     str = (char*)nspace;
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &str, 1, PMIX_STRING);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -852,7 +854,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
 
     cd = PMIX_NEW(pmix_resolve_caddy_t);
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_node_cbfunc, (void *) cd);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         /* a refused send never took the message, so it is still ours */
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cd);
@@ -898,7 +900,7 @@ static void wait_peers_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
-    if (NULL == buf) {
+    if (PMIX_UNLIKELY(NULL == buf)) {
         ret = PMIX_ERR_BAD_PARAM;
         goto done;
     }
@@ -913,7 +915,7 @@ static void wait_peers_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     /* unpack the returned status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
@@ -922,7 +924,7 @@ static void wait_peers_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     if (PMIX_SUCCESS == ret) {
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &cd->nprocs, &cnt, PMIX_SIZE);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             ret = rc;
             goto done;
@@ -931,7 +933,7 @@ static void wait_peers_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
             PMIX_PROC_CREATE(cd->procs, cd->nprocs);
             cnt = cd->nprocs;
             PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, cd->procs, &cnt, PMIX_PROC);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_PROC_FREE(cd->procs, cd->nprocs);
                 ret = rc;
@@ -959,7 +961,7 @@ static void wait_node_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
-    if (NULL == buf) {
+    if (PMIX_UNLIKELY(NULL == buf)) {
         ret = PMIX_ERR_BAD_PARAM;
         goto done;
     }
@@ -974,7 +976,7 @@ static void wait_node_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     /* unpack the returned status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
@@ -983,7 +985,7 @@ static void wait_node_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     if (PMIX_SUCCESS == ret) {
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &cd->nodelist, &cnt, PMIX_STRING);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             ret = rc;
             goto done;
