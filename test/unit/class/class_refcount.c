@@ -358,6 +358,131 @@ static void test_many_objects(void)
 
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* 4. Concurrent lazy class initialization (the double-checked lock)    */
+/* ------------------------------------------------------------------ */
+
+/* pmix_class_initialize() is reached through a double-checked lock: every
+ * PMIX_NEW/PMIX_CONSTRUCT reads cls->cls_initialized *without* the class
+ * mutex, and only takes it when the class looks uninitialized. The flag
+ * write used to be a plain int store, so a thread that observed the new
+ * epoch had nothing ordering it against the cls_construct_array the
+ * initializing thread had just built -- the textbook broken DCL. It is now
+ * a release store paired with the acquire in PMIX_CLASS_IS_INITIALIZED().
+ *
+ * A caveat worth stating plainly: this case cannot reliably *fail* on
+ * x86-64 or arm64 even with the ordering removed, because both give the
+ * plain load enough ordering in practice. Its job is to put concurrent
+ * first-use of a class under a race detector at all -- nothing else in the
+ * suite does, so before this there was no thread ever exercising
+ * pmix_class_initialize() concurrently. Run it under
+ * "-fsanitize=thread" to get the real signal. */
+
+#define NRACE_CLASSES 8
+
+typedef struct {
+    pmix_object_t super;
+    int stamp;
+} lazy_t;
+
+static void lazy_construct(lazy_t *l)
+{
+    l->stamp = 0x5A5A;
+}
+
+PMIX_CLASS_INSTANCE(lazy_t, pmix_object_t, lazy_construct, NULL);
+
+/* Deeper hierarchies mean longer constructor arrays, so more of the array
+ * build is exposed to a reader that jumped the gun. */
+typedef struct {
+    lazy_t super;
+    int stamp2;
+} lazy2_t;
+
+static void lazy2_construct(lazy2_t *l)
+{
+    l->stamp2 = 0xA5A5;
+}
+
+PMIX_CLASS_INSTANCE(lazy2_t, lazy_t, lazy2_construct, NULL);
+
+static simple_barrier_t init_barrier;
+static int init_ok[NTHREADS];
+
+static void *first_use(void *arg)
+{
+    int slot = (int) (intptr_t) arg;
+    int ok = 1;
+    int i;
+
+    /* Every thread arrives at the very first use of these classes at the
+     * same moment, so they all see cls_initialized as stale and race into
+     * pmix_class_initialize(). */
+    barrier_wait(&init_barrier);
+
+    for (i = 0; i < NRACE_CLASSES; i++) {
+        lazy2_t *o = PMIX_NEW(lazy2_t);
+        if (NULL == o) {
+            ok = 0;
+            break;
+        }
+        /* Both constructors must have run, in parent-first order. If a
+         * thread called through a half-built constructor array, one of
+         * these stamps is missing. */
+        if (0x5A5A != o->super.stamp || 0xA5A5 != o->stamp2) {
+            ok = 0;
+        }
+        if (((pmix_object_t *) o)->obj_class->cls_depth < 3) {
+            ok = 0;
+        }
+        PMIX_RELEASE(o);
+    }
+    init_ok[slot] = ok;
+    return NULL;
+}
+
+static void test_concurrent_class_initialization(void)
+{
+    pthread_t threads[NTHREADS];
+    int i, started = 0;
+    bool all = true;
+
+    for (i = 0; i < NTHREADS; i++) {
+        init_ok[i] = 0;
+    }
+    barrier_init(&init_barrier, NTHREADS);
+
+    for (i = 0; i < NTHREADS; i++) {
+        if (0 != pthread_create(&threads[i], NULL, first_use, (void *) (intptr_t) i)) {
+            break;
+        }
+        started++;
+    }
+    report("class init race: threads started", NTHREADS == started);
+
+    /* Let the barrier through if some thread never started. */
+    for (i = started; i < NTHREADS; i++) {
+        barrier_wait(&init_barrier);
+    }
+    for (i = 0; i < started; i++) {
+        pthread_join(threads[i], NULL);
+    }
+    barrier_destroy(&init_barrier);
+
+    for (i = 0; i < started; i++) {
+        if (!init_ok[i]) {
+            all = false;
+        }
+    }
+    report("class init race: every thread got fully constructed objects", all);
+
+    /* And the class really is initialized once, for this epoch. */
+    report("class init race: class reports initialized",
+           PMIX_CLASS_IS_INITIALIZED(PMIX_CLASS(lazy2_t)));
+    report("class init race: hierarchy depth is 3 (lazy2 -> lazy -> object)",
+           3 == PMIX_CLASS(lazy2_t)->cls_depth);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -368,6 +493,7 @@ int main(int argc, char **argv)
     test_balanced_retain_release();
     test_single_destruct_on_race();
     test_many_objects();
+    test_concurrent_class_initialization();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

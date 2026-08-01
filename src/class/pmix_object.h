@@ -298,7 +298,19 @@ struct pmix_class_t {
     pmix_class_t *cls_parent;       /**< parent class descriptor */
     pmix_construct_t cls_construct; /**< class constructor */
     pmix_destruct_t cls_destruct;   /**< class destructor */
-    int cls_initialized;            /**< is class initialized */
+    /**
+     * Is this class initialized, and for which epoch.
+     *
+     * Atomic because this is the flag of a double-checked lock: every
+     * PMIX_NEW/PMIX_CONSTRUCT reads it *without* the class mutex to decide
+     * whether pmix_class_initialize() needs to run at all. That fast-path
+     * read has to synchronize-with the initializing thread's write, or a
+     * reader can observe the updated epoch while still seeing a stale
+     * cls_construct_array and then call through it. Always read it with
+     * PMIX_CLASS_IS_INITIALIZED() (acquire) and write it only in
+     * pmix_class_initialize() (release).
+     */
+    pmix_atomic_int32_t cls_initialized;
     int cls_depth;                  /**< depth of class hierarchy tree */
     pmix_construct_t *cls_construct_array;
     /**< array of parent class constructors */
@@ -307,7 +319,26 @@ struct pmix_class_t {
     size_t cls_sizeof; /**< size of an object instance */
 };
 
-PMIX_EXPORT extern int pmix_class_init_epoch;
+/**
+ * Bumped by pmix_class_finalize() so every class lazily re-initializes.
+ * Atomic for the same reason cls_initialized is: it is read on the
+ * unlocked fast path below.
+ */
+PMIX_EXPORT extern pmix_atomic_int32_t pmix_class_init_epoch;
+
+/**
+ * The fast-path test behind the double-checked lock: has this class been
+ * initialized for the current epoch?
+ *
+ * The acquire on cls_initialized pairs with the release store at the end
+ * of pmix_class_initialize(), so a thread that sees "yes" is guaranteed to
+ * see the constructor/destructor arrays that thread built. The epoch load
+ * can be relaxed -- it is only ever changed by pmix_class_finalize(),
+ * which is documented as the absolute last call in a role.
+ */
+#define PMIX_CLASS_IS_INITIALIZED(cls)                                          \
+    (atomic_load_explicit(&(cls)->cls_initialized, memory_order_acquire)        \
+     == atomic_load_explicit(&pmix_class_init_epoch, memory_order_relaxed))
 
 /**
  * For static initializations of OBJects.
@@ -562,7 +593,7 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *tma)
 #define PMIX_CONSTRUCT_INTERNAL_TMA(object, type, t)               \
     do {                                                           \
         PMIX_SET_MAGIC_ID((object), PMIX_OBJ_MAGIC_ID);            \
-        if (pmix_class_init_epoch != (type)->cls_initialized) {    \
+        if (!PMIX_CLASS_IS_INITIALIZED(type)) {                    \
             pmix_class_initialize((type));                         \
         }                                                          \
         ((pmix_object_t *) (object))->obj_class = (type);          \
@@ -697,7 +728,7 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
 
     object = (pmix_object_t *) pmix_tma_malloc(tma, cls->cls_sizeof);
 
-    if (pmix_class_init_epoch != cls->cls_initialized) {
+    if (!PMIX_CLASS_IS_INITIALIZED(cls)) {
         pmix_class_initialize(cls);
     }
     if (NULL != object) {
