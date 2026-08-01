@@ -281,6 +281,10 @@ static void resolve_peers(int sd, short args, void *cbdata)
             }
             PMIx_Argv_free(tmp);
             rc = PMIX_SUCCESS;
+        } else {
+            /* nothing resolved, but the walk above may still have collected
+             * entries (an nspace whose peer list was an empty string) */
+            PMIx_Argv_free(tmp);
         }
         goto done;
     }
@@ -391,6 +395,12 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     pmix_cb_t cb;
     pmix_value_t *val;
 
+    /* both are OUT parameters we write on every path - there is no way to
+     * return an answer without them */
+    if (NULL == procs || NULL == nprocs) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* set default response */
     *procs = NULL;
     *nprocs = 0;
@@ -443,6 +453,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
                 if (0 < cb.ninfo) {
                     val = &cb.info[0].value;
                     if (PMIX_DATA_ARRAY != val->type ||
+                        NULL == val->data.darray ||
                         PMIX_PROC != val->data.darray->type) {
                         PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
                     } else {
@@ -724,6 +735,12 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
     pmix_info_t info;
     pmix_cb_t cb;
     pmix_value_t *val;
+
+    /* the OUT parameter is how the answer gets back, and we write it on
+     * every path - a NULL leaves us nothing to do */
+    if (NULL == nodelist) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     /* set default response */
     *nodelist = NULL;

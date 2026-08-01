@@ -213,10 +213,14 @@ pmix_status_t pmix_hwloc_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
     char *xmlbuffer = NULL;
     int len;
 
-    if (NULL == src) {
+    /* An empty topology object is the wire form of "no topology" - it is how
+     * a caller says "use your own". Callers cannot express that by passing a
+     * NULL pointer, because the generic pack entry point rejects a NULL
+     * source before we are reached, so accept both forms here. */
+    if (NULL == src || NULL == src->topology) {
         /* pack a NULL string */
         PMIX_BFROPS_PACK_TYPE(rc, buf, &xmlbuffer, 1, PMIX_STRING, regtypes);
-        return PMIX_SUCCESS;
+        return rc;
     }
 
     if (NULL != src->source && 0 != strncasecmp(src->source, "hwloc", 5)) {

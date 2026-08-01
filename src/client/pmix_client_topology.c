@@ -142,6 +142,12 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuse
         return PMIX_ERR_INIT;
     }
 
+    /* both are OUT parameters we write on every path, including the error
+     * ones, so there is no way to honor a NULL for either */
+    if (NULL == distances || NULL == ndist) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
@@ -220,10 +226,18 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
         goto complete;
     }
 
-    /* unpack any returned data */
+    /* unpack any returned data. A server that had nothing to add simply
+     * ends the message here, so a read past the end is not an error - but
+     * it must not be handed to the caller as the result of the operation,
+     * which the server already told us succeeded. */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cb->nvals, &cnt, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        cb->nvals = 0;
+        rc = PMIX_SUCCESS;
+        goto complete;
+    }
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
@@ -253,6 +267,15 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
     pmix_cmd_t cmd = PMIX_COMPUTE_DEVICE_DISTANCES_CMD;
     pmix_topology_t *topo = NULL;
     pmix_cpuset_t *cpuset = NULL;
+    /* Stand-ins for "use your own" when we relay the request to the server.
+     * The wire form of an absent topology/cpuset is an empty object, and the
+     * server explicitly handles it (see pmix_server_device_dists). We cannot
+     * express that by handing PMIX_BFROPS_PACK a NULL pointer: the generic
+     * pack entry point rejects a NULL source with PMIX_ERR_BAD_PARAM before
+     * the type-specific packer - which does understand it - is ever reached,
+     * so the whole ask-the-server fallback failed instead of sending. */
+    pmix_topology_t notopo = {NULL, NULL};
+    pmix_cpuset_t nocpuset = {NULL, NULL};
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -319,9 +342,13 @@ request:
         return PMIX_ERR_UNREACH;
     }
 
-    /* don't send our topology if it's local */
-    if (topo == &pmix_globals.topology) {
-        topo = NULL;
+    /* don't send our own topology - the server has one. Likewise for a
+     * cpuset we never managed to obtain: the server knows our binding. */
+    if (NULL == topo || topo == &pmix_globals.topology) {
+        topo = &notopo;
+    }
+    if (NULL == cpuset) {
+        cpuset = &nocpuset;
     }
 
     /* if we are a tool or client, then relay this request to the server */

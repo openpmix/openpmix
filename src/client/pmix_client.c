@@ -234,23 +234,27 @@ pmix_client_globals_t pmix_client_globals = {
     .iof_stderr = PMIX_IOF_SINK_STATIC_INIT
 };
 
-/* callback for wait completion */
-static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                        void *cbdata)
+/* Unpack the status the server acked a simple command with. Returns
+ * PMIX_ERR_UNREACH for the NULL/zero-byte buffer that marks a recv being
+ * completed synthetically because the connection was lost. */
+static pmix_status_t unpack_ack(pmix_buffer_t *buf)
 {
-    pmix_lock_t *lock = (pmix_lock_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, buf);
+    pmix_status_t rc, ret;
+    int32_t cnt;
 
-    PMIX_ACQUIRE_OBJECT(lock);
-
-    pmix_output_verbose(2, pmix_client_globals.base_output,
-                        "pmix:client wait_cbfunc received");
-
-    PMIX_POST_OBJECT(lock);
-    PMIX_WAKEUP_THREAD(lock);
+    if (NULL == buf || PMIX_BUFFER_IS_EMPTY(buf)) {
+        return PMIX_ERR_UNREACH;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    return ret;
 }
 
-/* Completion of a commit: unlike the generic wait_cbfunc above, this one
+/* Completion of a commit: rather than discarding the reply, this one
  * reads the reply. The server acks PMIX_COMMIT_CMD with the status of the
  * store it just performed, and discarding that reported every commit as a
  * success - including one the server rejected, which is precisely the case
@@ -260,30 +264,40 @@ static void commit_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                           pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
-    pmix_status_t rc, ret;
-    int32_t cnt;
+    pmix_status_t ret;
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     PMIX_ACQUIRE_OBJECT(cb);
 
-    /* a NULL or zero-byte buffer means the connection was lost and this
-     * recv is being completed synthetically */
-    if (NULL == buf || PMIX_BUFFER_IS_EMPTY(buf)) {
-        ret = PMIX_ERR_UNREACH;
-    } else {
-        cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            ret = rc;
-        }
-    }
+    ret = unpack_ack(buf);
 
     pmix_output_verbose(2, pmix_client_globals.base_output,
                         "pmix:client commit completed with status %s",
                         PMIx_Error_string(ret));
 
     cb->pstatus = ret;
+    PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
+/* Completion of an abort. The server replies with the status its host
+ * returned for the abort request (see op_cbfunc in src/server), and the
+ * reply used to be discarded wholesale - so PMIx_Abort reported success
+ * even when the host refused the request or did not support it. */
+static void abort_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                         pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
+
+    PMIX_ACQUIRE_OBJECT(cb);
+
+    cb->pstatus = unpack_ack(buf);
+
+    pmix_output_verbose(2, pmix_client_globals.base_output,
+                        "pmix:client abort completed with status %s",
+                        PMIx_Error_string(cb->pstatus));
+
     PMIX_POST_OBJECT(cb);
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
@@ -1024,6 +1038,12 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
 
         kv = (pmix_kval_t*)pmix_list_remove_first(&cb.kvs);
         PMIX_DESTRUCT(&cb);
+        if (NULL == kv) {
+            /* a successful fetch that returned nothing - treat it the same
+             * as "no debugger waiting" rather than dereferencing the NULL */
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+            goto nodebugger;
+        }
 
         if (PMIX_BOOL == kv->value->type) {
             if (kv->value->data.flag) {
@@ -1036,6 +1056,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         } else {
             pmix_output(0, "DEBUG STOP_IN_INIT FOUND, BUT VALUE UNRECOGNIZED: %s",
                         PMIx_Data_type_string(kv->value->type));
+            PMIX_RELEASE(kv);
             return PMIX_ERR_BAD_PARAM;
         }
         pmix_output_verbose(2, pmix_client_globals.base_output,
@@ -1122,6 +1143,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                             pmix_globals.myid.rank);
         PMIX_DESTRUCT(&cb);
     }
+nodebugger:
 
     /* check to see if we need to notify anyone */
     if (NULL != info) {
@@ -1341,7 +1363,7 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     pmix_buffer_t *bfr;
     pmix_cmd_t cmd = PMIX_ABORT_CMD;
     pmix_status_t rc;
-    pmix_lock_t reglock;
+    pmix_cb_t *cb;
 
     pmix_output_verbose(2, pmix_client_globals.base_output,
                         "pmix:client abort called");
@@ -1415,18 +1437,21 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     }
 
     /* send to the server */
-    PMIX_CONSTRUCT_LOCK(&reglock);
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, bfr, wait_cbfunc, (void *) &reglock);
+    cb = PMIX_NEW(pmix_cb_t);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, bfr, abort_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(bfr);
-        PMIX_DESTRUCT_LOCK(&reglock);
+        PMIX_RELEASE(cb);
         return rc;
     }
 
-    /* wait for the release */
-    PMIX_WAIT_THREAD(&reglock);
-    PMIX_DESTRUCT_LOCK(&reglock);
-    return PMIX_SUCCESS;
+    /* wait for the release, and report what the server told us - a host
+     * that refuses the abort (or does not support one) has to reach the
+     * caller, not be swallowed here */
+    PMIX_WAIT_THREAD(&cb->lock);
+    rc = cb->pstatus;
+    PMIX_RELEASE(cb);
+    return rc;
 }
 
 static void _putfn(int sd, short args, void *cbdata)
@@ -1505,17 +1530,22 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
     pmix_cb_t *cb;
     pmix_status_t rc;
 
-    pmix_output_verbose(2, pmix_client_globals.base_output,
-                          "pmix: executing put for key %s type %s",
-                          key, PMIx_Data_type_string(val->type));
-
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
-    if (NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key)) {
+    /* Screen both inputs before anything looks at them. The verbose call
+     * below prints the key and dereferences the value's type, and its
+     * arguments are evaluated whether or not the channel is enabled - so a
+     * NULL for either used to crash here, ahead of the check that was meant
+     * to catch it. _putfn() then dereferences the value again. */
+    if (NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key) || NULL == val) {
         return PMIX_ERR_BAD_PARAM;
     }
+
+    pmix_output_verbose(2, pmix_client_globals.base_output,
+                          "pmix: executing put for key %s type %s",
+                          key, PMIx_Data_type_string(val->type));
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;

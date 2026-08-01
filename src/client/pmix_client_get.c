@@ -172,6 +172,12 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             lg->nodeinfo = false;
             lg->appinfo = false;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
+            /* the qualifier comes straight from the caller, so verify it
+             * really carries a string before handing it to strdup */
+            if (PMIX_STRING != info[n].value.type ||
+                NULL == info[n].value.data.string) {
+                return PMIX_ERR_BAD_PARAM;
+            }
             /* must copy - lgdes() frees this field, and the info array
              * belongs to the caller. Every other assignment to
              * lg->hostname strdup's for the same reason */
@@ -378,12 +384,21 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
     }
     if (PMIX_SUCCESS == rc && NULL != cb->value) {
         if (lg->stval) {
+            /* the caller provided the storage, so copy into it - and then
+             * release our own copy, which nothing else owns (the caddy
+             * destructor does not touch "value") */
             PMIx_Value_xfer(*val, cb->value);
+            PMIX_VALUE_RELEASE(cb->value);   /* nulls cb->value */
         } else {
             *val = cb->value;
             cb->value = NULL;
         }
     } else {
+        /* nothing to hand back - but anything the request did collect is
+         * still ours to reclaim */
+        if (NULL != cb->value) {
+            PMIX_VALUE_RELEASE(cb->value);
+        }
         *val = NULL;
     }
     PMIX_RELEASE(lg);
@@ -1034,7 +1049,7 @@ static void get_data(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
-                        if (NULL == kv) {  // should never happen
+                        if (NULL == kv) { // should never happen
                             cb->status = PMIX_ERR_NOT_FOUND;
                             goto done;
                         }
@@ -1113,7 +1128,7 @@ static void get_data(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
-                        if (NULL == kv) {  // should never happen
+                        if (NULL == kv) { // should never happen
                             cb->status = PMIX_ERR_NOT_FOUND;
                             goto done;
                         }

@@ -367,10 +367,19 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
 {
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
-    size_t n;
 
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix: group_construct called");
+
+    /* both are documented as optional OUT parameters, so honor a NULL for
+     * either - and define them before anything can fail, so the caller can
+     * read them on an error return too */
+    if (NULL != results) {
+        *results = NULL;
+    }
+    if (NULL != nresults) {
+        *nresults = 0;
+    }
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -389,16 +398,6 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_group_tracker_t);
-    /* capture the group's failure policy now, while we have the construct
-     * directives, so info_cbfunc can record it in the persistent group and the
-     * later destruct can honor PMIX_GROUP_NOTIFY_TERMINATION on the caller's
-     * behalf (the server keeps no group state between the two collectives) */
-    for (n = 0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_NOTIFY_TERMINATION)) {
-            cb->notterm = PMIX_INFO_TRUE(&info[n]);
-            break;
-        }
-    }
 
     /* push the message into our event base to send to the server */
     rc = PMIx_Group_construct_nb(grp, procs, nprocs, info, ninfo, info_cbfunc, cb);
@@ -410,7 +409,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
     /* wait for the group construct to complete */
     PMIX_WAIT_THREAD(&cb->lock);
     rc = cb->status;
-    if (PMIX_SUCCESS == rc) {
+    if (PMIX_SUCCESS == rc && NULL != results && NULL != nresults) {
         /* user takes responsibility for releasing any results */
         *results = cb->results;
         *nresults = cb->nresults;
@@ -505,6 +504,24 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     cb->cbfunc = cbfunc;
     cb->cbdata = cbdata;
     cb->grpid = strdup(grp);
+    /* Capture the group's failure policy while we still have the construct
+     * directives, so construct_cbfunc can record it in the persistent group
+     * and the later destruct can re-apply PMIX_GROUP_NOTIFY_TERMINATION on
+     * the caller's behalf (the server keeps no group state between the two
+     * collectives).
+     *
+     * This belongs here, on the tracker construct_cbfunc actually reads.
+     * The blocking wrapper used to record it on its own tracker instead -
+     * which construct_cbfunc never sees - so add_group() was always told
+     * "false", and because add_group() ignores a repeat request for a group
+     * it already holds, the correctly-flagged call that followed could not
+     * correct it. The policy was therefore never honored by any caller. */
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_NOTIFY_TERMINATION)) {
+            cb->notterm = PMIX_INFO_TRUE(&info[n]);
+            break;
+        }
+    }
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, construct_cbfunc, (void*)cb);
@@ -890,7 +907,6 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
     struct timeval tv;
 
     cb->grpid = strdup(grp);
-    cb->nanswered = 1; // we have obviously answered (by accepting)
 
     /* compute the number of proposed members, expanding any wildcard ranks */
     for (n = 0; n < nprocs; n++) {
@@ -939,12 +955,18 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
             m++;
         }
     }
-    /* we (the leader) are a member and have obviously already answered by
-     * accepting (this matches the nanswered = 1 seed above) */
+    /* If we (the leader) named ourselves among the invitees, we have
+     * obviously already answered by accepting - count that answer here, and
+     * only here. Seeding nanswered unconditionally was wrong: a leader that
+     * invites others without listing itself has no member to match, so the
+     * count started one ahead of the flags and the invitation resolved one
+     * answer early. Under the default all-or-nothing policy that made the
+     * last invitee look like a non-responder and aborted the construct. */
     for (m = 0; m < cb->nmembers; m++) {
         if (PMIX_CHECK_PROCID(&cb->members[m], &pmix_globals.myid)) {
             cb->responded[m] = true;
             cb->answered[m] = true;
+            cb->nanswered++;
             break;
         }
     }
@@ -1188,6 +1210,15 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t 
     pmix_group_tracker_t *cb;
     pmix_status_t rc;
 
+    /* optional OUT parameters - set them before anything can fail so the
+     * caller can read them on an error return, and honor a NULL for either */
+    if (NULL != results) {
+        *results = NULL;
+    }
+    if (NULL != nresults) {
+        *nresults = 0;
+    }
+
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
@@ -1202,12 +1233,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t 
     }
 
     /* check for bozo input */
-    if (NULL == grp || NULL == procs) {
+    if (NULL == grp || NULL == procs || 0 == nprocs) {
         return PMIX_ERR_BAD_PARAM;
     }
-
-    *results = NULL;
-    *nresults = 0;
 
     cb = PMIX_NEW(pmix_group_tracker_t);
     if (NULL == cb) {
@@ -1262,7 +1290,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
     }
 
     /* check for bozo input */
-    if (NULL == grp || NULL == procs) {
+    if (NULL == grp || NULL == procs || 0 == nprocs) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -1546,6 +1574,11 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* check for bozo input - the group ID names the group we are joining */
+    if (NULL == grp) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which lock to release when
      * the return message is recvd */
@@ -1585,9 +1618,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
     pmix_status_t code;
-    size_t n;
     pmix_data_range_t range;
-    PMIX_HIDE_UNUSED_PARAMS(cbfunc);
+    /* join accepts no directives today - the accept/decline notification it
+     * issues carries only the leader's address. A PMIX_TIMEOUT here used to
+     * be recognized and then discarded by a loop that did nothing with it;
+     * saying so plainly is better than pretending to honor it. */
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
 
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "[%s:%d] pmix: join nb called",
@@ -1606,22 +1642,18 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* check for bozo input - setup_leader_watch() below strdup's this, and
+     * every sibling group API screens it */
+    if (NULL == grp) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which lock to release when
      * the notification is done */
     cb = PMIX_NEW(pmix_group_tracker_t);
     cb->cbfunc = cbfunc;
     cb->cbdata = cbdata;
-
-    /* check for directives */
-    if (NULL != info) {
-        for (n = 0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-                /* setup a timer */
-                break;
-            }
-        }
-    }
 
     /* set the code according to their request */
     if (PMIX_GROUP_ACCEPT == opt) {
@@ -2102,14 +2134,11 @@ static void destruct_cbfunc(struct pmix_peer_t *pr,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
 
-    if (NULL == buf) {
-        ret = PMIX_ERR_BAD_PARAM;
-        PMIX_ERROR_LOG(ret);
-        goto report;
-    }
-
-    /* find this group and drop it - the caller's thread reads this list too
-     * (see the grouplock note in pmix_client_ops.h) */
+    /* Find this group and drop it - the caller's thread reads this list too
+     * (see the grouplock note in pmix_client_ops.h). This happens whatever
+     * the reply turns out to be: we asked to destruct, so we are done with
+     * the group either way, and leaving it registered on one failure path
+     * but not the other left the two disagreeing. */
     grp = NULL;
     pmix_mutex_lock(&pmix_client_globals.grouplock);
     PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
@@ -2120,6 +2149,12 @@ static void destruct_cbfunc(struct pmix_peer_t *pr,
         }
     }
     pmix_mutex_unlock(&pmix_client_globals.grouplock);
+
+    if (NULL == buf) {
+        ret = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(ret);
+        goto report;
+    }
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
