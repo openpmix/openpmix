@@ -353,6 +353,10 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_iof_req_t, pmix_object_t, iofreqcon, iofreq
 static void scon(pmix_shift_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
+    /* objects are malloc'd, not calloc'd, so every field must be
+     * given a value here - a caddy whose status is never explicitly
+     * set is otherwise reported to the caller as random garbage */
+    p->status = PMIX_SUCCESS;
     p->codes = NULL;
     p->ncodes = 0;
     p->sessionid = UINT32_MAX;
@@ -532,6 +536,9 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_querylist_t,
 static void qcon(pmix_query_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
+    /* objects are malloc'd, not calloc'd, so every field must be
+     * given a value here - see the note in scon() */
+    p->status = PMIX_SUCCESS;
     p->host_called = false;
     p->queries = NULL;
     p->nqueries = 0;
@@ -539,6 +546,8 @@ static void qcon(pmix_query_caddy_t *p)
     p->ntargets = 0;
     p->info = NULL;
     p->ninfo = 0;
+    p->dirs = NULL;
+    p->ndirs = 0;
     PMIX_BYTE_OBJECT_CONSTRUCT(&p->bo);
     PMIX_CONSTRUCT(&p->results, pmix_list_t);
     p->nreplies = 0;
