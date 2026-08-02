@@ -430,6 +430,28 @@ A second audit (July 2026) of the same directory found these:
     caller-supplied pointers unchecked. A failed
     `pmix_hwloc_parse_cpuset_string` also left a half-built bitmap and source
     on the caller's struct, which the caller had no reason to destruct.
+
+    **Two entry points were missed by that sweep and fixed later** — worth
+    knowing, because between them they define the shape of the problem:
+
+    - `pmix_hwloc_load_topology()` read `topo->source` as its first act, so
+      `PMIx_Load_topology(NULL)` segfaulted. It sits directly between the
+      two functions that *were* hardened, which is exactly why it was easy
+      to skip: the screen is per-function, and reading the neighbours does
+      not tell you about the one in the middle. When auditing this file
+      for NULL screening, work from the list of public `PMIx_*` entry
+      points in [`src/client/pmix_client_topology.c`](../client/pmix_client_topology.c)
+      (which validate nothing themselves — the screening contract lives
+      here), not from the functions that look related.
+    - `pmix_hwloc_get_relative_locality()` wrote `*loc` on every path that
+      got past its input checks, so a NULL OUT parameter was a store to
+      address zero. Note what it takes to *reach* that store: both
+      locality strings must be well-formed enough to survive
+      `pmix_hwloc_locality_payload()`. A test built from junk strings
+      returns early and looks like it passes.
+
+    Both are covered by `test_topology_bad_params()` in
+    [`test/unit/client_api.c`](../../test/unit/client_api.c).
 14. **`setup_topology` did `strdup(topo->source)` on a host-provided
     `PMIX_TOPOLOGY2`.** A host is not required to label the topology it hands
     over, and `strdup(NULL)` is undefined. It now falls back to the
