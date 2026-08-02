@@ -7,6 +7,29 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Fixed an unbounded hang in PMIx_Group_invite, and a leader-failure
+   safety net that never fired, both caused by the library having no way
+   to observe an event that the application cannot suppress. PMIx used
+   ordinary event handlers for events it needs for its own correctness,
+   and an application is entitled to end the event chain by returning
+   PMIX_EVENT_ACTION_COMPLETE - the normal way to say "I handled this" -
+   which silently skipped every library handler positioned after it. An
+   application that registered a handler for PMIX_GROUP_INVITE_ACCEPTED
+   (to log who joined, say) therefore blinded the leader to the answers
+   it was waiting for, and PMIx_Group_invite blocked forever unless the
+   caller supplied a PMIX_TIMEOUT; an application handling the process
+   termination or group construct codes likewise disabled the
+   invitee-side watch that turns a lost leader into
+   PMIX_GROUP_LEADER_FAILED. The library now watches these events
+   through an internal observer registry that runs ahead of the
+   application's event chain and cannot be pre-empted (see
+   openpmix#4059)
+ - Fixed the same defect pointed the other way: the library's own group
+   invitation handler ended the event chain itself, so whenever it ran
+   first it swallowed the application's handlers for
+   PMIX_GROUP_INVITE_ACCEPTED, PMIX_GROUP_INVITE_DECLINED and
+   PMIX_PROC_TERMINATED. Library observers have no return value, so they
+   can no longer suppress an application handler
  - Repaired a second round of defects in the client library, found on a
    follow-up sweep of src/client. Several were crashes on inputs the
    APIs document as legal or that a careless caller can easily produce:

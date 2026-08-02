@@ -87,7 +87,6 @@ PMIX_EXPORT bool pmix_client_proc_is_included(const pmix_proc_t *procs, size_t n
 
 /* Reclaim any leader-watch trackers still active at finalize. Called from
  * PMIx_Finalize after the progress thread has stopped. */
-PMIX_EXPORT void pmix_client_group_cleanup(void);
 
 END_C_DECLS
 
