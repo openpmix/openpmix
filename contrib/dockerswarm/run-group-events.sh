@@ -36,6 +36,22 @@
 #                             against a membership it is not part of -- doing so
 #                             resolves the invitation one answer early and
 #                             aborts the (all-or-nothing) construct.
+#   * group_invite_suppress-- the leader also registers an ordinary handler for
+#                             PMIX_GROUP_INVITE_ACCEPTED that ends the event
+#                             chain, which is the normal way for an application
+#                             to say it handled an event. That used to suppress
+#                             the library's own answer counter and hang the
+#                             invite forever, with no PMIX_TIMEOUT to bound it;
+#                             the leader must also still see every acceptance
+#                             through its own handler (openpmix#4059).
+#   * group_invite_nb      -- the leader invites with PMIx_Group_invite_nb and
+#                             the invitees accept with a real
+#                             PMIx_Group_join_nb callback. The non-blocking
+#                             invite used to announce nothing at all, so no
+#                             group formed; join used to complete before the
+#                             construct resolved, returning no group data.
+#                             Each join must now be handed the group id and the
+#                             full membership.
 #   * group_invite_timeout -- an invitee never responds; the leader's
 #                             PMIX_TIMEOUT fires, reports the non-responder via
 #                             PMIX_GROUP_INVITE_FAILED, and forms the group on
@@ -135,6 +151,93 @@ test_linux() {
         skp "group_invite not built"
     fi
     [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] || bad "group_invite: stray prted left behind"
+    cleanup_swarm
+
+    #############################################################
+    # invite whose answers the application tries to swallow
+    #############################################################
+    banner "invite with an app handler ending the chain (openpmix#4059)"
+    cleanup_swarm
+    # group_invite_suppress: same shape as group_invite, except the leader also
+    # registers an ordinary single-code handler for PMIX_GROUP_INVITE_ACCEPTED
+    # that logs the acceptance and returns PMIX_EVENT_ACTION_COMPLETE - the
+    # documented way for an application to say it handled an event, and about as
+    # ordinary as an invite application gets.
+    #
+    # The library used to count invitation answers in an ordinary multi-code
+    # event handler, and the chain runs single-code handlers first, so the
+    # application's handler ended the chain before the library ever saw the
+    # acceptances. The leader then blocked forever - the example supplies no
+    # PMIX_TIMEOUT, so the regression is a hang, not an abort. Across servers is
+    # the case that matters: every acceptance has to cross a daemon boundary to
+    # reach the leader, and each one is a separate event chain on arrival.
+    #
+    # The mirror assertion is that the leader logged all 3 acceptances: the
+    # library's own handler used to end the chain itself, swallowing the
+    # application's handler for these codes whenever it ran first.
+    if RUN 'test -x /opt/prte/tests/group_invite_suppress'; then
+        OUT="$(RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_invite_suppress 2>&1')"
+        npass=$(echo "$OUT" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
+        nfence=$(echo "$OUT" | grep -c 'group fence complete')
+        nseen=$(echo "$OUT" | grep -c 'APP saw an acceptance from')
+        if hung "$OUT"; then
+            bad "group_invite_suppress HUNG - the app handler suppressed the library's answer counter"
+        elif echo "$OUT" | grep -qiE 'ERROR!|FAILED -'; then
+            bad "group_invite_suppress: a member reported failure: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
+        elif [ "$nseen" -lt 3 ]; then
+            bad "group_invite_suppress: leader logged only $nseen/3 acceptances - the library swallowed the app's handler"
+        elif [ "$npass" -ge 4 ] && [ "$nfence" -ge 4 ]; then
+            ok "group formed across all 4 members with the app ending the chain, and the leader saw all 3 acceptances"
+        else
+            bad "group_invite_suppress: only $npass completed / $nfence fenced: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+        fi
+    else
+        skp "group_invite_suppress not built"
+    fi
+    [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] || bad "group_invite_suppress: stray prted left behind"
+    cleanup_swarm
+
+    #############################################################
+    # the non-blocking ends of invite and join
+    #############################################################
+    banner "non-blocking invite/join (invite_nb announces, join completes at the construct)"
+    cleanup_swarm
+    # group_invite_nb: the leader invites with PMIx_Group_invite_nb and each
+    # invitee accepts with a real PMIx_Group_join_nb callback. Neither is
+    # reachable from group_invite, which drives the blocking invite and passes
+    # no join callback.
+    #
+    # PMIx_Group_invite_nb used to announce nothing at all - the announcement
+    # was built out of blocking notifications, so it could only run on the
+    # blocking form's own thread - and therefore no group formed. And join used
+    # to complete as soon as its acceptance had been handed to the local event
+    # system, long before the construct resolved and carrying no group data,
+    # contradicting its man page. Each invitee now checks that its callback
+    # arrives with the right group id and the full membership; across servers,
+    # that membership had to travel from the leader's daemon.
+    if RUN 'test -x /opt/prte/tests/group_invite_nb'; then
+        OUT="$(RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_invite_nb 2>&1')"
+        npass=$(echo "$OUT" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
+        nfence=$(echo "$OUT" | grep -c 'group fence complete')
+        ninv=$(echo "$OUT" | grep -c 'Group_invite_nb completed: PASS')
+        njoin=$(echo "$OUT" | grep -c 'Group_join_nb completed with group nbgroup and 4 members: PASS')
+        if hung "$OUT"; then
+            bad "group_invite_nb HUNG (the non-blocking invite never announced, or a join never completed)"
+        elif echo "$OUT" | grep -qiE 'ERROR!|FAILED -'; then
+            bad "group_invite_nb: a member reported failure: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
+        elif [ "$ninv" -lt 1 ]; then
+            bad "group_invite_nb: PMIx_Group_invite_nb never completed successfully"
+        elif [ "$njoin" -lt 3 ]; then
+            bad "group_invite_nb: only $njoin/3 joins completed with the constructed group's id and membership"
+        elif [ "$npass" -ge 4 ] && [ "$nfence" -ge 4 ]; then
+            ok "non-blocking invite formed the group across all 4 members, and all 3 joins completed at the construct"
+        else
+            bad "group_invite_nb: only $npass completed / $nfence fenced: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+        fi
+    else
+        skp "group_invite_nb not built"
+    fi
+    [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] || bad "group_invite_nb: stray prted left behind"
     cleanup_swarm
 
     #############################################################
