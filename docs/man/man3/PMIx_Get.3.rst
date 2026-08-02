@@ -164,8 +164,9 @@ available:
 * ``PMIX_NSPACE`` (char*) |mdash| namespace of the process's job.
 * ``PMIX_JOBID`` (char*) |mdash| job identifier assigned by the scheduler.
 * ``PMIX_PROCID`` (pmix_proc_t\*) |mdash| process identifier (namespace and
-  rank).
+  rank). Self-referential: see below.
 * ``PMIX_RANK`` (pmix_rank_t) |mdash| rank of the process within its job.
+  Self-referential: see below.
 * ``PMIX_GLOBAL_RANK`` (pmix_rank_t) |mdash| rank of the process spanning across
   all jobs in this session.
 * ``PMIX_APP_RANK`` (pmix_rank_t) |mdash| rank of the process within its
@@ -186,6 +187,34 @@ available:
 * ``PMIX_SESSION_ID`` (uint32_t) |mdash| session identifier.
 * ``PMIX_PROC_PID`` (pid_t) |mdash| operating-system process identifier (pid) of
   the specified process.
+
+.. note::
+
+   ``PMIX_RANK`` and ``PMIX_PROCID`` are *self-referential* |mdash| they name
+   the very thing the ``proc`` parameter must already supply, so asking for
+   them about a process identified in ``proc`` conveys no information and is
+   not supported. Each is instead retrieved by leaving the corresponding part
+   of ``proc`` unspecified, which asks "who am I?":
+
+   * ``PMIX_RANK`` |mdash| pass a ``proc`` whose namespace is the caller's own
+     and whose rank is ``PMIX_RANK_INVALID``. The caller's own rank is
+     returned, as a ``PMIX_PROC_RANK`` value.
+   * ``PMIX_PROCID`` |mdash| pass ``NULL`` for ``proc``. The caller's own
+     process identifier is returned.
+
+   Passing a fully specified ``proc`` with either key returns
+   ``PMIX_ERR_NOT_FOUND``. Note in particular that ``PMIX_RANK`` is not
+   retrievable for *another* process: it serves as the identifier of the
+   process-realm information supplied by the host (see
+   ``PMIX_PROC_INFO_ARRAY``) rather than as a stored value. A process's rank
+   is already known to any caller able to name it. The remaining rank keys in
+   this section |mdash| ``PMIX_GLOBAL_RANK``, ``PMIX_APP_RANK``,
+   ``PMIX_LOCAL_RANK``, ``PMIX_NODE_RANK`` and ``PMIX_PACKAGE_RANK`` |mdash|
+   are ordinary stored values and are retrieved for the process identified in
+   ``proc`` in the usual way.
+
+   In the same vein, ``PMIX_VERSION_NUMERIC`` reports the version of the
+   library the caller is linked against and ignores ``proc`` entirely.
 
 **Node and host information**
 

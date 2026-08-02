@@ -16,6 +16,12 @@ Detailed changes since v6.1.0:
    permits, or that simply ordered the array differently, could not
    register its job. PMIX_RANK and PMIX_PROCID are now both accepted, in
    any position; PMIX_RANK is preferred when both are present
+ - Documented the self-referential reserved keys on the PMIx_Get man
+   page. PMIX_RANK and PMIX_PROCID name the very thing the proc
+   parameter has to supply, so they are retrieved by leaving that part
+   of proc unspecified - a rank of PMIX_RANK_INVALID for PMIX_RANK, a
+   NULL proc for PMIX_PROCID - rather than for the process identified in
+   proc as the surrounding text implied
  - A PMIx_Query_info that is outstanding when the connection to the
    server is lost now returns PMIX_ERR_COMM_FAILURE instead of hanging.
    The reply handler treated a zero-byte buffer with a bare return, so
