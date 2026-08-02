@@ -130,6 +130,32 @@ PMIX_EXPORT pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
                                                     pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                                     void *cbdata);
 
+/**
+ * Find the process identifier carried by a process-realm info array.
+ *
+ * PMIX_PROC_INFO_ARRAY requires the array to identify the process it
+ * describes, and allows the host to do so with either PMIX_RANK (plus
+ * PMIX_NSPACE where the job would otherwise be ambiguous) or
+ * PMIX_PROCID. It places no requirement on where in the array that
+ * identifier appears. Scan for whichever the host used rather than
+ * demanding one particular key in the first position.
+ *
+ * PMIX_RANK is preferred when both are present. The array position
+ * that carried the identifier is returned in idpos so the caller can
+ * skip it when storing the remaining values - it names the array
+ * rather than being data belonging to the process.
+ *
+ * @param array   the array of info describing the process
+ * @param size    number of elements in the array
+ * @param rank    OUT - the rank the array describes
+ * @param idpos   OUT - index of the element that identified it
+ *
+ * @return PMIX_SUCCESS, or PMIX_ERR_TYPE_MISMATCH if no usable
+ *         identifier is present.
+ */
+PMIX_EXPORT pmix_status_t pmix_gds_base_proc_array_id(const pmix_info_t *array, size_t size,
+                                                      pmix_rank_t *rank, size_t *idpos);
+
 END_C_DECLS
 
 #endif

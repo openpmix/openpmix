@@ -310,3 +310,46 @@ exit:
     PMIX_LIST_DESTRUCT(&nspaces);
     return rc;
 }
+
+pmix_status_t pmix_gds_base_proc_array_id(const pmix_info_t *array, size_t size,
+                                          pmix_rank_t *rank, size_t *idpos)
+{
+    size_t n;
+    bool haveproc = false;
+    size_t procpos = 0;
+
+    if (NULL == array || 0 == size || NULL == rank || NULL == idpos) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    for (n = 0; n < size; n++) {
+        /* an explicit rank is the preferred identifier, so take it
+         * as soon as we see one no matter where it sits */
+        if (PMIX_CHECK_KEY(&array[n], PMIX_RANK)) {
+            if (PMIX_PROC_RANK != array[n].value.type) {
+                return PMIX_ERR_TYPE_MISMATCH;
+            }
+            *rank = array[n].value.data.rank;
+            *idpos = n;
+            return PMIX_SUCCESS;
+        }
+        /* remember the first procid in case no rank turns up */
+        if (!haveproc && PMIX_CHECK_KEY(&array[n], PMIX_PROCID)) {
+            if (PMIX_PROC != array[n].value.type ||
+                NULL == array[n].value.data.proc) {
+                return PMIX_ERR_TYPE_MISMATCH;
+            }
+            haveproc = true;
+            procpos = n;
+        }
+    }
+
+    if (haveproc) {
+        *rank = array[procpos].value.data.proc->rank;
+        *idpos = procpos;
+        return PMIX_SUCCESS;
+    }
+
+    /* the array does not say who it describes */
+    return PMIX_ERR_TYPE_MISMATCH;
+}
