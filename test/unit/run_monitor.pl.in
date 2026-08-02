@@ -120,5 +120,20 @@ if ($output !~ /MONITOR TEST PASSED/) {
     print "FAIL: client did not confirm heartbeat monitoring\n";
     exit(1);
 }
+
+# The observer also makes one blocking PMIx_Process_monitor call with
+# PMIX_SEND_HEARTBEAT. That form used to return from the _nb layer
+# without ever invoking the callback the blocking wrapper was waiting
+# on, so it hung forever - which here shows up as the whole run hitting
+# the time limit above. This line proves it came back.
+if ($output =~ /HEARTBEAT TEST FAILED/) {
+    print "FAIL: blocking PMIx_Process_monitor(SEND_HEARTBEAT) reported an error\n";
+    exit(1);
+}
+if ($output !~ /HEARTBEAT TEST PASSED/) {
+    print "FAIL: blocking PMIx_Process_monitor(SEND_HEARTBEAT) never completed\n";
+    exit(1);
+}
 print "PASS: heartbeat monitor raised the expected alert\n";
+print "PASS: blocking PMIx_Process_monitor(SEND_HEARTBEAT) returned\n";
 exit(0);
