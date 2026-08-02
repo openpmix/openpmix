@@ -43,6 +43,8 @@
 #include "src/include/pmix_config.h"
 
 #include "include/pmix.h"
+#include "src/common/pmix_iof.h"
+#include "src/include/pmix_globals.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -296,6 +298,126 @@ static void test_directives_string(void)
     free(str);
 }
 
+/* ------------------------------------------------------------------ */
+/* IOF: sources, flags, and the XML escaper                            */
+/* ------------------------------------------------------------------ */
+static void iofcb(size_t iofhdlr, pmix_iof_channel_t channel, pmix_proc_t *source,
+                  pmix_byte_object_t *payload, pmix_info_t info[], size_t ninfo)
+{
+    (void) iofhdlr;
+    (void) channel;
+    (void) source;
+    (void) payload;
+    (void) info;
+    (void) ninfo;
+}
+
+static void test_iof_bad_params(void)
+{
+    pmix_status_t rc;
+    pmix_proc_t proc;
+
+    fprintf(stdout, "\n-- PMIx_IOF_pull, malformed sources --\n");
+
+    /* the sources are copied wholesale into the request, so a count
+     * with no array behind it used to be a memcpy from NULL */
+    rc = PMIx_IOF_pull(NULL, 1, NULL, 0, PMIX_FWD_STDOUT_CHANNEL, iofcb, NULL, NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_IOF_pull(NULL sources, 1) rejected");
+
+    rc = PMIx_IOF_pull(NULL, 0, NULL, 0, PMIX_FWD_STDOUT_CHANNEL, iofcb, NULL, NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_IOF_pull(no sources) rejected");
+
+    /* stdin is still refused for its own reason, ahead of the above */
+    PMIX_LOAD_PROCID(&proc, "nspace", PMIX_RANK_WILDCARD);
+    rc = PMIx_IOF_pull(&proc, 1, NULL, 0, PMIX_FWD_STDIN_CHANNEL, iofcb, NULL, NULL);
+    check(PMIX_ERR_NOT_SUPPORTED == rc, "PMIx_IOF_pull(stdin) still refused");
+}
+
+static void test_iof_flags(void)
+{
+    pmix_iof_flags_t flags;
+    pmix_info_t info;
+
+    fprintf(stdout, "\n-- pmix_iof_check_flags, malformed output names --\n");
+
+    /* a name that is not a string used to be strdup'd from whatever
+     * else shared the value union */
+    pmix_iof_init_flags(&flags);
+    PMIX_INFO_LOAD(&info, PMIX_IOF_OUTPUT_TO_FILE, NULL, PMIX_BOOL);
+    pmix_iof_check_flags(&info, &flags);
+    check(NULL == flags.file, "bool-valued PMIX_IOF_OUTPUT_TO_FILE ignored");
+    PMIX_INFO_DESTRUCT(&info);
+
+    pmix_iof_init_flags(&flags);
+    PMIX_INFO_LOAD(&info, PMIX_IOF_OUTPUT_TO_DIRECTORY, NULL, PMIX_BOOL);
+    pmix_iof_check_flags(&info, &flags);
+    check(NULL == flags.directory, "bool-valued PMIX_IOF_OUTPUT_TO_DIRECTORY ignored");
+    PMIX_INFO_DESTRUCT(&info);
+
+    /* and a well-formed one is still taken */
+    pmix_iof_init_flags(&flags);
+    PMIX_INFO_LOAD(&info, PMIX_IOF_OUTPUT_TO_FILE, "out", PMIX_STRING);
+    pmix_iof_check_flags(&info, &flags);
+    check(NULL != flags.file && 0 == strcmp(flags.file, "out"),
+          "string-valued PMIX_IOF_OUTPUT_TO_FILE taken");
+    if (NULL != flags.file) {
+        free(flags.file);
+    }
+    PMIX_INFO_DESTRUCT(&info);
+}
+
+static void test_iof_xml_escaping(void)
+{
+    pmix_iof_flags_t flags;
+    pmix_byte_object_t bo, *out;
+    pmix_proc_t name;
+    char payload[6];
+    char *text;
+    int ok;
+
+    fprintf(stdout, "\n-- pmix_iof_prep_output, XML escaping --\n");
+
+    /* '<', '&', '>' are escaped by name; the two high-bit bytes are not
+     * printable and become numeric character references. Reading them
+     * through a signed char - which is what the escaper used to do -
+     * is undefined for isprint() and renders "&#-01;" style references
+     * that are not valid XML at all */
+    payload[0] = '<';
+    payload[1] = '&';
+    payload[2] = '>';
+    payload[3] = (char) 0x80;
+    payload[4] = (char) 0xFF;
+    payload[5] = '\n';
+    bo.bytes = payload;
+    bo.size = sizeof(payload);
+
+    PMIX_LOAD_PROCID(&name, "nspace", 0);
+    pmix_iof_init_flags(&flags);
+    flags.set = true;
+    flags.xml = true;
+
+    out = pmix_iof_prep_output(&name, &flags, PMIX_FWD_STDOUT_CHANNEL, &bo);
+    check(NULL != out && NULL != out->bytes, "prep_output produced XML output");
+    if (NULL == out || NULL == out->bytes) {
+        return;
+    }
+    /* prep_output returns a counted buffer, not a C string */
+    text = (char *) malloc(out->size + 1);
+    memcpy(text, out->bytes, out->size);
+    text[out->size] = '\0';
+
+    check(NULL != strstr(text, "&lt;"), "'<' escaped as &lt;");
+    check(NULL != strstr(text, "&amp;"), "'&' escaped as &amp;");
+    check(NULL != strstr(text, "&gt;"), "'>' escaped as &gt;");
+    check(NULL != strstr(text, "&#128;"), "0x80 escaped as &#128;");
+    check(NULL != strstr(text, "&#255;"), "0xFF escaped as &#255;");
+    ok = (NULL == strstr(text, "&#-"));
+    check(ok, "no negative character references emitted");
+
+    free(text);
+    PMIx_Byte_object_free(out, 1);
+}
+
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
@@ -329,6 +451,9 @@ int main(int argc, char **argv)
     test_query_local();
     test_data_bad_params();
     test_directives_string();
+    test_iof_bad_params();
+    test_iof_flags();
+    test_iof_xml_escaping();
 
     rc = PMIx_Finalize(NULL, 0);
     if (PMIX_SUCCESS != rc) {
