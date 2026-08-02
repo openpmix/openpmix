@@ -106,6 +106,45 @@ pointers had survived in them:
   library and proves nothing. Both forms are in the test so the
   distinction stays visible.
 
+### `common_api` — the `src/common` regression test
+
+[`common_api.c`](common_api.c) is the same idea one directory over: the
+singleton-side regression suite for [`src/common`](../../src/common), the
+role-shared public API layer. Every case corresponds to a defect from the
+August 2026 review of that directory (see
+[`src/common/AGENTS.md`](../../src/common/AGENTS.md)), and three of them
+**segfault** rather than merely failing against an unfixed library — the
+malformed `PMIX_LOG_SOURCE`, `PMIx_IOF_pull` with a source count and no
+array, and printing the attributes of a function registered under a long
+name. Those run early on purpose: a crash there means the rest never runs,
+which is exactly the signal wanted.
+
+- Malformed directive values, which is the recurring defect in that
+  directory: `PMIX_LOG_SOURCE` read as a proc, the
+  `PMIX_PROCID`/`PMIX_NSPACE`/`PMIX_RANK` query qualifiers read the same
+  way, `PMIX_IOF_OUTPUT_TO_FILE`/`_TO_DIRECTORY` read as strings.
+- `PMIx_Query_info` with no keys at all, and the locally-resolved queries
+  repeated 200 times — including a run with a NULL callback, because the
+  query caddy is released through several different paths depending on
+  how the request was answered and that one used to release it through
+  none.
+- `PMIx_Data_copy_payload` with a NULL destination, and
+  `PMIx_Info_directives_string` for `PMIX_INFO_PERSISTENT`.
+- The IOF XML escaper, fed two high-bit bytes: it asserts they come back
+  as `&#128;`/`&#255;` **and** that no `&#-` appears, so the test states
+  what was actually wrong with the old signed-char output rather than
+  just what the new output happens to be.
+- `PMIx_Register_attributes` with a NULL name, with an over-long name
+  (the stack-overflow case), and the two public attribute lookups with
+  NULL.
+
+The heartbeat hang from that same review is **not** here, because it
+cannot be: a singleton is turned away at the "am I connected?" check long
+before `PMIx_Process_monitor` reaches its heartbeat branch. It lives in
+[`../simple/simpmonitor.c`](../simple/simpmonitor.c) on the observer rank
+instead, driven by `run_monitor.pl`, where a regression is an unbounded
+hang the driver's time limit catches.
+
 **What it cannot cover, and why.** A singleton has no server, so every
 path that round-trips — which is most of `src/client` — short-circuits
 before it starts. `PMIx_Fence` and `PMIx_Commit` return success without
@@ -113,9 +152,10 @@ sending; `PMIx_Get` never leaves the local datastore;
 publish/lookup/spawn/connect all stop at the "am I connected?" check.
 That half of the directory is covered by
 `contrib/dockerswarm/run-client-tests.sh`, which puts the ranks behind
-different PMIx servers. Do not try to grow `client_api.c` into it: a
-test that needs a server belongs in the swarm suite or in a `run_*.pl`
-against `test/simple`.
+different PMIx servers — and, for `src/common`, by
+`contrib/dockerswarm/run-common-tests.sh`. Do not try to grow
+`client_api.c` or `common_api.c` into them: a test that needs a server
+belongs in the swarm suite or in a `run_*.pl` against `test/simple`.
 
 The same short-circuit is why the *parameter* coverage here is uneven,
 and the unevenness is not an oversight. Most entry points run
