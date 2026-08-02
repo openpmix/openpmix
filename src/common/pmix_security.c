@@ -143,6 +143,12 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t n
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* the credential is written through below, so it has to be there */
+    if (NULL == credential) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    PMIX_BYTE_OBJECT_CONSTRUCT(credential);
+
     PMIX_CONSTRUCT(&cb, pmix_query_caddy_t);
     rc = PMIx_Get_credential_nb(info, ninfo, mycdcb, &cb);
     if (PMIX_SUCCESS == rc) {

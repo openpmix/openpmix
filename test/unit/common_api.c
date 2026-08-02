@@ -420,6 +420,50 @@ static void test_iof_xml_escaping(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* OUT parameters that were written through unchecked                  */
+/* ------------------------------------------------------------------ */
+static void test_out_parameters(void)
+{
+    pmix_status_t rc;
+    pmix_query_t query;
+    pmix_info_t monitor;
+    pmix_info_t *results = NULL;
+    size_t nresults = 0;
+    int32_t val = 7;
+
+    fprintf(stdout, "\n-- OUT parameters --\n");
+
+    /* every one of these writes a default through the caller's pointer
+     * as its first act, ahead of any other validation */
+    rc = PMIx_Allocation_request(PMIX_ALLOC_NEW, NULL, 0, NULL, &nresults);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Allocation_request(NULL results) rejected");
+    rc = PMIx_Allocation_request(PMIX_ALLOC_NEW, NULL, 0, &results, NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Allocation_request(NULL nresults) rejected");
+
+    PMIX_QUERY_CONSTRUCT(&query);
+    PMIx_Argv_append_nosize(&query.keys, PMIX_QUERY_STABLE_ABI_VERSION);
+    rc = PMIx_Query_info(&query, 1, NULL, &nresults);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Query_info(NULL results) rejected");
+    rc = PMIx_Query_info(&query, 1, &results, NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Query_info(NULL nresults) rejected");
+    PMIX_QUERY_DESTRUCT(&query);
+
+    PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_HEARTBEAT, NULL, PMIX_POINTER);
+    rc = PMIx_Process_monitor(&monitor, PMIX_SUCCESS, NULL, 0, NULL, &nresults);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Process_monitor(NULL results) rejected");
+    PMIX_INFO_DESTRUCT(&monitor);
+
+    rc = PMIx_Get_credential(NULL, 0, NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Get_credential(NULL credential) rejected");
+
+    /* the data buffer is embedded, and its pointers rewritten, in place */
+    rc = PMIx_Data_pack(NULL, NULL, &val, 1, PMIX_INT32);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Data_pack(NULL buffer) rejected");
+    rc = PMIx_Data_unpack(NULL, NULL, &val, NULL, PMIX_INT32);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Data_unpack(NULL buffer) rejected");
+}
+
+/* ------------------------------------------------------------------ */
 /* PMIx_Register_attributes: a function name that is not there         */
 /* ------------------------------------------------------------------ */
 static void test_register_attributes(void)
@@ -507,6 +551,7 @@ int main(int argc, char **argv)
     test_iof_bad_params();
     test_iof_flags();
     test_iof_xml_escaping();
+    test_out_parameters();
     test_register_attributes();
 
     rc = PMIx_Finalize(NULL, 0);

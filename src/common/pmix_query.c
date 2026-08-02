@@ -498,7 +498,11 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nquerie
     pmix_query_caddy_t *cd;
     pmix_status_t rc;
 
-    // setup default response
+    // setup default response - screen the caller's pointers first,
+    // since this is where we write through them
+    if (NULL == results || NULL == nresults) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     *results = NULL;
     *nresults = 0;
 
