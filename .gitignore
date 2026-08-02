@@ -126,6 +126,8 @@ examples/group_invite_timeout
 examples/group_invite_decline
 examples/group_invite_abort
 examples/group_invite_others
+examples/spawn_reuse
+examples/group_badinfo
 examples/group_invite_suppress
 examples/group_invite_nb
 examples/topology
@@ -276,6 +278,7 @@ test/unit/run_toolcycle.pl
 test/unit/run_toolswitch.pl
 test/unit/run_grpmember.pl
 test/unit/run_grpinvite.pl
+test/unit/run_grpbadinfo.pl
 test/unit/run_grpinviteothers.pl
 test/unit/run_grpinvitesuppress.pl
 test/unit/run_grpinvitenb.pl
