@@ -64,8 +64,15 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                         "pmix:query cback from server");
 
     /* a zero-byte buffer indicates that this recv is being
-     * completed due to a lost connection */
+     * completed due to a lost connection - report the failure to
+     * the caller and release the caddy. A bare return here both
+     * leaks the caddy and leaves a blocking caller waiting forever
+     * on a wakeup that will never come */
     if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        if (NULL != cd->cbfunc) {
+            cd->cbfunc(PMIX_ERR_COMM_FAILURE, NULL, 0, cd->cbdata, NULL, NULL);
+        }
+        PMIX_RELEASE(cd);
         return;
     }
 
@@ -353,6 +360,12 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
             /* check for request to scan the local node for available
              * servers the caller could connect to */
             } else if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_AVAIL_SERVERS)) {
+                /* that handler takes the caddy from here - discard the
+                 * scratch state we built before handing it off, or the
+                 * fetched values and unresolved queries are leaked */
+                cb.key = NULL;
+                PMIX_DESTRUCT(&cb);
+                PMIX_LIST_DESTRUCT(&unresolved);
                 PMIX_THREADSHIFT(cd, pmix_ptl_base_query_servers);
                 return;
 
@@ -409,6 +422,10 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
 
         if (NULL != cd->cbfunc) {
             cd->cbfunc(cd->status, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
+        } else {
+            /* nobody to hand the answer to - the release-fn only runs
+             * when there is a cbfunc, so clean up here instead */
+            _local_relcb(cd);
         }
         return;
     }
@@ -456,11 +473,15 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
             }
             if (NULL != cd->cbfunc) {
                 cd->cbfunc(rc, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
+            } else {
+                _local_relcb(cd);
             }
         } else {
             /* we have to return the error to the caller */
             if (NULL != cd->cbfunc) {
                 cd->cbfunc(rc, NULL, 0, cd->cbdata, _local_relcb, cd);
+            } else {
+                _local_relcb(cd);
             }
         }
     }
@@ -536,9 +557,15 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    /* do a quick check of the qualifiers arrays to ensure
-     * the nqual field has been set */
+    /* check that each query is well-formed before we accept it: the
+     * parser walks the keys array to its NULL terminator, and reads
+     * the procid/nspace/rank qualifiers through the matching member
+     * of the value union - neither is safe on a malformed query */
     for (n = 0; n < nqueries; n++) {
+        if (NULL == queries[n].keys || NULL == queries[n].keys[0]) {
+            /* a query that asks for nothing */
+            return PMIX_ERR_BAD_PARAM;
+        }
         if (NULL != queries[n].qualifiers && 0 == queries[n].nqual) {
             /* look for the info marked as "end" */
             p = 0;
@@ -550,6 +577,23 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
                 return PMIX_ERR_BAD_PARAM;
             }
             queries[n].nqual = p;
+        }
+        for (p = 0; p < queries[n].nqual; p++) {
+            if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_PROCID)) {
+                if (PMIX_PROC != queries[n].qualifiers[p].value.type ||
+                    NULL == queries[n].qualifiers[p].value.data.proc) {
+                    return PMIX_ERR_BAD_PARAM;
+                }
+            } else if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_NSPACE)) {
+                if (PMIX_STRING != queries[n].qualifiers[p].value.type ||
+                    NULL == queries[n].qualifiers[p].value.data.string) {
+                    return PMIX_ERR_BAD_PARAM;
+                }
+            } else if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_RANK)) {
+                if (PMIX_PROC_RANK != queries[n].qualifiers[p].value.type) {
+                    return PMIX_ERR_BAD_PARAM;
+                }
+            }
         }
     }
 

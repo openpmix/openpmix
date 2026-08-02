@@ -508,7 +508,18 @@ static void _rbreq(int sd, short args, void *cbdata)
     rc = pmix_host_server.resource_block(&pmix_globals.myid, cd->directive, cd->block,
                                          cd->units, cd->nunits, cd->info, cd->ninfo,
                                          cd->cbfunc, cd->cbdata);
+    if (PMIX_SUCCESS == rc) {
+        /* the host accepted the request and will invoke the callback
+         * itself when it completes - we must not call it as well, or
+         * the caller sees two completions (and a blocking caller has
+         * its lock woken twice, the second time after it has been
+         * destructed) */
+        PMIX_RELEASE(cd);
+        return;
+    }
     if (PMIX_OPERATION_SUCCEEDED == rc) {
+        /* the host completed the operation immediately and will not
+         * call back, so we report the completion ourselves */
         rc = PMIX_SUCCESS;
     }
     if (NULL != cd->cbfunc) {

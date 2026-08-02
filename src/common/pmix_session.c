@@ -97,6 +97,9 @@ static void ssnctrlcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &results->status, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        /* the unpack left the status field untouched, so report the
+         * failure rather than telling the caller it all worked */
+        results->status = rc;
         goto complete;
     }
     if (PMIX_SUCCESS != results->status) {
@@ -108,6 +111,8 @@ static void ssnctrlcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &results->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
+        results->status = rc;
+        results->ninfo = 0;
         goto complete;
     }
     if (0 < results->ninfo) {
@@ -116,6 +121,7 @@ static void ssnctrlcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         PMIX_BFROPS_UNPACK(rc, peer, buf, results->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            results->status = rc;
             goto complete;
         }
     }
