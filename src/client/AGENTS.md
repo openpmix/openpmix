@@ -178,9 +178,12 @@ and torn down in `PMIx_Finalize`. The load-bearing fields:
   pub/spawn/event/iof/group/base can be enabled independently.
 
 Cross-file helpers declared here: `pmix_parse_localquery`,
-`pmix_client_convert_group_procs`, `pmix_client_proc_is_included`, and
-`pmix_client_group_cleanup` (drains leader-watch trackers still active at
-finalize, after the progress thread has stopped).
+`pmix_client_convert_group_procs`, and `pmix_client_proc_is_included`.
+(There used to be a `pmix_client_group_cleanup` here to drain
+leader-watch trackers still live at finalize. The observer registry owns
+those trackers now and releases them when the event lists are
+destructed, so the private survivor list and its finalize hook are
+gone — see [openpmix#4059][i4059].)
 
 ## Invariants and gotchas
 
@@ -501,28 +504,50 @@ regression coverage in `test/unit/client_api.c`.
   lines later, so the legacy branch is dead. `try_fetch()` retries an
   UNDEF rank as WILDCARD, which is why the path still works. Not changed
   without a pre-v3.2 server to test against; see the comment in the code.
-- **The library's own event handlers can be silently suppressed by the
-  application — [openpmix#4059][i4059].** Both multi-code registrations
-  in `pmix_client_group.c` (`invite_setup`'s `invite_handler` and
-  `setup_leader_watch`'s watch) land in the **multi-code** category,
-  and the chain visits `first` → `single-code` → `multi-code` →
-  `default` → `last`, so an application handler registered for a
-  *single* one of those codes runs first and ends the chain with the
-  ordinary `PMIX_EVENT_ACTION_COMPLETE`. Consequences you will meet
-  here: `PMIx_Group_invite` can hang forever, the invitee-side
-  leader-failure watch never fires, and `PMIx_Group_join` cannot
-  complete at the point its man page documents (so it returns no
-  results). Read the issue before touching any of it — it carries the
-  reproducers, the sweep of every internal registration in the tree,
-  what was ruled out (not delivery, not a registration race, not a
-  filter mismatch), and the options for a fix. Until then an
-  application takes the membership from its own
-  `PMIX_GROUP_CONSTRUCT_COMPLETE` handler.
+- **The library's own event handlers could be silently suppressed by the
+  application — [openpmix#4059][i4059]. Mostly fixed; read this before
+  touching the group event code.** Both registrations here
+  (`invite_setup`'s answer counter and `setup_leader_watch`'s watch)
+  were ordinary multi-code handlers, and the chain visits `first` →
+  `single-code` → `multi-code` → `default` → `last`, so an application
+  handler registered for a *single* one of those codes ran first and
+  ended the chain with the ordinary `PMIX_EVENT_ACTION_COMPLETE`. That
+  hung `PMIx_Group_invite` forever and kept the leader-failure watch
+  from ever firing.
 
-  Do **not** re-derive this from the code: an earlier comment in this
-  file blamed the construct event "not being guaranteed to reach the
-  acceptor", which sent readers after a protocol problem that does not
-  exist. The event arrives reliably; the library just cannot see it.
+  Both are now **internal observers**
+  (`pmix_event_register_observer`, see the "Internal observers" section
+  of [`src/event/AGENTS.md`](../event/AGENTS.md)): they run ahead of the
+  application's chain and cannot be pre-empted. Two rules follow for
+  anyone editing them. **If you need the library to see an event here,
+  register an observer, not a handler** — a handler is exactly the
+  defect. And **an observer must not block**: it runs inline on the
+  progress thread, so bookkeeping, `invite_wake()`, a non-blocking
+  `PMIx_Notify_event`, and `pmix_event_deregister_observer()` are fine,
+  while `PMIX_WAIT_THREAD` and the blocking public APIs are not.
+
+  What the fix did *not* change: `PMIx_Group_join[_nb]` still completes
+  as soon as the accept/decline notification has been handed to the
+  local event system rather than when the construct completes, so it
+  still returns empty `results`/`nresults` and an application still
+  takes the membership from its own `PMIX_GROUP_CONSTRUCT_COMPLETE`
+  handler. That behavior change was unblocked by this work but is a
+  separate, larger one — it needs `invite_announce()` rewritten around
+  non-blocking notifications first (see the `PMIx_Group_invite_nb` entry
+  below), and probably a capability flag, since it moves completion much
+  later for anything written against today's behavior.
+
+  Do **not** re-derive any of this from the code: an earlier comment in
+  this file blamed the construct event "not being guaranteed to reach
+  the acceptor", which sent readers after a protocol problem that does
+  not exist. The event always arrived reliably; the library just could
+  not see it.
+
+  Regression coverage: `test/unit/run_grpinvitesuppress.pl` drives
+  `examples/group_invite_suppress`, whose leader registers exactly the
+  chain-ending `PMIX_GROUP_INVITE_ACCEPTED` handler that used to hang
+  it; `test_observer` in `test/unit/event_chain.c` covers the mechanism
+  itself.
 
 [i4059]: https://github.com/openpmix/openpmix/issues/4059
 
@@ -644,7 +669,7 @@ one) `test/unit/run_grpinviteothers.pl` plus the swarm suite.
   (`invite_wake` fires the caller's callback) and then stops: no
   `PMIX_GROUP_INVITE_FAILED`, no `PMIX_GROUP_CONSTRUCT_COMPLETE`, no
   `PMIX_GROUP_CONSTRUCT_ABORT` — so **no group forms** — and nothing
-  releases the tracker or deregisters `invite_handler`.
+  releases the tracker or deregisters `invite_observer`.
 
   It is structural rather than an oversight. `invite_wake()` runs on the
   progress thread, and `invite_announce()` is built out of *blocking*
@@ -658,15 +683,16 @@ one) `test/unit/run_grpinviteothers.pl` plus the swarm suite.
   `PMIx_Group_invite_nb` as unimplemented.
 
   **Distinct from [openpmix#4059][i4059], but landing on the same
-  code.** That issue is about the library's handlers being suppressed;
-  this is the non-blocking path never running the announcement at all,
-  and it would still be broken with #4059 fixed. Whoever reworks this
-  machinery will meet both, and the same rewrite — announcement driven
-  by non-blocking notifications — is what #4059's follow-on behavior
-  change (completing a pending join from the construct event) also
-  needs. Noted on that issue.
-- The two `resolve_peers()` items and the handler-suppression problem
-  from the first pass are unchanged — see the previous section.
+  code.** That issue was about the library's handlers being suppressed —
+  now fixed with the observer registry; this is the non-blocking path
+  never running the announcement at all, which that fix does not touch.
+  Whoever reworks this machinery still wants the same rewrite —
+  announcement driven by non-blocking notifications — which is also what
+  #4059's remaining follow-on (completing a pending join from the
+  construct event) needs.
+- The two `resolve_peers()` items are unchanged. The handler-suppression
+  problem from the first pass is fixed; see the updated entry in the
+  previous section for what that did and did not cover.
 
 ## Coding conventions specific to this directory
 

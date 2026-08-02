@@ -110,6 +110,31 @@ validate before (or without) gating on `connected`. Do not reorder a
 check in `src/client` to make it reachable from here — put the case in
 a `run_*.pl` or the swarm suite instead.
 
+### `run_grpinvitesuppress.pl` — an application that ends the event chain
+
+[`run_grpinvitesuppress.pl.in`](run_grpinvitesuppress.pl.in) drives
+[`examples/group_invite_suppress.c`](../../examples/group_invite_suppress.c),
+which is `group_invite.c` plus one handler: the leader registers an
+ordinary single-code handler for `PMIX_GROUP_INVITE_ACCEPTED`, logs the
+acceptance, and returns `PMIX_EVENT_ACTION_COMPLETE`. That is the
+reproducer from [openpmix#4059][i4059] — it used to hang the leader
+forever, because the library counted invitation answers in an ordinary
+multi-code handler that the application's single-code handler pre-empted.
+
+The driver asserts in both directions: the group must still form (the
+library saw the acceptances through its internal observer), *and* the
+leader must have logged all N-1 acceptances (the library's own handler no
+longer swallows the application's by completing the chain). The example
+deliberately supplies no `PMIX_TIMEOUT`, so a regression is an unbounded
+hang caught by the driver's time limit rather than an abort — don't
+"fix" that by bounding the invite, since a bounded call turns the
+regression into a different, weaker test.
+
+The mechanism itself is covered separately by `test_observer` in
+[`event_chain.c`](event_chain.c).
+
+[i4059]: https://github.com/openpmix/openpmix/issues/4059
+
 ### `run_grpinviteothers.pl` — a leader that is not a member
 
 [`run_grpinviteothers.pl.in`](run_grpinviteothers.pl.in) is the sibling

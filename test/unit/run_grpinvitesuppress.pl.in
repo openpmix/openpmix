@@ -1,0 +1,169 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# The invite/join path run by an application that ends the event chain - the
+# regression driver for openpmix#4059.
+#
+# Same shape as run_grpinvite.pl (one simptest server, four clients, rank 0
+# invites the whole job and ranks 1..3 accept from their PMIX_GROUP_INVITED
+# handlers), with one difference that is the entire point: the leader also
+# registers an ordinary single-code handler for PMIX_GROUP_INVITE_ACCEPTED
+# that logs the acceptance and returns PMIX_EVENT_ACTION_COMPLETE.
+#
+# That is a completely ordinary thing for an invite application to do, and it
+# used to hang the leader forever: the library counted invitation answers in
+# an ordinary multi-code handler, the chain runs single-code handlers first,
+# so the application's handler ended the chain before the library's was
+# reached and the invitation never resolved. The example supplies no
+# PMIX_TIMEOUT, so the regression is an unbounded hang, caught here by the
+# driver's own time limit rather than by an abort.
+#
+# Two assertions beyond the happy path, one for each direction of the same
+# defect: the group must still form (the library saw the acceptances), and
+# the leader must have logged every acceptance (the library's handler no
+# longer swallows the application's, which it did by completing the chain).
+#
+# See openpmix#4059, examples/group_invite_suppress.c, the "Internal
+# observers" section of src/event/AGENTS.md, and src/client/pmix_client_group.c.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen hands us
+# every possible component directory in PMIX_COMPONENT_LIBRARY_PATHS; turn each
+# into an absolute path to the built component so the MCA base can find them
+# without a prior install.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# simptest forks its clients from its own directory; run from there and name the
+# client (built under examples/) by absolute path so simptest can exec it.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+my $client = $mybuilddir . "/examples/group_invite_suppress";
+my $nprocs = 4;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise arm a
+# Perl alarm so a wedged run can never hang "make check" forever.
+my @cmd = ("./simptest", "-n", "$nprocs", "-e", "$client");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run the server in a child we control, merging stderr into stdout, and slurp
+# the output. The alarm (when armed) bounds the wait.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec simptest: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: simptest exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The server must exit 0: a client that failed (never invited, never notified of
+# completion, or could not fence/destruct) drives a non-zero exit.
+if (0 != $status) {
+    print "FAIL: simptest did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm the run actually exercised the path rather than passing vacuously:
+# every one of the four members must report it was notified of construct
+# completion and then fenced across the group, and simptest must finish cleanly.
+my $npass  = () = ($output =~ /CONSTRUCT_COMPLETE received: PASS/g);
+my $nfence = () = ($output =~ /group fence complete/g);
+my $server_done = ($output =~ /Test finished OK!/);
+if ($npass < $nprocs) {
+    print "FAIL: only $npass/$nprocs members notified of construct completion\n";
+    exit(1);
+}
+if ($nfence < $nprocs) {
+    print "FAIL: only $nfence/$nprocs members fenced across the group\n";
+    exit(1);
+}
+if (!$server_done) {
+    print "FAIL: server did not finish cleanly after the clients ran\n";
+    exit(1);
+}
+
+# The reason this test exists, in both directions.
+#
+# First: the leader really did register the chain-ending handler and really
+# did see every acceptance through it. Without this the run would still pass
+# the checks above while proving nothing, because the suppression would never
+# have been set up. It is also the assertion for the mirror-image defect - the
+# library's own invite handler used to end the chain itself, swallowing the
+# application's handler for these codes whenever it ran first.
+my $nseen = () = ($output =~ /APP saw an acceptance from/g);
+my $nacceptors = $nprocs - 1;
+if ($nseen < $nacceptors) {
+    print "FAIL: leader logged only $nseen/$nacceptors acceptances - the "
+        . "application's PMIX_GROUP_INVITE_ACCEPTED handler was suppressed\n";
+    exit(1);
+}
+
+# Second: the leader's invite completed. A regression here does not usually
+# reach this line - it hangs, and the time limit above catches it - but a
+# future change that turned the hang into a failure should report as this.
+if ($output !~ /Group invite complete with status PMIX_SUCCESS/) {
+    print "FAIL: the leader's PMIx_Group_invite did not complete successfully\n";
+    exit(1);
+}
+
+print "PASS: the group formed across all $nprocs members, and the leader saw "
+    . "all $nacceptors acceptances, with an application handler ending the "
+    . "event chain on both codes\n";
+exit(0);

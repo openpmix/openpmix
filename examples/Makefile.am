@@ -88,7 +88,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   pub2 toolqry simple_resolve pubstress monitor monitor_remote monitor_multi \
                   simple simple_server abort group_die connect_die group_leave \
                   group_destruct_die group_invite group_invite_timeout group_invite_decline \
-                  group_invite_abort group_invite_others topology
+                  group_invite_abort group_invite_others group_invite_suppress topology
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -179,6 +179,10 @@ group_invite_LDADD = $(top_builddir)/src/libpmix.la
 group_invite_others_SOURCES = group_invite_others.c examples.h
 group_invite_others_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 group_invite_others_LDADD = $(top_builddir)/src/libpmix.la
+
+group_invite_suppress_SOURCES = group_invite_suppress.c examples.h
+group_invite_suppress_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_suppress_LDADD = $(top_builddir)/src/libpmix.la
 
 group_invite_timeout_SOURCES = group_invite_timeout.c examples.h
 group_invite_timeout_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -305,7 +309,7 @@ distclean-local:
         abi_no_init abi_with_init group_lcl_cid pset \
         async_group group_dmodex group_bootstrap client3 \
         group_leave group_destruct_die group_invite group_invite_timeout group_invite_decline \
-        group_invite_abort \
+        group_invite_abort group_invite_suppress \
         spawn_group resolve multi_nspace_group pub2 toolqry \
         simple_resolve pubstress monitor monitor_remote \
         simple simple_server abort
