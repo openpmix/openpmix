@@ -392,10 +392,13 @@ store_proc_data(
     }
 
     pmix_info_t *const info = (pmix_info_t *)kval->value->data.darray->array;
-    // First element of the array must be the rank.
-    if (PMIX_UNLIKELY(!PMIX_CHECK_KEY(&info[0], PMIX_RANK)) ||
-        info[0].value.type != PMIX_PROC_RANK) {
-        rc = PMIX_ERR_TYPE_MISMATCH;
+    const size_t size = kval->value->data.darray->size;
+    // The array has to say which proc it describes - the host may do
+    // that with a rank or a procid, in any position.
+    pmix_rank_t rank;
+    size_t idpos;
+    rc = pmix_gds_base_proc_array_id(info, size, &rank, &idpos);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -403,10 +406,12 @@ store_proc_data(
     pmix_hash_table_t *const ht = job->smdata->local_hashtab;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
-    const pmix_rank_t rank = info[0].value.data.rank;
-    const size_t size = kval->value->data.darray->size;
-    // Cycle through the values for this rank and store them.
-    for (size_t j = 1; j < size; j++) {
+    // Cycle through the values for this rank and store them, skipping
+    // the entry that identified the array.
+    for (size_t j = 0; j < size; j++) {
+        if (j == idpos) {
+            continue;
+        }
         pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
         kv->key = info[j].key;
         kv->value = &info[j].value;

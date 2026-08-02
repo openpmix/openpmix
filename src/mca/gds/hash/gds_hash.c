@@ -168,7 +168,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
     uint32_t sid = UINT32_MAX;
     pmix_rank_t rank;
     pmix_status_t rc = PMIX_SUCCESS;
-    size_t n, j, size;
+    size_t n, j, size, idpos;
     uint32_t flags = 0;
     pmix_nodeinfo_t *nd;
     pmix_apptrkr_t *apptr;
@@ -313,15 +313,19 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             }
             size = info[n].value.data.darray->size;
             iptr = (pmix_info_t *) info[n].value.data.darray->array;
-            /* first element of the array must be the rank */
-            if (0 != strcmp(iptr[0].key, PMIX_RANK) || PMIX_PROC_RANK != iptr[0].value.type) {
-                rc = PMIX_ERR_TYPE_MISMATCH;
-                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            /* the array has to say which proc it describes - the host
+             * may do that with a rank or a procid, in any position */
+            rc = pmix_gds_base_proc_array_id(iptr, size, &rank, &idpos);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 goto release;
             }
-            rank = iptr[0].value.data.rank;
-            /* cycle thru the values for this rank and store them */
-            for (j = 1; j < size; j++) {
+            /* cycle thru the values for this rank and store them,
+             * skipping the entry that identified the array */
+            for (j = 0; j < size; j++) {
+                if (j == idpos) {
+                    continue;
+                }
                 /* if the key is PMIX_QUALIFIED_VALUE, then the value
                  * consists of a data array that starts with the key-value
                  * itself followed by the qualifiers */
@@ -777,7 +781,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
     pmix_kval_t kptr, kp2, *kp3, *kp4, kv, kv2;
     pmix_value_t val;
     int32_t cnt;
-    size_t nnodes, n, sz;
+    size_t nnodes, n, sz, idpos;
     uint32_t i, j, sid = UINT32_MAX;
     char **procs = NULL;
     pmix_byte_object_t *bo;
@@ -1119,15 +1123,18 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
         } else if (PMIX_CHECK_KEY(&kptr, PMIX_PROC_DATA)) {
             iptr = (pmix_info_t*)kptr.value->data.darray->array;
             sz = kptr.value->data.darray->size;
-            /* the first position is the rank */
-            if (PMIX_CHECK_KEY(&iptr[0], PMIX_RANK)) {
-                rank = iptr[0].value.data.rank;
-            } else {
-                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            /* the array has to say which proc it describes - the host
+             * may do that with a rank or a procid, in any position */
+            rc = pmix_gds_base_proc_array_id(iptr, sz, &rank, &idpos);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&kptr);
                 return rc;
             }
-            for (n=1; n < sz; n++) {
+            for (n=0; n < sz; n++) {
+                if (n == idpos) {
+                    continue;
+                }
                 PMIX_CONSTRUCT(&kv, pmix_kval_t);
                 kv.key = iptr[n].key;
                 kv.value = &iptr[n].value;
@@ -1186,7 +1193,7 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
     pmix_status_t rc;
     pmix_kval_t kp;
     pmix_rank_t rank;
-    size_t j, size;
+    size_t j, size, idpos;
     pmix_info_t *iptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -1255,16 +1262,19 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
             }
             size = kv->value->data.darray->size;
             iptr = (pmix_info_t *) kv->value->data.darray->array;
-            /* first element of the array must be the rank */
-            if (0 != strcmp(iptr[0].key, PMIX_RANK) ||
-                PMIX_PROC_RANK != iptr[0].value.type) {
-                rc = PMIX_ERR_TYPE_MISMATCH;
+            /* the array has to say which proc it describes - the host
+             * may do that with a rank or a procid, in any position */
+            rc = pmix_gds_base_proc_array_id(iptr, size, &rank, &idpos);
+            if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
-            rank = iptr[0].value.data.rank;
-            /* cycle thru the values for this rank and store them */
-            for (j = 1; j < size; j++) {
+            /* cycle thru the values for this rank and store them,
+             * skipping the entry that identified the array */
+            for (j = 0; j < size; j++) {
+                if (j == idpos) {
+                    continue;
+                }
                 if (PMIX_CHECK_KEY(&iptr[j], PMIX_QUALIFIED_VALUE)) {
                     rc = pmix_gds_hash_store_qualified(&trk->internal, rank, &iptr[j].value);
                     if (PMIX_SUCCESS != rc) {

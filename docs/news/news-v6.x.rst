@@ -7,6 +7,15 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - A process-realm info array (PMIX_PROC_INFO_ARRAY, also known by its
+   deprecated name PMIX_PROC_DATA) may now identify the process it
+   describes with any of the forms its definition allows. The datastore
+   accepted only PMIX_RANK, and only as the very first element,
+   rejecting anything else with PMIX_ERR_TYPE_MISMATCH - so a host that
+   identified the array with PMIX_PROCID, as the attribute expressly
+   permits, or that simply ordered the array differently, could not
+   register its job. PMIX_RANK and PMIX_PROCID are now both accepted, in
+   any position; PMIX_RANK is preferred when both are present
  - A PMIx_Query_info that is outstanding when the connection to the
    server is lost now returns PMIX_ERR_COMM_FAILURE instead of hanging.
    The reply handler treated a zero-byte buffer with a bare return, so
