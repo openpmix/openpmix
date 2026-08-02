@@ -90,11 +90,11 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p);
  * NULL if this kval is not shaped like a qualified value after all. */
 static pmix_info_t *qualified_value(const pmix_kval_t *kv)
 {
-    if (NULL == kv->value ||
-        PMIX_DATA_ARRAY != kv->value->type ||
-        NULL == kv->value->data.darray ||
-        NULL == kv->value->data.darray->array ||
-        0 == kv->value->data.darray->size) {
+    if (PMIX_UNLIKELY(NULL == kv->value ||
+                      PMIX_DATA_ARRAY != kv->value->type ||
+                      NULL == kv->value->data.darray ||
+                      NULL == kv->value->data.darray->array ||
+                      0 == kv->value->data.darray->size)) {
         return NULL;
     }
     return (pmix_info_t *) kv->value->data.darray->array;
@@ -128,7 +128,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
 
     /* if the key is NULL, the rank cannot be WILDCARD as
      * we cannot return all info from every rank */
-    if (NULL != proc && PMIX_RANK_WILDCARD == proc->rank && NULL == key) {
+    if (PMIX_UNLIKELY(NULL != proc && PMIX_RANK_WILDCARD == proc->rank && NULL == key)) {
         pmix_output_verbose(2, pmix_client_globals.get_output,
                             "pmix: get_nb value error - WILDCARD rank and key is NULL");
         return PMIX_ERR_BAD_PARAM;

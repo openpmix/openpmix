@@ -230,7 +230,7 @@ static void resolve_peers(int sd, short args, void *cbdata)
                 continue;
             }
             /* prepend the nspace */
-            if (0 > asprintf(&prs, "%s:%s", ns->nspace, val->data.string)) {
+            if (PMIX_UNLIKELY(0 > asprintf(&prs, "%s:%s", ns->nspace, val->data.string))) {
                 PMIX_LIST_DESTRUCT(&cb.kvs);
                 PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
                 continue;
@@ -262,7 +262,7 @@ static void resolve_peers(int sd, short args, void *cbdata)
             for (n = 0; NULL != tmp[n]; n++) {
                 /* find the nspace delimiter */
                 prs = strchr(tmp[n], ':');
-                if (NULL == prs) {
+                if (PMIX_UNLIKELY(NULL == prs)) {
                     /* should never happen, but silence a Coverity warning */
                     rc = PMIX_ERR_BAD_PARAM;
                     PMIx_Argv_free(tmp);

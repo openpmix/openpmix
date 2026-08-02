@@ -127,7 +127,7 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
-    if (PMIX_SUCCESS != cb->status) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != cb->status)) {
         /* propagate the server's error to the completion below so a
          * non-blocking caller's callback is not told the op succeeded */
         rc = cb->status;
@@ -433,7 +433,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
         PMIX_INFO_LOAD(&cb->info[0], PMIX_FABRIC_INDEX, &fabric->index, PMIX_SIZE);
         rc = pmix_host_server.fabric(&pmix_globals.myid, PMIX_FABRIC_UPDATE_INFO, cb->info, 1, fcb,
                                      (void *) cb);
-        if (PMIX_SUCCESS != rc && NULL != cbfunc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc) && NULL != cbfunc) {
             PMIX_RELEASE(cb);
         }
         return rc;

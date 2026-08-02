@@ -327,7 +327,7 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
 
     /* unpack the nspace - should be same as our own */
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &nspace, &cnt, PMIX_STRING);
-    if (PMIX_SUCCESS != rc || !PMIX_CHECK_NSPACE(nspace, pmix_globals.myid.nspace)) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc || !PMIX_CHECK_NSPACE(nspace, pmix_globals.myid.nspace))) {
         if (PMIX_SUCCESS == rc) {
             rc = PMIX_ERR_INVALID_VAL;
         }
@@ -371,7 +371,7 @@ static pmix_status_t fallback_to_next_gds(void)
     pmix_status_t rc;
 
     fb = pmix_gds_base_get_fallback_module(PMIX_GDS_PEER_MODULE(myserver));
-    if (NULL == fb) {
+    if (PMIX_UNLIKELY(NULL == fb)) {
         /* nothing else to fall back to */
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
@@ -809,7 +809,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_globals.mypeer->nptr->nspace = strdup(evar);
 
         /* we also require our rank */
-        if (NULL == (evar = getenv("PMIX_RANK"))) {
+        if (PMIX_UNLIKELY(NULL == (evar = getenv("PMIX_RANK")))) {
             /* let the caller know that the server isn't available yet */
             PMIX_ERROR_LOG(PMIX_ERR_DATA_VALUE_NOT_FOUND);
             return PMIX_ERR_DATA_VALUE_NOT_FOUND;
@@ -1101,7 +1101,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             PMIX_INFO_DESTRUCT(&evinfo[1]);
             PMIX_INFO_DESTRUCT(&evinfo[2]);
 
-            if (0 > rc) {
+            if (PMIX_UNLIKELY(0 > rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT_LOCK(&releaselock);
                 return rc;

@@ -571,7 +571,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
     PMIX_CONSTRUCT(&cb, pmix_group_tracker_t);
 
     /* use the non-blocking version */
-    if (PMIX_SUCCESS != (rc = PMIx_Group_destruct_nb(grp, info, ninfo, op_cbfunc, (void *) &cb))) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = PMIx_Group_destruct_nb(grp, info, ninfo,
+                                                                    op_cbfunc, (void *) &cb)))) {
         PMIX_ERROR_LOG(rc);
         PMIX_DESTRUCT(&cb);
         return rc;
@@ -741,7 +742,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
     }
 
 done:
-    if (PMIX_SUCCESS != rc && NULL != msg) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc) && NULL != msg) {
         PMIX_RELEASE(msg);
     }
     if (freeinfo) {
@@ -1518,7 +1519,7 @@ static void emit_leader_failed(const char *grpid, const pmix_proc_t *leader)
     pmix_status_t rc;
 
     PMIX_INFO_CREATE(info, 2);
-    if (NULL == info) {
+    if (PMIX_UNLIKELY(NULL == info)) {
         return;
     }
     PMIX_INFO_LOAD(&info[0], PMIX_EVENT_AFFECTED_PROC, leader, PMIX_PROC);
@@ -1970,7 +1971,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
     PMIX_CONSTRUCT(&cb, pmix_group_tracker_t);
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Group_leave_nb(grp, info, ninfo, op_cbfunc, (void *) &cb))) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = PMIx_Group_leave_nb(grp, info, ninfo,
+                                                                 op_cbfunc, (void *) &cb)))) {
         PMIX_ERROR_LOG(rc);
         PMIX_DESTRUCT(&cb);
         return rc;

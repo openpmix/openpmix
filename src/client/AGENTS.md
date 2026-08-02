@@ -221,9 +221,26 @@ gone — see [openpmix#4059][i4059].)
   with `if (PMIX_SUCCESS == rc)`.
 - **A zero-byte recv buffer means the connection was lost.** Every PTL
   recv callback must check `PMIX_BUFFER_IS_EMPTY(buf)` before unpacking.
-  Note `PMIX_BUFFER_IS_EMPTY` dereferences its argument — a NULL `buf`
-  must be guarded separately (some callbacks do, some do not — be
-  consistent when you touch one).
+
+  **`buf` itself is never NULL, and the callbacks here disagree about that
+  only cosmetically.** Both places the PTL invokes a recv callback pass
+  the address of a real stack `pmix_buffer_t` — see
+  [`ptl_base_sendrecv.c`](../mca/ptl/base/ptl_base_sendrecv.c), where the
+  lost-connection sweep constructs an empty buffer (setting `buf.type` so
+  a zero-byte unpack does not error) and hands `&buf` to every posted
+  recv, and the normal path does the same around `PMIX_LOAD_BUFFER`. So
+  the `NULL == buf` guards scattered through this directory are dead
+  code, and the callbacks without one — `frecv`, `direcv`,
+  `pmix_client_fence.c`'s `wait_cbfunc`, `pmix_client_notify_recv`,
+  `client_iof_handler` — are correct as written.
+
+  This entry used to say the two styles should be made "consistent"
+  without saying which way, which is worse than useless: the empty-buffer
+  check is the one that carries meaning and must never be removed, while
+  the NULL check is merely redundant. Do not add NULL guards to the
+  remaining callbacks on the theory that it is a real hazard, and do not
+  drop an empty-buffer check on the theory that the NULL check subsumes
+  it.
 - **A recv callback that gives up must still complete every waiter.**
   The pending-request list in `pmix_client_get.c` is shared: the caddy the
   reply was addressed to is itself on that list, and other gets for the
@@ -369,10 +386,10 @@ singleton. Covers what a client decides by itself: the `PMIx_Get`
 shortcuts that `process_request` answers outright, the pointer/static
 value forms, and the parameter validation on `PMIx_Get[_nb]`,
 `PMIx_Put`, `PMIx_Spawn[_nb]`, `PMIx_Compute_distances[_nb]`,
-`PMIx_Resolve_peers`/`PMIx_Resolve_nodes`, the group out-parameters and
-the fabric APIs. Every case in it is a regression for a specific defect
-listed below; several of them segfaulted before. See
-[`test/unit/AGENTS.md`](../../test/unit/AGENTS.md).
+`PMIx_Resolve_peers`/`PMIx_Resolve_nodes`, the group out-parameters, the
+fabric APIs and the topology entry points. Every case in it is a
+regression for a specific defect listed below; several of them
+segfaulted before. See [`test/unit/AGENTS.md`](../../test/unit/AGENTS.md).
 
 > **Know what a singleton can and cannot reach.** Most entry points here
 > check `initialized` → `connected` → `progress_thread_stopped` *before*
@@ -380,7 +397,9 @@ listed below; several of them segfaulted before. See
 > first and the parameter checks are unreachable. That is why the
 > coverage above is exactly the set of APIs that validate before (or
 > without) gating on `connected` — `PMIx_Get`, `PMIx_Put`,
-> `PMIx_Compute_distances`, the resolve pair, the fabric calls, and
+> `PMIx_Compute_distances`, the resolve pair, the fabric calls, the
+> `pmix_client_topology.c` entry points (which answer out of hwloc and
+> never round-trip, so they gate on `initialized` alone), and
 > `PMIx_Spawn`, whose apps check deliberately precedes its connected
 > check. For the group APIs only the OUT-parameter defaults are
 > testable, because those are established ahead of every check. Don't
@@ -688,6 +707,302 @@ one) `test/unit/run_grpinviteothers.pl` plus the swarm suite.
   problem from the first pass is fixed; see the updated entry in the
   previous section for what that did and did not cover.
 
+## Defects found in the August 2026 review (third sweep)
+
+A third pass, reading every file in the directory again. Everything here
+is fixed unless the entry says otherwise. The two topology ones have
+regression coverage in `test/unit/client_api.c`; the rest are on paths a
+singleton cannot reach (see [Testing](#testing)) and were verified by
+inspection against the code that consumes them.
+
+*Type confusion:*
+
+- **`PMIx_Init` announced "ready for debug" to a target that does not
+  exist.** The `PMIX_EVENT_CUSTOM_RANGE` directive was loaded straight
+  from `pmix_client_globals.myserver` — a `pmix_peer_t *` — as
+  `PMIX_PROC`. `PMIx_Value_load()` for `PMIX_PROC` `memcpy`s
+  `sizeof(pmix_proc_t)` out of whatever it is handed, and a
+  `pmix_peer_t` begins with its `pmix_object_t` header, so the
+  notification's target nspace/rank was the object's class pointer and
+  reference count reinterpreted as a string and an integer. The event
+  went nowhere and no debugger ever saw the `PMIX_READY_FOR_DEBUG`.
+  It now loads the server's real process ID from
+  `myserver->info->pname`. The general rule: **`PMIX_INFO_LOAD` is a
+  `memcpy` behind a type tag, so it cannot catch a mismatched
+  argument** — nothing between the call site and the consumer will
+  either. `pmix_client_group.c` has this right in every one of its five
+  custom-range loads; this was the odd one out.
+
+*Crashes on inputs the API permits:*
+
+- **`PMIx_Load_topology(NULL)` segfaulted.**
+  `pmix_hwloc_load_topology()` reads `topo->source` as its very first
+  act. Its two siblings — `pmix_hwloc_parse_cpuset_string()` and
+  `pmix_hwloc_get_cpuset()` — had already been given exactly this
+  screen, with a comment saying they are reachable from a public API
+  with whatever the caller passed; load_topology was the one missed.
+- **`PMIx_Get_relative_locality(l1, l2, NULL)` stored to address zero.**
+  It writes `*loc` on every path that gets past its input checks. Note
+  the shape of the reproducer: two *well-formed* locality strings, so
+  the computation actually runs to the store. A test that passes
+  garbage strings stops at the payload check and proves nothing —
+  `test_topology_bad_params()` covers both.
+- `_putfn()` gave the kval a raw `malloc()`ed `pmix_value_t` and only
+  filled it in on the transfer paths. The compression-failure branch
+  (`compress_string` reporting success with a NULL buffer) jumps to
+  `done:`, which `PMIX_RELEASE`s the kval — and the kval destructor
+  reads `value->type` to decide what to free. It now uses
+  `PMIX_VALUE_CREATE`, which zeroes and sets `PMIX_UNDEF`. The rule
+  worth carrying: **anything a destructor will inspect has to be valid
+  from the moment the object exists**, not from the moment the happy
+  path fills it in.
+- `PMIx_Spawn_nb` took `PMIX_PARENT_ID` straight to `PMIX_XFER_PROCID`
+  without checking that the value really carried a `pmix_proc_t`. Same
+  defect as the `PMIX_HOSTNAME` qualifier fixed in `process_request()`
+  last pass, in the one other place this directory reads a
+  caller-supplied union member by key.
+
+*Correctness:*
+
+- **A client could not use `PMIX_SETUP_APP_ENVARS` at all.** The `pmdl`
+  framework that performs the harvest is opened only by the server
+  (`pmix_server_init`) and tool (`pmix_tool_init`) roles, so
+  `pmix_pmdl_base_harvest_envars()` answers a plain client with
+  `PMIX_ERR_INIT` — which means "no programming-model support is open in
+  this role", *not* "the library is not initialized".
+  `PMIx_Spawn_nb` treated it as fatal and failed the whole spawn, giving
+  the caller a reason that pointed nowhere near the cause. Nothing is
+  lost by continuing: the directive is carried in the job-level info the
+  client is about to send, and whoever launches for it does the harvest
+  with its own `pmdl` (see `PMIx_server_setup_application`,
+  `src/server/pmix_server.c`). Both harvest sites now tolerate
+  `PMIX_ERR_INIT` specifically, and nothing else.
+
+  **This is why the role matters when reading this file.** `PMIx_Spawn_nb`
+  is entered by clients, tools, launchers and servers, and which
+  frameworks are open differs between them. A branch that is correct for
+  the role you happen to be picturing can be dead — or fatal — in another.
+- **`PMIx_Spawn_nb` permanently edited the caller's `const pmix_app_t
+  apps[]`.** `PMIX_SETUP_APP_ENVARS` was harvested while scanning
+  `job_info`, which happens *before* the "sadly, we have to copy the
+  apps array" copy — so `PMIx_Setenv()` ran against `apps[m].env`, the
+  caller's own array, and the copy then picked the results up. A caller
+  that reused its `pmix_app_t` for a second spawn got the envars again
+  on top of the ones already added. The harvest is now deferred until
+  after the copy and applied to `fcd->apps`. Worth remembering when
+  reading this function: the copy is not just a lifetime convenience,
+  it is the boundary at which the caller's data stops being ours to
+  touch, and anything that runs above it is running on their memory.
+  Note this only ever bit the roles that *have* a `pmdl` open — tool,
+  launcher, server (PRRTE's `prun` spawning, for instance) — because a
+  client harvests nothing; see the entry above.
+- `get_data()` did `strdup(kv->value->data.string)` on a `PMIX_HOSTNAME`
+  fetched from the datastore without checking the type or the string.
+  The datastore is fed by the host, so this is no more ours to assume
+  than a caller's qualifier is.
+- The spawn reply handler printed the namespace with `"%s"` on a path
+  where a tolerated short read leaves it NULL. Passing NULL to a `%s`
+  conversion is undefined, not a portable `"(null)"`.
+
+*Noted, not changed:*
+
+- **`test/simple/simptest` cannot host a spawn**, which is why the new
+  `examples/spawn_reuse` coverage lives in the swarm suite rather than
+  in `make check`. Its `spawn_fn` calls `set_namespace()`, which calls
+  `PMIx_server_setup_application()` — a thread-shifting API — and then
+  `DEBUG_WAIT_THREAD`s on the result. But `spawn_fn` is the host
+  callback and runs *on* the server's progress thread, so the thing it
+  is waiting for can never be serviced and the fake launch deadlocks.
+  No test drives it, so this has never been noticed. Fixing it means
+  making that path asynchronous; until then, do not add a `run_*.pl`
+  that spawns.
+- `refcb()` overwrites the `PMIX_GDS_STORE_KV` status with the next
+  unpack's before anyone reads it, so a store failure while absorbing a
+  cache refresh is silently dropped. The loop is driven by the unpack,
+  which is the right termination condition; reporting the store error
+  would change what `PMIx_Get` returns for a refresh that partially
+  succeeded, and that is a behavior decision, not a bug fix.
+- `pmix_client_convert_group_procs()` holds `grouplock` across a
+  `PMIX_GDS_FETCH_KV` for `PMIX_JOB_SIZE`. That is safe only because
+  the hash module answers locally and never up-calls the server. If a
+  GDS module is ever added that can up-call from `fetch`, this becomes
+  the deadlock the lock's own header comment warns about.
+
+## Defects found in the August 2026 review (fourth sweep — `pmix_client_group.c`)
+
+A pass devoted to the one file the third sweep did not read line by line.
+Every finding is the *same defect*, in five places: **a
+caller-supplied or wire-supplied `pmix_value_t` union member read without
+first checking the type tag.** Read that as the standing hazard of this
+file rather than as five separate bugs.
+
+The type tag is the only thing that says which union member is valid, and
+nothing downstream will catch a mismatch — `PMIX_INFO_LOAD` and
+`PMIx_Value_load` are `memcpy` behind a tag, and the bfrops copy/pack
+path dereferences whatever it is handed. So the check has to happen where
+the value is first believed.
+
+*Caller-supplied (an ordinary application mistake, so it must be an error
+return, not a SIGSEGV):*
+
+- **`construct_msg()` read `PMIX_GROUP_INFO` as a data array unchecked.**
+  `info[n].value.data.darray->array` and `->size`, then `iarray[0]`. Hand
+  `PMIx_Group_construct` a `PMIX_GROUP_INFO` carrying an integer and
+  `darray` is that integer reinterpreted as a pointer, dereferenced
+  twice. A NULL or zero-length array failed one step later at
+  `iarray[0]`. Covered by `test/unit/run_grpbadinfo.pl`.
+
+*Wire-supplied (another process's or the server's word, so even less ours
+to assume):*
+
+- `invite_observer()` took `PMIX_EVENT_AFFECTED_PROC` straight to
+  `PMIX_CHECK_PROCID`, which dereferences it.
+- `leader_watch_observer()` did the same, and additionally handed a
+  `PMIX_GROUP_ID` to `strcmp()` without checking it was a string.
+- `construct_cbfunc()` read the group-info blob the *server* sent —
+  `grpinfo.value.data.darray->array` — and then, in the nested form,
+  `iptr[m].value.data.darray->array` per element, all unchecked. A peer
+  that sends anything else here (an older one, or a broken one) crashes
+  the client.
+
+*The one that was not in this directory at all:*
+
+- **`pmix_bfrops_base_tma_copy_darray()` dereferenced a NULL source.**
+  This is the reason the `construct_msg` fix alone was not enough, and it
+  is worth understanding before adding a type check anywhere else: a
+  value tagged `PMIX_DATA_ARRAY` whose `darray` is NULL survives the
+  check above (it *is* a data array), then reaches `PMIX_INFO_XFER` →
+  `value_xfer` → `copy_darray`, which read `src->type` and `src->size`
+  with no guard. Any application that builds an info by hand can produce
+  that value, and every `PMIX_INFO_XFER` in the tree is exposed to it. It
+  now yields the same empty array the function already produces for a
+  zero-length source. See [`src/mca/bfrops/AGENTS.md`](../mca/bfrops/AGENTS.md).
+
+  The general lesson: **a type check at the entry point does not protect
+  the copy/pack layer behind it.** The `run_grpbadinfo.pl` test was
+  written against the entry-point fix and still segfaulted, which is how
+  this was found — the fix was verified by reverting each half
+  independently and confirming the test fails for each.
+
+*Noted, not changed:*
+
+- `PMIx_Group_leave_nb()` removes the group from
+  `pmix_client_globals.groups` *before* issuing the `PMIX_GROUP_LEFT`
+  notification, so a notification failure returns an error to a caller
+  whose group we have already forgotten. Recovering would mean putting it
+  back under the lock; leaving is terminal in practice, so this is
+  recorded rather than restructured.
+- `invite_setup()` registers the answer observer before it has finished
+  populating the tracker (the range info, the timer). If every invitee
+  were already dead, a cached `PMIX_PROC_TERMINATED` replay could resolve
+  the invitation from the progress thread while the caller's thread is
+  still in `invite_setup`. The membership and flags it needs *are* in
+  place before registration, so this is narrow, and no invitee can accept
+  before the invitation is sent.
+
+## Defects found in the August 2026 review (fifth sweep — the union sweep)
+
+Having established the type-tag hazard as this directory's signature defect,
+this pass swept **every** union read in `src/client` for it rather than
+reading file by file:
+
+```sh
+grep -n "\.value\.data\.\|value->data\." src/client/*.c \
+    | grep -vE "PMIX_INFO_LOAD|PMIX_VALUE_LOAD|PMIx_Value_load|= *&|PMIX_INFO_XFER"
+```
+
+That is the right tool for this class, and it is worth re-running after any
+change here. Two clusters survived the earlier sweeps:
+
+- **`info_cbfunc()` read `PMIX_GROUP_MEMBERSHIP` and `PMIX_GROUP_ID`
+  unchecked.** On the join path this array is a copy of the *leader's*
+  `PMIX_GROUP_CONSTRUCT_COMPLETE` event (see `join_complete`), so it is
+  another process's word — and `add_group()` is handed the results.
+  Same class as the fourth sweep's findings, in the one place they missed.
+- **The three `PMIX_QUALIFIED_VALUE` unwrap sites in `pmix_client_get.c`**
+  reached `kv->value->data.darray->array` and then `iptr[0]` on nothing
+  more than the key having matched. They now share a `qualified_value()`
+  helper that returns NULL unless the kval really is shaped like one.
+
+  **Be precise about what this one is worth.** `PMIx_Put` screens the
+  shape on the way in (`_putfn`), and the GDS rejects a malformed
+  qualified value on store — verified, it returns `PMIX_ERR_BAD_PARAM`
+  rather than storing it. So this is *not* reachable from a local put,
+  and there is no singleton reproducer. It hardens the case where the
+  datastore was filled from the server. Defensive, not demonstrated.
+
+*Noted, not changed:*
+
+- `process_request()` takes `PMIX_DATA_SCOPE` as `info[n].value.data.scope`
+  with no type check. Unlike the others this cannot crash — it is a scalar
+  read out of the union — but a mistyped directive silently produces a
+  wrong scope and therefore a wrong answer. Left alone because "reject" and
+  "ignore" are both defensible and the choice is a behavior decision.
+
+### The stale-install trap — read this before believing any hand-built reproducer
+
+Most of this sweep was spent chasing a segfault that did not exist.
+
+A probe compiled by hand against this tree — `cc … -Lsrc/.libs -lpmix
+-Wl,-rpath,$PWD/src/.libs` — **does not load the library you just built.**
+`libpmix`'s `install_name` is the absolute installed path, so dyld resolves
+it to `$prefix/lib/libpmix.2.dylib` and ignores both `-L` and the rpath. The
+probe silently exercises whatever was last `make install`ed, which in a
+review session is code from before your fixes.
+
+The symptom is very convincing: a crash that reproduces every time, in a
+function whose source visibly contains the guard that should prevent it, on
+a library whose timestamp is newer than the source. Instrumenting the
+function does nothing, because the running code is not that code — which is
+itself the tell. Confirm with:
+
+```sh
+DYLD_PRINT_LIBRARIES=1 ./probe 2>&1 | grep libpmix
+```
+
+`make check` and the swarm suite are both immune — the former runs through
+libtool wrappers bound to the build tree, and the latter deliberately
+insists on the PMIx `build.sh` put in the shared volume (see
+[`contrib/dockerswarm/README.md`](../../contrib/dockerswarm/README.md) §12).
+The exposure is exactly the ad-hoc probe, which is the thing you reach for
+when you want a quick answer. Either `make install` first, or add the case
+to `test/unit/client_api.c` and run it under `make check`.
+
+## The sixth sweep found nothing — what it covered, so you need not repeat it
+
+A pass devoted to caddy and buffer lifetime, which the earlier sweeps had
+touched only where a specific defect led. It produced **no code changes**,
+and that is the useful result: the following are audited and correct as of
+this sweep, so a future reviewer can start elsewhere.
+
+- **Every `PMIX_PTL_SEND_RECV` failure path** in the directory (thirteen of
+  them) releases both the message and the caddy, and every one that is
+  followed by a `PMIX_WAIT_THREAD` returns before reaching it. The two
+  fabric sites correctly release the caddy only when they allocated it
+  (`NULL != cbfunc`), leaving the blocking wrapper's stack caddy alone.
+- **Every recv callback completes its caller exactly once on every exit**,
+  including the pack-failure and short-read paths. `destruct_cbfunc` drops
+  the group from the local list before any of its early exits, so the two
+  failure paths can no longer disagree about whether it is still
+  registered.
+- **`buf` is never NULL** — see the invariant above, which this sweep
+  settled by reading the PTL rather than by inference.
+
+The audit was mechanical and is worth repeating the same way:
+
+```sh
+grep -n "PMIX_PTL_SEND_RECV" -A 7 src/client/*.c \
+    | grep -E "PMIX_PTL_SEND_RECV|RELEASE|WAIT_THREAD|return|^--"
+```
+
+*Noted, not changed:*
+
+- `construct_cbfunc()` hands the caller `relfn` as its release function and
+  returns; a user-supplied `pmix_info_cbfunc_t` that never calls it leaks
+  the tracker. That is the documented contract for the callback signature,
+  not a defect here, but it is the one place in this directory where a
+  caller's mistake leaks library memory.
+
 ## Coding conventions specific to this directory
 
 - **Mark the exceptional branch.** Error checks, parameter validation,
@@ -700,6 +1015,38 @@ one) `test/unit/run_grpinviteothers.pl` plus the swarm suite.
   flow such as `NULL == proc` in `process_request()` (a documented,
   common way to call `PMIx_Get`) or `NULL == tp` in
   `PMIx_Compute_distances_nb` (the usual case, meaning "use mine").
+
+  The directory was swept for gaps in this (480 sites now). What is
+  deliberately left **unmarked** is worth knowing, because it is not
+  oversight:
+
+  - **Success branches.** Marking the error side `PMIX_UNLIKELY` already
+    tells the compiler everything; adding `PMIX_LIKELY` to the inverse
+    test is redundant. `if (PMIX_SUCCESS == rc)` stays bare.
+  - **Expected-outcome dispatch.** `resolve_peers()`/`try_fetch()` branch
+    on `PMIX_ERR_INVALID_NAMESPACE`, `PMIX_ERR_NOT_FOUND` and
+    `PMIX_ERR_DATA_VALUE_NOT_FOUND` as *answers*, not failures — "that
+    namespace is unknown", "the node is not in it", "the host did not
+    supply it". Same for a lookup that misses, `get_data()`'s
+    retry-as-wildcard fallback, and `PMIX_ERR_EXISTS_OUTSIDE_SCOPE`. A
+    `PMIX_ERR_` prefix does not make a branch rare.
+
+- **`PMIX_LIKELY` has no place in this directory, and that is on
+  purpose.** It is used five times in the whole tree, all in genuinely
+  hot code (`pmix_hotel.h`, the `ptl` byte-count loop) where the marked
+  branch is the taken one and there is no error branch to mark instead.
+  Nothing in `src/client` is on a per-byte or per-message-fragment path,
+  and essentially every conditional worth hinting here is "did this
+  fail?", which `PMIX_UNLIKELY` already covers. Adding `PMIX_LIKELY`
+  alongside it would be noise that implies a hot path where there is
+  none.
+
+- **Wrap only the rare sub-expression.** `PMIX_UNLIKELY` expands to
+  `__builtin_expect(!!(expr), 0)`, which *returns* its argument, so
+  `PMIX_UNLIKELY(A) && B` is exactly `A && B` with a hint on `A` alone.
+  Prefer that to hinting the whole test when only one half is rare — as
+  in `if (PMIX_UNLIKELY(PMIX_SUCCESS != rc) && NULL != msg)`, where the
+  failure is rare but the "did we allocate a message?" half is not.
 
 ## Building
 
