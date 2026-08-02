@@ -147,6 +147,12 @@ PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function, char *attrs[]
         return PMIX_ERR_INIT;
     }
 
+    /* the function name is compared against, and then duplicated, on
+     * the progress thread - neither survives being handed a NULL */
+    if (NULL == function) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
@@ -1395,6 +1401,7 @@ static void _get_attrs(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
                 dptr = pmix_attributes_lookup_term(tptr->attrs[m]);
                 if (NULL == dptr) {
                     PMIX_RELEASE(ip);
+                    PMIx_Argv_free(fns);
                     return;
                 }
                 regarray[m].type = dptr->type;
@@ -1420,9 +1427,13 @@ static void _get_fns(pmix_list_t *lst, char *key, pmix_list_t *attrs)
         ip = PMIX_NEW(pmix_infolist_t);
         tmp = PMIx_Argv_join(fns, ',');
         PMIX_INFO_LOAD(&ip->info, key, tmp, PMIX_STRING);
+        /* the info took its own copy of the joined string */
+        if (NULL != tmp) {
+            free(tmp);
+        }
         pmix_list_append(lst, &ip->super);
-        PMIx_Argv_free(fns);
     }
+    PMIx_Argv_free(fns);
 }
 
 // called from within an event
