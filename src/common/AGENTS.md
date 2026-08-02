@@ -189,6 +189,37 @@ add or edit an entry point:
    banner, `#endif` guard comment, or `pmix_output_verbose` label still
    attached. Check that the banner, include-guard comment, and log
    strings actually name *this* file before you commit.
+8. **Never read a `pmix_value_t` union without checking `.type` first.**
+   This is the single most common defect in the directory. The value in a
+   caller-supplied `pmix_info_t` is whatever the application put there, so
+   `directives[n].value.data.proc`, `.data.string` and `.data.darray` are
+   all wild pointers until the type has been confirmed. The August 2026
+   sweep found this in `PMIx_Log` (`PMIX_LOG_SOURCE`), `PMIx_Query_info`
+   (the `PMIX_PROCID`/`PMIX_NSPACE`/`PMIX_RANK` qualifiers),
+   `PMIx_Process_monitor` (all four `PMIX_MONITOR_TARGET_*` directives),
+   `pmix_iof_check_flags` (`PMIX_IOF_OUTPUT_TO_FILE`/`_TO_DIRECTORY`) and
+   `pmix_pfexec` (`PMIX_FORKEXEC_AGENT`) — every one of them a segfault on
+   an ordinary application mistake. For a data array, confirm
+   `PMIX_DATA_ARRAY == value.type` **and** the array's own element type
+   before walking it; `target_array()` in `pmix_monitor.c` is the pattern.
+9. **A completion must happen exactly once, on every path.** The two
+   failure modes are symmetric and both appear here. *Never* — a request
+   that returns without invoking the callback hangs the blocking wrapper
+   forever (`PMIx_Process_monitor` with `PMIX_SEND_HEARTBEAT` did exactly
+   that). *Twice* — an upcall that reports completion itself **and**
+   returns `PMIX_SUCCESS` to say the host will call back delivers two
+   completions, and the second wakes a stack lock the caller has already
+   destructed (`_rbreq` in `pmix_alloc.c` did exactly that). When you hand
+   a request to `pmix_host_server.*`, the return value decides who
+   completes it: `PMIX_SUCCESS` means the host will, anything else
+   (including `PMIX_OPERATION_SUCCEEDED`) means you must.
+10. **Caddy fields you did not set are garbage, not zero.** `PMIX_NEW`
+   allocates with `malloc`, so every field a constructor skips starts as
+   whatever was on the heap. `scon()`/`qcon()` did not initialize
+   `status`, and `chcon()` in `pmix_pfexec.c` did not initialize
+   `exitcode`; all three are fixed, but the rule is general — when you add
+   a field to one of these structs, add it to the constructor in the same
+   change.
 
 ## pfexec-specific hazards
 
@@ -219,6 +250,42 @@ execs — and carries hazards the request files do not:
   (`waitpid(-1, ...)`), not just pfexec's — keep that in mind if you add
   another `waitpid` consumer.
 
+## What the August 2026 sweep changed
+
+A five-round review of this directory landed twenty-odd defects' worth of
+fixes. Three are worth knowing about because they change behavior rather
+than just hardening it:
+
+- **The pfexec kill sequence now always escalates to SIGKILL.** It used to
+  escalate only when the `SIGTERM` had failed to be *delivered*, which is
+  backwards: the case the sequence exists for is a child that receives
+  `SIGTERM` and ignores it, and such a child was left running — and,
+  having already been taken off the `children` list by the kill, never
+  reaped either. Every kill now costs one `timeout_before_sigkill` pause
+  (default 1s, MCA-tunable) before it completes.
+- **A malformed directive is now `PMIX_ERR_BAD_PARAM`, not a crash.** See
+  pitfall 8. Callers that were getting away with a mis-typed
+  `PMIX_LOG_SOURCE` or `PMIX_MONITOR_TARGET_*` now get an error.
+- **`pmix_iof_process_iof` and `process_cache` skip a request with no
+  requestor peer.** `pmix_globals.iof_requests` holds both server-side
+  requests (which have a peer to forward to) and requests a client — or a
+  launcher with an upstream server of its own — registered through
+  `PMIx_IOF_pull`, which do not. The server's push handler walks the whole
+  array, so it used to read through a NULL peer.
+
+### Known, deliberate, not a defect
+
+`wait_signal_callback` in `pmix_pfexec.c` reads
+`pmix_list_get_size(&pmix_pfexec_globals.children)` as an early-out, and it
+runs on `evauxbase` while that list belongs to `evbase`. That is a formal
+data race. It is left alone on purpose: the child is appended to the list
+before the `fork()` that can generate its `SIGCHLD`, so the count cannot be
+stale for a child we care about, and removing the guard would make pfexec
+`waitpid(-1)` on every `SIGCHLD` in a process that currently has no
+children of its own. If you do restructure it, replace the read with a
+counter maintained across all six add/remove sites rather than deleting
+the check.
+
 ## Building and testing
 
 Everything here compiles into `libpmix` with a plain top-level
@@ -234,6 +301,26 @@ caddy/ownership paths — the leaks and use-after-frees this code is prone
 to are exactly the class of bug valgrind catches and a smoke test does
 not. **Do not** run the functional suite against an `--enable-test-build`
 tree (see the top-level guide).
+
+Two suites cover this directory specifically, and they split the same way
+`src/client`'s do:
+
+- [`test/unit/common_api.c`](../../test/unit/common_api.c) — the
+  singleton half. Everything a client can decide or reject without a
+  server: the malformed-directive cases, the locally-resolved queries
+  (repeated 200x so a caddy leak shows up), `PMIx_Data_copy_payload`,
+  the IOF flag parser and XML escaper, and `PMIx_Register_attributes`.
+  Several of its cases segfault against an unfixed library rather than
+  merely failing — which is the point.
+- [`contrib/dockerswarm/run-common-tests.sh`](../../contrib/dockerswarm/run-common-tests.sh)
+  — the connected half. Query/log/job-control/allocation/monitor/IOF with
+  the ranks behind *different* PMIx servers. The monitor cases are the
+  reason it is multi-node at all: `pmix_monitor_processing`'s remote and
+  mixed branches cannot be entered on one node. See README §13 there.
+
+Do not try to grow `common_api.c` into the second list — a test that needs
+a server belongs in the swarm suite or in a `run_*.pl` against
+`test/simple`.
 
 ## When adding or modifying code here
 
