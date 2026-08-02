@@ -110,6 +110,24 @@ validate before (or without) gating on `connected`. Do not reorder a
 check in `src/client` to make it reachable from here — put the case in
 a `run_*.pl` or the swarm suite instead.
 
+### `run_grpinvitenb.pl` — the non-blocking ends of invite/join
+
+[`run_grpinvitenb.pl.in`](run_grpinvitenb.pl.in) drives
+[`examples/group_invite_nb.c`](../../examples/group_invite_nb.c): the
+leader invites with `PMIx_Group_invite_nb`, and each invitee accepts with
+a real `PMIx_Group_join_nb` callback. `run_grpinvite.pl` reaches neither
+— it drives the blocking invite and passes no join callback — and both
+were broken until the [openpmix#4059][i4059] follow-ons.
+
+It asserts that the non-blocking invite completes *and* a group actually
+forms (that form used to announce nothing at all, so no group formed),
+and that every invitee's join callback fires with the group id and the
+full membership (join used to complete when its acceptance went out,
+carrying no group data, so `results` came back empty). Both halves are
+checked in the client, which exits non-zero on failure; the driver also
+greps for the pass lines so a client that skipped its checks cannot pass
+the test vacuously.
+
 ### `run_grpinvitesuppress.pl` — an application that ends the event chain
 
 [`run_grpinvitesuppress.pl.in`](run_grpinvitesuppress.pl.in) drives

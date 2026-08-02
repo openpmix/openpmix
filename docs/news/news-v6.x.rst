@@ -7,6 +7,28 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Implemented PMIx_Group_invite_nb, which was previously inert: it
+   resolved the invitation, invoked the caller's callback, and stopped
+   without announcing anything at all - no PMIX_GROUP_INVITE_FAILED, no
+   PMIX_GROUP_CONSTRUCT_COMPLETE, no PMIX_GROUP_CONSTRUCT_ABORT - so no
+   group was ever formed, and every call leaked its tracker and its
+   event registration. The announcement was built out of blocking
+   notifications and so could only run on the blocking form's own
+   thread; it is now a chain of non-blocking notifications driven from
+   the progress thread, which both forms share. A NULL callback is now
+   rejected rather than accepted and then never invoked
+ - PMIx_Group_join and PMIx_Group_join_nb now complete when the group
+   construct resolves, as PMIx_Group_join.3.rst has always specified,
+   and return the group id and membership the leader announced. They
+   previously completed as soon as the accept/decline notification had
+   been handed to the local event system - much earlier, and carrying no
+   group data - so results/nresults always came back empty. Losing the
+   leader before the construct resolves now completes the call with
+   PMIX_GROUP_LEADER_FAILED rather than leaving it pending. A declined
+   join, or one that names no leader, has no construct outcome to wait
+   for and still completes as soon as its notification is away. This is
+   a behavior change for anything written against the old timing:
+   detect it with the new PMIX_CAP_GROUP_JOIN_COMPLETES capability flag
  - Fixed an unbounded hang in PMIx_Group_invite, and a leader-failure
    safety net that never fired, both caused by the library having no way
    to observe an event that the application cannot suppress. PMIx used

@@ -112,7 +112,30 @@ either accepted or declined the request (the ``opt`` argument) |mdash| via a
 respectively. The blocking form returns once the group has been completely
 constructed or its construction has failed (as determined by the leader); likewise,
 the callback function of the non-blocking form is executed upon the same
-conditions. As with all non-blocking PMIx APIs, callers of ``PMIx_Group_join_nb``
+conditions.
+
+An accepting process learns of that outcome from the leader's
+``PMIX_GROUP_CONSTRUCT_COMPLETE`` or ``PMIX_GROUP_CONSTRUCT_ABORT`` event, so it is
+those events that complete this call, and ``results`` carries what the leader
+announced about the group |mdash| its ``PMIX_GROUP_ID`` and ``PMIX_GROUP_MEMBERSHIP``
+(and its ``PMIX_GROUP_CONTEXT_ID``, if the leader requested that one be assigned).
+Loss of the leader before the construct resolves completes the call with
+``PMIX_GROUP_LEADER_FAILED``, since the construct can no longer resolve.
+
+Two cases have no construct outcome to wait for, and so complete as soon as the
+notification to the leader has been issued, with ``results`` empty: declining the
+invitation (``PMIX_GROUP_DECLINE``), and accepting without naming a ``leader``.
+
+.. note::
+
+   Prior to the introduction of the ``PMIX_CAP_GROUP_JOIN_COMPLETES`` capability
+   flag, this call completed as soon as the accept/decline notification had been
+   handed to the local event system |mdash| much earlier than described above, and
+   ``results`` was always returned empty. Applications written against that
+   behavior will now block for the duration of the construct. Consult
+   ``pmix_version.h`` for the presence of the flag.
+
+As with all non-blocking PMIx APIs, callers of ``PMIx_Group_join_nb``
 **must** keep the ``grp``, ``leader``, and ``info`` arrays valid until ``cbfunc`` is
 invoked. The invite/join handshake is described in full in
 :ref:`Group Construction, Destruction, and Fault Tolerance <group-construction-label>`.
@@ -156,6 +179,8 @@ and the callback is not invoked if any other value is returned.
 
 * ``PMIX_SUCCESS`` |mdash| the group was successfully constructed.
 * ``PMIX_GROUP_CONSTRUCT_ABORT`` |mdash| construction of the group was aborted.
+* ``PMIX_GROUP_LEADER_FAILED`` |mdash| the leader was lost before the construct
+  resolved, so it never will.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| a required argument was invalid (e.g., a ``NULL``
   or over-length group identifier).
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the host environment does not support group

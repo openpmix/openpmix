@@ -1,0 +1,169 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# The non-blocking ends of the invite/join model - the openpmix#4059
+# follow-ons.
+#
+# One simptest server, four clients (examples/group_invite_nb). Rank 0 is the
+# leader and invites the whole job with PMIx_Group_invite_nb; ranks 1..3 accept
+# with PMIx_Group_join_nb, passing a real completion callback.
+#
+# Two things are asserted that run_grpinvite.pl cannot reach, because it drives
+# the blocking invite and passes no join callback:
+#
+#  - PMIx_Group_invite_nb completes, and a group actually forms. That form used
+#    to be inert: it resolved the invitation and then stopped, announcing
+#    nothing at all, so no group ever formed and it leaked its tracker and
+#    event registration on every call. The announcement was built out of
+#    blocking notifications and could only run on the blocking form's thread.
+#
+#  - Each invitee's join callback fires when the *construct* resolves and is
+#    handed the group id and the full membership. Join used to complete as soon
+#    as the acceptance had been handed to the local event system - much earlier,
+#    and carrying no group data - so results/nresults always came back empty,
+#    contradicting PMIx_Group_join.3.rst.
+#
+# See examples/group_invite_nb.c and src/client/pmix_client_group.c.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen hands us
+# every possible component directory in PMIX_COMPONENT_LIBRARY_PATHS; turn each
+# into an absolute path to the built component so the MCA base can find them
+# without a prior install.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# simptest forks its clients from its own directory; run from there and name the
+# client (built under examples/) by absolute path so simptest can exec it.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+my $client = $mybuilddir . "/examples/group_invite_nb";
+my $nprocs = 4;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise arm a
+# Perl alarm so a wedged run can never hang "make check" forever.
+my @cmd = ("./simptest", "-n", "$nprocs", "-e", "$client");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run the server in a child we control, merging stderr into stdout, and slurp
+# the output. The alarm (when armed) bounds the wait.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec simptest: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: simptest exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The server must exit 0: a client that failed (never invited, never notified of
+# completion, or could not fence/destruct) drives a non-zero exit.
+if (0 != $status) {
+    print "FAIL: simptest did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm the run actually exercised the path rather than passing vacuously:
+# every one of the four members must report it was notified of construct
+# completion and then fenced across the group, and simptest must finish cleanly.
+my $npass  = () = ($output =~ /CONSTRUCT_COMPLETE received: PASS/g);
+my $nfence = () = ($output =~ /group fence complete/g);
+my $server_done = ($output =~ /Test finished OK!/);
+if ($npass < $nprocs) {
+    print "FAIL: only $npass/$nprocs members notified of construct completion\n";
+    exit(1);
+}
+if ($nfence < $nprocs) {
+    print "FAIL: only $nfence/$nprocs members fenced across the group\n";
+    exit(1);
+}
+if (!$server_done) {
+    print "FAIL: server did not finish cleanly after the clients ran\n";
+    exit(1);
+}
+
+# The two assertions this test exists for. Each client checks its own half
+# and exits non-zero on failure, so reaching here already means they passed -
+# but grep for them anyway, so a client that silently skipped its checks
+# (never invited, never joined) cannot pass this test vacuously.
+
+# The leader's non-blocking invite completed and reported success. Before the
+# announcement was rewritten around non-blocking notifications, it completed
+# without ever announcing anything, so no group formed and every invitee timed
+# out waiting for PMIX_GROUP_CONSTRUCT_COMPLETE.
+if ($output !~ /Group_invite_nb completed: PASS/) {
+    print "FAIL: the leader's PMIx_Group_invite_nb did not complete successfully\n";
+    exit(1);
+}
+
+# Every invitee's join callback fired with the group's identity. Join used to
+# complete when its acceptance went out, carrying no group data, so both of
+# these would be absent or empty.
+my $nacceptors = $nprocs - 1;
+my $njoin = () = ($output =~ /Group_join_nb completed with group nbgroup and $nprocs members: PASS/g);
+if ($njoin < $nacceptors) {
+    print "FAIL: only $njoin/$nacceptors invitees had their join completed with "
+        . "the constructed group's id and membership\n";
+    exit(1);
+}
+
+print "PASS: the non-blocking invite formed the group across all $nprocs members, "
+    . "and all $nacceptors joins completed at the construct with its id and "
+    . "membership\n";
+exit(0);
