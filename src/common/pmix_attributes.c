@@ -1584,6 +1584,7 @@ request:
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(qry);
+        PMIx_Argv_free(cache);
         return;
     }
     qry->query.nqual = PMIx_Argv_count(cache);
@@ -1602,6 +1603,11 @@ PMIX_EXPORT const char *pmix_attributes_lookup(const char *attr)
 {
     pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
 
+    /* reached from the public PMIx_Get_attribute_string, so the name
+     * is whatever the caller passed */
+    if (NULL == attr) {
+        return NULL;
+    }
     if (NULL == kidx->table) {
         // we haven't been initialized yet - just return the string
         return attr;
@@ -1623,6 +1629,10 @@ PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
 {
     pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
 
+    /* reached from the public PMIx_Get_attribute_name */
+    if (NULL == attrstring) {
+        return NULL;
+    }
     if (NULL == kidx->table) {
         // we haven't been initialized yet - just return the string
         return attrstring;
@@ -1644,6 +1654,9 @@ PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr)
 {
     pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
 
+    if (NULL == attr) {
+        return NULL;
+    }
     if (NULL == kidx->table) {
         // we haven't been initialized yet - just return the string
         return NULL;
@@ -1708,10 +1721,17 @@ void pmix_attributes_print_attrs(char ***ans, char *function,
     char line[PMIX_PRINT_ATTR_COLUMN_WIDTH], *tmp;
     size_t n, m, len;
 
-    /* print the function */
+    /* Print the function. The name was supplied by whoever registered
+     * it, so it can be longer than the line - truncate rather than run
+     * off the end of the buffer. Two slots are held back for the ':'
+     * and the terminator. */
     memset(line, ' ', PMIX_PRINT_ATTR_COLUMN_WIDTH);
+    len = strlen(function);
+    if ((PMIX_PRINT_ATTR_COLUMN_WIDTH - 2) < len) {
+        len = PMIX_PRINT_ATTR_COLUMN_WIDTH - 2;
+    }
     m = 0;
-    for (n = 0; n < strlen(function); n++) {
+    for (n = 0; n < len; n++) {
         line[m] = function[n];
         ++m;
     }
@@ -1868,8 +1888,15 @@ PMIX_EXPORT char **pmix_attributes_print_attr(char *level, char *function)
     memset(line, '=', PMIX_PRINT_ATTR_COLUMN_WIDTH);
     line[PMIX_PRINT_ATTR_COLUMN_WIDTH - 1] = '\0';
 
-    /* can be comma-delimited list of functions */
+    /* can be comma-delimited list of functions - an empty one splits to
+     * nothing at all, which is not something the walk below survives */
+    if (NULL == function) {
+        return ans;
+    }
     tmp = PMIx_Argv_split(function, ',');
+    if (NULL == tmp) {
+        return ans;
+    }
     for (n = 0; NULL != tmp[n]; n++) {
         PMIX_LIST_FOREACH (fnptr, lst, pmix_attribute_trk_t) {
             if (0 == strcmp(tmp[n], "all") || 0 == strcmp(tmp[n], fnptr->function)) {

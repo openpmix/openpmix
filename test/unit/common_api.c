@@ -45,6 +45,7 @@
 #include "include/pmix.h"
 #include "src/common/pmix_iof.h"
 #include "src/include/pmix_globals.h"
+#include "src/common/pmix_attributes.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -425,6 +426,11 @@ static void test_register_attributes(void)
 {
     pmix_status_t rc;
     char *attrs[] = {"PMIX_TESTATTR", NULL};
+    /* the printer only reaches the line-building code for attributes it
+     * can find in the dictionary, so this one has to be a real name */
+    char *realattrs[] = {"PMIX_HOSTNAME", NULL};
+    char longname[400];
+    char **lines;
 
     fprintf(stdout, "\n-- PMIx_Register_attributes --\n");
 
@@ -438,6 +444,31 @@ static void test_register_attributes(void)
     check(PMIX_SUCCESS == rc, "named function registered");
     rc = PMIx_Register_attributes("common_api_test_fn", attrs);
     check(PMIX_ERR_REPEAT_ATTR_REGISTRATION == rc, "duplicate registration refused");
+
+    /* A name longer than the printer's fixed line. The printer copied
+     * it into a 141-byte stack buffer with no bound at all, so listing
+     * the host attributes smashed the stack. */
+    memset(longname, 'x', sizeof(longname) - 1);
+    longname[sizeof(longname) - 1] = '\0';
+    rc = PMIx_Register_attributes(longname, realattrs);
+    check(PMIX_SUCCESS == rc, "over-long function name registered");
+
+    lines = pmix_attributes_print_attr(PMIX_HOST_ATTRIBUTES, longname);
+    check(NULL != lines, "over-long function name printed without smashing the stack");
+    if (NULL != lines) {
+        PMIx_Argv_free(lines);
+    }
+
+    /* an empty function list splits to nothing */
+    lines = pmix_attributes_print_attr(PMIX_HOST_ATTRIBUTES, "");
+    check(NULL == lines || NULL != lines, "empty function list survived");
+    if (NULL != lines) {
+        PMIx_Argv_free(lines);
+    }
+
+    /* the public lookups take whatever the caller passed */
+    check(NULL == PMIx_Get_attribute_string(NULL), "PMIx_Get_attribute_string(NULL) safe");
+    check(NULL == PMIx_Get_attribute_name(NULL), "PMIx_Get_attribute_name(NULL) safe");
 }
 
 int main(int argc, char **argv)
