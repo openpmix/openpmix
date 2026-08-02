@@ -7,6 +7,23 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - A pmix_data_array_t whose element type is PMIX_DATA_ARRAY is now
+   supported end-to-end. It has always packed - and printed - as a
+   contiguous block of pmix_data_array_t descriptors, exactly as
+   pmix_data_array_t.5.rst describes any array of its declared type,
+   but nothing else agreed: construct had no arm for the type and so
+   quietly produced a NULL array, which made unpack of a nested array
+   fail with PMIX_ERR_NOMEM on a machine that was not out of memory;
+   copy refused it with PMIX_ERR_NOT_SUPPORTED, so PMIx_Value_xfer
+   could not carry one; and destruct treated the block as a single
+   descriptor, ignoring size and never freeing the block, so it leaked
+   for size > 1 and dereferenced NULL for size 0. All four now use the
+   documented layout. The Python bindings had built a third layout
+   again - each element pointing at one further descriptor, with the
+   element's size set to the inner count - and now load and unload the
+   elements in place; a nested element is described with the same
+   {'type', 'array'} dict as the enclosing array, not the {'val_type',
+   'value'} form of a value (see openpmix#4054)
  - Implemented PMIx_Group_invite_nb, which was previously inert: it
    resolved the invitation, invoked the caller's callback, and stopped
    without announcing anything at all - no PMIX_GROUP_INVITE_FAILED, no

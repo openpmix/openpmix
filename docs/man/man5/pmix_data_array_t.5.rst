@@ -37,6 +37,16 @@ contiguous block of ``size`` elements, all of the same PMIx datatype ``type``.
   element is of the C type corresponding to ``type`` (for example, an ``array``
   of :ref:`pmix_info_t(5) <man5-pmix_info_t>` when ``type`` is ``PMIX_INFO``).
 
+``PMIX_DATA_ARRAY`` is itself a legal element type: when ``type`` is
+``PMIX_DATA_ARRAY``, ``array`` points at a contiguous block of ``size``
+`pmix_data_array_t` structures, each a complete array in its own right
+(and each free to declare a different element type). The elements are
+stored inline in the block |mdash| they are not pointers to arrays
+elsewhere. Constructing such an array zeroes every element, so an element
+the caller does not fill in is a valid empty array (``PMIX_UNDEF``,
+``size`` 0) rather than uninitialized memory, and destructing the outer
+array recursively releases every element.
+
 The `pmix_data_array_t` structure is the mechanism by which a collection of
 values is conveyed through a single :ref:`pmix_value_t(5) <man5-pmix_value_t>`
 or :ref:`pmix_info_t(5) <man5-pmix_info_t>`: the containing structure references
