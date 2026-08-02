@@ -60,6 +60,20 @@ A received msg header indicates a size that is too large:
 If you believe this msg is legitimate, please increase the
 max msg size via the ptl_base_max_msg_size parameter.
 #
+[bfrops:array_depth]
+A data array is nested more deeply inside other data arrays than
+this PMIx library is willing to %s:
+
+  Depth reached:   %lu
+  Depth limit:     %lu
+
+Each level of nesting costs only a few bytes on the wire but a stack
+frame in the library, so the depth is bounded by default. If your data
+is legitimately this deeply nested, raise the limit with the
+bfrops_base_max_array_depth parameter (0 removes it entirely). Both
+ends of the connection must permit the depth: the sender refuses to
+build the message, and the receiver refuses to interpret it.
+#
 [tool:no-server]
 A call was made to PMIx_tool_connect_to_server, but no information
 was given as to which server the tool should be connected. Accepted

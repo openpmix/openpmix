@@ -18,6 +18,9 @@
 #include "include/pmix.h"
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
+/* for pmix_bfrops_globals.max_array_depth: the depth-cap tests below
+ * need to stand in for a peer that does not share our limit */
+#include "src/mca/bfrops/base/base.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -422,6 +425,208 @@ cleanup:
 }
 
 /* ------------------------------------------------------------------ */
+/* depth cap                                                           */
+/* ------------------------------------------------------------------ */
+
+/* Build a chain of "levels" nested arrays; the innermost one holds
+ * ints, every outer one holds a single array. Packing it takes exactly
+ * "levels" nested trips through the darray packer. */
+static int build_chain(pmix_data_array_t *d, int levels)
+{
+    int *iptr;
+
+    if (1 == levels) {
+        PMIx_Data_array_construct(d, 2, PMIX_INT);
+        if (NULL == d->array) {
+            return 0;
+        }
+        iptr = (int *) d->array;
+        iptr[0] = 7;
+        iptr[1] = 8;
+        return 1;
+    }
+
+    PMIx_Data_array_construct(d, 1, PMIX_DATA_ARRAY);
+    if (NULL == d->array) {
+        return 0;
+    }
+    return build_chain((pmix_data_array_t *) d->array, levels - 1);
+}
+
+/* pack a chain "levels" deep and report what the packer said */
+static pmix_status_t pack_chain(pmix_data_buffer_t *buf, int levels)
+{
+    pmix_data_array_t src;
+    pmix_status_t rc;
+
+    if (!build_chain(&src, levels)) {
+        return PMIX_ERR_NOMEM;
+    }
+    rc = PMIx_Data_pack(NULL, buf, &src, 1, PMIX_DATA_ARRAY);
+    PMIx_Data_array_destruct(&src);
+
+    return rc;
+}
+
+/* Nesting up to the limit has to keep working - the cap is there to
+ * bound a hostile peer, not to break legitimate data. */
+static void test_depth_at_limit_is_accepted(void)
+{
+    pmix_data_buffer_t buf;
+    pmix_data_array_t dst;
+    pmix_status_t rc;
+    int32_t count;
+    int ok = 0;
+
+    memset(&dst, 0, sizeof(dst));
+    PMIx_Data_buffer_construct(&buf);
+
+    rc = pack_chain(&buf, (int) pmix_bfrops_globals.max_array_depth);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "    pack at the limit failed: %s\n", PMIx_Error_string(rc));
+        goto cleanup;
+    }
+
+    count = 1;
+    rc = PMIx_Data_unpack(NULL, &buf, &dst, &count, PMIX_DATA_ARRAY);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "    unpack at the limit failed: %s\n", PMIx_Error_string(rc));
+        goto cleanup;
+    }
+    ok = 1;
+
+cleanup:
+    PMIx_Data_buffer_destruct(&buf);
+    PMIx_Data_array_destruct(&dst);
+    report("nesting to the depth limit round-trips", ok);
+}
+
+/* One level past the limit is refused at pack time, so we never emit a
+ * message the far side is bound to reject. */
+static void test_depth_past_limit_is_refused_by_pack(void)
+{
+    pmix_data_buffer_t buf;
+    pmix_status_t rc;
+    int ok = 0;
+
+    PMIx_Data_buffer_construct(&buf);
+
+    rc = pack_chain(&buf, (int) pmix_bfrops_globals.max_array_depth + 1);
+    if (PMIX_ERR_PACK_FAILURE == rc) {
+        ok = 1;
+    } else {
+        fprintf(stdout, "    pack past the limit returned %s\n", PMIx_Error_string(rc));
+    }
+
+    PMIx_Data_buffer_destruct(&buf);
+    report("nesting past the depth limit is refused by pack", ok);
+}
+
+/* The receiving side cannot rely on the sender's limit: a peer that
+ * does not share it - or is not trying to be a peer at all - describes
+ * an arbitrarily deep nest in a handful of bytes. Stand in for one by
+ * lifting the cap just long enough to build the message. */
+static void test_depth_past_limit_is_refused_by_unpack(void)
+{
+    pmix_data_buffer_t buf;
+    pmix_data_array_t dst;
+    unsigned int save;
+    pmix_status_t rc;
+    int32_t count;
+    int ok = 0;
+
+    memset(&dst, 0, sizeof(dst));
+    PMIx_Data_buffer_construct(&buf);
+
+    save = pmix_bfrops_globals.max_array_depth;
+    pmix_bfrops_globals.max_array_depth = save + 8;
+    rc = pack_chain(&buf, (int) save + 3);
+    pmix_bfrops_globals.max_array_depth = save;
+
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "    could not build the deep message: %s\n", PMIx_Error_string(rc));
+        goto cleanup;
+    }
+
+    count = 1;
+    rc = PMIx_Data_unpack(NULL, &buf, &dst, &count, PMIX_DATA_ARRAY);
+    if (PMIX_ERR_UNPACK_FAILURE == rc) {
+        ok = 1;
+    } else {
+        fprintf(stdout, "    unpack of a too-deep message returned %s\n", PMIx_Error_string(rc));
+    }
+
+cleanup:
+    PMIx_Data_buffer_destruct(&buf);
+    PMIx_Data_array_destruct(&dst);
+    report("nesting past the depth limit is refused by unpack", ok);
+}
+
+/* The limit is what the MCA parameter says it is, including "no limit" */
+static void test_limit_follows_the_parameter(void)
+{
+    pmix_data_buffer_t buf;
+    unsigned int save;
+    pmix_status_t rc;
+    int ok = 1;
+
+    save = pmix_bfrops_globals.max_array_depth;
+
+    /* tightened */
+    pmix_bfrops_globals.max_array_depth = 2;
+    PMIx_Data_buffer_construct(&buf);
+    rc = pack_chain(&buf, 3);
+    PMIx_Data_buffer_destruct(&buf);
+    if (PMIX_ERR_PACK_FAILURE != rc) {
+        fprintf(stdout, "    depth 3 under a limit of 2 returned %s\n", PMIx_Error_string(rc));
+        ok = 0;
+    }
+
+    /* and switched off */
+    pmix_bfrops_globals.max_array_depth = 0;
+    PMIx_Data_buffer_construct(&buf);
+    rc = pack_chain(&buf, 24);
+    PMIx_Data_buffer_destruct(&buf);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "    depth 24 with the limit off returned %s\n", PMIx_Error_string(rc));
+        ok = 0;
+    }
+
+    pmix_bfrops_globals.max_array_depth = save;
+    report("the depth limit follows bfrops_base_max_array_depth", ok);
+}
+
+/* The depth counter is incremented and released around each level, so
+ * a refusal must not leave it charged against the next pack. */
+static void test_refusal_does_not_poison_the_buffer(void)
+{
+    pmix_data_buffer_t buf;
+    pmix_status_t rc;
+    int i, ok = 1;
+
+    PMIx_Data_buffer_construct(&buf);
+
+    for (i = 0; i < 10; i++) {
+        rc = pack_chain(&buf, (int) pmix_bfrops_globals.max_array_depth + 1);
+        if (PMIX_ERR_PACK_FAILURE != rc) {
+            fprintf(stdout, "    refusal %d returned %s\n", i, PMIx_Error_string(rc));
+            ok = 0;
+            break;
+        }
+        rc = pack_chain(&buf, (int) pmix_bfrops_globals.max_array_depth);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stdout, "    legal pack after refusal %d returned %s\n",
+                    i, PMIx_Error_string(rc));
+            ok = 0;
+            break;
+        }
+    }
+
+    PMIx_Data_buffer_destruct(&buf);
+    report("a refused pack leaves the depth counter uncharged", ok);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -450,6 +655,13 @@ int main(int argc, char **argv)
 
     /* print */
     test_print_value();
+
+    /* depth cap */
+    test_depth_at_limit_is_accepted();
+    test_depth_past_limit_is_refused_by_pack();
+    test_depth_past_limit_is_refused_by_unpack();
+    test_limit_follows_the_parameter();
+    test_refusal_does_not_poison_the_buffer();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 

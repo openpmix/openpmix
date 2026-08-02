@@ -7,6 +7,17 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Bounded how deeply data arrays may be nested inside one another when
+   packed or unpacked. Each level of nesting costs the sender only a
+   type tag and a size on the wire but costs the receiver a frame of
+   recursion in the unpacker, so a small message could describe a nest
+   deep enough to exhaust the stack. The limit is the new
+   bfrops_base_max_array_depth MCA parameter, 100 by default and
+   unlimited if set to zero, and it counts every form of nesting - an
+   array whose element type is PMIX_DATA_ARRAY, and the ordinary array
+   / info / value chain alike. Both ends enforce it: the sender refuses
+   to build such a message rather than emitting one the far side is
+   bound to reject
  - A pmix_data_array_t whose element type is PMIX_DATA_ARRAY is now
    supported end-to-end. It has always packed - and printed - as a
    contiguous block of pmix_data_array_t descriptors, exactly as

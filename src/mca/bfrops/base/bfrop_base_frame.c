@@ -55,6 +55,7 @@ pmix_bfrops_globals_t pmix_bfrops_globals = {
     .initialized = false,
     .initial_size = 0,
     .threshold_size = 0,
+    .max_array_depth = PMIX_BFROP_DEFAULT_MAX_ARRAY_DEPTH,
 #if PMIX_ENABLE_DEBUG
     .default_type = PMIX_BFROP_BUFFER_FULLY_DESC
 #else
@@ -81,6 +82,13 @@ static int pmix_bfrop_register(pmix_mca_base_register_flag_t flags)
                                "extending by a smaller value",
                                PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                &pmix_bfrops_globals.threshold_size);
+
+    pmix_bfrops_globals.max_array_depth = PMIX_BFROP_DEFAULT_MAX_ARRAY_DEPTH;
+    pmix_mca_base_var_register("pmix", "bfrops", "base", "max_array_depth",
+                               "Maximum depth to which data arrays may be nested inside "
+                               "one another when packed or unpacked (0 = no limit)",
+                               PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_INT,
+                               &pmix_bfrops_globals.max_array_depth);
 
 #if PMIX_ENABLE_DEBUG
     pmix_bfrops_globals.default_type = PMIX_BFROP_BUFFER_FULLY_DESC;

@@ -31,6 +31,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/bfrops_types.h"
@@ -1182,8 +1183,8 @@ pmix_status_t pmix_bfrops_base_unpack_pinfo(pmix_pointer_array_t *regtypes, pmix
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_bfrops_base_unpack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                             void *dest, int32_t *num_vals, pmix_data_type_t type)
+static pmix_status_t unpack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                   void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
     pmix_data_array_t *ptr;
     int32_t i, n, m;
@@ -1235,6 +1236,34 @@ pmix_status_t pmix_bfrops_base_unpack_darray(pmix_pointer_array_t *regtypes, pmi
         }
     }
     return PMIX_SUCCESS;
+}
+
+/* How many arrays the unpack running on this thread is nested inside */
+static PMIX_BFROP_THREAD_LOCAL unsigned int array_depth = 0;
+
+/* Every level of array nesting - an element type of PMIX_DATA_ARRAY, or
+ * the ordinary array/info/value chain - comes back through here, so this
+ * is where the recursion is bounded. It has to be: a peer describes each
+ * level in a type tag and a size, so a couple of bytes of message buy a
+ * stack frame, and nothing else in the unpacker limits how many */
+pmix_status_t pmix_bfrops_base_unpack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                             void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    if (0 < pmix_bfrops_globals.max_array_depth &&
+        pmix_bfrops_globals.max_array_depth <= array_depth) {
+        pmix_show_help("help-pmix-runtime.txt", "bfrops:array_depth", true,
+                       "unpack", (unsigned long) array_depth + 1,
+                       (unsigned long) pmix_bfrops_globals.max_array_depth);
+        return PMIX_ERR_UNPACK_FAILURE;
+    }
+
+    array_depth++;
+    ret = unpack_darray(regtypes, buffer, dest, num_vals, type);
+    array_depth--;
+
+    return ret;
 }
 
 pmix_status_t pmix_bfrops_base_unpack_rank(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,

@@ -47,6 +47,15 @@ the caller does not fill in is a valid empty array (``PMIX_UNDEF``,
 ``size`` 0) rather than uninitialized memory, and destructing the outer
 array recursively releases every element.
 
+Nesting is bounded. PMIx refuses to pack or unpack an array nested more
+deeply inside other arrays than the ``bfrops_base_max_array_depth`` MCA
+parameter permits |mdash| 100 levels by default, or unlimited if the
+parameter is set to zero. The limit counts every form of nesting, both an
+array whose element type is ``PMIX_DATA_ARRAY`` and the ordinary case of
+an array reached through a `pmix_value_t`, because each level of either
+costs the receiver a frame of recursion while costing the sender only a
+few bytes on the wire.
+
 The `pmix_data_array_t` structure is the mechanism by which a collection of
 values is conveyed through a single :ref:`pmix_value_t(5) <man5-pmix_value_t>`
 or :ref:`pmix_info_t(5) <man5-pmix_info_t>`: the containing structure references

@@ -75,6 +75,7 @@ struct pmix_bfrops_globals_t {
     bool selected;
     size_t initial_size;
     size_t threshold_size;
+    unsigned int max_array_depth;
     pmix_bfrop_buffer_type_t default_type;
 };
 typedef struct pmix_bfrops_globals_t pmix_bfrops_globals_t;
@@ -90,6 +91,39 @@ PMIX_EXPORT extern pmix_bfrops_globals_t pmix_bfrops_globals;
  * buffer size to additively increasing it
  */
 #define PMIX_BFROP_DEFAULT_THRESHOLD_SIZE 1024
+/*
+ * The default limit on how deeply data arrays may be nested inside
+ * one another. Each level of nesting costs the sender only a type
+ * tag and a size on the wire - roughly two bytes - but costs the
+ * receiver a frame of recursion in the unpacker, so a message of
+ * around a hundred kilobytes can otherwise exhaust an ordinary 8MB
+ * stack. This is a backstop against that, not a judgement about how
+ * deep data ought to be: it is set orders of magnitude above any
+ * nesting the library or its users have reason to build, and orders
+ * of magnitude below the depth that actually threatens the stack.
+ * Zero means "no limit"
+ */
+#define PMIX_BFROP_DEFAULT_MAX_ARRAY_DEPTH 100
+
+/*
+ * The recursive array packer and unpacker each track how deep they
+ * are. The counter cannot live on the buffer: pmix_buffer_t appears
+ * in installed headers and can be placed in shared memory read by
+ * processes built against a different PMIx, so its layout is not
+ * ours to change. Per-thread is equivalent in practice - a pack or
+ * unpack runs to completion on the thread that started it, and
+ * invokes no user code that could start another
+ */
+#if PMIX_C_HAVE__THREAD_LOCAL
+#    define PMIX_BFROP_THREAD_LOCAL _Thread_local
+#elif PMIX_C_HAVE___THREAD
+#    define PMIX_BFROP_THREAD_LOCAL __thread
+#else
+/* no thread-local storage: the counter is shared, so concurrent
+ * operations may over- or under-count each other. The limit still
+ * bounds the recursion of any single operation, which is the point */
+#    define PMIX_BFROP_THREAD_LOCAL
+#endif
 
 /*
  * Internal type corresponding to size_t.  Do not use this in
