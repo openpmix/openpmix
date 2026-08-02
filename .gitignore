@@ -252,6 +252,7 @@ test/sshot/mytopo.json
 test/sshot/testcoord
 
 test/unit/client_api
+test/unit/common_api
 test/unit/compress
 test/unit/preg
 test/unit/bfrops_regex2

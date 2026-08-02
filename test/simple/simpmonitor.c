@@ -188,6 +188,36 @@ static int run_monitored(void)
     return 0;
 }
 
+/* The blocking form of PMIx_Process_monitor with PMIX_SEND_HEARTBEAT
+ * used to hang forever: the _nb entry point fired the beat and returned
+ * success without ever invoking the callback, so the blocking wrapper
+ * waited on a lock nobody would wake. This has to run on a connected
+ * client - a singleton is turned away at the "am I connected?" check
+ * long before it reaches the heartbeat branch - and it has to run on the
+ * observer, since the monitored rank must stay silent for the alert to
+ * fire. Returns 0 if the call came back at all. */
+static int send_one_heartbeat(void)
+{
+    pmix_status_t rc;
+    pmix_info_t monitor;
+    pmix_info_t *results = NULL;
+    size_t nresults = 0;
+
+    PMIX_INFO_LOAD(&monitor, PMIX_SEND_HEARTBEAT, NULL, PMIX_POINTER);
+    rc = PMIx_Process_monitor(&monitor, PMIX_SUCCESS, NULL, 0, &results, &nresults);
+    PMIX_INFO_DESTRUCT(&monitor);
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+    }
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        fprintf(stderr, "Observer %s:%d: HEARTBEAT TEST FAILED - %s\n", myproc.nspace, myproc.rank,
+                PMIx_Error_string(rc));
+        return 1;
+    }
+    fprintf(stderr, "Observer %s:%d: HEARTBEAT TEST PASSED\n", myproc.nspace, myproc.rank);
+    return 0;
+}
+
 /* rank 1: watch for the alert the server raises about rank 0 */
 static int run_observer(void)
 {
@@ -244,6 +274,12 @@ int main(int argc, char **argv)
     if (MONITORED_RANK == (int) myproc.rank) {
         result = run_monitored();
     } else if (OBSERVER_RANK == (int) myproc.rank) {
+        /* the blocking heartbeat call must return before we go on to
+         * wait for the alert - if it hangs, this whole test hangs and
+         * the driver's time limit reports it */
+        if (0 != send_one_heartbeat()) {
+            result = 1;
+        }
         if (0 == wait_for_alert(&alertlock, 30) && alert_source_ok) {
             fprintf(stderr, "Observer %s:%d: MONITOR TEST PASSED\n", myproc.nspace, myproc.rank);
             result = 0;
