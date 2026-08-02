@@ -991,6 +991,23 @@ class TestDataArrayConversion(unittest.TestCase):
          {'type': pmix.PMIX_INFO,
           'array': [{'key': "foo", 'flags': 0, 'value': INFO_ARRAY_OUT,
                      'val_type': pmix.PMIX_DATA_ARRAY}]}),
+        # an array whose *element type* is itself PMIX_DATA_ARRAY - each
+        # element is a complete array, not a value wrapping one
+        ("darray-of-darrays",
+         {'type': pmix.PMIX_DATA_ARRAY,
+          'array': [{'type': pmix.PMIX_INT, 'array': [1, 2, 3]},
+                    {'type': pmix.PMIX_STRING, 'array': ["abc", "def"]}]},
+         None),
+        # nesting to a second level, and an element array carrying infos
+        ("darray-of-darrays-deep",
+         {'type': pmix.PMIX_DATA_ARRAY,
+          'array': [INFO_ARRAY,
+                    {'type': pmix.PMIX_DATA_ARRAY,
+                     'array': [{'type': pmix.PMIX_SIZE, 'array': [7, 8]}]}]},
+         {'type': pmix.PMIX_DATA_ARRAY,
+          'array': [INFO_ARRAY_OUT,
+                    {'type': pmix.PMIX_DATA_ARRAY,
+                     'array': [{'type': pmix.PMIX_SIZE, 'array': [7, 8]}]}]}),
         ("string", {'type': pmix.PMIX_STRING,
                     'array': ["abc", "def", "efg"]}, None),
         ("bool", {'type': pmix.PMIX_BOOL, 'array': ['False', 'True']},

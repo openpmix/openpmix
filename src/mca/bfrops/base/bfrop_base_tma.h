@@ -52,6 +52,10 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
                                               pmix_tma_t *tma);
 
 static inline
+void pmix_bfrops_base_tma_data_array_destruct(pmix_data_array_t *d,
+                                              pmix_tma_t *tma);
+
+static inline
 char* pmix_bfrops_base_tma_buffer_extend(pmix_buffer_t *buffer,
                                          size_t bytes_to_add,
                                          pmix_tma_t *tma)
@@ -2972,9 +2976,32 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         }
         break;
     }
-    case PMIX_DATA_ARRAY:
-        rc = PMIX_ERR_NOT_SUPPORTED; // don't support iterative arrays
+    case PMIX_DATA_ARRAY: {
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_data_array_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_data_array_t *const pd = (pmix_data_array_t *)p->array;
+        pmix_data_array_t *const sd = (pmix_data_array_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            pmix_data_array_t *tmp = NULL;
+            rc = pmix_bfrops_base_tma_copy_darray(&tmp, &sd[n], PMIX_DATA_ARRAY, tma);
+            if (PMIX_SUCCESS != rc) {
+                /* release the elements we did copy - tell destruct how
+                 * many of them are actually there before letting it run */
+                p->size = n;
+                pmix_bfrops_base_tma_data_array_destruct(p, tma);
+                break;
+            }
+            /* we want the copied contents, not the descriptor the
+             * recursive call wrapped them in - take ownership of the
+             * former and discard the latter */
+            pd[n] = *tmp;
+            pmix_tma_free(tma, tmp);
+        }
         break;
+    }
     case PMIX_QUERY: {
         p->array = pmix_bfrops_base_tma_query_create(src->size, tma);
         if (PMIX_UNLIKELY(NULL == p->array)) {
@@ -3532,9 +3559,19 @@ void pmix_bfrops_base_tma_data_array_destruct(pmix_data_array_t *d,
         case PMIX_PROC_INFO:
             pmix_bfrops_base_tma_proc_info_free(d->array, d->size, tma);
             break;
-        case PMIX_DATA_ARRAY:
-            pmix_bfrops_base_tma_data_array_destruct(d->array, tma);
+        case PMIX_DATA_ARRAY: {
+            /* an array of this type is empty rather more often than the
+             * others - an unpacked zero-length one never allocates, and
+             * construct zeroes the elements it hands back - so check */
+            if (NULL != d->array) {
+                pmix_data_array_t *const da = (pmix_data_array_t *)d->array;
+                for (size_t n = 0; n < d->size; n++) {
+                    pmix_bfrops_base_tma_data_array_destruct(&da[n], tma);
+                }
+                pmix_tma_free(tma, d->array);
+            }
             break;
+        }
         case PMIX_QUERY:
             pmix_bfrops_base_tma_query_free(d->array, d->size, tma);
             break;
@@ -3642,6 +3679,14 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
 
         } else if (PMIX_QUERY == type) {
             p->array = pmix_bfrops_base_tma_query_create(num, tma);
+
+        } else if (PMIX_DATA_ARRAY == type) {
+            /* an array whose elements are themselves data arrays: the
+             * block holds "num" complete pmix_data_array_t descriptors,
+             * which is what pack, unpack, and print all assume. Zero
+             * them so an element the caller never fills is a valid
+             * empty array (PMIX_UNDEF, size 0) rather than garbage */
+            p->array = pmix_tma_calloc(tma, num, sizeof(pmix_data_array_t));
 
         } else if (PMIX_APP == type) {
             p->array = pmix_bfrops_base_tma_app_create(num, tma);

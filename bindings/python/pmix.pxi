@@ -608,14 +608,13 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         daptr = <pmix_data_array_t*>array[0].array
         n = 0
         for item in mylist:
-            daptr[n].type = item['val_type']
-            daptr[n].size = len(item['value'])
-            daptr[n].array = <pmix_data_array_t*> malloc(sizeof(pmix_data_array_t))
-            if not daptr[n].array:
-                return PMIX_ERR_NOMEM
-            mydaptr = <pmix_data_array_t*>daptr[n].array
+            # each element is a complete data array in its own right,
+            # stored inline in the block - not a pointer to one - and is
+            # described the same way as the enclosing array
+            daptr[n].type = item['type']
+            daptr[n].size = len(item['array'])
             try:
-                rc = pmix_load_darray(mydaptr, daptr[n].type, item['value'])
+                rc = pmix_load_darray(&daptr[n], daptr[n].type, item['array'])
                 if PMIX_SUCCESS != rc:
                     return rc
             except:
@@ -974,11 +973,10 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
         n = 0
         list = []
         while n < array.size:
-            if not daptr[n].array:
-                return PMIX_ERR_NOMEM
-            mydaptr = <pmix_data_array_t*>daptr[n].array
+            # each element is a complete data array stored inline in the
+            # block - an empty one legitimately carries a NULL array
             try:
-                d = pmix_unload_darray(mydaptr)
+                d = pmix_unload_darray(&daptr[n])
             except:
                 return PMIX_ERR_NOT_SUPPORTED
             list.append(d)
