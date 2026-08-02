@@ -307,7 +307,17 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
 
     // check for group info
     for (n=0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_INFO)) {
+        /* PMIX_GROUP_INFO carries an array of pmix_info_t, but it comes
+         * straight from the caller, so verify that is really what is in it
+         * before indexing - the "is the first entry our procID?" test below
+         * used to read iarray[0] out of whatever the union happened to hold,
+         * including a NULL darray or a zero-length array */
+        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_INFO) &&
+            PMIX_DATA_ARRAY == info[n].value.type &&
+            NULL != info[n].value.data.darray &&
+            PMIX_INFO == info[n].value.data.darray->type &&
+            NULL != info[n].value.data.darray->array &&
+            0 < info[n].value.data.darray->size) {
             iarray = (pmix_info_t*)info[n].value.data.darray->array;
             niarray = info[n].value.data.darray->size;
             // check if the first entry is our procID
@@ -777,9 +787,18 @@ static void invite_observer(pmix_status_t status, const pmix_proc_t *source,
         responder = affected;
     }
     for (n = 0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC)) {
+        /* this arrives over the wire from another process, so the directive's
+         * type is not ours to assume - a mistyped (or truncated) one used to
+         * become a garbage pointer that PMIX_CHECK_PROCID then dereferenced */
+        if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC) &&
+            PMIX_PROC == info[n].value.type &&
+            NULL != info[n].value.data.proc) {
             responder = info[n].value.data.proc;
         }
+    }
+    if (PMIX_UNLIKELY(NULL == responder)) {
+        /* nothing identifies who answered, so there is nothing to record */
+        return;
     }
 
     /* Record this response by identity. A member that ACCEPTS joins the group
@@ -1612,10 +1631,18 @@ static void leader_watch_observer(pmix_status_t status, const pmix_proc_t *sourc
         departed = affected;
     }
     for (n = 0; n < ninfo; n++) {
+        /* as in invite_observer: these come off the wire, so check the type
+         * before trusting the union. A mistyped PMIX_GROUP_ID reached strcmp()
+         * below as a garbage pointer, and a mistyped affected proc reached
+         * PMIX_CHECK_PROCID as one. */
         if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC)) {
-            departed = info[n].value.data.proc;
+            if (PMIX_PROC == info[n].value.type && NULL != info[n].value.data.proc) {
+                departed = info[n].value.data.proc;
+            }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ID)) {
-            grpid = info[n].value.data.string;
+            if (PMIX_STRING == info[n].value.type && NULL != info[n].value.data.string) {
+                grpid = info[n].value.data.string;
+            }
         }
     }
 
@@ -2247,7 +2274,18 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
                 PMIX_INFO_DESTRUCT(&grpinfo);
                 goto report;
             }
-            // store the info locally
+            /* store the info locally. This came off the wire, so the type is
+             * the sending server's word rather than ours - a peer that sends
+             * anything but a data array here (an older one, or a broken one)
+             * used to have us dereference whatever shared the union */
+            if (PMIX_DATA_ARRAY != grpinfo.value.type ||
+                NULL == grpinfo.value.data.darray ||
+                NULL == grpinfo.value.data.darray->array) {
+                PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
+                ret = PMIX_ERR_INVALID_VAL;
+                PMIX_INFO_DESTRUCT(&grpinfo);
+                goto report;
+            }
             iptr = (pmix_info_t*)grpinfo.value.data.darray->array;
             ninfo = grpinfo.value.data.darray->size;
 
@@ -2264,6 +2302,16 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
             } else {
                 // contains an array of group info arrays
                 for (m=0; m < ninfo; m++) {
+                    /* each element is itself an array - same caveat as above,
+                     * per entry */
+                    if (PMIX_DATA_ARRAY != iptr[m].value.type ||
+                        NULL == iptr[m].value.data.darray ||
+                        NULL == iptr[m].value.data.darray->array) {
+                        PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
+                        ret = PMIX_ERR_INVALID_VAL;
+                        PMIX_INFO_DESTRUCT(&grpinfo);
+                        goto report;
+                    }
                     pinfo = (pmix_info_t*)iptr[m].value.data.darray->array;
                     npinfo = iptr[m].value.data.darray->size;
                     rc = pmix_server_process_grpinfo(ctxid, pinfo, npinfo);
@@ -2413,12 +2461,24 @@ static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
         cb->nresults = ninfo;
         PMIX_INFO_CREATE(cb->results, cb->nresults);
         for (n = 0; n < ninfo; n++) {
+            /* On the join path this array is a copy of the leader's
+             * PMIX_GROUP_CONSTRUCT_COMPLETE event (see join_complete), so
+             * these are another process's word for what they contain -
+             * check the tags before add_group() is handed the results */
             if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_MEMBERSHIP)) {
-                members = (pmix_proc_t*)info[n].value.data.darray->array;
-                nmembers = info[n].value.data.darray->size;
+                if (PMIX_DATA_ARRAY == info[n].value.type &&
+                    NULL != info[n].value.data.darray &&
+                    PMIX_PROC == info[n].value.data.darray->type &&
+                    NULL != info[n].value.data.darray->array) {
+                    members = (pmix_proc_t*)info[n].value.data.darray->array;
+                    nmembers = info[n].value.data.darray->size;
+                }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ID)) {
-                grpid = info[n].value.data.string;
+                if (PMIX_STRING == info[n].value.type &&
+                    NULL != info[n].value.data.string) {
+                    grpid = info[n].value.data.string;
+                }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_CONTEXT_ID)) {
                 rc = PMIx_Value_get_number(&info[n].value, &ctxid, PMIX_SIZE);
