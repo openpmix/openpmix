@@ -7,6 +7,41 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - PMIx_Load_topology(NULL) and PMIx_Get_relative_locality with a NULL
+   output pointer no longer segfault - both now return
+   PMIX_ERR_BAD_PARAM. The two neighbouring hwloc entry points had
+   already been screened for this; these were missed
+ - A client can once again use PMIX_SETUP_APP_ENVARS on PMIx_Spawn. The
+   pmdl framework that performs the envar harvest is opened only by the
+   server and tool roles, and the "no programming-model support in this
+   role" answer its stub returns to a client - PMIX_ERR_INIT - was
+   treated as fatal, so the whole spawn failed and reported that the
+   library was not initialized. The directive is carried in the
+   job-level info regardless, and whoever launches for us performs the
+   harvest with its own pmdl
+ - PMIx_Spawn no longer modifies the caller's app array. The apps
+   parameter is declared const, and the library copies it precisely
+   because it modifies what it spawns, but the PMIX_SETUP_APP_ENVARS
+   harvest ran before that copy was made and so called PMIx_Setenv()
+   against the caller's own env arrays. A caller reusing the same
+   pmix_app_t for a second spawn accumulated the harvested envars a
+   second time. Only the roles that have a pmdl open - tool, launcher,
+   server - were affected
+ - The PMIX_READY_FOR_DEBUG announcement issued by PMIx_Init now reaches
+   the local server. Its custom-range directive was built from the
+   server's pmix_peer_t rather than the server's process ID, and a
+   pmix_proc_t copied out of that object is the object header
+   reinterpreted as a namespace and a rank, so the notification named a
+   process that does not exist and no debugger ever saw it
+ - A malformed pmix_value_t no longer crashes the library. A value
+   tagged PMIX_DATA_ARRAY whose array pointer is NULL is now treated as
+   an absent array by the copy path, rather than being dereferenced for
+   its type and size - which every PMIX_INFO_XFER and every pack that
+   copies first was exposed to. Several client entry points that read a
+   union member on the strength of the attribute key alone, without
+   checking the type tag, now check it: PMIX_GROUP_INFO and
+   PMIX_PARENT_ID from the caller, and the affected proc, group id,
+   group membership and group-info blobs that arrive over the wire
  - Bounded how deeply data arrays may be nested inside one another when
    packed or unpacked. Each level of nesting costs the sender only a
    type tag and a size on the wire but costs the receiver a frame of
