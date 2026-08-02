@@ -57,6 +57,14 @@ static void myregcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
 
     PMIX_ACQUIRE_OBJECT(req);
 
+    /* a zero-byte buffer indicates that this recv is being completed
+     * due to a lost connection - say so, rather than reporting the
+     * unpack failure that reading an empty buffer produces */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        req->status = PMIX_ERR_COMM_FAILURE;
+        goto report;
+    }
+
     /* unpack the return status */
     m = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &req->status, &m, PMIX_STATUS);
@@ -82,6 +90,22 @@ static void myregcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         }
     }
 
+report:
+    if (PMIX_SUCCESS != req->status) {
+        /* the registration did not take, so it must not be left in our
+         * array where it would go on matching incoming IO. myreg's own
+         * error paths do the same, and leave the release to whichever
+         * side owns the request from here */
+        pmix_pointer_array_set_item(&pmix_globals.iof_requests, req->local_id, NULL);
+        if (NULL != req->regcbfunc) {
+            req->regcbfunc(req->status, req->local_id, req->cbdata);
+            PMIX_RELEASE(req);
+        } else {
+            PMIX_WAKEUP_THREAD(&req->lock);
+        }
+        return;
+    }
+
     if (NULL == req->regcbfunc) {
         PMIX_WAKEUP_THREAD(&req->lock);
     } else {
@@ -99,6 +123,14 @@ static void process_cache(int sd, short args, void *cbdata)
     pmix_status_t rc;
     pmix_buffer_t *msg;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    /* a request registered by a client or a launcher that has an
+     * upstream server carries no requestor peer - its IO is delivered
+     * through its own callback when the message arrives, not by
+     * packing one here - so there is nothing for us to forward */
+    if (NULL == req->requestor) {
+        return;
+    }
 
     PMIX_LIST_FOREACH_SAFE (iof, ionext, &pmix_server_globals.iof, pmix_iof_cache_t) {
         /* if the channels don't match, then ignore it */
@@ -307,6 +339,12 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
+    /* the sources are copied wholesale below, so there has to be an
+     * array to copy from */
+    if (0 == nprocs || NULL == procs) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     req = PMIX_NEW(pmix_iof_req_t);
     if (NULL == req) {
         return PMIX_ERR_NOMEM;
@@ -370,6 +408,14 @@ static void deregcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
 
     PMIX_ACQUIRE_OBJECT(cd);
 
+    /* a zero-byte buffer indicates that this recv is being completed
+     * due to a lost connection - the local removal already happened in
+     * mydereg, but say what actually became of the request */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        cd->status = PMIX_ERR_COMM_FAILURE;
+        goto report;
+    }
+
     /* unpack the return status */
     m = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->status, &m, PMIX_STATUS);
@@ -381,6 +427,8 @@ static void deregcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
             cd->status = rc;
         }
     }
+
+report:
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
                         "pmix:iof_deregister returned status %s",
@@ -1181,16 +1229,23 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
         flags->set = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_OUTPUT_TO_FILE) ||
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_FILE)) {
-        flags->file = strdup(info->value.data.string);
-        flags->set = true;
-        flags->local_output = true;
-        flags->local_output_given = true;
+        /* the value's type is under the caller's control - a name that
+         * is not a string must be ignored rather than strdup'd from
+         * whatever else shares the union */
+        if (PMIX_STRING == info->value.type && NULL != info->value.data.string) {
+            flags->file = strdup(info->value.data.string);
+            flags->set = true;
+            flags->local_output = true;
+            flags->local_output_given = true;
+        }
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_OUTPUT_TO_DIRECTORY) ||
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_DIRECTORY)) {
-        flags->directory = strdup(info->value.data.string);
-        flags->set = true;
-        flags->local_output = true;
-        flags->local_output_given = true;
+        if (PMIX_STRING == info->value.type && NULL != info->value.data.string) {
+            flags->directory = strdup(info->value.data.string);
+            flags->set = true;
+            flags->local_output = true;
+            flags->local_output_given = true;
+        }
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_ONLY) ||
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_NOCOPY)) {
         flags->nocopy = PMIX_INFO_TRUE(info);
@@ -1234,6 +1289,13 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
         }
     }
     if (!match) {
+        return PMIX_SUCCESS;
+    }
+    /* a request registered locally by a client - or by a launcher that
+     * has an upstream server of its own - has no requestor peer to send
+     * to; its IO reaches it through its own callback instead. The
+     * server's request array holds both kinds */
+    if (NULL == req->requestor) {
         return PMIX_SUCCESS;
     }
     /* never forward back to the source! This can happen if the source
@@ -1322,6 +1384,7 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
     pmix_byte_object_t *output;
     size_t offset, j, n, m, bufsize;
     char *buffer, qprint[15], *cptr;
+    unsigned char uc;
     const char *usestring;
     bool bufcopy;
     pmix_cb_t cb2;
@@ -1600,12 +1663,17 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
     if (myflags->xml) {
         bufsize = bo->size;
         for (n = 0; n < bo->size; n++) {
-            if ('&' == bo->bytes[n]) {
+            /* the payload is arbitrary bytes, so it must be read as
+             * unsigned: isprint() is undefined for a negative argument
+             * other than EOF, and a signed byte would be escaped as a
+             * negative character reference that is not valid XML */
+            uc = (unsigned char) bo->bytes[n];
+            if ('&' == uc) {
                 bufsize += 5;
-            } else if ('<' == bo->bytes[n] || '>' == bo->bytes[n]) {
+            } else if ('<' == uc || '>' == uc) {
                 bufsize += 4;
-            } else if (!isprint(bo->bytes[n])) {
-                pmix_snprintf(qprint, 10, "&#%03d;", (int) bo->bytes[n]);
+            } else if (!isprint(uc)) {
+                pmix_snprintf(qprint, sizeof(qprint), "&#%03u;", (unsigned int) uc);
                 bufsize += strlen(qprint);
             }
         }
@@ -1618,29 +1686,31 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
             bufcopy = true;
             m = 0;
             for (n = 0; n < bo->size; n++) {
-                if ('&' == bo->bytes[n]) {
+                /* read unsigned, exactly as the sizing pass above did */
+                uc = (unsigned char) bo->bytes[n];
+                if ('&' == uc) {
                     buffer[m++] = '&';
                     buffer[m++] = 'a';
                     buffer[m++] = 'm';
                     buffer[m++] = 'p';
                     buffer[m++] = ';';
-                } else if ('<' == bo->bytes[n]) {
+                } else if ('<' == uc) {
                     buffer[m++] = '&';
                     buffer[m++] = 'l';
                     buffer[m++] = 't';
                     buffer[m++] = ';';
-                } else if ('>' == bo->bytes[n]) {
+                } else if ('>' == uc) {
                     buffer[m++] = '&';
                     buffer[m++] = 'g';
                     buffer[m++] = 't';
                     buffer[m++] = ';';
-                } else if (!isprint(bo->bytes[n])) {
-                    pmix_snprintf(qprint, 10, "&#%03d;", (int) bo->bytes[n]);
+                } else if (!isprint(uc)) {
+                    pmix_snprintf(qprint, sizeof(qprint), "&#%03u;", (unsigned int) uc);
                     for (j = 0; j < strlen(qprint); j++) {
                         buffer[m++] = qprint[j];
                     }
                 } else {
-                    buffer[m++] = bo->bytes[n];
+                    buffer[m++] = (char) uc;
                 }
             }
             /* the initial bufsize was a worst-case over-estimate used to
@@ -2014,11 +2084,16 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
 void pmix_iof_flush_residuals(void)
 {
     pmix_status_t rc;
-    pmix_iof_residual_t *res;
+    pmix_iof_residual_t *res, *next;
 
-    PMIX_LIST_FOREACH(res, &pmix_server_globals.iof_residuals, pmix_iof_residual_t) {
+    /* drain the list as we go, the way flush_sink_residuals does: a
+     * residual that has been written must not be written again if this
+     * is ever reached twice */
+    PMIX_LIST_FOREACH_SAFE(res, next, &pmix_server_globals.iof_residuals, pmix_iof_residual_t) {
         rc = write_output_line(&res->name, res->channel, &res->flags,
                                res->stream, res->copystdout, res->copystderr, &res->bo);
+        pmix_list_remove_item(&pmix_server_globals.iof_residuals, &res->super);
+        PMIX_RELEASE(res);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return;
