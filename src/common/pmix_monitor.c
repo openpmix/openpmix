@@ -96,7 +96,11 @@ pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t err
                         "%s pmix:monitor called",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-    // init return values
+    // init return values - screen the caller's pointers first, since
+    // this is where we write through them
+    if (NULL == results || NULL == nresults) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     *results = NULL;
     *nresults = 0;
 

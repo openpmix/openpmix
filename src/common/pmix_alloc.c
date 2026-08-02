@@ -203,7 +203,12 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request(pmix_alloc_directive_t directi
     pmix_output_verbose(2, pmix_globals.debug_output, "%s pmix:allocate",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-    /* set the default response */
+    /* set the default response - the caller's pointers are not
+     * screened anywhere else, and this is where we first write
+     * through them */
+    if (NULL == results || NULL == nresults) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     *results = NULL;
     *nresults = 0;
 

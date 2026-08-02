@@ -173,6 +173,12 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target, pmix_data_bu
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* the buffer is embedded (and its pointers rewritten) below, so
+     * there has to be one */
+    if (NULL == buffer) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     // if the target is a member of my own nspace, then use our own peer
     if (NULL == target ||
         PMIx_Check_nspace(target->nspace, pmix_globals.myid.nspace)) {
@@ -253,6 +259,12 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *target, pmix_data_
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* the buffer is embedded (and its pointers rewritten) below, so
+     * there has to be one */
+    if (NULL == buffer) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     // if the target is a member of my own nspace, then use our own peer
