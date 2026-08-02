@@ -7,6 +7,55 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - A PMIx_Query_info that is outstanding when the connection to the
+   server is lost now returns PMIX_ERR_COMM_FAILURE instead of hanging.
+   The reply handler treated a zero-byte buffer with a bare return, so
+   the blocking form waited forever on a wakeup nobody would send
+ - PMIx_Process_monitor with PMIX_SEND_HEARTBEAT no longer hangs. The
+   non-blocking form sent the beat and returned success without ever
+   invoking the callback the blocking form was waiting on
+ - PMIx_Resource_block no longer completes twice when the host accepts
+   the request. The callback was invoked whether or not the host had
+   taken ownership, so a caller saw two completions - and a blocking
+   caller had its lock woken a second time after it had been destructed
+ - PMIx_Job_control on a server no longer returns the caller's own
+   directives as the operation's results. The caddy carried the
+   directives in the same fields used to stage the host's answer, so a
+   host that returned no info echoed the request back as the reply
+ - PMIx_Data_pack and PMIx_Data_unpack no longer release the peer they
+   looked up before using it. The peer was stored in a caddy whose
+   destructor releases that field, so packing for a process in another
+   namespace freed the peer out from under the pack - and out of the
+   server's client array
+ - A malformed directive value no longer crashes the library. PMIx_Log
+   read PMIX_LOG_SOURCE through the proc member of the value union,
+   PMIx_Query_info read its PMIX_PROCID/PMIX_NSPACE/PMIX_RANK qualifiers
+   the same way, PMIx_Process_monitor read its four target directives as
+   data arrays, and the IOF layer read PMIX_IOF_OUTPUT_TO_FILE and
+   PMIX_IOF_OUTPUT_TO_DIRECTORY as strings - none of them checking the
+   type the caller had actually set. All now return PMIX_ERR_BAD_PARAM
+   or ignore the directive
+ - PMIx_Query_info with a query carrying no keys, and PMIx_IOF_pull with
+   a source count and no source array, are rejected rather than
+   dereferenced
+ - XML-tagged output no longer emits invalid character references. Bytes
+   above 0x7f were read as signed and escaped as "&#-128;" style
+   references
+ - Listing the attributes of a registered function no longer overflows
+   its output buffer. The function name was copied into a fixed-width
+   line with no bound, so a host that registered a long name smashed the
+   stack of anything that listed that level - pmix_info included
+ - The pfexec kill sequence now escalates to SIGKILL as documented. The
+   escalation was conditional on the SIGTERM having failed to be
+   delivered, so a child that received SIGTERM and ignored it was left
+   running - and, having already been removed from the children list,
+   never reaped
+ - PMIx_Register_attributes, PMIx_Get_attribute_string and
+   PMIx_Get_attribute_name now reject a NULL name rather than passing it
+   to strdup or strcasecmp
+ - A reply whose status cannot be unpacked is reported as a failure.
+   Several handlers left the status at success, telling the caller the
+   operation had worked and simply returned no data
  - PMIx_Load_topology(NULL) and PMIx_Get_relative_locality with a NULL
    output pointer no longer segfault - both now return
    PMIX_ERR_BAD_PARAM. The two neighbouring hwloc entry points had
