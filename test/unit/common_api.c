@@ -66,10 +66,36 @@ static void check(int ok, const char *what)
     }
 }
 
+static volatile int opcbcount = 0;
+
 static void opcb(pmix_status_t status, void *cbdata)
 {
     (void) status;
     (void) cbdata;
+    opcbcount++;
+}
+
+/* Spin until the operation's callback has fired.
+ *
+ * This is NOT optional politeness. A caddy holds POINTERS to the
+ * caller's info arrays rather than copies - that is the no-copy rule in
+ * src/common/AGENTS.md, and the contract it rests on is that the caller
+ * keeps its inputs alive until the callback comes back. An accepted
+ * PMIx_Log_nb is thread-shifted, so returning from the calling function
+ * before the callback fires destroys the stack the progress thread is
+ * still reading. It happens to survive on some platforms and does not
+ * on others; ASan calls it what it is, a stack-use-after-return. */
+static int wait_for_op(int target)
+{
+    int spins;
+
+    for (spins = 0; spins < 5000; spins++) {
+        if (opcbcount >= target) {
+            return 1;
+        }
+        usleep(1000);
+    }
+    return 0;
 }
 
 static void infocb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
@@ -109,12 +135,20 @@ static void test_log_bad_source(void)
     check(PMIX_ERR_BAD_PARAM == rc, "bool-valued PMIX_LOG_SOURCE rejected");
     PMIX_INFO_DESTRUCT(&dir);
 
-    /* a well-formed source must still be accepted - the check must not
-     * have made the good case unreachable */
+    /* A well-formed source must still be accepted - the check must not
+     * have made the good case unreachable. This one is ACCEPTED, which
+     * means it is thread-shifted and the library is holding a pointer
+     * to our stack until it calls back, so we have to wait for that
+     * before letting "data" go out of scope. The rejected cases above
+     * need no wait: they never reach a caddy. */
     PMIX_INFO_DESTRUCT(&data);
     PMIX_INFO_LOAD(&data, PMIX_LOG_STDERR, "regression", PMIX_STRING);
+    opcbcount = 0;
     rc = PMIx_Log_nb(&data, 1, NULL, 0, opcb, NULL);
     check(PMIX_ERR_BAD_PARAM != rc, "log with no directives still accepted");
+    if (PMIX_SUCCESS == rc) {
+        check(wait_for_op(1), "accepted log completed its callback");
+    }
     PMIX_INFO_DESTRUCT(&data);
 
     /* an empty data array is a bad parameter, and must be caught before
