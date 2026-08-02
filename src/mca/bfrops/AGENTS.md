@@ -377,6 +377,43 @@ adding or removing a *component directory* changes the build wiring
 resolved by `configure`, so re-run `./autogen.pl && ./configure … &&
 make`.
 
+## A malformed `pmix_value_t` reaches this layer, and it is this layer's job to survive it
+
+`bfrops/base` is where a `pmix_value_t` built by hand — by an
+application, or by library code assembling directives — is first acted
+on. The type tag is the only thing saying which union member is live, and
+the copy/pack functions here trust it completely.
+
+That trust is well placed for the *tag*, but not for what it points at. A
+value tagged `PMIX_DATA_ARRAY` whose `data.darray` is NULL is malformed
+yet trivially constructible, and it used to segfault the library:
+`pmix_bfrops_base_tma_copy_darray()` read `src->type` and `src->size`
+with no guard, so every `PMIX_INFO_XFER`, every `value_xfer`, and every
+pack that copies first was exposed. It now returns the same empty array
+it already produced for a zero-length or NULL-elements source — "absent"
+is a state this function could always express; it simply never checked
+for the one spelling of it that arrives as a NULL pointer.
+
+Two things follow for anyone adding or editing a `copy_*` here:
+
+- **A type check at a caller's entry point does not protect you.** The
+  defect above was found *after* the caller
+  (`construct_msg` in [`src/client`](../../client/AGENTS.md)) had been
+  taught to validate `PMIX_GROUP_INFO`: a NULL `darray` passes an
+  "is it a data array?" test and lands here anyway. Callers cannot be
+  relied on, and there are hundreds of them.
+- **Prefer expressing "absent" over rejecting it.** These functions run
+  deep inside pack paths where an error return is often discarded or
+  turns a working operation into a failed one. Where the type already has
+  an empty encoding — an array with no elements, a NULL string — produce
+  that. Reserve `PMIX_ERR_BAD_PARAM` for input that cannot be given any
+  meaning.
+
+Regression coverage: `test/unit/run_grpbadinfo.pl` drives
+`examples/group_badinfo`, which hands `PMIx_Group_construct` a
+`PMIX_GROUP_INFO` carrying a scalar and then one carrying a NULL array.
+The second case is the one that exercises this file.
+
 ## When working in this framework — the wire-format rules
 
 These are the top-level interoperability rules applied to `bfrops`.

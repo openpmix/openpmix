@@ -90,6 +90,22 @@ The August 2026 second sweep of that directory added:
   init, because the defect was a missing `initialized` gate in front of a
   `pmix_globals.mypeer` dereference. Keep it there.
 
+The third sweep added `test_topology_bad_params()`. The topology entry
+points are the one part of `src/client` that answers entirely out of
+hwloc, so they gate on `initialized` alone and a singleton reaches their
+arguments — which makes them the easiest place here to cover the
+"screen what the caller handed you" rule, and is why two unscreened
+pointers had survived in them:
+
+- `PMIx_Load_topology(NULL)`, which segfaulted on `topo->source`.
+- `PMIx_Get_relative_locality(l1, l2, NULL)`, which stored the answer
+  through the OUT parameter. **The inputs in that case have to be
+  well-formed** (`"hwloc:NM0"`), or the call stops at the
+  locality-payload check and never reaches the store — a version of
+  this case with junk locality strings passes against the unfixed
+  library and proves nothing. Both forms are in the test so the
+  distinction stays visible.
+
 **What it cannot cover, and why.** A singleton has no server, so every
 path that round-trips — which is most of `src/client` — short-circuits
 before it starts. `PMIx_Fence` and `PMIx_Commit` return success without
@@ -152,6 +168,33 @@ The mechanism itself is covered separately by `test_observer` in
 [`event_chain.c`](event_chain.c).
 
 [i4059]: https://github.com/openpmix/openpmix/issues/4059
+
+### `run_grpbadinfo.pl` — malformed directives must not crash the library
+
+[`run_grpbadinfo.pl.in`](run_grpbadinfo.pl.in) drives
+[`examples/group_badinfo.c`](../../examples/group_badinfo.c), which calls
+`PMIx_Group_construct` twice with a `PMIX_GROUP_INFO` the library cannot
+use: once carrying a scalar instead of a data array, once carrying a NULL
+array. Both used to be a SIGSEGV inside the library on what is an
+ordinary application mistake.
+
+**The two cases exercise different code, which is the point of having
+both.** The scalar reaches `construct_msg()` in
+[`src/client/pmix_client_group.c`](../../src/client/pmix_client_group.c),
+which read `->darray->array` off whatever shared the union. The NULL
+array passes any "is it a data array?" test and dies one layer down in
+`pmix_bfrops_base_tma_copy_darray()`. Fixing the first and re-running
+this test is literally how the second was found. Reverting either fix
+alone makes this test fail.
+
+**This asserts survival, not a return code.** What
+`PMIx_Group_construct` returns for a malformed directive is deliberately
+not checked — the group can legitimately fail to form for other reasons
+under `simptest`. A regression shows up as the client dying on a signal,
+which the driver catches through the exit status *and* through the
+per-case progress lines the client prints. Do not "strengthen" this by
+asserting `PMIX_ERR_BAD_PARAM`; that would couple the test to a policy
+decision it is not about.
 
 ### `run_grpinviteothers.pl` — a leader that is not a member
 

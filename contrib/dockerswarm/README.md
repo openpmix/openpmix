@@ -97,6 +97,21 @@ docker compose up -d       # start pmix-node1 .. pmix-node10
 Rebuild after editing PMIx: rerun `./build.sh` (incremental). No image rebuild
 and no `docker compose` restart needed — the nodes read the shared volume.
 
+> **`./build.sh` distcleans your in-tree build every time it finds one — not
+> just the first time.** The "(once)" above describes the *autogen*, not the
+> distclean: the VPATH configure it runs cannot coexist with an in-tree
+> build, so any tree you have configured for a native `make` / `make check`
+> is torn down, Makefiles and all. The next plain `make` then fails with
+> "No targets specified and no makefile found."
+>
+> This bites the ordinary review workflow, where you alternate between
+> `make check` on the host and the swarm suites: every swarm rebuild costs
+> you a `./configure && make` to get the host tree back. Nothing is lost —
+> your source edits are untouched — but budget for it, and re-run configure
+> with the *same* options (recover them with `./config.status --config`
+> before you build, or from `config.log`, since config.status goes away
+> too).
+
 ### Two clones on one host: `PMIX_SWARM`
 
 Every global name this harness claims — the compose project, the ten container
@@ -537,6 +552,17 @@ real rather than loopback:
 | `pub` | publish/lookup/unpublish resolving up through the daemons |
 | `resolve` | `PMIx_Resolve_peers` / `PMIx_Resolve_nodes` with something to resolve that is not just "this node" |
 | `dynamic` | `PMIx_Spawn` plus `PMIx_Connect`/`PMIx_Disconnect`, i.e. the multi-nspace job-info exchange in `PMIx_Connect_nb` |
+| `spawn_reuse` | `PMIx_Spawn` carrying `PMIX_SETUP_APP_ENVARS`, which used to fail outright from a client with `PMIX_ERR_INIT` (the `pmdl` framework that does the harvest is opened only by the server and tool roles, and its "not open here" answer was treated as fatal). Also guards the caller's `const pmix_app_t` array against being edited in place, and a mistyped `PMIX_PARENT_ID` against being dereferenced |
+
+`spawn_reuse` is here for a different reason from its neighbours. The others
+need a server because the *data* they want lives behind one; this one needs a
+real **launcher**. A singleton stops at the "am I connected?" check before it
+reaches the directives under test, and `test/simple/simptest` cannot host it
+either — its `spawn_fn` calls `PMIx_server_setup_application()` and then blocks
+on the result while running *on* the server's progress thread, so the fake
+launch deadlocks. No `make check` test spawns, which is why that has gone
+unnoticed. See the third-sweep notes in
+[`src/client/AGENTS.md`](../../src/client/AGENTS.md).
 
 A final wide `dmodex` run (10 ranks over 5 nodes) drives the pending-request
 list deep enough for the coalescing to matter.
