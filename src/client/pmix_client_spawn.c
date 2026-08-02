@@ -200,6 +200,13 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     bool forkexec = false;
     pmix_kval_t *kv;
     pmix_list_t ilist;
+    /* Set when the job-level directives asked us to harvest programming-model
+     * envars. The harvest itself is deferred until the apps array has been
+     * copied, so the result lands on *our* copy. Doing it up front, as this
+     * used to, meant PMIx_Setenv() edited the caller's const pmix_app_t
+     * array: a caller that reused those apps for a second spawn got the
+     * envars a second time, on top of the ones we had already added. */
+    bool joblevel_envars = false;
     char cwd[PMIX_PATH_MAX];
     char *tmp, *t2;
     bool proxy = false;
@@ -246,24 +253,20 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         xlist = PMIx_Info_list_start();
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&job_info[n], PMIX_SETUP_APP_ENVARS)) {
-                PMIX_CONSTRUCT(&ilist, pmix_list_t);
-                rc = pmix_pmdl.harvest_envars(NULL, job_info, ninfo, &ilist);
-                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                    PMIX_LIST_DESTRUCT(&ilist);
-                    PMIX_RELEASE(fcd);
-                    return rc;
-                }
-                PMIX_LIST_FOREACH (kv, &ilist, pmix_kval_t) {
-                    /* cycle across all the apps and set this envar */
-                    for (m = 0; m < napps; m++) {
-                        aptr = (pmix_app_t *) &apps[m];
-                        PMIx_Setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true,
-                                    &aptr->env);
-                    }
-                }
+                /* harvested and applied to our copy of the apps, below */
+                joblevel_envars = true;
                 jobenvars = true;
-                PMIX_LIST_DESTRUCT(&ilist);
             } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_PARENT_ID)) {
+                /* the directive comes straight from the caller, so verify it
+                 * really carries a proc before dereferencing the union - a
+                 * mistyped PMIX_PARENT_ID used to reach PMIX_XFER_PROCID as
+                 * whatever scalar happened to be in data.proc's slot */
+                if (PMIX_PROC != job_info[n].value.type ||
+                    NULL == job_info[n].value.data.proc) {
+                    PMIx_Info_list_release(xlist);
+                    PMIX_RELEASE(fcd);
+                    return PMIX_ERR_BAD_PARAM;
+                }
                 PMIX_XFER_PROCID(&parent, job_info[n].value.data.proc);
                 proxy = true;
             }
@@ -392,6 +395,13 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                 if (PMIX_CHECK_KEY(&fcd->apps[n].info[m], PMIX_SETUP_APP_ENVARS)) {
                     PMIX_CONSTRUCT(&ilist, pmix_list_t);
                     rc = pmix_pmdl.harvest_envars(NULL, fcd->apps[n].info, fcd->apps[n].ninfo, &ilist);
+                    if (PMIX_ERR_INIT == rc) {
+                        /* see the job-level harvest below: this role has no
+                         * pmdl framework open, and the directive travels on
+                         * to whoever launches for us */
+                        PMIX_LIST_DESTRUCT(&ilist);
+                        break;
+                    }
                     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                         PMIX_LIST_DESTRUCT(&ilist);
                         PMIX_RELEASE(fcd);
@@ -409,6 +419,47 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         }
     }
 
+    /* now apply any job-level envars the directives asked us to harvest. This
+     * happens here, rather than while scanning job_info above, so it lands on
+     * our copy of the apps instead of editing the caller's array - see the
+     * note on joblevel_envars */
+    if (joblevel_envars) {
+        PMIX_CONSTRUCT(&ilist, pmix_list_t);
+        rc = pmix_pmdl.harvest_envars(NULL, job_info, ninfo, &ilist);
+        if (PMIX_ERR_INIT == rc) {
+            /* The pmdl framework is opened only by the server and tool roles
+             * (see pmix_server_init/pmix_tool_init), so a plain client asking
+             * for PMIX_SETUP_APP_ENVARS gets PMIX_ERR_INIT from the stub -
+             * "no programming-model support is open in this role", not "the
+             * library is not initialized". Failing the spawn on it meant a
+             * client could not use the directive at all, and reported a
+             * thoroughly misleading reason. There is nothing lost by
+             * continuing: the directive is carried in the job-level info we
+             * are about to send, and whoever launches for us does the
+             * harvest with its own pmdl (see PMIx_server_setup_application). */
+            pmix_output_verbose(2, pmix_client_globals.spawn_output,
+                                "%s pmix: no local programming-model support - "
+                                "leaving PMIX_SETUP_APP_ENVARS to our host",
+                                PMIX_NAME_PRINT(&pmix_globals.myid));
+            PMIX_LIST_DESTRUCT(&ilist);
+            goto envars_done;
+        }
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_LIST_DESTRUCT(&ilist);
+            PMIX_RELEASE(fcd);
+            return rc;
+        }
+        PMIX_LIST_FOREACH (kv, &ilist, pmix_kval_t) {
+            /* cycle across all the apps and set this envar */
+            for (n = 0; n < fcd->napps; n++) {
+                PMIx_Setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true,
+                            &fcd->apps[n].env);
+            }
+        }
+        PMIX_LIST_DESTRUCT(&ilist);
+    }
+
+envars_done:
     /* if we are a server, then process this ourselves */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
@@ -573,8 +624,11 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
+    /* a server with nothing to report ends the message before the namespace,
+     * which the tolerated short read above leaves as NULL - and passing NULL
+     * to a "%s" conversion is undefined, not a portable "(null)" */
     pmix_output_verbose(1, pmix_globals.debug_output,
-                        "pmix:client recv '%s'", n2);
+                        "pmix:client recv '%s'", (NULL == n2) ? "NULL" : n2);
 
     if (NULL != n2) {
         /* protect length */
