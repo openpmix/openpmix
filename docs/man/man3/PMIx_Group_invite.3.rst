@@ -132,7 +132,21 @@ described in full in
 non-blocking form, returning immediately and delivering the final status and any
 returned values through ``cbfunc``. As with all non-blocking PMIx APIs, callers of
 ``PMIx_Group_invite_nb`` **must** keep the ``grp``, ``procs``, and ``info`` arrays
-valid until ``cbfunc`` is invoked.
+valid until ``cbfunc`` is invoked. ``cbfunc`` is required |mdash| passing ``NULL``
+returns ``PMIX_ERR_BAD_PARAM``, as there would be no way to report the outcome.
+
+Both forms announce the same outcome to the invitees, and the invitation is not
+complete until they have: ``PMIX_GROUP_INVITE_FAILED`` for each proc that did not
+accept, and then either ``PMIX_GROUP_CONSTRUCT_COMPLETE`` to the members that did
+or, on the default all-or-nothing path, ``PMIX_GROUP_CONSTRUCT_ABORT`` to every
+invited participant.
+
+.. note::
+
+   Releases prior to the ``PMIX_CAP_GROUP_JOIN_COMPLETES`` capability flag issued
+   none of those announcements from ``PMIx_Group_invite_nb``: it resolved the
+   invitation, invoked ``cbfunc``, and stopped, so no group was formed and each
+   call leaked its internal state. Only the blocking form was usable.
 
 Leadership
 ^^^^^^^^^^

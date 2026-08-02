@@ -526,16 +526,12 @@ regression coverage in `test/unit/client_api.c`.
   `PMIx_Notify_event`, and `pmix_event_deregister_observer()` are fine,
   while `PMIX_WAIT_THREAD` and the blocking public APIs are not.
 
-  What the fix did *not* change: `PMIx_Group_join[_nb]` still completes
-  as soon as the accept/decline notification has been handed to the
-  local event system rather than when the construct completes, so it
-  still returns empty `results`/`nresults` and an application still
-  takes the membership from its own `PMIX_GROUP_CONSTRUCT_COMPLETE`
-  handler. That behavior change was unblocked by this work but is a
-  separate, larger one — it needs `invite_announce()` rewritten around
-  non-blocking notifications first (see the `PMIx_Group_invite_nb` entry
-  below), and probably a capability flag, since it moves completion much
-  later for anything written against today's behavior.
+  The follow-ons that work unblocked have since landed too: the
+  announcement is now a chain of non-blocking notifications driven from
+  the progress thread (which is what makes `PMIx_Group_invite_nb` work
+  at all), and `PMIx_Group_join[_nb]` completes when the construct
+  resolves, returning the group id and membership. See
+  `PMIX_CAP_GROUP_JOIN_COMPLETES`.
 
   Do **not** re-derive any of this from the code: an earlier comment in
   this file blamed the construct event "not being guaranteed to reach
@@ -662,34 +658,32 @@ one) `test/unit/run_grpinviteothers.pl` plus the swarm suite.
 
 *Known, left alone (deliberately):*
 
-- **`PMIx_Group_invite_nb` never announces the outcome, and leaks its
-  tracker and event-handler registration.** `invite_announce()` and
-  `invite_teardown()` are reached only from the blocking
-  `PMIx_Group_invite`. The non-blocking form resolves the invitation
-  (`invite_wake` fires the caller's callback) and then stops: no
-  `PMIX_GROUP_INVITE_FAILED`, no `PMIX_GROUP_CONSTRUCT_COMPLETE`, no
-  `PMIX_GROUP_CONSTRUCT_ABORT` — so **no group forms** — and nothing
-  releases the tracker or deregisters `invite_observer`.
+- **`PMIx_Group_invite_nb` and the join completion point are fixed** —
+  both were left open here after the second sweep, and both landed with
+  the [openpmix#4059][i4059] work.
 
-  It is structural rather than an oversight. `invite_wake()` runs on the
-  progress thread, and `invite_announce()` is built out of *blocking*
-  `PMIx_Notify_event` calls, which would deadlock there; the blocking
-  wrapper gets away with it only because it announces on the caller's
-  own thread after waking. Fixing it means rewriting `invite_announce()`
-  as a chain of non-blocking notifications (the shape `emit_leader_failed`
-  already uses from the progress thread), with the teardown hung off the
-  last completion. That is a real change to the invite state machine and
-  wants review on its own, not a drive-by. Until then, treat
-  `PMIx_Group_invite_nb` as unimplemented.
+  `PMIx_Group_invite_nb` used to be inert: it resolved the invitation,
+  fired the caller's callback and stopped, announcing nothing, so no
+  group formed and it leaked its tracker and registration on every call.
+  The cause was structural — `invite_announce()` was a straight line of
+  *blocking* `PMIx_Notify_event` calls, so it could only run on the
+  blocking form's own thread after it woke, and the `_nb` form has no
+  such thread to borrow. It is now `announce_step()`, a chain of
+  non-blocking notifications driven from the progress thread with the
+  teardown hung off the end, which both forms share. Two things to know
+  if you touch it: the chain's position lives on the tracker
+  (`astate`/`aidx`/`ainfo`) because nothing else survives between the
+  steps, and each notification's info array must outlive the call that
+  carries it — which is why it is built on the heap into `cb->ainfo` and
+  freed by the completion callback.
 
-  **Distinct from [openpmix#4059][i4059], but landing on the same
-  code.** That issue was about the library's handlers being suppressed —
-  now fixed with the observer registry; this is the non-blocking path
-  never running the announcement at all, which that fix does not touch.
-  Whoever reworks this machinery still wants the same rewrite —
-  announcement driven by non-blocking notifications — which is also what
-  #4059's remaining follow-on (completing a pending join from the
-  construct event) needs.
+  `PMIx_Group_join[_nb]` now completes when the construct resolves, per
+  its man page, carrying the group id and membership; the construct
+  watch is what completes it. Ownership of the caller's completion is
+  decided *before* the acceptance notification goes out, because once
+  that is away its own completion can fire at any moment — get that
+  ordering wrong and the caller is either completed twice or never.
+
 - The two `resolve_peers()` items are unchanged. The handler-suppression
   problem from the first pass is fixed; see the updated entry in the
   previous section for what that did and did not cover.
