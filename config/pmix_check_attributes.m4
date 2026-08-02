@@ -136,7 +136,6 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
     pmix_cv___attribute__cold=0
     pmix_cv___attribute__const=0
     pmix_cv___attribute__deprecated=0
-    pmix_cv___attribute__deprecated_argument=0
     pmix_cv___attribute__format=0
     pmix_cv___attribute__format_funcptr=0
     pmix_cv___attribute__hot=0
@@ -190,14 +189,6 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
     _PMIX_CHECK_SPECIFIC_ATTRIBUTE([deprecated],
         [
          int foo(int arg1, int arg2) __attribute__ ((__deprecated__));
-         int foo(int arg1, int arg2) { return arg1 * arg2 + arg1; }
-        ],
-        [],
-        [])
-
-    _PMIX_CHECK_SPECIFIC_ATTRIBUTE([deprecated_argument],
-        [
-         int foo(int arg1, int arg2) __attribute__ ((__deprecated__("compiler allows argument")));
          int foo(int arg1, int arg2) { return arg1 * arg2 + arg1; }
         ],
         [],
@@ -500,8 +491,6 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
                      [Whether your compiler has __attribute__ const or not])
   AC_DEFINE_UNQUOTED(PMIX_HAVE_ATTRIBUTE_DEPRECATED, [$pmix_cv___attribute__deprecated],
                      [Whether your compiler has __attribute__ deprecated or not])
-  AC_DEFINE_UNQUOTED(PMIX_HAVE_ATTRIBUTE_DEPRECATED_ARGUMENT, [$pmix_cv___attribute__deprecated_argument],
-                     [Whether your compiler has __attribute__ deprecated with optional argument])
   AC_DEFINE_UNQUOTED(PMIX_HAVE_ATTRIBUTE_FORMAT, [$pmix_cv___attribute__format],
                      [Whether your compiler has __attribute__ format or not])
   AC_DEFINE_UNQUOTED(PMIX_HAVE_ATTRIBUTE_FORMAT_FUNCPTR, [$pmix_cv___attribute__format_funcptr],
