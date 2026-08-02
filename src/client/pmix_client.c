@@ -645,7 +645,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_cb_t cb;
     pmix_buffer_t *req;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
-    pmix_proc_t wildcard;
+    pmix_proc_t wildcard, srvr;
     pmix_info_t ginfo, evinfo[4];
     pmix_lock_t releaselock;
     size_t n;
@@ -1107,11 +1107,21 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                 return rc;
             }
 
-            /* notify the host that we are waiting */
+            /* notify the host that we are waiting. The announcement is aimed
+             * solely at our local server, which upcalls it to the host - the
+             * other local procs have no use for it. PMIX_EVENT_CUSTOM_RANGE
+             * takes a pmix_proc_t (or an array of them), and PMIX_INFO_LOAD
+             * memcpy's sizeof(pmix_proc_t) out of whatever it is handed, so
+             * it has to be given the server's process ID. Handing it the
+             * pmix_peer_t itself reinterpreted the object header as an
+             * nspace/rank, and the notification went to a target that does
+             * not exist - no debugger ever saw it. */
+            PMIX_LOAD_PROCID(&srvr, pmix_client_globals.myserver->info->pname.nspace,
+                             pmix_client_globals.myserver->info->pname.rank);
             PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
             PMIX_INFO_LOAD(&evinfo[1], PMIX_BREAKPOINT, "pmix-init", PMIX_STRING);
             PMIX_INFO_LOAD(&evinfo[2], PMIX_EVENT_DO_NOT_CACHE, NULL, PMIX_BOOL);
-            PMIX_INFO_LOAD(&evinfo[3], PMIX_EVENT_CUSTOM_RANGE, pmix_client_globals.myserver, PMIX_PROC);
+            PMIX_INFO_LOAD(&evinfo[3], PMIX_EVENT_CUSTOM_RANGE, &srvr, PMIX_PROC);
             scd = PMIX_NEW(pmix_shift_caddy_t);
             scd->status = PMIX_READY_FOR_DEBUG;
             scd->proc = &pmix_globals.myid;
@@ -1477,7 +1487,17 @@ static void _putfn(int sd, short args, void *cbdata)
     /* setup to xfer the data */
     kv = PMIX_NEW(pmix_kval_t);
     kv->key = strdup(cb->key); // need to copy as the input belongs to the user
-    kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+    /* every "goto done" below releases the kval, and the kval destructor
+     * reads value->type to decide what to free - so the value has to be in a
+     * known-empty state from the moment it exists, not only once a transfer
+     * has filled it in. A raw malloc() left it holding whatever was on the
+     * heap, which the compression-failure path then handed straight to the
+     * destructor. PMIX_VALUE_CREATE zeroes it and sets PMIX_UNDEF. */
+    PMIX_VALUE_CREATE(kv->value, 1);
+    if (PMIX_UNLIKELY(NULL == kv->value)) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
     if (PMIX_STRING_SIZE_CHECK(cb->value)) {
         /* compress large strings */
         if (pmix_compress.compress_string(cb->value->data.string, &tmp, &len)) {
