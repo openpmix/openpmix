@@ -131,7 +131,8 @@ PMIX_EXPORT pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
     cb = PMIX_NEW(pmix_cb_t);
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Connect_nb(procs, nprocs, info, ninfo, op_cbfunc, cb))) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = PMIx_Connect_nb(procs, nprocs, info, ninfo,
+                                                             op_cbfunc, cb)))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -446,7 +447,8 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect(const pmix_proc_t procs[], size_t npro
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
 
-    if (PMIX_SUCCESS != (rc = PMIx_Disconnect_nb(procs, nprocs, info, ninfo, op_cbfunc, cb))) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = PMIx_Disconnect_nb(procs, nprocs, info, ninfo,
+                                                                op_cbfunc, cb)))) {
         PMIX_RELEASE(cb);
         return rc;
     }

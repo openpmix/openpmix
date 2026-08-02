@@ -88,7 +88,7 @@ PMIX_EXPORT pmix_status_t PMIx_Publish(const pmix_info_t info[], size_t ninfo)
     /* create a callback object to let us know when it is done */
     cb = PMIX_NEW(pmix_cb_t);
 
-    if (PMIX_SUCCESS != (rc = PMIx_Publish_nb(info, ninfo, op_cbfunc, cb))) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = PMIx_Publish_nb(info, ninfo, op_cbfunc, cb)))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cb);
         return rc;
@@ -227,7 +227,8 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata, const 
     cb->cbdata = (void *) pdata;
     cb->nvals = ndata;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Lookup_nb(keys, info, ninfo, lookup_cbfunc, cb))) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = PMIx_Lookup_nb(keys, info, ninfo,
+                                                            lookup_cbfunc, cb)))) {
         PMIX_RELEASE(cb);
         PMIx_Argv_free(keys);
         return rc;
@@ -370,7 +371,8 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish(char **keys, const pmix_info_t info[], 
     cb = PMIX_NEW(pmix_cb_t);
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Unpublish_nb(keys, info, ninfo, op_cbfunc, cb))) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = PMIx_Unpublish_nb(keys, info, ninfo,
+                                                               op_cbfunc, cb)))) {
         PMIX_RELEASE(cb);
         return rc;
     }

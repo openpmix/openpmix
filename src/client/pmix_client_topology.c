@@ -223,7 +223,7 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
-    if (PMIX_SUCCESS != cb->status) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != cb->status)) {
         rc = cb->status;
         goto complete;
     }

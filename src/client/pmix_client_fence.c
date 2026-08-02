@@ -181,7 +181,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
     }
 
     msg = PMIX_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, info, ninfo))) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, info, ninfo)))) {
         PMIX_RELEASE(msg);
         if (created) {
             PMIX_PROC_FREE(rgs, nrg);
