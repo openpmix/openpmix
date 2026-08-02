@@ -23,6 +23,7 @@ two disagree, the README wins, and please fix this file.
 | `run-python.sh` | The Python bindings |
 | `run-class-tests.sh` | The `src/class` unit suite, in the two configurations nobody develops in (README §11) |
 | `run-client-tests.sh` | The `src/client` API suite with ranks behind different servers (README §12) |
+| `run-common-tests.sh` | The `src/common` role-shared API suite — query/log/job-control/allocation/monitor/IOF across separate servers (README §13) |
 | `swarm-common.sh` | **Sourced, never executed.** `$PMIX_SWARM` naming and the one copy of `cleanup_swarm` |
 
 ## Things that will bite you
@@ -60,6 +61,14 @@ two disagree, the README wins, and please fix this file.
   which you mean; `run-class-tests.sh` is explicit that its ten-node
   stage is only meaningful for the one multi-process program in that
   suite.
+
+- **A PRRTE `--output` qualifier attaches with a colon, not a comma.**
+  `file=NAME:pattern` selects PMIx's `PMIX_IOF_FILE_PATTERN` handling;
+  `file=NAME,pattern` is parsed as a second *directive* and rejected. Worse,
+  omitting the qualifier entirely is not an error — a name containing `%` is
+  then just a stem, and PMIx annotates it the default way. A pattern test
+  that forgets the qualifier passes against any library and proves nothing.
+  See README §13.
 
 - **The build volume outlives your branch.** `pmix-build` persists
   across runs and across checkouts, so a tree in it can be older than

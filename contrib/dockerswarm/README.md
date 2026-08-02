@@ -30,6 +30,7 @@ is only the nickname.
 | `run-topology.sh` | Runs the **topology + locality** exerciser across real nodes: each rank loads the topology its *local* server published (hwloc shmem, with XML as the fallback) and compares `PMIX_LOCALITY_STRING` with every peer. The only place `src/hwloc` gets a multi-node answer -- on one host every peer is a node-mate, so a single-host run cannot tell a correct result from one that claims everything is local. Same `linux`/`macos` modes. |
 | `run-python.sh` | Runs the **Python bindings**: the standalone unit suite, the connected client/server round-trip, and Python PMIx clients spread across nodes. Same `linux`/`macos` modes. See §10. |
 | `run-client-tests.sh` | Runs the `src/client` API surface across the swarm, so the ranks sit behind **different** PMIx servers. This is the multi-node case for the client library: everything in `src/client` either answers locally or round-trips to a server, and a singleton exercises none of the second half. See §12. |
+| `run-common-tests.sh` | Runs the `src/common` role-shared APIs (query, log, job control, allocation, monitoring, IOF) across the swarm. This is the multi-node case for the shared layer: like `src/client`, almost everything in `src/common` either answers locally or round-trips to a server or host, and the monitor's local/remote split cannot even be entered on one node. See §13. |
 | `run-class-tests.sh` | Runs `test/unit/class` in the two configurations a developer's own `make check` does not cover: **Linux**, and **`--disable-debug`** with default symbol visibility. Deliberately *not* a multi-node test — see §11. |
 | `swarm-common.sh` | Sourced by all seven scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
 | `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`). |
@@ -84,6 +85,7 @@ docker compose up -d       # start pmix-node1 .. pmix-node10
 ./run-topology.sh linux    # topology handoff + cross-node locality
 ./run-python.sh linux      # Python bindings: units, round-trip, multi-node
 ./run-client-tests.sh linux # src/client APIs across separate PMIx servers
+./run-common-tests.sh linux # src/common role-shared APIs across separate servers
 
 # ---- native macOS (single host) ----
 ./build.sh macos           # native PMIx + PRRTE build under vpath-macos-*
@@ -92,6 +94,7 @@ docker compose up -d       # start pmix-node1 .. pmix-node10
 ./run-topology.sh macos    # single-host topology-handoff smoke
 ./run-python.sh macos      # single-host bindings smoke (most checks SKIP)
 ./run-client-tests.sh macos # single-host client smoke (one server, not the point)
+./run-common-tests.sh macos # single-host common-API smoke (one server)
 ```
 
 Rebuild after editing PMIx: rerun `./build.sh` (incremental). No image rebuild
@@ -630,3 +633,76 @@ connected paths a singleton cannot reach — a real server, real
 `PMIX_PTL_SEND_RECV` round-trips — but with one server it is a regression
 smoke pass, not the multi-server case above. Use it when you have changed
 `src/client` and want a quick answer before spending a swarm run.
+
+
+## 13. The `src/common` API suite (`run-common-tests.sh`)
+
+```
+./run-common-tests.sh linux    # across the swarm: several PMIx servers
+./run-common-tests.sh macos    # natively: one server, a smoke pass
+```
+
+`src/common` holds the public entry points shared by the client, server
+and tool roles — query, log, job control, allocation, session control,
+monitoring, credentials, IOF. Almost every one has the same shape: decide
+whether the request can be answered here, and otherwise pack it and
+round-trip it to a server or hand it up to the host.
+
+[`test/unit/common_api.c`](../../test/unit/common_api.c) covers the first
+half, because a singleton reaches nothing else — with no server,
+`PMIx_Query_info` answers only the two ABI-version keys, `PMIx_Log` falls
+back to the local `plog`, `PMIx_Job_control` and `PMIx_Allocation_request`
+stop at the "am I connected?" check, and `PMIx_Process_monitor` never gets
+as far as its local/remote split. This runner is the second half.
+
+### What spreading the ranks buys
+
+* **Query** — keys the local library does not hold take the full
+  pack → `PMIX_PTL_SEND_RECV` → `query_cbfunc` → results-list path,
+  including the "some of this resolved locally, ask for the rest" split
+  in `pmix_parse_localquery`.
+* **Log** — routes through the *server's* `plog` rather than the client's,
+  which is the only way the `PMIX_ERR_NOT_AVAILABLE` fallback in
+  `log_cbfunc` is ever taken.
+* **Job control and allocation** — reach a host that actually implements
+  them (prte does; `test/simple`'s `simptest` does not, which is why these
+  cannot be `run_*.pl` cases), so the completion path runs against a real
+  answer.
+* **Monitoring** — this is the reason to spread out at all.
+  `pmix_monitor_processing` sorts the requested targets into "local",
+  "remote" or both, and merges `pstat` results with the host's. On one
+  node every target is local, and the remote and mixed branches — where
+  the host upcall and the result merge live — are never entered.
+  `monitor_remote` and `monitor_multi` exist for exactly that.
+* **IOF** — the forwarding path only exists once a server holds the read
+  end of somebody else's stdout. The final case drives a job with
+  `--output "file=DIR/%h/rank%R:pattern"`, which makes `pmix_iof_setup`
+  expand the conversions and open per-rank sinks.
+
+### Two things about the IOF case that will waste your time
+
+**`PATTERN` is a qualifier on the `file` directive, not a directive.**
+It attaches with a colon (`file=NAME:pattern`); comma-separating it is
+rejected outright with "The specified output directive is not
+recognized". And **without** it, a name containing `%` is not an error
+and is not expanded — it is simply a stem with odd characters, and the
+files come out as `%h-rank%R.<nspace>.<rank>.err`. That is correct
+behavior, so a version of this case that omits the qualifier passes
+against any library and proves nothing.
+
+**`%h` names the host that WRITES the file, not the host the rank ran
+on.** For a forwarded stream that is the daemon which received it, so a
+four-rank job spread over two nodes can legitimately put every file under
+one hostname directory. `src/common/pmix_iof.h` documents it that way;
+PRRTE's `--help output` text says "the node the process ran on", which is
+the looser reading. The test therefore asserts only that the conversions
+were expanded at all — no `%` survives in any name — not which host they
+named.
+
+### macOS mode
+
+`./run-common-tests.sh macos` compiles the same clients against the
+in-tree library and runs them under a single local `prterun`. The
+connected query/log/job-control paths are real, but with one server the
+monitor's local/remote split collapses to "all local", so this is a
+regression smoke pass rather than the multi-server case above.
