@@ -117,8 +117,11 @@ conditions.
 An accepting process learns of that outcome from the leader's
 ``PMIX_GROUP_CONSTRUCT_COMPLETE`` or ``PMIX_GROUP_CONSTRUCT_ABORT`` event, so it is
 those events that complete this call, and ``results`` carries what the leader
-announced about the group |mdash| its ``PMIX_GROUP_ID`` and ``PMIX_GROUP_MEMBERSHIP``
-(and its ``PMIX_GROUP_CONTEXT_ID``, if the leader requested that one be assigned).
+announced about the group |mdash| its ``PMIX_GROUP_ID`` and its
+``PMIX_GROUP_MEMBERSHIP``. Note that a group formed by invitation does not
+currently carry a ``PMIX_GROUP_CONTEXT_ID``, even if the leader asked for one:
+see the caution under
+:ref:`PMIx_Group_invite(3) <man3-PMIx_Group_invite>`.
 Loss of the leader before the construct resolves completes the call with
 ``PMIX_GROUP_LEADER_FAILED``, since the construct can no longer resolve.
 

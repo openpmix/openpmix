@@ -186,6 +186,17 @@ The following attributes are relevant to this operation:
 * ``PMIX_GROUP_ASSIGN_CONTEXT_ID`` (bool) |mdash| request that the resource
   manager assign a unique numerical (``size_t``) context ID to the group. The
   value is returned in the ``PMIX_GROUP_CONSTRUCT_COMPLETE`` event.
+
+  .. caution::
+
+     **This directive is not currently honored on the invite/join path**, and
+     is accepted without effect: no context ID is assigned, and none appears in
+     the ``PMIX_GROUP_CONSTRUCT_COMPLETE`` event. Only the host environment can
+     mint a unique ID, and a group formed by invitation involves no server
+     collective through which it could be asked. Tracked as
+     `openpmix#4068 <https://github.com/openpmix/openpmix/issues/4068>`_. Use
+     :ref:`PMIx_Group_construct(3) <man3-PMIx_Group_construct>` if the group
+     requires a context ID.
 * ``PMIX_TIMEOUT`` (int) |mdash| bound how long the leader's library waits for a
   live invitee to respond. An invitee that does not respond within the specified
   number of seconds is treated as a failed invitation (see
