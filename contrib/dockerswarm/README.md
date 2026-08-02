@@ -553,6 +553,22 @@ non-responder, and aborts the (all-or-nothing) construct. Ranks are split
 across two nodes precisely so the last accept has to cross a server
 boundary to reach the leader, which is what makes it the late one.
 
+Two more of its cases belong to the same review. `group_invite_suppress`
+has the leader register an ordinary handler for
+`PMIX_GROUP_INVITE_ACCEPTED` that ends the event chain — the documented
+way for an application to say it handled an event — which used to
+suppress the library's own answer counter and hang the invite forever
+([openpmix#4059][i4059]); across servers each acceptance arrives as a
+separate event chain, which is the case that matters.
+`group_invite_nb` drives `PMIx_Group_invite_nb` and a real
+`PMIx_Group_join_nb` callback: the non-blocking invite used to announce
+nothing at all, so no group formed, and join used to complete before the
+construct resolved and so returned no group data. Each invitee checks
+that its callback carries the group id and the full membership, which on
+this suite had to travel from the leader's daemon.
+
+[i4059]: https://github.com/openpmix/openpmix/issues/4059
+
 **What this suite still does not reach.** `PMIx_Fabric_*` needs a fabric
 provider the swarm does not have, so the fabric register/update paths are
 covered only by the parameter-validation cases in `client_api.c`.
