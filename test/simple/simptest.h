@@ -22,12 +22,19 @@ typedef struct {
     pmix_status_t status;
 } mylock_t;
 
+/* the fields are set under the mutex, exactly as the wakeup does it:
+ * a lock is routinely constructed for a second operation while the
+ * thread that serviced the first one is still on its way out, so an
+ * unlocked store to "active" leaves the two threads disagreeing about
+ * it - see examples/examples.h, which does the same */
 #define DEBUG_CONSTRUCT_LOCK(l)                \
     do {                                       \
         pthread_mutex_init(&(l)->mutex, NULL); \
+        pthread_mutex_lock(&(l)->mutex);       \
         pthread_cond_init(&(l)->cond, NULL);   \
         (l)->active = true;                    \
         (l)->status = PMIX_SUCCESS;            \
+        pthread_mutex_unlock(&(l)->mutex);     \
     } while (0)
 
 #define DEBUG_DESTRUCT_LOCK(l)              \

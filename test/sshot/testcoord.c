@@ -49,12 +49,15 @@ typedef struct {
     pmix_status_t status;
 } mylock_t;
 
+/* set the fields under the mutex - see the note in test/simple/simptest.h */
 #define DEBUG_CONSTRUCT_LOCK(l)                \
     do {                                       \
         pthread_mutex_init(&(l)->mutex, NULL); \
+        pthread_mutex_lock(&(l)->mutex);       \
         pthread_cond_init(&(l)->cond, NULL);   \
         (l)->active = true;                    \
         (l)->status = PMIX_SUCCESS;            \
+        pthread_mutex_unlock(&(l)->mutex);     \
     } while (0)
 
 #define DEBUG_DESTRUCT_LOCK(l)              \
