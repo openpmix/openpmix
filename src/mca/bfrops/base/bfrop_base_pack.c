@@ -35,6 +35,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/mca/bfrops/base/base.h"
 
@@ -818,8 +819,8 @@ pmix_status_t pmix_bfrops_base_pack_pinfo(pmix_pointer_array_t *regtypes, pmix_b
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_bfrops_base_pack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                           const void *src, int32_t num_vals, pmix_data_type_t type)
+static pmix_status_t pack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                 const void *src, int32_t num_vals, pmix_data_type_t type)
 {
     pmix_data_array_t *p = (pmix_data_array_t *) src;
     pmix_status_t ret;
@@ -858,6 +859,34 @@ pmix_status_t pmix_bfrops_base_pack_darray(pmix_pointer_array_t *regtypes, pmix_
         }
     }
     return PMIX_SUCCESS;
+}
+
+/* How many arrays the pack running on this thread is nested inside */
+static PMIX_BFROP_THREAD_LOCAL unsigned int array_depth = 0;
+
+/* An array may hold arrays, so packing one recurses - both directly,
+ * when the element type is PMIX_DATA_ARRAY, and through the value and
+ * info packers when it is not. Bound that recursion here, where every
+ * level of nesting of either kind must pass, so that we do not emit a
+ * message our peer will refuse (or that would sink its stack) */
+pmix_status_t pmix_bfrops_base_pack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                           const void *src, int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    if (0 < pmix_bfrops_globals.max_array_depth &&
+        pmix_bfrops_globals.max_array_depth <= array_depth) {
+        pmix_show_help("help-pmix-runtime.txt", "bfrops:array_depth", true,
+                       "pack", (unsigned long) array_depth + 1,
+                       (unsigned long) pmix_bfrops_globals.max_array_depth);
+        return PMIX_ERR_PACK_FAILURE;
+    }
+
+    array_depth++;
+    ret = pack_darray(regtypes, buffer, src, num_vals, type);
+    array_depth--;
+
+    return ret;
 }
 
 pmix_status_t pmix_bfrops_base_pack_rank(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
