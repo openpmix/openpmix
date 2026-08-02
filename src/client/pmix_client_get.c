@@ -77,6 +77,29 @@ static pmix_status_t process_values(pmix_cb_t *cb);
 
 static pmix_status_t refresh_cache(const pmix_proc_t *p);
 
+/* A PMIX_QUALIFIED_VALUE kval carries the value the caller actually asked for
+ * as the first element of a PMIX_INFO data array, with the qualifiers behind
+ * it. Three places here unwrap that, and all three used to reach straight
+ * through - kv->value->data.darray->array, then iptr[0] - on nothing more
+ * than the key having matched.
+ *
+ * The key is not enough. PMIx_Put screens the shape on the way in (see
+ * _putfn), but the datastore is also filled from the server, and nothing
+ * screens it on the way out; a malformed entry therefore turned a scalar into
+ * a pointer, or indexed an empty array. Returns the embedded info array, or
+ * NULL if this kval is not shaped like a qualified value after all. */
+static pmix_info_t *qualified_value(const pmix_kval_t *kv)
+{
+    if (NULL == kv->value ||
+        PMIX_DATA_ARRAY != kv->value->type ||
+        NULL == kv->value->data.darray ||
+        NULL == kv->value->data.darray->array ||
+        0 == kv->value->data.darray->size) {
+        return NULL;
+    }
+    return (pmix_info_t *) kv->value->data.darray->array;
+}
+
 static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
                                      const pmix_info_t info[], size_t ninfo,
                                      pmix_get_logic_t *lg, pmix_value_t **val)
@@ -754,9 +777,14 @@ done:
                     kv = (pmix_kval_t *) pmix_list_remove_first(&cb->kvs);
                     if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
                         // extract the actual value
-                        iptr = (pmix_info_t*)kv->value->data.darray->array;
-                        PMIX_VALUE_CREATE(val, 1);
-                        PMIx_Value_xfer(val, &iptr[0].value);
+                        iptr = qualified_value(kv);
+                        if (PMIX_UNLIKELY(NULL == iptr)) {
+                            rc = PMIX_ERR_INVALID_VAL;
+                            val = NULL;
+                        } else {
+                            PMIX_VALUE_CREATE(val, 1);
+                            PMIx_Value_xfer(val, &iptr[0].value);
+                        }
                         PMIX_RELEASE(kv);
                     } else {
                         val = kv->value;
@@ -804,7 +832,10 @@ static pmix_status_t process_values(pmix_cb_t *cb)
             // which the kv still owns.  Hand back a standalone copy so the
             // caller can release it, and leave the kv (with its array) to
             // be released normally when the cb is destructed.
-            iptr = (pmix_info_t*)kv->value->data.darray->array;
+            iptr = qualified_value(kv);
+            if (PMIX_UNLIKELY(NULL == iptr)) {
+                return PMIX_ERR_INVALID_VAL;
+            }
             PMIX_VALUE_CREATE(cb->value, 1);
             if (PMIX_UNLIKELY(NULL == cb->value)) {
                 return PMIX_ERR_NOMEM;
@@ -841,9 +872,12 @@ static pmix_status_t process_values(pmix_cb_t *cb)
     /* copy the list elements */
     n = 0;
     PMIX_LIST_FOREACH (kv, kvs, pmix_kval_t) {
-        if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
+        /* a qualified value we cannot unwrap is passed through as-is rather
+         * than failing the whole aggregate - the other entries are still
+         * good, and the caller sees the wrapper instead of a missing key */
+        iptr = PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE) ? qualified_value(kv) : NULL;
+        if (NULL != iptr) {
             // extract the actual value
-            iptr = (pmix_info_t*)kv->value->data.darray->array;
             pmix_strncpy(info[n].key, iptr[0].key, PMIX_MAX_KEYLEN);
             PMIx_Value_xfer(&info[n].value, &iptr[0].value);
         } else {
@@ -916,11 +950,18 @@ static void get_data(int sd, short args, void *cbdata)
                     }
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                        if (NULL != kv) {  // will never be NULL
+                        /* whatever came back is only useful if it really is a
+                         * string - the datastore is fed by the host, so this
+                         * is not ours to assume, and strdup(NULL) is a crash */
+                        if (NULL != kv && NULL != kv->value &&
+                            PMIX_STRING == kv->value->type &&
+                            NULL != kv->value->data.string) {
                             lg->hostname = strdup(kv->value->data.string);
-                            PMIX_RELEASE(kv);
                         } else {
                             lg->hostname = strdup("unknown");
+                        }
+                        if (NULL != kv) {
+                            PMIX_RELEASE(kv);
                         }
                     }
                     /* destruct on every outcome - a failed fetch used to leave
