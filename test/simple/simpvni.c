@@ -89,7 +89,7 @@ static void setup_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo,
 
 int main(int argc, char **argv)
 {
-    pmix_status_t rc=0;
+    pmix_status_t rc=0, ret;
     myxfer_t x;
     pmix_proc_t myproc;
     pmix_info_t *info;
@@ -143,6 +143,11 @@ int main(int argc, char **argv)
     fprintf(stderr, "VNI: %s\n", (NULL == myvni) ? "NULL" : myvni);
 
 done:
-    rc = PMIx_tool_finalize();
+    /* whatever brought us here is what the test failed on - the
+     * finalize status only matters if everything else went well */
+    ret = PMIx_tool_finalize();
+    if (PMIX_SUCCESS == rc) {
+        rc = ret;
+    }
     return rc;
 }

@@ -135,6 +135,7 @@ static int pmix_create_group(void) {
                                      &results, &nresults))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
+        PMIX_INFO_FREE(directives, ndirs);
         return rc;
     }
 
@@ -142,9 +143,9 @@ static int pmix_create_group(void) {
         fprintf(stdout, "%s-%d: %s\n", myproc.nspace, myproc.rank, PMIx_Info_string(&results[k]));
     }
 
-    if (directives != NULL) {
-        PMIX_INFO_FREE(directives, ndirs);
-    }
+    /* the directives were created above and have been used since, so
+     * they are known to be there */
+    PMIX_INFO_FREE(directives, ndirs);
     if (results != NULL) {
         PMIX_INFO_FREE(results, nresults);
     }
@@ -161,9 +162,8 @@ static int pmix_destruct_group(void) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Group_destruct failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
     }
-    if (directives != NULL) {
-        PMIX_INFO_FREE(directives, ndirs);
-    }
+    /* created just above, so it is known to be there */
+    PMIX_INFO_FREE(directives, ndirs);
     return rc;
 }
 

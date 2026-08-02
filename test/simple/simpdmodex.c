@@ -221,8 +221,8 @@ int main(int argc, char **argv)
     /* commit the data to the server */
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
         pmix_output(0, "Rank %d[msg=%d]: PMIx_Commit failed: %d", myproc.rank, msgnum, rc);
-        goto done;
         ++msgnum;
+        goto done;
     }
 
     if (dofence) {

@@ -1287,7 +1287,6 @@ static void wait_signal_callback(int sd, short args, void *arg)
             }
         }
     }
-    fprintf(stderr, "ENDLOOP\n");
 }
 
 static void relcbfunc(void *cbdata)
