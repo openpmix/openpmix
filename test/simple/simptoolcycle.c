@@ -61,9 +61,26 @@
 
 #define DEFAULT_CYCLES 50
 
+/* the cycle count is taken from the command line and then used as a loop
+ * bound, so cap it - a typo must not turn into a test that never ends */
+#define MAX_CYCLES 10000
+
 /* a phase may leave at most this many live peers behind while its final
  * socket-close is still settling; a per-cycle leak blows past it */
 #define PEER_LEAK_BOUND 5
+
+static long parse_cycles(const char *str)
+{
+    long ncycles = strtol(str, NULL, 10);
+
+    if (0 >= ncycles) {
+        return DEFAULT_CYCLES;
+    }
+    if (MAX_CYCLES < ncycles) {
+        return MAX_CYCLES;
+    }
+    return ncycles;
+}
 
 static volatile int regdone;
 static void reg_cbfunc(pmix_status_t status, void *cbdata)
@@ -335,18 +352,12 @@ int main(int argc, char **argv)
     long ncycles = DEFAULT_CYCLES;
 
     if (3 < argc && 0 == strcmp(argv[1], "--tool-child")) {
-        ncycles = strtol(argv[3], NULL, 10);
-        if (0 >= ncycles) {
-            ncycles = DEFAULT_CYCLES;
-        }
+        ncycles = parse_cycles(argv[3]);
         return run_tool_child(argv[2], ncycles);
     }
 
     if (1 < argc) {
-        ncycles = strtol(argv[1], NULL, 10);
-        if (0 >= ncycles) {
-            ncycles = DEFAULT_CYCLES;
-        }
+        ncycles = parse_cycles(argv[1]);
     }
     return run_server(argv[0], ncycles);
 }
