@@ -418,6 +418,28 @@ static void test_iof_xml_escaping(void)
     PMIx_Byte_object_free(out, 1);
 }
 
+/* ------------------------------------------------------------------ */
+/* PMIx_Register_attributes: a function name that is not there         */
+/* ------------------------------------------------------------------ */
+static void test_register_attributes(void)
+{
+    pmix_status_t rc;
+    char *attrs[] = {"PMIX_TESTATTR", NULL};
+
+    fprintf(stdout, "\n-- PMIx_Register_attributes --\n");
+
+    /* the name is compared against and then duplicated on the progress
+     * thread, so a NULL used to reach strdup() */
+    rc = PMIx_Register_attributes(NULL, attrs);
+    check(PMIX_ERR_BAD_PARAM == rc, "NULL function name rejected");
+
+    /* a real registration still works, and is still refused twice */
+    rc = PMIx_Register_attributes("common_api_test_fn", attrs);
+    check(PMIX_SUCCESS == rc, "named function registered");
+    rc = PMIx_Register_attributes("common_api_test_fn", attrs);
+    check(PMIX_ERR_REPEAT_ATTR_REGISTRATION == rc, "duplicate registration refused");
+}
+
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
@@ -454,6 +476,7 @@ int main(int argc, char **argv)
     test_iof_bad_params();
     test_iof_flags();
     test_iof_xml_escaping();
+    test_register_attributes();
 
     rc = PMIx_Finalize(NULL, 0);
     if (PMIX_SUCCESS != rc) {

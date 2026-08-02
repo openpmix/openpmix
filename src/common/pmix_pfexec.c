@@ -277,7 +277,9 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     size_t m, k;
     pmix_status_t rc;
     char **argv = NULL, **env = NULL;
-    pmix_nspace_t nspace;
+    /* the completion callback below reports this even on the error
+     * paths that jump there before a namespace has been composed */
+    pmix_nspace_t nspace = {0};
     char basedir[MAXPATHLEN], sock[10];
     pmix_pfexec_child_t *child;
     pmix_rank_info_t *info;
@@ -350,8 +352,24 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             for (k = 0; k < app->ninfo; k++) {
                 if (PMIX_CHECK_KEY(&app->info[k], PMIX_FORKEXEC_AGENT)) {
                     /* we were given a fork agent - use it. We have to put its
-                     * argv at the beginning of the app argv array */
+                     * argv at the beginning of the app argv array. The value
+                     * comes from the caller, so confirm it really is a string
+                     * before splitting it, and that the split produced
+                     * something - an empty agent leaves us nothing to exec */
+                    if (PMIX_STRING != app->info[k].value.type ||
+                        NULL == app->info[k].value.data.string) {
+                        rc = PMIX_ERR_BAD_PARAM;
+                        goto complete;
+                    }
                     argv = PMIx_Argv_split(app->info[k].value.data.string, ' ');
+                    if (NULL == argv || NULL == argv[0]) {
+                        if (NULL != argv) {
+                            PMIx_Argv_free(argv);
+                            argv = NULL;
+                        }
+                        rc = PMIX_ERR_BAD_PARAM;
+                        goto complete;
+                    }
                     /* add in the argv from the app */
                     for (i = 0; NULL != argv[i]; i++) {
                         PMIx_Argv_prepend_nosize(&app->argv, argv[i]);
@@ -471,6 +489,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
             rc = fork_proc(app, child, env);
             PMIx_Argv_free(env);
+            env = NULL;
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
@@ -484,6 +503,12 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     rc = PMIX_SUCCESS;
 
 complete:
+    /* the copy of the app's environment is made per proc and freed once
+     * the fork is done with it - the error paths in between jump here
+     * with it still live */
+    if (NULL != env) {
+        PMIx_Argv_free(env);
+    }
     /* ensure we reset our working directory back to our default location  */
     if (0 != chdir(basedir)) {
         PMIX_ERROR_LOG(PMIX_ERROR);
@@ -609,24 +634,33 @@ static void kill_stage2(int sd, short args, void *cbdata)
                          PMIX_NAME_PRINT(&pmix_globals.myid));
     scd->lock->status = sigproc(scd->child->pid, SIGTERM);
 
-    if (0 != scd->lock->status) {
-        /* wait a little again, then escalate to SIGKILL */
-        kill_pause(scd, kill_stage3);
-        return;
-    }
-
-    kill_finish(scd);
+    /* Wait a little to give the proc a chance to exit cleanly, then
+     * escalate to SIGKILL. The escalation must NOT be conditional on
+     * the SIGTERM having failed to be delivered: the case the sequence
+     * exists for is a child that RECEIVES SIGTERM and ignores it, and
+     * such a child was previously left running forever - and, having
+     * already been taken off the children list here, never reaped
+     * either. A proc that did exit on the SIGTERM simply makes the
+     * SIGKILL a no-op, since sigproc tolerates ESRCH. */
+    kill_pause(scd, kill_stage3);
 }
 
 static void kill_stage3(int sd, short args, void *cbdata)
 {
     pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t *) cbdata;
+    pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* issue a SIGKILL */
     pmix_output_verbose(5, pmix_client_globals.spawn_output, "%s SENDING SIGKILL",
                          PMIX_NAME_PRINT(&pmix_globals.myid));
-    scd->lock->status = sigproc(scd->child->pid, SIGKILL);
+    rc = sigproc(scd->child->pid, SIGKILL);
+
+    /* a SIGKILL that lands rescues a SIGTERM that did not, so only
+     * report a failure when neither signal could be delivered */
+    if (0 != scd->lock->status) {
+        scd->lock->status = rc;
+    }
 
     kill_finish(scd);
 }
@@ -914,6 +948,10 @@ static pmix_status_t register_nspace(char *nspace, pmix_setup_caddy_t *fcd)
         }
         str = PMIx_Argv_join(fcd->apps[n].argv, ' ');
         PMIX_INFO_LIST_ADD(rc, tmpinfo, PMIX_APP_ARGV, str, PMIX_STRING);
+        /* the list took its own copy */
+        if (NULL != str) {
+            free(str);
+        }
         /* convert the list into an array */
         PMIX_INFO_LIST_CONVERT(rc, tmpinfo, &darray);
         /* release the list */
@@ -1104,6 +1142,10 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
     }
     if (0 <= child->keepalive[1]) {
         close(child->keepalive[1]);
+        /* mark it closed - the child destructor closes this end too, and
+         * a double close in a multithreaded process can take down an
+         * unrelated descriptor that was opened in between */
+        child->keepalive[1] = -1;
     }
 
     /* Read the child's failure record. A pipe that closes with no data
@@ -1295,6 +1337,10 @@ static void chcon(pmix_pfexec_child_t *p)
     PMIX_LOAD_PROCID(&p->proc, NULL, PMIX_RANK_UNDEF);
     p->pid = 0;
     p->completed = false;
+    /* objects are malloc'd, not calloc'd - a child that completes
+     * through a path that never records an exit status must report
+     * zero, not whatever was on the heap */
+    p->exitcode = 0;
     p->keepalive[0] = -1;
     p->keepalive[1] = -1;
     memset(&p->opts, 0, sizeof(pmix_pfexec_base_io_conf_t));
