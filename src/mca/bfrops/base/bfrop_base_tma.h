@@ -2607,6 +2607,20 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         return PMIX_ERR_NOMEM;
     }
 
+    /* A pmix_value_t tagged PMIX_DATA_ARRAY whose darray pointer is NULL is
+     * malformed, but it is trivially reachable: any application that builds
+     * an info by hand can produce one, and the whole value_xfer/copy path
+     * (hence every PMIX_INFO_XFER, and every pack that copies first) arrives
+     * here without ever having looked at it. Dereferencing src for its type
+     * and size was therefore a library segfault on an ordinary caller
+     * mistake. Treat it as what it is - an absent array - which is the same
+     * empty result this function already produces for a zero-length or
+     * NULL-elements source just below. */
+    if (PMIX_UNLIKELY(NULL == src)) {
+        *dest = p;
+        return PMIX_SUCCESS;
+    }
+
     p->type = src->type;
     p->size = src->size;
     if (0 == p->size || NULL == src->array) {
