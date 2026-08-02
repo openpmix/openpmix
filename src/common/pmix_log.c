@@ -190,6 +190,13 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
                     timestamp = time(NULL);
                 }
             } else if (0 == strncmp(directives[n].key, PMIX_LOG_SOURCE, PMIX_MAX_KEYLEN)) {
+                /* the value's type is under the caller's control, so
+                 * confirm it before reading the union as a proc */
+                if (PMIX_PROC != directives[n].value.type ||
+                    NULL == directives[n].value.data.proc) {
+                    PMIX_PROC_FREE(source, 1);
+                    return PMIX_ERR_BAD_PARAM;
+                }
                 memcpy(source, directives[n].value.data.proc, sizeof(pmix_proc_t));
                 found = true;
             }
@@ -223,8 +230,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
-            PMIX_RELEASE(cd);
-            return rc;
+            goto senderr;
         }
         if (!PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, PMIX_MINOR_WILDCARD,
                                   PMIX_RELEASE_WILDCARD)) {
@@ -234,8 +240,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
-                PMIX_RELEASE(cd);
-                return rc;
+                goto senderr;
             }
         }
         /* pack the number of data entries */
@@ -243,32 +248,28 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
-            PMIX_RELEASE(cd);
-            return rc;
+            goto senderr;
         }
         if (0 < ndata) {
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, data, ndata, PMIX_INFO);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
-                PMIX_RELEASE(cd);
-                return rc;
+                goto senderr;
             }
         }
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ndirs, 1, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
-            PMIX_RELEASE(cd);
-            return rc;
+            goto senderr;
         }
         if (0 < ndirs) {
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, directives, ndirs, PMIX_INFO);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
-                PMIX_RELEASE(cd);
-                return rc;
+                goto senderr;
             }
         }
 
@@ -277,8 +278,15 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, log_cbfunc, (void *) cd);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(cd);
+            goto senderr;
         }
+        return rc;
+
+senderr:
+        /* the caddy destructor does not free the proc we handed it,
+         * so it must be released explicitly on every error path */
+        PMIX_PROC_FREE(cd->proc, 1);
+        PMIX_RELEASE(cd);
         return rc;
     }
 
@@ -309,7 +317,11 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
             PMIX_RELEASE(cb);
             return PMIX_ERR_NOT_SUPPORTED;
         } else {
-            // no choice but to process locally
+            /* no choice but to process locally - the caddy we built
+             * for the host was never handed to anyone, so release it
+             * (the source proc lives on into the local path) */
+            cb->proc = NULL;
+            PMIX_RELEASE(cb);
             goto local;
         }
         return PMIX_SUCCESS;

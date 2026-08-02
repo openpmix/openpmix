@@ -374,12 +374,20 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential(const pmix_byte_object_t *cre
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* set the default response */
+    if (NULL != results) {
+        *results = NULL;
+    }
+    if (NULL != nresults) {
+        *nresults = 0;
+    }
+
     PMIX_CONSTRUCT(&cb, pmix_query_caddy_t);
     rc = PMIx_Validate_credential_nb(cred, directives, ndirs, myvalcb, &cb);
     if (PMIX_SUCCESS == rc) {
         PMIX_WAIT_THREAD(&cb.lock);
         rc = cb.status;
-        if (NULL != cb.info) {
+        if (NULL != cb.info && NULL != results && NULL != nresults) {
             *results = cb.info;
             *nresults = cb.ninfo;
             cb.info = NULL;

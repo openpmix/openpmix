@@ -179,6 +179,9 @@ PMIX_EXPORT char *PMIx_Info_directives_string(pmix_info_directives_t directives)
         if (PMIX_INFO_ARRAY_END & directives) {
             PMIx_Argv_append_nosize(&tmp, "END");
         }
+        if (PMIX_INFO_PERSISTENT & directives) {
+            PMIx_Argv_append_nosize(&tmp, "PERSISTENT");
+        }
     }
     if (NULL != tmp) {
         ret = PMIx_Argv_join(tmp, ':');

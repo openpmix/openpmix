@@ -201,6 +201,11 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target, pmix_data_bu
             return rc;
         }
         peer = scd.peer;
+        /* the caddy only borrowed the peer - it belongs to the
+         * server's client array - so clear the field before
+         * destructing or the destructor releases a reference we
+         * never took and we go on to pack against freed memory */
+        scd.peer = NULL;
         PMIX_DESTRUCT(&scd);
     } else {
         // if I am a client or tool, then we can only talk to the
@@ -278,6 +283,9 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *target, pmix_data_
             return rc;
         }
         peer = scd.peer;
+        /* the caddy only borrowed the peer - see the note in
+         * PMIx_Data_pack */
+        scd.peer = NULL;
         PMIX_DESTRUCT(&scd);
     } else {
         // if I am a client or tool, then we can only talk to the
@@ -350,6 +358,10 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest, pmix_
 
     if (NULL == src) {
         return PMIX_SUCCESS;
+    }
+
+    if (NULL == dest) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     /* setup the hosts */

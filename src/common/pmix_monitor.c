@@ -127,6 +127,35 @@ pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t err
     return rc;
 }
 
+/* The value carried by a target directive comes straight from the
+ * caller, so its type must be confirmed before the union is read as a
+ * data array - a mismatched type would otherwise be dereferenced as a
+ * pointer. An absent array is legal and means "everywhere"; a value
+ * that is not an array of the expected type is a bad parameter. */
+static pmix_status_t target_array(const pmix_info_t *dir,
+                                  pmix_data_type_t type,
+                                  void **array, size_t *sz)
+{
+    *array = NULL;
+    *sz = 0;
+
+    if (PMIX_DATA_ARRAY != dir->value.type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (NULL == dir->value.data.darray ||
+        NULL == dir->value.data.darray->array ||
+        0 == dir->value.data.darray->size) {
+        /* nothing specified - the request covers everything */
+        return PMIX_SUCCESS;
+    }
+    if (type != dir->value.data.darray->type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *array = dir->value.data.darray->array;
+    *sz = dir->value.data.darray->size;
+    return PMIX_SUCCESS;
+}
+
 static void hostprocess(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
@@ -258,16 +287,18 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
         }
 
         if (PMIx_Check_key(cb->directives[n].key, PMIX_MONITOR_TARGET_PROCS)) {
+            cb->status = target_array(&cb->directives[n], PMIX_PROC,
+                                      (void**)&procs, &sz);
+            if (PMIX_SUCCESS != cb->status) {
+                goto complete;
+            }
             // if there are no procs specified, then it is all procs everywhere
-            if (NULL == cb->directives[n].value.data.darray ||
-                NULL == cb->directives[n].value.data.darray->array) {
+            if (NULL == procs) {
                 local = true;
                 remote = true;
                 continue;
             }
             // are any of the procs local?
-            procs = (pmix_proc_t*)cb->directives[n].value.data.darray->array;
-            sz = cb->directives[n].value.data.darray->size;
             for (m=0; (!local || !remote) && m < sz; m++) {
                 for (k=0; (!local || !remote) && k < pmix_server_globals.clients.size; k++) {
                     ptr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
@@ -289,18 +320,23 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
         }
 
         if (PMIx_Check_key(cb->directives[n].key, PMIX_MONITOR_TARGET_NODES)) {
+            cb->status = target_array(&cb->directives[n], PMIX_STRING,
+                                      (void**)&hostnames, &sz);
+            if (PMIX_SUCCESS != cb->status) {
+                goto complete;
+            }
             // if there are no hosts specified, then it is all hosts everywhere
-            if (NULL == cb->directives[n].value.data.darray ||
-                NULL == cb->directives[n].value.data.darray->array) {
+            if (NULL == hostnames) {
                 local = true;
                 remote = true;
                 continue;
             }
             // is our node included?
-            hostnames = (char**)cb->directives[n].value.data.darray->array;
-            sz = cb->directives[n].value.data.darray->size;
             for (m=0; (!local || !remote) && m < sz; m++) {
                 // see if this node is us
+                if (NULL == hostnames[m]) {
+                    continue;
+                }
                 if (0 == strcmp(hostnames[m], pmix_globals.hostname)) {
                     local = true;
                 } else {
@@ -314,16 +350,18 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
         }
 
         if (PMIx_Check_key(cb->directives[n].key, PMIX_MONITOR_TARGET_NODEIDS)) {
+            cb->status = target_array(&cb->directives[n], PMIX_UINT32,
+                                      (void**)&nids, &sz);
+            if (PMIX_SUCCESS != cb->status) {
+                goto complete;
+            }
             // if there are no nodeIDs specified, then it is all hosts everywhere
-            if (NULL == cb->directives[n].value.data.darray ||
-                NULL == cb->directives[n].value.data.darray->array) {
+            if (NULL == nids) {
                 local = true;
                 remote = true;
                 continue;
             }
             // is our node included?
-            nids = (uint32_t*)cb->directives[n].value.data.darray->array;
-            sz = cb->directives[n].value.data.darray->size;
             for (m=0; (!local || !remote) && m < sz; m++) {
                 // see if this node is us
                 if (nids[m] == pmix_globals.nodeid) {
@@ -339,20 +377,23 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
         }
 
         if (PMIx_Check_key(cb->directives[n].key, PMIX_MONITOR_TARGET_PIDS)) {
+            cb->status = target_array(&cb->directives[n], PMIX_NODE_PID,
+                                      (void**)&ppid, &sz);
+            if (PMIX_SUCCESS != cb->status) {
+                goto complete;
+            }
             // if there are no host/pids specified, then it is all host/pids everywhere
-            if (NULL == cb->directives[n].value.data.darray ||
-                NULL == cb->directives[n].value.data.darray->array) {
+            if (NULL == ppid) {
                 local = true;
                 remote = true;
                 continue;
             }
             // is our node included?
-            ppid = (pmix_node_pid_t*)cb->directives[n].value.data.darray->array;
-            sz = cb->directives[n].value.data.darray->size;
             for (m=0; (!local || !remote) && m < sz; m++) {
                 // see if this node is us
                 if (ppid[m].nodeid == pmix_globals.nodeid ||
-                    0 == strcmp(ppid[m].hostname, pmix_globals.hostname)) {
+                    (NULL != ppid[m].hostname &&
+                     0 == strcmp(ppid[m].hostname, pmix_globals.hostname))) {
                     local = true;
                 } else {
                     remote = true;
@@ -400,7 +441,9 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
         cb->info = results;
         cb->ninfo = sz;
         if (NULL != cb->cbfunc.infofn) {
-            PMIX_RETAIN(cb);
+            /* relcbfunc holds the caddy's only reference and releases
+             * it - retaining here as well would leave the count at one
+             * and leak the caddy along with the results it carries */
             cb->cbfunc.infofn(cb->status, cb->info, cb->ninfo, cb->cbdata,
                               relcbfunc, (void*)cb);
         } else {
@@ -529,6 +572,14 @@ pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t 
         proxy = false;
         for (n=0; n < ndirs; n++) {
             if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_PROXY)) {
+                /* the value's type is under the caller's control, so
+                 * confirm it before reading the union as a proc */
+                if (PMIX_PROC != directives[n].value.type ||
+                    NULL == directives[n].value.data.proc) {
+                    PMIX_PROC_FREE(cb->proc, 1);
+                    PMIX_RELEASE(cb);
+                    return PMIX_ERR_BAD_PARAM;
+                }
                 memcpy(&cb->proc[0], directives[n].value.data.proc, sizeof(pmix_proc_t));
                 proxy = true;
                 break;
@@ -561,9 +612,15 @@ pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t 
         return PMIX_ERR_UNREACH;
     }
 
-    /* if the monitor is PMIX_SEND_HEARTBEAT, then send it */
+    /* if the monitor is PMIX_SEND_HEARTBEAT, then send it. This
+     * completes immediately, but the _nb contract still requires that
+     * we report completion through the callback - without it a
+     * blocking caller waits forever for a wakeup nobody will deliver */
     if (PMIX_CHECK_KEY(monitor, PMIX_SEND_HEARTBEAT)) {
         PMIx_Heartbeat();
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_SUCCESS, NULL, 0, cbdata, NULL, NULL);
+        }
         return PMIX_SUCCESS;
     }
 
@@ -714,6 +771,8 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &results->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
+        results->status = rc;
+        results->ninfo = 0;
         goto complete;
     }
     if (0 < results->ninfo) {
@@ -723,6 +782,7 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         PMIX_BFROPS_UNPACK(rc, peer, buf, results->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            results->status = rc;
             goto complete;
         }
     }
@@ -760,7 +820,12 @@ static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
             PMIX_INFO_XFER(&cb->info[n], &info[n]);
         }
     } else {
+        /* the caddy's info array is the caller's monitor argument, so
+         * both the pointer AND the count must be cleared - dropping
+         * only the pointer hands the caller a NULL array with a
+         * non-zero length */
         cb->info = NULL;
+        cb->ninfo = 0;
     }
 
     if (NULL != release_fn) {

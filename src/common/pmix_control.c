@@ -89,6 +89,8 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &results->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
+        results->status = rc;
+        results->ninfo = 0;
         goto complete;
     }
     if (0 < results->ninfo) {
@@ -98,6 +100,7 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         PMIX_BFROPS_UNPACK(rc, peer, buf, results->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            results->status = rc;
             goto complete;
         }
     }
@@ -114,6 +117,8 @@ complete:
     PMIX_RELEASE(cd);
 }
 
+/* completion callback for the blocking form - copies the results out
+ * of the caller's ownership and wakes the waiter */
 static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                 pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
@@ -121,9 +126,8 @@ static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
     size_t n;
 
     cb->status = status;
-    if (0 < ninfo) {
-        // we ignore the info that was provided as that data belongs
-        // to the original caller
+    if (0 < ninfo && NULL != info) {
+        // the info belongs to whoever called us, so take our own copy
         cb->infocopy = true;
         PMIX_INFO_CREATE(cb->info, ninfo);
         cb->ninfo = ninfo;
@@ -134,12 +138,7 @@ static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
     if (NULL != release_fn) {
         release_fn(release_cbdata);
     }
-    if (NULL == cb->cbfunc.infofn) {
-        PMIX_WAKEUP_THREAD(&cb->lock);
-    } else {
-        cb->cbfunc.infofn(cb->status, cb->info, cb->ninfo, cb->cbdata,
-                          relcbfunc, (void*)cb);
-    }
+    PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t ntargets,
@@ -159,6 +158,14 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t n
 
     pmix_output_verbose(2, pmix_globals.debug_output, "%s pmix:job_ctrl",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
+
+    /* set the default response */
+    if (NULL != results) {
+        *results = NULL;
+    }
+    if (NULL != nresults) {
+        *nresults = 0;
+    }
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
@@ -188,6 +195,24 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t n
     return rc;
 }
 
+/* completion callback for the host's job_control operation. The caddy
+ * carries the *caller's directives* in its info field, so those fields
+ * must not be reused to stage the host's answer - doing so echoes the
+ * directives back to the caller as if they were the results whenever
+ * the host returns none. Pass the host's arrays straight through */
+static void jctrl_hostcb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                         pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+
+    if (NULL != cb->cbfunc.infofn) {
+        cb->cbfunc.infofn(status, info, ninfo, cb->cbdata, release_fn, release_cbdata);
+    } else if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+    PMIX_RELEASE(cb);
+}
+
 static void _jctrlnb(int sd, short args, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
@@ -195,7 +220,17 @@ static void _jctrlnb(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     rc = pmix_host_server.job_control(&pmix_globals.myid, cb->procs, cb->nprocs,
-                                      cb->info, cb->ninfo, acb, (void*)cb);
+                                      cb->info, cb->ninfo, jctrl_hostcb, (void*)cb);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        /* the host completed the operation and will not call back */
+        rc = PMIX_SUCCESS;
+        if (NULL != cb->cbfunc.infofn) {
+            cb->cbfunc.infofn(rc, NULL, 0, cb->cbdata, relcbfunc, (void*)cb);
+        } else {
+            PMIX_RELEASE(cb);
+        }
+        return;
+    }
     if (PMIX_SUCCESS != rc) {
         if (NULL != cb->cbfunc.infofn) {
             cb->cbfunc.infofn(rc, NULL, 0, cb->cbdata, relcbfunc, (void*)cb);
