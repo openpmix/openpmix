@@ -1148,6 +1148,9 @@ static pmix_status_t query_fn(pmix_proc_t *proct, pmix_query_t *queries, size_t 
         pmix_strncpy(info[n].key, queries[n].keys[0], PMIX_MAX_KEYLEN);
         info[n].value.type = PMIX_STRING;
         if (0 > asprintf(&info[n].value.data.string, "%d", (int) n)) {
+            /* nobody downstream will ever see this array, so it is
+             * ours to release */
+            PMIX_INFO_FREE(info, nqueries);
             return PMIX_ERROR;
         }
     }
