@@ -55,6 +55,15 @@ static void log_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
 
     pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                         "pmix:log log_cbfunc called");
+
+    /* a zero-byte buffer indicates that this recv is being completed
+     * due to a lost connection - say so, rather than reporting the
+     * unpack failure that reading an empty buffer produces */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        status = PMIX_ERR_COMM_FAILURE;
+        goto report;
+    }
+
     /* unpack the return status */
     m = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &status, &m, PMIX_STATUS);
@@ -66,6 +75,8 @@ static void log_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         /* call down to process the request */
         status = pmix_plog.log(cd->proc, cd->info, cd->ninfo, cd->directives, cd->ndirs);
     }
+
+report:
     if (NULL != cd->cbfunc.opcbfn) {
         cd->cbfunc.opcbfn(status, cd->cbdata);
     }
