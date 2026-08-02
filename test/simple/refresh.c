@@ -12,8 +12,33 @@ static void fence_collect(const char *nspace)
     bool collect = true;
     PMIx_Info_load(&info, PMIX_COLLECT_DATA, &collect, PMIX_BOOL);
 
-    PMIx_Fence(&wildcard, 1, &info, 1);
+    pmix_status_t rc = PMIx_Fence(&wildcard, 1, &info, 1);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "PMIx_Fence failed: %s\n", PMIx_Error_string(rc));
+    }
     PMIx_Info_destruct(&info);
+}
+
+/* the point of this test is what a subsequent get returns, so a put or
+ * commit that fails has to be reported - it would otherwise show up as
+ * an unexplained wrong value further down */
+static int put_value(const char *key, const char *val)
+{
+    pmix_value_t v;
+    pmix_status_t rc;
+
+    PMIx_Value_load(&v, (void *) val, PMIX_STRING);
+    rc = PMIx_Put(PMIX_GLOBAL, key, &v);
+    PMIx_Value_destruct(&v);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "PMIx_Put of '%s' failed: %s\n", val, PMIx_Error_string(rc));
+        return rc;
+    }
+    rc = PMIx_Commit();
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "PMIx_Commit of '%s' failed: %s\n", val, PMIx_Error_string(rc));
+    }
+    return rc;
 }
 
 int main(int argc, char **argv)
@@ -35,11 +60,10 @@ int main(int argc, char **argv)
 
     // Round 0: Rank 0 puts "A"
     if (me.rank == 0) {
-        pmix_value_t v;
-        PMIx_Value_load(&v, "A", PMIX_STRING);
-        PMIx_Put(PMIX_GLOBAL, key, &v);
-        PMIx_Commit();
-        PMIx_Value_destruct(&v);
+        if (PMIX_SUCCESS != put_value(key, "A")) {
+            PMIx_Finalize(NULL, 0);
+            return 1;
+        }
         printf("rank0: PUT 'A'\n");
     }
     fence_collect(me.nspace);
@@ -56,11 +80,10 @@ int main(int argc, char **argv)
 
     // Round 1: Rank 0 overwrites with "B"
     if (me.rank == 0) {
-        pmix_value_t v;
-        PMIx_Value_load(&v, "B", PMIX_STRING);
-        PMIx_Put(PMIX_GLOBAL, key, &v);
-        PMIx_Commit();
-        PMIx_Value_destruct(&v);
+        if (PMIX_SUCCESS != put_value(key, "B")) {
+            PMIx_Finalize(NULL, 0);
+            return 1;
+        }
         printf("rank0: PUT 'B' (overwrite)\n");
     }
     fence_collect(me.nspace);

@@ -60,7 +60,11 @@ int main(int argc, char **argv)
 
     TEST_VERBOSE(("Testing version %s", PMIx_Get_version()));
 
-    PMIx_server_init(&mymodule, NULL, 0);
+    rc = PMIx_server_init(&mymodule, NULL, 0);
+    if (PMIX_SUCCESS != rc) {
+        TEST_ERROR(("PMIx_server_init failed: %s", PMIx_Error_string(rc)));
+        exit(1);
+    }
 
     TEST_VERBOSE(("Start PMIx regex smoke test"));
 

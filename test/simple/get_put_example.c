@@ -40,12 +40,18 @@ int main(int argc, char **argv)
         }
     }
 
-    PMIx_Commit();
+    if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
+        fprintf(stderr, "Commit failed: %s\n", PMIx_Error_string(rc));
+        exit(1);
+    }
 
     bool tvalue = 1;
     strcpy(info.key, PMIX_COLLECT_DATA);
     PMIX_VALUE_LOAD(&(info.value), &tvalue, PMIX_BOOL);
-    PMIx_Fence(NULL, 0, &info, 1);
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, &info, 1))) {
+        fprintf(stderr, "Fence failed: %s\n", PMIx_Error_string(rc));
+        exit(1);
+    }
 
     fprintf(stderr, "[%s:%u]: Fence complete\n", myproc.nspace, myproc.rank);
 
