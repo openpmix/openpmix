@@ -85,9 +85,6 @@ PMIX_EXPORT pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inp
 
 PMIX_EXPORT bool pmix_client_proc_is_included(const pmix_proc_t *procs, size_t nprocs);
 
-/* Reclaim any leader-watch trackers still active at finalize. Called from
- * PMIx_Finalize after the progress thread has stopped. */
-
 END_C_DECLS
 
 #endif /* PMIX_CLIENT_OPS_H */
