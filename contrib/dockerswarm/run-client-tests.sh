@@ -65,7 +65,7 @@ root="$(cd "$here/../.." && pwd)"
 
 # The examples this runner drives.  Each is an ordinary PMIx client, so each
 # one is a live test of the client library rather than of the example.
-CLIENT_EXAMPLES="${CLIENT_EXAMPLES:-client dmodex nodeinfo pub resolve dynamic}"
+CLIENT_EXAMPLES="${CLIENT_EXAMPLES:-client dmodex nodeinfo pub resolve dynamic spawn_reuse}"
 
 # Per-example launch geometry and the marker that says the client got all the
 # way through.  Ranks are always split across at least two nodes so the data
@@ -76,6 +76,14 @@ CLIENT_EXAMPLES="${CLIENT_EXAMPLES:-client dmodex nodeinfo pub resolve dynamic}"
 #     the coalescing path.  It needs at least two ranks.
 #   * dynamic has rank 0 PMIx_Spawn a child job and then connect to it, so
 #     the allocation must leave slots free for the child.
+#   * spawn_reuse is the one case here that needs a server for a reason other
+#     than "the data is elsewhere": PMIx_Spawn_nb rejects the call at the
+#     "am I connected?" check long before it reaches the directives under
+#     test, so a singleton reaches none of it, and test/simple/simptest
+#     cannot host it either -- its spawn_fn calls PMIx_server_setup_application
+#     and then blocks on the result while running ON the server's progress
+#     thread, so the fake launch deadlocks.  It needs a real launcher.  Like
+#     dynamic it spawns a child, so it needs free slots.
 #   * every example ends by reporting a successful PMIx_Finalize, which is
 #     also the marker that nothing hung on the way there.
 cl_geom() {
@@ -87,6 +95,11 @@ cl_geom() {
             HOSTS="node1:2,node2:2"; NP=4 ;;
         dynamic)
             HOSTS="node1:4,node2:4"; NP=2 ;;
+        spawn_reuse)
+            # spawns a one-proc child, so leave room for it; the client
+            # prints its own verdict rather than the finalize banner
+            HOSTS="node1:4,node2:4"; NP=2
+            WANT='spawn_reuse: PASS' ;;
         resolve)
             # resolve.c PMIx_Spawn's a two-proc child job and then resolves
             # both namespaces, so the allocation must leave slots free for
@@ -252,6 +265,8 @@ test_linux() {
             pub)      judge "$ex" "publish/lookup/unpublish across servers" ;;
             resolve)  judge "$ex" "resolve peers/nodes across three nodes" ;;
             dynamic)  judge "$ex" "spawn + connect/disconnect across nspaces" ;;
+            spawn_reuse)
+                      judge "$ex" "spawn with PMIX_SETUP_APP_ENVARS from a client" ;;
             *)        judge "$ex" "completed" ;;
         esac
         [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ] \

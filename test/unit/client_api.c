@@ -531,6 +531,50 @@ static void test_group_construct_invite_outparams(void)
     check(PMIX_SUCCESS != rc, "PMIx_Group_invite accepts NULL results/nresults");
 }
 
+/* The topology entry points are among the very few in src/client that gate
+ * only on "initialized" - they answer from hwloc rather than round-tripping -
+ * so a singleton reaches their arguments, and they are the natural home for
+ * the "screen what the caller handed you" rule this file exists to enforce.
+ *
+ * PMIx_Load_topology passes its argument straight to pmix_hwloc_load_topology,
+ * which read topo->source as its first act; the two siblings around it
+ * (PMIx_Parse_cpuset_string, PMIx_Get_cpuset) had already been hardened for
+ * exactly this and it was the one left out. PMIx_Get_relative_locality writes
+ * its answer through the OUT parameter on every path that gets past the
+ * input checks, so a NULL there was a store to address zero - but only when
+ * both locality strings are well-formed enough to get that far, which is why
+ * the valid-strings case below is the one that matters. */
+static void test_topology_bad_params(void)
+{
+    pmix_locality_t locality;
+    pmix_cpuset_t cpuset;
+    pmix_status_t rc;
+
+    fprintf(stdout, "\n-- topology API parameter validation --\n");
+
+    rc = PMIx_Load_topology(NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Load_topology(NULL) rejected");
+
+    rc = PMIx_Parse_cpuset_string(NULL, &cpuset);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Parse_cpuset_string(string=NULL) rejected");
+    rc = PMIx_Parse_cpuset_string("hwloc:0", NULL);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Parse_cpuset_string(cpuset=NULL) rejected");
+
+    rc = PMIx_Get_cpuset(NULL, PMIX_CPUBIND_PROCESS);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Get_cpuset(cpuset=NULL) rejected");
+
+    /* unrecognized locality strings stop at the payload check, so this one
+     * only proves we do not crash ahead of it */
+    rc = PMIx_Get_relative_locality(NULL, NULL, &locality);
+    check(PMIX_SUCCESS != rc, "PMIx_Get_relative_locality with NULL localities rejected");
+
+    /* both strings are ours, so the computation runs to the point of storing
+     * the answer - which is where a NULL OUT parameter used to land */
+    rc = PMIx_Get_relative_locality("hwloc:NM0", "hwloc:NM0", NULL);
+    check(PMIX_ERR_BAD_PARAM == rc,
+          "PMIx_Get_relative_locality(locality=NULL) rejected with valid inputs");
+}
+
 /* PMIx_Fabric_deregister was the one fabric entry point with no
  * "initialized" gate, yet it reaches PMIX_PEER_IS_SCHEDULER(mypeer) - and
  * mypeer does not exist until PMIx_Init has run. Must be called before
@@ -594,6 +638,7 @@ int main(int argc, char **argv)
     test_out_parameter_checks();
     test_compute_distances();
     test_spawn_bad_params();
+    test_topology_bad_params();
     test_fabric();
     test_group_join_outparams();
     test_group_construct_invite_outparams();
