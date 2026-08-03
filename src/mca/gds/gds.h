@@ -466,7 +466,12 @@ typedef pmix_status_t (*pmix_gds_base_module_fetch_array_fn_t)(struct pmix_peer_
         pmix_output_verbose(1, pmix_gds_base_output,                        \
                             "[%s:%d] GDS FETCH ARRAYS WITH %s",             \
                             __FILE__, __LINE__, _g->name);                  \
-        (s) = _g->fetch_arrays((struct pmix_peer_t*)(p), b);                \
+        if (NULL == _g->fetch_arrays) {                                     \
+            /* gds/shmem3 really does leave this slot empty */              \
+            (s) = PMIX_ERR_NOT_SUPPORTED;                                   \
+        } else {                                                            \
+            (s) = _g->fetch_arrays((struct pmix_peer_t*)(p), b);            \
+        }                                                                   \
     } while(0)
 
 
