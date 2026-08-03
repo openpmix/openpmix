@@ -62,6 +62,11 @@ get_nodeinfo_by_nodename(
 
 /**
  * Fetches all node info from a given nodeinfo.
+ *
+ * Takes ownership of key in every case: on success it becomes the
+ * returned kval's key, and on failure it is released along with the
+ * partially-built kval. Callers must not free it themselves - doing so
+ * used to double-free it on the error paths.
  */
 static pmix_status_t
 fetch_all_node_info(
@@ -72,6 +77,10 @@ fetch_all_node_info(
     size_t i = 0;
 
     pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
+    if (PMIX_UNLIKELY(NULL == kv)) {
+        free(key);
+        return PMIX_ERR_NOMEM;
+    }
     kv->key = key;
     kv->value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
     if (NULL == kv->value) {
@@ -154,9 +163,9 @@ fetch_all_node_info_from_list(
             // Everyone else uses a node_info array.
             key = strdup(PMIX_NODE_INFO_ARRAY);
         }
+        // fetch_all_node_info() owns key from here on, pass or fail.
         rc = fetch_all_node_info(key, ni, kvs);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            free(key);
             break;
         }
     }
@@ -249,11 +258,8 @@ fetch_nodeinfo(
             // Everyone else uses a node_info array.
             nikey = strdup(PMIX_NODE_INFO_ARRAY);
         }
-        rc = fetch_all_node_info(nikey, nodeinfo, kvs);
-        if (PMIX_SUCCESS != rc) {
-            free(nikey);
-        }
-        return rc;
+        // fetch_all_node_info() owns nikey from here on, pass or fail.
+        return fetch_all_node_info(nikey, nodeinfo, kvs);
     }
     // If we are here, then they want a specific key/value pair. So, scan the
     // info list of this node to find the key they want.
