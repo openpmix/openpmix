@@ -268,6 +268,14 @@ void pmix_bfrops_base_tma_xfer_procid(pmix_proc_t *dst,
 {
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
+    /* public entry point (PMIx_Xfer_procid), so screen both ends */
+    if (NULL == dst) {
+        return;
+    }
+    if (NULL == src) {
+        memset(dst, 0, sizeof(pmix_proc_t));
+        return;
+    }
     memcpy(dst, src, sizeof(pmix_proc_t));
 }
 
@@ -2780,7 +2788,13 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(pid_t));
         break;
     case PMIX_STRING: {
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(char *));
+        /* calloc, NOT malloc: the loop below writes an element only
+         * where the source has one, so anything it skips keeps whatever
+         * the allocator handed back - and the destructor then frees it
+         * as if it were a string. A fresh page reads as zero often
+         * enough for that to look correct (it does on macOS), which is
+         * precisely why it survived. */
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(char *));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2959,7 +2973,10 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
     case PMIX_COMPRESSED_BYTE_OBJECT: {
         /* PMIX_REGEX is deliberately NOT here - see the note in
          * pmix_bfrops_base_tma_data_array_construct() */
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_byte_object_t));
+        /* calloc for the same reason as the PMIX_STRING arm above: an
+         * empty source element leaves its destination untouched, and
+         * the destructor frees the .bytes it finds there */
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_byte_object_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;

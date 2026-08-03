@@ -998,6 +998,18 @@ pmix_status_t pmix_bfrops_base_pack_val(pmix_pointer_array_t *regtypes, pmix_buf
         }
         break;
     default:
+        /* The mirror of the guard in pmix_bfrops_base_unpack_val(): the
+         * types listed there are larger than the value union, so
+         * handing &p->data to their packer reads past the end of the
+         * value. Same list, opposite direction - reading 784 bytes out
+         * of a 24-byte union rather than writing into it. */
+        if (PMIX_VALUE == p->type || PMIX_INFO == p->type ||
+            PMIX_PDATA == p->type || PMIX_APP == p->type ||
+            PMIX_KVAL == p->type || PMIX_BUFFER == p->type) {
+            pmix_output(0, "PACK-PMIX-VALUE[%s:%d]: TYPE %s CANNOT BE CARRIED BY A VALUE",
+                        __FILE__, __LINE__, PMIx_Data_type_string(p->type));
+            return PMIX_ERR_BAD_PARAM;
+        }
         /* pass the address of the value instead of the value itself */
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &p->data, 1, p->type, regtypes);
         if (PMIX_ERR_UNKNOWN_DATA_TYPE == ret) {

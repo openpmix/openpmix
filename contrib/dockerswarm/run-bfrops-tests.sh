@@ -74,10 +74,31 @@ BFROPS_PROGRAMS="bfrops_darray bfrops_malformed bfrops_get_number bfrops_null_ob
 # autoconf refuses with "source directory already configured".  Say so once,
 # plainly, rather than letting the VPATH stages fail with an autoconf error
 # that names no way out.
+# A srcdir that has been built in place blocks BOTH VPATH stages below,
+# for two separate reasons, and it is worth knowing both because they
+# fail at different times and only the first one names itself:
+#
+#   1. autoconf refuses to configure a VPATH tree while the source
+#      directory holds a config.status, and says so plainly.
+#
+#   2. Even reusing an already-configured VPATH tree, make resolves a
+#      missing prerequisite through VPATH and will happily find
+#      foo.o in the SOURCE directory - then run the link recipe with the
+#      bare name, in the build directory, where it does not exist.  The
+#      error is "cannot find foo.o", which names neither VPATH nor the
+#      srcdir, and it strikes exactly the objects that are new or that
+#      the VPATH tree has never built.
+#
+# The second is why this gate covers the stage that only reuses a tree.
+# Do not "loosen" it to let that stage through: it will appear to work
+# for whatever the VPATH tree happens to have built already and fail on
+# whatever you just added.
 srcdir_blocks_vpath() {
     [ -f "$root/config.status" ] || return 1
-    echo "     $root holds a config.status, so autoconf will refuse the" >&2
-    echo "     VPATH build this script needs.  Either:" >&2
+    echo "     $root has been configured and built in place, which blocks" >&2
+    echo "     the VPATH stages: autoconf refuses to configure alongside a" >&2
+    echo "     config.status, and stale objects in the srcdir shadow the" >&2
+    echo "     build tree through VPATH.  Either:" >&2
     echo "         make -C $root distclean && $0 $mode" >&2
     echo "     or run ./build.sh, which distcleans the tree for you." >&2
     return 0
@@ -88,7 +109,7 @@ srcdir_blocks_vpath() {
 ########################################################################
 
 test_linux() {
-    local rc out np hosts
+    local rc out np hosts gate_ok
 
     swarm_up_or_die
 
@@ -113,8 +134,13 @@ test_linux() {
     fi
 
     if srcdir_blocks_vpath; then
-        skp "srcdir is configured in place -- no VPATH build can be made from it"
+        skp "srcdir is configured in place -- the VPATH stages cannot run"
+        gate_ok=0
     else
+        gate_ok=1
+    fi
+
+    if [ "$gate_ok" = 1 ]; then
         banner "unit suite in the tree build.sh configured (static components)"
         docker run --rm \
             -v "$root":/pmix-src:ro \
@@ -138,32 +164,32 @@ test_linux() {
         [ "$rc" = 0 ] && ok "static build: bfrops unit programs green in the container" \
                       || bad "static build: bfrops unit programs failed (rc=$rc)"
 
-        banner "--enable-mca-dso build (every component a real plugin)"
-        # A separate prefix and VPATH directory: this library must not
-        # displace the one the rest of the harness runs against.
-        docker run --rm \
-            -v "$root":/pmix-src:ro \
-            -v "$VOLUME":/opt/prte \
-            -e PROGS="$BFROPS_PROGRAMS" \
-            "$IMAGE" bash -euo pipefail -c '
-                mkdir -p /opt/prte/vpath-pmix-bfrops-dso
-                cd /opt/prte/vpath-pmix-bfrops-dso
-                [ -f config.status ] || /pmix-src/configure \
-                    --prefix=/opt/prte/pmix-bfrops-dso --enable-mca-dso \
-                    --disable-debug --disable-devel-check
-                make -j"$(nproc)"
-                make install
-                make -j"$(nproc)" -C test/unit $PROGS
-                mkdir -p /opt/prte/tests-bfrops/dso
-                for p in $PROGS; do
-                    cp "test/unit/.libs/$p" /opt/prte/tests-bfrops/dso/ 2>/dev/null \
-                        || cp "test/unit/$p" /opt/prte/tests-bfrops/dso/ 2>/dev/null || true
-                done
-                cd test/unit && for p in $PROGS; do ./$p >/dev/null; done
-            '
-        rc=$?
-        [ "$rc" = 0 ] && ok "mca-dso build: bfrops unit programs green in the container" \
-                      || bad "mca-dso build: bfrops unit programs failed (rc=$rc)"
+            banner "--enable-mca-dso build (every component a real plugin)"
+                # A separate prefix and VPATH directory: this library must not
+                # displace the one the rest of the harness runs against.
+                docker run --rm \
+                    -v "$root":/pmix-src:ro \
+                    -v "$VOLUME":/opt/prte \
+                    -e PROGS="$BFROPS_PROGRAMS" \
+                    "$IMAGE" bash -euo pipefail -c '
+                        mkdir -p /opt/prte/vpath-pmix-bfrops-dso
+                        cd /opt/prte/vpath-pmix-bfrops-dso
+                        [ -f config.status ] || /pmix-src/configure \
+                            --prefix=/opt/prte/pmix-bfrops-dso --enable-mca-dso \
+                            --disable-debug --disable-devel-check
+                        make -j"$(nproc)"
+                        make install
+                        make -j"$(nproc)" -C test/unit $PROGS
+                        mkdir -p /opt/prte/tests-bfrops/dso
+                        for p in $PROGS; do
+                            cp "test/unit/.libs/$p" /opt/prte/tests-bfrops/dso/ 2>/dev/null \
+                                || cp "test/unit/$p" /opt/prte/tests-bfrops/dso/ 2>/dev/null || true
+                        done
+                        cd test/unit && for p in $PROGS; do ./$p >/dev/null; done
+                    '
+            rc=$?
+            [ "$rc" = 0 ] && ok "mca-dso build: bfrops unit programs green in the container" \
+                          || bad "mca-dso build: bfrops unit programs failed (rc=$rc)"
     fi
 
     # ------------------------------------------------------------------

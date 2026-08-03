@@ -203,7 +203,24 @@ payload rather than adding a one-off case.
 
 Note what a failure of that stage looks like: the process dies with the
 buffered stdout unflushed, so you get **no output at all** and exit 137
-or 139. That is the signal, not a missing test.
+(OOM), 139 (SIGSEGV) or 134 (glibc heap assertion). That is the signal,
+not a missing test.
+
+**The fuzz stage runs its inputs in this one process on purpose.** Heap
+corruption planted by one input is normally noticed by the allocator
+several inputs later, so a harness that forks per input throws the
+evidence away with the child. That is not hypothetical: the scratch
+version of this fuzzer forked, ran clean for hours against a remote heap
+overflow, and only surfaced it once folded in here. Do not "isolate" the
+cases.
+
+Two cases assemble a malformed message by hand, and they do it through a
+byte accumulator rather than through `PMIx_Data_embed()`. **`PMIx_Data_embed()`
+replaces a buffer's payload; it does not append to it.** A message built
+by embedding one piece after another is only ever the last piece — a
+one-byte buffer, which every unpacker refuses, so the test passes
+against any library at all and proves nothing. Both cases were written
+that way first.
 
 [`bfrops_get_number.c`](bfrops_get_number.c) is the third, and it is a
 **property test rather than a case list** for the same reason: the

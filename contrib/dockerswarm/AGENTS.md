@@ -82,6 +82,27 @@ two disagree, the README wins, and please fix this file.
   that forgets the qualifier passes against any library and proves nothing.
   See README §13.
 
+- **A srcdir that has been built in place breaks the VPATH stages in
+  two different ways, and only one of them says so.** autoconf refuses
+  to configure alongside a `config.status` and names the problem. But
+  even a stage that only *reuses* an already-configured tree in the
+  volume will fail, because make resolves a missing prerequisite through
+  VPATH, finds `foo.o` in the **source** directory, and then runs the
+  link recipe with the bare name in the build directory. The error is
+  `cannot find foo.o`, which mentions neither VPATH nor the srcdir, and
+  it strikes exactly the objects that are new — so it looks like a bug
+  in whatever you just added. `run-bfrops-tests.sh` gates both stages on
+  one check for this reason; do not loosen it to let the reuse stage
+  through.
+
+- **Run a fuzz harness in ONE process, not one process per input.**
+  Heap corruption planted by input N is usually noticed by the allocator
+  at input N+k, so a harness that forks per input discards the evidence
+  with the child. The bfrops fuzz stage found a remote heap overflow
+  only after it was folded into `test/unit/bfrops_malformed.c` and run
+  in-process; the scratch version that forked had been running against
+  the same defect and reporting clean.
+
 - **The build volume outlives your branch.** `pmix-build` persists
   across runs and across checkouts, so a tree in it can be older than
   the source you are testing. When results make no sense, check what is

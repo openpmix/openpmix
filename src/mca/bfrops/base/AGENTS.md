@@ -347,6 +347,44 @@ buffer that was already allocated for it.
 `v12` already had a `PMIX_TAINT_INT_LIMIT` guard on the same length, so
 the intent was there; it just tested only one end of the range.
 
+### And a fifth, which only Linux and only one process at a time showed
+
+A `pmix_value_t` keeps its payload in a **24-byte union**, and the type
+tag saying which member is live comes off the wire. Six registered types
+have no member there at all — `PMIX_VALUE`, `PMIX_INFO`, `PMIX_PDATA`,
+`PMIX_APP`, `PMIX_KVAL`, `PMIX_BUFFER` — because they are data-array
+element types rather than things a scalar value can hold. Their C
+representation is *larger than the whole union*: `pmix_pdata_t` is 808
+bytes.
+
+`unpack_val()` hands `&val->data` to the per-type unpacker for anything
+its switch does not name, so a peer that tagged a value with one of
+those got that unpacker to write up to 784 bytes past the end of the
+value — and `unpack_kval()`, `unpack_info()` and `unpack_pdata()` all
+unpack into a value they have just `calloc`'d. **A remote heap buffer
+overflow with attacker-controlled length and contents.** `pack_val()`
+had the mirror of it, reading 552 bytes out of a 24-byte union.
+
+Both directions now refuse those six types, and a `_Static_assert` per
+type keeps the list honest against the union's size in both directions —
+so if the union grows, or a type that fits stops fitting, the build
+fails here instead of the heap failing in the field.
+
+**Two things about how it was found are worth more than the defect.**
+
+It needed *Linux*: `bfrops_darray` and `bfrops_helpers` also segfaulted
+there while passing on macOS, because two `copy_darray()` arms allocated
+with `pmix_tma_malloc()` and then wrote an element only where the source
+had one — leaving the rest as whatever the allocator returned, which the
+destructor then freed. A fresh page reads as zero often enough on macOS
+for that to look correct. Those arms use `pmix_tma_calloc()` now. **If a
+copy arm writes conditionally, it must allocate zeroed.**
+
+And it needed the fuzzer to run *in one process*. A harness that forks
+per input loses the corrupted heap along with the child; the scratch
+version of the fuzzer did exactly that and saw nothing for hours. Run
+the inputs in-process and let glibc's allocator notice.
+
 ## A known inconsistency, deliberately not "fixed"
 
 **`PMIX_REGEX` has two incompatible readings as an array element
