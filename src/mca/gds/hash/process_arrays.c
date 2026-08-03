@@ -71,8 +71,13 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "PROCESSING NODE ARRAY");
 
-    /* array of node-level info for a specific node */
-    if (PMIX_DATA_ARRAY != val->type) {
+    /* array of node-level info for a specific node. A value can name
+     * PMIX_DATA_ARRAY and carry no array - it takes nothing more than
+     * setting .type before the data - so check for the object, not just
+     * for the type. */
+    if (PMIX_DATA_ARRAY != val->type ||
+        NULL == val->data.darray ||
+        NULL == val->data.darray->array) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
@@ -271,7 +276,9 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk
     }
 
     /* array of app-level info */
-    if (PMIX_DATA_ARRAY != val->type) {
+    if (PMIX_DATA_ARRAY != val->type ||
+        NULL == val->data.darray ||
+        NULL == val->data.darray->array) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
@@ -416,7 +423,9 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
                         "PROCESSING JOB ARRAY");
 
     /* array of job-level info */
-    if (PMIX_DATA_ARRAY != info->value.type) {
+    if (PMIX_DATA_ARRAY != info->value.type ||
+        NULL == info->value.data.darray ||
+        NULL == info->value.data.darray->array) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
@@ -507,7 +516,9 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
     uint32_t sid = UINT32_MAX;
 
     /* array of session-level info */
-    if (PMIX_DATA_ARRAY != val->type) {
+    if (PMIX_DATA_ARRAY != val->type ||
+        NULL == val->data.darray ||
+        NULL == val->data.darray->array) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }

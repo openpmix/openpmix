@@ -128,6 +128,14 @@ cache_node_info(
             }
         }
         else if (PMIX_CHECK_KEY(&info[j], PMIX_HOSTNAME)) {
+            // The array comes from a host or off the wire, so do not
+            // assume the value is the type the key calls for.
+            if (PMIX_STRING != info[j].value.type ||
+                NULL == info[j].value.data.string) {
+                rc = PMIX_ERR_TYPE_MISMATCH;
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
             have_node_id_info = true;
             iinfo->hostname = pmix_tma_strdup(
                 tma, info[j].value.data.string
@@ -139,6 +147,12 @@ cache_node_info(
             }
         }
         else if (PMIX_CHECK_KEY(&info[j], PMIX_HOSTNAME_ALIASES)) {
+            if (PMIX_STRING != info[j].value.type ||
+                NULL == info[j].value.data.string) {
+                rc = PMIX_ERR_TYPE_MISMATCH;
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
             have_node_id_info = true;
             // info[j].value.data.string is a
             // comma-delimited string of hostnames.
@@ -202,7 +216,11 @@ store_node_array(
 
     // We expect an array of node-level info for a specific
     // node. Make sure we were given the correct type.
-    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != val->type)) {
+    // A value can name PMIX_DATA_ARRAY and carry no array, so check for
+    // the object rather than only for the type.
+    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != val->type ||
+                      NULL == val->data.darray ||
+                      NULL == val->data.darray->array)) {
         rc = PMIX_ERR_TYPE_MISMATCH;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -252,7 +270,9 @@ store_app_array(
     }
     // We expect an array of node-level info for a specific
     // node. Make sure we were given the correct type.
-    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != val->type)) {
+    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != val->type ||
+                      NULL == val->data.darray ||
+                      NULL == val->data.darray->array)) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
@@ -386,7 +406,9 @@ store_proc_data(
         return PMIX_ERR_BAD_PARAM;
     }
     // We are expecting an array of data pertaining to a specific proc.
-    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != kval->value->type)) {
+    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != kval->value->type ||
+                      NULL == kval->value->data.darray ||
+                      NULL == kval->value->data.darray->array)) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }

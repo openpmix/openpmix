@@ -2128,6 +2128,24 @@ unpack_srv_kindx_info(
         if (PMIX_SUCCESS != rc) {
             break;
         }
+        // Every element below is read out of the union according to the
+        // key alone. A value whose type does not match the key it
+        // arrived under would be read as a pointer and handed to
+        // asprintf() or PMIx_Argv_split().
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_TYPE_MISMATCH;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        if ((PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_NSID_KEY) ||
+             PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_NAME_KEY) ||
+             PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_STRING_KEY) ||
+             PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_DESCRIPTION_KEY)) &&
+            (PMIX_STRING != kv.value->type || NULL == kv.value->data.string)) {
+            rc = PMIX_ERR_TYPE_MISMATCH;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
 
         if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_NSID_KEY)) {
             int nw = asprintf(&nspace_name, "%s", kv.value->data.string);
@@ -2165,10 +2183,12 @@ unpack_srv_kindx_info(
         // announced table size writes past the end of tmpsrvdict. Falling
         // through to the final else turns that into a clean PMIX_ERR_BAD_PARAM.
         else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_INDEX_KEY) &&
+                 PMIX_UINT32 == kv.value->type &&
                  tmpsrvdict && tabindex < tabsize) {
             tmpsrvdict[tabindex].index = kv.value->data.uint32;
         }
         else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_TYPE_KEY) &&
+                 PMIX_UINT16 == kv.value->type &&
                  tmpsrvdict && tabindex < tabsize) {
             tmpsrvdict[tabindex].type = (pmix_data_type_t)kv.value->data.uint16;
         }
