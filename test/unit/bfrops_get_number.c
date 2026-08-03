@@ -90,6 +90,59 @@ static int is_structured(pmix_data_type_t t)
     return (PMIX_PID == t || PMIX_STATUS == t || PMIX_PROC_RANK == t);
 }
 
+/* the representable range of each integral destination type */
+static int int_range(pmix_data_type_t t, long double *lo, long double *hi)
+{
+    switch (t) {
+    case PMIX_SIZE:
+    case PMIX_UINT64: *lo = 0; *hi = 18446744073709551615.0L; return 1;
+    case PMIX_UINT32:
+    case PMIX_UINT:
+    case PMIX_PROC_RANK: *lo = 0; *hi = 4294967295.0L; return 1;
+    case PMIX_UINT16: *lo = 0; *hi = 65535.0L; return 1;
+    case PMIX_UINT8: *lo = 0; *hi = 255.0L; return 1;
+    case PMIX_INT64: *lo = -9223372036854775807.0L - 1;
+                     *hi = 9223372036854775807.0L; return 1;
+    case PMIX_INT32:
+    case PMIX_INT:
+    case PMIX_PID:
+    case PMIX_STATUS: *lo = -2147483648.0L; *hi = 2147483647.0L; return 1;
+    case PMIX_INT16: *lo = -32768.0L; *hi = 32767.0L; return 1;
+    case PMIX_INT8: *lo = -128.0L; *hi = 127.0L; return 1;
+    default: return 0;
+    }
+}
+
+/* Can a value of `t` hold `x` exactly?
+ *
+ * This is not a convenience - it is what keeps the test defined. C says
+ * that converting a floating value to an integer type is UNDEFINED when
+ * the value does not fit, and setval() below builds every sample by
+ * converting a long double. An earlier version of this file simply let
+ * that happen and expected the usual two's-complement wrap: gcc obliged
+ * consistently, so the oracle agreed with the stored value and the test
+ * passed. clang is equally within its rights to fold the same
+ * expression differently at different sites, and does - it reported the
+ * sample as 128 while the value held -128, and the test failed with a
+ * long list of "reported success but gave" lines that looked like
+ * library defects and were not.
+ *
+ * So: never build an out-of-range value. Skip the pair instead. Nothing
+ * is lost, because a deliberately-wrapped sample was never what any of
+ * these properties were about. */
+static int fits(pmix_data_type_t t, long double x)
+{
+    long double lo, hi;
+
+    if (PMIX_FLOAT == t || PMIX_DOUBLE == t) {
+        return 1;  /* every sample here is well inside both ranges */
+    }
+    if (!int_range(t, &lo, &hi)) {
+        return 0;
+    }
+    return (x >= lo && x <= hi);
+}
+
 static void setval(pmix_value_t *v, pmix_data_type_t t, long double x)
 {
     memset(v, 0, sizeof(*v));
@@ -138,29 +191,6 @@ static long double getval(const pmix_value_t *v)
     }
 }
 
-/* the representable range of each integral destination type */
-static int int_range(pmix_data_type_t t, long double *lo, long double *hi)
-{
-    switch (t) {
-    case PMIX_SIZE:
-    case PMIX_UINT64: *lo = 0; *hi = 18446744073709551615.0L; return 1;
-    case PMIX_UINT32:
-    case PMIX_UINT:
-    case PMIX_PROC_RANK: *lo = 0; *hi = 4294967295.0L; return 1;
-    case PMIX_UINT16: *lo = 0; *hi = 65535.0L; return 1;
-    case PMIX_UINT8: *lo = 0; *hi = 255.0L; return 1;
-    case PMIX_INT64: *lo = -9223372036854775807.0L - 1;
-                     *hi = 9223372036854775807.0L; return 1;
-    case PMIX_INT32:
-    case PMIX_INT:
-    case PMIX_PID:
-    case PMIX_STATUS: *lo = -2147483648.0L; *hi = 2147483647.0L; return 1;
-    case PMIX_INT16: *lo = -32768.0L; *hi = 32767.0L; return 1;
-    case PMIX_INT8: *lo = -128.0L; *hi = 127.0L; return 1;
-    default: return 0;
-    }
-}
-
 /* ------------------------------------------------------------------ */
 
 static void test_success_means_exact(void)
@@ -174,6 +204,9 @@ static void test_success_means_exact(void)
             pmix_value_t v;
             long double exact;
 
+            if (!fits(types[s], samples[k])) {
+                continue;
+            }
             setval(&v, types[s], samples[k]);
             exact = getval(&v);
 
@@ -221,6 +254,9 @@ static void test_refusal_means_unrepresentable(void)
             pmix_value_t v;
             long double exact;
 
+            if (!fits(types[s], samples[k])) {
+                continue;
+            }
             setval(&v, types[s], samples[k]);
             exact = getval(&v);
 
@@ -321,10 +357,10 @@ static void test_negative_into_unsigned_is_refused(void)
         for (n = 0; n < 2; n++) {
             pmix_value_t v;
 
-            setval(&v, signed_src[s], vals[n]);
-            if (getval(&v) >= 0) {
-                continue; /* did not fit; not a negative value any more */
+            if (!fits(signed_src[s], vals[n])) {
+                continue;
             }
+            setval(&v, signed_src[s], vals[n]);
             for (d = 0; d < sizeof(unsigned_dst) / sizeof(unsigned_dst[0]); d++) {
                 uint64_t out = 0;
                 pmix_status_t rc = PMIx_Value_get_number(&v, &out, unsigned_dst[d]);
