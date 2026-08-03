@@ -637,7 +637,15 @@ static pmix_status_t register_info(pmix_peer_t *peer,
                             kv.key = strdup(info[n].key);
                             kv.value = &info[n].value;
                             PMIX_BFROPS_PACK(rc, peer, reply, &kv, 1, PMIX_KVAL);
-                            PMIX_DESTRUCT(&kv);
+                            /* kv is a borrowed view of info[n] on the stack -
+                             * it was never PMIX_CONSTRUCTed and its value
+                             * points into the caller's array. Running the
+                             * kval destructor over it would dereference an
+                             * uninitialized obj_class and then free a pointer
+                             * into the middle of that array. Only the key is
+                             * ours to release. */
+                            free(kv.key);
+                            kv.key = NULL;
                         }
                     }
                 }
@@ -970,7 +978,12 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                         2, pmix_gds_base_framework.framework_output,
                         "[%s:%u] pmix:gds:hash store map info for rank %u working key %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, rank, kv2.key);
-                    rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, &kv2, NULL, 0, NULL);
+                    /* this describes where *this* proc is running, so it
+                     * belongs to that rank. Storing it against
+                     * PMIX_RANK_WILDCARD would both lose the per-rank
+                     * answer and leave the job-level PMIX_HOSTNAME set to
+                     * whichever node happened to be processed last. */
+                    rc = pmix_hash_store(ht, rank, &kv2, NULL, 0, NULL);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_DESTRUCT(&kptr);
@@ -1565,6 +1578,7 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &pbkt, &proct, &cnt, PMIX_PROC);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&pbkt);
             return rc;
         }
         /* if the rank is UNDEF, then we store this on our own
@@ -1615,7 +1629,9 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    return rc;
+    /* running off the end of the payload is how we know we are done -
+     * report that to the caller as success, not as the unpack error */
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t mark_modex_complete(struct pmix_peer_t *peer,

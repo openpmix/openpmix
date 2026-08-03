@@ -269,10 +269,8 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk
             if (NULL != app) {
                 /* this is an error - there can be only one app
                  * described in this array */
-                PMIX_RELEASE(app);
-                PMIX_LIST_DESTRUCT(&cache);
-                PMIX_LIST_DESTRUCT(&ncache);
-                return PMIX_ERR_BAD_PARAM;
+                rc = PMIX_ERR_BAD_PARAM;
+                goto release;
             }
             app = PMIX_NEW(pmix_apptrkr_t);
             app->appnum = appnum;
@@ -363,8 +361,15 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk
         pmix_list_append(&app->nodeinfo, &nd->super);
         nd = (pmix_nodeinfo_t *) pmix_list_remove_first(&ncache);
     }
+    /* the tracker now owns (or is) the app - do not release it below */
+    app = NULL;
 
 release:
+    /* every "goto release" above happens before the app is handed to the
+     * job tracker, so an app we built here is still ours to drop */
+    if (NULL != app) {
+        PMIX_RELEASE(app);
+    }
     PMIX_LIST_DESTRUCT(&cache);
     PMIX_LIST_DESTRUCT(&ncache);
 

@@ -841,9 +841,11 @@ pmix_status_t pmix_gds_hash_fetch_arrays(struct pmix_peer_t *pr, pmix_buffer_t *
         return rc;
     }
 
-    /* pack the results */
+    /* pack the results - each kval was removed from the list, so it is
+     * ours to release once it has been packed */
     while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(&kvs))) {
         PMIX_BFROPS_PACK(rc, peer, reply, kv, 1, PMIX_KVAL);
+        PMIX_RELEASE(kv);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             break;
