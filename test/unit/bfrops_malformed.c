@@ -427,19 +427,30 @@ static void test_random_bytes_through_every_unpacker(void)
  * elements than this whole message has bytes" cannot be describing
  * anything the peer sent, and must not be allowed to size an
  * allocation. */
+/* A growable byte accumulator, used to assemble a message by hand while
+ * still letting the real encoder decide every byte of it.
+ *
+ * Note what this does NOT use: PMIx_Data_embed() replaces a buffer's
+ * payload rather than appending to it, so building a message by
+ * embedding one piece after another silently leaves you with only the
+ * last piece. A test built that way still "passes" - a one-byte buffer
+ * is refused by everything - and proves nothing at all. That mistake is
+ * why this accumulator exists. */
+typedef struct {
+    char *bytes;
+    size_t len;
+} wire_acc_t;
+
 /* Append the encoding of ONE value of `type`, without the count the
  * pack driver normally puts in front of it. PMIx_Data_pack always emits
- * [count][values], so packing a single value and dropping the first
- * byte - the flex encoding of the count 1, which is one byte - leaves
- * exactly the bare value. That is the piece needed to assemble a
- * message by hand while still having the real encoder decide every
- * byte of it. */
-static int append_bare(pmix_data_buffer_t *out, const void *val,
-                       pmix_data_type_t type)
+ * [count][values], and the count 1 flex-encodes to a single byte, so
+ * dropping the first byte leaves exactly the bare value. */
+static int append_bare(wire_acc_t *acc, const void *val, pmix_data_type_t type)
 {
     pmix_data_buffer_t tmp;
-    pmix_byte_object_t bo;
     pmix_status_t rc;
+    size_t add;
+    char *grown;
 
     PMIX_DATA_BUFFER_CONSTRUCT(&tmp);
     rc = PMIx_Data_pack(NULL, &tmp, (void *) val, 1, type);
@@ -447,13 +458,37 @@ static int append_bare(pmix_data_buffer_t *out, const void *val,
         PMIX_DATA_BUFFER_DESTRUCT(&tmp);
         return 0;
     }
-    bo.bytes = tmp.base_ptr + 1;          /* skip the count byte */
-    bo.size = tmp.bytes_used - 1;
-    rc = PMIx_Data_embed(out, &bo);
+    add = tmp.bytes_used - 1;               /* skip the count byte */
+    grown = (char *) realloc(acc->bytes, acc->len + add);
+    if (NULL == grown) {
+        PMIX_DATA_BUFFER_DESTRUCT(&tmp);
+        return 0;
+    }
+    acc->bytes = grown;
+    memcpy(acc->bytes + acc->len, tmp.base_ptr + 1, add);
+    acc->len += add;
     PMIX_DATA_BUFFER_DESTRUCT(&tmp);
-    return (PMIX_SUCCESS == rc);
+    return 1;
 }
 
+static int append_raw(wire_acc_t *acc, size_t n)
+{
+    char *grown = (char *) realloc(acc->bytes, acc->len + n);
+
+    if (NULL == grown) {
+        return 0;
+    }
+    acc->bytes = grown;
+    memset(acc->bytes + acc->len, 0, n);
+    acc->len += n;
+    return 1;
+}
+
+/* The specific shape the fuzzer found, kept as its own case so a
+ * regression names itself: a count that says "this array has more
+ * elements than this whole message has bytes" cannot be describing
+ * anything the peer sent, and must not be allowed to size an
+ * allocation. */
 /* The specific shape the fuzzer found, kept as its own case so a
  * regression names itself. A data array is described on the wire by an
  * element type and a count, and the count sizes the allocation the
@@ -469,19 +504,19 @@ static void test_element_count_cannot_exceed_the_message(void)
     int32_t cnt, one = 1;
     uint16_t etype = PMIX_INT64;
     size_t huge = (size_t) 1 << 40;
-    int built;
+    wire_acc_t acc = {NULL, 0};
 
     /* [count of arrays][element type][element count] and then nothing,
      * which is what the unpack driver reads */
-    PMIX_DATA_BUFFER_CONSTRUCT(&buf);
-    built = append_bare(&buf, &one, PMIX_INT32)
-            && append_bare(&buf, &etype, PMIX_UINT16)
-            && append_bare(&buf, &huge, PMIX_SIZE);
-    if (!built) {
-        PMIX_DATA_BUFFER_DESTRUCT(&buf);
+    if (!append_bare(&acc, &one, PMIX_INT32)
+        || !append_bare(&acc, &etype, PMIX_UINT16)
+        || !append_bare(&acc, &huge, PMIX_SIZE)) {
+        free(acc.bytes);
         report("an element count larger than the message is refused", 0);
         return;
     }
+    load_wire(&buf, (const unsigned char *) acc.bytes, acc.len);
+    free(acc.bytes);
 
     memset(&out, 0, sizeof(out));
     cnt = 1;
@@ -492,6 +527,67 @@ static void test_element_count_cannot_exceed_the_message(void)
      * allocated eight terabytes is the rest */
     report("an element count larger than the message is refused",
            PMIX_SUCCESS != rc);
+}
+
+/* A pmix_value_t keeps its payload in a union, and the type tag that
+ * says which member is live comes off the wire. Six registered types
+ * have no member there at all - they are data-array element types - and
+ * their C representation is larger than the whole union, PMIX_PDATA by
+ * 784 bytes. Unpacking one into a value writes that far past its end,
+ * and unpack_kval/unpack_info/unpack_pdata all unpack into a value they
+ * just allocated: a heap overflow whose length and contents both come
+ * from the peer.
+ *
+ * This is the case the fuzz stage above found, kept separately so a
+ * regression names itself. Note it took the fuzzer running everything
+ * in ONE process to surface: a harness that forks per input loses the
+ * corrupted heap with the child, which is exactly what the scratch
+ * version of this did before it was folded in here. */
+static void test_a_value_cannot_carry_an_oversized_type(void)
+{
+    static const pmix_data_type_t too_big[] = {
+        PMIX_VALUE, PMIX_INFO, PMIX_PDATA, PMIX_APP, PMIX_KVAL, PMIX_BUFFER
+    };
+    size_t i;
+    int ok = 1;
+
+    for (i = 0; i < sizeof(too_big) / sizeof(too_big[0]); i++) {
+        pmix_data_buffer_t buf;
+        pmix_value_t *heapval;
+        pmix_status_t rc;
+        int32_t cnt, one = 1;
+        uint16_t tag = (uint16_t) too_big[i];
+        wire_acc_t acc = {NULL, 0};
+
+        /* [count of values][type tag][plenty of plausible bytes] - the
+         * shape unpack_value() reads. The trailing bytes matter: without
+         * them a regression merely runs out of buffer, and what is being
+         * tested is that it never starts writing. */
+        if (!append_bare(&acc, &one, PMIX_INT32)
+            || !append_bare(&acc, &tag, PMIX_UINT16)
+            || !append_raw(&acc, 512)) {
+            free(acc.bytes);
+            ok = 0;
+            break;
+        }
+        load_wire(&buf, (const unsigned char *) acc.bytes, acc.len);
+        free(acc.bytes);
+
+        /* heap-allocated and exactly sizeof(pmix_value_t), so an
+         * overflow lands on the heap rather than harmlessly on a
+         * generous stack buffer */
+        heapval = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        cnt = 1;
+        rc = PMIx_Data_unpack(NULL, &buf, heapval, &cnt, PMIX_VALUE);
+        if (PMIX_SUCCESS == rc) {
+            fprintf(stdout, "    a value claiming to hold %s was accepted\n",
+                    PMIx_Data_type_string(too_big[i]));
+            ok = 0;
+        }
+        free(heapval);
+        PMIX_DATA_BUFFER_DESTRUCT(&buf);
+    }
+    report("a value cannot claim a type larger than its union", ok);
 }
 
 /* ------------------------------------------------------------------ */
@@ -520,6 +616,7 @@ int main(int argc, char **argv)
     test_flex_boundary_values();
     test_flex_stream_of_many_values();
     test_element_count_cannot_exceed_the_message();
+    test_a_value_cannot_carry_an_oversized_type();
     test_random_bytes_through_every_unpacker();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

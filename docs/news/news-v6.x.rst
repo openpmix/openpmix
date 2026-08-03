@@ -7,6 +7,21 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - A message can no longer overflow a pmix_value_t. A value keeps its
+   payload in a 24-byte union and the type tag naming the live member
+   comes off the wire, but six registered types - PMIX_VALUE, PMIX_INFO,
+   PMIX_PDATA, PMIX_APP, PMIX_KVAL and PMIX_BUFFER - have no member
+   there and are far larger than the union, PMIX_PDATA by 784 bytes.
+   Unpacking a value tagged with one of them wrote that far past its
+   end, and the values in question are heap-allocated, so both the
+   length and the contents of the overflow came from the peer. Packing
+   such a value read out of bounds in the same way. Both are now refused
+ - Copying a data array of strings or of byte objects no longer frees an
+   uninitialized pointer when an element of the source is absent. The
+   destination block was allocated without being zeroed and only the
+   elements the source had filled in were written, so the destructor
+   freed whatever the allocator had left in the rest
+ - PMIx_Xfer_procid no longer crashes when either argument is NULL
  - A length taken off the wire can no longer drive an unbounded
    allocation. The element count of a data array sized the receiver's
    allocation with nothing relating it to the size of the message, so a

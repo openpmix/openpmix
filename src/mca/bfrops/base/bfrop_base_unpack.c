@@ -521,6 +521,53 @@ pmix_status_t pmix_bfrops_base_unpack_status(pmix_pointer_array_t *regtypes, pmi
 /*
  * PMIX_VALUE
  */
+/* A pmix_value_t keeps its payload in a union, and the type tag names
+ * which member is live. Six registered types have no member there at
+ * all - they are data-array element types, not things a scalar value
+ * can hold - and their C representation is larger than the whole union,
+ * by as much as 784 bytes in the case of PMIX_PDATA.
+ *
+ * That matters because the type tag comes off the wire. unpack_val()
+ * hands &val->data to the per-type unpacker, so a peer that tags a
+ * value with one of these gets that unpacker to write past the end of
+ * the value - and unpack_kval(), unpack_info() and unpack_pdata() all
+ * unpack into a value they just allocated. Both the length and the
+ * contents of that overflow come from the peer.
+ *
+ * So refuse them. A value tagged with one of these is not something a
+ * correct peer can have sent. */
+static bool value_type_overflows_union(pmix_data_type_t type)
+{
+    switch (type) {
+    case PMIX_VALUE:
+    case PMIX_INFO:
+    case PMIX_PDATA:
+    case PMIX_APP:
+    case PMIX_KVAL:
+    case PMIX_BUFFER:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/* Keep that list honest in both directions. If the union grows past one
+ * of these, or a type that used to fit stops fitting, the build stops
+ * here rather than at a corrupted heap in the field. Types not listed
+ * either fit, or are handled by name in unpack_val() below and never
+ * reach the arm this guards. */
+#define PMIX_VALUE_UNION_SIZE (sizeof(((pmix_value_t *) 0)->data))
+_Static_assert(sizeof(pmix_info_t) > PMIX_VALUE_UNION_SIZE, "PMIX_INFO now fits");
+_Static_assert(sizeof(pmix_pdata_t) > PMIX_VALUE_UNION_SIZE, "PMIX_PDATA now fits");
+_Static_assert(sizeof(pmix_app_t) > PMIX_VALUE_UNION_SIZE, "PMIX_APP now fits");
+_Static_assert(sizeof(pmix_kval_t) > PMIX_VALUE_UNION_SIZE, "PMIX_KVAL now fits");
+_Static_assert(sizeof(pmix_buffer_t) > PMIX_VALUE_UNION_SIZE, "PMIX_BUFFER now fits");
+_Static_assert(sizeof(pmix_value_t) > PMIX_VALUE_UNION_SIZE, "PMIX_VALUE now fits");
+_Static_assert(sizeof(pmix_query_t) <= PMIX_VALUE_UNION_SIZE, "PMIX_QUERY no longer fits");
+_Static_assert(sizeof(pmix_envar_t) <= PMIX_VALUE_UNION_SIZE, "PMIX_ENVAR no longer fits");
+_Static_assert(sizeof(pmix_byte_object_t) <= PMIX_VALUE_UNION_SIZE,
+               "PMIX_BYTE_OBJECT no longer fits");
+
 pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                           pmix_value_t *val)
 {
@@ -649,6 +696,11 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_b
             return ret;
 
         default:
+            if (value_type_overflows_union(val->type)) {
+                pmix_output(0, "UNPACK-PMIX-VALUE: TYPE %s CANNOT BE CARRIED BY A VALUE",
+                            PMIx_Data_type_string(val->type));
+                return PMIX_ERR_BAD_PARAM;
+            }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &val->data, &m, val->type, regtypes);
             if (PMIX_ERR_UNKNOWN_DATA_TYPE == ret) {
                 pmix_output(0, "UNPACK-PMIX-VALUE: UNSUPPORTED TYPE %d", (int) val->type);
