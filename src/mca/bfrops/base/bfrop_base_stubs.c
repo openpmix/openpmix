@@ -170,6 +170,8 @@ static const char *basic_type_string(pmix_data_type_t type)
         return "PMIX_REGEX2";
     case PMIX_ALLOC_INHERIT:
         return "PMIX_ALLOC_INHERIT";
+    case PMIX_NODE_PID:
+        return "PMIX_NODE_PID";
     default:
         return "NOT INITIALIZED";
     }

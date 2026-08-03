@@ -434,6 +434,7 @@ unbounded over-reads, and both are three-byte messages.
 |-------|----------------|
 | [`test/unit/bfrops_darray.c`](../../../test/unit/bfrops_darray.c) | every registered data type used as a data-array element, held across construct / pack / unpack / copy |
 | [`test/unit/bfrops_malformed.c`](../../../test/unit/bfrops_malformed.c) | truncated, lying and hostile input; the flexible-integer encoding boundaries |
+| [`test/unit/bfrops_get_number.c`](../../../test/unit/bfrops_get_number.c) | `PMIx_Value_get_number` numeric conversions, as properties over every source/destination pair |
 | [`test/unit/nested_darray.c`](../../../test/unit/nested_darray.c) | array nesting and the `max_array_depth` cap |
 | [`test/unit/bfrops_regex2.c`](../../../test/unit/bfrops_regex2.c), [`bfrops_alloc_inherit.c`](../../../test/unit/bfrops_alloc_inherit.c) | the two newest `v61` types |
 | [`examples/datatypes.c`](../../../examples/datatypes.c) | one value of every interesting type published by each rank and verified by every other rank |
