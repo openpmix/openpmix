@@ -264,6 +264,7 @@ test/unit/bfrops_helpers
 test/unit/bfrops_null_object
 test/unit/bfrops_malformed
 test/unit/nested_darray
+test/unit/gds_datastore
 test/unit/gds_fallback
 test/unit/pmix_log
 test/unit/collective_status
