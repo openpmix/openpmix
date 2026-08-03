@@ -173,7 +173,14 @@ strtost(
 
     if ((err == ERANGE && val == LLONG_MAX) ||
         (err == ERANGE && val == LLONG_MIN) ||
-        *end != '\0') {
+        end == str || *end != '\0') {
+        return PMIX_ERROR;
+    }
+    // Every caller wants a size or an address. A negative reaches them as
+    // a very large size_t - SIZE_MAX for "-1" - which then fails as an
+    // absurd segment size or an unmappable address, some distance from
+    // the malformed string that produced it. Refuse it here instead.
+    if (val < 0) {
         return PMIX_ERROR;
     }
     *maybe_val = (size_t)val;
