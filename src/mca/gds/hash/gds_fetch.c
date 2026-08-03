@@ -185,6 +185,11 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(pmix_peer_t *peer,
             found = true;
             break;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
+            /* this qualifier is whatever the application passed to
+             * PMIx_Get; a non-string here would be handed to strcmp */
+            if (PMIX_STRING != info[n].value.type) {
+                return PMIX_ERR_TYPE_MISMATCH;
+            }
             hostname = info[n].value.data.string;
             found = true;
             break;

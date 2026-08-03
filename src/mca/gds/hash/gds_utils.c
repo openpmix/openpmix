@@ -109,8 +109,14 @@ static pmix_status_t parse_map(const pmix_value_t *val,
 
     switch (val->type) {
     case PMIX_REGEX:
+        if (NULL == val->data.bo.bytes) {
+            return PMIX_ERR_BAD_PARAM;
+        }
         return parser(val->data.bo.bytes, result);
     case PMIX_REGEX2:
+        if (NULL == val->data.regex2) {
+            return PMIX_ERR_BAD_PARAM;
+        }
         rc = pmix_preg.parse_regex(val->data.regex2, NULL, 0, &decoded);
         if (PMIX_SUCCESS != rc) {
             return rc;
@@ -119,6 +125,9 @@ static pmix_status_t parse_map(const pmix_value_t *val,
         free(decoded);
         return rc;
     case PMIX_STRING:
+        if (NULL == val->data.string) {
+            return PMIX_ERR_BAD_PARAM;
+        }
         return parser(val->data.string, result);
     default:
         return PMIX_ERR_TYPE_MISMATCH;

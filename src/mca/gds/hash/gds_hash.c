@@ -269,7 +269,9 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             flags |= PMIX_HASH_PROC_DATA;
             found = false;
             /* an array of data pertaining to a specific proc */
-            if (PMIX_DATA_ARRAY != info[n].value.type) {
+            if (PMIX_DATA_ARRAY != info[n].value.type ||
+                NULL == info[n].value.data.darray ||
+                NULL == info[n].value.data.darray->array) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 rc = PMIX_ERR_TYPE_MISMATCH;
                 goto release;
@@ -1176,6 +1178,15 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 pmix_list_append(&nd->info, &kp3->super);
             }
         } else if (PMIX_CHECK_KEY(&kptr, PMIX_PROC_DATA)) {
+            /* the caching path checks this; so must the path that takes
+             * the same key from a server's reply */
+            if (PMIX_DATA_ARRAY != kptr.value->type ||
+                NULL == kptr.value->data.darray ||
+                NULL == kptr.value->data.darray->array) {
+                PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
+                PMIX_DESTRUCT(&kptr);
+                return PMIX_ERR_TYPE_MISMATCH;
+            }
             iptr = (pmix_info_t*)kptr.value->data.darray->array;
             sz = kptr.value->data.darray->size;
             /* the array has to say which proc it describes - the host
@@ -1311,7 +1322,9 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
          * store the values on that rank */
         if (PMIX_CHECK_KEY(kv, PMIX_PROC_DATA)) {
             /* an array of data pertaining to a specific proc */
-            if (PMIX_DATA_ARRAY != kv->value->type) {
+            if (PMIX_DATA_ARRAY != kv->value->type ||
+                NULL == kv->value->data.darray ||
+                NULL == kv->value->data.darray->array) {
                 PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
                 return PMIX_ERR_TYPE_MISMATCH;
             }
