@@ -158,10 +158,17 @@ macro for essentially every module function. **Use the macro, not a direct
 `NULL`-function fallbacks. There are four routing patterns; know which one
 you are touching:
 
-1. **Peer-resolved, direct.** Resolve `PMIX_GDS_PEER_MODULE(p)` (or
-   `p->nptr->compat.gds`) and call the function. Examples:
-   `PMIX_GDS_REGISTER_JOB_INFO`, `PMIX_GDS_STORE_JOB_INFO`,
-   `PMIX_GDS_CACHE_JOB_INFO`, `PMIX_GDS_FETCH_KV`, `PMIX_GDS_FETCH_IS_TSAFE`.
+1. **Peer-resolved, direct.** Resolve `PMIX_GDS_PEER_MODULE(p)` and call
+   the function. Examples: `PMIX_GDS_REGISTER_JOB_INFO`,
+   `PMIX_GDS_STORE_JOB_INFO`, `PMIX_GDS_CACHE_JOB_INFO`,
+   `PMIX_GDS_FETCH_KV`, `PMIX_GDS_FETCH_IS_TSAFE`.
+
+   Every peer-resolved macro goes through `PMIX_GDS_PEER_MODULE(p)`, not
+   through `p->nptr->compat.gds` directly. Four of them used to do the
+   latter, which silently ignored the `peer->gds` override — so a client
+   that had just fallen back to another module would have those
+   operations handed back to the module it abandoned. If you add a
+   macro, resolve it the same way.
 
 2. **Peer-resolved with a `NULL`-function fallback.** `PMIX_GDS_STORE_KV`,
    `PMIX_GDS_ASSEMB_KVS_REQ`, and `PMIX_GDS_ACCEPT_KVS_RESP` first resolve
@@ -191,6 +198,11 @@ are convenience string comparisons against the resolved module name — used,
 e.g., to special-case `"hash"` behavior.
 
 ## Selection and lifecycle
+
+The `base/` directory has its own [`AGENTS.md`](base/AGENTS.md), which is
+the authoritative document for the framework infrastructure — the
+selection routine, the exported helpers, and in particular the callback
+contract of the modex envelope walker. The summary below is orientation.
 
 - **`base/gds_base_frame.c`** declares the framework
   (`PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, gds, "PMIx Generalized Data
@@ -363,3 +375,43 @@ golden rule does not usually bite here.
 - **Everything runs on the progress thread.** No new path may call a `gds`
   entry point without first thread-shifting, unless the module's `is_tsafe`
   says otherwise.
+- **Treat every job-level value as untrusted.** The `pmix_info_t` array a
+  module is handed comes from a host environment (which is not this
+  project) or off the wire from a peer (which may be a different release).
+  A key does not guarantee its documented type, an array does not
+  guarantee a non-zero size, and a `char *` in a value union does not
+  guarantee a string. This is where the August 2026 review of this
+  framework found most of what it found — a `PMIX_GDS_MODULE` that was
+  not a usable string, a `PMIX_HOSTNAME` that was not a string, an empty
+  `PMIX_QUALIFIED_VALUE` whose `size - 1` became `SIZE_MAX`, and a
+  server-supplied key-index table indexed past its own announced length.
+  Check the shape before indexing it.
+- **A module's `store_modex` callback must report `PMIX_SUCCESS` for a
+  blob it consumed.** See [`base/AGENTS.md`](base/AGENTS.md) — returning
+  the unpack end-of-buffer code instead silently drops every proc after
+  the first in each server's contribution, and still reports success to
+  the caller.
+
+## Testing
+
+- **`test/unit/gds_datastore`** — module selection (including malformed
+  `PMIX_GDS_MODULE` directives), the base modex envelope walker and its
+  callback contract, node/proc map decoding in all accepted forms at both
+  the top level and nested in a `PMIX_JOB_INFO_ARRAY`, malformed
+  job-level input, and store/fetch scope routing including
+  `PMIX_ERR_EXISTS_OUTSIDE_SCOPE`.
+- **`test/unit/gds_fallback`** — `pmix_gds_base_get_fallback_module()` and
+  `PMIX_GDS_PEER_MODULE()`.
+- **`test/unit/proc_array_id`** — `pmix_gds_base_proc_array_id()`.
+- **`contrib/dockerswarm/run-gds-tests.sh`** — everything a single
+  process cannot reach: `shmem3` itself (it does not build on macOS, so a
+  developer there gives it no compiler coverage at all, let alone
+  runtime), a client fetching a peer's data from a *different* server,
+  and the fixed-address attach failure that drives the GDS fallback.
+
+Component-internal symbols (`pmix_gds_hash_*`, and `pmix_gds_shmem3_*`
+other than the few marked `PMIX_EXPORT`) are hidden in a
+default-visibility build, so a unit test cannot call them. Drive a
+component through the `PMIX_GDS_*` macros — which call its
+function-pointer table — and through the public server API, as
+`gds_datastore` does.

@@ -131,7 +131,33 @@ job-defining keys have already been seen while caching, so duplicates
   `PMIX_RANK_WILDCARD` in `trk->internal`, alongside a proc's own copy of
   its data. Fetches for `rank=WILDCARD` read job-level data; do not assume
   `internal` holds only per-rank entries.
-- **Regex decode depends on `preg`.** `cache_job_info` calls
-  `pmix_preg.parse_nodes` / `parse_procs` (and `parse_regex` for
-  `PMIX_REGEX2`). The node/proc maps are only as correct as the `preg`
-  round-trip; see the `preg` framework doc.
+- **Regex decode depends on `preg`, and goes through one decoder.**
+  A `PMIX_NODE_MAP` / `PMIX_PROC_MAP` value may arrive as a `PMIX_REGEX`
+  byte object, a `PMIX_REGEX2` (which needs `pmix_preg.parse_regex` first),
+  or a plain `PMIX_STRING`. `pmix_gds_hash_parse_nodemap()` /
+  `parse_procmap()` in `gds_utils.c` handle all three; call those rather
+  than reading `value.data.bo.bytes`. The maps nested inside a
+  `PMIX_JOB_INFO_ARRAY` used to be decoded separately and only understood
+  the byte-object form, so a host that used the regex2 form there had its
+  map misread. The node/proc maps are otherwise only as correct as the
+  `preg` round-trip; see the `preg` framework doc.
+- **A stack `pmix_kval_t` that borrows its value must not be
+  `PMIX_DESTRUCT`ed.** Several places here build one as a view of a
+  caller's `pmix_info_t` — `kv.key = ...; kv.value = &info[n].value;` — to
+  hand to `PMIX_BFROPS_PACK`. Such an object was never constructed, so the
+  destructor is reached through an uninitialized `obj_class`, and the kval
+  destructor's next act is to free `kv.value`, which points into the middle
+  of somebody else's array. Free the key and nothing else.
+- **`accept_kvs_resp` returns `PMIX_SUCCESS`, not the unpack code.**
+  Running off the end of the payload is how it knows it is finished;
+  reporting that to the caller as an error is a different statement. The
+  same applies to a `store_modex` callback — see the framework doc.
+
+## Testing
+
+`test/unit/gds_datastore` drives this component (it is the assigned module
+on macOS and wherever `shmem3` is unavailable) through the `PMIX_GDS_*`
+macros and `PMIx_server_register_nspace`: map decoding in every accepted
+form, malformed job-level input, and store/fetch scope routing. The
+component's own symbols are not exported, so nothing can call
+`pmix_gds_hash_*` directly.
