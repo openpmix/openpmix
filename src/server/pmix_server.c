@@ -1864,7 +1864,13 @@ static void _register_resources(int sd, short args, void *cbdata)
             for (m=2; m < npinfo; m++) {
                 kp.key = pinfo[m].key;
                 kp.value = &pinfo[m].value;
-                rc = pmix_globals.mypeer->nptr->compat.gds->store(proc, scope, &kp);
+                /* go through the macro rather than calling the module's
+                 * store slot by hand: a gds component is free to leave
+                 * that slot NULL and rely on the macro routing the
+                 * operation to the local module, which is exactly what
+                 * gds/shmem3 does. We are assigned "hash" today, so this
+                 * happened to work - but only by that coincidence. */
+                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, proc, scope, &kp);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     continue;
