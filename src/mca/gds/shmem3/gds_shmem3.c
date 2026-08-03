@@ -2528,6 +2528,12 @@ cache_connection_info_for_job_shmem3(
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
+        // Falling through here let the keyindex pack below overwrite rc,
+        // so a failure to describe the session segment was reported as
+        // success and the client attached the job segment alone. Note
+        // that "there is no session segment ready to share" is not this
+        // case: pack_shmem3_seg_blob() returns success for that.
+        goto out;
     }
     // PMIx standard attribute index mappings might differ between client/server
     // versions, so pack the server's mappings and share them with its clients.
