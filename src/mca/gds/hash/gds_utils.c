@@ -291,6 +291,12 @@ pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
             pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
             return sptr;
         }
+        /* the job is still on the default session and the caller asked
+         * about a specific one that does not exist. That is "not found",
+         * not the multiple-sessions conflict the test below reports -
+         * falling through to it logged PMIX_ERR_BAD_PARAM for an ordinary
+         * miss. */
+        return NULL;
     } else if (UINT32_MAX == sid) {
         /* it's a wildcard request, so return the job-tracker session */
         return trk->session;
@@ -374,6 +380,10 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
         kp2 = PMIX_NEW(pmix_kval_t);
         kp2->key = strdup(PMIX_NUM_NODES);
         kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        if (NULL == kp2->value) {
+            PMIX_RELEASE(kp2);
+            return PMIX_ERR_NOMEM;
+        }
         kp2->value->type = PMIX_UINT32;
         kp2->value->data.uint32 = PMIx_Argv_count(nodes);
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -489,6 +499,11 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(PMIX_HOSTNAME);
             kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+            if (NULL == kp2->value) {
+                PMIX_RELEASE(kp2);
+                PMIx_Argv_free(procs);
+                return PMIX_ERR_NOMEM;
+            }
             kp2->value->type = PMIX_STRING;
             kp2->value->data.string = strdup(nd->hostname);
             rank = strtol(procs[m], NULL, 10);
@@ -508,6 +523,11 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
                 kp2 = PMIX_NEW(pmix_kval_t);
                 kp2->key = strdup(PMIX_NODEID);
                 kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+                if (NULL == kp2->value) {
+                    PMIX_RELEASE(kp2);
+                    PMIx_Argv_free(procs);
+                    return PMIX_ERR_NOMEM;
+                }
                 kp2->value->type = PMIX_UINT32;
                 pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                                     "[%s:%d] gds:hash:store_map for [%s:%u]: key %s",
@@ -525,6 +545,11 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
                 kp2 = PMIX_NEW(pmix_kval_t);
                 kp2->key = strdup(PMIX_LOCAL_RANK);
                 kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+                if (NULL == kp2->value) {
+                    PMIX_RELEASE(kp2);
+                    PMIx_Argv_free(procs);
+                    return PMIX_ERR_NOMEM;
+                }
                 kp2->value->type = PMIX_UINT16;
                 kp2->value->data.uint16 = m;
                 pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -543,6 +568,11 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
                 kp2 = PMIX_NEW(pmix_kval_t);
                 kp2->key = strdup(PMIX_NODE_RANK);
                 kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+                if (NULL == kp2->value) {
+                    PMIX_RELEASE(kp2);
+                    PMIx_Argv_free(procs);
+                    return PMIX_ERR_NOMEM;
+                }
                 kp2->value->type = PMIX_UINT16;
                 kp2->value->data.uint16 = m;
                 pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -567,6 +597,10 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
     kp2 = PMIX_NEW(pmix_kval_t);
     kp2->key = strdup(PMIX_NODE_LIST);
     kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+    if (NULL == kp2->value) {
+        PMIX_RELEASE(kp2);
+        return PMIX_ERR_NOMEM;
+    }
     kp2->value->type = PMIX_STRING;
     kp2->value->data.string = PMIx_Argv_join(nodes, ',');
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -586,6 +620,10 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
         kp2 = PMIX_NEW(pmix_kval_t);
         kp2->key = strdup(PMIX_JOB_SIZE);
         kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        if (NULL == kp2->value) {
+            PMIX_RELEASE(kp2);
+            return PMIX_ERR_NOMEM;
+        }
         kp2->value->type = PMIX_UINT32;
         kp2->value->data.uint32 = totalprocs;
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -608,6 +646,10 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
         kp2 = PMIX_NEW(pmix_kval_t);
         kp2->key = strdup(PMIX_MAX_PROCS);
         kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        if (NULL == kp2->value) {
+            PMIX_RELEASE(kp2);
+            return PMIX_ERR_NOMEM;
+        }
         kp2->value->type = PMIX_UINT32;
         kp2->value->data.uint32 = totalprocs;
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,

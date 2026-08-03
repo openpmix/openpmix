@@ -202,6 +202,12 @@ pmix_gds_shmem3_get_job_shmem3_by_id(
             *shmem3 = job->shmem3;
             break;
         case PMIX_GDS_SHMEM3_SESSION_ID:
+            // job_construct() allocates the session object, so this is
+            // normally set - but job_destruct() walks every segment id,
+            // including on a job whose construction did not complete.
+            if (NULL == job->session) {
+                return PMIX_ERR_NOT_FOUND;
+            }
             *shmem3 = job->session->shmem3;
             break;
         case PMIX_GDS_SHMEM3_MODEX_ID:
