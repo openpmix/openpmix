@@ -289,6 +289,11 @@ static int group_register(const char *project_name, const char *framework_name,
         PMIX_RELEASE(group);
         return PMIX_ERROR;
     }
+    /* record the group's own index, the way register_variable() records
+     * mbv_index. group_index is declared in the installed header and was
+     * left at the constructor's zero for every group, so anything that
+     * read it back got 0 for all of them. */
+    group->group_index = group_id;
 
     pmix_hash_table_set_value_ptr(&pmix_mca_base_var_group_index_hash, group->group_full_name,
                                   strlen(group->group_full_name), (void *) (uintptr_t) group_id);

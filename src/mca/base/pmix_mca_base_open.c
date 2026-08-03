@@ -57,6 +57,10 @@ bool pmix_mca_base_component_disable_dlopen = false;
 
 static char *pmix_mca_base_verbose = NULL;
 static char *path_from_param = NULL;
+/* our own copy of any "syslogid:" value parsed out of
+ * mca_base_verbose - pmix_output_reopen() duplicates whatever it is
+ * handed, so this only has to stay alive across that one call */
+static char *syslog_ident = NULL;
 
 /*
  * Private functions
@@ -197,12 +201,26 @@ int pmix_mca_base_open(const char *add_path)
         if (NULL != lds.lds_file_suffix) {
             free(lds.lds_file_suffix);
         }
+        if (NULL != syslog_ident) {
+            free(syslog_ident);
+            syslog_ident = NULL;
+        }
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     pmix_output_reopen(0, &lds);
     pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, 0, "mca: base: opening components at %s",
                         pmix_mca_base_component_path);
+    /* pmix_output_reopen() duplicated everything it needed out of lds,
+     * so release the strings we built for it */
     free(lds.lds_prefix);
+    if (NULL != lds.lds_file_suffix) {
+        free(lds.lds_file_suffix);
+        lds.lds_file_suffix = NULL;
+    }
+    if (NULL != syslog_ident) {
+        free(syslog_ident);
+        syslog_ident = NULL;
+    }
 
     /* Open up the component repository */
 
@@ -221,7 +239,7 @@ static void set_defaults(pmix_output_stream_t *lds)
 #if defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H)
     lds->lds_syslog_priority = LOG_INFO;
 #endif /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
-    lds->lds_syslog_ident = "ompi";
+    lds->lds_syslog_ident = "pmix";
     lds->lds_want_stderr = true;
 }
 
@@ -272,7 +290,12 @@ static void parse_verbose(char *e, pmix_output_stream_t *lds)
         } else if (strncasecmp(ptr, "syslogid:", 9) == 0) {
 #if defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H)
             lds->lds_want_syslog = true;
-            lds->lds_syslog_ident = ptr + 9;
+            /* "ptr" points into our local copy of the value, which is
+             * freed before this function returns - the caller uses the
+             * stream description afterwards, so it needs its own copy */
+            free(syslog_ident);
+            syslog_ident = strdup(ptr + 9);
+            lds->lds_syslog_ident = syslog_ident;
 #else
             pmix_output(0, "syslog support requested but not available on this system");
 #endif /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */

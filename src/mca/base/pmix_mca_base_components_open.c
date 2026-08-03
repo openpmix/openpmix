@@ -100,8 +100,15 @@ PMIX_CLASS_INSTANCE(fc_pair_t, pmix_list_item_t,
  */
 int pmix_mca_base_show_load_errors_init(void)
 {
+    int rc = PMIX_SUCCESS;
+
     PMIX_CONSTRUCT(&show_load_errors_include, pmix_list_t);
     PMIX_CONSTRUCT(&show_load_errors_exclude, pmix_list_t);
+
+    if (NULL == pmix_mca_base_component_show_load_errors) {
+        show_load_errors = SHOW_LOAD_ERRORS_ALL;
+        return PMIX_SUCCESS;
+    }
 
     // Check to see if mca_base_component_show_load_errors is a
     // boolean value
@@ -140,13 +147,13 @@ int pmix_mca_base_show_load_errors_init(void)
             char **values = PMIx_Argv_split(pmix_mca_base_component_show_load_errors + pos,
                                             ',');
             if (values == NULL) {
-                ret = PMIX_ERROR;
+                rc = PMIX_ERROR;
                 pmix_show_help("help-pmix-mca-base.txt",
                                "internal error during init", true,
                                __func__, __FILE__, __LINE__,
-                               ret,
+                               rc,
                                "Failed to argv split pmix_mca_base_component_show_load_errors");
-                return ret;
+                return rc;
             }
 
             char **split;
@@ -155,64 +162,73 @@ int pmix_mca_base_show_load_errors_init(void)
             for (int i = 0; values[i] != NULL; ++i) {
                 split = PMIx_Argv_split(values[i], '/');
                 if (NULL == split) {
-                    ret = PMIX_ERROR;
+                    rc = PMIX_ERROR;
                     pmix_show_help("help-pmix-mca-base.txt",
                                    "internal error during init", true,
                                    __func__, __FILE__, __LINE__,
-                                   ret,
+                                   rc,
                                    "Failed to argv split pmix_mca_base_component_show_load_errors value");
-                    return ret;
+                    goto done;
                 }
 
                 argc = PMIx_Argv_count(split);
                 if (0 == argc) {
                     // This should never happen
-                    ret = PMIX_ERROR;
+                    rc = PMIX_ERROR;
                     pmix_show_help("help-pmix-mca-base.txt",
                                    "internal error during init", true,
                                    __func__, __FILE__, __LINE__,
-                                   ret,
+                                   rc,
                                    "Argv split resulted in 0 tokens");
-                    return ret;
+                    PMIx_Argv_free(split);
+                    goto done;
                 }
 
                 if (0 == strlen(split[0])) {
                     // Empty entry (e.g., consecutive commas); silently
                     // skip it
+                    PMIx_Argv_free(split);
                     continue;
                 }
 
                 if (argc > 2) {
-                    ret = PMIX_ERR_BAD_PARAM;
+                    rc = PMIX_ERR_BAD_PARAM;
                     pmix_show_help("help-pmix-mca-base.txt",
                                    "show_load_errors: too many /", true,
                                    values[i]);
-                    return ret;
+                    PMIx_Argv_free(split);
+                    goto done;
                 }
 
                 fcp = PMIX_NEW(fc_pair_t);
                 if (NULL == fcp) {
-                    ret = PMIX_ERR_OUT_OF_RESOURCE;
+                    rc = PMIX_ERR_OUT_OF_RESOURCE;
                     pmix_show_help("help-pmix-mca-base.txt",
                                    "internal error during init", true,
                                    __func__, __FILE__, __LINE__,
-                                   ret,
+                                   rc,
                                    "Failed to alloc new fc_pair_t");
-                    return ret;
+                    PMIx_Argv_free(split);
+                    goto done;
                 }
 
+                /* the fc_pair takes ownership of the individual strings,
+                 * so release only the vector that held them */
                 fcp->framework_name = split[0];
                 if (2 == argc) {
                     fcp->component_name = split[1];
                 }
+                free(split);
 
                 pmix_list_append(list, &fcp->li);
             }
+
+        done:
             PMIx_Argv_free(values);
         }
     }
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 
@@ -247,9 +263,11 @@ bool pmix_mca_base_show_load_errors(const char *framework_name,
     fc_pair_t *item;
     PMIX_LIST_FOREACH(item, list, fc_pair_t) {
         if (0 == strcmp(framework_name, item->framework_name)) {
-            if (NULL == component_name) {
-                // If there's no component name, then we're matching
-                // all components in this framework.
+            if (NULL == item->component_name || NULL == component_name) {
+                // The list entry named a bare framework (no
+                // "/component"), or the caller did not name a
+                // component: either way we are matching all
+                // components in this framework.
                 return value_if_match_found;
             } else if (0 == strcmp(component_name, item->component_name)) {
                 // We matched both the framework *and* component name.

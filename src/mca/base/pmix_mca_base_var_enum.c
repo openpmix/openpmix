@@ -85,11 +85,20 @@ static int pmix_mca_base_var_enum_bool_vfs(pmix_mca_base_var_enum_t *self, const
 
     v = strtol(string_value, &tmp, 10);
     if (*tmp != '\0') {
-        if (0 == strcmp(string_value, "true") || 0 == strcmp(string_value, "t")
-            || 0 == strcmp(string_value, "enabled") || 0 == strcmp(string_value, "yes")) {
+        /* NOTE: this list must stay in step with what
+         * pmix_mca_base_var_enum_bool_dump() advertises as valid - that
+         * dump is what a user sees from "pmix_info --all", so anything
+         * it names has to actually be accepted here. Matching is
+         * case-insensitive because the non-enumerated bool path in
+         * pmix_mca_base_var.c is. */
+        if (0 == strcasecmp(string_value, "true") || 0 == strcasecmp(string_value, "t")
+            || 0 == strcasecmp(string_value, "enabled") || 0 == strcasecmp(string_value, "yes")
+            || 0 == strcasecmp(string_value, "y")) {
             v = 1;
-        } else if (0 == strcmp(string_value, "false") || 0 == strcmp(string_value, "f")
-                   || 0 == strcmp(string_value, "disabled") || 0 == strcmp(string_value, "no")) {
+        } else if (0 == strcasecmp(string_value, "false") || 0 == strcasecmp(string_value, "f")
+                   || 0 == strcasecmp(string_value, "disabled")
+                   || 0 == strcasecmp(string_value, "no")
+                   || 0 == strcasecmp(string_value, "n")) {
             v = 0;
         } else {
             return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
@@ -121,8 +130,13 @@ static int pmix_mca_base_var_enum_bool_dump(pmix_mca_base_var_enum_t *self, char
     char *color_vv = "", *color_reset = "";
 
     if (PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE_COLOR == output_type) {
-        color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
-        color_reset = "\033[0m";
+        /* the array is only populated by pmix_register_params(); an
+         * entry can still be NULL if a caller reached this dump
+         * before that ran, and NULL is not a valid "%s" argument */
+        if (NULL != pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES]) {
+            color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
+            color_reset = "\033[0m";
+        }
     }
 
     ret = pmix_asprintf(out, "%s0%s|%sf%s|%sfalse%s|%sdisabled%s|%sno%s|%sn%s, "
@@ -212,7 +226,11 @@ static int pmix_mca_base_var_enum_verbose_sfv(pmix_mca_base_var_enum_t *self, co
 
     for (int i = 0; verbose_values[i].string; ++i) {
         if (verbose_values[i].value == value) {
-            *string_value = strdup(verbose_values[i].string);
+            /* string_value is documented as optional - honor that here
+             * too, not just on the fall-through path below */
+            if (NULL != string_value) {
+                *string_value = strdup(verbose_values[i].string);
+            }
             return PMIX_SUCCESS;
         }
     }
@@ -241,8 +259,13 @@ static int pmix_mca_base_var_enum_verbose_dump(pmix_mca_base_var_enum_t *self, c
     }
 
     if (PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE_COLOR == output_type) {
-        color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
-        color_reset = "\033[0m";
+        /* the array is only populated by pmix_register_params(); an
+         * entry can still be NULL if a caller reached this dump
+         * before that ran, and NULL is not a valid "%s" argument */
+        if (NULL != pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES]) {
+            color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
+            color_reset = "\033[0m";
+        }
     }
 
     ret = pmix_asprintf(&tmp, "%s, %s0%s-%s100%s", *out,
@@ -287,6 +310,7 @@ int pmix_mca_base_var_enum_create(const char *name, const pmix_mca_base_var_enum
 
     new_enum->enum_name = strdup(name);
     if (NULL == new_enum->enum_name) {
+        PMIX_RELEASE(new_enum);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
@@ -327,6 +351,7 @@ int pmix_mca_base_var_enum_create_flag(const char *name,
 
     new_enum->super.enum_name = strdup(name);
     if (NULL == new_enum->super.enum_name) {
+        PMIX_RELEASE(new_enum);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
@@ -383,8 +408,13 @@ static int enum_dump(pmix_mca_base_var_enum_t *self, char **out,
     }
 
     if (PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE_COLOR == output_type) {
-        color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
-        color_reset = "\033[0m";
+        /* the array is only populated by pmix_register_params(); an
+         * entry can still be NULL if a caller reached this dump
+         * before that ran, and NULL is not a valid "%s" argument */
+        if (NULL != pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES]) {
+            color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
+            color_reset = "\033[0m";
+        }
     }
 
     tmp = NULL;
@@ -421,7 +451,7 @@ static int enum_get_value(pmix_mca_base_var_enum_t *self, int index, int *value,
         return ret;
     }
 
-    if (index >= count) {
+    if (index < 0 || index >= count) {
         return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
     }
 
@@ -429,8 +459,12 @@ static int enum_get_value(pmix_mca_base_var_enum_t *self, int index, int *value,
         *value = self->enum_values[index].value;
     }
 
+    /* the returned string is borrowed from the enumerator, not owned by
+     * the caller - see the get_value contract in pmix_mca_base_var_enum.h.
+     * The bool enumerator's get_value returns a string literal, so a
+     * caller cannot be asked to free what it gets back from this slot. */
     if (string_value) {
-        *string_value = strdup(self->enum_values[index].string);
+        *string_value = self->enum_values[index].string;
     }
 
     return PMIX_SUCCESS;
@@ -535,7 +569,7 @@ static int enum_get_value_flag(pmix_mca_base_var_enum_t *self, int index, int *v
         return ret;
     }
 
-    if (index >= count) {
+    if (index < 0 || index >= count) {
         return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
     }
 
@@ -543,8 +577,9 @@ static int enum_get_value_flag(pmix_mca_base_var_enum_t *self, int index, int *v
         *value = flag_enum->enum_flags[index].flag;
     }
 
+    /* borrowed, not owned - see the note in enum_get_value() */
     if (string_value) {
-        *string_value = strdup(flag_enum->enum_flags[index].string);
+        *string_value = flag_enum->enum_flags[index].string;
     }
 
     return PMIX_SUCCESS;
@@ -576,15 +611,21 @@ static int enum_value_from_string_flag(pmix_mca_base_var_enum_t *self, const cha
         is_int = tmp[0] == '\0';
 
         bool found = false, conflict = false;
+        /* NOTE: "i" indexes the caller's comma-delimited token list,
+         * while "j" indexes this enumerator's flag table -- they are
+         * unrelated, so every reference to the table below must use
+         * "j". Using "i" both matched the wrong entry and read past
+         * the end of the table whenever the caller passed more tokens
+         * than the enumerator has flags. */
         for (int j = 0; j < count; ++j) {
-            if ((is_int && (value == flag_enum->enum_flags[i].flag))
-                || 0 == strcasecmp(flags[i], flag_enum->enum_flags[i].string)) {
+            if ((is_int && (value == flag_enum->enum_flags[j].flag))
+                || 0 == strcasecmp(flags[i], flag_enum->enum_flags[j].string)) {
                 found = true;
 
-                if (flag & flag_enum->enum_flags[i].conflicting_flag) {
+                if (flag & flag_enum->enum_flags[j].conflicting_flag) {
                     conflict = true;
                 } else {
-                    flag |= flag_enum->enum_flags[i].flag;
+                    flag |= flag_enum->enum_flags[j].flag;
                 }
 
                 break;
@@ -668,8 +709,13 @@ static int enum_dump_flag(pmix_mca_base_var_enum_t *self, char **out,
     }
 
     if (PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE_COLOR == output_type) {
-        color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
-        color_reset = "\033[0m";
+        /* the array is only populated by pmix_register_params(); an
+         * entry can still be NULL if a caller reached this dump
+         * before that ran, and NULL is not a valid "%s" argument */
+        if (NULL != pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES]) {
+            color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
+            color_reset = "\033[0m";
+        }
     }
 
     *out = strdup("Comma-delimited list of: ");

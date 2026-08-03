@@ -94,7 +94,10 @@ static pmix_hash_table_t pmix_mca_base_component_repository;
 
 static int process_repository_item(const char *filename, void *data)
 {
-    char *project = (char*)data;
+    /* the project name belongs to our caller (it can even be a stack
+     * buffer - see pmix_mca_base_component_repository_init) so it must
+     * never be freed here */
+    const char *project = (const char *) data;
     char *name;
     char *type;
     pmix_mca_base_component_repository_item_t *ri;
@@ -172,7 +175,6 @@ static int process_repository_item(const char *filename, void *data)
     ri = PMIX_NEW(pmix_mca_base_component_repository_item_t);
     if (NULL == ri) {
         free(base);
-        free(project);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
@@ -185,11 +187,11 @@ static int process_repository_item(const char *filename, void *data)
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    /* pmix_strncpy does not guarantee a \0 */
-    ri->ri_type[PMIX_MCA_BASE_MAX_TYPE_NAME_LEN] = '\0';
+    /* pmix_strncpy always terminates: it copies at most "len" chars and
+     * then writes dest[len] = '\0', so each of these needs one byte more
+     * than the length it is given -- which is exactly how ri_type and
+     * ri_name are sized */
     pmix_strncpy(ri->ri_type, type, PMIX_MCA_BASE_MAX_TYPE_NAME_LEN);
-
-    ri->ri_name[PMIX_MCA_BASE_MAX_TYPE_NAME_LEN] = '\0';
     pmix_strncpy(ri->ri_name, name, PMIX_MCA_BASE_MAX_COMPONENT_NAME_LEN);
 
     pmix_list_append(component_list, &ri->super);
@@ -260,9 +262,9 @@ int pmix_mca_base_component_repository_init(void)
     /* Setup internal structures */
 
 #if PMIX_HAVE_PDL_SUPPORT
-    char **projects = NULL, *pathstr;
-    char project[PMIX_MCA_BASE_MAX_TYPE_NAME_LEN + 1];
-    int m, n;
+    char **projects = NULL, *pathstr, *delim;
+    char project[PMIX_MCA_BASE_MAX_PROJECT_NAME_LEN + 1];
+    int n;
     int ret;
 
     if (!initialized) {
@@ -287,16 +289,29 @@ int pmix_mca_base_component_repository_init(void)
         }
         initialized = true;
     }
-    /* split on semi-colons to find projects */
+    /* split on semi-colons to find projects. Note that
+     * pmix_mca_base_component_path is settable by the user (it is built
+     * from the mca_base_component_path MCA parameter plus whatever a
+     * caller handed to pmix_mca_base_open), so nothing here may assume
+     * the "project@path" form is actually present or that the project
+     * name fits in our buffer. */
     projects = PMIx_Argv_split(pmix_mca_base_component_path, ';');
+    if (NULL == projects) {
+        return PMIX_SUCCESS;
+    }
     for (n=0; NULL != projects[n]; n++) {
         /* look for the '@' to delimit the project name */
-        for (m=0; '@' != projects[n][m]; m++) {
-            project[m] = projects[n][m];
+        delim = strchr(projects[n], '@');
+        if (NULL == delim || (size_t)(delim - projects[n]) > sizeof(project) - 1) {
+            /* not of the expected form, or the project name is too long
+             * to be a legal MCA project name - ignore this entry */
+            pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_INFO, 0,
+                                "mca:base:component_repository_init: ignoring malformed "
+                                "component path entry \"%s\"", projects[n]);
+            continue;
         }
-        project[m] = '\0';
-        ++m;
-        pathstr = &projects[n][m];
+        pmix_strncpy(project, projects[n], (size_t)(delim - projects[n]));
+        pathstr = delim + 1;
         ret = pmix_mca_base_component_repository_add(project, pathstr);
         if (PMIX_SUCCESS != ret) {
             PMIX_DESTRUCT(&pmix_mca_base_component_repository);
@@ -319,6 +334,17 @@ int pmix_mca_base_component_repository_get_components(pmix_mca_base_framework_t 
 {
     *framework_components = NULL;
 #if PMIX_HAVE_PDL_SUPPORT
+    /* The repository hash table is only constructed by
+     * pmix_mca_base_component_repository_init(), which runs inside
+     * pmix_mca_base_open() -- and frameworks can legitimately be opened
+     * before that. pmix_init_util() opens pinstalldirs first, and the
+     * only reason that does not reach this function with an
+     * unconstructed table is the NO_DSO flag on its declaration. Answer
+     * "no dynamic components" from our own state rather than depending
+     * on how pmix_hash_table_t happens to treat a zero capacity. */
+    if (!initialized) {
+        return PMIX_ERR_NOT_FOUND;
+    }
     return pmix_hash_table_get_value_ptr(&pmix_mca_base_component_repository,
                                          framework->framework_name,
                                          strlen(framework->framework_name),
@@ -481,7 +507,13 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
             pmix_asprintf(&tmp,
                           "\n    dlopen error: %s\n    Perhaps a missing symbol, or compiled for a different version of %s?",
                           err_msg, framework->framework_project);
-            err_msg = tmp;
+            /* pmix_asprintf sets tmp to NULL if it fails - keep the
+             * original message in that case rather than reporting
+             * nothing and then feeding NULL to a "%s" */
+            if (NULL != tmp) {
+                free(err_msg);
+                err_msg = tmp;
+            }
         }
         pmix_output_verbose(
             vl, 0, "pmix_mca_base_component_repository_open: unable to open %s: %s (ignored)",
@@ -518,15 +550,16 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
         err_msg = NULL;
         ret = pmix_pdl_lookup(ri->ri_dlhandle, struct_name, (void **) &component_struct, &err_msg);
         if (PMIX_SUCCESS != ret || NULL == component_struct) {
-            if (NULL == err_msg) {
-                err_msg = "pmix_dl_lookup() error message was NULL!";
-            }
             pmix_output_verbose(
                 vl, 0,
                 "pmix_mca_base_component_repository_open: \"%s\" does not appear to be a valid "
                 "%s MCA dynamic component (ignored):\n    %s (ret %d)",
-                ri->ri_base, ri->ri_type, err_msg, ret);
+                ri->ri_base, ri->ri_type,
+                (NULL == err_msg) ? "pmix_dl_lookup() error message was NULL!" : err_msg, ret);
 
+            /* the message is ours to release - it must not be replaced
+             * by a literal first, or we would leak it */
+            free(err_msg);
             ret = PMIX_ERR_BAD_PARAM;
             break;
         }
@@ -636,10 +669,19 @@ void pmix_mca_base_component_repository_finalize(void)
  */
 static void ri_constructor(pmix_mca_base_component_repository_item_t *ri)
 {
+    /* PMIX_NEW does not zero the allocation, so every field has to be
+     * set here. Leaving ri_project/ri_base unset left the destructor
+     * free()ing indeterminate pointers, and leaving ri_refcnt unset
+     * meant retain/release worked from garbage for any component that
+     * was scanned but never opened through this repository. */
     memset(ri->ri_type, 0, sizeof(ri->ri_type));
+    memset(ri->ri_name, 0, sizeof(ri->ri_name));
+    ri->ri_project = NULL;
     ri->ri_dlhandle = NULL;
     ri->ri_component_struct = NULL;
     ri->ri_path = NULL;
+    ri->ri_base = NULL;
+    ri->ri_refcnt = 0;
 }
 
 /*

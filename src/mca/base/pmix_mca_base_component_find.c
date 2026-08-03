@@ -323,11 +323,26 @@ static int component_find_check(pmix_mca_base_framework_t *framework,
             }
         }
 
-        if (!found && pmix_mca_base_component_show_load_errors) {
-            char h[PMIX_MAXHOSTNAMELEN] = {0};
-            gethostname(h, sizeof(h) - 1);
-            pmix_show_help("help-pmix-mca-base.txt", "find-available:not-valid", true, h,
-                           framework->framework_name, requested_component_names[i]);
+        if (!found) {
+            /* Whether to *report* this is one question... NOTE:
+             * pmix_mca_base_component_show_load_errors is the raw string
+             * form of the MCA parameter, and is non-NULL for every
+             * value including "none" (which is the default), so testing
+             * it directly reports even when the user asked for silence
+             * or listed some *other* framework. Ask the parsed form. */
+            if (pmix_mca_base_show_load_errors(framework->framework_name,
+                                               requested_component_names[i])) {
+                char h[PMIX_MAXHOSTNAMELEN] = {0};
+                gethostname(h, sizeof(h) - 1);
+                pmix_show_help("help-pmix-mca-base.txt", "find-available:not-valid", true, h,
+                               framework->framework_name, requested_component_names[i]);
+            }
+
+            /* ...and whether to *abort* is a different one. These are
+             * two independent MCA parameters, so the abort must not sit
+             * inside the reporting test: a user who asked to abort on a
+             * missing component means it whether or not they also asked
+             * to see the message, and the default is not to show it. */
             if (pmix_mca_base_component_abort_on_load_error) {
                 return PMIX_ERR_NOT_FOUND;
             }

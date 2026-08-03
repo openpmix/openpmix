@@ -74,12 +74,18 @@ int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework
     }
 
     if (!(PMIX_MCA_BASE_FRAMEWORK_FLAG_NOREGISTER & framework->framework_flags)) {
+        /* NOTE: every failure below must undo the refcnt bump above, or
+         * the framework can never reach zero in
+         * pmix_mca_base_framework_close() and its components are never
+         * closed. pmix_mca_base_framework_open() does the same on its
+         * own failure path. */
+
         /* register this framework with the MCA variable system */
         ret = pmix_mca_base_var_group_register(framework->framework_project,
                                                framework->framework_name, NULL,
                                                framework->framework_description);
         if (0 > ret) {
-            return ret;
+            goto error;
         }
 
         ret = asprintf(&desc,
@@ -87,7 +93,8 @@ int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework
                        " means use all components that can be found)",
                        framework->framework_name);
         if (0 > ret) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
+            ret = PMIX_ERR_OUT_OF_RESOURCE;
+            goto error;
         }
 
         ret = pmix_mca_base_var_register(framework->framework_project, framework->framework_name,
@@ -95,14 +102,15 @@ int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework
                                          &framework->framework_selection);
         free(desc);
         if (0 > ret) {
-            return ret;
+            goto error;
         }
 
         /* register a verbosity variable for this framework */
         ret = asprintf(&desc, "Verbosity level for the %s framework (default: 0)",
                        framework->framework_name);
         if (0 > ret) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
+            ret = PMIX_ERR_OUT_OF_RESOURCE;
+            goto error;
         }
 
         framework->framework_verbose = PMIX_MCA_BASE_VERBOSE_ERROR;
@@ -111,7 +119,7 @@ int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework
                                                    &framework->framework_verbose);
         free(desc);
         if (0 > ret) {
-            return ret;
+            goto error;
         }
 
         /* check the initial verbosity and open the output if necessary. we
@@ -122,14 +130,14 @@ int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework
         if (NULL != framework->framework_register) {
             ret = framework->framework_register(flags);
             if (PMIX_SUCCESS != ret) {
-                return ret;
+                goto error;
             }
         }
 
         /* register components variables */
         ret = pmix_mca_base_framework_components_register(framework, flags);
         if (PMIX_SUCCESS != ret) {
-            return ret;
+            goto error;
         }
     }
 
@@ -137,6 +145,45 @@ int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework
 
     /* framework did not provide a register function */
     return PMIX_SUCCESS;
+
+error:
+    /* Undo everything this call built, not just the reference count.
+     *
+     * Nothing else can do it for us: with neither REGISTERED nor OPEN
+     * set, pmix_mca_base_framework_close() returns immediately, so
+     * whatever is left on framework_components here is orphaned for
+     * good. And that list can be non-empty on a plain user error rather
+     * than only on an allocation failure -- component_find() appends
+     * every component that matched the selection and only afterwards
+     * does component_find_check() reject the run over a requested name
+     * that matched nothing (which it does when the user asked for
+     * mca_base_abort_on_load_error).
+     *
+     * This mirrors the not-open branch of
+     * pmix_mca_base_framework_close(), which is what would have run had
+     * the registration got far enough to be closeable. */
+    if (0 == --framework->framework_refcnt) {
+        pmix_list_item_t *item;
+        int group_id;
+
+        group_id = pmix_mca_base_var_group_find(framework->framework_project,
+                                                framework->framework_name, NULL);
+        if (0 <= group_id) {
+            (void) pmix_mca_base_var_group_deregister(group_id);
+        }
+
+        while (NULL != (item = pmix_list_remove_first(&framework->framework_components))) {
+            pmix_mca_base_component_list_item_t *cli;
+            cli = (pmix_mca_base_component_list_item_t *) item;
+            pmix_mca_base_component_unload(cli->cli_component, framework->framework_output);
+            PMIX_RELEASE(item);
+        }
+
+        PMIX_DESTRUCT(&framework->framework_components);
+        PMIX_LIST_DESTRUCT(&framework->framework_failed_components);
+        framework_close_output(framework);
+    }
+    return ret;
 }
 
 int pmix_mca_base_framework_open(struct pmix_mca_base_framework_t *framework,
@@ -175,7 +222,24 @@ int pmix_mca_base_framework_open(struct pmix_mca_base_framework_t *framework,
     }
 
     if (PMIX_SUCCESS != ret) {
-        framework->framework_refcnt--;
+        /* Undo the registration this call performed at the top. A bare
+         * refcnt-- is not enough: when this call was the one that
+         * registered the framework, dropping the count back to zero
+         * while REGISTERED stays set leaves a framework that reports
+         * itself registered with nobody holding it -- and the next
+         * pmix_mca_base_framework_close() then decrements 0 to -1,
+         * finds that non-zero, returns success without tearing
+         * anything down, and wedges the framework permanently. (The
+         * assert() at the top of close() catches it, but only in a
+         * build with asserts enabled, which is not the one users get.)
+         *
+         * Closing here does exactly the right thing in both cases: if
+         * someone else already held a reference, close() just gives
+         * ours back; if we were the only holder, it deregisters the
+         * variable group and tears the component lists down. It does
+         * not call the framework's own close function, because OPEN was
+         * never set -- which is correct, since its open failed. */
+        (void) pmix_mca_base_framework_close(framework);
     } else {
         framework->framework_flags |= PMIX_MCA_BASE_FRAMEWORK_FLAG_OPEN;
     }
