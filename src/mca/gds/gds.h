@@ -96,7 +96,7 @@ typedef pmix_status_t (*pmix_gds_base_module_assemb_kvs_req_fn_t)(const pmix_pro
 /* define a macro for server keys answer based on peer */
 #define PMIX_GDS_ASSEMB_KVS_REQ(s, p, r, k, b, c)                              \
     do {                                                                       \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                    \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);                  \
         (s) = PMIX_SUCCESS;                                                    \
         if (NULL == _g->assemb_kvs_req) {                                      \
             if (0 == strcmp(_g->name, "hash")) {                               \
@@ -119,7 +119,7 @@ typedef pmix_status_t (*pmix_gds_base_module_accept_kvs_resp_fn_t)(pmix_buffer_t
 /* define a macro for client key processing from a server response based on peer */
 #define PMIX_GDS_ACCEPT_KVS_RESP(s, p, b)                                      \
     do {                                                                       \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                    \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);                  \
         (s) = PMIX_SUCCESS;                                                    \
         if (NULL == _g->accept_kvs_resp) {                                     \
             if (0 == strcmp(_g->name, "hash")) {                               \
@@ -148,10 +148,14 @@ typedef pmix_status_t (*pmix_gds_base_module_cache_job_info_fn_t)(struct pmix_na
 /* define a convenience macro for caching job info */
 #define PMIX_GDS_CACHE_JOB_INFO(s, p, n, i, ni)                                            \
     do {                                                                                   \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);                              \
         pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS CACHE JOB INFO WITH %s", \
                             __FILE__, __LINE__, _g->name);                                 \
-        (s) = _g->cache_job_info((struct pmix_namespace_t *) (n), (i), (ni));              \
+        if (NULL == _g->cache_job_info) {                                                  \
+            (s) = PMIX_ERR_NOT_SUPPORTED;                                                  \
+        } else {                                                                           \
+            (s) = _g->cache_job_info((struct pmix_namespace_t *) (n), (i), (ni));          \
+        }                                                                                  \
     } while (0)
 
 /* register job-level info - this is provided as a special function
@@ -399,9 +403,10 @@ typedef pmix_status_t (*pmix_gds_base_module_add_nspace_fn_t)(const char *nspace
         pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS ADD NSPACE %s", __FILE__, \
                             __LINE__, (n));                                                 \
         PMIX_LIST_FOREACH (_g, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {  \
-            if (NULL != _g->module->add_nspace) {                                           \
-                _s = _g->module->add_nspace(n, ls, i, ni);                                  \
+            if (NULL == _g->module->add_nspace) {                                           \
+                continue;                                                                   \
             }                                                                               \
+            _s = _g->module->add_nspace(n, ls, i, ni);                                      \
             if (PMIX_SUCCESS != _s) {                                                       \
                 (s) = PMIX_ERROR;                                                           \
             }                                                                               \
@@ -426,9 +431,10 @@ typedef pmix_status_t (*pmix_gds_base_module_del_nspace_fn_t)(const char *nspace
         pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS DEL NSPACE %s", __FILE__, \
                             __LINE__, (n));                                                 \
         PMIX_LIST_FOREACH (_g, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {  \
-            if (NULL != _g->module->del_nspace) {                                           \
-                _s = _g->module->del_nspace(n);                                             \
+            if (NULL == _g->module->del_nspace) {                                           \
+                continue;                                                                   \
             }                                                                               \
+            _s = _g->module->del_nspace(n);                                                 \
             if (PMIX_SUCCESS != _s) {                                                       \
                 (s) = PMIX_ERROR;                                                           \
             }                                                                               \
@@ -438,7 +444,7 @@ typedef pmix_status_t (*pmix_gds_base_module_del_nspace_fn_t)(const char *nspace
 /* define a convenience macro for is_tsafe for fetch operation */
 #define PMIX_GDS_FETCH_IS_TSAFE(s, p)                       \
     do {                                                    \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds; \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p); \
         pmix_output_verbose(1, pmix_gds_base_output,        \
                 "[%s:%d] GDS FETCH IS THREAD SAFE WITH %s", \
                             __FILE__, __LINE__, _g->name);  \

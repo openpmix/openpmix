@@ -77,6 +77,7 @@ static pmix_status_t pmix_gds_close(void)
 
     if (NULL != pmix_gds_globals.all_mods) {
         free(pmix_gds_globals.all_mods);
+        pmix_gds_globals.all_mods = NULL;
     }
     return pmix_mca_base_framework_components_close(&pmix_gds_base_framework, NULL);
 }
