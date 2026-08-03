@@ -874,3 +874,104 @@ and then drives `examples/datatypes` through a single `simptest` server.
 That is not a substitute for the swarm stage — one server means one peer
 module and one negotiated buffer type — but it catches an outright break
 before you spend ten containers on it.
+
+---
+
+## 16. The `src/mca/gds` suite (`run-gds-tests.sh`)
+
+```sh
+./run-gds-tests.sh linux    # ten-container swarm
+./run-gds-tests.sh macos    # the single-host subset
+```
+
+`gds` is the datastore: everything a process `PMIx_Put`s, every
+job-level value a launcher hands a server, and every remote value that
+arrives through a fence lives in, and comes back out of, a `gds` module.
+Two things about it are invisible to `make check`, and they are not the
+same thing.
+
+### Why this suite exists
+
+**`gds/shmem3` is not built on macOS at all.** Its `configure.m4` gates
+on a 64-bit, non-Apple host, and unlike the other environment-specific
+components it carries no `|| test "$pmix_testbuild" = "1"` escape — so
+`--enable-test-build` does not reach it either. A developer working on a
+Mac gets *no* compiler coverage of that component: not a weaker test,
+none. Since `shmem3` outbids `hash` wherever it runs, that is the module
+serving most real Linux jobs. The first stage here simply compiles it,
+in two configurations, with `--enable-devel-check` so a warning is an
+error; everything downstream of that is a bonus.
+
+**The datastore's job is to answer for processes that are not here.** A
+rank asking for a value its own node already holds is served out of the
+local tables and never touches the modex machinery. So a single-node run
+is self-consistent under a datastore that drops every remote proc — and
+that is not hypothetical. `shmem3`'s `store_modex` callback returned the
+unpack "ran off the end" code where the base envelope walker expects
+`PMIX_SUCCESS`; the walker reads any other status as a failure of the
+contribution it is walking, so the component stored the **first** proc of
+each server's contribution, discarded the rest, and reported success.
+Nothing in `test/unit` could see it.
+
+That is why every launch below uses one slot per host
+(`--host node1:1,node2:1,… --map-by node`). With two ranks on a node,
+half the gets are answered locally and the run can be green with the
+remote half broken — the same reasoning as `run-bfrops-tests.sh` (§15).
+
+### Stages
+
+| Stage | What it covers |
+|-------|----------------|
+| build | The source is copied into a container, `autogen.pl`'d once, and configured twice — default and `--enable-mca-dso`. Each build must produce `shmem3` objects, list `shmem3` in `static-components.h`, and pass `gds_datastore`, `gds_fallback` and `proc_array_id`. |
+| collective | `examples/datatypes` over 2, 4 and 8 separate PMIx servers: put, commit, fence with `PMIX_COLLECT_DATA`, then verify every peer's values. This is the modex path. |
+| hash | The same geometry with `PMIX_MCA_gds=hash`, so both shipped components are covered and a divergence between them shows up as one passing and the other failing. |
+| direct | `examples/dmodex`: commit with no collective fence, so each get is answered by the owning proc's server on demand. That is the `assemb_kvs_req` / `accept_kvs_resp` path — the module slots `shmem3` leaves `NULL` and routes to the local module. |
+| fallback | The collective run again with `PMIX_MCA_gds_shmem3_force_client_attach_failure=1`, so every client's fixed-address attach fails and it has to switch to the next module and re-request its job data. A regression here is a failed `PMIx_Init`, not a wrong answer. |
+
+The build stage copies the tree into the container rather than
+configuring a VPATH build against the read-only mount, which is what
+`run-bfrops-tests.sh` does. That costs one `autogen.pl` per run and buys
+not caring whether the developer's srcdir has been configured in place —
+which most have, and which blocks a VPATH build two different ways (§15).
+Skipping the headline stage on the ordinary developer configuration would
+defeat the runner.
+
+### The environment goes to two places, and they are different
+
+An MCA parameter read by the *client* library has to reach the app
+process, which is `prterun -x`. One that has to reach the PMIx server
+inside each `prted` has to be in the environment `prterun` itself was
+started with, because that is what PRRTE forwards to the daemons it
+launches. `run_across_nodes()` sets both; dropping either gives a run
+that looks configured and is not.
+
+### What it deliberately does not cover, and one overlap
+
+`examples/datatypes` is also driven cross-node by `run-bfrops-tests.sh`.
+That is the same program with a different subject: there it is asked
+whether every data type survives the *encoders*, here whether the
+*datastore* keeps and returns what it was given — which is why this
+runner repeats the geometry under three `gds` configurations and that one
+does not. If you change `datatypes.c`, both suites are downstream.
+
+`examples/client.c` is **not** used here, and should not be added. It
+asks for `PMIX_LOCAL_PROCS`, which no part of PMIx stores — a host is
+expected to supply it and PRRTE does not — and on the resulting
+`PMIX_ERR_NOT_FOUND` it jumps over the entire put/fence/get section it
+exists for and returns 0. It reports success having tested nothing.
+
+Nothing here covers the *cross-version* half of `shmem3`: a server and a
+client built from different releases mapping the same segment. The
+layout stamp (`PMIX_GDS_SHMEM3_LAYOUT_ID`) and the component rename
+discipline that guard it are described in
+[`src/mca/gds/shmem3/AGENTS.md`](../../src/mca/gds/shmem3/AGENTS.md); a
+test for them needs two PMIx installs, which this harness does not build.
+
+### macOS mode
+
+`./run-gds-tests.sh macos` runs the three unit programs in the local tree
+and drives `examples/datatypes` through a single `simptest` server. It
+says up front that `shmem3` does not exist on the platform. One server
+means every get is answered out of the local datastore, which is exactly
+the case the multi-node stages exist to get past — so treat it as a
+cheap "did I break it outright" pass, not as coverage.
