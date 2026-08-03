@@ -67,7 +67,8 @@ They fall into three groups.
 
 **Self-contained library tests** — no server, no launcher, no network.
 These run anywhere and are the bulk of the suite: `compress`, `preg`,
-`bfrops_regex2`, `bfrops_alloc_inherit`, `info_support`, `iof_pattern`,
+`bfrops_regex2`, `bfrops_alloc_inherit`, `bfrops_darray`,
+`bfrops_malformed`, `info_support`, `iof_pattern`,
 `hwloc_datatype`, `tracker_match`, `trk_complete`, `collective_status`,
 `collect_job_info`, `progress_threads`, `pmix_log`.
 
@@ -134,6 +135,68 @@ pointers had survived in them:
   this case with junk locality strings passes against the unfixed
   library and proves nothing. Both forms are in the test so the
   distinction stays visible.
+
+### `bfrops_darray` and `bfrops_malformed` — the `src/mca/bfrops` regression tests
+
+Both come from the August 2026 review of
+[`src/mca/bfrops`](../../src/mca/bfrops/base/AGENTS.md), which lists the
+defects individually. What is worth knowing here is why they are two
+programs rather than one, because they assert different kinds of thing.
+
+[`bfrops_darray.c`](bfrops_darray.c) is a **consistency sweep**, not a
+list of cases. For a `pmix_data_array_t` the tree has to answer six
+questions per element type — how to pack one, unpack one, copy one, how
+wide an element is, how to copy an array of them, how to release an
+array of them — in six different places, and nothing forces the last
+three to be written. A type with pack, unpack and copy but no arm in
+`pmix_bfrops_base_tma_data_array_construct()` looks finished: it works
+as a scalar and packs fine inside an array, and only fails on the way
+back. Eighteen registered types were in that state. So the test walks
+`all_types[]` and holds construct, pack/unpack and copy against each
+other for every one of them. **When you add a data type, add it to
+`all_types[]`** — that is the only thing keeping the six answers in
+step.
+
+Two entries in that list are deliberate exceptions and should stay
+documented rather than quietly dropped:
+
+- `PMIX_REGEX` is absent. The packer strides such an array as `char *`
+  and the destructor strides it as `pmix_byte_object_t`; those differ in
+  width, so arrays of it are intentionally not constructible until
+  somebody settles which stride is right. See the note in
+  `data_array_construct()`.
+- `PMIX_PROC_CPUSET` and `PMIX_TOPO` are skipped by the *copy* sweep
+  because an all-zero hwloc object is not a valid one, so copying it
+  legitimately declines. They get their own case
+  (`test_uncopyable_cpuset_array_declines_cleanly`) asserting that it
+  declines **without freeing the element block twice**, which is what it
+  used to do — an abort, not a failure.
+
+[`bfrops_malformed.c`](bfrops_malformed.c) asserts one contract:
+**no input may make the unpacker read outside the buffer it was given.**
+Returning an error is fine and returning a wrong value is tolerable;
+walking off the end is not. That framing matters when you extend it —
+several cases pass whether the library refuses or answers, and they are
+written that way on purpose.
+
+The two crashers it pins down are both three-byte messages. A count that
+claims a hundred values in front of one byte of them used to keep
+decoding past the allocation; and `flex_unpack_integer()` bounded its
+loop with `flex_size - 1`, which is `SIZE_MAX` when nothing is left, so
+it read until it happened to find a byte without a continuation flag.
+Against the unfixed library the first of those segfaults when the
+payload ends on a page boundary. `test_every_truncation_of_a_real_message`
+is the broad net over the same class: it packs a well-formed message and
+cuts it at every offset, which reaches decoder states nobody would think
+to write down.
+
+Neither program needs a server, and neither can reach the two things a
+*peer* decides — which bfrops module encodes a message, and whether the
+buffer is described. A single-process round trip is self-consistent
+under either, so it cannot fail on them. That half is
+[`examples/datatypes.c`](../../examples/datatypes.c), driven across
+separate nodes by
+[`contrib/dockerswarm/run-bfrops-tests.sh`](../../contrib/dockerswarm/AGENTS.md).
 
 ### `common_api` — the `src/common` regression test
 

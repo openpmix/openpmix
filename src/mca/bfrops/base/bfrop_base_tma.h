@@ -88,21 +88,33 @@ char* pmix_bfrops_base_tma_buffer_extend(pmix_buffer_t *buffer,
     }
 
     if (NULL != buffer->base_ptr) {
+        char *newbase;
+
         pack_offset = ((char *) buffer->pack_ptr) - ((char *) buffer->base_ptr);
         unpack_offset = ((char *) buffer->unpack_ptr) - ((char *) buffer->base_ptr);
-        buffer->base_ptr = (char *) pmix_tma_realloc(tma, buffer->base_ptr, to_alloc);
+        /* check the reallocation *before* touching it - the old code
+         * memset through the result and only then tested it for NULL,
+         * so an allocation failure here was a NULL dereference rather
+         * than the out-of-resource return the callers all handle. Keep
+         * the original block on failure so the buffer is still valid
+         * (and still freeable) when we hand back NULL. */
+        newbase = (char *) pmix_tma_realloc(tma, buffer->base_ptr, to_alloc);
+        if (NULL == newbase) {
+            return NULL;
+        }
+        buffer->base_ptr = newbase;
         memset(buffer->base_ptr + pack_offset, 0, to_alloc - buffer->bytes_allocated);
     } else {
         pack_offset = 0;
         unpack_offset = 0;
         buffer->bytes_used = 0;
         buffer->base_ptr = (char *)pmix_tma_malloc(tma, to_alloc);
+        if (NULL == buffer->base_ptr) {
+            return NULL;
+        }
         memset(buffer->base_ptr, 0, to_alloc);
     }
 
-    if (NULL == buffer->base_ptr) {
-        return NULL;
-    }
     buffer->pack_ptr = ((char *) buffer->base_ptr) + pack_offset;
     buffer->unpack_ptr = ((char *) buffer->base_ptr) + unpack_offset;
     buffer->bytes_allocated = to_alloc;
@@ -2630,9 +2642,22 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
 
     /* process based on type of array element */
     switch (src->type) {
+    /* The single-byte enums share this arm with the plain byte types.
+     * Every one of them is packed, unpacked, and allocated by
+     * pmix_bfrops_base_tma_data_array_construct() as a one-byte
+     * element, so leaving any of them to the default arm below made an
+     * array copyable only in one direction: it would pack and unpack
+     * fine but PMIX_INFO_XFER of it returned
+     * PMIX_ERR_UNKNOWN_DATA_TYPE. */
     case PMIX_UINT8:
     case PMIX_INT8:
     case PMIX_BYTE:
+    case PMIX_PROC_STATE:
+    case PMIX_ALLOC_DIRECTIVE:
+    case PMIX_ALLOC_INHERIT:
+    case PMIX_RESBLOCK_DIRECTIVE:
+    case PMIX_JOB_STATE:
+    case PMIX_LINK_STATE:
         p->array = pmix_tma_malloc(tma, src->size);
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
@@ -2642,6 +2667,10 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         break;
     case PMIX_UINT16:
     case PMIX_INT16:
+    case PMIX_DATA_TYPE:
+    case PMIX_IOF_CHANNEL:
+    case PMIX_LOCTYPE:
+    case PMIX_STOR_ACCESS_TYPE:
         p->array = pmix_tma_malloc(tma, src->size * sizeof(uint16_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
@@ -2660,6 +2689,10 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         break;
     case PMIX_UINT64:
     case PMIX_INT64:
+    case PMIX_DEVTYPE:
+    case PMIX_STOR_MEDIUM:
+    case PMIX_STOR_ACCESS:
+    case PMIX_STOR_PERSIST:
         p->array = pmix_tma_malloc(tma, src->size * sizeof(uint64_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
@@ -2867,7 +2900,10 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         break;
     }
     case PMIX_BYTE_OBJECT:
-    case PMIX_COMPRESSED_STRING: {
+    case PMIX_COMPRESSED_STRING:
+    case PMIX_COMPRESSED_BYTE_OBJECT: {
+        /* PMIX_REGEX is deliberately NOT here - see the note in
+         * pmix_bfrops_base_tma_data_array_construct() */
         p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_byte_object_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
@@ -3114,9 +3150,15 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
             // TODO(skg) Add TMA support when necessary.
             rc = pmix_hwloc_copy_cpuset(&pcpuset[n], &scpuset[n]);
             if (PMIX_SUCCESS != rc) {
-                // TODO(skg) Add TMA support when necessary.
-                pmix_hwloc_release_cpuset(pcpuset, src->size);
-                pmix_tma_free(tma, p->array);
+                /* release the elements *and* the block exactly once, and
+                 * through the allocator that produced it. The previous
+                 * code called pmix_hwloc_release_cpuset - which already
+                 * free()s the block - and then freed p->array again,
+                 * corrupting the heap on any source element that is not
+                 * a valid hwloc cpuset (an all-zero one, for instance,
+                 * which PMIx_Data_array_create hands back). */
+                pmix_bfrops_base_tma_cpuset_free(pcpuset, src->size, tma);
+                p->array = NULL;
                 break;
             }
         }
@@ -3268,6 +3310,64 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         pmix_nspace_t *const sns = (pmix_nspace_t *)src->array;
         for (size_t n = 0; n < src->size; n++) {
             pmix_bfrops_base_tma_load_nspace(pns[n], sns[n], tma);
+        }
+        break;
+    }
+    case PMIX_NODE_PID: {
+        p->array = pmix_bfrops_base_tma_node_pid_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_node_pid_t *const pnp = (pmix_node_pid_t *)p->array;
+        pmix_node_pid_t *const snp = (pmix_node_pid_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != snp[n].hostname) {
+                pnp[n].hostname = pmix_tma_strdup(tma, snp[n].hostname);
+            }
+            pnp[n].nodeid = snp[n].nodeid;
+            pnp[n].pid = snp[n].pid;
+        }
+        break;
+    }
+    case PMIX_DATA_BUFFER: {
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_data_buffer_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_data_buffer_t *const pdb = (pmix_data_buffer_t *)p->array;
+        pmix_data_buffer_t *const sdb = (pmix_data_buffer_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            /* PMIx_Data_copy_payload, not the internal
+             * pmix_bfrops_base_tma_copy_payload: the two buffer types are
+             * NOT layout-compatible. pmix_buffer_t leads with a
+             * pmix_object_t and a type field that pmix_data_buffer_t does
+             * not have, so casting one to the other reads every field
+             * from the wrong offset. */
+            rc = PMIx_Data_copy_payload(&pdb[n], &sdb[n]);
+            if (PMIX_SUCCESS != rc) {
+                break;
+            }
+        }
+        break;
+    }
+    case PMIX_TOPO: {
+        p->array = pmix_bfrops_base_tma_topology_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_topology_t *const ptp = (pmix_topology_t *)p->array;
+        pmix_topology_t *const stp = (pmix_topology_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            // TODO(skg) Add TMA support when necessary.
+            rc = pmix_hwloc_copy_topology(&ptp[n], &stp[n]);
+            if (PMIX_SUCCESS != rc) {
+                pmix_bfrops_base_tma_topology_free(ptp, src->size, tma);
+                p->array = NULL;
+                break;
+            }
         }
         break;
     }
@@ -3624,6 +3724,12 @@ void pmix_bfrops_base_tma_data_array_destruct(pmix_data_array_t *d,
         case PMIX_REGEX2:
             pmix_bfrops_base_tma_regex2_free((pmix_regex2_t *)d->array, d->size, tma);
             break;
+        case PMIX_NODE_PID:
+            /* each element owns a heap-allocated hostname, so the
+             * default "just free the block" arm below leaked one string
+             * per element */
+            pmix_bfrops_base_tma_node_pid_free((pmix_node_pid_t *)d->array, d->size, tma);
+            break;
         case PMIX_REGEX: {
             pmix_byte_object_t *const bo = (pmix_byte_object_t *)d->array;
             for (size_t n = 0; n < d->size; n++) {
@@ -3706,8 +3812,25 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
             p->array = pmix_bfrops_base_tma_app_create(num, tma);
 
         } else if (PMIX_BYTE_OBJECT == type ||
-                   PMIX_COMPRESSED_STRING == type) {
+                   PMIX_COMPRESSED_STRING == type ||
+                   PMIX_COMPRESSED_BYTE_OBJECT == type) {
             p->array = pmix_bfrops_base_tma_byte_object_create(num, tma);
+
+            /* PMIX_REGEX is intentionally absent from this function.
+             * The tree does not agree on what an *array* of them looks
+             * like: pmix_bfrops_base_pack_regex()/_unpack_regex() stride
+             * the block as char* (one regex string per element), while
+             * pmix_bfrops_base_tma_data_array_destruct() strides it as
+             * pmix_byte_object_t. Those differ in width, so one of the
+             * two walks off the end. The two views coincide for a
+             * scalar value - bo.bytes is the first member of the union,
+             * which is why PMIX_REGEX values work everywhere else - and
+             * they only diverge for arrays. Rather than pick a side and
+             * silently change what an array of regexes means, leave it
+             * unconstructible (size 0, NULL array), which is what it has
+             * always been and which fails cleanly. Resolving it means
+             * settling on one stride and fixing pack, unpack, copy, and
+             * destruct together. */
 
         } else if (PMIX_ALLOC_DIRECTIVE == type ||
                    PMIX_PROC_STATE == type ||
@@ -3717,9 +3840,20 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
                    PMIX_BYTE == type ||
                    PMIX_INT8 == type ||
                    PMIX_UINT8 == type ||
-                   PMIX_POINTER == type) {
+                   PMIX_COMMAND == type ||
+                   PMIX_JOB_STATE == type ||
+                   PMIX_ALLOC_INHERIT == type ||
+                   PMIX_RESBLOCK_DIRECTIVE == type) {
             p->array = pmix_tma_malloc(tma, num * sizeof(int8_t));
             memset(p->array, 0, num * sizeof(int8_t));
+
+        } else if (PMIX_POINTER == type) {
+            /* one pointer per element, not one byte: this array used to
+             * be sized as int8_t while copy_darray (correctly) reads
+             * sizeof(char*) per element, so copying one over-read the
+             * block by a factor of sizeof(void*) */
+            p->array = pmix_tma_malloc(tma, num * sizeof(void *));
+            memset(p->array, 0, num * sizeof(void *));
 
         } else if (PMIX_STRING == type) {
             p->array = pmix_tma_malloc(tma, num * sizeof(char*));
@@ -3741,6 +3875,8 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
 
         } else if (PMIX_IOF_CHANNEL == type ||
                    PMIX_DATA_TYPE == type ||
+                   PMIX_LOCTYPE == type ||
+                   PMIX_STOR_ACCESS_TYPE == type ||
                    PMIX_INT16 == type ||
                    PMIX_UINT16 == type) {
             p->array = pmix_tma_malloc(tma, num * sizeof(int16_t));
@@ -3754,7 +3890,11 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
             memset(p->array, 0, num * sizeof(int32_t));
 
         } else if (PMIX_INT64 == type ||
-                   PMIX_UINT64 == type) {
+                   PMIX_UINT64 == type ||
+                   PMIX_DEVTYPE == type ||
+                   PMIX_STOR_MEDIUM == type ||
+                   PMIX_STOR_ACCESS == type ||
+                   PMIX_STOR_PERSIST == type) {
             p->array = pmix_tma_malloc(tma, num * sizeof(int64_t));
             memset(p->array, 0, num * sizeof(int64_t));
 
@@ -3813,7 +3953,40 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
         } else if (PMIX_PROC_CPUSET == type) {
             p->array = pmix_bfrops_base_tma_cpuset_create(num, tma);
 
+        } else if (PMIX_TOPO == type) {
+            p->array = pmix_bfrops_base_tma_topology_create(num, tma);
+
+        } else if (PMIX_NODE_PID == type) {
+            p->array = pmix_bfrops_base_tma_node_pid_create(num, tma);
+
+        } else if (PMIX_REGEX2 == type) {
+            p->array = pmix_bfrops_base_tma_regex2_create(num, tma);
+
+        } else if (PMIX_DATA_BUFFER == type) {
+            p->array = pmix_tma_calloc(tma, num, sizeof(pmix_data_buffer_t));
+
+        } else if (PMIX_KVAL == type) {
+            p->array = pmix_tma_calloc(tma, num, sizeof(pmix_kval_t));
+
+        } else if (PMIX_BUFFER == type) {
+            pmix_buffer_t *pb = (pmix_buffer_t *)pmix_tma_calloc(tma, num,
+                                                                 sizeof(pmix_buffer_t));
+            if (NULL != pb) {
+                for (size_t m = 0; m < num; m++) {
+                    PMIX_CONSTRUCT(&pb[m], pmix_buffer_t, tma);
+                }
+            }
+            p->array = pb;
+
         } else {
+            /* Nothing here knows how big an element of this type is, so
+             * we cannot hand back an array of them. Say so through the
+             * descriptor - size 0 with a NULL array - which is what
+             * every caller checks. If you are adding a data type, this
+             * branch and pmix_bfrops_base_tma_data_array_destruct() are
+             * a matched pair: a type the destructor knows how to release
+             * but this function cannot allocate is a type that silently
+             * fails to unpack. */
             p->array = NULL;
             p->size = 0;
         }

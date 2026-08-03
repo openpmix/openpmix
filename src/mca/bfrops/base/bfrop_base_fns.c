@@ -49,6 +49,11 @@ char* pmix_bfrops_base_get_components(void)
     // cycle across the available components
     PMIX_LIST_FOREACH(mod, &pmix_bfrops_globals.actives, pmix_bfrops_base_active_module_t) {
         ptr = strrchr(mod->component->base.pmix_mca_component_name, 'v');
+        if (NULL == ptr) {
+            /* every component is named "vNN", but do not turn a naming
+             * slip in a new component into a NULL dereference here */
+            continue;
+        }
         ++ptr;
         pmix_asprintf(&tmp, "PMIX_SERVER_URI%s", ptr);
         PMIx_Argv_append_nosize(&list, tmp);

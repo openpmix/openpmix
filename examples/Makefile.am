@@ -89,7 +89,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   simple simple_server abort group_die connect_die group_leave \
                   group_destruct_die group_invite group_invite_timeout group_invite_decline \
                   group_invite_abort group_invite_others group_invite_suppress group_invite_nb topology \
-                  spawn_reuse group_badinfo
+                  spawn_reuse group_badinfo datatypes
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -311,6 +311,10 @@ simple_server_SOURCES = simple_server.c examples.h
 simple_server_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 simple_server_LDADD = $(top_builddir)/src/libpmix.la
 
+datatypes_SOURCES = datatypes.c examples.h
+datatypes_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+datatypes_LDADD = $(top_builddir)/src/libpmix.la
+
 abort_SOURCES = abort.c examples.h
 abort_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 abort_LDADD = $(top_builddir)/src/libpmix.la
@@ -325,4 +329,4 @@ distclean-local:
         group_invite_abort group_invite_suppress group_invite_nb \
         spawn_group resolve multi_nspace_group pub2 toolqry \
         simple_resolve pubstress monitor monitor_remote \
-        simple simple_server abort
+        simple simple_server abort datatypes

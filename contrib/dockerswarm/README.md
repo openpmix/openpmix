@@ -32,6 +32,8 @@ is only the nickname.
 | `run-client-tests.sh` | Runs the `src/client` API surface across the swarm, so the ranks sit behind **different** PMIx servers. This is the multi-node case for the client library: everything in `src/client` either answers locally or round-trips to a server, and a singleton exercises none of the second half. See §12. |
 | `run-common-tests.sh` | Runs the `src/common` role-shared APIs (query, log, job control, allocation, monitoring, IOF) across the swarm. This is the multi-node case for the shared layer: like `src/client`, almost everything in `src/common` either answers locally or round-trips to a server or host, and the monitor's local/remote split cannot even be entered on one node. See §13. |
 | `run-class-tests.sh` | Runs `test/unit/class` in the two configurations a developer's own `make check` does not cover: **Linux**, and **`--disable-debug`** with default symbol visibility. Deliberately *not* a multi-node test — see §11. |
+| `run-mca-tests.sh` | Runs `test/unit/mca` plus the hostile MCA-parameter cases in the `--enable-mca-dso` configuration, where the component repository is actually exercised. See §14. |
+| `run-bfrops-tests.sh` | Runs the `src/mca/bfrops` unit programs on Linux in an optimized `--enable-mca-dso` build, **and** moves one value of every PMIx data type between ranks on *different* nodes. The only place the peer-assigned bfrops module and the negotiated buffer type are observable at all. See §15. |
 | `swarm-common.sh` | Sourced by all seven scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
 | `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`). |
 | `Dockerfile` | Base image: toolchain, PRRTE master *source* (autogen'd), SSH wiring, node entrypoint. It contains **no** PMIx and **no** built PRRTE. |
@@ -807,3 +809,68 @@ against it. It skips the second half if the source directory is
 configured in place, because autoconf refuses a VPATH build alongside a
 `config.status` in the srcdir — and a test script has no business running
 `make distclean` on a working tree to get around that.
+
+## 15. The `src/mca/bfrops` suite (`run-bfrops-tests.sh`)
+
+```sh
+./run-bfrops-tests.sh linux    # unit programs in two builds, then across nodes
+./run-bfrops-tests.sh macos    # the single-process half only
+```
+
+`bfrops` is the serialization engine: everything that leaves a PMIx
+process passes through it. The suite has two halves, and they are worth
+separating because only one of them needs the swarm.
+
+**The single-process half.** `test/unit/bfrops_darray` and
+`test/unit/bfrops_malformed` (plus `bfrops_regex2`,
+`bfrops_alloc_inherit` and `nested_darray`) pack and unpack inside one
+process. Stages 1 and 2 build and run them twice: once in the tree
+`build.sh` configured, and once in a separate `--enable-mca-dso`,
+`--disable-debug` tree. That is not a multi-node claim — it is Linux, an
+optimized build, and every component a real `dlopen`'d plugin, none of
+which a developer on macOS gets.
+
+**The cross-server half, which genuinely needs separate nodes.** Two
+things about any pack are decided by the *peer*, not by the process
+doing the packing:
+
+- **which module encodes.** `PMIX_BFROPS_PACK` dereferences
+  `peer->nptr->compat.bfrops` — the module
+  `pmix_bfrops_base_assign_module()` picked from the version string the
+  `ptl` handshake exchanged. Inside one process that is always this
+  build's newest component, so the assignment never really happens.
+- **whether the buffer is described.** Described vs. non-described is
+  negotiated at connection time, and the pack and unpack drivers branch
+  on it to decide whether each item carries a type tag.
+
+A round trip inside one process is self-consistent under either choice
+and therefore cannot fail on either. `examples/datatypes.c` publishes
+one value of every interesting type — including nested data arrays and
+the typeless array descriptor whose marker pack and unpack must spell
+identically — and every rank verifies every *other* rank's copy. Run at
+2, 4 and 8 nodes.
+
+**One rank per node, deliberately.** The launches use
+`--host node1:1,node2:1,... --map-by node`, not the `node1:2,node2:2`
+the other runners use. A rank asking for a peer that shares its node is
+answered out of the local datastore and never packs anything, so with
+two ranks per node those pairs pass no matter what state the encoders
+are in — the run can be green with the cross-node half broken.
+
+### What a failure looks like
+
+Every rank prints `datatypes: rank N: PASS` or names the type that came
+back wrong. The runner counts the PASS lines and requires one per rank,
+so a run in which some ranks never got that far fails rather than
+reading as a pass. A stream desynchronization — the failure mode when
+pack and unpack disagree about a marker — shows up as several
+consecutive `MISMATCH` lines starting at the value after the one that
+disagreed, not at the one that caused it.
+
+### macOS mode
+
+`./run-bfrops-tests.sh macos` runs the unit programs in the local tree
+and then drives `examples/datatypes` through a single `simptest` server.
+That is not a substitute for the swarm stage — one server means one peer
+module and one negotiated buffer type — but it catches an outright break
+before you spend ten containers on it.
