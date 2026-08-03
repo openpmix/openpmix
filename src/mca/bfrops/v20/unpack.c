@@ -415,7 +415,10 @@ pmix_status_t pmix20_bfrop_unpack_string(pmix_pointer_array_t *regtypes, pmix_bu
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
-        if (0 == len) { /* zero-length string - unpack the NULL */
+        if (0 >= len) { /* zero-length string - unpack the NULL */
+            /* a negative length can only come from a corrupt or hostile
+             * buffer; treat it as absent rather than handing it to
+             * malloc, where it becomes a huge size_t */
             sdest[i] = NULL;
         } else {
             sdest[i] = (char *) malloc(len);
@@ -424,8 +427,15 @@ pmix_status_t pmix20_bfrop_unpack_string(pmix_pointer_array_t *regtypes, pmix_bu
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, sdest[i], &len, PMIX_BYTE, regtypes);
             if (PMIX_SUCCESS != ret) {
+                free(sdest[i]);
+                sdest[i] = NULL;
                 return ret;
             }
+            /* the packer includes the terminator in the length it
+             * writes, but these bytes came off the wire from a peer we
+             * cannot vouch for, and everything downstream treats the
+             * result as a C string */
+            sdest[i][len - 1] = '\0';
         }
     }
 

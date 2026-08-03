@@ -429,7 +429,9 @@ pmix_status_t pmix12_bfrop_unpack_string(pmix_pointer_array_t *regtypes, pmix_bu
             != (ret = pmix12_bfrop_unpack_int32(regtypes, buffer, &len, &n, PMIX_INT32))) {
             return ret;
         }
-        if (0 == len) { /* zero-length string - unpack the NULL */
+        if (0 >= len) { /* zero-length string - unpack the NULL */
+            /* a negative length is only reachable from a corrupt or
+             * hostile buffer, and reaches malloc as a huge size_t */
             sdest[i] = NULL;
         } else if (PMIX_TAINT_INT_LIMIT < len) {  // arbitrary value to guard against tainted input
             return PMIX_ERR_BAD_PARAM;
@@ -440,8 +442,15 @@ pmix_status_t pmix12_bfrop_unpack_string(pmix_pointer_array_t *regtypes, pmix_bu
             }
             if (PMIX_SUCCESS
                 != (ret = pmix12_bfrop_unpack_byte(regtypes, buffer, sdest[i], &len, PMIX_BYTE))) {
+                free(sdest[i]);
+                sdest[i] = NULL;
                 return ret;
             }
+            /* the packer includes the terminator in the length it
+             * writes, but these bytes came off the wire from a peer we
+             * cannot vouch for, and everything downstream treats the
+             * result as a C string */
+            sdest[i][len - 1] = '\0';
         }
     }
 
