@@ -94,8 +94,55 @@ pmix_job_t *pmix_gds_hash_get_tracker(const pmix_nspace_t nspace, bool create)
     return trk;
 }
 
+/* A node or proc map may reach us in any of three forms: a PMIX_REGEX
+ * byte object, a PMIX_REGEX2 (which has to be decoded first), or a plain
+ * PMIX_STRING. Decode whichever we were given and hand the raw regex to
+ * the caller-supplied preg parser. Keeping this in one place means the
+ * top-level keys and the same keys nested inside a PMIX_JOB_INFO_ARRAY
+ * accept exactly the same forms - they used not to. */
+static pmix_status_t parse_map(const pmix_value_t *val,
+                               pmix_status_t (*parser)(const char *, char ***),
+                               char ***result)
+{
+    pmix_status_t rc;
+    char *decoded = NULL;
+
+    switch (val->type) {
+    case PMIX_REGEX:
+        return parser(val->data.bo.bytes, result);
+    case PMIX_REGEX2:
+        rc = pmix_preg.parse_regex(val->data.regex2, NULL, 0, &decoded);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        rc = parser(decoded, result);
+        free(decoded);
+        return rc;
+    case PMIX_STRING:
+        return parser(val->data.string, result);
+    default:
+        return PMIX_ERR_TYPE_MISMATCH;
+    }
+}
+
+pmix_status_t pmix_gds_hash_parse_nodemap(const pmix_value_t *val, char ***nodes)
+{
+    return parse_map(val, pmix_preg.parse_nodes, nodes);
+}
+
+pmix_status_t pmix_gds_hash_parse_procmap(const pmix_value_t *val, char ***procs)
+{
+    return parse_map(val, pmix_preg.parse_procs, procs);
+}
+
 bool pmix_gds_hash_check_hostname(char *h1, char *h2)
 {
+    /* a node array is allowed to identify its node by nodeid alone, so a
+     * tracked node can legitimately carry no hostname. Treat a missing
+     * name as "does not match" rather than handing NULL to strcmp */
+    if (NULL == h1 || NULL == h2) {
+        return false;
+    }
     if (0 == strcmp(h1, h2)) {
         return true;
     }
@@ -266,7 +313,7 @@ pmix_nodeinfo_t* pmix_gds_hash_check_nodename(pmix_list_t *nodes, char *hostname
     /* first, just check all the node names as this is the
      * most likely match */
     PMIX_LIST_FOREACH (nd, nodes, pmix_nodeinfo_t) {
-        if (0 == strcmp(nd->hostname, hostname)) {
+        if (pmix_gds_hash_check_hostname(nd->hostname, hostname)) {
             return nd;
         }
         if (NULL != nd->aliases) {
@@ -580,7 +627,15 @@ pmix_status_t pmix_gds_hash_store_qualified(pmix_hash_table_t *ht,
 
     /* the value contains a pmix_data_array_t whose first position
      * contains the key-value being stored, followed by one or more
-     * qualifiers */
+     * qualifiers. These data can arrive from a peer, so verify the
+     * shape before indexing it - an empty array would otherwise read
+     * iptr[0] out of bounds and ask for SIZE_MAX qualifiers */
+    if (PMIX_DATA_ARRAY != value->type ||
+        NULL == value->data.darray ||
+        NULL == value->data.darray->array ||
+        0 == value->data.darray->size) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     iptr = (pmix_info_t*)value->data.darray->array;
     sz = value->data.darray->size;
 

@@ -101,13 +101,40 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_HOSTNAME)) {
+            /* the array is supplied by a host or unpacked from a peer, so
+             * do not assume the value is the type the key calls for */
+            if (PMIX_STRING != iptr[j].value.type ||
+                NULL == iptr[j].value.data.string) {
+                PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
+                if (NULL != nd) {
+                    PMIX_RELEASE(nd);
+                }
+                PMIX_LIST_DESTRUCT(&cache);
+                return PMIX_ERR_TYPE_MISMATCH;
+            }
             if (NULL == nd) {
                 nd = PMIX_NEW(pmix_nodeinfo_t);
             }
+            /* a repeated key must not strand the earlier value */
+            if (NULL != nd->hostname) {
+                free(nd->hostname);
+            }
             nd->hostname = strdup(iptr[j].value.data.string);
         } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_HOSTNAME_ALIASES)) {
+            if (PMIX_STRING != iptr[j].value.type ||
+                NULL == iptr[j].value.data.string) {
+                PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
+                if (NULL != nd) {
+                    PMIX_RELEASE(nd);
+                }
+                PMIX_LIST_DESTRUCT(&cache);
+                return PMIX_ERR_TYPE_MISMATCH;
+            }
             if (NULL == nd) {
                 nd = PMIX_NEW(pmix_nodeinfo_t);
+            }
+            if (NULL != nd->aliases) {
+                PMIx_Argv_free(nd->aliases);
             }
             nd->aliases = PMIx_Argv_split(iptr[j].value.data.string, ',');
             /* need to cache this value as well */
@@ -380,7 +407,6 @@ release:
 pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk, uint32_t *flags,
                                               char ***procs, char ***nodes)
 {
-    pmix_list_t cache;
     size_t j, size;
     pmix_info_t *iptr;
     pmix_kval_t *kp2;
@@ -396,7 +422,6 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
     }
     size = info->value.data.darray->size;
     iptr = (pmix_info_t *) info->value.data.darray->array;
-    PMIX_CONSTRUCT(&cache, pmix_list_t);
     for (j = 0; j < size; j++) {
         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
                             "%s gds:hash:job_array for key %s",
@@ -419,7 +444,8 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
                 return PMIX_ERR_BAD_PARAM;
             }
             /* parse the regex to get the argv array containing proc ranks on each node */
-            if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(iptr[j].value.data.bo.bytes, procs))) {
+            rc = pmix_gds_hash_parse_procmap(&iptr[j].value, procs);
+            if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
@@ -432,7 +458,8 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
                 return PMIX_ERR_BAD_PARAM;
             }
             /* parse the regex to get the argv array of node names */
-            if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(iptr[j].value.data.bo.bytes, nodes))) {
+            rc = pmix_gds_hash_parse_nodemap(&iptr[j].value, nodes);
+            if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
@@ -451,7 +478,6 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
             PMIX_VALUE_XFER(rc, kp2->value, &iptr[j].value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_RELEASE(kp2);
-                PMIX_LIST_DESTRUCT(&cache);
                 return rc;
             }
             pmix_list_append(&trk->jobinfo, &kp2->super);

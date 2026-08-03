@@ -106,6 +106,13 @@ extern pmix_status_t pmix_gds_hash_xfer_sessioninfo(pmix_peer_t *peer,
                                                     const char *key,
                                                     pmix_list_t *kvs);
 
+/* Decode a PMIX_NODE_MAP / PMIX_PROC_MAP value into an argv array. The
+ * value may be a PMIX_REGEX byte object, a PMIX_REGEX2, or a plain
+ * PMIX_STRING; anything else is PMIX_ERR_TYPE_MISMATCH. */
+extern pmix_status_t pmix_gds_hash_parse_nodemap(const pmix_value_t *val, char ***nodes);
+
+extern pmix_status_t pmix_gds_hash_parse_procmap(const pmix_value_t *val, char ***procs);
+
 extern bool pmix_gds_hash_check_hostname(char *h1, char *h2);
 
 extern bool pmix_gds_hash_check_node(pmix_nodeinfo_t *n1, pmix_nodeinfo_t *n2);
