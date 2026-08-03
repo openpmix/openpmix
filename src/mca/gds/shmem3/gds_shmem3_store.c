@@ -443,7 +443,14 @@ store_session_array(
         return PMIX_ERR_TYPE_MISMATCH;
     }
 
-    // The first value is required to be the session ID.
+    // The first value is required to be the session ID, so there has to be
+    // a first value to look at.
+    if (PMIX_UNLIKELY(NULL == val->data.darray ||
+                      NULL == val->data.darray->array ||
+                      0 == val->data.darray->size)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
+    }
     pmix_info_t *const info = (pmix_info_t *)val->data.darray->array;
     if (PMIX_UNLIKELY(!PMIX_CHECK_KEY(&info[0], PMIX_SESSION_ID))) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -522,7 +529,16 @@ pmix_gds_shmem3_store_qualified(
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
     // The value contains a pmix_data_array_t whose first position contains the
-    // key-value being stored, followed by one or more qualifiers.
+    // key-value being stored, followed by one or more qualifiers. These data
+    // can arrive from a peer, so check the shape before indexing it: an empty
+    // array would read info[0] out of bounds and ask for SIZE_MAX qualifiers.
+    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != value->type ||
+                      NULL == value->data.darray ||
+                      NULL == value->data.darray->array ||
+                      0 == value->data.darray->size)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
+    }
     pmix_info_t *const info = (pmix_info_t *)value->data.darray->array;
     const size_t ninfo = value->data.darray->size;
     // This does not need to use the TMA since its contents are later copied in
