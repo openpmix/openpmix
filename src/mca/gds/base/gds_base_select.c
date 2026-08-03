@@ -115,6 +115,9 @@ int pmix_gds_base_select(pmix_info_t info[], size_t ninfo)
 
     /* if no modules were found, then that's an error as we require at least one */
     if (0 == pmix_list_get_size(&pmix_gds_globals.actives)) {
+        /* nothing was selected, so let a later attempt try again rather
+         * than short-circuiting on the "already ran" guard */
+        pmix_gds_globals.selected = false;
         pmix_show_help("help-pmix-runtime.txt", "no-plugins", true, "GDS");
         return PMIX_ERR_SILENT;
     }
@@ -136,5 +139,4 @@ int pmix_gds_base_select(pmix_info_t info[], size_t ninfo)
     }
 
     return PMIX_SUCCESS;
-    ;
 }
