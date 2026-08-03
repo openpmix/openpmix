@@ -706,3 +706,104 @@ in-tree library and runs them under a single local `prterun`. The
 connected query/log/job-control paths are real, but with one server the
 monitor's local/remote split collapses to "all local", so this is a
 regression smoke pass rather than the multi-server case above.
+
+## 14. The `src/mca/base` unit suite (`run-mca-tests.sh`)
+
+```
+./run-mca-tests.sh linux    # in the containers: static and --enable-mca-dso
+./run-mca-tests.sh macos    # natively: in-tree, plus an --enable-mca-dso build
+```
+
+[`src/mca/base`](../../src/mca/base) is the MCA implementation itself —
+the MCA variable registry, the component repository, and the framework
+register/open/select/close lifecycle. Its unit suite lives in
+[`test/unit/mca`](../../test/unit/mca) and runs under an ordinary
+`make check`.
+
+### This is not a multi-node test, and does not pretend to be
+
+Everything in `src/mca/base` is process-local: it reads the environment
+and parameter files, registers variables, loads plugins, and opens
+frameworks. Nothing in it crosses a node boundary. The ten-node stage at
+the end of the Linux run is a contention and load pass — ten independent
+copies against one kernel and one CPU set — and confirms the staged
+binaries work under the same runtime as the rest of the harness. It is
+not a distributed test.
+
+### What the swarm actually buys
+
+**`--enable-mca-dso`, which is the whole reason this runner exists.**
+Roughly half of `src/mca/base` is compiled but never executed in an
+ordinary build:
+[`pmix_mca_base_component_repository.c`](../../src/mca/base/pmix_mca_base_component_repository.c)
+is entirely `#if PMIX_HAVE_PDL_SUPPORT`, and `find_dyn_components()` in
+[`pmix_mca_base_component_find.c`](../../src/mca/base/pmix_mca_base_component_find.c)
+does nothing at all when there are no DSOs to find. A static build walks
+`framework_static_components` and stops — so the `project@path` parser,
+the repository hash, the `dlopen`/`dlsym`/version-check sequence, the
+per-file refcount, and the `show_load_errors` reporting wrapped around
+them get **zero** coverage from `make check` on a normal tree. Two of the
+memory errors the August 2026 review of that directory found were in
+exactly that code.
+
+Secondarily: Linux (the primary development host here is macOS, and this
+directory reaches `getcwd`, `geteuid`, the home directory, `syslog` and
+`dlopen`), and an optimized `--disable-debug` build, since
+`register_variable()` and its neighbours guard developer errors behind
+`assert()` and `#if PMIX_ENABLE_DEBUG`.
+
+### The stages
+
+1. **Static build, unit suite.** Against the tree `build.sh` already
+   configured, as a baseline.
+2. **`--enable-mca-dso` build, unit suite.** A separate prefix and VPATH
+   directory, so this library never displaces the one the rest of the
+   harness runs against.
+3. **"The repository actually loaded components."** With DSOs, the only
+   way `pmix_info --all` can name a component is by having `dlopen`ed
+   it, so a count near zero means the dynamic path silently found
+   nothing — precisely the failure a static build hides. The stage fails
+   below ten.
+4. **Malformed MCA parameters must not be memory errors.** Each case
+   runs `pmix_info --all` with one hostile value and asserts the process
+   **survives** — an exit status above 128 is a signal and fails. What it
+   prints is deliberately not checked: a malformed MCA parameter is an
+   ordinary user mistake, and the only contract is that it may not take
+   the library down. The cases include an
+   `mca_base_component_path` entry with no `@` delimiter and one with an
+   over-long project name (both were a stack buffer overflow),
+   `mca_base_verbose=syslogid:<str>` (a use-after-free), every accepted
+   shape of `mca_base_component_show_load_errors` including the bare
+   framework and `^` forms (a `NULL` dereference), and a deprecated
+   synonym.
+5. **Ten-node contention pass**, as described above.
+
+The unit suite the first two stages run includes `mca_base_framework`,
+whose subject is the register/open/close reference count. That one is
+worth having in the DSO configuration specifically: a framework whose
+open fails there has real components to tear down, where in the static
+build the lists are empty.
+
+### Things to know
+
+**The build volume outlives your branch.** `test/unit/mca` is newer than
+some trees sitting in `pmix-build`, and a `config.status` that predates a
+directory has never heard of its `Makefile` — `make` then dies with
+`test/unit/mca: No such file or directory`. The runner detects the
+missing Makefile and re-runs `config.status --recheck` rather than
+failing with a message that points nowhere. The same shape of problem,
+from the other direction, is the `aclocal.m4` trap described in §8.
+
+**`pmix_info` is used on purpose** for stages 3 and 4: it is the one
+installed program that opens every framework, so a single run exercises
+the repository across all of them rather than only the ones some client
+happens to need.
+
+### macOS mode
+
+`./run-mca-tests.sh macos` runs the in-tree suite and then builds a
+second, `--enable-mca-dso` tree out of tree and repeats stages 2–4
+against it. It skips the second half if the source directory is
+configured in place, because autoconf refuses a VPATH build alongside a
+`config.status` in the srcdir — and a test script has no business running
+`make distclean` on a working tree to get around that.
