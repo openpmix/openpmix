@@ -284,14 +284,12 @@ PMIX_EXPORT int pmix_mca_base_var_init(void);
  * @param[in] description A string describing the use and valid
  * values of the variable (string).
  * @param[in] type The type of this variable (string, int, bool).
- * @param[in] enumerator Enumerator describing valid values.
- * @param[in] bind Hint for MPIT to specify type of binding (0 = none)
- * @param[in] flags Flags for this variable.
- * @param[in] info_lvl Info level of this variable
- * @param[in] scope Indicates the scope of this variable
  * @param[in,out] storage Pointer to the value's location.
  *
- * @retval index Index value representing this variable.
+ * @retval index Index value representing this variable. NOTE: this is
+ * an index, not a status -- a successful registration returns a value
+ * >= 0, and index 0 is a perfectly ordinary result that happens to
+ * equal PMIX_SUCCESS. Test the sign (0 > rc), never (PMIX_SUCCESS != rc).
  * @retval PMIX_ERR_OUT_OF_RESOURCE Upon failure to allocate memory.
  * @retval PMIX_ERROR Upon failure to register the variable.
  *
@@ -301,61 +299,33 @@ PMIX_EXPORT int pmix_mca_base_var_init(void);
  * {description} is a string of arbitrary length (verbose is good!)
  * for explaining what the variable is for and what its valid values
  * are.  This message is used in help messages, such as the output
- * from the ompi_info executable.  The {description} string is copied
+ * from the pmix_info executable.  The {description} string is copied
  * internally; the caller can free {description} upon successful
  * return.
- *
- * {enumerator} is either NULL or a handle that was created via
- * pmix_mca_base_var_enum_create(), and describes the valid values of an
- * integer variable (i.e., one with type MCA_BASE_VAR_TYPE_INT).  When
- * a non-NULL {enumerator} is used, the value set for this variable by
- * the user will be compared against the values in the enumerator.
- * The MCA variable system will allow the parameter to be set to
- * either one of the enumerator values (0, 1, 2, etc) or a string
- * representing one of those values.  {enumerator} is retained until
- * either the variable is deregistered using
- * pmix_mca_base_var_deregister(), pmix_mca_base_var_group_deregister(), or
- * pmix_mca_base_var_finalize().  {enumerator} should be NULL for
- * parameters that do not support enumerated values.
- *
- * {flags} indicate attributes of this variable (internal, settable,
- * default only, etc.), as listed below.
- *
- * If MCA_BASE_VAR_FLAG_INTERNAL is set in {flags}, this variable
- * is not shown by default in the output of ompi_info.  That is,
- * this variable is considered internal to the PMIX implementation
- * and is not supposed to be viewed / changed by the user.
- *
- * If MCA_BASE_VAR_FLAG_DEFAULT_ONLY is set in {flags}, then the value
- * provided in storage will not be modified by the MCA variable system
- * (i.e., users cannot set the value of this variable via CLI
- * parameter, environment variable, file, etc.). It is up to the
- * caller to specify (using the scope) if this value may change
- * (MCA_BASE_VAR_SCOPE_READONLY) or remain constant
- * (MCA_BASE_VAR_SCOPE_CONSTANT).  MCA_BASE_VAR_FLAG_DEFAULT_ONLY must
- * not be specified with MCA_BASE_VAR_FLAG_SETTABLE.
- *
- * Set MCA_BASE_VAR_FLAG_DEPRECATED in {flags} to indicate that
- * this variable name is deprecated. The user will get a warning
- * if they set this variable.
- *
- * {scope} is for informational purposes to indicate how this variable
- * can be set, or if it is considered constant or readonly (which, by
- * MPI_T's definitions, are different things).  See the comments in
- * the description of pmix_mca_base_var_scope_t for information about the
- * different scope meanings.
  *
  * {storage} points to a (char *), (int), or (bool) where the value of
  * this variable is stored ({type} indicates the type of this
  * pointer).  The location pointed to by {storage} must exist until
- * the variable is deregistered.  Note that the initial value in
- * {storage} may be overwritten if the MCA_BASE_VAR_FLAG_DEFAULT_ONLY
- * flag is not set (e.g., if the user sets this variable via CLI
- * option, environment variable, or file value).  If input value of
+ * the variable is deregistered.  The registration itself resolves the
+ * value and writes it through {storage}, so the caller's variable is
+ * correct as soon as this function returns -- there is no separate
+ * "look it up" step.  Note that the initial value in {storage} is
+ * therefore overwritten whenever the user set this variable through
+ * the environment or a parameter file.  If the input value of
  * {storage} points to a (char *), the pointed-to string will be
  * duplicated and maintained internally by the MCA variable system;
  * the caller may free the original string after this function returns
  * successfully.
+ *
+ * NOTE: this interface takes no flags, scope, info level, binding hint
+ * or enumerator. Earlier revisions of this comment described all five,
+ * and none of them has ever been a parameter of this function. The
+ * corresponding pmix_mca_base_var_t fields (mbv_flags beyond the
+ * internal bits, mbv_bind, mbv_enumerator) are consequently never set
+ * by any caller in this tree -- the enumerator machinery in
+ * pmix_mca_base_var_enum.h is reachable only by calling it directly.
+ * Do not write a call against the removed parameters; it will not
+ * compile.
  */
 PMIX_EXPORT int pmix_mca_base_var_register(const char *project_name, const char *framework_name,
                                            const char *component_name, const char *variable_name,
@@ -443,21 +413,34 @@ PMIX_EXPORT int pmix_mca_base_var_deregister(int vari);
  * Get the current value of an MCA variable.
  *
  * @param[in] vari Index of variable
- * @param[in,out] value Pointer to copy the value to. Can be NULL.
- * @param[in,out] value_size Size of memory pointed to by value.
- * copied size will be returned in value_size.
+ * @param[out] value Address of a pointer that will be made to point at
+ * the variable's backing store. Can be NULL.
  * @param[out] source Source of current value. Can be NULL.
  * @param[out] source_file Source file for the current value if
  * it was set from a file.
  *
  * @return PMIX_ERROR Upon failure.  The contents of value are
  * undefined.
- * @return PMIX_SUCCESS Upon success. value (if not NULL) will be filled
- * with the variable's current value. value_size will contain the size
- * copied. source (if not NULL) will contain the source of the variable.
+ * @return PMIX_SUCCESS Upon success.
  *
- * Note: The value can be changed by the registering code without using
- * the pmix_mca_base_var_* interface so the source may be incorrect.
+ * IMPORTANT: {value} does NOT receive a copy of the value. It receives
+ * a *pointer to the storage the caller supplied at registration* --
+ * that is, the argument must be the address of a pointer of the
+ * variable's type, and the value is read by dereferencing what comes
+ * back:
+ *
+ *   int *val;
+ *   pmix_mca_base_var_get_value(idx, &val, NULL, NULL);
+ *   printf("%d\n", *val);
+ *
+ * Passing the address of an int (rather than of an int *) writes a
+ * pointer through it. An earlier revision of this comment described a
+ * copy-out interface with a {value_size} parameter; no such parameter
+ * has ever existed, and no copy is made.
+ *
+ * Because what comes back aliases the registering code's own storage,
+ * it also tracks any change that code makes directly -- so {source}
+ * may not reflect where the current contents actually came from.
  */
 PMIX_EXPORT int pmix_mca_base_var_get_value(int vari, void *value,
                                             pmix_mca_base_var_source_t *source,
@@ -607,7 +590,7 @@ typedef enum {
     PMIX_VAR_DUMP_COLOR_KEY_COUNT
 } pmix_var_dump_color_key_t;
 
-extern char *pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_KEY_COUNT];
+PMIX_EXPORT extern char *pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_KEY_COUNT];
 
 
 /**

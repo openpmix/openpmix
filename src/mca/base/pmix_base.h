@@ -107,6 +107,7 @@ enum {
 /**
  * First function called in the MCA.
  *
+ * @param[in] add_path Additional component search path, or NULL.
  * @return PMIX_SUCCESS Upon success
  * @return PMIX_ERROR Upon failure
  *
@@ -117,6 +118,18 @@ enum {
  * It must be the first MCA function invoked.  It is normally
  * invoked during the initialization stage and specifically
  * invoked in the special case of the *_info command.
+ *
+ * IMPORTANT: {add_path} is NOT a plain directory. The component search
+ * path is a ';'-delimited list of "project@path" entries, where "path"
+ * is itself a PMIX_ENV_SEP-delimited list of directories, and
+ * {add_path} is spliced into the front of that list verbatim. An entry
+ * with no '@' names no project, cannot be matched against any
+ * component file name, and is skipped with a verbose message. So pass
+ * e.g. "pmix@/opt/site/lib/pmix", not "/opt/site/lib/pmix".
+ *
+ * Calling this more than once is a reference count, not a re-init: the
+ * second and later calls only prepend {add_path} and bump the count.
+ * Each must be matched by a pmix_mca_base_close().
  */
 PMIX_EXPORT int pmix_mca_base_open(const char *add_path);
 
@@ -135,8 +148,37 @@ PMIX_EXPORT int pmix_mca_base_open(const char *add_path);
 PMIX_EXPORT int pmix_mca_base_close(void);
 
 /**
- * A generic select function
+ * A generic select function: query every available component and keep
+ * the one that bids the highest priority.
  *
+ * @param[in] type_name Framework name, used only in verbose output.
+ * @param[in] output_id Verbose output stream for the messages.
+ * @param[in,out] components_available List of
+ * pmix_mca_base_component_list_item_t to choose among. See the
+ * ownership note below -- this list is modified.
+ * @param[out] best_module Module returned by the winning query.
+ * @param[out] best_component The winning component.
+ * @param[out] priority_out The winning priority. May be NULL.
+ *
+ * @retval PMIX_SUCCESS A component was selected.
+ * @retval PMIX_ERR_NOT_FOUND No component bid successfully.
+ * @retval PMIX_ERR_FATAL A component reported that it cannot provide
+ * something the user explicitly asked for. Selection stops there and no
+ * component is chosen -- deliberately, since silently falling back to a
+ * different component would do something the user did not ask for.
+ *
+ * A component is skipped if it has no query function, if its query
+ * returns anything but PMIX_SUCCESS, or if its query succeeds but hands
+ * back no module (whatever priority it claimed).
+ *
+ * OWNERSHIP: on PMIX_SUCCESS and on PMIX_ERR_NOT_FOUND this function
+ * **closes, unloads and releases every component it did not select**,
+ * removing them from {components_available} -- so a successful call
+ * leaves exactly the winner on the list, and a PMIX_ERR_NOT_FOUND call
+ * leaves it empty. On PMIX_ERR_FATAL it closes nothing and the list is
+ * untouched. Callers in this tree all pass their framework's own
+ * framework_components, so the framework's close handles the remainder
+ * in the fatal case.
  */
 PMIX_EXPORT int pmix_mca_base_select(const char *type_name, int output_id,
                                      pmix_list_t *components_available,
