@@ -79,9 +79,19 @@ pmix_status_t pmix_gds_hash_xfer_sessioninfo(pmix_peer_t *peer,
         } else {
             /* we return it as an info array */
             PMIX_KVAL_NEW(kp2, PMIX_SESSION_INFO_ARRAY);
-            kp2->value->type = PMIX_DATA_ARRAY;
+            if (NULL == kp2) {
+                return PMIX_ERR_NOMEM;
+            }
             n = pmix_list_get_size(sessionlist) + 1;
             PMIX_DATA_ARRAY_CREATE(kp2->value->data.darray, n, PMIX_INFO);
+            if (NULL == kp2->value->data.darray) {
+                PMIX_RELEASE(kp2);
+                return PMIX_ERR_NOMEM;
+            }
+            /* set the type only once the array is really there, so a
+             * failure here does not leave behind a value that claims to
+             * be a data array and is not */
+            kp2->value->type = PMIX_DATA_ARRAY;
             iptr = (pmix_info_t*)kp2->value->data.darray->array;
             /* first element will be the session id */
             PMIX_INFO_LOAD(&iptr[0], PMIX_SESSION_ID, &sid, PMIX_UINT32);
@@ -592,9 +602,18 @@ pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
             ninfo = pmix_list_get_size(&rkvs);
             /* setup to return the result */
             PMIX_KVAL_NEW(kv, PMIX_PROC_DATA);
-            kv->value->type = PMIX_DATA_ARRAY;
+            if (NULL == kv) {
+                PMIX_LIST_DESTRUCT(&rkvs);
+                return PMIX_ERR_NOMEM;
+            }
             niptr = ninfo + 1; // need space for the rank
             PMIX_DATA_ARRAY_CREATE(kv->value->data.darray, niptr, PMIX_INFO);
+            if (NULL == kv->value->data.darray) {
+                PMIX_RELEASE(kv);
+                PMIX_LIST_DESTRUCT(&rkvs);
+                return PMIX_ERR_NOMEM;
+            }
+            kv->value->type = PMIX_DATA_ARRAY;
             iptr = (pmix_info_t*)kv->value->data.darray->array;
             /* start with the rank */
             PMIX_INFO_LOAD(&iptr[0], PMIX_RANK, &rnk, PMIX_PROC_RANK);

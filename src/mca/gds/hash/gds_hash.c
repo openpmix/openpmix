@@ -1484,6 +1484,7 @@ static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
             }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kv);
                 return rc;
             }
         } else {
@@ -1495,6 +1496,7 @@ static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
             }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kv);
                 return rc;
             }
         }
