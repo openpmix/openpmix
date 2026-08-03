@@ -352,6 +352,7 @@ AC_CONFIG_FILES(pmix_config_prefix[contrib/Makefile]
                 pmix_config_prefix[test/unit/Makefile]
                 pmix_config_prefix[test/unit/util/Makefile]
                 pmix_config_prefix[test/unit/class/Makefile]
+                pmix_config_prefix[test/unit/mca/Makefile]
                 pmix_config_prefix[test/util/Makefile]
                 pmix_config_prefix[docs/Makefile]
                 pmix_config_prefix[maint/pmix.pc])

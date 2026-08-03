@@ -21,7 +21,7 @@
 # $HEADER$
 #
 
-SUBDIRS = util class
+SUBDIRS = util class mca
 
 # Point the tests at the components in the build tree so that "make
 # check" does not require a prior "make install". See the comments in
