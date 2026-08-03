@@ -291,7 +291,12 @@ tma_alloc_request_will_overflow(
     const size_t lost_capacity = (size_t)(data_baseptr - hdr_baseptr);
     const size_t bytes_used = (size_t)(data_ptr_pos - data_baseptr);
 
-    bool wo = (bytes_used + alloc_size) > (backing_store->size - lost_capacity);
+    // The sum is what gets compared, so a request large enough to wrap it
+    // would pass the test and the bump allocator would then hand out
+    // addresses past the end of the segment - silently, into memory
+    // clients have mapped. Treat a wrap as the overflow it is.
+    bool wo = (bytes_used + alloc_size) < bytes_used ||
+              (bytes_used + alloc_size) > (backing_store->size - lost_capacity);
 
     if (PMIX_UNLIKELY(wo)) {
         errno = ENOMEM;
@@ -358,6 +363,13 @@ tma_calloc(
     size_t nmemb,
     size_t size
 ) {
+    // Same reasoning as tma_alloc_request_will_overflow(): a product that
+    // wraps produces a small allocation for a large request.
+    if (0 != nmemb && SIZE_MAX / nmemb < size) {
+        errno = ENOMEM;
+        perror(EMSG_SHMEM3_OOM);
+        abort();
+    }
     const size_t real_size = nmemb * size;
     if (0 == real_size) {
         return NULL;
