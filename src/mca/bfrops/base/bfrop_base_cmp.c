@@ -1084,6 +1084,20 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p1,
         return PMIX_VALUE_TYPE_DIFFERENT;
     }
 
+    /* Either value may be tagged with a pointer-backed type and carry
+     * no object; see pmix_bfrops_base_value_is_null_object(). Two
+     * absent objects of the same type are equal to each other, and an
+     * absent one cannot be ordered against a present one - but neither
+     * case may be answered by dereferencing it. */
+    if (pmix_bfrops_base_value_is_null_object(p1) ||
+        pmix_bfrops_base_value_is_null_object(p2)) {
+        if (pmix_bfrops_base_value_is_null_object(p1) &&
+            pmix_bfrops_base_value_is_null_object(p2)) {
+            return PMIX_EQUAL;
+        }
+        return PMIX_VALUE_COMPARISON_NOT_AVAIL;
+    }
+
     switch (p1->type) {
     case PMIX_UNDEF:
         return PMIX_EQUAL;
