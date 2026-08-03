@@ -27,6 +27,7 @@
 
 #include "src/include/pmix_config.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -282,11 +283,12 @@ static void resolve_relative_paths(char **file_prefix, char *file_path, bool rel
         ;
 #endif
     } else {
-        /* Prepend the files to the search list */
+        /* Prepend the files to the search list. NOTE: asprintf leaves
+         * its output pointer indeterminate on failure, so it must not
+         * be freed here */
         if (0 > asprintf(&tmp_str, "%s%c%s", *file_prefix, sep, *files)) {
             pmix_output(0, "OUT OF MEM");
             free(*files);
-            free(tmp_str);
             *files = NULL;
             return;
         }
@@ -304,10 +306,19 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     home = (char *) pmix_home_directory(geteuid());
 
     if (NULL == cwd) {
-        cwd = (char *) malloc(sizeof(char) * MAXPATHLEN);
-        if (NULL == (cwd = getcwd(cwd, MAXPATHLEN))) {
+        char *buf = (char *) malloc(sizeof(char) * MAXPATHLEN);
+        if (NULL == buf) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        /* getcwd returns NULL on failure without freeing our buffer */
+        cwd = getcwd(buf, MAXPATHLEN);
+        if (NULL == cwd) {
+            free(buf);
             pmix_output(0, "Error: Unable to get the current working directory\n");
             cwd = strdup(".");
+            if (NULL == cwd) {
+                return PMIX_ERR_OUT_OF_RESOURCE;
+            }
         }
     }
 
@@ -338,7 +349,10 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
                                      &pmix_mca_base_var_files);
     free(tmp);
-    if (PMIX_SUCCESS != ret) {
+    /* register returns the variable index on success, which is only
+     * equal to PMIX_SUCCESS when it happens to be zero - test the sign,
+     * as every other registration in this file does */
+    if (0 > ret) {
         return ret;
     }
 
@@ -902,6 +916,21 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env)
             continue;
         }
 
+        /* Skip synonyms: a synonym has no storage of its own, and
+         * whatever set it also marked the variable it stands for as
+         * non-default, so the real name is emitted below anyway. Naming
+         * the synonym as well would only make the child warn about a
+         * deprecated parameter it never set. */
+        if (PMIX_VAR_IS_SYNONYM(var[0])) {
+            continue;
+        }
+
+        /* Skip anything that has been deregistered - its storage has
+         * been dropped, so there is no value left to report */
+        if (!PMIX_VAR_IS_VALID(var[0]) || NULL == var->mbv_storage) {
+            continue;
+        }
+
         if ((PMIX_MCA_BASE_VAR_TYPE_STRING == var->mbv_type
              || PMIX_MCA_BASE_VAR_TYPE_VERSION_STRING == var->mbv_type)
             && NULL == var->mbv_storage->stringval) {
@@ -1221,9 +1250,23 @@ static int register_variable(const char *project_name, const char *framework_nam
         }
 
         var = PMIX_NEW(pmix_mca_base_var_t);
-        ntmp = (char*)malloc(strlen(project_name)+1);
-        for (n=0; '\0' != project_name[n]; n++) {
-            ntmp[n] = toupper(project_name[n]);
+        if (NULL == var) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        /* the environment variable prefix is the upper-cased project
+         * name. The header documents project_name as optional "for
+         * legacy reasons", so fall back to this library's own project
+         * rather than dereferencing NULL */
+        if (NULL == project_name) {
+            project_name = "pmix";
+        }
+        ntmp = (char *) malloc(strlen(project_name) + 1);
+        if (NULL == ntmp) {
+            PMIX_RELEASE(var);
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        for (n = 0; '\0' != project_name[n]; n++) {
+            ntmp[n] = (char) toupper((unsigned char) project_name[n]);
         }
         ntmp[n] = '\0';
         pmix_asprintf(&var->mbv_prefix, "%s_MCA_", ntmp);
@@ -1461,7 +1504,14 @@ static int var_set_from_env(pmix_mca_base_var_t *var, pmix_mca_base_var_t *origi
     if (NULL != source_env) {
         if (0 == strncasecmp(source_env, "file:", 5)) {
             original->mbv_source_file = append_filename_to_list(source_env + 5);
-            if (0 == strcmp(original->mbv_source_file, pmix_mca_base_var_override_file)) {
+            /* the override file name is only established by
+             * pmix_mca_base_var_cache_files(), which returns early when
+             * PMIX_PARAM_FILE_PASSED is set in our environment -- so in
+             * a process launched by a PMIx-aware RM it can legitimately
+             * be NULL while this SOURCE_ envar is present */
+            if (NULL != original->mbv_source_file &&
+                NULL != pmix_mca_base_var_override_file &&
+                0 == strcmp(original->mbv_source_file, pmix_mca_base_var_override_file)) {
                 original->mbv_source = PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE;
             } else {
                 original->mbv_source = PMIX_MCA_BASE_VAR_SOURCE_FILE;
@@ -1583,7 +1633,20 @@ static int var_set_initial(pmix_mca_base_var_t *var, pmix_mca_base_var_t *origin
        file. */
     ret = var_set_from_file(var, original, &pmix_mca_base_var_override_values);
     if (PMIX_SUCCESS == ret) {
+        /* var_set_from_file() records SOURCE_FILE, because it cannot
+         * tell which of the two lists it was handed. Promote that to
+         * SOURCE_OVERRIDE on *both* the name that matched and the
+         * variable it stands for.
+         *
+         * Marking only "var" is enough when the two are the same
+         * object, but not when the override file named a synonym: the
+         * environment check immediately below tests
+         * original->mbv_source, so leaving the original saying FILE
+         * meant a user's environment could beat a site administrator's
+         * override file -- silently, and only when the administrator
+         * wrote the deprecated spelling of the name. */
         var->mbv_source = PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE;
+        original->mbv_source = PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE;
     }
 
     ret = var_set_from_env(var, original);
@@ -1954,7 +2017,12 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
 
-        if (PMIX_MCA_BASE_VAR_DUMP_READABLE_COLOR == output_type) {
+        if (PMIX_MCA_BASE_VAR_DUMP_READABLE_COLOR == output_type
+            && NULL != pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VAR_NAME]
+            && NULL != pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VAR_VALUE]) {
+            /* the array is only populated by pmix_register_params(); an
+             * entry can still be NULL if a caller reached this dump
+             * before that ran, and NULL is not a valid "%s" argument */
             color_name = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VAR_NAME];
             color_value = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VAR_VALUE];
             color_reset = "\033[0m";
