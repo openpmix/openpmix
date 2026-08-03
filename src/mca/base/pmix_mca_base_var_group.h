@@ -110,8 +110,14 @@ PMIX_EXPORT int pmix_mca_base_var_group_deregister(int group_index);
  * @param[in] framework_name Framework name
  * @param[in] component_name Component name
  *
- * @returns PMIX_SUCCESS if found
+ * @returns index The group's index if found -- NOT PMIX_SUCCESS. Any
+ * name may be "*" to wildcard that component of the name.
  * @returns PMIX_ERR_NOT_FOUND if not found
+ *
+ * Test the sign of the result and pass it on as an index, the way
+ * pmix_mca_base_framework_close() and pmix_mca_base_component_unload()
+ * do; a group whose index happens to be 0 is not distinguishable from
+ * PMIX_SUCCESS.
  */
 PMIX_EXPORT int pmix_mca_base_var_group_find(const char *project_name, const char *framework_name,
                                              const char *component_name);

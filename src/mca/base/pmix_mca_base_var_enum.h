@@ -62,6 +62,14 @@ typedef int (*pmix_mca_base_var_enum_get_count_fn_t)(pmix_mca_base_var_enum_t *s
  * @param[in] index the index to get the value of
  * @param[out] value integer value
  * @param[out] string_value string value
+ *
+ * @long The string returned in {string_value} is *borrowed* from the
+ * enumerator - the caller must not free it, and must not use it after
+ * the enumerator has been released. This differs from string_from_value(),
+ * which hands back a string the caller owns. The distinction is not
+ * cosmetic: the boolean enumerator's get_value() returns a string
+ * literal, so there is no implementation of this slot whose result can
+ * safely be freed.
  */
 typedef int (*pmix_mca_base_var_enum_get_value_fn_t)(pmix_mca_base_var_enum_t *self, int index,
                                                      int *value, const char **string_value);
@@ -214,8 +222,9 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_mca_base_var_enum_t);
  * strings passed in values[] after pmix_mca_base_var_enum_create()
  * returns.
  */
-int pmix_mca_base_var_enum_create(const char *name, const pmix_mca_base_var_enum_value_t values[],
-                                  pmix_mca_base_var_enum_t **enumerator);
+PMIX_EXPORT int pmix_mca_base_var_enum_create(const char *name,
+                                              const pmix_mca_base_var_enum_value_t values[],
+                                              pmix_mca_base_var_enum_t **enumerator);
 
 /**
  * Create a new default flag enumerator
@@ -241,23 +250,23 @@ int pmix_mca_base_var_enum_create(const char *name, const pmix_mca_base_var_enum
  * strings passed in values[] after pmix_mca_base_var_enum_create()
  * returns.
  */
-int pmix_mca_base_var_enum_create_flag(const char *name,
-                                       const pmix_mca_base_var_enum_value_flag_t flags[],
-                                       pmix_mca_base_var_enum_flag_t **enumerator);
+PMIX_EXPORT int pmix_mca_base_var_enum_create_flag(const char *name,
+                                                   const pmix_mca_base_var_enum_value_flag_t flags[],
+                                                   pmix_mca_base_var_enum_flag_t **enumerator);
 
 /* standard enumerators. it is invalid to call OBJ_RELEASE on any of these enumerators */
 /**
  * Boolean enumerator
  *
- * This enumerator maps:
- *   positive integer, true, yes, enabled, t -> 1
- *   0, false, no, disabled, f -> 0
+ * This enumerator maps (case-insensitively):
+ *   non-zero integer, true, t, yes, y, enabled -> 1
+ *   0, false, f, no, n, disabled -> 0
  */
-extern pmix_mca_base_var_enum_t pmix_mca_base_var_enum_bool;
+PMIX_EXPORT extern pmix_mca_base_var_enum_t pmix_mca_base_var_enum_bool;
 
 /**
  * Verbosity level enumerator
  */
-extern pmix_mca_base_var_enum_t pmix_mca_base_var_enum_verbose;
+PMIX_EXPORT extern pmix_mca_base_var_enum_t pmix_mca_base_var_enum_verbose;
 
 #endif /* !defined(MCA_BASE_VAR_ENUM_H) */
