@@ -347,6 +347,13 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             if (NULL == s) {
                 s = pmix_gds_hash_check_session(trk, sid, true);
             }
+            if (NULL == s) {
+                /* the job is already bound to some other session, so
+                 * there is nowhere to put this */
+                rc = PMIX_ERR_BAD_PARAM;
+                PMIX_ERROR_LOG(rc);
+                goto release;
+            }
             /* ensure the value isn't already on the session info */
             found = false;
             PMIX_LIST_FOREACH (kp2, &s->sessioninfo, pmix_kval_t) {
@@ -854,7 +861,12 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                         rc = PMIx_Value_get_number(kp2.value, &pmix_globals.appnum, PMIX_UINT32);
                     } else if (PMIX_CHECK_KEY(&kp2, PMIX_NODEID)) {
                         rc = PMIx_Value_get_number(kp2.value, &pmix_globals.nodeid, PMIX_UINT32);
-                    } else if (PMIX_CHECK_KEY(&kp2, PMIX_HOSTNAME)) {
+                    } else if (PMIX_CHECK_KEY(&kp2, PMIX_HOSTNAME) &&
+                               PMIX_STRING == kp2.value->type &&
+                               NULL != kp2.value->data.string) {
+                        if (NULL != pmix_globals.hostname) {
+                            free(pmix_globals.hostname);
+                        }
                         pmix_globals.hostname = strdup(kp2.value->data.string);
                     }
                 }
@@ -905,6 +917,9 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 kp3 = PMIX_NEW(pmix_kval_t);
                 if (NULL == kp3) {
                     PMIX_DESTRUCT(&kptr);
+                    PMIX_DESTRUCT(&kv);
+                    PMIX_DESTRUCT(&buf2);
+                    PMIx_Argv_free(nodelist);
                     return PMIX_ERR_NOMEM;
                 }
                 kp3->key = strdup(PMIX_LOCAL_PEERS);
@@ -912,6 +927,9 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 if (NULL == kp3->value) {
                     PMIX_RELEASE(kp3);
                     PMIX_DESTRUCT(&kptr);
+                    PMIX_DESTRUCT(&kv);
+                    PMIX_DESTRUCT(&buf2);
+                    PMIx_Argv_free(nodelist);
                     return PMIX_ERR_NOMEM;
                 }
                 kp3->value->type = PMIX_STRING;
@@ -953,6 +971,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                         PMIX_DESTRUCT(&kv);
                         PMIX_DESTRUCT(&buf2);
                         PMIx_Argv_free(procs);
+                        PMIx_Argv_free(nodelist);
                         return rc;
                     }
                 }
@@ -984,6 +1003,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
             rc = PMIx_Value_get_number(kptr.value, &sid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kptr);
                 return rc;
             }
             s = pmix_gds_hash_check_session(trk, sid, true);
@@ -1000,6 +1020,14 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
             /* a lone key must belong to this job's session */
             if (NULL == s) {
                 s = pmix_gds_hash_check_session(trk, sid, true);
+            }
+            if (NULL == s) {
+                /* the job is already bound to some other session, so
+                 * there is nowhere to put this */
+                rc = PMIX_ERR_BAD_PARAM;
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kptr);
+                return rc;
             }
             /* ensure the value isn't already on the session info */
             found = false;
@@ -1035,6 +1063,8 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 pmix_list_append(&trk->apps, &apptr->super);
             } else if (1 < pmix_list_get_size(&trk->apps)) {
                 rc = PMIX_ERR_BAD_PARAM;
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kptr);
                 return rc;
             } else {
                 apptr = (pmix_apptrkr_t *) pmix_list_get_first(&trk->apps);
