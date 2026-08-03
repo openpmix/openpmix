@@ -175,6 +175,16 @@ run_across_nodes() {
             bad "$prog $label, $np servers: every rank passed but exit was $rc"
             return 1
         fi
+    elif [ "$prog" = client ]; then
+        # client reports per key per peer and returns 0 regardless, so
+        # count the confirmations: each of the $np ranks confirms one key
+        # for each of the other $np-1 ranks.
+        nok=$(echo "$out" | grep -c 'returned correct')
+        if [ "$nok" -lt "$(( np * (np - 1) ))" ]; then
+            bad "$prog $label, $np servers: only $nok/$(( np * (np - 1) )) peer values confirmed"
+            echo "$out" | grep -iE 'failed|wrong|mismatch' | head -3 | sed 's/^/       /'
+            return 1
+        fi
     else
         if echo "$out" | grep -qiE 'PMIx_Get .* failed|returned wrong'; then
             bad "$prog $label, $np servers: $(echo "$out" | grep -iE 'PMIx_Get .* failed|returned wrong' | head -1)"
@@ -327,7 +337,7 @@ test_linux() {
         -e PFX="$PMIX_PREFIX" \
         "$IMAGE" bash -euo pipefail -c '
             mkdir -p /opt/prte/tests-gds
-            for p in datatypes dmodex; do
+            for p in datatypes dmodex client; do
                 gcc -O0 -g -o /opt/prte/tests-gds/$p /pmix-src/examples/$p.c \
                     -I"$PFX/include" -I/pmix-src/examples \
                     -L"$PFX/lib" -lpmix -Wl,-rpath,"$PFX/lib"
@@ -335,10 +345,10 @@ test_linux() {
         '
     rc=$?
     if [ "$rc" != 0 ]; then
-        bad "could not build examples/datatypes and examples/dmodex (rc=$rc)"
+        bad "could not build the cross-node clients (rc=$rc)"
         return
     fi
-    ok "built examples/datatypes and examples/dmodex"
+    ok "built examples/datatypes, examples/dmodex and examples/client"
 
     if ! RUN 'command -v prterun >/dev/null'; then
         skp "no prterun in the containers -- run ./build.sh first"
@@ -357,6 +367,17 @@ test_linux() {
         hosts="${geom%|*}"; np="${geom#*|}"
         run_across_nodes datatypes "$hosts" "$np" "PMIX_MCA_gds=hash" "(hash)" \
             && ok "$np servers on hash: every rank read every peer's values"
+    done
+
+    banner "put scopes across separate PMIx servers"
+    # datatypes puts everything at PMIX_GLOBAL; client puts at PMIX_LOCAL
+    # and PMIX_REMOTE separately and then reads each peer back, so the
+    # scope routing in store and the scope filtering in fetch have to
+    # agree with each other across a server boundary.
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes client "$hosts" "$np" "" "" \
+            && ok "$np servers: local and remote scope values read back correctly"
     done
 
     banner "direct modex (assemb_kvs_req / accept_kvs_resp)"

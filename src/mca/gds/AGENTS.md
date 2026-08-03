@@ -402,7 +402,10 @@ golden rule does not usually bite here.
   blob it consumed.** See [`base/AGENTS.md`](base/AGENTS.md) — returning
   the unpack end-of-buffer code instead silently drops every proc after
   the first in each server's contribution, and still reports success to
-  the caller.
+  the caller. Note that only `hash` currently serves this path:
+  `PMIX_GDS_STORE_MODEX` always resolves the local module, and a server
+  assigns itself `"hash"`, so modex storage is excluded from `shmem3` by
+  design pending separate work.
 
 ## Testing
 
@@ -425,13 +428,18 @@ golden rule does not usually bite here.
 
 Neither component ever removes a session tracker. A session legitimately
 outlives the jobs in it — that is what a session is — and there is no
-"session has ended" event for either component to act on, so
+"session has ended" signal for either component to act on, so
 `pmix_mca_gds_hash_component.mysessions` and
 `pmix_mca_gds_shmem3_component.sessions` only shrink when the module
 finalizes. `del_nspace` drops the *job* and its reference to the session;
-the session itself stays. That is a known gap rather than an oversight:
-closing it needs a lifetime signal the framework does not currently
-receive.
+the session itself stays.
+
+Closing that needs a **`deregister_session` entry point** — a host-facing
+call that says a session is over, paired with a `del_session` slot on
+`pmix_gds_base_module_t` and a fan-out macro alongside
+`PMIX_GDS_ADD_NSPACE` / `PMIX_GDS_DEL_NSPACE`, since every active module
+was told about the session and every one has to be told it is finished.
+That is a public API addition and belongs in its own change, not here.
 
 Component-internal symbols (`pmix_gds_hash_*`, and `pmix_gds_shmem3_*`
 other than the few marked `PMIX_EXPORT`) are hidden in a

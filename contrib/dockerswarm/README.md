@@ -905,13 +905,17 @@ error; everything downstream of that is a bonus.
 **The datastore's job is to answer for processes that are not here.** A
 rank asking for a value its own node already holds is served out of the
 local tables and never touches the modex machinery. So a single-node run
-is self-consistent under a datastore that drops every remote proc — and
-that is not hypothetical. `shmem3`'s `store_modex` callback returned the
-unpack "ran off the end" code where the base envelope walker expects
-`PMIX_SUCCESS`; the walker reads any other status as a failure of the
-contribution it is walking, so the component stored the **first** proc of
-each server's contribution, discarded the rest, and reported success.
-Nothing in `test/unit` could see it.
+is self-consistent under a datastore that drops every remote proc — and a
+datastore that mishandles the modex is not hypothetical. `shmem3`'s
+`store_modex` callback returns the unpack "ran off the end" code where
+the base envelope walker expects `PMIX_SUCCESS`; the walker reads any
+other status as a failure of the contribution it is walking, so it would
+store the **first** proc of each server's contribution, discard the rest,
+and report success. That particular one is dormant — `shmem3` is
+excluded from storing modex data by design for now, because
+`PMIX_GDS_STORE_MODEX` always resolves the local module and a server
+assigns itself `hash` — but nothing in `test/unit` could see it either
+way, and `hash` serves this path for real.
 
 That is why every launch below uses one slot per host
 (`--host node1:1,node2:1,… --map-by node`). With two ranks on a node,
@@ -924,6 +928,7 @@ remote half broken — the same reasoning as `run-bfrops-tests.sh` (§15).
 |-------|----------------|
 | build | The source is copied into a container, `autogen.pl`'d once, and configured twice — default and `--enable-mca-dso`. Each build must produce `shmem3` objects, list `shmem3` in `static-components.h`, and pass `gds_datastore`, `gds_fallback` and `proc_array_id`. |
 | collective | `examples/datatypes` over 2, 4 and 8 separate PMIx servers: put, commit, fence with `PMIX_COLLECT_DATA`, then verify every peer's values. This is the modex path. |
+| scopes | `examples/client` over the same geometry. `datatypes` puts everything at `PMIX_GLOBAL`; this puts at `PMIX_LOCAL` and `PMIX_REMOTE` separately and reads each peer back, so the scope routing in `store` and the scope filtering in `fetch` have to agree *across a server boundary*, not merely within one process. |
 | hash | The same geometry with `PMIX_MCA_gds=hash`, so both shipped components are covered and a divergence between them shows up as one passing and the other failing. |
 | direct | `examples/dmodex`: commit with no collective fence, so each get is answered by the owning proc's server on demand. That is the `assemb_kvs_req` / `accept_kvs_resp` path — the module slots `shmem3` leaves `NULL` and routes to the local module. |
 | fallback | The collective run again with `PMIX_MCA_gds_shmem3_force_client_attach_failure=1`, so every client's fixed-address attach fails and it has to switch to the next module and re-request its job data. A regression here is a failed `PMIx_Init`, not a wrong answer. |
@@ -954,11 +959,15 @@ whether every data type survives the *encoders*, here whether the
 runner repeats the geometry under three `gds` configurations and that one
 does not. If you change `datatypes.c`, both suites are downstream.
 
-`examples/client.c` is **not** used here, and should not be added. It
-asks for `PMIX_LOCAL_PROCS`, which no part of PMIx stores — a host is
-expected to supply it and PRRTE does not — and on the resulting
-`PMIX_ERR_NOT_FOUND` it jumps over the entire put/fence/get section it
-exists for and returns 0. It reports success having tested nothing.
+`examples/client` runs only in the swarm stages, never against
+`simptest`. It asks for `PMIX_LOCAL_PROCS`, which the **host** supplies
+at `register_nspace` time and PMIx then stores and returns — PRRTE
+provides it, `simptest` does not. Against a host that does not, the
+client treats the `PMIX_ERR_NOT_FOUND` as fatal, jumps over the entire
+put/fence/get section it exists for, and returns 0: success, having
+tested nothing. That is why the runner grades it by counting its per-key
+`returned correct` lines rather than trusting its exit status, and why
+the macOS mode drives `datatypes` instead.
 
 Nothing here covers the *cross-version* half of `shmem3`: a server and a
 client built from different releases mapping the same segment. The

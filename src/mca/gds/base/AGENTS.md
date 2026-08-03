@@ -132,9 +132,15 @@ that contribution. It then converts `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER`
 to `PMIX_SUCCESS` for its own caller — so a callback that returns the
 unpack "ran off the end" code, which is exactly how a callback knows it has
 finished a blob, produces a modex that silently contains only the *first*
-proc of each contribution while reporting success. That is not
-hypothetical; `shmem3`'s callback did it. Convert the code inside the
-callback, as `hash`'s does.
+proc of each contribution while reporting success. Convert the code inside
+the callback, as `hash`'s does.
+
+`shmem3`'s callback returned the unpack code, and would have behaved that
+way — but it is not reached: `PMIX_GDS_STORE_MODEX` always resolves the
+*local* module, and a server assigns itself `"hash"`, so modex storage is
+excluded from `shmem3` by design pending separate work. The point of
+stating the contract here is that the exclusion is the only reason the
+difference between the two callbacks never showed.
 
 `test/unit/gds_datastore` builds a synthetic envelope and asserts both
 halves of this: every proc blob is delivered and done is signalled once per

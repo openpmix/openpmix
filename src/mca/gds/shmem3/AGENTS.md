@@ -252,12 +252,21 @@ attached the job segment.
   arriving in that window is `PMIX_ERR_NOT_FOUND`, not a fault. Note that
   `pmix_gds_shmem3_get_session_tma()` forming `&NULL->tma` is not a fault
   either — it just hands the bad pointer onward.
-- **`server_store_modex_cb()` must return `PMIX_SUCCESS` for a proc blob
-  it consumed.** Its natural exit is the unpack end-of-buffer code, but
-  the base envelope walker reads any non-success return as a failure of
-  the whole server contribution: it stops, and then converts the same code
-  to success for its own caller. Returning it therefore stored the first
-  proc of each contribution and silently discarded the rest. See
+- **This component does not store modex data, by design and for now.**
+  `PMIX_GDS_STORE_MODEX` always resolves the *local* module, and a server
+  assigns itself `"hash"` at init, so `server_store_modex()` and its
+  callback are never reached — the whole modex half of this component
+  (the modex segment, `server_mark_modex_complete`,
+  `client_recv_modex_complete`) is written but dormant. Enabling it is a
+  separate effort; do not assume the code below `store_modex` has been
+  exercised.
+- **When that effort happens, `server_store_modex_cb()` must return
+  `PMIX_SUCCESS` for a proc blob it consumed.** Its natural exit is the
+  unpack end-of-buffer code, and the base envelope walker reads any
+  non-success return as a failure of the whole server contribution: it
+  stops, and then converts the same code to success for its own caller.
+  Returning it would store the first proc of each contribution and
+  discard the rest, reporting success. See
   [`../base/AGENTS.md`](../base/AGENTS.md).
 - **The key-index blob is server-supplied, not trusted.**
   `unpack_srv_kindx_info()` fills a table sized by a `TAB_SIZE` element in
