@@ -1340,8 +1340,19 @@ assign_module(
     for (size_t n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_GDS_MODULE)) {
             char **options = NULL;
-            specified = true; // They specified who they want.
+            // The directive comes from the application or the environment,
+            // so it may be malformed - a non-string value, or a string
+            // that splits to nothing. Neither names us, but neither is a
+            // request for somebody else either, so keep the default bid.
+            if (PMIX_STRING != info[n].value.type ||
+                NULL == info[n].value.data.string) {
+                break;
+            }
             options = PMIx_Argv_split(info[n].value.data.string, ',');
+            if (NULL == options) {
+                break;
+            }
+            specified = true; // They specified who they want.
             for (size_t m = 0; NULL != options[m]; m++) {
                 if (0 == strcmp(options[m], PMIX_GDS_SHMEM3_NAME)) {
                     // They specifically asked for us.
@@ -1804,6 +1815,16 @@ unpack_shmem3_connection_info(
             break;
         }
 
+        // Every element of a seg blob is packed as a string; anything
+        // else means the blob is not one of ours, and val would not be
+        // a pointer we can hand to asprintf()/strtost().
+        if (PMIX_UNLIKELY(NULL == kv.value ||
+                          PMIX_STRING != kv.value->type ||
+                          NULL == kv.value->data.string)) {
+            rc = PMIX_ERR_TYPE_MISMATCH;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         const char *const val = kv.value->data.string;
         if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_NSID_KEY)) {
             int nw = asprintf(&usb->nsid, "%s", val);
@@ -1926,6 +1947,11 @@ client_update_global_keyindex_if_necessary(
     tmpindex.next_id = 0;
     // Add the server's keys.
     for (i = 0; i < nkeyindex; ++i) {
+        if (NULL == keyindex[i].name) {
+            // The name is what every comparison below keys on, so an
+            // entry without one cannot participate in the merge.
+            continue;
+        }
         PMIX_REGATTR_INPUT_NEW(ra, keyindex[i].index,
                                    keyindex[i].name,
                                    keyindex[i].string,
@@ -1934,6 +1960,7 @@ client_update_global_keyindex_if_necessary(
         if (PMIX_UNLIKELY(NULL == ra)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&tmpindex);
             return rc;
         }
 
@@ -1983,6 +2010,7 @@ client_update_global_keyindex_if_necessary(
         if (PMIX_UNLIKELY(NULL == rb)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&tmpindex);
             return rc;
         }
 
@@ -2111,25 +2139,41 @@ unpack_srv_kindx_info(
         }
         else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_TAB_SIZE_KEY)) {
             // Create a temporary dict to unpack into - this is the
-            // size of the server's dictionary
-            assert(kv.value->type == PMIX_UINT32);
-            tabsize = kv.value->data.uint32;
-            if (NULL == tmpsrvdict) {
-                tmpsrvdict = calloc(tabsize, sizeof(*tmpsrvdict));
+            // size of the server's dictionary. Everything below indexes
+            // that table with tabindex, so the announced size has to be
+            // sane and has to arrive exactly once: a second, larger
+            // value would leave the writes below addressing memory the
+            // first calloc() never reserved.
+            if (PMIX_UINT32 != kv.value->type ||
+                NULL != tmpsrvdict ||
+                0 == kv.value->data.uint32 ||
+                kv.value->data.uint32 > (uint32_t)INT_MAX) {
+                rc = PMIX_ERR_BAD_PARAM;
+                PMIX_ERROR_LOG(rc);
+                break;
             }
+            tabsize = (int)kv.value->data.uint32;
+            tmpsrvdict = calloc(tabsize, sizeof(*tmpsrvdict));
             if (NULL == tmpsrvdict) {
                 rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
                 break;
             }
         }
-        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_INDEX_KEY) && tmpsrvdict) {
+        // Note the tabindex bound on each of the element branches below:
+        // without it a blob carrying more element-done markers than the
+        // announced table size writes past the end of tmpsrvdict. Falling
+        // through to the final else turns that into a clean PMIX_ERR_BAD_PARAM.
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_INDEX_KEY) &&
+                 tmpsrvdict && tabindex < tabsize) {
             tmpsrvdict[tabindex].index = kv.value->data.uint32;
         }
-        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_TYPE_KEY) && tmpsrvdict) {
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_TYPE_KEY) &&
+                 tmpsrvdict && tabindex < tabsize) {
             tmpsrvdict[tabindex].type = (pmix_data_type_t)kv.value->data.uint16;
         }
-        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_NAME_KEY) && tmpsrvdict) {
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_NAME_KEY) &&
+                 tmpsrvdict && tabindex < tabsize) {
             const int nw = asprintf(
                 &tmpsrvdict[tabindex].name, "%s", kv.value->data.string
             );
@@ -2139,7 +2183,8 @@ unpack_srv_kindx_info(
                 break;
             }
         }
-        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_STRING_KEY) && tmpsrvdict) {
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_STRING_KEY) &&
+                 tmpsrvdict && tabindex < tabsize) {
             const int nw = asprintf(
                 &tmpsrvdict[tabindex].string, "%s", kv.value->data.string
             );
@@ -2149,7 +2194,8 @@ unpack_srv_kindx_info(
                 break;
             }
         }
-        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_DESCRIPTION_KEY) && tmpsrvdict) {
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_DESCRIPTION_KEY) &&
+                 tmpsrvdict && tabindex < tabsize) {
             tmpsrvdict[tabindex].description = PMIx_Argv_split(
                 kv.value->data.string, '\n'
             );
@@ -2159,7 +2205,8 @@ unpack_srv_kindx_info(
                 break;
             }
         }
-        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_ELEM_DONE_KEY) && tmpsrvdict) {
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_ELEM_DONE_KEY) &&
+                 tmpsrvdict && tabindex < tabsize) {
             // Done with this element, so on to the next one.
             tabindex += 1;
         }
@@ -2186,10 +2233,13 @@ unpack_srv_kindx_info(
         rc = PMIX_ERR_BAD_PARAM;
     }
     else {
-        // Last step is to update our view of the
-        // PMIx attributes, if we haven't already.
+        // Last step is to update our view of the PMIx attributes, if we
+        // haven't already. Hand over tabindex, not tabsize: only the
+        // elements that reached their done-marker were actually filled
+        // in, and a half-filled trailing slot has a NULL name that the
+        // merge below compares with strcmp().
         rc = client_update_global_keyindex_if_necessary(
-            nspace_name, tmpsrvdict, tabsize
+            nspace_name, tmpsrvdict, tabindex
         );
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
@@ -2263,7 +2313,10 @@ get_local_job_data_info(
     PMIX_LIST_FOREACH (kvi, &job_cb->kvs, pmix_kval_t) {
         // Calculate some statistics so we can make an educated estimate on the
         // size of structures we need for our backing store.
-        if (PMIX_DATA_ARRAY == kvi->value->type) {
+        if (PMIX_DATA_ARRAY == kvi->value->type &&
+            NULL != kvi->value->data.darray &&
+            NULL != kvi->value->data.darray->array &&
+            0 != kvi->value->data.darray->size) {
             // PMIX_PROC_DATA is stored in the hash table.
             if (PMIX_CHECK_KEY(kvi, PMIX_PROC_DATA)) {
                 nhtentries += kvi->value->data.darray->size;
@@ -2799,6 +2852,14 @@ server_store_modex_cb(pmix_proc_t *proc,
 
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
+    }
+    else {
+        // Running off the end of this proc's blob is how we know we have
+        // stored all of it. The base envelope walker treats any non-success
+        // return as fatal for the server contribution it is walking, so
+        // reporting the unpack error here made it log an error and abandon
+        // every remaining proc in that contribution.
+        rc = PMIX_SUCCESS;
     }
     return rc;
 }
