@@ -24,6 +24,7 @@ two disagree, the README wins, and please fix this file.
 | `run-class-tests.sh` | The `src/class` unit suite, in the two configurations nobody develops in (README §11) |
 | `run-client-tests.sh` | The `src/client` API suite with ranks behind different servers (README §12) |
 | `run-common-tests.sh` | The `src/common` role-shared API suite — query/log/job-control/allocation/monitor/IOF across separate servers (README §13) |
+| `run-mca-tests.sh` | The `src/mca/base` unit suite plus hostile MCA parameters, in the `--enable-mca-dso` configuration where the component repository is actually exercised (README §14) |
 | `swarm-common.sh` | **Sourced, never executed.** `$PMIX_SWARM` naming and the one copy of `cleanup_swarm` |
 
 ## Things that will bite you
