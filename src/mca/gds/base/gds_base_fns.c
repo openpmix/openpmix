@@ -193,6 +193,16 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
                     PMIX_BYTE_OBJECT_DESTRUCT(&bo3);
                     bo3.bytes = wbo.bytes;
                     bo3.size = wbo.size;
+                } else {
+                    /* The sender said these bytes are compressed. If we
+                     * cannot expand them we have no data, not the
+                     * original bytes - carrying on would hand the
+                     * compressed stream to the unpacker and report
+                     * whatever it made of it. */
+                    PMIX_ERROR_LOG(PMIX_ERR_UNPACK_FAILURE);
+                    PMIX_BYTE_OBJECT_DESTRUCT(&bo3);
+                    rc = PMIX_ERR_UNPACK_FAILURE;
+                    goto exit;
                 }
             }
 

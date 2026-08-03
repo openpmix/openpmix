@@ -757,9 +757,15 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr, pmix_buffer_
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
-        /* now see if we have delivered it to all our local
-         * clients for this nspace */
-        if (!PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) && ns->ndelivered == ns->nlocalprocs) {
+        /* now see if we have delivered it to all our local clients for
+         * this nspace. ndelivered counts the deliveries that have
+         * *completed*, and the caller bumps it after we return - so on
+         * this call it names the client before this one. Comparing it
+         * with nlocalprocs directly therefore never matched during the
+         * nlocalprocs deliveries that actually happen, and the cached
+         * copy was held until the namespace itself went away. */
+        if (!PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
+            ns->ndelivered + 1 == ns->nlocalprocs) {
             /* we have, so let's get rid of the packed
              * copy of the data */
             PMIX_RELEASE(ns->jobbkt);
