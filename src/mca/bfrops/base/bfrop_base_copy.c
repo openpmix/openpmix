@@ -228,6 +228,10 @@ pmix_status_t pmix_bfrops_base_copy_info(pmix_info_t **dest, pmix_info_t *src,
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     *dest = (pmix_info_t *) malloc(sizeof(pmix_info_t));
+    if (NULL == *dest) {
+        return PMIX_ERR_NOMEM;
+    }
+    memset(*dest, 0, sizeof(pmix_info_t));
     pmix_strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
     (*dest)->flags = src->flags;
     return pmix_bfrops_base_value_xfer(&(*dest)->value, &src->value);

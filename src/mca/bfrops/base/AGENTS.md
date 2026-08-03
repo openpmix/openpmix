@@ -308,6 +308,20 @@ protecting.
 The wrappers are one line each and the internal callers go straight to
 the inline, so a check in the wrapper protects only half the callers.
 
+### Legacy components are old, not exempt
+
+`v12` and `v20` carry their own `unpack.c`, and their string unpacker
+had the same two holes the base one did: a negative length off the wire
+reached `malloc()` as a huge `size_t`, and the result was handed back as
+a C string without the terminator being guaranteed. "Do not touch their
+bytes" is about the *encoding*; it does not mean an ancient peer gets to
+be trusted. Neither fix changes a byte on the wire — one refuses input
+the packer never produces, the other writes a terminator inside the
+buffer that was already allocated for it.
+
+`v12` already had a `PMIX_TAINT_INT_LIMIT` guard on the same length, so
+the intent was there; it just tested only one end of the range.
+
 ## A known inconsistency, deliberately not "fixed"
 
 **`PMIX_REGEX` has two incompatible readings as an array element

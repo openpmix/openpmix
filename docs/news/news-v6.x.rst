@@ -39,7 +39,10 @@ Detailed changes since v6.1.0:
    the array. The elements were allocated one byte apiece and copied a
    pointer apiece
  - Strings unpacked from a message are now guaranteed to be terminated
-   rather than trusting the sender to have included the terminator
+   rather than trusting the sender to have included the terminator,
+   and a negative string length no longer reaches the allocator. This
+   applies to the shared unpacker and to the self-contained v12 and v20
+   unpackers alike
  - PMIx_Value_get_number no longer accepts a negative PMIX_INT16,
    PMIX_INT32 or PMIX_INT64 into an unsigned destination type. All
    three sign checks tested the wrong member of the value union, so
