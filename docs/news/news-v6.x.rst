@@ -62,6 +62,19 @@ Detailed changes since v6.1.0:
    exactly representable
  - PMIx_Data_type_string now names PMIX_NODE_PID when called before the
    library is initialized
+ - A pmix_value_t that names a type whose payload lives behind a pointer
+   but carries no object no longer crashes the library. Such a value is
+   malformed but takes nothing more than setting the type before the
+   data, and it faulted in PMIx_Value_string, PMIx_Info_string,
+   PMIx_Value_compare, PMIx_Value_get_size, PMIx_Info_get_size,
+   PMIx_Value_xfer, PMIx_Info_xfer, PMIx_Info_list_xfer and
+   PMIx_Value_unload, for every pointer-backed type. Each of those now
+   treats it as what it is - an absent object
+ - PMIx_Value_unload no longer writes through a NULL destination for a
+   PMIX_JOB_STATE value. That type is copied into caller-supplied
+   storage like its neighbours, but was missing from the list the
+   function checks before it does so, so it crashed where the others
+   returned PMIX_ERR_BAD_PARAM
  - A process-realm info array (PMIX_PROC_INFO_ARRAY, also known by its
    deprecated name PMIX_PROC_DATA) may now identify the process it
    describes with any of the forms its definition allows. The datastore

@@ -68,7 +68,8 @@ They fall into three groups.
 **Self-contained library tests** — no server, no launcher, no network.
 These run anywhere and are the bulk of the suite: `compress`, `preg`,
 `bfrops_regex2`, `bfrops_alloc_inherit`, `bfrops_darray`,
-`bfrops_malformed`, `bfrops_get_number`, `info_support`, `iof_pattern`,
+`bfrops_malformed`, `bfrops_get_number`, `bfrops_null_object`,
+`info_support`, `iof_pattern`,
 `hwloc_datatype`, `tracker_match`, `trk_complete`, `collective_status`,
 `collect_job_info`, `progress_threads`, `pmix_log`.
 
@@ -210,6 +211,26 @@ One exclusion in it is policy, not laziness: a PMIx structured value
 converted into another structured type, as `check_rank()` in the source
 states. The test encodes that; do not delete the exclusion to make a
 "missing" conversion appear.
+
+[`bfrops_null_object.c`](bfrops_null_object.c) is the fourth, and it
+asserts survival rather than any return code. A value tagged with a
+pointer-backed type and carrying no object is malformed, but it takes
+nothing more than setting `.type` before the data — and eighty-five
+(type, operation) pairs segfaulted on one. What each operation *returns*
+for such a value is deliberately not checked: "there is no object here"
+is a state all of them can express, and which spelling a given one picks
+is not the subject.
+
+The one exception, which the test does pin down, is
+`PMIX_DATA_ARRAY`: a value that names a data array and carries none must
+copy to an **empty array**, not to another NULL, because callers
+dereference the result. Do not relax that to "either is fine".
+
+The test is noisy on purpose — a few of the types it walks have no
+member in the value union at all, and the library prints a diagnostic
+for them. Those lines are the library declining rather than faulting,
+which is what is being asserted; do not quiet them by dropping the
+types.
 
 Neither program needs a server, and neither can reach the two things a
 *peer* decides — which bfrops module encodes a message, and whether the

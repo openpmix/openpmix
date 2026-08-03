@@ -223,6 +223,55 @@ where the underlying C types would permit it. Plain numeric → structured
 is allowed; structured → structured is not. The test encodes that
 exception; do not "fix" it without changing the policy first.
 
+### And a third: an absent object is not an absent value
+
+A `pmix_value_t` may be tagged with a type whose payload lives behind a
+pointer and carry no object at all. That is malformed, and it is the
+single easiest malformed value in PMIx to produce — it takes nothing
+more than setting the type before the data:
+
+```c
+pmix_value_t v;
+PMIX_VALUE_CONSTRUCT(&v);
+v.type = PMIX_PROC_INFO;      // and nothing else
+```
+
+Every operation here trusts the type tag — it has to, since the tag is
+the only thing that says which union member is live — and then
+dereferences what it points at. Each therefore has to screen the
+pointer for itself, and each is a separate sixty-arm switch, which is
+why none of them did. Eighty-five (type, operation) pairs segfaulted:
+`PMIx_Value_string`, `PMIx_Info_string`, `PMIx_Value_compare`,
+`PMIx_Value_get_size`, `PMIx_Info_get_size`, `PMIx_Value_xfer`,
+`PMIx_Info_xfer`, `PMIx_Info_list_xfer` and `PMIx_Value_unload`, across
+every pointer-backed type.
+
+The screen is now one predicate,
+`pmix_bfrops_base_value_is_null_object()` in `bfrop_base_fns.c`, applied
+at each of those operations. **Add the call, not another caller-side
+check**: there are hundreds of callers and the value usually comes from
+an application rather than from library code.
+
+Two details worth keeping:
+
+- `print_val()` needed its own copy of the screen even though the
+  dispatcher `pmix_bfrops_base_print()` already screens `src`. That
+  dispatcher receives the *value*; `print_val()` reaches past it and
+  hands each per-type printer the union *member*, so the dispatcher's
+  check never applies to what the printer actually dereferences.
+- `PMIX_DATA_ARRAY` is deliberately excluded from the `value_xfer`
+  screen. `copy_darray()` already answers a NULL source with an *empty
+  array descriptor* rather than a NULL, and callers dereference that
+  result — the group code among them. Zeroing the destination instead
+  would reintroduce the crash one layer up.
+
+`pmix_bfrops_base_value_unload()` had a related but distinct hole. It
+documents that "simple" types are copied into storage the *caller*
+supplies, and rejects a NULL `*data` for those — but the list it checks
+against was missing `PMIX_JOB_STATE`, so that one type reached a
+`memcpy` through a NULL destination instead of returning
+`PMIX_ERR_BAD_PARAM`.
+
 ## A known inconsistency, deliberately not "fixed"
 
 **`PMIX_REGEX` has two incompatible readings as an array element
@@ -271,6 +320,7 @@ let two threads mutate it at once.
 | [`test/unit/bfrops_darray.c`](../../../../test/unit/bfrops_darray.c) | every registered type as a data-array element, held across construct / pack / unpack / copy; the typeless-array marker; nested data buffers |
 | [`test/unit/bfrops_malformed.c`](../../../../test/unit/bfrops_malformed.c) | truncated and lying input; flexible-integer boundaries |
 | [`test/unit/bfrops_get_number.c`](../../../../test/unit/bfrops_get_number.c) | `PMIx_Value_get_number` as two properties over every (source, destination) pair |
+| [`test/unit/bfrops_null_object.c`](../../../../test/unit/bfrops_null_object.c) | every pointer-backed type through every value-level operation with no object attached |
 | [`test/unit/nested_darray.c`](../../../../test/unit/nested_darray.c) | array nesting and the depth cap |
 | [`test/unit/bfrops_regex2.c`](../../../../test/unit/bfrops_regex2.c) | `PMIX_REGEX2` pack/unpack/copy/print/compare |
 | [`test/unit/bfrops_alloc_inherit.c`](../../../../test/unit/bfrops_alloc_inherit.c) | `PMIX_ALLOC_INHERIT` |

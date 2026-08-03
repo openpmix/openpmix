@@ -401,6 +401,16 @@ it already produced for a zero-length or NULL-elements source — "absent"
 is a state this function could always express; it simply never checked
 for the one spelling of it that arrives as a NULL pointer.
 
+That was one instance of a pattern that turned out to run right through
+the framework: **eighty-five (type, operation) pairs faulted** the same
+way, across `PMIx_Value_string`, `PMIx_Info_string`, `PMIx_Value_compare`,
+`PMIx_Value_get_size`, `PMIx_Info_get_size`, `PMIx_Value_xfer`,
+`PMIx_Info_xfer`, `PMIx_Info_list_xfer` and `PMIx_Value_unload`. They
+are screened now by one predicate,
+`pmix_bfrops_base_value_is_null_object()`; see
+[`base/AGENTS.md`](base/AGENTS.md) for where it is applied and why
+`PMIX_DATA_ARRAY` is excluded from one of those applications.
+
 Two things follow for anyone adding or editing a `copy_*` here:
 
 - **A type check at a caller's entry point does not protect you.** The
@@ -435,6 +445,7 @@ unbounded over-reads, and both are three-byte messages.
 | [`test/unit/bfrops_darray.c`](../../../test/unit/bfrops_darray.c) | every registered data type used as a data-array element, held across construct / pack / unpack / copy |
 | [`test/unit/bfrops_malformed.c`](../../../test/unit/bfrops_malformed.c) | truncated, lying and hostile input; the flexible-integer encoding boundaries |
 | [`test/unit/bfrops_get_number.c`](../../../test/unit/bfrops_get_number.c) | `PMIx_Value_get_number` numeric conversions, as properties over every source/destination pair |
+| [`test/unit/bfrops_null_object.c`](../../../test/unit/bfrops_null_object.c) | every value-level operation against a value that names a pointer-backed type and carries no object |
 | [`test/unit/nested_darray.c`](../../../test/unit/nested_darray.c) | array nesting and the `max_array_depth` cap |
 | [`test/unit/bfrops_regex2.c`](../../../test/unit/bfrops_regex2.c), [`bfrops_alloc_inherit.c`](../../../test/unit/bfrops_alloc_inherit.c) | the two newest `v61` types |
 | [`examples/datatypes.c`](../../../examples/datatypes.c) | one value of every interesting type published by each rank and verified by every other rank |

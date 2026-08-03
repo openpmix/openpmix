@@ -645,6 +645,19 @@ static int print_val(char **output, pmix_value_t *src)
     int rc;
     char *tp;
 
+    /* The per-type printers below cannot be relied on to notice an
+     * absent object: the dispatcher pmix_bfrops_base_print() screens its
+     * src, but this function reaches past it to hand each printer the
+     * union *member* rather than the value, so that screen never
+     * applies. Do it here, once, where every pointer-valued case
+     * passes. */
+    if (pmix_bfrops_base_value_is_null_object(src)) {
+        pmix_asprintf(&tp, " Data type: %s\tValue: NULL pointer",
+                      PMIx_Data_type_string(src->type));
+        *output = tp;
+        return PMIX_SUCCESS;
+    }
+
     switch (src->type) {
         case PMIX_UNDEF:
             tp = strdup(" Data type: PMIX_UNDEF");

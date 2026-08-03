@@ -64,6 +64,50 @@ char* pmix_bfrops_base_get_components(void)
     return tmp;
 }
 
+bool pmix_bfrops_base_value_is_null_object(const pmix_value_t *v)
+{
+    if (NULL == v) {
+        return true;
+    }
+    switch (v->type) {
+    case PMIX_PROC:
+    case PMIX_PROC_NSPACE:
+        return (NULL == v->data.proc);
+    case PMIX_PROC_INFO:
+        return (NULL == v->data.pinfo);
+    case PMIX_DATA_ARRAY:
+        return (NULL == v->data.darray);
+    case PMIX_COORD:
+        return (NULL == v->data.coord);
+    case PMIX_TOPO:
+        return (NULL == v->data.topo);
+    case PMIX_PROC_CPUSET:
+        return (NULL == v->data.cpuset);
+    case PMIX_GEOMETRY:
+        return (NULL == v->data.geometry);
+    case PMIX_DEVICE:
+        return (NULL == v->data.device);
+    case PMIX_DEVICE_DIST:
+        return (NULL == v->data.devdist);
+    case PMIX_ENDPOINT:
+        return (NULL == v->data.endpoint);
+    case PMIX_RESOURCE_UNIT:
+        return (NULL == v->data.resunit);
+    case PMIX_NODE_PID:
+        return (NULL == v->data.nodepid);
+    case PMIX_REGEX2:
+        return (NULL == v->data.regex2);
+    case PMIX_REGATTR:
+    case PMIX_DATA_BUFFER:
+        return (NULL == v->data.ptr);
+    default:
+        /* the scalar types keep their payload in the union itself, and
+         * the string and byte-object types already handle a NULL
+         * everywhere they are read */
+        return false;
+    }
+}
+
 void pmix_bfrops_base_value_load(pmix_value_t *v,
                                  const void *data,
                                  pmix_data_type_t type)
@@ -410,6 +454,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
         PMIX_RESBLOCK_DIRECTIVE,
         PMIX_ALLOC_INHERIT,
         PMIX_LINK_STATE,
+        PMIX_JOB_STATE,
         PMIX_LOCTYPE,
         PMIX_DEVTYPE,
 
@@ -417,7 +462,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
     };
 
     rc = PMIX_SUCCESS;
-    if (NULL == data) {
+    if (NULL == kv || NULL == data || NULL == sz) {
         return PMIX_ERR_BAD_PARAM;
     }
     if (NULL == *data) {
@@ -427,6 +472,13 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
                 return PMIX_ERR_BAD_PARAM;
             }
         }
+    }
+    /* an object that is not there unloads as no bytes; see
+     * pmix_bfrops_base_value_is_null_object() */
+    if (pmix_bfrops_base_value_is_null_object(kv)) {
+        *data = NULL;
+        *sz = 0;
+        return PMIX_SUCCESS;
     }
 
     switch (kv->type) {
@@ -1424,6 +1476,16 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
     size_t n;
     pmix_regattr_t *regattr;
     pmix_node_pid_t *ndpd;
+
+    if (NULL == sz) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* an object that is not there occupies nothing; see
+     * pmix_bfrops_base_value_is_null_object() */
+    if (pmix_bfrops_base_value_is_null_object(v)) {
+        *sz = 0;
+        return PMIX_SUCCESS;
+    }
 
     switch (v->type) {
         case PMIX_UNDEF:

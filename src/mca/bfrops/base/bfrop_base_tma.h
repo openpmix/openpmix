@@ -3392,6 +3392,18 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
 
     /* copy the right field */
     p->type = src->type;
+    /* A source tagged with a pointer-backed type and carrying no object
+     * is malformed but trivially constructible; see
+     * pmix_bfrops_base_value_is_null_object(). Produce the same absence
+     * in the destination rather than dereferencing it. PMIX_DATA_ARRAY
+     * is excluded because copy_darray() already has its own answer for
+     * a NULL source - an empty array descriptor - and callers depend on
+     * getting that rather than a NULL back. */
+    if (PMIX_DATA_ARRAY != src->type &&
+        pmix_bfrops_base_value_is_null_object(src)) {
+        memset(&p->data, 0, sizeof(p->data));
+        return PMIX_SUCCESS;
+    }
     switch (src->type) {
     case PMIX_UNDEF:
         break;

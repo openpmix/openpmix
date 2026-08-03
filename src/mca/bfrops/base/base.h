@@ -385,6 +385,30 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_stub_register_type(
 PMIX_EXPORT const char *pmix_bfrops_base_data_type_string(pmix_pointer_array_t *regtypes,
                                                           pmix_data_type_t type);
 
+/**
+ * Does this value claim a type whose payload lives behind a pointer,
+ * and is that pointer NULL?
+ *
+ * Such a value is malformed, but it is the single easiest malformed
+ * value to produce: PMIX_VALUE_CONSTRUCT() followed by an assignment to
+ * .type yields one, as does any caller that builds an info by hand and
+ * fills in the type before the data. The type tag is the only thing
+ * saying which union member is live, so every operation in this
+ * framework trusts it - and then dereferences what it points at.
+ *
+ * The rule that follows, and it is the same one the copy functions
+ * already obey: the operations here must *survive* such a value rather
+ * than fault on it. "Absent" is a state each of them can express - an
+ * empty comparison, a size of zero, an unloaded object of no bytes - so
+ * express it. Reserve an error return for input that cannot be given
+ * any meaning at all.
+ *
+ * Callers cannot be relied upon to screen this; there are hundreds of
+ * them, and the value often arrives from an application rather than
+ * from library code. Screen it at the operation.
+ */
+PMIX_EXPORT bool pmix_bfrops_base_value_is_null_object(const pmix_value_t *v);
+
 /*
  * "Standard" pack functions
  */
