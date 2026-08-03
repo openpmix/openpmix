@@ -23,7 +23,13 @@ how a component maps to a wire-format version, the very large body of
 shared code in `base/`, and the rules you must obey to avoid silently
 breaking cross-version communication. Each component subdirectory
 (`v12/`, `v20/`, `v21/`, `v3/`, `v4/`, `v41/`, `v51/`, `v61/`) carries
-its own `AGENTS.md` describing that version's deltas.
+its own `AGENTS.md` describing that version's deltas, and
+[`base/AGENTS.md`](base/AGENTS.md) covers the shared implementation —
+including the six per-type operations that have to agree with each
+other, the "never read outside the buffer" contract, and the defects
+found in the August 2026 review of that directory. **Read
+[`base/AGENTS.md`](base/AGENTS.md) before editing anything under
+`base/`**, which is where essentially all of the code is.
 
 `bfrops` is the most wire-sensitive framework in the tree. Read the
 top-level interoperability section before touching anything here.
@@ -323,6 +329,7 @@ All under the `pmix_bfrops_base_` prefix:
 |-----------|---------|
 | `initial_size` | starting allocation of a new buffer (default 128 bytes) |
 | `threshold_size` | size at which `buffer_extend` switches from doubling to additive growth (default 1024) |
+| `max_array_depth` | how deeply data arrays may nest before pack and unpack refuse; 0 disables the cap |
 | `default_type` | default `pmix_bfrop_buffer_type_t` for new buffers (described vs. non-described) |
 
 ## Threading
@@ -413,6 +420,33 @@ Regression coverage: `test/unit/run_grpbadinfo.pl` drives
 `examples/group_badinfo`, which hands `PMIx_Group_construct` a
 `PMIX_GROUP_INFO` carrying a scalar and then one carrying a NULL array.
 The second case is the one that exercises this file.
+
+The same reasoning applies to what arrives from a *peer* rather than
+from a caller, and there the stakes are higher because there is no
+caller to blame. See "Nothing here may read outside the buffer it was
+given" in [`base/AGENTS.md`](base/AGENTS.md): a count that outruns its
+payload and a flexible integer truncated mid-encoding were both
+unbounded over-reads, and both are three-byte messages.
+
+## Testing
+
+| Where | What it covers |
+|-------|----------------|
+| [`test/unit/bfrops_darray.c`](../../../test/unit/bfrops_darray.c) | every registered data type used as a data-array element, held across construct / pack / unpack / copy |
+| [`test/unit/bfrops_malformed.c`](../../../test/unit/bfrops_malformed.c) | truncated, lying and hostile input; the flexible-integer encoding boundaries |
+| [`test/unit/nested_darray.c`](../../../test/unit/nested_darray.c) | array nesting and the `max_array_depth` cap |
+| [`test/unit/bfrops_regex2.c`](../../../test/unit/bfrops_regex2.c), [`bfrops_alloc_inherit.c`](../../../test/unit/bfrops_alloc_inherit.c) | the two newest `v61` types |
+| [`examples/datatypes.c`](../../../examples/datatypes.c) | one value of every interesting type published by each rank and verified by every other rank |
+| [`contrib/dockerswarm/run-bfrops-tests.sh`](../../../contrib/dockerswarm/AGENTS.md) | drives `datatypes` with the ranks on **different nodes**, plus the unit programs on Linux in an optimized `--enable-mca-dso` build |
+
+The last two rows exist because of a limit that is easy to overlook: a
+pack/unpack round trip inside one process is self-consistent under *any*
+choice of module and *any* buffer type, so it can never fail on the two
+things a peer actually decides — which module encodes
+(`peer->nptr->compat.bfrops`, assigned from the handshake's version
+string) and whether the buffer is described. Only a real socket between
+two separate PMIx servers makes those observable. Single-process tests
+cover the encoders; the swarm covers the negotiation.
 
 ## When working in this framework — the wire-format rules
 

@@ -7,6 +7,39 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - PMIx no longer reads past the end of a message when a peer claims
+   more values than it sent. The flexible integer decoder bounded its
+   loop with an expression that underflowed once nothing was left to
+   read, so a three-byte buffer could drive an unbounded over-read and
+   crash the process. It now refuses an empty region and reports a
+   truncated encoding rather than assembling a value out of whatever
+   bytes followed
+ - A data array carrying no element type no longer desynchronizes the
+   message it is packed into. The packer wrote a PMIX_UNDEF type tag and
+   a size while the unpacker read the tag as a terminator and never
+   consumed the size, so everything after it was misread. Such an array
+   is trivially produced - copying a value whose data array pointer is
+   NULL yields one
+ - Copying a data array of PMIX_PROC_CPUSET whose elements are not valid
+   hwloc objects no longer releases the element block twice. Any
+   PMIx_Value_xfer or PMIX_INFO_XFER of an array from
+   PMIx_Data_array_create reached it
+ - An unpacked PMIX_DATA_BUFFER can now be read from. Unpacking restored
+   the payload but left the cursors and the allocation size unset, so
+   the caller received a buffer it could not extract a single value out
+   of
+ - Eighteen PMIx data types that pack and unpack correctly on their own
+   can now also be used as data array element types. PMIX_DATA_ARRAY_CONSTRUCT
+   silently produced an empty descriptor for them, which made unpacking
+   an array of any of them fail with PMIX_ERR_NOMEM. The affected types
+   include PMIX_NODE_PID, PMIX_REGEX2, PMIX_TOPO, PMIX_DATA_BUFFER,
+   PMIX_KVAL, PMIX_BUFFER, PMIX_DEVTYPE, PMIX_JOB_STATE, PMIX_LOCTYPE,
+   PMIX_COMMAND and the PMIX_STOR_* family
+ - Copying a data array of PMIX_POINTER no longer reads past the end of
+   the array. The elements were allocated one byte apiece and copied a
+   pointer apiece
+ - Strings unpacked from a message are now guaranteed to be terminated
+   rather than trusting the sender to have included the terminator
  - A process-realm info array (PMIX_PROC_INFO_ARRAY, also known by its
    deprecated name PMIX_PROC_DATA) may now identify the process it
    describes with any of the forms its definition allows. The datastore

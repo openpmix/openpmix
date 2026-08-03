@@ -209,7 +209,7 @@
 static size_t flex_pack_integer(size_t val, uint8_t out_buf[FLEX_BASE7_MAX_BUF_SIZE]);
 
 static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size, size_t *out_val,
-                                  size_t *out_val_size);
+                                  size_t *out_val_size, bool *truncated);
 
 pmix_status_t pmix_bfrops_base_get_max_size(pmix_data_type_t type, size_t *size)
 {
@@ -245,13 +245,32 @@ pmix_status_t pmix_bfrops_base_decode_int(pmix_data_type_t type, void *src, size
     pmix_status_t rc = PMIX_SUCCESS;
     size_t tmp;
     size_t val_size, unpack_val_size;
+    bool truncated = false;
 
     PMIX_SQUASH_TYPE_SIZEOF(rc, type, val_size);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    *dst_size = flex_unpack_integer(src, src_len, &tmp, &unpack_val_size);
+    /* refuse an empty source region. flex_unpack_integer must read at
+     * least one byte to make any progress, so handing it a zero length
+     * is not "decode nothing" - it is a read past the end of whatever
+     * the caller handed us. A peer that truncates a message, or that
+     * simply claims more values than it sent, gets us here, so this is
+     * reachable from the wire and not just from a local programming
+     * mistake. */
+    if (0 == src_len) {
+        *dst_size = 0;
+        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
+    }
+    *dst_size = flex_unpack_integer(src, src_len, &tmp, &unpack_val_size, &truncated);
+    if (truncated) {
+        /* the last byte we were allowed to read still had its
+         * continuation flag set, so the encoded value does not fit in
+         * what the peer actually sent us */
+        *dst_size = 0;
+        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
+    }
 
     if (val_size < unpack_val_size) { // sanity check
         rc = PMIX_ERR_UNPACK_FAILURE;
@@ -301,9 +320,17 @@ static size_t flex_pack_integer(size_t val, uint8_t out_buf[FLEX_BASE7_MAX_BUF_S
 
 /*
  * See a comment to `pmix_bfrops_pack_flex` for additional details.
+ *
+ * Never reads more than buf_size bytes from in_buf. The caller must not
+ * pass buf_size == 0 - one byte is the shortest legal encoding, so there
+ * is nothing this can do with an empty region except read past its end.
+ * If we run out of bytes while the continuation flag is still set, the
+ * encoded value was truncated in transit (or the peer lied about how
+ * many values it sent); say so rather than silently returning a value
+ * assembled from the bytes that happened to be there.
  */
 static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size, size_t *out_val,
-                                  size_t *out_val_size)
+                                  size_t *out_val_size, bool *truncated)
 {
     size_t value = 0, shift = 0, shift_last = 0;
     size_t idx = 0;
@@ -311,24 +338,33 @@ static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size, size_
     uint8_t hi_bit = 0;
     size_t flex_size = buf_size;
 
+    *truncated = false;
+
     /* restrict the buf size to max flex size */
     if (buf_size > FLEX_BASE7_MAX_BUF_SIZE) {
         flex_size = FLEX_BASE7_MAX_BUF_SIZE;
     }
 
+    /* the first SIZEOF_SIZE_T bytes carry seven bits apiece; only the
+     * final byte of a maximal encoding carries a full eight */
     do {
         val = in_buf[idx++];
         val_last = val;
         shift_last = shift;
         value = value + (((uint64_t) val & FLEX_BASE7_MASK) << shift);
         shift += FLEX_BASE7_SHIFT;
-    } while (PMIX_UNLIKELY((val & FLEX_BASE7_CONT_FLAG) && (idx < (flex_size - 1))));
-    /* If we have leftover (VERY unlikely) */
-    if (PMIX_UNLIKELY((flex_size - 1) == idx && (val & FLEX_BASE7_CONT_FLAG))) {
-        val = in_buf[idx++];
-        val_last = val;
-        value = value + ((uint64_t) val << shift);
-        shift_last = shift;
+    } while (PMIX_UNLIKELY((val & FLEX_BASE7_CONT_FLAG) && (idx < SIZEOF_SIZE_T)
+                           && (idx < flex_size)));
+    if (PMIX_UNLIKELY(0 != (val & FLEX_BASE7_CONT_FLAG))) {
+        /* If we have leftover (VERY unlikely) */
+        if (SIZEOF_SIZE_T == idx && idx < flex_size) {
+            val = in_buf[idx++];
+            val_last = val;
+            value = value + ((uint64_t) val << shift);
+            shift_last = shift;
+        } else {
+            *truncated = true;
+        }
     }
     /* compute the most significant bit of val */
     while (val_last != 0) {

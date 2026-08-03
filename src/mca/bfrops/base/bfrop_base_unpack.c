@@ -357,7 +357,10 @@ pmix_status_t pmix_bfrops_base_unpack_string(pmix_pointer_array_t *regtypes, pmi
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
-        if (0 == len) { /* zero-length string - unpack the NULL */
+        if (0 >= len) { /* zero-length string - unpack the NULL */
+            /* a negative length can only come from a corrupt or hostile
+             * buffer; treat it the same as absent rather than handing it
+             * to malloc, where it becomes a huge size_t */
             sdest[i] = NULL;
         } else {
             sdest[i] = (char *) malloc(len); // NULL terminator is included
@@ -366,8 +369,15 @@ pmix_status_t pmix_bfrops_base_unpack_string(pmix_pointer_array_t *regtypes, pmi
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, sdest[i], &len, PMIX_BYTE, regtypes);
             if (PMIX_SUCCESS != ret) {
+                free(sdest[i]);
+                sdest[i] = NULL;
                 return ret;
             }
+            /* the packer always includes the terminator in len, but the
+             * bytes came off the wire and everything downstream of here
+             * treats this as a C string. Guarantee the invariant rather
+             * than trusting the sender to have honored it. */
+            sdest[i][len - 1] = '\0';
         }
     }
 
@@ -1001,7 +1011,10 @@ pmix_status_t pmix_bfrops_base_unpack_kval(pmix_pointer_array_t *regtypes, pmix_
             return ret;
         }
         /* allocate the space */
-        ptr[i].value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        ptr[i].value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        if (NULL == ptr[i].value) {
+            return PMIX_ERR_NOMEM;
+        }
         /* unpack the value */
         m = 1;
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].value, &m, PMIX_VALUE, regtypes);
@@ -1208,7 +1221,15 @@ static pmix_status_t unpack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t
             return ret;
         }
         if (PMIX_UNDEF == ptr[i].type) {
-            // this was a NULL array pointer
+            /* this was a NULL array pointer, or an array descriptor with
+             * no element type - either way the packer wrote the tag and
+             * nothing else, so there is no size to read and nothing
+             * further in the stream belongs to us. Zero the descriptors
+             * we are abandoning so the caller is never handed one we
+             * never touched. */
+            for (; i < n; ++i) {
+                memset(&ptr[i], 0, sizeof(pmix_data_array_t));
+            }
             return PMIX_SUCCESS;
         }
         /* unpack the number of array elements */
@@ -1217,7 +1238,7 @@ static pmix_status_t unpack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
-        if (0 == ptr[i].size || PMIX_UNDEF == ptr[i].type) {
+        if (0 == ptr[i].size) {
             /* nothing else to do */
             continue;
         }
@@ -1978,6 +1999,7 @@ pmix_status_t pmix_bfrops_base_unpack_dbuf(pmix_pointer_array_t *regtypes, pmix_
 
     n = *num_vals;
     for (i = 0; i < n; ++i) {
+        memset(&ptr[i], 0, sizeof(pmix_data_buffer_t));
         m = 1;
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].bytes_used, &m, PMIX_SIZE, regtypes);
         if (PMIX_SUCCESS != ret) {
@@ -1986,11 +2008,23 @@ pmix_status_t pmix_bfrops_base_unpack_dbuf(pmix_pointer_array_t *regtypes, pmix_
         }
         if (0 < ptr[i].bytes_used) {
             ptr[i].base_ptr = malloc(ptr[i].bytes_used);
+            if (NULL == ptr[i].base_ptr) {
+                ptr[i].bytes_used = 0;
+                return PMIX_ERR_NOMEM;
+            }
             m = ptr[i].bytes_used;
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].base_ptr, &m, PMIX_BYTE, regtypes);
             if (PMIX_SUCCESS != ret) {
                 return ret;
             }
+            /* finish the buffer off. Recovering the payload is only half
+             * the job - without the cursors and the allocation size the
+             * caller gets a buffer it cannot read a single value out of,
+             * which is the whole point of nesting one. Mirror what
+             * pmix_bfrops_base_unpack_buf does for PMIX_BUFFER. */
+            ptr[i].bytes_allocated = ptr[i].bytes_used;
+            ptr[i].pack_ptr = ptr[i].base_ptr + ptr[i].bytes_used;
+            ptr[i].unpack_ptr = ptr[i].base_ptr;
         }
     }
     return PMIX_SUCCESS;

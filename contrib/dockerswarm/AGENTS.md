@@ -25,6 +25,7 @@ two disagree, the README wins, and please fix this file.
 | `run-client-tests.sh` | The `src/client` API suite with ranks behind different servers (README §12) |
 | `run-common-tests.sh` | The `src/common` role-shared API suite — query/log/job-control/allocation/monitor/IOF across separate servers (README §13) |
 | `run-mca-tests.sh` | The `src/mca/base` unit suite plus hostile MCA parameters, in the `--enable-mca-dso` configuration where the component repository is actually exercised (README §14) |
+| `run-bfrops-tests.sh` | The `src/mca/bfrops` unit programs on Linux/optimized/`--enable-mca-dso`, **plus** `examples/datatypes` moving every data type between ranks on different nodes (README §15) |
 | `swarm-common.sh` | **Sourced, never executed.** `$PMIX_SWARM` naming and the one copy of `cleanup_swarm` |
 
 ## Things that will bite you
@@ -62,6 +63,16 @@ two disagree, the README wins, and please fix this file.
   which you mean; `run-class-tests.sh` is explicit that its ten-node
   stage is only meaningful for the one multi-process program in that
   suite.
+
+- **Ranks sharing a node hide the very thing a wire test is for.**
+  `run-bfrops-tests.sh` launches with one slot per host
+  (`--host node1:1,node2:1,... --map-by node`) rather than the
+  `node1:2,node2:2` the other runners use, because a rank asking for a
+  peer's data on its *own* node is answered out of the local datastore
+  and never packs anything. With two ranks per node those pairs pass
+  regardless of the state of the encoders, so the run can be green with
+  the cross-node half broken. If you change the geometry of a test whose
+  subject is serialization, keep one rank per node.
 
 - **A PRRTE `--output` qualifier attaches with a colon, not a comma.**
   `file=NAME:pattern` selects PMIx's `PMIX_IOF_FILE_PATTERN` handling;

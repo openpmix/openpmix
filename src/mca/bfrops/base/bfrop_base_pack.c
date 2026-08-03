@@ -681,8 +681,21 @@ pmix_status_t pmix_bfrops_base_pack_kval(pmix_pointer_array_t *regtypes, pmix_bu
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
-        /* pack the value */
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, ptr[i].value, 1, PMIX_VALUE, regtypes);
+        /* pack the value. The value member is a pointer, so it can be
+         * NULL - a freshly constructed kval, or an element of a kval
+         * array the caller has not filled in yet, is exactly that. Send
+         * an undefined value in its place rather than dereferencing it:
+         * the unpacker allocates a value and reads a type tag either
+         * way, so the stream stays symmetric. */
+        if (NULL == ptr[i].value) {
+            pmix_value_t undef;
+
+            memset(&undef, 0, sizeof(undef));
+            undef.type = PMIX_UNDEF;
+            PMIX_BFROPS_PACK_TYPE(ret, buffer, &undef, 1, PMIX_VALUE, regtypes);
+        } else {
+            PMIX_BFROPS_PACK_TYPE(ret, buffer, ptr[i].value, 1, PMIX_VALUE, regtypes);
+        }
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
@@ -839,12 +852,24 @@ static pmix_status_t pack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t *
         if (PMIX_SUCCESS != (ret = pmix_bfrop_store_data_type(regtypes, buffer, p[i].type))) {
             return ret;
         }
+        /* An undefined element type is the same "there is no array here"
+         * marker the NULL-pointer case above emits, and the unpacker
+         * reads it that way: it stops as soon as it sees the tag and
+         * does not look for a size. Emitting one here would leave that
+         * size in the stream for whatever is unpacked next to misread,
+         * so mirror the unpacker exactly and stop. An array descriptor
+         * with no element type is trivially produced - copying a value
+         * whose darray pointer was NULL yields one - so this is not a
+         * theoretical case. */
+        if (PMIX_UNDEF == p[i].type) {
+            return PMIX_SUCCESS;
+        }
         /* pack the number of array elements */
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &p[i].size, 1, PMIX_SIZE, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
-        if (0 == p[i].size || PMIX_UNDEF == p[i].type) {
+        if (0 == p[i].size) {
             /* nothing left to do */
             continue;
         }

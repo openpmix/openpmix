@@ -80,6 +80,7 @@ examples/client3
 examples/client4
 examples/debugger
 examples/debuggerd
+examples/datatypes
 examples/dmodex
 examples/dynamic
 examples/fault
@@ -257,6 +258,8 @@ test/unit/compress
 test/unit/preg
 test/unit/bfrops_regex2
 test/unit/bfrops_alloc_inherit
+test/unit/bfrops_darray
+test/unit/bfrops_malformed
 test/unit/nested_darray
 test/unit/gds_fallback
 test/unit/pmix_log
