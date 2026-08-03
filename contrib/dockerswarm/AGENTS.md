@@ -26,6 +26,7 @@ two disagree, the README wins, and please fix this file.
 | `run-common-tests.sh` | The `src/common` role-shared API suite — query/log/job-control/allocation/monitor/IOF across separate servers (README §13) |
 | `run-mca-tests.sh` | The `src/mca/base` unit suite plus hostile MCA parameters, in the `--enable-mca-dso` configuration where the component repository is actually exercised (README §14) |
 | `run-bfrops-tests.sh` | The `src/mca/bfrops` unit programs on Linux/optimized/`--enable-mca-dso`, **plus** `examples/datatypes` moving every data type between ranks on different nodes (README §15) |
+| `run-gds-tests.sh` | The `src/mca/gds` datastore: compiles `shmem3` (which macOS does not build at all), the gds unit programs in two configurations, and the collective/direct/fallback modex paths across separate servers (README §16) |
 | `swarm-common.sh` | **Sourced, never executed.** `$PMIX_SWARM` naming and the one copy of `cleanup_swarm` |
 
 ## Things that will bite you
