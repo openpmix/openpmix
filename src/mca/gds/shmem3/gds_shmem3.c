@@ -1920,6 +1920,27 @@ regattr_list_free(
     free(ra);
 }
 
+/**
+ * Do two dictionary entries name the same attribute?
+ *
+ * The server packs an entry's name only when it has one, so an entry can
+ * come back from unpack_srv_kindx_info() with none. Such an entry cannot
+ * match anything - but it still has to keep its slot, because the merge
+ * below rebuilds the index by *position*: dropping an entry would shift
+ * every later one and leave client and server disagreeing about exactly
+ * the mapping this function exists to make agree.
+ */
+static inline bool
+keyindex_names_match(
+    const pmix_regattr_input_t *a,
+    const pmix_regattr_input_t *b
+) {
+    if (NULL == a->name || NULL == b->name) {
+        return false;
+    }
+    return (0 == strcmp(a->name, b->name));
+}
+
 // keyindex = dictionary from the server
 // nkeyindex = number of entries in that dictionary
 static pmix_status_t
@@ -1963,11 +1984,6 @@ client_update_global_keyindex_if_necessary(
     tmpindex.next_id = 0;
     // Add the server's keys.
     for (i = 0; i < nkeyindex; ++i) {
-        if (NULL == keyindex[i].name) {
-            // The name is what every comparison below keys on, so an
-            // entry without one cannot participate in the merge.
-            continue;
-        }
         PMIX_REGATTR_INPUT_NEW(ra, keyindex[i].index,
                                    keyindex[i].name,
                                    keyindex[i].string,
@@ -2007,7 +2023,7 @@ client_update_global_keyindex_if_necessary(
                 // left-justified
                 break;
             }
-            if (0 == strcmp(ra->name, rb->name)) {
+            if (keyindex_names_match(ra, rb)) {
                 found = true;
                 break;
             }
@@ -2059,7 +2075,7 @@ client_update_global_keyindex_if_necessary(
                 // left-justified
                 break;
             }
-            if (0 == strcmp(ra->name, rb->name)) {
+            if (keyindex_names_match(ra, rb)) {
                 found = true;
                 break;
             }

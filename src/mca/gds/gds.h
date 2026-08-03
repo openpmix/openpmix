@@ -442,17 +442,18 @@ typedef pmix_status_t (*pmix_gds_base_module_del_nspace_fn_t)(const char *nspace
     } while (0)
 
 /* define a convenience macro for is_tsafe for fetch operation */
-#define PMIX_GDS_FETCH_IS_TSAFE(s, p)                       \
-    do {                                                    \
+#define PMIX_GDS_FETCH_IS_TSAFE(s, p)                         \
+    do {                                                      \
         pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p); \
-        pmix_output_verbose(1, pmix_gds_base_output,        \
-                "[%s:%d] GDS FETCH IS THREAD SAFE WITH %s", \
-                            __FILE__, __LINE__, _g->name);  \
-        if (true == _g->is_tsafe) {                         \
-            (s) = PMIX_SUCCESS;                             \
-        } else {                                            \
-            (s) = PMIX_ERR_NOT_SUPPORTED;                   \
-        }                                                   \
+        pmix_output_verbose(1, pmix_gds_base_output,          \
+                            "[%s:%d] GDS FETCH IS THREAD "    \
+                            "SAFE WITH %s",                   \
+                            __FILE__, __LINE__, _g->name);    \
+        if (true == _g->is_tsafe) {                           \
+            (s) = PMIX_SUCCESS;                               \
+        } else {                                              \
+            (s) = PMIX_ERR_NOT_SUPPORTED;                     \
+        }                                                     \
     } while(0)
 
 typedef pmix_status_t (*pmix_gds_base_module_fetch_array_fn_t)(struct pmix_peer_t *pr,
