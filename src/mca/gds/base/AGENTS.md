@@ -73,6 +73,10 @@ pmix_status_t pmix_gds_base_proc_array_id(const pmix_info_t *array, size_t size,
                                           pmix_rank_t *rank, size_t *idpos);
 ```
 
+Each is `PMIX_EXPORT`ed; the components' own symbols are not, which is
+why the unit tests reach this directory directly and the components only
+through the macros.
+
 - **`assign_module`** walks `actives`, calls each module's
   `assign_module(info, ninfo, &pri)` and keeps the highest bid; a module
   returning `pri < 0` falls back to its component priority. **It must

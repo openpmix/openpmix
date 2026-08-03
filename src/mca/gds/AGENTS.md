@@ -161,7 +161,10 @@ you are touching:
 1. **Peer-resolved, direct.** Resolve `PMIX_GDS_PEER_MODULE(p)` and call
    the function. Examples: `PMIX_GDS_REGISTER_JOB_INFO`,
    `PMIX_GDS_STORE_JOB_INFO`, `PMIX_GDS_CACHE_JOB_INFO`,
-   `PMIX_GDS_FETCH_KV`, `PMIX_GDS_FETCH_IS_TSAFE`.
+   `PMIX_GDS_FETCH_KV`, `PMIX_GDS_FETCH_IS_TSAFE`. Of these,
+   `PMIX_GDS_CACHE_JOB_INFO` also returns `PMIX_ERR_NOT_SUPPORTED` for a
+   module that leaves the slot `NULL`; the rest are called by every
+   shipped component and are not guarded.
 
    Every peer-resolved macro goes through `PMIX_GDS_PEER_MODULE(p)`, not
    through `p->nptr->compat.gds` directly. Four of them used to do the
@@ -185,6 +188,15 @@ you are touching:
    the passed peer for resolution and always use
    `pmix_globals.mypeer->nptr->compat.gds` — modex assembly is the local
    server's job regardless of which peer contributed the bytes.
+   `PMIX_GDS_FETCH_INFO_ARRAYS` returns `PMIX_ERR_NOT_SUPPORTED` for a
+   `NULL` slot, because `shmem3` really does leave that one empty.
+
+   **"Always-local" is doing real work here, and it is what makes the
+   unguarded macros safe.** A server assigns *itself* `"hash"` at init
+   (see `pmix_server.c`), so the local module is the one component that
+   fills every slot. Anything that resolves a module some other way — or
+   calls a slot by hand rather than through a macro — loses that
+   guarantee.
 
 4. **Fan-out across all actives.** `PMIX_GDS_ADD_NSPACE` and
    `PMIX_GDS_DEL_NSPACE` are the only macros that iterate the whole
@@ -408,6 +420,18 @@ golden rule does not usually bite here.
   developer there gives it no compiler coverage at all, let alone
   runtime), a client fetching a peer's data from a *different* server,
   and the fixed-address attach failure that drives the GDS fallback.
+
+### A note on what is *not* cleaned up
+
+Neither component ever removes a session tracker. A session legitimately
+outlives the jobs in it — that is what a session is — and there is no
+"session has ended" event for either component to act on, so
+`pmix_mca_gds_hash_component.mysessions` and
+`pmix_mca_gds_shmem3_component.sessions` only shrink when the module
+finalizes. `del_nspace` drops the *job* and its reference to the session;
+the session itself stays. That is a known gap rather than an oversight:
+closing it needs a lifetime signal the framework does not currently
+receive.
 
 Component-internal symbols (`pmix_gds_hash_*`, and `pmix_gds_shmem3_*`
 other than the few marked `PMIX_EXPORT`) are hidden in a
