@@ -243,3 +243,41 @@ attached the job segment.
 - **`store`/`assemb_kvs_req`/`accept_kvs_resp` are `NULL` on purpose.**
   They rely on the framework macros' fallback to the local module; do not
   "complete the interface" by pointing them at half-implemented functions.
+- **`smdata` is NULL until its segment exists.** A job tracker is created
+  by `server_add_nspace()` at `PMIx_server_register_nspace` time, long
+  before `register_job_info()` builds the job segment or a client maps it
+  — and a session object exists from `job_construct()` with no session
+  data at all. Anything reaching `job->smdata->…` or
+  `job->session->smdata->…` has to establish it is there first; a fetch
+  arriving in that window is `PMIX_ERR_NOT_FOUND`, not a fault. Note that
+  `pmix_gds_shmem3_get_session_tma()` forming `&NULL->tma` is not a fault
+  either — it just hands the bad pointer onward.
+- **`server_store_modex_cb()` must return `PMIX_SUCCESS` for a proc blob
+  it consumed.** Its natural exit is the unpack end-of-buffer code, but
+  the base envelope walker reads any non-success return as a failure of
+  the whole server contribution: it stops, and then converts the same code
+  to success for its own caller. Returning it therefore stored the first
+  proc of each contribution and silently discarded the rest. See
+  [`../base/AGENTS.md`](../base/AGENTS.md).
+- **The key-index blob is server-supplied, not trusted.**
+  `unpack_srv_kindx_info()` fills a table sized by a `TAB_SIZE` element in
+  the same payload, indexed by a counter the payload advances with its own
+  end-of-element markers. Bound the writes and take the size once; the
+  merge that follows also has to be handed the number of elements actually
+  filled, since a half-initialized slot has a NULL name and the merge
+  compares names with `strcmp`.
+
+## Testing
+
+`shmem3` gets **no coverage at all on macOS** — `configure.m4` gates it on
+a 64-bit, non-Apple host, with no `|| test "$pmix_testbuild" = "1"` escape,
+so it is not even compiled there. A change made on a Mac has not been
+compiled until it has been built on Linux.
+`contrib/dockerswarm/run-gds-tests.sh` is the suite that does that and then
+exercises it: server and clients on `shmem3`, a client forced onto the
+fallback path with `PMIX_MCA_gds_shmem3_force_client_attach_failure`, and
+cross-node fetches that reach the modex.
+
+`test/unit/gds_datastore` covers the *framework* contracts this component
+has to honor — notably the modex callback contract above — but runs against
+whichever module is assigned, which on a developer's Mac is `hash`.
