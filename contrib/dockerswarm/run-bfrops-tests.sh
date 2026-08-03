@@ -68,7 +68,7 @@ PMIX_PREFIX=/opt/prte/pmix
 # The single-process programs this runner stages and runs.  Named here
 # rather than read out of the Makefile.am because test/unit holds forty
 # programs and only these two are about bfrops.
-BFROPS_PROGRAMS="bfrops_darray bfrops_malformed bfrops_regex2 bfrops_alloc_inherit nested_darray"
+BFROPS_PROGRAMS="bfrops_darray bfrops_malformed bfrops_get_number bfrops_null_object bfrops_helpers bfrops_regex2 bfrops_alloc_inherit nested_darray"
 
 # An out-of-tree build cannot coexist with a config.status in the srcdir --
 # autoconf refuses with "source directory already configured".  Say so once,

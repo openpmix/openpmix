@@ -69,7 +69,7 @@ They fall into three groups.
 These run anywhere and are the bulk of the suite: `compress`, `preg`,
 `bfrops_regex2`, `bfrops_alloc_inherit`, `bfrops_darray`,
 `bfrops_malformed`, `bfrops_get_number`, `bfrops_null_object`,
-`info_support`, `iof_pattern`,
+`bfrops_helpers`, `info_support`, `iof_pattern`,
 `hwloc_datatype`, `tracker_match`, `trk_complete`, `collective_status`,
 `collect_job_info`, `progress_threads`, `pmix_log`.
 
@@ -231,6 +231,19 @@ member in the value union at all, and the library prints a diagnostic
 for them. Those lines are the library declining rather than faulting,
 which is what is being asserted; do not quiet them by dropping the
 types.
+
+[`bfrops_helpers.c`](bfrops_helpers.c) is the fifth, and it covers the
+public API surface that `bfrops/base` happens to own — the
+`PMIx_Argv_*` family, the `PMIx_Info_list_*` builders, and the
+construct/create/load/free helpers. Ten of those faulted on a NULL
+argument. Like `bfrops_null_object` it asserts survival rather than a
+return code, because refusing and quietly doing nothing are both
+defensible for most of them.
+
+It also runs each family on *ordinary* input right after the degenerate
+cases. A screen added to a hot helper is exactly the kind of change that
+can quietly break the path it was meant to protect, and a suite made
+only of NULL cases would not notice.
 
 Neither program needs a server, and neither can reach the two things a
 *peer* decides — which bfrops module encodes a message, and whether the

@@ -70,6 +70,18 @@ Detailed changes since v6.1.0:
    PMIx_Value_xfer, PMIx_Info_xfer, PMIx_Info_list_xfer and
    PMIx_Value_unload, for every pointer-backed type. Each of those now
    treats it as what it is - an absent object
+ - The public helper APIs implemented in the bfrops base no longer
+   crash on a NULL argument: PMIx_Argv_append_nosize and its prepend
+   and append-unique siblings, PMIx_Load_procid, PMIx_Check_procid,
+   PMIx_Procid_invalid, PMIx_Multicluster_nspace_parse, PMIx_Pdata_load,
+   PMIx_Value_true, and every PMIx_Info_list_* entry point.
+   PMIx_Info_list_release(NULL) in particular is now the no-op that
+   every other release in that file already was
+ - PMIx_Multicluster_nspace_parse now clears both halves of its output
+   rather than only the cluster half - the nspace half is written
+   element by element and never terminated, so whatever the caller's
+   buffer previously held showed through - and no longer reads one byte
+   past the end of the namespace it is parsing
  - PMIx_Value_unload no longer writes through a NULL destination for a
    PMIX_JOB_STATE value. That type is copied into caller-supplied
    storage like its neighbours, but was missing from the list the

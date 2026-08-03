@@ -875,6 +875,9 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
     pmix_list_t *p = (pmix_list_t *) ptr;
     pmix_infolist_t *iptr;
 
+    if (NULL == p) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
         return PMIX_ERR_NOMEM;
@@ -892,6 +895,10 @@ pmix_status_t PMIx_Info_list_add_unique(void *ptr,
 {
     pmix_list_t *p = (pmix_list_t *) ptr;
     pmix_infolist_t *iptr;
+
+    if (NULL == p) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     // see if this key is already on the list
     PMIX_LIST_FOREACH(iptr, p, pmix_infolist_t) {
@@ -922,6 +929,10 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value(void *ptr,
     pmix_infolist_t *iptr;
     pmix_status_t rc;
 
+    if (NULL == p) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
         return PMIX_ERR_NOMEM;
@@ -944,6 +955,10 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value_unique(void *ptr,
     pmix_list_t *p = (pmix_list_t *) ptr;
     pmix_infolist_t *iptr;
     pmix_status_t rc;
+
+    if (NULL == p) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     // see if this key is already on the list
     PMIX_LIST_FOREACH(iptr, p, pmix_infolist_t) {
@@ -979,6 +994,10 @@ pmix_status_t PMIx_Info_list_prepend(void *ptr,
     pmix_list_t *p = (pmix_list_t *) ptr;
     pmix_infolist_t *iptr;
 
+    if (NULL == p) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
         return PMIX_ERR_NOMEM;
@@ -994,6 +1013,9 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr,
     pmix_list_t *p = (pmix_list_t *) ptr;
     pmix_infolist_t *iptr;
 
+    if (NULL == p || NULL == info) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
         return PMIX_ERR_NOMEM;
@@ -1013,6 +1035,10 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr, const pmix_info_t *info
     pmix_list_t *p = (pmix_list_t *) ptr;
     pmix_infolist_t *iptr;
 
+    if (NULL == p || NULL == info) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
         return PMIX_ERR_NOMEM;
@@ -1028,6 +1054,10 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer_unique(void *ptr, const pmix_info_
     pmix_list_t *p = (pmix_list_t *) ptr;
     pmix_infolist_t *iptr;
     pmix_status_t rc;
+
+    if (NULL == p || NULL == info) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     // see if this key is already on the list
     PMIX_LIST_FOREACH(iptr, p, pmix_infolist_t) {
@@ -1061,7 +1091,7 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *p
     pmix_infolist_t *iptr;
     pmix_info_t *array;
 
-    if (NULL == par || NULL == ptr) {
+    if (NULL == p || NULL == par) {
         return PMIX_ERR_BAD_PARAM;
     }
     PMIX_DATA_ARRAY_INIT(par, PMIX_INFO);
@@ -1091,6 +1121,14 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *p
 PMIX_EXPORT void PMIx_Info_list_release(void *ptr)
 {
     pmix_list_t *p = (pmix_list_t *) ptr;
+
+    /* releasing nothing is not an error. Every other release in this
+     * file - PMIx_Info_free, PMIx_Data_array_free, PMIx_Argv_free -
+     * tolerates a NULL, and a caller that got its list from a failed
+     * PMIx_Info_list_start() holds exactly that. */
+    if (NULL == p) {
+        return;
+    }
     PMIX_LIST_RELEASE(p);
 }
 
@@ -1101,6 +1139,15 @@ pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **next)
     pmix_list_item_t *prv = (pmix_list_item_t*)prev;
     pmix_infolist_t *active;
 
+    if (NULL == p || NULL == next) {
+        return NULL;
+    }
+    if (0 == pmix_list_get_size(p)) {
+        /* an empty list has no first item to hand back, and
+         * pmix_list_get_first() on one returns the sentinel */
+        *next = NULL;
+        return NULL;
+    }
     if (NULL == prev) {
         prv = pmix_list_get_first(p);
         active = (pmix_infolist_t*)prv;
@@ -1118,6 +1165,10 @@ pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **next)
 size_t PMIx_Info_list_get_size(void *ptr)
 {
     pmix_list_t *p = (pmix_list_t *) ptr;
+
+    if (NULL == p) {
+        return 0;
+    }
 
     return pmix_list_get_size(p);
 }
