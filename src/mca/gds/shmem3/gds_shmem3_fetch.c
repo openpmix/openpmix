@@ -574,6 +574,14 @@ pmix_gds_shmem3_fetch(
         return rc;
     }
 
+    // smdata lives in the job's shared-memory segment. A tracker can exist
+    // before that segment does - server_add_nspace() creates one at
+    // PMIx_server_register_nspace time, well before the first client
+    // connects and drives register_job_info() - so a fetch that arrives in
+    // that window has nothing to read.
+    if (PMIX_UNLIKELY(NULL == job->smdata)) {
+        return PMIX_ERR_NOT_FOUND;
+    }
     pmix_hash_table_t *const local_ht = job->smdata->local_hashtab;
 
     // Modex data ready for use?
