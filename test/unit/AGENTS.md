@@ -19,12 +19,41 @@ force: nearly every program here exists because a specific defect got
 past review, and weakening one hides exactly the regression it was
 written to catch.
 
-Two subdirectories carry their own suites and their own guidance:
+Three subdirectories carry their own suites:
 
 - [`class/`](class/) — the `src/class` object model and containers. See
   [`class/AGENTS.md`](class/AGENTS.md); it documents a build-configuration
   trap that let several real defects survive having a test suite.
 - [`util/`](util/) — the `src/util` helpers.
+- [`mca/`](mca/) — [`src/mca/base`](../../src/mca/base): the MCA variable
+  system, the enumerators, the component comparison/selection helpers,
+  the `show_load_errors` parser and the framework register/open/close
+  lifecycle. Every case there corresponds to a defect
+  from the August 2026 review of that directory, listed in
+  [`src/mca/base/AGENTS.md`](../../src/mca/base/AGENTS.md).
+
+  Two things about that suite are load-bearing. Every program that
+  brings the variable system up does so through `pmix_init_util()` — the
+  lightest init that establishes the install dirs and the MCA — and
+  settles what the parameter files will say **before** that call,
+  because the variable system reads them exactly once during init and
+  there is no second chance. `mca_base_var` sets
+  `PMIX_MCA_mca_base_param_files=none` so its results do not depend on
+  the developer's `~/.pmix`; `mca_base_paramfile` instead writes real
+  files into a private temporary directory and points
+  `mca_base_param_files` and `mca_base_override_param_file` at them,
+  which is the only way to reach the precedence rules at all.
+  `mca_base_var_enum` feeds the boolean enumerator's own `dump()` output
+  back into its `value_from_string()`, on the principle that a value
+  `pmix_info` advertises and the library then rejects is a bug rather
+  than a cosmetic mismatch.
+
+  What that suite cannot cover is the `dlopen` half of `src/mca/base`:
+  the component repository is `#if PMIX_HAVE_PDL_SUPPORT` and does
+  nothing at all in a statically-linked build, which is what a developer
+  on macOS has. That half belongs to
+  `contrib/dockerswarm/run-mca-tests.sh`, which builds an
+  `--enable-mca-dso` tree.
 
 ## What lives here
 
