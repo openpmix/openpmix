@@ -68,7 +68,7 @@ They fall into three groups.
 **Self-contained library tests** — no server, no launcher, no network.
 These run anywhere and are the bulk of the suite: `compress`, `preg`,
 `bfrops_regex2`, `bfrops_alloc_inherit`, `bfrops_darray`,
-`bfrops_malformed`, `info_support`, `iof_pattern`,
+`bfrops_malformed`, `bfrops_get_number`, `info_support`, `iof_pattern`,
 `hwloc_datatype`, `tracker_match`, `trk_complete`, `collective_status`,
 `collect_job_info`, `progress_threads`, `pmix_log`.
 
@@ -189,6 +189,27 @@ payload ends on a page boundary. `test_every_truncation_of_a_real_message`
 is the broad net over the same class: it packs a well-formed message and
 cuts it at every offset, which reaches decoder states nobody would think
 to write down.
+
+[`bfrops_get_number.c`](bfrops_get_number.c) is the third, and it is a
+**property test rather than a case list** for the same reason: the
+function under test is two thousand lines of one near-copy of an arm per
+(source type, destination type) pair, so enumerating cases reproduces
+exactly the blind spot that put five defects in it at once. It states
+two things and checks them over every pair at every width boundary — a
+success must return the value it was given, and a refusal must be of a
+value that genuinely did not fit.
+
+The second property is the one that earns its keep. Thirteen
+`PMIX_PROC_RANK` arms stored the correct answer and then fell through
+without a `return`, so every conversion to a rank was right and reported
+`PMIX_ERR_BAD_PARAM` — invisible to any test that only inspects
+successful conversions. Likewise `PMIX_PID` had no source handler at all.
+
+One exclusion in it is policy, not laziness: a PMIx structured value
+(`PMIX_PID`, `PMIX_STATUS`, `PMIX_PROC_RANK`) is deliberately not
+converted into another structured type, as `check_rank()` in the source
+states. The test encodes that; do not delete the exclusion to make a
+"missing" conversion appear.
 
 Neither program needs a server, and neither can reach the two things a
 *peer* decides — which bfrops module encodes a message, and whether the

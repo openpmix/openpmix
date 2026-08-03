@@ -173,6 +173,55 @@ sake.
   length it writes; a peer need not. Everything downstream treats the
   result as a C string, so the invariant is now enforced on arrival
   rather than assumed.
+- **`PMIX_NODE_PID` was missing from `basic_type_string()`**
+  (`bfrop_base_stubs.c`), so `PMIx_Data_type_string()` called before the
+  framework is initialized reported it as "NOT INITIALIZED".
+
+### And a second cluster, all in `bfrop_base_get_number.c`
+
+`PMIx_Value_get_number()` is two thousand lines of one
+`check_<source>()` per source type, each with one arm per destination
+type. Every arm is a near-copy of its neighbour, which is why five
+separate defects lived in it at once and why none of them was visible
+on review:
+
+- **Three sign checks read the wrong union member.** `check_int16()`,
+  `check_int32()` and `check_int64()` all tested
+  `value->data.integer` instead of their own type's member. Because the
+  union aliases, `data.integer` for a negative `int16_t` is a *positive*
+  32-bit number, so the check never fired and every negative int16 was
+  accepted into every unsigned destination, wrapping silently. The
+  int64 case needed only a value with zeroes in its low word.
+- **`check_int32()`'s narrow-destination arms read `data.int16`** — the
+  `PMIX_INT8` and `PMIX_UINT8` range checks *and* their stores. So an
+  `int32` of 65536 converted to `uint8` as 0, reporting success.
+- **Thirteen `PMIX_PROC_RANK` arms stored the answer and then fell
+  through** with no `return PMIX_SUCCESS`, so *every* conversion to a
+  rank wrote the correct value and reported `PMIX_ERR_BAD_PARAM`.
+- **`PMIX_PID` was not a source type at all.** There was no
+  `check_pid()`, and the dispatcher's `PMIX_PID` branch had no `else`,
+  so every conversion out of a pid returned `PMIX_ERR_BAD_PARAM`.
+- **Range constants.** `check_int64()` bounded `PMIX_PID` and
+  `PMIX_STATUS` — both *signed* 32-bit — by `UINT32_MAX` and did not
+  check the negative side at all. `check_float()` bounded `PMIX_UINT`
+  by `42949670295.0`, a digit too many. Both float and double bounded
+  `PMIX_UINT8` by `256.0` rather than `255.0`, so exactly 256 converted
+  to 0. And `check_double()` used the float-derived `4294967040.0` for
+  `PMIX_UINT32`, refusing values a double represents exactly.
+
+**Refusing a valid conversion is as much a defect as accepting an
+invalid one**, and it is the half that a test written from the arms
+outward will not catch. `test/unit/bfrops_get_number.c` therefore
+asserts both directions over every (source, destination) pair rather
+than enumerating cases; the thirteen missing returns showed up only
+under the second property.
+
+One thing in that file is policy rather than oversight, and is stated in
+`check_rank()`: **a PMIx structured value (`PMIX_PID`, `PMIX_STATUS`,
+`PMIX_PROC_RANK`) is not unloaded into another structured type**, even
+where the underlying C types would permit it. Plain numeric → structured
+is allowed; structured → structured is not. The test encodes that
+exception; do not "fix" it without changing the policy first.
 
 ## A known inconsistency, deliberately not "fixed"
 
@@ -221,6 +270,7 @@ let two threads mutate it at once.
 |-------|----------------|
 | [`test/unit/bfrops_darray.c`](../../../../test/unit/bfrops_darray.c) | every registered type as a data-array element, held across construct / pack / unpack / copy; the typeless-array marker; nested data buffers |
 | [`test/unit/bfrops_malformed.c`](../../../../test/unit/bfrops_malformed.c) | truncated and lying input; flexible-integer boundaries |
+| [`test/unit/bfrops_get_number.c`](../../../../test/unit/bfrops_get_number.c) | `PMIx_Value_get_number` as two properties over every (source, destination) pair |
 | [`test/unit/nested_darray.c`](../../../../test/unit/nested_darray.c) | array nesting and the depth cap |
 | [`test/unit/bfrops_regex2.c`](../../../../test/unit/bfrops_regex2.c) | `PMIX_REGEX2` pack/unpack/copy/print/compare |
 | [`test/unit/bfrops_alloc_inherit.c`](../../../../test/unit/bfrops_alloc_inherit.c) | `PMIX_ALLOC_INHERIT` |

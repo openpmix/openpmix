@@ -40,6 +40,28 @@ Detailed changes since v6.1.0:
    pointer apiece
  - Strings unpacked from a message are now guaranteed to be terminated
    rather than trusting the sender to have included the terminator
+ - PMIx_Value_get_number no longer accepts a negative PMIX_INT16,
+   PMIX_INT32 or PMIX_INT64 into an unsigned destination type. All
+   three sign checks tested the wrong member of the value union, so
+   the check never fired and the value wrapped silently
+ - PMIx_Value_get_number no longer reports failure for a conversion it
+   performed correctly. Every conversion whose destination was
+   PMIX_PROC_RANK wrote the right answer and then returned
+   PMIX_ERR_BAD_PARAM
+ - PMIx_Value_get_number now accepts PMIX_PID as a source type. It had
+   no handler at all, so every conversion out of a pid returned
+   PMIX_ERR_BAD_PARAM
+ - PMIx_Value_get_number range checks corrected: a PMIX_INT32 converted
+   to PMIX_INT8 or PMIX_UINT8 was range-checked as though it were an
+   int16 and could truncate silently; PMIX_INT64 to PMIX_PID or
+   PMIX_STATUS was bounded by UINT32_MAX rather than by the signed
+   32-bit range and left the negative side unchecked; a float to
+   PMIX_UINT was bounded by 42949670295 rather than 4294967295; a float
+   or double of exactly 256 converted to PMIX_UINT8 as 0; and a double
+   in the top 255 values of the uint32 range was refused although it is
+   exactly representable
+ - PMIx_Data_type_string now names PMIX_NODE_PID when called before the
+   library is initialized
  - A process-realm info array (PMIX_PROC_INFO_ARRAY, also known by its
    deprecated name PMIX_PROC_DATA) may now identify the process it
    describes with any of the forms its definition allows. The datastore

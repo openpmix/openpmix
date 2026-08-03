@@ -86,6 +86,9 @@ static pmix_status_t check_rank(const pmix_value_t *value,
 static pmix_status_t check_status(const pmix_value_t *value,
                                   void *dest, pmix_data_type_t type);
 
+static pmix_status_t check_pid(const pmix_value_t *value,
+                               void *dest, pmix_data_type_t type);
+
 pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
                                     void *dest, pmix_data_type_t type)
 {
@@ -238,6 +241,8 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
             p = (pid_t*)dest;
             *p = value->data.pid;
             return PMIX_SUCCESS;
+        } else {
+            return check_pid(value, dest, type);
         }
     }
 
@@ -403,6 +408,7 @@ static pmix_status_t check_size(const pmix_value_t *value,
         }
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.size;
+        return PMIX_SUCCESS;
     }
 
     // get here if the destination is a non-numerical type
@@ -491,6 +497,7 @@ static pmix_status_t check_int(const pmix_value_t *value,
         // rank is an unsigned int
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.integer;
+        return PMIX_SUCCESS;
     }
 
     // if we get here, then we are dealing with a smaller
@@ -662,6 +669,7 @@ static pmix_status_t check_int8(const pmix_value_t *value,
     if (PMIX_PROC_RANK == type) {
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.int8;
+        return PMIX_SUCCESS;
     }
 
     // get here if the destination is a non-numerical type
@@ -688,7 +696,7 @@ static pmix_status_t check_int16(const pmix_value_t *value,
     pmix_rank_t *pr;
 
     // check if this xfer would change sign
-    if (0 > value->data.integer) {
+    if (0 > value->data.int16) {
         if (PMIX_SIZE == type ||
             PMIX_UINT == type ||
             PMIX_UINT8 == type ||
@@ -770,6 +778,7 @@ static pmix_status_t check_int16(const pmix_value_t *value,
         // rank is an unsigned int
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.int16;
+        return PMIX_SUCCESS;
     }
 
     // if we get here, then we are dealing with a smaller
@@ -821,7 +830,7 @@ static pmix_status_t check_int32(const pmix_value_t *value,
     pmix_rank_t *pr;
 
     // check if this xfer would change sign
-    if (0 > value->data.integer) {
+    if (0 > value->data.int32) {
         if (PMIX_SIZE == type ||
             PMIX_UINT == type ||
             PMIX_UINT8 == type ||
@@ -893,22 +902,23 @@ static pmix_status_t check_int32(const pmix_value_t *value,
         // rank is an unsigned int
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.int32;
+        return PMIX_SUCCESS;
     }
 
     // if we get here, then we are dealing with a smaller
     // destination, which means we can lose precision
     if (PMIX_INT8 == type) {
-        if (0 < value->data.int16) {
-            if (INT8_MAX < value->data.int16) {
+        if (0 < value->data.int32) {
+            if (INT8_MAX < value->data.int32) {
                 return PMIX_ERR_LOST_PRECISION;
             }
         } else {
-            if (INT8_MIN > value->data.int16) {
+            if (INT8_MIN > value->data.int32) {
                 return PMIX_ERR_LOST_PRECISION;
             }
         }
         i8 = (int8_t*)dest;
-        *i8 = (int8_t)value->data.int16;
+        *i8 = (int8_t)value->data.int32;
         return PMIX_SUCCESS;
     }
     if (PMIX_INT16 == type) {
@@ -926,11 +936,11 @@ static pmix_status_t check_int32(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT8 == type) {
-        if (UINT8_MAX < value->data.int16) {
+        if (UINT8_MAX < value->data.int32) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u8 = (uint8_t*)dest;
-        *u8 = (uint8_t)value->data.int16;
+        *u8 = (uint8_t)value->data.int32;
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT16 == type) {
@@ -966,7 +976,7 @@ static pmix_status_t check_int64(const pmix_value_t *value,
     pmix_rank_t *pr;
 
     // check if this xfer would change sign
-    if (0 > value->data.integer) {
+    if (0 > value->data.int64) {
         if (PMIX_SIZE == type ||
             PMIX_UINT == type ||
             PMIX_UINT8 == type ||
@@ -1098,22 +1108,23 @@ static pmix_status_t check_int64(const pmix_value_t *value,
     }
 
     if (PMIX_PID == type) {
-        // pid_t is a signed int
-        if (0 < value->data.int64) {
-            if (UINT32_MAX < value->data.int64) {
-                return PMIX_ERR_LOST_PRECISION;
-            }
+        // pid_t is a SIGNED 32-bit int, so its range is INT32's and not
+        // UINT32's - bounding it by UINT32_MAX let everything from
+        // INT32_MAX+1 up wrap to a negative pid, and left the whole
+        // negative side unchecked
+        if (INT32_MAX < value->data.int64 ||
+            INT32_MIN > value->data.int64) {
+            return PMIX_ERR_LOST_PRECISION;
         }
         pid = (pid_t*)dest;
         *pid = (pid_t)value->data.int64;
         return PMIX_SUCCESS;
     }
     if (PMIX_STATUS == type) {
-        // status is a signed int
-        if (0 < value->data.int64) {
-            if (UINT32_MAX < value->data.int64) {
-                return PMIX_ERR_LOST_PRECISION;
-            }
+        // status is likewise a signed 32-bit int
+        if (INT32_MAX < value->data.int64 ||
+            INT32_MIN > value->data.int64) {
+            return PMIX_ERR_LOST_PRECISION;
         }
         ps = (pmix_status_t*)dest;
         *ps = (pmix_status_t)value->data.int64;
@@ -1126,6 +1137,7 @@ static pmix_status_t check_int64(const pmix_value_t *value,
         }
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.int64;
+        return PMIX_SUCCESS;
     }
 
     // get here if the destination is a non-numerical type
@@ -1182,6 +1194,7 @@ static pmix_status_t check_uint(const pmix_value_t *value,
         // rank is an unsigned int
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.uint;
+        return PMIX_SUCCESS;
     }
 
     // if we get here, then we are dealing with a smaller
@@ -1354,6 +1367,7 @@ static pmix_status_t check_uint8(const pmix_value_t *value,
         // rank is an unsigned int
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.uint8;
+        return PMIX_SUCCESS;
     }
 
     if (PMIX_PID == type) {
@@ -1468,6 +1482,7 @@ static pmix_status_t check_uint16(const pmix_value_t *value,
         // rank is an unsigned int
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.uint16;
+        return PMIX_SUCCESS;
     }
 
     if (PMIX_PID == type) {
@@ -1591,6 +1606,7 @@ static pmix_status_t check_uint32(const pmix_value_t *value,
         // rank is an unsigned int
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.uint32;
+        return PMIX_SUCCESS;
     }
 
     if (PMIX_PID == type) {
@@ -1732,6 +1748,7 @@ static pmix_status_t check_uint64(const pmix_value_t *value,
         }
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.uint64;
+        return PMIX_SUCCESS;
     }
 
     if (PMIX_PID == type) {
@@ -1841,7 +1858,9 @@ static pmix_status_t check_float(const pmix_value_t *value,
     }
 
     if (PMIX_UINT == type) {
-        if (42949670295.0 < value->data.fval) {
+        /* 4294967295, not 42949670295 - the extra digit let every float
+         * from UINT_MAX+1 up to ten billion through to wrap silently */
+        if (4294967295.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u = (unsigned int *)dest;
@@ -1849,7 +1868,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT8 == type) {
-        if (256.0 < value->data.fval) {
+        if (255.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u8 = (uint8_t*)dest;
@@ -1901,6 +1920,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
         }
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.fval;
+        return PMIX_SUCCESS;
     }
 
     if (PMIX_PID == type) {
@@ -2017,7 +2037,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT8 == type) {
-        if (256.0 < value->data.dval) {
+        if (255.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u8 = (uint8_t*)dest;
@@ -2033,7 +2053,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT32 == type) {
-        if (4294967040.0 < value->data.dval) {
+        if (4294967295.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u32 = (uint32_t*)dest;
@@ -2062,11 +2082,12 @@ static pmix_status_t check_double(const pmix_value_t *value,
     }
     if (PMIX_PROC_RANK == type) {
         // rank is an unsigned int
-        if (4294967040.0 < value->data.dval) {
+        if (4294967295.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         pr = (pmix_rank_t*)dest;
         *pr = (pmix_rank_t)value->data.dval;
+        return PMIX_SUCCESS;
     }
 
     if (PMIX_PID == type) {
@@ -2333,6 +2354,135 @@ static pmix_status_t check_status(const pmix_value_t *value,
     if (PMIX_UINT32 == type) {
         u32 = (uint32_t*)dest;
         *u32 = (uint32_t)value->data.status;
+        return PMIX_SUCCESS;
+    }
+
+    // as in check_rank(): a PMIx structured value is not unloaded into
+    // another PMIx structured value type
+
+    /* get here if the destination is a non-numerical type
+     * or a mismatched structured type */
+    return PMIX_ERR_BAD_PARAM;
+}
+
+/* pid_t is a signed 32-bit integer, exactly like pmix_status_t, so this
+ * mirrors check_status(). It reads value->data.pid rather than leaning
+ * on the two sharing a union offset - that assumption is precisely what
+ * made several of the sign checks in this file silently ineffective. */
+static pmix_status_t check_pid(const pmix_value_t *value,
+                               void *dest, pmix_data_type_t type)
+{
+    int *i;
+    int8_t *i8;
+    int16_t *i16;
+    int32_t *i32;
+    int64_t *i64;
+    unsigned int *ui;
+    uint8_t *u8;
+    uint16_t *u16;
+    uint32_t *u32;
+    uint64_t *u64;
+    size_t *sz;
+    float *flt;
+    double *dbl;
+
+    // check if this xfer would change sign
+    if (0 > value->data.pid) {
+        if (PMIX_SIZE == type ||
+            PMIX_UINT == type ||
+            PMIX_UINT8 == type ||
+            PMIX_UINT16 == type ||
+            PMIX_UINT32 == type ||
+            PMIX_UINT64 == type) {
+            return PMIX_ERR_CHANGE_SIGN;
+        }
+    }
+
+    /* the negative case is settled, and there is no loss of precision
+     * for a destination at least as wide */
+
+    if (PMIX_INT == type) {
+        i = (int*)dest;
+        *i = (int)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_INT32 == type) {
+        i32 = (int32_t*)dest;
+        *i32 = (int32_t)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_INT64 == type) {
+        i64 = (int64_t*)dest;
+        *i64 = (int64_t)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_UINT == type) {
+        ui = (unsigned int*)dest;
+        *ui = (unsigned int)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_UINT32 == type) {
+        u32 = (uint32_t*)dest;
+        *u32 = (uint32_t)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_UINT64 == type) {
+        u64 = (uint64_t*)dest;
+        *u64 = (uint64_t)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_SIZE == type) {
+        sz = (size_t*)dest;
+        *sz = (size_t)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_FLOAT == type) {
+        flt = (float*)dest;
+        *flt = (float)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_DOUBLE == type) {
+        dbl = (double*)dest;
+        *dbl = (double)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+
+    // as in check_rank(): a PMIx structured value is not unloaded into
+    // another PMIx structured value type
+
+    // narrower destinations, where precision can be lost
+    if (PMIX_INT8 == type) {
+        if (INT8_MAX < value->data.pid ||
+            INT8_MIN > value->data.pid) {
+            return PMIX_ERR_LOST_PRECISION;
+        }
+        i8 = (int8_t*)dest;
+        *i8 = (int8_t)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_INT16 == type) {
+        if (INT16_MAX < value->data.pid ||
+            INT16_MIN > value->data.pid) {
+            return PMIX_ERR_LOST_PRECISION;
+        }
+        i16 = (int16_t*)dest;
+        *i16 = (int16_t)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_UINT8 == type) {
+        if (UINT8_MAX < value->data.pid) {
+            return PMIX_ERR_LOST_PRECISION;
+        }
+        u8 = (uint8_t*)dest;
+        *u8 = (uint8_t)value->data.pid;
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_UINT16 == type) {
+        if (UINT16_MAX < value->data.pid) {
+            return PMIX_ERR_LOST_PRECISION;
+        }
+        u16 = (uint16_t*)dest;
+        *u16 = (uint16_t)value->data.pid;
         return PMIX_SUCCESS;
     }
 
