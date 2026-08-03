@@ -540,15 +540,28 @@ static pmix_status_t register_info(pmix_peer_t *peer,
         PMIX_LIST_DESTRUCT(&values);
         return rc;
     }
+    /* Note the rc check after every pack below. This reply is cached on
+     * the nspace and handed to every remaining local client of the job,
+     * so a pack that fails part way through and is not noticed does not
+     * cost one client some data - it silently gives all of them a
+     * truncated job description, reported as success. */
     PMIX_LIST_FOREACH(kvptr, &values, pmix_kval_t) {
         PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_LIST_DESTRUCT(&values);
+            return rc;
+        }
     }
     PMIX_LIST_DESTRUCT(&values);
-
 
     /* add all values in the jobinfo list */
     PMIX_LIST_FOREACH (kvptr, &trk->jobinfo, pmix_kval_t) {
         PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
 
     /* get any session-level info for this job */
@@ -557,9 +570,16 @@ static pmix_status_t register_info(pmix_peer_t *peer,
     if (PMIX_SUCCESS == rc) {
         PMIX_LIST_FOREACH (kvptr, &results, pmix_kval_t) {
             PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
+            if (PMIX_SUCCESS != rc) {
+                break;
+            }
         }
     }
     PMIX_LIST_DESTRUCT(&results);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
 
     /* if the job's tracker points to a non-default session ID,
      * then we add the default session information to it */
@@ -571,9 +591,16 @@ static pmix_status_t register_info(pmix_peer_t *peer,
             if (PMIX_SUCCESS == rc) {
                 PMIX_LIST_FOREACH (kvptr, &results, pmix_kval_t) {
                     PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
+                    if (PMIX_SUCCESS != rc) {
+                        break;
+                    }
                 }
             }
             PMIX_LIST_DESTRUCT(&results);
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         }
     }
 
@@ -622,9 +649,16 @@ static pmix_status_t register_info(pmix_peer_t *peer,
             } else {
                 PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
             }
+            if (PMIX_SUCCESS != rc) {
+                break;
+            }
         }
     }
     PMIX_LIST_DESTRUCT(&results);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
 
     /* get any app-level info for this job */
     PMIX_CONSTRUCT(&results, pmix_list_t);
@@ -632,9 +666,16 @@ static pmix_status_t register_info(pmix_peer_t *peer,
     if (PMIX_SUCCESS == rc) {
         PMIX_LIST_FOREACH (kvptr, &results, pmix_kval_t) {
             PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
+            if (PMIX_SUCCESS != rc) {
+                break;
+            }
         }
     }
     PMIX_LIST_DESTRUCT(&results);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
 
     /* get the proc-level data for each proc in the job */
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -657,9 +698,17 @@ static pmix_status_t register_info(pmix_peer_t *peer,
         PMIX_BFROPS_PACK(rc, peer, &buf, &rank, 1, PMIX_PROC_RANK);
 
         PMIX_LIST_FOREACH(kvptr, &values, pmix_kval_t) {
+            if (PMIX_SUCCESS != rc) {
+                break;
+            }
             PMIX_BFROPS_PACK(rc, peer, &buf, kvptr, 1, PMIX_KVAL);
         }
         PMIX_LIST_DESTRUCT(&values);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&buf);
+            return rc;
+        }
         kv.key = PMIX_PROC_BLOB;
         kv.value = &blob;
         blob.type = PMIX_BYTE_OBJECT;
