@@ -386,6 +386,7 @@ pmix_status_t pmix_gds_hash_fetch_appinfo(pmix_peer_t *peer,
     pmix_apptrkr_t *app, *apptr;
     pmix_kval_t *kv, *kp2;
     pmix_data_array_t *darray;
+    pmix_info_t *iptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "FETCHING APP INFO WITH %d APPS",
@@ -421,14 +422,14 @@ pmix_status_t pmix_gds_hash_fetch_appinfo(pmix_peer_t *peer,
                     PMIX_RELEASE(kv);
                     return PMIX_ERR_NOMEM;
                 }
-                info = (pmix_info_t *) darray->array;
+                iptr = (pmix_info_t *) darray->array;
                 n = 0;
                 /* put in the appnum */
-                PMIX_INFO_LOAD(&info[n], PMIX_APPNUM, &apptr->appnum, PMIX_UINT32);
+                PMIX_INFO_LOAD(&iptr[n], PMIX_APPNUM, &apptr->appnum, PMIX_UINT32);
                 ++n;
                 PMIX_LIST_FOREACH (kp2, &apptr->appinfo, pmix_kval_t) {
-                    PMIX_LOAD_KEY(info[n].key, kp2->key);
-                    rc = PMIx_Value_xfer(&info[n].value, kp2->value);
+                    PMIX_LOAD_KEY(iptr[n].key, kp2->key);
+                    rc = PMIx_Value_xfer(&iptr[n].value, kp2->value);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_DATA_ARRAY_FREE(darray);
@@ -474,6 +475,10 @@ pmix_status_t pmix_gds_hash_fetch_appinfo(pmix_peer_t *peer,
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(kv->key);
             kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+            if (NULL == kp2->value) {
+                PMIX_RELEASE(kp2);
+                return PMIX_ERR_NOMEM;
+            }
             rc = PMIx_Value_xfer(kp2->value, kv->value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -658,13 +663,15 @@ pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
     /* fetch from the corresponding hash table - note that
      * we always provide a copy as we don't support
      * shared memory */
+    /* PMIX_GLOBAL starts on the internal table and walks outward through
+     * the "doover" logic below, so it belongs to the first arm only -
+     * naming it again on the local arm selects nothing. */
     if (PMIX_INTERNAL == scope ||
         PMIX_SCOPE_UNDEF == scope ||
         PMIX_GLOBAL == scope ||
         PMIX_RANK_WILDCARD == proc->rank) {
         ht = &trk->internal;
-    } else if (PMIX_LOCAL == scope ||
-               PMIX_GLOBAL == scope) {
+    } else if (PMIX_LOCAL == scope) {
         ht = &trk->local;
     } else if (PMIX_REMOTE == scope) {
         ht = &trk->remote;
