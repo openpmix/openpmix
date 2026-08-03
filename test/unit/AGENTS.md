@@ -191,6 +191,20 @@ is the broad net over the same class: it packs a well-formed message and
 cuts it at every offset, which reaches decoder states nobody would think
 to write down.
 
+`test_random_bytes_through_every_unpacker` is the wider net still, and
+it earned its place: it found two defects that reading did not. A data
+array's element count sized the receiver's allocation with nothing
+relating it to the size of the message, so a twenty-byte payload asking
+for 2^40 elements got what it asked for and the process was OOM-killed;
+and a query's qualifier count allocated, failed, and then unpacked into
+the NULL. Its seeds are fixed and its generator is a plain LCG so any
+failure is reproducible — if you find one, print the seed and the
+payload rather than adding a one-off case.
+
+Note what a failure of that stage looks like: the process dies with the
+buffered stdout unflushed, so you get **no output at all** and exit 137
+or 139. That is the signal, not a missing test.
+
 [`bfrops_get_number.c`](bfrops_get_number.c) is the third, and it is a
 **property test rather than a case list** for the same reason: the
 function under test is two thousand lines of one near-copy of an arm per

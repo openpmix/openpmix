@@ -7,6 +7,18 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - A length taken off the wire can no longer drive an unbounded
+   allocation. The element count of a data array sized the receiver's
+   allocation with nothing relating it to the size of the message, so a
+   twenty-byte message claiming 2^40 elements was enough to exhaust
+   memory and have the process killed. A count larger than the bytes
+   remaining cannot describe anything the peer sent, and is now refused
+ - Twelve allocations sized from the wire are now checked for failure
+   before being written through. The pattern was uniform - allocate,
+   then unpack the wire-supplied count of elements into the pointer - so
+   a count large enough to make the allocator decline became a write
+   through NULL. PMIx_Data_unpack of a malformed PMIX_QUERY was the
+   readiest example
  - PMIx no longer reads past the end of a message when a peer claims
    more values than it sent. The flexible integer decoder bounded its
    loop with an expression that underflowed once nothing was left to
