@@ -117,9 +117,34 @@ segfaults against a guard page). It now refuses an empty region outright
 and reports truncation rather than assembling a value out of whatever
 bytes happened to be there.
 
+**A length off the wire must not buy an allocation.** The count that
+says how many elements an array holds is packed by the peer, and it
+sized the receiver's allocation directly: a twenty-byte message asking
+for 2^40 int64s got exactly that, and the OOM killer ended the process.
+A count larger than the bytes remaining in the buffer cannot be
+describing anything the peer actually sent, because every element of
+almost every type costs at least one byte to encode - so that is the
+bound, and it needs no per-type knowledge and no arbitrary constant.
+
+Two element types are genuinely sparser and are exempted, or ordinary
+arrays of them stop unpacking: `PMIX_POINTER` packs one sentinel byte
+for the whole array (there is no sense shipping addresses between
+processes), and an array of arrays whose elements are all empty is a
+single type tag in total. The exemption is in the code with that
+reasoning attached; if you add a third sparse encoding, add it there.
+
+Separately, **every allocation sized from the wire needs its NULL
+check**. Twelve of them did not have one, and the pattern was uniform:
+allocate, then `m = <the wire-supplied count>`, then unpack into the
+pointer. When the allocator declines - which a hostile count makes it
+do - that is a write through NULL.
+
 [`test/unit/bfrops_malformed.c`](../../../../test/unit/bfrops_malformed.c)
 covers this, including a stage that truncates a well-formed message at
-every possible offset. Add to it rather than to a scratch program.
+every possible offset and a fuzz stage that pushes random bytes through
+every unpacker. Add to it rather than to a scratch program. Note that
+both defects above were found by that fuzz stage, not by reading -
+which is the argument for keeping it.
 
 ## Defects found in the August 2026 review
 

@@ -364,6 +364,137 @@ static void test_flex_stream_of_many_values(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* a length off the wire must not buy an unbounded allocation           */
+/* ------------------------------------------------------------------ */
+
+/* Random bytes through every unpacker. This is not looking for a
+ * particular defect - it is the standing assertion that the contract at
+ * the top of this file holds for input nobody wrote down. It has earned
+ * its keep twice: a data-array element count that drove the allocator
+ * straight off a cliff (a twenty-byte message, killed by the OOM
+ * killer), and a query's qualifier count that allocated, failed, and
+ * then unpacked into the NULL.
+ *
+ * The seeds are fixed so a failure is reproducible; the generator is a
+ * plain LCG for the same reason. If you find a crash, print the seed
+ * and the payload rather than adding a one-off case for it. */
+static void test_random_bytes_through_every_unpacker(void)
+{
+    static const pmix_data_type_t fuzz_types[] = {
+        PMIX_BOOL, PMIX_STRING, PMIX_SIZE, PMIX_INT, PMIX_INT64, PMIX_UINT64,
+        PMIX_FLOAT, PMIX_DOUBLE, PMIX_TIMEVAL, PMIX_TIME, PMIX_STATUS,
+        PMIX_VALUE, PMIX_PROC, PMIX_APP, PMIX_INFO, PMIX_PDATA, PMIX_BUFFER,
+        PMIX_BYTE_OBJECT, PMIX_KVAL, PMIX_PROC_INFO, PMIX_DATA_ARRAY,
+        PMIX_PROC_RANK, PMIX_QUERY, PMIX_ENVAR, PMIX_COORD, PMIX_REGATTR,
+        PMIX_GEOMETRY, PMIX_DEVICE_DIST, PMIX_ENDPOINT, PMIX_DEVICE,
+        PMIX_RESOURCE_UNIT, PMIX_PROC_NSPACE, PMIX_DATA_BUFFER,
+        PMIX_NODE_PID, PMIX_REGEX2
+    };
+    static const unsigned long seeds[] = {1, 12345, 20031, 31337, 424242};
+    size_t t, sd, r, n;
+    unsigned long state;
+
+    for (t = 0; t < sizeof(fuzz_types) / sizeof(fuzz_types[0]); t++) {
+        for (sd = 0; sd < sizeof(seeds) / sizeof(seeds[0]); sd++) {
+            for (r = 0; r < 40; r++) {
+                pmix_data_buffer_t buf;
+                unsigned char wire[64];
+                unsigned char dest[8192];
+                size_t len;
+                int32_t cnt;
+
+                state = seeds[sd] + (unsigned long) (t * 1000 + r);
+#define NEXTB() (state = state * 6364136223846793005UL + 1442695040888963407UL, \
+                 (unsigned char) (state >> 33))
+                len = 4 + (NEXTB() % 60);
+                for (n = 0; n < len; n++) {
+                    wire[n] = NEXTB();
+                }
+#undef NEXTB
+                load_wire(&buf, wire, len);
+                memset(dest, 0, sizeof(dest));
+                cnt = 8;
+                (void) PMIx_Data_unpack(NULL, &buf, dest, &cnt, fuzz_types[t]);
+                PMIX_DATA_BUFFER_DESTRUCT(&buf);
+            }
+        }
+    }
+    report("random bytes through every unpacker", 1);
+}
+
+/* The specific shape the fuzzer found, kept as its own case so a
+ * regression names itself: a count that says "this array has more
+ * elements than this whole message has bytes" cannot be describing
+ * anything the peer sent, and must not be allowed to size an
+ * allocation. */
+/* Append the encoding of ONE value of `type`, without the count the
+ * pack driver normally puts in front of it. PMIx_Data_pack always emits
+ * [count][values], so packing a single value and dropping the first
+ * byte - the flex encoding of the count 1, which is one byte - leaves
+ * exactly the bare value. That is the piece needed to assemble a
+ * message by hand while still having the real encoder decide every
+ * byte of it. */
+static int append_bare(pmix_data_buffer_t *out, const void *val,
+                       pmix_data_type_t type)
+{
+    pmix_data_buffer_t tmp;
+    pmix_byte_object_t bo;
+    pmix_status_t rc;
+
+    PMIX_DATA_BUFFER_CONSTRUCT(&tmp);
+    rc = PMIx_Data_pack(NULL, &tmp, (void *) val, 1, type);
+    if (PMIX_SUCCESS != rc || tmp.bytes_used < 2) {
+        PMIX_DATA_BUFFER_DESTRUCT(&tmp);
+        return 0;
+    }
+    bo.bytes = tmp.base_ptr + 1;          /* skip the count byte */
+    bo.size = tmp.bytes_used - 1;
+    rc = PMIx_Data_embed(out, &bo);
+    PMIX_DATA_BUFFER_DESTRUCT(&tmp);
+    return (PMIX_SUCCESS == rc);
+}
+
+/* The specific shape the fuzzer found, kept as its own case so a
+ * regression names itself. A data array is described on the wire by an
+ * element type and a count, and the count sizes the allocation the
+ * receiver makes. A count larger than the whole message cannot be
+ * describing anything the peer sent - but before this was bounded, a
+ * twenty-byte message asking for 2^40 int64s got exactly what it asked
+ * for, and the OOM killer ended the process. */
+static void test_element_count_cannot_exceed_the_message(void)
+{
+    pmix_data_buffer_t buf;
+    pmix_data_array_t out;
+    pmix_status_t rc;
+    int32_t cnt, one = 1;
+    uint16_t etype = PMIX_INT64;
+    size_t huge = (size_t) 1 << 40;
+    int built;
+
+    /* [count of arrays][element type][element count] and then nothing,
+     * which is what the unpack driver reads */
+    PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+    built = append_bare(&buf, &one, PMIX_INT32)
+            && append_bare(&buf, &etype, PMIX_UINT16)
+            && append_bare(&buf, &huge, PMIX_SIZE);
+    if (!built) {
+        PMIX_DATA_BUFFER_DESTRUCT(&buf);
+        report("an element count larger than the message is refused", 0);
+        return;
+    }
+
+    memset(&out, 0, sizeof(out));
+    cnt = 1;
+    rc = PMIx_Data_unpack(NULL, &buf, &out, &cnt, PMIX_DATA_ARRAY);
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+
+    /* surviving at all is most of the point; having refused rather than
+     * allocated eight terabytes is the rest */
+    report("an element count larger than the message is refused",
+           PMIX_SUCCESS != rc);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -388,6 +519,8 @@ int main(int argc, char **argv)
     test_negative_string_length();
     test_flex_boundary_values();
     test_flex_stream_of_many_values();
+    test_element_count_cannot_exceed_the_message();
+    test_random_bytes_through_every_unpacker();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
