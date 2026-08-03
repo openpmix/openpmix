@@ -137,7 +137,18 @@ static pmix_status_t hash_assign_module(pmix_info_t *info, size_t ninfo, int *pr
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN)) {
+                /* the directive comes from the application or the
+                 * environment, so it may be malformed - a non-string
+                 * value, or a string that splits to nothing. Either way
+                 * we simply keep our default bid. */
+                if (PMIX_STRING != info[n].value.type ||
+                    NULL == info[n].value.data.string) {
+                    break;
+                }
                 options = PMIx_Argv_split(info[n].value.data.string, ',');
+                if (NULL == options) {
+                    break;
+                }
                 for (m = 0; NULL != options[m]; m++) {
                     if (0 == strcmp(options[m], "hash")) {
                         /* they specifically asked for us */
@@ -228,37 +239,13 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             /* not allowed to get this more than once */
             if (flags & PMIX_HASH_NODE_MAP) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-                return PMIX_ERR_BAD_PARAM;
+                rc = PMIX_ERR_BAD_PARAM;
+                goto release;
             }
             /* parse the regex to get the argv array of node names */
-            if (PMIX_REGEX == info[n].value.type) {
-                rc = pmix_preg.parse_nodes(info[n].value.data.bo.bytes, &nodes);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-            } else if (PMIX_REGEX2 == info[n].value.type) {
-                char *decoded = NULL;
-                rc = pmix_preg.parse_regex(info[n].value.data.regex2, NULL, 0, &decoded);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-                rc = pmix_preg.parse_nodes(decoded, &nodes);
-                free(decoded);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-            } else if (PMIX_STRING == info[n].value.type) {
-                rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-            } else {
-                PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
-                rc = PMIX_ERR_TYPE_MISMATCH;
+            rc = pmix_gds_hash_parse_nodemap(&info[n].value, &nodes);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 goto release;
             }
             /* mark that we got the map */
@@ -267,37 +254,13 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             /* not allowed to get this more than once */
             if (flags & PMIX_HASH_PROC_MAP) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-                return PMIX_ERR_BAD_PARAM;
+                rc = PMIX_ERR_BAD_PARAM;
+                goto release;
             }
             /* parse the regex to get the argv array containing proc ranks on each node */
-            if (PMIX_REGEX == info[n].value.type) {
-                if (PMIX_SUCCESS
-                    != (rc = pmix_preg.parse_procs(info[n].value.data.bo.bytes, &procs))) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-            } else if (PMIX_REGEX2 == info[n].value.type) {
-                char *decoded = NULL;
-                rc = pmix_preg.parse_regex(info[n].value.data.regex2, NULL, 0, &decoded);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-                rc = pmix_preg.parse_procs(decoded, &procs);
-                free(decoded);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-            } else if (PMIX_STRING == info[n].value.type) {
-                if (PMIX_SUCCESS
-                    != (rc = pmix_preg.parse_procs(info[n].value.data.string, &procs))) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-            } else {
-                PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
-                rc = PMIX_ERR_TYPE_MISMATCH;
+            rc = pmix_gds_hash_parse_procmap(&info[n].value, &procs);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 goto release;
             }
             /* mark that we got the map */
