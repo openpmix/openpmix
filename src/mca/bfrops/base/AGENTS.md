@@ -272,6 +272,42 @@ against was missing `PMIX_JOB_STATE`, so that one type reached a
 `memcpy` through a NULL destination instead of returning
 `PMIX_ERR_BAD_PARAM`.
 
+### And a fourth: the public helpers this directory owns
+
+A large slice of the **installed** PMIx C API is implemented here — the
+whole `PMIx_Argv_*` family, the `PMIx_Info_list_*` builders, and the
+construct/create/load/free helpers for every PMIx struct. It is also
+the part of the API applications call most casually, and every one of
+those entry points is a thin trampoline into a `pmix_bfrops_base_tma_*`
+inline that got its arguments from a caller nobody screened.
+
+Ten of them faulted on an obvious mistake: `PMIx_Argv_append_nosize()`
+and its two siblings on a NULL string or a NULL array pointer;
+`PMIx_Load_procid()`, `PMIx_Check_procid()`, `PMIx_Procid_invalid()`,
+`PMIx_Multicluster_nspace_parse()` and `PMIx_Pdata_load()` on a NULL
+argument; `PMIx_Value_true()` on a NULL value; and
+`PMIx_Info_list_release()` and `PMIx_Info_list_insert()` on a NULL
+list.
+
+`PMIx_Info_list_release(NULL)` is the one that stands out, because a
+release that faults on NULL is a footgun and every other release in
+this file — `PMIx_Info_free`, `PMIx_Data_array_free`, `PMIx_Argv_free`
+— already tolerated one. A caller whose `PMIx_Info_list_start()` failed
+holds exactly that NULL. Every `PMIx_Info_list_*` entry point is now
+screened for a NULL list.
+
+`PMIx_Multicluster_nspace_parse()` had two further problems that a NULL
+check would not have caught: it cleared only the *cluster* half of its
+output while writing the nspace half element by element without ever
+terminating it, so whatever the caller's buffer held before showed
+through; and its copy loop tested the length bound *after* indexing, so
+the last iteration read one past the end of the buffer that bound was
+protecting.
+
+**Put the screen in the `_tma_` inline, not in the `PMIx_` wrapper.**
+The wrappers are one line each and the internal callers go straight to
+the inline, so a check in the wrapper protects only half the callers.
+
 ## A known inconsistency, deliberately not "fixed"
 
 **`PMIX_REGEX` has two incompatible readings as an array element
@@ -321,6 +357,7 @@ let two threads mutate it at once.
 | [`test/unit/bfrops_malformed.c`](../../../../test/unit/bfrops_malformed.c) | truncated and lying input; flexible-integer boundaries |
 | [`test/unit/bfrops_get_number.c`](../../../../test/unit/bfrops_get_number.c) | `PMIx_Value_get_number` as two properties over every (source, destination) pair |
 | [`test/unit/bfrops_null_object.c`](../../../../test/unit/bfrops_null_object.c) | every pointer-backed type through every value-level operation with no object attached |
+| [`test/unit/bfrops_helpers.c`](../../../../test/unit/bfrops_helpers.c) | the public `PMIx_Argv_*` / `PMIx_Info_list_*` / construct-create-load-free helpers on degenerate input, and on ordinary input so the guards did not cost anything |
 | [`test/unit/nested_darray.c`](../../../../test/unit/nested_darray.c) | array nesting and the depth cap |
 | [`test/unit/bfrops_regex2.c`](../../../../test/unit/bfrops_regex2.c) | `PMIX_REGEX2` pack/unpack/copy/print/compare |
 | [`test/unit/bfrops_alloc_inherit.c`](../../../../test/unit/bfrops_alloc_inherit.c) | `PMIX_ALLOC_INHERIT` |

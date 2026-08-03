@@ -305,6 +305,10 @@ bool pmix_bfrops_base_tma_check_procid(const pmix_proc_t *a,
                                        const pmix_proc_t *b,
                                        pmix_tma_t *tma)
 {
+    if (NULL == a || NULL == b) {
+        /* two absent procs are the same proc; one is not the other */
+        return (a == b);
+    }
     if (!pmix_bfrops_base_tma_check_nspace(a->nspace, b->nspace, tma)) {
         return false;
     }
@@ -315,6 +319,9 @@ static inline
 bool pmix_bfrops_base_tma_procid_invalid(const pmix_proc_t *p,
                                          pmix_tma_t *tma)
 {
+    if (NULL == p) {
+        return true;
+    }
     if (pmix_bfrops_base_tma_nspace_invalid(p->nspace, tma)) {
         return true;
     }
@@ -343,6 +350,11 @@ void pmix_bfrops_base_tma_load_procid(pmix_proc_t *p,
                                       pmix_rank_t rk,
                                       pmix_tma_t *tma)
 {
+    /* screen the destination: this is a public entry point
+     * (PMIx_Load_procid) and the caller may have got it wrong */
+    if (NULL == p) {
+        return;
+    }
     pmix_bfrops_base_tma_load_nspace(p->nspace, ns, tma);
     p->rank = rk;
 }
@@ -466,9 +478,25 @@ void pmix_bfrops_base_tma_multicluster_nspace_parse(pmix_nspace_t target,
 {
     size_t n, j;
 
+    if (NULL == cluster || NULL == nspace) {
+        return;
+    }
+    /* clear BOTH outputs, not just the cluster half: the caller's
+     * nspace buffer is written element by element below and never
+     * terminated, so whatever it held before showed through */
     pmix_bfrops_base_tma_load_nspace(cluster, NULL, tma);
-    for (n=0; '\0' != target[n] && ':' != target[n] && n < PMIX_MAX_NSLEN; n++) {
+    pmix_bfrops_base_tma_load_nspace(nspace, NULL, tma);
+    if (NULL == target) {
+        return;
+    }
+    /* test the bound BEFORE indexing, or the last iteration reads one
+     * past the end of the buffer it is bounding */
+    for (n=0; n < PMIX_MAX_NSLEN && '\0' != target[n] && ':' != target[n]; n++) {
         cluster[n] = target[n];
+    }
+    if (PMIX_MAX_NSLEN <= n || '\0' == target[n]) {
+        /* no separator, so there is no nspace half to parse */
+        return;
     }
     n++;
     for (j=0; n < PMIX_MAX_NSLEN && '\0' != target[n]; n++, j++) {
@@ -600,6 +628,12 @@ pmix_boolean_t pmix_bfrops_base_tma_value_true(const pmix_value_t *value,
 
     char *ptr;
 
+    if (NULL == value) {
+        /* the attribute is absent, which is not the same as its being
+         * present with no value - that second case is the PMIX_UNDEF
+         * one just below, and it does default to true */
+        return PMIX_BOOL_FALSE;
+    }
     if (PMIX_UNDEF == value->type) {
         return PMIX_BOOL_TRUE; // default to true
     }
@@ -1722,6 +1756,14 @@ pmix_status_t pmix_bfrops_base_tma_argv_append_nosize(char ***argv,
 {
     int argc;
 
+    /* There is nothing to append and nowhere to append it to. Both are
+     * caller mistakes rather than states this can express, so say so
+     * instead of faulting - these are reached from the public
+     * PMIx_Argv_* entry points. */
+    if (NULL == argv || NULL == arg) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* Create new argv. */
 
     if (NULL == *argv) {
@@ -1766,6 +1808,10 @@ pmix_status_t pmix_bfrops_base_tma_argv_prepend_nosize(char ***argv,
     int argc;
     int i;
 
+    if (NULL == argv || NULL == arg) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* Create new argv. */
 
     if (NULL == *argv) {
@@ -1801,6 +1847,10 @@ pmix_status_t pmix_bfrops_base_tma_argv_append_unique_nosize(char ***argv,
                                                              pmix_tma_t *tma)
 {
     int i;
+
+    if (NULL == argv || NULL == arg) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     /* if the provided array is NULL, then the arg cannot be present,
      * so just go ahead and append
@@ -2083,8 +2133,13 @@ void pmix_bfrops_base_tma_pdata_load(pmix_pdata_t *dest,
                                      pmix_data_type_t type,
                                      pmix_tma_t *tma)
 {
+    if (NULL == dest) {
+        return;
+    }
     memset(dest, 0, sizeof(pmix_pdata_t));
-    pmix_bfrops_base_tma_load_procid(&dest->proc, p->nspace, p->rank, tma);
+    if (NULL != p) {
+        pmix_bfrops_base_tma_load_procid(&dest->proc, p->nspace, p->rank, tma);
+    }
     pmix_bfrops_base_tma_load_key(dest->key, key, tma);
     pmix_bfrops_base_tma_value_load(&(dest->value), data, type, tma);
 }
@@ -2094,7 +2149,7 @@ void pmix_bfrops_base_tma_pdata_xfer(pmix_pdata_t *dest,
                                      const pmix_pdata_t *src,
                                      pmix_tma_t *tma)
 {
-    if (NULL != dest) {
+    if (NULL != dest && NULL != src) {
         memset(dest, 0, sizeof(*dest));
         pmix_bfrops_base_tma_load_procid(&dest->proc, src->proc.nspace, src->proc.rank, tma);
         pmix_bfrops_base_tma_load_key(dest->key, src->key, tma);
