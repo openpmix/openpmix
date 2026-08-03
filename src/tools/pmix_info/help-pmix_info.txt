@@ -155,7 +155,7 @@ parameters: "unsigned_int", "unsigned_long", "unsigned_long_long", "size_t",
 #
 [lib-call-fail]
 A library call unexpectedly failed.  This is a terminal error; please
-show this message to an ORTE wizard:
+show this message to a PMIx wizard:
 
         Library call: %s
          Source file: %s
