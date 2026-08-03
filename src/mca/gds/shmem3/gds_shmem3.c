@@ -1507,6 +1507,11 @@ pack_shmem3_connection_info(
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_NSID_KEY);
         kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         kv.value->type = PMIX_STRING;
         kv.value->data.string = strdup(job->nspace_id);
         PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
@@ -1519,6 +1524,11 @@ pack_shmem3_connection_info(
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_SMID_KEY);
         kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         kv.value->type = PMIX_STRING;
         int nw = asprintf(&kv.value->data.string, "%zd", (size_t)shmem3_id);
         if (PMIX_UNLIKELY(nw == -1)) {
@@ -1536,6 +1546,11 @@ pack_shmem3_connection_info(
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_PATH_KEY);
         kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         kv.value->type = PMIX_STRING;
         kv.value->data.string = strdup(shmem3->backing_path);
         PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
@@ -1548,6 +1563,11 @@ pack_shmem3_connection_info(
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_SIZE_KEY);
         kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         kv.value->type = PMIX_STRING;
         nw = asprintf(&kv.value->data.string, "%zx", shmem3->size);
         if (PMIX_UNLIKELY(nw == -1)) {
@@ -1565,6 +1585,11 @@ pack_shmem3_connection_info(
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_HADR_KEY);
         kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         kv.value->type = PMIX_STRING;
         nw = asprintf(
             &kv.value->data.string, "%zx", (size_t)shmem3->hdr_address
@@ -1601,6 +1626,11 @@ pack_server_keyindex_description(
     PMIX_CONSTRUCT(&kv, pmix_kval_t);
     kv.key = strdup(SHMEM3_KIDX_DESCRIPTION_KEY);
     kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+    if (PMIX_UNLIKELY(NULL == kv.value)) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
     kv.value->type = PMIX_STRING;
     kv.value->data.string = NULL;
     // Encode the char** as a new-line-delimited string.
@@ -1653,6 +1683,11 @@ pack_server_keyindex_info(
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_KIDX_NSID_KEY);
         kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         kv.value->type = PMIX_STRING;
         kv.value->data.string = strdup(job->nspace_id);
         PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
@@ -1666,6 +1701,11 @@ pack_server_keyindex_info(
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_KIDX_TAB_SIZE_KEY);
         kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         kv.value->type = PMIX_UINT32;
         kv.value->data.uint32 = (uint32_t)PMIX_INDEX_BOUNDARY;
 
@@ -1689,6 +1729,11 @@ pack_server_keyindex_info(
             PMIX_CONSTRUCT(&kv, pmix_kval_t);
             kv.key = strdup(SHMEM3_KIDX_INDEX_KEY);
             kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+            if (PMIX_UNLIKELY(NULL == kv.value)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
             kv.value->type = PMIX_UINT32;
             assert(sizeof(kv.value->data.uint32) == sizeof(p->index));
             kv.value->data.uint32 = p->index;
@@ -1703,6 +1748,11 @@ pack_server_keyindex_info(
             PMIX_CONSTRUCT(&kv, pmix_kval_t);
             kv.key = strdup(SHMEM3_KIDX_TYPE_KEY);
             kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+            if (PMIX_UNLIKELY(NULL == kv.value)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
             kv.value->type = PMIX_UINT16;
             assert(sizeof(kv.value->data.uint16) == sizeof(p->type));
             kv.value->data.uint16 = p->type;
@@ -1718,6 +1768,11 @@ pack_server_keyindex_info(
                 PMIX_CONSTRUCT(&kv, pmix_kval_t);
                 kv.key = strdup(SHMEM3_KIDX_NAME_KEY);
                 kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+                if (PMIX_UNLIKELY(NULL == kv.value)) {
+                    rc = PMIX_ERR_NOMEM;
+                    PMIX_ERROR_LOG(rc);
+                    break;
+                }
                 kv.value->type = PMIX_STRING;
                 kv.value->data.string = strdup(p->name);
 
@@ -1733,6 +1788,11 @@ pack_server_keyindex_info(
                 PMIX_CONSTRUCT(&kv, pmix_kval_t);
                 kv.key = strdup(SHMEM3_KIDX_STRING_KEY);
                 kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+                if (PMIX_UNLIKELY(NULL == kv.value)) {
+                    rc = PMIX_ERR_NOMEM;
+                    PMIX_ERROR_LOG(rc);
+                    break;
+                }
                 kv.value->type = PMIX_STRING;
                 kv.value->data.string = strdup(p->string);
 
@@ -1753,6 +1813,11 @@ pack_server_keyindex_info(
             PMIX_CONSTRUCT(&kv, pmix_kval_t);
             kv.key = strdup(SHMEM3_KIDX_ELEM_DONE_KEY);
             kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+            if (PMIX_UNLIKELY(NULL == kv.value)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
             kv.value->type = PMIX_UINT8;
             kv.value->data.uint8 = 1;
 
