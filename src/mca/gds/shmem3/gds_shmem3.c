@@ -943,13 +943,17 @@ fetch_base_tmpdir(
             PMIX_DESTRUCT(&cb);
             break;
         }
-        // We should only have one item here.
-        assert(1 == pmix_list_get_size(&cb.kvs));
-        // Get a pointer to the only item in the list.
+        // Get a pointer to the first item in the list. These used to be
+        // assert()s, which compile away in the builds anyone ships - so
+        // the checks were absent exactly where a wrong answer would be
+        // dereferenced rather than caught.
         pmix_kval_t *kv = (pmix_kval_t *)pmix_list_get_first(&cb.kvs);
-        // Make sure we are dealing with the right stuff.
-        assert(PMIX_CHECK_KEY(kv, fetch_keys[i]));
-        assert(kv->value->type == PMIX_STRING);
+        if (NULL == kv || NULL == kv->value ||
+            PMIX_STRING != kv->value->type ||
+            NULL == kv->value->data.string) {
+            PMIX_DESTRUCT(&cb);
+            continue;
+        }
         // Copy the value over.
         size_t nw = snprintf(
             fetched_path, PMIX_PATH_MAX, "%s",
