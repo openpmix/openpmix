@@ -100,14 +100,29 @@ pmix_gds_shmem3_get_session_tracker(
         return NULL;
     }
 
-    pmix_tma_t *const tma = pmix_gds_shmem3_get_session_tma(job);
     pmix_gds_shmem3_component_t *const comp = &pmix_mca_gds_shmem3_component;
+
+    // A session's identity lives in smdata, which sits in the session's
+    // shared-memory segment. That segment is constructed by the server in
+    // session_smdata_construct() and mapped by a client in
+    // init_client_side_sm_data(); until then smdata is NULL. Creating a
+    // session here cannot work, because there would be nowhere to record
+    // its ID - no caller asks us to, and one that did would have to
+    // arrange the segment first.
+    if (PMIX_UNLIKELY(create)) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+        return NULL;
+    }
 
     if (NULL == job->session) {
         // No session has been assigned to this job. See
         // if the given ID has already been registered.
         pmix_gds_shmem3_session_t *si;
         PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem3_session_t) {
+            if (NULL == si->smdata) {
+                // Its segment is not in place yet, so it has no ID to match.
+                continue;
+            }
             if (si->smdata->id == sid) {
                 // Found it. Point the job tracker at this session.
                 PMIX_RETAIN(si);
@@ -115,18 +130,12 @@ pmix_gds_shmem3_get_session_tracker(
                 return si;
             }
         }
-        // If it wasn't found, then create it if permitted.
-        if (create) {
-            si = PMIX_NEW(pmix_gds_shmem3_session_t, tma);
-            si->smdata->id = sid;
-            PMIX_RETAIN(si);
-            job->session = si;
-            pmix_list_append(&comp->sessions, &si->super);
-            return si;
-        }
-        else {
-            return NULL;
-        }
+        return NULL;
+    }
+    if (NULL == job->session->smdata) {
+        // The session segment has not been constructed or attached, so we
+        // have no session data to answer with.
+        return NULL;
     }
     // If the current session object is pointing to the default global session
     // and we were given a specific session ID, then update it.
@@ -138,6 +147,9 @@ pmix_gds_shmem3_get_session_tracker(
         // See if the given ID has already been registered.
         pmix_gds_shmem3_session_t *si;
         PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem3_session_t) {
+            if (NULL == si->smdata) {
+                continue;
+            }
             if (si->smdata->id == sid) {
                 // Found it. Update the refcount on the current session object.
                 PMIX_RELEASE(job->session);
@@ -147,15 +159,8 @@ pmix_gds_shmem3_get_session_tracker(
                 return si;
             }
         }
-        // If it wasn't found, then create it if permitted.
-        if (create) {
-            si = PMIX_NEW(pmix_gds_shmem3_session_t, tma);
-            si->smdata->id = sid;
-            PMIX_RETAIN(si);
-            job->session = si;
-            pmix_list_append(&comp->sessions, &si->super);
-            return si;
-        }
+        // Not found, and we cannot create one (see above).
+        return NULL;
     }
     else if (UINT32_MAX == sid) {
         // It's a wildcard request, so return the job-tracker session.
@@ -177,6 +182,12 @@ pmix_gds_shmem3_hostnames_eq(
     const char *h1,
     const char *h2
 ) {
+    // A node array may identify its node by nodeid alone, so a tracked
+    // node can legitimately carry no hostname. Treat a missing name as
+    // "does not match" rather than handing NULL to strcmp().
+    if (NULL == h1 || NULL == h2) {
+        return false;
+    }
     return (0 == strcmp(h1, h2));
 }
 

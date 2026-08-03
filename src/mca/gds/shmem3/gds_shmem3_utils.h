@@ -123,8 +123,10 @@ static inline pmix_tma_t *
 pmix_gds_shmem3_get_session_tma(
     pmix_gds_shmem3_job_t *job
 ) {
-    assert(job->session);
-    if (!job->session) {
+    // smdata lives in the session's shared-memory segment, so it is NULL
+    // until that segment has been constructed (server) or attached
+    // (client). Do not form &NULL->tma.
+    if (NULL == job->session || NULL == job->session->smdata) {
         return NULL;
     }
     return &job->session->smdata->tma;
