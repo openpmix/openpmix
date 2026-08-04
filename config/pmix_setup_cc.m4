@@ -23,6 +23,7 @@ dnl Copyright (c) 2021      IBM Corporation.  All rights reserved.
 dnl
 dnl Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2022      Amazon.com, Inc. or its affiliates.  All Rights reserved.
+dnl Copyright (c) 2026      Jeffrey M. Squyres.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -30,7 +31,25 @@ dnl
 dnl $HEADER$
 dnl
 
+dnl PMIX_CC_HELPER(check-message, cache-variable, prologue, body)
+dnl
+dnl Check whether a test program compiles and links, saving the result
+dnl (1 or 0) in the cache variable $2 (which must therefore be named
+dnl "pmix_cv_...").
 AC_DEFUN([PMIX_CC_HELPER],[
+    AC_CACHE_CHECK([$1], [$2],
+                   [AC_LINK_IFELSE([AC_LANG_PROGRAM([$3],[$4])],
+                                   [$2=1],
+                                   [$2=0])])
+])
+
+
+dnl _PMIX_CC_HELPER(check-message, result-variable, prologue, body)
+dnl
+dnl Like PMIX_CC_HELPER, but does not cache the result. Use this only
+dnl for checks whose results depend on transient CFLAGS values (e.g.,
+dnl testing candidate C11 flags) and therefore must not be cached.
+AC_DEFUN([_PMIX_CC_HELPER],[
     PMIX_VAR_SCOPE_PUSH([pmix_cc_helper_result])
     AC_MSG_CHECKING([$1])
 
@@ -45,37 +64,27 @@ AC_DEFUN([PMIX_CC_HELPER],[
 ])
 
 
+dnl PMIX_PROG_CC_C11_HELPER(flag, action-if-supported, action-if-not)
+dnl
+dnl Check whether $CC supports the C11 features that PMIx requires when
+dnl invoked with the extra compiler flag $1 (which may be empty). These
+dnl results are specific to the flag under test, so they are not cached;
+dnl the cached per-feature checks are in PMIX_SETUP_CC.
 AC_DEFUN([PMIX_PROG_CC_C11_HELPER],[
-    PMIX_VAR_SCOPE_PUSH([pmix_prog_cc_c11_helper_CFLAGS_save])
+    PMIX_VAR_SCOPE_PUSH([pmix_prog_cc_c11_helper_CFLAGS_save pmix_prog_cc_c11_helper__Thread_local_available pmix_prog_cc_c11_helper_atomic_var_available pmix_prog_cc_c11_helper_atomic_fetch_xor_explicit_available])
 
     pmix_prog_cc_c11_helper_CFLAGS_save=$CFLAGS
     CFLAGS="$CFLAGS $1"
 
-    PMIX_CC_HELPER([if $CC $1 supports C11 _Thread_local], [pmix_prog_cc_c11_helper__Thread_local_available],
-                   [],[[static _Thread_local int  foo = 1;++foo;]])
+    _PMIX_CC_HELPER([if $CC $1 supports C11 _Thread_local], [pmix_prog_cc_c11_helper__Thread_local_available],
+                    [],[[static _Thread_local int  foo = 1;++foo;]])
 
-    PMIX_CC_HELPER([if $CC $1 supports C11 atomic variables], [pmix_prog_cc_c11_helper_atomic_var_available],
-                   [[#include <stdatomic.h>]], [[static atomic_long foo = 1;++foo;]])
+    _PMIX_CC_HELPER([if $CC $1 supports C11 atomic variables], [pmix_prog_cc_c11_helper_atomic_var_available],
+                    [[#include <stdatomic.h>]], [[static atomic_long foo = 1;++foo;]])
 
-    PMIX_CC_HELPER([if $CC $1 supports C11 _Atomic keyword], [pmix_prog_cc_c11_helper__Atomic_available],
-                   [[#include <stdatomic.h>]],[[static _Atomic long foo = 1;++foo;]])
-
-   PMIX_CC_HELPER([if $CC $1 supports C11 _c11_atomic functions], [pmix_prog_cc_c11_atomic_function],
-                   [[#include <stdatomic.h>]],[[atomic_int acnt = 0; __c11_atomic_fetch_add(&acnt, 1, memory_order_relaxed);]])
-   if test $pmix_prog_cc_c11_atomic_function -eq 1; then
-      AC_DEFINE_UNQUOTED([PMIX_HAVE_CLANG_BUILTIN_ATOMIC_C11_FUNC], [$pmix_prog_cc_c11_atomic_function], [Whether we have Clang __c11 atomic functions])
-   fi;
-
-    PMIX_CC_HELPER([if $CC $1 supports C11 _Generic keyword], [pmix_prog_cc_c11_helper__Generic_available],
-                   [[#define FOO(x) (_Generic (x, int: 1))]], [[static int x, y; y = FOO(x);]])
-
-    PMIX_CC_HELPER([if $CC $1 supports C11 _Static_assert], [pmix_prog_cc_c11_helper__static_assert_available],
-                   [[#include <stdint.h>]],[[_Static_assert(sizeof(int64_t) == 8, "WTH");]])
-
-    PMIX_CC_HELPER([if $CC $1 supports C11 atomic_fetch_xor_explicit], [pmix_prog_cc_c11_helper_atomic_fetch_xor_explicit_available],
-	           [[#include <stdatomic.h>
+    _PMIX_CC_HELPER([if $CC $1 supports C11 atomic_fetch_xor_explicit], [pmix_prog_cc_c11_helper_atomic_fetch_xor_explicit_available],
+                    [[#include <stdatomic.h>
 #include <stdint.h>]],[[_Atomic uint32_t a; uint32_t b; atomic_fetch_xor_explicit(&a, b, memory_order_relaxed);]])
-
 
     AS_IF([test $pmix_prog_cc_c11_helper__Thread_local_available -eq 1 && test $pmix_prog_cc_c11_helper_atomic_var_available -eq 1 && test $pmix_prog_cc_c11_helper_atomic_fetch_xor_explicit_available -eq 1],
           [$2],
@@ -116,8 +125,6 @@ AC_DEFUN([PMIX_PROG_CC_C11],[
             for flag in $(echo $pmix_prog_cc_c11_flags | tr ' ' '\n') ; do
                 PMIX_PROG_CC_C11_HELPER([$flag],[pmix_cv_c11_flag=$flag],[])
                 if test "x$pmix_cv_c11_flag" != "x" ; then
-                    PMIX_APPEND_UNIQ([CFLAGS], ["$pmix_cv_c11_flag"])
-                    AC_MSG_NOTICE([using $flag to enable C11 support])
                     pmix_cv_c11_supported=yes
                     break
                 fi
@@ -126,6 +133,14 @@ AC_DEFUN([PMIX_PROG_CC_C11],[
             AC_MSG_NOTICE([no flag required for C11 support])
             pmix_cv_c11_supported=yes
         fi
+    fi
+
+    dnl This must be outside the cache-check block above so that it also
+    dnl happens when all the results above were restored from a cache
+    dnl file.
+    if test "$pmix_cv_c11_supported" = "yes" && test -n "$pmix_cv_c11_flag" ; then
+        PMIX_APPEND_UNIQ([CFLAGS], ["$pmix_cv_c11_flag"])
+        AC_MSG_NOTICE([using $pmix_cv_c11_flag to enable C11 support])
     fi
 
     PMIX_VAR_SCOPE_POP
@@ -167,8 +182,6 @@ AC_DEFUN([PMIX_SETUP_CC],[
     AC_REQUIRE([_PMIX_PROG_CC])
     AC_REQUIRE([AM_PROG_CC_C_O])
 
-    PMIX_VAR_SCOPE_PUSH([pmix_prog_cc_c11_helper__Thread_local_available pmix_prog_cc_c11_helper_atomic_var_available pmix_prog_cc_c11_helper__Atomic_available pmix_prog_cc_c11_helper__static_assert_available pmix_prog_cc_c11_helper__Generic_available pmix_prog_cc__thread_available pmix_prog_cc_c11_helper_atomic_fetch_xor_explicit_available pmix_prog_cc_c11_atomic_function])
-
     # AC_PROG_CC_C99 changes CC (instead of CFLAGS) so save CC (without c99
     # flags) for use in our wrappers.
     WRAPPER_CC="$CC"
@@ -194,13 +207,6 @@ AC_DEFUN([PMIX_SETUP_CC],[
         AC_MSG_ERROR([Cannot continue])
     fi
 
-    # Check if compiler support __thread
-    #
-    # Unlike everything else here this one really is optional - __thread is a
-    # GCC extension that predates C11, kept for the informational define below.
-    PMIX_CC_HELPER([if $CC $1 supports __thread], [pmix_prog_cc__thread_available],
-                    [],[[static __thread int  foo = 1;++foo;]])
-
     dnl These record which C11 features the compiler has. Everything except
     dnl PMIX_C_HAVE___THREAD is now guaranteed to be 1: PMIX_PROG_CC_C11 above
     dnl aborts the configure without _Thread_local and the atomic convenience
@@ -208,22 +214,51 @@ AC_DEFUN([PMIX_SETUP_CC],[
     dnl They are retained, rather than dropped, only because they are emitted
     dnl into the installed pmix_config.h where an external consumer may test
     dnl them. Do not add code inside PMIx that branches on them.
-    AC_DEFINE_UNQUOTED([PMIX_C_HAVE__THREAD_LOCAL], [$pmix_prog_cc_c11_helper__Thread_local_available],
+    dnl
+    dnl These checks must run on every invocation of configure - including
+    dnl when the C11 flag detection above was satisfied from a cache file -
+    dnl because their results feed the AC_DEFINEs below. They run after
+    dnl PMIX_PROG_CC_C11 so that CFLAGS already contains any flag required
+    dnl for C11 support.
+    PMIX_CC_HELPER([if $CC supports C11 _Thread_local], [pmix_cv_c_have__thread_local],
+                   [],[[static _Thread_local int  foo = 1;++foo;]])
+    AC_DEFINE_UNQUOTED([PMIX_C_HAVE__THREAD_LOCAL], [$pmix_cv_c_have__thread_local],
                        [Whether C compiler supports __Thread_local])
 
-    AC_DEFINE_UNQUOTED([PMIX_C_HAVE_ATOMIC_CONV_VAR], [$pmix_prog_cc_c11_helper_atomic_var_available],
+    PMIX_CC_HELPER([if $CC supports C11 atomic variables], [pmix_cv_c_have_atomic_conv_var],
+                   [[#include <stdatomic.h>]], [[static atomic_long foo = 1;++foo;]])
+    AC_DEFINE_UNQUOTED([PMIX_C_HAVE_ATOMIC_CONV_VAR], [$pmix_cv_c_have_atomic_conv_var],
                        [Whether C compiler supports atomic convenience variables in stdatomic.h])
 
-    AC_DEFINE_UNQUOTED([PMIX_C_HAVE__ATOMIC], [$pmix_prog_cc_c11_helper__Atomic_available],
+    PMIX_CC_HELPER([if $CC supports C11 _Atomic keyword], [pmix_cv_c_have__atomic],
+                   [[#include <stdatomic.h>]],[[static _Atomic long foo = 1;++foo;]])
+    AC_DEFINE_UNQUOTED([PMIX_C_HAVE__ATOMIC], [$pmix_cv_c_have__atomic],
                        [Whether C compiler supports __Atomic keyword])
 
-    AC_DEFINE_UNQUOTED([PMIX_C_HAVE__GENERIC], [$pmix_prog_cc_c11_helper__Generic_available],
+    PMIX_CC_HELPER([if $CC supports C11 _Generic keyword], [pmix_cv_c_have__generic],
+                   [[#define FOO(x) (_Generic (x, int: 1))]], [[static int x, y; y = FOO(x);]])
+    AC_DEFINE_UNQUOTED([PMIX_C_HAVE__GENERIC], [$pmix_cv_c_have__generic],
                        [Whether C compiler supports __Generic keyword])
 
-    AC_DEFINE_UNQUOTED([PMIX_C_HAVE__STATIC_ASSERT], [$pmix_prog_cc_c11_helper__static_assert_available],
+    PMIX_CC_HELPER([if $CC supports C11 _Static_assert], [pmix_cv_c_have__static_assert],
+                   [[#include <stdint.h>]],[[_Static_assert(sizeof(int64_t) == 8, "WTH");]])
+    AC_DEFINE_UNQUOTED([PMIX_C_HAVE__STATIC_ASSERT], [$pmix_cv_c_have__static_assert],
                        [Whether C compiler supports _Static_assert keyword])
 
-    AC_DEFINE_UNQUOTED([PMIX_C_HAVE___THREAD], [$pmix_prog_cc__thread_available],
+    PMIX_CC_HELPER([if $CC supports C11 __c11_atomic functions], [pmix_cv_c_have_clang_builtin_atomic_c11_func],
+                   [[#include <stdatomic.h>]],[[atomic_int acnt = 0; __c11_atomic_fetch_add(&acnt, 1, memory_order_relaxed);]])
+    if test $pmix_cv_c_have_clang_builtin_atomic_c11_func -eq 1; then
+        AC_DEFINE_UNQUOTED([PMIX_HAVE_CLANG_BUILTIN_ATOMIC_C11_FUNC], [$pmix_cv_c_have_clang_builtin_atomic_c11_func],
+                           [Whether we have Clang __c11 atomic functions])
+    fi
+
+    # Check if compiler support __thread
+    #
+    # Unlike everything else here this one really is optional - __thread is a
+    # GCC extension that predates C11, kept for the informational define below.
+    PMIX_CC_HELPER([if $CC supports __thread], [pmix_cv_c_have___thread],
+                   [],[[static __thread int  foo = 1;++foo;]])
+    AC_DEFINE_UNQUOTED([PMIX_C_HAVE___THREAD], [$pmix_cv_c_have___thread],
                        [Whether C compiler supports __thread])
 
     OAC_C_COMPILER_VENDOR()
@@ -383,7 +418,6 @@ AC_DEFUN([PMIX_SETUP_CC],[
     PMIX_ENSURE_CONTAINS_OPTFLAGS(["$CFLAGS"])
     AC_MSG_RESULT([$co_result])
     CFLAGS="$co_result"
-    PMIX_VAR_SCOPE_POP
 ])
 
 

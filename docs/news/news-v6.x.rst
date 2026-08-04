@@ -7,6 +7,13 @@ series, in reverse chronological order.
 6.1.1 -- xx May 2026
 --------------------
 Detailed changes since v6.1.0:
+ - Configure now emits correct results when it is run against an
+   Autoconf cache file (e.g., "configure -C"). The C11 checks ran only
+   as a side effect of detecting whether the compiler needs a flag for
+   C11, and that whole block was skipped once its results came back
+   from the cache, so the PMIX_C_HAVE__* defines were emitted with
+   empty values - fatal for anything testing them with "#if" - and a
+   compiler that needs a flag for C11 silently lost it from CFLAGS
  - A message can no longer overflow a pmix_value_t. A value keeps its
    payload in a 24-byte union and the type tag naming the live member
    comes off the wire, but six registered types - PMIX_VALUE, PMIX_INFO,
