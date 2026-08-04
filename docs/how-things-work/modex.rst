@@ -207,6 +207,60 @@ For ``gds/hash``, the callback stores each kval into the namespace
 tracker's ``remote`` table under the contributing process's rank. From
 there ``PMIx_Get`` for a remote peer is answered locally.
 
+Reading the result, and re-publishing a key
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The point of a full modex is that the answer is already local, so
+``PMIx_Get`` for a peer's key is served from the requesting process's own
+copy without touching the network. Two consequences are worth knowing,
+because both surprise people.
+
+**Asking for one non-reserved key fetches the peer's whole set.** When a
+request does have to go to the server, ``_satisfy_request()``
+(``src/server/pmix_server_get.c``) narrows the lookup to a single key only
+for *reserved* keys; for a non-reserved key it returns everything that
+process published. The comment in the code gives the reasoning — a request
+for one value from a proc is usually followed by requests for more — and
+the effect is that the first miss for a peer populates the cache for all
+of that peer's data at once.
+
+**A second fence does not, by itself, update what a reader sees.**
+Suppose a process publishes ``mykey``, fences, and every peer reads it;
+then it publishes a *new value* under the same ``mykey`` and fences again.
+The new value does reach the other servers — the commit and the collective
+work exactly as described above. But a peer that already read ``mykey`` has
+it cached, and a plain ``PMIx_Get`` is answered from that cache, so it
+keeps returning the first value.
+
+That is deliberate, not an oversight, and ``PMIX_GET_REFRESH_CACHE`` is
+the documented way to override it. Its definition in
+``include/pmix_common.h.in`` says so directly:
+
+   when retrieving data for a remote process, refresh the existing local
+   data cache for the process in case new values have been put and
+   committed by it since the last refresh
+
+So a reader that expects an *updated* value has to ask for it:
+
+.. code-block:: c
+
+   pmix_info_t info;
+   bool refresh = true;
+
+   PMIX_INFO_LOAD(&info, PMIX_GET_REFRESH_CACHE, &refresh, PMIX_BOOL);
+   rc = PMIx_Get(&peer, "mykey", &info, 1, &val);
+
+Because of the first point above, one such refresh brings that peer's
+whole published set up to date, not just the key named in the call.
+
+This is easy to get wrong. The in-tree fence test has a ``--use-same-keys``
+mode that re-publishes the same key names before each fence, and it read
+them back with a plain ``PMIx_Get`` — so it saw the previous fence's values
+and reported the library broken. The mode had never worked, and nothing
+noticed because the harness printed the mismatch and still exited zero.
+If you are chasing a "stale modex value," check for this before suspecting
+the datastore.
+
 
 The Key Index
 -------------
