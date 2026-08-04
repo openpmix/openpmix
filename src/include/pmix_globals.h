@@ -804,8 +804,17 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
 
 typedef struct {
     pmix_object_t super;
-    /** Points to key <--> index translation table. */
+    /** Points to key <--> index translation table. An entry's index is
+     *  its slot number here, so this is the index -> entry direction and
+     *  it owns the entries. */
     pmix_pointer_array_t *table;
+    /** The string -> entry direction, keyed by the key string. Holds
+     *  borrowed pointers to the same entries "table" owns, purely so a
+     *  key does not have to be found by scanning. Anything that adds to,
+     *  removes from, or renumbers "table" without going through
+     *  pmix_hash_register_key() must call pmix_hash_keyindex_rebuild()
+     *  afterwards to put the two back in step. */
+    pmix_hash_table_t *lookup;
     /** Stores the next ID. */
     uint32_t next_id;
 } pmix_keyindex_t;
@@ -815,6 +824,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_keyindex_t);
 {                                                 \
     .super = PMIX_OBJ_STATIC_INIT(pmix_object_t), \
     .table = NULL,                                \
+    .lookup = NULL,                               \
     .next_id = PMIX_INDEX_BOUNDARY                \
 }
 

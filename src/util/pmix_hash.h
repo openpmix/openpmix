@@ -55,6 +55,12 @@ PMIX_EXPORT void pmix_hash_register_key(uint32_t inid,
                                         pmix_regattr_input_t *ptr,
                                         pmix_keyindex_t *kidx);
 
+/* Repopulate a keyindex's string -> entry lookup from its pointer
+ * array. Call this after modifying the array directly - adding,
+ * removing, or renumbering entries without going through
+ * pmix_hash_register_key() - or the two sides will disagree. */
+PMIX_EXPORT void pmix_hash_keyindex_rebuild(pmix_keyindex_t *kidx);
+
 /* Translate a key to its keyindex entry, registering the key (and thus
  * assigning it an index) if it is not already known. This is the form
  * the store path wants: storing a value is precisely the point at which

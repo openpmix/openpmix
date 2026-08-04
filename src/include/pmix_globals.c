@@ -202,6 +202,11 @@ static void keyindex_construct(pmix_keyindex_t *ki)
     ki->table = PMIX_NEW(pmix_pointer_array_t, tma);
     pmix_pointer_array_init(ki->table, 1024, INT_MAX, 128);
 
+    /* the string -> entry side. Sized past the reserved dictionary so
+     * the common case never rehashes. */
+    ki->lookup = PMIX_NEW(pmix_hash_table_t, tma);
+    pmix_hash_table_init(ki->lookup, 2048);
+
     ki->next_id = 0;
 }
 
@@ -223,6 +228,11 @@ static void keyindex_destruct(pmix_keyindex_t *ki)
             }
             pmix_tma_free(tma, p);
         }
+    }
+    /* the lookup table holds borrowed pointers to the entries just
+     * freed above, so it only needs its own storage released */
+    if (NULL != ki->lookup) {
+        PMIX_RELEASE(ki->lookup);
     }
     PMIX_RELEASE(ki->table);
 }
