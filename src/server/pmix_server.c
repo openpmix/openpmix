@@ -4003,11 +4003,38 @@ static void _mdxcbfunc(int sd, short args, void *cbdata)
         goto finish_collective;
     }
 
-    /* pass the blobs being returned */
-    PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &xfer, scd->data, scd->ndata);
-    PMIX_GDS_STORE_MODEX(rc, &xfer, tracker);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
+    /* Store the returned blobs, once per participating nspace.
+     *
+     * All local clients of one nspace share a gds module, but clients of
+     * *different* nspaces need not - so there is no single module that
+     * can be handed the whole payload. Walk it once for each nspace,
+     * through a peer of that nspace, storing only that nspace's blobs.
+     * The walk is cheap relative to the collective, and a real job has
+     * only a couple of local nspaces.
+     *
+     * Note the buffer is reloaded each pass: the walker consumes it, and
+     * PMIX_LOAD_BUFFER_NON_DESTRUCT simply re-points at the payload the
+     * host handed us without copying or taking ownership of it. */
+    PMIX_LIST_FOREACH (nptr, &nslist, pmix_nspace_caddy_t) {
+        pmix_peer_t *nspeer = NULL;
+
+        /* find a local peer of this nspace to resolve its module */
+        PMIX_LIST_FOREACH (cd, &tracker->local_cbs, pmix_server_caddy_t) {
+            if (0 == strcmp(nptr->ns->nspace, cd->peer->nptr->nspace)) {
+                nspeer = cd->peer;
+                break;
+            }
+        }
+        if (NULL == nspeer) {
+            /* cannot happen - the nspace came from this very list */
+            continue;
+        }
+        PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &xfer, scd->data, scd->ndata);
+        PMIX_GDS_STORE_MODEX(rc, nspeer, nptr->ns->nspace, &xfer, tracker);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
     }
     /* do NOT destruct the xfer buffer as that would release the payload! */
 

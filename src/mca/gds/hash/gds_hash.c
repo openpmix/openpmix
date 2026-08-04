@@ -65,6 +65,7 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr, pmix_buffer_
 static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf);
 
 static pmix_status_t hash_store_modex(pmix_buffer_t *buff,
+                                      const char *nspace,
                                       void *cbdata);
 
 static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
@@ -1433,9 +1434,10 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
  * always contains data solely from remote procs, and we
  * shall store it accordingly */
 static pmix_status_t hash_store_modex(pmix_buffer_t *buf,
+                                      const char *nspace,
                                       void *cbdata)
 {
-    return pmix_gds_base_store_modex(buf, _hash_store_modex, cbdata);
+    return pmix_gds_base_store_modex(buf, nspace, _hash_store_modex, cbdata);
 }
 
 static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
