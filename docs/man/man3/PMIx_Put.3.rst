@@ -117,6 +117,13 @@ processes until they are committed with :ref:`PMIx_Commit(3) <man3-PMIx_Commit>`
 and, typically, a subsequent synchronization such as
 :ref:`PMIx_Fence(3) <man3-PMIx_Fence>` has completed.
 
+**Posting a new value under a key already published** is permitted, but note
+that peers which have already retrieved that key will continue to see the
+earlier value: retrieved data is cached locally, and a later exchange does not
+by itself invalidate it. Such a peer must ask for the update with
+``PMIX_GET_REFRESH_CACHE`` |mdash| see
+:ref:`PMIx_Get(3) <man3-PMIx_Get>`.
+
 **Qualified values.** A value may be posted together with one or more qualifiers
 that scope its later retrieval by using the reserved key
 ``PMIX_QUALIFIED_VALUE``. In that case ``val`` must be a ``pmix_value_t`` of type
@@ -133,4 +140,5 @@ qualifiers, allowing several distinct values to be posted under the same key.
    :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
    :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
-   :ref:`pmix_scope_t(5) <man5-pmix_scope_t>`
+   :ref:`pmix_scope_t(5) <man5-pmix_scope_t>`,
+   :doc:`Modex: Exchanging Process Data </how-things-work/modex>`

@@ -251,7 +251,8 @@ So a reader that expects an *updated* value has to ask for it:
    rc = PMIx_Get(&peer, "mykey", &info, 1, &val);
 
 Because of the first point above, one such refresh brings that peer's
-whole published set up to date, not just the key named in the call.
+whole published set up to date, not just the key named in the call. See
+:ref:`PMIx_Get(3) <man3-PMIx_Get>` for the directive's full description.
 
 This is easy to get wrong. The in-tree fence test has a ``--use-same-keys``
 mode that re-publishes the same key names before each fence, and it read
