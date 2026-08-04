@@ -844,6 +844,29 @@ static pmix_status_t get_job_data(char *nspace,
     return PMIX_SUCCESS;
 }
 
+/* Find a local client of this nspace so that its assigned gds module can
+ * be resolved. Returns NULL when the nspace has no local clients - in
+ * which case there is no other module here to ask. */
+static pmix_peer_t *local_peer_of_nspace(pmix_namespace_t *nptr)
+{
+    pmix_rank_info_t *rptr;
+    pmix_peer_t *peer;
+
+    if (NULL == nptr || 0 == nptr->nlocalprocs) {
+        return NULL;
+    }
+    PMIX_LIST_FOREACH (rptr, &nptr->ranks, pmix_rank_info_t) {
+        if (0 <= rptr->peerid) {
+            peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
+                                                               rptr->peerid);
+            if (NULL != peer) {
+                return peer;
+            }
+        }
+    }
+    return NULL;
+}
+
 static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, char *key,
                                       pmix_server_caddy_t *cd, bool diffnspace, pmix_scope_t scope,
                                       pmix_modex_cbfunc_t cbfunc, void *cbdata)
@@ -901,7 +924,24 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
     cb.info = cd->info;
     cb.ninfo = cd->ninfo;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-    /* if we didn't find it on my peer, then it isn't found */
+    if (PMIX_SUCCESS != rc) {
+        /* Not in our own store - but that does not mean it is not here.
+         * The target nspace's clients may be on a different gds module
+         * than we are: gds/shmem3 keeps their modex in a shared-memory
+         * segment that our module knows nothing about. A requester that
+         * cannot read that segment itself - a tool, which only ever has
+         * "hash" - still has to be able to ask us for the value, so
+         * consult the nspace's own module before giving up. */
+        pmix_peer_t *nspeer = local_peer_of_nspace(nptr);
+        if (NULL != nspeer && !PMIX_GDS_CHECK_PEER_COMPONENT(nspeer, pmix_globals.mypeer)) {
+            pmix_kval_t *kvtmp;
+            /* a failed fetch may still have appended something */
+            while (NULL != (kvtmp = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs))) {
+                PMIX_RELEASE(kvtmp);
+            }
+            PMIX_GDS_FETCH_KV(rc, nspeer, &cb);
+        }
+    }
     if (PMIX_SUCCESS != rc) {
         PMIX_DESTRUCT(&cb);
         goto complete;
