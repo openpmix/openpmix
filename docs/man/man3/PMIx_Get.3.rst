@@ -344,6 +344,27 @@ desired qualifiers in the ``info`` array to select among the values stored under
 that key. ``PMIx_Get`` returns the primary value of the matching entry; the
 qualifiers themselves are used only for matching and are not returned.
 
+**Values from another process are cached, and a later exchange does not
+refresh them.** Once a process's data has been retrieved, subsequent calls for
+that process are answered from the local cache without consulting the server.
+So if the target process posts a *new* value under a key it had already
+published, and the data is circulated again, this call keeps returning the
+value read the first time. That is deliberate |mdash| it is what makes a
+lookup after a full exchange cost nothing |mdash| but it means a caller that
+expects an updated value must ask for one with ``PMIX_GET_REFRESH_CACHE``:
+
+.. code-block:: c
+
+   pmix_info_t info;
+   bool refresh = true;
+
+   PMIX_INFO_LOAD(&info, PMIX_GET_REFRESH_CACHE, &refresh, PMIX_BOOL);
+   rc = PMIx_Get(&proc, "mykey", &info, 1, &val);
+
+Note that a refresh for a non-reserved key brings across everything the target
+process has published, not only the key named in the call, so one refresh
+updates the caller's whole view of that process.
+
 
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
@@ -353,4 +374,5 @@ qualifiers themselves are used only for matching and are not returned.
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
    :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
-   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`,
+   :doc:`Modex: Exchanging Process Data </how-things-work/modex>`
