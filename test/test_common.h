@@ -273,6 +273,7 @@ typedef struct {
         char _key[50];                                                                            \
         pmix_value_t *_val;                                                                       \
         get_cbdata _cbdata;                                                                       \
+        int _mismatch = 0;                                                                        \
         _cbdata.status = PMIX_SUCCESS;                                                            \
         pmix_proc_t _foobar;                                                                      \
         SET_KEY(_key, fence_num, ind, use_same_keys);                                             \
@@ -319,12 +320,22 @@ typedef struct {
                 TEST_ERROR(("%s:%u: from %s:%d Key %s value or type mismatch,"                    \
                             " want type %d get type %d",                                          \
                             my_nspace, my_rank, ns, r, _key, PMIX_VAL_TYPE_##dtype, _val->type)); \
+                _mismatch = 1;                                                                    \
             }                                                                                     \
         }                                                                                         \
         if (PMIX_SUCCESS == rc) {                                                                 \
             TEST_VERBOSE(                                                                         \
                 ("%s:%d: GET OF %s from %s:%d SUCCEEDED", my_nspace, my_rank, _key, ns, r));      \
             PMIX_VALUE_RELEASE(_val);                                                             \
+        }                                                                                         \
+        /* Report a wrong value as a failure. The comparison above used to                        \
+         * print and then leave rc at PMIX_SUCCESS, so every caller's                             \
+         * "if (PMIX_SUCCESS != rc)" check passed and the run finished with                       \
+         * "Test SUCCEEDED!" and an exit status of 0 - which is why a fence                       \
+         * that returned stale data was invisible to make check. Set it                           \
+         * after the release above so the value is still freed. */                                \
+        if (_mismatch) {                                                                          \
+            rc = PMIX_ERROR;                                                                      \
         }                                                                                         \
     } while (0)
 
