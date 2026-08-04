@@ -1122,6 +1122,200 @@ class TestDataArrayConversion(unittest.TestCase):
                 self.assertEqual(rc, pmix.PMIX_SUCCESS)
 
 
+class TestConversionBoundaries(unittest.TestCase):
+    """The edges of the conversion layer: widths, empties, and NULLs.
+
+    Every case here stands for a defect the 2026-08 review found.  They are
+    grouped separately from TestValueConversion because what they check is
+    not "does this type round-trip" but "does the boundary behave" - the
+    largest value a field can hold, the smallest array, an optional string
+    the C side left unset.  Those are exactly the inputs a round-trip suite
+    built from typical values never reaches.
+    """
+
+    #: val_type, largest value the field can hold, first value past it
+    WIDTHS = (
+        ("uint8", pmix.PMIX_UINT8, 255, 256),
+        ("uint16", pmix.PMIX_UINT16, 65535, 65536),
+        ("uint32", pmix.PMIX_UINT32, 4294967295, 4294967296),
+        ("uint64", pmix.PMIX_UINT64, 18446744073709551615,
+         18446744073709551616),
+        ("rank", pmix.PMIX_PROC_RANK, 4294967294, 4294967296),
+        ("int8", pmix.PMIX_INT8, 127, 128),
+        ("int16", pmix.PMIX_INT16, 32767, 32768),
+        ("int32", pmix.PMIX_INT32, 2147483647, 2147483648),
+        ("int64", pmix.PMIX_INT64, 9223372036854775807,
+         9223372036854775808),
+    )
+
+    def test_largest_value_is_accepted(self):
+        # the bounds checks were written as products (65536*65536) and
+        # simply had the wrong value in several arms, so the top of the
+        # range was refused - or, worse, one past the top was accepted and
+        # silently truncated by the C store
+        for name, vtype, top, _over in self.WIDTHS:
+            rc, got = pmix.pmix_value_roundtrip({'value': top,
+                                                 'val_type': vtype})
+            self.assertEqual(rc, pmix.PMIX_SUCCESS,
+                             "%s refused its largest value: %s" % (name, rc))
+            self.assertEqual(got['value'], top,
+                             "%s did not survive the round trip" % name)
+
+    def test_out_of_range_is_refused(self):
+        for name, vtype, _top, over in self.WIDTHS:
+            rc, got = pmix.pmix_value_roundtrip({'value': over,
+                                                 'val_type': vtype})
+            self.assertNotEqual(rc, pmix.PMIX_SUCCESS,
+                                "%s accepted %d" % (name, over))
+            self.assertIsNone(got)
+
+    def test_negative_is_refused_by_unsigned_types(self):
+        for vtype in (pmix.PMIX_UINT, pmix.PMIX_UINT8, pmix.PMIX_UINT16,
+                      pmix.PMIX_UINT32, pmix.PMIX_UINT64, pmix.PMIX_SIZE,
+                      pmix.PMIX_PROC_RANK, pmix.PMIX_BYTE, pmix.PMIX_SCOPE,
+                      pmix.PMIX_DATA_RANGE, pmix.PMIX_PERSIST,
+                      pmix.PMIX_PROC_STATE):
+            rc, got = pmix.pmix_value_roundtrip({'value': -1,
+                                                 'val_type': vtype})
+            self.assertNotEqual(rc, pmix.PMIX_SUCCESS,
+                                "type %d accepted -1" % vtype)
+            self.assertIsNone(got)
+
+    def test_empty_array_of_every_type(self):
+        # An empty array carries no block at all.  Every unload arm used to
+        # test the block for NULL and, finding one, "return PMIX_ERR_NOMEM"
+        # - an int, from a function declared to return a dict, which raises
+        # TypeError.  So an empty array of any type blew up rather than
+        # converting to [].
+        for vtype in (pmix.PMIX_INT, pmix.PMIX_STRING, pmix.PMIX_BOOL,
+                      pmix.PMIX_BYTE, pmix.PMIX_SIZE, pmix.PMIX_PROC,
+                      pmix.PMIX_INFO, pmix.PMIX_BYTE_OBJECT,
+                      pmix.PMIX_ENVAR, pmix.PMIX_PROC_INFO,
+                      pmix.PMIX_DATA_ARRAY, pmix.PMIX_FLOAT,
+                      pmix.PMIX_DOUBLE, pmix.PMIX_PROC_RANK):
+            rc, got = pmix.pmix_value_roundtrip(
+                {'value': {'type': vtype, 'array': []},
+                 'val_type': pmix.PMIX_DATA_ARRAY})
+            self.assertEqual(rc, pmix.PMIX_SUCCESS,
+                             "empty array of type %d failed: %s" % (vtype, rc))
+            self.assertEqual(got['value'], {'type': vtype, 'array': []})
+
+    def test_byte_object_trusts_the_payload_not_the_count(self):
+        # a 'size' larger than the bytes actually provided used to be taken
+        # at face value and memcpy'd, reading off the end of the object
+        rc, got = pmix.pmix_value_roundtrip(
+            {'value': {'bytes': b'\x01\x02', 'size': 4096},
+             'val_type': pmix.PMIX_BYTE_OBJECT})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value'], {'bytes': b'\x01\x02', 'size': 2})
+
+    def test_byte_object_keeps_high_bytes_and_nuls(self):
+        payload = bytes(range(256))
+        rc, got = pmix.pmix_value_roundtrip(
+            {'value': {'bytes': payload, 'size': len(payload)},
+             'val_type': pmix.PMIX_BYTE_OBJECT})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value']['bytes'], payload)
+        self.assertEqual(got['value']['size'], 256)
+
+    def test_empty_byte_object(self):
+        rc, got = pmix.pmix_value_roundtrip(
+            {'value': {'bytes': b'', 'size': 0},
+             'val_type': pmix.PMIX_BYTE_OBJECT})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value'], {'bytes': b'', 'size': 0})
+
+    #: a coord's vector is the raw uint32 block, carried as bytes
+    @staticmethod
+    def _coord(*vals):
+        return {'view': 1,
+                'coord': b''.join(v.to_bytes(4, sys.byteorder) for v in vals),
+                'dims': len(vals)}
+
+    def test_coord_round_trip(self):
+        given = self._coord(1, 2, 3)
+        rc, got = pmix.pmix_value_roundtrip({'value': given,
+                                             'val_type': pmix.PMIX_COORD})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value'], given)
+
+    def test_coord_dims_larger_than_the_vector_is_refused(self):
+        # 'dims' counts coordinates, so the payload must be four times as
+        # long; a larger dims used to be believed and read past the end
+        bad = {'view': 1, 'coord': (1).to_bytes(4, sys.byteorder), 'dims': 64}
+        rc, got = pmix.pmix_value_roundtrip({'value': bad,
+                                             'val_type': pmix.PMIX_COORD})
+        self.assertNotEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertIsNone(got)
+
+    def test_empty_coord(self):
+        rc, got = pmix.pmix_value_roundtrip(
+            {'value': {'view': 0, 'coord': b'', 'dims': 0},
+             'val_type': pmix.PMIX_COORD})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value']['dims'], 0)
+
+    def test_geometry_round_trip(self):
+        # the geometry loader never set 'ncoords', and the library's
+        # destructor walks exactly that many coordinates - so releasing a
+        # geometry ran off the end of the block.  It also reported
+        # PMIX_ERR_NOT_SUPPORTED after building the whole struct.
+        given = {'fabric': 2, 'uuid': "fab-uuid", 'osname': "ib0",
+                 'ncoords': 2,
+                 'coords': [self._coord(1, 2), self._coord(9)]}
+        rc, got = pmix.pmix_value_roundtrip({'value': given,
+                                             'val_type': pmix.PMIX_GEOMETRY})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS,
+                         "geometry failed to convert: %s" % rc)
+        self.assertEqual(got['value'], given)
+
+    def test_geometry_with_no_coordinates(self):
+        given = {'fabric': 0, 'uuid': "u", 'osname': "o",
+                 'ncoords': 0, 'coords': []}
+        rc, got = pmix.pmix_value_roundtrip({'value': given,
+                                             'val_type': pmix.PMIX_GEOMETRY})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value'], given)
+
+    def test_endpoint_round_trip(self):
+        given = {'uuid': "ep-uuid", 'osname': "eth0",
+                 'endpt': {'bytes': b'\x00\xff\x10', 'size': 3}}
+        rc, got = pmix.pmix_value_roundtrip({'value': given,
+                                             'val_type': pmix.PMIX_ENDPOINT})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value'], given)
+
+    def test_nested_data_arrays(self):
+        given = {'type': pmix.PMIX_DATA_ARRAY, 'array': [
+            {'type': pmix.PMIX_INT, 'array': [1, 2, 3]},
+            {'type': pmix.PMIX_STRING, 'array': ["a", None]},
+            {'type': pmix.PMIX_INT, 'array': []},
+        ]}
+        rc, got = pmix.pmix_value_roundtrip({'value': given,
+                                            'val_type': pmix.PMIX_DATA_ARRAY})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value'], given)
+
+    def test_boundary_cases_are_stable(self):
+        # each of these allocates, and a leak or a double free only shows up
+        # when the same conversion is run many times over
+        cases = [{'value': top, 'val_type': vtype}
+                 for _n, vtype, top, _o in self.WIDTHS]
+        cases.append({'value': self._coord(1, 2, 3),
+                      'val_type': pmix.PMIX_COORD})
+        cases.append({'value': {'fabric': 0, 'uuid': "u", 'osname': "o",
+                                'ncoords': 1, 'coords': [self._coord(4)]},
+                      'val_type': pmix.PMIX_GEOMETRY})
+        cases.append({'value': {'bytes': bytes(range(256)), 'size': 256},
+                      'val_type': pmix.PMIX_BYTE_OBJECT})
+        cases.append({'value': {'type': pmix.PMIX_INT, 'array': []},
+                      'val_type': pmix.PMIX_DATA_ARRAY})
+        for _ in range(200):
+            for case in cases:
+                rc, _got = pmix.pmix_value_roundtrip(case)
+                self.assertEqual(rc, pmix.PMIX_SUCCESS)
+
+
 class TestDataBindings(unittest.TestCase):
     """The serialization family.
 
