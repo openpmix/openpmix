@@ -778,13 +778,33 @@ static pmix_regattr_input_t* lookup_key(uint32_t inid,
             return NULL;
         }
 
-        /* we didn't find it - register it */
-        ptr = (pmix_regattr_input_t*)pmix_malloc(sizeof(pmix_regattr_input_t));
-        ptr->name = strdup(key);
-        ptr->string = strdup(key);
+        /* We didn't find it - register it.
+         *
+         * Allocate through the keyindex's own allocator, not the heap.
+         * A keyindex can live in a shared-memory segment (gds/shmem3
+         * keeps one beside the modex data it describes), and every
+         * pointer reachable from it is read by other processes that
+         * mapped that segment. A heap pointer stored here is valid only
+         * in the process that minted it, so a reader dereferences an
+         * address that means nothing in its own space. The TMA helpers
+         * fall back to plain malloc/strdup when there is no allocator,
+         * which is the ordinary process-global case - and this is what
+         * keyindex_destruct() has always assumed, since it frees these
+         * with pmix_tma_free(). */
+        pmix_tma_t *const tma = pmix_obj_get_tma(&keyindex->super);
+
+        ptr = (pmix_regattr_input_t*)pmix_tma_malloc(tma, sizeof(pmix_regattr_input_t));
+        if (PMIX_UNLIKELY(NULL == ptr)) {
+            return NULL;
+        }
+        ptr->name = pmix_tma_strdup(tma, key);
+        ptr->string = pmix_tma_strdup(tma, key);
         ptr->type = PMIX_UNDEF; // we don't know what type the user will set
-        ptr->description = (char**)pmix_malloc(2 * sizeof(char*));
-        ptr->description[0] = strdup("USER DEFINED");
+        ptr->description = (char**)pmix_tma_malloc(tma, 2 * sizeof(char*));
+        if (PMIX_UNLIKELY(NULL == ptr->description)) {
+            return NULL;
+        }
+        ptr->description[0] = pmix_tma_strdup(tma, "USER DEFINED");
         ptr->description[1] = NULL;
         pmix_hash_register_key(UINT32_MAX, ptr, keyindex);
         return ptr;
