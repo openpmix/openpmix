@@ -17,7 +17,8 @@ noinst_SCRIPTS = \
     sched.py \
     client.py \
     tool.py \
-    test_bindings.py
+    test_bindings.py \
+    test_construct.py
 
 #########################
 # Support for "make check"
@@ -26,10 +27,13 @@ if WANT_PYTHON_BINDINGS
 
 # test_bindings.py is a self-contained unittest suite that needs no live
 # server; it locates the built extension itself and SKIPs (exit 77) if the
-# pmix module cannot be imported.  run_server.sh / run_sched.sh exercise the
-# connected client/server/scheduler round-trip paths.
+# pmix module cannot be imported.  test_construct.py checks the constants
+# generator and needs neither the extension nor the library, only Python.
+# run_server.sh / run_sched.sh exercise the connected
+# client/server/scheduler round-trip paths.
 TESTS = \
     test_bindings.py \
+    test_construct.py \
     run_server.sh \
     run_sched.sh
 

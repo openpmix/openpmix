@@ -39,8 +39,18 @@ def harvest_constants(options, src, constants, definitions):
     nconstlen = 0
     typedefs = []
     apis = []
-    # loop over the lines
-    for n in range(len(lines)):
+    # Loop over the lines.
+    #
+    # This is a while loop rather than "for n in range(len(lines))" because
+    # several of the branches below consume additional lines - a multi-line
+    # API declaration, a struct body, an enum - by advancing n themselves.
+    # A for loop would reset n on every pass and re-scan every line those
+    # branches had already swallowed.
+    n = -1
+    while True:
+        n += 1
+        if n >= len(lines):
+            break
         line = lines[n]
         # remove white space at front and back
         myline = line.strip()
@@ -48,7 +58,6 @@ def harvest_constants(options, src, constants, definitions):
         if "/*" in myline or "*/" in myline or myline.startswith("*"):
             if "DUPLICATES" in myline:
                 break
-            n += 1
             continue
         # if the line starts with #define, then we want it
         if takeconst and myline.startswith("#define"):
@@ -135,24 +144,55 @@ def harvest_constants(options, src, constants, definitions):
             #
             # start with the fourth option by looking for "enum"
             if "enum" in myline:
-                # each line after this one should contain a name
-                # so we just assign a value sequentially.
+                # Walk the body, assigning each enumerator the value the C
+                # compiler would give it: one past the previous one, unless
+                # this enumerator names its own with "= <value>".
+                #
+                # Three things this used to get wrong.  It took every line
+                # in the body for an enumerator, so a comment - or a blank
+                # line - became a bogus constant; pmix_common.h carries a
+                # warning telling contributors not to write one, which is
+                # the wrong way round.  It ignored an explicit "= value",
+                # silently renumbering the whole enum from that point on.
+                # And it stored the name and value through "tokens", a list
+                # left over from the last #define seen in this file, which
+                # raises NameError if an enum comes first.
                 counter = 0
                 n += 1
-                value = lines[n].strip()
-                if ',' in value:
-                    value = value[:-1]
-                while '}' not in value and n < len(lines):
-                    tokens[0] = value
-                    tokens[1] = str(counter)
-                    counter += 1
-                    nconsts.append([tokens[0], tokens[1]])
-                    if len(tokens[0]) > nconstlen:
-                        nconstlen = len(tokens[0])
-                    n += 1
+                while n < len(lines):
                     value = lines[n].strip()
-                    if ',' in value:
-                        value = value[:-1]
+                    if '}' in value:
+                        break
+                    n += 1
+                    # skip comments and blank lines - they are not
+                    # enumerators
+                    if '' == value or value.startswith("/*") \
+                       or value.startswith("*") or value.startswith("//"):
+                        continue
+                    if ',' == value[-1:]:
+                        value = value[:-1].strip()
+                    # honor an explicitly assigned value, and continue
+                    # counting from it
+                    if '=' in value:
+                        ename, _eq, eval_ = value.partition('=')
+                        ename = ename.strip()
+                        eval_ = eval_.strip()
+                        try:
+                            counter = int(eval_, 0)
+                        except ValueError:
+                            print("CANNOT PARSE ENUM VALUE", value, "in", src)
+                            return -1
+                    else:
+                        ename = value
+                    if '' == ename:
+                        continue
+                    nconsts.append([ename, str(counter)])
+                    if len(ename) > nconstlen:
+                        nconstlen = len(ename)
+                    counter += 1
+                if n >= len(lines):
+                    print("UNTERMINATED ENUM in", src)
+                    return -1
                 # the termination line contains the type name
                 # for this enum - declare it as integer here
                 value = "typedef int " + value[2:]
@@ -163,13 +203,11 @@ def harvest_constants(options, src, constants, definitions):
             elif ";" in myline and not "fn_t" in myline and not "cbfunc_t" in myline:
                 value = myline[:-1]
                 # check for bool type - must be converted to bint
-                if "bool" in value:
-                    value.replace("bool ", "bint ")
+                value = value.replace("bool ", "bint ")
                 # check for pre-declaration statements of form
                 # typedef struct foo foo
                 ck = value.split()
                 if len(ck) == 4 and ck[1] == "struct" and ck[2] == ck[3]:
-                    n += 1
                     continue
                 else:
                     # check for a typedef that includes a named value
@@ -190,22 +228,19 @@ def harvest_constants(options, src, constants, definitions):
                     # this is a one-line function definition
                     value = myline[:-1]
                     # check for bool type - must be converted to bint
-                    if "bool" in value:
-                        value.replace("bool ", "bint ")
+                    value = value.replace("bool ", "bint ")
                     typedefs.append([value])
                 else:
                     # this is a multi-line function definition
                     # check for bool type - must be converted to bint
-                    if "bool" in myline:
-                        myline.replace("bool ", "bint ")
+                    myline = myline.replace("bool ", "bint ")
                     newdef = [myline]
                     defrunning = True
                     while defrunning:
                         n += 1
                         value = lines[n].strip()
                         # check for bool type - must be converted to bint
-                        if "bool" in value:
-                            value.replace("bool ", "bint ")
+                        value = value.replace("bool ", "bint ")
                         if ";" in value:
                             defrunning = False
                             value = value[:-1]
@@ -220,7 +255,6 @@ def harvest_constants(options, src, constants, definitions):
                 value = myline
                 ck = value.split()
                 if len(ck) == 4 and ck[1] == "struct" and ck[2] == ck[3]:
-                    n += 1
                     continue
                 else:
                     newdef = []
@@ -525,19 +559,23 @@ def main():
         sys.exit(1)
     definitions.write("\n\n")
     constants.write("\n\n")
-    harvest_constants(options, "pmix.h", constants, definitions)
+    if harvest_constants(options, "pmix.h", constants, definitions) != 0:
+        sys.exit(1)
     # add some space
     definitions.write("\n\n")
     constants.write("\n\n")
-    harvest_constants(options, "pmix_server.h", constants, definitions)
+    if harvest_constants(options, "pmix_server.h", constants, definitions) != 0:
+        sys.exit(1)
     # add some space
     definitions.write("\n\n")
     constants.write("\n\n")
-    harvest_constants(options, "pmix_tool.h", constants, definitions)
+    if harvest_constants(options, "pmix_tool.h", constants, definitions) != 0:
+        sys.exit(1)
     # add some space
     definitions.write("\n\n")
     constants.write("\n\n")
-    harvest_constants(options, "pmix_deprecated.h", constants, definitions)
+    if harvest_constants(options, "pmix_deprecated.h", constants, definitions) != 0:
+        sys.exit(1)
     # close the files to ensure all output is written
     constants.close()
     definitions.close()

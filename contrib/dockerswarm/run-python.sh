@@ -159,6 +159,28 @@ test_linux() {
                     python3 $PYDIR/swarm_group.py 2>&1")"
     tally "$OUT" "swarm_group.py: group construct/destruct across nodes" 4
     cleanup_swarm
+
+    banner "multi-node Python data types"
+    cleanup_swarm
+    # Every type the conversion layer supports, written by one rank and read
+    # by a peer behind a different prted.  The in-tree unit suite round-trips
+    # the loader against the unloader, which cannot catch a mistake both of
+    # them make; going through the library's packer can.
+    OUT="$(RUN "prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 180 \
+                    python3 $PYDIR/swarm_datatypes.py 2>&1")"
+    tally "$OUT" "swarm_datatypes.py: every data type across nodes" 4
+    cleanup_swarm
+
+    banner "multi-node Python non-blocking operations"
+    cleanup_swarm
+    # The _nb family against a remote server, which is the only place the
+    # keepalive caddy and the callback registry are under real load: a
+    # request answered out of the local datastore completes before the
+    # method has returned, so nothing has to survive.
+    OUT="$(RUN "prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 180 \
+                    python3 $PYDIR/swarm_nonblocking.py 2>&1")"
+    tally "$OUT" "swarm_nonblocking.py: the _nb family across nodes" 4
+    cleanup_swarm
 }
 
 ########################################################################
