@@ -4696,6 +4696,43 @@ cdef class PMIxServer(PMIxClient):
             pmix_free_info(directives, ndirs)
         return rc
 
+    def iof_flow_control(self, pysrc, pychannel:int, pyxoff:bool, pydirs):
+        # Suspend (pyxoff True) or resume (pyxoff False) the processes
+        # feeding stdin to us. A pysrc of None means every one of them,
+        # so it is deliberately not annotated "dict" - Cython would
+        # reject the None. Only PMIX_FWD_STDIN_CHANNEL can be
+        # flow-controlled; anything else returns PMIX_ERR_NOT_SUPPORTED.
+        cdef pmix_proc_t source
+        cdef pmix_proc_t *srcptr
+        cdef pmix_iof_channel_t channel
+        cdef bint xoff
+        cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
+        cdef size_t ndirs
+        ndirs   = 0
+        channel = pychannel
+        xoff    = pyxoff
+        srcptr  = NULL
+
+        # convert pysrc to pmix_proc_t, if one was given
+        if pysrc is not None:
+            pmix_copy_nspace(source.nspace, pysrc['nspace'])
+            source.rank = pysrc['rank']
+            srcptr = &source
+
+        # allocate and load pmix info structs from python list of dictionaries
+        directives_ptr = &directives
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+        if PMIX_SUCCESS != rc:
+            return rc
+
+        # call API - blocking form, so no callback
+        rc = PMIx_server_IOF_flow_control(srcptr, channel, xoff,
+                                          directives, ndirs, NULL, NULL)
+        if 0 < ndirs:
+            pmix_free_info(directives, ndirs)
+        return rc
+
     def define_process_set(self, members, name:str):
         cdef pmix_proc_t *procs
         cdef size_t nprocs
