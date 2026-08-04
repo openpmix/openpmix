@@ -201,6 +201,10 @@ test/run_tests12.pl
 test/run_tests13.pl
 test/run_tests14.pl
 test/run_tests15.pl
+test/run_tests16.pl
+test/run_tests17.pl
+test/run_tests18.pl
+test/run_tests19.pl
 test/simple/run_*.sh
 test/simple/doubleget
 test/simple/quietclient
