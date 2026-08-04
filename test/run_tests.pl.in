@@ -24,7 +24,19 @@ my @tests = ("-n 4 --ns-dist 3:1 --fence \"[db | 0:0-2;1:0]\"",
              "-n 5 --test-replace 100:0,1,10,50,99",
              "-n 5 --test-internal 10",
              "-s 1 -n 2 --job-fence",
-             "-s 1 -n 2 --job-fence -c");
+             "-s 1 -n 2 --job-fence -c",
+             # Repeated modex exchanges across multiple namespaces.
+             # A fence stores its result through the gds module of each
+             # participating namespace, and for a shared-memory module
+             # the key indices in that store cross a process boundary -
+             # so the cases that matter are the ones where a second
+             # fence adds to an already-published store, where the
+             # namespaces involved differ between fences, and where the
+             # server meets the keys in an order no client shares.
+             "-n 6 --ns-dist 3:3 --fence \"[db | 0:;1:][db | 0:;1:]\"",
+             "-n 6 --ns-dist 2:2:2 --fence \"[db | 0:;1:;2:][db | 0:;1:;2:][db | 0:;1:;2:]\"",
+             "-n 6 --ns-dist 2:2:2 --fence \"[db | 0:0-1;1:0][db | 1:;2:]\"",
+             "-n 6 --ns-dist 2:2:2 --fence \"[db | 0:;1:;2:][db | 0:;1:;2:]\" --noise \"[0:0,1]\"");
 #             "-s 2 -n 2 --job-fence",
 #            "-s 2 -n 2 --job-fence -c");
 

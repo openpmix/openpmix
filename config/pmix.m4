@@ -1025,6 +1025,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests11.pl], [chmod +x test/run_tests11.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests12.pl], [chmod +x test/run_tests12.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests13.pl], [chmod +x test/run_tests13.pl])
+    dnl 14 and 15 are deliberately absent - their cases exist but are not run
+    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests16.pl], [chmod +x test/run_tests16.pl])
+    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests17.pl], [chmod +x test/run_tests17.pl])
+    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests18.pl], [chmod +x test/run_tests18.pl])
+    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests19.pl], [chmod +x test/run_tests19.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_gds_fallback.pl], [chmod +x test/unit/run_gds_fallback.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_simpcycle.pl], [chmod +x test/unit/run_simpcycle.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_toolcycle.pl], [chmod +x test/unit/run_toolcycle.pl])
