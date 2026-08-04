@@ -81,6 +81,9 @@
       +  41u * (uint32_t)sizeof(pmix_gds_shmem3_nodeinfo_t)                  \
       +  43u * (uint32_t)sizeof(pmix_gds_shmem3_app_t)                       \
       +  47u * (uint32_t)sizeof(pmix_gds_shmem3_host_alias_t)                \
+      +  53u * (uint32_t)sizeof(pmix_keyindex_t)                             \
+      +  59u * (uint32_t)sizeof(pmix_regattr_input_t)                        \
+      +  61u * (uint32_t)sizeof(pmix_pointer_array_t)                        \
     ))
 
 /**
@@ -215,6 +218,22 @@ typedef struct {
     void *current_addr;
     /** Stores static modex data. */
     pmix_hash_table_t *hashtab;
+    /** Translates the key indices stored in hashtab above.
+     *
+     * This lives in the segment, rather than being the process-global
+     * keyindex, because the indices in that table cross a process
+     * boundary here: the server writes them and every local client
+     * reads them. A non-reserved key's global index is assigned per
+     * process in order of first encounter, so no two processes can be
+     * assumed to agree on one - and the reserved half is only stable
+     * between processes built from the same PMIx release. Keeping the
+     * translation beside the data it describes means the indices only
+     * have to be consistent within this segment, which they are because
+     * exactly one process writes them.
+     *
+     * Clients map the segment read-only, so they must reach this only
+     * through pmix_hash_find_key() and friends, which never register. */
+    pmix_keyindex_t *keyindex;
 } pmix_gds_shmem3_shared_modex_data_t;
 
 typedef struct {

@@ -21,11 +21,16 @@
 
 BEGIN_C_DECLS
 
+/* Store a qualified value. kidx names the keyindex that translates the
+ * key and its qualifiers; pass NULL for the process-global one, or the
+ * segment's own keyindex when storing into a shared-memory table whose
+ * indices other processes will read. */
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem3_store_qualified(
     pmix_hash_table_t *ht,
     pmix_rank_t rank,
-    pmix_value_t *value
+    pmix_value_t *value,
+    pmix_keyindex_t *kidx
 );
 
 PMIX_EXPORT pmix_status_t

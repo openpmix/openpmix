@@ -917,6 +917,17 @@ modex_smdata_construct(
     }
     pmix_hash_table_init(job->smmodex->hashtab, htsize);
 
+    // The indices stored in that table are meaningless without the
+    // translation, and the translation cannot be the process-global one
+    // because clients do not share our numbering. Build it here, in the
+    // segment, so it travels with the data it describes.
+    job->smmodex->keyindex = PMIX_NEW(pmix_keyindex_t, tma);
+    if (!job->smmodex->keyindex) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
     pmix_gds_shmem3_vout_smmodex(job);
 
     return rc;
@@ -2875,6 +2886,22 @@ get_modex_sizing_data(const pmix_buffer_t *buff)
     // We also need storage space for the hash table and its elements.
     segment_size += sizeof(pmix_hash_table_t);
     segment_size += nhtelems * pmix_hash_table_sizeof_hash_element();
+    // The keyindex that translates the indices in that hash table lives
+    // in this segment too: the object, its pointer array, its own string
+    // -> entry hash table, and one entry per distinct key with two
+    // copies of the key string (the entry's name and string) plus the
+    // copy the lookup table makes of its key. We cannot know the number
+    // of distinct keys without unpacking, so bound it by nkvals - the
+    // real count is normally far smaller, and the fluff below covers the
+    // per-entry allocations.
+    segment_size += sizeof(pmix_keyindex_t);
+    segment_size += sizeof(pmix_pointer_array_t);
+    segment_size += sizeof(pmix_hash_table_t);
+    segment_size += nkvals * (sizeof(pmix_regattr_input_t)
+                              + sizeof(void *)
+                              + 3 * (PMIX_MAX_KEYLEN + 1));
+    segment_size += get_actual_hashtab_capacity(nkvals)
+                    * pmix_hash_table_sizeof_hash_element();
     // Include some extra fluff that empirically seems reasonable.
     segment_size *= fluff;
     // Adjust (increase or decrease) segment size by the given parameter size.
@@ -2967,12 +2994,18 @@ server_store_modex_cb(pmix_proc_t *proc,
         // rank=0 as we know that rank must always exist.
         if (PMIX_CHECK_KEY(&kv, PMIX_QUALIFIED_VALUE)) {
             rc = pmix_gds_shmem3_store_qualified(
-                ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, kv.value
+                ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, kv.value,
+                job->smmodex->keyindex
             );
         }
         else {
+            // Note the keyindex: the indices this store mints have to be
+            // readable by every local client that maps the segment, so
+            // they come from the segment's own translation table rather
+            // than from this process's global one.
             rc = pmix_hash_store(
-                ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, &kv, NULL, 0, NULL
+                ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, &kv, NULL, 0,
+                job->smmodex->keyindex
             );
         }
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {

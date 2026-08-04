@@ -595,6 +595,13 @@ pmix_gds_shmem3_fetch(
     );
     // Modex data are stored in PMIX_REMOTE.
     pmix_hash_table_t *const remote_ht = mdrfu ? job->smmodex->hashtab : NULL;
+    // The indices in that table were minted by the server against the
+    // segment's own keyindex, not against this process's global one, so
+    // reads of it have to translate through the same table. See the
+    // comment on pmix_gds_shmem3_shared_modex_data_t.keyindex. The job
+    // segment's tables still use the global keyindex, which the
+    // client-side fixup has already aligned with the server's.
+    pmix_keyindex_t *const remote_kidx = mdrfu ? job->smmodex->keyindex : NULL;
 
     // If the rank is wildcard and key is NULL, then the caller is asking for a
     // complete copy of the job-level info for this nspace, so retrieve it.
@@ -764,7 +771,8 @@ doover:
     // be the source.
     if (PMIX_RANK_UNDEF == proc->rank && ht) {
         for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
-            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs, NULL);
+            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs,
+                                 (ht == remote_ht) ? remote_kidx : NULL);
             if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
@@ -804,7 +812,8 @@ doover:
     else {
         if (ht) {
             rc = pmix_hash_fetch(
-                ht, proc->rank, key, qualifiers, nqual, kvs, NULL
+                ht, proc->rank, key, qualifiers, nqual, kvs,
+                (ht == remote_ht) ? remote_kidx : NULL
             );
         }
         else {
@@ -846,7 +855,8 @@ doover:
             if (PMIX_LOCAL == scope) {
                 if (NULL != remote_ht) {
                     /* check the remote scope */
-                    rc = pmix_hash_fetch(remote_ht, proc->rank, key, qualifiers, nqual, kvs, NULL);
+                    rc = pmix_hash_fetch(remote_ht, proc->rank, key, qualifiers, nqual, kvs,
+                                         remote_kidx);
                     if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
                         while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
                             PMIX_RELEASE(kv);
