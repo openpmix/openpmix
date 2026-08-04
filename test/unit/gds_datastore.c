@@ -149,6 +149,7 @@ static void test_assign_module(void)
 static size_t modex_nblobs = 0;   /* callbacks carrying a buffer */
 static size_t modex_ndone = 0;    /* callbacks carrying NULL     */
 static pmix_rank_t modex_ranks[8];
+static char modex_nspaces[8][PMIX_MAX_NSLEN + 1];
 static pmix_status_t modex_cb_rc = PMIX_SUCCESS;
 
 static pmix_status_t modex_cb(pmix_proc_t *proc, pmix_buffer_t *pbkt)
@@ -159,9 +160,26 @@ static pmix_status_t modex_cb(pmix_proc_t *proc, pmix_buffer_t *pbkt)
     }
     if (modex_nblobs < sizeof(modex_ranks) / sizeof(modex_ranks[0])) {
         modex_ranks[modex_nblobs] = proc->rank;
+        pmix_strncpy(modex_nspaces[modex_nblobs], proc->nspace, PMIX_MAX_NSLEN);
     }
     ++modex_nblobs;
     return modex_cb_rc;
+}
+
+/* true if every blob the callback saw came from the named nspace */
+static bool modex_all_from(const char *nspace)
+{
+    size_t n, lim = modex_nblobs;
+
+    if (lim > sizeof(modex_ranks) / sizeof(modex_ranks[0])) {
+        lim = sizeof(modex_ranks) / sizeof(modex_ranks[0]);
+    }
+    for (n = 0; n < lim; n++) {
+        if (0 != strcmp(modex_nspaces[n], nspace)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /* Build the envelope pmix_gds_base_store_modex() expects: an outer byte
@@ -227,6 +245,143 @@ static pmix_status_t build_modex(pmix_buffer_t *out, const char *nspace,
     return rc;
 }
 
+/* Same envelope, but the rank-level block carries procs from more than
+ * one nspace - which is what a fence spanning two local nspaces
+ * produces, and what the nspace filter has to sort out. */
+static pmix_status_t build_modex_mixed(pmix_buffer_t *out,
+                                       pmix_proc_t *procs, size_t nprocs)
+{
+    pmix_buffer_t ranklevel, serverlevel, pbkt;
+    pmix_byte_object_t bo;
+    pmix_status_t rc;
+    uint8_t collect = 1;
+    bool compressed = false;
+    size_t n;
+
+    PMIX_CONSTRUCT(&ranklevel, pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &ranklevel, &collect, 1, PMIX_BYTE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_DESTRUCT(&ranklevel);
+        return rc;
+    }
+    for (n = 0; n < nprocs; n++) {
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &procs[n], 1, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&pbkt);
+            PMIX_DESTRUCT(&ranklevel);
+            return rc;
+        }
+        PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &ranklevel, &bo, 1, PMIX_BYTE_OBJECT);
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+        PMIX_DESTRUCT(&pbkt);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&ranklevel);
+            return rc;
+        }
+    }
+
+    PMIX_CONSTRUCT(&serverlevel, pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &serverlevel, &compressed, 1, PMIX_BOOL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_DESTRUCT(&serverlevel);
+        PMIX_DESTRUCT(&ranklevel);
+        return rc;
+    }
+    PMIX_UNLOAD_BUFFER(&ranklevel, bo.bytes, bo.size);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &serverlevel, &bo, 1, PMIX_BYTE_OBJECT);
+    PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+    PMIX_DESTRUCT(&ranklevel);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_DESTRUCT(&serverlevel);
+        return rc;
+    }
+
+    PMIX_UNLOAD_BUFFER(&serverlevel, bo.bytes, bo.size);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, out, &bo, 1, PMIX_BYTE_OBJECT);
+    PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+    PMIX_DESTRUCT(&serverlevel);
+    return rc;
+}
+
+/* A fence can span local nspaces that were assigned different gds
+ * modules, so the same payload is walked once per nspace, each pass
+ * storing only that nspace's blobs. Passing NULL still stores
+ * everything, which is what a single-module caller wants. */
+static void test_store_modex_nspace_filter(void)
+{
+    pmix_buffer_t buf;
+    pmix_server_trkr_t trk;
+    pmix_proc_t procs[4];
+    pmix_status_t rc;
+
+    fprintf(stdout, "\n-- modex walker: per-nspace filtering --\n");
+
+    memset(&trk, 0, sizeof(trk));
+    trk.collect_type = PMIX_COLLECT_YES;
+
+    PMIX_LOAD_PROCID(&procs[0], "gds-modex-nsA", 0);
+    PMIX_LOAD_PROCID(&procs[1], "gds-modex-nsB", 0);
+    PMIX_LOAD_PROCID(&procs[2], "gds-modex-nsA", 1);
+    PMIX_LOAD_PROCID(&procs[3], "gds-modex-nsB", 1);
+
+    /* filtering to one nspace delivers only its blobs, and signals done
+     * once - for that nspace alone */
+    modex_nblobs = modex_ndone = 0;
+    modex_cb_rc = PMIX_SUCCESS;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex_mixed(&buf, procs, 4);
+    report("mixed-nspace envelope builds", PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_gds_base_store_modex(&buf, "gds-modex-nsA", modex_cb, &trk);
+        report("filtered store_modex succeeds", PMIX_SUCCESS == rc);
+        report("filtered store_modex delivers only that nspace's blobs",
+               2 == modex_nblobs);
+        report("filtered store_modex delivers no other nspace",
+               modex_all_from("gds-modex-nsA"));
+        report("filtered store_modex signals done once", 1 == modex_ndone);
+    }
+    PMIX_DESTRUCT(&buf);
+
+    /* the other nspace's blobs are still reachable on its own pass -
+     * i.e. filtering does not consume or skip past them permanently */
+    modex_nblobs = modex_ndone = 0;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex_mixed(&buf, procs, 4);
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_gds_base_store_modex(&buf, "gds-modex-nsB", modex_cb, &trk);
+        report("the second nspace's pass sees its own blobs",
+               PMIX_SUCCESS == rc && 2 == modex_nblobs
+                   && modex_all_from("gds-modex-nsB"));
+    }
+    PMIX_DESTRUCT(&buf);
+
+    /* a NULL filter stores everything, and signals done once per nspace */
+    modex_nblobs = modex_ndone = 0;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex_mixed(&buf, procs, 4);
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
+        report("an unfiltered walk delivers every blob",
+               PMIX_SUCCESS == rc && 4 == modex_nblobs);
+        report("an unfiltered walk signals done once per nspace",
+               2 == modex_ndone);
+    }
+    PMIX_DESTRUCT(&buf);
+
+    /* a filter naming an nspace not present delivers nothing at all */
+    modex_nblobs = modex_ndone = 0;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex_mixed(&buf, procs, 4);
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_gds_base_store_modex(&buf, "gds-modex-absent", modex_cb, &trk);
+        report("a filter matching no blob delivers none",
+               PMIX_SUCCESS == rc && 0 == modex_nblobs && 0 == modex_ndone);
+    }
+    PMIX_DESTRUCT(&buf);
+}
+
 static void test_store_modex(void)
 {
     pmix_buffer_t buf;
@@ -246,7 +401,7 @@ static void test_store_modex(void)
     rc = build_modex(&buf, "gds-modex-ns", ranks, 3);
     report("modex envelope builds", PMIX_SUCCESS == rc);
     if (PMIX_SUCCESS == rc) {
-        rc = pmix_gds_base_store_modex(&buf, modex_cb, &trk);
+        rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
         report("store_modex walks the envelope successfully", PMIX_SUCCESS == rc);
         report("store_modex delivers every proc blob", 3 == modex_nblobs);
         report("store_modex delivers rank 0 first",
@@ -268,7 +423,7 @@ static void test_store_modex(void)
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     rc = build_modex(&buf, "gds-modex-ns", ranks, 3);
     if (PMIX_SUCCESS == rc) {
-        rc = pmix_gds_base_store_modex(&buf, modex_cb, &trk);
+        rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
         report("a callback that does not report success truncates the walk",
                1 == modex_nblobs);
     }
@@ -695,6 +850,7 @@ int main(int argc, char **argv)
 
     test_assign_module();
     test_store_modex();
+    test_store_modex_nspace_filter();
     test_map_forms();
     test_malformed_job_info();
     test_scope_routing();

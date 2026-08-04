@@ -124,6 +124,7 @@ pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc, char ***env)
 }
 
 pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
+                                        const char *nspace,
                                         pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                         void *cbdata)
 {
@@ -250,6 +251,19 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&pbkt);
                     break;
+                }
+
+                /* the caller may have asked for only one nspace's data -
+                 * local clients of different nspaces can be on different
+                 * gds modules, so the same payload gets walked once for
+                 * each of them, each time storing only its own share */
+                if (NULL != nspace && !PMIX_CHECK_NSPACE(nspace, proc.nspace)) {
+                    PMIX_DESTRUCT(&pbkt);
+                    /* get the next peer-level blob */
+                    cnt = 1;
+                    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt3, &bo4, &cnt,
+                                       PMIX_BYTE_OBJECT);
+                    continue;
                 }
 
                 // track the nspace involved

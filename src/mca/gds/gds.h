@@ -267,46 +267,76 @@ typedef pmix_status_t (*pmix_gds_base_module_store_fn_t)(const pmix_proc_t *proc
  * cbdata - pointer to modex callback data
  *
  */
-typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(pmix_buffer_t *buff, void *cbdata);
+typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(pmix_buffer_t *buff,
+                                                               const char *nspace,
+                                                               void *cbdata);
 
 /**
  * define a convenience macro for storing modex byte objects
  *
  * r - return status code
  *
+ * p - pointer to a pmix_peer_t of a local client of the nspace whose
+ *     data is being stored. All local clients of one nspace share a
+ *     gds module, but clients of *different* nspaces need not, so the
+ *     module is resolved from a peer of the nspace being stored - not
+ *     from the local server, whose own module may be neither.
+ *
+ * ns - the nspace whose blobs are to be stored from this payload. The
+ *      aggregated result carries every participant's data, so the
+ *      caller walks it once per participating nspace.
+ *
  * b - pointer to pmix_buffer_t containing the data
  *
  * t - pointer to the modex server tracker
  */
-#define PMIX_GDS_STORE_MODEX(r, b, t)                                       \
+#define PMIX_GDS_STORE_MODEX(r, p, ns, b, t)                                \
     do {                                                                    \
-        pmix_gds_base_module_t *_g = pmix_globals.mypeer->nptr->compat.gds; \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);               \
         pmix_output_verbose(1, pmix_gds_base_output,                        \
-                            "[%s:%d] GDS STORE MODEX WITH %s", __FILE__,    \
-                            __LINE__, _g->name);                            \
-        (r) = _g->store_modex(b, t);                                        \
+                            "[%s:%d] GDS STORE MODEX FOR %s WITH %s",       \
+                            __FILE__, __LINE__,                             \
+                            (NULL == (ns)) ? "ALL" : (ns), _g->name);       \
+        if (NULL == _g->store_modex) {                                      \
+            (r) = PMIX_ERR_NOT_SUPPORTED;                                   \
+        } else {                                                            \
+            (r) = _g->store_modex(b, ns, t);                                \
+        }                                                                   \
     } while (0)
 
 typedef pmix_status_t (*pmix_gds_base_module_mark_modex_complete_fn_t)(struct pmix_peer_t *peer,
                                                                        pmix_list_t *nslist,
                                                                        pmix_buffer_t *buff);
+/* Resolved from the peer being replied to, not from the local server:
+ * this adds whatever that peer's own module needs in order to reach the
+ * modex data - for shmem3, the segment info it must map. */
 #define PMIX_GDS_MARK_MODEX_COMPLETE(r, p, l, b)                            \
     do {                                                                    \
-        pmix_gds_base_module_t *_g = pmix_globals.mypeer->nptr->compat.gds; \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);               \
         pmix_output_verbose(1, pmix_gds_base_output,                        \
                             "[%s:%d] GDS MARK MODEX COMPLETE WITH %s",      \
                             __FILE__, __LINE__, _g->name);                  \
-        (r) = _g->mark_modex_complete(p, l, b);                             \
+        if (NULL == _g->mark_modex_complete) {                              \
+            (r) = PMIX_SUCCESS;                                             \
+        } else {                                                            \
+            (r) = _g->mark_modex_complete(p, l, b);                         \
+        }                                                                   \
     } while (0)
 
 typedef pmix_status_t (*pmix_gds_base_module_recv_modex_complete_fn_t)(pmix_buffer_t *buff);
+/* The client side of the above, resolved from the server peer that sent
+ * it - which is the peer carrying this client's assigned module. */
 #define PMIX_GDS_RECV_MODEX_COMPLETE(r, p, b)                               \
     do {                                                                    \
-        pmix_gds_base_module_t *_g = pmix_globals.mypeer->nptr->compat.gds; \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);               \
         pmix_output_verbose(1, pmix_gds_base_output,                        \
                             "[%s:%d] GDS RECV MODEX COMPLETE WITH %s",      \
                             __FILE__, __LINE__, _g->name);                  \
-        (r) = _g->recv_modex_complete(b);                                   \
+        if (NULL == _g->recv_modex_complete) {                              \
+            (r) = PMIX_SUCCESS;                                             \
+        } else {                                                            \
+            (r) = _g->recv_modex_complete(b);                               \
+        }                                                                   \
     } while (0)
 
 /**

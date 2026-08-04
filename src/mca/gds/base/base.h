@@ -126,7 +126,16 @@ pmix_gds_base_get_fallback_module(pmix_gds_base_module_t *failing);
  */
 PMIX_EXPORT pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc, char ***env);
 
+/* Walk an aggregated fence result and hand each proc's blob to cb_fn,
+ * then call cb_fn once per nspace with a NULL buffer to signal "done".
+ *
+ * nspace, if not NULL, restricts the walk to blobs belonging to that
+ * nspace. Local clients of different nspaces may be assigned different
+ * gds modules, and each module has to be given its own nspaces' data,
+ * so the same payload is walked once per participating nspace. Pass
+ * NULL to store everything in the payload. */
 PMIX_EXPORT pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
+                                                    const char *nspace,
                                                     pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                                     void *cbdata);
 

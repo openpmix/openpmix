@@ -3037,6 +3037,7 @@ server_store_modex_cb(pmix_proc_t *proc,
  */
 static pmix_status_t
 server_store_modex(pmix_buffer_t *buff,
+                   const char *nspace,
                    void *cbdata)
 {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
@@ -3045,7 +3046,7 @@ server_store_modex(pmix_buffer_t *buff,
         "%s:%s buff_size=%zd", __func__,
         PMIX_NAME_PRINT(&pmix_globals.myid), buff->bytes_used
     );
-    return pmix_gds_base_store_modex(buff, server_store_modex_cb, cbdata);
+    return pmix_gds_base_store_modex(buff, nspace, server_store_modex_cb, cbdata);
 }
 
 static pmix_status_t
