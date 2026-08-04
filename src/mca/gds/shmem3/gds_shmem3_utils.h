@@ -160,11 +160,19 @@ pmix_gds_shmem3_vout_smmodex(
 ) {
     PMIX_GDS_SHMEM3_VOUT(
         "modex_shmem3@%p, "
+        "smmodex@%p, "
         "smmodex tma@%p, "
-        "hashtab@%p",
+        "hashtab@%p, "
+        "keyindex@%p (table@%p, next_id=%u)",
         (void *)job->modex_shmem3->data_address,
+        (void *)job->smmodex,
         (void *)&job->smmodex->tma,
-        (void *)job->smmodex->hashtab
+        (void *)job->smmodex->hashtab,
+        (void *)job->smmodex->keyindex,
+        (NULL == job->smmodex->keyindex)
+            ? NULL : (void *)job->smmodex->keyindex->table,
+        (NULL == job->smmodex->keyindex)
+            ? 0u : (unsigned)job->smmodex->keyindex->next_id
     );
 }
 
