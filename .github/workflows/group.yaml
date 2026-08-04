@@ -47,35 +47,49 @@ jobs:
       run: |
          export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
          export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
-         prterun -n 4 ./examples/group >& /dev/null
+         log=$RUNNER_TEMP/group.log
+         prterun -n 4 ./examples/group > "$log" 2>&1 || \
+             { rc=$?; echo "=== example failed with exit status $rc - output follows ==="; cat "$log"; exit $rc; }
     - name: Run simple group with query
       run: |
          export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
          export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
-         prterun -n 4 ./examples/group --test-query >& /dev/null
+         log=$RUNNER_TEMP/group-query.log
+         prterun -n 4 ./examples/group --test-query > "$log" 2>&1 || \
+             { rc=$?; echo "=== example failed with exit status $rc - output follows ==="; cat "$log"; exit $rc; }
     - name: Run local CID group
       run: |
          export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
          export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
-         prterun -n 4 ./examples/group_lcl_cid >& /dev/null
+         log=$RUNNER_TEMP/group_lcl_cid.log
+         prterun -n 4 ./examples/group_lcl_cid > "$log" 2>&1 || \
+             { rc=$?; echo "=== example failed with exit status $rc - output follows ==="; cat "$log"; exit $rc; }
     - name: Run async group
       run: |
          export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
          export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
-         prterun -n 4 ./examples/asyncgroup >& /dev/null
+         log=$RUNNER_TEMP/asyncgroup.log
+         prterun -n 4 ./examples/asyncgroup > "$log" 2>&1 || \
+             { rc=$?; echo "=== example failed with exit status $rc - output follows ==="; cat "$log"; exit $rc; }
     - name: Run group dmodex
       run: |
          export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
          export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
-         prterun -n 4 ./examples/group_dmodex >& /dev/null
+         log=$RUNNER_TEMP/group_dmodex.log
+         prterun -n 4 ./examples/group_dmodex > "$log" 2>&1 || \
+             { rc=$?; echo "=== example failed with exit status $rc - output follows ==="; cat "$log"; exit $rc; }
     - name: Run spawn group
       run: |
          export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
          export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
-         prterun -n 2 ./examples/multi_nspace_group >& /dev/null
+         log=$RUNNER_TEMP/multi_nspace_group.log
+         prterun -n 2 ./examples/multi_nspace_group > "$log" 2>&1 || \
+             { rc=$?; echo "=== example failed with exit status $rc - output follows ==="; cat "$log"; exit $rc; }
     - name: Run group bootstrap
       run: |
          export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
          export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
-         prterun -n 6 ./examples/group_bootstrap >& /dev/null
+         log=$RUNNER_TEMP/group_bootstrap.log
+         prterun -n 6 ./examples/group_bootstrap > "$log" 2>&1 || \
+             { rc=$?; echo "=== example failed with exit status $rc - output follows ==="; cat "$log"; exit $rc; }
 
