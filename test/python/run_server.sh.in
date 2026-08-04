@@ -1,10 +1,28 @@
 #!/bin/bash
 
-# PMIX_PYTHON_EGG_PATH is derived from Automake's $pythondir, which is
-# expressed in terms of ${prefix} and so reaches us still unexpanded.
-# Define the variables it refers to and let the shell finish the job.
+# Run the connected client/server round-trip against the extension in the
+# BUILD tree.
+#
+# "make check" is supposed to exercise what was just built, and pointing
+# PYTHONPATH at the install prefix does not: it tests whatever version was
+# last installed there, or fails outright when the tree has never been
+# installed.  That is not a hypothetical - a binding added to pmix.pyx made
+# this test fail against a months-old installed egg while the freshly built
+# one had it.
+#
+# So prefer the build tree, and fall back to the egg path (derived from
+# Automake's $pythondir, which is expressed in terms of ${prefix} and so
+# reaches us still unexpanded - define what it refers to and let the shell
+# finish the job) for an installed-only tree.
 prefix=@prefix@
 exec_prefix=@exec_prefix@
-export PYTHONPATH=@PMIX_PYTHON_EGG_PATH@
+egg=@PMIX_PYTHON_EGG_PATH@
+
+builddir=$(echo @PMIX_TOP_BUILDDIR@/bindings/python/build/lib.*)
+if [ -d "$builddir" ]; then
+    export PYTHONPATH="$builddir${egg:+:$egg}"
+else
+    export PYTHONPATH="$egg"
+fi
 
 ./server.py
