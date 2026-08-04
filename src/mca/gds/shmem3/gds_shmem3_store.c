@@ -546,7 +546,8 @@ pmix_status_t
 pmix_gds_shmem3_store_qualified(
     pmix_hash_table_t *ht,
     pmix_rank_t rank,
-    pmix_value_t *value
+    pmix_value_t *value,
+    pmix_keyindex_t *kidx
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
@@ -586,7 +587,7 @@ pmix_gds_shmem3_store_qualified(
     kv->key = info[0].key;
     kv->value = &info[0].value;
     // Store the result.
-    rc = pmix_hash_store(ht, rank, kv, quals, nquals, NULL);
+    rc = pmix_hash_store(ht, rank, kv, quals, nquals, kidx);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
