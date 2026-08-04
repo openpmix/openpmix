@@ -71,6 +71,10 @@ bindings/python/pmix_constants.pxi
 bindings/python/pmix_constants.stamp
 bindings/python/dist/
 bindings/python/pypmix.egg-info/
+# test/python/test_construct.py imports construct.py from here, so a
+# "make check" leaves the interpreter's byte-code cache behind
+bindings/python/__pycache__/
+test/python/__pycache__/
 
 examples/python/__pycache__/
 examples/alloc
