@@ -107,9 +107,50 @@ static void test_lookup_auto_register(void)
            p != NULL && strcmp(p->string, "unit.test.auto.key") == 0);
 }
 
+static void test_find_key_does_not_register(void)
+{
+    uint32_t before, after;
+    pmix_regattr_input_t *p;
+
+    /* A known key is returned just as pmix_hash_lookup_key would. */
+    p = pmix_hash_find_key(UINT32_MAX, PMIX_SERVER_TOOL_SUPPORT, NULL);
+    report("find_key: known key returned", p != NULL);
+
+    /* An unknown key returns NULL and, crucially, leaves the keyindex
+     * alone. Checking the status without checking next_id would pass
+     * against the old auto-registering lookup as well. */
+    before = pmix_globals.keyindex.next_id;
+    p = pmix_hash_find_key(UINT32_MAX, "unit.test.never.registered", NULL);
+    after = pmix_globals.keyindex.next_id;
+    report("find_key: unknown key returns NULL", p == NULL);
+    report("find_key: unknown key did not grow keyindex", before == after);
+}
+
 /* ------------------------------------------------------------------ */
 /* pmix_hash_store / pmix_hash_fetch                                   */
 /* ------------------------------------------------------------------ */
+
+static void test_fetch_does_not_register(void)
+{
+    pmix_hash_table_t *t = new_table();
+    pmix_list_t kvals;
+    pmix_status_t rc;
+    uint32_t before, after;
+
+    /* Fetching a key nobody ever stored must not mint an index for it.
+     * Before this was fixed, every failed fetch grew the process-global
+     * keyindex by one entry that could never be removed - and would
+     * have written into a read-only shared-memory keyindex. */
+    PMIX_CONSTRUCT(&kvals, pmix_list_t);
+    before = pmix_globals.keyindex.next_id;
+    rc = pmix_hash_fetch(t, 0, "unit.test.fetch.unregistered", NULL, 0, &kvals, NULL);
+    after = pmix_globals.keyindex.next_id;
+    report("fetch_no_register: returns ERR_NOT_FOUND", PMIX_ERR_NOT_FOUND == rc);
+    report("fetch_no_register: did not grow keyindex", before == after);
+    drain_list(&kvals);
+    PMIX_DESTRUCT(&kvals);
+    PMIX_RELEASE(t);
+}
 
 static void test_store_fetch_basic(void)
 {
@@ -348,6 +389,8 @@ int main(int argc, char **argv)
 
     test_lookup_known_key();
     test_lookup_auto_register();
+    test_find_key_does_not_register();
+    test_fetch_does_not_register();
     test_store_fetch_basic();
     test_fetch_not_found_empty_table();
     test_fetch_wrong_key();
