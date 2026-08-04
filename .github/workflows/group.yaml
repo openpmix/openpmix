@@ -90,6 +90,13 @@ jobs:
          export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
          export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
          log=$RUNNER_TEMP/group_bootstrap.log
-         prterun -n 6 ./examples/group_bootstrap > "$log" 2>&1 || \
+         # This test has an intermittent failure (a construct that completes
+         # with PMIX_GROUP_CONSTRUCT_ABORT).  Run it verbosely so that when it
+         # does trip, the log dumped below names the code path that aborted.
+         # Costs a passing run nothing: the log is only shown on failure.
+         export PMIX_MCA_pmix_server_group_verbose=5
+         prterun --prtemca grpcomm_base_verbose 5 \
+                 --pmixmca pmix_client_group_verbose 5 \
+                 -n 6 ./examples/group_bootstrap > "$log" 2>&1 || \
              { rc=$?; echo "=== example failed with exit status $rc - output follows ==="; cat "$log"; exit $rc; }
 
