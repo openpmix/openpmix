@@ -2055,6 +2055,9 @@ cdef class PMIxClient:
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        if PMIX_SUCCESS != rc:
+            pmix_free_procs(procs, nprocs)
+            return rc, []
 
         # Call the library
         # the library only sets these on success, so start them
@@ -2117,6 +2120,9 @@ cdef class PMIxClient:
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        if PMIX_SUCCESS != rc:
+            pmix_free_procs(procs, nprocs)
+            return rc, []
 
         # Call the library
         # the library only sets these on success, so start them
@@ -2169,6 +2175,8 @@ cdef class PMIxClient:
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        if PMIX_SUCCESS != rc:
+            return rc, []
 
         # Call the library
         # the library only sets these on success, so start them
@@ -2208,6 +2216,8 @@ cdef class PMIxClient:
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        if PMIX_SUCCESS != rc:
+            return rc
 
         # Call the library
         _grp = <char *>pygrp
@@ -2236,6 +2246,8 @@ cdef class PMIxClient:
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        if PMIX_SUCCESS != rc:
+            return rc
 
         # Call the library
         _grp = <char *>pygrp
@@ -3958,6 +3970,8 @@ cdef class PMIxClient:
         if 0 == self.fabric_set:
             return (PMIX_ERR_INIT, None)
         rc = PMIx_Fabric_update(&self.myfabric)
+        if PMIX_SUCCESS != rc:
+            return (rc, fabricinfo)
         # convert the fabric info array for return
         if 0 < self.myfabric.ninfo:
             pmix_unload_info(self.myfabric.info, self.myfabric.ninfo, fabricinfo)
@@ -5896,6 +5910,9 @@ cdef class PMIxTool(PMIxServer):
         # allocate and load pmix info structs from python list of dictionaries
         directives_ptr = &directives
         rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+        if PMIX_SUCCESS != rc:
+            pmix_free_procs(procs, nprocs)
+            return rc, -1
 
         # Call the library
         with nogil:
@@ -5929,6 +5946,8 @@ cdef class PMIxTool(PMIxServer):
         # allocate and load pmix info structs from python list of dictionaries
         directives_ptr = &directives
         rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+        if PMIX_SUCCESS != rc:
+            return rc
 
         # call the library
         rc = PMIx_IOF_deregister(iofhdlr, directives, ndirs, NULL, NULL)
@@ -5969,20 +5988,27 @@ cdef class PMIxTool(PMIxServer):
                 return rc
             bo = &pushbo
 
-        # convert list of proc targets to array of pmix_proc_t's
-        if pytargets is not None:
+        # convert list of proc targets to array of pmix_proc_t's. Every
+        # failure from here on has the payload to give back
+        if pytargets is not None and 0 < len(pytargets):
             ntargets = len(pytargets)
             targets = <pmix_proc_t*>PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
             if not targets:
+                if NULL != bo:
+                    free(bo.bytes)
                 return PMIX_ERR_NOMEM
             rc = pmix_load_procs(targets, pytargets)
             if PMIX_SUCCESS != rc:
                 pmix_free_procs(targets, ntargets)
+                if NULL != bo:
+                    free(bo.bytes)
                 return rc
         else:
             ntargets = 1
             targets = <pmix_proc_t*>PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
             if not targets:
+                if NULL != bo:
+                    free(bo.bytes)
                 return PMIX_ERR_NOMEM
             pmix_copy_nspace(targets[0].nspace, self.myproc.nspace)
             targets[0].rank = PMIX_RANK_WILDCARD
@@ -5990,6 +6016,11 @@ cdef class PMIxTool(PMIxServer):
         # allocate and load pmix info structs from python list of dictionaries
         directives_ptr = &directives
         rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+        if PMIX_SUCCESS != rc:
+            pmix_free_procs(targets, ntargets)
+            if NULL != bo:
+                free(bo.bytes)
+            return rc
 
         # Call the library
         rc = PMIx_IOF_push(targets, ntargets, bo, directives, ndirs, NULL, NULL)
@@ -6063,3 +6094,37 @@ cdef class PMIxScheduler(PMIxTool):
         rc = PMIx_tool_finalize()
         return rc
 
+
+
+# The documented way to use these bindings is "from pmix import *", which
+# without an __all__ hands the caller every name at module scope - and
+# that includes the modules this file imports for its own use.  A program
+# that did
+#
+#     import time
+#     from pmix import *
+#
+# silently got the extension's "time" instead of its own, and the same for
+# os, sys, array, queue, signal, threading, ctypes and traceback.  Rebinding
+# a caller's imports is not something a library may do.
+#
+# Build the export list at import time rather than maintaining it by hand:
+# the whole point of the module is the several thousand PMIX_* constants
+# construct.py generates, and enumerating those would go stale on the first
+# new attribute.  So export everything public except the modules and the
+# handful of symbols pulled in by "from X import Y".
+def _pmix_build_all():
+    import types as _types
+    borrowed = ('Callable', 'Timer', 'addressof', 'c_int', 'address')
+    names = []
+    for name, obj in globals().items():
+        if name.startswith('_'):
+            continue
+        if name in borrowed:
+            continue
+        if isinstance(obj, _types.ModuleType):
+            continue
+        names.append(name)
+    return sorted(names)
+
+__all__ = _pmix_build_all()

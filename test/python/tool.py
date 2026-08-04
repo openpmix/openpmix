@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from pmix import *
-from os import *
+import os
 import time
 
 def main():
@@ -11,7 +11,10 @@ def main():
     uid = os.geteuid()
     gid = os.getegid()
     basename = os.path.basename(__file__)
-    tmpdir = os.getenv('TMPDIR')
+    # a bare os.getenv('TMPDIR') is None on a machine that does not set it,
+    # and os.path.join(None, ...) raises rather than reporting anything
+    # useful
+    tmpdir = os.getenv('TMPDIR', '/tmp')
     sessiondir = os.path.join(tmpdir, basename + '.session.' + str(uid) + '.' + str(gid))
     info = [{'key':PMIX_LAUNCHER, 'value':True, 'val_type':PMIX_BOOL},
             {'key':PMIX_SERVER_TOOL_SUPPORT, 'value':True, 'val_type':PMIX_BOOL},
@@ -23,7 +26,11 @@ def main():
 
     # construct an application to spawn
     app = {'cmd':'hostname', 'maxprocs':1}
-    foo.spawn(None, [app])
+    rc, nspace = foo.spawn(None, [app])
+    if PMIX_SUCCESS != rc:
+        print("SPAWN FAILED", foo.error_string(rc))
+    else:
+        print("SPAWNED", nspace)
     time.sleep(2.0)
     # finalize
     foo.finalize()
