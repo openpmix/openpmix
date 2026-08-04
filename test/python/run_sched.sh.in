@@ -1,10 +1,16 @@
 #!/bin/bash
 
-# PMIX_PYTHON_EGG_PATH is derived from Automake's $pythondir, which is
-# expressed in terms of ${prefix} and so reaches us still unexpanded.
-# Define the variables it refers to and let the shell finish the job.
+# Run the scheduler-role test against the extension in the BUILD tree.
+# See run_server.sh.in for why the build tree comes first.
 prefix=@prefix@
 exec_prefix=@exec_prefix@
-export PYTHONPATH=@PMIX_PYTHON_EGG_PATH@
+egg=@PMIX_PYTHON_EGG_PATH@
+
+builddir=$(echo @PMIX_TOP_BUILDDIR@/bindings/python/build/lib.*)
+if [ -d "$builddir" ]; then
+    export PYTHONPATH="$builddir${egg:+:$egg}"
+else
+    export PYTHONPATH="$egg"
+fi
 
 ./sched.py
