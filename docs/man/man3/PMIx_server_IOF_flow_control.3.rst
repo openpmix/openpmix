@@ -23,6 +23,33 @@ SYNOPSIS
                                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxServer()
+  # ... after a successful foo.init() ...
+  pydirs = []
+
+  # stop every process feeding us stdin
+  rc = foo.iof_flow_control(None, PMIX_FWD_STDIN_CHANNEL, True, pydirs)
+
+  # ... and later, let them resume
+  rc = foo.iof_flow_control(None, PMIX_FWD_STDIN_CHANNEL, False, pydirs)
+
+  # or name a single producer
+  source = {'nspace': "mytool", 'rank': 0}
+  rc = foo.iof_flow_control(source, PMIX_FWD_STDIN_CHANNEL, True, pydirs)
+
+The Python binding is the **blocking** form |mdash| it passes no callback,
+and returns the status directly. A ``source`` of ``None`` is the Python
+spelling of a ``NULL`` ``source``, and means every process feeding this
+server.
+
+
 INPUT PARAMETERS
 ----------------
 

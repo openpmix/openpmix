@@ -157,6 +157,24 @@ def main():
     vers = foo.get_version()
     print("Version: ", vers)
 
+    # IOF stdin flow control. Nothing is pushing stdin to us here, so
+    # these reach no producer - what they check is that the binding
+    # itself is wired up: that a channel other than stdin is refused,
+    # that a NULL source (None) is accepted for "everyone", and that a
+    # named source and a directive list cross correctly.
+    print("Testing PMIx_server_IOF_flow_control")
+    rc = foo.iof_flow_control(None, PMIX_FWD_STDOUT_CHANNEL, True, [])
+    if PMIX_ERR_NOT_SUPPORTED != rc:
+        print("ERROR: flow control on a non-stdin channel was not refused:", rc)
+        exit(1)
+    for src in [None, {'nspace': "testnspace", 'rank': 0}]:
+        for xoff in [True, False]:
+            rc = foo.iof_flow_control(src, PMIX_FWD_STDIN_CHANNEL, xoff, [])
+            if rc not in (PMIX_SUCCESS, PMIX_OPERATION_SUCCEEDED):
+                print("ERROR: iof_flow_control(", src, xoff, ") failed:", rc)
+                exit(1)
+    print("IOF flow control: OK")
+
     # get our environment as a base
     env = os.environ.copy()
     # register an nspace for the client app
