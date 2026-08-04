@@ -36,7 +36,14 @@ my @tests = ("-n 4 --ns-dist 3:1 --fence \"[db | 0:0-2;1:0]\"",
              "-n 6 --ns-dist 3:3 --fence \"[db | 0:;1:][db | 0:;1:]\"",
              "-n 6 --ns-dist 2:2:2 --fence \"[db | 0:;1:;2:][db | 0:;1:;2:][db | 0:;1:;2:]\"",
              "-n 6 --ns-dist 2:2:2 --fence \"[db | 0:0-1;1:0][db | 1:;2:]\"",
-             "-n 6 --ns-dist 2:2:2 --fence \"[db | 0:;1:;2:][db | 0:;1:;2:]\" --noise \"[0:0,1]\"");
+             "-n 6 --ns-dist 2:2:2 --fence \"[db | 0:;1:;2:][db | 0:;1:;2:]\" --noise \"[0:0,1]\"",
+             # --use-same-keys re-publishes the same key names with new
+             # values before each fence, so this is the case where a key
+             # already has an index and an entry: the store has to update
+             # in place rather than add, and every reader has to end up
+             # with the new value.
+             "-n 6 --ns-dist 3:3 --fence \"[db | 0:;1:][db | 0:;1:]\" --use-same-keys",
+             "-n 6 --ns-dist 2:2:2 --fence \"[db | 0:;1:;2:][db | 0:;1:;2:][db | 0:;1:;2:]\" --use-same-keys");
 #             "-s 2 -n 2 --job-fence",
 #            "-s 2 -n 2 --job-fence -c");
 
