@@ -208,6 +208,14 @@ typedef uint32_t pmix_ptl_tag_t;
 #define PMIX_PTL_TAG_NOTIFY    0
 #define PMIX_PTL_TAG_HEARTBEAT 1
 #define PMIX_PTL_TAG_IOF       2
+/* IOF flow control travels on a tag of its own rather than sharing
+ * PMIX_PTL_TAG_IOF. A flow-control message carries no data, so a
+ * receiver multiplexing it onto the forwarded-output tag would have
+ * to screen for it before reaching for anything the output layout
+ * promises - and a peer too old to know about flow control would
+ * unpack it as a truncated output message. Its own tag means such a
+ * peer simply never receives one. */
+#define PMIX_PTL_TAG_IOF_CONTROL 3
 
 /* define the start of dynamic tags that are
  * assigned for send/recv operations */

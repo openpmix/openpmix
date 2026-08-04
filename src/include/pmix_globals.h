@@ -466,6 +466,9 @@ typedef struct pmix_peer_t {
     int index; // index into the local clients array on the server
     int sd;
     bool finalized;          // peer has called finalize
+    bool stdin_producer;     // peer has pushed stdin to us, and is therefore
+                             // somebody IOF flow control has to reach when the
+                             // host tells us to stop taking stdin
     pmix_event_t send_event; /**< registration with event thread for send events */
     bool send_ev_active;
     pmix_event_t recv_event; /**< registration with event thread for recv events */

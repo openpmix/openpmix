@@ -128,6 +128,11 @@ typedef struct {
     size_t ntargets;
     pmix_info_t *directives;
     size_t ndirs;
+    /* flow control: while xoff is set the event is left un-armed, so
+     * the bytes we would have read stay in the input stream and the
+     * OS applies the back-pressure for us. Cleared by an XON, which
+     * re-arms the event */
+    bool xoff;
 } pmix_iof_read_event_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_read_event_t);
 
@@ -276,6 +281,32 @@ PMIX_EXPORT pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels,
                                                pmix_iof_req_t *req);
 PMIX_EXPORT void pmix_iof_init_flags(pmix_iof_flags_t *flags);
 PMIX_EXPORT void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags);
+
+/* IOF flow control.
+ *
+ * pmix_iof_flow_control() is the one place that applies an XON/XOFF,
+ * whatever asked for it - the host through PMIx_server_IOF_flow_control,
+ * a push_stdin that completed with PMIX_ERR_IOF_XOFF, or an upstream
+ * server through PMIX_PTL_TAG_IOF_CONTROL. It suspends or resumes any
+ * stdin we are reading ourselves and, if we are a server, relays the
+ * request to every peer that has pushed stdin to us. A launcher is both,
+ * so a chain of them passes the request all the way back to whoever is
+ * actually holding the input stream.
+ *
+ * "source" names the producer to control; NULL, or a wildcard rank
+ * and/or nspace, means every producer feeding us. Only the stdin bit of
+ * "channel" is meaningful - PMIX_ERR_NOT_SUPPORTED is returned if it is
+ * not set. Nothing is buffered on behalf of a suspended stream.
+ *
+ * pmix_iof_flow_control_handler() is the PMIX_PTL_TAG_IOF_CONTROL recv
+ * callback; it unpacks such a request and hands it to the above.
+ */
+PMIX_EXPORT pmix_status_t pmix_iof_flow_control(const pmix_proc_t *source,
+                                                pmix_iof_channel_t channel,
+                                                bool xoff,
+                                                const pmix_info_t directives[], size_t ndirs);
+PMIX_EXPORT void pmix_iof_flow_control_handler(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                                               pmix_buffer_t *buf, void *cbdata);
 
 /* PMIX_IOF_FILE_PATTERN support.
  *

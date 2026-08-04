@@ -802,6 +802,60 @@ PMIX_EXPORT pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
                                                   const pmix_info_t info[], size_t ninfo,
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/* Provide a function by which the host RM can apply flow control to
+ * the processes that are feeding stdin to it - i.e., tell the PMIx
+ * server library to stop reading, and later to resume.
+ *
+ * A host that finds itself falling behind on the stdin it is being
+ * handed has only two other options, and neither is acceptable: drop
+ * bytes, or queue without bound. This API gives it the third - reach
+ * back to the producer and stop it at the source, leaving the unread
+ * bytes in the producer's own input stream where the operating system
+ * will apply the back-pressure for us. Nothing is buffered by PMIx on
+ * behalf of a suspended stream and nothing is lost.
+ *
+ * The library applies the request both to any stdin it is reading on
+ * its own behalf and to every tool that has pushed stdin to it, and a
+ * tool that is itself a server relays it onward to its own producers.
+ * The suspension persists until this function is called again with
+ * "xoff" set to false, so every XOFF must eventually be paired with an
+ * XON or the stream stalls forever.
+ *
+ * Parameters include:
+ *
+ * source - the process whose stdin flow is to be controlled. A NULL
+ *          value, or a source with a wildcard rank and/or nspace,
+ *          applies the request to every process feeding stdin to us
+ *
+ * channel - the IOF channel to control. Only PMIX_FWD_STDIN_CHANNEL
+ *           can be flow-controlled; PMIX_ERR_NOT_SUPPORTED is returned
+ *           if the stdin bit is not set
+ *
+ * xoff - true to suspend the stream, false to resume it
+ *
+ * directives - an optional array of attributes to qualify the request
+ *
+ * ndirs - number of elements in the directives array
+ *
+ * cbfunc - a callback function to be executed once the request has
+ *          been applied. If cbfunc is NULL, then this is treated as a
+ *          BLOCKING call and the result is provided in the returned
+ *          status
+ *
+ * cbdata - object pointer to be returned in the callback function
+ *
+ * A host that would rather not hold a reference to its producers can
+ * also suspend a stream opportunistically, by completing a push_stdin
+ * upcall with PMIX_ERR_IOF_XOFF instead of PMIX_SUCCESS - that status
+ * means "I have taken this data, now stop sending". Resumption is only
+ * ever through this function.
+ */
+PMIX_EXPORT pmix_status_t PMIx_server_IOF_flow_control(const pmix_proc_t *source,
+                                                       pmix_iof_channel_t channel,
+                                                       bool xoff,
+                                                       const pmix_info_t directives[], size_t ndirs,
+                                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
+
 /* Collect inventory of local resources. This is a non-blocking
  * API as it may involve somewhat lengthy operations to obtain
  * the requested information. Servers designated as "gateways"

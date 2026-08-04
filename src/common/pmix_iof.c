@@ -34,6 +34,7 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/common/pmix_pfexec.h"
 #include "src/mca/ptl/ptl.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_basename.h"
@@ -2257,9 +2258,22 @@ void pmix_iof_stdin_cb(int sd, short args, void *cbdata)
     pmix_iof_read_event_t *stdinev = (pmix_iof_read_event_t *) cbdata;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
+    /* this is also the SIGCONT handler, which is registered with no
+     * cbdata at all - it just means "reconsider the stdin we know
+     * about", so resolve it to the one read event there can be */
+    if (NULL == stdinev) {
+        stdinev = stdinev_global;
+        if (NULL == stdinev) {
+            return;
+        }
+    }
+
     PMIX_ACQUIRE_OBJECT(stdinev);
 
-    should_process = pmix_iof_stdin_check(0);
+    /* a suspended stream stays suspended until an XON says otherwise -
+     * being told our terminal is back in the foreground does not
+     * override the fact that the far end cannot take the data */
+    should_process = !stdinev->xoff && pmix_iof_stdin_check(0);
 
     if (should_process) {
         PMIX_IOF_READ_ACTIVATE(stdinev);
@@ -2289,6 +2303,20 @@ static void iof_stdin_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         PMIX_POST_OBJECT(stdinev);
         return;
     }
+    /* the far end is backed up: suspend the stream, but leave it intact.
+     * This is not a failure - no data was lost and the stream will be
+     * resumed by an XON, so the tool is not told anything is wrong */
+    if (PMIX_ERR_IOF_XOFF == ret) {
+        stdinev->xoff = true;
+        pmix_event_del(&stdinev->ev);
+        stdinev->active = false;
+        PMIX_POST_OBJECT(stdinev);
+        pmix_output_verbose(1, pmix_client_globals.iof_output,
+                            "%s iof:stdin suspended by server",
+                            PMIX_NAME_PRINT(&pmix_globals.myid));
+        return;
+    }
+
     /* if the status wasn't success, then terminate the forward */
     if (PMIX_SUCCESS != ret) {
         pmix_event_del(&stdinev->ev);
@@ -2302,16 +2330,250 @@ static void iof_stdin_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         return;
     }
 
+    /* an XOFF may have arrived on its own while this chunk was in flight */
+    if (stdinev->xoff) {
+        return;
+    }
+
     pmix_iof_stdin_cb(0, 0, stdinev);
 }
 
+/* carries the pushed data and the read event that produced it into the
+ * host's completion callback, so the completion can both free the data
+ * and decide whether to ask for the next chunk */
+typedef struct {
+    pmix_byte_object_t *bo;
+    pmix_iof_read_event_t *rev;
+} pmix_iof_push_caddy_t;
+
+/* completion of a host push_stdin: the read is deliberately NOT re-armed
+ * until we get here, so the host's pace is the stdin producer's pace and
+ * a refusal has something to act on. PMIX_ERR_IOF_XOFF means the host
+ * took the data and wants the stream suspended - leave the event
+ * un-armed, and an XON through PMIx_server_IOF_flow_control will restart
+ * it. Any other status is advisory: we have no way to re-deliver the
+ * chunk, so keep reading rather than silently stranding the stream. */
 static void opcbfn(pmix_status_t status, void *cbdata)
 {
-    pmix_byte_object_t *boptr = (pmix_byte_object_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(status);
+    pmix_iof_push_caddy_t *cd = (pmix_iof_push_caddy_t *) cbdata;
+    pmix_iof_read_event_t *rev;
 
-    PMIX_ACQUIRE_OBJECT(boptr);
-    PMIX_BYTE_OBJECT_FREE(boptr, 1);
+    PMIX_ACQUIRE_OBJECT(cd);
+
+    rev = cd->rev;
+    PMIX_BYTE_OBJECT_FREE(cd->bo, 1);
+    free(cd);
+
+    if (NULL == rev) {
+        return;
+    }
+    if (PMIX_ERR_IOF_XOFF == status) {
+        rev->xoff = true;
+        pmix_output_verbose(1, pmix_client_globals.iof_output,
+                            "%s iof:push_stdin suspended by host",
+                            PMIX_NAME_PRINT(&pmix_globals.myid));
+        return;
+    }
+    if (rev->xoff) {
+        /* an XOFF arrived while this push was in flight */
+        return;
+    }
+    pmix_iof_stdin_cb(0, 0, rev);
+}
+
+/* relay a flow-control request to one peer that has pushed stdin to us */
+static void relay_flow_control(pmix_peer_t *peer, const pmix_proc_t *source,
+                               pmix_iof_channel_t channel, bool xoff,
+                               const pmix_info_t directives[], size_t ndirs)
+{
+    pmix_buffer_t *msg;
+    pmix_status_t rc;
+    pmix_proc_t src;
+
+    /* a peer that predates flow control has no recv posted on this tag,
+     * and an unmatched message is an error at the far end - so say
+     * nothing to it. It simply keeps sending, which is what it did
+     * before this existed */
+    if (PMIX_PEER_IS_EARLIER(peer, 7, 0, 0)) {
+        return;
+    }
+
+    msg = PMIX_NEW(pmix_buffer_t);
+    if (NULL == msg) {
+        return;
+    }
+    /* a NULL source goes on the wire as a wildcard so the far end,
+     * which may relay onward again, reads the same request we did */
+    if (NULL == source) {
+        PMIX_LOAD_PROCID(&src, NULL, PMIX_RANK_WILDCARD);
+    } else {
+        memcpy(&src, source, sizeof(pmix_proc_t));
+    }
+    PMIX_BFROPS_PACK(rc, peer, msg, &src, 1, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return;
+    }
+    PMIX_BFROPS_PACK(rc, peer, msg, &channel, 1, PMIX_IOF_CHANNEL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return;
+    }
+    PMIX_BFROPS_PACK(rc, peer, msg, &xoff, 1, PMIX_BOOL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return;
+    }
+    PMIX_BFROPS_PACK(rc, peer, msg, &ndirs, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return;
+    }
+    if (0 < ndirs) {
+        PMIX_BFROPS_PACK(rc, peer, msg, (pmix_info_t*)directives, ndirs, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return;
+        }
+    }
+
+    PMIX_PTL_SEND_ONEWAY(rc, peer, msg, PMIX_PTL_TAG_IOF_CONTROL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+    }
+}
+
+pmix_status_t pmix_iof_flow_control(const pmix_proc_t *source,
+                                    pmix_iof_channel_t channel,
+                                    bool xoff,
+                                    const pmix_info_t directives[], size_t ndirs)
+{
+    pmix_peer_t *peer;
+    int i;
+
+    /* stdin is the only stream anyone can be told to stop producing -
+     * output flows the other way, and its producer is a process we do
+     * not control */
+    if (!(PMIX_FWD_STDIN_CHANNEL & channel)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    pmix_output_verbose(1, pmix_client_globals.iof_output,
+                        "%s iof: flow control %s for %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        xoff ? "XOFF" : "XON",
+                        (NULL == source) ? "ALL" : PMIX_NAME_PRINT(source));
+
+    /* first, any stdin we are reading on our own behalf - we are its
+     * producer, so our own identity is what a source names. A NULL
+     * source means everyone; otherwise PMIx_Check_procid honors a
+     * wildcard nspace and/or rank */
+    if (NULL != stdinev_global &&
+        (NULL == source || PMIx_Check_procid(source, &pmix_globals.myid))) {
+        if (xoff) {
+            stdinev_global->xoff = true;
+            if (stdinev_global->active) {
+                pmix_event_del(&stdinev_global->ev);
+                stdinev_global->active = false;
+                PMIX_POST_OBJECT(stdinev_global);
+            }
+        } else if (stdinev_global->xoff) {
+            stdinev_global->xoff = false;
+            /* route the restart through the usual check so a backgrounded
+             * tty is still not read from */
+            pmix_iof_stdin_cb(0, 0, stdinev_global);
+        }
+    }
+
+    /* now anyone who has been pushing stdin to us. A launcher does both
+     * halves, which is what carries the request back down a chain of
+     * them to whoever actually holds the input stream */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+        for (i = 0; i < pmix_server_globals.clients.size; i++) {
+            peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, i);
+            if (NULL == peer || peer->finalized || !peer->stdin_producer) {
+                continue;
+            }
+            if (NULL == peer->info) {
+                continue;
+            }
+            if (NULL != source && !PMIX_CHECK_NAMES(source, &peer->info->pname)) {
+                continue;
+            }
+            relay_flow_control(peer, source, channel, xoff, directives, ndirs);
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+/* recv callback for PMIX_PTL_TAG_IOF_CONTROL - our server telling us to
+ * suspend or resume the stdin we are feeding it */
+void pmix_iof_flow_control_handler(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                                   pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_proc_t source;
+    pmix_iof_channel_t channel;
+    bool xoff;
+    size_t ndirs = 0;
+    pmix_info_t *directives = NULL;
+    int32_t cnt;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
+
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &source, &cnt, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &channel, &cnt, PMIX_IOF_CHANNEL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &xoff, &cnt, PMIX_BOOL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &ndirs, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    if (0 < ndirs) {
+        PMIX_INFO_CREATE(directives, ndirs);
+        if (NULL == directives) {
+            return;
+        }
+        cnt = ndirs;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, directives, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_INFO_FREE(directives, ndirs);
+            return;
+        }
+    }
+
+    /* "everyone" travels as a wildcard rather than as an absent source,
+     * and a wildcard nspace/rank already matches every producer */
+    rc = pmix_iof_flow_control(&source, channel, xoff, directives, ndirs);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    if (NULL != directives) {
+        PMIX_INFO_FREE(directives, ndirs);
+    }
 }
 
 /* this is the read handler for stdin */
@@ -2324,6 +2586,7 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_IOF_PUSH_CMD;
     pmix_byte_object_t bo, *boptr;
+    pmix_iof_push_caddy_t *cd;
     int fd;
     pmix_pfexec_child_t *child = (pmix_pfexec_child_t *) rev->childproc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -2429,20 +2692,42 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
             memcpy(boptr->bytes, bo.bytes, bo.size);
             boptr->size = bo.size;
         }
+        cd = (pmix_iof_push_caddy_t*)malloc(sizeof(pmix_iof_push_caddy_t));
+        if (NULL == cd) {
+            PMIX_BYTE_OBJECT_FREE(boptr, 1);
+            return;
+        }
+        cd->bo = boptr;
+        /* a zero-byte push is the last one this stream will ever make, so
+         * there is nothing for the completion to re-arm */
+        cd->rev = (0 == bo.size) ? NULL : rev;
         /* push this to the host even when it is empty - a zero-byte push is
          * how the host learns that our stdin has closed so it can close the
          * targets' stdin in turn. Dropping it leaves every target waiting on
          * an EOF that never arrives
          */
         rc = pmix_host_server.push_stdin(&pmix_globals.myid, rev->targets, rev->ntargets,
-                                         rev->directives, rev->ndirs, boptr, opcbfn, (void*)boptr);
+                                         rev->directives, rev->ndirs, boptr, opcbfn, (void*)cd);
         if (0 == bo.size) {
             /* our stdin fd has closed - there is nothing left to read, so
              * do not reactivate the event
              */
+            if (PMIX_SUCCESS != rc) {
+                /* the host will not call back - dispose of the caddy ourselves */
+                opcbfn(rc, cd);
+            }
             return;
         }
-        goto reactivate;
+        if (PMIX_SUCCESS != rc) {
+            /* by the host up-call convention a non-success return means the
+             * host will not call our completion, so it is ours to run - and
+             * it is what decides whether we read the next chunk. Note that
+             * PMIX_ERR_IOF_XOFF arrives here too, and suspends us. */
+            opcbfn(rc, cd);
+        }
+        /* the completion re-arms the read - do NOT do it here, or the host
+         * has no way to pace us */
+        return;
     }
 
 forward:
@@ -2502,15 +2787,21 @@ forward:
         return;
     }
 
-    /* send it to the server */
+    /* send it to the server. On success the read is re-armed by
+     * iof_stdin_cbfunc when the server acknowledges this chunk, not
+     * here - that ack is what lets the far end pace us, and re-arming
+     * now would both defeat it and leave the event armed twice */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, iof_stdin_cbfunc, rev);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
+        /* no ack is coming, so re-arm here or the stream stalls */
+        goto reactivate;
     }
+    return;
 
 reactivate:
-    if (0 < numbytes) {
+    if (0 < numbytes && !rev->xoff) {
         PMIX_IOF_READ_ACTIVATE(rev);
     }
 
@@ -2565,6 +2856,7 @@ static void iof_read_event_construct(pmix_iof_read_event_t *rev)
     rev->ntargets = 0;
     rev->directives = NULL;
     rev->ndirs = 0;
+    rev->xoff = false;
 }
 static void iof_read_event_destruct(pmix_iof_read_event_t *rev)
 {

@@ -63,6 +63,42 @@ entry point.
 | `pmix_pfexec.c/.h` | (internal) `pmix_pfexec_base_*` | Local fork/exec: when PMIx itself launches processes (singleton, tool spawning children). Collapsed from the former `src/mca/pfexec` framework. |
 | `pmix_strings.c` | `PMIx_*_string` converters | Pure enum→string helpers, no threadshifting. Must stay in sync with the enums in `include/pmix_common.h.in`. |
 
+### stdin flow control lives here (`pmix_iof.c`)
+
+`pmix_iof_flow_control()` is the single place an XON/XOFF is applied, no
+matter which of the three things asked for it: the host through
+`PMIx_server_IOF_flow_control`, a `push_stdin` upcall completed with
+`PMIX_ERR_IOF_XOFF`, or an upstream server through the
+`PMIX_PTL_TAG_IOF_CONTROL` recv. It suspends/resumes `stdinev_global`
+and relays to every peer flagged `stdin_producer`; a launcher is both a
+server and a tool, so a chain of them carries the request back to
+whoever holds the actual input stream.
+
+Three rules that are load-bearing here:
+
+- **Nothing is buffered on behalf of a suspended stream.** A suspension
+  is just a read event left un-armed — the bytes stay in the producer's
+  input stream and the OS applies the back-pressure. If you ever find
+  yourself queueing to "help", you have moved the unbounded growth
+  rather than removed it.
+- **The read is re-armed by the acknowledgement, not by the read
+  handler.** Both stdin paths in `pmix_iof_read_local_handler` return
+  without re-arming; `opcbfn` (host upcall) and `iof_stdin_cbfunc` (relay
+  to our server) do it when the far end answers. That ack is the only
+  thing that paces the producer — restoring the old unconditional
+  `goto reactivate` silently removes flow control, which is why
+  `test/unit/iof_flow.c` asserts it.
+- **`PMIX_ERR_IOF_XOFF` is not a failure.** It means "I took the data,
+  now stop"; no data was lost and no stream was closed, so it must not
+  raise `PMIX_ERR_IOF_FAILURE` or tear the read event down. Only an XON
+  clears it — there is no status that means "resume".
+
+Note the vestigial remnants that are *not* the mechanism:
+`pmix_iof_sink_t.xoff` and `PMIX_IOF_MAX_INPUT_BUFFERS` in
+`pmix_iof.h` are both dead (written once, never read; defined, never
+used) and were inherited from ORTE. Don't reason about flow control from
+them.
+
 ### Output-file naming lives here (`pmix_iof.c`)
 
 `pmix_iof_setup()` is what opens the per-process output sinks, and it is
