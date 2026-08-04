@@ -2188,6 +2188,9 @@ client_update_global_keyindex_if_necessary(
         pmix_pointer_array_set_item(pmix_globals.keyindex.table, rb->index, rb);
         pmix_globals.keyindex.next_id++;
     }
+    // we filled the array by hand, so the string -> entry side of the
+    // keyindex knows nothing about any of it yet
+    pmix_hash_keyindex_rebuild(&pmix_globals.keyindex);
     PMIX_DESTRUCT(&tmpindex);
 
     job->client_keyindex_fixup_done = true;

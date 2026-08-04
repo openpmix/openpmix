@@ -680,6 +680,36 @@ static pmix_proc_data_t *lookup_proc(pmix_hash_table_t *jtable, uint32_t id, boo
     return proc_data;
 }
 
+/* Add an entry to the string -> entry side of the index. The entry is
+ * borrowed; keyindex->table owns it. */
+static void add_to_lookup(pmix_keyindex_t *keyindex,
+                          pmix_regattr_input_t *ptr)
+{
+    if (NULL == keyindex->lookup || NULL == ptr->string) {
+        return;
+    }
+    pmix_hash_table_set_value_ptr(keyindex->lookup, ptr->string,
+                                  strlen(ptr->string), ptr);
+}
+
+void pmix_hash_keyindex_rebuild(pmix_keyindex_t *kidx)
+{
+    pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
+    pmix_regattr_input_t *ptr;
+    int id;
+
+    if (NULL == keyindex->lookup) {
+        return;
+    }
+    pmix_hash_table_remove_all(keyindex->lookup);
+    for (id = 0; id < keyindex->table->size; id++) {
+        ptr = pmix_pointer_array_get_item(keyindex->table, id);
+        if (NULL != ptr) {
+            add_to_lookup(keyindex, ptr);
+        }
+    }
+}
+
 void pmix_hash_register_key(uint32_t inid,
                             pmix_regattr_input_t *ptr,
                             pmix_keyindex_t *kidx)
@@ -692,6 +722,7 @@ void pmix_hash_register_key(uint32_t inid,
         pmix_pointer_array_set_item(keyindex->table, (int)keyindex->next_id, ptr);
         ptr->index = keyindex->next_id;
         keyindex->next_id += 1;
+        add_to_lookup(keyindex, ptr);
         return;
     }
 
@@ -703,6 +734,7 @@ void pmix_hash_register_key(uint32_t inid,
     }
     /* store the pointer in the table */
     pmix_pointer_array_set_item(keyindex->table, inid, ptr);
+    add_to_lookup(keyindex, ptr);
 }
 
 // skg: Note that one may have to add a TMA wrapper for this call if changes are
@@ -721,11 +753,21 @@ static pmix_regattr_input_t* lookup_key(uint32_t inid,
             /* they have to give us something! */
             return NULL;
         }
-        for (id = 0; id < keyindex->table->size; id++) {
-            ptr = pmix_pointer_array_get_item(keyindex->table, id);
-            if (NULL != ptr) {
-                if (0 == strcmp(key, ptr->string)) {
-                    return ptr;
+        if (NULL != keyindex->lookup && 0 < strlen(key)) {
+            void *found = NULL;
+            if (PMIX_SUCCESS == pmix_hash_table_get_value_ptr(keyindex->lookup, key,
+                                                              strlen(key), &found)) {
+                return (pmix_regattr_input_t*)found;
+            }
+        } else {
+            /* no lookup side available - fall back on scanning the
+             * table we do have */
+            for (id = 0; id < keyindex->table->size; id++) {
+                ptr = pmix_pointer_array_get_item(keyindex->table, id);
+                if (NULL != ptr && NULL != ptr->string) {
+                    if (0 == strcmp(key, ptr->string)) {
+                        return ptr;
+                    }
                 }
             }
         }
