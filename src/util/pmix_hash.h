@@ -4,7 +4,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -55,9 +55,24 @@ PMIX_EXPORT void pmix_hash_register_key(uint32_t inid,
                                         pmix_regattr_input_t *ptr,
                                         pmix_keyindex_t *kidx);
 
+/* Translate a key to its keyindex entry, registering the key (and thus
+ * assigning it an index) if it is not already known. This is the form
+ * the store path wants: storing a value is precisely the point at which
+ * a new key legitimately acquires an index. */
 PMIX_EXPORT pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
                                                        const char *key,
                                                        pmix_keyindex_t *kidx);
+
+/* Same translation, but return NULL instead of registering an unknown
+ * key. This is the form every read-only path wants. Registering on a
+ * lookup would grow the keyindex without bound - one entry for every
+ * key anyone ever asked for and did not find - and would be fatal for a
+ * keyindex living in a shared-memory segment that the caller has mapped
+ * read-only. A key that was never stored cannot be found anyway, so the
+ * answer is the same either way. */
+PMIX_EXPORT pmix_regattr_input_t* pmix_hash_find_key(uint32_t inid,
+                                                     const char *key,
+                                                     pmix_keyindex_t *kidx);
 
 #define PMIX_HASH_TRACE_KEY_ACTUAL(s, r, k, id, tbl, v)                     \
 do {                                                                        \

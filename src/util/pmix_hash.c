@@ -12,7 +12,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -380,12 +380,18 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
     if (NULL != key) {
         /* lookup the key's corresponding index - this should be
          * moved to the periphery of the PMIx library so we can
-         * refer to the key numerically throughout the internals
-         */
-        p = pmix_hash_lookup_key(UINT32_MAX, key, keyindex);
+         * refer to the key numerically throughout the internals.
+         *
+         * Note that we deliberately do NOT register the key if it is
+         * missing. A key nobody ever stored cannot be in this table, so
+         * "not found" is the right answer - and registering it here
+         * would grow the keyindex on every failed fetch. It would also
+         * be fatal for a keyindex that lives in a shared-memory segment
+         * the caller has mapped read-only. */
+        p = pmix_hash_find_key(UINT32_MAX, key, keyindex);
         if (NULL == p) {
-            /* we don't know this key */
-            return PMIX_ERR_BAD_PARAM;
+            /* this key has never been stored anywhere */
+            return PMIX_ERR_NOT_FOUND;
         }
         kid = p->index;
     }
@@ -476,10 +482,12 @@ pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table,
     pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
 
     if (NULL != key) {
-        p = pmix_hash_lookup_key(UINT32_MAX, key, keyindex);
+        /* removing a key we never registered is a no-op, so look
+         * without registering - see the note in pmix_hash_fetch */
+        p = pmix_hash_find_key(UINT32_MAX, key, keyindex);
         if (PMIX_UNLIKELY(NULL == p)) {
-            /* we don't know this key */
-            return PMIX_ERR_BAD_PARAM;
+            /* this key has never been stored anywhere */
+            return PMIX_ERR_NOT_FOUND;
         }
         kid = p->index;
     }
@@ -612,7 +620,10 @@ static pmix_dstor_t *lookup_keyval(pmix_proc_data_t *proc_data, uint32_t kid,
                     if (!PMIX_INFO_IS_QUALIFIER(&qualifiers[m])) {
                         continue;
                     }
-                    p = pmix_hash_lookup_key(UINT32_MAX, qualifiers[m].key, keyindex);
+                    /* a qualifier key we have never registered cannot
+                     * match anything already stored, so look without
+                     * registering - see the note in pmix_hash_fetch */
+                    p = pmix_hash_find_key(UINT32_MAX, qualifiers[m].key, keyindex);
                     if (NULL == p) {
                         /* we don't know this key */
                         return NULL;
@@ -696,9 +707,10 @@ void pmix_hash_register_key(uint32_t inid,
 
 // skg: Note that one may have to add a TMA wrapper for this call if changes are
 // made to how pmix_hash operates. Something for developers to keep in mind.
-pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
-                                           const char *key,
-                                           pmix_keyindex_t *kidx)
+static pmix_regattr_input_t* lookup_key(uint32_t inid,
+                                        const char *key,
+                                        pmix_keyindex_t *kidx,
+                                        bool register_if_missing)
 {
     int id;
     pmix_regattr_input_t *ptr = NULL;
@@ -716,6 +728,12 @@ pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
                     return ptr;
                 }
             }
+        }
+
+        if (!register_if_missing) {
+            /* the caller only wanted to know whether this key is known,
+             * so tell them it isn't rather than minting an index for it */
+            return NULL;
         }
 
         /* we didn't find it - register it */
@@ -737,6 +755,20 @@ pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
      * found or not - we don't register it if not found. */
     ptr = pmix_pointer_array_get_item(keyindex->table, inid);
     return ptr;
+}
+
+pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
+                                           const char *key,
+                                           pmix_keyindex_t *kidx)
+{
+    return lookup_key(inid, key, kidx, true);
+}
+
+pmix_regattr_input_t* pmix_hash_find_key(uint32_t inid,
+                                         const char *key,
+                                         pmix_keyindex_t *kidx)
+{
+    return lookup_key(inid, key, kidx, false);
 }
 
 static void erase_qualifiers(pmix_proc_data_t *proc,
