@@ -89,7 +89,9 @@ noinst_SCRIPTS = pmix_client_otheruser.sh \
 	run_tests16.pl \
 	run_tests17.pl \
 	run_tests18.pl \
-	run_tests19.pl
+	run_tests19.pl \
+	run_tests20.pl \
+	run_tests21.pl
 #	run_tests14.pl \
 #	run_tests15.pl
 
@@ -128,6 +130,8 @@ TESTS = \
 	run_tests17.pl \
 	run_tests18.pl \
 	run_tests19.pl \
+	run_tests20.pl \
+	run_tests21.pl \
 	pmix_environ
 #	run_tests14.pl \
 #	run_tests15.pl

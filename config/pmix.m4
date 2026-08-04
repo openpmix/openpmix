@@ -1030,6 +1030,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests17.pl], [chmod +x test/run_tests17.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests18.pl], [chmod +x test/run_tests18.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests19.pl], [chmod +x test/run_tests19.pl])
+    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests20.pl], [chmod +x test/run_tests20.pl])
+    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests21.pl], [chmod +x test/run_tests21.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_gds_fallback.pl], [chmod +x test/unit/run_gds_fallback.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_simpcycle.pl], [chmod +x test/unit/run_simpcycle.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_toolcycle.pl], [chmod +x test/unit/run_toolcycle.pl])

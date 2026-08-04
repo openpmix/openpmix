@@ -274,13 +274,30 @@ typedef struct {
         pmix_value_t *_val;                                                                       \
         get_cbdata _cbdata;                                                                       \
         int _mismatch = 0;                                                                        \
+        pmix_info_t _ginfo, *_ginfop = NULL;                                                      \
+        size_t _nginfo = 0;                                                                       \
+        bool _grefresh = true;                                                                    \
         _cbdata.status = PMIX_SUCCESS;                                                            \
         pmix_proc_t _foobar;                                                                      \
         SET_KEY(_key, fence_num, ind, use_same_keys);                                             \
+        /* Reusing a key means this fence re-published a value the peer                           \
+         * already gave us, and a plain PMIx_Get is answered out of the                           \
+         * local cache of that peer's data - by design, and exactly what                          \
+         * PMIX_GET_REFRESH_CACHE is documented for: "refresh the existing                        \
+         * local data cache for the process in case new values have been                          \
+         * put and committed by it since the last refresh". Without it this                       \
+         * test reads the previous fence's value and calls the library                            \
+         * wrong. Only ask for the refresh when we actually reused a key,                         \
+         * so the unique-key cases keep exercising the cached path. */                            \
+        if (use_same_keys) {                                                                      \
+            PMIX_INFO_LOAD(&_ginfo, PMIX_GET_REFRESH_CACHE, &_grefresh, PMIX_BOOL);               \
+            _ginfop = &_ginfo;                                                                    \
+            _nginfo = 1;                                                                          \
+        }                                                                                         \
         PMIX_LOAD_PROCID(&_foobar, ns, r);                                                        \
         TEST_VERBOSE(("%s:%d want to get from %s:%d key %s", my_nspace, my_rank, ns, r, _key));   \
         if (blocking) {                                                                           \
-            if (PMIX_SUCCESS != (rc = PMIx_Get(&_foobar, _key, NULL, 0, &_val))) {                \
+            if (PMIX_SUCCESS != (rc = PMIx_Get(&_foobar, _key, _ginfop, _nginfo, &_val))) {       \
                 if (!((rc == PMIX_ERR_NOT_FOUND || rc == PMIX_ERR_NOT_FOUND)           \
                       && ok_notfnd)) {                                                            \
                     TEST_ERROR(("%s:%d: PMIx_Get failed: %s from %s:%d, key %s", my_nspace,       \
@@ -292,7 +309,8 @@ typedef struct {
             PMIX_VALUE_CREATE(_val, 1);                                                           \
             _cbdata.kv = _val;                                                                    \
             if (PMIX_SUCCESS                                                                      \
-                != (rc = PMIx_Get_nb(&_foobar, _key, NULL, 0, get_cb, (void *) &_cbdata))) {      \
+                != (rc = PMIx_Get_nb(&_foobar, _key, _ginfop, _nginfo, get_cb,                     \
+                                     (void *) &_cbdata))) {                                       \
                 TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %s from %s:%d, key=%s", my_nspace,      \
                               my_rank, PMIx_Error_string(rc), ns, r, _key));                      \
             } else {                                                                              \
