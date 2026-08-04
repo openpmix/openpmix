@@ -84,6 +84,35 @@ class TestModule(unittest.TestCase):
             obj = cls()
             self.assertIsNotNone(obj)
 
+    def test_star_import_does_not_rebind_the_callers_modules(self):
+        # "from pmix import *" is the documented way to use these bindings,
+        # so what it exports is part of the interface.  Without an __all__
+        # it handed the caller every name at module scope, including the
+        # modules pmix.pyx imports for its own use - a program that did
+        # "import time" and then "from pmix import *" silently got the
+        # extension's time, and the same for os, sys, array, queue, signal,
+        # threading, ctypes and traceback.
+        import types
+        namespace = {}
+        exec("from pmix import *", namespace)
+        modules = sorted(name for name, obj in namespace.items()
+                         if isinstance(obj, types.ModuleType)
+                         and not name.startswith("_"))
+        self.assertEqual(modules, [],
+                         "star import rebinds the caller's %s" % modules)
+
+    def test_star_import_still_exports_what_it_should(self):
+        namespace = {}
+        exec("from pmix import *", namespace)
+        for name in ("PMIxClient", "PMIxServer", "PMIxTool", "PMIxScheduler",
+                     "PMIX_SUCCESS", "PMIX_RANK_WILDCARD", "PMIX_STRING",
+                     "PMIX_ERR_NOT_FOUND", "PMIX_JOB_SIZE"):
+            self.assertIn(name, namespace, "star import dropped " + name)
+        # the constants are the bulk of the module, so a mistake in the
+        # export list would show up as a collapse in their number
+        constants = [n for n in namespace if n.startswith("PMIX_")]
+        self.assertGreater(len(constants), 500, len(constants))
+
 
 class TestConstants(unittest.TestCase):
     def test_success_is_zero(self):
