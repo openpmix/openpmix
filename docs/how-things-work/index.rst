@@ -15,6 +15,7 @@ find information on that subject here.
    schedulers/index.rst
    sets_groups/index.rst
    collectives/index.rst
+   modex.rst
    inheritance/index.rst
    resolve.rst
    adding_datatypes.rst
