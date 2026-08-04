@@ -270,6 +270,7 @@ APIs (section 3)
    PMIx_server_deliver_inventory.3.rst
    PMIx_server_collect_job_info.3.rst
    PMIx_server_IOF_deliver.3.rst
+   PMIx_server_IOF_flow_control.3.rst
    PMIx_server_generate_cpuset.3.rst
    PMIx_server_generate_cpuset_string.3.rst
    PMIx_server_generate_locality_string.3.rst

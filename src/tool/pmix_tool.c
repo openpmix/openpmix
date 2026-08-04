@@ -666,6 +666,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     rcv->cbfunc = tool_iof_handler;
     /* add it to the end of the list of recvs */
     pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+    /* and the IOF flow control recv - this is how our server tells us
+     * to stop reading the stdin we are pushing to it */
+    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+    rcv->tag = PMIX_PTL_TAG_IOF_CONTROL;
+    rcv->cbfunc = pmix_iof_flow_control_handler;
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
     /* default tools to outputting their IOF */
     pmix_globals.iof_flags.local_output = outputio;
 

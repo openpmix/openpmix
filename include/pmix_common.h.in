@@ -1714,6 +1714,9 @@ typedef int pmix_status_t;
 #define PMIX_ERR_REPEAT_ATTR_REGISTRATION           -171
 #define PMIX_ERR_IOF_FAILURE                        -172
 #define PMIX_ERR_IOF_COMPLETE                       -173
+#define PMIX_ERR_IOF_XOFF                           -405     // the data was accepted, but the receiver is backed up - suspend
+                                                             // the stream until flow is restored. NOT a failure: no data has
+                                                             // been lost and the stream is not closed
 #define PMIX_LAUNCH_COMPLETE                        -174     // include nspace of the launched job with notification
 #define PMIX_FABRIC_UPDATED                         -175
 #define PMIX_FABRIC_UPDATE_PENDING                  -176

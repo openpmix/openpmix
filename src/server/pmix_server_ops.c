@@ -2622,6 +2622,10 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
 
+    /* remember that this peer feeds us stdin - it is who IOF flow
+     * control has to reach if our host tells us to stop taking it */
+    peer->stdin_producer = true;
+
     /* unpack the number of targets */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nprocs, &cnt, PMIX_SIZE);
@@ -3401,6 +3405,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->keys = NULL;
     p->channels = PMIX_FWD_NO_CHANNELS;
     pmix_iof_init_flags(&p->flags);
+    p->xoff = false;
     p->bo = NULL;
     p->nbo = 0;
     p->cbfunc = NULL;

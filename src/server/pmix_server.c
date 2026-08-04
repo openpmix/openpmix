@@ -761,6 +761,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     rcv->cbfunc = server_iof_handler;
     /* add it to the end of the list of recvs */
     pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+    /* and the IOF flow control recv - a server may itself be feeding
+     * stdin to a server above it */
+    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+    rcv->tag = PMIX_PTL_TAG_IOF_CONTROL;
+    rcv->cbfunc = pmix_iof_flow_control_handler;
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
     /* set the default local output flag */
     pmix_globals.iof_flags.local_output = outputio;
 
@@ -3214,6 +3220,88 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source, pmix_iof_channe
     }
 
     PMIX_THREADSHIFT(cd, _iofdeliver);
+    return PMIX_SUCCESS;
+}
+
+static void _iofflowcontrol(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(cd);
+
+    rc = pmix_iof_flow_control(cd->procs, cd->channels, cd->xoff,
+                               cd->info, cd->ninfo);
+
+    if (NULL != cd->opcbfunc) {
+        cd->opcbfunc(rc, cd->cbdata);
+    }
+
+    /* the caddy is only borrowing the caller's arrays */
+    cd->procs = NULL;
+    cd->nprocs = 0;
+    cd->info = NULL;
+    cd->ninfo = 0;
+    PMIX_RELEASE(cd);
+}
+
+pmix_status_t PMIx_server_IOF_flow_control(const pmix_proc_t *source,
+                                           pmix_iof_channel_t channel,
+                                           bool xoff,
+                                           const pmix_info_t directives[], size_t ndirs,
+                                           pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_setup_caddy_t *cd;
+    pmix_lock_t mylock;
+    pmix_status_t rc;
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* only stdin can be flow controlled - reject anything else here so
+     * the caller finds out before we go anywhere near the event base */
+    if (!(PMIX_FWD_STDIN_CHANNEL & channel)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* need to threadshift this request - it walks the client array and
+     * the stdin read event, both of which belong to the progress thread */
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->procs = (pmix_proc_t *) source;
+    cd->nprocs = (NULL == source) ? 0 : 1;
+    cd->channels = channel;
+    cd->xoff = xoff;
+    cd->info = (pmix_info_t *) directives;
+    cd->ninfo = ndirs;
+    cd->opcbfunc = cbfunc;
+    cd->cbdata = cbdata;
+
+    /* if the provided callback is NULL, then substitute
+     * our own internal cbfunc and block here */
+    if (NULL == cbfunc) {
+        PMIX_CONSTRUCT_LOCK(&mylock);
+        cd->opcbfunc = opcbfunc;
+        cd->cbdata = &mylock;
+        PMIX_THREADSHIFT(cd, _iofflowcontrol);
+        PMIX_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+        PMIX_DESTRUCT_LOCK(&mylock);
+        if (PMIX_SUCCESS == rc) {
+            rc = PMIX_OPERATION_SUCCEEDED;
+        }
+        return rc;
+    }
+
+    PMIX_THREADSHIFT(cd, _iofflowcontrol);
     return PMIX_SUCCESS;
 }
 
