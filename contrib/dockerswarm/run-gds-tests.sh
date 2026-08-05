@@ -175,6 +175,25 @@ run_across_nodes() {
             bad "$prog $label, $np servers: every rank passed but exit was $rc"
             return 1
         fi
+    elif [ "$prog" = modex_twice ]; then
+        # rank 0 prints one line per fence, and every rank exits non-zero
+        # if any peer's value was missing or wrong. Both lines are needed:
+        # the first says the modex worked at all, the second says the
+        # republished segment carried the new values AND kept the old.
+        if ! echo "$out" | grep -q 'first fence: every rank read every peer'; then
+            bad "$prog $label, $np servers: first fence did not complete"
+            echo "$out" | grep -iE 'FAILED|failed|wanted' | head -3 | sed 's/^/       /'
+            return 1
+        fi
+        if ! echo "$out" | grep -q 'second fence: new values visible, old values kept'; then
+            bad "$prog $label, $np servers: second fence lost or missed values"
+            echo "$out" | grep -iE 'FAILED|failed|wanted' | head -3 | sed 's/^/       /'
+            return 1
+        fi
+        if [ "$rc" != 0 ]; then
+            bad "$prog $label, $np servers: both fences reported ok but exit was $rc"
+            return 1
+        fi
     elif [ "$prog" = client ]; then
         # client reports per key per peer and returns 0 regardless, so
         # count the confirmations: each of the $np ranks confirms one key
@@ -337,7 +356,7 @@ test_linux() {
         -e PFX="$PMIX_PREFIX" \
         "$IMAGE" bash -euo pipefail -c '
             mkdir -p /opt/prte/tests-gds
-            for p in datatypes dmodex client; do
+            for p in datatypes dmodex client modex_twice; do
                 gcc -O0 -g -o /opt/prte/tests-gds/$p /pmix-src/examples/$p.c \
                     -I"$PFX/include" -I/pmix-src/examples \
                     -L"$PFX/lib" -lpmix -Wl,-rpath,"$PFX/lib"
@@ -348,7 +367,7 @@ test_linux() {
         bad "could not build the cross-node clients (rc=$rc)"
         return
     fi
-    ok "built examples/datatypes, examples/dmodex and examples/client"
+    ok "built examples/datatypes, examples/dmodex, examples/client and examples/modex_twice"
 
     if ! RUN 'command -v prterun >/dev/null'; then
         skp "no prterun in the containers -- run ./build.sh first"
@@ -367,6 +386,13 @@ test_linux() {
         hosts="${geom%|*}"; np="${geom#*|}"
         run_across_nodes datatypes "$hosts" "$np" "PMIX_MCA_gds=hash" "(hash)" \
             && ok "$np servers on hash: every rank read every peer's values"
+    done
+
+    banner "a second collecting fence (modex segment is republished)"
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes modex_twice "$hosts" "$np" "" "(default)" \
+            && ok "$np servers: second fence visible, first fence kept"
     done
 
     banner "put scopes across separate PMIx servers"

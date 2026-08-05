@@ -258,6 +258,16 @@ typedef struct {
     pmix_shmem_t *shmem3;
     /** Stores status for modex_shmem3. */
     pmix_gds_shmem3_status_t modex_shmem3_status;
+    /** Which modex this job is on.
+     *
+     * Each modex gets its own segment rather than being written into the
+     * one before it, because clients have that one mapped and a segment
+     * a client can see must never be written again. The counter names
+     * the backing file, so successive generations do not collide; the
+     * client tells them apart by that path, which is already in the seg
+     * blob, so nothing on the wire changes. Server-side only.
+     */
+    uint32_t modex_generation;
     /** Shared-memory object that maintains backing store for smmodex data. */
     pmix_shmem_t *modex_shmem3;
     /** Points to shared job data located in a shared-memory segment. */
