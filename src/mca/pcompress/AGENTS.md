@@ -123,11 +123,19 @@ calls it only when non-`NULL`).
 
 `get_decompressed_size` and `get_decompressed_strlen`, by contrast, **are**
 implemented by all three modules (the base default, `zlib`, and `zlibng`).
-They are called **unguarded** at their only call sites, in
+Their only call sites are in
 [`src/mca/bfrops/base/bfrop_base_fns.c`](../bfrops/base/bfrop_base_fns.c)
 (the `PMIX_COMPRESSED_STRING` / `PMIX_COMPRESSED_BYTE_OBJECT` cases of the
-`PMIx_Value_get_size` / data-array size computation), so it is essential
-that every module keep them non-`NULL`. Each reads the **4-byte length
+`PMIx_Value_get_size` / data-array size computation), and every module
+should keep them non-`NULL` — but those call sites no longer *assume* it.
+They used to call the slot directly, which turned a module that left it
+`NULL` into a jump to address zero. A component is a run-time-loadable
+plugin, so an installed component older than the `libpmix` that loads it
+is exactly what a partial upgrade produces, and one built before these
+two entry points existed is such a module. The two static helpers
+`decompressed_size()` / `decompressed_strlen()` in that file now answer
+0 in that case, which is what the base default already returns for a
+blob it cannot read. Each reads the **4-byte length
 prefix** the compressor folded into the blob and returns the inflated
 size without decompressing: `get_decompressed_size` returns the raw byte
 count, `get_decompressed_strlen` returns that count **+ 1** for the NUL
@@ -305,12 +313,15 @@ Golden rules that bite here:
 - **Respect the decline contract.** `compress*` returning `false` is
   normal and callers depend on it (they ship uncompressed). Never make it
   return `true` with a result that is not strictly smaller than the input.
-- **`init`/`finalize` are `NULL` today; `get_decompressed_*` are not.**
-  Guard any new call site that uses `init`/`finalize`. The two
-  `get_decompressed_*` pointers, by contrast, are relied on unguarded by
-  `bfrops` — if you add a new module (or a new base default), it **must**
-  implement them, or you reintroduce the NULL-deref they were added to
-  fix.
+- **Guard every module entry point you call.** `init`/`finalize` are
+  `NULL` in every module today, and `get_decompressed_size` /
+  `get_decompressed_strlen` were `NULL` in every module built before
+  July 2026 — which is a live configuration, because components are
+  run-time-loadable and an installed plugin can be older than the
+  `libpmix` that loads it. A new module should still implement both
+  `get_decompressed_*`, but no caller may treat that as guaranteed;
+  `bfrops` learned this the hard way (see the note under those two
+  fields above).
 - **Remember selection is a build-time fact.** Reproducing a "wrong
   compressor selected" report means checking what `configure` found, not
   an MCA parameter.
