@@ -168,6 +168,29 @@ static inline int pmix_pointer_array_get_size(pmix_pointer_array_t *array)
 }
 
 /**
+ * Get the number of occupied slots in the pointer array
+ *
+ * @param array Pointer to array (IN)
+ *
+ * @returns the count of slots currently holding a pointer
+ *
+ * This is NOT the same as pmix_pointer_array_get_size(), which reports
+ * how many slots have been *allocated*. An array is normally allocated
+ * well ahead of what it holds, so a caller scanning for every stored
+ * item wants this bound rather than that one.
+ *
+ * Slots are filled from the lowest free index, so absent removals the
+ * occupied slots are exactly [0, occupancy). Once anything has been
+ * removed there can be holes below the last occupied slot, and a scan
+ * that means to visit every item has to keep going until it has seen
+ * this many non-NULL entries rather than stopping at this index.
+ */
+static inline int pmix_pointer_array_get_occupancy(pmix_pointer_array_t *array)
+{
+    return array->size - array->number_free;
+}
+
+/**
  * Set the size of the pointer array
  *
  * @param array Pointer to array (IN)

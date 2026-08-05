@@ -649,10 +649,8 @@ static pmix_dstor_t *lookup_keyval(pmix_proc_data_t *proc_data, uint32_t kid,
     pmix_qual_t *qarray;
     pmix_regattr_input_t *p;
     size_t m, numquals = 0, nq, nfound;
-    int n;
+    int n, nseen = 0, occupancy;
     pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
-
-    p = pmix_hash_lookup_key(kid, NULL, keyindex);
 
     if (NULL != qualifiers) {
         /* count the qualifiers */
@@ -664,11 +662,20 @@ static pmix_dstor_t *lookup_keyval(pmix_proc_data_t *proc_data, uint32_t kid,
         }
     }
 
-    for (n=0; n < proc_data->data->size; n++) {
+    /* Stop once every stored entry has been seen rather than at the end
+     * of the allocation. The two are far apart: a proc_data's array is
+     * created with 128 slots (see pdcon) and a proc typically publishes
+     * a handful of keys, so a miss used to scan 128 slots to look at
+     * three - and a fetch for an unqualified rank does this once per
+     * rank. Holes are possible once anything has been removed, so the
+     * bound counts entries seen rather than indices visited. */
+    occupancy = pmix_pointer_array_get_occupancy(proc_data->data);
+    for (n=0; n < proc_data->data->size && nseen < occupancy; n++) {
         d = (pmix_dstor_t*)pmix_pointer_array_get_item(proc_data->data, n);
         if (NULL == d) {
             continue;
         }
+        ++nseen;
         if (kid == d->index) {
             if (0 < numquals) {
                 if (UINT32_MAX == d->qualindex) {
