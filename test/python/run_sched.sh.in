@@ -13,4 +13,6 @@ else
     export PYTHONPATH="$egg"
 fi
 
-./sched.py
+# See run_server.sh.in for why this reaches through the source tree
+# rather than cd'ing into it.
+exec @PMIX_TOP_SRCDIR@/test/python/sched.py

@@ -25,4 +25,9 @@ else
     export PYTHONPATH="$egg"
 fi
 
-./server.py
+# Reach the script through the source tree: in a VPATH build the build
+# directory this runs from holds only the generated wrappers, not the
+# .py files.  Reach it rather than cd'ing into it -- a srcdir is not
+# necessarily writable (it is mounted read-only in the dockerswarm
+# builder), and automake runs a test from its build directory.
+exec @PMIX_TOP_SRCDIR@/test/python/server.py
