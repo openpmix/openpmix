@@ -72,6 +72,7 @@
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/pmix_printf.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
@@ -236,7 +237,7 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
                 continue;
             }
             /* prepend the nspace */
-            if (0 > asprintf(&prs, "%s:%s", ns->nspace, kv->value->data.string)) {
+            if (0 > pmix_asprintf(&prs, "%s:%s", ns->nspace, kv->value->data.string)) {
                 PMIX_LIST_DESTRUCT(&cb.kvs);
                 PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
                 continue;

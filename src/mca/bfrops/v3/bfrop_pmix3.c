@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,6 +29,7 @@
 
 #include "bfrop_pmix3.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/util/pmix_printf.h"
 
 static pmix_status_t init(void);
 static void finalize(void);
@@ -802,10 +803,10 @@ static pmix_status_t pmix3_bfrop_print_array(char **output, char *prefix, pmix_i
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    if (0 > asprintf(&tmp, "%sARRAY SIZE: %ld", prefix, (long) src->size)) {
+    if (0 > pmix_asprintf(&tmp, "%sARRAY SIZE: %ld", prefix, (long) src->size)) {
         return PMIX_ERR_NOMEM;
     }
-    if (0 > asprintf(&pfx, "\n%s\t", (NULL == prefix) ? "" : prefix)) {
+    if (0 > pmix_asprintf(&pfx, "\n%s\t", (NULL == prefix) ? "" : prefix)) {
         free(tmp);
         return PMIX_ERR_NOMEM;
     }
@@ -813,7 +814,7 @@ static pmix_status_t pmix3_bfrop_print_array(char **output, char *prefix, pmix_i
 
     for (j = 0; j < src->size; j++) {
         pmix_bfrops_base_print_info(&tmp2, pfx, &s1[j], PMIX_INFO);
-        if (0 > asprintf(&tmp3, "%s%s", tmp, tmp2)) {
+        if (0 > pmix_asprintf(&tmp3, "%s%s", tmp, tmp2)) {
             free(tmp);
             free(tmp2);
             free(pfx);

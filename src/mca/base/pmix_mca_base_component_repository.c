@@ -208,7 +208,7 @@ static int file_exists(const char *filename, const char *ext)
         return access(filename, F_OK) == 0;
     }
 
-    ret = asprintf(&final, "%s.%s", filename, ext);
+    ret = pmix_asprintf(&final, "%s.%s", filename, ext);
     if (0 > ret || NULL == final) {
         return 0;
     }
@@ -522,7 +522,7 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
         if (pmix_mca_base_component_track_load_errors) {
             pmix_mca_base_failed_component_t *f_comp = PMIX_NEW(pmix_mca_base_failed_component_t);
             f_comp->comp = ri;
-            if (0 > asprintf(&(f_comp->error_msg), "%s", err_msg)) {
+            if (0 > pmix_asprintf(&(f_comp->error_msg), "%s", err_msg)) {
                 PMIX_RELEASE(f_comp);
                 free(err_msg);
                 return PMIX_ERR_BAD_PARAM;

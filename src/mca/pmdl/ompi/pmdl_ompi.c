@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2026      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -989,14 +989,14 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     PMIX_LOAD_PROCID(&undef, proc->nspace, PMIX_RANK_UNDEF);
 
     /* pass universe size */
-    if (0 > asprintf(&param, "%u", ns->univ_size)) {
+    if (0 > pmix_asprintf(&param, "%u", ns->univ_size)) {
         return PMIX_ERR_NOMEM;
     }
     PMIx_Setenv("OMPI_UNIVERSE_SIZE", param, true, env);
     free(param);
 
     /* pass the comm_world size in various formats */
-    if (0 > asprintf(&param, "%u", ns->job_size)) {
+    if (0 > pmix_asprintf(&param, "%u", ns->job_size)) {
         return PMIX_ERR_NOMEM;
     }
     PMIx_Setenv("OMPI_COMM_WORLD_SIZE", param, true, env);
@@ -1005,7 +1005,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     free(param);
 
     /* pass the local size in various formats */
-    if (0 > asprintf(&param, "%u", ns->local_size)) {
+    if (0 > pmix_asprintf(&param, "%u", ns->local_size)) {
         return PMIX_ERR_NOMEM;
     }
     PMIx_Setenv("OMPI_COMM_WORLD_LOCAL_SIZE", param, true, env);
@@ -1013,7 +1013,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     free(param);
 
     /* pass the number of apps in the job */
-    if (0 > asprintf(&param, "%u", ns->num_apps)) {
+    if (0 > pmix_asprintf(&param, "%u", ns->num_apps)) {
         return PMIX_ERR_NOMEM;
     }
     PMIx_Setenv("OMPI_NUM_APP_CTX", param, true, env);
@@ -1118,7 +1118,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
 #endif
 
     /* pass the rank */
-    if (0 > asprintf(&param, "%lu", (unsigned long) proc->rank)) {
+    if (0 > pmix_asprintf(&param, "%lu", (unsigned long) proc->rank)) {
         return PMIX_ERR_NOMEM;
     }
     PMIx_Setenv("OMPI_COMM_WORLD_RANK", param, true, env);
@@ -1145,7 +1145,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
     u16 = kv->value->data.uint16;
     PMIX_DESTRUCT(&cb);
-    if (0 > asprintf(&param, "%lu", (unsigned long) u16)) {
+    if (0 > pmix_asprintf(&param, "%lu", (unsigned long) u16)) {
         return PMIX_ERR_NOMEM;
     }
     PMIx_Setenv("OMPI_COMM_WORLD_LOCAL_RANK", param, true, env);
@@ -1172,7 +1172,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
     u16 = kv->value->data.uint16;
     PMIX_DESTRUCT(&cb);
-    if (0 > asprintf(&param, "%lu", (unsigned long) u16)) {
+    if (0 > pmix_asprintf(&param, "%lu", (unsigned long) u16)) {
         return PMIX_ERR_NOMEM;
     }
     PMIx_Setenv("OMPI_COMM_WORLD_NODE_RANK", param, true, env);

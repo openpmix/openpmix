@@ -5,7 +5,7 @@
  *                         reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,6 +26,7 @@
 #include "src/mca/pdl/pdl.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_printf.h"
 
 #include "pdl_pdlopen.h"
 
@@ -75,7 +76,7 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
              ext = pmix_mca_pdl_pdlopen_component.filename_suffixes[++i]) {
             char *name;
 
-            rc = asprintf(&name, "%s%s", fname, ext);
+            rc = pmix_asprintf(&name, "%s%s", fname, ext);
             if (0 > rc) {
                 return PMIX_ERR_NOMEM;
             }
@@ -88,7 +89,7 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
             /* coverity[TOCTOU] */
             if (stat(name, &buf) < 0) {
                 if (NULL != err_msg) {
-                    rc = asprintf(err_msg, "File %s not found", name);
+                    rc = pmix_asprintf(err_msg, "File %s not found", name);
                     if (0 > rc) {
                         free(name);
                         return PMIX_ERR_NOMEM;
@@ -186,7 +187,7 @@ static int pdlopen_foreachfile(const char *search_path,
 
             /* Make the absolute path name */
             char *abs_name = NULL;
-            ret = asprintf(&abs_name, "%s/%s", dirs[i], de->d_name);
+            ret = pmix_asprintf(&abs_name, "%s/%s", dirs[i], de->d_name);
             if (0 > ret) {
                 goto error;
             }

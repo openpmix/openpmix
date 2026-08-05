@@ -12,7 +12,7 @@
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -296,7 +296,7 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
 
 
     /* set the X-Mailer */
-    asprintf(&str, "PMIx SMTP Plog v%d.%d.%d", c->super.pmix_mca_component_major_version,
+    pmix_asprintf(&str, "PMIx SMTP Plog v%d.%d.%d", c->super.pmix_mca_component_major_version,
              c->super.pmix_mca_component_minor_version,
              c->super.pmix_mca_component_release_version);
     if (0 == smtp_set_header(message, "X-Mailer", str)) {
