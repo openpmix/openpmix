@@ -561,6 +561,7 @@ job_construct(
     job->smdata = NULL;
     // Modex
     job->modex_shmem3_status = 0;
+    job->modex_generation = 0;
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     // Connection info
@@ -691,6 +692,38 @@ job_destruct(
     if (job->session) {
         PMIX_RELEASE(job->session);
     }
+}
+
+/**
+ * Let go of this job's current modex segment.
+ *
+ * Releasing our handle does not pull the segment out from under anyone:
+ * the backing file carries a reference count, so a client that has it
+ * mapped keeps a valid mapping and the file survives until the last
+ * holder lets go. That is what makes handing one generation off and
+ * starting the next safe.
+ *
+ * Mirrors what job_destruct() does for this segment; keep the two in
+ * step. Order matters - the allocator context is reached through
+ * job->smmodex, so it has to go before that pointer is cleared.
+ */
+static void
+release_modex_segment(
+    pmix_gds_shmem3_job_t *job
+) {
+    if (!pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_MODEX_ID,
+                                    PMIX_GDS_SHMEM3_ATTACHED)) {
+        return;
+    }
+    if (pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_MODEX_ID,
+                                   PMIX_GDS_SHMEM3_MINE)) {
+        emit_shmem3_usage_stats(job, PMIX_GDS_SHMEM3_MODEX_ID);
+        PMIX_RELEASE(get_tma_by_shmem3_id(job, PMIX_GDS_SHMEM3_MODEX_ID)->data_context);
+    }
+    PMIX_RELEASE(job->modex_shmem3);
+    job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
+    job->smmodex = NULL;
+    pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_MODEX_ID);
 }
 
 PMIX_CLASS_INSTANCE(
@@ -2779,7 +2812,40 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
         }
         // Make sure we aren't already attached to the given shmem3.
         if (pmix_gds_shmem3_has_status(job, usb.smid, PMIX_GDS_SHMEM3_ATTACHED)) {
-            break;
+            pmix_shmem_t *cur = NULL;
+            rc = pmix_gds_shmem3_get_job_shmem3_by_id(job, usb.smid, &cur);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+            /* Same segment: nothing to do. The path is what tells the
+             * generations apart - the server names each modex segment
+             * after its generation, so a different path under the same
+             * id means a newer modex we have not mapped yet. Comparing
+             * paths rather than adding a counter to the blob keeps this
+             * off the wire entirely. */
+            if (NULL != cur && 0 == strcmp(cur->backing_path, usb.seg_path)) {
+                break;
+            }
+            /* A newer one. Let go of ours before mapping it: the old
+             * segment's backing file is reference counted, so dropping
+             * our handle cannot disturb a peer that is still on it. */
+            PMIX_GDS_SHMEM3_VOUT(
+                "%s: replacing segment %s with %s for namespace=%s",
+                __func__, (NULL == cur) ? "(none)" : cur->backing_path,
+                usb.seg_path, usb.nsid
+            );
+            if (PMIX_GDS_SHMEM3_MODEX_ID == usb.smid) {
+                release_modex_segment(job);
+            } else {
+                /* Only the modex is republished today. Anything else
+                 * changing underneath us is not something this path
+                 * knows how to do safely, so say so rather than map a
+                 * second segment over the first. */
+                rc = PMIX_ERR_NOT_SUPPORTED;
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
         }
         // Looks like we have to attach and initialize it.
         rc = shmem3_segment_attach_and_init(job, &usb);
@@ -2950,13 +3016,44 @@ server_store_modex_cb(pmix_proc_t *proc,
     const bool attached = pmix_gds_shmem3_has_status(
         job, PMIX_GDS_SHMEM3_MODEX_ID, PMIX_GDS_SHMEM3_ATTACHED
     );
-    if (!attached) {
+    /* A blob arriving for a modex we already finished means a new one has
+     * begun - a second fence.
+     *
+     * Dropping the finished generation is only correct while the modex
+     * payload is cumulative, which it is today: a commit ships the
+     * process's whole local store and a server contributes each local
+     * proc's full set from its own. If commit becomes a true delta,
+     * this has to carry data forward or search back. See openpmix#4087;
+     * examples/modex_twice.c is the canary. The finished segment has been advertised
+     * and local clients have it mapped, so it must not be written again:
+     * storing into it can rehash the table and reallocate the key index
+     * underneath a reader, and the segment was sized for the first
+     * modex's data, so a larger second one overruns the allocator and
+     * aborts the server. Start a fresh segment instead. */
+    const bool complete = pmix_gds_shmem3_has_status(
+        job, PMIX_GDS_SHMEM3_MODEX_ID, PMIX_GDS_SHMEM3_READY_FOR_USE
+    );
+    if (!attached || complete) {
+        if (complete) {
+            PMIX_GDS_SHMEM3_VOUT(
+                "%s: modex generation %u complete; starting %u for namespace=%s",
+                __func__, job->modex_generation, job->modex_generation + 1,
+                proc->nspace
+            );
+            release_modex_segment(job);
+            job->modex_generation++;
+        }
+        /* The name has to differ per generation or the backing paths
+         * collide - they are built from the nspace, this pid and this
+         * name. */
+        char segname[PMIX_PATH_MAX];
+        snprintf(segname, sizeof(segname), "modexdata.%u", job->modex_generation);
         // Get the global packed buffer size from ctx.
         pmix_gds_shmem3_modex_info_t minfo = get_modex_sizing_data(pbkt);
         // Create and attach to the shared-memory
         // segment that will back these data.
         rc = shmem3_segment_create_and_attach(
-            job, PMIX_GDS_SHMEM3_MODEX_ID, "modexdata", minfo.size
+            job, PMIX_GDS_SHMEM3_MODEX_ID, segname, minfo.size
         );
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);

@@ -225,6 +225,43 @@ each proc's kvals into the modex hash table in shared memory;
 the client's `recv_modex_complete` attaches that segment the same way it
 attached the job segment.
 
+**Each modex gets a *new* segment — one per generation.** A finished
+segment has been advertised and local clients have it mapped, so it is
+never written again. `server_store_modex_cb()` treats a blob arriving for
+a modex already flagged `READY_FOR_USE` as the start of the next one:
+it hands the current segment off, bumps `job->modex_generation`, and
+creates a fresh segment named after the generation (the backing path is
+built from the nspace, pid and name, so the name has to differ or they
+collide).
+
+Handing off is safe because the backing file is reference counted —
+dropping the server's handle leaves a client that still has it mapped
+with a valid mapping, and the file survives until the last holder lets
+go (`shmem_destruct` in `src/util/pmix_shmem.c`).
+
+The client tells generations apart by the **backing path**, which the
+seg blob already carries, so this is not a wire-format change and needs
+no version gate. An older client short-circuits on `ATTACHED` and keeps
+reading the generation it has: stale, but a consistent snapshot.
+
+This replaced writing every modex into the first one's segment, which
+was not a latent problem. A segment is sized from the payload that
+created it, and the allocator behind it is a bump allocator, so a larger
+second modex overran it and **aborted the server** — taking the daemon,
+and the job, with it. `examples/modex_twice.c` reproduces that from four
+nodes up.
+
+**It rests on the modex payload being cumulative,** and that is worth
+knowing before changing `PMIx_Commit` (see openpmix#4087). Today a commit ships the
+process's entire local store (a NULL-key fetch in `_commitfn`) and a
+server contributes each local proc's full set from its own store, so
+generation N+1 is self-contained and N can be dropped. If commit ever
+becomes a true delta — sending only what changed — that stops holding,
+and this code has to carry data forward into the new segment or search
+back through generations. `examples/modex_twice.c` is the canary: its
+`gen1` keys are published before the first fence and never again, and it
+asserts they are still readable after the second.
+
 ## Gotchas
 
 - **Never `PMIX_CONSTRUCT` data destined for shared memory.** As the file's
@@ -278,27 +315,13 @@ attached the job segment.
   arriving in that window is `PMIX_ERR_NOT_FOUND`, not a fault. Note that
   `pmix_gds_shmem3_get_session_tma()` forming `&NULL->tma` is not a fault
   either — it just hands the bad pointer onward.
-- **The modex half of this component is live as of `9d9842e5`, and is the
-  newest thing here.** It was written and then dormant for a long time,
-  because the three modex macros took a peer and ignored it, resolving
-  `pmix_globals.mypeer` — which both the server and the client pin to
-  `"hash"`. They now resolve from the peer they are given, so a fence
-  spanning local clients on `shmem3` stores through `shmem3`, into the
-  modex segment. Anything you read claiming this code is unreached
-  predates that commit.
-
-  It follows that this is the least-exercised code in the component, and
-  one consequence is already known: **a second fence writes into a
-  segment clients have already mapped.** `server_store_modex_cb()`
-  creates the segment only when `PMIX_GDS_SHMEM3_ATTACHED` is unset, and
-  neither that flag nor `READY_FOR_USE` is ever cleared (the only
-  `clearall_status()` call is in `job_destruct()`). So on fence #2 the
-  server stores straight into `job->smmodex->hashtab` while every local
-  client holds it mapped and `READY_FOR_USE` asserted — and the store
-  can grow the hash table and reallocate the segment keyindex's pointer
-  array underneath a reader. The client is not even told: the attach
-  path short-circuits on `ATTACHED`. Publishing each modex as its own
-  segment, advertised only once complete, is the fix.
+- **The modex half of this component went live in `9d9842e5`** — before
+  that the three modex macros resolved `pmix_globals.mypeer` (pinned to
+  `"hash"` on both server and client) instead of the peer they were
+  given, so it was written but never reached. Anything you read claiming
+  this code is dormant predates that commit. It remains the
+  least-exercised code here; `contrib/dockerswarm/run-gds-tests.sh` is
+  what covers it.
 - **`server_store_modex_cb()` must return `PMIX_SUCCESS` for a proc blob
   it consumed.** Its natural exit is the
   unpack end-of-buffer code, and the base envelope walker reads any
