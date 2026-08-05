@@ -2034,21 +2034,24 @@ cdef class PMIxClient:
 
         # convert group name
         pygrp = group.encode('ascii')
-        # convert list of procs to array of pmix_proc_t's
-        if peers is not None:
+        # convert list of procs to array of pmix_proc_t's. Every exit from
+        # here reports (rc, results) - a bare status on these two paths
+        # broke the caller's tuple unpacking. An empty list means "my whole
+        # job", as it does everywhere else, rather than a zero-length array
+        if peers is not None and 0 < len(peers):
             nprocs = len(peers)
             procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
             if not procs:
-                return PMIX_ERR_NOMEM
+                return PMIX_ERR_NOMEM, []
             rc = pmix_load_procs(procs, peers)
             if PMIX_SUCCESS != rc:
                 pmix_free_procs(procs, nprocs)
-                return rc
+                return rc, []
         else:
             nprocs = 1
             procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
             if not procs:
-                return PMIX_ERR_NOMEM
+                return PMIX_ERR_NOMEM, []
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
 
@@ -2099,21 +2102,24 @@ cdef class PMIxClient:
 
         # convert group name
         pygrp = group.encode('ascii')
-        # convert list of procs to array of pmix_proc_t's
-        if peers is not None:
+        # convert list of procs to array of pmix_proc_t's. Every exit from
+        # here reports (rc, results) - a bare status on these two paths
+        # broke the caller's tuple unpacking. An empty list means "my whole
+        # job", as it does everywhere else, rather than a zero-length array
+        if peers is not None and 0 < len(peers):
             nprocs = len(peers)
             procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
             if not procs:
-                return PMIX_ERR_NOMEM
+                return PMIX_ERR_NOMEM, []
             rc = pmix_load_procs(procs, peers)
             if PMIX_SUCCESS != rc:
                 pmix_free_procs(procs, nprocs)
-                return rc
+                return rc, []
         else:
             nprocs = 1
             procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
             if not procs:
-                return PMIX_ERR_NOMEM
+                return PMIX_ERR_NOMEM, []
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
 

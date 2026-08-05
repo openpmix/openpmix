@@ -863,6 +863,31 @@ class TestStructPrinters(unittest.TestCase):
         self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
         self.assertIsNone(txt)
 
+    def test_app_accepts_bytes_for_its_strings(self):
+        # the loader ran str() over the command, so a bytes command became
+        # the repr "b'/bin/true'" - not a program anything can run.  These
+        # bindings take str or bytes everywhere else, and callers do hand
+        # back what an upcall gave them.
+        rc, txt = self.client.app_string({'cmd': b"/bin/true",
+                                          'argv': [b"true"], 'maxprocs': 1})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertIn("/bin/true", txt)
+        self.assertNotIn("b'", txt)
+
+    def test_app_with_only_a_command(self):
+        # argv, env, cwd and info are all optional; argv defaults to the
+        # command itself, as execvp would need
+        rc, txt = self.client.app_string({'cmd': "/bin/true"})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertIn("/bin/true", txt)
+
+    def test_app_with_empty_lists(self):
+        rc, txt = self.client.app_string({'cmd': "/bin/true", 'argv': [],
+                                          'env': [], 'info': [],
+                                          'maxprocs': 1})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertIn("/bin/true", txt)
+
     def test_repeated_calls_are_stable(self):
         # each of these builds a struct, renders it, and has to release
         # both the struct and the string the library allocated
