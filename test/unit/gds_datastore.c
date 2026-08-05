@@ -843,6 +843,77 @@ static void test_scope_routing(void)
     free(got);
 }
 
+/* ------------------------------------------------------------------ */
+/* realm classifiers                                                    */
+/* ------------------------------------------------------------------ */
+
+/* pmix_check_node_info() and its two siblings decide which realm a key
+ * belongs to when the caller gave no qualifier, and gds_fetch consults
+ * them on every keyed fetch. They short-circuit on
+ * PMIx_Check_reserved_key() before searching, which is only sound
+ * while every key they list is "pmix"-prefixed.
+ *
+ * That is true today and there is nothing to keep it true: a
+ * node-scoped attribute added to the standard without the prefix would
+ * be silently dropped by the short-circuit and quietly land in the
+ * wrong realm. Assert each listed key still classifies, so the day
+ * that happens this fails rather than the key going missing. */
+static void test_realm_classifiers(void)
+{
+    static const char *const nodekeys[] = {PMIX_HOSTNAME, PMIX_NODEID, PMIX_LOCAL_PEERS,
+                                           PMIX_LOCAL_SIZE, PMIX_NODE_SIZE, PMIX_LOCALLDR,
+                                           PMIX_AVAIL_PHYS_MEMORY, PMIX_FABRIC_DEVICES, NULL};
+    static const char *const appkeys[] = {PMIX_APP_SIZE, PMIX_APPLDR, PMIX_APP_ARGV, PMIX_WDIR,
+                                          PMIX_PSET_NAME, PMIX_PSET_MEMBERS, PMIX_APP_MAP_TYPE,
+                                          PMIX_APP_MAP_REGEX, NULL};
+    static const char *const sesskeys[] = {PMIX_SESSION_ID, PMIX_CLUSTER_ID, PMIX_UNIV_SIZE,
+                                           PMIX_TMPDIR, PMIX_TDIR_RMCLEAN,
+                                           PMIX_HOSTNAME_KEEP_FQDN, PMIX_RM_NAME,
+                                           PMIX_RM_VERSION, NULL};
+    size_t n;
+    bool ok;
+
+    for (n = 0, ok = true; NULL != nodekeys[n]; n++) {
+        if (!pmix_check_node_info(nodekeys[n])) {
+            fprintf(stdout, "    node key not classified: %s\n", nodekeys[n]);
+            ok = false;
+        }
+    }
+    report("realm: every listed node key classifies", ok);
+
+    for (n = 0, ok = true; NULL != appkeys[n]; n++) {
+        if (!pmix_check_app_info(appkeys[n])) {
+            fprintf(stdout, "    app key not classified: %s\n", appkeys[n]);
+            ok = false;
+        }
+    }
+    report("realm: every listed app key classifies", ok);
+
+    for (n = 0, ok = true; NULL != sesskeys[n]; n++) {
+        if (!pmix_check_session_info(sesskeys[n])) {
+            fprintf(stdout, "    session key not classified: %s\n", sesskeys[n]);
+            ok = false;
+        }
+    }
+    report("realm: every listed session key classifies", ok);
+
+    /* the realms stay distinct - a node key is not an app key */
+    report("realm: a node key is not app or session",
+           !pmix_check_app_info(PMIX_HOSTNAME) && !pmix_check_session_info(PMIX_HOSTNAME));
+
+    /* an ordinary application key belongs to none of them, which is the
+     * case the reserved-key short-circuit is there to make cheap */
+    report("realm: an application key belongs to no realm",
+           !pmix_check_node_info("my.app.key") && !pmix_check_app_info("my.app.key")
+               && !pmix_check_session_info("my.app.key"));
+
+    /* NULL is legal on this path - a PMIx_Get with no key means "all
+     * data for this proc" - and must not be searched for */
+    report("realm: a NULL key belongs to no realm",
+           !pmix_check_node_info(NULL) && !pmix_check_app_info(NULL)
+               && !pmix_check_session_info(NULL) && !pmix_check_special_key(NULL));
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -866,6 +937,7 @@ int main(int argc, char **argv)
     test_map_forms();
     test_malformed_job_info();
     test_scope_routing();
+    test_realm_classifiers();
 
     fprintf(stdout, "\n=== %d passed, %d failed ===\n", npass, nfail);
 
