@@ -283,10 +283,10 @@ static void resolve_relative_paths(char **file_prefix, char *file_path, bool rel
         ;
 #endif
     } else {
-        /* Prepend the files to the search list. NOTE: asprintf leaves
-         * its output pointer indeterminate on failure, so it must not
-         * be freed here */
-        if (0 > asprintf(&tmp_str, "%s%c%s", *file_prefix, sep, *files)) {
+        /* Prepend the files to the search list. NOTE: pmix_asprintf
+         * sets its output pointer to NULL on failure, so there is
+         * nothing to free here */
+        if (0 > pmix_asprintf(&tmp_str, "%s%c%s", *file_prefix, sep, *files)) {
             pmix_output(0, "OUT OF MEM");
             free(*files);
             *files = NULL;
@@ -329,12 +329,12 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     }
 
 #if PMIX_WANT_HOME_CONFIG_FILES
-    ret = asprintf(&pmix_mca_base_var_files,
+    ret = pmix_asprintf(&pmix_mca_base_var_files,
                    "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "mca-params.conf%c%s" PMIX_PATH_SEP
                    "pmix-mca-params.conf",
                    home, ',', pmix_pinstall_dirs.sysconfdir);
 #else
-    ret = asprintf(&pmix_mca_base_var_files, "%s" PMIX_PATH_SEP "pmix-mca-params.conf",
+    ret = pmix_asprintf(&pmix_mca_base_var_files, "%s" PMIX_PATH_SEP "pmix-mca-params.conf",
                    pmix_pinstall_dirs.sysconfdir);
 #endif
     if (0 > ret) {
@@ -359,7 +359,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     (void) pmix_mca_base_var_register_synonym(ret, "pmix", "mca", NULL, "param_files",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
-    ret = asprintf(&pmix_mca_base_var_override_file,
+    ret = pmix_asprintf(&pmix_mca_base_var_override_file,
                    "%s" PMIX_PATH_SEP "pmix-mca-params-override.conf",
                    pmix_pinstall_dirs.sysconfdir);
     if (0 > ret) {
@@ -399,7 +399,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
         return ret;
     }
 
-   ret = asprintf(&pmix_mca_base_param_file_path, "%s" PMIX_PATH_SEP "amca-param-sets%c%s",
+   ret = pmix_asprintf(&pmix_mca_base_param_file_path, "%s" PMIX_PATH_SEP "amca-param-sets%c%s",
                    pmix_pinstall_dirs.pmixdatadir, PMIX_ENV_SEP, cwd);
     if (0 > ret) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -428,7 +428,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
         if (NULL != pmix_mca_base_param_file_path) {
             char *tmp_str = pmix_mca_base_param_file_path;
 
-            ret = asprintf(&pmix_mca_base_param_file_path, "%s%c%s", force_agg_path, PMIX_ENV_SEP,
+            ret = pmix_asprintf(&pmix_mca_base_param_file_path, "%s%c%s", force_agg_path, PMIX_ENV_SEP,
                            tmp_str);
             free(tmp_str);
             if (0 > ret) {
@@ -546,7 +546,7 @@ static int var_set_string(pmix_mca_base_var_t *var, char *value)
        in the future. */
     if (0 == strncmp(value, "~/", 2)) {
         if (NULL != home) {
-            ret = asprintf(&value, "%s/%s", home, value + 2);
+            ret = pmix_asprintf(&value, "%s/%s", home, value + 2);
             if (0 > ret) {
                 return PMIX_ERROR;
             }
@@ -565,7 +565,7 @@ static int var_set_string(pmix_mca_base_var_t *var, char *value)
         tmp[0] = '\0';
         tmp += 3;
 
-        ret = asprintf(&tmp, "%s:%s%s%s", value, home ? home : "", home ? "/" : "", tmp);
+        ret = pmix_asprintf(&tmp, "%s:%s%s%s", value, home ? home : "", home ? "/" : "", tmp);
 
         free(value);
 
@@ -942,7 +942,7 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env)
             goto cleanup;
         }
 
-        ret = asprintf(&str, "%s%s=%s", var->mbv_prefix, var->mbv_full_name, value_string);
+        ret = pmix_asprintf(&str, "%s%s=%s", var->mbv_prefix, var->mbv_full_name, value_string);
         free(value_string);
         if (0 > ret) {
             goto cleanup;
@@ -956,12 +956,12 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env)
         switch (var->mbv_source) {
             case PMIX_MCA_BASE_VAR_SOURCE_FILE:
             case PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE:
-                ret = asprintf(&str, "%sSOURCE_%s=FILE:%s", var->mbv_prefix, var->mbv_full_name,
+                ret = pmix_asprintf(&str, "%sSOURCE_%s=FILE:%s", var->mbv_prefix, var->mbv_full_name,
                                pmix_mca_base_var_source_file(var));
                 break;
 
             case PMIX_MCA_BASE_VAR_SOURCE_COMMAND_LINE:
-                ret = asprintf(&str, "%sSOURCE_%s=COMMAND_LINE", var->mbv_prefix, var->mbv_full_name);
+                ret = pmix_asprintf(&str, "%sSOURCE_%s=COMMAND_LINE", var->mbv_prefix, var->mbv_full_name);
                 break;
 
             case PMIX_MCA_BASE_VAR_SOURCE_ENV:
@@ -1445,12 +1445,12 @@ static int var_get_env(pmix_mca_base_var_t *var, const char *name, char **source
     char *source_env, *value_env;
     int ret;
 
-    ret = asprintf(&source_env, "%sSOURCE_%s", var->mbv_prefix, name);
+    ret = pmix_asprintf(&source_env, "%sSOURCE_%s", var->mbv_prefix, name);
     if (0 > ret) {
         return PMIX_ERROR;
     }
 
-    ret = asprintf(&value_env, "%s%s", var->mbv_prefix, name);
+    ret = pmix_asprintf(&value_env, "%s%s", var->mbv_prefix, name);
     if (0 > ret) {
         free(source_env);
         return PMIX_ERROR;
@@ -1744,9 +1744,9 @@ static char *source_name(pmix_mca_base_var_t *var)
         int rc;
 
         if (fv) {
-            rc = asprintf(&ret, "file (%s:%d)", fv->mbvfv_file, fv->mbvfv_lineno);
+            rc = pmix_asprintf(&ret, "file (%s:%d)", fv->mbvfv_file, fv->mbvfv_lineno);
         } else {
-            rc = asprintf(&ret, "file (%s)", var->mbv_source_file);
+            rc = pmix_asprintf(&ret, "file (%s)", var->mbv_source_file);
         }
 
         /* some compilers will warn if the return code of asprintf is not checked (even if it is
@@ -1777,29 +1777,29 @@ static int var_value_string(pmix_mca_base_var_t *var, char **value_string)
     if (NULL == var->mbv_enumerator) {
         switch (var->mbv_type) {
         case PMIX_MCA_BASE_VAR_TYPE_INT:
-            ret = asprintf(value_string, "%d", value->intval);
+            ret = pmix_asprintf(value_string, "%d", value->intval);
             break;
         case PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_INT:
-            ret = asprintf(value_string, "%u", value->uintval);
+            ret = pmix_asprintf(value_string, "%u", value->uintval);
             break;
         case PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_LONG:
-            ret = asprintf(value_string, "%lu", value->ulval);
+            ret = pmix_asprintf(value_string, "%lu", value->ulval);
             break;
         case PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_LONG_LONG:
-            ret = asprintf(value_string, "%llu", value->ullval);
+            ret = pmix_asprintf(value_string, "%llu", value->ullval);
             break;
         case PMIX_MCA_BASE_VAR_TYPE_SIZE_T:
-            ret = asprintf(value_string, "%" PRIsize_t, value->sizetval);
+            ret = pmix_asprintf(value_string, "%" PRIsize_t, value->sizetval);
             break;
         case PMIX_MCA_BASE_VAR_TYPE_STRING:
         case PMIX_MCA_BASE_VAR_TYPE_VERSION_STRING:
-            ret = asprintf(value_string, "%s", value->stringval ? value->stringval : "");
+            ret = pmix_asprintf(value_string, "%s", value->stringval ? value->stringval : "");
             break;
         case PMIX_MCA_BASE_VAR_TYPE_BOOL:
-            ret = asprintf(value_string, "%d", value->boolval);
+            ret = pmix_asprintf(value_string, "%d", value->boolval);
             break;
         case PMIX_MCA_BASE_VAR_TYPE_DOUBLE:
-            ret = asprintf(value_string, "%lf", value->lfval);
+            ret = pmix_asprintf(value_string, "%lf", value->lfval);
             break;
         default:
             ret = -1;
