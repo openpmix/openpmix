@@ -173,5 +173,28 @@ def clientconnected(proc, cbfunc, cbdata):
 A handler that raises is caught by the trampoline, reported, and turned
 into `PMIX_ERROR` — but do not rely on that to paper over a bug.
 
+**A handler runs on the progress thread, so it must never make a
+blocking PMIx call.** The blocking form of any API hands its work to
+that same thread and waits for it, which from inside a handler means
+waiting on the event loop the handler is standing in — the thread waits
+on itself. Deleting a namespace from `clientfinalized` is the usual way
+to discover this. The library reports it now (`PMIX_ERR_WOULD_BLOCK`,
+plus a `show_help` explaining it) rather than hanging, but the fix is to
+pass a completion callback:
+
+```python
+def deletion_done(status, cbdata):     # on the progress thread
+    ...
+
+def clientfinalized(proc, cbfunc, cbdata):
+    cbfunc(PMIX_SUCCESS, cbdata)                       # complete the upcall
+    srv.deregister_nspace(proc['nspace'], deletion_done, None)
+    return PMIX_SUCCESS
+```
+
+The same applies to a `_nb` completion callback and to an event handler.
+If you need a result before proceeding, wake a different thread and do
+the work there.
+
 Event handlers are different: they return a `(status, results)` tuple, not
 a bare status.

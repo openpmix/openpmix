@@ -216,6 +216,55 @@ def main():
         print("COLLECT_JOB_INFO RETURNED NO DATA")
         exit(1)
 
+    # Exercise the non-blocking form of the server registration calls.
+    # PMIx spells this one as an optional callback on the same entry
+    # point rather than as a separate _nb function, and it is the only
+    # form usable from inside a server module upcall - those run on the
+    # progress thread, where the blocking form would be waiting on the
+    # event loop it is standing in.
+    print("Testing the non-blocking server registration calls")
+    nbdone = threading.Event()
+    nbresult = {}
+
+    def nbcb(status, cbdata):
+        # runs on the PMIx progress thread
+        nbresult['status'] = status
+        nbresult['cbdata'] = cbdata
+        nbdone.set()
+
+    def drive(label, rc):
+        # a callback fires if and only if the request was accepted
+        if PMIX_SUCCESS != rc:
+            print("%s NOT ACCEPTED: %s" % (label, foo.error_string(rc)))
+            exit(1)
+        if not nbdone.wait(timeout=30):
+            print("%s CALLBACK NEVER FIRED" % label)
+            exit(1)
+        if PMIX_SUCCESS != nbresult['status']:
+            print("%s COMPLETED WITH %s" % (label,
+                                            foo.error_string(nbresult['status'])))
+            exit(1)
+        if nbresult['cbdata'] != {'label': label}:
+            print("%s RETURNED THE WRONG CBDATA: %s" % (label, nbresult['cbdata']))
+            exit(1)
+        print("  %s: completed asynchronously" % label)
+        nbdone.clear()
+
+    drive("register_nspace", foo.register_nspace("nbnspace", 1, kvals,
+                                                 nbcb, {'label': "register_nspace"}))
+    drive("register_client", foo.register_client({'nspace': "nbnspace", 'rank': 0},
+                                                 os.geteuid(), os.getegid(),
+                                                 nbcb, {'label': "register_client"}))
+    drive("deregister_client", foo.deregister_client({'nspace': "nbnspace", 'rank': 0},
+                                                     nbcb, {'label': "deregister_client"}))
+    drive("deregister_nspace", foo.deregister_nspace("nbnspace", nbcb,
+                                                     {'label': "deregister_nspace"}))
+    # a bad callback is refused before anything is allocated
+    if PMIX_ERR_BAD_PARAM != foo.deregister_nspace("nbnspace", "not callable"):
+        print("A NON-CALLABLE CALLBACK WAS ACCEPTED")
+        exit(1)
+    print("Non-blocking server registration calls: OK")
+
     # print a value and an info the way the library itself renders them
     (rc, txt) = foo.data_print("VALUE: ", {'value': 42, 'val_type': PMIX_INT32})
     print("DataPrint: ", foo.error_string(rc), txt)

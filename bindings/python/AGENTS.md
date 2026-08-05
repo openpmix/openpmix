@@ -64,10 +64,46 @@ their C-level state (`pmix_proc_t myproc`, `pmix_server_module_t myserver`,
 
 ### What is bound, and what deliberately is not
 
-**Every operational C API is bound**, in both its blocking and its
-non-blocking form. Before concluding something is missing, check
-`pmix.pyx` — and read the two exclusions below, because they are
-choices, not gaps.
+**Every operational C API is bound.** Before concluding something is
+missing, check `pmix.pyx` — and read the two exclusions below, because
+they are choices, not gaps.
+
+**PMIx spells "non-blocking" two different ways, and both are bound —
+but not identically.**
+
+- A **separate `*_nb` function**, which is the client family: 25 of
+  them, from `fence_nb` through `resource_block_nb`. Each is its own
+  Python method (§4c).
+- An **optional trailing `cbfunc`/`cbdata` on the same entry point**,
+  which is mostly the server family. These are bound as optional
+  arguments on the existing method — `deregister_nspace(ns)` blocks,
+  `deregister_nspace(ns, cbfunc, cbdata)` does not — mirroring the C
+  rather than inventing an `_nb` name the library does not have.
+
+The second kind is not a nicety. Every server-module upcall and event
+handler runs **on the progress thread**, and the blocking form called
+from there waits on the event loop it is standing in; the library now
+reports that rather than deadlocking (see §4b). So a handler that wants
+to register or delete a namespace *must* pass a callback.
+
+Five of that family currently take one: `register_nspace`,
+`deregister_nspace`, `register_client`, `deregister_client`, and
+`notify_event`. The rest — `register_resources`,
+`deregister_resources`, `setup_local_support`, `deliver_inventory`,
+`iof_deliver`, `iof_flow_control`, `session_control`,
+`deregister_event_handler`, `iof_deregister`, `iof_push` — are still
+blocking-only, and adding a callback to one follows the same pattern:
+build the caddy with `pypmix_nb_setup`, register the callback, pass
+`pypmix_client_op_cbfunc` and the caddy, and reclaim on a failed
+return. Anything the library holds until completion (an info array, for
+instance — `register_nspace` and `notify_event` both retain theirs) has
+to live in the caddy rather than be freed at return.
+
+Three more are blocking by construction and cannot simply grow a
+callback: `dmodex_request`, `setup_application` and `collect_inventory`
+drive an internal C callback and wait on the module-global `active`
+lock, so making them asynchronous means first fixing the
+non-reentrancy that lock imposes (§4a).
 
 **Struct and utility helper families are out of scope.** They are *not*
 missing bindings and should not be added: `PMIx_Argv_*`, `PMIx_Setenv`,

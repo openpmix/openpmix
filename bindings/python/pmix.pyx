@@ -3179,17 +3179,42 @@ cdef class PMIxClient:
         rc = PMIx_Deregister_event_handler(ref, NULL, NULL)
         return rc
 
-    def notify_event(self, status:int, pysrc:dict, range, pyinfo):
+    # cbfunc(status:int, cbdata) - reporting an event from inside an
+    # event handler or a server module upcall needs the non-blocking
+    # form, as both run on the progress thread
+    def notify_event(self, status:int, pysrc:dict, range, pyinfo,
+                     cbfunc=None, cbdata=None):
         cdef pmix_proc_t proc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t ninfo
         cdef pmix_data_range_t crange = range
         cdef pmix_status_t cstatus = status
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t crc
+        cdef int prc
 
         # convert the proc
         pmix_copy_nspace(proc.nspace, pysrc['nspace'])
         proc.rank = pysrc['rank']
+
+        if cbfunc is not None:
+            if not callable(cbfunc):
+                return PMIX_ERR_BAD_PARAM
+            # the library holds the info array until the event has been
+            # delivered, so it goes in the caddy
+            cd = pypmix_nb_setup(pyinfo, &prc)
+            if NULL == cd:
+                return prc
+            cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            with nogil:
+                crc = PMIx_Notify_event(cstatus, &proc, crange,
+                                        cd.info, cd.ninfo,
+                                        pypmix_client_op_cbfunc, <void *> cd)
+            if PMIX_SUCCESS != crc:
+                if pypmix_nb_take(cd.idx) is not None:
+                    pypmix_nb_cbdata_free(cd)
+            return crc
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
@@ -4531,14 +4556,48 @@ cdef class PMIxServer(PMIxClient):
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
     #
-    def register_nspace(self, ns:str, nlocalprocs:int, dicts):
+    def register_nspace(self, ns:str, nlocalprocs:int, dicts,
+                        cbfunc=None, cbdata=None):
         cdef pmix_nspace_t nspace
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t crc
+        cdef int prc
+        cdef int cnlocal
         global active
         # convert the args into the necessary C-arguments
         pmix_copy_nspace(nspace, ns)
+        cnlocal = nlocalprocs
+
+        # Non-blocking form. The C API expresses it with an optional
+        # callback on the same entry point rather than with a separate
+        # _nb function, but the machinery is the one every _nb binding
+        # uses - see section 4c of the bindings AGENTS.md.
+        #
+        # This is the only form that works from inside a server module
+        # upcall: those run on the progress thread, and the blocking form
+        # would there be waiting on the event loop it is standing in.
+        if cbfunc is not None:
+            if not callable(cbfunc):
+                return PMIX_ERR_BAD_PARAM
+            # the library holds the info array until it completes, so it
+            # goes in the caddy rather than being freed at return
+            cd = pypmix_nb_setup(dicts, &prc)
+            if NULL == cd:
+                return prc
+            cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            with nogil:
+                crc = PMIx_server_register_nspace(nspace, cnlocal,
+                                                  cd.info, cd.ninfo,
+                                                  pypmix_client_op_cbfunc,
+                                                  <void *> cd)
+            if PMIX_SUCCESS != crc:
+                # no callback will be executed, so reclaim it here
+                if pypmix_nb_take(cd.idx) is not None:
+                    pypmix_nb_cbdata_free(cd)
+            return crc
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
@@ -4561,13 +4620,35 @@ cdef class PMIxServer(PMIxClient):
     # @ns [INPUT]
     #     - Namespace of job (string)
     #
-    def deregister_nspace(self, ns:str):
+    # Deleting a namespace from inside a server module upcall - when the
+    # last client finalizes, say - is the natural thing to write, and the
+    # upcall runs on the progress thread. Pass a callback for that case:
+    # the blocking form there would be waiting on the event loop it is
+    # standing in, which the library now reports rather than hanging on.
+    #
+    # cbfunc(status:int, cbdata)
+    def deregister_nspace(self, ns:str, cbfunc=None, cbdata=None):
         cdef pmix_nspace_t nspace
+        cdef pypmix_nb_cbdata_t *cd
+        cdef int prc
         global active
         # convert the args into the necessary C-arguments
         pmix_copy_nspace(nspace, ns)
+
+        if cbfunc is not None:
+            if not callable(cbfunc):
+                return PMIX_ERR_BAD_PARAM
+            cd = pypmix_nb_setup(None, &prc)
+            if NULL == cd:
+                return prc
+            cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            with nogil:
+                PMIx_server_deregister_nspace(nspace, pypmix_client_op_cbfunc,
+                                              <void *> cd)
+            return PMIX_SUCCESS
+
         PMIx_server_deregister_nspace(nspace, NULL, NULL)
-        return
+        return PMIX_SUCCESS
 
     # Register resources
     def register_resources(self, directives):
@@ -4614,11 +4695,42 @@ cdef class PMIxServer(PMIxClient):
     # @gid [INPUT]
     #      - Group ID (gid) of the client (int)
     #
-    def register_client(self, proc:dict, uid:int, gid:int):
+    # cbfunc(status:int, cbdata) - see deregister_nspace for why the
+    # non-blocking form matters. Registering a namespace and its clients
+    # from inside a 'spawn' upcall is the ordinary way a host services a
+    # spawn request, and that upcall runs on the progress thread.
+    def register_client(self, proc:dict, uid:int, gid:int,
+                        cbfunc=None, cbdata=None):
         global active
         cdef pmix_proc_t p;
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t crc
+        cdef int prc
+        cdef uid_t cuid
+        cdef gid_t cgid
         pmix_copy_nspace(p.nspace, proc['nspace'])
         p.rank = proc['rank']
+        cuid = uid
+        cgid = gid
+
+        if cbfunc is not None:
+            if not callable(cbfunc):
+                return PMIX_ERR_BAD_PARAM
+            # the library copies the proc before it returns, so the caddy
+            # carries nothing but the registry key
+            cd = pypmix_nb_setup(None, &prc)
+            if NULL == cd:
+                return prc
+            cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            with nogil:
+                crc = PMIx_server_register_client(&p, cuid, cgid, NULL,
+                                                  pypmix_client_op_cbfunc,
+                                                  <void *> cd)
+            if PMIX_SUCCESS != crc:
+                if pypmix_nb_take(cd.idx) is not None:
+                    pypmix_nb_cbdata_free(cd)
+            return crc
+
         rc = PMIx_server_register_client(&p, uid, gid, NULL, NULL, NULL)
         return rc
 
@@ -4627,13 +4739,29 @@ cdef class PMIxServer(PMIxClient):
     # @proc [INPUT]
     #       - namespace and rank of the client (dict)
     #
-    def deregister_client(self, proc:dict):
+    # cbfunc(status:int, cbdata) - see deregister_nspace
+    def deregister_client(self, proc:dict, cbfunc=None, cbdata=None):
         global active
         cdef pmix_proc_t p;
+        cdef pypmix_nb_cbdata_t *cd
+        cdef int prc
         pmix_copy_nspace(p.nspace, proc['nspace'])
         p.rank = proc['rank']
-        rc = PMIx_server_deregister_client(&p, NULL, NULL)
-        return rc
+
+        if cbfunc is not None:
+            if not callable(cbfunc):
+                return PMIX_ERR_BAD_PARAM
+            cd = pypmix_nb_setup(None, &prc)
+            if NULL == cd:
+                return prc
+            cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            with nogil:
+                PMIx_server_deregister_client(&p, pypmix_client_op_cbfunc,
+                                              <void *> cd)
+            return PMIX_SUCCESS
+
+        PMIx_server_deregister_client(&p, NULL, NULL)
+        return PMIX_SUCCESS
 
     # Setup the environment of a child process that is to be forked
     # by the host
