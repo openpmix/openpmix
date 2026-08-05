@@ -752,6 +752,15 @@ static void pmix_mca_base_var_enum_flag_constructor(pmix_mca_base_var_enum_flag_
 
 static void pmix_mca_base_var_enum_flag_destructor(pmix_mca_base_var_enum_flag_t *enumerator)
 {
+    /* This class derives from pmix_object_t, NOT from
+     * pmix_mca_base_var_enum_t, so pmix_mca_base_var_enum_destructor()
+     * is not in its chain and will not free the name that
+     * create_flag() strdup'd into super. Anything owned by the embedded
+     * super has to be released here. */
+    if (enumerator->super.enum_name) {
+        free(enumerator->super.enum_name);
+        enumerator->super.enum_name = NULL;
+    }
     /* release the copy of the values */
     if (enumerator->enum_flags) {
         for (int i = 0; i < enumerator->super.enum_value_count; ++i) {
