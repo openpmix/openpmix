@@ -1234,6 +1234,10 @@ static void _register_nspace(int sd, short args, void *cbdata)
                     /* get the peer object for this rank */
                     for (m=1; m < ninfo; m++) {
                         PMIX_KVAL_NEW(kv, iptr[m].key);
+                        if (PMIX_UNLIKELY(NULL == kv)) {
+                            rc = PMIX_ERR_NOMEM;
+                            goto release;
+                        }
                         PMIX_VALUE_XFER(rc, kv->value, &iptr[m].value);
                         rc = gds->store(&proc, PMIX_REMOTE, kv);
                         PMIX_RELEASE(kv); // maintain refcount
@@ -1243,6 +1247,10 @@ static void _register_nspace(int sd, short args, void *cbdata)
                     }
                 } else if (PMIX_CHECK_KEY(&cd->info[i], PMIX_GROUP_CONTEXT_ID)) {
                     PMIX_KVAL_NEW(kv, cd->info[i].key);
+                    if (PMIX_UNLIKELY(NULL == kv)) {
+                        rc = PMIX_ERR_NOMEM;
+                        goto release;
+                    }
                     PMIX_VALUE_XFER(rc, kv->value, &cd->info[i].value);
                     gds->store(&proc, PMIX_GLOBAL, kv);
                     PMIX_RELEASE(kv); // maintain refcount
