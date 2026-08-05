@@ -312,6 +312,50 @@ static uint64_t pmix_hash_hash_elt_uint32(pmix_hash_element_t *elt)
 static const struct pmix_hash_type_methods_t pmix_hash_type_methods_uint32
     = {NULL, pmix_hash_hash_elt_uint32};
 
+/* Record the key type a table is being used with.
+ *
+ * Comparing before storing is not micro-optimization: an unconditional
+ * store turns every operation into a write to the table's head cache
+ * line, including the ones that are otherwise pure reads. The methods
+ * are already right in the overwhelmingly common case, so this is a
+ * load and a perfectly predicted branch.
+ */
+static inline void hash_table_set_type(pmix_hash_table_t *ht,
+                                       const struct pmix_hash_type_methods_t *methods)
+{
+    if (methods != ht->ht_type_methods) {
+        ht->ht_type_methods = methods;
+    }
+}
+
+/* The same, for a lookup - which must not write to a table it does not
+ * own.
+ *
+ * &pmix_hash_type_methods_* is the address of a file-scope static in
+ * whichever process is executing. For a table in a TMA segment that
+ * address means nothing to the peers sharing it, and under ASLR it
+ * differs in every one of them. gds/shmem3 has one writer (the server)
+ * and many readers, all mapping the same tables, so a reader that
+ * stamped its own address into the segment would leave the *writer*
+ * dispatching through a foreign pointer the next time
+ * pmix_hash_grow() or pmix_hash_table_remove_elt_at() called
+ * ht_type_methods->hash_elt().
+ *
+ * So a lookup on a TMA table leaves the field alone. The owner sets it
+ * when it stores, which is the only process that has any business
+ * writing there. This is the same exemption the type check makes, for
+ * the same reason - it just has to cover the assignment as well as the
+ * check.
+ */
+static inline void hash_table_note_type_for_lookup(pmix_hash_table_t *ht,
+                                                   const struct pmix_hash_type_methods_t *methods)
+{
+    if (NULL != pmix_obj_get_tma(&ht->super)) {
+        return;
+    }
+    hash_table_set_type(ht, methods);
+}
+
 int /* PMIX_ return code */
 pmix_hash_table_get_value_uint32(pmix_hash_table_t *ht, uint32_t key, void **value)
 {
@@ -353,7 +397,7 @@ pmix_hash_table_get_value_uint32(pmix_hash_table_t *ht, uint32_t key, void **val
         return PMIX_ERROR;
     }
 
-    ht->ht_type_methods = &pmix_hash_type_methods_uint32;
+    hash_table_note_type_for_lookup(ht, &pmix_hash_type_methods_uint32);
     for (ii = key % capacity;; ii += 1) {
         if (ii == capacity) {
             ii = 0;
@@ -401,7 +445,7 @@ pmix_hash_table_set_value_uint32(pmix_hash_table_t *ht, uint32_t key, void *valu
         return PMIX_ERROR;
     }
 
-    ht->ht_type_methods = &pmix_hash_type_methods_uint32;
+    hash_table_set_type(ht, &pmix_hash_type_methods_uint32);
     for (ii = key % capacity;; ii += 1) {
         if (ii == capacity) {
             ii = 0;
@@ -457,7 +501,7 @@ int pmix_hash_table_remove_value_uint32(pmix_hash_table_t *ht, uint32_t key)
         return PMIX_ERROR;
     }
 
-    ht->ht_type_methods = &pmix_hash_type_methods_uint32;
+    hash_table_set_type(ht, &pmix_hash_type_methods_uint32);
     for (ii = key % capacity;; ii += 1) {
         pmix_hash_element_t *elt;
         if (ii == capacity) {
@@ -514,7 +558,7 @@ pmix_hash_table_get_value_uint64(pmix_hash_table_t *ht, uint64_t key, void **val
         return PMIX_ERROR;
     }
 
-    ht->ht_type_methods = &pmix_hash_type_methods_uint64;
+    hash_table_note_type_for_lookup(ht, &pmix_hash_type_methods_uint64);
     for (ii = key % capacity;; ii += 1) {
         if (ii == capacity) {
             ii = 0;
@@ -562,7 +606,7 @@ pmix_hash_table_set_value_uint64(pmix_hash_table_t *ht, uint64_t key, void *valu
         return PMIX_ERROR;
     }
 
-    ht->ht_type_methods = &pmix_hash_type_methods_uint64;
+    hash_table_set_type(ht, &pmix_hash_type_methods_uint64);
     for (ii = key % capacity;; ii += 1) {
         if (ii == capacity) {
             ii = 0;
@@ -618,7 +662,7 @@ pmix_hash_table_remove_value_uint64(pmix_hash_table_t *ht, uint64_t key)
         return PMIX_ERROR;
     }
 
-    ht->ht_type_methods = &pmix_hash_type_methods_uint64;
+    hash_table_set_type(ht, &pmix_hash_type_methods_uint64);
     for (ii = key % capacity;; ii += 1) {
         pmix_hash_element_t *elt;
         if (ii == capacity) {
@@ -712,7 +756,7 @@ pmix_hash_table_get_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
         return PMIX_ERROR;
     }
 
-    ht->ht_type_methods = &pmix_hash_type_methods_ptr;
+    hash_table_note_type_for_lookup(ht, &pmix_hash_type_methods_ptr);
     for (ii = pmix_hash_hash_key_ptr(key, key_size) % capacity;; ii += 1) {
         if (ii == capacity) {
             ii = 0;
@@ -764,7 +808,7 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
         return PMIX_ERROR;
     }
 
-    ht->ht_type_methods = &pmix_hash_type_methods_ptr;
+    hash_table_set_type(ht, &pmix_hash_type_methods_ptr);
     for (ii = pmix_hash_hash_key_ptr(key, key_size) % capacity;; ii += 1) {
         if (ii == capacity) {
             ii = 0;
@@ -831,7 +875,7 @@ pmix_hash_table_remove_value_ptr(pmix_hash_table_t *ht, const void *key, size_t 
         return PMIX_ERROR;
     }
 
-    ht->ht_type_methods = &pmix_hash_type_methods_ptr;
+    hash_table_set_type(ht, &pmix_hash_type_methods_ptr);
     for (ii = pmix_hash_hash_key_ptr(key, key_size) % capacity;; ii += 1) {
         pmix_hash_element_t *elt;
         if (ii == capacity) {
