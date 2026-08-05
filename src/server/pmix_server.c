@@ -1411,6 +1411,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const pmix_nspace_t nspace
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_register_nspace")) {
+            /* we are ON the progress thread, so waiting for the event we
+             * would post is waiting for ourselves - answer rather than
+             * hang. The caller wanted the blocking form; the non-blocking
+             * one works fine from here */
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         PMIX_CONSTRUCT_LOCK(&mylock);
         cd->opcbfunc = opcbfunc;
         cd->cbdata = &mylock;
@@ -1746,8 +1754,12 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
     PMIX_RELEASE(nptr);
 
 cleanup:
-    /* release the caller */
-    cd->opcbfunc(rc, cd->cbdata);
+    /* release the caller, if there is one waiting - a request that had to
+     * be completed asynchronously because it came from the progress
+     * thread carries no callback */
+    if (NULL != cd->opcbfunc) {
+        cd->opcbfunc(rc, cd->cbdata);
+    }
     PMIX_RELEASE(cd);
 }
 
@@ -1780,6 +1792,24 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_deregister_nspace")) {
+            /* We are ON the progress thread - the host called us from
+             * inside one of its own upcalls. We cannot wait for the event
+             * we are about to post, because the loop that would run it is
+             * the one we are standing in.
+             *
+             * Complete asynchronously instead. Nothing observable is lost:
+             * this API reports no status, and every other PMIx operation
+             * is serialized through the same loop, so it will see the
+             * namespace gone exactly as it would have. Running the handler
+             * inline is NOT an option - it releases peers and the
+             * namespace object itself, which the callback we are nested
+             * inside may still be holding.
+             */
+            cd->opcbfunc = NULL;
+            PMIX_THREADSHIFT(cd, _deregister_nspace);
+            return;
+        }
         PMIX_CONSTRUCT_LOCK(&mylock);
         cd->opcbfunc = opcbfunc;
         cd->cbdata = &mylock;
@@ -1988,6 +2018,14 @@ pmix_status_t PMIx_server_register_resources(pmix_info_t info[], size_t ninfo,
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_register_resources")) {
+            /* we are ON the progress thread, so waiting for the event we
+             * would post is waiting for ourselves - answer rather than
+             * hang. The caller wanted the blocking form; the non-blocking
+             * one works fine from here */
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         PMIX_CONSTRUCT_LOCK(&mylock);
         cd->opcbfunc = opcbfunc;
         cd->cbdata = &mylock;
@@ -2057,6 +2095,14 @@ pmix_status_t PMIx_server_deregister_resources(pmix_info_t info[], size_t ninfo,
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_deregister_resources")) {
+            /* we are ON the progress thread, so waiting for the event we
+             * would post is waiting for ourselves - answer rather than
+             * hang. The caller wanted the blocking form; the non-blocking
+             * one works fine from here */
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         PMIX_CONSTRUCT_LOCK(&mylock);
         cd->opcbfunc = opcbfunc;
         cd->cbdata = &mylock;
@@ -2398,6 +2444,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc, u
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_register_client")) {
+            /* we are ON the progress thread, so waiting for the event we
+             * would post is waiting for ourselves - answer rather than
+             * hang. The caller wanted the blocking form; the non-blocking
+             * one works fine from here */
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         PMIX_CONSTRUCT_LOCK(&mylock);
         cd->opcbfunc = opcbfunc;
         cd->cbdata = &mylock;
@@ -2446,7 +2500,11 @@ static void _deregister_client(int sd, short args, void *cbdata)
     remove_client(nptr, &cd->proc);
 
 cleanup:
-    cd->opcbfunc(PMIX_SUCCESS, cd->cbdata);
+    /* release the caller, if there is one waiting - see the matching
+     * comment in _deregister_nspace */
+    if (NULL != cd->opcbfunc) {
+        cd->opcbfunc(PMIX_SUCCESS, cd->cbdata);
+    }
     PMIX_RELEASE(cd);
 }
 
@@ -2486,6 +2544,14 @@ PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc, pmix_op_
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_deregister_client")) {
+            /* on the progress thread - complete asynchronously rather
+             * than wait on the loop we are standing in. See the matching
+             * comment in PMIx_server_deregister_nspace */
+            cd->opcbfunc = NULL;
+            PMIX_THREADSHIFT(cd, _deregister_client);
+            return;
+        }
         PMIX_CONSTRUCT_LOCK(&mylock);
         cd->opcbfunc = opcbfunc;
         cd->cbdata = &mylock;
@@ -2790,6 +2856,12 @@ PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const cha
         return PMIX_ERR_BAD_PARAM;
     }
 
+    if (pmix_progress_thread_check_blocking("PMIx_Store_internal")) {
+        /* this call always waits for the progress thread to do the store,
+         * so it cannot be made from that thread */
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* setup to thread shift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == cd) {
@@ -3045,6 +3117,14 @@ pmix_status_t PMIx_server_setup_local_support(const pmix_nspace_t nspace, pmix_i
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_setup_local_support")) {
+            /* we are ON the progress thread, so waiting for the event we
+             * would post is waiting for ourselves - answer rather than
+             * hang. The caller wanted the blocking form; the non-blocking
+             * one works fine from here */
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         PMIX_CONSTRUCT_LOCK(&mylock);
         cd->opcbfunc = opcbfunc;
         cd->cbdata = &mylock;
@@ -3206,6 +3286,14 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source, pmix_iof_channe
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_IOF_deliver")) {
+            /* we are ON the progress thread, so waiting for the event we
+             * would post is waiting for ourselves - answer rather than
+             * hang. The caller wanted the blocking form; the non-blocking
+             * one works fine from here */
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         PMIX_CONSTRUCT_LOCK(&mylock);
         cd->opcbfunc = opcbfunc;
         cd->cbdata = &mylock;
@@ -3288,6 +3376,14 @@ pmix_status_t PMIx_server_IOF_flow_control(const pmix_proc_t *source,
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_IOF_flow_control")) {
+            /* we are ON the progress thread, so waiting for the event we
+             * would post is waiting for ourselves - answer rather than
+             * hang. The caller wanted the blocking form; the non-blocking
+             * one works fine from here */
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         PMIX_CONSTRUCT_LOCK(&mylock);
         cd->opcbfunc = opcbfunc;
         cd->cbdata = &mylock;
@@ -3440,6 +3536,14 @@ pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_deliver_inventory")) {
+            /* we are ON the progress thread, so waiting for the event we
+             * would post is waiting for ourselves - answer rather than
+             * hang. The caller wanted the blocking form; the non-blocking
+             * one works fine from here */
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         PMIX_CONSTRUCT_LOCK(&mylock);
         cd->cbfunc.opcbfn = opcbfunc;
         cd->cbdata = &mylock;
@@ -3566,6 +3670,14 @@ pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members, size_t 
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    if (pmix_progress_thread_check_blocking("PMIx_server_define_process_set")) {
+        /* the caddy below lives on OUR stack and is safe only because
+         * PMIX_WAIT_THREAD holds this frame until the handler wakes it.
+         * We cannot wait from the progress thread, and we cannot let the
+         * request outlive the frame, so refuse */
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* need to threadshift this request */
     PMIX_CONSTRUCT(&cd, pmix_setup_caddy_t);
     cd.nspace = (char*)pset_name;
@@ -3622,6 +3734,14 @@ pmix_status_t PMIx_server_delete_process_set(char *pset_name)
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    if (pmix_progress_thread_check_blocking("PMIx_server_delete_process_set")) {
+        /* the caddy below lives on OUR stack and is safe only because
+         * PMIX_WAIT_THREAD holds this frame until the handler wakes it.
+         * We cannot wait from the progress thread, and we cannot let the
+         * request outlive the frame, so refuse */
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* need to threadshift this request */

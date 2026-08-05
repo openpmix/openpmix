@@ -205,6 +205,108 @@ static void test_unknown_name(void)
     report("unknown:resume", PMIX_ERR_NOT_FOUND == pmix_progress_thread_resume(nm));
 }
 
+/* ------------------------------------------------------------------
+ * Blocking calls made FROM the progress thread
+ *
+ * A blocking PMIx API hands its work to the progress thread and waits.
+ * Called from that thread it would post the work to the very event loop
+ * it is standing in, and wait for a loop that cannot run until it
+ * returns - the thread waits on itself, forever.  The way a host reaches
+ * this is ordinary: deleting a namespace from inside its own
+ * client_finalized upcall, for instance, or from an event handler.  Both
+ * are dispatched from the progress thread.
+ *
+ * The guard turns that hang into an answer.  These tests run inside an
+ * event handler - which is dispatched from the progress thread, so it
+ * stands in for any upcall - and would hang the whole suite if the guard
+ * regressed, which is exactly the signal wanted.
+ * ------------------------------------------------------------------ */
+
+static pmix_lock_t reentry_lock;
+static bool reentry_saw_progress_thread = false;
+static pmix_status_t reentry_store_rc = PMIX_SUCCESS;
+static pmix_status_t reentry_pset_rc = PMIX_SUCCESS;
+
+static void reentry_handler(size_t evhdlr_registration_id, pmix_status_t status,
+                            const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                            pmix_info_t results[], size_t nresults,
+                            pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    pmix_value_t val;
+    pmix_nspace_t ns;
+
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo, results,
+                            nresults);
+
+    /* we are on the progress thread - the whole point of the exercise */
+    reentry_saw_progress_thread = pmix_progress_thread_is_current();
+
+    /* an API that reports a status must refuse rather than hang */
+    PMIX_VALUE_LOAD(&val, "value", PMIX_STRING);
+    reentry_store_rc = PMIx_Store_internal(&pmix_globals.myid, "ut.reentry.key", &val);
+    PMIX_VALUE_DESTRUCT(&val);
+
+    /* ... including the one whose caddy lives on the caller's stack */
+    reentry_pset_rc = PMIx_server_delete_process_set("ut-no-such-pset");
+
+    /* an API that reports no status completes asynchronously instead.
+     * There is nothing to check here beyond the fact that it returns at
+     * all - which it did not before the guard existed */
+    PMIX_LOAD_NSPACE(ns, "ut-no-such-nspace");
+    PMIx_server_deregister_nspace(ns, NULL, NULL);
+
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
+    }
+    PMIX_WAKEUP_THREAD(&reentry_lock);
+}
+
+static void reentry_registered(pmix_status_t status, size_t refid, void *cbdata)
+{
+    pmix_lock_t *lk = (pmix_lock_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(refid);
+    lk->status = status;
+    PMIX_WAKEUP_THREAD(lk);
+}
+
+static void test_blocking_call_from_progress_thread(void)
+{
+    pmix_status_t code = PMIX_ERR_DEBUGGER_RELEASE;
+    pmix_lock_t reglock;
+
+    /* off the progress thread, the predicate must say so */
+    report("reentry:main thread is not the progress thread",
+           !pmix_progress_thread_is_current());
+
+    PMIX_CONSTRUCT_LOCK(&reglock);
+    PMIx_Register_event_handler(&code, 1, NULL, 0, reentry_handler, reentry_registered,
+                                &reglock);
+    PMIX_WAIT_THREAD(&reglock);
+    if (PMIX_SUCCESS != reglock.status) {
+        report("reentry:handler registered", false);
+        PMIX_DESTRUCT_LOCK(&reglock);
+        return;
+    }
+    PMIX_DESTRUCT_LOCK(&reglock);
+
+    PMIX_CONSTRUCT_LOCK(&reentry_lock);
+    PMIx_Notify_event(code, &pmix_globals.myid, PMIX_RANGE_LOCAL, NULL, 0, NULL, NULL);
+    /* if the guard regresses, the handler never returns and this never
+     * wakes - the suite hangs, which is the intended alarm */
+    PMIX_WAIT_THREAD(&reentry_lock);
+    PMIX_DESTRUCT_LOCK(&reentry_lock);
+
+    report("reentry:handler ran on the progress thread", reentry_saw_progress_thread);
+    report("reentry:PMIx_Store_internal reports WOULD_BLOCK",
+           PMIX_ERR_WOULD_BLOCK == reentry_store_rc);
+    report("reentry:PMIx_server_delete_process_set reports WOULD_BLOCK",
+           PMIX_ERR_WOULD_BLOCK == reentry_pset_rc);
+
+    /* and the same calls still work normally from this thread */
+    report("reentry:delete_process_set works off the progress thread",
+           PMIX_ERR_WOULD_BLOCK != PMIx_server_delete_process_set("ut-no-such-pset"));
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -224,6 +326,7 @@ int main(int argc, char **argv)
     test_start_progresses();
     test_pause_resume();
     test_unknown_name();
+    test_blocking_call_from_progress_thread();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 

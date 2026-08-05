@@ -72,4 +72,41 @@ PMIX_EXPORT pmix_status_t pmix_progress_thread_pause(const char *name);
  */
 PMIX_EXPORT pmix_status_t pmix_progress_thread_resume(const char *name);
 
+/**
+ * Is the calling thread the one currently running the shared progress
+ * loop?
+ *
+ * This answers the question a blocking PMIx API has to ask before it
+ * thread-shifts its work and waits for the result: am I about to post
+ * that work to the very event loop I am standing in?  If so, waiting
+ * for it can never succeed - the loop cannot service the new event
+ * until the current one returns, and the current one is us.  See the
+ * PMIX_CHECK_NOT_PROGRESS_THREAD comment in src/include/pmix_globals.h.
+ *
+ * True for the dedicated progress thread while it is inside the event
+ * loop, and for whatever thread is inside PMIx_Progress() when the host
+ * has taken over driving progress itself (PMIX_EXTERNAL_PROGRESS).
+ * False everywhere else, including before the thread is started and
+ * after it has been stopped.
+ */
+PMIX_EXPORT bool pmix_progress_thread_is_current(void);
+
+/**
+ * Guard the entry to a blocking PMIx API.
+ *
+ * Returns true - and reports the error to the user - when the caller is
+ * on the progress thread, meaning the call it is about to make would
+ * wait for an event loop that cannot run until the caller returns.  The
+ * caller must then answer without waiting: PMIX_ERR_WOULD_BLOCK for an
+ * API that reports a status, or by handing the work to the progress
+ * thread asynchronously for one that does not.
+ *
+ * Note that this refuses nothing that used to work: every such call
+ * deadlocks when made from the progress thread, so an error here can
+ * only ever replace a hang.
+ *
+ * @param api  name of the API being guarded, for the diagnostic
+ */
+PMIX_EXPORT bool pmix_progress_thread_check_blocking(const char *api);
+
 #endif
