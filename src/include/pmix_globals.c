@@ -200,12 +200,13 @@ static void keyindex_construct(pmix_keyindex_t *ki)
     pmix_tma_t *const tma = pmix_obj_get_tma(&ki->super);
 
     ki->table = PMIX_NEW(pmix_pointer_array_t, tma);
-    pmix_pointer_array_init(ki->table, 1024, INT_MAX, 128);
+    pmix_pointer_array_init(ki->table, PMIX_KEYINDEX_TABLE_SIZE, INT_MAX,
+                            PMIX_KEYINDEX_TABLE_BLOCK);
 
     /* the string -> entry side. Sized past the reserved dictionary so
      * the common case never rehashes. */
     ki->lookup = PMIX_NEW(pmix_hash_table_t, tma);
-    pmix_hash_table_init(ki->lookup, 2048);
+    pmix_hash_table_init(ki->lookup, PMIX_KEYINDEX_LOOKUP_SIZE);
 
     ki->next_id = 0;
 }

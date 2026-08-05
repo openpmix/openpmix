@@ -595,20 +595,23 @@ pmix_gds_shmem3_fetch(
     );
     // Modex data are stored in PMIX_REMOTE.
     pmix_hash_table_t *const remote_ht = mdrfu ? job->smmodex->hashtab : NULL;
-    // The indices in that table were minted by the server against the
-    // segment's own keyindex, not against this process's global one, so
-    // reads of it have to translate through the same table. See the
-    // comment on pmix_gds_shmem3_shared_modex_data_t.keyindex. The job
-    // segment's tables still use the global keyindex, which the
-    // client-side fixup has already aligned with the server's.
+    // Every index in these tables was minted by the server against the
+    // keyindex living in the same segment, never against this process's
+    // global one, so a read has to translate through that same table.
+    // See the comment on pmix_gds_shmem3_shared_modex_data_t.keyindex.
+    //
+    // Both segments carry their own. Nothing on this path consults
+    // pmix_globals.keyindex, which is what lets a read of shared data be
+    // independent of a structure the progress thread rewrites.
     pmix_keyindex_t *const remote_kidx = mdrfu ? job->smmodex->keyindex : NULL;
+    pmix_keyindex_t *const local_kidx = job->smdata->keyindex;
 
     // If the rank is wildcard and key is NULL, then the caller is asking for a
     // complete copy of the job-level info for this nspace, so retrieve it.
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
         // Fetch all values from the hash table tied to rank=wildcard.
         rc = pmix_hash_fetch(
-            local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, NULL
+            local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, local_kidx
         );
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
@@ -650,7 +653,7 @@ pmix_gds_shmem3_fetch(
             pmix_list_t rkvs;
             PMIX_CONSTRUCT(&rkvs, pmix_list_t);
             rc = pmix_hash_fetch(
-                local_ht, rank, NULL, NULL, 0, &rkvs, NULL
+                local_ht, rank, NULL, NULL, 0, &rkvs, local_kidx
             );
             if (PMIX_UNLIKELY(PMIX_ERR_NOMEM == rc)) {
                 PMIX_LIST_DESTRUCT(&rkvs);
@@ -772,7 +775,7 @@ doover:
     if (PMIX_RANK_UNDEF == proc->rank && ht) {
         for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
             rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs,
-                                 (ht == remote_ht) ? remote_kidx : NULL);
+                                 (ht == remote_ht) ? remote_kidx : local_kidx);
             if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
@@ -802,7 +805,7 @@ doover:
             // And need to add all job info just in case
             // that was passed via a different GDS component.
             rc = pmix_hash_fetch(
-                local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, NULL
+                local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, local_kidx
             );
         }
         else {
@@ -813,7 +816,7 @@ doover:
         if (ht) {
             rc = pmix_hash_fetch(
                 ht, proc->rank, key, qualifiers, nqual, kvs,
-                (ht == remote_ht) ? remote_kidx : NULL
+                (ht == remote_ht) ? remote_kidx : local_kidx
             );
         }
         else {
@@ -870,7 +873,8 @@ doover:
                 }
             } else if (PMIX_REMOTE == scope) {
                 /* check the local scope */
-                rc = pmix_hash_fetch(local_ht, proc->rank, key, qualifiers, nqual, kvs, NULL);
+                rc = pmix_hash_fetch(local_ht, proc->rank, key, qualifiers, nqual, kvs,
+                                     local_kidx);
                 if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
                     while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
                         PMIX_RELEASE(kv);

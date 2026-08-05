@@ -899,6 +899,16 @@ job_smdata_construct(
         goto out;
     }
     pmix_hash_table_init(job->smdata->local_hashtab, htsize);
+    // The indices in that table are meaningless without the translation,
+    // and the translation cannot be the process-global one because
+    // clients do not share our numbering. Build it in the segment so it
+    // travels with the data it describes.
+    job->smdata->keyindex = PMIX_NEW(pmix_keyindex_t, tma);
+    if (!job->smdata->keyindex) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
 
     pmix_gds_shmem3_vout_smdata(job);
 out:
@@ -914,6 +924,9 @@ out:
         }
         if (job->smdata->local_hashtab) {
             PMIX_RELEASE(job->smdata->local_hashtab);
+        }
+        if (job->smdata->keyindex) {
+            PMIX_RELEASE(job->smdata->keyindex);
         }
     }
     return rc;
@@ -1475,6 +1488,30 @@ prepare_shmem3_stores_for_local_job_data(
     // Add a little extra to compensate for the value storage requirements. Here
     // we add an additional storage space for each entry.
     seg_size += htsize * kvsize;
+    // The keyindex that translates the indices in that table lives in
+    // this segment too, and it is not small: the object, its pointer
+    // array, its own string -> entry hash table (which the keyindex
+    // constructor sizes for the whole reserved dictionary), and one
+    // entry per distinct key with two copies of the key string plus the
+    // copy the lookup table makes. Bound the entry count by htsize -
+    // the real number of distinct keys is normally far smaller.
+    //
+    // Leaving this out is not a slow leak, it is a hard failure: the
+    // TMA behind the segment is a bump allocator with nowhere to grow,
+    // so the server aborts partway through register_job_info() and
+    // every client sits waiting for job data that will never arrive.
+    seg_size += sizeof(pmix_keyindex_t);
+    seg_size += sizeof(pmix_pointer_array_t);
+    seg_size += sizeof(pmix_hash_table_t);
+    // Both children are constructed at a fixed capacity whatever the
+    // key count turns out to be, so count them at that size rather than
+    // scaling them with it.
+    seg_size += PMIX_KEYINDEX_LOOKUP_SIZE
+                * pmix_hash_table_sizeof_hash_element();
+    seg_size += PMIX_KEYINDEX_TABLE_SIZE * sizeof(void *);
+    seg_size += htsize * (sizeof(pmix_regattr_input_t)
+                          + sizeof(void *)
+                          + 3 * (PMIX_MAX_KEYLEN + 1));
     // Finally add the data size contribution, plus a little extra.
     seg_size += pji->packed_size;
     // Include some extra fluff that empirically seems reasonable.
@@ -2969,6 +3006,11 @@ get_modex_sizing_data(const pmix_buffer_t *buff)
                               + 3 * (PMIX_MAX_KEYLEN + 1));
     segment_size += get_actual_hashtab_capacity(nkvals)
                     * pmix_hash_table_sizeof_hash_element();
+    // The keyindex's two children are constructed at fixed capacities
+    // whatever nkvals says, so they have to be counted at those sizes.
+    segment_size += PMIX_KEYINDEX_LOOKUP_SIZE
+                    * pmix_hash_table_sizeof_hash_element();
+    segment_size += PMIX_KEYINDEX_TABLE_SIZE * sizeof(void *);
     // Include some extra fluff that empirically seems reasonable.
     segment_size *= fluff;
     // Adjust (increase or decrease) segment size by the given parameter size.

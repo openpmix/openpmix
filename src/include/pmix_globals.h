@@ -821,6 +821,19 @@ typedef struct {
     /** Stores the next ID. */
     uint32_t next_id;
 } pmix_keyindex_t;
+
+/** Initial capacities a pmix_keyindex_t is constructed with.
+ *
+ * Named rather than left as literals in keyindex_construct() because a
+ * keyindex can be built inside a gds/shmem3 segment, and that segment's
+ * size has to be estimated *before* anything is allocated in it. The
+ * allocator behind it is a bump allocator with nowhere to grow, so an
+ * estimate that disagrees with these does not run slow, it aborts the
+ * server. Keep the estimate in gds_shmem3.c in step with these. */
+#define PMIX_KEYINDEX_TABLE_SIZE  1024
+#define PMIX_KEYINDEX_TABLE_BLOCK  128
+/* sized past the reserved dictionary so the common case never rehashes */
+#define PMIX_KEYINDEX_LOOKUP_SIZE 2048
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_keyindex_t);
 
 #define PMIX_KEYINDEX_STATIC_INIT                 \
