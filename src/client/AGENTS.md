@@ -350,11 +350,21 @@ gone — see [openpmix#4059][i4059].)
   packs a status for both. If you add a command whose reply carries a
   status, give it a callback that unpacks one; `unpack_ack()` in
   `pmix_client.c` is the shared helper.
-- **`pmix_output_verbose()` is a function call, so its arguments are
-  always evaluated** — including when the channel is off, and including
-  when the call sits above the parameter checks that were supposed to
-  make them safe. `PMIx_Put` printed `key` and dereferenced `val->type`
-  before validating either. Put the verbose line *after* the checks.
+- **Put a `pmix_output_verbose()` call *after* the parameter checks, not
+  above them.** It is a macro (`src/util/pmix_output.h`) that tests the
+  stream's level before evaluating anything, so its arguments cost
+  nothing while the channel is off — but they *are* evaluated once it is
+  on. A verbose line sitting above the validation therefore turns a
+  clean `PMIX_ERR_BAD_PARAM` into a segfault for anyone who raises the
+  verbosity, which is the worst possible shape: the crash appears only
+  while being debugged. `PMIx_Put` printed `key` and dereferenced
+  `val->type` before validating either.
+
+  Note this cuts the other way too: because the arguments are skipped
+  when the channel is off, there is no reason to hand-guard a verbose
+  call with a verbosity test of your own. That is what the macro does,
+  and `pmix_output_get_verbosity()` is a real function call, so the
+  "optimization" is slower than the thing it replaces.
 - **`PMIX_BFROPS_PACK` rejects a NULL source before the type-specific
   packer sees it.** `pmix_bfrops_base_pack()` fails `NULL == src && 0 <
   num_vals` with `PMIX_ERR_BAD_PARAM`, so a packer that handles NULL

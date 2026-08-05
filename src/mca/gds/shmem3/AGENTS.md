@@ -13,9 +13,11 @@
 `shmem3` is the **shared-memory** `gds` datastore. Instead of keeping job
 data in per-process hash tables like [`hash`](../hash/AGENTS.md), the local
 PMIx server builds the job's data structures *inside an mmap'd segment* and
-lets every local client map that same segment **read-only** at the same
-virtual address — so N local clients share one physical copy of the job
-data and pay no per-client unpack/store cost. Read the framework
+lets every local client map that same segment at the same virtual address —
+so N local clients share one physical copy of the job data and pay no
+per-client unpack/store cost. Clients are meant to treat what they map as
+**read-only**, though nothing currently enforces that; see "Clients are
+read-only" under the invariants below for what that costs. Read the framework
 [`AGENTS.md`](../AGENTS.md) first; this file covers only what is specific to
 `shmem3`.
 
@@ -230,8 +232,32 @@ attached the job segment.
   process's stack address into the object; shared objects must be built
   through the TMA (`PMIX_NEW(type, tma)`) so their addresses live in the
   segment. This is the single easiest way to corrupt the store.
-- **Clients are read-only.** The server writes; clients map read-only and
-  must not mutate the segment. Do not add a client-side write path.
+- **Clients are read-only — as a discipline, not as something the
+  mapping enforces.** The server writes and clients must not. But
+  `segment_attach()` (`src/util/pmix_shmem.c`) is one code path shared by
+  create *and* attach, and it maps `PROT_READ | PROT_WRITE`, `MAP_SHARED`,
+  over an `O_RDWR` fd; the `mprotect(..., PROT_READ)` that would enforce
+  the rule is present but `#if 0`'d in `gds_shmem3.c`. So a client-side
+  write is not refused, it just corrupts the store for everybody.
+
+  Two already exist, and both need closing before the `mprotect` can come
+  back:
+  - `pmix_shmem_segment_attach()` does `inc_ref_count()` on the segment
+    header, so attaching is itself a write.
+  - **every client lookup writes into the segment.**
+    `pmix_hash_table_get_value_uint32()` (and the `uint64`/`ptr`
+    variants) stores `ht->ht_type_methods` unconditionally, *after* a
+    type check that is deliberately skipped for TMA tables — and the
+    tables clients read (`job->smdata->local_hashtab`,
+    `job->smmodex->hashtab`, the segment keyindex's `lookup`) are all
+    TMA-allocated inside a segment. Each client therefore stamps its own
+    process's address of a `static const` into shared memory. With ASLR
+    those differ per process, and the server dispatches through
+    `ht_type_methods->hash_elt` in `pmix_hash_grow()`.
+
+  Do not add a *third* client-side write path, and do not read the
+  `#if 0`'d `mprotect` as dead code — it is the enforcement this rule is
+  waiting on.
 - **The fixed-address contract is load-bearing.** In-segment pointers are
   only valid because client and server map at the *same* virtual address.
   Anything that changes how the address is chosen, packed, or reattached
@@ -252,16 +278,29 @@ attached the job segment.
   arriving in that window is `PMIX_ERR_NOT_FOUND`, not a fault. Note that
   `pmix_gds_shmem3_get_session_tma()` forming `&NULL->tma` is not a fault
   either — it just hands the bad pointer onward.
-- **This component does not store modex data, by design and for now.**
-  `PMIX_GDS_STORE_MODEX` always resolves the *local* module, and a server
-  assigns itself `"hash"` at init, so `server_store_modex()` and its
-  callback are never reached — the whole modex half of this component
-  (the modex segment, `server_mark_modex_complete`,
-  `client_recv_modex_complete`) is written but dormant. Enabling it is a
-  separate effort; do not assume the code below `store_modex` has been
-  exercised.
-- **When that effort happens, `server_store_modex_cb()` must return
-  `PMIX_SUCCESS` for a proc blob it consumed.** Its natural exit is the
+- **The modex half of this component is live as of `9d9842e5`, and is the
+  newest thing here.** It was written and then dormant for a long time,
+  because the three modex macros took a peer and ignored it, resolving
+  `pmix_globals.mypeer` — which both the server and the client pin to
+  `"hash"`. They now resolve from the peer they are given, so a fence
+  spanning local clients on `shmem3` stores through `shmem3`, into the
+  modex segment. Anything you read claiming this code is unreached
+  predates that commit.
+
+  It follows that this is the least-exercised code in the component, and
+  one consequence is already known: **a second fence writes into a
+  segment clients have already mapped.** `server_store_modex_cb()`
+  creates the segment only when `PMIX_GDS_SHMEM3_ATTACHED` is unset, and
+  neither that flag nor `READY_FOR_USE` is ever cleared (the only
+  `clearall_status()` call is in `job_destruct()`). So on fence #2 the
+  server stores straight into `job->smmodex->hashtab` while every local
+  client holds it mapped and `READY_FOR_USE` asserted — and the store
+  can grow the hash table and reallocate the segment keyindex's pointer
+  array underneath a reader. The client is not even told: the attach
+  path short-circuits on `ATTACHED`. Publishing each modex as its own
+  segment, advertised only once complete, is the fix.
+- **`server_store_modex_cb()` must return `PMIX_SUCCESS` for a proc blob
+  it consumed.** Its natural exit is the
   unpack end-of-buffer code, and the base envelope walker reads any
   non-success return as a failure of the whole server contribution: it
   stops, and then converts the same code to success for its own caller.
