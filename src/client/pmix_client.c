@@ -1559,10 +1559,11 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
     }
 
     /* Screen both inputs before anything looks at them. The verbose call
-     * below prints the key and dereferences the value's type, and its
-     * arguments are evaluated whether or not the channel is enabled - so a
-     * NULL for either used to crash here, ahead of the check that was meant
-     * to catch it. _putfn() then dereferences the value again. */
+     * below prints the key and dereferences the value's type. That macro
+     * skips its arguments while the channel is off, so this used to crash
+     * only once someone raised the verbosity - ahead of the check that was
+     * meant to catch it, and precisely while being debugged. _putfn() then
+     * dereferences the value again. */
     if (PMIX_UNLIKELY(NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key) || NULL == val)) {
         return PMIX_ERR_BAD_PARAM;
     }

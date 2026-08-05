@@ -402,10 +402,14 @@ golden rule does not usually bite here.
   blob it consumed.** See [`base/AGENTS.md`](base/AGENTS.md) — returning
   the unpack end-of-buffer code instead silently drops every proc after
   the first in each server's contribution, and still reports success to
-  the caller. Note that only `hash` currently serves this path:
-  `PMIX_GDS_STORE_MODEX` always resolves the local module, and a server
-  assigns itself `"hash"`, so modex storage is excluded from `shmem3` by
-  design pending separate work.
+  the caller. Both shipped components serve this path: the three modex
+  macros resolve from the peer they are given, so a fence spanning local
+  clients on `shmem3` stores through `shmem3`. (Before `9d9842e5` they
+  ignored that peer and resolved `pmix_globals.mypeer`, which both the
+  server and the client pin to `"hash"` — which is why `shmem3`'s modex
+  half, though written, had never executed. If you are reading older
+  notes that say modex storage is excluded from `shmem3`, that is what
+  they are describing.)
 
 ## Testing
 
