@@ -65,9 +65,22 @@ my $QUIET = 0;
 # Set to true if we just want to see the help message
 my $HELP = 0;
 
+# Set by --manual-list to name a file listing the files to process
+# instead of asking git which ones changed.
+my $my_manual_list = "";
+
+# Files whose copyright block we must not touch: embedded copies of
+# external code, and this script itself (its own defaults are copyright
+# lines as far as the regexps below are concerned). Each entry is a
+# regexp matched against the repository-relative file name.
+my @protected = qw(
+    contrib\/update-my-copyright.pl
+    config\/oac\/
+);
+
 # Defaults
 my $my_search_name = "Nanook";
-my $my_formal_name = "Nanook Consulting.  All rights reserved.";
+my $my_formal_name = "Nanook Consulting  All rights reserved.";
 
 # Override the defaults if some values are set in the environment
 $my_search_name = $ENV{PMIX_COPYRIGHT_SEARCH_NAME}
