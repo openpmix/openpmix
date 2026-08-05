@@ -184,7 +184,7 @@ The core mechanism is a **bump allocator over shared memory**, the
   guidance message — size segments generously.
 - **Client (reader).** The server packs, per segment, a *seg blob*
   containing the backing-file path, size, and the **header address** it was
-  mapped at, plus the server's key-index blob. These are bundled into
+  mapped at. These are bundled into
   `job->conni` and copied into the `register_job_info` reply. The client's
   `store_job_info` → `client_connect_to_shmem3_from_buffi` unpacks each seg
   blob and calls `shmem3_attach`, mapping the segment **at the same fixed
@@ -377,13 +377,19 @@ asserts they are still readable after the second.
   Returning it would store the first proc of each contribution and
   discard the rest, reporting success. See
   [`../base/AGENTS.md`](../base/AGENTS.md).
-- **The key-index blob is server-supplied, not trusted.**
-  `unpack_srv_kindx_info()` fills a table sized by a `TAB_SIZE` element in
-  the same payload, indexed by a counter the payload advances with its own
-  end-of-element markers. Bound the writes and take the size once; the
-  merge that follows also has to be handed the number of elements actually
-  filled, since a half-initialized slot has a NULL name and the merge
-  compares names with `strcmp`.
+- **There is no key-index blob on the wire any more, and do not bring
+  one back.** The server used to ship its whole dictionary in the
+  job-info reply so the client could renumber its own to match
+  (`pack_server_keyindex_info()` / `unpack_srv_kindx_info()` /
+  `client_update_global_keyindex_if_necessary()`, about 600 lines). It
+  existed because the indices in a segment were minted against the
+  *server's global* keyindex, which the client had no reason to agree
+  with. Each segment carrying its own index removes the requirement
+  rather than satisfying it, so all of that is gone - along with a
+  parser that had to be told how many elements it had actually filled,
+  and a merge that destructed and rebuilt `pmix_globals.keyindex`
+  wholesale. If you find yourself needing to reconcile two dictionaries
+  across a process boundary, put the index next to the data instead.
 
 ## Testing
 

@@ -295,8 +295,6 @@ typedef struct {
     pmix_gds_shmem3_shared_modex_data_t *smmodex;
     /** Packed connection information to this segment. */
     pmix_buffer_t *conni;
-    /** Flag indicating whether client-side keyindex updates have been done. */
-    bool client_keyindex_fixup_done;
 } pmix_gds_shmem3_job_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem3_job_t);
 
