@@ -2570,11 +2570,20 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
     memset(apps, 0, len(pyapps) * sizeof(pmix_app_t))
     n = 0
     for p in pyapps:
-        pycmd = str(p['cmd']).encode('ascii')
+        # str() of a bytes object is its repr, "b'/bin/true'" - which is
+        # not a command anything can run. Take bytes as they come, and
+        # encode only a str
+        mycmd = p['cmd']
+        if isinstance(mycmd, str):
+            pycmd = mycmd.encode('ascii')
+        else:
+            pycmd = mycmd
         try:
             apps[n].cmd = strdup(pycmd)
         except:
             return PMIX_ERR_TYPE_MISMATCH
+        if NULL == apps[n].cmd:
+            return PMIX_ERR_NOMEM
 
         try:
             if p['argv'] is not None and 0 < len(p['argv']):
@@ -2611,11 +2620,15 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
             pass
 
         try:
-            pycwd = str(p['cwd']).encode('ascii')
+            mycwd = p['cwd']
+            if isinstance(mycwd, str):
+                pycwd = mycwd.encode('ascii')
+            else:
+                pycwd = mycwd
             apps[n].cwd = strdup(pycwd)
         except:
-            pycwd = os.getcwd()
-            pycwd = pycwd.encode('ascii')
+            # no cwd given - the process should start where we are
+            pycwd = os.getcwd().encode('ascii')
             apps[n].cwd = strdup(pycwd)
 
         apps[n].info = NULL

@@ -43,23 +43,22 @@ def getVersion():
             print("Error: pmix_version.h does not exist at path: ",vers_path)
             sys.exit(1)
 
+    fields = {}
     with open(vers_path) as verFile:
-        lines = verFile.readlines()
-        for l in lines:
-            if 'MAJOR' in l:
-                major = l.split()[2]
-                major = major[:-1]
-            elif 'MINOR' in l:
-                minor = l.split()[2]
-                minor = minor[:-1]
-            elif 'RELEASE' in l:
-                release = l.split()[2]
-                release = release[:-1]
-        vers = [major, minor, release]
-        version = ".".join(vers)
-        return version
+        for l in verFile.readlines():
+            for name in ('MAJOR', 'MINOR', 'RELEASE'):
+                if ('PMIX_VERSION_' + name) in l:
+                    # the value carries an L suffix - "#define
+                    # PMIX_VERSION_MAJOR 7L"
+                    fields[name] = l.split()[2].rstrip('Ll')
+    missing = [n for n in ('MAJOR', 'MINOR', 'RELEASE') if n not in fields]
+    if missing:
+        print("Error: %s does not define PMIX_VERSION_%s"
+              % (vers_path, ", PMIX_VERSION_".join(missing)))
+        sys.exit(1)
+    return ".".join(fields[n] for n in ('MAJOR', 'MINOR', 'RELEASE'))
 
-def package_setup(package_name, package_vers):
+def package_setup():
     '''
     Package setup routine.
     '''
@@ -106,7 +105,9 @@ def package_setup(package_name, package_vers):
                 'Programming Language :: Python :: 3.9',
                 'Programming Language :: Python :: 3.10',
                 'Programming Language :: Python :: 3.11',
-                'Programming Language :: Python :: 3.12'],
+                'Programming Language :: Python :: 3.12',
+                'Programming Language :: Python :: 3.13',
+                'Programming Language :: Python :: 3.14'],
         keywords = ['PMI', 'PMIx', 'HPC', 'MPI', 'SHMEM' ],
         platforms = 'any',
         install_requires = ["cython"],
@@ -123,12 +124,10 @@ def main():
     '''
     The main entry point for this program.
     '''
-    package_name = 'pypmix'
-    package_vers = getVersion()
+    package_setup()
 
-    package_setup(package_name, package_vers)
-
-    return os.EX_OK
+    # os.EX_OK is not defined everywhere Python runs
+    return 0
 
 
 if __name__ == '__main__':

@@ -412,10 +412,14 @@ def harvest_constants(options, src, constants, definitions):
         if not constsrc:
             constants.write("# " + src + "\n")
             constsrc = True
-        # pretty-print the numeric constants
+        # pretty-print the numeric constants.  Pad against nconstlen, which
+        # is what was measured for them - padding against strconstlen left
+        # them unaligned, and unpadded altogether ("PMIX_A= 0") in a header
+        # with no string constants at all
+        width = max(strconstlen, nconstlen)
         for num in nconsts:
             constants.write(num[0])
-            for i in range (4 + strconstlen - len(num[0])):
+            for i in range (4 + width - len(num[0])):
                 constants.write(" ")
             constants.write("= " + num[1] + "\n")
         # add some space
