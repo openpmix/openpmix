@@ -923,7 +923,7 @@ PMIX_EXPORT void pmix_log_local_op(int sd, short args, void *cbdata_);
 
 static inline bool pmix_check_node_info(const char *key)
 {
-    char *keys[] = {
+    static const char *const keys[] = {
         PMIX_HOSTNAME,                  PMIX_HOSTNAME_ALIASES,
         PMIX_NODEID,                    PMIX_AVAIL_PHYS_MEMORY,
         PMIX_LOCAL_PEERS,               PMIX_LOCAL_PROCS,
@@ -942,7 +942,12 @@ static inline bool pmix_check_node_info(const char *key)
     };
     size_t n;
 
-    if (NULL == key) {
+    /* Every key below is a reserved ("pmix"-prefixed) attribute, so an
+     * application key - which is what a PMIx_Get is usually asking for
+     * - can be turned away on a four-byte compare instead of walking
+     * the table. This runs twice per keyed get: once in
+     * process_request() and again in the gds fetch. */
+    if (NULL == key || !PMIx_Check_reserved_key(key)) {
         return false;
     }
     for (n = 0; NULL != keys[n]; n++) {
@@ -955,14 +960,19 @@ static inline bool pmix_check_node_info(const char *key)
 
 static inline bool pmix_check_app_info(const char *key)
 {
-    char *keys[] = {
+    static const char *const keys[] = {
         PMIX_APP_SIZE,  PMIX_APPLDR,       PMIX_APP_ARGV,      PMIX_WDIR,
         PMIX_PSET_NAME, PMIX_PSET_MEMBERS, PMIX_APP_MAP_TYPE,  PMIX_APP_MAP_REGEX,
         NULL
     };
     size_t n;
 
-    if (NULL == key) {
+    /* Every key below is a reserved ("pmix"-prefixed) attribute, so an
+     * application key - which is what a PMIx_Get is usually asking for
+     * - can be turned away on a four-byte compare instead of walking
+     * the table. This runs twice per keyed get: once in
+     * process_request() and again in the gds fetch. */
+    if (NULL == key || !PMIx_Check_reserved_key(key)) {
         return false;
     }
     for (n = 0; NULL != keys[n]; n++) {
@@ -975,7 +985,7 @@ static inline bool pmix_check_app_info(const char *key)
 
 static inline bool pmix_check_session_info(const char *key)
 {
-    char *keys[] = {
+    static const char *const keys[] = {
         PMIX_SESSION_ID, PMIX_CLUSTER_ID,   PMIX_UNIV_SIZE,
         PMIX_TMPDIR,     PMIX_TDIR_RMCLEAN, PMIX_HOSTNAME_KEEP_FQDN,
         PMIX_RM_NAME,    PMIX_RM_VERSION,
@@ -983,7 +993,12 @@ static inline bool pmix_check_session_info(const char *key)
     };
     size_t n;
 
-    if (NULL == key) {
+    /* Every key below is a reserved ("pmix"-prefixed) attribute, so an
+     * application key - which is what a PMIx_Get is usually asking for
+     * - can be turned away on a four-byte compare instead of walking
+     * the table. This runs twice per keyed get: once in
+     * process_request() and again in the gds fetch. */
+    if (NULL == key || !PMIx_Check_reserved_key(key)) {
         return false;
     }
     for (n = 0; NULL != keys[n]; n++) {
@@ -996,14 +1011,19 @@ static inline bool pmix_check_session_info(const char *key)
 
 static inline bool pmix_check_special_key(const char *key)
 {
-    char *keys[] = {
+    static const char *const keys[] = {
         PMIX_GROUP_CONTEXT_ID,
         PMIX_GROUP_LOCAL_CID,
         NULL
     };
     size_t n;
 
-    if (NULL == key) {
+    /* Every key below is a reserved ("pmix"-prefixed) attribute, so an
+     * application key - which is what a PMIx_Get is usually asking for
+     * - can be turned away on a four-byte compare instead of walking
+     * the table. This runs twice per keyed get: once in
+     * process_request() and again in the gds fetch. */
+    if (NULL == key || !PMIx_Check_reserved_key(key)) {
         return false;
     }
     for (n = 0; NULL != keys[n]; n++) {
