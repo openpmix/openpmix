@@ -442,8 +442,10 @@ store_proc_data(
             __func__, PMIX_NAME_PRINT(&pmix_globals.myid),
             job->nspace_id, rank, kv->key
         );
-        // Store it in the hash_table.
-        rc = pmix_hash_store(ht, rank, kv, NULL, 0, NULL);
+        // Store it in the hash_table, numbering the key against the
+        // segment's own index rather than this process's global one -
+        // the clients that read this table do not share our numbering.
+        rc = pmix_hash_store(ht, rank, kv, NULL, 0, job->smdata->keyindex);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -654,7 +656,7 @@ pmix_gds_shmem3_store_local_job_data_in_shmem3(
                 break;
             }
             rc = pmix_hash_store(
-                local_ht, PMIX_RANK_WILDCARD, kv, NULL, 0, NULL
+                local_ht, PMIX_RANK_WILDCARD, kv, NULL, 0, job->smdata->keyindex
             );
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_RELEASE(kv);

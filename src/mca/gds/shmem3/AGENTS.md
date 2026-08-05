@@ -192,6 +192,53 @@ The core mechanism is a **bump allocator over shared memory**, the
   address matches, every in-segment pointer resolves correctly with no
   fix-up. Clients never install the TMA function pointers — they only read.
 
+### Every segment carries its own key index
+
+The hash tables in a segment store keys as **integers**, and those
+integers are minted per process in order of first encounter — so no two
+processes can be assumed to agree on one. A segment is read by processes
+that did not write it, which makes the process-global
+`pmix_globals.keyindex` the wrong translation table for anything in
+there.
+
+So each segment carries its own: `job->smdata->keyindex` and
+`job->smmodex->keyindex`, both allocated in the segment through its TMA.
+The server mints against them when it stores, and
+`pmix_gds_shmem3_fetch()` translates through them when it reads — that
+path never consults `pmix_globals.keyindex`, which is what lets a read
+of shared data be independent of a structure the progress thread
+rewrites on every put.
+
+**Clients must reach these only through the non-registering lookups**
+(`pmix_hash_find_key()` and `pmix_hash_lookup_key()` with a known
+index). Registering would mean a reader writing into the segment.
+
+**And whatever you put in a segment has to be in that segment's size
+estimate before it is put there.** A keyindex is not small — it
+constructs a 2048-slot lookup table and a 1024-slot pointer array
+regardless of how many keys it ends up holding, plus three copies of
+every key string. Adding one to the job segment without extending the
+estimate in `prepare_shmem3_stores_for_local_job_data()` overran the
+bump allocator, so the server aborted partway through
+`register_job_info()` and every client waited forever for job data that
+was never coming — which presents as a hang, not a crash, and not on
+the process that actually failed. The fixed capacities are named
+(`PMIX_KEYINDEX_LOOKUP_SIZE`, `PMIX_KEYINDEX_TABLE_SIZE` in
+`src/include/pmix_globals.h`) precisely so the constructor and the two
+estimates cannot drift apart; use them rather than repeating the
+numbers.
+
+The job segment did not always have one: its indices were minted against
+the global keyindex on the server and the client was handed the server's
+copy to merge into its own
+(`client_update_global_keyindex_if_necessary()`). That worked, but it
+made reads of shared data depend on a process-global structure — and the
+merge itself does a `PMIX_DESTRUCT` and rebuild of it. **That machinery
+is now redundant** and should be removed once someone confirms nothing
+else leans on the client and server agreeing about global indices;
+until then it runs harmlessly at `store_job_info` time, before an
+application has threads.
+
 ### The fixed-address attach failure and GDS fallback
 
 A client may be unable to map the segment at the server's chosen address —

@@ -209,6 +209,25 @@ typedef struct {
     pmix_list_t *appinfo;
     /** Stores static local (node) job data. */
     pmix_hash_table_t *local_hashtab;
+    /** Translates the key indices stored in local_hashtab above.
+     *
+     * Same reasoning as the modex segment's keyindex, and for the same
+     * reason it has to live here rather than being the process-global
+     * one: the indices in that table cross a process boundary, written
+     * by the server and read by every local client, and no two
+     * processes can be assumed to number a key alike.
+     *
+     * This used to be the global keyindex on both sides, kept in step
+     * by shipping the server's copy in the job-info reply and merging
+     * it into the client's. That worked, but it made every read of
+     * shared data depend on a process-global structure the progress
+     * thread mutates on every put - growing its pointer array and
+     * rehashing its lookup table - which is exactly what a reader
+     * cannot tolerate.
+     *
+     * Clients map the segment read-only, so they must reach this only
+     * through pmix_hash_find_key() and friends, which never register. */
+    pmix_keyindex_t *keyindex;
 } pmix_gds_shmem3_shared_job_data_t;
 
 typedef struct {
