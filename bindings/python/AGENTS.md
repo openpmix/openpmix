@@ -86,18 +86,32 @@ from there waits on the event loop it is standing in; the library now
 reports that rather than deadlocking (see §4b). So a handler that wants
 to register or delete a namespace *must* pass a callback.
 
-Five of that family currently take one: `register_nspace`,
-`deregister_nspace`, `register_client`, `deregister_client`, and
-`notify_event`. The rest — `register_resources`,
-`deregister_resources`, `setup_local_support`, `deliver_inventory`,
-`iof_deliver`, `iof_flow_control`, `session_control`,
-`deregister_event_handler`, `iof_deregister`, `iof_push` — are still
-blocking-only, and adding a callback to one follows the same pattern:
-build the caddy with `pypmix_nb_setup`, register the callback, pass
-`pypmix_client_op_cbfunc` and the caddy, and reclaim on a failed
-return. Anything the library holds until completion (an info array, for
-instance — `register_nspace` and `notify_event` both retain theirs) has
-to live in the caddy rather than be freed at return.
+All fifteen of that family now take one: `register_nspace`,
+`deregister_nspace`, `register_client`, `deregister_client`,
+`notify_event`, `register_resources`, `deregister_resources`,
+`setup_local_support`, `deliver_inventory`, `iof_deliver`,
+`iof_flow_control`, `session_control`, `deregister_event_handler`,
+`iof_deregister` and `iof_push`.
+
+Fourteen take the op-style callback, `cbfunc(status, cbdata)`.
+`session_control` is the exception: it reports results, so it takes the
+info-style `cbfunc(status, results, cbdata)` and routes through
+`pypmix_client_info_cbfunc`.
+
+Adding a callback to a further one follows the same pattern: build the
+caddy with `pypmix_nb_setup`, register the callback, pass the right
+trampoline and the caddy, and reclaim on a failed return. **Anything the
+library holds until completion has to live in the caddy** rather than be
+freed at return — an info array (`register_nspace` and `notify_event`
+both retain theirs), a proc array, or a byte object. `pypmix_nb_add_bo`
+exists for the last of those: the IOF payloads cannot be the stack copy
+the blocking forms use.
+
+Which of those a given API retains is not guessable — read it. The
+server calls are split roughly evenly: `register_client` and
+`deregister_client` copy the proc and keep nothing, `setup_local_support`
+strdup's the namespace but holds the info array, and `IOF_deliver` holds
+the source, the payload *and* the directives.
 
 Three more are blocking by construction and cannot simply grow a
 callback: `dmodex_request`, `setup_application` and `collect_inventory`

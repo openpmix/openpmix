@@ -1499,30 +1499,77 @@ class TestOptionalCallbackForms(unittest.TestCase):
     """
 
     def setUp(self):
-        self.server = pmix.PMIxServer()
+        # a tool inherits every client and server method, so one object
+        # reaches all fifteen - iof_deregister and iof_push are tool-role
+        self.server = pmix.PMIxTool()
+
+    #: name -> a call of that method with 'cb' in the callback position
+    def _calls(self, cb):
+        proc = {'nspace': "testns", 'rank': 0}
+        payload = {'bytes': b"hello", 'size': 5}
+        return {
+            'register_nspace':
+                lambda: self.server.register_nspace("testns", 1, [], cb),
+            'deregister_nspace':
+                lambda: self.server.deregister_nspace("testns", cb),
+            'register_client':
+                lambda: self.server.register_client(proc, 0, 0, cb),
+            'deregister_client':
+                lambda: self.server.deregister_client(proc, cb),
+            'notify_event':
+                lambda: self.server.notify_event(pmix.PMIX_ERR_JOB_TERMINATED,
+                                                 proc, pmix.PMIX_RANGE_LOCAL,
+                                                 [], cb),
+            'register_resources':
+                lambda: self.server.register_resources([], cb),
+            'deregister_resources':
+                lambda: self.server.deregister_resources([], cb),
+            'setup_local_support':
+                lambda: self.server.setup_local_support("testns", [], cb),
+            'deliver_inventory':
+                lambda: self.server.deliver_inventory([], [], cb),
+            'iof_deliver':
+                lambda: self.server.iof_deliver(proc,
+                                                pmix.PMIX_FWD_STDOUT_CHANNEL,
+                                                payload, [], cb),
+            'iof_flow_control':
+                lambda: self.server.iof_flow_control(proc,
+                                                     pmix.PMIX_FWD_STDIN_CHANNEL,
+                                                     True, [], cb),
+            'session_control':
+                lambda: self.server.session_control(1, [], cb),
+            'deregister_event_handler':
+                lambda: self.server.deregister_event_handler(0, cb),
+            'iof_deregister':
+                lambda: self.server.iof_deregister(0, [], cb),
+            'iof_push':
+                lambda: self.server.iof_push([proc], payload, [], cb),
+        }
+
+    def test_every_optional_callback_api_is_covered(self):
+        # if a new one is bound, add it here - the whole point of this
+        # class is that the list does not drift
+        self.assertEqual(len(self._calls(lambda *a: None)), 15)
 
     def test_non_callable_callback_is_refused(self):
         # a callback that cannot be called would strand the operation's
         # caddy for the life of the process, so it is checked before
         # anything is allocated
-        proc = {'nspace': "testns", 'rank': 0}
         for bad in (42, "not callable", [], {}):
-            self.assertEqual(
-                self.server.register_nspace("testns", 1, [], bad),
-                pmix.PMIX_ERR_BAD_PARAM, "register_nspace took %r" % (bad,))
-            self.assertEqual(
-                self.server.deregister_nspace("testns", bad),
-                pmix.PMIX_ERR_BAD_PARAM, "deregister_nspace took %r" % (bad,))
-            self.assertEqual(
-                self.server.register_client(proc, 0, 0, bad),
-                pmix.PMIX_ERR_BAD_PARAM, "register_client took %r" % (bad,))
-            self.assertEqual(
-                self.server.deregister_client(proc, bad),
-                pmix.PMIX_ERR_BAD_PARAM, "deregister_client took %r" % (bad,))
-            self.assertEqual(
-                self.server.notify_event(pmix.PMIX_ERR_JOB_TERMINATED, proc,
-                                         pmix.PMIX_RANGE_LOCAL, [], bad),
-                pmix.PMIX_ERR_BAD_PARAM, "notify_event took %r" % (bad,))
+            for name, call in self._calls(bad).items():
+                self.assertEqual(call(), pmix.PMIX_ERR_BAD_PARAM,
+                                 "%s accepted %r as a callback" % (name, bad))
+
+    def test_accepting_a_callable_does_not_raise(self):
+        # before init the library refuses every one of these, but the
+        # binding must marshal the arguments and answer a status rather
+        # than raise - a shape error here is a TypeError, not an rc
+        def cb(*args):
+            pass
+
+        for name, call in self._calls(cb).items():
+            rc = call()
+            self.assertIsInstance(rc, int, "%s did not answer a status" % name)
 
     def test_blocking_form_is_still_the_default(self):
         # omitting the callback must keep the behavior every existing
