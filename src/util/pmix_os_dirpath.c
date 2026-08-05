@@ -23,6 +23,7 @@
 #include "pmix_config.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <string.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
@@ -51,6 +52,76 @@
 
 static const char path_sep[] = PMIX_PATH_SEP;
 
+/**
+ * The named path already exists: make sure it really is a directory,
+ * and give it (at least) the requested mode bits.
+ *
+ * The inspection and the mode change are both done through a
+ * descriptor, so the object that gets inspected is the object that
+ * gets modified. A path-based stat()/chmod() pair is the classic
+ * TOCTOU race: the path can be swapped between the two calls,
+ * redirecting the chmod onto an object that was never inspected. The
+ * paths that reach this code are the rendezvous and session
+ * directories, whose names are fully predictable and whose default
+ * root (/tmp) is world-writable, so the race is not theoretical.
+ *
+ * O_DIRECTORY: a plain file sitting at the requested name is an error
+ * rather than something we chmod and report as usable.
+ *
+ * O_NOFOLLOW: refuse a symlink planted at the final component.
+ * Following one would point every subsequent operation at the link's
+ * *target* -- which an attacker gets to choose, which we would chmod,
+ * and which pmix_os_dirpath_destroy() would later recurse into.
+ *
+ * Note that we deliberately do not ask whether the directory is
+ * writable. Whether the caller can put files here is settled by the
+ * caller actually creating one; testing for permission first and
+ * acting on the answer afterwards is itself a time-of-check /
+ * time-of-use race, and one that access()/faccessat() cannot avoid
+ * no matter which uid they resolve against.
+ *
+ * @retval PMIX_SUCCESS       It is a directory; mode is now adequate.
+ * @retval PMIX_ERR_NOT_FOUND It vanished under us. No error has been
+ *                            displayed; the caller is expected to
+ *                            retry or report.
+ * @retval PMIX_ERR_SILENT    Refused; an error has been displayed.
+ */
+static int dirpath_ensure_mode(const char *path, const mode_t mode)
+{
+    struct stat buf;
+    int fd, ret;
+
+    fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (0 > fd) {
+        if (ENOENT == errno) {
+            return PMIX_ERR_NOT_FOUND;
+        }
+        /* ELOOP (symlink) and ENOTDIR (plain file) land here:
+         * something that is not a directory is occupying the name we
+         * were asked to create */
+        pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
+                       path, strerror(errno));
+        return PMIX_ERR_SILENT;
+    }
+
+    if (0 == fstat(fd, &buf) && mode != (mode & buf.st_mode)) {
+        // try to add the requested bits.
+        // Silently fail the chmod if it hits an error - we'll
+        // let us fail later when we try to actually create a
+        // file if we aren't allowed to do so. However, we have
+        // to capture the return to silence static code
+        // analyzer complaints
+        ret = fchmod(fd, buf.st_mode | mode);
+        if (0 != ret) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "PATH %s ALREADY EXISTS AND CHMOD FAILED: %s",
+                                path, strerror(errno));
+        }
+    }
+    close(fd);
+    return PMIX_SUCCESS;
+}
+
 int pmix_os_dirpath_create(const char *path, const mode_t mode)
 {
     char **parts, *tmp;
@@ -69,19 +140,18 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
 
     /* check the error */
     if (EEXIST == ret) {
-        // already exists - try to set the mode.
-        // Silently fail the chmod if it hits an error - we'll
-        // let us fail later when we try to actually create a
-        // file if we aren't allowed to do so. However, we have
-        // to capture the return to silence static code
-        // analyzer complaints
-        ret = chmod(path, mode);
-        if (0 != ret) {
-            pmix_output_verbose(2, pmix_globals.debug_output,
-                                "PATH %s ALREADY EXISTS AND CHMOD FAILED: %s",
-                                path, strerror(errno));
+        // already exists - make sure it really is a directory, and
+        // that it carries the requested mode
+        ret = dirpath_ensure_mode(path, mode);
+        if (PMIX_SUCCESS == ret) {
+            return PMIX_ERR_EXISTS;
         }
-        return PMIX_ERR_EXISTS;
+        if (PMIX_ERR_NOT_FOUND != ret) {
+            return ret;
+        }
+        /* it vanished between the mkdir and the open - fall through
+         * and build the tree, which will report any real error */
+        ret = ENOENT;
     }
     if (ENOENT != ret) {
         // cannot create it
@@ -133,13 +203,35 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
 
         /* Now that we have the name, try to create it */
         ret = mkdir(tmp, mode);
-        if (0 != ret && EEXIST != errno) {
+        if (0 == ret) {
+            continue;
+        }
+        if (EEXIST != errno) {
             // true error
             pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
                            tmp, strerror(errno));
             PMIx_Argv_free(parts);
             free(tmp);
             return PMIX_ERR_SILENT;
+        }
+        /* This component already exists. Intermediate components need
+         * only exist - we just have to be able to traverse them, and
+         * a traverse-only (e.g. 0711) directory is legitimate. The
+         * final component is the one the caller is going to use, so
+         * it has to really be a directory and carry the mode we were
+         * asked for */
+        if (i == (len - 1)) {
+            ret = dirpath_ensure_mode(tmp, mode);
+            if (PMIX_SUCCESS != ret) {
+                if (PMIX_ERR_NOT_FOUND == ret) {
+                    pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
+                                   tmp, strerror(ENOENT));
+                    ret = PMIX_ERR_SILENT;
+                }
+                PMIx_Argv_free(parts);
+                free(tmp);
+                return ret;
+            }
         }
     }
 
