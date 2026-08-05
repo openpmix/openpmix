@@ -16,6 +16,40 @@
 
 #include "gds_shmem3_utils.h"
 
+/**
+ * Find a job tracker and take a reference to it, for a caller that is
+ * not on the progress thread.
+ *
+ * The lock is held only across the search and the retain. What it
+ * protects is the list spine - del_nspace() can splice a tracker out at
+ * any moment - and the window between finding an entry and claiming it.
+ * After that the reference does the work: the tracker owns the mappings
+ * of its shared segments and cannot be destructed while anyone holds
+ * one, so the caller can read those segments with no lock at all.
+ */
+pmix_status_t
+pmix_gds_shmem3_acquire_job_tracker(
+    const pmix_nspace_t nspace,
+    pmix_gds_shmem3_job_t **job
+) {
+    pmix_status_t rc = PMIX_ERR_INVALID_NAMESPACE;
+    pmix_gds_shmem3_job_t *ti = NULL;
+    pmix_gds_shmem3_component_t *const component = &pmix_mca_gds_shmem3_component;
+
+    *job = NULL;
+    pmix_mutex_lock(&component->joblock);
+    PMIX_LIST_FOREACH (ti, &component->jobs, pmix_gds_shmem3_job_t) {
+        if (0 == strcmp(nspace, ti->nspace_id)) {
+            PMIX_RETAIN(ti);
+            *job = ti;
+            rc = PMIX_SUCCESS;
+            break;
+        }
+    }
+    pmix_mutex_unlock(&component->joblock);
+    return rc;
+}
+
 pmix_status_t
 pmix_gds_shmem3_get_job_tracker(
     const pmix_nspace_t nspace,
@@ -27,12 +61,18 @@ pmix_gds_shmem3_get_job_tracker(
     // Try to find the tracker for this job.
     pmix_gds_shmem3_job_t *ti = NULL, *ijob = NULL;
     pmix_gds_shmem3_component_t *const component = &pmix_mca_gds_shmem3_component;
+    /* This runs on the progress thread, which is the only writer, so the
+     * lock is not here to order it against del_nspace(). It is here to
+     * keep the spine still while a reader on another thread may be
+     * walking it - see the note on joblock. */
+    pmix_mutex_lock(&component->joblock);
     PMIX_LIST_FOREACH (ti, &component->jobs, pmix_gds_shmem3_job_t) {
         if (0 == strcmp(nspace, ti->nspace_id)) {
             ijob = ti;
             break;
         }
     }
+    pmix_mutex_unlock(&component->joblock);
     // If we didn't find the requested target and we aren't asked
     // to create a new one, then the request cannot be fulfilled.
     if (!ijob && !create) {
@@ -76,7 +116,9 @@ pmix_gds_shmem3_get_job_tracker(
         PMIX_RETAIN(inspace);
         ijob->nspace = inspace;
         // Add it to the list of jobs I'm supporting.
+        pmix_mutex_lock(&component->joblock);
         pmix_list_append(&component->jobs, &ijob->super);
+        pmix_mutex_unlock(&component->joblock);
     }
 out:
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
