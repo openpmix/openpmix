@@ -568,6 +568,15 @@ static void test_static_init_matches_constructor(void)
     report("static init: find_and_set finds bit 0",
            PMIX_SUCCESS == pmix_bitmap_find_and_set_first_unset_bit(&stat, &pos) && 0 == pos);
 
+    /* A STATIC_INIT object carries the BASE class, so PMIX_DESTRUCT on
+     * it runs pmix_object_t's (empty) chain and never the derived
+     * destructor - which means everything the calls above made it
+     * allocate would leak. That is the whole point of the invariant in
+     * src/class/AGENTS.md: STATIC_INIT gives a defined state, and a
+     * PMIX_CONSTRUCT is what makes an object a live instance of its own
+     * class. Here the object has been used without one, deliberately, so
+     * name its class before tearing it down. */
+    stat.super.obj_class = PMIX_CLASS(pmix_bitmap_t);
     PMIX_DESTRUCT(&stat);
     PMIX_DESTRUCT(&ctor);
 }
