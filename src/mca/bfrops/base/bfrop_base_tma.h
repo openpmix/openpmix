@@ -3176,7 +3176,13 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         break;
     }
     case PMIX_COORD: {
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_coord_t));
+        /* calloc, not malloc: fill_coord() below can fail partway, and
+         * the error path frees the WHOLE array - including elements it
+         * never reached. Those have to read as "nothing here" (a NULL
+         * ->coord) or coord_destruct() calls free() on whatever the
+         * allocator left behind. The matching arm in
+         * data_array_construct() memsets for the same reason. */
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_coord_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
