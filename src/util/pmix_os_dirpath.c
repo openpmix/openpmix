@@ -427,9 +427,19 @@ bool pmix_os_dirpath_is_empty(const char *path)
 {
     DIR *dp;
     struct dirent *ep;
+    int fd;
 
     if (NULL != path) { /* protect against error */
-        dp = opendir(path);
+        /* O_DIRECTORY | O_NOFOLLOW to match pmix_os_dirpath_destroy():
+         * the answer to this question is normally used to decide
+         * whether to remove the directory, so a symlink must not be
+         * able to answer on behalf of whatever it points at */
+        fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        if (0 > fd) {
+            return false;
+        }
+        /* fdopendir() takes ownership of fd; closedir() will close it */
+        dp = fdopendir(fd);
         if (NULL != dp) {
             while ((ep = readdir(dp))) {
                 if ((0 != strcmp(ep->d_name, ".")) && (0 != strcmp(ep->d_name, ".."))) {
@@ -440,6 +450,7 @@ bool pmix_os_dirpath_is_empty(const char *path)
             closedir(dp);
             return true;
         }
+        close(fd);
         return false;
     }
 

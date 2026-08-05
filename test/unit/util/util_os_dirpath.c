@@ -351,6 +351,29 @@ static void test_destroy_symlink_base(void)
     rmdir(victim);
 }
 
+static void test_is_empty_symlink(void)
+{
+    char target[512];
+    char link[512];
+
+    snprintf(target, sizeof(target), "%s/empty_target", tmpbase);
+    snprintf(link, sizeof(link), "%s/emptylink", tmpbase);
+    mkdir(target, S_IRWXU);
+    if (0 != symlink(target, link)) {
+        report("is_empty_symlink: SKIPPED (symlink unavailable)", 1);
+        rmdir(target);
+        return;
+    }
+
+    /* the target is empty, but a symlink must not answer on its
+     * behalf: callers use this to decide whether to remove the path */
+    report("is_empty_symlink: symlink reported not empty",
+           !pmix_os_dirpath_is_empty(link));
+
+    unlink(link);
+    rmdir(target);
+}
+
 static void test_destroy_nonrecursive_with_subdir(void)
 {
     char base[512];
@@ -456,6 +479,7 @@ int main(int argc, char **argv)
     test_create_on_symlink();
     test_destroy_does_not_follow_symlink();
     test_destroy_symlink_base();
+    test_is_empty_symlink();
     test_destroy_nonrecursive_with_subdir();
     test_destroy_callback_veto_in_subdir();
 
