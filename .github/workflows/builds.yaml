@@ -12,12 +12,11 @@ jobs:
       matrix:
         path: ['non-vpath', 'vpath']
         sphinx: ['no-sphinx', 'sphinx']
-        # The test/ tree is only built when symbol visibility is
-        # disabled (see test/Makefile.am: those tests reach for internal
-        # symbols that PMIX_EXPORT would otherwise hide), so a build
-        # that leaves visibility at its default never compiles or runs
-        # any of test/unit.  Cover both: 'hidden' is what users get,
-        # 'visible' is what exercises the unit tests.
+        # 'hidden' is what users get; 'visible' is --disable-visibility.
+        # test/ used to be built ONLY in the latter, so a default build
+        # never compiled test/unit at all -- that gate is gone (see
+        # test/Makefile.am) and both now run the suite. Keep both: the
+        # export rules are what the visible build actually checks.
         visibility: ['hidden', 'visible']
         exclude:
           # visibility governs the C build and the docs axis does not
@@ -83,8 +82,7 @@ jobs:
       matrix:
         path: ['non-vpath', 'vpath']
         sphinx: ['no-sphinx', 'sphinx']
-        # see the note on the macos job: only a visibility-disabled
-        # build compiles the test/ tree at all
+        # see the note on the macos job
         visibility: ['hidden', 'visible']
         exclude:
           # visibility governs the C build and the docs axis does not
@@ -130,6 +128,55 @@ jobs:
         cd ..
         make install
         make uninstall
+
+  sanitizer:
+    # AddressSanitizer over the unit suite.
+    #
+    # This exists because the tree could not be sanitizer-built at all
+    # until recently: two -Werror failures that only appear at -O1 (the
+    # level a sanitizer build uses) stood in the way, so nobody could
+    # run one, so nothing kept it buildable. The first two runs after
+    # they were fixed found a read off an empty list's sentinel and a
+    # free of an uninitialized pointer - both of which had been surviving
+    # on luck. Without a job here, -O1 rots again and the next person
+    # pays the same bisection cost.
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends software-properties-common libhwloc-dev libevent-dev
+    - name: Git clone OpenPMIx
+      uses: actions/checkout@v6
+      with:
+            submodules: recursive
+    - name: Build and run the unit suite under AddressSanitizer
+      env:
+        # allocator_may_return_null: several cases deliberately request
+        #   an impossible allocation to exercise the failure path. ASan
+        #   aborts on that by default; these tests want the NULL that
+        #   the real allocator would return.
+        # detect_leaks: OFF, deliberately, and not because leaks do not
+        #   matter. A handful of cases allocate through a STATIC_INIT
+        #   object, whose destructor by design does not free what the
+        #   object acquired, so they leak by construction. Turning leak
+        #   detection on means cleaning those up first; that is worth
+        #   doing and is not what this job is for. Memory *errors* -
+        #   overflows, use-after-free, uninitialized reads - are caught
+        #   either way, and those are what have been biting.
+        ASAN_OPTIONS: allocator_may_return_null=1:detect_leaks=0
+      run: |
+        ./autogen.pl
+        ./configure --prefix=${PWD}/install --enable-devel-check \
+            CFLAGS="-fsanitize=address -g -O1" \
+            LDFLAGS="-fsanitize=address"
+        make -j
+        # test/unit only. The server-driven run_*.pl cases under test/
+        # bring up a real PMIx server in the scheduler role, which is a
+        # node-wide singleton and does not belong in a job whose point
+        # is memory checking; test/unit is where the library is driven
+        # directly and where the value is.
+        make -C test/unit check
 
   distcheck:
     runs-on: ubuntu-latest
