@@ -17,18 +17,27 @@ check_PROGRAMS = util_hash util_name_fns \
     util_show_help util_timings util_context_fns \
     util_basename util_string_copy util_argv util_path \
     util_environ util_alfg util_printf util_os_dirpath \
-    util_net util_if util_parse_options util_os_path
+    util_net util_if util_parse_options util_os_path \
+    hash_perf
 
 TESTS = util_hash util_name_fns \
     util_output util_error util_cmd_line \
     util_show_help util_timings util_context_fns \
     util_basename util_string_copy util_argv util_path \
     util_environ util_alfg util_printf util_os_dirpath \
-    util_net util_if util_parse_options util_os_path
+    util_net util_if util_parse_options util_os_path \
+    hash_perf
 
 util_hash_SOURCES = util_hash.c
 util_hash_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_hash_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+# Datastore micro-benchmark. Asserts correctness only and prints
+# timings; see the header comment in hash_perf.c.
+hash_perf_SOURCES = hash_perf.c
+hash_perf_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+hash_perf_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 util_name_fns_SOURCES = util_name_fns.c
@@ -132,4 +141,5 @@ clean-local:
 	    util_show_help util_timings util_context_fns \
 	    util_basename util_string_copy util_argv util_path \
 	    util_environ util_alfg util_printf util_os_dirpath \
-	    util_net util_if util_parse_options util_os_path
+	    util_net util_if util_parse_options util_os_path \
+	    hash_perf
