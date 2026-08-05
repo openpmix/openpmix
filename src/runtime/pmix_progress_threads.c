@@ -34,6 +34,7 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_fd.h"
+#include "src/util/pmix_show_help.h"
 
 /* create a tracking object for progress threads */
 typedef struct {
@@ -91,6 +92,42 @@ static struct timeval long_timeout = {.tv_sec = 3600, .tv_usec = 0};
 static const char *shared_thread_name = "PMIX-wide async progress thread";
 static pmix_progress_tracker_t *shared_thread_tracker = NULL;
 
+/* Identity of the thread currently running the shared progress loop.
+ *
+ * Only that thread ever writes this, which is what makes reading it
+ * without a lock correct for the one question it is asked. A thread
+ * comparing itself against it either wrote the value itself - and so
+ * reads its own write, getting a true answer - or is some other thread,
+ * which correctly fails to match. A stale value can therefore never
+ * produce a false "yes", only a false "no", and a false "no" just leaves
+ * the caller with the behavior it had before this check existed.
+ *
+ * The sentinel follows the convention already used for pmix_thread_t in
+ * src/threads/thread.c.
+ */
+static pthread_t shared_loop_thread = (pthread_t) -1;
+
+bool pmix_progress_thread_is_current(void)
+{
+    pthread_t owner = shared_loop_thread;
+
+    if ((pthread_t) -1 == owner) {
+        /* nobody is in the loop */
+        return false;
+    }
+    return (0 != pthread_equal(owner, pthread_self()));
+}
+
+bool pmix_progress_thread_check_blocking(const char *api)
+{
+    if (!pmix_progress_thread_is_current()) {
+        return false;
+    }
+    pmix_show_help("help-pmix-runtime.txt", "blocking-call-from-progress-thread",
+                   true, (NULL == api) ? "a blocking PMIx API" : api);
+    return true;
+}
+
 /*
  * If this event is fired, just restart it so that this event base
  * continues to have something to block on.
@@ -110,9 +147,22 @@ static void *progress_engine(pmix_object_t *obj)
 {
     pmix_thread_t *t = (pmix_thread_t *) obj;
     pmix_progress_tracker_t *trk = (pmix_progress_tracker_t *) t->t_arg;
+    bool shared = (NULL != trk->name && 0 == strcmp(trk->name, shared_thread_name));
+
+    /* record who we are, so a blocking PMIx API called from inside one of
+     * the callbacks this loop dispatches can tell that it is about to wait
+     * on itself. Only the shared loop is tracked - it is the one
+     * PMIX_THREADSHIFT posts to */
+    if (shared) {
+        shared_loop_thread = pthread_self();
+    }
 
     while (trk->ev_active) {
         pmix_event_loop(trk->ev_base, PMIX_EVLOOP_ONCE);
+    }
+
+    if (shared) {
+        shared_loop_thread = (pthread_t) -1;
     }
 
     return PMIX_THREAD_CANCELLED;
@@ -120,10 +170,19 @@ static void *progress_engine(pmix_object_t *obj)
 
 void PMIx_Progress(void)
 {
+    pthread_t save;
+
     if (NULL == shared_thread_tracker) {
         return;
     }
+    /* the host is driving progress itself, so for the duration of this
+     * pass *we* are the progress thread - see progress_engine above.
+     * Restore rather than clear: a host that calls this from inside a
+     * callback of its own would otherwise erase the real owner */
+    save = shared_loop_thread;
+    shared_loop_thread = pthread_self();
     pmix_event_loop(shared_thread_tracker->ev_base, PMIX_EVLOOP_ONCE);
+    shared_loop_thread = save;
 }
 
 static void stop_progress_engine(pmix_progress_tracker_t *trk)

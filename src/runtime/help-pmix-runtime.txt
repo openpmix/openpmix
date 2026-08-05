@@ -101,3 +101,28 @@ upcall module. This is not allowed - the server module can
 only be provided once and cannot be overwritten.
 
 Please correct your program and try again.
+#
+[blocking-call-from-progress-thread]
+A blocking call to %s was made from the PMIx progress thread.
+
+Blocking PMIx APIs hand their work to the progress thread and then wait
+for it to complete. Calling one FROM that thread cannot work: the work is
+posted to the very event loop the caller is standing in, and that loop
+cannot run it until the caller returns. The call would never return, and
+the process would hang.
+
+The usual way to reach this is to call a blocking PMIx API from inside a
+server module upcall, an event handler, or the completion callback of a
+non-blocking operation - all of which the library dispatches from the
+progress thread.
+
+Use the non-blocking form of the call instead. It hands the request to
+the library and returns immediately, and the library will execute your
+callback when the operation completes. If you need the operation to
+finish before you proceed, have your callback wake a different thread.
+
+The call has not been allowed to hang. An API that reports a status has
+returned PMIX_ERR_WOULD_BLOCK without performing the operation. An API
+that reports no status has instead completed the operation
+asynchronously, which is indistinguishable to the caller except that it
+did not wait.
