@@ -334,6 +334,75 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
     return PMIX_SUCCESS;
 }
 
+/* Answer a get on the caller's own thread, if the datastore holding the
+ * answer can be read from one.
+ *
+ * The thread-shift into the progress thread is the dominant cost of a
+ * get that hits locally - measured at roughly 4.9us against ~130ns of
+ * actual lookup underneath it - so for the module that can support it,
+ * skipping the round trip is most of the operation.
+ *
+ * "Can support it" is the module's own claim, via is_tsafe. Today only
+ * gds/shmem3 makes it, and only because its data lives in shared
+ * segments that are immutable once a client can see them, its fetch
+ * holds a reference to the tracker that owns those mappings, and a
+ * client no longer writes to them at all (the segment is mprotect'd
+ * read-only). None of that is true of gds/hash, whose tables the
+ * progress thread mutates in place, and which correctly says so.
+ *
+ * The gating is deliberately narrow. Anything that would make this more
+ * than a lookup - a cache refresh, a realm redirection, "give me
+ * everything for this proc" - goes the ordinary way. A miss also goes
+ * the ordinary way: this is a short-circuit, never a partial one, so
+ * every path that could need the server still reaches it unchanged.
+ *
+ * Returns true only when "cb" now holds the answer.
+ */
+static bool try_local_fetch(pmix_cb_t *cb, pmix_get_logic_t *lg)
+{
+    pmix_status_t rc;
+
+    if (!pmix_client_globals.fast_get) {
+        return false;
+    }
+    /* A NULL key is "everything this proc put", which is an aggregate
+     * across scopes rather than a lookup; the realm directives send the
+     * request somewhere other than the proc's own data, and resolving
+     * them takes further fetches and an info-array rebuild that belong
+     * on the progress thread. */
+    if (NULL == cb->key || lg->refresh_cache || lg->nodeinfo || lg->appinfo
+        || lg->sessioninfo || lg->nodedirective || lg->appdirective
+        || lg->sessiondirective || NULL != lg->hostname
+        || UINT32_MAX != lg->nodeid) {
+        return false;
+    }
+    if (pmix_client_globals.singleton
+        || !pmix_atomic_check_bool(&pmix_globals.connected)) {
+        return false;
+    }
+    /* Resolve the module every time rather than caching the answer:
+     * fallback_to_next_gds() re-points this peer at a different one at
+     * run time, and a stale answer here would be a read of a store this
+     * process has abandoned. */
+    PMIX_GDS_FETCH_IS_TSAFE(rc, pmix_client_globals.myserver);
+    if (PMIX_SUCCESS != rc) {
+        return false;
+    }
+
+    cb->proc = &lg->p;
+    cb->scope = lg->scope;
+    PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
+    if (PMIX_SUCCESS != rc) {
+        /* Nothing found, or something we do not handle here. Drop
+         * anything collected and let the ordinary path start clean. */
+        PMIX_LIST_DESTRUCT(&cb->kvs);
+        PMIX_CONSTRUCT(&cb->kvs, pmix_list_t);
+        return false;
+    }
+    cb->status = process_values(cb);
+    return (PMIX_SUCCESS == cb->status && NULL != cb->value);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
                                    const pmix_info_t info[], size_t ninfo, pmix_value_t **val)
 {
@@ -412,6 +481,14 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
     cb->cbfunc.valuefn = _value_cbfunc;
     cb->cbdata = cb;
 
+    /* If the store can be read from here, do that and skip the round
+     * trip entirely. On anything other than a hit this falls through
+     * untouched. */
+    if (try_local_fetch(cb, lg)) {
+        rc = cb->status;
+        goto answered;
+    }
+
     /* MUST threadshift here to avoid touching global
      * data while in the user's thread */
     PMIX_THREADSHIFT(cb, get_data);
@@ -419,6 +496,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
     /* wait for the data to be obtained */
     PMIX_WAIT_THREAD(&cb->lock);
     rc = cb->status;
+
+answered:
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         rc = PMIX_SUCCESS;
     }

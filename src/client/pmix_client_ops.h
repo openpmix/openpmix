@@ -25,6 +25,8 @@ typedef struct {
     pmix_peer_t *myserver;        // messaging support to/from my server
     bool singleton;               // no server
     bool local_iof;               // we constructed the server-side IOF lists
+    bool fast_get;                // answer a get on the caller's thread when
+                                  //   the datastore says that is safe
                                   // (pmix_server_globals.iof/iof_residuals)
     pmix_list_t pending_requests; // list of pmix_cb_t pending data requests
     pmix_pointer_array_t peers;   // array of pmix_peer_t cached for data ops

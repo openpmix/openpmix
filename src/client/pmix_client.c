@@ -209,6 +209,7 @@ error:
 pmix_client_globals_t pmix_client_globals = {
     .myserver = NULL,
     .singleton = false,
+    .fast_get = false,
     .local_iof = false,
     .pending_requests = PMIX_LIST_STATIC_INIT,
     .peers = PMIX_POINTER_ARRAY_STATIC_INIT,
