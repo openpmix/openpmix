@@ -307,6 +307,61 @@ static void test_blocking_call_from_progress_thread(void)
            PMIX_ERR_WOULD_BLOCK != PMIx_server_delete_process_set("ut-no-such-pset"));
 }
 
+/* ------------------------------------------------------------------
+ * The void deregistration APIs must report a dropped request
+ *
+ * PMIx_server_deregister_nspace and PMIx_server_deregister_client are
+ * the only two public APIs that take a completion callback and report no
+ * status.  The callback is therefore the ONLY way they can tell a host
+ * that its request will not be serviced - and a host that is given one
+ * and never hears back waits forever.
+ *
+ * Their !initialized guard has always invoked the callback.  The
+ * progress_thread_stopped guard immediately below it used to return
+ * silently, which is the case a host hits while shutting down.
+ * ------------------------------------------------------------------ */
+
+static pmix_status_t dropped_status = PMIX_SUCCESS;
+static int dropped_count = 0;
+
+static void dropped_cb(pmix_status_t status, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
+    dropped_status = status;
+    dropped_count++;
+}
+
+static void test_void_deregisters_report_a_dropped_request(void)
+{
+    pmix_nspace_t ns;
+    pmix_proc_t proc;
+
+    /* stop the shared progress thread, which is what makes the library
+     * refuse to accept new work - the same state a finalizing host is in */
+    PMIx_Progress_thread_stop(NULL, 0);
+
+    PMIX_LOAD_NSPACE(ns, "ut-dropped-nspace");
+    dropped_count = 0;
+    dropped_status = PMIX_SUCCESS;
+    PMIx_server_deregister_nspace(ns, dropped_cb, NULL);
+    report("dropped:deregister_nspace invoked the callback", 1 == dropped_count);
+    report("dropped:deregister_nspace reported NOT_AVAILABLE",
+           PMIX_ERR_NOT_AVAILABLE == dropped_status);
+
+    PMIX_LOAD_PROCID(&proc, "ut-dropped-nspace", 0);
+    dropped_count = 0;
+    dropped_status = PMIX_SUCCESS;
+    PMIx_server_deregister_client(&proc, dropped_cb, NULL);
+    report("dropped:deregister_client invoked the callback", 1 == dropped_count);
+    report("dropped:deregister_client reported NOT_AVAILABLE",
+           PMIX_ERR_NOT_AVAILABLE == dropped_status);
+
+    /* a NULL callback on the same path must simply return */
+    PMIx_server_deregister_nspace(ns, NULL, NULL);
+    PMIx_server_deregister_client(&proc, NULL, NULL);
+    report("dropped:a NULL callback is tolerated", true);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -327,6 +382,8 @@ int main(int argc, char **argv)
     test_pause_resume();
     test_unknown_name();
     test_blocking_call_from_progress_thread();
+    /* must come last - it stops the shared progress thread */
+    test_void_deregisters_report_a_dropped_request();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
