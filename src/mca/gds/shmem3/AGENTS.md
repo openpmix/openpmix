@@ -316,32 +316,27 @@ asserts they are still readable after the second.
   process's stack address into the object; shared objects must be built
   through the TMA (`PMIX_NEW(type, tma)`) so their addresses live in the
   segment. This is the single easiest way to corrupt the store.
-- **Clients are read-only — as a discipline, not as something the
-  mapping enforces.** The server writes and clients must not. But
-  `segment_attach()` (`src/util/pmix_shmem.c`) is one code path shared by
-  create *and* attach, and it maps `PROT_READ | PROT_WRITE`, `MAP_SHARED`,
-  over an `O_RDWR` fd; the `mprotect(..., PROT_READ)` that would enforce
-  the rule is present but `#if 0`'d in `gds_shmem3.c`. So a client-side
-  write is not refused, it just corrupts the store for everybody.
+- **Clients are read-only, and the MMU now enforces it.** The server
+  writes; a client drops write access to the data region as the last
+  step of attaching (`pmix_shmem_segment_protect_data()`), so a
+  client-side write is a SIGSEGV on the instruction that did it rather
+  than corruption some other process trips over later. Do not add a
+  client-side write path — it will not silently work.
 
-  Two already exist, and both need closing before the `mprotect` can come
-  back:
-  - `pmix_shmem_segment_attach()` does `inc_ref_count()` on the segment
-    header, so attaching is itself a write.
-  - **every client lookup writes into the segment.**
-    `pmix_hash_table_get_value_uint32()` (and the `uint64`/`ptr`
-    variants) stores `ht->ht_type_methods` unconditionally, *after* a
-    type check that is deliberately skipped for TMA tables — and the
-    tables clients read (`job->smdata->local_hashtab`,
-    `job->smmodex->hashtab`, the segment keyindex's `lookup`) are all
-    TMA-allocated inside a segment. Each client therefore stamps its own
-    process's address of a `static const` into shared memory. With ASLR
-    those differ per process, and the server dispatches through
-    `ht_type_methods->hash_elt` in `pmix_hash_grow()`.
+  The internal header stays writable on purpose: it holds the reference
+  count that attach and detach maintain, and a reader that could not
+  write it could not let go of the segment. That is why the protection
+  starts at the data region, which begins a page-aligned header into the
+  mapping — the geometry lives in `pmix_shmem.c` rather than at the call
+  site so nobody has to rederive it.
 
-  Do not add a *third* client-side write path, and do not read the
-  `#if 0`'d `mprotect` as dead code — it is the enforcement this rule is
-  waiting on.
+  Getting here took removing two writes a reader was making. A
+  hash-table lookup used to record the table's key type, stamping one
+  process's address of a `static const` into memory the others read; and
+  the job segment's indices used to be minted against the process-global
+  keyindex, which the client rewrote to match the server's. Both are
+  gone. If you enable this on a path that still writes, you will find
+  out immediately, which is the point.
 - **The fixed-address contract is load-bearing.** In-segment pointers are
   only valid because client and server map at the *same* virtual address.
   Anything that changes how the address is chosen, packed, or reattached

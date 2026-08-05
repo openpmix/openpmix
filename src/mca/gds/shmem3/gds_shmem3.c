@@ -1227,12 +1227,30 @@ shmem3_segment_attach_and_init(
     }
     // Now we can safely initialize our shared data structures.
     rc = init_client_side_sm_data(job, seginfo->smid);
-#if 0
-    // Protect memory: clients can only read from here.
-    mprotect(
-        shmem3->data_address, shmem3->size, PROT_READ
-    );
-#endif
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        return rc;
+    }
+    /* We are a reader of this segment, so take write access away and let
+     * the MMU keep us honest. Everything here is either read in place or
+     * copied out; the one thing that used to write was a hash-table
+     * lookup recording the table's key type, which no longer does so for
+     * a TMA table.
+     *
+     * This is worth more than the assertion it replaces. A stray write
+     * from a reader does not hurt the reader - it corrupts a structure
+     * some *other* process is walking, and surfaces there, later, as
+     * something that looks nothing like its cause. Protected, it is a
+     * SIGSEGV on the instruction responsible.
+     *
+     * A failure here is not fatal: the segment is perfectly readable
+     * either way, we simply do not get the guard. Say so and carry on
+     * rather than failing an attach that otherwise succeeded. */
+    if (PMIX_SUCCESS != pmix_shmem_segment_protect_data(shmem3)) {
+        PMIX_GDS_SHMEM3_VOUT(
+            "%s: could not drop write access to %s (continuing read-write)",
+            __func__, shmem3->backing_path
+        );
+    }
     return rc;
 }
 
