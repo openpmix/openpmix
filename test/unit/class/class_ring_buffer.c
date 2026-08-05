@@ -335,6 +335,15 @@ static void test_static_init_matches_constructor(void)
     report("static init: push works", NULL == pmix_ring_buffer_push(&stat, (void *) 0xc1));
     report("static init: pop returns it", (void *) 0xc1 == pmix_ring_buffer_pop(&stat));
 
+    /* A STATIC_INIT object carries the BASE class, so PMIX_DESTRUCT on
+     * it runs pmix_object_t's (empty) chain and never the derived
+     * destructor - which means everything the calls above made it
+     * allocate would leak. That is the whole point of the invariant in
+     * src/class/AGENTS.md: STATIC_INIT gives a defined state, and a
+     * PMIX_CONSTRUCT is what makes an object a live instance of its own
+     * class. Here the object has been used without one, deliberately, so
+     * name its class before tearing it down. */
+    stat.super.obj_class = PMIX_CLASS(pmix_ring_buffer_t);
     PMIX_DESTRUCT(&stat);
     PMIX_DESTRUCT(&ctor);
 }
