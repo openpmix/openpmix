@@ -1781,10 +1781,23 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_
     }
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        /* the request cannot be serviced, and this API reports no status,
+         * so the callback is the only way to say so - a host that was
+         * given one and never hears back waits forever. The initialized
+         * check above has always done this; this one did not */
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_NOT_AVAILABLE, cbdata);
+        }
         return;
     }
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_NOMEM, cbdata);
+        }
+        return;
+    }
     PMIX_LOAD_PROCID(&cd->proc, nspace, PMIX_RANK_WILDCARD);
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
@@ -2522,6 +2535,10 @@ PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc, pmix_op_
     }
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        /* see the matching comment in PMIx_server_deregister_nspace */
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_NOT_AVAILABLE, cbdata);
+        }
         return;
     }
 
