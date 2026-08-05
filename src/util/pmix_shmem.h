@@ -117,6 +117,31 @@ pmix_shmem_segment_chmod(
 );
 
 /**
+ * Drop write access to the segment's data region.
+ *
+ * The internal header is deliberately left writable: it carries the
+ * reference count that attach and detach maintain, so a reader that
+ * could not write it could not let go of the segment either.
+ *
+ * For a reader this turns "nothing here writes to the segment" from an
+ * assumption into something the MMU enforces - a stray write becomes a
+ * SIGSEGV at the instruction that did it, rather than corruption
+ * another process trips over later. It is one-way: there is no
+ * unprotect, because a segment a reader has protected is one it has no
+ * business writing again.
+ *
+ * The geometry lives here rather than at the call site on purpose. The
+ * data region does not start at the mapping's base - it begins a
+ * page-aligned header in - so its length is not the segment size, and
+ * getting that wrong either leaves the tail writable or walks off the
+ * end of the mapping.
+ */
+PMIX_EXPORT pmix_status_t
+pmix_shmem_segment_protect_data(
+    pmix_shmem_t *shmem
+);
+
+/**
  * Returns size padded to page boundary.
  */
 PMIX_EXPORT size_t

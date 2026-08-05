@@ -279,6 +279,28 @@ pmix_shmem_segment_chown(
 }
 
 pmix_status_t
+pmix_shmem_segment_protect_data(
+    pmix_shmem_t *shmem
+) {
+    if (NULL == shmem || !shmem->attached) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* The header page stays writable - inc/dec_ref_count() live there,
+     * and a reader still has to be able to detach. Everything from the
+     * data region on is what a reader has no business touching. */
+    const size_t header_offset = pmix_shmem_utils_pad_to_page(
+        sizeof(pmix_shmem_header_t)
+    );
+    if (shmem->size <= header_offset) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (0 != mprotect(shmem->data_address, shmem->size - header_offset, PROT_READ)) {
+        return PMIX_ERROR;
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t
 pmix_shmem_segment_chmod(
     pmix_shmem_t *shmem,
     mode_t mode
