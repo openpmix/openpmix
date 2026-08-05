@@ -84,6 +84,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -103,6 +104,7 @@
 #define EVUT_CODE_PROCLOCAL -9010
 #define EVUT_CODE_OBSERVER  -9011
 #define EVUT_CODE_OBSERVER2 -9012
+#define EVUT_CODE_BLOCKING  -9013
 
 static int npass = 0;
 static int nfail = 0;
@@ -1288,6 +1290,105 @@ static void test_observer(void)
 
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* A blocking API called from the progress thread                      */
+/* ------------------------------------------------------------------ */
+
+/* Event handlers are dispatched from the progress thread, so a handler
+ * is the natural place an application reaches a blocking PMIx API from
+ * the one thread that cannot service it. PMIx_Get hands its work to
+ * that thread and then PMIX_WAIT_THREADs for it, so from here the work
+ * is queued behind the caller and the caller never returns.
+ *
+ * Both entry points are checked. PMIx_Get always blocks; PMIx_Get_nb
+ * blocks only under PMIX_GET_REFRESH_CACHE, which round-trips to the
+ * server and waits on this thread before the get is ever posted. */
+
+static volatile int guard_fired = 0;
+static volatile pmix_status_t guard_get_status = PMIX_SUCCESS;
+static volatile pmix_status_t guard_refresh_status = PMIX_SUCCESS;
+
+static void guard_valuecb(pmix_status_t status, pmix_value_t *kv, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(status, kv, cbdata);
+}
+
+static void blocking_get_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
+                              const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                              pmix_info_t *results, size_t nresults,
+                              pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    pmix_value_t *val = NULL;
+    pmix_info_t refresh;
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo,
+                            results, nresults);
+
+    guard_get_status = PMIx_Get(&pmix_globals.myid, PMIX_JOB_SIZE, NULL, 0, &val);
+    if (NULL != val) {
+        PMIX_VALUE_RELEASE(val);
+    }
+
+    PMIX_INFO_LOAD(&refresh, PMIX_GET_REFRESH_CACHE, NULL, PMIX_BOOL);
+    guard_refresh_status = PMIx_Get_nb(&pmix_globals.myid, PMIX_JOB_SIZE, &refresh, 1,
+                                       guard_valuecb, NULL);
+    PMIX_INFO_DESTRUCT(&refresh);
+
+    guard_fired = 1;
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
+    }
+}
+
+static void alarm_died(int sig)
+{
+    PMIX_HIDE_UNUSED_PARAMS(sig);
+    /* Without the guard this is where we end up: the handler is parked
+     * in PMIX_WAIT_THREAD on the progress thread, waiting for an event
+     * that same thread has to run. Report it rather than hanging the
+     * whole suite - write(2) because we are in a signal handler. */
+    static const char msg[] = "  FAIL: blocking PMIx_Get from the progress thread hung\n";
+    ssize_t ignored = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    (void) ignored;
+    _exit(1);
+}
+
+static void test_blocking_from_progress_thread(void)
+{
+    pmix_status_t code = EVUT_CODE_BLOCKING;
+    size_t ref;
+    pmix_status_t rc;
+
+    guard_fired = 0;
+    guard_get_status = PMIX_SUCCESS;
+    guard_refresh_status = PMIX_SUCCESS;
+
+    ref = reghdlr(&code, 1, NULL, 0, blocking_get_hdlr);
+    if (SIZE_MAX == ref) {
+        report("progress-thread guard: handler registered", false);
+        return;
+    }
+
+    /* a regression here is a permanent hang, not a wrong answer */
+    signal(SIGALRM, alarm_died);
+    alarm(30);
+
+    rc = notify_nocache(code, NULL, 0);
+    report("progress-thread guard: notification accepted", PMIX_SUCCESS == rc);
+    wait_for_count(&guard_fired, 1);
+    grace();
+
+    alarm(0);
+    signal(SIGALRM, SIG_DFL);
+
+    report("progress-thread guard: handler ran", 1 == guard_fired);
+    report("progress-thread guard: blocking PMIx_Get refuses rather than hangs",
+           PMIX_ERR_WOULD_BLOCK == guard_get_status);
+    report("progress-thread guard: PMIx_Get_nb refresh refuses rather than hangs",
+           PMIX_ERR_WOULD_BLOCK == guard_refresh_status);
+
+    PMIx_Deregister_event_handler(ref, NULL, NULL);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1323,6 +1424,9 @@ int main(int argc, char **argv)
     test_host_regevents();
     test_enviro_handshake();
     test_first_affected();
+
+    /* a blocking API reached from the progress thread */
+    test_blocking_from_progress_thread();
 
     /* library-internal observers */
     test_observer();

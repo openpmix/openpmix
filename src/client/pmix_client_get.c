@@ -54,6 +54,7 @@
 #include "src/mca/gds/gds.h"
 #include "src/mca/pcompress/base/base.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
@@ -374,6 +375,20 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
         return rc;
     }
 
+    /* Everything from here on either blocks on the progress thread or
+     * hands the work to it and waits, so a caller already standing in
+     * that thread would be waiting for itself. Say so rather than hang.
+     *
+     * The check sits below process_request() on purpose: the requests it
+     * answers outright - PMIX_PROCID, PMIX_VERSION_NUMERIC, PMIX_RANK -
+     * touch nothing shared and never post an event, so they remain
+     * perfectly usable from an event handler. */
+    if (pmix_progress_thread_check_blocking("PMIx_Get")) {
+        PMIX_RELEASE(lg);
+        *val = NULL;
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* if we are to refresh the cache, go do that. Use the resolved target in
      * "lg", not the caller's "proc" - the latter is allowed to be NULL (a
      * globally-unique key in our own nspace), and process_request has already
@@ -500,8 +515,19 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     }
 
     /* if we are to refresh the cache, go do that - see the note in PMIx_Get
-     * on why this uses the resolved lg->p rather than the caller's proc */
+     * on why this uses the resolved lg->p rather than the caller's proc.
+     *
+     * refresh_cache() is synchronous even here: it round-trips to the
+     * server and PMIX_WAIT_THREADs on the reply, on this thread, before
+     * the get itself is ever posted. So the non-blocking entry point does
+     * block after all when this directive is given, and it needs the same
+     * guard PMIx_Get has. The rest of _nb genuinely does not block, which
+     * is why the check is scoped to this branch rather than hoisted. */
     if (lg->refresh_cache) {
+        if (pmix_progress_thread_check_blocking("PMIx_Get_nb with PMIX_GET_REFRESH_CACHE")) {
+            PMIX_RELEASE(lg);
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         rc = refresh_cache(&lg->p);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             // couldn't refresh for some reason
