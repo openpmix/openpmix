@@ -39,6 +39,7 @@
 #include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
+#include "src/util/pmix_hash.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_timings.h"
@@ -128,6 +129,20 @@ pmix_status_t pmix_register_params(void)
         "suppresses event cascades when processes abnormally terminate",
         PMIX_MCA_BASE_VAR_TYPE_INT,
         &pmix_event_caching_window);
+
+    /* Not a tuning knob for speed - the datastore bounds its scans by
+     * what a proc actually stored, not by this - but a memory one. Each
+     * proc gets an array this size in each of the internal, local and
+     * remote tables, so on a large job the default is carried nprocs
+     * times over, and for gds/shmem3 it feeds the shared segment
+     * estimate as well. Lower it for jobs whose procs publish few keys;
+     * raise it for procs that publish many, to avoid reallocs. */
+    (void) pmix_mca_base_var_register(
+        "pmix", "pmix", "hash", "proc_alloc",
+        "Number of key slots initially allocated per process in the datastore "
+        "(default: 128). Also the increment by which that allocation grows.",
+        PMIX_MCA_BASE_VAR_TYPE_INT,
+        &pmix_hash_proc_alloc);
 
     /****   CLIENT: VERBOSE OUTPUT PARAMS   ****/
     (void) pmix_mca_base_var_register("pmix", "pmix", "client", "get_verbose",
