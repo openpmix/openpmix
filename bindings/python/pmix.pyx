@@ -5004,555 +5004,771 @@ cdef class PMIxServer(PMIxClient):
         return rc
 
 cdef int clientconnected(pmix_proc_t *proc, void *server_object,
-                         pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'clientconnected' in keys:
-        if not proc:
-            return PMIX_ERR_BAD_PARAM
-        myproc = []
-        pmix_unload_procs(proc, 1, myproc)
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['clientconnected'](myproc[0], pypmix_op_cbfunc, cbdata_dict)
+                         pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'clientconnected' in keys:
+            if not proc:
+                return PMIX_ERR_BAD_PARAM
+            myproc = []
+            pmix_unload_procs(proc, 1, myproc)
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['clientconnected'](myproc[0], pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_FOUND
+        return PMIX_ERR_NOT_FOUND
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int clientconnected2(pmix_proc_t *proc, void *server_object,
                           pmix_info_t info[], size_t ninfo,
-                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'clientconnected2' in keys:
-        if not proc:
-            return PMIX_ERR_BAD_PARAM
-        args = {}
-        myproc = []
-        pmix_unload_procs(proc, 1, myproc)
-        args['proc'] = myproc[0]
-        ilist = []
-        if NULL != info:
-            rc = pmix_unload_info(info, ninfo, ilist)
-            if PMIX_SUCCESS != rc:
-                return rc
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['clientconnected2'](args, pypmix_op_cbfunc, cbdata_dict)
+                          pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'clientconnected2' in keys:
+            if not proc:
+                return PMIX_ERR_BAD_PARAM
+            args = {}
+            myproc = []
+            pmix_unload_procs(proc, 1, myproc)
+            args['proc'] = myproc[0]
+            ilist = []
+            if NULL != info:
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['clientconnected2'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_FOUND
+        return PMIX_ERR_NOT_FOUND
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int clientfinalized(pmix_proc_t *proc, void *server_object,
-                         pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'clientfinalized' in keys:
-        if not proc:
-            return PMIX_ERR_BAD_PARAM
-        myproc = []
-        pmix_unload_procs(proc, 1, myproc)
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['clientfinalized'](myproc[0], pypmix_op_cbfunc, cbdata_dict)
+                         pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'clientfinalized' in keys:
+            if not proc:
+                return PMIX_ERR_BAD_PARAM
+            myproc = []
+            pmix_unload_procs(proc, 1, myproc)
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['clientfinalized'](myproc[0], pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int clientaborted(const pmix_proc_t *proc, void *server_object,
                        int status, const char msg[],
                        pmix_proc_t procs[], size_t nprocs,
-                       pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'abort' in keys:
-        args = {}
-        myproc = []
-        myprocs = []
-        # convert the caller's name
-        pmix_unload_procs(proc, 1, myproc)
-        args['caller'] = myproc[0]
-        # record the status
-        args['status'] = status
-        # record the msg, if given
-        if NULL != msg:
-            args['msg'] = pmix_decode_str(msg)
-        # convert any provided array of procs to be aborted
-        if NULL != procs:
-            pmix_unload_procs(procs, nprocs, myprocs)
-            args['targets'] = myprocs
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        # upcall it
-        return pmixservermodule['abort'](args, pypmix_op_cbfunc, cbdata_dict)
+                       pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'abort' in keys:
+            args = {}
+            myproc = []
+            myprocs = []
+            # convert the caller's name
+            pmix_unload_procs(proc, 1, myproc)
+            args['caller'] = myproc[0]
+            # record the status
+            args['status'] = status
+            # record the msg, if given
+            if NULL != msg:
+                args['msg'] = pmix_decode_str(msg)
+            # convert any provided array of procs to be aborted
+            if NULL != procs:
+                pmix_unload_procs(procs, nprocs, myprocs)
+                args['targets'] = myprocs
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            # upcall it
+            return pmixservermodule['abort'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
                  const pmix_info_t info[], size_t ninfo,
                  char *data, size_t ndata,
-                 pmix_modex_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'fencenb' in keys:
-        args = {}
-        myprocs = []
-        blist = []
-        ilist = []
-        barray = None
+                 pmix_modex_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'fencenb' in keys:
+            args = {}
+            myprocs = []
+            blist = []
+            ilist = []
+            barray = None
 
-        if NULL == procs:
-            myprocs.append({'nspace': myname.get('nspace', ''), 'rank': PMIX_RANK_WILDCARD})
-        else:
-            pmix_unload_procs(procs, nprocs, myprocs)
-        args['procs'] = myprocs
-        if NULL != info:
-            rc = pmix_unload_info(info, ninfo, ilist)
-            if PMIX_SUCCESS != rc:
-                return rc
-            args['directives'] = ilist
-        if NULL != data:
-            pmix_unload_bytes(data, ndata, blist)
-            barray = bytearray(blist)
-            args['data'] = barray
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['fencenb'](args, pypmix_modex_cbfunc, cbdata_dict)
+            if NULL == procs:
+                myprocs.append({'nspace': myname.get('nspace', ''), 'rank': PMIX_RANK_WILDCARD})
+            else:
+                pmix_unload_procs(procs, nprocs, myprocs)
+            args['procs'] = myprocs
+            if NULL != info:
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
+                args['directives'] = ilist
+            if NULL != data:
+                pmix_unload_bytes(data, ndata, blist)
+                barray = bytearray(blist)
+                args['data'] = barray
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['fencenb'](args, pypmix_modex_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 
 
 cdef int directmodex(const pmix_proc_t *proc,
                      const pmix_info_t info[], size_t ninfo,
-                     pmix_modex_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'directmodex' in keys:
-        args = {}
-        myprocs = []
-        ilist = []
-        pmix_unload_procs(proc, 1, myprocs)
-        args['proc'] = myprocs[0]
-        if NULL != info:
-            pmix_unload_info(info, ninfo, ilist)
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['directmodex'](args, pypmix_modex_cbfunc, cbdata_dict)
+                     pmix_modex_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'directmodex' in keys:
+            args = {}
+            myprocs = []
+            ilist = []
+            pmix_unload_procs(proc, 1, myprocs)
+            args['proc'] = myprocs[0]
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['directmodex'](args, pypmix_modex_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int publish(const pmix_proc_t *proc,
                  const pmix_info_t info[], size_t ninfo,
-                 pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'publish' in keys:
-        args = {}
-        myprocs = []
-        ilist = []
-        pmix_unload_procs(proc, 1, myprocs)
-        args['proc'] = myprocs[0]
-        if NULL != info:
-            pmix_unload_info(info, ninfo, ilist)
-        args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['publish'](args, pypmix_op_cbfunc, cbdata_dict)
+                 pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'publish' in keys:
+            args = {}
+            myprocs = []
+            ilist = []
+            pmix_unload_procs(proc, 1, myprocs)
+            args['proc'] = myprocs[0]
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+            args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['publish'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int lookup(const pmix_proc_t *proc, char **keys,
                 const pmix_info_t info[], size_t ninfo,
-                pmix_lookup_cbfunc_t cbfunc, void *cbdata) with gil:
-    srvkeys = pmixservermodule.keys()
-    if 'lookup' in srvkeys:
-        args = {}
-        pdata   = []
-        myprocs = []
-        ilist = []
-        pykeys = []
-        pmix_unload_procs(proc, 1, myprocs)
-        args['proc'] = myprocs[0]
-        # decode, as the unpublish upcall and the query builder do - a
-        # handler must not have to guess whether its keys are str or bytes
-        if NULL != keys:
-            pmix_unload_argv(keys, pykeys)
-        args['keys'] = pykeys
-        if NULL != info:
-            pmix_unload_info(info, ninfo, ilist)
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['lookup'](args, pypmix_lookup_cbfunc, cbdata_dict)
+                pmix_lookup_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        srvkeys = pmixservermodule.keys()
+        if 'lookup' in srvkeys:
+            args = {}
+            pdata   = []
+            myprocs = []
+            ilist = []
+            pykeys = []
+            pmix_unload_procs(proc, 1, myprocs)
+            args['proc'] = myprocs[0]
+            # decode, as the unpublish upcall and the query builder do - a
+            # handler must not have to guess whether its keys are str or bytes
+            if NULL != keys:
+                pmix_unload_argv(keys, pykeys)
+            args['keys'] = pykeys
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['lookup'](args, pypmix_lookup_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int unpublish(const pmix_proc_t *proc, char **keys,
                    const pmix_info_t info[], size_t ninfo,
-                   pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    srvkeys = pmixservermodule.keys()
-    if 'unpublish' in srvkeys:
-        args = {}
-        myprocs = []
-        ilist = []
-        pykeys = []
-        pmix_unload_procs(proc, 1, myprocs)
-        args['proc'] = myprocs[0]
-        if NULL != keys:
-            pmix_unload_argv(keys, pykeys)
-            args['keys'] = pykeys
-        if NULL != info:
-            pmix_unload_info(info, ninfo, ilist)
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['unpublish'](args, pypmix_op_cbfunc, cbdata_dict)
+                   pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        srvkeys = pmixservermodule.keys()
+        if 'unpublish' in srvkeys:
+            args = {}
+            myprocs = []
+            ilist = []
+            pykeys = []
+            pmix_unload_procs(proc, 1, myprocs)
+            args['proc'] = myprocs[0]
+            if NULL != keys:
+                pmix_unload_argv(keys, pykeys)
+                args['keys'] = pykeys
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['unpublish'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int spawn(const pmix_proc_t *proc,
                const pmix_info_t job_info[], size_t ninfo,
                const pmix_app_t apps[], size_t napps,
-               pmix_spawn_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'spawn' in keys:
-        args = {}
-        myprocs = []
-        ilist = []
-        pyapps = []
-        pmix_unload_procs(proc, 1, myprocs)
-        args['proc'] = myprocs[0]
-        if NULL != job_info:
-            pmix_unload_info(job_info, ninfo, ilist)
-            args['jobinfo'] = ilist
-        pmix_unload_apps(apps, napps, pyapps)
-        args['apps'] = pyapps
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['spawn'](args, pypmix_spawn_cbfunc, cbdata_dict)
+               pmix_spawn_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'spawn' in keys:
+            args = {}
+            myprocs = []
+            ilist = []
+            pyapps = []
+            pmix_unload_procs(proc, 1, myprocs)
+            args['proc'] = myprocs[0]
+            if NULL != job_info:
+                pmix_unload_info(job_info, ninfo, ilist)
+                args['jobinfo'] = ilist
+            pmix_unload_apps(apps, napps, pyapps)
+            args['apps'] = pyapps
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['spawn'](args, pypmix_spawn_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 
 cdef int connect(const pmix_proc_t procs[], size_t nprocs,
                  const pmix_info_t info[], size_t ninfo,
-                 pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'connect' in keys:
-        args = {}
-        myprocs = []
-        ilist = []
-        if NULL != procs:
-            pmix_unload_procs(procs, nprocs, myprocs)
-            args['procs'] = myprocs
-        if NULL != info:
-            pmix_unload_info(info, ninfo, ilist)
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['connect'](args, pypmix_op_cbfunc, cbdata_dict)
+                 pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'connect' in keys:
+            args = {}
+            myprocs = []
+            ilist = []
+            if NULL != procs:
+                pmix_unload_procs(procs, nprocs, myprocs)
+                args['procs'] = myprocs
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['connect'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int disconnect(const pmix_proc_t procs[], size_t nprocs,
                     const pmix_info_t info[], size_t ninfo,
-                    pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'disconnect' in keys:
-        args = {}
-        myprocs = []
-        ilist = []
-        if NULL != procs:
-            pmix_unload_procs(procs, nprocs, myprocs)
-            args['procs'] = myprocs
-        if NULL != info:
-            pmix_unload_info(info, ninfo, ilist)
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['disconnect'](args, pypmix_op_cbfunc, cbdata_dict)
+                    pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'disconnect' in keys:
+            args = {}
+            myprocs = []
+            ilist = []
+            if NULL != procs:
+                pmix_unload_procs(procs, nprocs, myprocs)
+                args['procs'] = myprocs
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['disconnect'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int registerevents(pmix_status_t *codes, size_t ncodes,
                         const pmix_info_t info[], size_t ninfo,
-                        pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'registerevents' in keys:
-        args = {}
-        mycodes = []
-        ilist = []
-        if NULL != codes:
-            n = 0
-            while n < ncodes:
-                mycodes.append(codes[n])
-                n += 1
-            args['codes'] = mycodes
-        if NULL != info:
-            pmix_unload_info(info, ninfo, ilist)
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['registerevents'](args, pypmix_op_cbfunc, cbdata_dict)
+                        pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'registerevents' in keys:
+            args = {}
+            mycodes = []
+            ilist = []
+            if NULL != codes:
+                n = 0
+                while n < ncodes:
+                    mycodes.append(codes[n])
+                    n += 1
+                args['codes'] = mycodes
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['registerevents'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int deregisterevents(pmix_status_t *codes, size_t ncodes,
-                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'deregisterevents' in keys:
-        args = {}
-        mycodes = []
-        if NULL != codes:
-            n = 0
-            while n < ncodes:
-                mycodes.append(codes[n])
-                n += 1
-            args['codes'] = mycodes
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['deregisterevents'](args, pypmix_op_cbfunc, cbdata_dict)
+                          pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'deregisterevents' in keys:
+            args = {}
+            mycodes = []
+            if NULL != codes:
+                n = 0
+                while n < ncodes:
+                    mycodes.append(codes[n])
+                    n += 1
+                args['codes'] = mycodes
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['deregisterevents'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 
 cdef int notifyevent(pmix_status_t code,
                      const pmix_proc_t *source,
                      pmix_data_range_t drange,
                      pmix_info_t info[], size_t ninfo,
-                     pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'notifyevent' in keys:
-        args = {}
-        ilist = []
-        myproc = []
-        args['code'] = code
-        pmix_unload_procs(source, 1, myproc)
-        args['source'] = myproc[0]
-        args['range'] = drange
-        if NULL != info:
-            pmix_unload_info(info, ninfo, ilist)
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['notifyevent'](args, pypmix_op_cbfunc, cbdata_dict)
+                     pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'notifyevent' in keys:
+            args = {}
+            ilist = []
+            myproc = []
+            args['code'] = code
+            pmix_unload_procs(source, 1, myproc)
+            args['source'] = myproc[0]
+            args['range'] = drange
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['notifyevent'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 
 cdef int query(pmix_proc_t *source,
                pmix_query_t *queries, size_t nqueries,
                pmix_info_cbfunc_t cbfunc,
-               void *cbdata) with gil:
-    pyqueries = []
-    keys = pmixservermodule.keys()
-    if 'query' in keys:
-        args = {}
-        myproc = []
-        if NULL == queries or NULL == source:
-            return PMIX_ERR_BAD_PARAM
-        pmix_unload_queries(queries, nqueries, pyqueries)
-        args['queries'] = pyqueries
-        pmix_unload_procs(source, 1, myproc)
-        args['source'] = myproc[0]
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['query'](args, pypmix_info_cbfunc, cbdata_dict)
+               void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        pyqueries = []
+        keys = pmixservermodule.keys()
+        if 'query' in keys:
+            args = {}
+            myproc = []
+            if NULL == queries or NULL == source:
+                return PMIX_ERR_BAD_PARAM
+            pmix_unload_queries(queries, nqueries, pyqueries)
+            args['queries'] = pyqueries
+            pmix_unload_procs(source, 1, myproc)
+            args['source'] = myproc[0]
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['query'](args, pypmix_info_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef void toolconnected(pmix_info_t *info, size_t ninfo,
                         pmix_tool_connection_cbfunc_t cbfunc,
                         void *cbdata) noexcept with gil:
-    keys = pmixservermodule.keys()
-    ret_proc = {'nspace': "UNDEF", 'rank': PMIX_RANK_UNDEF}
-    if 'toolconnected' in keys:
-        args = {}
-        ilist = []
-        if NULL != info:
-            pmix_unload_info(info, ninfo, ilist)
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        pmixservermodule['toolconnected'](args, pypmix_tool_connection_cbfunc, cbdata_dict)
+    # as in the cdef int trampolines: libpmix calls this across a C frame,
+    # so report a handler that raises rather than letting the exception
+    # surface later as an unattributed "Exception ignored in"
+    try:
+        keys = pmixservermodule.keys()
+        if 'toolconnected' in keys:
+            args = {}
+            ilist = []
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            pmixservermodule['toolconnected'](args, pypmix_tool_connection_cbfunc, cbdata_dict)
+    except:
+        traceback.print_exc()
 
 cdef void log(const pmix_proc_t *client,
               const pmix_info_t data[], size_t ndata,
               const pmix_info_t directives[], size_t ndirs,
               pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
-    keys = pmixservermodule.keys()
-    if 'log' in keys:
-        args = {}
-        ilist = []
-        myproc = []
-        mydirs = []
-        if NULL == client:
-            return
-        pmix_unload_procs(client, 1, myproc)
-        args['source'] = myproc[0]
-        if NULL != data:
-            pmix_unload_info(data, ndata, ilist)
-            args['data'] = ilist
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, mydirs)
-            args['directives'] = mydirs
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        pmixservermodule['log'](args, pypmix_op_cbfunc, cbdata_dict)
+    # see toolconnected above
+    try:
+        keys = pmixservermodule.keys()
+        if 'log' in keys:
+            args = {}
+            ilist = []
+            myproc = []
+            mydirs = []
+            if NULL == client:
+                return
+            pmix_unload_procs(client, 1, myproc)
+            args['source'] = myproc[0]
+            if NULL != data:
+                pmix_unload_info(data, ndata, ilist)
+                args['data'] = ilist
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, mydirs)
+                args['directives'] = mydirs
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            pmixservermodule['log'](args, pypmix_op_cbfunc, cbdata_dict)
+    except:
+        traceback.print_exc()
 
 cdef int allocate(const pmix_proc_t *client,
                   pmix_alloc_directive_t action,
                   const pmix_info_t directives[], size_t ndirs,
-                  pmix_info_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'allocate' in keys:
-        args = {}
-        myproc = []
-        keyvals = []
-        if NULL == client:
-            return PMIX_ERR_BAD_PARAM
-        pmix_unload_procs(client, 1, myproc)
-        args['source'] = myproc[0]
-        args['action'] = action
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, keyvals)
-            args['directives'] = keyvals
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['allocate'](args, pypmix_info_cbfunc, cbdata_dict)
+                  pmix_info_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'allocate' in keys:
+            args = {}
+            myproc = []
+            keyvals = []
+            if NULL == client:
+                return PMIX_ERR_BAD_PARAM
+            pmix_unload_procs(client, 1, myproc)
+            args['source'] = myproc[0]
+            args['action'] = action
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, keyvals)
+                args['directives'] = keyvals
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['allocate'](args, pypmix_info_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 
 cdef int jobcontrol(const pmix_proc_t *requestor,
                     const pmix_proc_t targets[], size_t ntargets,
                     const pmix_info_t directives[], size_t ndirs,
-                    pmix_info_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'jobcontrol' in keys:
-        args = {}
-        myproc = []
-        mytargets = []
-        mydirs = []
-        if NULL != requestor:
-            pmix_unload_procs(requestor, 1, myproc)
-            args['source'] = myproc[0]
-        if NULL != targets:
-            pmix_unload_procs(targets, ntargets, mytargets)
-            args['targets'] = mytargets
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, mydirs)
-            args['directives'] = mydirs
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['jobcontrol'](args, pypmix_info_cbfunc, cbdata_dict)
+                    pmix_info_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'jobcontrol' in keys:
+            args = {}
+            myproc = []
+            mytargets = []
+            mydirs = []
+            if NULL != requestor:
+                pmix_unload_procs(requestor, 1, myproc)
+                args['source'] = myproc[0]
+            if NULL != targets:
+                pmix_unload_procs(targets, ntargets, mytargets)
+                args['targets'] = mytargets
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, mydirs)
+                args['directives'] = mydirs
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['jobcontrol'](args, pypmix_info_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int monitor(const pmix_proc_t *requestor,
                  const pmix_info_t *monitor, pmix_status_t error,
                  const pmix_info_t directives[], size_t ndirs,
-                 pmix_info_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'monitor' in keys:
-        args = {}
-        mymon = []
-        myproc = []
-        mydirs = []
-        blist = []
-        if NULL == monitor:
-            return PMIX_ERR_BAD_PARAM
-        if NULL != requestor:
-            pmix_unload_procs(requestor, 1, myproc)
-            args['source'] = myproc[0]
-        pmix_unload_info(monitor, 1, mymon)
-        args['monitor'] = mymon[0]
-        args['error'] = error
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, mydirs)
-            args['directives'] = mydirs
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['monitor'](args, pypmix_info_cbfunc, cbdata_dict)
+                 pmix_info_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'monitor' in keys:
+            args = {}
+            mymon = []
+            myproc = []
+            mydirs = []
+            blist = []
+            if NULL == monitor:
+                return PMIX_ERR_BAD_PARAM
+            if NULL != requestor:
+                pmix_unload_procs(requestor, 1, myproc)
+                args['source'] = myproc[0]
+            pmix_unload_info(monitor, 1, mymon)
+            args['monitor'] = mymon[0]
+            args['error'] = error
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, mydirs)
+                args['directives'] = mydirs
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['monitor'](args, pypmix_info_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int getcredential(const pmix_proc_t *proc,
                        const pmix_info_t directives[], size_t ndirs,
-                       pmix_credential_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'getcredential' in keys:
-        args = {}
-        myproc = []
-        mydirs = []
-        if NULL != proc:
-            pmix_unload_procs(proc, 1, myproc)
-            args['source'] = myproc[0]
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, mydirs)
-            args['directives'] = mydirs
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['getcredential'](args, pypmix_credential_cbfunc, cbdata_dict)
+                       pmix_credential_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'getcredential' in keys:
+            args = {}
+            myproc = []
+            mydirs = []
+            if NULL != proc:
+                pmix_unload_procs(proc, 1, myproc)
+                args['source'] = myproc[0]
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, mydirs)
+                args['directives'] = mydirs
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['getcredential'](args, pypmix_credential_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int validatecredential(const pmix_proc_t *proc,
                             const pmix_byte_object_t *cred,
                             const pmix_info_t directives[], size_t ndirs,
-                            pmix_validation_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'validatecredential' in keys:
-        args = {}
-        keyvals = {}
-        myproc = []
-        mydirs = []
-        blist = []
-        pycred = {}
-        if NULL != proc:
-            pmix_unload_procs(proc, 1, myproc)
-            args['source'] = myproc[0]
-        if NULL != cred:
-            pmix_unload_bytes(cred[0].bytes, cred[0].size, blist)
-            barray = bytearray(blist)
-            pycred['bytes'] = barray
-            pycred['size'] = cred[0].size
-            args['credential'] = pycred
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, mydirs)
-            args['directives'] = mydirs
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['validatecredential'](args, pypmix_validation_cbfunc, cbdata_dict)
+                            pmix_validation_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'validatecredential' in keys:
+            args = {}
+            keyvals = {}
+            myproc = []
+            mydirs = []
+            blist = []
+            pycred = {}
+            if NULL != proc:
+                pmix_unload_procs(proc, 1, myproc)
+                args['source'] = myproc[0]
+            if NULL != cred:
+                pmix_unload_bytes(cred[0].bytes, cred[0].size, blist)
+                barray = bytearray(blist)
+                pycred['bytes'] = barray
+                pycred['size'] = cred[0].size
+                args['credential'] = pycred
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, mydirs)
+                args['directives'] = mydirs
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['validatecredential'](args, pypmix_validation_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int iofpull(const pmix_proc_t procs[], size_t nprocs,
                  const pmix_info_t directives[], size_t ndirs,
                  pmix_iof_channel_t channels,
-                 pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'iofpull' in keys:
-        args = {}
-        keyvals = {}
-        myprocs = []
-        mydirs = []
-        pychannels = int(channels)
-        args['channels'] = channels
-        if NULL != procs:
-            pmix_unload_procs(procs, nprocs, myprocs)
-            args['sources'] = myprocs
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, mydirs)
-            args['directives'] = mydirs
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['iofpull'](args, pypmix_op_cbfunc, cbdata_dict)
+                 pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'iofpull' in keys:
+            args = {}
+            keyvals = {}
+            myprocs = []
+            mydirs = []
+            pychannels = int(channels)
+            args['channels'] = channels
+            if NULL != procs:
+                pmix_unload_procs(procs, nprocs, myprocs)
+                args['sources'] = myprocs
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, mydirs)
+                args['directives'] = mydirs
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['iofpull'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int pushstdin(const pmix_proc_t *source,
                    const pmix_proc_t targets[], size_t ntargets,
                    const pmix_info_t directives[], size_t ndirs,
                    const pmix_byte_object_t *bo,
-                   pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'pushstdin' in keys:
-        args = {}
-        keyvals = {}
-        myproc = []
-        mytargets = []
-        mydirs = []
-        blist = []
-        pyload = {}
-        if NULL != source:
-            pmix_unload_procs(source, 1, myproc)
-            args['source'] = myproc[0]
-        if NULL != targets:
-            pmix_unload_procs(targets, ntargets, mytargets)
-            args['targets'] = mytargets
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, mydirs)
-            args['directives'] = mydirs
-        if NULL != bo:
-            pmix_unload_bytes(bo[0].bytes, bo[0].size, blist)
-            barray = bytearray(blist)
-            pyload['bytes'] = barray
-            pyload['size'] = bo[0].size
-            args['payload'] = pyload
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['pushstdin'](args, pypmix_op_cbfunc, cbdata_dict)
+                   pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'pushstdin' in keys:
+            args = {}
+            keyvals = {}
+            myproc = []
+            mytargets = []
+            mydirs = []
+            blist = []
+            pyload = {}
+            if NULL != source:
+                pmix_unload_procs(source, 1, myproc)
+                args['source'] = myproc[0]
+            if NULL != targets:
+                pmix_unload_procs(targets, ntargets, mytargets)
+                args['targets'] = mytargets
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, mydirs)
+                args['directives'] = mydirs
+            if NULL != bo:
+                pmix_unload_bytes(bo[0].bytes, bo[0].size, blist)
+                barray = bytearray(blist)
+                pyload['bytes'] = barray
+                pyload['size'] = bo[0].size
+                args['payload'] = pyload
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['pushstdin'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 
 # The server library requires that the host complete a group operation by
@@ -5570,152 +5786,206 @@ cdef int pushstdin(const pmix_proc_t *source,
 cdef int group(pmix_group_operation_t op, char grp[],
                const pmix_proc_t procs[], size_t nprocs,
                const pmix_info_t directives[], size_t ndirs,
-               pmix_info_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'group' in keys:
-        args = {}
-        myprocs = []
-        mydirs = []
-        args['op'] = op
-        if NULL == grp:
-            return PMIX_ERR_BAD_PARAM
-        args['group'] = grp.decode('ascii')
-        if NULL != procs:
-            pmix_unload_procs(procs, nprocs, myprocs)
-        args['procs'] = myprocs
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, mydirs)
-            args['directives'] = mydirs
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['group'](args, pypmix_info_cbfunc, cbdata_dict)
+               pmix_info_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'group' in keys:
+            args = {}
+            myprocs = []
+            mydirs = []
+            args['op'] = op
+            if NULL == grp:
+                return PMIX_ERR_BAD_PARAM
+            args['group'] = grp.decode('ascii')
+            if NULL != procs:
+                pmix_unload_procs(procs, nprocs, myprocs)
+            args['procs'] = myprocs
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, mydirs)
+                args['directives'] = mydirs
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['group'](args, pypmix_info_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int fabric(const pmix_proc_t *requestor,
                 pmix_fabric_operation_t op,
                 const pmix_info_t directives[],
                 size_t ndirs,
                 pmix_info_cbfunc_t cbfunc,
-                void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'fabric' in keys:
-        args = {}
-        keyvals = {}
-        myprocs = []
-        mydirs = []
-        args['op'] = op
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, mydirs)
-            args['directives'] = mydirs
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['fabric'](args, pypmix_info_cbfunc, cbdata_dict)
+                void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'fabric' in keys:
+            args = {}
+            keyvals = {}
+            myprocs = []
+            mydirs = []
+            args['op'] = op
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, mydirs)
+                args['directives'] = mydirs
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['fabric'](args, pypmix_info_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int toolconnected2(pmix_info_t *info, size_t ninfo,
                         pmix_tool_connection_cbfunc_t cbfunc,
                         void *cbdata) noexcept with gil:
-    keys = pmixservermodule.keys()
-    ret_proc = {'nspace': "UNDEF", 'rank': PMIX_RANK_UNDEF}
-    if 'toolconnected2' in keys:
-        args = {}
-        ilist = []
-        if NULL != info:
-            pmix_unload_info(info, ninfo, ilist)
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['toolconnected2'](args, pypmix_tool_connection_cbfunc, cbdata_dict)
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        ret_proc = {'nspace': "UNDEF", 'rank': PMIX_RANK_UNDEF}
+        if 'toolconnected2' in keys:
+            args = {}
+            ilist = []
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['toolconnected2'](args, pypmix_tool_connection_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int log2(const pmix_proc_t *client,
               const pmix_info_t data[], size_t ndata,
               const pmix_info_t directives[], size_t ndirs,
               pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
-    keys = pmixservermodule.keys()
-    if 'log2' in keys:
-        args = {}
-        ilist = []
-        myproc = []
-        mydirs = []
-        if NULL == client:
-            return PMIX_ERR_BAD_PARAM
-        pmix_unload_procs(client, 1, myproc)
-        args['source'] = myproc[0]
-        if NULL != data:
-            pmix_unload_info(data, ndata, ilist)
-            args['data'] = ilist
-        if NULL != directives:
-            pmix_unload_info(directives, ndirs, mydirs)
-            args['directives'] = mydirs
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['log2'](args, pypmix_op_cbfunc, cbdata_dict)
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'log2' in keys:
+            args = {}
+            ilist = []
+            myproc = []
+            mydirs = []
+            if NULL == client:
+                return PMIX_ERR_BAD_PARAM
+            pmix_unload_procs(client, 1, myproc)
+            args['source'] = myproc[0]
+            if NULL != data:
+                pmix_unload_info(data, ndata, ilist)
+                args['data'] = ilist
+            if NULL != directives:
+                pmix_unload_info(directives, ndirs, mydirs)
+                args['directives'] = mydirs
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['log2'](args, pypmix_op_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int sessioncontrol(const pmix_proc_t *requestor,
                         uint32_t sessionID,
                         const pmix_info_t directives[], size_t ndirs,
-                        pmix_info_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'sessioncontrol' in keys:
-        args = {}
-        myproc = []
-        blist = []
-        ilist = []
-        barray = None
+                        pmix_info_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'sessioncontrol' in keys:
+            args = {}
+            myproc = []
+            blist = []
+            ilist = []
+            barray = None
 
-        if NULL == requestor:
-            return PMIX_ERR_BAD_PARAM
-        pmix_unload_procs(requestor, 1, myproc)
-        args['requestor'] = myproc[0]
-        args['sessionID'] = sessionID
-        if NULL != directives:
-            rc = pmix_unload_info(directives, ndirs, ilist)
-            if PMIX_SUCCESS != rc:
-                return rc
-            args['directives'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['sessioncontrol'](args, pypmix_info_cbfunc, cbdata_dict)
+            if NULL == requestor:
+                return PMIX_ERR_BAD_PARAM
+            pmix_unload_procs(requestor, 1, myproc)
+            args['requestor'] = myproc[0]
+            args['sessionID'] = sessionID
+            if NULL != directives:
+                rc = pmix_unload_info(directives, ndirs, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
+                args['directives'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['sessioncontrol'](args, pypmix_info_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 cdef int resourceblock(const pmix_proc_t *requestor,
                        pmix_resource_block_directive_t directive,
                        const char *block,
                        const pmix_resource_unit_t *units, size_t nunits,
                        const pmix_info_t *info, size_t ninfo,
-                       pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'resourceblock' in keys:
-        args = {}
-        myproc = []
-        blist = []
-        ulist = []
-        ilist = []
-        barray = None
+                       pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'resourceblock' in keys:
+            args = {}
+            myproc = []
+            blist = []
+            ulist = []
+            ilist = []
+            barray = None
 
-        if NULL == requestor:
-            return PMIX_ERR_BAD_PARAM
-        if NULL == units:
-            return PMIX_ERR_BAD_PARAM
-        pmix_unload_procs(requestor, 1, myproc)
-        args['requestor'] = myproc[0]
-        args['directive'] = directive
-        args['block'] = pmix_decode_str(block)
-        rc = pmix_unload_units(units, nunits, ulist)
-        if PMIX_SUCCESS != rc:
-            return rc
-        args['units'] = ulist
-        if NULL != info:
-            rc = pmix_unload_info(info, ninfo, ilist)
+            if NULL == requestor:
+                return PMIX_ERR_BAD_PARAM
+            if NULL == units:
+                return PMIX_ERR_BAD_PARAM
+            pmix_unload_procs(requestor, 1, myproc)
+            args['requestor'] = myproc[0]
+            args['directive'] = directive
+            args['block'] = pmix_decode_str(block)
+            rc = pmix_unload_units(units, nunits, ulist)
             if PMIX_SUCCESS != rc:
                 return rc
-            args['info'] = ilist
-        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-        return pmixservermodule['resourceblock'](args, pypmix_info_cbfunc, cbdata_dict)
+            args['units'] = ulist
+            if NULL != info:
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
+                args['info'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            return pmixservermodule['resourceblock'](args, pypmix_info_cbfunc, cbdata_dict)
 
-    return PMIX_ERR_NOT_SUPPORTED
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
 
 
 cdef class PMIxTool(PMIxServer):

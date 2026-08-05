@@ -1456,5 +1456,60 @@ class TestToolServerModule(unittest.TestCase):
         self.assertEqual(tool.set_server_module(None), pmix.PMIX_ERR_INIT)
 
 
+class TestServerModuleRegistration(unittest.TestCase):
+    """setmodulefn, the gate on the server-module map.
+
+    A key it does not recognize is never wired into pmix_server_module_t,
+    so accepting one silently means the caller's handler is never called
+    and nothing says so.  init() used to guard this with "except KeyError",
+    which setmodulefn cannot raise - it returns a status.
+    """
+
+    @staticmethod
+    def _handler(request, cbfunc, cbdata):
+        return pmix.PMIX_SUCCESS
+
+    def test_known_key_is_accepted(self):
+        self.assertEqual(pmix.setmodulefn('clientconnected', self._handler),
+                         pmix.PMIX_SUCCESS)
+
+    def test_unknown_key_is_refused(self):
+        self.assertEqual(pmix.setmodulefn('nosuchhandler', self._handler),
+                         pmix.PMIX_ERR_BAD_PARAM)
+
+    def test_non_callable_is_refused(self):
+        # a handler that cannot be called would fail inside the upcall, on
+        # the library's progress thread, where there is nothing useful to
+        # report it to
+        for bad in (None, 42, "a string", []):
+            self.assertEqual(pmix.setmodulefn('clientfinalized', bad),
+                             pmix.PMIX_ERR_BAD_PARAM,
+                             "accepted %r as a handler" % (bad,))
+
+    def test_server_init_refuses_an_unknown_key(self):
+        server = pmix.PMIxServer()
+        rc = server.init([], {'nosuchhandler': self._handler})
+        self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+
+    def test_server_init_refuses_a_non_callable(self):
+        server = pmix.PMIxServer()
+        rc = server.init([], {'clientconnected': "not callable"})
+        self.assertEqual(rc, pmix.PMIX_ERR_INIT)
+
+    def test_registration_replaces_a_previous_handler(self):
+        # the map is module-global, so a second server (or a re-init) has
+        # to be able to change a handler - it used to keep the first one
+        def first(request, cbfunc, cbdata):
+            return pmix.PMIX_SUCCESS
+
+        def second(request, cbfunc, cbdata):
+            return pmix.PMIX_SUCCESS
+
+        pmix.setmodulefn('monitor', first)
+        self.assertIs(pmix.pmixservermodule['monitor'], first)
+        pmix.setmodulefn('monitor', second)
+        self.assertIs(pmix.pmixservermodule['monitor'], second)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
