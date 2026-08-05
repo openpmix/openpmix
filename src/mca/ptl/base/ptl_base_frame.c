@@ -285,6 +285,10 @@ static bool _check_file(const char *root, const char *path)
     if (0 == strncmp(path, "output-", strlen("output-"))) {
         memset(&st, 0, sizeof(struct stat));
         fullpath = pmix_os_path(false, root, path, NULL);
+        if (NULL == fullpath) {
+            /* cannot assemble the name: allow removal */
+            return true;
+        }
         rc = stat(fullpath, &st);
         if (0 != rc) {
             free(fullpath);
