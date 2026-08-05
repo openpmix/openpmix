@@ -243,31 +243,40 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
 }
 
 /**
- * This function attempts to remove a directory along with all the
- * files in it.  If the recursive variable is non-zero, then it will
- * try to recursively remove all directories.  If provided, the
- * callback function is executed prior to the directory or file being
- * removed.  If the callback returns non-zero, then no removal is
- * done.
+ * Empty out the directory that fd refers to, and remove any
+ * subdirectories under it.  Takes ownership of fd - it is closed by
+ * the closedir() below before we return.
+ *
+ * Every entry is inspected and removed *relative to the open
+ * descriptor* (fstatat/openat/unlinkat) rather than by rebuilding and
+ * re-resolving its path, so no entry can be swapped between the point
+ * where it is classified and the point where it is acted on: the
+ * thing we looked at is always the thing we remove.
+ *
+ * AT_SYMLINK_NOFOLLOW and O_NOFOLLOW keep symlinks as entries to be
+ * unlinked rather than paths to be followed. unlinkat() removes the
+ * link itself, never its target, and an entry swapped for a symlink
+ * just before we descend into it is refused by O_NOFOLLOW instead of
+ * sending the recursion outside the tree we were asked to destroy.
+ *
+ * path is the printable path of this directory. It is used only for
+ * the caller's callback, for building child display paths, and for
+ * error messages.
  */
-int pmix_os_dirpath_destroy(const char *path, bool recursive,
-                            pmix_os_dirpath_destroy_callback_fn_t cbfunc)
+static int dirpath_destroy_at(int fd, const char *path, bool recursive,
+                              pmix_os_dirpath_destroy_callback_fn_t cbfunc)
 {
-    int rc, exit_status = PMIX_SUCCESS;
+    int rc, childfd, exit_status = PMIX_SUCCESS;
     DIR *dp;
     struct dirent *ep;
-    char *filenm = NULL;
+    struct stat buf;
+    char *filenm;
 
-    if (NULL == path) { /* protect against error */
-        return PMIX_ERROR;
-    }
-
-    /* Open up the directory */
-    dp = opendir(path);
+    /* fdopendir() takes ownership of fd; closedir() will close it */
+    dp = fdopendir(fd);
     if (NULL == dp) {
-        /* per the documented contract, a directory that does not exist is
-         * reported as NOT_FOUND; any other open failure is a generic error */
-        return (ENOENT == errno) ? PMIX_ERR_NOT_FOUND : PMIX_ERROR;
+        close(fd);
+        return PMIX_ERROR;
     }
 
     while (NULL != (ep = readdir(dp))) {
@@ -289,62 +298,113 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
             }
         }
 
-        /* Create a pathname.  This is not always needed, but it makes
-         * for cleaner code just to create it here.  Note that we are
-         * allocating memory here, so we need to free it later on.
-         */
-        filenm = pmix_os_path(false, path, ep->d_name, NULL);
+        if (0 != fstatat(dirfd(dp), ep->d_name, &buf, AT_SYMLINK_NOFOLLOW)) {
+            /* it went away underneath us - that typically happens when
+             * one task is removing the job session dir while another is
+             * still removing its own proc session dir */
+            continue;
+        }
 
-        // attempt to unlink it
-        rc = unlink(filenm);
-        if (0 > rc) {
-            // we failed to unlink it - save the error
-            rc = errno;
-            if (EPERM == rc || EISDIR == rc) {
-                // it's a directory - attempt to remove it
-                rc = rmdir(filenm);
-                if (0 == rc) {
-                    // success
-                    free(filenm);
+        if (!S_ISDIR(buf.st_mode)) {
+            /* a plain file, or a symlink: unlinkat() removes the link
+             * itself and leaves whatever it pointed at alone */
+            if (0 != unlinkat(dirfd(dp), ep->d_name, 0)) {
+                rc = errno;
+                if (ENOENT == rc) {
+                    /* someone else got there first */
                     continue;
                 }
-                /* if it wasn't empty and we are recursively removing
-                 * paths, then proceed downwards */
-                if (ENOTEMPTY == errno && recursive) {
-                    rc = pmix_os_dirpath_destroy(filenm, recursive, cbfunc);
-                    free(filenm);
-                    if (PMIX_SUCCESS != rc) {
-                        exit_status = rc;
-                        closedir(dp);
-                        goto cleanup;
-                    }
-                } else {
-                    free(filenm);
+                if (EBUSY == rc) {
+                    /* file system mount point or another process
+                     * is using it */
+                    exit_status = PMIX_ERROR;
+                    continue;
                 }
-            } else if (EBUSY == rc) {
-                /* file system mount point or another process
-                 * is using it */
-                exit_status = PMIX_ERROR;
-                free(filenm);
-                continue;
-            } else {
                 // uncorrectable error
+                filenm = pmix_os_path(false, path, ep->d_name, NULL);
                 pmix_show_help("help-pmix-util.txt", "unlink-error", true,
-                               filenm,  strerror(rc));
+                               (NULL == filenm) ? ep->d_name : filenm, strerror(rc));
                 free(filenm);
-                filenm = NULL;
                 exit_status = PMIX_ERROR;
                 break;
             }
-        } else {
-            free(filenm);
+            continue;
         }
+
+        /* it's a directory - if it is empty we can drop it right here,
+         * whether or not we were asked to recurse */
+        if (0 == unlinkat(dirfd(dp), ep->d_name, AT_REMOVEDIR)) {
+            continue;
+        }
+        if (ENOENT == errno) {
+            continue;
+        }
+        if (!recursive) {
+            /* it isn't empty and we were not told to descend into it,
+             * so we cannot honor the request */
+            exit_status = PMIX_ERROR;
+            continue;
+        }
+
+        /* proceed downwards through the descriptor we already hold */
+        childfd = openat(dirfd(dp), ep->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        if (0 > childfd) {
+            if (ENOENT != errno) {
+                /* the entry is no longer an ordinary directory -
+                 * leave it alone rather than chase it */
+                exit_status = PMIX_ERROR;
+            }
+            continue;
+        }
+        filenm = pmix_os_path(false, path, ep->d_name, NULL);
+        rc = dirpath_destroy_at(childfd, (NULL == filenm) ? ep->d_name : filenm,
+                                recursive, cbfunc);
+        free(filenm);
+        if (PMIX_SUCCESS != rc) {
+            exit_status = rc;
+            break;
+        }
+        /* remove the now-empty subdirectory. This fails harmlessly if
+         * the callback chose to preserve something inside it */
+        unlinkat(dirfd(dp), ep->d_name, AT_REMOVEDIR);
     }
 
     /* Done with this directory */
     closedir(dp);
 
-cleanup:
+    return exit_status;
+}
+
+/**
+ * This function attempts to remove a directory along with all the
+ * files in it.  If the recursive variable is non-zero, then it will
+ * try to recursively remove all directories.  If provided, the
+ * callback function is executed prior to the directory or file being
+ * removed.  If the callback returns non-zero, then no removal is
+ * done.
+ */
+int pmix_os_dirpath_destroy(const char *path, bool recursive,
+                            pmix_os_dirpath_destroy_callback_fn_t cbfunc)
+{
+    int fd, exit_status;
+
+    if (NULL == path) { /* protect against error */
+        return PMIX_ERROR;
+    }
+
+    /* Open up the directory. O_NOFOLLOW: never destroy through a
+     * symlinked base path - the session directories sit under a
+     * world-writable root with predictable names, so a link planted
+     * there would otherwise redirect this whole recursive removal at
+     * a tree of the attacker's choosing */
+    fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (0 > fd) {
+        /* per the documented contract, a directory that does not exist is
+         * reported as NOT_FOUND; any other open failure is a generic error */
+        return (ENOENT == errno) ? PMIX_ERR_NOT_FOUND : PMIX_ERROR;
+    }
+
+    exit_status = dirpath_destroy_at(fd, path, recursive, cbfunc);
 
     /*
      * If the directory is empty, then remove it - but
