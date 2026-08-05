@@ -448,8 +448,10 @@ def main():
     rc = foo.setup_fork({'nspace':"testnspace", 'rank':0}, env)
     print("SetupFrk", foo.error_string(rc))
 
-    # setup the client argv
-    args = ["./client.py"]
+    # setup the client argv.  Locate the client beside this script
+    # rather than in cwd: under a VPATH build we are run from the build
+    # directory, which holds no .py files.
+    args = [os.path.join(os.path.dirname(os.path.abspath(__file__)), "client.py")]
     # open a subprocess with stdout and stderr
     # as distinct pipes so we can capture their
     # output as the process runs
