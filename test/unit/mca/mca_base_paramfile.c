@@ -32,6 +32,7 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
 #include "src/runtime/pmix_init_util.h"
+#include "src/util/pmix_argv.h"
 
 static int npass = 0;
 static int nfail = 0;
@@ -343,6 +344,50 @@ static void test_file_list_precedence(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* build_env over a file-sourced variable                              */
+/* ------------------------------------------------------------------ */
+
+/* A FILE- or OVERRIDE-sourced variable is the only thing that makes
+ * pmix_mca_base_var_build_env() emit a "SOURCE_" entry, so it is the
+ * only thing that reaches the second asprintf() in that loop. This is
+ * the case mca_base_var's build_env test cannot construct: everything
+ * it sets comes from the environment, which takes the branch that
+ * emits nothing.
+ *
+ * Two things are asserted. The call must report PMIX_SUCCESS -- it used
+ * to return the *length* of the last string it formatted, so a caller
+ * testing PMIX_SUCCESS saw a failure whenever the walk ended on a
+ * file-sourced variable -- and the SOURCE_ entry must name the file the
+ * value came from. */
+static void test_build_env_file_source(void)
+{
+    char **env = NULL;
+    int num_env = 0;
+    bool saw_value = false, saw_source = false;
+    int i, rc;
+
+    rc = pmix_mca_base_var_build_env(&env, &num_env);
+    report("build_env succeeds with a file-sourced variable", PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS != rc || NULL == env) {
+        return;
+    }
+
+    for (i = 0; i < num_env; ++i) {
+        if (0 == strcmp(env[i], "PMIX_MCA_utest_file_an_int=77")) {
+            saw_value = true;
+        }
+        if (0 == strncmp(env[i], "PMIX_MCA_SOURCE_utest_file_an_int=FILE:", 39)
+            && NULL != strstr(env[i], "params.conf")) {
+            saw_source = true;
+        }
+    }
+    report("build_env forwards a file-sourced value", saw_value);
+    report("build_env forwards the file the value came from", saw_source);
+
+    PMIx_Argv_free(env);
+}
+
+/* ------------------------------------------------------------------ */
 
 static void write_file(const char *name, const char *contents)
 {
@@ -439,6 +484,7 @@ int main(int argc, char **argv)
     test_value_parsing();
     test_tilde_expansion();
     test_file_list_precedence();
+    test_build_env_file_source();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
