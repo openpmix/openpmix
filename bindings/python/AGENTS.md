@@ -20,7 +20,7 @@ change is silently discarded on the next build.
 | File | Role | Edit? |
 |------|------|-------|
 | `pmix.pyx` | **Source.** The four role classes and all module-level callback trampolines. The heart of the bindings. | ✅ |
-| `pmix.pxi` | **Source.** Cython `include`d by `pmix.pyx`. All the Python↔C conversion helpers (`pmix_load_*`, `pmix_unload_*`, `pmix_free_*`), the `myLock` class, and the `pmix_pyshift_t` caddy. | ✅ |
+| `pmix.pxi` | **Source.** Cython `include`d by `pmix.pyx`. All the Python↔C conversion helpers (`pmix_load_*`, `pmix_unload_*`, `pmix_free_*`) and the `myLock` class. | ✅ |
 | `construct.py` | **Source.** A code generator: harvests `#define`/enum/typedef constants and API/type names from the installed C headers and emits `pmix_constants.pxi` and `pmix_constants.pxd`. | ✅ |
 | `setup.py` | **Source.** setuptools/Cython build driver. Reads `PMIX_BINDINGS_TOP_{BUILDDIR,SRCDIR}` env vars to find `pmix.pyx` and the include dirs; derives the version from `include/pmix_version.h`. | ✅ |
 | `Makefile.am` | **Source.** Automake wiring: runs `construct.py`, then `setup.py`, and installs the egg. | ✅ |
@@ -31,8 +31,9 @@ change is silently discarded on the next build.
 | `Makefile`, `Makefile.in` | **Generated** by Autotools. | ❌ |
 | `build/`, `pypmix.egg-info/` | **Generated** build products. | ❌ |
 
-**All of the tests live in the top-level
-[`test/python/`](../../test/python/) directory** (see §7) — that is the
+**All of the in-tree tests live in the top-level
+[`test/python/`](../../test/python/) directory** (see §7, and
+[`test/python/AGENTS.md`](../../test/python/AGENTS.md)) — that is the
 one place to add or fix one. There is deliberately nothing under
 `bindings/python/tests/`: it held duplicate copies of the connected
 scripts that drifted out of sync with the bindings (only CI ran them, so
@@ -40,6 +41,9 @@ a change could pass `make check` and still break CI), plus a Cython
 round-trip smoke test that nothing compiled or ran. The conversion cases
 that smoke test carried now live in `test/python/test_bindings.py`,
 reachable from Python through the `pmix_value_roundtrip` hook (§7).
+
+Multi-node coverage lives in
+[`contrib/dockerswarm/python/`](../../contrib/dockerswarm/python/) (§7).
 
 ---
 
@@ -123,7 +127,14 @@ field names, so the mapping is mechanical:
 {'type': PMIX_DEVTYPE_GPU, 'count': 4}            # pmix_resource_unit_t
 {'bytes': b'...', 'bytes_used': 43,               # pmix_data_buffer_t
  'bytes_unpacked': 22}                            #   (§8b)
+{'view': 1, 'coord': b'\x01\x00\x00\x00',        # pmix_coord_t
+ 'dims': 1}                                       #   (§8c)
 ```
+
+A coordinate's `coord` is the raw `uint32` vector as **bytes**, and
+`dims` counts coordinates, not bytes — so the payload is always four
+times as long. A `pmix_geometry_t` carries a list of them under `coords`
+plus their count under `ncoords`.
 
 The regex2 `bytes` are *not* necessarily NUL-terminated, which is why the
 struct carries a length and the dict keeps it — treat the payload as
@@ -150,6 +161,20 @@ status). Methods that also produce data return a **tuple**, e.g.
 - `pmix_load_regex2` / `pmix_unload_regex2` — regex dict ↔ `pmix_regex2_t`.
   The loader constructs the struct first, so the caller can (and must)
   `PMIx_Regex2_destruct` it on every path, including a partial failure.
+- `pmix_load_bo` / `pmix_unload_bo` — byte-object dict ↔
+  `pmix_byte_object_t`. **This is the only correct way to move a payload
+  across**: it takes its length from the bytes it was actually handed, not
+  from the dict's `size`. Every arm that copies a blob goes through it.
+- `pmix_load_coord` / `pmix_unload_coord` — coordinate dict ↔
+  `pmix_coord_t`, likewise refusing a `dims` larger than the vector.
+- `pmix_decode_str` — a `char *` the library is allowed to leave NULL,
+  answered as `str` or `None`. Casting a NULL `char *` to `<bytes>` walks
+  address zero; several unload arms used to.
+- `pmix_darray_alloc` / `pmix_darray_nomem` — the block behind a data
+  array, zeroed, with an empty array answered as NULL rather than as a
+  `malloc(0)` whose return value is not portable.
+- `pmix_value_alloc` — one zeroed struct for a `pmix_value_t` to point at
+  (§8, "Zero before you fill").
 - `pmix_load_procs` / `pmix_unload_procs`, `pmix_load_pdata`, `pmix_load_apps`,
   etc. — the remaining structured types.
 
@@ -205,9 +230,19 @@ every server operation (client connected, fence, publish, …). The chain:
 Event and IOF handlers work similarly through the module-global list
 `myhdlrs` (a list of `{'refid', 'hdlr'}` dicts). `pyeventhandler` /
 `pyiofhandler` find the matching handler by `refid`. If the handler isn't
-registered yet (a race with registration), they stash the event in a
-`pmix_pyshift_t` caddy wrapped in a `PyCapsule` and retry via a
+registered yet (a race with registration), they retry via a
 `threading.Timer(0.001, …)`.
+
+**Only Python objects may cross that delay.** Everything the library
+hands an upcall — the `pmix_info_t` array, the results array, the
+payload — is released the instant the upcall returns, so the retry
+carries the *converted* dicts and lists, never the pointers. This used to
+stash the library's own arrays in a C caddy and free them from the timer:
+a use-after-free followed by a double free, plus a leak of the caddy. And
+the library's completion callback cannot be deferred with the rest — it
+must fire before the upcall returns, or the event chain stalls — so
+`pyeventhandler` completes the event with `PMIX_EVENT_NO_ACTION_TAKEN`
+and lets the retry deliver it to the handler for its own sake.
 
 **Server-module keys** accepted by `setmodulefn` are the strings in its
 `permitted` list; the *wiring* names checked in `server_module_init` must
@@ -215,6 +250,31 @@ match exactly (adding a key to one list without the other silently drops the
 callback — that class of mismatch bit the `notifyevent` key historically). A
 Python server registers them via `PMIxServer.init(info, module_map)` where
 `module_map` is `{'clientconnected': fn, 'fencenb': fn, ...}`.
+
+`setmodulefn` **returns a status** — `PMIX_ERR_BAD_PARAM` for a key it
+does not recognize or a handler that is not callable — and both callers
+check it. They used to guard the call with `except KeyError`, which it
+cannot raise, so an unrecognized key was accepted silently, never wired
+in, and the caller's handler was simply never invoked.
+
+### The upcall trampolines must not let an exception escape
+
+Every `cdef int` trampoline is stored in `pmix_server_module_t` and called
+by `libpmix` **across a C frame**, so an exception raised by the Python
+handler has nowhere to propagate. Each one is therefore declared
+`noexcept with gil` **and** wraps its whole body in `try`/`except`,
+reporting the traceback and answering `PMIX_ERROR`.
+
+Both halves are needed. Without `noexcept`, Cython returns −1 and leaves
+the error indicator set, and the generated code then releases the GIL with
+it still set — so the next Python code to run anywhere in the process
+trips over an exception raised inside an unrelated upcall. With `noexcept`
+alone, Cython prints the exception and returns **0**, which is
+`PMIX_SUCCESS` — telling the library a completion callback is coming that
+never will, and hanging the request. A new trampoline needs both.
+
+The same reasoning is why a `cdef int` upcall must not fall off the end of
+its body: that returns 0, i.e. success. `resourceblock` did.
 
 ### 4c. Downcalls: a client `_nb` API → a Python callback
 
@@ -280,8 +340,8 @@ Full write-up, including how to add a further `_nb` binding:
 - Trampolines that only touch C state and release into `libpmix` use
   `with nogil` around the actual C callback invocation (see
   `pypmix_op_cbfunc`).
-- Do not add work between allocating a `pmix_pyshift_t` caddy and wrapping it
-  in its capsule; the capsule owns the lifetime.
+- An upcall that defers work to a timer may carry only Python objects
+  across the delay — see §4b.
 - Match the existing free discipline: whoever allocs the `pmix_info_t[]` /
   procs / caddy is responsible for freeing it after the C call returns or in
   the release callback.
@@ -302,8 +362,28 @@ re-ran `construct.py`.
 `construct.py` classifies each harvested line as a string constant, numeric
 constant, error code, typedef, or API declaration, and emits the appropriate
 Cython. Its parsing is textual and line-oriented, so unusual formatting in a
-header (multi-line macros, unusual comments) can trip it — keep new header
-entries in the conventional one-line style.
+header (multi-line macros) can trip it — keep new header entries in the
+conventional one-line style.
+
+Two things it now handles that it used to get silently wrong, and which
+are worth knowing because the failure mode is a constant with the *wrong
+value* rather than a build error:
+
+- **Enum bodies.** Comments and blank lines inside a `typedef enum` are
+  skipped rather than taken for enumerators, and an explicit `= <value>`
+  is honored, with counting continuing from it. An unparsable value stops
+  the build rather than emitting a wrong one.
+- **A header that fails to parse stops the build.** The return of every
+  `harvest_constants` call is checked; it used to be ignored for every
+  file but the first, quietly producing bindings with that header's
+  constants missing.
+
+`construct.py` has its own unit suite,
+[`test/python/test_construct.py`](../../test/python/test_construct.py),
+which needs neither the extension nor the library. Add to it when you
+touch the generator — its output is what every Python constant *is*, so a
+parsing mistake is not visible until a comparison silently never matches
+at run time.
 
 ---
 
@@ -338,21 +418,48 @@ The `.so` embeds an absolute path to `libpmix` (via the linker), so once built
 it imports without setting `DYLD_LIBRARY_PATH`/`LD_LIBRARY_PATH` — only
 `PYTHONPATH` to the `build/lib.*` directory is needed.
 
+**The module defines `__all__`, and it is computed at import time** at the
+bottom of `pmix.pyx`: everything public except the modules `pmix.pyx`
+imports for its own use and the few names it pulls in with `from X import
+Y`. The documented usage is `from pmix import *`, so without it a caller
+who wrote `import time` before that line silently got the extension's
+`time` instead of their own — and likewise `os`, `sys`, `array`, `queue`,
+`signal`, `threading`, `ctypes` and `traceback`. It is computed rather
+than listed because the bulk of the module is the thousand-odd generated
+`PMIX_*` constants, and a hand-written list would go stale on the first
+new attribute. If you add a module-level import, nothing needs doing; if
+you add a `from X import Y`, add `Y` to the `borrowed` tuple.
+
 ---
 
 ## 7. Testing
 
-Two flavors of test live in [`test/python/`](../../test/python/):
+Full detail is in [`test/python/AGENTS.md`](../../test/python/AGENTS.md);
+this is the summary.
 
-- **Connected/integration:** `server.py` launches `client.py` under a real
-  PMIx server; `sched.py` exercises the scheduler role. Wired into
-  `make check` as `run_server.sh` / `run_sched.sh`. These need a working
-  server environment.
-- **Standalone unit tests:** `test_bindings.py` — a `unittest` suite covering
-  everything that needs **no** server: import, the class hierarchy, constant
-  definitions, and the stateless `*_string` converters. It self-locates the
-  built extension and exits 77 (automake SKIP) if `pmix` can't be imported, so
-  it is safe to run anywhere. Also wired into `make check`.
+Three flavors, at three levels of what they can reach:
+
+- **Standalone unit tests** in [`test/python/`](../../test/python/):
+  `test_bindings.py` covers everything that needs **no** server — import,
+  the class hierarchy, constants, the stateless `*_string` converters, the
+  struct pretty-printers, and the whole conversion layer through the
+  `pmix_value_roundtrip` hook. `test_construct.py` covers the constants
+  generator and needs not even the extension. Both self-locate what they
+  need and exit 77 (automake SKIP) if it is missing, so they are safe to
+  run anywhere.
+- **Connected/integration** in the same directory: `server.py` launches
+  `client.py` under a real PMIx server and is the only script that drives
+  the *server* bindings and the upcall path; `sched.py` exercises the
+  scheduler role. Wired into `make check` as `run_server.sh` /
+  `run_sched.sh`.
+- **Multi-node** in
+  [`contrib/dockerswarm/python/`](../../contrib/dockerswarm/python/),
+  driven by `run-python.sh` — `swarm_client.py`, `swarm_group.py`,
+  `swarm_cpuset.py`, `swarm_datatypes.py`, `swarm_nonblocking.py`.
+
+All four in-tree tests run against the **build** tree, not the installed
+egg. Keep it that way if you add a wrapper script; §3 of
+[`test/python/AGENTS.md`](../../test/python/AGENTS.md) explains why.
 
 Run the unit tests directly:
 
@@ -378,25 +485,41 @@ against an unbuilt module list.
 
 A round trip through the hook is *necessary but not sufficient*: it
 exercises the loader and the unloader against each other, so a mistake
-both of them make — the element **size** of an array, say — cancels out
-and looks correct. The authority for a layout is the C side that will
-read it (`pmix_bfrops_base_pack_*`), not the other half of the binding.
+both of them make — the element **size** of an array, say, or the byte
+order of a coordinate vector — cancels out and looks correct. The
+authority for a layout is the C side that will read it
+(`pmix_bfrops_base_pack_*`), not the other half of the binding.
 Anything the library itself must interpret still wants a connected
-round trip (put→get, publish→lookup) in the integration scripts.
+round trip (put→get, publish→lookup) in the integration scripts, and
+`swarm_datatypes.py` sends every supported type to a peer for exactly
+that reason.
+
+**Two things only a multi-node run can reach**, which is why the swarm
+tests exist rather than being duplicated in-tree:
+
+- A same-host `PMIx_Get` is answered out of the local datastore, so it
+  never travels through the bindings' remote-fetch path.
+- A non-blocking request answered locally completes before the method has
+  returned, so nothing the keepalive caddy holds actually has to survive.
+  A lifetime bug there is invisible until the request is genuinely
+  outstanding — which needs a peer behind a different PMIx server.
 
 When adding a new stateless helper, prefer exposing enough of it to add a
-`test_bindings.py` case.
+`test_bindings.py` case. Prefer boundaries to typical values: the defects
+this code has produced cluster at the largest representable value, the
+empty list, a declared size larger than the payload, an optional string
+the C side left NULL, and a payload full of NUL and high bytes.
+`TestConversionBoundaries` is that set.
 
 ---
 
 ## 8. Defects found and fixed, and gotchas
 
-A deep review (2026-07) found ~22 real bugs in the conversion and method
-code; all were fixed, most in one pass and the cpuset stubs in a follow-on
-that had to build the conversion layer they depended on (§8a). The
-per-defect catalogue lives in the git history of that work. The patterns
-that caused them are worth internalizing so they are not reintroduced —
-they map the fragile spots in this code:
+Two deep reviews have been run over this code: 2026-07 (~22 defects) and
+2026-08 (~40 more, across five passes). The per-defect catalogue lives in
+the git history of each. What is worth keeping here is the *patterns* —
+they map the fragile spots in this code, and every one of them has now
+produced a defect more than once:
 
 - **A `cdef class` method needs an explicit `self`.** Several methods were
   declared `def foo(arg):` and raised `TypeError` when called. Cython does not
@@ -459,6 +582,58 @@ they map the fragile spots in this code:
   not an API of its own. If a method you are about to add has no
   `PMIx_*` entry point behind it, that is the signal to look for the
   attribute that already covers it.
+
+- **A bounds check written as arithmetic is a bounds check nobody read.**
+  Several were `(65536*65536)` or `(2147483647*2147483647)` and simply had
+  the wrong value: a uint16 rejected 65535 but accepted 65536 and let the
+  C store truncate it to zero, while int64 and uint64 refused three
+  quarters of their range. Write the literal — `4294967295` — and check
+  both ends; the unsigned arms had no lower bound at all, so a negative
+  reached the field as an enormous positive.
+- **Trust the payload, not the declared size.** A byte object, an
+  endpoint, a coordinate all carry both bytes and a count, and a caller
+  can hand you a count larger than the bytes. Copying `size` bytes out of
+  the Python object then reads off the end of it. `pmix_load_bo` and
+  `pmix_load_coord` exist so no arm has to get this right on its own.
+- **Zero before you fill, on the heap and on the stack.** A loader that
+  fails partway leaves the caller holding a value it will destruct, and
+  the destructor frees every pointer it finds. That means the struct a
+  `pmix_value_t` points at (use `pmix_value_alloc`), the block behind a
+  data array (`pmix_darray_alloc`), *and* the stack `pmix_value_t` a
+  method loads into — four methods loaded into an unzeroed stack value
+  and destructed it on failure.
+- **A count the destructor walks must be set as you go.** The geometry
+  loader filled in its coordinates and set `ncoords` at the end, then
+  returned an error before reaching it; the destructor walked whatever the
+  allocation happened to hold.
+- **`malloc(0)` may portably answer NULL**, so "did the allocation fail?"
+  cannot be `if not ptr`. An empty array allocates nothing and stays NULL.
+- **A `cdef dict` function must return a dict.** Every arm of
+  `pmix_unload_darray` answered `PMIX_ERR_NOMEM` — an int — when the block
+  was NULL, which raises TypeError. Report failure as `None` and let the
+  caller check.
+- **Binary is not a string, in either direction.** `strdup` on a modex
+  blob truncates it at the first NUL; letting Cython convert a bare
+  `char *` runs `strlen` over an IOF stream; `sizeof(pyobj)` is the size
+  of a pointer, not of the credential; and `<void*>pyobj` is the PyObject
+  header, not its payload. All four shipped.
+- **Everything the library hands an upcall dies when the upcall returns.**
+  Convert it before you defer, before you release, before anything.
+- **An exception has nowhere to go across a C frame** — see the
+  trampoline rules in §4b.
+- **Check what a conversion returned.** `pmix_alloc_info` left its caller
+  holding a freed pointer and a non-zero count on failure, and a dozen
+  methods passed that straight to the library. It now clears both, and
+  the callers check — a sweep for an unchecked `pmix_alloc_info` is a
+  cheap way to find the next one.
+- **Return the same shape on every path.** A method that answers
+  `(rc, results)` on success and a bare `rc` on one error path breaks the
+  caller's tuple unpacking at exactly the moment things are already going
+  wrong. Several did.
+- **Report what the library said.** `register_attributes` called
+  `PMIx_Register_attributes` and then returned `PMIX_SUCCESS` regardless.
+- **A library must not touch the caller's namespace** — see the `__all__`
+  note in §6.
 
 Do **not** work around a defect by weakening a test — fix the code (see the
 top-level guidance on never bending a test to a bug).
@@ -529,6 +704,37 @@ Three things to respect:
 `data_unload` is the one method whose semantics differ from a plain "give
 me the bytes": the library hands back only the portion that has *not* been
 unpacked, and consumes the buffer in the process.
+
+### 8c. Coordinate and geometry conversion
+
+A `pmix_coord_t` is a view, a vector of `uint32` coordinates, and the
+number of them. Python sees the vector as **raw bytes** — there is no
+list form — so a coord dict is
+
+```python
+{'view': PMIX_COORD_VIEW_LOGICAL, 'coord': b'\x01\x00\x00\x00', 'dims': 1}
+```
+
+and `dims` counts coordinates, so `len(coord)` is always `4 * dims`.
+`pmix_load_coord` / `pmix_unload_coord` in `pmix.pxi` are the conversion;
+what comes out of the unloader can be passed straight back in.
+
+A `pmix_geometry_t` is a fabric index, a uuid, an OS name, and a list of
+coords under `coords` with their count under `ncoords`. Two things to
+respect:
+
+- **`ncoords` is what the library's destructor walks.** Set it as each
+  coordinate is built, not after the loop — a loader that fails partway
+  and returns leaves the destructor reading past the end of the block
+  otherwise. That is exactly what this arm used to do.
+- **`dims` is not a byte count.** Believing a `dims` larger than the
+  vector actually provided reads off the end of the Python object;
+  `pmix_load_coord` refuses it.
+
+Note that `PMIX_TOPO` and `PMIX_PROC_CPUSET` values remain unconvertible
+(`PMIX_ERR_NOT_SUPPORTED` on load, `None` on unload) — both are opaque
+provider objects. The cpuset has a string form the bindings use instead
+(§8a); the topology does not.
 
 ### Style / conventions specific to these bindings
 

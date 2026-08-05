@@ -35,7 +35,7 @@ is only the nickname.
 | `run-mca-tests.sh` | Runs `test/unit/mca` plus the hostile MCA-parameter cases in the `--enable-mca-dso` configuration, where the component repository is actually exercised. See §14. |
 | `run-bfrops-tests.sh` | Runs the `src/mca/bfrops` unit programs on Linux in an optimized `--enable-mca-dso` build, **and** moves one value of every PMIx data type between ranks on *different* nodes. The only place the peer-assigned bfrops module and the negotiated buffer type are observable at all. See §15. |
 | `swarm-common.sh` | Sourced by all seven scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
-| `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`). |
+| `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`, `swarm_datatypes.py`, `swarm_nonblocking.py`). |
 | `Dockerfile` | Base image: toolchain, PRRTE master *source* (autogen'd), SSH wiring, node entrypoint. It contains **no** PMIx and **no** built PRRTE. |
 | `docker-compose.yml` | The ten nodes `pmix-node1`..`pmix-node10`, each mounting the shared `pmix-build` volume. Every one of those names derives from `$PMIX_SWARM`, so two clones can each run a swarm — see §4. |
 
@@ -369,6 +369,8 @@ do. `swarm_client.py` exercises them for real here.
 | `python/swarm_client.py` | multi-node client: `put`/`commit`/`fence`/`get` of every peer's data across nodes, then the client-role topology calls — `load_topology`, `get_cpuset`, `compute_distances`, `parse_cpuset_string`, `get_relative_locality` |
 | `python/swarm_cpuset.py` | the **server-role** cpuset calls against real hwloc — `generate_cpuset_string`, `generate_locality_string` — which a launched client rank cannot reach (they wrap `PMIx_server_generate_*`), plus their malformed-input guards. Runs standalone, no launcher |
 | `python/swarm_group.py` | multi-node groups from Python, both `group_construct`/`_destruct` and the non-blocking `_nb` forms whose callbacks run on the progress thread |
+| `python/swarm_datatypes.py` | every data type the conversion layer supports, written by one rank and read by a peer behind a different prted, plus a `data_pack`/`data_unpack` round trip of the same values. The in-tree unit suite runs the loader against the unloader, so a mistake *both* make — the element size of an array, the byte order of a coordinate — cancels out; the library's packer does not forgive it |
+| `python/swarm_nonblocking.py` | the `_nb` family (fence, get, publish/lookup/unpublish, connect/disconnect, query, log, job_control) against a remote server. A request answered out of the local datastore completes before the method returns, so nothing the keepalive caddy holds has to survive — only a remote peer makes it outstanding |
 
 Each swarm client prints one `PMIXPY <rank> <PASS|FAIL> <name>` line per check
 and a final `PMIXPY <rank> DONE <nfail>`; a client exits non-zero if any check
