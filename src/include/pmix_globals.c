@@ -493,6 +493,13 @@ static void cbcon(pmix_cb_t *p)
 }
 static void cbdes(pmix_cb_t *p)
 {
+    /* cbcon() constructs this lock unconditionally, so the destructor
+     * has to take it down unconditionally - every sibling caddy class
+     * in this file does. pthread_mutex_init/pthread_cond_init are
+     * allowed to allocate, and on the implementations that do, a
+     * pmix_cb_t is the worst possible place to leak: there is one per
+     * PMIx_Get, PMIx_Put, PMIx_Commit, PMIx_Fence and query. */
+    PMIX_DESTRUCT_LOCK(&p->lock);
     if (p->timer_running) {
         pmix_event_del(&p->ev);
     }
