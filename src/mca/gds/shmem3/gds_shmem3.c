@@ -2631,7 +2631,12 @@ client_recv_modex_complete(
 
 pmix_gds_base_module_t pmix_shmem3_module = {
     .name = PMIX_GDS_SHMEM3_NAME,
-    .is_tsafe = false,
+    /* fetch() may be called from a thread other than the progress
+     * thread. It holds a reference to the job tracker for the duration,
+     * which keeps the segments mapped, and everything it reads from
+     * them is immutable - a segment a client can see is never written
+     * again. See pmix_gds_shmem3_fetch(). */
+    .is_tsafe = true,
     .init = module_init,
     .finalize = module_finalize,
     .assign_module = assign_module,

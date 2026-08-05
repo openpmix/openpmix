@@ -395,6 +395,25 @@ test_linux() {
             && ok "$np servers: second fence visible, first fence kept"
     done
 
+    banner "the caller-thread fast path (pmix_client_fast_get)"
+    # Off by default, so it gets no coverage at all unless something asks
+    # for it. Both shapes matter: datatypes reads every peer's values
+    # through the fast path, and modex_twice makes it cross a segment
+    # republish - the case where a reader could be holding a mapping the
+    # progress thread is dropping.
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes datatypes "$hosts" "$np" \
+            "PMIX_MCA_pmix_client_fast_get=1" "(fast_get)" \
+            && ok "$np servers with fast_get: every rank read every peer"
+    done
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes modex_twice "$hosts" "$np" \
+            "PMIX_MCA_pmix_client_fast_get=1" "(fast_get)" \
+            && ok "$np servers with fast_get: second fence visible, first kept"
+    done
+
     banner "put scopes across separate PMIx servers"
     # datatypes puts everything at PMIX_GLOBAL; client puts at PMIX_LOCAL
     # and PMIX_REMOTE separately and then reads each peer back, so the
