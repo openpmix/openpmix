@@ -40,6 +40,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_printf.h"
 
 #include "src/util/pmix_timings.h"
 
@@ -63,7 +64,7 @@ static bool pmix_timing_overhead = false;
 
 void pmix_init_id(char *nspace, int rank)
 {
-    asprintf(&jobid, "%s:%d", nspace, rank);
+    pmix_asprintf(&jobid, "%s:%d", nspace, rank);
 }
 
 /* Get current timestamp. Derived from MPI_Wtime */
@@ -359,16 +360,16 @@ int pmix_timing_report(pmix_timing_t *t, char *fname)
             // Service event, skip it.
             continue;
         case PMIX_TIMING_TRACE:
-            rc = asprintf(&line, "[%s:%d] %s \"%s\" [PMIX_TRACE] %s:%d %.10lf\n", nodename,
+            rc = pmix_asprintf(&line, "[%s:%d] %s \"%s\" [PMIX_TRACE] %s:%d %.10lf\n", nodename,
                           getpid(), jobid, ev->descr, file, ev->line, ev->ts + hnp_offs + overhead);
             break;
         case PMIX_TIMING_INTBEGIN:
-            rc = asprintf(&line, "[%s:%d] %s \"%s [start]\" [PMIX_TRACE] %s:%d %.10lf\n", nodename,
+            rc = pmix_asprintf(&line, "[%s:%d] %s \"%s [start]\" [PMIX_TRACE] %s:%d %.10lf\n", nodename,
                           getpid(), jobid, descr[ev->id].descr_ev->descr, file, ev->line,
                           ev->ts + hnp_offs + overhead);
             break;
         case PMIX_TIMING_INTEND:
-            rc = asprintf(&line, "[%s:%d] %s \"%s [stop]\" [PMIX_TRACE] %s:%d %.10lf\n", nodename,
+            rc = pmix_asprintf(&line, "[%s:%d] %s \"%s [stop]\" [PMIX_TRACE] %s:%d %.10lf\n", nodename,
                           getpid(), jobid, descr[ev->id].descr_ev->descr, file, ev->line,
                           ev->ts + hnp_offs + overhead);
             break;
@@ -547,7 +548,7 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname)
     for (i = 0; i < t->next_id_cntr; i++) {
         char *line = NULL;
         size_t line_size;
-        rc = asprintf(&line, "[%s:%d] %s \"%s\" [PMIX_OVHD] %le\n", nodename, getpid(), jobid,
+        rc = pmix_asprintf(&line, "[%s:%d] %s \"%s\" [PMIX_OVHD] %le\n", nodename, getpid(), jobid,
                       descr[i].descr_ev->descr, descr[i].interval - descr[i].overhead);
         if (rc < 0) {
             rc = PMIX_ERR_OUT_OF_RESOURCE;

@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -113,7 +113,7 @@ static char *transports_print(uint64_t *unique_key)
      * number if the system has a different sized long (8 would be for
      * sizeof(int) == 4)).
      */
-    if (0 > asprintf(&format, "%%0%dx", (int) (sizeof(unsigned int)) * 2)) {
+    if (0 > pmix_asprintf(&format, "%%0%dx", (int) (sizeof(unsigned int)) * 2)) {
         free(string_key);
         return NULL;
     }

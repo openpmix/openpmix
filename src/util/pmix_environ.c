@@ -18,7 +18,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
  *                         All Rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -193,7 +193,7 @@ pmix_status_t pmix_unsetenv(const char *name, char ***env)
 
     /* Make something easy to compare to */
 
-    i = asprintf(&compare, "%s=", name);
+    i = pmix_asprintf(&compare, "%s=", name);
     if (NULL == compare || 0 > i) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }

@@ -236,7 +236,7 @@ static int pmix_mca_base_var_enum_verbose_sfv(pmix_mca_base_var_enum_t *self, co
     }
 
     if (string_value) {
-        ret = asprintf(string_value, "%d", value);
+        ret = pmix_asprintf(string_value, "%d", value);
         if (0 > ret) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
@@ -664,7 +664,7 @@ static int enum_string_from_value_flag(pmix_mca_base_var_enum_t *self, const int
 
         tmp = out;
 
-        ret = asprintf(&out, "%s%s%s", tmp ? tmp : "", tmp ? "," : "",
+        ret = pmix_asprintf(&out, "%s%s%s", tmp ? tmp : "", tmp ? "," : "",
                        flag_enum->enum_flags[i].string);
         free(tmp);
 

@@ -56,6 +56,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_printf.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
@@ -230,7 +231,7 @@ static void resolve_peers(int sd, short args, void *cbdata)
                 continue;
             }
             /* prepend the nspace */
-            if (PMIX_UNLIKELY(0 > asprintf(&prs, "%s:%s", ns->nspace, val->data.string))) {
+            if (PMIX_UNLIKELY(0 > pmix_asprintf(&prs, "%s:%s", ns->nspace, val->data.string))) {
                 PMIX_LIST_DESTRUCT(&cb.kvs);
                 PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
                 continue;

@@ -4,7 +4,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,6 +38,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_printf.h"
 
 #include "preg_compress.h"
 #include "src/mca/pcompress/pcompress.h"
@@ -78,7 +79,7 @@ static pmix_status_t pack_blob(const uint8_t *tmp, size_t len, char **regexp)
     int idx;
 
     /* convert the length to a string */
-    if (0 > asprintf(&slen, "%lu", (unsigned long) len)) {
+    if (0 > pmix_asprintf(&slen, "%lu", (unsigned long) len)) {
         return PMIX_ERR_NOMEM;
     }
 

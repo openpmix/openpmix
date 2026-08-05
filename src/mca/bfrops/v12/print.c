@@ -14,7 +14,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -34,6 +34,7 @@
 #include "bfrop_v12.h"
 #include "internal.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/util/pmix_printf.h"
 
 pmix_status_t pmix12_bfrop_print(char **output, char *prefix, void *src, pmix_data_type_t type)
 {
@@ -65,7 +66,7 @@ pmix_status_t pmix12_bfrop_print_bool(char **output, char *prefix, bool *src, pm
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -74,7 +75,7 @@ pmix_status_t pmix12_bfrop_print_bool(char **output, char *prefix, bool *src, pm
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_BOOL\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_BOOL\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -86,7 +87,7 @@ pmix_status_t pmix12_bfrop_print_bool(char **output, char *prefix, bool *src, pm
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_BOOL\tValue: %s", prefix,
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_BOOL\tValue: %s", prefix,
                      (*src) ? "TRUE" : "FALSE")) {
         if (prefx != prefix) {
             free(prefx);
@@ -109,7 +110,7 @@ pmix_status_t pmix12_bfrop_print_byte(char **output, char *prefix, uint8_t *src,
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -118,7 +119,7 @@ pmix_status_t pmix12_bfrop_print_byte(char **output, char *prefix, uint8_t *src,
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_BYTE\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_BYTE\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -130,7 +131,7 @@ pmix_status_t pmix12_bfrop_print_byte(char **output, char *prefix, uint8_t *src,
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_BYTE\tValue: %x", prefix, *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_BYTE\tValue: %x", prefix, *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -152,7 +153,7 @@ pmix_status_t pmix12_bfrop_print_string(char **output, char *prefix, char *src,
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -161,7 +162,7 @@ pmix_status_t pmix12_bfrop_print_string(char **output, char *prefix, char *src,
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_STRING\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_STRING\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -173,7 +174,7 @@ pmix_status_t pmix12_bfrop_print_string(char **output, char *prefix, char *src,
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_STRING\tValue: %s", prefx, src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_STRING\tValue: %s", prefx, src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -195,7 +196,7 @@ pmix_status_t pmix12_bfrop_print_size(char **output, char *prefix, size_t *src,
 
    /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -204,7 +205,7 @@ pmix_status_t pmix12_bfrop_print_size(char **output, char *prefix, size_t *src,
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_SIZE\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_SIZE\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -216,7 +217,7 @@ pmix_status_t pmix12_bfrop_print_size(char **output, char *prefix, size_t *src,
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_SIZE\tValue: %lu", prefx, (unsigned long) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_SIZE\tValue: %lu", prefx, (unsigned long) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -237,7 +238,7 @@ pmix_status_t pmix12_bfrop_print_pid(char **output, char *prefix, pid_t *src, pm
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -246,7 +247,7 @@ pmix_status_t pmix12_bfrop_print_pid(char **output, char *prefix, pid_t *src, pm
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_PID\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_PID\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -258,7 +259,7 @@ pmix_status_t pmix12_bfrop_print_pid(char **output, char *prefix, pid_t *src, pm
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_PID\tValue: %lu", prefx, (unsigned long) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_PID\tValue: %lu", prefx, (unsigned long) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -278,7 +279,7 @@ pmix_status_t pmix12_bfrop_print_int(char **output, char *prefix, int *src, pmix
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -287,7 +288,7 @@ pmix_status_t pmix12_bfrop_print_int(char **output, char *prefix, int *src, pmix
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_INT\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_INT\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -299,7 +300,7 @@ pmix_status_t pmix12_bfrop_print_int(char **output, char *prefix, int *src, pmix
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_INT\tValue: %ld", prefx, (long) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_INT\tValue: %ld", prefx, (long) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -320,7 +321,7 @@ pmix_status_t pmix12_bfrop_print_uint(char **output, char *prefix, uint *src, pm
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -329,7 +330,7 @@ pmix_status_t pmix12_bfrop_print_uint(char **output, char *prefix, uint *src, pm
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_UINT\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_UINT\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -341,7 +342,7 @@ pmix_status_t pmix12_bfrop_print_uint(char **output, char *prefix, uint *src, pm
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_UINT\tValue: %lu", prefx, (unsigned long) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_UINT\tValue: %lu", prefx, (unsigned long) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -363,7 +364,7 @@ pmix_status_t pmix12_bfrop_print_uint8(char **output, char *prefix, uint8_t *src
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -372,7 +373,7 @@ pmix_status_t pmix12_bfrop_print_uint8(char **output, char *prefix, uint8_t *src
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_UINT8\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_UINT8\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -384,7 +385,7 @@ pmix_status_t pmix12_bfrop_print_uint8(char **output, char *prefix, uint8_t *src
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_UINT8\tValue: %u", prefx, (unsigned int) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_UINT8\tValue: %u", prefx, (unsigned int) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -406,7 +407,7 @@ pmix_status_t pmix12_bfrop_print_uint16(char **output, char *prefix, uint16_t *s
 
    /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -415,7 +416,7 @@ pmix_status_t pmix12_bfrop_print_uint16(char **output, char *prefix, uint16_t *s
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_UINT16\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_UINT16\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -427,7 +428,7 @@ pmix_status_t pmix12_bfrop_print_uint16(char **output, char *prefix, uint16_t *s
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_UINT16\tValue: %u", prefx, (unsigned int) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_UINT16\tValue: %u", prefx, (unsigned int) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -449,7 +450,7 @@ pmix_status_t pmix12_bfrop_print_uint32(char **output, char *prefix, uint32_t *s
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -458,7 +459,7 @@ pmix_status_t pmix12_bfrop_print_uint32(char **output, char *prefix, uint32_t *s
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_UINT32\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_UINT32\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -470,7 +471,7 @@ pmix_status_t pmix12_bfrop_print_uint32(char **output, char *prefix, uint32_t *s
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_UINT32\tValue: %u", prefx, (unsigned int) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_UINT32\tValue: %u", prefx, (unsigned int) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -492,7 +493,7 @@ pmix_status_t pmix12_bfrop_print_int8(char **output, char *prefix, int8_t *src,
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -501,7 +502,7 @@ pmix_status_t pmix12_bfrop_print_int8(char **output, char *prefix, int8_t *src,
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_INT8\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_INT8\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -513,7 +514,7 @@ pmix_status_t pmix12_bfrop_print_int8(char **output, char *prefix, int8_t *src,
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_INT8\tValue: %d", prefx, (int) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_INT8\tValue: %d", prefx, (int) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -535,7 +536,7 @@ pmix_status_t pmix12_bfrop_print_int16(char **output, char *prefix, int16_t *src
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -544,7 +545,7 @@ pmix_status_t pmix12_bfrop_print_int16(char **output, char *prefix, int16_t *src
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_INT16\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_INT16\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -556,7 +557,7 @@ pmix_status_t pmix12_bfrop_print_int16(char **output, char *prefix, int16_t *src
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_INT16\tValue: %d", prefx, (int) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_INT16\tValue: %d", prefx, (int) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -578,7 +579,7 @@ pmix_status_t pmix12_bfrop_print_int32(char **output, char *prefix, int32_t *src
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -587,7 +588,7 @@ pmix_status_t pmix12_bfrop_print_int32(char **output, char *prefix, int32_t *src
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_INT32\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_INT32\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -599,7 +600,7 @@ pmix_status_t pmix12_bfrop_print_int32(char **output, char *prefix, int32_t *src
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_INT32\tValue: %d", prefx, (int) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_INT32\tValue: %d", prefx, (int) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -620,7 +621,7 @@ pmix_status_t pmix12_bfrop_print_uint64(char **output, char *prefix, uint64_t *s
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -629,7 +630,7 @@ pmix_status_t pmix12_bfrop_print_uint64(char **output, char *prefix, uint64_t *s
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_UINT64\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_UINT64\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -641,7 +642,7 @@ pmix_status_t pmix12_bfrop_print_uint64(char **output, char *prefix, uint64_t *s
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_UINT64\tValue: %lu", prefx, (unsigned long) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_UINT64\tValue: %lu", prefx, (unsigned long) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -663,7 +664,7 @@ pmix_status_t pmix12_bfrop_print_int64(char **output, char *prefix, int64_t *src
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -672,7 +673,7 @@ pmix_status_t pmix12_bfrop_print_int64(char **output, char *prefix, int64_t *src
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_INT64\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_INT64\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -684,7 +685,7 @@ pmix_status_t pmix12_bfrop_print_int64(char **output, char *prefix, int64_t *src
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_INT64\tValue: %ld", prefx, (long) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_INT64\tValue: %ld", prefx, (long) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -706,7 +707,7 @@ pmix_status_t pmix12_bfrop_print_float(char **output, char *prefix, float *src,
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -715,7 +716,7 @@ pmix_status_t pmix12_bfrop_print_float(char **output, char *prefix, float *src,
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_FLOAT\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_FLOAT\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -727,7 +728,7 @@ pmix_status_t pmix12_bfrop_print_float(char **output, char *prefix, float *src,
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_FLOAT\tValue: %f", prefx, *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_FLOAT\tValue: %f", prefx, *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -749,7 +750,7 @@ pmix_status_t pmix12_bfrop_print_double(char **output, char *prefix, double *src
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -758,7 +759,7 @@ pmix_status_t pmix12_bfrop_print_double(char **output, char *prefix, double *src
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_DOUBLE\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_DOUBLE\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -770,7 +771,7 @@ pmix_status_t pmix12_bfrop_print_double(char **output, char *prefix, double *src
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_DOUBLE\tValue: %f", prefx, *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_DOUBLE\tValue: %f", prefx, *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -793,7 +794,7 @@ pmix_status_t pmix12_bfrop_print_time(char **output, char *prefix, time_t *src,
 
    /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -802,7 +803,7 @@ pmix_status_t pmix12_bfrop_print_time(char **output, char *prefix, time_t *src,
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_TIME\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_TIME\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -817,7 +818,7 @@ pmix_status_t pmix12_bfrop_print_time(char **output, char *prefix, time_t *src,
     t = ctime(src);
     t[strlen(t) - 1] = '\0'; // remove trailing newline
 
-    if (0 > asprintf(output, "%sData type: PMIX_TIME\tValue: %s", prefx, t)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_TIME\tValue: %s", prefx, t)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -839,7 +840,7 @@ pmix_status_t pmix12_bfrop_print_timeval(char **output, char *prefix, struct tim
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -848,7 +849,7 @@ pmix_status_t pmix12_bfrop_print_timeval(char **output, char *prefix, struct tim
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_TIMEVAL\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_TIMEVAL\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -860,7 +861,7 @@ pmix_status_t pmix12_bfrop_print_timeval(char **output, char *prefix, struct tim
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_TIMEVAL\tValue: %ld.%06ld", prefx,
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_TIMEVAL\tValue: %ld.%06ld", prefx,
                      (long) src->tv_sec, (long) src->tv_usec)) {
         if (prefx != prefix) {
             free(prefx);
@@ -889,7 +890,7 @@ pmix_status_t pmix12_bfrop_print_value(char **output, char *prefix, pmix_value_t
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -898,7 +899,7 @@ pmix_status_t pmix12_bfrop_print_value(char **output, char *prefix, pmix_value_t
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_VALUE\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_VALUE\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -912,76 +913,76 @@ pmix_status_t pmix12_bfrop_print_value(char **output, char *prefix, pmix_value_t
 
     switch (src->type) {
     case PMIX_BYTE:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_BYTE\tValue: %x", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_BYTE\tValue: %x", prefx,
                       src->data.byte);
         break;
     case PMIX_STRING:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_STRING\tValue: %s", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_STRING\tValue: %s", prefx,
                       src->data.string);
         break;
     case PMIX_SIZE:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_SIZE\tValue: %lu", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_SIZE\tValue: %lu", prefx,
                       (unsigned long) src->data.size);
         break;
     case PMIX_PID:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_PID\tValue: %lu", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_PID\tValue: %lu", prefx,
                       (unsigned long) src->data.pid);
         break;
     case PMIX_INT:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT\tValue: %d", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT\tValue: %d", prefx,
                       src->data.integer);
         break;
     case PMIX_INT8:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT8\tValue: %d", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT8\tValue: %d", prefx,
                       (int) src->data.int8);
         break;
     case PMIX_INT16:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT16\tValue: %d", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT16\tValue: %d", prefx,
                       (int) src->data.int16);
         break;
     case PMIX_INT32:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT32\tValue: %d", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT32\tValue: %d", prefx,
                       src->data.int32);
         break;
     case PMIX_INT64:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT64\tValue: %ld", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT64\tValue: %ld", prefx,
                       (long) src->data.int64);
         break;
     case PMIX_UINT:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT\tValue: %u", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT\tValue: %u", prefx,
                       src->data.uint);
         break;
     case PMIX_UINT8:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT8\tValue: %u", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT8\tValue: %u", prefx,
                       (unsigned int) src->data.uint8);
         break;
     case PMIX_UINT16:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT16\tValue: %u", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT16\tValue: %u", prefx,
                       (unsigned int) src->data.uint16);
         break;
     case PMIX_UINT32:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT32\tValue: %u", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT32\tValue: %u", prefx,
                       src->data.uint32);
         break;
     case PMIX_UINT64:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT64\tValue: %lu", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT64\tValue: %lu", prefx,
                       (unsigned long) src->data.uint64);
         break;
     case PMIX_FLOAT:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_FLOAT\tValue: %f", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_FLOAT\tValue: %f", prefx,
                       src->data.fval);
         break;
     case PMIX_DOUBLE:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_DOUBLE\tValue: %f", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_DOUBLE\tValue: %f", prefx,
                       src->data.dval);
         break;
     case PMIX_TIMEVAL:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_TIMEVAL\tValue: %ld.%06ld", prefx,
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: PMIX_TIMEVAL\tValue: %ld.%06ld", prefx,
                       (long) src->data.tv.tv_sec, (long) src->data.tv.tv_usec);
         break;
 
     default:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: UNKNOWN\tValue: UNPRINTABLE", prefx);
+        rc = pmix_asprintf(output, "%sPMIX_VALUE: Data type: UNKNOWN\tValue: UNPRINTABLE", prefx);
         break;
     }
     if (prefx != prefix) {
@@ -1002,7 +1003,7 @@ pmix_status_t pmix12_bfrop_print_info(char **output, char *prefix, pmix_info_t *
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix12_bfrop_print_value(&tmp, NULL, &src->value, PMIX_VALUE);
-    rc = asprintf(output, "%sKEY: %s %s", prefix, src->key,
+    rc = pmix_asprintf(output, "%sKEY: %s %s", prefix, src->key,
                   (NULL == tmp) ? "PMIX_VALUE: NULL" : tmp);
     if (NULL != tmp) {
         free(tmp);
@@ -1023,7 +1024,7 @@ pmix_status_t pmix12_bfrop_print_pdata(char **output, char *prefix, pmix_pdata_t
 
     pmix12_bfrop_print_proc(&tmp1, NULL, &src->proc, PMIX_PROC);
     pmix12_bfrop_print_value(&tmp2, NULL, &src->value, PMIX_VALUE);
-    rc = asprintf(output, "%s  %s  KEY: %s %s", prefix, tmp1, src->key,
+    rc = pmix_asprintf(output, "%s  %s  KEY: %s %s", prefix, tmp1, src->key,
                   (NULL == tmp2) ? "NULL" : tmp2);
     if (NULL != tmp1) {
         free(tmp1);
@@ -1062,14 +1063,14 @@ pmix_status_t pmix12_bfrop_print_proc(char **output, char *prefix, pmix_proc_t *
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
         prefx = prefix;
     }
 
-    if (0 > asprintf(output, "%sPROC: %s:%d", prefx, src->nspace, src->rank)) {
+    if (0 > pmix_asprintf(output, "%sPROC: %s:%d", prefx, src->nspace, src->rank)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -1099,10 +1100,10 @@ pmix_status_t pmix12_bfrop_print_array(char **output, char *prefix, pmix_info_ar
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    if (0 > asprintf(&tmp, "%sARRAY SIZE: %ld", prefix, (long) src->size)) {
+    if (0 > pmix_asprintf(&tmp, "%sARRAY SIZE: %ld", prefix, (long) src->size)) {
         return PMIX_ERR_NOMEM;
     }
-    if (0 > asprintf(&pfx, "\n%s\t", (NULL == prefix) ? "" : prefix)) {
+    if (0 > pmix_asprintf(&pfx, "\n%s\t", (NULL == prefix) ? "" : prefix)) {
         free(tmp);
         return PMIX_ERR_NOMEM;
     }
@@ -1110,7 +1111,7 @@ pmix_status_t pmix12_bfrop_print_array(char **output, char *prefix, pmix_info_ar
 
     for (j = 0; j < src->size; j++) {
         pmix12_bfrop_print_info(&tmp2, pfx, &s1[j], PMIX_INFO);
-        if (0 > asprintf(&tmp3, "%s%s", tmp, tmp2)) {
+        if (0 > pmix_asprintf(&tmp3, "%s%s", tmp, tmp2)) {
             free(tmp);
             free(tmp2);
             free(pfx);
@@ -1142,7 +1143,7 @@ pmix_status_t pmix12_bfrop_print_persist(char **output, char *prefix, pmix_persi
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -1151,7 +1152,7 @@ pmix_status_t pmix12_bfrop_print_persist(char **output, char *prefix, pmix_persi
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_PERSIST\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_PERSIST\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -1163,7 +1164,7 @@ pmix_status_t pmix12_bfrop_print_persist(char **output, char *prefix, pmix_persi
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_PERSIST\tValue: %ld", prefx, (long) *src)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_PERSIST\tValue: %ld", prefx, (long) *src)) {
         if (prefx != prefix) {
             free(prefx);
         }
@@ -1185,7 +1186,7 @@ pmix_status_t pmix12_bfrop_print_bo(char **output, char *prefix, pmix_byte_objec
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
+        if (0 > pmix_asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
         }
     } else {
@@ -1194,7 +1195,7 @@ pmix_status_t pmix12_bfrop_print_bo(char **output, char *prefix, pmix_byte_objec
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        if (0 > asprintf(output, "%sData type: PMIX_BYTE_OBJECT\tValue: NULL pointer", prefx)) {
+        if (0 > pmix_asprintf(output, "%sData type: PMIX_BYTE_OBJECT\tValue: NULL pointer", prefx)) {
             if (prefx != prefix) {
                 free(prefx);
             }
@@ -1206,7 +1207,7 @@ pmix_status_t pmix12_bfrop_print_bo(char **output, char *prefix, pmix_byte_objec
         return PMIX_SUCCESS;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_BYTE_OBJECT\tSize: %ld", prefx, (long) src->size)) {
+    if (0 > pmix_asprintf(output, "%sData type: PMIX_BYTE_OBJECT\tSize: %ld", prefx, (long) src->size)) {
         if (prefx != prefix) {
             free(prefx);
         }

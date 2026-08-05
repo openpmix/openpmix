@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,6 +24,7 @@
 
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
+#include "src/util/pmix_printf.h"
 
 /*
  * Function for comparing two pmix_mca_base_component_priority_t structs so
@@ -127,7 +128,7 @@ int pmix_mca_base_component_compatible(const pmix_mca_base_component_t *aa,
 char *pmix_mca_base_component_to_string(const pmix_mca_base_component_t *a)
 {
     char *str = NULL;
-    if (0 > asprintf(&str, "%s.%s.%d.%d", a->pmix_mca_type_name, a->pmix_mca_component_name,
+    if (0 > pmix_asprintf(&str, "%s.%s.%d.%d", a->pmix_mca_type_name, a->pmix_mca_component_name,
                      a->pmix_mca_component_major_version, a->pmix_mca_component_minor_version)) {
         return NULL;
     }

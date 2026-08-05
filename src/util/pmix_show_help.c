@@ -560,7 +560,7 @@ char *pmix_show_help_vstring(const char *filename,
 
     if (PMIX_SUCCESS == rc) {
         /* Apply the formatting to make the final output string */
-        if (0 > vasprintf(&output, single_string, arglist)) {
+        if (0 > pmix_vasprintf(&output, single_string, arglist)) {
             output = NULL;
         }
         free(single_string);

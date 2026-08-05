@@ -57,6 +57,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_os_path.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 #include "ptl_client.h"
@@ -160,7 +161,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
             pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
             /* setup the system rendezvous file name */
-            if (0 > asprintf(&rendfile, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
+            if (0 > pmix_asprintf(&rendfile, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
                              pmix_globals.hostname)) {
                 if (NULL != iptr) {
                     PMIX_INFO_FREE(iptr, niptr);

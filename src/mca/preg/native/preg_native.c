@@ -4,7 +4,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -258,23 +258,23 @@ static pmix_status_t generate_node_regex(const char *input, char **regexp)
         }
         /* start the regex for this value with the prefix */
         if (NULL != vreg->prefix) {
-            if (0 > asprintf(&tmp, "%s[%d:", vreg->prefix, vreg->num_digits)) {
+            if (0 > pmix_asprintf(&tmp, "%s[%d:", vreg->prefix, vreg->num_digits)) {
                 return PMIX_ERR_NOMEM;
             }
         } else {
-            if (0 > asprintf(&tmp, "[%d:", vreg->num_digits)) {
+            if (0 > pmix_asprintf(&tmp, "[%d:", vreg->num_digits)) {
                 return PMIX_ERR_NOMEM;
             }
         }
         /* add the ranges */
         while (NULL != (range = (pmix_regex_range_t *) pmix_list_remove_first(&vreg->ranges))) {
             if (1 == range->cnt) {
-                if (0 > asprintf(&tmp2, "%s%d,", tmp, range->start)) {
+                if (0 > pmix_asprintf(&tmp2, "%s%d,", tmp, range->start)) {
                     free(tmp);
                     return PMIX_ERR_NOMEM;
                 }
             } else {
-                if (0 > asprintf(&tmp2, "%s%d-%d,", tmp, range->start,
+                if (0 > pmix_asprintf(&tmp2, "%s%d-%d,", tmp, range->start,
                                  range->start + range->cnt - 1)) {
                     free(tmp);
                     return PMIX_ERR_NOMEM;
@@ -288,7 +288,7 @@ static pmix_status_t generate_node_regex(const char *input, char **regexp)
         tmp[strlen(tmp) - 1] = ']';
         if (NULL != vreg->suffix) {
             /* add in the suffix, if provided */
-            if (0 > asprintf(&tmp2, "%s%s", tmp, vreg->suffix)) {
+            if (0 > pmix_asprintf(&tmp2, "%s%s", tmp, vreg->suffix)) {
                 return PMIX_ERR_NOMEM;
             }
             free(tmp);
@@ -302,7 +302,7 @@ static pmix_status_t generate_node_regex(const char *input, char **regexp)
     /* assemble final result */
     if (NULL != regexargs) {
         tmp = PMIx_Argv_join(regexargs, ',');
-        if (0 > asprintf(regexp, "pmix[%s]", tmp)) {
+        if (0 > pmix_asprintf(regexp, "pmix[%s]", tmp)) {
             return PMIX_ERR_NOMEM;
         }
         free(tmp);
@@ -408,12 +408,12 @@ static pmix_status_t generate_ppn(const char *input, char **regexp)
     PMIX_LIST_FOREACH (vreg, &nodes, pmix_regex_value_t) {
         while (NULL != (rng = (pmix_regex_range_t *) pmix_list_remove_first(&vreg->ranges))) {
             if (1 == rng->cnt) {
-                if (0 > asprintf(&tmp2, "%s%d,", tmp, rng->start)) {
+                if (0 > pmix_asprintf(&tmp2, "%s%d,", tmp, rng->start)) {
                     free(tmp);
                     return PMIX_ERR_NOMEM;
                 }
             } else {
-                if (0 > asprintf(&tmp2, "%s%d-%d,", tmp, rng->start, rng->start + rng->cnt - 1)) {
+                if (0 > pmix_asprintf(&tmp2, "%s%d-%d,", tmp, rng->start, rng->start + rng->cnt - 1)) {
                     free(tmp);
                     return PMIX_ERR_NOMEM;
                 }
@@ -900,7 +900,7 @@ static pmix_status_t pmix_regex_extract_ppn(char *regexp, char ***procs)
                 ++t;
                 end = strtol(t, NULL, 10);
                 for (k = start; k <= end; k++) {
-                    if (0 > asprintf(&t, "%d", k)) {
+                    if (0 > pmix_asprintf(&t, "%d", k)) {
                         PMIx_Argv_free(nds);
                         PMIx_Argv_free(rngs);
                         return PMIX_ERR_NOMEM;

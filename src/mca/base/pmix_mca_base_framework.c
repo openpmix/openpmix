@@ -4,7 +4,7 @@
  *                         reserved.
  * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,6 +16,7 @@
 
 #include "pmix_common.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_printf.h"
 
 #include "pmix_mca_base_framework.h"
 #include "pmix_mca_base_var.h"
@@ -88,7 +89,7 @@ int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework
             goto error;
         }
 
-        ret = asprintf(&desc,
+        ret = pmix_asprintf(&desc,
                        "Default selection set of components for the %s framework (<none>"
                        " means use all components that can be found)",
                        framework->framework_name);
@@ -106,7 +107,7 @@ int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework
         }
 
         /* register a verbosity variable for this framework */
-        ret = asprintf(&desc, "Verbosity level for the %s framework (default: 0)",
+        ret = pmix_asprintf(&desc, "Verbosity level for the %s framework (default: 0)",
                        framework->framework_name);
         if (0 > ret) {
             ret = PMIX_ERR_OUT_OF_RESOURCE;

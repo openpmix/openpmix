@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
@@ -22,6 +22,7 @@
 
 #include "src/include/pmix_dictionary.h"
 
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_string_copy.h"
 #include "src/util/pmix_vmem.h"
 
@@ -1541,7 +1542,7 @@ pack_shmem3_connection_info(
             break;
         }
         kv.value->type = PMIX_STRING;
-        int nw = asprintf(&kv.value->data.string, "%zd", (size_t)shmem3_id);
+        int nw = pmix_asprintf(&kv.value->data.string, "%zd", (size_t)shmem3_id);
         if (PMIX_UNLIKELY(nw == -1)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -1580,7 +1581,7 @@ pack_shmem3_connection_info(
             break;
         }
         kv.value->type = PMIX_STRING;
-        nw = asprintf(&kv.value->data.string, "%zx", shmem3->size);
+        nw = pmix_asprintf(&kv.value->data.string, "%zx", shmem3->size);
         if (PMIX_UNLIKELY(nw == -1)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -1602,7 +1603,7 @@ pack_shmem3_connection_info(
             break;
         }
         kv.value->type = PMIX_STRING;
-        nw = asprintf(
+        nw = pmix_asprintf(
             &kv.value->data.string, "%zx", (size_t)shmem3->hdr_address
         );
         if (PMIX_UNLIKELY(nw == -1)) {
@@ -1648,11 +1649,11 @@ pack_server_keyindex_description(
     for (int i = 0; NULL != description[i]; ++i) {
         int nw = -1;
         if (0 == i) {
-            nw = asprintf(&kv.value->data.string, "%s", description[i]);
+            nw = pmix_asprintf(&kv.value->data.string, "%s", description[i]);
         }
         else {
             char *curs = kv.value->data.string;
-            nw = asprintf(&kv.value->data.string, "%s\n%s", curs, description[i]);
+            nw = pmix_asprintf(&kv.value->data.string, "%s\n%s", curs, description[i]);
             free(curs);
         }
         if (PMIX_UNLIKELY(nw == -1)) {
@@ -1916,7 +1917,7 @@ unpack_shmem3_connection_info(
 
         // Every element of a seg blob is packed as a string; anything
         // else means the blob is not one of ours, and val would not be
-        // a pointer we can hand to asprintf()/strtost().
+        // a pointer we can hand to pmix_asprintf()/strtost().
         if (PMIX_UNLIKELY(NULL == kv.value ||
                           PMIX_STRING != kv.value->type ||
                           NULL == kv.value->data.string)) {
@@ -1926,7 +1927,7 @@ unpack_shmem3_connection_info(
         }
         const char *const val = kv.value->data.string;
         if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_NSID_KEY)) {
-            int nw = asprintf(&usb->nsid, "%s", val);
+            int nw = pmix_asprintf(&usb->nsid, "%s", val);
             if (PMIX_UNLIKELY(nw == -1)) {
                 rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
@@ -1943,7 +1944,7 @@ unpack_shmem3_connection_info(
             usb->smid = (pmix_gds_shmem3_job_shmem3_id_t)st_shmem3_id;
         }
         else if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_PATH_KEY)) {
-            int nw = asprintf(&usb->seg_path, "%s", val);
+            int nw = pmix_asprintf(&usb->seg_path, "%s", val);
             if (PMIX_UNLIKELY(nw == -1)) {
                 rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
@@ -2249,7 +2250,7 @@ unpack_srv_kindx_info(
         // Every element below is read out of the union according to the
         // key alone. A value whose type does not match the key it
         // arrived under would be read as a pointer and handed to
-        // asprintf() or PMIx_Argv_split().
+        // pmix_asprintf() or PMIx_Argv_split().
         if (PMIX_UNLIKELY(NULL == kv.value)) {
             rc = PMIX_ERR_TYPE_MISMATCH;
             PMIX_ERROR_LOG(rc);
@@ -2266,7 +2267,7 @@ unpack_srv_kindx_info(
         }
 
         if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_NSID_KEY)) {
-            int nw = asprintf(&nspace_name, "%s", kv.value->data.string);
+            int nw = pmix_asprintf(&nspace_name, "%s", kv.value->data.string);
             if (PMIX_UNLIKELY(nw == -1)) {
                 rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
@@ -2312,7 +2313,7 @@ unpack_srv_kindx_info(
         }
         else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_NAME_KEY) &&
                  tmpsrvdict && tabindex < tabsize) {
-            const int nw = asprintf(
+            const int nw = pmix_asprintf(
                 &tmpsrvdict[tabindex].name, "%s", kv.value->data.string
             );
             if (PMIX_UNLIKELY(nw == -1)) {
@@ -2323,7 +2324,7 @@ unpack_srv_kindx_info(
         }
         else if (PMIX_CHECK_KEY(&kv, SHMEM3_KIDX_STRING_KEY) &&
                  tmpsrvdict && tabindex < tabsize) {
-            const int nw = asprintf(
+            const int nw = pmix_asprintf(
                 &tmpsrvdict[tabindex].string, "%s", kv.value->data.string
             );
             if (PMIX_UNLIKELY(nw == -1)) {

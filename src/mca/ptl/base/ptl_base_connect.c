@@ -747,7 +747,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
         // cycle thru the requested order
         for (n=0; NULL != order[n]; n++) {
             if (0 == strcmp(order[n], PMIX_CONNECT_SYSTEM_FIRST)) {
-                if (0 > asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
+                if (0 > pmix_asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
                                  pmix_globals.hostname)) {
                     rc = PMIX_ERR_NOMEM;
                     goto cleanup;
@@ -763,7 +763,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 }
 
             } else if (0 == strcmp(order[n], PMIX_CONNECT_TO_SYSTEM)) {
-                if (0 > asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
+                if (0 > pmix_asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
                                  pmix_globals.hostname)) {
                     rc = PMIX_ERR_NOMEM;
                     goto cleanup;
@@ -782,7 +782,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 }
 
             } else if (0 == strcmp(order[n], PMIX_CONNECT_TO_SCHEDULER)) {
-                if (0 > asprintf(&filename, "%s/pmix.sched.%s",
+                if (0 > pmix_asprintf(&filename, "%s/pmix.sched.%s",
                                  pmix_ptl_base.system_tmpdir,
                                  pmix_globals.hostname)) {
                     rc = PMIX_ERR_NOMEM;
@@ -802,7 +802,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 }
 
             } else if (0 == strcmp(order[n], PMIX_CONNECT_TO_SYS_CONTROLLER)) {
-                if (0 > asprintf(&filename, "%s/pmix.sysctrlr.%s",
+                if (0 > pmix_asprintf(&filename, "%s/pmix.sysctrlr.%s",
                                  pmix_ptl_base.system_tmpdir,
                                  pmix_globals.hostname)) {
                     rc = PMIX_ERR_NOMEM;
@@ -826,7 +826,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
 
     /* if they gave us a pid, then look for it */
     if (0 != pid) {
-        if (0 > asprintf(&filename, "pmix.%s.tool.%d", pmix_globals.hostname, pid)) {
+        if (0 > pmix_asprintf(&filename, "pmix.%s.tool.%d", pmix_globals.hostname, pid)) {
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
@@ -845,7 +845,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
 
     /* if they gave us an nspace, then look for it */
     if (NULL != server_nspace) {
-        if (0 > asprintf(&filename, "pmix.%s.tool.%s", pmix_globals.hostname, server_nspace)) {
+        if (0 > pmix_asprintf(&filename, "pmix.%s.tool.%s", pmix_globals.hostname, server_nspace)) {
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
@@ -879,7 +879,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
          * that succeeds - this is based on the likelihood that there is only
          * one session per user on a node */
 
-        if (0 > asprintf(&filename, "pmix.%s.tool", pmix_globals.hostname)) {
+        if (0 > pmix_asprintf(&filename, "pmix.%s.tool", pmix_globals.hostname)) {
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }

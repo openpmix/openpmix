@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
@@ -35,6 +35,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 #include "src/mca/bfrops/base/base.h"
@@ -297,7 +298,7 @@ pmix_status_t pmix_bfrops_base_pack_float(pmix_pointer_array_t *regtypes, pmix_b
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
-        ret = asprintf(&convert, "%f", ssrc[i]);
+        ret = pmix_asprintf(&convert, "%f", ssrc[i]);
         if (0 > ret) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
@@ -323,7 +324,7 @@ pmix_status_t pmix_bfrops_base_pack_double(pmix_pointer_array_t *regtypes, pmix_
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
-        ret = asprintf(&convert, "%f", ssrc[i]);
+        ret = pmix_asprintf(&convert, "%f", ssrc[i]);
         if (0 > ret) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }

@@ -838,7 +838,7 @@ complete:
         goto sockerror;
     }
 
-    rc = asprintf(&lt->uri, "%s.%u;%s%s:%d", pmix_globals.myid.nspace, pmix_globals.myid.rank,
+    rc = pmix_asprintf(&lt->uri, "%s.%u;%s%s:%d", pmix_globals.myid.nspace, pmix_globals.myid.rank,
                   prefix, myconnhost, myport);
     if (0 > rc || NULL == lt->uri) {
         goto sockerror;
@@ -928,7 +928,7 @@ nextstep:
     /* if we are the scheduler, then drop an appropriately named
      * contact file so the system's resource manager can find us */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
-        if (0 > asprintf(&pmix_ptl_base.scheduler_filename, "%s/pmix.sched.%s",
+        if (0 > pmix_asprintf(&pmix_ptl_base.scheduler_filename, "%s/pmix.sched.%s",
                          pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
             goto sockerror;
         }
@@ -943,7 +943,7 @@ nextstep:
     } else if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
         /* if we are the system controller, then drop an appropriately named
          * contact file so others can find us */
-            if (0 > asprintf(&pmix_ptl_base.sysctrlr_filename, "%s/pmix.sysctrlr.%s",
+            if (0 > pmix_asprintf(&pmix_ptl_base.sysctrlr_filename, "%s/pmix.sysctrlr.%s",
                          pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
             goto sockerror;
         }
@@ -957,7 +957,7 @@ nextstep:
     } else if (pmix_ptl_base.tool_support) {
         /* if we are going to support tools, then drop contact file(s) */
         if (pmix_ptl_base.system_tool) {
-            if (0 > asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s",
+            if (0 > pmix_asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s",
                              pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
                 goto sockerror;
             }
@@ -972,7 +972,7 @@ nextstep:
 
         if (pmix_ptl_base.session_tool) {
             /* first output to a std file */
-            if (0 > asprintf(&pmix_ptl_base.session_filename, "%s/pmix.%s.tool",
+            if (0 > pmix_asprintf(&pmix_ptl_base.session_filename, "%s/pmix.%s.tool",
                              pmix_ptl_base.session_tmpdir, pmix_globals.hostname)) {
                 goto sockerror;
             }
@@ -989,7 +989,7 @@ nextstep:
 
         /* now output to a file based on pid */
         mypid = getpid();
-        if (0 > asprintf(&pmix_ptl_base.pid_filename, "%s/pmix.%s.tool.%d",
+        if (0 > pmix_asprintf(&pmix_ptl_base.pid_filename, "%s/pmix.%s.tool.%d",
                          pmix_ptl_base.session_tmpdir, pmix_globals.hostname, mypid)) {
             goto sockerror;
         }
@@ -1004,7 +1004,7 @@ nextstep:
         }
 
         /* now output it into a file based on my nspace */
-        if (0 > asprintf(&pmix_ptl_base.nspace_filename, "%s/pmix.%s.tool.%s",
+        if (0 > pmix_asprintf(&pmix_ptl_base.nspace_filename, "%s/pmix.%s.tool.%s",
                          pmix_ptl_base.session_tmpdir, pmix_globals.hostname,
                          pmix_globals.myid.nspace)) {
             goto sockerror;

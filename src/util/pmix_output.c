@@ -152,7 +152,7 @@ bool pmix_output_init(void)
     }
     gethostname(hostname, sizeof(hostname) - 1);
     hostname[sizeof(hostname) - 1] = '\0';
-    if (0 > asprintf(&verbose.lds_prefix, "[%s:%05d] ", hostname, getpid())) {
+    if (0 > pmix_asprintf(&verbose.lds_prefix, "[%s:%05d] ", hostname, getpid())) {
         return false;
     }
 
@@ -172,7 +172,7 @@ bool pmix_output_init(void)
 
     /* Set some defaults */
 
-    if (0 > asprintf(&output_prefix, "pmix-output-pid%d-", getpid())) {
+    if (0 > pmix_asprintf(&output_prefix, "pmix-output-pid%d-", getpid())) {
         return false;
     }
     output_dir = strdup(pmix_tmp_directory());
@@ -240,7 +240,7 @@ void pmix_output_reopen_all(void)
         free(verbose.lds_prefix);
         verbose.lds_prefix = NULL;
     }
-    if (0 > asprintf(&verbose.lds_prefix, "[%s:%05d] ", hostname, getpid())) {
+    if (0 > pmix_asprintf(&verbose.lds_prefix, "[%s:%05d] ", hostname, getpid())) {
         verbose.lds_prefix = NULL;
         return;
     }
@@ -727,7 +727,7 @@ static int make_string(char **out, char **no_newline_string, pmix_output_desc_t 
 
     /* Make the formatted string */
     *out = NULL;
-    if (0 > vasprintf(no_newline_string, format, arglist)) {
+    if (0 > pmix_vasprintf(no_newline_string, format, arglist)) {
         return PMIX_ERR_NOMEM;
     }
     total_len = len = strlen(*no_newline_string);
