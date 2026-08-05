@@ -282,8 +282,12 @@ bool pmix_mca_base_show_load_errors(const char *framework_name,
 
 int pmix_mca_base_show_load_errors_finalize(void)
 {
-    PMIX_DESTRUCT(&show_load_errors_include);
-    PMIX_DESTRUCT(&show_load_errors_exclude);
+    /* PMIX_LIST_DESTRUCT, not PMIX_DESTRUCT: a pmix_list_t does not own
+     * what is on it, so destructing the list alone orphans every
+     * fc_pair_t this parsed - and each of those owns two strdup'd
+     * strings. See the ownership rules in src/class/AGENTS.md. */
+    PMIX_LIST_DESTRUCT(&show_load_errors_include);
+    PMIX_LIST_DESTRUCT(&show_load_errors_exclude);
 
     return PMIX_SUCCESS;
 }
