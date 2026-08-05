@@ -259,10 +259,98 @@ def main():
                                                      nbcb, {'label': "deregister_client"}))
     drive("deregister_nspace", foo.deregister_nspace("nbnspace", nbcb,
                                                      {'label': "deregister_nspace"}))
-    # a bad callback is refused before anything is allocated
-    if PMIX_ERR_BAD_PARAM != foo.deregister_nspace("nbnspace", "not callable"):
-        print("A NON-CALLABLE CALLBACK WAS ACCEPTED")
+    # the rest of the optional-callback family, against a live library.
+    # Several of these legitimately answer NOT_SUPPORTED here - there is
+    # no host above us to service them - and what matters is the contract:
+    # a callback fires if and only if the call reported PMIX_SUCCESS.
+    def drive_opt(label, rc):
+        if PMIX_SUCCESS == rc:
+            if not nbdone.wait(timeout=30):
+                print("%s ACCEPTED BUT NEVER COMPLETED" % label)
+                exit(1)
+            if nbresult['cbdata'] != {'label': label}:
+                print("%s RETURNED THE WRONG CBDATA" % label)
+                exit(1)
+            print("  %s: completed asynchronously (%s)"
+                  % (label, foo.error_string(nbresult['status'])))
+            nbdone.clear()
+        else:
+            # refused up front, so no callback may fire
+            if nbdone.is_set():
+                print("%s FIRED A CALLBACK IT DID NOT PROMISE" % label)
+                exit(1)
+            print("  %s: refused up front (%s)" % (label, foo.error_string(rc)))
+
+    src = {'nspace': "testnspace", 'rank': 0}
+    payload = {'bytes': b"async iof payload\n", 'size': 18}
+    drive_opt("register_resources",
+              foo.register_resources([], nbcb, {'label': "register_resources"}))
+    drive_opt("deregister_resources",
+              foo.deregister_resources([], nbcb, {'label': "deregister_resources"}))
+    drive_opt("setup_local_support",
+              foo.setup_local_support("testnspace", [], nbcb,
+                                      {'label': "setup_local_support"}))
+    drive_opt("deliver_inventory",
+              foo.deliver_inventory([], [], nbcb, {'label': "deliver_inventory"}))
+    drive_opt("iof_deliver",
+              foo.iof_deliver(src, PMIX_FWD_STDOUT_CHANNEL, payload, [], nbcb,
+                              {'label': "iof_deliver"}))
+    drive_opt("iof_flow_control",
+              foo.iof_flow_control(None, PMIX_FWD_STDIN_CHANNEL, True, [], nbcb,
+                                   {'label': "iof_flow_control"}))
+    # session_control is the one member of this family that reports
+    # results, so it takes the info-style callback - three arguments, not
+    # two - and needs its own waiter.  A standalone server has no
+    # scheduler above it to service the request, so the library answers
+    # PMIX_ERR_UNREACH through the callback; what is being checked here is
+    # that the callback is reached at all, and with the caller's cbdata.
+    sesdone = threading.Event()
+    sesresult = {}
+
+    def sescb(status, results, cbdata):
+        sesresult['status'] = status
+        sesresult['results'] = results
+        sesresult['cbdata'] = cbdata
+        sesdone.set()
+
+    rc = foo.session_control(1, [], sescb, {'label': "session_control"})
+    if PMIX_SUCCESS != rc:
+        print("session_control NOT ACCEPTED:", foo.error_string(rc))
         exit(1)
+    if not sesdone.wait(timeout=30):
+        print("session_control ACCEPTED BUT NEVER COMPLETED")
+        exit(1)
+    if sesresult['cbdata'] != {'label': "session_control"}:
+        print("session_control RETURNED THE WRONG CBDATA")
+        exit(1)
+    if not isinstance(sesresult['results'], list):
+        print("session_control DID NOT HAND BACK A RESULTS LIST")
+        exit(1)
+    print("  session_control: completed asynchronously (%s)"
+          % foo.error_string(sesresult['status']))
+
+    # a bad callback is refused before anything is allocated, on every one
+    # of them
+    for label, rc in [
+            ("register_nspace", foo.register_nspace("nbnspace", 1, [], 42)),
+            ("deregister_nspace", foo.deregister_nspace("nbnspace", 42)),
+            ("register_client", foo.register_client(src, 0, 0, 42)),
+            ("deregister_client", foo.deregister_client(src, 42)),
+            ("notify_event", foo.notify_event(PMIX_ERR_JOB_TERMINATED, src,
+                                              PMIX_RANGE_LOCAL, [], 42)),
+            ("register_resources", foo.register_resources([], 42)),
+            ("deregister_resources", foo.deregister_resources([], 42)),
+            ("setup_local_support", foo.setup_local_support("n", [], 42)),
+            ("deliver_inventory", foo.deliver_inventory([], [], 42)),
+            ("iof_deliver", foo.iof_deliver(src, PMIX_FWD_STDOUT_CHANNEL,
+                                            payload, [], 42)),
+            ("iof_flow_control", foo.iof_flow_control(None,
+                                                      PMIX_FWD_STDIN_CHANNEL,
+                                                      True, [], 42)),
+            ("session_control", foo.session_control(1, [], 42))]:
+        if PMIX_ERR_BAD_PARAM != rc:
+            print("%s ACCEPTED A NON-CALLABLE CALLBACK" % label)
+            exit(1)
     print("Non-blocking server registration calls: OK")
 
     # print a value and an info the way the library itself renders them
