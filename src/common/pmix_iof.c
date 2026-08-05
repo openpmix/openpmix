@@ -1055,9 +1055,11 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
         /* construct the directory where the output files will go */
         pmix_asprintf(&outdir, "%s/%s/rank.%0*u", nptr->iof_flags.directory,
                       nptr->nspace, numdigs, rank);
-        /* ensure the directory exists */
+        /* ensure the directory exists. An existing directory is fine:
+         * the job may legitimately be writing into one that is already
+         * there (a rerun, or another rank that got here first) */
         rc = pmix_os_dirpath_create(outdir, S_IRWXU | S_IRGRP | S_IXGRP);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
             PMIX_ERROR_LOG(rc);
             free(outdir);
             return NULL;
