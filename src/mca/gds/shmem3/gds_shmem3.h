@@ -18,6 +18,7 @@
 #include "include/pmix_common.h"
 
 #include "src/include/pmix_globals.h"
+#include "src/threads/pmix_threads.h"
 #include "src/util/pmix_shmem.h"
 #include "src/mca/gds/base/base.h"
 
@@ -137,6 +138,21 @@ typedef struct {
     pmix_gds_base_component_t super;
     /** List of jobs that I'm supporting. */
     pmix_list_t jobs;
+    /** Guards the spine of the list above.
+     *
+     * Everything else in this component runs on the progress thread and
+     * needs no lock. This one exists because a job tracker owns the
+     * mapping of its shared segments - releasing one detaches them - so
+     * a reader that is *not* on the progress thread can have the memory
+     * it is walking unmapped underneath it by del_nspace().
+     *
+     * The lock covers finding a tracker and taking a reference to it,
+     * not reading its contents. Once a reference is held the object
+     * cannot be destructed (the count is a C11 atomic, so this works
+     * across threads), which means the segments stay mapped and the
+     * read itself proceeds without any lock at all.
+     */
+    pmix_mutex_t joblock;
     /** List of sessions that I'm supporting. */
     pmix_list_t sessions;
 } pmix_gds_shmem3_component_t;
@@ -310,6 +326,24 @@ typedef struct {
     pmix_gds_shmem3_job_t *job;
 } pmix_gds_shmem3_app_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem3_app_t);
+
+/**
+ * Find the job tracker for an nspace and take a reference to it, safely
+ * from a thread other than the progress thread.
+ *
+ * On success the caller owns a reference and MUST PMIX_RELEASE it when
+ * finished. Holding it is what guarantees the tracker's shared-memory
+ * segments stay mapped for the duration of the read, even if the
+ * progress thread deregisters the nspace meanwhile.
+ *
+ * Never creates. Returns PMIX_ERR_INVALID_NAMESPACE if there is no such
+ * tracker, which for a reader simply means "nothing to read here".
+ */
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem3_acquire_job_tracker(
+    const pmix_nspace_t nspace,
+    pmix_gds_shmem3_job_t **job
+);
 
 END_C_DECLS
 

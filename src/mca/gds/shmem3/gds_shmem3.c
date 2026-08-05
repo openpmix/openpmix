@@ -1402,6 +1402,7 @@ module_init(
     PMIX_GDS_SHMEM3_VVOUT_HERE();
 
     PMIX_CONSTRUCT(&pmix_mca_gds_shmem3_component.jobs, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_mca_gds_shmem3_component.joblock, pmix_mutex_t);
     PMIX_CONSTRUCT(&pmix_mca_gds_shmem3_component.sessions, pmix_list_t);
     return PMIX_SUCCESS;
 }
@@ -2565,14 +2566,24 @@ del_nspace(
         PMIX_NAME_PRINT(&pmix_globals.myid), nspace
     );
 
-    pmix_gds_shmem3_job_t *ji;
+    pmix_gds_shmem3_job_t *ji, *found = NULL;
     pmix_gds_shmem3_component_t *const component = &pmix_mca_gds_shmem3_component;
+    /* Take the tracker off the list under the lock so a reader on
+     * another thread cannot be walking the spine while it moves. The
+     * release is deliberately outside: if a reader holds a reference,
+     * this is not the last one and the destructor - which detaches the
+     * segments - does not run until that reader is done. */
+    pmix_mutex_lock(&component->joblock);
     PMIX_LIST_FOREACH (ji, &component->jobs, pmix_gds_shmem3_job_t) {
         if (0 == strcmp(nspace, ji->nspace_id)) {
             pmix_list_remove_item(&component->jobs, &ji->super);
-            PMIX_RELEASE(ji);
+            found = ji;
             break;
         }
+    }
+    pmix_mutex_unlock(&component->joblock);
+    if (NULL != found) {
+        PMIX_RELEASE(found);
     }
     return PMIX_SUCCESS;
 }

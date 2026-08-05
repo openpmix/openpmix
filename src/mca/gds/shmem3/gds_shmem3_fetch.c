@@ -540,8 +540,9 @@ fetch_sessioninfo(
 }
 
 // TODO(skg) This needs plenty of work.
-pmix_status_t
-pmix_gds_shmem3_fetch(
+static pmix_status_t
+shmem3_fetch_from_job(
+    pmix_gds_shmem3_job_t *job,
     struct pmix_peer_t *pr,
     const pmix_proc_t *proc,
     pmix_scope_t scope,
@@ -570,14 +571,6 @@ pmix_gds_shmem3_fetch(
         PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope),
         PMIX_PEER_PRINT(peer)
     );
-
-    // Get the tracker for this job. We should have already created one, so
-    // that's why we pass false in pmix_gds_shmem3_get_job_tracker().
-    pmix_gds_shmem3_job_t *job;
-    rc = pmix_gds_shmem3_get_job_tracker(proc->nspace, false, &job);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        return rc;
-    }
 
     // smdata lives in the job's shared-memory segment. A tracker can exist
     // before that segment does - server_add_nspace() creates one at
@@ -894,6 +887,43 @@ doover:
         // we found things in an earlier scope we tried
         rc = PMIX_SUCCESS;
     }
+    return rc;
+}
+
+/**
+ * Retrieve data from this job's shared segments.
+ *
+ * The reference taken here is what makes the module thread-safe to read
+ * from. A job tracker owns the mappings of its segments, so releasing
+ * the last one detaches them; holding one for the duration of the read
+ * means the progress thread can deregister the nspace underneath us and
+ * the memory we are walking still stays put until we are done.
+ *
+ * Everything past this point is a read of immutable data - a segment a
+ * client can see is never written again - so no further locking is
+ * needed, and none is taken.
+ */
+pmix_status_t
+pmix_gds_shmem3_fetch(
+    struct pmix_peer_t *pr,
+    const pmix_proc_t *proc,
+    pmix_scope_t scope,
+    bool copy,
+    const char *key,
+    pmix_info_t qualifiers[],
+    size_t nqual,
+    pmix_list_t *kvs
+) {
+    pmix_gds_shmem3_job_t *job = NULL;
+    pmix_status_t rc;
+
+    rc = pmix_gds_shmem3_acquire_job_tracker(proc->nspace, &job);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        return rc;
+    }
+    rc = shmem3_fetch_from_job(job, pr, proc, scope, copy, key,
+                               qualifiers, nqual, kvs);
+    PMIX_RELEASE(job);
     return rc;
 }
 
