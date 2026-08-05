@@ -1481,6 +1481,71 @@ class TestToolServerModule(unittest.TestCase):
         self.assertEqual(tool.set_server_module(None), pmix.PMIX_ERR_INIT)
 
 
+class TestOptionalCallbackForms(unittest.TestCase):
+    """The server calls that take an optional completion callback.
+
+    PMIx expresses "non-blocking" two ways: a separate *_nb function (the
+    client family), and an optional trailing cbfunc/cbdata on the same
+    entry point (mostly the server family).  These bindings used to hard-
+    code NULL for the second kind, so the only behavior reachable from
+    Python was the blocking one - which cannot be used from a server
+    module upcall, because those run on the progress thread and the
+    blocking form would there be waiting on the event loop it is standing
+    in.
+
+    Only the argument checking is testable without a live server; the
+    round trip is exercised in server.py, and from inside an actual
+    upcall by test/unit/progress_threads.c.
+    """
+
+    def setUp(self):
+        self.server = pmix.PMIxServer()
+
+    def test_non_callable_callback_is_refused(self):
+        # a callback that cannot be called would strand the operation's
+        # caddy for the life of the process, so it is checked before
+        # anything is allocated
+        proc = {'nspace': "testns", 'rank': 0}
+        for bad in (42, "not callable", [], {}):
+            self.assertEqual(
+                self.server.register_nspace("testns", 1, [], bad),
+                pmix.PMIX_ERR_BAD_PARAM, "register_nspace took %r" % (bad,))
+            self.assertEqual(
+                self.server.deregister_nspace("testns", bad),
+                pmix.PMIX_ERR_BAD_PARAM, "deregister_nspace took %r" % (bad,))
+            self.assertEqual(
+                self.server.register_client(proc, 0, 0, bad),
+                pmix.PMIX_ERR_BAD_PARAM, "register_client took %r" % (bad,))
+            self.assertEqual(
+                self.server.deregister_client(proc, bad),
+                pmix.PMIX_ERR_BAD_PARAM, "deregister_client took %r" % (bad,))
+            self.assertEqual(
+                self.server.notify_event(pmix.PMIX_ERR_JOB_TERMINATED, proc,
+                                         pmix.PMIX_RANGE_LOCAL, [], bad),
+                pmix.PMIX_ERR_BAD_PARAM, "notify_event took %r" % (bad,))
+
+    def test_blocking_form_is_still_the_default(self):
+        # omitting the callback must keep the behavior every existing
+        # caller depends on - a status, not a promise of one
+        rc = self.server.deregister_nspace("no-such-nspace")
+        self.assertIsInstance(rc, int)
+
+    def test_callback_is_optional_positionally_and_by_keyword(self):
+        # the parameter was appended, so existing positional calls keep
+        # working and the new one can be passed either way
+        def cb(status, cbdata):
+            pass
+
+        for call in (lambda: self.server.deregister_nspace("n", cb),
+                     lambda: self.server.deregister_nspace("n", cbfunc=cb),
+                     lambda: self.server.deregister_nspace("n", cb, {'x': 1}),
+                     lambda: self.server.deregister_nspace(
+                         "n", cbfunc=cb, cbdata={'x': 1})):
+            # before init the library refuses, but the binding must accept
+            # the shape rather than raise TypeError
+            self.assertIsInstance(call(), int)
+
+
 class TestServerModuleRegistration(unittest.TestCase):
     """setmodulefn, the gate on the server-module map.
 
