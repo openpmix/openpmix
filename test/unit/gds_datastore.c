@@ -752,10 +752,22 @@ static pmix_status_t fetch_scoped(const char *nspace, pmix_rank_t rank,
     cb.copy = true;
     cb.scope = scope;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-    kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
-    if (NULL != kv && NULL != kv->value && PMIX_STRING == kv->value->type &&
-        NULL != kv->value->data.string) {
-        *result = strdup(kv->value->data.string);
+    /* pmix_list_get_first() returns the list's SENTINEL when the list is
+     * empty, never NULL - so the "NULL != kv" below is not the guard it
+     * looks like, and reading kv->value off the sentinel is a read of
+     * whatever happens to sit there. Several cases here fetch nothing on
+     * purpose (EXISTS_OUTSIDE_SCOPE drains what it found, NOT_FOUND
+     * never had any), so this is reached routinely. It survived only
+     * because the bytes were harmless; under -fsanitize=address it is a
+     * SEGV on address 0x1, and a change to an unrelated static made it
+     * fault in an ordinary build too. Ask the list whether it has
+     * anything first. */
+    if (!pmix_list_is_empty(&cb.kvs)) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        if (NULL != kv && NULL != kv->value && PMIX_STRING == kv->value->type &&
+            NULL != kv->value->data.string) {
+            *result = strdup(kv->value->data.string);
+        }
     }
     cb.key = NULL;
     cb.proc = NULL;
