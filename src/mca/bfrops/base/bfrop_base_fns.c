@@ -1173,6 +1173,35 @@ size_t PMIx_Info_list_get_size(void *ptr)
     return pmix_list_get_size(p);
 }
 
+/* Sizing a compressed blob asks the selected pcompress module how big
+ * the blob inflates to. Every module in this tree answers, but the
+ * module is *copied* out of whichever component the MCA base selected,
+ * and a component is a run-time-loadable plugin: one built against a
+ * libpmix that predates these two entry points leaves the slots NULL,
+ * and the call is then a jump to address zero. That is not a theoretical
+ * mismatch - an installed plugin older than the library it is loaded
+ * into is exactly what a partial upgrade produces, and it is how this
+ * was found.
+ *
+ * Ask through these instead of calling the slot. A module that cannot
+ * answer yields 0, which is what the base default already returns for a
+ * blob it cannot read. */
+static size_t decompressed_size(const pmix_byte_object_t *bo)
+{
+    if (NULL == pmix_compress.get_decompressed_size) {
+        return 0;
+    }
+    return pmix_compress.get_decompressed_size(bo);
+}
+
+static size_t decompressed_strlen(const pmix_byte_object_t *bo)
+{
+    if (NULL == pmix_compress.get_decompressed_strlen) {
+        return 0;
+    }
+    return pmix_compress.get_decompressed_strlen(bo);
+}
+
 static pmix_status_t get_darray_size(pmix_data_array_t *array,
                                      size_t *sz)
 {
@@ -1286,14 +1315,14 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(void*);
             bo = (pmix_byte_object_t*)array->array;
             for (n=0; n < array->size; n++) {
-                *sz += pmix_compress.get_decompressed_strlen(&bo[n]);
+                *sz += decompressed_strlen(&bo[n]);
             }
             break;
         case PMIX_COMPRESSED_BYTE_OBJECT:
             *sz = array->size * sizeof(void*);
             bo = (pmix_byte_object_t*)array->array;
             for (n=0; n < array->size; n++) {
-                *sz += pmix_compress.get_decompressed_size(&bo[n]);
+                *sz += decompressed_size(&bo[n]);
             }
             break;
         case PMIX_PERSIST:
@@ -1611,10 +1640,10 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             }
             break;
         case PMIX_COMPRESSED_STRING:
-            *sz = pmix_compress.get_decompressed_strlen(&v->data.bo);
+            *sz = decompressed_strlen(&v->data.bo);
             break;
         case PMIX_COMPRESSED_BYTE_OBJECT:
-            *sz = pmix_compress.get_decompressed_size(&v->data.bo);
+            *sz = decompressed_size(&v->data.bo);
             break;
         case PMIX_PERSIST:
             *sz = sizeof(pmix_persistence_t);
