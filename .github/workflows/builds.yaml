@@ -152,31 +152,39 @@ jobs:
             submodules: recursive
     - name: Build and run the unit suite under AddressSanitizer
       env:
-        # allocator_may_return_null: several cases deliberately request
-        #   an impossible allocation to exercise the failure path. ASan
-        #   aborts on that by default; these tests want the NULL that
-        #   the real allocator would return.
-        # detect_leaks: OFF, deliberately, and not because leaks do not
-        #   matter. A handful of cases allocate through a STATIC_INIT
-        #   object, whose destructor by design does not free what the
-        #   object acquired, so they leak by construction. Turning leak
-        #   detection on means cleaning those up first; that is worth
-        #   doing and is not what this job is for. Memory *errors* -
-        #   overflows, use-after-free, uninitialized reads - are caught
-        #   either way, and those are what have been biting.
-        ASAN_OPTIONS: allocator_may_return_null=1:detect_leaks=0
+        # Several cases deliberately request an impossible allocation to
+        # exercise the failure path. ASan aborts on that by default;
+        # those tests want the NULL a real allocator would return.
+        ASAN_OPTS: allocator_may_return_null=1
       run: |
         ./autogen.pl
         ./configure --prefix=${PWD}/install --enable-devel-check \
             CFLAGS="-fsanitize=address -g -O1" \
             LDFLAGS="-fsanitize=address"
         make -j
-        # test/unit only. The server-driven run_*.pl cases under test/
-        # bring up a real PMIx server in the scheduler role, which is a
-        # node-wide singleton and does not belong in a job whose point
-        # is memory checking; test/unit is where the library is driven
-        # directly and where the value is.
-        make -C test/unit check
+
+        # Leak checking is on for the three subdirectories that are
+        # clean under it. They are self-contained - no server, no
+        # launcher - which is what makes them able to stay clean.
+        export ASAN_OPTIONS="$ASAN_OPTS:detect_leaks=1"
+        make -C test/unit/class check
+        make -C test/unit/util check
+        make -C test/unit/mca check
+
+        # The programs in test/unit itself run errors-only. Several are
+        # run_*.pl drivers that bring up a real PMIx server and tools,
+        # and that lifecycle still leaks - a few hundred records, all in
+        # server/tool teardown rather than in anything the library does
+        # per operation. Cleaning that up is its own piece of work; until
+        # it happens, turning leak detection on here would mean a job
+        # nobody can keep green. Memory *errors* are caught regardless,
+        # and those are what have been biting.
+        #
+        # check-am, not check: check would recurse back into the three
+        # subdirectories above and run them a second time, and util
+        # alone takes over two minutes under ASan.
+        export ASAN_OPTIONS="$ASAN_OPTS:detect_leaks=0"
+        make -C test/unit check-am
 
   distcheck:
     runs-on: ubuntu-latest
