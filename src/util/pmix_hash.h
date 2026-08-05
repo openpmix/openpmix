@@ -33,6 +33,12 @@ PMIX_EXPORT pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
 
 /* Fetch the value for a specified key and rank from within
  * the given hash_table */
+/* Number of key slots initially allocated per process in the
+ * datastore, and the increment its array grows by. Registered as the
+ * pmix_hash_proc_alloc MCA parameter; see the note at its definition
+ * in pmix_hash.c for what the trade actually is. */
+PMIX_EXPORT extern int pmix_hash_proc_alloc;
+
 PMIX_EXPORT pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank,
                                           const char *key,
                                           pmix_info_t *qualifiers, size_t nquals,

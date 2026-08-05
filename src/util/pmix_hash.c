@@ -67,12 +67,26 @@ typedef struct {
     pmix_pointer_array_t *data;
     pmix_pointer_array_t *quals;
 } pmix_proc_data_t;
+/* How many key slots to give a proc up front. Every proc in every
+ * namespace gets one of these arrays in each of the internal, local
+ * and remote tables, so the default is a memory/realloc trade made
+ * across the whole job rather than a per-proc one: too low and a proc
+ * that publishes a lot pays repeated reallocs, too high and a big job
+ * carries slots nobody fills - and for gds/shmem3 that also inflates
+ * the shared segment estimate. Registered in src/runtime/pmix_params.c
+ * as pmix_hash_proc_alloc. */
+int pmix_hash_proc_alloc = 128;
+
 static void pdcon(pmix_proc_data_t *p)
 {
     pmix_tma_t *const tma = pmix_obj_get_tma(&p->super);
+    /* the array divides by its block size when it grows, so a value
+     * the user set to zero or below has to be refused here rather than
+     * become a SIGFPE later */
+    const int nalloc = (0 < pmix_hash_proc_alloc) ? pmix_hash_proc_alloc : 128;
 
     p->data = PMIX_NEW(pmix_pointer_array_t, tma);
-    pmix_pointer_array_init(p->data, 128, INT_MAX, 128);
+    pmix_pointer_array_init(p->data, nalloc, INT_MAX, nalloc);
     p->quals = PMIX_NEW(pmix_pointer_array_t, tma);
     pmix_pointer_array_init(p->quals, 1, INT_MAX, 1);
 }
