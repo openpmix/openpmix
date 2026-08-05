@@ -144,16 +144,18 @@ pmix_status_t pmix_register_params(void)
         PMIX_MCA_BASE_VAR_TYPE_INT,
         &pmix_hash_proc_alloc);
 
-    /* Off by default. It changes which thread reads the datastore, and
-     * only gds/shmem3 currently claims it is safe to read from another
-     * one - so this stays opt-in until it has run at scale rather than
-     * being switched on at the end of the change that introduced it. */
-    pmix_client_globals.fast_get = false;
+    /* On. It only engages for a module that says its fetch is thread
+     * safe, which today is gds/shmem3 alone, and only for a plain keyed
+     * lookup - everything else takes the ordinary path regardless. Set
+     * it false to send every get through the progress thread, which is
+     * what to reach for if a datastore is suspected of answering
+     * differently depending on which thread asked. */
+    pmix_client_globals.fast_get = true;
     (void) pmix_mca_base_var_register(
         "pmix", "pmix", "client", "fast_get",
         "Answer PMIx_Get on the calling thread when the assigned datastore "
         "reports that its fetch is thread safe, rather than handing the "
-        "request to the progress thread (default: false)",
+        "request to the progress thread (default: true)",
         PMIX_MCA_BASE_VAR_TYPE_BOOL,
         &pmix_client_globals.fast_get);
 
