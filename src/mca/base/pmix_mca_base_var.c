@@ -945,6 +945,7 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env)
         ret = pmix_asprintf(&str, "%s%s=%s", var->mbv_prefix, var->mbv_full_name, value_string);
         free(value_string);
         if (0 > ret) {
+            ret = PMIX_ERR_OUT_OF_RESOURCE;
             goto cleanup;
         }
 
@@ -952,16 +953,27 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env)
         free(str);
         str = NULL;
 
-        ret = PMIX_SUCCESS;
+        /* Note: a failure here has to be acted on immediately - the
+         * next trip around the loop overwrites ret, so a value checked
+         * only after the loop says nothing about this iteration */
         switch (var->mbv_source) {
             case PMIX_MCA_BASE_VAR_SOURCE_FILE:
             case PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE:
-                ret = pmix_asprintf(&str, "%sSOURCE_%s=FILE:%s", var->mbv_prefix, var->mbv_full_name,
-                               pmix_mca_base_var_source_file(var));
+                ret = pmix_asprintf(&str, "%sSOURCE_%s=FILE:%s", var->mbv_prefix,
+                                    var->mbv_full_name, pmix_mca_base_var_source_file(var));
+                if (0 > ret) {
+                    ret = PMIX_ERR_OUT_OF_RESOURCE;
+                    goto cleanup;
+                }
                 break;
 
             case PMIX_MCA_BASE_VAR_SOURCE_COMMAND_LINE:
-                ret = pmix_asprintf(&str, "%sSOURCE_%s=COMMAND_LINE", var->mbv_prefix, var->mbv_full_name);
+                ret = pmix_asprintf(&str, "%sSOURCE_%s=COMMAND_LINE", var->mbv_prefix,
+                                    var->mbv_full_name);
+                if (0 > ret) {
+                    ret = PMIX_ERR_OUT_OF_RESOURCE;
+                    goto cleanup;
+                }
                 break;
 
             case PMIX_MCA_BASE_VAR_SOURCE_ENV:
@@ -971,20 +983,19 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env)
                 break;
 
             case PMIX_MCA_BASE_VAR_SOURCE_MAX:
+                ret = PMIX_ERR_NOT_FOUND;
                 goto cleanup;
         }
 
         if (NULL != str) {
             pmix_argv_append(num_env, env, str);
             free(str);
+            str = NULL;
         }
-    }
-    if (ret < 0) {
-        ret = PMIX_ERR_OUT_OF_RESOURCE;
     }
 
     /* All done */
-    return ret;
+    return PMIX_SUCCESS;
 
     /* Error condition */
 
@@ -994,7 +1005,7 @@ cleanup:
         *num_env = 0;
         *env = NULL;
     }
-    return PMIX_ERR_NOT_FOUND;
+    return ret;
 }
 
 /*
