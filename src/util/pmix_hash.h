@@ -39,6 +39,30 @@ PMIX_EXPORT pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t 
                                           pmix_list_t *kvals,
                                           pmix_keyindex_t *kidx);
 
+/* Fetch "key" from the lowest-numbered rank below "maxrank" that holds
+ * it - the answer a caller wants when it knows the key but not which
+ * rank published it.
+ *
+ * This is the searching form of pmix_hash_fetch() and exists so that
+ * such a search costs one pass over the entries the table actually
+ * holds, rather than one full lookup per rank the job could have.
+ *
+ * "maxrank" bounds the search to real ranks, which is what keeps the
+ * PMIX_RANK_WILDCARD and PMIX_RANK_UNDEF pseudo-rank entries - and the
+ * job-level data they carry - from answering a per-rank question. Pass
+ * the namespace's proc count; a zero matches nothing.
+ *
+ * "key" must not be NULL: "all data for a rank" has no lowest-rank
+ * answer, and a caller wanting every rank's contribution wants
+ * pmix_hash_fetch() per rank instead. NULL returns PMIX_ERR_BAD_PARAM.
+ */
+PMIX_EXPORT pmix_status_t pmix_hash_fetch_lowest_rank(pmix_hash_table_t *table,
+                                                      pmix_rank_t maxrank,
+                                                      const char *key,
+                                                      pmix_info_t *qualifiers, size_t nquals,
+                                                      pmix_list_t *kvals,
+                                                      pmix_keyindex_t *kidx);
+
 /* remove the specified key-value from the given hash_table.
  * A NULL key will result in removal of all data for the
  * given rank. A rank of PMIX_RANK_WILDCARD indicates that
