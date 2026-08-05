@@ -361,7 +361,19 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
     pmix_dstor_t *hv;
     uint32_t id, kid=UINT32_MAX;
     char *node;
-    pmix_regattr_input_t *p;
+    /* Only ever set on the "NULL != key" path below, and only ever read
+     * on that same path - but the two are separated by the search loop,
+     * so the compiler cannot see the correlation and reports it as
+     * possibly-uninitialized. It is a false positive, and it is also
+     * fatal: PMIx builds -Werror under --enable-devel-check, and GCC
+     * raises it at -O1, which is what a sanitizer build uses. So the
+     * tree could not be built with -fsanitize=address at all.
+     *
+     * Initializing it is the honest fix rather than a pragma. It costs
+     * a store the optimizer removes, and if the correlation is ever
+     * broken by a later edit the result is a deterministic NULL
+     * dereference in make_copy() rather than a wild pointer. */
+    pmix_regattr_input_t *p = NULL;
     int n;
     bool fullsearch = false;
     pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
