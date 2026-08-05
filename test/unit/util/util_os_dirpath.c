@@ -214,6 +214,215 @@ static void test_destroy_recursive(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Symlink / non-directory hardening                                   */
+/*                                                                     */
+/* pmix_os_dirpath_create() must not adopt (or chmod) something that   */
+/* is not a directory, and pmix_os_dirpath_destroy() must never follow */
+/* a symlink -- either as its base path or as an entry it finds while  */
+/* walking the tree.  The session and rendezvous directories have      */
+/* fully predictable names under a world-writable root, so a link      */
+/* planted at one of those names would otherwise redirect a chmod, or  */
+/* an entire recursive removal, at a tree of the planter's choosing.   */
+/* ------------------------------------------------------------------ */
+
+static int file_exists(const char *path)
+{
+    struct stat st;
+    return (0 == stat(path, &st) && S_ISREG(st.st_mode));
+}
+
+static int is_symlink(const char *path)
+{
+    struct stat st;
+    return (0 == lstat(path, &st) && S_ISLNK(st.st_mode));
+}
+
+static void make_file(const char *path)
+{
+    FILE *f = fopen(path, "w");
+    if (NULL != f) {
+        fclose(f);
+    }
+}
+
+static void test_create_on_file(void)
+{
+    char path[512];
+    int rc;
+
+    snprintf(path, sizeof(path), "%s/plainfile", tmpbase);
+    make_file(path);
+
+    rc = pmix_os_dirpath_create(path, S_IRWXU);
+    report("create_on_file: refused with ERR_SILENT", PMIX_ERR_SILENT == rc);
+    report("create_on_file: file left in place", file_exists(path));
+
+    unlink(path);
+}
+
+static void test_create_on_symlink(void)
+{
+    char target[512];
+    char link[512];
+    struct stat st;
+    int rc;
+
+    snprintf(target, sizeof(target), "%s/link_target", tmpbase);
+    snprintf(link, sizeof(link), "%s/dirlink", tmpbase);
+    mkdir(target, S_IRWXU);
+    if (0 != symlink(target, link)) {
+        report("create_on_symlink: SKIPPED (symlink unavailable)", 1);
+        rmdir(target);
+        return;
+    }
+
+    /* ask for group bits the target does not have: if the link were
+     * followed, the target would come back chmod'ed */
+    rc = pmix_os_dirpath_create(link, S_IRWXU | S_IRWXG);
+    report("create_on_symlink: refused with ERR_SILENT", PMIX_ERR_SILENT == rc);
+    report("create_on_symlink: link not replaced", is_symlink(link));
+    report("create_on_symlink: target mode untouched",
+           0 == stat(target, &st) && 0 == (st.st_mode & S_IRWXG));
+
+    unlink(link);
+    rmdir(target);
+}
+
+static void test_destroy_does_not_follow_symlink(void)
+{
+    char victim[512];
+    char victimfile[512];
+    char base[512];
+    char link[512];
+    int rc;
+
+    snprintf(victim, sizeof(victim), "%s/victim", tmpbase);
+    snprintf(victimfile, sizeof(victimfile), "%s/victim/precious", tmpbase);
+    snprintf(base, sizeof(base), "%s/walkme", tmpbase);
+    snprintf(link, sizeof(link), "%s/walkme/escape", tmpbase);
+    mkdir(victim, S_IRWXU);
+    make_file(victimfile);
+    mkdir(base, S_IRWXU);
+    if (0 != symlink(victim, link)) {
+        report("destroy_does_not_follow_symlink: SKIPPED (symlink unavailable)", 1);
+        unlink(victimfile);
+        rmdir(victim);
+        rmdir(base);
+        return;
+    }
+
+    rc = pmix_os_dirpath_destroy(base, true, NULL);
+    report("destroy_does_not_follow_symlink: returns SUCCESS", PMIX_SUCCESS == rc);
+    report("destroy_does_not_follow_symlink: tree removed", !dir_exists(base));
+    report("destroy_does_not_follow_symlink: target survives", dir_exists(victim));
+    report("destroy_does_not_follow_symlink: target contents survive",
+           file_exists(victimfile));
+
+    unlink(victimfile);
+    rmdir(victim);
+}
+
+static void test_destroy_symlink_base(void)
+{
+    char victim[512];
+    char victimfile[512];
+    char link[512];
+    int rc;
+
+    snprintf(victim, sizeof(victim), "%s/basevictim", tmpbase);
+    snprintf(victimfile, sizeof(victimfile), "%s/basevictim/precious", tmpbase);
+    snprintf(link, sizeof(link), "%s/baselink", tmpbase);
+    mkdir(victim, S_IRWXU);
+    make_file(victimfile);
+    if (0 != symlink(victim, link)) {
+        report("destroy_symlink_base: SKIPPED (symlink unavailable)", 1);
+        unlink(victimfile);
+        rmdir(victim);
+        return;
+    }
+
+    rc = pmix_os_dirpath_destroy(link, true, NULL);
+    report("destroy_symlink_base: refused", PMIX_SUCCESS != rc);
+    report("destroy_symlink_base: target survives", dir_exists(victim));
+    report("destroy_symlink_base: target contents survive", file_exists(victimfile));
+
+    unlink(link);
+    unlink(victimfile);
+    rmdir(victim);
+}
+
+static void test_destroy_nonrecursive_with_subdir(void)
+{
+    char base[512];
+    char sub[512];
+    char subfile[512];
+    char topfile[512];
+    int rc;
+
+    snprintf(base, sizeof(base), "%s/nonrec", tmpbase);
+    snprintf(sub, sizeof(sub), "%s/nonrec/sub", tmpbase);
+    snprintf(subfile, sizeof(subfile), "%s/nonrec/sub/f", tmpbase);
+    snprintf(topfile, sizeof(topfile), "%s/nonrec/topf", tmpbase);
+    mkdir(base, S_IRWXU);
+    mkdir(sub, S_IRWXU);
+    make_file(subfile);
+    make_file(topfile);
+
+    rc = pmix_os_dirpath_destroy(base, false, NULL);
+    report("destroy_nonrecursive_with_subdir: returns PMIX_ERROR", PMIX_ERROR == rc);
+    report("destroy_nonrecursive_with_subdir: top-level file removed",
+           !file_exists(topfile));
+    report("destroy_nonrecursive_with_subdir: subdirectory preserved", dir_exists(sub));
+    report("destroy_nonrecursive_with_subdir: subdirectory contents preserved",
+           file_exists(subfile));
+
+    unlink(subfile);
+    rmdir(sub);
+    rmdir(base);
+}
+
+static bool veto_keepme(const char *root, const char *path)
+{
+    (void) root;
+    /* refuse to remove the file named "keepme" wherever it is found */
+    return (0 != strcmp(path, "keepme"));
+}
+
+static void test_destroy_callback_veto_in_subdir(void)
+{
+    char base[512];
+    char sub[512];
+    char keep[512];
+    char drop[512];
+    char topfile[512];
+    int rc;
+
+    snprintf(base, sizeof(base), "%s/veto", tmpbase);
+    snprintf(sub, sizeof(sub), "%s/veto/sub", tmpbase);
+    snprintf(keep, sizeof(keep), "%s/veto/sub/keepme", tmpbase);
+    snprintf(drop, sizeof(drop), "%s/veto/sub/dropme", tmpbase);
+    snprintf(topfile, sizeof(topfile), "%s/veto/topf", tmpbase);
+    mkdir(base, S_IRWXU);
+    mkdir(sub, S_IRWXU);
+    make_file(keep);
+    make_file(drop);
+    make_file(topfile);
+
+    rc = pmix_os_dirpath_destroy(base, true, veto_keepme);
+    report("destroy_callback_veto_in_subdir: returns SUCCESS", PMIX_SUCCESS == rc);
+    report("destroy_callback_veto_in_subdir: vetoed file preserved", file_exists(keep));
+    report("destroy_callback_veto_in_subdir: parent of vetoed file preserved",
+           dir_exists(sub));
+    report("destroy_callback_veto_in_subdir: sibling removed", !file_exists(drop));
+    report("destroy_callback_veto_in_subdir: top-level file removed",
+           !file_exists(topfile));
+
+    unlink(keep);
+    rmdir(sub);
+    rmdir(base);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -242,6 +451,13 @@ int main(int argc, char **argv)
     test_destroy_empty();
     test_destroy_with_files();
     test_destroy_recursive();
+
+    test_create_on_file();
+    test_create_on_symlink();
+    test_destroy_does_not_follow_symlink();
+    test_destroy_symlink_base();
+    test_destroy_nonrecursive_with_subdir();
+    test_destroy_callback_veto_in_subdir();
 
     /* Remove the test root; all subdirectories were cleaned up above. */
     rmdir(tmpbase);
