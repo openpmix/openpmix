@@ -409,6 +409,54 @@ static void test_static_init_matches_constructor(void)
     PMIX_DESTRUCT(&ctor);
 }
 
+/* ------------------------------------------------------------------ */
+/* get_occupancy                                                        */
+/* ------------------------------------------------------------------ */
+
+/* Occupancy is what a caller scanning for every stored item should
+ * bound its loop by; get_size() reports the allocation, which is
+ * normally far larger. src/util/pmix_hash.c depends on the two being
+ * maintained separately by add/set_item/remove. */
+static void test_get_occupancy(void)
+{
+    pmix_pointer_array_t pa;
+    int a = 1, b = 2, c = 3;
+    int i0, i1, i2;
+
+    PMIX_CONSTRUCT(&pa, pmix_pointer_array_t);
+    pmix_pointer_array_init(&pa, 128, 1024, 128);
+
+    report("occupancy: empty array is 0", 0 == pmix_pointer_array_get_occupancy(&pa));
+    report("occupancy: allocation is much larger", 128 <= pmix_pointer_array_get_size(&pa));
+
+    i0 = pmix_pointer_array_add(&pa, &a);
+    i1 = pmix_pointer_array_add(&pa, &b);
+    i2 = pmix_pointer_array_add(&pa, &c);
+    report("occupancy: three adds give 3", 3 == pmix_pointer_array_get_occupancy(&pa));
+    report("occupancy: adds are dense from 0", 0 == i0 && 1 == i1 && 2 == i2);
+    report("occupancy: allocation did not change", 128 <= pmix_pointer_array_get_size(&pa));
+
+    /* removing through set_item(NULL) has to give the slot back, or a
+     * bounded scan would stop early and miss live entries */
+    (void) pmix_pointer_array_set_item(&pa, i1, NULL);
+    report("occupancy: set_item(NULL) drops it to 2", 2 == pmix_pointer_array_get_occupancy(&pa));
+
+    /* and the hole is below the last occupied slot, which is exactly
+     * why a scan must count entries seen rather than stop at the index */
+    report("occupancy: the hole is real", NULL == pmix_pointer_array_get_item(&pa, i1));
+    report("occupancy: the entry above it survives",
+           &c == pmix_pointer_array_get_item(&pa, i2));
+
+    (void) pmix_pointer_array_set_item(&pa, i1, &b);
+    report("occupancy: refilling the hole restores 3",
+           3 == pmix_pointer_array_get_occupancy(&pa));
+
+    pmix_pointer_array_remove_all(&pa);
+    report("occupancy: remove_all returns to 0", 0 == pmix_pointer_array_get_occupancy(&pa));
+
+    PMIX_DESTRUCT(&pa);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -428,6 +476,7 @@ int main(int argc, char **argv)
     test_max_size_cap();
     test_test_and_set_negative_index();
     test_static_init_matches_constructor();
+    test_get_occupancy();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;
