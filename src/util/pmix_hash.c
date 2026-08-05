@@ -467,6 +467,72 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
     return rc;
 }
 
+pmix_status_t pmix_hash_fetch_lowest_rank(pmix_hash_table_t *table,
+                                          pmix_rank_t maxrank,
+                                          const char *key,
+                                          pmix_info_t *qualifiers, size_t nquals,
+                                          pmix_list_t *kvals,
+                                          pmix_keyindex_t *kidx)
+{
+    pmix_proc_data_t *proc_data;
+    pmix_regattr_input_t *p;
+    uint32_t id, kid, best = 0;
+    bool found = false;
+    char *node;
+    pmix_status_t rc;
+    pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
+
+    /* "all data for a rank" has no lowest-rank answer to give, and the
+     * caller wants every rank's contribution rather than one of them */
+    if (PMIX_UNLIKELY(NULL == key)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* a key nobody ever stored cannot be in this table. Look without
+     * registering, for the reasons given in pmix_hash_fetch. */
+    p = pmix_hash_find_key(UINT32_MAX, key, keyindex);
+    if (NULL == p) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    kid = p->index;
+
+    /* Walk the entries that are actually present rather than probing
+     * every rank the job could have. The two differ by a lot: a client
+     * that has not fenced has an empty "local" and "remote" table, and
+     * asking each of them for nprocs ranks it does not hold is where a
+     * PMIx_Get(NULL, key) at scale spends its time.
+     *
+     * Entries are visited in bucket order, so the whole table has to be
+     * seen before the lowest-ranked match is known. That is the ordering
+     * the ascending per-rank loop this replaces produced, and callers
+     * depend on it - two ranks can hold the same key. */
+    rc = pmix_hash_table_get_first_key_uint32(table, &id, (void **) &proc_data,
+                                              (void **) &node);
+    while (PMIX_SUCCESS == rc) {
+        /* Bound the search to the job's real ranks. This is what keeps
+         * the PMIX_RANK_WILDCARD and PMIX_RANK_UNDEF pseudo-rank entries
+         * - and the job-level data they carry - out of a per-rank
+         * search. A job whose size is not known yet has nothing to
+         * match, which is also what the loop this replaces did. */
+        if (id < maxrank && (!found || id < best) && NULL != proc_data) {
+            if (NULL != lookup_keyval(proc_data, kid, qualifiers, nquals, keyindex)) {
+                best = id;
+                found = true;
+            }
+        }
+        rc = pmix_hash_table_get_next_key_uint32(table, &id, (void **) &proc_data, node,
+                                                 (void **) &node);
+    }
+
+    if (!found) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* Build the answer through the ordinary path so the copy and
+     * qualified-value handling live in exactly one place. */
+    return pmix_hash_fetch(table, (pmix_rank_t) best, key, qualifiers, nquals, kvals, kidx);
+}
+
 pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table,
                                     pmix_rank_t rank, const char *key,
                                     pmix_keyindex_t *kidx)

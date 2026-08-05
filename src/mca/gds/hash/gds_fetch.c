@@ -709,13 +709,33 @@ doover:
      * known ranks for this nspace as any one of them could
      * be the source */
     if (PMIX_RANK_UNDEF == proc->rank) {
-        for (rnk = 0; rnk < trk->nptr->nprocs; rnk++) {
-            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs, NULL);
+        if (NULL != key) {
+            /* Any rank could be the source, so this is a search. Let the
+             * datastore walk the entries it actually holds once, rather
+             * than asking it for every rank the job could have: an
+             * un-fenced client's "local" and "remote" tables are empty,
+             * and probing each of them nprocs times is where a
+             * PMIx_Get(NULL, key) spends its time at scale. The helper
+             * returns the lowest-numbered match, which is what the
+             * ascending loop this replaces produced. */
+            rc = pmix_hash_fetch_lowest_rank(ht, trk->nptr->nprocs, key,
+                                             qualifiers, nqual, kvs, NULL);
             if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
-            if (PMIX_SUCCESS == rc && NULL != key) {
+            if (PMIX_SUCCESS == rc) {
                 return rc;
+            }
+        } else {
+            /* "everything from every rank" is an aggregate, not a
+             * search: each rank contributes, and the order they land in
+             * the list is visible to the caller. Keep collecting them in
+             * rank order. */
+            for (rnk = 0; rnk < trk->nptr->nprocs; rnk++) {
+                rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs, NULL);
+                if (PMIX_ERR_NOMEM == rc) {
+                    return rc;
+                }
             }
         }
         /* also need to check any job-level info */
