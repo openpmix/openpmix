@@ -901,6 +901,11 @@ static pmix_regattr_input_t* lookup_key(uint32_t inid,
         ptr->type = PMIX_UNDEF; // we don't know what type the user will set
         ptr->description = (char**)pmix_tma_malloc(tma, 2 * sizeof(char*));
         if (PMIX_UNLIKELY(NULL == ptr->description)) {
+            /* the entry was never handed to the keyindex, so nothing
+             * else will ever free it - release what we took here */
+            pmix_tma_free(tma, ptr->name);
+            pmix_tma_free(tma, ptr->string);
+            pmix_tma_free(tma, ptr);
             return NULL;
         }
         ptr->description[0] = pmix_tma_strdup(tma, "USER DEFINED");
