@@ -3941,9 +3941,12 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
             /* one pointer per element, not one byte: this array used to
              * be sized as int8_t while copy_darray (correctly) reads
              * sizeof(char*) per element, so copying one over-read the
-             * block by a factor of sizeof(void*) */
-            p->array = pmix_tma_malloc(tma, num * sizeof(void *));
-            memset(p->array, 0, num * sizeof(void *));
+             * block by a factor of sizeof(void*). Size it through a
+             * typed pointer so the element width is stated in the code
+             * rather than inferred from the untyped p->array. */
+            void **ptrs = (void **)pmix_tma_malloc(tma, num * sizeof(void *));
+            memset(ptrs, 0, num * sizeof(void *));
+            p->array = ptrs;
 
         } else if (PMIX_STRING == type) {
             p->array = pmix_tma_malloc(tma, num * sizeof(char*));
