@@ -152,7 +152,8 @@ int pmix_info_init(int argc, char **argv, pmix_cli_result_t *pmix_info_cmd_line,
     if (PMIX_SUCCESS != pmix_mca_base_open(NULL)) {
         pmix_show_help("help-pmix_info.txt", "lib-call-fail", true, "mca_base_open", __FILE__,
                        __LINE__);
-        PMIX_RELEASE(pmix_info_cmd_line);
+        /* the result object belongs to the caller - it is typically a
+         * statically declared object, so we must not release it here */
         return PMIX_ERROR;
     }
 
