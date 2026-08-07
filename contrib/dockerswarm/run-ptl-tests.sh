@@ -80,6 +80,12 @@ PTL_EXAMPLES="${PTL_EXAMPLES:-client dmodex tool}"
 # containers, and only the volume is the same in both.
 PMIX_PREFIX=/opt/prte/pmix
 TESTDIR=/opt/prte/tests-ptl
+# The shared volume is mounted READ-ONLY in the node containers (only the
+# throwaway builder gets it read-write), so anything a test needs a node to
+# *write* has to land on that node's own filesystem. The DVM's reported URI
+# is the one thing here that does. Deliberately not named "pmix*": that is
+# the glob cleanup_swarm sweeps out of /tmp between cases.
+DVM_URI_FILE=/tmp/ptl-dvm.uri
 
 OUT=""
 RC=0
@@ -226,9 +232,14 @@ test_linux() {
     # fail cleanly.
     cleanup_swarm
     nsp=""
-    OUT="$(RUN "prte --daemonize --report-uri $TESTDIR/dvm.uri 2>&1")"
-    sleep 3
-    uri="$(RUN "cat $TESTDIR/dvm.uri 2>/dev/null" | head -1)"
+    OUT="$(RUN "rm -f $DVM_URI_FILE; prte --daemonize --report-uri $DVM_URI_FILE 2>&1")"
+    # --daemonize returns as soon as the DVM is forked, so poll for the
+    # file rather than guessing how long it takes to write it
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        RUN "test -s $DVM_URI_FILE" && break
+        sleep 2
+    done
+    uri="$(RUN "cat $DVM_URI_FILE 2>/dev/null" | head -1)"
     if [ -z "$uri" ]; then
         skp "tool by nspace (DVM did not report a URI)"
         skp "tool discovery is node-local (no DVM)"

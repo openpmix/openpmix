@@ -27,6 +27,7 @@ two disagree, the README wins, and please fix this file.
 | `run-mca-tests.sh` | The `src/mca/base` unit suite plus hostile MCA parameters, in the `--enable-mca-dso` configuration where the component repository is actually exercised (README §14) |
 | `run-bfrops-tests.sh` | The `src/mca/bfrops` unit programs on Linux/optimized/`--enable-mca-dso`, **plus** `examples/datatypes` moving every data type between ranks on different nodes (README §15) |
 | `run-gds-tests.sh` | The `src/mca/gds` datastore: compiles `shmem3` (which macOS does not build at all), the gds unit programs in two configurations, and the collective/direct/fallback modex paths across separate servers (README §16) |
+| `run-ptl-tests.sh` | The `src/mca/ptl` transport over real sockets between real hosts: interface selection, node-local rendezvous discovery, a tool attaching across nodes, the inbound message-size ceiling, an exhausted port range (README §17) |
 | `swarm-common.sh` | **Sourced, never executed.** `$PMIX_SWARM` naming and the one copy of `cleanup_swarm` |
 
 ## Things that will bite you
@@ -103,6 +104,17 @@ two disagree, the README wins, and please fix this file.
   only after it was folded into `test/unit/bfrops_malformed.c` and run
   in-process; the scratch version that forked had been running against
   the same defect and reporting clean.
+
+- **The shared volume is mounted READ-ONLY in the node containers.**
+  Only the throwaway builder container gets it read-write, which is how
+  the runners stage binaries into it. Anything a test needs a *node* to
+  write has to go to that node's own filesystem instead. This fails
+  quietly where it matters most: `prte --report-uri /opt/prte/...` does
+  not complain, it simply never produces the file, and the case that
+  needed the URI skips itself with a message about the DVM rather than
+  about the path. `run-ptl-tests.sh` writes its URI to `/tmp` for this
+  reason — and deliberately not to a name matching `pmix*`, which is the
+  glob `cleanup_swarm` sweeps out of `/tmp` between cases.
 
 - **The build volume outlives your branch.** `pmix-build` persists
   across runs and across checkouts, so a tree in it can be older than
