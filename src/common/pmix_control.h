@@ -32,6 +32,11 @@ BEGIN_C_DECLS
  * The directives are packed before this returns, so a caller may
  * release them as soon as it does; the send itself is thread-shifted.
  * A NULL cbfunc means the caller does not want the answer.
+ *
+ * Returns PMIX_ERR_INIT until the library has finished initializing.
+ * That is not a formality: the connection to our server exists well
+ * before init completes, and a request sent in that window lands in the
+ * middle of the init exchange.
  */
 PMIX_EXPORT pmix_status_t pmix_job_control_relay(const pmix_proc_t targets[], size_t ntargets,
                                                  const pmix_info_t directives[], size_t ndirs,

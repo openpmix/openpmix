@@ -294,6 +294,23 @@ pmix_status_t pmix_job_control_relay(const pmix_proc_t targets[], size_t ntarget
     pmix_status_t rc;
     pmix_query_caddy_t *qcd;
 
+    /* The library has to be all the way up before we put a request on
+     * the wire. "Connected" is not enough: the connection is made well
+     * before init finishes, and both PMIx_server_init and
+     * PMIx_tool_init start their listener - which is where the ptl tool
+     * component wants to make this call - some way ahead of setting
+     * this flag. Sending in that window injects a reply into the middle
+     * of the init exchange, which the init path then reads as its own
+     * and fails to unpack. PMIx_Job_control_nb makes the same check
+     * before it gets here; it is repeated so the internal entry point
+     * is safe on its own. */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* we need to send, so check for connection */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;

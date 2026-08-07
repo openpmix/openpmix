@@ -53,7 +53,24 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo)
         return rc;
     }
 
-    /* if we are connected, then register any rendezvous files for cleanup */
+    /* If we are connected, then register any rendezvous files for
+     * cleanup.
+     *
+     * Be aware that this block does not currently run at all. Both
+     * PMIx_tool_init and PMIx_server_init start their listener - which
+     * is what calls us - before they set pmix_globals.initialized, and
+     * a job-control request is refused until that is set, because one
+     * sent any earlier arrives in the middle of the init exchange. So
+     * the registration is attempted and declined, every time.
+     *
+     * That has always been so; it was simply invisible while the call
+     * went through PMIx_Job_control_nb, which returned PMIX_ERR_INIT
+     * and had its answer thrown away. Making it work means moving the
+     * registration to somewhere after init completes, which is a change
+     * to what the host is asked to clean up rather than a change to
+     * this component - so it belongs with whoever owns that decision.
+     * Left here, refused and reported, rather than deleted or quietly
+     * switched on. */
     if (pmix_atomic_check_bool(&pmix_globals.connected)) {
         if (NULL != pmix_ptl_base.nspace_filename) {
             PMIx_Argv_append_nosize(&clnup, pmix_ptl_base.nspace_filename);
@@ -78,7 +95,8 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo)
                  * directory sweep to deal with */
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:tool could not register rendezvous files "
-                                    "for cleanup: %s", PMIx_Error_string(rc));
+                                    "for cleanup: %s (see the note above - this is "
+                                    "expected during init)", PMIx_Error_string(rc));
             }
         }
     }
