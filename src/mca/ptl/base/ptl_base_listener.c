@@ -107,6 +107,13 @@ void pmix_ptl_base_stop_listening(void)
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "listen_thread: shutdown");
 
+    /* The listener has to be built again if the framework is opened
+     * again in this process - pmix_ptl_close destructs the listener
+     * object, so the socket and URI this flag says we already have are
+     * gone with it. Clear it here rather than at the top of setup so a
+     * repeated start_listening within one cycle still short-circuits. */
+    setup_complete = false;
+
     if (!lt->active) {
         /* nothing we need do */
         return;
