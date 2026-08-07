@@ -841,6 +841,12 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
         msg->data = ms->bfr->base_ptr;
         ms->bfr->base_ptr = NULL;
         ms->bfr->bytes_used = 0;
+        /* we took the data region, so the buffer that carried it is
+         * ours to release - the caddy's destructor does not do it, and
+         * the socket path below hands the buffer itself to the send
+         * object instead */
+        PMIX_RELEASE(ms->bfr);
+        ms->bfr = NULL;
         PMIX_ACTIVATE_POST_MSG(msg);
         PMIX_RELEASE(ms);
         return;
