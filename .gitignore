@@ -295,6 +295,7 @@ test/unit/proc_array_id
 test/unit/get_perf
 test/unit/ptl_uri
 test/unit/ptl_handshake
+test/unit/tool_nspace
 test/unit/run_gds_fallback.pl
 test/unit/run_simpcycle.pl
 test/unit/run_toolcycle.pl
