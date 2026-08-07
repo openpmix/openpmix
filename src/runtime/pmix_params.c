@@ -389,6 +389,17 @@ pmix_status_t pmix_register_params(void)
 
 pmix_status_t pmix_deregister_params(void)
 {
+    int k;
+
+    /* the registered vars themselves are freed by the mca_base_var
+     * system in pmix_mca_base_var_finalize; the color escape strings are
+     * ours, built by parse_color_string above, so they are released here
+     * where they pair with the code that allocated them */
+    for (k = 0; k < PMIX_VAR_DUMP_COLOR_KEY_COUNT; k++) {
+        free(pmix_var_dump_color[k]);
+        pmix_var_dump_color[k] = NULL;
+    }
+
     pmix_register_done = false;
 
     return PMIX_SUCCESS;

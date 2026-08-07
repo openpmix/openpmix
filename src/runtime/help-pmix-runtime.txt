@@ -102,6 +102,50 @@ only be provided once and cannot be overwritten.
 
 Please correct your program and try again.
 #
+[progress-thread:bad-cpu-list]
+An entry in the list of CPUs to which the PMIx progress thread is to be
+bound could not be used, and has been ignored:
+
+  Entry:  %s
+  List:   %s
+
+The list is a comma-delimited series of entries, where each entry is
+either a single CPU number or an inclusive range written "start-end" -
+for example "0,2,8-11". Each number must be between 0 and %d inclusive,
+and a range must not run backwards.
+
+The list is set either by the "pmix_progress_thread_cpus" MCA parameter
+or by the PMIX_BIND_PROGRESS_THREAD attribute passed to initialization.
+If no entry in it is usable, and binding was requested as required
+(PMIX_BIND_REQUIRED / "pmix_bind_progress_thread_reqd"), initialization
+will fail; otherwise the thread is left unbound.
+#
+[var_dump_color:format-error]
+A malformed entry was found in the "pmix_var_dump_color" MCA parameter
+and has been ignored:
+
+  Entry: %s
+
+Each entry in the parameter must have the form "key=code", where "code"
+is an ANSI X3.64 CSI SGR sequence (for example, 34 for blue), and the
+entries are separated by commas - e.g.
+
+  name=34,value=32,valid_values=36
+
+Keys not given a color are left uncolored.
+#
+[var_dump_color:unknown-key]
+An entry in the "pmix_var_dump_color" MCA parameter names a key this
+version of PMIx does not recognize. The entry has been ignored:
+
+  Key:    %s
+  Entry:  %s
+
+Recognized keys are: %s
+
+Note that a key added by a later release of PMIx will be reported here
+by an earlier one - the parameter is otherwise being read normally.
+#
 [blocking-call-from-progress-thread]
 A blocking call to %s was made from the PMIx progress thread.
 

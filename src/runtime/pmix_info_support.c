@@ -450,7 +450,12 @@ void pmix_info_show_path(const char *type, const char *value)
     char *pretty, *path;
 
     pretty = strdup(type);
-    pretty[0] = toupper(pretty[0]);
+    if (NULL == pretty) {
+        return;
+    }
+    /* toupper is undefined for a negative char, so widen through
+     * unsigned char before handing it over */
+    pretty[0] = (char) toupper((unsigned char) pretty[0]);
 
     pmix_asprintf(&path, "path:%s", type);
     pmix_info_out(pretty, path, value);
