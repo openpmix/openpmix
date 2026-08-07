@@ -153,3 +153,14 @@ instance that is no longer running, but was unable to remove it:
   Error:  %s
 
 Please remove the file and try again.
+#
+[unknown-attribute]
+A PMIx tool asked to connect to its server using an ordered list of
+connection targets, but one of the entries does not name a known PMIx
+attribute:
+
+  Entry:      %s
+  Given via:  %s
+
+Please check the spelling of the entry - "pmix_info --attributes" will
+list the attributes this build recognizes.
