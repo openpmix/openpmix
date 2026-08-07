@@ -36,7 +36,6 @@ directories together are under 250 lines; this one is nearly 6000.
 | [`ptl_base_sendrecv.c`](ptl_base_sendrecv.c) | steady-state send/recv handlers, tag matching, `lost_connection` |
 | [`ptl_base_stubs.c`](ptl_base_stubs.c) | version comparison and the notification recv registration |
 | [`help-ptl-base.txt`](help-ptl-base.txt) | this framework's `show_help` topics |
-| [`usock.h`](usock.h) | a vestige of the removed Unix-socket transport; nothing includes it |
 
 The split between `ptl_base_connect.c` and `ptl_base_fns.c` is
 historical rather than principled — the outbound connection path runs
@@ -273,6 +272,34 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |
 | `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: tools connecting across nodes, discovery by pid/nspace, remote-connection interface selection |
+
+### Two things left alone on purpose
+
+Both are visible from this directory and both look like defects at first
+glance. Neither is one to "fix" without agreement:
+
+- **A self-started tool's namespace never joins `pmix_globals.nspaces`.**
+  `process_tool_request` takes two references on a namespace it creates
+  — one for the peer, one on behalf of that list — and `process_cbfunc`
+  appends it only on the tool-that-is-already-a-client path. For a tool
+  that asked for an identity, the second reference is simply held. That
+  looks like a leak, but a dozen other places in the library (the `gds`
+  hash utilities among them) will find-or-create a namespace on that
+  list, at which point the reference becomes the one the list holds.
+  Deciding which of those is the intended owner is a question for the
+  team, not a local edit: the alternative reading is that
+  `process_tool_request`'s comment is right and the append is missing,
+  and `process_tool_request`'s "a prior instance of the tool already
+  connected, so we would know the nspace" branch only makes sense under
+  that reading.
+
+- **`tool/ptl_tool.c` calls the public `PMIx_Job_control_nb`** to register
+  its rendezvous files for cleanup, which the top-level rules say
+  back-end code must not do. It is safe today — `setup_listener` runs on
+  the caller's thread during `PMIx_tool_init`, so the thread-shift the
+  API performs is a post rather than a re-entry — but it is a deviation,
+  and if that code ever moves onto the progress thread it becomes a
+  deadlock.
 
 Anything in here that can be expressed as a pure function of its inputs
 should get a unit test — the parsers and the handshake macros both

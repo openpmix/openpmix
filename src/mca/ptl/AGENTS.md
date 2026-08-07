@@ -78,9 +78,9 @@ Consequently:
   reality.** It says components exist to support new handshake versions
   and new transports. In practice there is one transport (TCP, protocol
   `PMIX_PROTOCOL_V2`); the old Unix-domain-socket transport (`usock`,
-  `PMIX_PROTOCOL_V1`) is gone except for the vestigial `base/usock.h`.
-  Handshake versioning is handled *inside* the base by inspecting the
-  peer's version string, not by swapping components.
+  `PMIX_PROTOCOL_V1`) is gone, and `PMIX_PROTOCOL_V1` survives only as a
+  reserved value. Handshake versioning is handled *inside* the base by
+  inspecting the peer's version string, not by swapping components.
 
 If you are looking for "the TCP code," it is in `base/`, not in a
 component. Read `base/` first.
@@ -460,7 +460,6 @@ src/mca/ptl/
 │   ├── ptl_base_sendrecv.c     send/recv handlers, tag matching, lost-connection teardown
 │   ├── ptl_base_fns.c          handshake build/parse, URI parsing, file discovery, helpers
 │   ├── ptl_base_stubs.c        version comparison + notification-recv registration
-│   ├── usock.h                 vestige of the removed Unix-socket transport
 │   └── AGENTS.md               the authoritative guide to everything above
 ├── client/                     pure-client role (its own simpler connect_to_peer)
 ├── server/                     pure-server role (base connect + listener + fork)
