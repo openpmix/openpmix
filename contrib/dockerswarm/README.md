@@ -1078,3 +1078,108 @@ cases against a single local server. The ceiling cases lose nothing by
 being local: the parameter is read once, at framework registration, and
 the defect it guards against made every payload-bearing message fail.
 Everything else in the suite needs a second host by construction.
+
+## 18. The `src/runtime` suite (`run-runtime-tests.sh`)
+
+```sh
+./run-runtime-tests.sh linux     # the swarm
+./run-runtime-tests.sh macos     # single-host, both configurations
+```
+
+`src/runtime` is the layer every PMIx process passes through exactly once
+on the way in and once on the way out: `pmix_rte_init` /
+`pmix_rte_finalize`, the `pmix_globals` object they build and tear down,
+the MCA parameter registry, the progress-thread engine, and the
+`pmix_info` support library. Most of it is single-process, and
+`test/unit`'s `runtime_init`, `progress_threads`, `info_support`,
+`client_cycle` and `tool_cycle` cover it on the developer's own machine.
+Three things they do not.
+
+### Why the swarm buys something here
+
+* **Linux-only code that never compiles at home.** The progress thread's
+  CPU-affinity path — `start_progress_engine`'s `parse_cpu_range` and the
+  `pthread_setaffinity_np` call it feeds — is inside
+  `#ifdef HAVE_PTHREAD_SETAFFINITY_NP`. macOS has no such function, so on
+  the primary development host that code is not merely untested, it is
+  not compiled: `progress_threads` reports its whole `cpulist:` group as
+  `SKIP` there. It takes user input straight from the
+  `pmix_progress_thread_cpus` MCA parameter or the
+  `PMIX_BIND_PROGRESS_THREAD` attribute, and used to hand it to `strtoul`
+  and `CPU_SET` unchecked — `strtoul` reports 0 for a token with no
+  digits, so `cpu0` quietly became "bind to cpu 0", and a number past the
+  end of the mask is dropped by glibc but written past the end of it by
+  BSD.
+
+* **An optimized build.** Every tree in this workflow configures
+  `--enable-debug`. `start_progress_engine` opens with
+  `assert(!trk->ev_active)` and `pmix_info_close_components` with an
+  assert on its refcount; both vanish under `NDEBUG`, which is the build
+  users get.
+
+* **Re-entrancy under a real runtime.** This directory's standing
+  requirement is that a second `PMIx_Init` starts from a clean slate, and
+  nearly all of its recent history is about that. `client_cycle` and
+  `tool_cycle` cycle init/finalize 1200 times each; running them on Linux
+  *and* optimized is where a leak or a stale latch that macOS/debug hides
+  shows up.
+
+### The four stages
+
+1. **`--enable-debug`** — build from a copy of your tree in the
+   container and run all five programs.
+2. **`--disable-debug`** — the same, in the configuration users get.
+3. **CPU binding through `PMIx_Init`.** The unit test drives *named*
+   progress threads, because those are the ones it can create and destroy
+   at will. The list is also read for the **shared** thread, straight out
+   of `pmix_rte_init`, and that is the path a user actually takes — so
+   this stage drives it with the MCA parameter against a program that
+   stands up a real server. Both directions are asserted, and the second
+   matters more: with binding declared *required*, a list from which
+   nothing usable can be extracted must make init fail rather than leave
+   the thread silently bound to cpu 0. It also checks that the diagnostic
+   is the one about the list, since a missing `show_help` topic turns any
+   of these into "I couldn't find that help reference".
+4. **Node identity across real servers.** `pmix_rte_init` settles each
+   process's own node identity and `pmix_set_aliases` records the form of
+   the name the FQDN policy did not keep, so `pmix_check_local` matches
+   this node under either. That call used to be skipped whenever the host
+   supplied the name — which every resource manager does — leaving the
+   alias list empty. This stage runs `simple_resolve` across four nodes
+   and asserts every rank resolved its own node's peers and that all four
+   nodes appear in the node list.
+
+### What stage 4 is not
+
+It cannot exercise the FQDN half. The swarm's containers are named
+`node1`..`node10` with no domain part, so `pmix_set_aliases` has no second
+form to record and the interesting branch is never taken. Engineering
+dotted hostnames into `docker-compose.yml` would ripple through every
+other runner here for one branch that `test/unit/runtime_init` already
+pins down directly — it hands `PMIx_server_init` an FQDN and checks that
+both forms resolve. So the FQDN case is deliberately left to the unit
+test, and this stage guards the ordinary short-name path across nodes
+against the same change.
+
+### Two things about how it builds
+
+Unlike the older runners here, stages 1 and 2 build from a **copy** of
+the source rather than a VPATH tree against the read-only mount. Autoconf
+refuses a VPATH configure outright while the source directory holds a
+`config.status` ("source directory already configured; run make distclean
+there first"), and a developer's own tree is configured in place. An
+already-configured VPATH tree does not escape it either: touch any
+`Makefile.am` on the host and maintainer mode re-runs `config.status` in
+the container, which re-runs `configure`, which hits the same wall. The
+VPATH form therefore works right up until the moment you edit something,
+which is the moment you want to run it. Copying costs a full build per
+stage and is immune to whatever state the host tree is in.
+
+Stage 4 is the exception: it runs against the PMIx that `./build.sh`
+installed into the volume, because that is the library `prted` — the
+actual PMIx *server* in this picture — is linked against. Run
+`./build.sh` against your tree first or that stage reports on whatever
+was there before. Every runner here that drives `prterun` has the same
+contract. Note also that the nodes mount the build volume **read-only**,
+so anything that has to be compiled into it must be built from a
+`docker run`, not with `docker exec` on a node.

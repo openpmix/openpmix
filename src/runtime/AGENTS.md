@@ -390,8 +390,18 @@ Two notes for anyone adding to these:
 - **The affinity path is Linux/BSD-only.** Everything inside
   `#ifdef HAVE_PTHREAD_SETAFFINITY_NP` compiles out on macOS, so the
   `cpulist:` cases in `progress_threads` report `SKIP` there and must be
-  exercised on Linux (a container is enough — this needs no multi-node
-  setup) before you trust a change to `parse_cpu_range`.
+  exercised on Linux before you trust a change to `parse_cpu_range`.
+
+That last point is what
+[`contrib/dockerswarm/run-runtime-tests.sh`](../../contrib/dockerswarm/run-runtime-tests.sh)
+exists for (README §18). It runs all five programs on Linux in **both**
+`--enable-debug` and `--disable-debug` — the asserts in
+`start_progress_engine` and `pmix_info_close_components` only exist in the
+first, and users only ever get the second — then drives the CPU list
+through a real `PMIx_Init` (the unit test can only reach *named* progress
+threads; the shared one is configured from `pmix_rte_init`), and finally
+resolves peers across four nodes to guard the alias change end to end.
+Run it after touching the progress thread or the init/finalize contract.
 
 ## Known rough spots
 
