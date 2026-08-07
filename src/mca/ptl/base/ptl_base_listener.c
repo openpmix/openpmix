@@ -287,6 +287,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
         rc = pmix_os_dirpath_create(dirname, mode);
         if (PMIX_ERR_SILENT == rc) {
             // error has already been reported
+            free(dirname);
             return rc;
         }
         if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
@@ -361,8 +362,11 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
                   (unsigned long)pmix_globals.uid,
                   (unsigned long)pmix_globals.gid,
                   ctime(&mytime));
+    /* a short write leaves a file a peer will read as truncated, which
+     * is indistinguishable from the creator having died partway thru
+     * writing it - so treat it exactly like a failure */
     rc = write(fd, tmp, strlen(tmp));
-    if (0 > rc) {
+    if (0 > rc || (size_t) rc != strlen(tmp)) {
         PMIX_ERROR_LOG(PMIX_ERR_FILE_WRITE_FAILURE);
         *file_created = false;
         pmix_free(tmp);

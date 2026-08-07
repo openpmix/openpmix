@@ -215,7 +215,7 @@ typedef uint8_t pmix_rnd_flag_t;
         if (PMIX_SUCCESS != r) {                                              \
             return r;                                                         \
         }                                                                     \
-        (n) = htonl(_u);                                                      \
+        (n) = ntohl(_u);                                                      \
     } while (0)
 
 END_C_DECLS

@@ -1416,6 +1416,9 @@ static void _check_cached_events(pmix_peer_t *peer)
         if (NULL == relay) {
             /* nothing we can do */
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            if (found) {
+                PMIX_RELEASE(cd);
+            }
             break;
         }
         /* pack the info data stored in the event */
@@ -1423,12 +1426,22 @@ static void _check_cached_events(pmix_peer_t *peer)
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
             PMIX_RELEASE(relay);
+            if (found) {
+                /* we already checked this event out of the cache, so
+                 * nothing else will ever release it */
+                PMIX_RELEASE(cd);
+            }
             break;
         }
         PMIX_BFROPS_PACK(ret, peer, relay, &cd->status, 1, PMIX_STATUS);
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
             PMIX_RELEASE(relay);
+            if (found) {
+                /* we already checked this event out of the cache, so
+                 * nothing else will ever release it */
+                PMIX_RELEASE(cd);
+            }
             break;
         }
         PMIX_BFROPS_PACK(ret, peer, relay, &cd->source, 1, PMIX_PROC);
@@ -1441,6 +1454,11 @@ static void _check_cached_events(pmix_peer_t *peer)
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
             PMIX_RELEASE(relay);
+            if (found) {
+                /* we already checked this event out of the cache, so
+                 * nothing else will ever release it */
+                PMIX_RELEASE(cd);
+            }
             break;
         }
         if (0 < cd->ninfo) {

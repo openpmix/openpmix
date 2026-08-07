@@ -69,7 +69,6 @@ pmix_ptl_base_t pmix_ptl_base = {
     .initialized = false,
     .selected = false,
     .posted_recvs = PMIX_LIST_STATIC_INIT,
-    .unexpected_msgs = PMIX_LIST_STATIC_INIT,
     .listener = PMIX_LISTENER_STATIC_INIT,
     .connection = NULL,
     .max_msg_size = 0,
@@ -623,6 +622,18 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_sr_t,
 
 static void pccon(pmix_pending_connection_t *p)
 {
+    /* PMIX_NEW does not zero the object, so every field has to be set
+     * here - including the ones the listener fills in immediately, since
+     * an error path may look at them before it gets that far */
+    p->protocol = PMIX_PROTOCOL_UNDEF;
+    p->sd = -1;
+    p->status = PMIX_SUCCESS;
+    p->flag = PMIX_SIMPLE_CLIENT;
+    p->buffer_type = PMIX_BFROP_BUFFER_UNDEF;
+    p->len = 0;
+    p->uid = 0;
+    p->gid = 0;
+    memset(&p->addr, 0, sizeof(p->addr));
     p->need_id = false;
     p->nspace_created = false;
     p->rinfo_created = false;
@@ -670,11 +681,15 @@ static void lcon(pmix_listener_t *p)
 {
     memset(&p->ev, 0, sizeof(pmix_event_t));
     p->active = false;
+    p->protocol = PMIX_PROTOCOL_UNDEF;
     p->socket = -1;
     p->varname = NULL;
     p->uri = NULL;
+    p->owner = 0;
     p->owner_given = false;
+    p->group = 0;
     p->group_given = false;
+    p->cbfunc = NULL;
     p->mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
 }
 static void ldes(pmix_listener_t *p)

@@ -82,7 +82,14 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char **evar)
 
     PMIX_LIST_FOREACH(mod, &pmix_bfrops_globals.actives, pmix_bfrops_base_active_module_t) {
         // these are in priority order, so take the highest priority that we find
+        /* every bfrops component is named for the wire version it
+         * speaks - "v41", "v21" - so the digits follow the last 'v'.
+         * A component that does not follow that convention cannot be
+         * matched to a PMIX_SERVER_URIvNN variable at all */
         ptr = strrchr(mod->component->base.pmix_mca_component_name, 'v');
+        if (NULL == ptr) {
+            continue;
+        }
         ++ptr;
         pmix_asprintf(&tmp, "PMIX_SERVER_URI%s", ptr);
         if (evalgiven) {
@@ -939,32 +946,6 @@ pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
     }
 
     return PMIX_SUCCESS;
-}
-
-void pmix_ptl_base_setup_socket(pmix_peer_t *peer)
-{
-    PMIX_HIDE_UNUSED_PARAMS(peer);
-#if defined(TCP_NODELAY)
-    int optval;
-    optval = 1;
-    if (setsockopt(peer->sd, IPPROTO_TCP, TCP_NODELAY, (char *) &optval, sizeof(optval)) < 0) {
-        pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                            "[%s:%d] setsockopt(TCP_NODELAY) failed: %s (%d)", __FILE__, __LINE__,
-                            strerror(pmix_socket_errno), pmix_socket_errno);
-    }
-#endif
-#if defined(SO_NOSIGPIPE)
-    /* Some BSD flavors generate EPIPE when we write to a disconnected peer. We need
-     * the prevent this signal to be able to trap socket shutdown and cleanly release
-     * the endpoint.
-     */
-    int optval2 = 1;
-    if (setsockopt(peer->sd, SOL_SOCKET, SO_NOSIGPIPE, (char *) &optval2, sizeof(optval2)) < 0) {
-        pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                            "[%s:%d] setsockopt(SO_NOSIGPIPE) failed: %s (%d)", __FILE__, __LINE__,
-                            strerror(pmix_socket_errno), pmix_socket_errno);
-    }
-#endif
 }
 
 pmix_status_t pmix_ptl_base_client_handshake(pmix_peer_t *peer, pmix_status_t reply)
