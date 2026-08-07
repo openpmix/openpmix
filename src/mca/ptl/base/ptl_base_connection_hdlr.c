@@ -816,7 +816,24 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         if (NULL == nptr3) {
             pmix_list_append(&pmix_globals.nspaces, &nptr->super);
         } else {
-            // need to release this to avoid memory leak
+            /* The host registered this namespace while we were waiting on
+             * it, so the object we built is a duplicate and has to go.
+             * Two references stand on it: the one PMIX_NEW gave us, which
+             * we were holding on behalf of the list we now will not join,
+             * and the peer's. Both must be given back, and the peer must
+             * take one on the object that is actually on the list -
+             * pointing it at nptr3 without retaining would have it
+             * release a reference it never held. */
+            PMIX_RETAIN(nptr3);
+            if (pnd->rinfo_created) {
+                /* the rank info we built is on the duplicate's rank list
+                 * and goes away with it. The peer holds its own reference,
+                 * so the object survives - but it is no longer on any
+                 * list, so the error path below must not try to withdraw
+                 * it from one. */
+                pnd->rinfo_created = false;
+            }
+            PMIX_RELEASE(nptr);
             PMIX_RELEASE(nptr);
             nptr = nptr3;
             // reconnect the peer
@@ -956,8 +973,12 @@ error:
     CLOSE_THE_SOCKET(pnd->sd);
     if (NULL != peer) {
         if (NULL != peer->info && pnd->rinfo_created) {
+            /* withdraw it from the namespace's rank list and give back
+             * the reference that list was holding - removing an item
+             * does not release it. The peer's own reference is given
+             * back when the peer is released below. */
             pmix_list_remove_item(&peer->nptr->ranks, &peer->info->super);
-            // the info object will be released along with the peer
+            PMIX_RELEASE(peer->info);
         }
         if (NULL != peer->nptr && pnd->nspace_created) {
             pmix_list_remove_item(&pmix_globals.nspaces, &peer->nptr->super);
@@ -1301,8 +1322,12 @@ cleanup:
      * owned by the pending connection and is freed by its destructor when
      * our caller releases it. */
     if (pnd->rinfo_created) {
-        /* we appended this rank info to the namespace - withdraw it */
+        /* we appended this rank info to the namespace - withdraw it, and
+         * give back the reference that list was holding, since removing
+         * an item does not release it. The peer's own reference is given
+         * back when the peer is released below. */
         pmix_list_remove_item(&nptr->ranks, &peer->info->super);
+        PMIX_RELEASE(peer->info);
     }
     if (pnd->nspace_created) {
         /* the namespace we created was never placed on the global list -
