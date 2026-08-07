@@ -575,7 +575,12 @@ static void fence_timeout(int sd, short args, void *cbdata)
         trk->modexcbfunc(PMIX_ERR_TIMEOUT, NULL, 0, trk, NULL, NULL);
         return; // the cbfunc will have cleaned up the tracker
     }
+    /* no completion function was ever attached, so tear the tracker down
+     * ourselves - which means unlinking it from the collectives list first.
+     * Being on that list is not a reference; releasing while still linked
+     * leaves a dangling entry that the next sweep walks into. */
     trk->event_active = false;
+    pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
     PMIX_RELEASE(trk);
 }
 
@@ -905,7 +910,7 @@ cleanup:
 }
 
 pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
-                                pmix_modex_cbfunc_t modexcbfunc, pmix_op_cbfunc_t opcbfunc)
+                                pmix_modex_cbfunc_t modexcbfunc)
 {
     int32_t cnt;
     pmix_status_t rc;
@@ -918,6 +923,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     pmix_buffer_t bucket;
     pmix_info_t *info = NULL;
     size_t ninfo = 0, ninf, n;
+    uint32_t tmo;
     struct timeval tv = {0, 0};
 
     pmix_output_verbose(2, pmix_server_globals.fence_output,
@@ -982,12 +988,17 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             if (PMIX_CHECK_KEY(&info[n], PMIX_COLLECT_DATA)) {
                 collect_data = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-                rc = PMIx_Value_get_number(&info[n].value, &tv.tv_sec, PMIX_UINT32);
+                /* convert through a uint32_t of its own: the accessor
+                 * writes exactly the width of the requested type, so
+                 * handing it the address of a wider time_t would fill only
+                 * half the field - the wrong half on a big-endian host */
+                rc = PMIx_Value_get_number(&info[n].value, &tmo, PMIX_UINT32);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_PROC_FREE(procs, nprocs);
                     PMIX_INFO_FREE(info, ninfo);
                     return rc;
                 }
+                tv.tv_sec = tmo;
             }
         }
     }
@@ -996,12 +1007,12 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     if (NULL == (trk = pmix_server_get_tracker(NULL, procs, nprocs, PMIX_FENCENB_CMD))) {
         /* If no tracker was found - create and initialize it once */
         if (NULL == (trk = pmix_server_new_tracker(NULL, procs, nprocs, PMIX_FENCENB_CMD))) {
-            /* only if a bozo error occurs */
+            /* only if a bozo error occurs. Do NOT drive opcbfunc here: it
+             * releases the caddy and answers the client, and we then return
+             * an error, so the switchyard would release the same caddy and
+             * answer the same client a second time. Returning the error on
+             * its own is what keeps the client from hanging. */
             PMIX_ERROR_LOG(PMIX_ERROR);
-            /* DO NOT HANG */
-            if (NULL != opcbfunc) {
-                opcbfunc(PMIX_ERROR, cd);
-            }
             rc = PMIX_ERROR;
             PMIX_INFO_FREE(info, ninfo);
             goto cleanup;

@@ -198,13 +198,20 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
     PMIX_INFO_LOAD(&info[2], PMIX_HOSTNAME, nd, PMIX_STRING);
 
     if (0 == pmix_nslen(nspace)) {
-        // asking for a complete list of peers
-        rc = PMIX_ERR_DATA_VALUE_NOT_FOUND;
+        // asking for a complete list of peers. Seed the *returned* status,
+        // not the scratch rc that the very next fetch overwrites - an
+        // aggregate search that found nothing used to answer SUCCESS with
+        // zero peers instead of reporting that nothing was found.
+        ret = PMIX_ERR_DATA_VALUE_NOT_FOUND;
         np = 0;
 
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
+            /* restart each namespace from UNDEF: the wildcard retry below
+             * mutates proc.rank, and leaving it mutated denied every
+             * subsequent namespace its own first-choice lookup */
+            proc.rank = PMIX_RANK_UNDEF;
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
             if (PMIX_SUCCESS != rc) {
                 if (PMIX_RANK_UNDEF == proc.rank) {
@@ -291,6 +298,10 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
             }
             PMIx_Argv_free(tmp);
             ret = PMIX_SUCCESS;
+        } else if (NULL != tmp) {
+            /* entries were collected but none of them yielded a rank -
+             * the array is still ours to free */
+            PMIx_Argv_free(tmp);
         }
         PMIX_DESTRUCT(&cb);
         goto done;

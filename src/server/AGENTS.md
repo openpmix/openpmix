@@ -123,6 +123,36 @@ Host up-calls use a tri-state return convention throughout:
 invoke the completion yourself"; any error = "rejected." Handle all
 three on every up-call site.
 
+**`PMIX_SUCCESS` from an up-call transfers ownership of the caddy to the
+host.** This is the arm most easily lost, because it is usually the one
+that needs no code: the handler returns and the host's callback does the
+rest. A handler whose error cleanup sits under a bare `exit:` label
+therefore has to *return* on the success arm, not fall into it. Both
+`pmix_server_iofreg` and `pmix_server_iofdereg` fell through and released
+the caddy the host was still holding, so the host's completion ran on
+freed memory — and each carried a comment describing the very discipline
+the code did not implement. When you add a handler, read the success arm
+and the label as one thing.
+
+**A release function belongs to whoever gave it to you, and so does its
+argument.** The host hands down a `(relfn, relcbdata)` pair; `relfn` must
+be called with *that* `relcbdata` and nothing else. The temptation is to
+reach for whichever pointer is in scope — the tracker, the block, our own
+caddy — and several sites had. Note the two spellings are not
+interchangeable across files: `modex_cbfunc` parks the host's data in
+`scd->relcbdata`, while `grpcbfunc` parks it in `scd->cbdata`, so the
+correct expression differs between `_mdxcbfunc` and `_grpcbfunc`. Check
+which one the *producing* callback set before copying a line.
+
+**An internal completion path must hand the callback the object that
+callback casts.** `_fabric_response` exists to answer a fabric request the
+`pnet` layer satisfied locally, and it called the switchyard's
+`fabric_cbfunc` with `qcd->cbdata` — a `pmix_server_caddy_t` — where that
+function casts to `pmix_query_caddy_t` and dereferences the result. The
+sibling `pmix_server_fabric_update` never set `qcd->cbfunc` at all. Both
+are latent only because no in-tree `pnet` component answers a fabric
+request; a component that did would crash immediately.
+
 ## The caddy zoo
 
 | Type | Defined | Role |
@@ -213,7 +243,19 @@ guarded by `!trk->event_active`, and the fence family does **not** add a
 retain when arming (the collectives-list reference is the sole
 reference; completion cancels the timer before releasing). Follow the
 fence pattern precisely — arming a timer with an unbalanced `PMIX_RETAIN`
-or without the `event_active` guard leaks the tracker.
+or without the `event_active` guard leaks the tracker. A timeout handler
+that has to tear the tracker down itself (no completion function was ever
+attached) is bound by the same rule as everything else here: **unlink
+from `collectives` first, then release.**
+
+**Read `PMIX_TIMEOUT` into a variable of the width you ask for.**
+`PMIx_Value_get_number(value, dest, type)` writes exactly `sizeof(type)`
+bytes through `dest`. Handing it `&tv.tv_sec` while asking for
+`PMIX_UINT32` therefore fills four bytes of a `time_t` — the low half on
+a little-endian host, which happens to work, and the high half on a
+big-endian one, which multiplies every timeout by 2^32. Convert through a
+`uint32_t` of its own and assign. The fence, connect and get handlers all
+do this now; `pmix_server_group` always did.
 
 ### Data collection
 
@@ -241,6 +283,32 @@ requests are parked on two list types:
 - `pmix_dmdx_request_t` — one per interested local requester, on the
   lcd's `loc_reqs`; holds a **PMIX_RETAIN on its lcd** and caches the
   requester's `cbfunc`/`cbdata` (the `cd`).
+
+**That retain is why an lcd cannot be discarded by releasing it.** Each
+parked request holds a reference, so `pmix_list_remove_item` +
+`PMIX_RELEASE` on the lcd drops only the creation reference and leaves
+the object alive and now unreachable — off `local_reqs`, so no later
+`pmix_pending_resolve` can ever drain or free it, and with every request
+still holding the `pmix_server_caddy_t` the switchyard is about to free.
+Use `discard_local_tracker`, which drains `loc_reqs` first. It does not
+invoke the requests' callbacks, and that is deliberate: the only
+requester on a freshly created lcd is the caller whose error return makes
+the switchyard answer it, so calling the callback would answer that
+caller twice. If you ever discard an lcd that could have *other*
+requesters, they do need their callbacks — follow
+`pmix_pending_nspace_requests`, which drains with callbacks.
+
+**Do not read a `PMIX_LIST_FOREACH` variable after the loop.** A loop
+that runs to completion leaves it pointing at the list's sentinel, which
+is a bare `pmix_list_item_t`; reading any later field of the element type
+out of it is undefined and returns whatever the enclosing object happens
+to hold there. `pmix_server_get` did this with `iptr->peerid` on the
+"target rank is not one of my local ranks" path — the common case for
+every remote get — and used the garbage as an index into the `clients`
+array. Note what this class of bug does *not* do: the read stays inside
+the enclosing `pmix_namespace_t`, so no sanitizer flags it, and the value
+is usually out of range and accidentally produces the right answer. Track
+a `found` flag and gate on it.
 
 When data arrives the host calls `dmdx_cbfunc` (off-thread) →
 thread-shift → `_process_dmdx_reply` stores the returned data into GDS
@@ -356,6 +424,31 @@ file. `help-pmix-server.txt` is a `show_help` file — if you add, remove,
 or edit any message in it, follow the top-level rule and rebuild the
 generated `show_help` content (`rm src/util/pmix_show_help_content.* &&
 make`).
+
+## Testing what a single node cannot reach
+
+Most of this directory is only half-exercised by `make check`. The
+local-vs-remote decision in `pmix_server_get` has one arm on one node:
+every rank is local, every key is already in the local datastore, and the
+whole direct-modex engine — `local_reqs`, `remote_pnd`, `dmdx_cbfunc` →
+`_process_dmdx_reply` → `pmix_pending_resolve` — never runs. That is
+where the deferred-request lifetime bugs live.
+
+Two suites cover the halves:
+
+- [`test/unit/server_get.c`](../../test/unit/server_get.c) drives
+  `pmix_server_get` directly against a registered nspace whose job size
+  exceeds its local size, and asserts the classification and that nothing
+  is left parked on `local_reqs`. Read its header for what it pins down
+  and what it deliberately cannot reproduce.
+- [`contrib/dockerswarm/run-server-tests.sh`](../../contrib/dockerswarm/run-server-tests.sh)
+  is the multi-node half: direct modex, spawn-plus-connect across
+  namespaces, group blocks spanning nodes, IOF pull/dereg against a
+  persistent DVM, and a valgrind pass on the daemon — the only leak check
+  anywhere that runs against the *server* library, since every other
+  suite valgrinds a client. **Its stages put one rank per node
+  deliberately**; with two ranks on a node a peer's data is answered out
+  of local storage and the run can be green with the remote path broken.
 
 After building, smoke-test per the top-level guide: `make check` in
 `test/`, then `./simptest` in `test/simple/`. The server paths are

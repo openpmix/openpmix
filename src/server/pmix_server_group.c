@@ -526,7 +526,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
         }
     }
 
-    // preserve the group id
+    // preserve the group id - every early return below must free it
     id = strdup(blk->id);
     op = blk->grpop;
 
@@ -540,6 +540,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
             }
             PMIX_RELEASE(scd);
             PMIX_LIST_DESTRUCT(&grpinfo);
+            free(id);
             return;
         }
         /* Each list member points to a pmix_info_t that contains
@@ -558,6 +559,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                     }
                     PMIX_RELEASE(scd);
                     PMIX_LIST_DESTRUCT(&grpinfo);
+                    free(id);
                     return;
                 }
             } else {
@@ -573,6 +575,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                         }
                         PMIX_RELEASE(scd);
                         PMIX_LIST_DESTRUCT(&grpinfo);
+                        free(id);
                         return;
                     }
                 }
@@ -726,9 +729,10 @@ static void grpcbfunc(pmix_status_t status,
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(grp_shifter_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* nothing we can do - but honor the release contract with the
+         * host's own release data, not the block we were handed */
         if (NULL != relfn) {
-            relfn(cbdata);
+            relfn(relcbd);
         }
         return;
     }
@@ -937,17 +941,15 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
                         // the numbers must match
                         rc = PMIx_Value_get_number(&blk->info[m].value, &bt, PMIX_SIZE);
                         if (PMIX_SUCCESS != rc) {
-                            PMIX_LIST_DESTRUCT(&ilist);
-                            return rc;
+                            goto bailout;
                         }
                         rc = PMIx_Value_get_number(&trk->info[n].value, &bt2, PMIX_SIZE);
                         if (PMIX_SUCCESS != rc) {
-                            PMIX_LIST_DESTRUCT(&ilist);
-                            return rc;
+                            goto bailout;
                         }
                         if (bt != bt2) {
-                            PMIX_LIST_DESTRUCT(&ilist);
-                            return PMIX_ERR_BAD_PARAM;
+                            rc = PMIX_ERR_BAD_PARAM;
+                            goto bailout;
                         }
                     } else if (PMIX_CHECK_KEY(&blk->info[m], PMIX_PROC_INFO_ARRAY) ||
                                PMIX_CHECK_KEY(&blk->info[m], PMIX_GROUP_INFO)) {
@@ -1006,6 +1008,14 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
     PMIX_LIST_DESTRUCT(&ilist);
     PMIX_LIST_DESTRUCT(&plist);
     return PMIX_SUCCESS;
+
+bailout:
+    /* both scratch lists have to come down on the error paths too - the
+     * bootstrap-mismatch returns used to drop only ilist and leak every
+     * proc entry accumulated in plist */
+    PMIX_LIST_DESTRUCT(&ilist);
+    PMIX_LIST_DESTRUCT(&plist);
+    return rc;
 }
 
 /* we are being called from the PMIx server's switchyard function,
@@ -1016,10 +1026,10 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     pmix_peer_t *peer = (pmix_peer_t *) cd->peer;
     int32_t cnt;
     pmix_status_t rc;
-    char *grpid;
+    char *grpid = NULL;
     pmix_proc_t *procs = NULL;
     pmix_info_t *info = NULL;
-    size_t n, ninfo, ninf, nprocs;
+    size_t n, ninfo = 0, ninf, nprocs = 0;
     grp_block_t *blk;
     grp_trk_t *trk;
     bool need_cxtid = false;
@@ -1062,7 +1072,6 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_BFROPS_UNPACK(rc, peer, buf, procs, &cnt, PMIX_PROC);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            PMIX_PROC_FREE(procs, nprocs);
             goto error;
         }
     } else {
@@ -1238,7 +1247,16 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     return PMIX_SUCCESS;
 
 error:
-   if (NULL != info) {
+    /* nothing has been handed to a tracker yet on any path that lands
+     * here, so everything we unpacked is still ours to free - the group id
+     * and the participant array used to leak on every malformed request */
+    if (NULL != grpid) {
+        free(grpid);
+    }
+    if (NULL != procs) {
+        PMIX_PROC_FREE(procs, nprocs);
+    }
+    if (NULL != info) {
         PMIX_INFO_FREE(info, ninfo);
     }
     return rc;
