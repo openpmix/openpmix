@@ -310,12 +310,16 @@ int pmix_info_register_framework_params(pmix_pointer_array_t *component_map)
     if (PMIX_SUCCESS != pmix_mca_base_open(NULL)) {
         pmix_show_help("help-pmix_info.txt", "lib-call-fail", true, "pmix_mca_base_open",
                        __FILE__, __LINE__);
+        /* give the count back: we registered nothing, and leaving it up
+         * makes the matching close a no-op that never closes anything */
+        --pmix_info_registered;
         return PMIX_ERROR;
     }
 
     /* Register the PMIX layer's MCA parameters */
     if (PMIX_SUCCESS != (rc = pmix_register_params())) {
         fprintf(stderr, "pmix_info_register: pmix_register_params failed\n");
+        --pmix_info_registered;
         return rc;
     }
 
@@ -485,8 +489,14 @@ void pmix_info_do_path(bool wall, pmix_cli_result_t *cmd_line,
     pmix_cli_item_t *opt;
     bool want_all = wall;
 
-    /* Check bozo case */
+    /* Check bozo case. Note the values check: pmix_info declares --path
+     * with a required argument so it always has one, but this is exported
+     * and another tool need not - and the loops below walk the array
+     * unconditionally (compare pmix_info_do_params/do_type). */
     opt = pmix_cmd_line_get_param(cmd_line, PMIX_CLI_INFO_PATH);
+    if (NULL != opt && NULL == opt->values) {
+        opt = NULL;
+    }
     if (NULL != opt) {
         for (i = 0; NULL != opt->values[i]; ++i) {
             if (0 == strcmp("all", opt->values[i])) {
@@ -982,6 +992,12 @@ void pmix_info_out(const char *pretty_message, const char *plain_message, const 
             }
 #endif
         }
+        /* size_t arithmetic: on a terminal narrower than the label
+         * itself this wraps to a huge value, which reads as "do not
+         * wrap" and is the right answer - there is no width to wrap
+         * into. It cannot index out of bounds either, because the
+         * splitting below is only reached when strlen(v) is at least
+         * max_value_chars. */
         max_line_width = screen_width - strlen(spaces) - strlen(pretty_message) - 2;
         if (0 < strlen(pretty_message)) {
             pmix_asprintf(&filler, "%s%s: ", spaces, pretty_message);

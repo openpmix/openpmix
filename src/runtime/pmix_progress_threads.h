@@ -24,9 +24,9 @@
  * already associated with that name, start a progress thread.
  *
  * If you have general events that need to run in *a* progress thread
- * (but not necessarily a your own, dedicated progress thread), pass
- * NULL the "name" argument to the pmix_progress_thead_init() function
- * to glom on to the general PMIX-wide progress thread.
+ * (but not necessarily your own, dedicated progress thread), pass NULL
+ * as the "name" argument to pmix_progress_thread_init() to glom on to
+ * the general PMIX-wide progress thread.
  *
  * If a name is passed that was already used in a prior call to
  * pmix_progress_thread_init(), the event base associated with that
