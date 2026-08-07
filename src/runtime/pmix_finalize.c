@@ -153,14 +153,11 @@ void pmix_rte_finalize(void)
     PMIX_LIST_DESTRUCT(&pmix_client_globals.groups);
     PMIX_DESTRUCT(&pmix_globals.keyindex);
     free(pmix_globals.myidval.data.proc);
+    pmix_globals.myidval.data.proc = NULL;
 
     // release the topology
     pmix_hwloc_finalize();
 
-    for (i = 0; i < PMIX_VAR_DUMP_COLOR_KEY_COUNT; i++) {
-        free(pmix_var_dump_color[i]);
-        pmix_var_dump_color[i] = NULL;
-    }
     pmix_tsd_keys_destruct();
     /* clear the print-buffer TSD latch now that its key has been deleted,
      * so a subsequent PMIx_Init recreates it */

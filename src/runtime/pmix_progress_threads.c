@@ -23,6 +23,8 @@
 #ifdef HAVE_PTHREAD_NP_H
 #    include <pthread_np.h>
 #endif
+#include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <event.h>
 
@@ -52,6 +54,7 @@ typedef struct {
     /* This event will always be set on the ev_base (so that the
        ev_base is not empty!) */
     pmix_event_t block;
+    bool block_assigned;
     bool engine_constructed;
     pmix_thread_t engine;
 } pmix_progress_tracker_t;
@@ -62,12 +65,19 @@ static void tracker_constructor(pmix_progress_tracker_t *p)
     p->name = NULL;
     p->ev_base = NULL;
     p->ev_active = false;
+    p->block_assigned = false;
     p->engine_constructed = false;
 }
 
 static void tracker_destructor(pmix_progress_tracker_t *p)
 {
-    pmix_event_del(&p->block);
+    /* PMIX_NEW does not zero the object, so 'block' holds garbage until
+     * pmix_event_assign has run. A tracker released before that point -
+     * an allocation failure in pmix_progress_thread_init - must not hand
+     * that garbage to libevent */
+    if (p->block_assigned) {
+        pmix_event_del(&p->block);
+    }
 
     if (NULL != p->name) {
         free(p->name);
@@ -233,7 +243,12 @@ void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
         if (PMIx_Check_key(key, PMIX_PROGRESS_THREAD_FLUSH)) {
             flush = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIx_Check_key(key, PMIX_PROGRESS_THREAD_NAME)) {
-            name = info[n].value.data.string;
+            /* a caller that gives us the key with the wrong type, or with
+             * a NULL string, must not send strcmp a NULL below */
+            if (PMIX_STRING == info[n].value.type &&
+                NULL != info[n].value.data.string) {
+                name = info[n].value.data.string;
+            }
         }
     }
 
@@ -242,7 +257,7 @@ void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
     }
 
     PMIX_LIST_FOREACH (trk, &tracking, pmix_progress_tracker_t) {
-        if (NULL == name || 0 == strcmp(name, trk->name)) {
+        if (0 == strcmp(name, trk->name)) {
             /* If the progress thread is active, stop it */
             if (trk->ev_active) {
                 if (flush) {
@@ -261,12 +276,68 @@ void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
 
 }
 
+#ifdef HAVE_PTHREAD_SETAFFINITY_NP
+/*
+ * Parse one entry of the progress_thread_cpus list.
+ *
+ * An entry is either a single cpu number or an inclusive "start-end"
+ * range. Returns true, and fills in start/end, only if the whole entry
+ * parsed and every cpu it names is representable in a cpu_set_t.
+ *
+ * strtoul on its own cannot answer that question: it reports 0 for a
+ * token containing no digits at all, so a typo silently becomes "bind to
+ * cpu 0", and it happily returns values beyond CPU_SETSIZE, which CPU_SET
+ * either drops on the floor (glibc, musl) or writes past the end of the
+ * mask for (BSD). Reject the entry here instead and tell the user.
+ */
+static bool parse_cpu_range(const char *entry, long *start, long *end)
+{
+    char *endp;
+    const char *rest;
+    long lo, hi;
+
+    if (NULL == entry || '\0' == entry[0]) {
+        return false;
+    }
+
+    errno = 0;
+    lo = strtol(entry, &endp, 10);
+    if (endp == entry || 0 != errno) {
+        return false;
+    }
+
+    if ('\0' == *endp) {
+        /* a bare entry is a single cpu */
+        hi = lo;
+    } else if ('-' == *endp) {
+        rest = endp + 1;
+        errno = 0;
+        hi = strtol(rest, &endp, 10);
+        if (endp == rest || '\0' != *endp || 0 != errno) {
+            return false;
+        }
+    } else {
+        /* trailing garbage */
+        return false;
+    }
+
+    if (0 > lo || hi < lo || CPU_SETSIZE <= hi) {
+        return false;
+    }
+
+    *start = lo;
+    *end = hi;
+    return true;
+}
+#endif
+
 static int start_progress_engine(pmix_progress_tracker_t *trk)
 {
 #ifdef HAVE_PTHREAD_SETAFFINITY_NP
     cpu_set_t cpuset;
-    char **ranges, *dash;
-    int k, n, start, end;
+    char **ranges;
+    int k, n, ncpus;
+    long start, end;
 #endif
 
     assert(!trk->ev_active);
@@ -290,30 +361,36 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
 #ifdef HAVE_PTHREAD_SETAFFINITY_NP
     if (NULL != pmix_progress_thread_cpus) {
         CPU_ZERO(&cpuset);
+        ncpus = 0;
         // comma-delimited list of cpu ranges
         ranges = PMIx_Argv_split(pmix_progress_thread_cpus, ',');
         for (n=0; NULL != ranges && NULL != ranges[n]; n++) {
-            // a range is "start-end"; a bare entry is a single cpu. Note
-            // that strtoul sets 'dash' to the character where parsing
-            // stopped - which is never NULL - so we must test what it
-            // points at, not whether the pointer itself is NULL.
-            start = strtoul(ranges[n], &dash, 10);
-            if ('-' != *dash) {
-                // single cpu
-                CPU_SET(start, &cpuset);
-            } else {
-                ++dash;  // skip over the '-'
-                end = strtoul(dash, NULL, 10);
-                // the range is inclusive of both endpoints
-                for (k=start; k <= end; k++) {
-                    CPU_SET(k, &cpuset);
-                }
+            if (!parse_cpu_range(ranges[n], &start, &end)) {
+                pmix_show_help("help-pmix-runtime.txt", "progress-thread:bad-cpu-list",
+                               true, ranges[n], pmix_progress_thread_cpus,
+                               (int) CPU_SETSIZE - 1);
+                continue;
+            }
+            // the range is inclusive of both endpoints
+            for (k = (int) start; k <= (int) end; k++) {
+                CPU_SET(k, &cpuset);
+                ++ncpus;
             }
         }
-        rc = pthread_setaffinity_np(trk->engine.t_handle, sizeof(cpu_set_t), &cpuset);
-        if (0 != rc && pmix_bind_progress_thread_reqd) {
+        PMIx_Argv_free(ranges);
+
+        if (0 == ncpus) {
+            /* every entry was rejected. Calling setaffinity with an empty
+             * mask just fails with EINVAL, which would be reported as a
+             * binding failure and send the user looking in the wrong
+             * place - we have already said what is actually wrong */
+            rc = PMIX_ERR_BAD_PARAM;
+        } else {
+            rc = (0 == pthread_setaffinity_np(trk->engine.t_handle, sizeof(cpu_set_t), &cpuset))
+                 ? PMIX_SUCCESS : PMIX_ERR_NOT_SUPPORTED;
+        }
+        if (PMIX_SUCCESS != rc && pmix_bind_progress_thread_reqd) {
             pmix_output(0, "Failed to bind progress thread %s", trk->name);
-            rc = PMIX_ERR_NOT_SUPPORTED;
             /* the engine thread is already running - stop it before we
              * report failure so the caller can safely tear down the
              * tracker without freeing a live event base */
@@ -321,7 +398,6 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
         } else {
             rc = PMIX_SUCCESS;
         }
-        PMIx_Argv_free(ranges);
     }
 #endif
     return rc;
@@ -372,6 +448,7 @@ pmix_event_base_t *pmix_progress_thread_init(const char *name)
     /* add an event to the new event base (if there are no events,
        pmix_event_loop() will return immediately) */
     pmix_event_assign(&trk->block, trk->ev_base, -1, PMIX_EV_PERSIST, dummy_timeout_cb, trk);
+    trk->block_assigned = true;
     pmix_event_add(&trk->block, &long_timeout);
 
     /* construct the thread object */
@@ -397,10 +474,14 @@ pmix_status_t pmix_progress_thread_start(const char *name)
     }
 
     if (NULL == name) {
+        name = shared_thread_name;
         if (pmix_globals.external_progress) {
+            /* the host drives our event base itself, so there is no
+             * engine to spin - but the library is now open for business,
+             * and the public APIs gate on this flag */
+            pmix_atomic_unset_bool(&pmix_globals.progress_thread_stopped);
             return PMIX_SUCCESS;
         }
-        name = shared_thread_name;
     }
 
     /* find the specified engine */
@@ -439,10 +520,14 @@ pmix_status_t pmix_progress_thread_stop(const char *name)
     }
 
     if (NULL == name) {
-        if (pmix_globals.external_progress) {
-            return PMIX_SUCCESS;
-        }
         name = shared_thread_name;
+        /* NOTE: deliberately no external_progress early-out here. In that
+         * mode there is no engine to join, but the refcount still has to
+         * be dropped and the base still has to be freed - otherwise the
+         * shared tracker outlives finalize, PMIx_Progress can still be
+         * pointed at a base whose components have all been closed, and
+         * the base is never returned to the system. The stop below is
+         * already gated on ev_active, which is false in that mode. */
     }
 
     /* find the specified engine */
@@ -466,6 +551,11 @@ pmix_status_t pmix_progress_thread_stop(const char *name)
              * not dereference freed memory */
             if (trk == shared_thread_tracker) {
                 shared_thread_tracker = NULL;
+                /* nothing may be posted to a base we are about to free.
+                 * stop_progress_engine sets this too, but only when there
+                 * was a running engine to stop - which is not the case
+                 * under external progress */
+                pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
             }
             PMIX_RELEASE(trk);
             return PMIX_SUCCESS;
@@ -488,10 +578,14 @@ pmix_status_t pmix_progress_thread_pause(const char *name)
     }
 
     if (NULL == name) {
+        name = shared_thread_name;
         if (pmix_globals.external_progress) {
+            /* there is no engine to stop, but the shared loop is no
+             * longer to be fed - say so, or the APIs go on accepting
+             * work for a loop nobody is going to drive again */
+            pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
             return PMIX_SUCCESS;
         }
-        name = shared_thread_name;
     }
 
     /* find the specified engine */
@@ -518,10 +612,13 @@ pmix_status_t pmix_progress_thread_resume(const char *name)
     }
 
     if (NULL == name) {
+        name = shared_thread_name;
         if (pmix_globals.external_progress) {
+            /* mirror of pause: no engine to re-spin, but the shared loop
+             * is being fed again */
+            pmix_atomic_unset_bool(&pmix_globals.progress_thread_stopped);
             return PMIX_SUCCESS;
         }
-        name = shared_thread_name;
     }
 
     /* find the specified engine */

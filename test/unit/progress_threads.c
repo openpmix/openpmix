@@ -26,10 +26,15 @@
  *     which start/stop of that name report PMIX_ERR_NOT_FOUND;
  *   - operations on an unknown name report PMIX_ERR_NOT_FOUND.
  *
- * Not covered: CPU-affinity binding (start_progress_engine's
- * pthread_setaffinity_np path) is not observable through any public
- * interface - the bound thread handle is internal - so it cannot be
- * asserted from a unit test.
+ *   - the progress_thread_cpus list is validated before it is turned
+ *     into a CPU mask, so a typo is reported instead of silently
+ *     becoming "bind to cpu 0" (Linux/BSD only - the whole affinity
+ *     path is compiled out where pthread_setaffinity_np is absent).
+ *
+ * Not covered: which CPUs the thread actually ends up on. The bound
+ * thread handle is internal, so a successful binding is not observable
+ * through any interface a test can reach; only the accept/reject
+ * decision about the list is.
  */
 
 #include "src/include/pmix_config.h"
@@ -42,6 +47,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_types.h"
 #include "src/runtime/pmix_progress_threads.h"
+#include "src/runtime/pmix_rte.h"
 #include "src/threads/pmix_threads.h"
 
 static int npass = 0;
@@ -204,6 +210,107 @@ static void test_unknown_name(void)
     report("unknown:pause", PMIX_ERR_NOT_FOUND == pmix_progress_thread_pause(nm));
     report("unknown:resume", PMIX_ERR_NOT_FOUND == pmix_progress_thread_resume(nm));
 }
+
+/* ------------------------------------------------------------------
+ * Validation of the progress_thread_cpus list
+ *
+ * The list is user input - an MCA parameter, or the
+ * PMIX_BIND_PROGRESS_THREAD attribute - and it used to be handed
+ * straight to strtoul + CPU_SET. strtoul reports 0 for a token with no
+ * digits in it, so "cpu0" or a stray space quietly became "bind to cpu
+ * 0"; a number past the end of the mask was dropped on the floor by
+ * glibc and written past the end of it by BSD; and an inverted or
+ * enormous range span turned into a very long loop.
+ *
+ * The accept/reject decision is observable: with binding declared
+ * *required*, a list from which nothing usable could be extracted makes
+ * the start fail rather than leaving the thread silently mis-bound.
+ *
+ * The whole affinity block is inside #ifdef HAVE_PTHREAD_SETAFFINITY_NP,
+ * so on platforms without it (macOS) there is nothing here to test and
+ * the list is ignored entirely.
+ * ------------------------------------------------------------------ */
+
+#ifdef HAVE_PTHREAD_SETAFFINITY_NP
+
+/* run one start with the given cpu list, binding required, and report
+ * whether it was accepted */
+static bool try_cpu_list(const char *nm, const char *list)
+{
+    char *saved_cpus = pmix_progress_thread_cpus;
+    bool saved_reqd = pmix_bind_progress_thread_reqd;
+    pmix_status_t rc;
+
+    pmix_progress_thread_cpus = (NULL == list) ? NULL : strdup(list);
+    pmix_bind_progress_thread_reqd = true;
+
+    if (NULL == pmix_progress_thread_init(nm)) {
+        rc = PMIX_ERROR;
+    } else {
+        rc = pmix_progress_thread_start(nm);
+        /* a failed start has already dropped the tracker; a successful
+         * one is ours to tear down */
+        if (PMIX_SUCCESS == rc) {
+            (void) pmix_progress_thread_stop(nm);
+        }
+    }
+
+    if (NULL != pmix_progress_thread_cpus) {
+        free(pmix_progress_thread_cpus);
+    }
+    pmix_progress_thread_cpus = saved_cpus;
+    pmix_bind_progress_thread_reqd = saved_reqd;
+
+    return (PMIX_SUCCESS == rc);
+}
+
+static void test_cpu_list_validation(void)
+{
+    /* cpu 0 exists everywhere this test can run */
+    report("cpulist:a single valid cpu is accepted",
+           try_cpu_list("UT-cpu-ok", "0"));
+
+    /* a token with no digits must not be read as cpu 0 */
+    report("cpulist:a non-numeric entry is rejected",
+           !try_cpu_list("UT-cpu-alpha", "cpu0"));
+
+    /* trailing garbage after a good number is still garbage */
+    report("cpulist:trailing garbage is rejected",
+           !try_cpu_list("UT-cpu-trail", "0x"));
+
+    /* beyond the end of the mask */
+    report("cpulist:an out-of-range cpu is rejected",
+           !try_cpu_list("UT-cpu-huge", "99999999"));
+
+    /* a range that runs backwards names no cpus */
+    report("cpulist:an inverted range is rejected",
+           !try_cpu_list("UT-cpu-inverted", "8-2"));
+
+    /* a negative cpu is not a cpu */
+    report("cpulist:a negative cpu is rejected",
+           !try_cpu_list("UT-cpu-negative", "-1"));
+
+    /* an empty entry between two commas */
+    report("cpulist:an empty entry alone is rejected",
+           !try_cpu_list("UT-cpu-empty", ","));
+
+    /* one bad entry does not discard the good ones: cpu 0 still binds */
+    report("cpulist:a good entry survives a bad neighbor",
+           try_cpu_list("UT-cpu-mixed", "nope,0"));
+
+    /* an unset list means "do not bind", not "bind to nothing" */
+    report("cpulist:no list at all is fine",
+           try_cpu_list("UT-cpu-none", NULL));
+}
+
+#else
+
+static void test_cpu_list_validation(void)
+{
+    fprintf(stdout, "  SKIP: cpulist (no pthread_setaffinity_np on this platform)\n");
+}
+
+#endif /* HAVE_PTHREAD_SETAFFINITY_NP */
 
 /* ------------------------------------------------------------------
  * Blocking calls made FROM the progress thread
@@ -381,6 +488,7 @@ int main(int argc, char **argv)
     test_start_progresses();
     test_pause_resume();
     test_unknown_name();
+    test_cpu_list_validation();
     test_blocking_call_from_progress_thread();
     /* must come last - it stops the shared progress thread */
     test_void_deregisters_report_a_dropped_request();

@@ -261,6 +261,14 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
+                /* the value comes from the host environment - a key given
+                 * the wrong type, or a NULL string, must not reach strdup */
+                if (PMIX_STRING != info[n].value.type ||
+                    NULL == info[n].value.data.string) {
+                    ret = PMIX_ERR_BAD_PARAM;
+                    error = "hostname";
+                    goto return_error;
+                }
                 if (NULL != pmix_globals.hostname) {
                     free(pmix_globals.hostname);
                 }
@@ -281,6 +289,12 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
                 minfo = info[n].value.data.darray->size;
                 for (m = 0; m < minfo; m++) {
                     if (PMIX_CHECK_KEY(&iptr[m], PMIX_HOSTNAME)) {
+                        if (PMIX_STRING != iptr[m].value.type ||
+                            NULL == iptr[m].value.data.string) {
+                            ret = PMIX_ERR_BAD_PARAM;
+                            error = "hostname";
+                            goto return_error;
+                        }
                         if (NULL != pmix_globals.hostname) {
                             free(pmix_globals.hostname);
                         }
@@ -300,6 +314,12 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME_KEEP_FQDN)) {
                 pmix_keep_fqdn_hostnames = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_BIND_PROGRESS_THREAD)) {
+                if (PMIX_STRING != info[n].value.type ||
+                    NULL == info[n].value.data.string) {
+                    ret = PMIX_ERR_BAD_PARAM;
+                    error = "bind progress thread";
+                    goto return_error;
+                }
                 if (NULL != pmix_progress_thread_cpus) {
                     free(pmix_progress_thread_cpus);
                 }
@@ -462,8 +482,13 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             gethostname(hostname, PMIX_MAXHOSTNAMELEN - 1);
             pmix_globals.hostname = strdup(hostname);
         }
-        pmix_set_aliases(&pmix_globals.aliases, pmix_globals.hostname);
     }
+    /* build the alias list regardless of where the name came from. Every
+     * *other* node's name is passed through pmix_set_aliases (see
+     * gds/hash), so if our own is not, pmix_check_local cannot match the
+     * form of our name we did not keep - which is exactly the case a host
+     * that hands us PMIX_HOSTNAME used to land in */
+    pmix_set_aliases(&pmix_globals.aliases, pmix_globals.hostname);
 
     /* open the bfrops and select the active plugins */
     ret = pmix_mca_base_framework_open(&pmix_bfrops_base_framework,

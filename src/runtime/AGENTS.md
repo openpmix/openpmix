@@ -87,7 +87,13 @@ compatible order. The spine is:
 5. **Globals construction** — ids, `mypeer` (a `pmix_peer_t` stamped
    with our version), the events/notifications/nspaces/keyindex
    structures, client-globals lists, verbosity output channels, uid/gid,
-   `PMIX_DEBUG` channel, hostname/aliases.
+   `PMIX_DEBUG` channel, hostname/aliases. The hostname is resolved from
+   the first of: the `PMIX_HOSTNAME` directive, the `PMIX_HOSTNAME`
+   environment variable, `gethostname()` — but `pmix_set_aliases` then
+   runs **regardless of which** supplied it. Every *other* node's name
+   goes through `pmix_set_aliases` too (see `gds/hash`), so skipping it
+   for our own leaves `pmix_check_local()` unable to match the form of
+   our name we did not keep.
 6. **Framework open+select, in dependency order**: bfrops → pcompress →
    ptl → psec → gds → preg (preg **must** follow pcompress) → plog.
    `pmix_init_registered_attrs()` then builds the attribute registry.
@@ -166,13 +172,24 @@ follow:
   matching `pmix_output_open` block in `pmix_init.c`.
 - `pmix_deregister_params` intentionally does **not** free the
   registered vars (the `mca_base_var` system frees them in
-  `pmix_mca_base_var_finalize`); it only resets the latch so a second
-  init re-registers cleanly. The one thing that *is* hand-freed is
-  `pmix_var_dump_color[]`, released in `pmix_rte_finalize`.
+  `pmix_mca_base_var_finalize` — `var_destructor` frees each string var
+  through its *storage* pointer and NULLs it, which is also why the
+  `free()`+`strdup()` the directive scan does to
+  `pmix_progress_thread_cpus` is safe). It resets the latch so a second
+  init re-registers cleanly, and frees the one thing that really is ours:
+  the `pmix_var_dump_color[]` escapes built by `parse_color_string`.
 - The `var_dump_color` machinery (`parse_color_string`) turns a
   `key=ansi_code` list into ready-to-emit `\033[..m` escape strings used
-  by `pmix_info`. It reports malformed tokens via `help-pmix-runtime.txt`
-  and, on any allocation failure, frees the whole partial result.
+  by `pmix_info`. A malformed or unrecognized entry is reported via
+  `help-pmix-runtime.txt` and skipped — the rest of the list still
+  applies — and on any allocation failure the whole partial result is
+  freed. Every slot always ends up holding a free-able string (`""` when
+  no entry named it), so callers can emit it unconditionally.
+- Assigning a string literal to a `char *` C global right before
+  registering it is the established idiom here (`pmix_net_private_ipv4`,
+  `pmix_var_dump_color_string`) and is safe: `register_variable`
+  immediately replaces the storage with `strdup` of it. Do not "fix" it
+  by heap-allocating the default.
 
 Help text for this directory lives in
 [`help-pmix-runtime.txt`](help-pmix-runtime.txt). Per the top-level
@@ -211,7 +228,30 @@ Key facts:
 - `stop_progress_engine` sets/clears `pmix_globals.progress_thread_stopped`
   for the *shared* thread only. That flag gates whether PMIx APIs may
   still thread-shift work in — code that posts to the progress thread
-  checks it to avoid enqueuing onto a dead loop.
+  checks it to avoid enqueuing onto a dead loop. Roughly a hundred call
+  sites across `src/client`, `src/server`, `src/common` and `src/event`
+  read it, so anything that leaves it stale is felt library-wide.
+- **`external_progress` suppresses the *engine*, never the bookkeeping.**
+  When the host drives our base itself there is no thread to spin, join,
+  or pause — but `start`/`pause`/`resume` must still move
+  `progress_thread_stopped`, and `stop` must still drop the refcount and
+  free the base. An early-out that skips those leaves the shared tracker
+  and its base alive past `pmix_rte_finalize`, with the flag still
+  reading "running", so every API guard above believes a torn-down
+  library is open for work.
+- `PMIX_NEW` does **not** zero the object it allocates (see
+  `pmix_obj_new_tma`), so the tracker's embedded `block` event is garbage
+  until `pmix_event_assign` runs. `block_assigned` records that, and the
+  destructor consults it — a tracker released on an allocation-failure
+  path would otherwise hand libevent uninitialized memory.
+- The CPU list behind `pmix_progress_thread_cpus` /
+  `PMIX_BIND_PROGRESS_THREAD` is user input and is validated
+  (`parse_cpu_range`) before any of it reaches `CPU_SET`. `strtoul` alone
+  cannot do this: it reports 0 for a token with no digits, so a typo used
+  to become "bind to cpu 0" silently, and it returns values past
+  `CPU_SETSIZE`, which `CPU_SET` drops on glibc/musl but writes out of
+  bounds for on BSD. Rejected entries are reported through
+  `help-pmix-runtime.txt` and skipped.
 - The public **`PMIx_Progress_thread_stop`** (2-arg, in `pmix.h`) is
   *not* the same as internal `pmix_progress_thread_stop` (1-arg name).
   The public one parses `PMIX_PROGRESS_THREAD_NAME` /
@@ -249,11 +289,14 @@ Notable pieces:
 
 ## Threading notes specific to this directory
 
-- `pmix_init_util` guards itself with an **atomic** bool
-  (`pmix_atomic_check_bool`/`set_bool`) because tools can race into it;
-  the rest of init assumes single-threaded bring-up (the progress
-  thread does not exist yet for most of it, and is paused first thing in
-  finalize).
+- `pmix_init_util` latches on an **atomic** bool
+  (`pmix_atomic_check_bool`/`set_bool`). Note what that does and does
+  not buy you: those macros are a plain `atomic_load`/`atomic_store`, so
+  the latch makes the *repeat* call cheap and race-free to read, but it
+  is a check-then-set, not a compare-and-swap — two threads arriving
+  together would both run the body. Bring-up is expected to be
+  single-threaded; the progress thread does not exist yet for most of
+  init, and is paused first thing in finalize.
 - Everything after `pmix_progress_thread_start` and before
   `pmix_progress_thread_pause` is the normal PMIx world where the
   progress-thread / caddy rules from the top-level guide apply. Init and
@@ -262,14 +305,33 @@ Notable pieces:
 ## Building and testing
 
 Plain top-level `make` picks up edits here (no `configure` needed unless
-you add/remove a file). There is **no dedicated unit test** for
-`src/runtime` — every `make check` test and every `./simptest` run
-exercises init/finalize implicitly, and the re-entrancy fixes were
-validated with init→finalize→init cycles. If you change the
-init/finalize contract, an explicit double-cycle smoke test is the
-right thing to add under `test/unit`. Do not diagnose functional
-failures against an `--enable-test-build` tree (see the top-level
-guide).
+you add/remove a file). Do not diagnose functional failures against an
+`--enable-test-build` tree (see the top-level guide).
+
+Beyond the implicit coverage every `make check` test and every
+`./simptest` run gives init/finalize, four `test/unit` programs target
+this directory directly:
+
+| Test | Covers |
+|------|--------|
+| [`runtime_init`](../../test/unit/runtime_init.c) | hostname/alias resolution from a host-supplied `PMIX_HOSTNAME`, `pmix_set_aliases` under both FQDN policies, `var_dump_color` parsing, and that every `show_help` topic `src/runtime` names actually exists |
+| [`progress_threads`](../../test/unit/progress_threads.c) | the whole name-addressed engine — refcounting, distinct bases, start/pause/resume/stop, CPU-list validation, and the blocking-call-from-the-progress-thread guard |
+| [`info_support`](../../test/unit/info_support.c) | `pmix_info_make_version_str` and the parsable `pmix_info_out` formatter |
+| [`client_cycle`](../../test/unit/client_cycle.c) / [`tool_cycle`](../../test/unit/tool_cycle.c) | the re-entrancy contract — many init→finalize→init cycles in one process |
+
+Two notes for anyone adding to these:
+
+- **Cover a new `show_help` topic in `runtime_init`.** A missing topic is
+  invisible until the rare path that emits it fires, and then the user
+  gets "I couldn't find that help reference" instead of the diagnostic.
+  `pmix_show_help_string` returns `NULL` for a topic that is not in the
+  file, so one line asserting non-`NULL` — with the same arguments the
+  real call site passes — keeps code and help text in step.
+- **The affinity path is Linux/BSD-only.** Everything inside
+  `#ifdef HAVE_PTHREAD_SETAFFINITY_NP` compiles out on macOS, so the
+  `cpulist:` cases in `progress_threads` report `SKIP` there and must be
+  exercised on Linux (a container is enough — this needs no multi-node
+  setup) before you trust a change to `parse_cpu_range`.
 
 ## Known rough spots
 
@@ -283,6 +345,19 @@ Structural quirks worth knowing before you touch the relevant code:
   `PMIx_Init` aborts the process. Do not mistake this for a leak to
   "fix" on the error path; if you add a new failure point, follow the
   same pattern (set `error` to a short label and `goto return_error`).
+  Note that `return_error` reads `ret`, so any new `goto` must set it.
+- **Directive values come from the host and are not pre-validated.**
+  `pmix_rte_init`'s scan is the first thing in the library to touch what
+  an RM passed to `PMIx_server_init`. A key given the wrong type, or a
+  `PMIX_STRING` carrying a `NULL`, is a host bug — but it must produce
+  `PMIX_ERR_BAD_PARAM`, not a `strdup(NULL)`. Check the type before
+  dereferencing when you add a directive.
+- **`pmix_globals` fields that are MCA-var storage.** Several
+  (`max_events`, `output_limit`, `tag_output`, …) are handed to
+  `pmix_mca_base_var_register` as backing store, so their values arrive
+  from the environment. `pmix_rte_finalize` walks the notification hotel
+  with `pmix_globals.max_events`, which is why that walk has to stay
+  consistent with the value the hotel was sized with.
 
 ## When modifying code here
 
