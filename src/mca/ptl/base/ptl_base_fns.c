@@ -920,7 +920,6 @@ void pmix_ptl_base_setup_socket(pmix_peer_t *peer)
     int optval;
     optval = 1;
     if (setsockopt(peer->sd, IPPROTO_TCP, TCP_NODELAY, (char *) &optval, sizeof(optval)) < 0) {
-        opal_backtrace_print(stderr, NULL, 1);
         pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                             "[%s:%d] setsockopt(TCP_NODELAY) failed: %s (%d)", __FILE__, __LINE__,
                             strerror(pmix_socket_errno), pmix_socket_errno);
