@@ -119,7 +119,7 @@ pmix_status_t pmix_register_params(void)
         PMIX_MCA_BASE_VAR_TYPE_STRING,
         &pmix_net_private_ipv4);
     if (0 > ret) {
-        return ret;
+        goto failed;
     }
 
     pmix_event_caching_window = 1;
@@ -351,7 +351,8 @@ pmix_status_t pmix_register_params(void)
 
     string = pmix_argv_join_range(pmix_var_dump_color_keys, 0, PMIX_VAR_DUMP_COLOR_KEY_COUNT, ',');
     if (NULL == string) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
+        ret = PMIX_ERR_OUT_OF_RESOURCE;
+        goto failed;
     }
 
     ret = pmix_asprintf(&tmp, "The colors to use when dumping MCA vars with color "
@@ -361,7 +362,8 @@ pmix_status_t pmix_register_params(void)
     free(string);
     string = tmp;
     if (0 > ret) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
+        ret = PMIX_ERR_OUT_OF_RESOURCE;
+        goto failed;
     }
 
     /* Basic color options: 30=black, 31=red, 32=green,
@@ -373,18 +375,24 @@ pmix_status_t pmix_register_params(void)
                                      &pmix_var_dump_color_string);
     free(string);
     if (0 > ret) {
-        return ret;
+        goto failed;
     }
 
     ret = parse_color_string(pmix_var_dump_color_string, pmix_var_dump_color_keys,
                              PMIX_VAR_DUMP_COLOR_KEY_COUNT, pmix_var_dump_color);
     if (PMIX_SUCCESS != ret) {
-        return ret;
+        goto failed;
     }
 
 
     pmix_hwloc_register();
     return PMIX_SUCCESS;
+
+failed:
+    /* clear the latch so a caller that retries actually re-registers
+     * rather than being told everything is already in place */
+    pmix_register_done = false;
+    return ret;
 }
 
 pmix_status_t pmix_deregister_params(void)
