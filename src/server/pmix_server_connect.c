@@ -250,7 +250,12 @@ static void connect_timeout(int sd, short args, void *cbdata)
         trk->op_cbfunc(PMIX_ERR_TIMEOUT, trk);
         return; // the cbfunc will have cleaned up the tracker
     }
+    /* no completion function was ever attached, so tear the tracker down
+     * ourselves - which means unlinking it from the collectives list first.
+     * Being on that list is not a reference; releasing while still linked
+     * leaves a dangling entry that the next sweep walks into. */
     trk->event_active = false;
+    pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
     PMIX_RELEASE(trk);
 }
 
@@ -264,6 +269,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     pmix_info_t *info = NULL, *iptr, endpt;
     size_t nprocs, ninfo, n, ninf;
     pmix_server_trkr_t *trk;
+    uint32_t tmo;
     struct timeval tv = {0, 0};
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
@@ -333,8 +339,14 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
             if (0 == strncmp(info[n].key, PMIX_TIMEOUT, PMIX_MAX_KEYLEN)) {
                 /* use the type-tolerant accessor rather than a raw union
                  * read so any integer type for the timeout is accepted,
-                 * matching the fence family */
-                PMIx_Value_get_number(&info[n].value, &tv.tv_sec, PMIX_UINT32);
+                 * matching the fence family. Convert through a uint32_t of
+                 * its own: the accessor writes exactly the width of the
+                 * requested type, so handing it the address of a wider
+                 * time_t would fill only half the field - the wrong half
+                 * on a big-endian host. */
+                if (PMIX_SUCCESS == PMIx_Value_get_number(&info[n].value, &tmo, PMIX_UINT32)) {
+                    tv.tv_sec = tmo;
+                }
                 break;
             }
         }
@@ -344,12 +356,14 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     if (NULL == (trk = pmix_server_get_tracker(NULL, procs, nprocs, PMIX_CONNECTNB_CMD))) {
         /* we don't have this tracker yet, so get a new one */
         if (NULL == (trk = pmix_server_new_tracker(NULL, procs, nprocs, PMIX_CONNECTNB_CMD))) {
-            /* only if a bozo error occurs */
+            /* only if a bozo error occurs. Do NOT drive the completion
+             * function here: it takes a tracker, not this caddy, and there
+             * is no tracker to give it. Returning the error is enough - the
+             * switchyard answers this caller and releases the caddy, so the
+             * client cannot hang. Handing it the caddy read a
+             * pmix_server_caddy_t as a pmix_server_trkr_t and then released
+             * the caddy a second time. */
             PMIX_ERROR_LOG(PMIX_ERROR);
-            /* DO NOT HANG */
-            if (NULL != cbfunc) {
-                cbfunc(PMIX_ERROR, cd);
-            }
             rc = PMIX_ERROR;
             goto cleanup;
         }

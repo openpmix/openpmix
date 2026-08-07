@@ -1227,8 +1227,14 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
             memcpy(prev->affected, affected, naffected * sizeof(pmix_proc_t));
         }
         pmix_list_append(&reginfo->peers, &prev->super);
-        rc = PMIX_OPERATION_SUCCEEDED;
-        goto cleanup;
+        /* fall through rather than returning here: a default handler must
+         * still be given any matching notification already sitting in the
+         * cache, and _check_cached_events has a dedicated arm for exactly
+         * this case (scd->codes == NULL matches every non-nondefault event).
+         * Returning early meant a default handler silently missed every
+         * event cached before it registered. The loops below are no-ops
+         * with ncodes == 0, and the trailing else branch schedules the
+         * cached-event check and returns PMIX_OPERATION_SUCCEEDED. */
     }
 
     /* store the event registration info so we can call the registered
@@ -1355,8 +1361,9 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
                 return PMIX_ERR_NOT_AVAILABLE;
             }
 
-            PMIX_RETAIN(peer);
-            scd->peer = peer;
+            /* scd->peer was already set (with its retain) above - taking a
+             * second reference here leaked one on every registration the
+             * host completed atomically */
             scd->procs = affected;
             scd->nprocs = naffected;
             scd->opcbfunc = NULL;
@@ -1922,7 +1929,16 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
     cd->cbdata = cbdata;
 
+    /* construct every local list up front so that a single cleanup at the
+     * exit label covers all of them - the bad-param and no-memory paths in
+     * the directive scan below used to jump past their destructors and
+     * leak whatever cleanup entries had already been cached. Draining a
+     * list twice is harmless (PMIX_LIST_DESTRUCT leaves it re-initialized),
+     * so the mid-function destructs can stay where they are. */
     PMIX_CONSTRUCT(&epicache, pmix_list_t);
+    PMIX_CONSTRUCT(&cachedirs, pmix_list_t);
+    PMIX_CONSTRUCT(&cachefiles, pmix_list_t);
+    PMIX_CONSTRUCT(&ignorefiles, pmix_list_t);
 
     /* unpack the number of targets */
     cnt = 1;
@@ -2012,10 +2028,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
 
     /* if this includes a request for post-termination cleanup, we handle
      * that request ourselves */
-    PMIX_CONSTRUCT(&cachedirs, pmix_list_t);
-    PMIX_CONSTRUCT(&cachefiles, pmix_list_t);
-    PMIX_CONSTRUCT(&ignorefiles, pmix_list_t);
-
     cnt = 0; // track how many infos are cleanup related
     for (n = 0; n < cd->ninfo; n++) {
         if (PMIX_CHECK_KEY(&cd->info[n], PMIX_REGISTER_CLEANUP)) {
@@ -2182,11 +2194,17 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
         goto exit;
     }
     PMIX_LIST_DESTRUCT(&epicache);
+    PMIX_LIST_DESTRUCT(&cachedirs);
+    PMIX_LIST_DESTRUCT(&cachefiles);
+    PMIX_LIST_DESTRUCT(&ignorefiles);
     return PMIX_SUCCESS;
 
 exit:
     PMIX_RELEASE(cd);
     PMIX_LIST_DESTRUCT(&epicache);
+    PMIX_LIST_DESTRUCT(&cachedirs);
+    PMIX_LIST_DESTRUCT(&cachefiles);
+    PMIX_LIST_DESTRUCT(&ignorefiles);
     return rc;
 }
 
@@ -2486,6 +2504,13 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
          * switchyard to release the cd object */
         return PMIX_SUCCESS;
     }
+    if (PMIX_SUCCESS == rc) {
+        /* the host accepted the request and now owns cd - it will release
+         * it when it invokes the callback. Falling through to the exit
+         * label here would free the caddy out from under the host and
+         * leave the callback operating on freed memory. */
+        return PMIX_SUCCESS;
+    }
 
 exit:
     PMIX_RELEASE(cd);
@@ -2567,6 +2592,11 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
         cbfunc(PMIX_SUCCESS, cd);
         /* returning other than SUCCESS will cause the
          * switchyard to release the cd object */
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_SUCCESS == rc) {
+        /* the host accepted the request and now owns cd - see the
+         * matching note in pmix_server_iofreg */
         return PMIX_SUCCESS;
     }
 
@@ -2713,8 +2743,13 @@ static void _fabric_response(int sd, short args, void *cbdata)
     pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    qcd->cbfunc(PMIX_SUCCESS, qcd->info, qcd->ninfo, qcd->cbdata, NULL, NULL);
-    PMIX_RELEASE(qcd);
+    /* qcd->cbfunc is the switchyard's fabric_cbfunc, which expects the
+     * query caddy - not the server caddy hanging off qcd->cbdata. Handing
+     * it qcd->cbdata made it read a pmix_server_caddy_t as a
+     * pmix_query_caddy_t and dereference the resulting garbage pointer.
+     * The callback chain owns qcd (and its info array) from here on, so
+     * we must not release it a second time. */
+    qcd->cbfunc(PMIX_SUCCESS, qcd->info, qcd->ninfo, qcd, NULL, NULL);
 }
 
 static void frcbfunc(pmix_status_t status, void *cbdata)
@@ -2758,7 +2793,6 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &qcd->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(qcd);
         goto exit;
     }
     /* unpack the directives */
@@ -2768,7 +2802,6 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, qcd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(qcd);
             goto exit;
         }
     }
@@ -2818,9 +2851,14 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t
     return PMIX_SUCCESS;
 
 exit:
+    /* every path reaching here failed before handing qcd to an async
+     * callback, so release it - and the reference it took on the server
+     * caddy, which the query caddy's destructor knows nothing about. The
+     * switchyard releases the caddy's own reference on our error return. */
     if (NULL != qcd) {
         PMIX_RELEASE(qcd);
     }
+    PMIX_RELEASE(cd);
     return rc;
 }
 
@@ -2846,6 +2884,7 @@ pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd, pmix_buffer_t *
         return PMIX_ERR_NOMEM;
     }
     PMIX_RETAIN(cd);
+    qcd->cbfunc = cbfunc;
     qcd->cbdata = cd;
 
     /* unpack the fabric index */
@@ -2897,9 +2936,11 @@ pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd, pmix_buffer_t *
 
 exit:
     /* every path reaching here failed before handing qcd to an async
-     * callback, so release it (and its retained server caddy) here.
+     * callback, so release it - and the reference it took on the server
+     * caddy, which the query caddy's destructor knows nothing about.
      * The sibling pmix_server_fabric_register does the same. */
     PMIX_RELEASE(qcd);
+    PMIX_RELEASE(cd);
     return rc;
 }
 
@@ -2966,7 +3007,9 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
     /* if the cpuset is NULL, see if we know the binding of the requesting process */
     if (NULL == cpuset.bitmap) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.key = strdup(PMIX_CPUSET);
+        /* the cb destructor does not own cb.key, so point it at the
+         * string constant rather than a strdup that nothing would free */
+        cb.key = PMIX_CPUSET;
         PMIX_LOAD_PROCID(&proc, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
         cb.proc = &proc;
         cb.scope = PMIX_LOCAL;
@@ -2976,7 +3019,20 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
             PMIX_DESTRUCT(&cb);
             goto cleanup;
         }
+        if (0 == pmix_list_get_size(&cb.kvs)) {
+            /* a "successful" fetch that returned nothing - pmix_list_get_first
+             * would hand back the list sentinel, not NULL, so guard on the
+             * size before dereferencing it */
+            rc = PMIX_ERR_NOT_FOUND;
+            PMIX_DESTRUCT(&cb);
+            goto cleanup;
+        }
         kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+        if (NULL == kv->value || PMIX_STRING != kv->value->type) {
+            rc = PMIX_ERR_INVALID_VAL;
+            PMIX_DESTRUCT(&cb);
+            goto cleanup;
+        }
         rc = pmix_hwloc_parse_cpuset_string(kv->value->data.string, &cpuset);
         if (PMIX_SUCCESS != rc) {
             PMIX_DESTRUCT(&cb);
@@ -3042,14 +3098,23 @@ pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
     cb.scope = PMIX_REMOTE;
     cb.copy = false;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    /* the fetch reports its result through the macro's status argument -
+     * cb.status is left at its constructed default, so packing that told
+     * the client SUCCESS even when nothing was found */
+    cb.status = rc;
 
     // pack it up
     pbkt = PMIX_NEW(pmix_buffer_t);
+    if (NULL == pbkt) {
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_NOMEM;
+    }
     // start with the status
     PMIX_BFROPS_PACK(rc, cd->peer, pbkt, &cb.status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(pbkt);
+        PMIX_DESTRUCT(&cb);
         return rc;
     }
     PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
@@ -3057,6 +3122,7 @@ pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(pbkt);
+            PMIX_DESTRUCT(&cb);
             return rc;
         }
     }

@@ -263,8 +263,7 @@ PMIX_EXPORT pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *bu
 PMIX_EXPORT pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf);
 
 PMIX_EXPORT pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
-                                            pmix_modex_cbfunc_t modexcbfunc,
-                                            pmix_op_cbfunc_t opcbfunc);
+                                            pmix_modex_cbfunc_t modexcbfunc);
 
 PMIX_EXPORT pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc,
                                           void *cbdata);

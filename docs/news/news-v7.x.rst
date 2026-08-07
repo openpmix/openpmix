@@ -87,3 +87,50 @@ Detailed changes since v6.1.0:
    key. Hostname, which was being derived outside the same test, now
    follows the rule in both directions: it is supplied when the host
    gave none, and left alone when the host gave one
+ - A batch of server-side request-handling fixes from a review of
+   src/server. Two of them are use-after-free or double-free rather
+   than leaks: the IOF pull and deregister handlers released the
+   caddy the host had just accepted ownership of, so the host's
+   completion callback ran on freed memory; and the fabric-register
+   handler released its query caddy twice on a malformed request.
+   Related, the internal response path for a fabric request the
+   pnet layer answered itself handed the completion function a
+   server caddy where it expected a query caddy, and the fabric
+   update path left that function unset entirely
+ - A server no longer answers a PMIx_Get for a rank that is not one
+   of its own by reading a peer id out of a list sentinel. The value
+   is arbitrary, and when it happened to name a live client slot the
+   request was treated as local and parked to wait for a commit that
+   was never coming
+ - A deferred direct-modex request that the server could not launch -
+   no host support, or a host that rejected the up-call - is now
+   fully discarded. Only the tracker's own reference was being
+   dropped, and since every parked requester holds one of its own,
+   the tracker survived unreachable: off the pending list where no
+   later resolve could find it, and still holding a pointer to the
+   caddy that was about to be freed
+ - A registration for a default event handler (one made with no event
+   codes) now checks the notification cache, so an event that arrived
+   before the handler registered is still delivered to it
+ - PMIX_TIMEOUT is now read into a variable of the width the accessor
+   is told to write. The fence, connect and get handlers were passing
+   the address of a time_t while asking for a 32-bit conversion, which
+   fills the wrong half of the field on a big-endian host
+ - Assorted leaks on server error paths: the group id and participant
+   array of a malformed group request, the scratch lists of a job
+   control request that was rejected part-way through the directive
+   scan, the retained caddy behind a failed fabric request, the reply
+   buffer of a collective or get whose status could not be packed, and
+   the payload already assembled for a cross-namespace get that then
+   found nothing. The fence and connect timeout handlers also no longer
+   release a tracker that is still linked into the collectives list
+ - The fence and connect handlers no longer drive their completion
+   callback on the internal error path that has no tracker to give it -
+   in connect's case it was being handed a caddy instead, and in both
+   cases the caller was then answered and released a second time by
+   the switchyard
+ - A server asked to resolve the peers of every known namespace now
+   reports that it found none, rather than reporting success with an
+   empty list, and gives each namespace its own first-choice lookup
+   rather than letting one namespace's fallback rank change the search
+   for all the ones after it

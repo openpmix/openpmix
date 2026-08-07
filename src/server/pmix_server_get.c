@@ -106,6 +106,26 @@ static void relfn(void *cbdata)
     }
 }
 
+/* Discard a local dmodex tracker that we created for a request we then
+ * failed to launch. Each parked requester on loc_reqs holds its own
+ * reference on the tracker, so simply releasing the tracker's creation
+ * reference leaves it (and every request on it) alive but unreachable -
+ * off the local_reqs list, so no later resolve can ever drain or free it,
+ * and with each request still holding the server caddy pointer that the
+ * switchyard is about to free. Drain the requests first. We do not invoke
+ * their callbacks: the only requester on a freshly created tracker is the
+ * caller whose error return makes the switchyard answer it. */
+static void discard_local_tracker(pmix_dmdx_local_t *lcd)
+{
+    pmix_dmdx_request_t *req;
+
+    while (NULL != (req = (pmix_dmdx_request_t *) pmix_list_remove_first(&lcd->loc_reqs))) {
+        PMIX_RELEASE(req);
+    }
+    pmix_list_remove_item(&pmix_server_globals.local_reqs, &lcd->super);
+    PMIX_RELEASE(lcd);
+}
+
 static pmix_status_t defer_response(char *nspace, pmix_rank_t rank, char *key,
                                     pmix_server_caddy_t *cd, bool localonly,
                                     pmix_modex_cbfunc_t cbfunc, void *cbdata,
@@ -162,6 +182,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     bool refresh_cache = false;
     bool scope_given = false;
     bool keyprovided = false;
+    bool found = false;
+    uint32_t tmo;
     struct timeval tv = {0, 0};
     pmix_buffer_t pbkt;
     pmix_cb_t cb;
@@ -240,7 +262,16 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
              * or request it from someone else */
             localonly = PMIX_INFO_TRUE(&cd->info[n]);
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_TIMEOUT)) {
-            tv.tv_sec = cd->info[n].value.data.uint32;
+            /* use the type-tolerant accessor rather than a raw union read
+             * so any integer type for the timeout is accepted, matching
+             * the fence/connect/group families. Convert through a uint32_t
+             * of its own: the accessor writes exactly the width of the
+             * requested type, so handing it the address of a wider time_t
+             * would fill only half the field - the wrong half on a
+             * big-endian host. */
+            if (PMIX_SUCCESS == PMIx_Value_get_number(&cd->info[n].value, &tmo, PMIX_UINT32)) {
+                tv.tv_sec = tmo;
+            }
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GET_REFRESH_CACHE)) {
             refresh_cache = PMIX_INFO_TRUE(&cd->info[n]);
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_DATA_SCOPE)) {
@@ -436,6 +467,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
             local = true;
         } else {
             /* see if this proc is one of our local ones */
+            found = false;
             PMIX_LIST_FOREACH (iptr, &nptr->ranks, pmix_rank_info_t) {
                 if (rank == iptr->pname.rank) {
                     if (0 > iptr->peerid) {
@@ -451,10 +483,17 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
                         return rc;
                     }
                     local = true;
+                    found = true;
                     break;
                 }
             }
-            if (NULL == pmix_pointer_array_get_item(&pmix_server_globals.clients, iptr->peerid)) {
+            /* only consult iptr when the loop actually matched a rank - a
+             * loop that ran to completion leaves iptr pointing at the list
+             * sentinel, and reading peerid out of that is an out-of-bounds
+             * read whose garbage value could index a live client slot and
+             * wrongly mark a remote rank as local */
+            if (found &&
+                NULL == pmix_pointer_array_get_item(&pmix_server_globals.clients, iptr->peerid)) {
                 /* this must be a remote rank */
                 local = false;
             }
@@ -638,15 +677,13 @@ request:
         rc = pmix_host_server.direct_modex(&lcd->proc, cd->info, cd->ninfo, dmdx_cbfunc, lcd);
         if (PMIX_SUCCESS != rc) {
             /* may have a function entry but not support the request */
-            pmix_list_remove_item(&pmix_server_globals.local_reqs, &lcd->super);
-            PMIX_RELEASE(lcd);
+            discard_local_tracker(lcd);
         }
     } else {
         pmix_output_verbose(2, pmix_server_globals.get_output, "%s:%d NO SERVER SUPPORT",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
         /* if we don't have direct modex feature, just respond with "not found" */
-        pmix_list_remove_item(&pmix_server_globals.local_reqs, &lcd->super);
-        PMIX_RELEASE(lcd);
+        discard_local_tracker(lcd);
         rc = PMIX_ERR_NOT_FOUND;
     }
 
@@ -992,7 +1029,10 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
         PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&pbkt);
+            /* do NOT destruct pbkt here - the complete label unloads it,
+             * and unloading an already-destructed buffer hands the caller
+             * a freed pointer to pass on and free again. The sibling error
+             * paths above correctly destruct only the inner pkt. */
             PMIX_DESTRUCT(&cb);
             goto complete;
         }
@@ -1009,6 +1049,12 @@ complete:
         return rc;
     }
 
+    /* nothing is being passed back, so nothing will call relfn for us -
+     * the buffer may still carry the job-level data packed above (the
+     * cross-namespace case), and that allocation is ours to free */
+    if (NULL != data) {
+        free(data);
+    }
     return PMIX_ERR_NOT_FOUND;
 }
 

@@ -4191,9 +4191,12 @@ static void _mdxcbfunc(int sd, short args, void *cbdata)
 
     if (NULL == tracker) {
         /* give them a release if they want it - this should
-         * never happen, but protect against the possibility */
+         * never happen, but protect against the possibility.
+         * modex_cbfunc parks the host's release data in relcbdata; cbdata
+         * is not set on this caddy at all, so handing that to the host's
+         * release function passes it something that is not its own. */
         if (NULL != scd->cbfunc.relfn) {
-            scd->cbfunc.relfn(scd->cbdata);
+            scd->cbfunc.relfn(scd->relcbdata);
         }
         PMIX_RELEASE(scd);
         return;
@@ -4293,6 +4296,7 @@ finish_collective:
         PMIX_BFROPS_PACK(ret, cd->peer, reply, &rc, 1, PMIX_STATUS);
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
+            PMIX_RELEASE(reply);
             goto cleanup;
         }
         /* let the gds have a chance to add any data it needs
@@ -4353,9 +4357,10 @@ static void modex_cbfunc(pmix_status_t status, const char *data, size_t ndata, v
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        /* nothing we can do */
+        /* nothing we can do beyond honoring the release contract - with
+         * the host's own release data, not the tracker we were handed */
         if (NULL != relfn) {
-            relfn(cbdata);
+            relfn(relcbd);
         }
         return;
     }
@@ -4397,6 +4402,7 @@ static void _getcbfunc(int sd, short args, void *cbdata)
     PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(reply);
         goto cleanup;
     }
     /* if there are data, pack the blob being returned */
@@ -4453,9 +4459,10 @@ static void get_cbfunc(pmix_status_t status, const char *data, size_t ndata, voi
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* nothing we can do beyond honoring the release contract - with
+         * the host's own release data, not the caddy we were handed */
         if (NULL != relfn) {
-            relfn(cbdata);
+            relfn(relcbd);
         }
         return;
     }
@@ -4492,7 +4499,8 @@ static void _cnct(int sd, short args, void *cbdata)
     }
 
     if (NULL == tracker) {
-        /* nothing to do */
+        /* nothing to do - but the shifter is still ours to free */
+        PMIX_RELEASE(scd);
         return;
     }
 
@@ -4698,7 +4706,8 @@ static void _discnct(int sd, short args, void *cbdata)
     }
 
     if (NULL == tracker) {
-        /* nothing to do */
+        /* nothing to do - but the shifter is still ours to free */
+        PMIX_RELEASE(scd);
         return;
     }
 
@@ -6301,7 +6310,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_FENCENB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_fence(cd, buf, modex_cbfunc, op_cbfunc))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_fence(cd, buf, modex_cbfunc))) {
             PMIX_RELEASE(cd);
         }
         return rc;
