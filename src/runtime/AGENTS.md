@@ -80,7 +80,16 @@ compatible order. The spine is:
    `PMIX_NODE_INFO_ARRAY`, `PMIX_EXTERNAL_PROGRESS`,
    `PMIX_EXTERNAL_AUX_EVENT_BASE`, `PMIX_HOSTNAME_KEEP_FQDN`,
    `PMIX_BIND_PROGRESS_THREAD`, `PMIX_BIND_REQUIRED`); everything else
-   is handed to `pmix_iof_check_flags`.
+   is handed to `pmix_iof_check_flags`. Two things follow from that.
+   First, these values come straight from the host and nothing has
+   validated them yet, so check `value.type` before following a union
+   member — `PMIX_CHECK_KEY` says what the key is, never what is in the
+   value. Second, `pmix_iof_check_flags` **allocates**: it `strdup`s
+   `PMIX_IOF_OUTPUT_TO_FILE` / `_TO_DIRECTORY` into the local flag block,
+   which is then copied wholesale into `pmix_globals.iof_flags`. That
+   copy is a bare struct member with no destructor behind it (only the
+   per-namespace `pmix_iof_flags_t` gets one), so `pmix_rte_finalize`
+   owns those two strings.
 4. **Progress thread + event base** (`pmix_progress_thread_init(NULL)`)
    — creates `pmix_globals.evbase`. If no external aux event base was
    supplied, `evauxbase` is aliased to `evbase`.

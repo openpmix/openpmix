@@ -200,6 +200,20 @@ void pmix_rte_finalize(void)
         PMIx_Argv_free(pmix_globals.aliases);
         pmix_globals.aliases = NULL;
     }
+    /* pmix_rte_init took ownership of these two when it copied the
+     * directive-scan flags into pmix_globals; pmix_iof_check_flags
+     * strdup'ed them out of PMIX_IOF_OUTPUT_TO_FILE /
+     * PMIX_IOF_OUTPUT_TO_DIRECTORY. Only the namespace-level copies of
+     * pmix_iof_flags_t are freed by a destructor - this one is a bare
+     * struct member, so it is ours to release. */
+    if (NULL != pmix_globals.iof_flags.file) {
+        free(pmix_globals.iof_flags.file);
+        pmix_globals.iof_flags.file = NULL;
+    }
+    if (NULL != pmix_globals.iof_flags.directory) {
+        free(pmix_globals.iof_flags.directory);
+        pmix_globals.iof_flags.directory = NULL;
+    }
     PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.groups);
     PMIX_DESTRUCT(&pmix_globals.keyindex);

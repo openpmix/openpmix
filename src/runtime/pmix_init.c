@@ -280,8 +280,11 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
                     goto return_error;
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO_ARRAY)) {
-                /* contains info about our node */
-                if (NULL == info[n].value.data.darray ||
+                /* contains info about our node. Check the type before
+                 * reading darray - the union member we would otherwise
+                 * follow is whatever the real type left there */
+                if (PMIX_DATA_ARRAY != info[n].value.type ||
+                    NULL == info[n].value.data.darray ||
                     NULL == info[n].value.data.darray->array) {
                     continue;
                 }
@@ -310,6 +313,14 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_EXTERNAL_PROGRESS)) {
                 pmix_globals.external_progress = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_EXTERNAL_AUX_EVENT_BASE)) {
+                /* the attribute is declared (void*); taking the pointer
+                 * out of a value that holds something else hands libevent
+                 * a fabricated base */
+                if (PMIX_POINTER != info[n].value.type) {
+                    ret = PMIX_ERR_BAD_PARAM;
+                    error = "external aux event base";
+                    goto return_error;
+                }
                 pmix_globals.evauxbase = (pmix_event_base_t*)info[n].value.data.ptr;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME_KEEP_FQDN)) {
                 pmix_keep_fqdn_hostnames = PMIX_INFO_TRUE(&info[n]);
@@ -599,11 +610,17 @@ return_error:
         pmix_show_help("help-pmix-runtime.txt", "pmix_init:startup:internal-failure", true, error,
                        ret);
     }
+    /* these are the transient copies built by the directive scan. If we
+     * got far enough to hand them to pmix_globals they are the same two
+     * pointers, so clear the globals as well - a failed init aborts the
+     * process, but nothing here should leave a freed pointer reachable */
     if (NULL != flags.file) {
         free(flags.file);
+        pmix_globals.iof_flags.file = NULL;
     }
     if (NULL != flags.directory) {
         free(flags.directory);
+        pmix_globals.iof_flags.directory = NULL;
     }
     return ret;
 }

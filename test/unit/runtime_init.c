@@ -34,6 +34,9 @@
  *   output        a verbosity channel opened by pmix_rte_init is given
  *                 back by pmix_rte_finalize, id and all.
  *
+ *   iof flags     the IOF output-file/directory strings the directive
+ *                 scan hands to pmix_globals are released with it.
+ *
  * Everything except the help topics is then re-checked over a second
  * init/finalize cycle: this layer's standing requirement is that a
  * second PMIx_Init starts from a clean slate, and per-cycle state that
@@ -66,6 +69,10 @@
  * entry naming a key that does not exist, one entry with no '=' at all,
  * and one more good entry after the damage */
 #define UT_COLORS "name=34,bogus_key=1,value,valid_values=36"
+
+/* an IOF output-file directive: never actually written to (no client
+ * ever produces output here), it just has to be captured and released */
+#define UT_IOF_FILE "ut-runtime-init-output"
 
 static int npass = 0;
 static int nfail = 0;
@@ -307,24 +314,54 @@ static void test_output_channels_released(const char *when)
     report(label, -1 == pmix_globals.debug_output);
 }
 
+/* ------------------------------------------------------------------ */
+/* IOF flag strings                                                    */
+/* ------------------------------------------------------------------ */
+
+/* Anything in the incoming info array that is not one of the handful of
+ * bootstrap directives goes to pmix_iof_check_flags, which strdups
+ * PMIX_IOF_OUTPUT_TO_FILE / _TO_DIRECTORY into the flag block that
+ * pmix_rte_init then copies into pmix_globals. That copy is a bare
+ * struct member with no destructor behind it, so pmix_rte_finalize owns
+ * the strings - and a host that asks for file output is not exotic. */
+static void test_iof_flags_captured(void)
+{
+    report("iof:file directive captured",
+           NULL != pmix_globals.iof_flags.file &&
+           0 == strcmp(pmix_globals.iof_flags.file, UT_IOF_FILE));
+}
+
+static void test_iof_flags_released(const char *when)
+{
+    char label[128];
+
+    snprintf(label, sizeof(label), "iof:file string released (%s)", when);
+    report(label, NULL == pmix_globals.iof_flags.file);
+
+    snprintf(label, sizeof(label), "iof:directory string released (%s)", when);
+    report(label, NULL == pmix_globals.iof_flags.directory);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
-    pmix_info_t info[1];
+    pmix_info_t info[2];
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* all of this has to be in place before the library comes up: the
-     * parameters are read by pmix_register_params, and the hostname
-     * directive is consumed by pmix_rte_init's directive scan */
+     * parameters are read by pmix_register_params, and the directives
+     * are consumed by pmix_rte_init's directive scan */
     setenv("PMIX_MCA_pmix_var_dump_color", UT_COLORS, 1);
     setenv("PMIX_MCA_pmix_client_get_verbose", "1", 1);
     PMIX_INFO_LOAD(&info[0], PMIX_HOSTNAME, UT_FQDN, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_IOF_OUTPUT_TO_FILE, UT_IOF_FILE, PMIX_STRING);
 
-    rc = PMIx_server_init(&mymodule, info, 1);
+    rc = PMIx_server_init(&mymodule, info, 2);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
         PMIX_INFO_DESTRUCT(&info[0]);
+        PMIX_INFO_DESTRUCT(&info[1]);
         return 1;
     }
 
@@ -335,16 +372,19 @@ int main(int argc, char **argv)
     test_set_aliases();
     test_var_dump_color();
     test_output_channel_open();
+    test_iof_flags_captured();
 
     PMIx_server_finalize();
     test_output_channels_released("first cycle");
+    test_iof_flags_released("first cycle");
 
     /* and the whole thing again, because everything above is state that
      * has to be rebuilt from scratch. A second cycle that comes up with
      * the same answers is the evidence that finalize left nothing
      * behind - and nothing missing either */
-    rc = PMIx_server_init(&mymodule, info, 1);
+    rc = PMIx_server_init(&mymodule, info, 2);
     PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "second PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
         return 1;
@@ -354,9 +394,11 @@ int main(int argc, char **argv)
     test_supplied_hostname();
     test_var_dump_color();
     test_output_channel_open();
+    test_iof_flags_captured();
 
     PMIx_server_finalize();
     test_output_channels_released("second cycle");
+    test_iof_flags_released("second cycle");
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
