@@ -29,6 +29,7 @@ two disagree, the README wins, and please fix this file.
 | `run-gds-tests.sh` | The `src/mca/gds` datastore: compiles `shmem3` (which macOS does not build at all), the gds unit programs in two configurations, and the collective/direct/fallback modex paths across separate servers (README §16) |
 | `run-ptl-tests.sh` | The `src/mca/ptl` transport over real sockets between real hosts: interface selection, node-local rendezvous discovery, a tool attaching across nodes, the inbound message-size ceiling, an exhausted port range (README §17) |
 | `run-runtime-tests.sh` | The `src/runtime` bring-up/tear-down suite in the optimized configuration and on Linux — where the progress thread's CPU-affinity path exists at all — plus that path driven through a real `PMIx_Init`, and node identity across real servers (README §18) |
+| `run-server-tests.sh` | `src/server` — the server-role half of libpmix — across separate servers: direct modex, cross-namespace get, group blocks spanning nodes, IOF pull/dereg against a persistent DVM, and a valgrind pass on the daemon (README §19) |
 | `swarm-common.sh` | **Sourced, never executed.** `$PMIX_SWARM` naming and the one copy of `cleanup_swarm` |
 
 ## Things that will bite you
@@ -116,6 +117,41 @@ two disagree, the README wins, and please fix this file.
   about the path. `run-ptl-tests.sh` writes its URI to `/tmp` for this
   reason — and deliberately not to a name matching `pmix*`, which is the
   glob `cleanup_swarm` sweeps out of `/tmp` between cases.
+
+- **`--host` IS the allocation, so an example that spawns needs slots
+  nobody is using.** Three of the `run-server-tests.sh` examples
+  (`dynamic`, `multi_nspace_group`, `resolve`) call `PMIx_Spawn`. Size the
+  parent job to half the listed nodes or the spawn has nowhere to land and
+  the job blocks until the launch timeout — which is indistinguishable
+  from a library hang in the log, and it is not one. Leaving room is also
+  what makes the child job land on *other* servers, which is the whole
+  point of the cross-namespace cases.
+
+- **`examples/resolve.c` spawns its child as the relative path
+  `./resolve`.** Launch it from the staging directory or the spawned job
+  dies with "could not access an executable" and the surviving parent rank
+  hangs at its fence. Nothing in the message mentions the working
+  directory.
+
+- **Do not count completion markers per rank without checking who
+  prints them.** `examples/dmodex.c` announces its finalize from rank 0
+  only, so "one per rank" is the wrong expectation and a correct run looks
+  like a partial one. Check the example before writing the assertion.
+
+- **`ON` does not set the run-as-root variables; `RUN` does.** A stage
+  that reaches for `ON <n>` to launch `prterun` gets the run-as-root
+  advisory and a non-zero exit that looks like whatever the stage was
+  actually testing. `run-server-tests.sh`'s valgrind stage uses `RUN` for
+  the launch and `ON 1` only to read the log back.
+
+- **valgrind prints bare basenames unless you pass `--fullpath-after=`.**
+  That matters here because PRRTE has its own `pmix_server.c`,
+  `pmix_server_fence.c` and `pmix_server_gen.c`: a basename match
+  attributes PRRTE's leaks to PMIx, and a path match finds nothing at all.
+  With the full path, PMIx frames read `/pmix-src/src/server/...` and
+  PRRTE's read `/src/prrte/src/prted/pmix/...`, which separates them
+  cleanly. The image carries no valgrind, so the stage installs it into
+  the one node it needs at run time and skips if there is no network.
 
 - **The build volume outlives your branch.** `pmix-build` persists
   across runs and across checkouts, so a tree in it can be older than

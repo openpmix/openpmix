@@ -1183,3 +1183,79 @@ was there before. Every runner here that drives `prterun` has the same
 contract. Note also that the nodes mount the build volume **read-only**,
 so anything that has to be compiled into it must be built from a
 `docker run`, not with `docker exec` on a node.
+
+## 19. The `src/server` suite (`run-server-tests.sh`)
+
+```sh
+./run-server-tests.sh linux     # the swarm
+./run-server-tests.sh macos     # single-host subset
+```
+
+`src/server` is the server-role half of `libpmix` — the code a launcher
+daemon (here `prted`) runs. Its central decision, taken in
+`pmix_server_get()`, is whether a request can be answered out of what
+this server already holds or has to be deferred and fetched from whoever
+hosts the target process. **On one node that decision has one arm.**
+Every rank is local, every key is already in the local datastore, and the
+entire remote half of the file — the direct-modex engine: `local_reqs`,
+`remote_pnd`, `dmdx_cbfunc` → `_process_dmdx_reply` →
+`pmix_pending_resolve` — never executes. That half is not a corner case;
+it is where the deferred-request lifetime bugs live, and it is why this
+runner exists.
+
+**Every stage puts one rank per node.** That is not load spreading. With
+two ranks on a node, a rank asking for its neighbour's data is answered
+out of local storage and the request never leaves the server, so a run
+can be green with the whole remote path broken. If you change the
+geometry of a stage here, keep one rank per node.
+
+What each stage reaches:
+
+| Stage | What it drives |
+|-------|----------------|
+| `dmodex`, `modex_twice`, `group_dmodex` | A rank fetches a peer's data from a server that is not its own — the only thing that exercises the local-vs-remote classification, the deferral onto `local_reqs`, the host `direct_modex` up-call and the reply ingest. `modex_twice` repeats the fetch so the second request joins an existing tracker instead of creating one. |
+| `dynamic` | Spawn plus connect, so a rank gets a key from a process in a *different* namespace: the `diffnspace` arm of `_satisfy_request()`, which packs job-level data ahead of the per-rank data. |
+| `multi_nspace_group` | A group spanning namespaces and nodes, driving the two-level block/tracker engine through a real host rather than through `simptest`. |
+| `resolve`, `simple_resolve` | `pmix_server_resolve_peers()` / `pmix_server_resolve_node()`. |
+| `pub` | Publish/lookup/unpublish — the setup-caddy family, whose whole job is to survive a host up-call and answer exactly once. |
+| `iof-dvm` | Two jobs in a row against one **persistent** DVM. `prterun` attaches as a *tool* and calls `PMIx_IOF_pull`, which is the only thing that drives `pmix_server_iofreg()`/`iofdereg()` on the daemon; a transient DVM never gets there because it is torn down with the job. The second registration happening after the first deregistered is the sequence that fails if a registration caddy is released while the host still owns it. |
+| `valgrind-server` | The daemon itself under valgrind. |
+
+### What this deliberately does not cover
+
+`resolve` and `simple_resolve` take the **host** arm: `prte` implements
+the query interface, so the server's own local-datastore fallback
+(`pmix_server_locally_resolve_peers`/`_node`) is never reached. That
+fallback is what runs under a host *without* query support, and it has no
+coverage here. Saying so is more useful than implying otherwise.
+
+The valgrind stage runs the DVM on a single node, so it is about the
+request handlers, the caddy accounting and the collective trackers — not
+about direct modex. Do not let it stand in for the multi-node stages.
+
+### The valgrind stage
+
+This is the only leak check anywhere in the harness that runs against the
+**server** library. Every other suite valgrinds a client, and a client
+never executes `src/server` at all.
+
+Two mechanics are load-bearing:
+
+- The stage passes `--fullpath-after=` (empty argument) so valgrind
+  prints full source paths rather than basenames. PRRTE has its own
+  `pmix_server.c`, `pmix_server_fence.c` and `pmix_server_gen.c`, so a
+  basename match would attribute PRRTE's leaks to PMIx and a path match
+  would find nothing. With full paths, ours read
+  `/pmix-src/src/server/...` and PRRTE's read
+  `/src/prrte/src/prted/pmix/...`.
+- Only *definitely lost* blocks whose allocation stack passes through
+  `src/server` are failed on. `prte` leaks at exit in ways that are not
+  this suite's business — a current run shows one definite leak of ~8 KB
+  in `prte_iof_base_write_output`, which is PRRTE's — and holding the
+  stage to a whole-process clean bill would make it permanently red and
+  therefore ignored.
+
+The image carries no valgrind (it is a build image, and it is shared with
+the other swarm, so rebuilding it to add a package moves it under that
+swarm's feet). The stage installs valgrind into the one node it needs at
+run time and skips cleanly if there is no network to do that with.
