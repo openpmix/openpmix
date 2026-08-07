@@ -692,12 +692,91 @@ error:
     return;
 }
 
+/* Put the namespace we built for a connecting tool onto the server's
+ * global namespace list, and make sure that list holds exactly one
+ * object per namespace name.
+ *
+ * The append cannot happen any earlier: for a tool that asked us for an
+ * identity, the name is not known until the host's tool_connected
+ * upcall returns. That upcall is also the window in which the host may
+ * register a namespace of its own under the very name it just handed
+ * us - so by the time we get here, ours may be a duplicate. It must not
+ * be allowed to stand: the whole server resolves a namespace by
+ * scanning this list, so a second object for the same name means half
+ * the library reaches a tool through one of them and half through the
+ * other, and whichever one is not found has an invisible rank list.
+ *
+ * Returns the namespace the peer should use. On return, pnd->nspace_created
+ * is true only if the object we created is the one now on the list -
+ * i.e. it is exactly "the caller must withdraw this on failure".
+ */
+static pmix_namespace_t *consolidate_nspace(pmix_pending_connection_t *pnd,
+                                            pmix_peer_t *peer,
+                                            pmix_namespace_t *nptr)
+{
+    pmix_namespace_t *ns, *existing = NULL;
+    pmix_rank_info_t *rinfo, *match = NULL;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (ns != nptr && PMIx_Check_nspace(nptr->nspace, ns->nspace)) {
+            existing = ns;
+            break;
+        }
+    }
+    if (NULL == existing) {
+        /* ours is the only one - the reference PMIX_NEW gave us becomes
+         * the one the list holds */
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+        return nptr;
+    }
+
+    /* Someone got there first. Move what we built onto their object and
+     * dispose of ours. */
+    if (pnd->rinfo_created && NULL != peer->info) {
+        PMIX_LIST_FOREACH (rinfo, &existing->ranks, pmix_rank_info_t) {
+            if (rinfo->pname.rank == peer->info->pname.rank) {
+                match = rinfo;
+                break;
+            }
+        }
+        pmix_list_remove_item(&nptr->ranks, &peer->info->super);
+        if (NULL == match) {
+            /* they have no entry for this rank - carry ours across. The
+             * reference the rank list holds moves with it, so nothing is
+             * released here, and rinfo_created stays true because the
+             * entry is still ours to withdraw on failure */
+            pmix_list_append(&existing->ranks, &peer->info->super);
+        } else {
+            /* they already describe this rank - use their entry and drop
+             * ours entirely: the reference its rank list was holding and
+             * the peer's both belong to an object nobody will reach */
+            PMIX_RELEASE(peer->info);
+            PMIX_RELEASE(peer->info);
+            PMIX_RETAIN(match);
+            peer->info = match;
+            pnd->rinfo_created = false;
+        }
+    }
+
+    /* the peer moves to their object, so it needs a reference on it;
+     * ours gives back both the peer's and the one we were holding for
+     * the list we are not going to join, which disposes of it */
+    PMIX_RETAIN(existing);
+    PMIX_RELEASE(nptr);
+    PMIX_RELEASE(nptr);
+    peer->nptr = existing;
+    /* we no longer own a created namespace - theirs is on the list and
+     * is not ours to withdraw */
+    pnd->nspace_created = false;
+    return existing;
+}
+
 /* process the host's callback with tool connection info */
 static void process_cbfunc(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cd->cbdata;
-    pmix_namespace_t *nptr = NULL, *nptr2, *nptr3;
+    pmix_namespace_t *nptr = NULL;
     pmix_rank_info_t *info;
     pmix_peer_t *peer = NULL, *pr2;
     pmix_status_t rc, reply;
@@ -803,48 +882,19 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         PMIX_RETAIN(info);
         peer->info = info;
         pnd->rinfo_created = true;
-    } else if (pnd->nspace_created) {
-        // must add it to the global list - but check to ensure
-        // it is unique as the host may have "registered" this
-        // namespace, and so we would already have that record
-        nptr3 = NULL;
-        PMIX_LIST_FOREACH(nptr2, &pmix_globals.nspaces, pmix_namespace_t) {
-            if (PMIx_Check_nspace(nptr->nspace, nptr2->nspace)) {
-                nptr3 = nptr2;
-                break;
-            }
-        }
-        if (NULL == nptr3) {
-            pmix_list_append(&pmix_globals.nspaces, &nptr->super);
-            nspace_listed = true;
-        } else {
-            /* The host registered this namespace while we were waiting on
-             * it, so the object we built is a duplicate and has to go.
-             * Two references stand on it: the one PMIX_NEW gave us, which
-             * we were holding on behalf of the list we now will not join,
-             * and the peer's. Both must be given back, and the peer must
-             * take one on the object that is actually on the list -
-             * pointing it at nptr3 without retaining would have it
-             * release a reference it never held. */
-            PMIX_RETAIN(nptr3);
-            /* we no longer hold a namespace we created - the peer's is
-             * one that was already on the list and is not ours to
-             * withdraw, so the error path must leave it alone */
-            pnd->nspace_created = false;
-            if (pnd->rinfo_created) {
-                /* the rank info we built is on the duplicate's rank list
-                 * and goes away with it. The peer holds its own reference,
-                 * so the object survives - but it is no longer on any
-                 * list, so the error path below must not try to withdraw
-                 * it from one. */
-                pnd->rinfo_created = false;
-            }
-            PMIX_RELEASE(nptr);
-            PMIX_RELEASE(nptr);
-            nptr = nptr3;
-            // reconnect the peer
-            peer->nptr = nptr;
-        }
+    }
+
+    /* The namespace has its final name now, so this is the point at
+     * which it can join the server's list - and the point at which a
+     * duplicate registered by the host during the upcall has to be
+     * reconciled against. This applies to every tool we built a
+     * namespace for, not only one the server had already registered as
+     * a client: a self-started tool's namespace used to be left off the
+     * list entirely, which stranded the reference held for it and left
+     * the server able to hold two objects for one name. */
+    if (pnd->nspace_created) {
+        nptr = consolidate_nspace(pnd, peer, nptr);
+        nspace_listed = pnd->nspace_created;
     }
 
     /* mark the peer proc type */

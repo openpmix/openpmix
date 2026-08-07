@@ -132,7 +132,9 @@ Four functions, in this order, all on the progress thread:
    `tool_connected2` → **`cnct_cbfunc`** → thread-shift →
    **`process_cbfunc`**. This is the two-step path: the host may assign
    the tool a namespace, which is why the namespace object cannot be put
-   on `pmix_globals.nspaces` until `process_cbfunc` runs.
+   on `pmix_globals.nspaces` until `process_cbfunc` runs — see
+   *One namespace object per name* below, which is the rule that step
+   exists to satisfy.
 4. **`_cnct_complete`** (client path) or the tail of `process_cbfunc`
    (tool path) — reply with the status and the peer's array index, run
    the psec server handshake if the module asked for one, set the socket
@@ -170,6 +172,34 @@ list-membership mistakes on the failure paths. The invariants:
 - **`info` is a member of the namespace's rank list**, not something the
   handler owns. Releasing it directly drives its refcount to zero while
   it is still linked.
+
+### One namespace object per name
+
+The server resolves a namespace by scanning `pmix_globals.nspaces`, so
+that list must hold exactly one `pmix_namespace_t` per name and every
+peer must be using the object that is on it. Get this wrong and the
+failure is quiet: half the library reaches a tool through one object and
+half through the other, and whichever half loses sees an empty rank
+list.
+
+The tool path is the one place this is hard, because a tool that asks to
+be given an identity has no name until the host's `tool_connected`
+upcall returns — and that upcall is also the window in which the host
+may register a namespace of its own under the very name it just handed
+us. So the append is deferred to `process_cbfunc`, and when it happens
+it has to reconcile against whatever appeared meanwhile. That is
+`consolidate_nspace()`: it appends our object if no other carries the
+name, and otherwise moves the peer (and any rank info we built) onto the
+one already there and disposes of ours.
+
+Run it for **every** tool we created a namespace for. It used to run
+only for a tool the server had already registered as a client, so a
+self-started tool's object was never appended at all — reachable only
+through its peer, with the reference held for the list stranded, while
+`gds/hash`'s find-or-create built a second object under the same name
+and put *that* on the list. `test/unit/tool_nspace.c` pins the property
+by driving a real tool connection; note that the entry count alone does
+not catch it, which the test says in a comment.
 
 ## Outbound: connect_to_peer to connected peer
 
@@ -270,49 +300,9 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_uri.c` | URI/version parsing and version comparison, including every malformed input |
 | `test/unit/ptl_handshake.c` | the `PUT_*`/`GET_*` pair as a round trip, plus truncated-field rejection |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file |
+| `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |
 | `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: tools connecting across nodes, discovery by pid/nspace, remote-connection interface selection |
-
-### Two things left alone on purpose
-
-Both are visible from this directory and both look like defects at first
-glance. Neither is one to "fix" without agreement:
-
-- **A self-started tool's namespace never joins the server's
-  `pmix_globals.nspaces`.** (The server's list — this all runs in the
-  process that accepted the connection; the tool's own copy in its own
-  process is a different object entirely.) `process_tool_request` builds
-  a `pmix_namespace_t` for the connecting tool and takes two references
-  on it — one for the peer, one on behalf of that list — with a comment
-  saying the append happens "after we return from the host's upcall".
-  But `process_cbfunc` appends only in its `else if (nspace_created)`
-  branch, which is reached only for `PMIX_TOOL_CLIENT` /
-  `PMIX_LAUNCHER_CLIENT`. A tool that asked for an identity takes the
-  other branch, and the append never happens.
-
-  Nothing else adopts the object. The find-or-create helpers elsewhere
-  in the library (`gds/hash/gds_utils.c` among them) allocate a *fresh*
-  namespace and append that, so the server can end up holding two
-  distinct objects for one nspace name: the PTL's, reachable only
-  through the peer, and the GDS's, on the global list. The second
-  reference is therefore stranded, not absorbed.
-
-  This is very likely the missing append rather than a surplus retain,
-  because `process_tool_request`'s "a prior instance of the tool already
-  connected, so we would know the nspace" branch depends on finding the
-  first instance's object on that list — and if it finds the GDS's
-  instead, `pmix_list_get_first(&nptr->ranks)` is NULL and it takes the
-  "this cannot happen" error return. It is still not a local edit: it
-  changes which object the whole server resolves a tool's namespace
-  through, so take it to the team with that reasoning.
-
-- **`tool/ptl_tool.c` calls the public `PMIx_Job_control_nb`** to register
-  its rendezvous files for cleanup, which the top-level rules say
-  back-end code must not do. It is safe today — `setup_listener` runs on
-  the caller's thread during `PMIx_tool_init`, so the thread-shift the
-  API performs is a post rather than a re-entry — but it is a deviation,
-  and if that code ever moves onto the progress thread it becomes a
-  deadlock.
 
 Anything in here that can be expressed as a pure function of its inputs
 should get a unit test — the parsers and the handshake macros both
