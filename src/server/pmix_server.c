@@ -2229,8 +2229,15 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
                 if (found) {
                     continue;
                 } else {
+                    /* record it, or the list stays empty forever: the
+                     * duplicate check above then never matches, a clone
+                     * sharing a rank with its parent has its remote data
+                     * packed into the bucket twice, and every one of these
+                     * objects is leaked because the list destructor below
+                     * has nothing to free */
                     pn = PMIX_NEW(pmix_namelist_t);
                     pn->pname = &cd->peer->info->pname;
+                    pmix_list_append(&pnames, &pn->super);
                 }
                 if (trk->hybrid || first) {
                     /* setup the nspace */
@@ -2255,6 +2262,8 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
                         PMIX_DESTRUCT(&cb);
                         PMIX_DESTRUCT(&pbkt);
                         PMIX_DESTRUCT(&bucket);
+                        PMIX_LIST_DESTRUCT(&pnames);
+                        PMIX_RELEASE(tcd);
                         return;
                     }
                     PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
@@ -2264,22 +2273,27 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
                             PMIX_DESTRUCT(&cb);
                             PMIX_DESTRUCT(&pbkt);
                             PMIX_DESTRUCT(&bucket);
+                            PMIX_LIST_DESTRUCT(&pnames);
+                            PMIX_RELEASE(tcd);
                             return;
                         }
                     }
                     /* extract the resulting byte object */
                     PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
                     PMIX_DESTRUCT(&pbkt);
-                    /* now pack that into the bucket for return */
+                    /* now pack that into the bucket for return - the pack
+                     * copies, so the unloaded bytes are ours to free */
                     PMIX_BFROPS_PACK(rc, peer, &bucket, &bo, 1, PMIX_BYTE_OBJECT);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_DESTRUCT(&cb);
                         PMIX_BYTE_OBJECT_DESTRUCT(&bo);
                         PMIX_DESTRUCT(&bucket);
+                        PMIX_LIST_DESTRUCT(&pnames);
                         PMIX_RELEASE(tcd);
                         return;
                     }
+                    PMIX_BYTE_OBJECT_DESTRUCT(&bo);
                 }
                 PMIX_DESTRUCT(&cb);
             }

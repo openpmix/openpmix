@@ -134,3 +134,10 @@ Detailed changes since v6.1.0:
    empty list, and gives each namespace its own first-choice lookup
    rather than letting one namespace's fallback rank change the search
    for all the ones after it
+ - The fence collective's duplicate-contributor check now works. The
+   list it consults was never appended to, so it was always empty: a
+   clone sharing a rank with its parent had its remote data packed into
+   the modex bucket twice, and one tracking object was leaked per
+   contributor per fence. The per-rank blob that same loop assembles is
+   also released now, rather than being leaked once the pack has copied
+   it
