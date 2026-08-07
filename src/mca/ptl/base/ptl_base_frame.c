@@ -319,6 +319,14 @@ static pmix_status_t pmix_ptl_close(void)
     pmix_ptl_base.initialized = false;
     pmix_ptl_base.selected = false;
 
+    /* Everything freed below is also nulled, and every "did I create
+     * this" flag reset with it. The framework may be opened again in
+     * this process - pmix_mca_base_framework_close clears the REGISTERED
+     * flag, so a later PMIx_server_init runs the whole open path afresh -
+     * and pmix_ptl_open only reinstates the fields it sets itself. A
+     * rendezvous filename left dangling from the previous cycle would be
+     * unlinked and freed a second time here. */
+
     /* ensure the listen thread has been shut down */
     pmix_ptl_base_stop_listening();
 
@@ -330,6 +338,7 @@ static pmix_status_t pmix_ptl_close(void)
     }
     if (NULL != pmix_ptl_base.connection) {
         free(pmix_ptl_base.connection);
+        pmix_ptl_base.connection = NULL;
     }
     /* the component will cleanup when closed */
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
@@ -345,6 +354,8 @@ static pmix_status_t pmix_ptl_close(void)
             }
         }
         free(pmix_ptl_base.scheduler_filename);
+        pmix_ptl_base.scheduler_filename = NULL;
+        pmix_ptl_base.created_scheduler_filename = false;
     }
     if (NULL != pmix_ptl_base.sysctrlr_filename) {
         if (pmix_ptl_base.created_sysctrlr_filename) {
@@ -356,6 +367,8 @@ static pmix_status_t pmix_ptl_close(void)
             }
         }
         free(pmix_ptl_base.sysctrlr_filename);
+        pmix_ptl_base.sysctrlr_filename = NULL;
+        pmix_ptl_base.created_sysctrlr_filename = false;
     }
     if (NULL != pmix_ptl_base.system_filename) {
         if (pmix_ptl_base.created_system_filename) {
@@ -367,6 +380,8 @@ static pmix_status_t pmix_ptl_close(void)
             }
         }
         free(pmix_ptl_base.system_filename);
+        pmix_ptl_base.system_filename = NULL;
+        pmix_ptl_base.created_system_filename = false;
     }
     if (NULL != pmix_ptl_base.session_filename) {
         if (pmix_ptl_base.created_session_filename) {
@@ -378,6 +393,8 @@ static pmix_status_t pmix_ptl_close(void)
             }
         }
         free(pmix_ptl_base.session_filename);
+        pmix_ptl_base.session_filename = NULL;
+        pmix_ptl_base.created_session_filename = false;
     }
     if (NULL != pmix_ptl_base.nspace_filename) {
         if (pmix_ptl_base.created_nspace_filename) {
@@ -389,6 +406,8 @@ static pmix_status_t pmix_ptl_close(void)
             }
         }
         free(pmix_ptl_base.nspace_filename);
+        pmix_ptl_base.nspace_filename = NULL;
+        pmix_ptl_base.created_nspace_filename = false;
     }
     if (NULL != pmix_ptl_base.pid_filename) {
         if (pmix_ptl_base.created_pid_filename) {
@@ -400,6 +419,8 @@ static pmix_status_t pmix_ptl_close(void)
             }
         }
         free(pmix_ptl_base.pid_filename);
+        pmix_ptl_base.pid_filename = NULL;
+        pmix_ptl_base.created_pid_filename = false;
     }
     if (NULL != pmix_ptl_base.rendezvous_filename) {
         if (pmix_ptl_base.created_rendezvous_dir) {
@@ -417,6 +438,8 @@ static pmix_status_t pmix_ptl_close(void)
         }
         free(pmix_ptl_base.rendezvous_filename);
         pmix_ptl_base.rendezvous_filename = NULL;
+        pmix_ptl_base.created_rendezvous_dir = false;
+        pmix_ptl_base.created_rendezvous_file = false;
     }
     if (NULL != pmix_ptl_base.uri) {
         free(pmix_ptl_base.uri);
@@ -434,6 +457,7 @@ static pmix_status_t pmix_ptl_close(void)
         }
         free(pmix_ptl_base.urifile);
         pmix_ptl_base.urifile = NULL;
+        pmix_ptl_base.created_urifile = false;
     }
     if (NULL != pmix_ptl_base.session_tmpdir) {
         /* if I created the session tmpdir, then remove it if empty */
@@ -441,21 +465,27 @@ static pmix_status_t pmix_ptl_close(void)
             pmix_os_dirpath_destroy(pmix_ptl_base.session_tmpdir, true, _check_file);
         }
         free(pmix_ptl_base.session_tmpdir);
+        pmix_ptl_base.session_tmpdir = NULL;
+        pmix_ptl_base.created_session_tmpdir = false;
     }
     if (NULL != pmix_ptl_base.system_tmpdir) {
         if (pmix_ptl_base.created_system_tmpdir) {
             pmix_os_dirpath_destroy(pmix_ptl_base.system_tmpdir, true, _check_file);
         }
         free(pmix_ptl_base.system_tmpdir);
+        pmix_ptl_base.system_tmpdir = NULL;
+        pmix_ptl_base.created_system_tmpdir = false;
     }
 
     if (NULL != pmix_ptl_base.ipv4_ports) {
         PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
+        pmix_ptl_base.ipv4_ports = NULL;
     }
 
 #if PMIX_ENABLE_IPV6
     if (NULL != pmix_ptl_base.ipv6_ports) {
         PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
+        pmix_ptl_base.ipv6_ports = NULL;
     }
 #endif
 
