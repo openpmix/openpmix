@@ -27,6 +27,7 @@
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
+#include "src/common/pmix_control.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_show_help.h"
 #include "ptl_tool.h"
@@ -65,8 +66,20 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo)
             PMIx_Argv_free(clnup);
             PMIX_INFO_LOAD(&dir, PMIX_REGISTER_CLEANUP, cptr, PMIX_STRING);
             free(cptr);
-            PMIx_Job_control_nb(&pmix_globals.myid, 1, &dir, 1, NULL, NULL);
+            /* Go straight to the internal relay rather than through
+             * PMIx_Job_control_nb: library code must not call a public
+             * API that thread-shifts. The relay packs the directive
+             * before it returns and only the send is shifted, so the
+             * info is ours to destruct immediately afterward. */
+            rc = pmix_job_control_relay(&pmix_globals.myid, 1, &dir, 1, NULL, NULL);
             PMIX_INFO_DESTRUCT(&dir);
+            if (PMIX_SUCCESS != rc) {
+                /* not fatal - we simply leave the files for the session
+                 * directory sweep to deal with */
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "ptl:tool could not register rendezvous files "
+                                    "for cleanup: %s", PMIx_Error_string(rc));
+            }
         }
     }
 
