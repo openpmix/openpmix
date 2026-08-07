@@ -31,6 +31,7 @@
 #include "src/class/pmix_object.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
+#include "src/common/pmix_iof.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
@@ -238,4 +239,39 @@ void pmix_rte_finalize(void)
      * we only drop our reference, we do not free it here */
     pmix_globals.evbase = NULL;
     pmix_globals.evauxbase = NULL;
+
+    /* Put the scalar bootstrap state back to the values pmix_globals was
+     * statically initialized with. These are all set from directives the
+     * host passes to init, or discovered during it, and none of them is
+     * re-initialized on the way in - pmix_rte_init only writes them when
+     * the corresponding directive is present. So whatever cycle N was
+     * told silently becomes cycle N+1's default, which is wrong in ways
+     * that are hard to trace back here:
+     *
+     *   external_progress - the worst of them. Left set, the next
+     *     pmix_progress_thread_start returns without spinning the engine
+     *     because it believes the host is driving the loop. If that
+     *     cycle's host is not, nothing progresses and the first blocking
+     *     call hangs.
+     *   external_topology - pmix_hwloc_finalize (just above) declines to
+     *     destroy a topology it does not own. Left set, the next cycle's
+     *     self-discovered topology is never destroyed either.
+     *   nodeid / sessionid - UINT32_MAX is the "not told" sentinel, so a
+     *     stale value is indistinguishable from a real one.
+     *
+     * This must come after the progress-thread teardown above, which
+     * reads external_progress. */
+    pmix_globals.nodeid = UINT32_MAX;
+    pmix_globals.sessionid = UINT32_MAX;
+    pmix_globals.appnum = 0;
+    pmix_globals.pindex = 0;
+    pmix_globals.external_progress = false;
+    pmix_globals.external_topology = false;
+    pmix_globals.pushstdin = false;
+    pmix_globals.commits_pending = false;
+    /* the file/directory strings were freed above; this clears the
+     * formatting decisions that came with them */
+    pmix_iof_init_flags(&pmix_globals.iof_flags);
+    pmix_iof_init_flags(&pmix_globals.spawn_iof_flags);
+    PMIX_LOAD_PROCID(&pmix_globals.myid, NULL, PMIX_RANK_INVALID);
 }

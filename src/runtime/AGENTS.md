@@ -159,6 +159,22 @@ library. Rules:
   init if it needs it, and destruct/free/NULL it in finalize. A field
   constructed but not destructed leaks on every finalize; one destructed
   but not re-constructed crashes on second init.
+- **The scalars need resetting too, not just the containers.** The
+  containers and pointers are obvious; the `bool`s and `uint32_t`s are
+  the ones that get missed, because forgetting them costs nothing until
+  a *second* init. Nothing re-initializes them on the way in —
+  `pmix_rte_init` writes them only when the matching directive is
+  present — so whatever cycle N was told becomes cycle N+1's default.
+  `pmix_rte_finalize` therefore restores them to their static-init
+  values at the very end. Two are worth knowing by name:
+  `external_progress` left set makes the next
+  `pmix_progress_thread_start` decline to spin the engine, so if that
+  cycle's host is not driving the loop the first blocking call hangs;
+  and `external_topology` left set makes `pmix_hwloc_finalize` decline
+  to destroy the next cycle's self-discovered topology. `nodeid` and
+  `sessionid` reset to `UINT32_MAX`, which is the "not told" sentinel.
+  The reset must come **after** the progress-thread teardown, which
+  reads `external_progress`.
 - The finalize path deliberately drains the notification hotel
   room-by-room and the `iof_requests` pointer array item-by-item before
   destructing the containers — mirror that discipline for any new

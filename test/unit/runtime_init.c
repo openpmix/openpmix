@@ -74,6 +74,9 @@
  * ever produces output here), it just has to be captured and released */
 #define UT_IOF_FILE "ut-runtime-init-output"
 
+/* a nodeid the library would never invent for itself */
+#define UT_NODEID 4242
+
 static int npass = 0;
 static int nfail = 0;
 
@@ -342,11 +345,50 @@ static void test_iof_flags_released(const char *when)
     report(label, NULL == pmix_globals.iof_flags.directory);
 }
 
+/* ------------------------------------------------------------------ */
+/* scalar bootstrap state across the finalize gap                      */
+/* ------------------------------------------------------------------ */
+
+/* None of these is re-initialized on the way in - pmix_rte_init only
+ * writes them when the matching directive is present - so anything
+ * finalize leaves behind silently becomes the next cycle's default.
+ * The first cycle here supplies PMIX_NODEID, so a stale value is
+ * distinguishable from the "not told" sentinel. */
+static void test_scalars_reset(const char *when)
+{
+    char label[128];
+
+    snprintf(label, sizeof(label), "scalars:nodeid back to sentinel (%s)", when);
+    report(label, UINT32_MAX == pmix_globals.nodeid);
+
+    snprintf(label, sizeof(label), "scalars:sessionid back to sentinel (%s)", when);
+    report(label, UINT32_MAX == pmix_globals.sessionid);
+
+    /* left set, the next pmix_progress_thread_start declines to spin the
+     * engine because it believes the host is driving the loop */
+    snprintf(label, sizeof(label), "scalars:external_progress cleared (%s)", when);
+    report(label, !pmix_globals.external_progress);
+
+    /* left set, pmix_hwloc_finalize declines to destroy the next
+     * cycle's self-discovered topology too */
+    snprintf(label, sizeof(label), "scalars:external_topology cleared (%s)", when);
+    report(label, !pmix_globals.external_topology);
+
+    snprintf(label, sizeof(label), "scalars:iof formatting cleared (%s)", when);
+    report(label, !pmix_globals.iof_flags.set && !pmix_globals.iof_flags.local_output);
+}
+
+static void test_nodeid_captured(void)
+{
+    report("scalars:nodeid directive captured", UT_NODEID == pmix_globals.nodeid);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
-    pmix_info_t info[2];
+    pmix_info_t info[3];
     pmix_status_t rc;
+    uint32_t n;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* all of this has to be in place before the library comes up: the
@@ -356,12 +398,15 @@ int main(int argc, char **argv)
     setenv("PMIX_MCA_pmix_client_get_verbose", "1", 1);
     PMIX_INFO_LOAD(&info[0], PMIX_HOSTNAME, UT_FQDN, PMIX_STRING);
     PMIX_INFO_LOAD(&info[1], PMIX_IOF_OUTPUT_TO_FILE, UT_IOF_FILE, PMIX_STRING);
+    n = UT_NODEID;
+    PMIX_INFO_LOAD(&info[2], PMIX_NODEID, &n, PMIX_UINT32);
 
-    rc = PMIx_server_init(&mymodule, info, 2);
+    rc = PMIx_server_init(&mymodule, info, 3);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
         PMIX_INFO_DESTRUCT(&info[0]);
         PMIX_INFO_DESTRUCT(&info[1]);
+        PMIX_INFO_DESTRUCT(&info[2]);
         return 1;
     }
 
@@ -373,18 +418,21 @@ int main(int argc, char **argv)
     test_var_dump_color();
     test_output_channel_open();
     test_iof_flags_captured();
+    test_nodeid_captured();
 
     PMIx_server_finalize();
     test_output_channels_released("first cycle");
     test_iof_flags_released("first cycle");
+    test_scalars_reset("first cycle");
 
     /* and the whole thing again, because everything above is state that
      * has to be rebuilt from scratch. A second cycle that comes up with
      * the same answers is the evidence that finalize left nothing
      * behind - and nothing missing either */
-    rc = PMIx_server_init(&mymodule, info, 2);
+    rc = PMIx_server_init(&mymodule, info, 3);
     PMIX_INFO_DESTRUCT(&info[0]);
     PMIX_INFO_DESTRUCT(&info[1]);
+    PMIX_INFO_DESTRUCT(&info[2]);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "second PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
         return 1;
@@ -395,10 +443,12 @@ int main(int argc, char **argv)
     test_var_dump_color();
     test_output_channel_open();
     test_iof_flags_captured();
+    test_nodeid_captured();
 
     PMIx_server_finalize();
     test_output_channels_released("second cycle");
     test_iof_flags_released("second cycle");
+    test_scalars_reset("second cycle");
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
