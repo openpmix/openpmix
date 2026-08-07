@@ -325,9 +325,19 @@ test_linux() {
 
     # Every node named in the job has to come back in the node list. A node
     # whose own name did not match what it was told would drop out here.
+    #
+    # Pick the list out by its shape rather than by position. Eight ranks
+    # are writing to the same stderr, so "the line after ResNodes" is
+    # whatever happened to be flushed next -- which is how this read a
+    # fragment of another rank's banner.
     local nodelist missing="" n
-    nodelist="$(printf '%s\n' "$out" | grep -A1 'ResNodes returned: PMIX_SUCCESS' \
-                | grep -v 'ResNodes\|^--' | tr -d ' \t' | sort -u | head -1)"
+    nodelist="$(printf '%s\n' "$out" | tr -d ' \t' \
+                | grep -Ex 'node[0-9]+(,node[0-9]+)*' | sort -u | head -1)"
+    if [ -z "$nodelist" ]; then
+        bad "resolve: no node list found in the output"
+        printf '%s\n' "$out" | grep -A1 'ResNodes returned' | head -6
+        return
+    fi
     for n in node1 node2 node3 node4; do
         case ",$nodelist," in *",$n,"*) ;; *) missing="$missing $n" ;; esac
     done
