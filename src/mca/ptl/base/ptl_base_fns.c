@@ -1100,6 +1100,7 @@ process:
         fclose(fp);
         tv.tv_sec = 0;
         tv.tv_usec = 10000; // use 0.01 sec as default
+        PMIX_CONSTRUCT_LOCK(&lock);
         pmix_event_evtimer_set(pmix_globals.evbase, &ev, timeout, &lock);
         PMIX_POST_OBJECT(&ev);
         pmix_event_evtimer_add(&ev, &tv);
@@ -1165,7 +1166,10 @@ process:
     iptr = PMIX_NEW(pmix_infolist_t);
     PMIX_INFO_LOAD(&iptr->info, PMIX_VERSION_INFO, version, PMIX_STRING);
     pmix_list_append(&mylist, &iptr->super);
-    free(p2);
+    /* INFO_LOAD copied the string, so release ours - note that "version"
+     * is the strdup'd default when the file carried no version line, and
+     * p2 when it did, so freeing it here covers both */
+    free(version);
 
     /* see if the file contains the pid */
     p2 = pmix_getline(fp);
