@@ -374,6 +374,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_listener_t);
     .owner = 0,                             \
     .owner_given = false,                   \
     .group = 0,                             \
+    .group_given = false,                   \
     .mode = 0,                              \
     .cbfunc = NULL                          \
 }

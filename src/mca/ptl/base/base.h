@@ -63,7 +63,6 @@ struct pmix_ptl_base_t {
     bool initialized;
     bool selected;
     pmix_list_t posted_recvs; // list of pmix_ptl_posted_recv_t
-    pmix_list_t unexpected_msgs;
     pmix_listener_t listener;
     struct sockaddr_storage *connection;
     size_t max_msg_size;
@@ -169,7 +168,6 @@ PMIX_EXPORT void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspa
                                                    pmix_rank_t rank);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
                                                     pmix_socklen_t *sz, bool *sockopt);
-PMIX_EXPORT void pmix_ptl_base_setup_socket(pmix_peer_t *peer);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_client_handshake(pmix_peer_t *peer, pmix_status_t reply);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp);
 PMIX_EXPORT char **pmix_ptl_base_split_and_resolve(const char *orig_str,

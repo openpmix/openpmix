@@ -163,7 +163,6 @@ typedef struct pmix_ptl_module_t pmix_ptl_module_t;
 /* expose functions used by the macros */
 PMIX_EXPORT extern void pmix_ptl_base_send(int sd, short args, void *cbdata);
 PMIX_EXPORT extern void pmix_ptl_base_send_recv(int sd, short args, void *cbdata);
-PMIX_EXPORT extern void pmix_ptl_base_register_recv(int sd, short args, void *cbdata);
 
 /****    COMPONENT STRUCTURE DEFINITION    ****/
 
