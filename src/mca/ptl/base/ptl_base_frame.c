@@ -141,8 +141,12 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                "Max size (in Mbytes) of a client/server msg",
                                PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                &max_msg_size);
+    /* a zero value means "no limit" - we still need a ceiling to bound
+     * the allocation an inbound header can ask for, so use the taint
+     * limit. Note that the working value must always be assigned: leaving
+     * it at its static zero would reject every message carrying a payload */
     if (0 == max_msg_size) {
-        max_msg_size = PMIX_TAINT_SIZE_LIMIT;
+        pmix_ptl_base.max_msg_size = PMIX_TAINT_SIZE_LIMIT;
     } else {
         pmix_ptl_base.max_msg_size = max_msg_size * 1024 * 1024;
     }
@@ -200,7 +204,7 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "ipv6_ports",
                                      "IPv6 port(s) to be used",
                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                     &pmix_ptl_base.ipv6_ports);
+                                     &dyn_port_string6);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "base", "ipv6_port",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv6_port",
