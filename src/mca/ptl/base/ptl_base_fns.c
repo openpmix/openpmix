@@ -769,7 +769,18 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
     if (NULL != iptr) {
         PMIX_CONSTRUCT(&buf, pmix_buffer_t);
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &niptr, 1, PMIX_SIZE);
-        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, iptr, niptr, PMIX_INFO);
+        if (PMIX_SUCCESS == rc) {
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, iptr, niptr, PMIX_INFO);
+        }
+        if (PMIX_SUCCESS != rc) {
+            /* we cannot send a partial blob - the far end computes the
+             * length of the info section from what is left in the
+             * message, so a short one would be read as garbage */
+            PMIX_ERROR_LOG(rc);
+            PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+            PMIX_DESTRUCT(&buf);
+            return rc;
+        }
         sdsize += buf.bytes_used;
     }
 
@@ -779,8 +790,9 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
     /* create a space for our message */
     sdsize = sizeof(hdr) + hdr.nbytes;
     if (NULL == (msg = (char *) malloc(sdsize))) {
+        /* "sec", "bfrops" and "gds" all point into the compat modules
+         * we were assigned - they are not ours to free */
         PMIX_BYTE_OBJECT_DESTRUCT(&cred);
-        free(sec);
         if (NULL != iptr) {
             PMIX_DESTRUCT(&buf);
         }
