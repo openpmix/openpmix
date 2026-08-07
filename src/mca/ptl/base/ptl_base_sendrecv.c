@@ -604,7 +604,19 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
                                    (unsigned long) pmix_ptl_base.max_msg_size);
                     goto err_close;
                 }
+                /* The size asked for came off the wire. It is bounded by
+                 * max_msg_size above, but that ceiling is the taint limit
+                 * when the parameter says "no limit", so this can still
+                 * be a request for as much as a uint32_t can name - and
+                 * an allocation that large is entitled to fail. */
                 peer->recv_msg->data = (char *) malloc(peer->recv_msg->hdr.nbytes);
+                if (NULL == peer->recv_msg->data) {
+                    pmix_output(0, "ptl:base:recv_handler: cannot allocate %lu bytes "
+                                "for a message from %s",
+                                (unsigned long) peer->recv_msg->hdr.nbytes,
+                                PMIX_PNAME_PRINT(&peer->info->pname));
+                    goto err_close;
+                }
                 memset(peer->recv_msg->data, 0, peer->recv_msg->hdr.nbytes);
                 /* point to it */
                 peer->recv_msg->rdptr = peer->recv_msg->data;
