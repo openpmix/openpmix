@@ -24,6 +24,7 @@
 
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/pstat/pstat.h"
+#include "src/common/pmix_control.h"
 #include "src/mca/ptl/ptl.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
@@ -244,10 +245,6 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
                                               const pmix_info_t directives[], size_t ndirs,
                                               pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_buffer_t *msg;
-    pmix_cmd_t cmd = PMIX_JOB_CONTROL_CMD;
-    pmix_status_t rc;
-    pmix_query_caddy_t *qcd;
     pmix_cb_t *cb;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -283,6 +280,19 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
         PMIX_THREADSHIFT(cb, _jctrlnb);
         return PMIX_SUCCESS;
     }
+
+    /* we are not the host's server, so the request has to go to ours */
+    return pmix_job_control_relay(targets, ntargets, directives, ndirs, cbfunc, cbdata);
+}
+
+pmix_status_t pmix_job_control_relay(const pmix_proc_t targets[], size_t ntargets,
+                                     const pmix_info_t directives[], size_t ndirs,
+                                     pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_buffer_t *msg;
+    pmix_cmd_t cmd = PMIX_JOB_CONTROL_CMD;
+    pmix_status_t rc;
+    pmix_query_caddy_t *qcd;
 
     /* we need to send, so check for connection */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {

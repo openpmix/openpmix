@@ -28,6 +28,7 @@ sources += \
         common/pmix_monitor.c
 
 headers += \
+        common/pmix_control.h \
         common/pmix_iof.h \
         common/pmix_attributes.h \
         common/pmix_pfexec.h \
