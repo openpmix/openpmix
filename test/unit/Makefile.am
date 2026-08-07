@@ -55,9 +55,9 @@ noinst_SCRIPTS = run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_tools
 
 EXTRA_DIST = run_gds_fallback.pl.in run_simpcycle.pl.in run_toolcycle.pl.in run_toolswitch.pl.in run_grpmember.pl.in run_grpbadinfo.pl.in run_grpinvite.pl.in run_grpinviteothers.pl.in run_grpinvitesuppress.pl.in run_grpinvitenb.pl.in run_grptimeout.pl.in run_grpdecline.pl.in run_grpabort.pl.in run_grpmemberfail.pl.in run_grpleader.pl.in run_grpcabort.pl.in run_grpctimeout.pl.in run_monitor.pl.in run_tools.pl.in
 
-check_PROGRAMS = client_api common_api compress preg bfrops_regex2 bfrops_alloc_inherit bfrops_darray bfrops_malformed bfrops_get_number bfrops_null_object bfrops_helpers nested_darray gds_fallback gds_datastore pmix_log collective_status collect_job_info trk_complete tracker_match client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support singleton_register rndz_stale iof_pattern iof_flow proc_array_id get_perf
+check_PROGRAMS = client_api common_api compress preg bfrops_regex2 bfrops_alloc_inherit bfrops_darray bfrops_malformed bfrops_get_number bfrops_null_object bfrops_helpers nested_darray gds_fallback gds_datastore pmix_log collective_status collect_job_info trk_complete tracker_match client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support singleton_register rndz_stale iof_pattern iof_flow proc_array_id get_perf ptl_uri ptl_handshake
 
-TESTS = client_api common_api compress preg bfrops_regex2 bfrops_alloc_inherit bfrops_darray bfrops_malformed bfrops_get_number bfrops_null_object bfrops_helpers nested_darray gds_fallback run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_toolswitch.pl run_grpmember.pl run_grpbadinfo.pl run_grpinvite.pl run_grpinviteothers.pl run_grpinvitesuppress.pl run_grpinvitenb.pl run_grptimeout.pl run_grpdecline.pl run_grpabort.pl run_grpmemberfail.pl run_grpleader.pl run_grpcabort.pl run_grpctimeout.pl run_monitor.pl run_tools.pl pmix_log collective_status collect_job_info trk_complete tracker_match client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support singleton_register rndz_stale iof_pattern iof_flow proc_array_id gds_datastore get_perf
+TESTS = client_api common_api compress preg bfrops_regex2 bfrops_alloc_inherit bfrops_darray bfrops_malformed bfrops_get_number bfrops_null_object bfrops_helpers nested_darray gds_fallback run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_toolswitch.pl run_grpmember.pl run_grpbadinfo.pl run_grpinvite.pl run_grpinviteothers.pl run_grpinvitesuppress.pl run_grpinvitenb.pl run_grptimeout.pl run_grpdecline.pl run_grpabort.pl run_grpmemberfail.pl run_grpleader.pl run_grpcabort.pl run_grpctimeout.pl run_monitor.pl run_tools.pl pmix_log collective_status collect_job_info trk_complete tracker_match client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support singleton_register rndz_stale iof_pattern iof_flow proc_array_id gds_datastore get_perf ptl_uri ptl_handshake
 
 client_api_SOURCES = \
         client_api.c
@@ -250,3 +250,15 @@ iof_flow_LDADD = \
 
 clean-local:
 	rm -f compress preg bfrops_regex2 bfrops_alloc_inherit nested_darray gds_fallback gds_datastore pmix_log collective_status collect_job_info trk_complete tracker_match client_cycle tool_cycle event_chain hwloc_datatype progress_threads info_support singleton_register rndz_stale iof_pattern iof_flow proc_array_id get_perf
+
+ptl_uri_SOURCES = \
+        ptl_uri.c
+ptl_uri_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+ptl_uri_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+ptl_handshake_SOURCES = \
+        ptl_handshake.c
+ptl_handshake_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+ptl_handshake_LDADD = \
+    $(top_builddir)/src/libpmix.la
