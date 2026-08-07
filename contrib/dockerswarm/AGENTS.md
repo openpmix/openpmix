@@ -28,6 +28,7 @@ two disagree, the README wins, and please fix this file.
 | `run-bfrops-tests.sh` | The `src/mca/bfrops` unit programs on Linux/optimized/`--enable-mca-dso`, **plus** `examples/datatypes` moving every data type between ranks on different nodes (README §15) |
 | `run-gds-tests.sh` | The `src/mca/gds` datastore: compiles `shmem3` (which macOS does not build at all), the gds unit programs in two configurations, and the collective/direct/fallback modex paths across separate servers (README §16) |
 | `run-ptl-tests.sh` | The `src/mca/ptl` transport over real sockets between real hosts: interface selection, node-local rendezvous discovery, a tool attaching across nodes, the inbound message-size ceiling, an exhausted port range (README §17) |
+| `run-runtime-tests.sh` | The `src/runtime` bring-up/tear-down suite in the optimized configuration and on Linux — where the progress thread's CPU-affinity path exists at all — plus that path driven through a real `PMIx_Init`, and node identity across real servers (README §18) |
 | `swarm-common.sh` | **Sourced, never executed.** `$PMIX_SWARM` naming and the one copy of `cleanup_swarm` |
 
 ## Things that will bite you
