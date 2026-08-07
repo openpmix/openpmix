@@ -30,6 +30,7 @@
 #include "src/util/pmix_argv.h"
 
 static pmix_status_t component_register(void);
+static pmix_status_t component_close(void);
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
 
 /*
@@ -49,6 +50,7 @@ pmix_pmdl_ompi_component_t pmix_mca_pmdl_ompi_component = {
 
         /* Component open and close functions */
         .pmix_mca_register_component_params = component_register,
+        .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
     },
     .include = NULL,
@@ -78,6 +80,24 @@ static pmix_status_t component_register(void)
          &pmix_mca_pmdl_ompi_component.excparms);
     if (NULL != pmix_mca_pmdl_ompi_component.excparms) {
         pmix_mca_pmdl_ompi_component.exclude = PMIx_Argv_split(pmix_mca_pmdl_ompi_component.excparms, ',');
+    }
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t component_close(void)
+{
+    /* component_register split the envar patterns into these two argv
+     * arrays, and nothing else owns them. This component had no close
+     * function at all, so they were rebuilt and abandoned on every PMIx
+     * init/finalize cycle. */
+    if (NULL != pmix_mca_pmdl_ompi_component.include) {
+        PMIx_Argv_free(pmix_mca_pmdl_ompi_component.include);
+        pmix_mca_pmdl_ompi_component.include = NULL;
+    }
+    if (NULL != pmix_mca_pmdl_ompi_component.exclude) {
+        PMIx_Argv_free(pmix_mca_pmdl_ompi_component.exclude);
+        pmix_mca_pmdl_ompi_component.exclude = NULL;
     }
 
     return PMIX_SUCCESS;

@@ -111,5 +111,19 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
 
 static pmix_status_t component_close(void)
 {
+    /* component_register split the envar patterns into these two argv
+     * arrays, and nothing else owns them. The MCA base calls us both when
+     * the framework closes and when our open fails, so this is the one
+     * place that runs either way - without it the arrays are rebuilt and
+     * abandoned on every PMIx init/finalize cycle. */
+    if (NULL != pmix_mca_pgpu_nvd_component.include) {
+        PMIx_Argv_free(pmix_mca_pgpu_nvd_component.include);
+        pmix_mca_pgpu_nvd_component.include = NULL;
+    }
+    if (NULL != pmix_mca_pgpu_nvd_component.exclude) {
+        PMIx_Argv_free(pmix_mca_pgpu_nvd_component.exclude);
+        pmix_mca_pgpu_nvd_component.exclude = NULL;
+    }
+
     return PMIX_SUCCESS;
 }
