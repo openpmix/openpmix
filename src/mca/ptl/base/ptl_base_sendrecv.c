@@ -299,7 +299,14 @@ static void lost_connection(pmix_peer_t *peer)
         buf.type = pmix_client_globals.myserver->nptr->compat.type;
         hdr.nbytes = 0; // initialize the hdr to something safe
         PMIX_LIST_FOREACH (rcv, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
-            if (UINT_MAX != rcv->tag && NULL != rcv->cbfunc) {
+            /* only the dynamic tags carry a sendrecv reply that somebody
+             * is blocked on. The reserved tags below PMIX_PTL_TAG_DYNAMIC
+             * hold persistent recvs - the notification, IOF and IOF flow
+             * control handlers - and nobody is waiting on those. Handing
+             * one of them this empty buffer would only make it fail to
+             * unpack a message that was never sent. */
+            if (PMIX_PTL_TAG_DYNAMIC <= rcv->tag && UINT_MAX != rcv->tag &&
+                NULL != rcv->cbfunc) {
                 /* construct and load the buffer */
                 hdr.tag = rcv->tag;
                 rcv->cbfunc(pmix_globals.mypeer, &hdr, &buf, rcv->cbdata);
