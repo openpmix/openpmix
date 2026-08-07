@@ -949,7 +949,7 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
                             PMIX_LIST_DESTRUCT(&ilist);
                             return PMIX_ERR_BAD_PARAM;
                         }
-                    } else if (PMIX_CHECK_KEY(&blk->info[m], PMIX_PROC_DATA) ||
+                    } else if (PMIX_CHECK_KEY(&blk->info[m], PMIX_PROC_INFO_ARRAY) ||
                                PMIX_CHECK_KEY(&blk->info[m], PMIX_GROUP_INFO)) {
                         // keep the duplicates
                         icd = PMIX_NEW(pmix_info_caddy_t);

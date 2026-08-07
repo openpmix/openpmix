@@ -334,7 +334,7 @@ that keeps `nvd` out of the library today).
   flow.
 - **`simptest` shows the per-proc vs. per-node split.** Fabric endpoints
   (`PMIX_FABRIC_ENDPT`) are per-process data, fetched by rank, so they go
-  in a `PMIX_PROC_DATA` array; fabric coordinates
+  in a `PMIX_PROC_INFO_ARRAY` array; fabric coordinates
   (`PMIX_FABRIC_COORDINATES`) are per-node, fetched at the node level
   (rank `PMIX_RANK_UNDEF`), so they must be delivered in a
   `PMIX_NODE_INFO_ARRAY` rather than proc data or the client's `PMIx_Get`

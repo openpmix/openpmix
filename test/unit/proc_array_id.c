@@ -177,7 +177,7 @@ static pmix_status_t register_job(const char *nspace, int nprocs)
     /* per-proc data, identified by a procid that is deliberately not
      * the first element */
     for (m = 0; m < nprocs; m++) {
-        pmix_strncpy(info[n].key, PMIX_PROC_DATA, PMIX_MAX_KEYLEN);
+        pmix_strncpy(info[n].key, PMIX_PROC_INFO_ARRAY, PMIX_MAX_KEYLEN);
         info[n].value.type = PMIX_DATA_ARRAY;
         PMIX_DATA_ARRAY_CREATE(array, 3, PMIX_INFO);
         info[n].value.data.darray = array;

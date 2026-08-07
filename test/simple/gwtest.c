@@ -570,7 +570,7 @@ static void set_namespace(int nprocs, char *ranks, char *nspace, pmix_op_cbfunc_
     x->info[6].value.data.uint32 = nprocs;
 
     for (n = 0; n < nprocs; n++) {
-        pmix_strncpy(x->info[7 + n].key, PMIX_PROC_DATA, PMIX_MAX_KEYLEN);
+        pmix_strncpy(x->info[7 + n].key, PMIX_PROC_INFO_ARRAY, PMIX_MAX_KEYLEN);
         x->info[7 + n].value.type = PMIX_DATA_ARRAY;
         darray = (pmix_data_array_t *) malloc(sizeof(pmix_data_array_t));
         darray->size = 2;

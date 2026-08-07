@@ -1237,7 +1237,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
         gds = pmix_globals.mypeer->nptr->compat.gds;
         if (NULL != gds && NULL != gds->store) {
             for (i=0; i < cd->ninfo; i++) {
-                if (PMIX_CHECK_KEY(&cd->info[i], PMIX_PROC_DATA)) {
+                if (PMIX_CHECK_KEY(&cd->info[i], PMIX_PROC_INFO_ARRAY)) {
                     iptr = (pmix_info_t*)cd->info[i].value.data.darray->array;
                     ninfo = cd->info[i].value.data.darray->size;
                     /* the first position is the rank */

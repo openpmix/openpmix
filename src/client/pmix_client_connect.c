@@ -282,7 +282,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                 return rc;
             }
             // insert into a pmix_info_t for packing
-            PMIX_INFO_LOAD(&xfer, PMIX_PROC_DATA, &darray, PMIX_DATA_ARRAY);
+            PMIX_INFO_LOAD(&xfer, PMIX_PROC_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
             PMIX_DATA_ARRAY_DESTRUCT(&darray);
             // append it if this peer can carry it
             rc = append_optional(msg, &xfer);

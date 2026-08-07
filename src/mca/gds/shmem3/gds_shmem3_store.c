@@ -401,7 +401,7 @@ store_proc_data(
     pmix_status_t rc = PMIX_SUCCESS;
 
     // First, make sure this is proc data.
-    if (PMIX_UNLIKELY(!PMIX_CHECK_KEY(kval, PMIX_PROC_DATA))) {
+    if (PMIX_UNLIKELY(!PMIX_CHECK_KEY(kval, PMIX_PROC_INFO_ARRAY))) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }

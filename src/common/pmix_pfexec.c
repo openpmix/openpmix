@@ -977,7 +977,7 @@ static pmix_status_t register_nspace(char *nspace, pmix_setup_caddy_t *fcd)
             /* release the list */
             PMIX_INFO_LIST_RELEASE(pinfo);
             /* add it to the job info array */
-            PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_PROC_DATA, &darray, PMIX_DATA_ARRAY);
+            PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_PROC_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
             /* release the memory - the array was copied */
             PMIX_DATA_ARRAY_DESTRUCT(&darray);
         }

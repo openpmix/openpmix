@@ -301,8 +301,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             /* each proc is assigned a fabric endpoint corresponding to
              * the node upon which it is executing. The endpoint is
              * per-process data (PMIX_FABRIC_ENDPT is fetched by rank),
-             * so it lives in this proc's PMIX_PROC_DATA array */
-            PMIX_LOAD_KEY(iptr[m].key, PMIX_PROC_DATA);
+             * so it lives in this proc's PMIX_PROC_INFO_ARRAY array */
+            PMIX_LOAD_KEY(iptr[m].key, PMIX_PROC_INFO_ARRAY);
             PMIX_DATA_ARRAY_CREATE(d2, 2, PMIX_INFO);
             iptr[m].value.type = PMIX_DATA_ARRAY;
             iptr[m].value.data.darray = d2;

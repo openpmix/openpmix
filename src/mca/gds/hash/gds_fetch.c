@@ -601,7 +601,7 @@ pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
             }
             ninfo = pmix_list_get_size(&rkvs);
             /* setup to return the result */
-            PMIX_KVAL_NEW(kv, PMIX_PROC_DATA);
+            PMIX_KVAL_NEW(kv, PMIX_PROC_INFO_ARRAY);
             if (NULL == kv) {
                 PMIX_LIST_DESTRUCT(&rkvs);
                 return PMIX_ERR_NOMEM;

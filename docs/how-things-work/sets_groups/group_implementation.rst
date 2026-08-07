@@ -92,7 +92,7 @@ non-blocking form:
 
 #. **Packs the message** (``construct_msg()``): the command, group ID,
    participant array, and info array, folding in the caller's own endpoint
-   data (fetched at ``PMIX_REMOTE`` scope and packed as ``PMIX_PROC_DATA``)
+   data (fetched at ``PMIX_REMOTE`` scope and packed as ``PMIX_PROC_INFO_ARRAY``)
    and prepending the caller's proc ID to any ``PMIX_GROUP_INFO`` array.
 
 #. **Dispatches** with ``PMIX_PTL_SEND_RECV(..., construct_cbfunc, cb)`` and
@@ -245,7 +245,7 @@ For the collective (fully-specified) method:
 * When the predicate holds and the block has not already been forwarded,
   ``aggregate_info()`` merges every tracker's procs/info into the block
   (deduplicating and special-casing ``PMIX_GROUP_ADD_MEMBERS``,
-  ``PMIX_GROUP_BOOTSTRAP``, ``PMIX_PROC_DATA``, and ``PMIX_GROUP_INFO``), the
+  ``PMIX_GROUP_BOOTSTRAP``, ``PMIX_PROC_INFO_ARRAY``, and ``PMIX_GROUP_INFO``), the
   fault decision below is applied, the local-phase timer is deleted,
   ``host_called`` is set, and the operation is forwarded to
   ``pmix_host_server.group()``.

@@ -661,7 +661,7 @@ shmem3_fetch_from_job(
             // Setup to return the result.
             // TODO(skg) Maybe place to help with zero-copy?
             pmix_kval_t *kv;
-            PMIX_KVAL_NEW(kv, PMIX_PROC_DATA);
+            PMIX_KVAL_NEW(kv, PMIX_PROC_INFO_ARRAY);
             kv->value->type = PMIX_DATA_ARRAY;
             const size_t niptr = ninfo + 1; // Need space for the rank.
             PMIX_DATA_ARRAY_CREATE(kv->value->data.darray, niptr, PMIX_INFO);
