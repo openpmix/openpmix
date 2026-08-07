@@ -146,7 +146,24 @@ static void _cnct_complete(int sd, short args, void *cbdata)
 
 error:
     if (NULL != ch->peer) {
-        pmix_pointer_array_set_item(&pmix_server_globals.clients, ch->peer->index, NULL);
+        /* Undo the bookkeeping the connection handler did on this rank's
+         * behalf before it handed us the peer: the live-process count it
+         * incremented and the clients-array slot it pointed the rank at.
+         * Leaving proc_cnt raised strands the rank at a count that never
+         * drops again, which blocks the tombstone reclaim on a later
+         * reconnect (that reclaim requires proc_cnt == 0), and leaving
+         * peerid set points the rank at a slot we are about to empty. */
+        if (NULL != ch->peer->info) {
+            if (0 < ch->peer->info->proc_cnt) {
+                --ch->peer->info->proc_cnt;
+            }
+            if (ch->peer->info->peerid == ch->peer->index) {
+                ch->peer->info->peerid = -1;
+            }
+        }
+        if (0 <= ch->peer->index) {
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, ch->peer->index, NULL);
+        }
         PMIX_RELEASE(ch->peer);
     }
     CLOSE_THE_SOCKET(ch->pnd->sd);
