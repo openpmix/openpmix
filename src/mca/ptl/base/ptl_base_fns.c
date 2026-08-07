@@ -1358,8 +1358,15 @@ void pmix_ptl_base_query_servers(int sd, short args, void *cbdata)
     }
     PMIX_LIST_DESTRUCT(&servers);
 
-    /* execute the callback function */
-    cd->cbfunc(rc, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
+    /* execute the callback function. PMIx_Query_info_nb accepts a NULL
+     * callback - every other completion path in pmix_query.c checks for
+     * one - so there may be nobody to hand the answer to, in which case
+     * we still have to release what we built */
+    if (NULL != cd->cbfunc) {
+        cd->cbfunc(rc, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
+    } else {
+        _local_relcb(cd);
+    }
 }
 
 static void timeout(int sd, short args, void *cbdata)
