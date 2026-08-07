@@ -141,27 +141,35 @@ typedef struct {
 
 /* provide macros for setting the major, minor, and release values
  * just so people don't have to deal with the details of the struct */
-#define PMIX_SET_PEER_VERSION(p, e, a, b)     \
-    do {                                      \
-        char *e2;                             \
-        unsigned long mj, mn, rl;             \
-        if (NULL != e) {                      \
-            if ('v' == e[0]) {                \
-                mj = strtoul(&e[1], &e2, 10); \
-            } else {                          \
-                mj = strtoul(e, &e2, 10);     \
-            }                                 \
-            ++e2;                             \
-            mn = strtoul(e2, &e2, 10);        \
-            ++e2;                             \
-            rl = strtoul(e2, NULL, 10);       \
-            PMIX_SET_PEER_MAJOR((p), mj);     \
-            PMIX_SET_PEER_MINOR((p), mn);     \
-            PMIX_SET_PEER_RELEASE((p), rl);   \
-        } else {                              \
-            PMIX_SET_PEER_MAJOR((p), (a));    \
-            PMIX_SET_PEER_MINOR((p), (b));    \
-        }                                     \
+/* Split a version string into the peer's major.minor.release.
+ *
+ * The string is not ours: it is a line out of a rendezvous file some
+ * other process wrote, or the PMIX_VERSION environment variable. It
+ * need not carry all three components, so step over a separator only
+ * after confirming the string has not already ended - walking past the
+ * terminator reads whatever follows the allocation. Components we
+ * cannot read are zero. */
+#define PMIX_SET_PEER_VERSION(p, e, a, b)             \
+    do {                                              \
+        char *_e2;                                    \
+        const char *_e1;                              \
+        unsigned long _mj = 0, _mn = 0, _rl = 0;      \
+        if (NULL != (e)) {                            \
+            _e1 = ('v' == (e)[0]) ? &(e)[1] : (e);    \
+            _mj = strtoul(_e1, &_e2, 10);             \
+            if ('\0' != *_e2) {                       \
+                _mn = strtoul(&_e2[1], &_e2, 10);     \
+                if ('\0' != *_e2) {                   \
+                    _rl = strtoul(&_e2[1], NULL, 10); \
+                }                                     \
+            }                                         \
+            PMIX_SET_PEER_MAJOR((p), _mj);            \
+            PMIX_SET_PEER_MINOR((p), _mn);            \
+            PMIX_SET_PEER_RELEASE((p), _rl);          \
+        } else {                                      \
+            PMIX_SET_PEER_MAJOR((p), (a));            \
+            PMIX_SET_PEER_MINOR((p), (b));            \
+        }                                             \
     } while (0)
 
 #define PMIX_SET_PEER_MAJOR(p, a)   (p)->proc_type.major = (a)
