@@ -31,6 +31,14 @@
  *                 unrecognized entry is reported and skipped rather than
  *                 taking the good entries down with it.
  *
+ *   output        a verbosity channel opened by pmix_rte_init is given
+ *                 back by pmix_rte_finalize, id and all.
+ *
+ * Everything except the help topics is then re-checked over a second
+ * init/finalize cycle: this layer's standing requirement is that a
+ * second PMIx_Init starts from a clean slate, and per-cycle state that
+ * is rebuilt wrongly - or not rebuilt at all - shows up nowhere else.
+ *
  * The process comes up as a PMIx server because that is the role that
  * passes host-supplied directives - notably PMIX_HOSTNAME - through
  * pmix_rte_init.
@@ -43,6 +51,7 @@
 #include <string.h>
 
 #include "include/pmix_server.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/util/pmix_argv.h"
@@ -268,6 +277,36 @@ static void test_var_dump_color(void)
            0 == strcmp(pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES], "\033[36m"));
 }
 
+/* ------------------------------------------------------------------ */
+/* verbosity output channels                                           */
+/* ------------------------------------------------------------------ */
+
+/* pmix_rte_init opens an output channel for every client verbosity var
+ * that is set, and pmix_rte_finalize has to give it back. An output
+ * descriptor owns a strdup'ed prefix that only pmix_output_close frees,
+ * and the id is cached in a file-scope struct that outlives the library
+ * - so an unclosed channel both leaks its prefix on every cycle and
+ * leaves behind an id naming a slot the next cycle may reissue.
+ *
+ * pmix_client_get_verbose was set in the environment before init, so
+ * this channel is genuinely open. */
+static void test_output_channel_open(void)
+{
+    report("output:a set verbosity opens a channel",
+           0 <= pmix_client_globals.get_output);
+}
+
+static void test_output_channels_released(const char *when)
+{
+    char label[128];
+
+    snprintf(label, sizeof(label), "output:channel released (%s)", when);
+    report(label, -1 == pmix_client_globals.get_output);
+
+    snprintf(label, sizeof(label), "output:debug channel released (%s)", when);
+    report(label, -1 == pmix_globals.debug_output);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -275,16 +314,17 @@ int main(int argc, char **argv)
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
-    /* both of these have to be in place before the library comes up:
-     * the parameter is read by pmix_register_params, and the hostname
+    /* all of this has to be in place before the library comes up: the
+     * parameters are read by pmix_register_params, and the hostname
      * directive is consumed by pmix_rte_init's directive scan */
     setenv("PMIX_MCA_pmix_var_dump_color", UT_COLORS, 1);
+    setenv("PMIX_MCA_pmix_client_get_verbose", "1", 1);
     PMIX_INFO_LOAD(&info[0], PMIX_HOSTNAME, UT_FQDN, PMIX_STRING);
 
     rc = PMIx_server_init(&mymodule, info, 1);
-    PMIX_INFO_DESTRUCT(&info[0]);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
+        PMIX_INFO_DESTRUCT(&info[0]);
         return 1;
     }
 
@@ -294,10 +334,31 @@ int main(int argc, char **argv)
     test_supplied_hostname();
     test_set_aliases();
     test_var_dump_color();
-
-    fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
+    test_output_channel_open();
 
     PMIx_server_finalize();
+    test_output_channels_released("first cycle");
+
+    /* and the whole thing again, because everything above is state that
+     * has to be rebuilt from scratch. A second cycle that comes up with
+     * the same answers is the evidence that finalize left nothing
+     * behind - and nothing missing either */
+    rc = PMIx_server_init(&mymodule, info, 1);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "second PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
+        return 1;
+    }
+
+    fprintf(stdout, "\n--- second init/finalize cycle ---\n\n");
+    test_supplied_hostname();
+    test_var_dump_color();
+    test_output_channel_open();
+
+    PMIx_server_finalize();
+    test_output_channels_released("second cycle");
+
+    fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
     return (nfail > 0) ? 1 : 0;
 }
