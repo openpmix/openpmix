@@ -706,6 +706,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     pmix_info_t ginfo;
     pmix_byte_object_t cred;
     pmix_iof_req_t *req = NULL;
+    bool nspace_listed = false;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(cd);
@@ -815,6 +816,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         }
         if (NULL == nptr3) {
             pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+            nspace_listed = true;
         } else {
             /* The host registered this namespace while we were waiting on
              * it, so the object we built is a duplicate and has to go.
@@ -825,6 +827,10 @@ static void process_cbfunc(int sd, short args, void *cbdata)
              * pointing it at nptr3 without retaining would have it
              * release a reference it never held. */
             PMIX_RETAIN(nptr3);
+            /* we no longer hold a namespace we created - the peer's is
+             * one that was already on the list and is not ours to
+             * withdraw, so the error path must leave it alone */
+            pnd->nspace_created = false;
             if (pnd->rinfo_created) {
                 /* the rank info we built is on the duplicate's rank list
                  * and goes away with it. The peer holds its own reference,
@@ -981,8 +987,18 @@ error:
             PMIX_RELEASE(peer->info);
         }
         if (NULL != peer->nptr && pnd->nspace_created) {
-            pmix_list_remove_item(&pmix_globals.nspaces, &peer->nptr->super);
-            // the nptr will be released along with the peer
+            /* This namespace is one we built. Whether it reached the
+             * global list depends on how far we got - several of the
+             * gotos above fire before the block that appends it - so
+             * withdraw it only if it is actually there. Either way we are
+             * still holding the reference PMIX_NEW gave us on behalf of
+             * that list, and removing an item does not release it, so
+             * give it back here. The peer's own reference comes back when
+             * the peer is released below. */
+            if (nspace_listed) {
+                pmix_list_remove_item(&pmix_globals.nspaces, &peer->nptr->super);
+            }
+            PMIX_RELEASE(peer->nptr);
         }
         PMIX_RELEASE(peer);
     }
