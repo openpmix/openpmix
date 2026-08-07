@@ -106,18 +106,26 @@ typedef uint8_t pmix_rnd_flag_t;
         }                                       \
     } while (0)
 
-#define PMIX_PTL_GET_BLOB(b, l)                 \
-    do {                                        \
-        if (0 < (l)) {                          \
-            (b) = (char *) malloc((l));         \
-            if (NULL == (b)) {                  \
-                PMIX_ERROR_LOG(PMIX_ERR_NOMEM); \
-                goto error;                     \
-            }                                   \
-            memcpy((b), mg, (l));               \
-            mg += (l);                          \
-            cnt -= (l);                         \
-        }                                       \
+/* the length of a blob is taken off the wire, so it must be checked
+ * against the number of bytes actually remaining in the message before
+ * it is used - a peer claiming more than it sent would otherwise walk
+ * us off the end of the buffer and underflow "cnt" on the way */
+#define PMIX_PTL_GET_BLOB(b, l)                     \
+    do {                                            \
+        if (0 < (l)) {                              \
+            if (cnt < (size_t) (l)) {               \
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM); \
+                goto error;                         \
+            }                                       \
+            (b) = (char *) malloc((l));             \
+            if (NULL == (b)) {                      \
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);     \
+                goto error;                         \
+            }                                       \
+            memcpy((b), mg, (l));                   \
+            mg += (l);                              \
+            cnt -= (l);                             \
+        }                                           \
     } while (0)
 
 #define PMIX_PTL_GET_U8(n)                      \
