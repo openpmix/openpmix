@@ -180,6 +180,34 @@ pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace, pmix_rank
     return PMIX_SUCCESS;
 }
 
+/* Split a "major.minor.release" version string into its components.
+ *
+ * The strings handed to this come off the wire, so they need not carry
+ * all three components - or any of them. Every component we cannot read
+ * is reported as zero, and we step over a separator only after
+ * confirming the string has not already ended. */
+void pmix_ptl_base_parse_version(const char *vers, uint8_t *major,
+                                 uint8_t *minor, uint8_t *release)
+{
+    char *p;
+
+    *major = 0;
+    *minor = 0;
+    *release = 0;
+    if (NULL == vers) {
+        return;
+    }
+    *major = (uint8_t) strtoul(vers, &p, 10);
+    if ('\0' == *p) {
+        return;
+    }
+    *minor = (uint8_t) strtoul(&p[1], &p, 10);
+    if ('\0' == *p) {
+        return;
+    }
+    *release = (uint8_t) strtoul(&p[1], NULL, 10);
+}
+
 pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
                                            bool optional,
                                            pmix_list_t *connections)

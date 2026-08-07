@@ -158,6 +158,8 @@ PMIX_EXPORT bool pmix_ptl_base_peer_is_earlier(pmix_peer_t *peer, uint8_t major,
 PMIX_EXPORT void pmix_ptl_base_query_servers(int sd, short args, void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace,
                                                   pmix_rank_t *rank, char **suri);
+PMIX_EXPORT void pmix_ptl_base_parse_version(const char *vers, uint8_t *major,
+                                             uint8_t *minor, uint8_t *release);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t info[],
                                                   size_t ninfo, bool optional, pmix_list_t *connections);
 PMIX_EXPORT pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz);

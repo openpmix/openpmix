@@ -184,7 +184,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     pmix_ptl_hdr_t hdr;
     pmix_peer_t *peer = NULL;
     pmix_status_t rc, reply;
-    char *msg = NULL, *mg, *p, *blob = NULL;
+    char *msg = NULL, *mg, *blob = NULL;
     size_t cnt, n, nblob = 0;
     size_t len = 0;
     int32_t i32;
@@ -342,20 +342,9 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         goto error;
     }
 
-    /* extract their VERSION - the expected form is "major.minor.release",
-     * but the string comes off the wire and a malformed (or simply older)
-     * peer can send something shorter. Step over each separator only after
-     * confirming we have not already reached the end of the string */
+    /* extract their VERSION */
     PMIX_PTL_GET_STRING(pnd->version);
-    minor = 0;
-    release = 0;
-    major = strtoul(pnd->version, &p, 10);
-    if ('\0' != *p) {
-        minor = strtoul(&p[1], &p, 10);
-        if ('\0' != *p) {
-            release = strtoul(&p[1], NULL, 10);
-        }
-    }
+    pmix_ptl_base_parse_version(pnd->version, &major, &minor, &release);
     PMIX_SET_PROC_MAJOR(&pnd->proc_type, major);
     PMIX_SET_PROC_MINOR(&pnd->proc_type, minor);
     PMIX_SET_PROC_RELEASE(&pnd->proc_type, release);
