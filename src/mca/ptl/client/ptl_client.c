@@ -76,7 +76,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                                      pmix_info_t *info, size_t ninfo,
                                      char **suriout)
 {
-    char *evar = NULL, *suri = NULL;
+    char *evar = NULL, *suri = NULL, *urispec = NULL;
     char *nspace = NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
     char *rendfile = NULL;
@@ -95,17 +95,28 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
 
+    *suriout = NULL;
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+
     /* see if we were given one */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
-            /* separate out the server URI version(s) */
-            suri = strchr(info[n].value.data.string, ';');
+            /* separate out the server URI version(s). Work on a copy -
+             * the info array belongs to our caller and must come back
+             * unmodified */
+            urispec = strdup(info[n].value.data.string);
+            if (NULL == urispec) {
+                rc = PMIX_ERR_NOMEM;
+                goto error;
+            }
+            suri = strchr(urispec, ';');
             if (NULL == suri) {
-                return PMIX_ERR_BAD_PARAM;
+                rc = PMIX_ERR_BAD_PARAM;
+                goto error;
             }
             *suri = '\0';
             ++suri;
-            evar = info[n].value.data.string;
+            evar = urispec;
             /* set the peer's module and type */
             tmp = PMIx_Argv_split(evar, ':');
             rc = PMIX_ERR_BAD_PARAM;
@@ -117,10 +128,11 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             }
             PMIx_Argv_free(tmp);
             if (PMIX_SUCCESS != rc) {
-                return rc;
+                goto error;
             }
             /* setup to process the URI */
             evar = suri;
+            suri = NULL;
             break;
         }
     }
@@ -141,8 +153,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     } else if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_INFO_LIST_RELEASE(ilist);
-        PMIX_LIST_DESTRUCT(&connections);
-        return rc;
+        goto error;
     } else {
         iptr = (pmix_info_t *) darray.array;
         niptr = darray.size;
@@ -163,15 +174,12 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             /* setup the system rendezvous file name */
             if (0 > pmix_asprintf(&rendfile, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
                              pmix_globals.hostname)) {
-                if (NULL != iptr) {
-                    PMIX_INFO_FREE(iptr, niptr);
-                }
-                return PMIX_ERR_NOMEM;
+                rc = PMIX_ERR_NOMEM;
+                goto error;
             }
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:client looking for system server at %s", rendfile);
             /* try to read the file */
-            PMIX_CONSTRUCT(&connections, pmix_list_t);
             rc = pmix_ptl_base_parse_uri_file(rendfile, true, &connections);
             free(rendfile);
             rendfile = NULL;
@@ -184,23 +192,19 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                 /* go ahead and try to connect */
                 rc = pmix_ptl_base_make_connection(peer, cn->uri, iptr, niptr);
                 if (PMIX_SUCCESS == rc) {
-                    /* don't free nspace - we will use it below */
+                    /* don't free nspace/uri - we will use them below */
                     nspace = cn->nspace;
                     rank = cn->rank;
                     suri = cn->uri;
                     cn->nspace = NULL;
                     cn->uri = NULL;
-                    PMIX_LIST_DESTRUCT(&connections);
                     goto complete;
                 }
             }
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tcp:client is singleton");
-            PMIX_LIST_DESTRUCT(&connections);
-            if (NULL != iptr) {
-                PMIX_INFO_FREE(iptr, niptr);
-            }
-            return PMIX_ERR_UNREACH;
+            rc = PMIX_ERR_UNREACH;
+            goto error;
         }
     }
 
@@ -210,10 +214,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
      */
     rc = pmix_ptl_base_parse_uri(evar, &nspace, &rank, &suri);
     if (PMIX_SUCCESS != rc) {
-        if (NULL != iptr) {
-            PMIX_INFO_FREE(iptr, niptr);
-        }
-        return rc;
+        goto error;
     }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -221,12 +222,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
 
     rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
     if (PMIX_SUCCESS != rc) {
-        free(nspace);
-        free(suri);
-        if (NULL != iptr) {
-            PMIX_INFO_FREE(iptr, niptr);
-        }
-        return rc;
+        goto error;
     }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -236,10 +232,21 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
 complete:
     /* mark the connection as made */
     pmix_ptl_base_complete_connection(peer, nspace, rank);
+    /* the caller takes ownership of the server URI */
     *suriout = suri;
+    suri = NULL;
+    rc = PMIX_SUCCESS;
 
+error:
+    PMIX_LIST_DESTRUCT(&connections);
+    if (NULL != urispec) {
+        free(urispec);
+    }
     if (NULL != nspace) {
         free(nspace);
+    }
+    if (NULL != suri) {
+        free(suri);
     }
     if (NULL != iptr) {
         PMIX_INFO_FREE(iptr, niptr);
