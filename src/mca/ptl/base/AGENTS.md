@@ -278,20 +278,33 @@ Two regimes, described in the framework doc. What matters *here*:
 Both are visible from this directory and both look like defects at first
 glance. Neither is one to "fix" without agreement:
 
-- **A self-started tool's namespace never joins `pmix_globals.nspaces`.**
-  `process_tool_request` takes two references on a namespace it creates
-  — one for the peer, one on behalf of that list — and `process_cbfunc`
-  appends it only on the tool-that-is-already-a-client path. For a tool
-  that asked for an identity, the second reference is simply held. That
-  looks like a leak, but a dozen other places in the library (the `gds`
-  hash utilities among them) will find-or-create a namespace on that
-  list, at which point the reference becomes the one the list holds.
-  Deciding which of those is the intended owner is a question for the
-  team, not a local edit: the alternative reading is that
-  `process_tool_request`'s comment is right and the append is missing,
-  and `process_tool_request`'s "a prior instance of the tool already
-  connected, so we would know the nspace" branch only makes sense under
-  that reading.
+- **A self-started tool's namespace never joins the server's
+  `pmix_globals.nspaces`.** (The server's list — this all runs in the
+  process that accepted the connection; the tool's own copy in its own
+  process is a different object entirely.) `process_tool_request` builds
+  a `pmix_namespace_t` for the connecting tool and takes two references
+  on it — one for the peer, one on behalf of that list — with a comment
+  saying the append happens "after we return from the host's upcall".
+  But `process_cbfunc` appends only in its `else if (nspace_created)`
+  branch, which is reached only for `PMIX_TOOL_CLIENT` /
+  `PMIX_LAUNCHER_CLIENT`. A tool that asked for an identity takes the
+  other branch, and the append never happens.
+
+  Nothing else adopts the object. The find-or-create helpers elsewhere
+  in the library (`gds/hash/gds_utils.c` among them) allocate a *fresh*
+  namespace and append that, so the server can end up holding two
+  distinct objects for one nspace name: the PTL's, reachable only
+  through the peer, and the GDS's, on the global list. The second
+  reference is therefore stranded, not absorbed.
+
+  This is very likely the missing append rather than a surplus retain,
+  because `process_tool_request`'s "a prior instance of the tool already
+  connected, so we would know the nspace" branch depends on finding the
+  first instance's object on that list — and if it finds the GDS's
+  instead, `pmix_list_get_first(&nptr->ranks)` is NULL and it takes the
+  "this cannot happen" error return. It is still not a local edit: it
+  changes which object the whole server resolves a tool's namespace
+  through, so take it to the team with that reasoning.
 
 - **`tool/ptl_tool.c` calls the public `PMIx_Job_control_nb`** to register
   its rendezvous files for cleanup, which the top-level rules say
