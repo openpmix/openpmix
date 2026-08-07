@@ -76,9 +76,14 @@ The three hash tables encode PMIx **scope**: `store` routes an
 `INTERNAL`-scope kval to `internal`, `REMOTE` to `remote`, `LOCAL` to
 `local`, and `GLOBAL` to *both* `remote` and `local`; `fetch` then honors
 the requested scope when reading them back. The `PMIX_HASH_*` bitmask flags
-(`PROC_DATA`, `JOB_SIZE`, `NODE_MAP`, `PROC_MAP`, …) track which
+(`JOB_SIZE`, `MAX_PROCS`, `NUM_NODES`, `NODE_MAP`, `PROC_MAP`) track which
 job-defining keys have already been seen while caching, so duplicates
-(e.g. two node maps) are caught as `PMIX_ERR_BAD_PARAM`.
+(e.g. two node maps) are caught as `PMIX_ERR_BAD_PARAM` and so `store_map`
+knows which job-level values it still has to compute for itself. **Every
+one of them is a job-wide statement**, which is what they are for; do not
+add a flag to record something that is true of one rank or one key. There
+used to be a sixth, `PROC_DATA`, that did exactly that — see the gotcha
+below.
 
 ## What the module functions do
 
@@ -87,7 +92,7 @@ job-defining keys have already been seen while caching, so duplicates
   session/app/node/job info arrays go through the `process_*_array`
   helpers; `PMIX_NODE_MAP` / `PMIX_PROC_MAP` are decoded via `pmix_preg`
   (handling `PMIX_REGEX`, `PMIX_REGEX2`, and plain `PMIX_STRING` forms) and
-  turned into per-rank hostname data by `store_map`; `PMIX_PROC_INFO_ARRAY`
+  turned into per-rank location data by `store_map`; `PMIX_PROC_INFO_ARRAY`
   arrays are expanded to per-rank keys; model/personality keys are handed to
   `pmix_pmdl`. Everything lands on `trk->internal` under
   `PMIX_RANK_WILDCARD` or the specific rank.
@@ -131,6 +136,29 @@ job-defining keys have already been seen while caching, so duplicates
   `PMIX_RANK_WILDCARD` in `trk->internal`, alongside a proc's own copy of
   its data. Fetches for `rank=WILDCARD` read job-level data; do not assume
   `internal` holds only per-rank entries.
+- **What `store_map` derives is a default, and the host always outranks
+  it — per rank and per key.** `store_map` works out `PMIX_HOSTNAME`,
+  `PMIX_NODEID`, `PMIX_LOCAL_RANK` and `PMIX_NODE_RANK` for every rank out
+  of the node and proc maps, and those are assumptions: the nodeid is the
+  node's index in the map and the node rank is computed as though this
+  were the only job on the node. So a value the host stated itself in a
+  `PMIX_PROC_INFO_ARRAY` has to win. Because `cache_job_info` expands
+  those arrays onto `trk->internal` during its scan and calls `store_map`
+  only after the scan finishes, the check is simply "is this key already
+  there for this rank?" — `store_derived()` in `gds_utils.c` asks
+  `pmix_hash_fetch` and skips if so. **Do not replace that with a flag.**
+  It used to be one: a single `PMIX_PROC_INFO_ARRAY` anywhere in the array
+  set `PMIX_HASH_PROC_DATA`, and `store_map` then skipped the nodeid,
+  local rank and node rank derivation for the *entire job*. A host that
+  described one proc lost those three keys for every other proc, and a
+  host that described every proc but named only some of the keys lost the
+  rest for all of them — `PMIx_Get` answering `PMIX_ERR_NOT_FOUND` with no
+  recovery, since the node-info fallback in `fetch` applies only to
+  wildcard ranks. `PMIX_HOSTNAME` sat outside the same gate, so it was
+  simultaneously the one key that survived and the one key a host could
+  not state without having it overwritten (`pmix_hash_store` replaces a
+  differing value). PRRTE supplies the full set for every proc, which is
+  why this stayed invisible.
 - **Regex decode depends on `preg`, and goes through one decoder.**
   A `PMIX_NODE_MAP` / `PMIX_PROC_MAP` value may arrive as a `PMIX_REGEX`
   byte object, a `PMIX_REGEX2` (which needs `pmix_preg.parse_regex` first),
@@ -158,6 +186,10 @@ job-defining keys have already been seen while caching, so duplicates
 `test/unit/gds_datastore` drives this component (it is the assigned module
 on macOS and wherever `shmem3` is unavailable) through the `PMIX_GDS_*`
 macros and `PMIx_server_register_nspace`: map decoding in every accepted
-form, malformed job-level input, and store/fetch scope routing. The
+form, malformed job-level input, store/fetch scope routing, and the
+per-rank/per-key derivation rule above — `test_derived_proc_info()`
+registers a job whose proc-info arrays cover only some ranks and name
+only some of the keys, and asserts both halves of the rule: what the host
+said survives, and everything it did not say is still filled in. The
 component's own symbols are not exported, so nothing can call
 `pmix_gds_hash_*` directly.
