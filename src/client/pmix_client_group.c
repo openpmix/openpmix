@@ -240,7 +240,7 @@ static pmix_status_t get_endpts(pmix_info_t *xfer,
                 return rc;
             }
             // insert into a pmix_info_t for packing
-            PMIX_INFO_LOAD(xfer, PMIX_PROC_DATA, &darray, PMIX_DATA_ARRAY);
+            PMIX_INFO_LOAD(xfer, PMIX_PROC_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
             PMIX_DATA_ARRAY_DESTRUCT(&darray);
             *endpts = true;
         }

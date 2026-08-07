@@ -266,7 +266,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             }
             /* mark that we got the map */
             flags |= PMIX_HASH_PROC_MAP;
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_DATA)) {
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_INFO_ARRAY)) {
             flags |= PMIX_HASH_PROC_DATA;
             found = false;
             /* an array of data pertaining to a specific proc */
@@ -1184,7 +1184,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 PMIX_VALUE_XFER(rc, kp3->value, kptr.value);
                 pmix_list_append(&nd->info, &kp3->super);
             }
-        } else if (PMIX_CHECK_KEY(&kptr, PMIX_PROC_DATA)) {
+        } else if (PMIX_CHECK_KEY(&kptr, PMIX_PROC_INFO_ARRAY)) {
             /* the caching path checks this; so must the path that takes
              * the same key from a server's reply */
             if (PMIX_DATA_ARRAY != kptr.value->type ||
@@ -1327,7 +1327,7 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
     if (PMIX_INTERNAL == scope) {
         /* if this is proc data, then we have to expand it and
          * store the values on that rank */
-        if (PMIX_CHECK_KEY(kv, PMIX_PROC_DATA)) {
+        if (PMIX_CHECK_KEY(kv, PMIX_PROC_INFO_ARRAY)) {
             /* an array of data pertaining to a specific proc */
             if (PMIX_DATA_ARRAY != kv->value->type ||
                 NULL == kv->value->data.darray ||

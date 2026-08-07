@@ -716,7 +716,7 @@ static void set_namespace(int nprocs, char *nspace, pmix_op_cbfunc_t cbfunc, myx
 
     /* add the proc-specific data */
     for (m = 0; m < nprocs; m++) {
-        pmix_strncpy(x->info[n].key, PMIX_PROC_DATA, PMIX_MAX_KEYLEN);
+        pmix_strncpy(x->info[n].key, PMIX_PROC_INFO_ARRAY, PMIX_MAX_KEYLEN);
         x->info[n].value.type = PMIX_DATA_ARRAY;
         PMIX_DATA_ARRAY_CREATE(array, 6, PMIX_INFO);
         x->info[n].value.data.darray = array;

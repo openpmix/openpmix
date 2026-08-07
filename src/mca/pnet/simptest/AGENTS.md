@@ -91,7 +91,7 @@ is a recognizable placeholder.
 - **`allocate`** (scheduler only) parses `PMIX_PROC_MAP` and
   `PMIX_NODE_MAP` via `pmix_preg.parse_procs` / `parse_nodes`, then for
   each node emits **two** kinds of data into the blob:
-  - a `PMIX_ALLOC_FABRIC_ENDPTS` kval whose value is a `PMIX_PROC_DATA`
+  - a `PMIX_ALLOC_FABRIC_ENDPTS` kval whose value is a `PMIX_PROC_INFO_ARRAY`
     array — one entry per local rank holding the rank and its
     `PMIX_FABRIC_ENDPT` (a data array of byte objects). The endpoint is
     **per-process** data, fetched by rank.

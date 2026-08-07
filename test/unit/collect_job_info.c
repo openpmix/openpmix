@@ -43,7 +43,7 @@ static void report(const char *name, int passed)
 
 /* Register a namespace with a minimal-but-valid job description: a
  * PMIX_JOB_INFO_ARRAY carrying the node/proc maps and job sizes, one
- * PMIX_NODE_INFO_ARRAY, and one PMIX_PROC_DATA entry per rank. This mirrors the
+ * PMIX_NODE_INFO_ARRAY, and one PMIX_PROC_INFO_ARRAY entry per rank. This mirrors the
  * shape a real host builds in PMIx_server_register_nspace. */
 static pmix_status_t register_job(const char *nspace, int nprocs)
 {
@@ -101,7 +101,7 @@ static pmix_status_t register_job(const char *nspace, int nprocs)
 
     /* per-proc data */
     for (m = 0; m < nprocs; m++) {
-        pmix_strncpy(info[n].key, PMIX_PROC_DATA, PMIX_MAX_KEYLEN);
+        pmix_strncpy(info[n].key, PMIX_PROC_INFO_ARRAY, PMIX_MAX_KEYLEN);
         info[n].value.type = PMIX_DATA_ARRAY;
         PMIX_DATA_ARRAY_CREATE(array, 3, PMIX_INFO);
         info[n].value.data.darray = array;

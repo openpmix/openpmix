@@ -1903,8 +1903,8 @@ get_local_job_data_info(
             NULL != kvi->value->data.darray &&
             NULL != kvi->value->data.darray->array &&
             0 != kvi->value->data.darray->size) {
-            // PMIX_PROC_DATA is stored in the hash table.
-            if (PMIX_CHECK_KEY(kvi, PMIX_PROC_DATA)) {
+            // PMIX_PROC_INFO_ARRAY is stored in the hash table.
+            if (PMIX_CHECK_KEY(kvi, PMIX_PROC_INFO_ARRAY)) {
                 nhtentries += kvi->value->data.darray->size;
             }
             // See if this is the job's session ID. If so, capture it.

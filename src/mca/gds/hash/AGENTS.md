@@ -87,7 +87,7 @@ job-defining keys have already been seen while caching, so duplicates
   session/app/node/job info arrays go through the `process_*_array`
   helpers; `PMIX_NODE_MAP` / `PMIX_PROC_MAP` are decoded via `pmix_preg`
   (handling `PMIX_REGEX`, `PMIX_REGEX2`, and plain `PMIX_STRING` forms) and
-  turned into per-rank hostname data by `store_map`; `PMIX_PROC_DATA`
+  turned into per-rank hostname data by `store_map`; `PMIX_PROC_INFO_ARRAY`
   arrays are expanded to per-rank keys; model/personality keys are handed to
   `pmix_pmdl`. Everything lands on `trk->internal` under
   `PMIX_RANK_WILDCARD` or the specific rank.
