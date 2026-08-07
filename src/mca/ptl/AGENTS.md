@@ -19,8 +19,11 @@ what is specific to `ptl`: what the framework is for, the (unusual) way
 its components are selected, the wire protocol, how a connection is
 established from both ends, and how steady-state messages flow. Each
 component subdirectory (`client/`, `server/`, `tool/`) carries its own
-`AGENTS.md` with role-specific detail. For an integration-level view of
-how this framework connects a PMIx process to its server, see
+`AGENTS.md` with role-specific detail — and so does
+[`base/`](base/AGENTS.md), which is where nearly all of the code
+actually lives and the document to read before changing any of it. For
+an integration-level view of how this framework connects a PMIx process
+to its server, see
 [`docs/how-things-work/ptl.rst`](../../../docs/how-things-work/ptl.rst).
 
 ## What PTL does
@@ -157,9 +160,16 @@ typedef struct {
 } pmix_ptl_hdr_t;
 ```
 
-Every message is `hdr` followed by `hdr.nbytes` of payload. Header
-integer fields travel in **network byte order** (`htonl`/`ntohl`) — this
-is the one place `ptl` must be endian-correct on the wire.
+Every message is `hdr` followed by `hdr.nbytes` of payload. On the
+**steady-state** path the header integers travel in **network byte
+order** (`htonl`/`ntohl`) — this is the one place `ptl` must be
+endian-correct on the wire.
+
+The **connect-ack** is the exception, and it catches people out: the
+first message on a new socket reuses the same struct but writes
+`nbytes` in *host* order on both ends. That is consistent with every
+released version, so it is a contract rather than a bug — see
+[`base/AGENTS.md`](base/AGENTS.md) before touching either side.
 
 Tags (`pmix_ptl_tag_t`, a `uint32_t`) route a message to the right
 handler:
@@ -328,7 +338,13 @@ The `PMIX_PTL_PUT_*` (build) and `PMIX_PTL_GET_*` (parse) macro pairs are
 deliberately symmetric so the two ends can be read side by side. **The
 field order in the handshake is a wire-format contract** — per the
 top-level interoperability rules it is append-only; never insert or
-reorder.
+reorder. `test/unit/ptl_handshake.c` drives the pair directly and will
+catch a change made to one half and not the other.
+
+Note that **every field here arrives before the credential has been
+validated** — this runs on a socket anyone who can reach the listener
+may open. Each `GET_*` macro therefore bounds itself against the number
+of bytes actually received, and a new field must do the same.
 
 ## The listener (`base/ptl_base_listener.c`)
 
@@ -390,7 +406,7 @@ All under the `pmix_ptl_base_` prefix, most with deprecated
 
 | Parameter | Meaning |
 |-----------|---------|
-| `max_msg_size` | cap (MB) on an inbound message; 0 → taint limit |
+| `max_msg_size` | cap (MB) on an inbound message; 0 → no practical limit |
 | `if_include` / `if_exclude` | interface selection (mutually exclusive) |
 | `ipv4_ports` / `ipv6_ports` | ports to try when binding the listener |
 | `disable_ipv4_family` / `disable_ipv6_family` | skip a whole address family (IPv6 disabled by default) |
@@ -444,7 +460,8 @@ src/mca/ptl/
 │   ├── ptl_base_sendrecv.c     send/recv handlers, tag matching, lost-connection teardown
 │   ├── ptl_base_fns.c          handshake build/parse, URI parsing, file discovery, helpers
 │   ├── ptl_base_stubs.c        version comparison + notification-recv registration
-│   └── usock.h                 vestige of the removed Unix-socket transport
+│   ├── usock.h                 vestige of the removed Unix-socket transport
+│   └── AGENTS.md               the authoritative guide to everything above
 ├── client/                     pure-client role (its own simpler connect_to_peer)
 ├── server/                     pure-server role (base connect + listener + fork)
 └── tool/                       any-tool role (base connect + listener w/ cleanup + fork)
