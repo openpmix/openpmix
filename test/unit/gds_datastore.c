@@ -31,6 +31,13 @@
  *   - a PMIX_QUALIFIED_VALUE carrying an empty data array (the primary
  *     value was read out of bounds and SIZE_MAX qualifiers requested).
  *
+ * A different class of case covers what the datastore *computes* rather
+ * than what it is given: the per-proc hostname, nodeid, local rank and
+ * node rank derived from the node and proc maps are assumptions, so the
+ * host's own PMIX_PROC_INFO_ARRAY has to win - but per rank and per key.
+ * That decision used to be made once for the whole job, which lost those
+ * keys for every proc a host did not fully describe.
+ *
  * The base modex walker case pins the contract every component's
  * store_modex callback has to honor: it is called once per proc blob and
  * then once per involved nspace with a NULL buffer, and a callback that
@@ -589,6 +596,179 @@ static void test_map_forms(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* derivation of per-proc info the host did not supply                  */
+/* ------------------------------------------------------------------ */
+
+/* Register a job whose node/proc maps describe every rank, but whose
+ * PMIX_PROC_INFO_ARRAY entries cover only the first "ndescribed" ranks -
+ * and, for those, name only PMIX_LOCAL_RANK, carrying a sentinel value
+ * no derivation would ever produce. Everything else the maps imply has
+ * to be filled in by the datastore. */
+static pmix_status_t register_with_proc_info(const char *nspace, int nprocs,
+                                             int ndescribed, uint16_t sentinel)
+{
+    char *noderegex = NULL, *ppnregex = NULL;
+    char *ppnstr = NULL, **agg = NULL;
+    char rankstr[64];
+    pmix_info_t *info, *pdata;
+    pmix_data_array_t *array;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    size_t ninfo, n;
+    uint16_t lrank;
+    int m;
+
+    for (m = 0; m < nprocs; m++) {
+        snprintf(rankstr, sizeof(rankstr), "%d", m);
+        PMIx_Argv_append_nosize(&agg, rankstr);
+    }
+    ppnstr = PMIx_Argv_join(agg, ',');
+    PMIx_Argv_free(agg);
+
+    PMIx_generate_regex(pmix_globals.hostname, &noderegex);
+    PMIx_generate_ppn(ppnstr, &ppnregex);
+    free(ppnstr);
+
+    ninfo = 3 + (size_t) ndescribed;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], PMIX_NODE_MAP, noderegex, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[1], PMIX_PROC_MAP, ppnregex, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[2], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    free(noderegex);
+    free(ppnregex);
+
+    n = 3;
+    for (m = 0; m < ndescribed; m++) {
+        PMIX_LOAD_KEY(info[n].key, PMIX_PROC_INFO_ARRAY);
+        info[n].value.type = PMIX_DATA_ARRAY;
+        PMIX_DATA_ARRAY_CREATE(array, 2, PMIX_INFO);
+        info[n].value.data.darray = array;
+        pdata = (pmix_info_t *) array->array;
+        PMIX_LOAD_KEY(pdata[0].key, PMIX_RANK);
+        pdata[0].value.type = PMIX_PROC_RANK;
+        pdata[0].value.data.rank = (pmix_rank_t) m;
+        lrank = sentinel + (uint16_t) m;
+        PMIX_INFO_LOAD(&pdata[1], PMIX_LOCAL_RANK, &lrank, PMIX_UINT16);
+        ++n;
+    }
+
+    PMIX_LOAD_NSPACE(ns, nspace);
+    rc = PMIx_server_register_nspace(ns, nprocs, info, ninfo, NULL, NULL);
+    PMIX_INFO_FREE(info, ninfo);
+    return rc;
+}
+
+/* Fetch one key for one rank as a number. Returns false if the key is
+ * absent, which is the failure mode these cases are about. */
+static bool fetch_number(const char *nspace, pmix_rank_t rank,
+                         const char *key, uint32_t *out)
+{
+    pmix_list_t kvs;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    bool found = false;
+
+    PMIX_CONSTRUCT(&kvs, pmix_list_t);
+    rc = fetch_key(nspace, rank, key, &kvs);
+    kv = (pmix_kval_t *) pmix_list_get_first(&kvs);
+    if (PMIX_SUCCESS == rc && NULL != kv && NULL != kv->value) {
+        found = (PMIX_SUCCESS == PMIx_Value_get_number(kv->value, out, PMIX_UINT32));
+    }
+    PMIX_LIST_DESTRUCT(&kvs);
+    return found;
+}
+
+static void check_number(const char *what, const char *nspace, pmix_rank_t rank,
+                         const char *key, uint32_t expect)
+{
+    uint32_t got = UINT32_MAX;
+    char label[200];
+    bool found;
+
+    found = fetch_number(nspace, rank, key, &got);
+    snprintf(label, sizeof(label), "%s", what);
+    report(label, found && got == expect);
+    if (!found) {
+        fprintf(stdout, "        (%s for rank %u: not found)\n", key, rank);
+    } else if (got != expect) {
+        fprintf(stdout, "        (%s for rank %u: got %u, expected %u)\n",
+                key, rank, got, expect);
+    }
+}
+
+/* The datastore derives PMIX_HOSTNAME, PMIX_NODEID, PMIX_LOCAL_RANK and
+ * PMIX_NODE_RANK for each rank from the node and proc maps. Those values
+ * are assumptions, so anything the host stated itself in a
+ * PMIX_PROC_INFO_ARRAY must win - but the decision has to be made per
+ * rank and per key.
+ *
+ * It used to be made once for the whole job: a single proc-info array
+ * anywhere in the array set a flag that suppressed the derivation of
+ * nodeid, local rank and node rank for *every* rank. A host that
+ * described one proc lost those three keys for all the others, and a
+ * host that described every proc but named only some of the keys lost
+ * the rest for all of them - PMIx_Get returning PMIX_ERR_NOT_FOUND, with
+ * no fallback, since the node-info fallback in fetch applies only to
+ * wildcard ranks. PMIX_HOSTNAME was stored outside the same gate, so it
+ * was the one key that survived - and, conversely, the one key a host
+ * could not state for itself without having it overwritten. */
+static void test_derived_proc_info(void)
+{
+    pmix_list_t kvs;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    const uint16_t sentinel = 100;
+
+    fprintf(stdout, "\n-- per-proc info derived from the maps --\n");
+
+    /* two ranks, only rank 0 described */
+    rc = register_with_proc_info("gds-derive-partial", 2, 1, sentinel);
+    report("job with proc info for some ranks is accepted", registered(rc));
+    if (registered(rc)) {
+        /* the described rank keeps what the host said... */
+        check_number("host-supplied local rank survives derivation",
+                     "gds-derive-partial", 0, PMIX_LOCAL_RANK, sentinel);
+        /* ...and still gets the keys the host did not name */
+        check_number("described rank still gets a derived node rank",
+                     "gds-derive-partial", 0, PMIX_NODE_RANK, 0);
+        check_number("described rank still gets a derived nodeid",
+                     "gds-derive-partial", 0, PMIX_NODEID, 0);
+
+        /* the rank the host never mentioned gets the whole set */
+        check_number("undescribed rank gets a derived local rank",
+                     "gds-derive-partial", 1, PMIX_LOCAL_RANK, 1);
+        check_number("undescribed rank gets a derived node rank",
+                     "gds-derive-partial", 1, PMIX_NODE_RANK, 1);
+        check_number("undescribed rank gets a derived nodeid",
+                     "gds-derive-partial", 1, PMIX_NODEID, 0);
+
+        PMIX_CONSTRUCT(&kvs, pmix_list_t);
+        rc = fetch_key("gds-derive-partial", 1, PMIX_HOSTNAME, &kvs);
+        kv = (pmix_kval_t *) pmix_list_get_first(&kvs);
+        report("undescribed rank gets a derived hostname",
+               PMIX_SUCCESS == rc && NULL != kv && NULL != kv->value &&
+                   PMIX_STRING == kv->value->type &&
+                   NULL != kv->value->data.string &&
+                   0 == strcmp(kv->value->data.string, pmix_globals.hostname));
+        PMIX_LIST_DESTRUCT(&kvs);
+    }
+
+    /* every rank described, but none of them named a node rank */
+    rc = register_with_proc_info("gds-derive-full", 2, 2, sentinel);
+    report("job with proc info for every rank is accepted", registered(rc));
+    if (registered(rc)) {
+        check_number("rank 0 keeps its host-supplied local rank",
+                     "gds-derive-full", 0, PMIX_LOCAL_RANK, sentinel);
+        check_number("rank 1 keeps its host-supplied local rank",
+                     "gds-derive-full", 1, PMIX_LOCAL_RANK, sentinel + 1);
+        check_number("rank 0 gets the node rank the host omitted",
+                     "gds-derive-full", 0, PMIX_NODE_RANK, 0);
+        check_number("rank 1 gets the node rank the host omitted",
+                     "gds-derive-full", 1, PMIX_NODE_RANK, 1);
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* malformed job-level input                                            */
 /* ------------------------------------------------------------------ */
 
@@ -935,6 +1115,7 @@ int main(int argc, char **argv)
     test_store_modex();
     test_store_modex_nspace_filter();
     test_map_forms();
+    test_derived_proc_info();
     test_malformed_job_info();
     test_scope_routing();
     test_realm_classifiers();

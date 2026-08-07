@@ -71,3 +71,19 @@ Detailed changes since v6.1.0:
    Also, directive state such as the node ID and the external-progress
    and external-topology flags is now reset, so what one PMIx_Init was
    told no longer becomes the default for the next one
+ - The datastore now fills in the per-proc location keys - hostname,
+   nodeid, local rank and node rank - for every rank a host did not
+   describe itself, and for every one of those keys a host left out. It
+   works these out from the node and proc maps, and it rightly declines
+   to overwrite anything the host stated in a PMIX_PROC_INFO_ARRAY,
+   since what it computes is only an assumption. But that decision was
+   being made once for the whole job: a single proc-info array anywhere
+   in the registration suppressed the derivation of nodeid, local rank
+   and node rank for every rank in it. So a host that described one
+   process lost those three keys for all the others, and a host that
+   described every process but named only some of the keys lost the
+   rest for all of them - PMIx_Get answering PMIX_ERR_NOT_FOUND with
+   nothing to fall back on. The choice is now made per rank and per
+   key. Hostname, which was being derived outside the same test, now
+   follows the rule in both directions: it is supplied when the host
+   gave none, and left alone when the host gave one

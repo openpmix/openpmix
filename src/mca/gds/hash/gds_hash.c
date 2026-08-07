@@ -267,7 +267,6 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             /* mark that we got the map */
             flags |= PMIX_HASH_PROC_MAP;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_INFO_ARRAY)) {
-            flags |= PMIX_HASH_PROC_DATA;
             found = false;
             /* an array of data pertaining to a specific proc */
             if (PMIX_DATA_ARRAY != info[n].value.type ||

@@ -417,8 +417,11 @@ golden rule does not usually bite here.
   `PMIX_GDS_MODULE` directives), the base modex envelope walker and its
   callback contract, node/proc map decoding in all accepted forms at both
   the top level and nested in a `PMIX_JOB_INFO_ARRAY`, malformed
-  job-level input, and store/fetch scope routing including
-  `PMIX_ERR_EXISTS_OUTSIDE_SCOPE`.
+  job-level input, store/fetch scope routing including
+  `PMIX_ERR_EXISTS_OUTSIDE_SCOPE`, and the rule that a per-proc value
+  the datastore derives from the maps is only a default: the host's own
+  `PMIX_PROC_INFO_ARRAY` wins, but per rank and per key, so a host that
+  described some procs or some keys still gets the rest filled in.
 - **`test/unit/gds_fallback`** — `pmix_gds_base_get_fallback_module()` and
   `PMIX_GDS_PEER_MODULE()`.
 - **`test/unit/proc_array_id`** — `pmix_gds_base_proc_array_id()`.

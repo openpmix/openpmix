@@ -38,7 +38,6 @@ extern pmix_gds_base_module_t pmix_hash_module;
 
 /* Define a bitmask to track what information may not have
  * been provided but is computable from other info */
-#define PMIX_HASH_PROC_DATA 0x00000001
 #define PMIX_HASH_JOB_SIZE  0x00000002
 #define PMIX_HASH_MAX_PROCS 0x00000004
 #define PMIX_HASH_NUM_NODES 0x00000008
