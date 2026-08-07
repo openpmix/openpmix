@@ -384,6 +384,15 @@ pmix_status_t pmix_ptl_base_setup_connection(char *uri, struct sockaddr_storage 
                         "pmix:base setup connection to %s", uri);
 
     memset(connection, 0, sizeof(struct sockaddr_storage));
+    /* every URI we accept begins with a 7-character scheme prefix
+     * ("tcp4://" or "tcp6://") followed by an address - anything
+     * shorter cannot be one, and indexing past it would read off the
+     * end of a string that reached us from a rendezvous file or an
+     * environment variable */
+    if (NULL == uri || strlen(uri) <= strlen("tcp4://")) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
+    }
     if (0 == strncmp(uri, "tcp4", 4)) {
         /* need to skip the tcp4: part */
         p = strdup(&uri[7]);
@@ -413,7 +422,7 @@ pmix_status_t pmix_ptl_base_setup_connection(char *uri, struct sockaddr_storage 
         }
         in->sin_port = htons(atoi(p2));
         *len = sizeof(struct sockaddr_in);
-    } else {
+    } else if (0 == strncmp(uri, "tcp6", 4)) {
         /* need to skip the tcp6: part */
         p = strdup(&uri[7]);
         if (NULL == p) {
@@ -447,6 +456,10 @@ pmix_status_t pmix_ptl_base_setup_connection(char *uri, struct sockaddr_storage 
         }
         in6->sin6_port = htons(atoi(p2));
         *len = sizeof(struct sockaddr_in6);
+    } else {
+        /* not a scheme we speak */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+        return PMIX_ERR_NOT_SUPPORTED;
     }
     if (NULL != p) {
         free(p);
