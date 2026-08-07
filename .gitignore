@@ -287,6 +287,7 @@ test/unit/event_chain
 test/unit/hwloc_datatype
 test/unit/progress_threads
 test/unit/runtime_init
+test/unit/server_get
 test/unit/info_support
 test/unit/rndz_stale
 test/unit/singleton_register

@@ -71,7 +71,8 @@ These run anywhere and are the bulk of the suite: `compress`, `preg`,
 `bfrops_malformed`, `bfrops_get_number`, `bfrops_null_object`,
 `bfrops_helpers`, `info_support`, `iof_pattern`,
 `hwloc_datatype`, `tracker_match`, `trk_complete`, `collective_status`,
-`collect_job_info`, `progress_threads`, `runtime_init`, `pmix_log`.
+`collect_job_info`, `progress_threads`, `runtime_init`, `pmix_log`,
+`server_get`.
 
 **Singleton client tests** — call the real public API in a process that
 comes up with no server. `client_cycle` (init/finalize cycling),
@@ -283,6 +284,50 @@ under either, so it cannot fail on them. That half is
 [`examples/datatypes.c`](../../examples/datatypes.c), driven across
 separate nodes by
 [`contrib/dockerswarm/run-bfrops-tests.sh`](../../contrib/dockerswarm/AGENTS.md).
+
+### `server_get` — the server-side `PMIx_Get` regression test
+
+[`server_get.c`](server_get.c) comes up as a PMIx server with a stub host
+module that deliberately has **no** `direct_modex` entry point, registers
+an nspace whose job size (4) exceeds its local size (2), and then calls
+`pmix_server_get()` directly. That combination is what puts the two
+behaviors it asserts on one code path.
+
+The first is **local-vs-remote classification**: a target rank that is
+not one of our local ranks must be classified remote. The rank walk used
+to consult its `PMIX_LIST_FOREACH` variable after the loop had run to
+completion — i.e. after it pointed at the list sentinel — and read a peer
+id out of it, then used that garbage as an index into the client array.
+
+**Be clear about what those cases are worth**: they pin the behavior, they
+do not reproduce the defect. The stale read stays inside the enclosing
+`pmix_namespace_t`, so it is undefined behavior that no sanitizer flags,
+and the value is usually out of range — which accidentally produces the
+right answer. Verified: the test passes against the unfixed library. It is
+here so a rework of the classification cannot regress the answer silently.
+Do not "strengthen" it by asserting something the old code happened to do.
+
+The second is **deferred-request cleanup**, and that one is a leak check.
+A request the server cannot launch must have its tracker fully discarded;
+only the creation reference was being dropped, and since every parked
+requester holds one of its own, the tracker survived unreachable. The
+`local_reqs`-is-empty assertion here was satisfied by the old code too
+(it did unlink the tracker); what it did not do was free it. **Run this
+one under valgrind** — the stranded tracker, its request, its info array
+and its key are what the leak report shows.
+
+Two things about the setup are easy to get wrong and were:
+
+- `PMIx_server_register_nspace`'s second argument is the number of
+  **local** procs, not the job size. Passing the job size makes every
+  rank local, `all_registered` never becomes true, and every case
+  defers instead of classifying — which looks like a library bug.
+- The node map needs **two** nodes. With one node in the map every rank
+  is local however the counts are set, and the decision under test is
+  never taken.
+
+The multi-node half of this file — the actual remote fetch — is
+[`contrib/dockerswarm/run-server-tests.sh`](../../contrib/dockerswarm/AGENTS.md).
 
 ### `runtime_init` — the `src/runtime` bring-up regression test
 
