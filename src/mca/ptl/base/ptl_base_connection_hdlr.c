@@ -717,8 +717,25 @@ static pmix_namespace_t *consolidate_nspace(pmix_pending_connection_t *pnd,
     pmix_namespace_t *ns, *existing = NULL;
     pmix_rank_info_t *rinfo, *match = NULL;
 
+    /* An object with no name cannot be looked up by one, so there is
+     * nothing to reconcile against and nothing for the list to do with
+     * it. Leave it to the peer. */
+    if (NULL == nptr->nspace || '\0' == nptr->nspace[0]) {
+        return nptr;
+    }
+
+    /* Compare names EXACTLY. Do not reach for PMIx_Check_nspace() here:
+     * it reports a match whenever *either* name is absent, which is the
+     * right answer for the wildcard matching its callers do and a
+     * catastrophic one for us. The server's list legitimately carries
+     * namespaces whose name is not set yet, and treating the first of
+     * those as "the same namespace" hands this tool an object belonging
+     * to something else - after which the job data the server packs for
+     * it is somebody else's, and the tool fails to unpack its own
+     * identity out of the reply. */
     PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (ns != nptr && PMIx_Check_nspace(nptr->nspace, ns->nspace)) {
+        if (ns != nptr && NULL != ns->nspace &&
+            0 == strncmp(nptr->nspace, ns->nspace, PMIX_MAX_NSLEN)) {
             existing = ns;
             break;
         }
@@ -909,8 +926,22 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     peer->proc_cnt = 1;
     peer->sd = pnd->sd;
 
-    /* get the appropriate compatibility modules based on the
-     * info provided by the tool during the initial connection request */
+    /* Get the appropriate compatibility modules based on the info
+     * provided by the tool during the initial connection request.
+     *
+     * These have to be (re)assigned here rather than only in
+     * process_tool_request, because the namespace this peer ends up on
+     * need not be the object that ran: if the host registered this
+     * namespace during its tool_connected upcall, we adopted its object
+     * instead, and a host-registered namespace carries no compat
+     * modules - nothing has connected through it yet. Leaving bfrops
+     * unset that way is not a degraded mode, it is a NULL dereference on
+     * the first message the tool sends. */
+    peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
+    if (NULL == peer->nptr->compat.bfrops) {
+        goto error;
+    }
+    peer->nptr->compat.type = pnd->buffer_type;
     peer->nptr->compat.psec = pmix_psec_base_assign_module(pnd->psec);
     if (NULL == peer->nptr->compat.psec) {
         goto error;
