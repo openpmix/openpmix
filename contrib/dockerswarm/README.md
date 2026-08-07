@@ -34,7 +34,9 @@ is only the nickname.
 | `run-class-tests.sh` | Runs `test/unit/class` in the two configurations a developer's own `make check` does not cover: **Linux**, and **`--disable-debug`** with default symbol visibility. Deliberately *not* a multi-node test — see §11. |
 | `run-mca-tests.sh` | Runs `test/unit/mca` plus the hostile MCA-parameter cases in the `--enable-mca-dso` configuration, where the component repository is actually exercised. See §14. |
 | `run-bfrops-tests.sh` | Runs the `src/mca/bfrops` unit programs on Linux in an optimized `--enable-mca-dso` build, **and** moves one value of every PMIx data type between ranks on *different* nodes. The only place the peer-assigned bfrops module and the negotiated buffer type are observable at all. See §15. |
-| `swarm-common.sh` | Sourced by all seven scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
+| `run-gds-tests.sh` | Runs the `src/mca/gds` datastore suite. See §16. |
+| `run-ptl-tests.sh` | Runs `src/mca/ptl` -- the transport itself -- over real sockets between real hosts: interface selection, node-local rendezvous discovery, a tool attaching across nodes, the inbound message-size ceiling, and an exhausted listener port range. See §17. |
+| `swarm-common.sh` | Sourced by all the scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
 | `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`, `swarm_datatypes.py`, `swarm_nonblocking.py`). |
 | `Dockerfile` | Base image: toolchain, PRRTE master *source* (autogen'd), SSH wiring, node entrypoint. It contains **no** PMIx and **no** built PRRTE. |
 | `docker-compose.yml` | The ten nodes `pmix-node1`..`pmix-node10`, each mounting the shared `pmix-build` volume. Every one of those names derives from `$PMIX_SWARM`, so two clones can each run a swarm — see §4. |
@@ -986,3 +988,93 @@ says up front that `shmem3` does not exist on the platform. One server
 means every get is answered out of the local datastore, which is exactly
 the case the multi-node stages exist to get past — so treat it as a
 cheap "did I break it outright" pass, not as coverage.
+
+---
+
+## 17. The `src/mca/ptl` suite (`run-ptl-tests.sh`)
+
+```sh
+./run-ptl-tests.sh linux     # the swarm
+./run-ptl-tests.sh macos     # single-host subset
+```
+
+`ptl` is the socket layer under every other suite here, which is exactly
+why it needs one of its own: when the transport is wrong, what the other
+runners report is a group that would not form or a datastore that
+answered nothing, and the cause is several layers down.
+
+### Why the swarm buys something here
+
+A developer's own `make check` drives the PTL hard, but always over
+loopback, on one host, between processes one server started. Four things
+it therefore cannot reach:
+
+* **Interface selection.** `pmix_ptl_base_setup_listener` defaults to a
+  loopback device and only falls back to a public one when remote or
+  tool connections were asked for. On one host the loopback branch is
+  always taken, and the public branch — plus the `no-remote-interfaces`
+  / `no-loopback-interfaces` / `no-available-interfaces` diagnostics
+  guarding it — is dead code. A tool on another node can only reach a
+  server that took the other branch.
+
+* **Discovery is node-local, and nothing proves it.** The rendezvous
+  files a server drops (`pmix.<host>.tool`, `pmix.<host>.tool.<pid>`,
+  `pmix.<host>.tool.<nspace>`) live in that node's tmpdir and name that
+  node's host. On one host "search the tmpdir" always succeeds, so the
+  failure path is never entered — and that path used to dereference a
+  URI it had not obtained whenever the caller passed
+  `PMIX_TOOL_CONNECT_OPTIONAL`.
+
+* **Partial writes.** `send_msg` carries a cursor across `writev()`
+  because a socket buffer can fill mid-message, and `read_bytes` resumes
+  a payload across `EAGAIN` for the same reason. A loopback socket
+  between two processes on an idle machine rarely makes either happen; a
+  real TCP connection carrying a modex between containers does.
+
+* **The message-size ceiling.** `pmix_ptl_base.max_msg_size` is checked
+  against every inbound header before the payload is allocated. Nothing
+  in the tree sets that parameter, so the case where somebody does was
+  never run — and "0 means no limit" used to leave the ceiling at zero,
+  which refuses every message carrying a payload.
+
+### The cases
+
+| Case | What it pins |
+|------|--------------|
+| cross-node client | the baseline: put/get/fence between ranks behind two servers. Read this one first when several fail together. |
+| direct modex | a real `PMIX_PTL_SEND_RECV` round trip to a peer behind another server — dynamic tag, header, payload |
+| `max_msg_size=0` | zero is a "no practical limit" sentinel, not a zero-byte cap |
+| `max_msg_size=32` | an explicit ceiling still passes traffic under it |
+| tool by nspace | rendezvous-file discovery on the tool's own node |
+| tool discovery is node-local | the same namespace from another node fails **promptly and cleanly** — not a hang, not a crash, and not a false success |
+| tool by URI across nodes | the handshake over a public interface. Skipped, with the address named, when the DVM's listener bound loopback — whether PRRTE asked for remote connections is PRRTE's business, not the transport's |
+| tool loses its server | the client half of `lost_connection`: the tool must notice the drop and unwind rather than block forever on a reply that will never come |
+| exhausted port range | told to use one port and finding it taken, the listener must fail. It used to run off the end of its port loop, and `listen()` on an unbound socket happily gets a port of the kernel's choosing — so the server came up advertising an address that had nothing to do with what it was told to use |
+
+### Things to know
+
+**The DVM URI is parsed the way PMIx parses it.** The case that attaches
+a tool across nodes splits `<nspace>.<rank>;tcp4://<addr>:<port>` from
+the *back*, because a namespace may itself contain dots (PRRTE names one
+after the host). Splitting from the front finds the wrong separator on
+exactly the namespaces this harness produces.
+
+**A loopback DVM is a skip, not a failure.** The remote-tool case
+depends on the DVM having enabled remote connections. When it did not,
+the address in the reported URI is `127.0.0.1` and the case says so and
+skips: failing there would be blaming the transport for a launcher
+configuration.
+
+**The port-range case needs the port actually occupied.** It parks a
+Python listener on node1 and *verifies* the port is taken before
+launching; if it could not take the port, the case skips rather than
+passing on a range that was never exhausted.
+
+### macOS mode
+
+`./run-ptl-tests.sh macos` is not a multi-node test and does not pretend
+to be — it runs the baseline client and the two message-size-ceiling
+cases against a single local server. The ceiling cases lose nothing by
+being local: the parameter is read once, at framework registration, and
+the defect it guards against made every payload-bearing message fail.
+Everything else in the suite needs a second host by construction.
