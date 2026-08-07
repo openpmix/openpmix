@@ -71,7 +71,7 @@ These run anywhere and are the bulk of the suite: `compress`, `preg`,
 `bfrops_malformed`, `bfrops_get_number`, `bfrops_null_object`,
 `bfrops_helpers`, `info_support`, `iof_pattern`,
 `hwloc_datatype`, `tracker_match`, `trk_complete`, `collective_status`,
-`collect_job_info`, `progress_threads`, `pmix_log`.
+`collect_job_info`, `progress_threads`, `runtime_init`, `pmix_log`.
 
 **Singleton client tests** — call the real public API in a process that
 comes up with no server. `client_cycle` (init/finalize cycling),
@@ -283,6 +283,34 @@ under either, so it cannot fail on them. That half is
 [`examples/datatypes.c`](../../examples/datatypes.c), driven across
 separate nodes by
 [`contrib/dockerswarm/run-bfrops-tests.sh`](../../contrib/dockerswarm/AGENTS.md).
+
+### `runtime_init` — the `src/runtime` bring-up regression test
+
+[`runtime_init.c`](runtime_init.c) covers what `pmix_rte_init` makes of
+the directives a host passes it, and what `pmix_rte_finalize` gives back.
+It comes up as a server because that is the role that actually passes
+host directives through `pmix_rte_init`, and it runs **two full
+init/finalize cycles**, re-checking everything on the second: this layer's
+standing requirement is that a second `PMIx_Init` starts from a clean
+slate, and per-cycle state rebuilt wrongly — or not rebuilt at all — shows
+up nowhere else in the suite.
+
+Its cases come from the August 2026 review of that directory (see
+[`src/runtime/AGENTS.md`](../../src/runtime/AGENTS.md)): the alias list
+that was never built for a host-supplied `PMIX_HOSTNAME`, the verbosity
+channel and the IOF file/directory strings that were never released, and
+the scalar directive state (`external_progress`, `external_topology`,
+`nodeid`) that leaked from one cycle into the next.
+
+One case is a different kind of thing and is worth keeping in mind for
+any directory: `test_help_topics()` asks `pmix_show_help_string()` for
+**every `show_help` topic `src/runtime` names**, with the same arguments
+the real call site passes. That function returns `NULL` for a topic that
+is not in the file, so one line per topic keeps code and help text in
+step — two topics in `pmix_params.c` had never existed, and a user who
+mistyped the color parameter got "I couldn't find that help reference"
+instead of the diagnostic. The test also asks for a deliberately absent
+topic, so the assertion is known to have teeth.
 
 ### `common_api` — the `src/common` regression test
 
