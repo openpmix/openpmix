@@ -164,3 +164,14 @@ attribute:
 
 Please check the spelling of the entry - "pmix_info --attributes" will
 list the attributes this build recognizes.
+#
+[no-available-ports]
+A PMIx server was unable to bind its listening socket to any of the
+ports it was told to use:
+
+  Node:  %s
+
+Every port in the requested range is already in use. Either free one
+of them, or widen (or clear) the "pmix_ptl_base_ipv4_ports" /
+"pmix_ptl_base_ipv6_ports" MCA parameter so the kernel is allowed to
+choose a port.
