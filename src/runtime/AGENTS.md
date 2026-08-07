@@ -155,6 +155,32 @@ library. Rules:
   destructing the containers — mirror that discipline for any new
   container-of-refcounted-objects you add.
 
+### Two things in `pmix_globals` this directory does *not* finish
+
+Both look like violations of the rule above. Neither is. Read this
+before "fixing" either one — each has cost a debugging session.
+
+- **`mypeer` carries two references, and this file only drops one.**
+  `pmix_rte_init` creates it (refcount 1) and the role then retains it
+  when it points `pmix_client_globals.myserver` at the same object
+  (`pmix_server.c`, `pmix_client.c`, `pmix_tool.c`). `pmix_rte_finalize`
+  drops the first; the role drops the second immediately after
+  `pmix_rte_finalize()` returns, and *that* is what frees it. So
+  **`PMIX_RELEASE` here does not free, and the pointer must not be
+  NULLed** — every role guards its release with
+  `if (NULL != pmix_globals.mypeer)`, so clearing it cancels the release
+  that does the freeing and leaks the peer and its namespace (~3KB) on
+  every cycle. Note also that `PMIX_RELEASE` never clears the pointer it
+  is handed; only the magic id.
+- **The `iof_stdout` / `iof_stderr` sinks are constructed here and
+  destructed by each role.** That split is not tidy, but it is forced:
+  `iof_sink_destruct` reads `pmix_globals.mypeer` (released above) and,
+  in a server, walks `pmix_server_globals.iof_residuals` (destructed in
+  `PMIx_server_finalize`). Moving the destruct into `pmix_rte_finalize`
+  segfaults the client tests. If you add a role, destruct them in its
+  finalize; if you add state with the same shape, expect the same
+  constraint.
+
 ## MCA parameters (`pmix_params.c`)
 
 `pmix_register_params` is latched by the file-scope `pmix_register_done`
@@ -169,7 +195,16 @@ follow:
 - Verbosity params write directly into `pmix_client_globals.*_verbose` /
   `pmix_server_globals.*_verbose`; `pmix_rte_init` later opens an output
   channel for each nonzero one. If you add a verbosity var, add the
-  matching `pmix_output_open` block in `pmix_init.c`.
+  matching `pmix_output_open` block in `pmix_init.c` **and the matching
+  `close_output` in `pmix_finalize.c`.** The close is not optional: an
+  output descriptor owns a `strdup`ed prefix that only
+  `pmix_output_close` frees, the next `pmix_output_init` marks every slot
+  unused without clearing what it pointed at, and the id lives in a
+  file-scope struct that outlives the library — so an unclosed channel
+  both leaks on every init/finalize cycle and leaves an id naming a slot
+  the next cycle may hand to someone else. It also has to happen *before*
+  `pmix_output_finalize`, because `pmix_output_close` is a no-op once the
+  output system is down.
 - `pmix_deregister_params` intentionally does **not** free the
   registered vars (the `mca_base_var` system frees them in
   `pmix_mca_base_var_finalize` — `var_destructor` frees each string var

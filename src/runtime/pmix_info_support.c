@@ -238,6 +238,9 @@ static int info_register_framework(const char *project_name,
 
     if (NULL != component_map) {
         map = PMIX_NEW(pmix_info_component_map_t);
+        if (NULL == map) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
         map->project = strdup(project_name);
         map->type = strdup(framework->framework_name);
         map->components = &framework->framework_components;
@@ -323,8 +326,14 @@ void pmix_info_close_components(void)
 {
     int i;
 
-    assert(pmix_info_registered);
-    if (--pmix_info_registered) {
+    /* an unbalanced close would take the counter negative, and a
+     * negative counter is truthy - every later close would then return
+     * early and the frameworks would never be closed at all. Refuse the
+     * unbalanced call instead of quietly disabling the real one. An
+     * assert alone does not do this: it disappears under NDEBUG, which
+     * is exactly when the silent version bites. */
+    assert(0 < pmix_info_registered);
+    if (0 >= pmix_info_registered || 0 != --pmix_info_registered) {
         return;
     }
 
@@ -669,7 +678,7 @@ void pmix_info_do_type(pmix_cli_result_t *pmix_info_cmd_line)
     int i, j, k, len, ret;
     const pmix_mca_base_var_t *var;
     char **strings, *message;
-    const pmix_mca_base_var_group_t *group;
+    const pmix_mca_base_var_group_t *group = NULL;
 
     opt = pmix_cmd_line_get_param(pmix_info_cmd_line, PMIX_CLI_INFO_TYPES);
     if (NULL == opt) {
@@ -700,7 +709,18 @@ void pmix_info_do_type(pmix_cli_result_t *pmix_info_cmd_line)
                 if (PMIX_SUCCESS != ret) {
                     continue;
                 }
-                (void) pmix_mca_base_var_group_get(var->mbv_group_index, &group);
+                /* the group is only read for the pretty-mode heading, but
+                 * it is read unchecked below - and group_get leaves the
+                 * pointer untouched for a negative index and NULLs it for
+                 * a group that has been invalidated */
+                if (PMIX_SUCCESS != pmix_mca_base_var_group_get(var->mbv_group_index, &group) ||
+                    NULL == group) {
+                    for (j = 0; strings[j]; ++j) {
+                        free(strings[j]);
+                    }
+                    free(strings);
+                    continue;
+                }
                 for (j = 0; strings[j]; ++j) {
                     if (0 == j && pmix_info_pretty) {
                         pmix_asprintf(&message, "MCA %s", group->group_framework);
@@ -814,12 +834,17 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
     groups = PMIX_VALUE_ARRAY_GET_BASE(&group->group_subgroups, const int);
     count = pmix_value_array_get_size((pmix_value_array_t *) &group->group_subgroups);
 
+    /* recurse into a *separate* variable: 'group' is still the group
+     * whose subgroup list 'groups' points into, and overwriting it here
+     * leaves a reader unable to tell that the loop is still valid */
     for (i = 0; i < count; ++i) {
-        ret = pmix_mca_base_var_group_get(groups[i], &group);
-        if (PMIX_SUCCESS != ret) {
+        const pmix_mca_base_var_group_t *subgroup = NULL;
+
+        ret = pmix_mca_base_var_group_get(groups[i], &subgroup);
+        if (PMIX_SUCCESS != ret || NULL == subgroup) {
             continue;
         }
-        pmix_info_show_mca_group_params(group, want_internal);
+        pmix_info_show_mca_group_params(subgroup, want_internal);
     }
     free(component_msg);
 }
@@ -827,27 +852,23 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
 void pmix_info_show_mca_params(const char *type, const char *component,
                                bool want_internal)
 {
-    const pmix_mca_base_var_group_t *group;
+    const pmix_mca_base_var_group_t *group = NULL;
     int ret;
 
-    if (0 == strcmp(component, "all")) {
-        ret = pmix_mca_base_var_group_find("*", type, NULL);
-        if (0 > ret) {
-            return;
-        }
-
-        (void) pmix_mca_base_var_group_get(ret, &group);
-
-        pmix_info_show_mca_group_params(group, want_internal);
-    } else {
-        ret = pmix_mca_base_var_group_find("*", type, component);
-        if (0 > ret) {
-            return;
-        }
-
-        (void) pmix_mca_base_var_group_get(ret, &group);
-        pmix_info_show_mca_group_params(group, want_internal);
+    ret = pmix_mca_base_var_group_find("*", type,
+                                       (0 == strcmp(component, "all")) ? NULL : component);
+    if (0 > ret) {
+        return;
     }
+
+    /* a group can be found by index and still come back NULL here - it
+     * has been invalidated in between - and the display walk below
+     * dereferences it immediately */
+    if (PMIX_SUCCESS != pmix_mca_base_var_group_get(ret, &group) || NULL == group) {
+        return;
+    }
+
+    pmix_info_show_mca_group_params(group, want_internal);
 }
 
 void pmix_info_do_arch(void)

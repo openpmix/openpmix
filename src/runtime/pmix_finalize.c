@@ -59,6 +59,28 @@
 extern int pmix_initialized;
 extern bool pmix_init_called;
 
+/* Release an output channel opened by pmix_rte_init and restore the -1
+ * sentinel it started life with.
+ *
+ * This has to happen, and has to happen before pmix_output_finalize:
+ * pmix_output_close is a no-op once the output system is down, and the
+ * descriptor owns a strdup'ed prefix that nothing else frees. The next
+ * pmix_output_init marks every slot unused again without clearing what
+ * the slot pointed at, so an unclosed channel loses its prefix on every
+ * init/finalize cycle. Restoring -1 matters just as much: the id is
+ * cached in a file-scope struct that outlives the library, and after a
+ * finalize it names a slot the next cycle may hand to someone else.
+ *
+ * This mirrors what framework_close_output does for the per-framework
+ * channels in src/mca/base/pmix_mca_base_framework.c. */
+static void close_output(int *id)
+{
+    if (0 <= *id) {
+        pmix_output_close(*id);
+        *id = -1;
+    }
+}
+
 void pmix_rte_finalize(void)
 {
     int i;
@@ -115,6 +137,20 @@ void pmix_rte_finalize(void)
     /* finalize the show_help system */
     pmix_show_help_finalize();
 
+    /* release the verbosity channels pmix_rte_init opened - see
+     * close_output above for why this cannot wait until after
+     * pmix_output_finalize. Roles that open channels of their own
+     * (pmix_client.c, pmix_server.c) release those themselves. */
+    close_output(&pmix_client_globals.get_output);
+    close_output(&pmix_client_globals.connect_output);
+    close_output(&pmix_client_globals.fence_output);
+    close_output(&pmix_client_globals.pub_output);
+    close_output(&pmix_client_globals.spawn_output);
+    close_output(&pmix_client_globals.event_output);
+    close_output(&pmix_client_globals.iof_output);
+    close_output(&pmix_client_globals.group_output);
+    close_output(&pmix_globals.debug_output);
+
     /* finalize the output system.  This has to come *after* the
        malloc code, as the malloc code needs to call into this, but
        the malloc code turning off doesn't affect pmix_output that
@@ -122,6 +158,21 @@ void pmix_rte_finalize(void)
     pmix_output_finalize();
 
     /* clean out the globals */
+
+    /* mypeer carries TWO references by the time we get here: the one
+     * pmix_rte_init created it with, and one the role took when it
+     * pointed pmix_client_globals.myserver at the same object
+     * (pmix_server.c, pmix_client.c, pmix_tool.c). This drops the first;
+     * the role drops the second immediately after we return, which is
+     * what actually frees it.
+     *
+     * So do NOT NULL the pointer here, however much the re-entrancy
+     * rules for this file otherwise want it. Every role guards its
+     * release with "if (NULL != pmix_globals.mypeer)", so clearing it
+     * silently cancels the release that does the freeing and leaks the
+     * peer - and its namespace - on every init/finalize cycle. The
+     * pointer is not dangling at this point; the object is still alive
+     * on the role's reference, and the role NULLs it once it is gone. */
     PMIX_RELEASE(pmix_globals.mypeer);
     PMIX_DESTRUCT(&pmix_globals.events);
     PMIX_LIST_DESTRUCT(&pmix_globals.cached_events);

@@ -1102,6 +1102,17 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
 
+    /* pmix_rte_init constructs these two sinks for every role, so every
+     * role has to tear them down - the client and tool finalize paths
+     * already do, and a server leaked both (each holds a write event
+     * carrying a sizable buffer) on every init/finalize cycle. It has to
+     * happen here rather than in pmix_rte_finalize: iof_sink_destruct
+     * reads pmix_globals.mypeer, which pmix_rte_finalize has released by
+     * the time it destructs anything, and for a server it also walks
+     * pmix_server_globals.iof_residuals, destructed just below. */
+    PMIX_DESTRUCT(&pmix_client_globals.iof_stdout);
+    PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
+
     pmix_ptl_base_stop_listening();
 
     for (i = 0; i < pmix_server_globals.clients.size; i++) {
