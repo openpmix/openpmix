@@ -38,3 +38,36 @@ Detailed changes since v6.1.0:
    terminal's stdin. The signal handler is registered with no callback
    data, and the handler it shares with the stdin restart path
    dereferenced that as a read event
+ - A process now records the alias forms of its own node name no matter
+   where that name came from. The library builds the alias list - which
+   is what lets it recognize its own node under both the FQDN and the
+   short form - only when it had to discover the hostname itself, so a
+   host environment that supplied PMIX_HOSTNAME, which every resource
+   manager does, left the list empty. Every other node's name was
+   already being passed through the same normalization, so ours was the
+   only one not getting it
+ - The list of CPUs to which the internal progress thread is to be bound
+   is now validated before it is used. An entry that is not a number, a
+   negative one, one beyond the end of the CPU mask, or a backwards
+   range is reported and skipped; if binding was requested as required
+   and nothing usable remains, initialization fails. Previously the list
+   went to strtoul unchecked, which reports zero for a token containing
+   no digits - so a typo such as "cpu0" silently became "bind to CPU 0"
+ - Added the missing help text for a malformed or unrecognized entry in
+   the pmix_var_dump_color MCA parameter. Both messages were being
+   requested by name and neither existed, so a user who mistyped that
+   parameter got "I couldn't find that help reference" in place of the
+   explanation
+ - Under PMIX_EXTERNAL_PROGRESS, finalize now releases the event base
+   and marks the library as no longer accepting work. Both were being
+   skipped along with the progress thread that mode does not start, so
+   the base outlived finalize while roughly a hundred API entry points
+   went on believing a torn-down library was open for business
+ - Several allocations are no longer leaked on each init/finalize cycle:
+   the output channels opened for the client verbosity parameters, the
+   two static IOF sinks in a server, the file and directory names given
+   by PMIX_IOF_OUTPUT_TO_FILE / _TO_DIRECTORY, and the environment-
+   variable harvest patterns held by the pnet, pgpu and pmdl components.
+   Also, directive state such as the node ID and the external-progress
+   and external-topology flags is now reset, so what one PMIx_Init was
+   told no longer becomes the default for the next one
