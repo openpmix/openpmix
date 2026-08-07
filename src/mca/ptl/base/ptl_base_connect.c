@@ -200,6 +200,7 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
 {
     int sd = -1, sd2;
     int retries = -1;
+    bool connected = false;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl_base_connect: attempting to connect to server");
@@ -231,11 +232,15 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
             continue;
         } else {
             /* otherwise, the connect succeeded - so break out of the loop */
+            connected = true;
             break;
         }
     }
 
-    if (retries == PMIX_MAX_RETRIES || sd < 0) {
+    /* record success explicitly rather than inferring it from the retry
+     * count: a connect that succeeds on the final attempt leaves "retries"
+     * at its limit, and testing that would throw away a live socket */
+    if (!connected || sd < 0) {
         /* We were unsuccessful in establishing this connection, and are
          * not likely to suddenly become successful */
         if (0 <= sd) {
@@ -503,6 +508,20 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 // must convert them to the attribute values
                 for (m=0; NULL != order[m]; m++) {
                     tmp = pmix_attributes_lookup(order[m]);
+                    if (NULL == tmp) {
+                        /* they named something that isn't an attribute */
+                        pmix_show_help("help-ptl-base.txt", "unknown-attribute", true,
+                                       order[m], PMIX_CONNECTION_ORDER);
+                        if (NULL != server_nspace) {
+                            free(server_nspace);
+                        }
+                        if (NULL != rendfile) {
+                            free(rendfile);
+                        }
+                        PMIx_Argv_free(order);
+                        PMIX_LIST_DESTRUCT(&ilist);
+                        return PMIX_ERR_BAD_PARAM;
+                    }
                     free(order[m]);
                     order[m] = strdup(tmp);
                 }
@@ -735,9 +754,10 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     /* if they gave us a rendezvous file, use it */
     if (NULL != rendfile) {
         rc = tryfile(peer, &nspace, &rank, &suri, optional, rendfile);
-        if (PMIX_SUCCESS != rc && !optional) {
-            /* since they gave us a specific rendfile and we couldn't
-             * connect to it, return an error */
+        if (PMIX_SUCCESS != rc) {
+            /* they gave us a specific rendfile and we couldn't read it,
+             * so we have no URI to connect to - whether or not the
+             * attempt was optional, there is nothing further to try */
             goto cleanup;
         }
         goto complete;
