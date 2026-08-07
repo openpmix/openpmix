@@ -1109,7 +1109,6 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         }
         PMIX_RETAIN(info);
         peer->info = info;
-        PMIX_RETAIN(nptr);
 
     } else if (NULL != nptr) {
         /* this is an non-client tool/launcher that already
@@ -1185,14 +1184,15 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         /* must add the nspace to the global list after we return
          * from the host's upcall since they can/will assign the
          * tool with a namespace */
-        PMIX_RETAIN(nptr);
-
     }
 
-    if (!pnd->nspace_created) {
-        // this was already on the nspace list, so protect it
-        PMIX_RETAIN(nptr);
-    }
+    /* the peer holds one reference on the namespace object. If we created
+     * that object here, then the reference PMIX_NEW gave us is the one
+     * held on behalf of the global namespace list - process_cbfunc either
+     * appends it to that list or releases it once the host has told us
+     * the tool's identity. If the namespace already existed, the list is
+     * already holding its own reference, so all we add is the peer's. */
+    PMIX_RETAIN(nptr);
     peer->nptr = nptr;
     /* select their bfrops compat module so we can unpack
      * any provided pmix_info_t structs */
@@ -1216,19 +1216,26 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         PMIX_BFROPS_UNPACK(rc, peer, &buf, &sz, &foo, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(peer);
             PMIx_Info_list_release(ilist);
-            return rc;
+            goto cleanup;
+        }
+        /* the count came off the wire - a packed pmix_info_t is never
+         * smaller than a byte, so anything larger than the bytes we
+         * actually received is malformed and must not be allocated */
+        if (sz > cnt) {
+            rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            PMIx_Info_list_release(ilist);
+            goto cleanup;
         }
         foo = (int32_t) sz;
         PMIX_INFO_CREATE(iptr, sz);
         PMIX_BFROPS_UNPACK(rc, peer, &buf, iptr, &foo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(peer);
             PMIX_INFO_FREE(iptr, sz);
             PMIx_Info_list_release(ilist);
-            return rc;
+            goto cleanup;
         }
         for (n=0; n < sz; n++) {
             PMIx_Info_list_xfer(ilist, &iptr[n]);
@@ -1298,20 +1305,22 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     return PMIX_SUCCESS;
 
 cleanup:
+    /* Unwind exactly what we built here and nothing else. The peer holds
+     * one reference on each of the rank-info and namespace objects, so
+     * releasing it below gives those back - the pre-existing objects then
+     * remain owned by the lists that already held them. pnd->info is
+     * owned by the pending connection and is freed by its destructor when
+     * our caller releases it. */
     if (pnd->rinfo_created) {
+        /* we appended this rank info to the namespace - withdraw it */
         pmix_list_remove_item(&nptr->ranks, &peer->info->super);
-        PMIX_RELEASE(pnd->info);
-    } else {
-        peer->info = NULL;
     }
-
     if (pnd->nspace_created) {
-        pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
+        /* the namespace we created was never placed on the global list -
+         * that only happens once the host has assigned the tool an
+         * identity - so simply drop the reference we held for it */
         PMIX_RELEASE(nptr);
-    } else {
-        peer->nptr = NULL;  // protect it
     }
-
     PMIX_RELEASE(peer);
     return rc;
 
