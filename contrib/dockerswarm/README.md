@@ -1259,3 +1259,106 @@ The image carries no valgrind (it is a build image, and it is shared with
 the other swarm, so rebuilding it to add a package moves it under that
 swarm's feet). The stage installs valgrind into the one node it needs at
 run time and skips cleanly if there is no network to do that with.
+
+---
+
+## 20. The `src/tool` suite (`run-tool-tests.sh`)
+
+```sh
+./run-tool-tests.sh linux     # the swarm
+./run-tool-tests.sh macos     # single-host subset
+```
+
+`src/tool` is the tool-role half of `libpmix`. A tool is the only PMIx
+role that holds connections to **several servers at once** and picks
+which of them is *primary* — the one that services queries, spawns and
+notifications that are not directed anywhere in particular. That choice
+is the whole subject of the directory: `pmix_tool_retry_attach`,
+`pmix_tool_retry_set`, `disc` and `getsrvrs` each repoint
+`pmix_client_globals.myserver` while the peer objects are simultaneously
+held in `pmix_server_globals.clients`, and their reference accounting has
+to balance exactly against `PMIx_tool_finalize`.
+
+`test/simple/tool_server_switch` (run by `make check` through
+`test/unit/run_toolswitch.pl`) already drives that API in a loop, and it
+is a good *bookkeeping* test. But both of its servers are on one host,
+and everything the switch is **for** is invisible in that configuration:
+
+- both connections are loopback, so a server that is unreachable because
+  it is on another machine cannot be produced at all;
+- a request answered by "the other server" never leaves the host, so
+  nothing distinguishes a correct primary-server choice from a wrong one
+  that reaches a server anyway;
+- the IOF a tool receives is generated on its own node, so
+  `tool_iof_handler` never sees a payload that was relayed daemon to
+  daemon before it arrived.
+
+So every stage here puts the tool and at least one of its servers on
+**different nodes**.
+
+### Two DVMs, not one
+
+The suite brings up two *independent* DVMs — one headed on `node1`, one
+headed on `node2` — rather than one DVM spanning both. Within a single
+DVM the tool would have to be handed some non-head daemon's URI, and
+nothing publishes those; two heads each report their own through
+`--report-uri`.
+
+### `PRTE_MCA_pmix_remote_connections=1` is load-bearing
+
+A PMIx server binds a **loopback** interface unless remote connections
+were asked for, and a loopback URI is unreachable from another node by
+construction. Both DVMs are therefore started with
+`PRTE_MCA_pmix_remote_connections=1`, which is the PRRTE-side MCA
+parameter that becomes the `PMIX_SERVER_REMOTE_CONNECTIONS` directive on
+`PMIx_server_init`. Without it every cross-node stage skips itself and
+the suite proves nothing — which is exactly what `run-ptl-tests.sh`
+reports when it meets a loopback URI. If a stage here starts skipping
+with "listener is on loopback", that variable is what is missing.
+
+| Stage | What it drives |
+|-------|----------------|
+| `toolswitch` | `examples/toolswitch.c`: a tool whose *local* server is `node1`'s daemon and whose second server is a daemon on `node2`, cycling attach-as-primary → `get_servers` → `set_server(local/self/remote)` → `disconnect` → `finalize`, five times. Each cycle re-inits, so it is also the re-init path with a real **remote** peer in the clients array. The `PMIx_Query_info_nb` in the middle is the part that needs two hosts: the same call has to travel to a different machine depending on which server is primary at the time. |
+| `valgrind-tool` | The same program under valgrind — the only leak coverage `src/tool` has anywhere (see below). |
+| remote server death | `pterm` kills DVM B out from under a tool on `node1` attached to it by URI. The tool must notice and unwind rather than hang. The node-local version of this is in `run-ptl-tests.sh` §17; here the close is a real socket close from another host. |
+| tool IOF across nodes | `prun` attached to the persistent DVM **is** a tool, so every byte it prints arrived through `tool_iof_handler`. The job is placed on `node3`/`node4`, which the tool is not on, so each payload was relayed by a daemon other than the tool's own. The assertion is that output arrives from *two* distinct nodes: one would mean the tool only ever received its own node's output. |
+
+`prun`, not `prterun`, for the IOF stage: `prterun` brings up a DVM of
+its own, while `prun --dvm-uri` attaches to the persistent one as a tool,
+which is the shape we want. (`prterun` also has no `--dvm-uri` option and
+fails the command line outright.)
+
+### The valgrind stage
+
+Every other suite valgrinds a client, and a client never executes
+`src/tool` at all; `run-server-tests.sh` valgrinds the daemon, which does
+not either. This is the only place the tool library is leak-checked, and
+the only place it is leak-checked with real remote peers being attached,
+switched between, and released.
+
+The same two mechanics as §19 apply: `--fullpath-after=` so frames carry
+full paths (PRRTE ships basenames that collide with ours), and only
+*definitely lost* blocks whose allocation stack passes through `src/tool`
+are failed on — `libpmix` and `prte` both leak at exit in ways that are
+not this suite's business.
+
+### What this deliberately does not cover
+
+**The tool-to-tool relay in `src/tool/pmix_tool_ops.c`
+(`pmix_tool_relay_op` / `tool_switchyard`).** That path needs a third
+party: a tool that has connected to *another tool* as its primary server
+and then sends it a command the receiving tool cannot service itself
+(today only `PMIX_SPAWNNB_CMD`), which the receiving tool must forward to
+a real server. PRRTE's launchers do not arrange that shape, so nothing
+here reaches it — and neither does `make check`. It is the one file in
+`src/tool` with no automated coverage at all.
+
+### macOS mode
+
+One host means both servers are loopback, so the remote half of the suite
+is not reproducible. What the native mode still does is bring up two
+independent DVMs on this machine, which gives the tool two *distinct*
+servers — so the attach/switch/disconnect reference accounting runs for
+real. It runs `toolswitch -q` (queries skipped: a second DVM on the same
+host answers out of the same state as the first). Do not let it stand in
+for the linux mode.

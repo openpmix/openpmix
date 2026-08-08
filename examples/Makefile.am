@@ -89,7 +89,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   simple simple_server abort group_die connect_die group_leave \
                   group_destruct_die group_invite group_invite_timeout group_invite_decline \
                   group_invite_abort group_invite_others group_invite_suppress group_invite_nb topology \
-                  spawn_reuse group_badinfo datatypes
+                  spawn_reuse group_badinfo datatypes toolswitch
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -283,6 +283,10 @@ toolqry_SOURCES = toolqry.c examples.h
 toolqry_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 toolqry_LDADD = $(top_builddir)/src/libpmix.la
 
+toolswitch_SOURCES = toolswitch.c examples.h
+toolswitch_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+toolswitch_LDADD = $(top_builddir)/src/libpmix.la
+
 simple_resolve_SOURCES = simple_resolve.c examples.h
 simple_resolve_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 simple_resolve_LDADD = $(top_builddir)/src/libpmix.la
@@ -329,4 +333,4 @@ distclean-local:
         group_invite_abort group_invite_suppress group_invite_nb \
         spawn_group resolve multi_nspace_group pub2 toolqry \
         simple_resolve pubstress monitor monitor_remote \
-        simple simple_server abort datatypes
+        simple simple_server abort datatypes toolswitch
