@@ -272,7 +272,7 @@ static void myreg(int sd, short args, void *cbdata)
 
     if (NULL != req->requestor) {
         // local request as we are a server
-        /* if there is a regsitration callback function, call it */
+        /* if there is a registration callback function, call it */
         if (NULL != req->regcbfunc) {
             req->regcbfunc(req->status, req->local_id, req->cbdata);
             // process any cached IO
@@ -1640,7 +1640,7 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
                  * the pointer, so the kval has to carry a value at all */
                 if (NULL != kv && NULL != kv->value &&
                     PMIX_SUCCESS == PMIx_Value_get_number(kv->value, &pid, PMIX_PID)) {
-                    pmix_asprintf(&pidstring, "%u", pid);
+                    pmix_asprintf(&pidstring, "%u", (unsigned int) pid);
                 } else {
                     pidstring = strdup("unknown");
                 }
@@ -1741,7 +1741,7 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
                 /* see the note on the xml form of this above */
                 if (NULL != kv && NULL != kv->value &&
                     PMIX_SUCCESS == PMIx_Value_get_number(kv->value, &pid, PMIX_PID)) {
-                    pmix_asprintf(&pidstring, "%u", pid);
+                    pmix_asprintf(&pidstring, "%u", (unsigned int) pid);
                 } else {
                     pidstring = strdup("unknown");
                 }
@@ -1978,7 +1978,7 @@ process:
     /* add this data to the write list for this fd */
     pmix_list_append(&channel->outputs, &output->super);
 
-    if (copystdout){
+    if (copystdout) {
         copy = PMIX_NEW(pmix_iof_write_output_t);
         copy->data = (char *) malloc(output->numbytes);
         memcpy(copy->data, output->data, output->numbytes);
@@ -1988,7 +1988,7 @@ process:
             PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stdout.wev);
         }
     }
-    if (copystderr){
+    if (copystderr) {
         copy = PMIX_NEW(pmix_iof_write_output_t);
         copy->data = (char *) malloc(output->numbytes);
         memcpy(copy->data, output->data, output->numbytes);
@@ -2190,10 +2190,9 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
         if (PMIX_FWD_STDOUT_CHANNEL & stream) {
             channel = &pmix_client_globals.iof_stdout.wev;
         } else {
-            if(!myflags.merge) {
+            if (!myflags.merge) {
                 channel = &pmix_client_globals.iof_stderr.wev;
-            }
-            else {
+            } else {
                 channel = &pmix_client_globals.iof_stdout.wev;
             }
         }
@@ -2309,14 +2308,14 @@ static void flush_sink_residuals(pmix_iof_sink_t *sink)
     pmix_list_t *residuals = &pmix_server_globals.iof_residuals;
 
     PMIX_LIST_FOREACH_SAFE(res, next, residuals, pmix_iof_residual_t) {
-        if(res->channel != &sink->wev){
+        if (res->channel != &sink->wev) {
             continue;
         }
-        if(PMIX_SUCCESS == rc){
+        if (PMIX_SUCCESS == rc) {
             rc = write_output_line(&res->name, res->channel, &res->flags,
                                    res->stream, res->copystdout,
                                    res->copystderr, &res->bo);
-            if(PMIX_SUCCESS != rc) {
+            if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
             }
         }
@@ -2813,6 +2812,7 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
     pmix_iof_push_caddy_t *cd;
     int fd;
     pmix_pfexec_child_t *child = (pmix_pfexec_child_t *) rev->childproc;
+    pmix_pfexec_child_t *tgt;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(rev);
@@ -2885,11 +2885,16 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
      * anything else */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         if (rev == stdinev_global && NULL != rev->targets) {
-            PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-                if (PMIX_CHECK_PROCID(&child->proc, &rev->targets[0])) {
+            /* a separate variable: "child" is this read event's own
+             * child, and the code above still means it */
+            PMIX_LIST_FOREACH(tgt, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+                if (PMIX_CHECK_PROCID(&tgt->proc, &rev->targets[0])) {
                     /* send the input to that target */
-                    rc = write_output_line(&child->proc, &child->stdinsink.wev, NULL,
+                    rc = write_output_line(&tgt->proc, &tgt->stdinsink.wev, NULL,
                                            PMIX_FWD_STDIN_CHANNEL, false, false, &bo);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                    }
                     goto reactivate;
                 }
             }
