@@ -398,14 +398,28 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
-/* event handler registration callback */
+/* Event handler registration callback.
+ *
+ * The registration path (pmix_internal_reg_event_hdlr) invokes this with
+ * cd->cbdata, and the only caller here sets cd->cbdata to the caddy
+ * itself - so cbdata is the pmix_rshift_caddy_t, NOT a bare pmix_lock_t.
+ * Casting it to a lock would write the status over the object header and
+ * take a "mutex" that is really part of that header, and it would leave
+ * the caddy's own lock - the one the caller blocks on - untouched, so the
+ * init would hang. Mirror the internal mycbfn()/src/server/pmix_server.c
+ * version: record the handler index (or the failure) as the status and
+ * wake the caddy's lock. */
 static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
 {
-    pmix_lock_t *lock = (pmix_lock_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(evhandler_ref);
+    pmix_rshift_caddy_t *cd = (pmix_rshift_caddy_t *) cbdata;
 
-    lock->status = status;
-    PMIX_WAKEUP_THREAD(lock);
+    PMIX_ACQUIRE_OBJECT(cd);
+    if (PMIX_SUCCESS == status) {
+        cd->status = evhandler_ref;
+    } else {
+        cd->status = status;
+    }
+    PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
 static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
@@ -474,7 +488,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     pmix_buffer_t *req;
     pmix_cmd_t cmd;
     pmix_iof_req_t *iofreq;
-    pmix_lock_t reglock, releaselock;
+    pmix_lock_t releaselock;
     bool outputio = true;
     pmix_kval_t *kptr;
     pmix_rshift_caddy_t *cd;
@@ -781,9 +795,15 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             pmix_globals.myid.rank = 0;
             nspace_given = false;
             rank_given = false;
-            /* also setup the client myserver to point to ourselves */
+            /* also setup the client myserver to point to ourselves. Fill in
+             * the rank_info object we already allocated above rather than
+             * allocating a second one - a fresh PMIX_NEW here would orphan
+             * the first (the peer destructor only releases the pointer it
+             * finds, so the original object would leak) */
             pmix_client_globals.myserver->nptr->nspace = strdup(pmix_globals.myid.nspace);
-            pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
+            if (NULL != pmix_client_globals.myserver->info->pname.nspace) {
+                free(pmix_client_globals.myserver->info->pname.nspace);
+            }
             pmix_client_globals.myserver->info->pname.nspace = strdup(pmix_globals.myid.nspace);
             pmix_client_globals.myserver->info->pname.rank = pmix_globals.myid.rank;
             pmix_client_globals.myserver->info->uid = pmix_globals.uid;
@@ -822,15 +842,25 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             pmix_globals.myid.rank = 0;
             nspace_given = false;
             rank_given = false;
-            /* also setup the client myserver to point to ourselves */
+            /* also setup the client myserver to point to ourselves. Fill in
+             * the rank_info object we already allocated above rather than
+             * allocating a second one - a fresh PMIX_NEW here would orphan
+             * the first (the peer destructor only releases the pointer it
+             * finds, so the original object would leak) */
             pmix_client_globals.myserver->nptr->nspace = strdup(pmix_globals.myid.nspace);
-            pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
+            if (NULL != pmix_client_globals.myserver->info->pname.nspace) {
+                free(pmix_client_globals.myserver->info->pname.nspace);
+            }
             pmix_client_globals.myserver->info->pname.nspace = strdup(pmix_globals.myid.nspace);
             pmix_client_globals.myserver->info->pname.rank = pmix_globals.myid.rank;
             pmix_client_globals.myserver->info->uid = pmix_globals.uid;
             pmix_client_globals.myserver->info->gid = pmix_globals.gid;
             // set the type of the server to be our own
             PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, ptype.type);
+            /* ensure we are marked as not connected - the flag is a global
+             * that a prior init/finalize cycle in this process may have
+             * left set */
+            pmix_atomic_unset_bool(&pmix_globals.connected);
             /* mark us as not connecting to avoid asking for our job info */
             do_not_connect = true;
         }
@@ -840,9 +870,23 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     PMIX_LOAD_PROCID(&wildcard, pmix_globals.myid.nspace, PMIX_RANK_WILDCARD);
     /* pass back the ID */
     PMIX_LOAD_PROCID(proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
-    /* cache the server in case we later want to call "set_server" on it */
-    PMIX_RETAIN(pmix_client_globals.myserver);
-    pmix_pointer_array_add(&pmix_server_globals.clients, pmix_client_globals.myserver);
+    /* Cache the server in case we later want to call "set_server" on it.
+     * Note the guard: on the do-not-connect and failed-optional-connect
+     * paths "myserver" is a stand-in peer for *ourselves*, not a server we
+     * reached, and the clients array is the tool's list of known servers.
+     * Caching ourselves there makes PMIx_tool_get_servers report us as our
+     * own server (the Standard says report PMIX_ERR_UNREACH when there is
+     * none), and - worse - that stand-in may carry a NULL nspace, which
+     * PMIX_CHECK_NSPACE treats as a wildcard, so it would match the first
+     * lookup that disc()/pmix_tool_retry_set() performed for any name.
+     * pmix_tool_retry_set has its own "switching back to me" branch and
+     * does not need to find us in the array. The retain pairs with the
+     * per-entry release in PMIx_tool_finalize; when we skip both, the
+     * separate myserver release there still balances the PMIX_NEW. */
+    if (pmix_atomic_check_bool(&pmix_globals.connected)) {
+        PMIX_RETAIN(pmix_client_globals.myserver);
+        pmix_pointer_array_add(&pmix_server_globals.clients, pmix_client_globals.myserver);
+    }
 
     /* load into our own peer object */
     if (NULL == pmix_globals.mypeer->nptr->nspace) {
@@ -858,6 +902,13 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     }
     pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
     pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
+    /* record our identity in the pre-built values PMIx_Get hands back when
+     * asked for PMIX_PROCID/PMIX_RANK with PMIX_GET_POINTER_VALUES. These
+     * are allocated by pmix_rte_init with a NULL nspace and RANK_INVALID;
+     * without this the tool answers those two queries with garbage. */
+    PMIX_LOAD_PROCID(pmix_globals.myidval.data.proc, pmix_globals.myid.nspace,
+                     pmix_globals.myid.rank);
+    pmix_globals.myrankval.data.rank = pmix_globals.myid.rank;
     /* if we are acting as a server, then setup the global recv */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
         PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
@@ -978,6 +1029,10 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, req, job_data, (void *) &cb);
         if (PMIX_SUCCESS != rc) {
+            /* the transport refused the message without taking it, so the
+             * recv callback will never fire - unwind both here */
+            PMIX_RELEASE(req);
+            PMIX_DESTRUCT(&cb);
             return rc;
         }
         /* wait for the data to return */
@@ -1065,6 +1120,10 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         cbptr = PMIX_NEW(pmix_cb_t);
         cbptr->info = iptr;
         cbptr->ninfo = 3;
+        /* the caddy's destructor releases its info array only when
+         * infocopy says the array is its own - say so, or the three
+         * directives (one of them carrying a strdup'd URI) are leaked */
+        cbptr->infocopy = true;
         PMIX_THREADSHIFT(cbptr, pmix_tool_retry_attach);
 
         PMIX_WAIT_THREAD(&cbptr->lock);
@@ -1103,6 +1162,10 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, req, job_data, (void *) &cb);
         if (PMIX_SUCCESS != rc) {
+            /* the transport refused the message without taking it, so the
+             * recv callback will never fire - unwind both here */
+            PMIX_RELEASE(req);
+            PMIX_DESTRUCT(&cb);
             return rc;
         }
         /* wait for the data to return */
@@ -1115,7 +1178,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
 
         /* if the value was found, then we need to wait for debugger attach here */
         /* register for the debugger release notification */
-        PMIX_CONSTRUCT_LOCK(&reglock);
         PMIX_CONSTRUCT_LOCK(&releaselock);
         PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_RETURN_OBJECT, &releaselock, PMIX_POINTER);
         PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "WAIT-FOR-RELEASE", PMIX_STRING);
@@ -1196,12 +1258,14 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     }
     PMIX_RELEASE(kptr); // maintain accounting
 
-    /* our rank */
+    /* our rank - PMIX_RANK is a pmix_rank_t, so it must be stored as
+     * PMIX_PROC_RANK. A tool that stored it as a plain int handed every
+     * PMIx_Get of its own rank back with the wrong type */
     kptr = PMIX_NEW(pmix_kval_t);
     kptr->key = strdup(PMIX_RANK);
     PMIX_VALUE_CREATE(kptr->value, 1);
-    kptr->value->type = PMIX_INT;
-    kptr->value->data.integer = 0;
+    kptr->value->type = PMIX_PROC_RANK;
+    kptr->value->data.rank = pmix_globals.myid.rank;
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
@@ -1523,7 +1587,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FINALIZE_CMD;
-    pmix_status_t rc;
+    pmix_status_t rc, ret = PMIX_SUCCESS;
     pmix_tool_timeout_t tev;
     struct timeval tv = {5, 0};
     int n, i;
@@ -1558,38 +1622,56 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 
         /* setup a cmd message to notify the PMIx
          * server that we are normally terminating */
+        /* Note that nothing below this point aborts the teardown. We have
+         * already dropped the initialized flag and the one-time-init
+         * latch, so a caller that saw an error here could neither retry
+         * nor finalize again - it would simply leak the entire library.
+         * A server that cannot be told we are leaving is worth reporting,
+         * not worth stranding our own state over, so failures here are
+         * recorded and the teardown runs to completion. */
         msg = PMIX_NEW(pmix_buffer_t);
         /* pack the cmd */
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
-            return rc;
-        }
-        /* setup a timer to protect ourselves should the server be unable
-         * to answer for some reason */
-        PMIX_CONSTRUCT_LOCK(&tev.lock);
-        pmix_event_assign(&tev.ev, pmix_globals.evbase, -1, 0, fin_timeout, &tev);
-        tev.active = true;
-        PMIX_POST_OBJECT(&tev);
-        pmix_event_add(&tev.ev, &tv);
-        PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, finwait_cbfunc, (void *) &tev);
-        if (PMIX_SUCCESS != rc) {
-            if (tev.active) {
-                pmix_event_del(&tev.ev);
+            ret = rc;
+        } else {
+            /* setup a timer to protect ourselves should the server be
+             * unable to answer for some reason */
+            PMIX_CONSTRUCT_LOCK(&tev.lock);
+            pmix_event_assign(&tev.ev, pmix_globals.evbase, -1, 0, fin_timeout, &tev);
+            tev.active = true;
+            PMIX_POST_OBJECT(&tev);
+            pmix_event_add(&tev.ev, &tv);
+            PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, finwait_cbfunc,
+                               (void *) &tev);
+            if (PMIX_SUCCESS != rc) {
+                /* the transport refused the message without taking it, so
+                 * the recv callback will never fire - unwind everything we
+                 * set up for it */
+                if (tev.active) {
+                    tev.active = false;
+                    pmix_event_del(&tev.ev);
+                }
+                PMIX_DESTRUCT_LOCK(&tev.lock);
+                PMIX_RELEASE(msg);
+                ret = rc;
+            } else {
+                /* wait for the ack to return */
+                PMIX_WAIT_THREAD(&tev.lock);
+                PMIX_DESTRUCT_LOCK(&tev.lock);
+
+                if (tev.active) {
+                    pmix_event_del(&tev.ev);
+                }
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "pmix:tool finalize sync received");
             }
-            return rc;
         }
-
-        /* wait for the ack to return */
-        PMIX_WAIT_THREAD(&tev.lock);
-        PMIX_DESTRUCT_LOCK(&tev.lock);
-
-        if (tev.active) {
-            pmix_event_del(&tev.ev);
-        }
-        pmix_output_verbose(2, pmix_globals.debug_output, "pmix:tool finalize sync received");
     }
+    /* whatever happened above, we are on our way out */
+    pmix_atomic_unset_bool(&pmix_globals.connected);
 
     /* Note the check on the pfexec framework itself rather than on our
      * peer type. Init only opens it for a launcher or scheduler, but a
@@ -1698,7 +1780,9 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     /* finalize the class/object system */
     pmix_class_finalize();
 
-    return PMIX_SUCCESS;
+    /* the library is fully down either way; "ret" only reports whether we
+     * managed to tell our server about it */
+    return ret;
 }
 
 bool PMIx_tool_is_connected(void)
@@ -1803,14 +1887,19 @@ void pmix_tool_retry_attach(int sd, short args, void *cbdata)
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
             }
+        } else {
+            /* connect_to_peer hands back a heap-allocated URI on every
+             * success - only the branch above consumes it, so free it here
+             * when this server is not becoming our primary */
+            free(suri);
         }
 
     } else {
         PMIX_RELEASE(peer);
     }
 
-    PMIX_WAKEUP_THREAD(&cb->lock);
     PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
     return;
 }
 
@@ -1962,8 +2051,15 @@ static void getsrvrs(int sd, short args, void *cbdata)
 
     /* get servers */
     PMIX_CONSTRUCT(&srvrs, pmix_list_t);
-    /* put our current active server at the front */
-    if (pmix_globals.mypeer != pmix_client_globals.myserver) {
+    /* Put our current active server at the front - but only if we have
+     * one. A tool that came up with PMIX_TOOL_DO_NOT_CONNECT, or whose
+     * optional connect failed, or that has disconnected its primary,
+     * points myserver at a peer standing in for itself; that is not a
+     * server we hold a connection to, and the Standard requires
+     * PMIX_ERR_UNREACH (which the empty-list path below returns) when
+     * there is none. */
+    if (pmix_atomic_check_bool(&pmix_globals.connected) &&
+        pmix_globals.mypeer != pmix_client_globals.myserver) {
         ps = PMIX_NEW(pmix_proclist_t);
         PMIX_LOAD_PROCID(&ps->proc, pmix_client_globals.myserver->info->pname.nspace,
                          pmix_client_globals.myserver->info->pname.rank);
@@ -2063,7 +2159,13 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
         }
         PMIX_RETAIN(pmix_globals.mypeer);
         pmix_client_globals.myserver = pmix_globals.mypeer;
-        pmix_atomic_set_bool(&pmix_globals.connected);
+        /* pointing our active server at ourselves means we no longer have
+         * a server, which is exactly the state disc() leaves behind when
+         * it drops the primary - mark it the same way. Claiming to be
+         * connected here would send the finalize handshake (and anything
+         * else guarded on this flag, such as pmix_tool_relay_op) to our
+         * own already-finalized peer. */
+        pmix_atomic_unset_bool(&pmix_globals.connected);
         goto done;
     }
 
@@ -2082,11 +2184,15 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
     if (NULL == peer) {
         /* do they want us to wait? */
         if (cb->checked) {
-            /* have we timed out? */
+            /* cb->status carries the remaining budget, counted in 0.25sec
+             * retry intervals; PMIx_tool_set_server loads it with INT_MAX
+             * when no (or a zero) PMIX_TIMEOUT was given, as the Standard
+             * defines that to mean "never time out" */
             --cb->status;
             if (cb->status < 0) {
-                cb->status = PMIX_ERR_NOT_FOUND;
+                cb->status = PMIX_ERR_TIMEOUT;
                 PMIX_WAKEUP_THREAD(&cb->lock);
+                PMIX_POST_OBJECT(cb);
                 return;
             }
             PMIX_THREADSHIFT_DELAY(cb, pmix_tool_retry_set, 0.25);
@@ -2131,6 +2237,7 @@ pmix_status_t PMIx_tool_set_server(const pmix_proc_t *server,
     pmix_status_t rc;
     pmix_cb_t *cb;
     size_t n;
+    int timeout = 0; // zero means "never time out" per the Standard
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -2140,16 +2247,25 @@ pmix_status_t PMIx_tool_set_server(const pmix_proc_t *server,
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    if (NULL == server) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* threadshift this so we can access global structures */
     cb = PMIX_NEW(pmix_cb_t);
     cb->proc = (pmix_proc_t *) server;
-    for (n = 0; n < ninfo; n++) {
+    for (n = 0; NULL != info && n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-            cb->status = 4 * info[n].value.data.integer;
+            timeout = info[n].value.data.integer;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_WAIT_FOR_CONNECTION)) {
             cb->checked = PMIX_INFO_TRUE(&info[n]);
         }
     }
+    /* pmix_tool_retry_set counts this down once per 0.25sec retry. An
+     * absent or zero PMIX_TIMEOUT means the operation is never to time
+     * out - leaving the budget at zero would instead make the very first
+     * retry expire, so a "wait for connection" request would never wait */
+    cb->status = (0 < timeout) ? (4 * timeout) : INT_MAX;
     PMIX_THREADSHIFT(cb, pmix_tool_retry_set);
 
     /* wait for completion */

@@ -127,6 +127,9 @@ static void tool_switchyard(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(relay);
+        /* the caddy owns a reference on the requesting peer - releasing it
+         * here is what gives that reference back */
+        PMIX_RELEASE(s);
         return;
     }
     PMIX_SERVER_QUEUE_REPLY(rc, s->peer, tag, relay);
