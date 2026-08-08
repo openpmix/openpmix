@@ -266,6 +266,7 @@ test/sshot/testcoord
 test/unit/client_api
 test/unit/common_api
 test/unit/compress
+test/unit/compress_block
 test/unit/preg
 test/unit/bfrops_regex2
 test/unit/bfrops_alloc_inherit
