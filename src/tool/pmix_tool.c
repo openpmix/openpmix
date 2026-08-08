@@ -262,6 +262,26 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
         range = PMIX_RANGE_LOCAL;
     }
+    /* Record the range on the chain, and translate the directives the
+     * event carried into the chain's own fields, the way the client's
+     * equivalent (pmix_client_notify_recv) always has. It matters because
+     * of what happens when no handler matches: _notify_complete parks the
+     * event for a handler that registers later, and it builds that parked
+     * copy out of chain->range, chain->nondefault, chain->targets and
+     * chain->affected. Left at their constructed defaults, the parked
+     * event has PMIX_RANGE_UNDEF and no affected procs - restrictions
+     * every later check then accepts.
+     *
+     * Be clear about the reach of this: no arrangement was found that
+     * gets a server-forwarded event into that branch, because the server
+     * filters on the tool's registered codes and affected procs before it
+     * forwards anything, so a mismatched event never arrives to be
+     * parked. This keeps the two recv paths saying the same thing and
+     * makes the branch right if it is ever entered; it is not a fix for
+     * an observed failure. */
+    chain->range = range;
+    pmix_prep_event_chain(chain, chain->info, ninfo, false);
+
     if (PMIX_RANGE_LOCAL != range && pmix_atomic_check_bool(&pmix_globals.connected) &&
         !(PMIX_CHECK_NSPACE(peer->nptr->nspace, pmix_client_globals.myserver->nptr->nspace) &&
           peer->info->pname.rank == pmix_client_globals.myserver->info->pname.rank)) {
@@ -817,8 +837,15 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* setup the function pointers */
+    /* Setup the function pointers. The "have we been given a module"
+     * latch has to be cleared with them: it is a global that no finalize
+     * resets, so a tool that cycles init -> set_server_module ->
+     * finalize -> init would find the latch still set and
+     * PMIx_tool_set_server_module would refuse - leaving us claiming to
+     * have a host module while the table we would call through is the
+     * all-zero one we just wrote. */
     memset(&pmix_host_server, 0, sizeof(pmix_server_module_t));
+    pmix_server_globals.module_set = false;
 
     if (do_not_connect) {
         /* ensure we mark that we are not connected */
