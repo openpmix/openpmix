@@ -70,7 +70,8 @@ API names carry the `zng_` prefix (`zng_stream`, `zng_deflateInit`,
 `<zlib-ng.h>`:
 
 - **`zlibng_compress`** — declines if input `< compress_limit` or
-  `>= UINT32_MAX`; otherwise `zng_deflateInit(&strm, 9)` (level 9),
+  `>= UINT32_MAX`; otherwise `zng_deflateInit(&strm,
+  pmix_pcompress_zlibng_level)` (**level 2** by default),
   `zng_deflateBound` for the output bound, one `Z_FINISH` deflate,
   declines if the result is not strictly smaller than the input, then
   emits the shared framing: a leading host-order `uint32_t` uncompressed
@@ -92,7 +93,18 @@ built with `zlib`, and vice versa.
   `zng_` API prefix and the include. If you change framing, the level, or
   the decline rules in one, change the other too, or the interchange
   guarantee breaks.
-- **Level 9 is hard-coded** (`zng_deflateInit(&strm, 9)`), same as `zlib`.
+- **The level is `pcompress_zlibng_level`, and it defaults to 2** — where
+  `zlib` defaults to 1. Both used to be a hard-coded 9; see
+  [`../zlib/AGENTS.md`](../zlib/AGENTS.md) for why that was the wrong end of
+  the curve.
+- **The reason the two defaults differ is that zlib-ng's level 1 is not
+  zlib's level 1.** zlib-ng remaps its lowest level onto a quick-deflate
+  strategy that is much faster and appreciably weaker. Measured through PMIx
+  on a 25.6 MB aggregated modex: level 1 gives ratio 0.678 at 242 MB/s,
+  level 2 gives **0.649** at 152 MB/s — and 0.649 is exactly what `zlib`
+  level 1 produces. So 2 here is the setting that matches the sibling
+  component's default *behaviour* rather than merely its number. Match the
+  behaviour, not the digit, if you ever retune either one.
 - **The size prefix is host byte order** (`memcpy` of the `uint32_t`), not
   network order — same caveat as `zlib`.
 - The performance win over `zlib` is entirely inside zlib-ng; PMIx does

@@ -7,6 +7,21 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - Every pcompress component now exposes its compression level as an MCA
+   parameter - pcompress_zlib_level, pcompress_zlibng_level and
+   pcompress_zstd_level - where the zlib components previously hard-coded
+   level 9. That is the wrong end of the speed/size curve for what this
+   framework compresses: a large collective payload, on a single progress
+   thread, with a whole job waiting on the result. A broadcast pays the
+   deflate once and the wire cost on every link of the tree, so the last
+   couple of percent of ratio only repays itself on a very wide tree over
+   a slow link. Measured through PMIx on a 25.6 MB aggregated modex,
+   single-threaded, zlib level 1 gives a ratio of 0.649 at 103 MB/s
+   against level 9's 0.638 at 54 MB/s. The defaults are now 1 for zlib
+   and 2 for zlib-ng - they differ by one deliberately, because zlib-ng
+   remaps its level 1 onto a quick-deflate strategy that is much faster
+   and appreciably weaker, so zlib-ng level 2 is what zlib level 1
+   produces. The two defaults match in behaviour rather than in digit
  - Added PMIx_server_IOF_flow_control, by which a host environment can
    suspend and resume the processes that are feeding stdin to it. A
    host falling behind on stdin previously had no way to slow its

@@ -176,6 +176,27 @@ Two MCA parameters are registered in `pcompress_base_frame.c`
 | `pcompress_base_limit` | size_t, **4096** | value written into `compress_limit`; the byte threshold below which data is left uncompressed |
 | `pcompress_base_silence_warning` | bool, **false** | value written into `silent`; suppresses the base default's "unavailable" warning |
 
+Each component additionally registers its own compression level, and every
+one of them is a parameter rather than a constant for the same reason: the
+level decides whether compressing a large payload is worth doing at all, and
+that depends on the bandwidth of the link the result will cross, which no
+library can see.
+
+| Parameter | Type / default | Meaning |
+|-----------|----------------|---------|
+| `pcompress_zlib_level` | int, **1** | level passed to `deflateInit` |
+| `pcompress_zlibng_level` | int, **2** | level passed to `zng_deflateInit` |
+
+The zlib defaults were a hard-coded **9** until these parameters were added.
+On a 25.6 MB aggregated modex, level 9 costs roughly twice the CPU of level 1
+to shrink the result a further ~2%, and a broadcast pays the deflate once
+against a wire cost on every link of the tree — so 9 only repays itself on a
+very wide tree over a slow link. The two zlib defaults differ by one deliberately: **zlib-ng's level 1 is not
+zlib's level 1**. zlib-ng remaps its lowest level onto a quick-deflate
+strategy, so `zlibng` level 2 is what `zlib` level 1 produces (0.649 on that
+corpus, in both cases) and that is what it defaults to. The defaults match in
+behaviour, not in digit — see [`zlibng/AGENTS.md`](zlibng/AGENTS.md).
+
 Per the top-level guidance, prefer a new MCA parameter over a hard-coded
 constant if you introduce a tunable here.
 
