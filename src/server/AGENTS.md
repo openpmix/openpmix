@@ -144,6 +144,14 @@ interchangeable across files: `modex_cbfunc` parks the host's data in
 correct expression differs between `_mdxcbfunc` and `_grpcbfunc`. Check
 which one the *producing* callback set before copying a line.
 
+**Honor the release contract on the paths that "can do nothing".** Every
+host callback that receives a `(relfn, relcbdata)` pair owes the host that
+call, including on the arm where it has just failed to allocate its own
+thread-shift caddy and returns early. Five of them - alloc, query,
+session-control, job-control and monitor - returned without it, stranding
+the host's data for the life of the host process. `modex_cbfunc` and the
+fabric/dist family show the shape to copy.
+
 **An internal completion path must hand the callback the object that
 callback casts.** `_fabric_response` exists to answer a fabric request the
 `pnet` layer satisfied locally, and it called the switchyard's
@@ -297,6 +305,16 @@ the switchyard answer it, so calling the callback would answer that
 caller twice. If you ever discard an lcd that could have *other*
 requesters, they do need their callbacks — follow
 `pmix_pending_nspace_requests`, which drains with callbacks.
+
+**A tracker on `local_reqs` whose target has departed must fail its
+waiters, not just disappear.** `pmix_server_purge_events` runs when a peer
+finalizes or a namespace is deregistered, and any direct-modex tracker
+naming that peer is never going to be answered. Use
+`pmix_server_fail_local_reqs`, which calls each parked requester's
+callback with a status before discarding the tracker: those requesters are
+*other* local procs, and nobody else is going to answer them. This is the
+same reference-counting trap as the one below - the difference is only
+whether the waiters deserve to be told.
 
 **Do not read a `PMIX_LIST_FOREACH` variable after the loop.** A loop
 that runs to completion leaves it pointing at the list's sentinel, which
@@ -491,3 +509,46 @@ misbehave by design).
   ownership discipline line for line.
 - **Preserve wire compatibility:** V1/version gating, append-only layouts,
   tolerate-short-buffer unpacks.
+- **Screen the shape of anything the host hands you before indexing it.**
+  A `pmix_info_t` carrying a `PMIX_DATA_ARRAY` is a host-supplied
+  structure, and several sites here read `array[0]` and `array[1]`
+  positionally on the strength of a comment. Check the array is non-NULL
+  and long enough first: `_register_nspace` and `_register_resources` both
+  did not, and neither is reachable only from trusted code - a host is
+  free to get this wrong.
+- **`pmix_server_globals.system_tmpdir` is read by the directory-removal
+  guard, so finalize must not free it early.** Only the string is freed
+  here; the directory is removed by `pmix_ptl_close()` (inside
+  `pmix_rte_finalize()`) and only if that code created it. But the second
+  guard, in `pmix_os_dirpath_destroy()`, decides by comparing its path
+  against this string, and treats NULL as "the caller has no system
+  tmpdir of its own" - the ordinary case for a client or tool, which
+  takes the *unconditional* `rmdir` arm. Free it above any
+  session-directory cleanup and that guard becomes an `rmdir` of a
+  system-defined directory. It sits below `pmix_rte_finalize()` for that
+  reason and there is a comment at the site saying so.
+- **A public API's non-blocking form still has to clean up when the
+  caller passes no callback.** `PMIx_server_setup_application` and
+  `PMIx_server_collect_inventory` take a callback and have no blocking
+  variant, so a NULL one is legal and simply means "do it and tell me
+  nothing". Both assembled a result caddy and then leaked it, because the
+  only thing that would have released it was the release function handed
+  to a callback that was never called.
+
+## A note on `PMIx_Notify_event` from inside the library
+
+The top-level rule is that back-end code must not call a public `PMIx_*`
+API that thread-shifts. Several sites here do call `PMIx_Notify_event`
+from the progress thread - `pdiedfn`, `psetdef`, `psetdel` - and they are
+correct, which is worth knowing before "fixing" them. That entry point
+blocks **only when its callback argument is NULL**; with a callback it
+thread-shifts and returns, and queuing an event onto the thread you are
+already running on is fine. All three pass a callback.
+
+`pmix_server_group.c` deliberately uses the internal
+`pmix_server_notify_client_of_event` instead, and its comment says the
+public one "cannot be called from the progress thread". Read that as
+shorthand for the blocking form. What all of these *do* owe is the return
+value: a refused notification never reaches the release function, so the
+payload has to be handed back by hand - `pdiedfn` always did this, and the
+two pset handlers now do.

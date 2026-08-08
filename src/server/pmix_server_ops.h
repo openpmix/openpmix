@@ -257,6 +257,14 @@ PMIX_EXPORT pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank
                                                pmix_status_t status, pmix_scope_t scope,
                                                pmix_dmdx_local_t *lcd);
 
+/* Fail every requester parked on this direct-modex tracker with the given
+ * status, then unlink and release the tracker. Each parked request holds
+ * its own reference on the tracker and owns the server caddy of the client
+ * waiting behind it, so a caller that simply releases the tracker leaks
+ * both and leaves those clients waiting forever. */
+PMIX_EXPORT void pmix_server_fail_local_reqs(pmix_dmdx_local_t *lcd,
+                                             pmix_status_t status);
+
 PMIX_EXPORT pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 

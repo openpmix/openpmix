@@ -504,7 +504,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     bool nspace_given = false, rank_given = false;
     bool share_topo = false;
     pmix_info_t ginfo, *iptr, evinfo[3];
-    char *evar, *nspace = NULL, *suri;
+    char *evar, *nspace = NULL, *suri = NULL;
     pmix_rank_t rank = PMIX_RANK_INVALID;
     pmix_rank_info_t *rinfo;
     pmix_proc_type_t ptype = PMIX_PROC_TYPE_STATIC_INIT;
@@ -523,14 +523,18 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     // check if an init has been called
     if (pmix_atomic_test_and_set(&pmix_globals.init_called)) {
-        // track the ref count
-        pmix_atomic_fetch_add(&server_init_cntr, 1);
         // did the prior call get far enough? We might be in a tight
         // race between multiple calls to PMIx_server_init - bad programming
-        // technique, but all we can do is try to protect against it
+        // technique, but all we can do is try to protect against it.
+        // Test BEFORE counting the call: a caller that is handed an error
+        // has no reason to call finalize, so a reference counted here
+        // would never be given back and the real finalize would decline
+        // to tear anything down.
         if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
             return PMIX_ERR_INIT;
         }
+        // track the ref count
+        pmix_atomic_fetch_add(&server_init_cntr, 1);
         /* setup the function pointers if they weren't previously defined */
         if (NULL != module && !pmix_server_globals.module_set) {
             pmix_host_server = *module;
@@ -949,6 +953,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         cbptr = PMIX_NEW(pmix_cb_t);
         cbptr->info = iptr;
         cbptr->ninfo = 3;
+        /* the caddy's destructor releases its info array only when
+         * infocopy says the array is its own - say so, or the three
+         * directives (two of them carrying strdup'd strings) are leaked */
+        cbptr->infocopy = true;
         PMIX_THREADSHIFT(cbptr, pmix_tool_retry_attach);
 
         PMIX_WAIT_THREAD(&cbptr->lock);
@@ -985,6 +993,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, bfr, job_data, (void *) &cb);
         if (PMIX_SUCCESS != rc) {
+            /* the transport refused the message without taking it, so the
+             * recv callback will never fire - unwind both here */
+            PMIX_RELEASE(bfr);
+            PMIX_DESTRUCT(&cb);
             return rc;
         }
         /* wait for the data to return */
@@ -1048,21 +1060,33 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         /* connect to another server, if the info's direct us to */
         rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver,
                                       info, ninfo, &suri);
-        if (PMIX_SUCCESS != rc && !connect_optional) {
-            return rc;
-        }
-        /* store the URI for subsequent lookups */
-        PMIX_KVAL_NEW(kptr, PMIX_SERVER_URI);
-        kptr->value->type = PMIX_STRING;
-        pmix_asprintf(&kptr->value->data.string, "%s.%u;%s",
-                      pmix_client_globals.myserver->info->pname.nspace,
-                      pmix_client_globals.myserver->info->pname.rank, suri);
-        free(suri);
-        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
-        PMIX_RELEASE(kptr); // maintain accounting
         if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
+            if (!connect_optional) {
+                return rc;
+            }
+            /* the connection was optional and did not happen, so there is
+             * no URI to record. Falling through used to compose one anyway
+             * out of a suri the failed call left NULL - undefined behavior
+             * in the "%s" conversion, and on the platforms that survive it
+             * a stored PMIX_SERVER_URI of "<nspace>.<rank>;(null)" that
+             * every later lookup would hand back */
+            free(suri);
+            suri = NULL;
+        } else {
+            /* store the URI for subsequent lookups */
+            PMIX_KVAL_NEW(kptr, PMIX_SERVER_URI);
+            kptr->value->type = PMIX_STRING;
+            pmix_asprintf(&kptr->value->data.string, "%s.%u;%s",
+                          pmix_client_globals.myserver->info->pname.nspace,
+                          pmix_client_globals.myserver->info->pname.rank, suri);
+            free(suri);
+            suri = NULL;
+            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
+            PMIX_RELEASE(kptr); // maintain accounting
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         }
     }
 
@@ -1173,6 +1197,25 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
         free(pmix_server_globals.tmpdir);
         pmix_server_globals.tmpdir = NULL;
     }
+    /* The system tmpdir is strdup'd alongside it in init and was being
+     * kept: not just a leak per cycle, but stale state - the next init
+     * finds it non-NULL and silently keeps the previous cycle's value
+     * rather than re-reading the environment.
+     *
+     * THIS FREE MUST STAY BELOW pmix_rte_finalize(). We only ever free
+     * the string; the directory itself is removed by pmix_ptl_close(),
+     * which runs inside pmix_rte_finalize() and does so only if it
+     * created the directory. But the second guard - the one in
+     * pmix_os_dirpath_destroy() - decides by comparing its path against
+     * THIS string, and reads a NULL here as "the caller has no system
+     * tmpdir of its own", which is the ordinary case for a client or
+     * tool and takes the *unconditional* rmdir arm. Freeing this while
+     * any session-directory cleanup can still run would therefore turn
+     * a guard into an rmdir of a system-defined directory. */
+    if (NULL != pmix_server_globals.system_tmpdir) {
+        free(pmix_server_globals.system_tmpdir);
+        pmix_server_globals.system_tmpdir = NULL;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server finalize complete");
@@ -1205,7 +1248,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
     pmix_kval_t *kv;
     pmix_proc_t proc;
 
-    PMIX_ACQUIRE_OBJECT(caddy);
+    PMIX_ACQUIRE_OBJECT(cd);
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server _register_nspace %s",
@@ -1236,8 +1279,22 @@ static void _register_nspace(int sd, short args, void *cbdata)
          * requests it */
         gds = pmix_globals.mypeer->nptr->compat.gds;
         if (NULL != gds && NULL != gds->store) {
+            /* default the target to the job level. A PMIX_PROC_INFO_ARRAY
+             * narrows it to the rank that array describes, but the other
+             * arms below are job-level updates that carry no rank of their
+             * own - and they used to store against whatever this variable
+             * happened to hold, which was stack garbage unless a proc-info
+             * array had come earlier in the same call */
+            PMIX_LOAD_PROCID(&proc, cd->proc.nspace, PMIX_RANK_WILDCARD);
             for (i=0; i < cd->ninfo; i++) {
                 if (PMIX_CHECK_KEY(&cd->info[i], PMIX_PROC_INFO_ARRAY)) {
+                    if (NULL == cd->info[i].value.data.darray ||
+                        NULL == cd->info[i].value.data.darray->array ||
+                        0 == cd->info[i].value.data.darray->size) {
+                        /* nothing to describe a rank with */
+                        rc = PMIX_ERR_BAD_PARAM;
+                        goto release;
+                    }
                     iptr = (pmix_info_t*)cd->info[i].value.data.darray->array;
                     ninfo = cd->info[i].value.data.darray->size;
                     /* the first position is the rank */
@@ -1263,7 +1320,13 @@ static void _register_nspace(int sd, short args, void *cbdata)
                         goto release;
                     }
                     PMIX_VALUE_XFER(rc, kv->value, &cd->info[i].value);
-                    gds->store(&proc, PMIX_GLOBAL, kv);
+                    if (PMIX_SUCCESS == rc) {
+                        /* capture the store's own status - it was being
+                         * discarded, leaving the check below to re-read the
+                         * transfer's result and report success for a store
+                         * that had failed */
+                        rc = gds->store(&proc, PMIX_GLOBAL, kv);
+                    }
                     PMIX_RELEASE(kv); // maintain refcount
                     if (PMIX_SUCCESS != rc) {
                         goto release;
@@ -1516,12 +1579,14 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
         if ((NULL != peer && NULL != peer->info
              && PMIX_CHECK_NAMES(&peer->info->pname, &dlcd->proc))
             || (NULL != proc && PMIX_CHECK_PROCID(proc, &dlcd->proc))) {
-            /* cleanup this request */
-            pmix_list_remove_item(&pmix_server_globals.local_reqs, &dlcd->super);
-            /* we can release the dlcd item here because we are not
-             * releasing the tracker held by the host - we are only
-             * releasing one item on that tracker */
-            PMIX_RELEASE(dlcd);
+            /* The proc this request is waiting on has departed, so the
+             * data is never coming. Tell everyone parked on it rather than
+             * dropping the tracker on the floor: each parked request holds
+             * its own reference on the tracker and owns the server caddy of
+             * the client behind it, so releasing the tracker alone left it
+             * alive but unreachable and left those clients waiting on a
+             * reply nobody would ever send. */
+            pmix_server_fail_local_reqs(dlcd, PMIX_ERR_LOST_CONNECTION);
         }
     }
 
@@ -1552,7 +1617,12 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
                     p = 0;
                     for (m = 0; m < ncd->ntargets; m++) {
                         if (tgt != &ncd->targets[m]) {
-                            memcpy(&tgs[p], &ncd->targets[n], sizeof(pmix_proc_t));
+                            /* copy the target this iteration is looking at -
+                             * indexing by n copied the ONE target being
+                             * removed into every surviving slot, so the
+                             * notification came out addressed to N-1 copies
+                             * of the proc that had just gone away */
+                            memcpy(&tgs[p], &ncd->targets[m], sizeof(pmix_proc_t));
                             ++p;
                         }
                     }
@@ -1922,6 +1992,16 @@ static void _register_resources(int sd, short args, void *cbdata)
          * a data array of info about that proc */
         PMIX_LIST_FOREACH(ept, &endpts, pmix_info_caddy_t) {
             // contains an array of proc info
+            if (NULL == ept->info->value.data.darray ||
+                NULL == ept->info->value.data.darray->array ||
+                2 > ept->info->value.data.darray->size) {
+                /* the procID and the scope occupy the first two positions,
+                 * so anything shorter than that describes nothing and
+                 * indexing it would read past the array the host gave us */
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                rc = PMIX_ERR_BAD_PARAM;
+                continue;
+            }
             pinfo = (pmix_info_t*)ept->info->value.data.darray->array;
             npinfo = ept->info->value.data.darray->size;
             // procID is in the first position
@@ -2011,7 +2091,10 @@ static void _register_resources(int sd, short args, void *cbdata)
             PMIX_DESTRUCT(&bkt);
             /* get the next one */
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &jobinfo, &bo, &cnt, PMIX_BYTE_OBJECT);
+            /* the same peer that opened this buffer has to keep reading it -
+             * myserver is repointed while a launcher-spawned server attaches
+             * to its parent, so the two are not interchangeable here */
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &jobinfo, &bo, &cnt, PMIX_BYTE_OBJECT);
         }
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
             PMIX_ERROR_LOG(rc);
@@ -2019,6 +2102,10 @@ static void _register_resources(int sd, short args, void *cbdata)
     }
 
 release:
+    /* both scratch lists own the caddies appended to them above and were
+     * being dropped on the floor - on the normal path as well as this one */
+    PMIX_LIST_DESTRUCT(&grpinfo);
+    PMIX_LIST_DESTRUCT(&endpts);
     cd->opcbfunc(rc, cd->cbdata);
     PMIX_RELEASE(cd);
 }
@@ -3068,6 +3155,11 @@ depart:
         } else {
             cd->setupcbfunc(rc, fcd->info, fcd->ninfo, cd->cbdata, _setup_op, fcd);
         }
+    } else if (NULL != fcd) {
+        /* nobody to hand the results to, so nobody will call _setup_op to
+         * give them back either - the caddy and the info array assembled
+         * into it are ours to release */
+        _setup_op(rc, fcd);
     }
 
     /* cleanup memory */
@@ -3499,6 +3591,10 @@ static void clct(int sd, short args, void *cbdata)
 report:
     if (NULL != cd->cbfunc.infocbfunc) {
         cd->cbfunc.infocbfunc(rc, cd->info, cd->ninfo, cd->cbdata, cirelease, cd);
+    } else {
+        /* no callback means nobody will ever call cirelease, so the caddy
+         * and the info array converted into it are ours to give back */
+        cirelease(cd);
     }
     PMIX_LIST_DESTRUCT(&inventory);
     return;
@@ -3677,6 +3773,7 @@ static void psetdef(int sd, short args, void *cbdata)
     pmix_data_array_t *darray;
     pmix_proc_t *ptr;
     pmix_pset_t *ps;
+    pmix_status_t rc;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -3693,8 +3790,13 @@ static void psetdef(int sd, short args, void *cbdata)
     ptr = (pmix_proc_t *) darray->array;
     memcpy(ptr, cd->procs, cd->nprocs * sizeof(pmix_proc_t));
 
-    PMIx_Notify_event(PMIX_PROCESS_SET_DEFINE, &pmix_globals.myid, PMIX_RANGE_LOCAL,
-                      mydat->info,  mydat->ninfo, release_info, (void *) mydat);
+    /* a notification that is refused will never reach release_info, so
+     * hand the payload back ourselves in that case */
+    rc = PMIx_Notify_event(PMIX_PROCESS_SET_DEFINE, &pmix_globals.myid, PMIX_RANGE_LOCAL,
+                           mydat->info, mydat->ninfo, release_info, (void *) mydat);
+    if (PMIX_SUCCESS != rc) {
+        release_info(rc, mydat);
+    }
 
     /* now record the process set */
     ps = PMIX_NEW(pmix_pset_t);
@@ -3750,6 +3852,7 @@ static void psetdel(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     mydata_t *mydat;
     pmix_pset_t *ps;
+    pmix_status_t rc;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -3760,8 +3863,12 @@ static void psetdel(int sd, short args, void *cbdata)
     PMIX_INFO_LOAD(&mydat->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&mydat->info[1], PMIX_PSET_NAME, cd->nspace, PMIX_STRING);
 
-    PMIx_Notify_event(PMIX_PROCESS_SET_DELETE, &pmix_globals.myid, PMIX_RANGE_LOCAL, mydat->info,
-                      mydat->ninfo, release_info, (void *) mydat);
+    /* see the matching note in psetdef */
+    rc = PMIx_Notify_event(PMIX_PROCESS_SET_DELETE, &pmix_globals.myid, PMIX_RANGE_LOCAL,
+                           mydat->info, mydat->ninfo, release_info, (void *) mydat);
+    if (PMIX_SUCCESS != rc) {
+        release_info(rc, mydat);
+    }
 
     /* now find this process set */
     PMIX_LIST_FOREACH (ps, &pmix_server_globals.psets, pmix_pset_t) {
@@ -4953,7 +5060,13 @@ static void alloc_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* nothing we can do beyond honoring the release contract -
+         * the host handed us its data along with the function that
+         * gives it back, and dropping both here strands it for the
+         * life of the host process */
+        if (NULL != release_fn) {
+            release_fn(release_cbdata);
+        }
         return;
     }
     scd->status = status;
@@ -5041,7 +5154,13 @@ static void query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* nothing we can do beyond honoring the release contract -
+         * the host handed us its data along with the function that
+         * gives it back, and dropping both here strands it for the
+         * life of the host process */
+        if (NULL != release_fn) {
+            release_fn(release_cbdata);
+        }
         return;
     }
     scd->status = status;
@@ -5134,7 +5253,13 @@ static void sessctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninf
     /* need to thread-shift this callback as it accesses global data */
     scdwrapper = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scdwrapper) {
-        /* nothing we can do */
+        /* nothing we can do beyond honoring the release contract -
+         * the host handed us its data along with the function that
+         * gives it back, and dropping both here strands it for the
+         * life of the host process */
+        if (NULL != release_fn) {
+            release_fn(release_cbdata);
+        }
         return;
     }
     scdwrapper->status = status;
@@ -5231,7 +5356,13 @@ static void jctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* nothing we can do beyond honoring the release contract -
+         * the host handed us its data along with the function that
+         * gives it back, and dropping both here strands it for the
+         * life of the host process */
+        if (NULL != release_fn) {
+            release_fn(release_cbdata);
+        }
         return;
     }
     scd->status = status;
@@ -5316,7 +5447,13 @@ static void monitor_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* nothing we can do beyond honoring the release contract -
+         * the host handed us its data along with the function that
+         * gives it back, and dropping both here strands it for the
+         * life of the host process */
+        if (NULL != release_fn) {
+            release_fn(release_cbdata);
+        }
         return;
     }
     scd->status = status;
