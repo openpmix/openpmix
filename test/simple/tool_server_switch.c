@@ -285,10 +285,46 @@ static int tool_one_cycle(long cyc, const char *burl)
         fprintf(stderr, "cycle %ld: disconnect(A) failed: %s\n", cyc, PMIx_Error_string(rc));
         goto err;
     }
+    /* A is gone now, so asking to switch to it with
+     * PMIX_WAIT_FOR_CONNECTION must poll for the whole PMIX_TIMEOUT and
+     * then report PMIX_ERR_TIMEOUT. The retry budget used to be loaded
+     * straight from the timeout, so an absent or zero timeout expired on
+     * the first retry - a wait request that never waited - and the expiry
+     * was reported as PMIX_ERR_NOT_FOUND rather than the documented
+     * PMIX_ERR_TIMEOUT. */
+    itmo = 1;
+    PMIX_INFO_LOAD(&info[0], PMIX_WAIT_FOR_CONNECTION, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[1], PMIX_TIMEOUT, &itmo, PMIX_INT);
+    rc = PMIx_tool_set_server(&srvrA, info, 2);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    if (PMIX_ERR_TIMEOUT != rc) {
+        fprintf(stderr, "cycle %ld: set_server(A, wait) after disconnect: %s (want "
+                "PMIX_ERR_TIMEOUT)\n", cyc, PMIx_Error_string(rc));
+        goto err;
+    }
+    /* the failed wait must have left B as our primary */
+    if (!PMIx_tool_is_connected()) {
+        fprintf(stderr, "cycle %ld: lost our primary server to a failed wait\n", cyc);
+        goto err;
+    }
+
     /* disconnect B, the primary: disc primary branch (myserver -> self) */
     rc = PMIx_tool_disconnect(&srvrB);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "cycle %ld: disconnect(B) failed: %s\n", cyc, PMIx_Error_string(rc));
+        goto err;
+    }
+    /* having dropped our primary we are no longer connected to anything,
+     * and the server list must say so rather than reporting ourselves */
+    if (PMIx_tool_is_connected()) {
+        fprintf(stderr, "cycle %ld: still connected after dropping the primary\n", cyc);
+        goto err;
+    }
+    rc = PMIx_tool_get_servers(&servers, &nservers);
+    if (PMIX_ERR_UNREACH != rc || 0 != nservers) {
+        fprintf(stderr, "cycle %ld: get_servers with no servers: rc=%s n=%zu (want "
+                "PMIX_ERR_UNREACH/0)\n", cyc, PMIx_Error_string(rc), nservers);
         goto err;
     }
 
