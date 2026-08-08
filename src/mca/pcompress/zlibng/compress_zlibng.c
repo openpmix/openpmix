@@ -84,7 +84,7 @@ static bool zlibng_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outb
 
     /* setup the stream */
     memset(&strm, 0, sizeof(strm));
-    if (Z_OK != zng_deflateInit(&strm, 9)) {
+    if (Z_OK != zng_deflateInit(&strm, pmix_pcompress_zlibng_level)) {
         return false;
     }
 

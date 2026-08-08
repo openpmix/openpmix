@@ -32,6 +32,13 @@
 extern "C" {
 #endif
 
+/* Compression level handed to deflateInit().  A parameter rather than a
+ * constant: the level is the term that decides whether compressing a large
+ * collective payload is worth doing at all, and the right value depends on the
+ * link the result will cross.  Every component in this framework exposes it
+ * the same way.  See the component's AGENTS.md. */
+extern int pmix_pcompress_zlibng_level;
+
 /* the component must be visible data for the linker to find it */
 PMIX_EXPORT extern pmix_mca_base_component_t pmix_mca_pcompress_zlibng_component;
 extern pmix_compress_base_module_t pmix_pcompress_zlibng_module;

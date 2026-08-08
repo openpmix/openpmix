@@ -64,7 +64,8 @@ doc.
 
 - **`zlib_compress`** — the core. Declines (returns `false`) if the input
   is shorter than `pmix_compress_base.compress_limit` or `>= UINT32_MAX`.
-  Otherwise it runs `deflateInit(&strm, 9)` (maximum compression level 9),
+  Otherwise it runs `deflateInit(&strm, pmix_pcompress_zlib_level)`
+  (**level 1** by default; see the parameter below),
   sizes the output with `deflateBound`, deflates in a single
   `Z_FINISH` pass into that upper-bound buffer, and — critically — if the
   result is not strictly smaller than the input, frees it and declines.
@@ -90,10 +91,15 @@ doc.
 
 ## Gotchas
 
-- **Level 9 is hard-coded.** `deflateInit(&strm, 9)` always uses maximum
-  compression. If a speed/ratio trade-off is ever wanted, that is the
-  place — and it would want an MCA parameter (and the same change in
-  `zlibng`) rather than a bare constant.
+- **The level is `pcompress_zlib_level`, and it defaults to 1, not 9.**
+  It used to be a hard-coded 9. That is the wrong end of the curve for what
+  this framework compresses — a large collective payload, on one progress
+  thread, with a whole job waiting. Measured through PMIx on a 25.6 MB
+  aggregated modex: level 1 gives ratio 0.649 at 103 MB/s against level 9's
+  0.638 at 54 MB/s, so 9 costs roughly twice the CPU to shrink the result a
+  further 1.8%. A broadcast pays the deflate **once** and the wire cost on
+  **every link of the tree**, so that 1.8% only repays itself where the tree
+  is very wide and the link slow; raise the parameter there.
 - **The size prefix is host byte order.** `memcpy` of the `uint32_t`, not
   `htonl`. Fine on a single node and between the two components; a
   cross-endian wire path would need a defined byte order (see the
