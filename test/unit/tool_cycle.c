@@ -39,11 +39,16 @@
 #include "include/pmix.h"
 #include "include/pmix_tool.h"
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define DEFAULT_CYCLES 1200
+/* the stdin-forwarding pass is about the teardown existing, not about
+ * volume - keep it short so the default run stays quick */
+#define STDIN_CYCLES   20
 
 int main(int argc, char **argv)
 {
@@ -116,8 +121,49 @@ int main(int argc, char **argv)
         }
     }
 
+    /* Now the same cycle with PMIX_FWD_STDIN, which is a different init
+     * and a different teardown: it constructs a file-scope
+     * pmix_iof_read_event_t over our stdin and registers it (plus, on a
+     * tty, a SIGCONT handler) on the event bases. Those are statics, so
+     * a cycle that does not take them back down leaves the next
+     * PMIX_CONSTRUCT running over a live object - losing that cycle's
+     * descriptor - and leaves an event registered on a base
+     * pmix_rte_finalize has already destroyed.
+     *
+     * Far fewer cycles than above: this one is about the teardown
+     * existing at all, and every cycle re-reads the same stdin. */
+    for (i = 0; 0 == nfail && i < STDIN_CYCLES; i++) {
+        pmix_info_t sinfo[2];
+
+        PMIX_INFO_LOAD(&sinfo[0], PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
+        PMIX_INFO_LOAD(&sinfo[1], PMIX_FWD_STDIN, NULL, PMIX_BOOL);
+        rc = PMIx_tool_init(&myproc, sinfo, 2);
+        PMIX_INFO_DESTRUCT(&sinfo[0]);
+        PMIX_INFO_DESTRUCT(&sinfo[1]);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "stdin cycle %ld: PMIx_tool_init failed: %s\n", i,
+                    PMIx_Error_string(rc));
+            nfail = 1;
+            break;
+        }
+        rc = PMIx_tool_finalize();
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "stdin cycle %ld: PMIx_tool_finalize failed: %s\n", i,
+                    PMIx_Error_string(rc));
+            nfail = 1;
+            break;
+        }
+        /* the library must not have closed our stdin on the way out */
+        if (0 > fcntl(STDIN_FILENO, F_GETFD)) {
+            fprintf(stderr, "stdin cycle %ld: finalize closed our stdin\n", i);
+            nfail = 1;
+            break;
+        }
+    }
+
     if (0 == nfail) {
-        fprintf(stdout, "Completed %ld tool init/finalize cycles: PASS\n\n", ncycles);
+        fprintf(stdout, "Completed %ld tool init/finalize cycles (%d with stdin "
+                "forwarding): PASS\n\n", ncycles, STDIN_CYCLES);
     } else {
         fprintf(stdout, "tool init/finalize cycling: FAIL\n\n");
     }

@@ -81,6 +81,18 @@ static pmix_event_t stdinsig, parentdied;
 static pmix_iof_read_event_t stdinev;
 static pmix_proc_t myparent;
 
+/* These three record which of the file-scope events above this init cycle
+ * actually set up, so finalize can take them back down again. They are
+ * statics rather than locals because finalize cannot re-derive the
+ * answer: PMIX_FWD_STDIN and PMIX_KEEPALIVE_PIPE were directives to
+ * *init*. Leaving an event registered past finalize leaves it pointing at
+ * an event base pmix_rte_finalize has destroyed, and leaves the next
+ * init's PMIX_CONSTRUCT running over a live object - which loses that
+ * cycle's stdin descriptor. */
+static bool stdin_setup = false;
+static bool stdinsig_setup = false;
+static int keepalive_fd = -1;
+
 static void _pdiedcb(pmix_status_t status, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
@@ -545,10 +557,17 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_DO_NOT_CONNECT)) {
                 do_not_connect = PMIX_INFO_TRUE(&info[n]);
-            } else if (0 == strncmp(info[n].key, PMIX_TOOL_NSPACE, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_NSPACE)) {
                 if (NULL != nspace) {
                     /* cannot define it twice */
                     free(nspace);
+                    return PMIX_ERR_BAD_PARAM;
+                }
+                /* screen the value before strdup'ing it: a directive that
+                 * names a string and carries none is an application error,
+                 * and must be reported as one rather than dereferenced */
+                if (PMIX_STRING != info[n].value.type || NULL == info[n].value.data.string) {
+                    PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                     return PMIX_ERR_BAD_PARAM;
                 }
                 nspace = strdup(info[n].value.data.string);
@@ -568,11 +587,28 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SCHEDULER);
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
+                /* same screen as PMIX_TOOL_NSPACE above - the guards below
+                 * only refill these when they are NULL, so a bad value has
+                 * to be refused rather than left half-applied */
+                if (PMIX_STRING != info[n].value.type || NULL == info[n].value.data.string) {
+                    PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                    if (NULL != nspace) {
+                        free(nspace);
+                    }
+                    return PMIX_ERR_BAD_PARAM;
+                }
                 if (NULL != pmix_server_globals.tmpdir) {
                     free(pmix_server_globals.tmpdir);
                 }
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
+                if (PMIX_STRING != info[n].value.type || NULL == info[n].value.data.string) {
+                    PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                    if (NULL != nspace) {
+                        free(nspace);
+                    }
+                    return PMIX_ERR_BAD_PARAM;
+                }
                 if (NULL != pmix_server_globals.system_tmpdir) {
                     free(pmix_server_globals.system_tmpdir);
                 }
@@ -660,11 +696,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     /* if we were given a keepalive pipe, register an
      * event to capture the event */
     if (NULL != (evar = getenv("PMIX_KEEPALIVE_PIPE"))) {
-        rc = strtol(evar, NULL, 10);
-        pmix_event_set(pmix_globals.evbase, &parentdied, rc, PMIX_EV_READ, pdiedfn, NULL);
+        keepalive_fd = strtol(evar, NULL, 10);
+        pmix_event_set(pmix_globals.evbase, &parentdied, keepalive_fd, PMIX_EV_READ,
+                       pdiedfn, NULL);
         pmix_event_add(&parentdied, NULL);
         pmix_unsetenv("PMIX_KEEPALIVE_PIPE", &environ);
-        pmix_fd_set_cloexec(rc); // don't let children inherit this
+        pmix_fd_set_cloexec(keepalive_fd); // don't let children inherit this
     }
 
     /* if we were given a name, then set it now */
@@ -962,6 +999,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
              */
             pmix_event_signal_set(pmix_globals.evauxbase, &stdinsig, SIGCONT,
                                   pmix_iof_stdin_cb, &stdinev);
+            /* pmix_event_signal_set only ASSIGNS the event - it is
+             * event_assign, not event_add - so without this the handler is
+             * never installed and a tool that is backgrounded and then
+             * resumed never reconsiders its stdin */
+            pmix_event_add(&stdinsig, NULL);
+            stdinsig_setup = true;
 
             /* setup a read event to read stdin, but don't activate it yet. The
              * dst_name indicates who should receive the stdin. If that recipient
@@ -1001,6 +1044,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             }
             PMIX_IOF_READ_ACTIVATE(&stdinev);
         }
+        stdin_setup = true;
     }
 
     /* fill in our local
@@ -1254,6 +1298,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1269,6 +1314,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1282,6 +1328,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1295,6 +1342,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1308,6 +1356,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1321,6 +1370,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1334,6 +1384,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1347,6 +1398,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1360,6 +1412,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1374,6 +1427,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1387,6 +1441,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1400,6 +1455,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1413,6 +1469,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1426,6 +1483,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1435,10 +1493,11 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     kptr->key = strdup(PMIX_LOCAL_RANK);
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_UINT16;
-    kptr->value->data.uint32 = 0;
+    kptr->value->data.uint16 = 0;
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1457,6 +1516,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1475,6 +1535,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1489,6 +1550,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_INTERNAL, kptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kptr);
         return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
@@ -1504,6 +1566,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(kptr);
             return rc;
         }
         PMIX_RELEASE(kptr); // maintain accounting
@@ -1515,6 +1578,7 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(kptr);
             return rc;
         }
         PMIX_RELEASE(kptr); // maintain accounting
@@ -1695,6 +1759,30 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
             PMIX_DESTRUCT_LOCK(&lock);
         }
         pmix_pfexec_base_close();
+    }
+
+    /* Take down the file-scope events init may have registered, while the
+     * bases they are on still exist. Each one has to go, or it survives
+     * into a state where its base has been destroyed under it - and, for
+     * the two that are re-armed on a later init, into a PMIX_CONSTRUCT
+     * over a live object. */
+    if (stdin_setup) {
+        if (stdinsig_setup) {
+            pmix_event_del(&stdinsig);
+            stdinsig_setup = false;
+        }
+        /* Hand the destructor an already-closed descriptor: it closes
+         * whatever fd it finds, and ours is the caller's own stdin.
+         * Finalizing the PMIx library must not close the application's
+         * standard input out from under it. */
+        stdinev.fd = -1;
+        PMIX_DESTRUCT(&stdinev);
+        stdin_setup = false;
+    }
+    if (0 <= keepalive_fd) {
+        pmix_event_del(&parentdied);
+        close(keepalive_fd);
+        keepalive_fd = -1;
     }
 
     /* wait here until all active events have been processed */
@@ -1962,8 +2050,8 @@ static void disc(int sd, short args, void *cbdata)
     if (NULL == cb->proc) {
         pmix_atomic_unset_bool(&pmix_globals.connected);
         cb->status = PMIX_SUCCESS;
-        PMIX_WAKEUP_THREAD(&cb->lock);
         PMIX_POST_OBJECT(cb);
+        PMIX_WAKEUP_THREAD(&cb->lock);
         return;
     }
 
@@ -1982,8 +2070,8 @@ static void disc(int sd, short args, void *cbdata)
     }
     if (NULL == peer) {
         cb->status = PMIX_ERR_NOT_FOUND;
-        PMIX_WAKEUP_THREAD(&cb->lock);
         PMIX_POST_OBJECT(cb);
+        PMIX_WAKEUP_THREAD(&cb->lock);
         return;
     }
 
@@ -2006,9 +2094,8 @@ static void disc(int sd, short args, void *cbdata)
     PMIX_RELEASE(peer);
 
     cb->status = PMIX_SUCCESS;
-    PMIX_WAKEUP_THREAD(&cb->lock);
-
     PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
     return;
 }
 
@@ -2025,6 +2112,8 @@ pmix_status_t PMIx_tool_disconnect(const pmix_proc_t *server)
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* disc() dereferences this whenever it is not NULL; a NULL server is
+     * the documented "just mark me disconnected" form */
     cb = PMIX_NEW(pmix_cb_t);
     cb->proc = (pmix_proc_t *) server;
     PMIX_THREADSHIFT(cb, disc);
@@ -2089,8 +2178,8 @@ static void getsrvrs(int sd, short args, void *cbdata)
         cb->nprocs = 0;
         cb->procs = NULL;
         PMIX_DESTRUCT(&srvrs);
-        PMIX_WAKEUP_THREAD(&cb->lock);
         PMIX_POST_OBJECT(cb);
+        PMIX_WAKEUP_THREAD(&cb->lock);
         return;
     }
 
@@ -2107,8 +2196,8 @@ static void getsrvrs(int sd, short args, void *cbdata)
     cb->status = PMIX_SUCCESS;
     PMIX_LIST_DESTRUCT(&srvrs);
 
-    PMIX_WAKEUP_THREAD(&cb->lock);
     PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
     return;
 }
 pmix_status_t PMIx_tool_get_servers(pmix_proc_t *servers[], size_t *nservers)
@@ -2122,6 +2211,11 @@ pmix_status_t PMIx_tool_get_servers(pmix_proc_t *servers[], size_t *nservers)
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* both OUT parameters are written unconditionally below */
+    if (NULL == servers || NULL == nservers) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     cb = PMIX_NEW(pmix_cb_t);
@@ -2191,15 +2285,17 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
             --cb->status;
             if (cb->status < 0) {
                 cb->status = PMIX_ERR_TIMEOUT;
-                PMIX_WAKEUP_THREAD(&cb->lock);
                 PMIX_POST_OBJECT(cb);
+                PMIX_WAKEUP_THREAD(&cb->lock);
                 return;
             }
             PMIX_THREADSHIFT_DELAY(cb, pmix_tool_retry_set, 0.25);
         } else {
             /* no - so just return failure */
             cb->status = PMIX_ERR_UNREACH;
+            PMIX_POST_OBJECT(cb);
             PMIX_WAKEUP_THREAD(&cb->lock);
+            return;
         }
         PMIX_POST_OBJECT(cb);
         return;
@@ -2207,10 +2303,10 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
 
     /* if this is the current active server, then ignore the request */
     if (peer == pmix_client_globals.myserver) {
-        pmix_atomic_set_bool(&pmix_globals.connected ); // just ensure we mark ourselves as connected
+        pmix_atomic_set_bool(&pmix_globals.connected); // just ensure we mark ourselves as connected
         cb->status = PMIX_SUCCESS;
-        PMIX_WAKEUP_THREAD(&cb->lock);
         PMIX_POST_OBJECT(cb);
+        PMIX_WAKEUP_THREAD(&cb->lock);
         return;
     }
 
@@ -2226,8 +2322,8 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
 
 done:
     cb->status = PMIX_SUCCESS;
-    PMIX_WAKEUP_THREAD(&cb->lock);
     PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
     return;
 }
 
