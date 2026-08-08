@@ -22,6 +22,22 @@ Detailed changes since v6.1.0:
    remaps its level 1 onto a quick-deflate strategy that is much faster
    and appreciably weaker, so zlib-ng level 2 is what zlib level 1
    produces. The two defaults match in behaviour rather than in digit
+ - Added a zstd component to the pcompress framework, ranked above the
+   zlib ones (zstd 90, zlibng 75, zlib 50), so a build that finds
+   libzstd uses it for every compressed payload. The zlib component
+   deflates at level 9 unconditionally, which is the wrong end of the
+   speed/size curve for what this framework is used for - shrinking a
+   large collective payload on a single progress thread while the whole
+   job waits on it. Measured on a 25.6 MB aggregated modex,
+   single-threaded, zstd's default level 3 reaches a ratio of 0.588 at
+   427 MB/s where zlib level 9 takes 64 MB/s to reach only 0.600, and
+   decompression - which every peer pays rather than just the
+   originator - runs at 3.6 GB/s against 0.6. The compression level is
+   an MCA parameter, pcompress_zstd_level. Note that a zstd blob is not
+   DEFLATE, so unlike zlib and zlib-ng the components are NOT mutually
+   readable: every node in a job must run the same one. The zstd
+   component checks the frame magic and refuses a foreign blob rather
+   than inflating garbage
  - Added PMIx_server_IOF_flow_control, by which a host environment can
    suspend and resume the processes that are feeding stdin to it. A
    host falling behind on stdin previously had no way to slow its
