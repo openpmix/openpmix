@@ -1680,11 +1680,19 @@ static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr, buf);
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:tool finwait_cbfunc received");
+    /* The wakeup belongs INSIDE the active test, which is the whole point
+     * of the flag. If the guard timer has already fired, PMIx_tool_finalize
+     * has come back out of its wait and destructed this lock - and it is a
+     * stack object in a frame that is still running the rest of the
+     * teardown, so a reply that arrives late would take a destroyed mutex
+     * rather than fault on freed memory. That is exactly the case the timer
+     * exists for: a server too slow or too wedged to answer. src/client's
+     * identically-shaped finwait_cbfunc guards it. */
     if (tev->active) {
         tev->active = false;
         pmix_event_del(&tev->ev); // stop the timer
+        PMIX_WAKEUP_THREAD(&tev->lock);
     }
-    PMIX_WAKEUP_THREAD(&tev->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
