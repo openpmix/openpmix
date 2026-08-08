@@ -124,17 +124,22 @@ returning.
 
 Finalize decrements `tool_init_cntr` and only tears down on the last
 call. Then, in order: send `PMIX_FINALIZE_CMD` to the server with a
-5-second timer guard (`fin_timeout`/`finwait_cbfunc`), kill any
-`pfexec`-launched children (launcher/server only, **before** the progress
-thread stops because killing needs it), stop the progress thread, dump
-and destruct the static IOF sinks, release the client peer/pending
-lists, stop listening, release the server clients array, close
-`pnet`/`pmdl`, `PMIX_LIST_DESTRUCT` every `pmix_server_globals` list that
-`pmix_server_initialize` builds, free the tmpdir strings, then
-`pmix_rte_finalize`, release `mypeer`/`myserver`, and
-`pmix_class_finalize`.
+5-second timer guard (`fin_timeout`/`finwait_cbfunc`) and clear
+`pmix_globals.connected` however that went, kill any `pfexec`-launched
+children (launcher/server only, **before** the progress thread stops
+because killing needs it), delete the file-scope events init registered
+(stdin read, SIGCONT, keepalive pipe — **while their bases still
+exist**), stop the progress thread, dump and destruct the static IOF
+sinks, release the client peer/pending lists, stop listening, release the
+server clients array, close `pnet`/`pmdl`, `PMIX_LIST_DESTRUCT` every
+`pmix_server_globals` list that `pmix_server_initialize` builds, free the
+tmpdir strings, then `pmix_rte_finalize`, release `mypeer`/`myserver`,
+and `pmix_class_finalize`.
 
-Two subtleties the current code documents inline and you must keep:
+Nothing in that sequence returns early on an error — see the
+"must not abandon the teardown" invariant below.
+
+Three subtleties the current code documents inline and you must keep:
 
 - It resets `pmix_globals.init_called = false` so a *subsequent*
   `PMIx_tool_init` in the same process starts fresh instead of
@@ -144,6 +149,10 @@ Two subtleties the current code documents inline and you must keep:
   pointer would silently ignore a changed `PMIX_SERVER_TMPDIR` on the
   next cycle. The many `PMIX_LIST_DESTRUCT`s exist for the same
   re-init-cleanliness reason (a tool may init→finalize→init).
+- The event teardown is guarded by file-scope booleans
+  (`stdin_setup`, `stdinsig_setup`, `keepalive_fd`) rather than
+  re-derived, because `PMIX_FWD_STDIN` and `PMIX_KEEPALIVE_PIPE` were
+  directives to *init* and finalize cannot see them.
 
 ## The multi-server model
 
@@ -182,16 +191,33 @@ functions are their thin waiters. `PMIX_ACQUIRE_OBJECT` /
 memory-ordering rules.
 
 > **Refcount discipline when repointing `myserver` is easy to get wrong.**
-> `pmix_tool_retry_set` `PMIX_RETAIN`s the peer before aliasing it into
-> `myserver` (the peer is already owned by the clients array); the init
-> path `PMIX_RETAIN`s the initial server before adding it to the array
-> (line ~838); but `pmix_tool_retry_attach` adds a freshly-`PMIX_NEW`'d
-> peer and aliases `myserver` to it **without** a matching retain. When
-> you touch any of these paths, trace the whole
-> attach → set → disconnect → finalize lifecycle: the array release in
-> finalize and the `PMIX_RELEASE(peer)` in `disc` must exactly balance
-> the retains taken when the peer was installed. This asymmetry is a
-> known audit hazard (see "Known issues").
+> The invariant is: **`myserver` holds its own reference, distinct from
+> the clients-array entry's reference.** Every `myserver = X` is paired
+> with `PMIX_RETAIN(X)` and a `PMIX_RELEASE` of the outgoing `myserver`;
+> finalize releases once per array entry *and* once for the `myserver`
+> global. When you touch any of these paths, trace the whole
+> attach → set → disconnect → finalize lifecycle rather than reasoning
+> about one site.
+
+> **Only a real server goes in the clients array.** On the
+> do-not-connect and failed-optional-connect paths `myserver` is a
+> stand-in peer for *ourselves*, and init deliberately does **not** cache
+> it there (nor take the matching retain). Two reasons, and both bit:
+> `PMIx_tool_get_servers` would otherwise report an unconnected tool as
+> its own server, where the Standard requires `PMIX_ERR_UNREACH`; and
+> that stand-in may carry a **NULL nspace**, which `PMIX_CHECK_NSPACE`
+> treats as a **wildcard**, so it matched the first lookup `disc()` or
+> `pmix_tool_retry_set()` performed for any name at all. That wildcard is
+> the sharpest edge in this file — anywhere you compare a caller-supplied
+> `{nspace,rank}` against a peer, an unnamed argument matches
+> *everything*. `disc()` now refuses one outright.
+
+> **Pointing `myserver` at yourself means you are NOT connected.**
+> `disc()` unsets `pmix_globals.connected` when it drops the primary;
+> `pmix_tool_retry_set`'s "switch back to me" branch must do the same.
+> It used to *set* the flag, and finalize then sent the finalize
+> handshake to our own already-finalized peer, got `PMIX_ERR_UNREACH`,
+> and returned it — before doing any teardown at all.
 
 ## The tool-to-tool relay (`pmix_tool_ops.c`)
 
@@ -268,70 +294,198 @@ unpacking, exactly as the client recv callbacks do.
 - **Prefer a new attribute over a new API**, and give any new API the
   `pmix_info_t info[], size_t ninfo` pair — the tool API already follows
   this (every `PMIx_tool_*` call carries it).
+- **`PMIx_tool_init` does not unwind, and a failed one is terminal for
+  the process.** Every early `return` leaves the one-time-init latch set
+  and the counter bumped, so a caller cannot retry — and cannot finalize
+  either, because finalize refuses when `initialized` is false. This is
+  why the argument screens are at the top and why a test that wants to
+  see init *fail* has to do it in a forked child (see `tool_api.c`).
+- **Finalize must not abandon the teardown.** By the time it can fail it
+  has already dropped `initialized` and the latch, so a caller that saw
+  an error could neither retry nor finalize again — it would simply leak
+  the whole library. Record a failure and keep tearing down.
+- **`pmix_event_signal_set` is `event_assign`, not `event_add`.** It
+  only initializes the event; without a following `pmix_event_add` the
+  handler is never installed. The tool's SIGCONT/stdin handler was in
+  that state for a long time and silently did nothing.
+- **Anything init registers on an event base, finalize has to take
+  down** — the stdin read event, the SIGCONT event, the keepalive-pipe
+  event. `pmix_rte_finalize` destroys the bases underneath them, and the
+  two that are file-scope statics are re-`PMIX_CONSTRUCT`ed by the next
+  init. Note the one trap in that teardown: `pmix_iof_read_event_t`'s
+  destructor closes whatever fd it holds, and the tool's is the
+  application's own **stdin** — clear the field before destructing.
+- **`pmix_server_globals.module_set` is a global that no finalize
+  resets.** `PMIx_tool_init` clears it where it memsets
+  `pmix_host_server`, so the two always agree; without that a cycling
+  tool is refused its server module on every init after the first while
+  the table it would be called through is the all-zero one.
+- **Identity is not only `pmix_globals.myid`.** `PMIx_Get` answers
+  `PMIX_PROCID` and `PMIX_RANK` out of `pmix_globals.myidval` /
+  `myrankval` when the caller passes `PMIX_GET_POINTER_VALUES`.
+  `pmix_rte_init` builds those carrying a NULL nspace and
+  `PMIX_RANK_INVALID`; filling them in is the role's job, and the tool
+  did not until this review.
 
 ## Known issues
 
 Found during review and documented here so they are not "rediscovered"
-as intended behavior.
+as intended behavior. The July 2026 items (1-3) are kept because the
+invariants they establish are still the ones to reason from.
 
 1. **FIXED — `PMIX_PARENT_ID` freed a static in the launcher-rendezvous
-   path.** In `PMIx_tool_init` (the `PMIX_LAUNCHER_RNDZ_URI` block) the
-   code set `kptr->value->data.proc = &myparent;` (a file-scope static)
-   on a `PMIX_PROC`-typed kval and then `PMIX_RELEASE(kptr)` — whose
-   destructor runs `value_destruct` → `proc_free` → `free()` on the
-   static: heap corruption. Now heap-allocates the proc
-   (`PMIX_PROC_CREATE` + `PMIx_Proc_load`), matching
-   `src/server/pmix_server.c`. Note `myparent` is still only ever loaded
+   path.** The code set `kptr->value->data.proc = &myparent;` (a
+   file-scope static) on a `PMIX_PROC`-typed kval and then
+   `PMIX_RELEASE(kptr)` — whose destructor runs `value_destruct` →
+   `proc_free` → `free()` on the static: heap corruption. Now
+   heap-allocates the proc. Note `myparent` is still only ever loaded
    with `{NULL, RANK_UNDEF}` and never populated with a real parent — the
    *server* has the same quirk — so the stored parent id is currently
-   meaningless; that is a separate, benign functional gap, not a crash.
-2. **FIXED — `mypeer->info` was allocated twice.** `PMIx_tool_init`
-   `PMIX_NEW`d `pmix_globals.mypeer->info` once (setting `realuid`/`uid`/
-   `realgid`/`gid`/`pid`), then a second `PMIX_NEW` later overwrote the
-   pointer — orphaning the first `pmix_rank_info_t` (leak) and discarding
-   the identity fields (leaving them zeroed). Now the second allocation
-   is removed; the existing object's `pname` is (re)set in place, so the
-   uid/gid/pid survive. The client (`src/client/pmix_client.c`) is the
-   single-allocation reference.
+   meaningless; a benign functional gap, not a crash.
+2. **FIXED — `mypeer->info` was allocated twice**, orphaning the first
+   `pmix_rank_info_t` and discarding the uid/gid/pid stored on it. The
+   client is the single-allocation reference.
 3. **FIXED — the `myserver`-switch family mismatched the finalize
-   teardown's refcount model, causing a double-free.** The intended
-   invariant (see the `PMIx_tool_init` comment at the
-   `PMIX_RETAIN(myserver)` + clients-array-add, and the finalize teardown
-   that releases *once per clients-array entry* **and** *once for the
-   `myserver` global*) is: **`myserver` holds its own reference, distinct
-   from the clients-array entry's reference.** Three sites violated it:
-   - `pmix_tool_retry_attach` (the `cb->checked`/`PMIX_PRIMARY_SERVER`
-     branch) set `myserver = peer` with **no `PMIX_RETAIN`** and **no
-     release of the outgoing `myserver`**. The new primary then had one
-     reference but two owners (clients array + `myserver`), so
-     `PMIx_tool_finalize` released it twice → **double-free / UAF**, while
-     the previous primary's `myserver` reference leaked. Reachable from
-     `PMIx_tool_attach_to_server` / `PMIx_tool_connect_to_server` with
-     `PMIX_PRIMARY_SERVER`, and from the internal `PMIX_LAUNCHER_RNDZ_URI`
-     path.
-   - `pmix_tool_retry_set` retained the incoming peer but never released
-     the outgoing `myserver` → leaked one reference per switch; its
-     "switch back to me" branch set `myserver = mypeer` with neither a
-     retain of `mypeer` nor a release of the outgoing server.
-   - `disc` released only the clients-array reference when disconnecting
-     the primary, never the outgoing `myserver` reference.
+   teardown's refcount model, causing a double-free.** See the
+   multi-server section above for the invariant. Covered by
+   `test/simple/tool_server_switch` (`make check` via
+   `test/unit/run_toolswitch.pl`).
 
-   The fix has three parts: (a) every `myserver = X` reassignment in
-   `pmix_tool_retry_attach` / `pmix_tool_retry_set` / `disc` is now paired
-   with `PMIX_RETAIN(X)` and a `PMIX_RELEASE` of the outgoing `myserver`
-   (in `disc` the departing primary drops both its `myserver` and
-   clients-array references, via a separate handle since `PMIX_RELEASE`
-   NULLs its argument); (b) `PMIx_tool_finalize` no longer releases
-   `myserver` separately when it aliases `mypeer` (the disconnected-to-self
-   state), which would otherwise free `mypeer` a third time after
-   `pmix_rte_finalize` and the `mypeer` release; and (c) a companion
-   re-init bug where `pmix_ptl_base.uri` was freed but not NULLed on close
-   (`ptl_base_frame.c`), which failed the *next* init's reconnect after an
-   attach-by-URI. The **multi-server switch path is now covered** by
-   `test/simple/tool_server_switch` (make check via
-   `test/unit/run_toolswitch.pl`): two independent servers, a tool child
-   looping attach-as-primary → set_server(self/A/B) → disconnect →
-   finalize. It reproduced the double-free abort before the fix.
+The August 2026 sweep found the following. Each is fixed; the tests
+named are the ones that fail against the unfixed library.
+
+4. **FIXED — the launcher-rendezvous debugger-release registration hung
+   and corrupted an object header.** `evhandler_reg_callbk` cast its
+   `cbdata` to a `pmix_lock_t`, but the registration machinery invokes it
+   with `cd->cbdata`, which the one call site sets to the
+   `pmix_rshift_caddy_t` itself. So it wrote the status over the object
+   header and took a "mutex" that was really the rest of that header —
+   and it left the caddy's own lock, the one `PMIx_tool_init` blocks on,
+   untouched, so init never returned. `src/client` (via `mycbfn`) and
+   `src/server` both had this right; only `src/tool` did not. The block
+   also constructed a `reglock` it never used or destructed, a leftover
+   from the shape this was meant to have. **`test/unit/tool_rndz`**;
+   against the unfixed library it aborts on the object magic-id assert
+   and then hangs.
+5. **FIXED — leaks on the multi-server and rendezvous paths.**
+   `pmix_tool_retry_attach` leaked the URI `connect_to_peer` hands back
+   whenever the new server was not requested as primary;
+   `tool_switchyard` leaked its shift caddy — and the peer reference it
+   holds — when the payload copy failed; the rendezvous caddy never set
+   `infocopy`, so its three directives leaked on every launcher init; the
+   `myserver->info` rank-info was allocated a second time on both
+   self-assign paths (the same defect as item 2, one object over); and
+   `pmix_tool_init_info` released nothing on any of its error paths.
+6. **FIXED — `PMIx_Get` of our own `PMIX_PROCID`/`PMIX_RANK` under
+   `PMIX_GET_POINTER_VALUES` returned garbage.** The tool never populated
+   `pmix_globals.myidval`/`myrankval`. **`test/unit/tool_api`.**
+   `pmix_tool_init_info` also stored `PMIX_RANK` as a `PMIX_INT`; it is a
+   `pmix_rank_t` and must be `PMIX_PROC_RANK`.
+7. **FIXED — `PMIX_WAIT_FOR_CONNECTION` never waited.**
+   `PMIx_tool_set_server` loaded its retry budget straight from
+   `PMIX_TIMEOUT`, so an absent or zero timeout — which the Standard
+   defines as "never time out" — expired on the first retry and reported
+   `PMIX_ERR_NOT_FOUND` rather than the documented `PMIX_ERR_TIMEOUT`.
+   **`test/unit/tool_api`** and `test/simple/tool_server_switch`.
+8. **FIXED — a tool that was not connected reported itself as its own
+   server, and `set_server(self)` claimed we were connected.** See the
+   two notes in the multi-server section; between them, `set_server(self)`
+   followed by `PMIx_tool_finalize` returned `PMIX_ERR_UNREACH` **before
+   any teardown ran at all**. Finalize no longer abandons the teardown on
+   a failed handshake. **`test/unit/tool_api`.**
+9. **FIXED — the SIGCONT handler for forwarded stdin was never
+   installed**, because `pmix_event_signal_set` is `event_assign` and
+   nothing added the event. A tool that is backgrounded and then resumed
+   never reconsidered its stdin. Not unit-testable — it needs a tty — so
+   there is no regression test; the sibling defect in
+   `src/common/pmix_iof.c` is **still open**, see below.
+10. **FIXED — init's file-scope events were never taken down.** The stdin
+    read event, the SIGCONT event and the keepalive-pipe event all
+    survived finalize; the keepalive pipe's descriptor leaked one per
+    init/finalize cycle. **`test/unit/tool_cycle`** now runs a second pass
+    with `PMIX_FWD_STDIN` and asserts the library did not close the
+    caller's stdin on the way out.
+11. **FIXED — `PMIx_tool_set_server_module` was refused on every cycle
+    after the first**, because nothing resets
+    `pmix_server_globals.module_set`. **`test/unit/tool_api`.**
+12. **FIXED — the rendezvous block restored the wrong primary server.**
+    A tool that came up with `PMIX_TOOL_DO_NOT_CONNECT` *and* its own
+    `PMIX_TOOL_NSPACE`/`PMIX_TOOL_RANK` saves its "current server" from a
+    stand-in peer that carries no name, and an empty nspace is a wildcard
+    — so the restore matched the debugger and the launcher carried on with
+    the debugger as its primary. **`test/unit/tool_rndz`** comes up in
+    exactly that configuration.
+13. **FIXED — a late finalize reply woke a destroyed lock.** The
+    five-second guard timer clears `tev.active` and `PMIx_tool_finalize`
+    then destructs the lock, but `finwait_cbfunc` woke it
+    unconditionally. `src/client`'s identically-shaped callback guards on
+    the flag. No test: it needs a server that answers the finalize
+    handshake later than five seconds.
+14. **FIXED (consistency, not an observed failure) —
+    `pmix_tool_notify_recv` never stored the unpacked range on the chain
+    and never ran `pmix_prep_event_chain`.** Those fields are what
+    `_notify_complete` builds a *parked* event out of when no handler
+    matches, so a parked event would carry `PMIX_RANGE_UNDEF` and no
+    affected procs. No arrangement was found that gets a server-forwarded
+    event into that branch — the server filters on the tool's registered
+    codes and affected procs before forwarding — so treat this as keeping
+    the two recv paths saying the same thing.
+15. **FIXED — malformed directives were dereferenced.**
+    `PMIX_TOOL_NSPACE`, `PMIX_SERVER_TMPDIR` and `PMIX_SYSTEM_TMPDIR` each
+    went straight to `strdup()`, so a caller that supplied the key with
+    the wrong type segfaulted the library. **`test/unit/tool_api`**, in
+    forked children (see the non-unwinding note above).
+
+### Still open
+
+- **`src/common/pmix_iof.c` has the same missing `pmix_event_add` for
+  its SIGCONT handler** (`stdinsig_ev`), and never releases
+  `stdinev_global` either. It is the same defect as item 9 one directory
+  over, but fixing it properly needs a teardown hook in `src/common` that
+  this review did not design. Left for a `src/common` change.
+- **Whether a *launcher* should relay a spawn is unsettled.**
+  `server_switchyard` routes to `pmix_tool_relay_op` on
+  `PMIX_PEER_IS_TOOL(mypeer)`, and `PMIX_PROC_LAUNCHER` includes the
+  `PMIX_PROC_TOOL` bit — so a launcher with its own server module, and
+  with `pfexec` open, still relays `PMIX_SPAWNNB_CMD` upstream instead of
+  servicing it. For `prun`, which asks its DVM to spawn, that is
+  arguably right; for a launcher that spawns locally it is not. A more
+  precise guard would be "we have no host module to service it"
+  (`!pmix_server_globals.module_set`), but changing it is a behavioral
+  decision about PRRTE's launchers, not a bug fix. Left alone
+  deliberately.
+- **The relay assumes both peers negotiated the same bfrops module and
+  buffer type.** `pmix_tool_relay_op` copies the downstream tool's raw
+  payload into a fresh buffer and sends it to `myserver` unchanged, and
+  `tool_switchyard` does the reverse. A tool forces the same modules on
+  itself and its server, so this holds today — but it is an assumption,
+  not something the code checks.
+
+## Testing
+
+`make check` coverage for this directory, all under
+[`test/unit`](../../test/unit):
+
+| Program | What it holds down |
+|---------|--------------------|
+| `tool_cycle` | init→finalize cycling, plus a shorter pass with `PMIX_FWD_STDIN` that asserts the library did not close the caller's stdin |
+| `tool_api` | the API surface a single unconnected tool can reach: identity values, `set_server` wait/timeout semantics, the server list of an unconnected tool, malformed directives (in forked children), and a second full cycle that sets a server module again |
+| `tool_rndz` | the whole `PMIX_LAUNCHER_RNDZ_URI` flow against a real server, including the restore of the original primary |
+| `tool_evcache` | affected-process restriction on events delivered to a tool, end to end with two handlers. Its header records that it does **not** reach the caching branch, and why |
+| `tool_nspace` | a connecting tool leaves exactly one namespace object on the server's list |
+| `test/simple/tool_server_switch` (via `run_toolswitch.pl`) | the multi-server switch loop against two servers |
+
+The multi-node half is
+[`contrib/dockerswarm/run-tool-tests.sh`](../../contrib/dockerswarm/README.md)
+(README §20): the tool and at least one of its servers on **different
+nodes**, driving `examples/toolswitch.c` through attach/switch/disconnect
+across hosts, a remote server dying, IOF relayed to a tool from other
+nodes, and the only valgrind pass `src/tool` gets anywhere. Note what it
+says it does not cover: nothing, anywhere, exercises the tool-to-tool
+relay in `pmix_tool_ops.c`.
+
+**A test that wants to see `PMIx_tool_init` fail must fork.** See the
+non-unwinding invariant above.
 
 ## Building
 
@@ -348,11 +502,10 @@ regenerate-the-help-content golden rule does not bite here, unless you
 add a new topic to one of those files.
 
 Smoke-test per the top-level guide: `make check` in `test/`, then
-`./simptest` in `test/simple/`. The tool paths specifically are exercised
-by the tool/debugger programs under `test/simple` (e.g. the
-attach/launcher and IOF tests). Do **not** diagnose functional failures
-against an `--enable-test-build` tree — its shimmed components make
-functional tests misbehave by design (see the top-level guide).
+`./run_simptest.sh` in `test/simple/`. See the Testing section above for
+what specifically covers this directory. Do **not** diagnose functional
+failures against an `--enable-test-build` tree — its shimmed components
+make functional tests misbehave by design (see the top-level guide).
 
 ## When modifying code here
 
@@ -373,3 +526,13 @@ functional tests misbehave by design (see the top-level guide).
 - **Keep it warning-free and portable** under `--enable-devel-check`; use
   the `__pmix_attribute_*__` / `PMIX_HIDE_UNUSED_PARAMS` wrappers rather
   than bare GCC attributes.
+- **Diff against `src/client` and `src/server` before believing a
+  difference is intentional.** Three of the four worst defects this
+  directory has had were drift: a recv callback the client had already
+  fixed, a caddy field the server sets and the tool did not, a guard the
+  client has on an identically-shaped callback. When the same function
+  exists in two of the three roles, read all of them.
+- **Screen a directive's value type before using it.** The recurring
+  application-facing crash here is a `strdup()` of
+  `info[n].value.data.string` for a key the caller supplied with the
+  wrong type. Check `PMIX_STRING == .type` and non-NULL first.
