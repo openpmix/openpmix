@@ -265,7 +265,10 @@ static inline bool pmix_iof_fd_always_ready(int fd)
     } while (0);
 
 
-PMIX_EXPORT pmix_status_t pmix_iof_flush(void);
+/* Release the process-wide stdin read event and SIGCONT handler this
+ * file owns. Must be called while the event base is still up - i.e.
+ * from pmix_rte_finalize, not after it. */
+PMIX_EXPORT void pmix_iof_finalize(void);
 
 PMIX_EXPORT pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t stream,
                                                 const pmix_byte_object_t *bo);

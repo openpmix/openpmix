@@ -99,6 +99,91 @@ Note the vestigial remnants that are *not* the mechanism:
 used) and were inherited from ORTE. Don't reason about flow control from
 them.
 
+Three more things about the stdin side that are easy to get wrong:
+
+- **The SIGCONT event belongs on `evbase`, and it has to be *added*.**
+  Its handler is `pmix_iof_stdin_cb`, which resolves `stdinev_global` and
+  arms or disarms that read event — all state `evbase` owns — so putting
+  the signal on `evauxbase` (which a host may supply as a *different*
+  thread) races the progress thread. And `pmix_event_signal_set` only
+  *assigns* an event; without a matching `pmix_event_add` the handler
+  never runs, which is how a tool started in the background can end up
+  never reading stdin at all after it is foregrounded.
+- **`stdinev_global` and `stdinsig_ev` are process-wide, not per
+  request**, so nothing in the request machinery ever gives them back.
+  `pmix_iof_finalize()` does, and `pmix_rte_finalize` calls it **while
+  the event base is still standing** — after `pmix_progress_thread_stop`
+  the delete would be the use-after-free it exists to prevent. Note the
+  second-init hazard this closes: a stale `stdinev_global` names an event
+  registered on a base the previous cycle tore down.
+- **A tool does not use `stdinev_global`.** `src/tool/pmix_tool.c` builds
+  its own file-scope `stdinev`, so in a tool the global stays NULL and
+  `pmix_iof_flow_control` finds nothing of its own to suspend — it can
+  still relay to peers, but it cannot throttle the tool's own stdin. The
+  tool's copy also carries the un-added-`stdinsig` bug described above.
+
+### Output delivery and the end of a stream (`pmix_iof.c`)
+
+Output arrives at `pmix_iof_write_output()` one `pmix_byte_object_t` at a
+time and leaves through a `pmix_iof_write_event_t` ("the channel"). Three
+invariants govern that path, and all three have been broken in ways that
+lose the user's output *silently*.
+
+- **A zero-byte delivery is an end-of-stream marker, and what it means
+  depends on the sink.** A sink this library opened for one source
+  (`pmix_iof_setup`, fd > 2) is finished: close it and stop, leaving
+  `wev.pending` set so nothing re-arms the event on a descriptor that is
+  gone. The **shared** `pmix_client_globals.iof_stdout` / `iof_stderr`
+  sinks (fd 1 and 2) are fed by *every* source, so one source closing
+  must not stop them — skip the marker and keep draining. Getting this
+  wrong is invisible in testing and total in effect: `wev.pending` stays
+  set with the event un-armed, `write_output_line` only arms the event
+  when `pending` is clear, and every later chunk from every other source
+  sits in the queue until finalize.
+- **`pending` is the arm/disarm interlock, not a status bit.** Any path
+  that returns from `pmix_iof_write_handler` without clearing it is
+  asserting "this channel is done forever".
+- **A stream's last, unterminated line is written when the stream
+  closes.** Non-raw output is split on `'\n'` and the tail is parked on
+  `pmix_server_globals.iof_residuals` until the rest of the line arrives.
+  The zero-byte marker is the last chance to write it, so
+  `pmix_iof_write_output` flushes the matching residual before passing
+  the marker along. Do not rely on the sweeps for this: a server's
+  `pmix_iof_flush_residuals()` at `PMIx_server_finalize` prints it late
+  and out of order, and a client or tool never sweeps that list at all
+  (`iof_sink_destruct` gates `flush_sink_residuals` on being a server).
+
+Two related facts worth knowing before you touch that code:
+
+- `pmix_server_globals.iof_residuals` is **statically initialized**
+  (`PMIX_LIST_STATIC_INIT` in `pmix_server.c`), which is why every role
+  may append to it without a server ever having been initialized.
+- A residual grows without bound for a source that never emits a newline,
+  and each new chunk copies the whole accumulation. That is inherent to
+  "buffer until the line completes"; it is not currently capped.
+- `PMIX_IOF_TAG_DETAILED_OUTPUT` costs **two GDS fetches per line of
+  output** — `pmix_iof_prep_output` looks the source's `PMIX_HOSTNAME`
+  and `PMIX_PROC_PID` up every time it formats one. Both are immutable
+  per source, so this is the obvious thing to cache if detailed tagging
+  ever shows up in a profile.
+
+### `process_cache()` cannot forward anything
+
+`process_cache()` — and therefore the one-second `delayed_process_cache`
+timer that the blocking form of `PMIx_IOF_pull` arms — is dead in
+practice, and knowing that is worth more than the code. The only requests
+that reach it are the ones `PMIx_IOF_pull` built in this process, and it
+sets `req->requestor` **only** when we are our own server; the requestor
+is then ourselves, so the function's own "never forward to myself" test
+skips every cached entry. A request with no requestor returns at the top.
+
+So cached IO is never delivered to a locally-registered pull. Such a
+request is served through `req->cbfunc` when IO arrives, and the cache has
+no path to that callback. Settle what the right delivery is before making
+this live — and note that the message it builds must carry
+`req->remote_id`, the id *the requestor* knows the request by, not
+`req->local_id`, which indexes our own array.
+
 ### Output-file naming lives here (`pmix_iof.c`)
 
 `pmix_iof_setup()` is what opens the per-process output sinks, and it is
@@ -249,7 +334,23 @@ add or edit an entry point:
    a request to `pmix_host_server.*`, the return value decides who
    completes it: `PMIX_SUCCESS` means the host will, anything else
    (including `PMIX_OPERATION_SUCCEEDED`) means you must.
-10. **Caddy fields you did not set are garbage, not zero.** `PMIX_NEW`
+10. **Nothing in here may enter the blocking form of a public API.**
+   This is the top-level "back-end code must never call a `PMIx_*` that
+   thread-shifts" rule, and it has two distinct faces in this directory.
+   *Inside the library*: `PMIx_Notify_event` with a **NULL cbfunc** is
+   its blocking form — it posts a caddy to the progress thread and then
+   `PMIX_WAIT_THREAD`s on it. Every recv callback and every threadshift
+   handler here already runs on that thread, so the caddy can never fire
+   and the progress thread is dead for the life of the process. Pass a
+   do-nothing completion instead; `pmix_pfexec.c` and `psensor/file` are
+   the reference. *At the entry points*: a **host** can call a blocking
+   `PMIx_*` from inside a PMIx callback, which is the same deadlock from
+   the other side. Guard every blocking path with
+   `pmix_progress_thread_check_blocking("<api name>")` and return
+   `PMIX_ERR_WOULD_BLOCK` — a tool that deregisters from inside its own
+   IOF delivery callback is doing exactly this, and the guard turns a
+   permanent hang into a diagnostic.
+11. **Caddy fields you did not set are garbage, not zero.** `PMIX_NEW`
    allocates with `malloc`, so every field a constructor skips starts as
    whatever was on the heap. `scon()`/`qcon()` did not initialize
    `status`, and `chcon()` in `pmix_pfexec.c` did not initialize
@@ -348,6 +449,18 @@ Two suites cover this directory specifically, and they split the same way
   the IOF flag parser and XML escaper, and `PMIx_Register_attributes`.
   Several of its cases segfault against an unfixed library rather than
   merely failing — which is the point.
+- [`test/unit/iof_output.c`](../../test/unit/iof_output.c) — the IOF
+  output path, driven by standing a pipe up in place of stdout and
+  stderr and handing the library output through
+  `PMIx_server_IOF_deliver`. It covers the end-of-stream invariants
+  above: that a zero-byte marker from one source does not silence the
+  shared channel for every other source, and that a last line with no
+  newline is written when the stream closes. Both failures are silent
+  against an unfixed library — the output simply never appears — so the
+  test asserts on bytes read back out of the pipe, not on return codes.
+- [`test/unit/iof_flow.c`](../../test/unit/iof_flow.c) — the stdin half:
+  XOFF stops the reading, XON restarts it, nothing is lost across a
+  suspension. See the flow-control rules above.
 - [`contrib/dockerswarm/run-common-tests.sh`](../../contrib/dockerswarm/run-common-tests.sh)
   — the connected half. Query/log/job-control/allocation/monitor/IOF with
   the ranks behind *different* PMIx servers. The monitor cases are the
