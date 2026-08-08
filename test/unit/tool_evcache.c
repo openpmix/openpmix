@@ -42,7 +42,9 @@
  * before forwarding, so an event no handler wants does not arrive at the
  * tool at all and is never parked. Instrumenting _notify_complete during
  * this run shows it called exactly once, with PMIX_SUCCESS. Do not
- * assume a change to that branch is covered here.
+ * assume a change to that branch is covered here. Whether that branch is
+ * reachable at all - src/client has no equivalent - is
+ * openpmix#4101.
  */
 
 #include "src/include/pmix_config.h"

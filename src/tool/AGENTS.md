@@ -243,6 +243,25 @@ If you add a relayable command, extend `relaycmds` **and** make sure the
 response path round-trips correctly (the spawn case needs the separate
 cbfunc precisely so the response can be intercepted and forwarded).
 
+**The rule for a spawn is: relay it if we are attached to a server;
+otherwise fork/exec it ourselves.** `PMIx_Spawn` already implements
+exactly that for a spawn we issue on our own behalf — see the top of
+`pmix_client_spawn.c`, which sets `forkexec` when we are not connected
+and `PMIX_PEER_IS_LAUNCHER(mypeer)`, and otherwise sends the request to
+our server. That is why `server_switchyard` routing to
+`pmix_tool_relay_op` on `PMIX_PEER_IS_TOOL(mypeer)` is right even though
+`PMIX_PROC_LAUNCHER` includes the `PMIX_PROC_TOOL` bit: a launcher with a
+server attached *should* pass the request up.
+
+The one place the code does not yet follow the rule is a spawn **proxied
+for a downstream tool** while we have no server: `pmix_tool_relay_op`
+returns `PMIX_ERR_UNREACH`, the switchyard returns it (it falls through
+to the logic tree only on `PMIX_ERR_NOT_SUPPORTED`), and the downstream
+tool gets an error rather than a locally fork/exec'd job. Closing that
+gap means giving `pmix_server_spawn()` a `pfexec` fallback — it currently
+refuses outright when `pmix_host_server.spawn` is NULL — which is a
+`src/server` change, not a `src/tool` one.
+
 ## PTL receive callbacks (in `pmix_tool.c`)
 
 These are posted during init and fire on the progress thread:
@@ -442,18 +461,11 @@ named are the ones that fail against the unfixed library.
   its SIGCONT handler** (`stdinsig_ev`), and never releases
   `stdinev_global` either. It is the same defect as item 9 one directory
   over, but fixing it properly needs a teardown hook in `src/common` that
-  this review did not design. Left for a `src/common` change.
-- **Whether a *launcher* should relay a spawn is unsettled.**
-  `server_switchyard` routes to `pmix_tool_relay_op` on
-  `PMIX_PEER_IS_TOOL(mypeer)`, and `PMIX_PROC_LAUNCHER` includes the
-  `PMIX_PROC_TOOL` bit — so a launcher with its own server module, and
-  with `pfexec` open, still relays `PMIX_SPAWNNB_CMD` upstream instead of
-  servicing it. For `prun`, which asks its DVM to spawn, that is
-  arguably right; for a launcher that spawns locally it is not. A more
-  precise guard would be "we have no host module to service it"
-  (`!pmix_server_globals.module_set`), but changing it is a behavioral
-  decision about PRRTE's launchers, not a bug fix. Left alone
-  deliberately.
+  this review did not design.
+  [openpmix#4100](https://github.com/openpmix/openpmix/issues/4100).
+- **The tool's event cache in `_notify_complete` looks unreachable, and
+  `src/client` has no equivalent branch at all.** See item 14 and
+  [openpmix#4101](https://github.com/openpmix/openpmix/issues/4101).
 - **The relay assumes both peers negotiated the same bfrops module and
   buffer type.** `pmix_tool_relay_op` copies the downstream tool's raw
   payload into a fresh buffer and sends it to `myserver` unchanged, and
