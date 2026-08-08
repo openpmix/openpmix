@@ -126,6 +126,27 @@ static void discard_local_tracker(pmix_dmdx_local_t *lcd)
     PMIX_RELEASE(lcd);
 }
 
+/* Retire a local dmodex tracker whose target is never going to answer -
+ * the proc it names has departed - telling every parked requester so, and
+ * then discarding the tracker. This is the variant callers outside this
+ * file need: unlike discard_local_tracker above, the parked requesters
+ * here are OTHER local procs that nobody else is going to answer, so
+ * dropping the tracker without invoking their callbacks hangs each of
+ * them and strands the server caddy each one holds. */
+void pmix_server_fail_local_reqs(pmix_dmdx_local_t *lcd, pmix_status_t status)
+{
+    pmix_dmdx_request_t *req;
+
+    while (NULL != (req = (pmix_dmdx_request_t *) pmix_list_remove_first(&lcd->loc_reqs))) {
+        if (NULL != req->cbfunc) {
+            req->cbfunc(status, NULL, 0, req->cbdata, NULL, NULL);
+        }
+        PMIX_RELEASE(req);
+    }
+    pmix_list_remove_item(&pmix_server_globals.local_reqs, &lcd->super);
+    PMIX_RELEASE(lcd);
+}
+
 static pmix_status_t defer_response(char *nspace, pmix_rank_t rank, char *key,
                                     pmix_server_caddy_t *cd, bool localonly,
                                     pmix_modex_cbfunc_t cbfunc, void *cbdata,

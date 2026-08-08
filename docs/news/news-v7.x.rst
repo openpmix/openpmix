@@ -141,3 +141,28 @@ Detailed changes since v6.1.0:
    contributor per fence. The per-rank blob that same loop assembles is
    also released now, rather than being leaked once the pack has copied
    it
+ - A server no longer answers a notification addressed to several
+   processes by rebuilding its target list out of copies of the one
+   process being removed from it. The purge that runs when a peer departs
+   indexed the surviving array by the wrong loop variable
+ - When a process others are waiting on departs, the direct-modex
+   requests parked against it are now failed rather than dropped. The
+   tracker was being released while each waiting request still held a
+   reference on it, so it survived unreachable and the waiting clients
+   were left expecting a reply nobody would send
+ - A namespace update that carries a group context id now stores it
+   against the namespace rather than against whatever process identity
+   happened to be left on the stack, and reports a failure of that store
+   instead of the result of the preceding value copy
+ - PMIx_server_finalize now releases the system temporary directory it
+   recorded at init. Besides the leak, a second PMIx_server_init found it
+   still set and silently kept the previous cycle's value
+ - A server told to make an optional connection to another server, and
+   unable to make it, no longer composes a PMIX_SERVER_URI out of the
+   connection that did not happen
+ - Assorted server leaks on paths that "can do nothing": five host
+   callbacks that returned without honoring the release function the host
+   gave them, the scratch lists of PMIx_server_register_resources, the
+   directive array a launcher-spawned server uses to attach to its parent,
+   and the result caddies of PMIx_server_setup_application and
+   PMIx_server_collect_inventory when the caller supplies no callback
