@@ -43,6 +43,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define DEFAULT_CYCLES 1200
@@ -58,6 +59,7 @@ int main(int argc, char **argv)
     long ncycles = DEFAULT_CYCLES;
     long i;
     int nfail = 0;
+    struct stat stdin_before;
 
     if (1 < argc) {
         ncycles = strtol(argv[1], NULL, 10);
@@ -122,18 +124,46 @@ int main(int argc, char **argv)
     }
 
     /* Now the same cycle with PMIX_FWD_STDIN, which is a different init
-     * and a different teardown: it constructs a file-scope
-     * pmix_iof_read_event_t over our stdin and registers it (plus, on a
-     * tty, a SIGCONT handler) on the event bases. Those are statics, so
-     * a cycle that does not take them back down leaves the next
-     * PMIX_CONSTRUCT running over a live object - losing that cycle's
-     * descriptor - and leaves an event registered on a base
-     * pmix_rte_finalize has already destroyed.
+     * and a different teardown: it has the library build a read event
+     * over our stdin and register it (plus, on a tty, a SIGCONT handler)
+     * on the event base. Both are process-wide, so a cycle that does not
+     * take them back down leaves an event registered on a base
+     * pmix_rte_finalize has already destroyed, and leaves the next init
+     * building a second read event on the same descriptor.
+     *
+     * Two rules meet on that descriptor, and the second is why this
+     * stands a pipe of its own on fd 0 rather than trusting whatever the
+     * caller's stdin happens to be:
+     *
+     *  - stdin belongs to the *application*. The library did not open
+     *    fd 0 and must not close it at shutdown; only descriptors it
+     *    opened itself are its to close.
+     *  - "still open" is not enough to prove that. If the library closes
+     *    fd 0 and anything later in the same cycle opens a descriptor,
+     *    fd 0 is handed straight back and an is-it-open test passes. So
+     *    compare the identity of what is on fd 0, not just its presence.
+     *
+     * Nothing is ever written to the pipe, so the read event stays quiet.
      *
      * Far fewer cycles than above: this one is about the teardown
      * existing at all, and every cycle re-reads the same stdin. */
+    if (0 == nfail) {
+        int pipefd[2];
+
+        if (0 != pipe(pipefd) || 0 > dup2(pipefd[0], STDIN_FILENO)) {
+            fprintf(stderr, "stdin cycles: could not put a pipe on stdin\n");
+            nfail = 1;
+        } else {
+            close(pipefd[0]);
+            if (0 != fstat(STDIN_FILENO, &stdin_before)) {
+                fprintf(stderr, "stdin cycles: fstat of stdin failed\n");
+                nfail = 1;
+            }
+        }
+    }
     for (i = 0; 0 == nfail && i < STDIN_CYCLES; i++) {
         pmix_info_t sinfo[2];
+        struct stat stdin_after;
 
         PMIX_INFO_LOAD(&sinfo[0], PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
         PMIX_INFO_LOAD(&sinfo[1], PMIX_FWD_STDIN, NULL, PMIX_BOOL);
@@ -153,9 +183,16 @@ int main(int argc, char **argv)
             nfail = 1;
             break;
         }
-        /* the library must not have closed our stdin on the way out */
-        if (0 > fcntl(STDIN_FILENO, F_GETFD)) {
+        /* the library must not have closed our stdin on the way out, and
+         * what is on fd 0 must still be the pipe we put there */
+        if (0 != fstat(STDIN_FILENO, &stdin_after)) {
             fprintf(stderr, "stdin cycle %ld: finalize closed our stdin\n", i);
+            nfail = 1;
+            break;
+        }
+        if (stdin_before.st_dev != stdin_after.st_dev ||
+            stdin_before.st_ino != stdin_after.st_ino) {
+            fprintf(stderr, "stdin cycle %ld: fd 0 is no longer our pipe\n", i);
             nfail = 1;
             break;
         }

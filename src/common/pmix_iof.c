@@ -656,6 +656,100 @@ void pmix_iof_finalize(void)
     }
 }
 
+/* Start reading our own stdin into stdinev_global, arming the SIGCONT
+ * handler when we are looking at a terminal.
+ *
+ * Both of the roles that forward their own stdin come through here:
+ * PMIx_IOF_push with PMIX_IOF_PUSH_STDIN, and a tool told PMIX_FWD_STDIN
+ * at init. They used to keep a copy each and the copies drifted - the
+ * tool's never added its SIGCONT event (so a backgrounded tool never
+ * resumed reading), never gave its read event back, and kept it in a
+ * file-scope struct of its own that pmix_iof_flow_control cannot see, so
+ * nothing could suspend a tool's stdin. Sharing stdinev_global also
+ * enforces the thing that matters in its own right: one read event per
+ * descriptor. Two of them on fd 0 steal bytes from each other.
+ */
+pmix_status_t pmix_iof_setup_stdin_read(int fd, pmix_proc_t procs[], size_t nprocs,
+                                        pmix_info_t directives[], size_t ndirs)
+{
+    int flags;
+
+    if (NULL != stdinev_global) {
+        /* we are already reading it - see above */
+        return PMIX_SUCCESS;
+    }
+    pmix_globals.pushstdin = true;
+
+    /* We don't want to set nonblocking on our
+     * stdio stream.  If we do so, we set the file descriptor to
+     * non-blocking for everyone that has that file descriptor, which
+     * includes everyone else in our shell pipeline chain.  (See
+     * http://lists.freebsd.org/pipermail/freebsd-hackers/2005-January/009742.html).
+     * This causes things like "prun -np 1 big_app | cat" to lose
+     * output, because cat's stdout is then ALSO non-blocking and cat
+     * isn't built to deal with that case (same with almost all other
+     * unix text utils).
+     */
+    if (0 != fd) {
+        if ((flags = fcntl(fd, F_GETFL, 0)) < 0) {
+            pmix_output(pmix_client_globals.iof_output,
+                        "[%s:%d]: fcntl(F_GETFL) failed with errno=%d\n",
+                        __FILE__, __LINE__, errno);
+        } else {
+            flags |= O_NONBLOCK;
+            if (0 != fcntl(fd, F_SETFL, flags)) {
+                pmix_output(pmix_client_globals.iof_output,
+                            "[%s:%d]: fcntl(F_SETFL) failed with errno=%d\n",
+                            __FILE__, __LINE__, errno);
+            }
+        }
+    }
+
+    if (isatty(fd)) {
+        /* We should avoid trying to read from stdin if we
+         * have a terminal, but are backgrounded.  Catch the
+         * signals that are commonly used when we switch
+         * between being backgrounded and not.  If the
+         * filedescriptor is not a tty, don't worry about it
+         * and always stay connected.
+         *
+         * The handler resolves and manipulates stdinev_global and its
+         * libevent registration, both of which belong to evbase - so the
+         * signal event goes there too rather than on evauxbase, which a
+         * host may have supplied as a separate thread. And it has to be
+         * *added*: setting a signal event only assigns it.
+         */
+        pmix_event_signal_set(pmix_globals.evbase, &stdinsig_ev, SIGCONT,
+                              pmix_iof_stdin_cb, NULL);
+        if (0 == pmix_event_add(&stdinsig_ev, NULL)) {
+            stdinsig_active = true;
+        }
+
+        /* setup a read event to read stdin, but don't activate it yet. The
+         * dst_name indicates who should receive the stdin. If that recipient
+         * doesn't do a corresponding pull, however, then the stdin will
+         * be dropped upon receipt at the local daemon
+         */
+        PMIX_IOF_READ_EVENT(&stdinev_global, procs, nprocs, directives, ndirs, fd,
+                            pmix_iof_read_local_handler, false);
+
+        /* check to see if we want the stdin read event to be
+         * active - we will always at least define the event,
+         * but may delay its activation
+         */
+        if (pmix_iof_stdin_check(fd)) {
+            PMIX_IOF_READ_ACTIVATE(stdinev_global);
+        }
+    } else {
+        /* if we are not looking at a tty, just setup a read event
+         * and activate it
+         */
+        PMIX_IOF_READ_EVENT(&stdinev_global, procs, nprocs, directives, ndirs, fd,
+                            pmix_iof_read_local_handler, true);
+    }
+    return PMIX_SUCCESS;
+}
+
 static void stdincbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
 {
@@ -713,7 +807,7 @@ static void exec_push(int sd, short args, void *cbdata)
     pmix_status_t rc = PMIX_SUCCESS;
     size_t n;
     bool begincollecting, stopcollecting;
-    int flags, fd = fileno(stdin);
+    int fd = fileno(stdin);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     if (NULL == cb->bo) {
@@ -727,76 +821,8 @@ static void exec_push(int sd, short args, void *cbdata)
                     /* add these targets to our list */
                     if (!pmix_globals.pushstdin) {
                         /* not already collecting, so start */
-                        pmix_globals.pushstdin = true;
-                        /* We don't want to set nonblocking on our
-                         * stdio stream.  If we do so, we set the file descriptor to
-                         * non-blocking for everyone that has that file descriptor, which
-                         * includes everyone else in our shell pipeline chain.  (See
-                         * http://lists.freebsd.org/pipermail/freebsd-hackers/2005-January/009742.html).
-                         * This causes things like "prun -np 1 big_app | cat" to lose
-                         * output, because cat's stdout is then ALSO non-blocking and cat
-                         * isn't built to deal with that case (same with almost all other
-                         * unix text utils).
-                         */
-                        if (0 != fd) {
-                            if ((flags = fcntl(fd, F_GETFL, 0)) < 0) {
-                                pmix_output(pmix_client_globals.iof_output,
-                                            "[%s:%d]: fcntl(F_GETFL) failed with errno=%d\n",
-                                            __FILE__, __LINE__, errno);
-                            } else {
-                                flags |= O_NONBLOCK;
-                                if (0 != fcntl(fd, F_SETFL, flags)) {
-                                    pmix_output(pmix_client_globals.iof_output,
-                                                "[%s:%d]: fcntl(F_SETFL) failed with errno=%d\n",
-                                                __FILE__, __LINE__, errno);
-                                }
-                            }
-                        }
-                        if (isatty(fd)) {
-                            /* We should avoid trying to read from stdin if we
-                             * have a terminal, but are backgrounded.  Catch the
-                             * signals that are commonly used when we switch
-                             * between being backgrounded and not.  If the
-                             * filedescriptor is not a tty, don't worry about it
-                             * and always stay connected.
-                             */
-                            /* the handler resolves and manipulates
-                             * stdinev_global and its libevent registration,
-                             * both of which belong to evbase - so the signal
-                             * event goes there too rather than on evauxbase,
-                             * which a host may have supplied as a separate
-                             * thread. And it has to be *added*: setting a
-                             * signal event only assigns it, so without this
-                             * a tool started in the background never resumes
-                             * reading stdin when it is foregrounded */
-                            pmix_event_signal_set(pmix_globals.evbase, &stdinsig_ev, SIGCONT,
-                                                  pmix_iof_stdin_cb, NULL);
-                            if (0 == pmix_event_add(&stdinsig_ev, NULL)) {
-                                stdinsig_active = true;
-                            }
-
-                            /* setup a read event to read stdin, but don't activate it yet. The
-                             * dst_name indicates who should receive the stdin. If that recipient
-                             * doesn't do a corresponding pull, however, then the stdin will
-                             * be dropped upon receipt at the local daemon
-                             */
-                            PMIX_IOF_READ_EVENT(&stdinev_global, cb->procs, cb->nprocs, cb->directives,
-                                                cb->ndirs, fd, pmix_iof_read_local_handler, false);
-
-                            /* check to see if we want the stdin read event to be
-                             * active - we will always at least define the event,
-                             * but may delay its activation
-                             */
-                            if (pmix_iof_stdin_check(fd)) {
-                                PMIX_IOF_READ_ACTIVATE(stdinev_global);
-                            }
-                        } else {
-                            /* if we are not looking at a tty, just setup a read event
-                             * and activate it
-                             */
-                            PMIX_IOF_READ_EVENT(&stdinev_global, cb->procs, cb->nprocs, cb->directives,
-                                                cb->ndirs, fd, pmix_iof_read_local_handler, true);
-                        }
+                        pmix_iof_setup_stdin_read(fd, cb->procs, cb->nprocs,
+                                                  cb->directives, cb->ndirs);
                     }
                 } else {
                     if (pmix_globals.pushstdin) {

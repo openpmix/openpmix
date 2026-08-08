@@ -77,20 +77,15 @@
 
 #define PMIX_MAX_RETRIES 10
 
-static pmix_event_t stdinsig, parentdied;
-static pmix_iof_read_event_t stdinev;
+static pmix_event_t parentdied;
 static pmix_proc_t myparent;
 
-/* These three record which of the file-scope events above this init cycle
- * actually set up, so finalize can take them back down again. They are
- * statics rather than locals because finalize cannot re-derive the
- * answer: PMIX_FWD_STDIN and PMIX_KEEPALIVE_PIPE were directives to
- * *init*. Leaving an event registered past finalize leaves it pointing at
- * an event base pmix_rte_finalize has destroyed, and leaves the next
- * init's PMIX_CONSTRUCT running over a live object - which loses that
- * cycle's stdin descriptor. */
-static bool stdin_setup = false;
-static bool stdinsig_setup = false;
+/* Records the descriptor PMIX_KEEPALIVE_PIPE named, so finalize can take
+ * that event back down and close it. It is a static rather than a local
+ * because finalize cannot re-derive the answer - the pipe was a directive
+ * to *init*. (The stdin read event and its SIGCONT handler need no such
+ * bookkeeping here: they belong to src/common/pmix_iof.c, and
+ * pmix_iof_finalize releases them from pmix_rte_finalize.) */
 static int keepalive_fd = -1;
 
 static void _pdiedcb(pmix_status_t status, void *cbdata)
@@ -1006,72 +1001,22 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     pmix_pointer_array_set_item(&pmix_globals.iof_requests, 0, iofreq);
 
     if (fwd_stdin) {
-        /* setup the read - we don't want to set nonblocking on our
-         * stdio stream.  If we do so, we set the file descriptor to
-         * non-blocking for everyone that has that file descriptor, which
-         * includes everyone else in our shell pipeline chain.  (See
-         * http://lists.freebsd.org/pipermail/freebsd-hackers/2005-January/009742.html).
-         * This causes things like "prun -np 1 big_app | cat" to lose
-         * output, because cat's stdout is then ALSO non-blocking and cat
-         * isn't built to deal with that case (same with almost all other
-         * unix text utils).*/
+        /* Hand this to the library rather than building a read event of
+         * our own. This file used to keep a private one, and every way
+         * that could drift from src/common/pmix_iof.c's copy, it did: its
+         * SIGCONT event went un-added so a backgrounded tool never
+         * resumed reading, its teardown had to be bolted on separately,
+         * and - the two that a local fix cannot reach -
+         * pmix_iof_flow_control only knows the library's stdinev_global,
+         * so nothing could suspend a tool's own stdin, and a later
+         * PMIx_IOF_push would build a *second* read event on fd 0 that
+         * stole bytes from the first. One read event per descriptor, and
+         * one place that knows how to build it. */
         fd = fileno(stdin);
-        if (isatty(fd)) {
-            /* We should avoid trying to read from stdin if we
-             * have a terminal, but are backgrounded.  Catch the
-             * signals that are commonly used when we switch
-             * between being backgrounded and not.  If the
-             * filedescriptor is not a tty, don't worry about it
-             * and always stay connected.
-             */
-            pmix_event_signal_set(pmix_globals.evauxbase, &stdinsig, SIGCONT,
-                                  pmix_iof_stdin_cb, &stdinev);
-            /* pmix_event_signal_set only ASSIGNS the event - it is
-             * event_assign, not event_add - so without this the handler is
-             * never installed and a tool that is backgrounded and then
-             * resumed never reconsiders its stdin */
-            pmix_event_add(&stdinsig, NULL);
-            stdinsig_setup = true;
-
-            /* setup a read event to read stdin, but don't activate it yet. The
-             * dst_name indicates who should receive the stdin. If that recipient
-             * doesn't do a corresponding pull, however, then the stdin will
-             * be dropped upon receipt at the local daemon
-             */
-            PMIX_CONSTRUCT(&stdinev, pmix_iof_read_event_t);
-            stdinev.fd = fd;
-            stdinev.always_readable = pmix_iof_fd_always_ready(fd);
-            if (stdinev.always_readable) {
-                pmix_event_evtimer_set(pmix_globals.evbase, &stdinev.ev,
-                                       pmix_iof_read_local_handler, &stdinev);
-            } else {
-                pmix_event_set(pmix_globals.evbase, &stdinev.ev, fd, PMIX_EV_READ,
-                               pmix_iof_read_local_handler, &stdinev);
-            }
-            /* check to see if we want the stdin read event to be
-             * active - we will always at least define the event,
-             * but may delay its activation
-             */
-            if (pmix_iof_stdin_check(fd)) {
-                PMIX_IOF_READ_ACTIVATE(&stdinev);
-            }
-        } else {
-            /* if we are not looking at a tty, just setup a read event
-             * and activate it
-             */
-            PMIX_CONSTRUCT(&stdinev, pmix_iof_read_event_t);
-            stdinev.fd = fd;
-            stdinev.always_readable = pmix_iof_fd_always_ready(fd);
-            if (stdinev.always_readable) {
-                pmix_event_evtimer_set(pmix_globals.evbase, &stdinev.ev,
-                                       pmix_iof_read_local_handler, &stdinev);
-            } else {
-                pmix_event_set(pmix_globals.evbase, &stdinev.ev, fd, PMIX_EV_READ,
-                               pmix_iof_read_local_handler, &stdinev);
-            }
-            PMIX_IOF_READ_ACTIVATE(&stdinev);
+        rc = pmix_iof_setup_stdin_read(fd, NULL, 0, NULL, 0);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
         }
-        stdin_setup = true;
     }
 
     /* fill in our local
@@ -1814,19 +1759,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
      * into a state where its base has been destroyed under it - and, for
      * the two that are re-armed on a later init, into a PMIX_CONSTRUCT
      * over a live object. */
-    if (stdin_setup) {
-        if (stdinsig_setup) {
-            pmix_event_del(&stdinsig);
-            stdinsig_setup = false;
-        }
-        /* Hand the destructor an already-closed descriptor: it closes
-         * whatever fd it finds, and ours is the caller's own stdin.
-         * Finalizing the PMIx library must not close the application's
-         * standard input out from under it. */
-        stdinev.fd = -1;
-        PMIX_DESTRUCT(&stdinev);
-        stdin_setup = false;
-    }
     if (0 <= keepalive_fd) {
         pmix_event_del(&parentdied);
         close(keepalive_fd);

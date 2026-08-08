@@ -99,8 +99,18 @@ Note the vestigial remnants that are *not* the mechanism:
 used) and were inherited from ORTE. Don't reason about flow control from
 them.
 
-Three more things about the stdin side that are easy to get wrong:
+Four more things about the stdin side that are easy to get wrong:
 
+- **There is exactly one read event on our stdin, and
+  `pmix_iof_setup_stdin_read()` is the only thing that builds it.** Both
+  roles that forward their own stdin go through it — `PMIx_IOF_push` with
+  `PMIX_IOF_PUSH_STDIN`, and a tool given `PMIX_FWD_STDIN` at init — and
+  a second call once the stream is running is a no-op. That is not tidying:
+  `src/tool/pmix_tool.c` used to keep a read event of its own, so a tool
+  told to forward stdin at init and then handed a `PMIX_IOF_PUSH_STDIN`
+  ended up with two read events on fd 0 stealing bytes from each other,
+  and `pmix_iof_flow_control` — which only knows `stdinev_global` — could
+  not suspend a tool's stdin at all.
 - **The SIGCONT event belongs on `evbase`, and it has to be *added*.**
   Its handler is `pmix_iof_stdin_cb`, which resolves `stdinev_global` and
   arms or disarms that read event — all state `evbase` owns — so putting
@@ -116,11 +126,13 @@ Three more things about the stdin side that are easy to get wrong:
   the delete would be the use-after-free it exists to prevent. Note the
   second-init hazard this closes: a stale `stdinev_global` names an event
   registered on a base the previous cycle tore down.
-- **A tool does not use `stdinev_global`.** `src/tool/pmix_tool.c` builds
-  its own file-scope `stdinev`, so in a tool the global stays NULL and
-  `pmix_iof_flow_control` finds nothing of its own to suspend — it can
-  still relay to peers, but it cannot throttle the tool's own stdin. The
-  tool's copy also carries the un-added-`stdinsig` bug described above.
+- **stdin is the application's descriptor, not ours.** The read-event
+  destructor closes only fds above 2, exactly as the write-event
+  destructor does. A read event on a pfexec child's pipe is ours to
+  close; fd 0 is not, and closing it at finalize takes the caller's stdin
+  away. `test/unit/tool_cycle.c` puts a pipe on fd 0, cycles a tool with
+  `PMIX_FWD_STDIN`, and fails on the first cycle if the descriptor is
+  closed or is no longer the same pipe.
 
 ### Output delivery and the end of a stream (`pmix_iof.c`)
 
