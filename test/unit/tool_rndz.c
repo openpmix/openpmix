@@ -117,8 +117,9 @@ static int run_tool(int urifd, int readyfd)
     ssize_t n;
     pmix_proc_t myproc, before, *servers = NULL;
     size_t nservers = 0, i;
-    pmix_info_t tinfo;
+    pmix_info_t tinfo[3];
     pmix_value_t *val = NULL;
+    pmix_rank_t trank;
     pmix_status_t rc;
     int ret = 1;
     bool found;
@@ -150,9 +151,22 @@ static int run_tool(int urifd, int readyfd)
     /* this is what a debugger sets before fork/exec'ing its launcher */
     setenv("PMIX_LAUNCHER_RNDZ_URI", uri, 1);
 
-    PMIX_INFO_LOAD(&tinfo, PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
-    rc = PMIx_tool_init(&myproc, &tinfo, 1);
-    PMIX_INFO_DESTRUCT(&tinfo);
+    /* Come up with an identity of our own as well as DO_NOT_CONNECT.
+     * That combination is deliberate: it is the one case where the
+     * stand-in peer "myserver" points at is left with no name at all
+     * (init only fills one in when the caller supplied none), and the
+     * rendezvous block has to restore our primary server by name once the
+     * debugger releases us. An empty name is a wildcard to
+     * PMIX_CHECK_NSPACE, so getting this wrong leaves the debugger as our
+     * primary - which the connected check after init catches. */
+    PMIX_INFO_LOAD(&tinfo[0], PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&tinfo[1], PMIX_TOOL_NSPACE, "tool-rndz-launcher-self", PMIX_STRING);
+    trank = 0;
+    PMIX_INFO_LOAD(&tinfo[2], PMIX_TOOL_RANK, &trank, PMIX_PROC_RANK);
+    rc = PMIx_tool_init(&myproc, tinfo, 3);
+    PMIX_INFO_DESTRUCT(&tinfo[0]);
+    PMIX_INFO_DESTRUCT(&tinfo[1]);
+    PMIX_INFO_DESTRUCT(&tinfo[2]);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "  tool: PMIx_tool_init failed: %s\n", PMIx_Error_string(rc));
         return 1;
@@ -161,6 +175,15 @@ static int run_tool(int urifd, int readyfd)
      * registration callback, init never returned */
     alarm(0);
     PMIX_LOAD_PROCID(&before, myproc.nspace, myproc.rank);
+
+    /* the rendezvous block made the debugger our primary server and then
+     * had to put things back; we asked not to connect to anything, so
+     * "back" means back to ourselves */
+    if (PMIx_tool_is_connected()) {
+        fprintf(stderr, "  tool: the debugger is still our primary server - init did "
+                "not restore it\n");
+        goto done;
+    }
 
     /* the rendezvous server must be on our list of known servers, and
      * it must not be us */

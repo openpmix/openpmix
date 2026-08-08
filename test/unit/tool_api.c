@@ -284,6 +284,13 @@ int main(int argc, char **argv)
     report("disconnect from an unknown server reports PMIX_ERR_NOT_FOUND",
            PMIX_ERR_NOT_FOUND == rc, PMIx_Error_string(rc));
 
+    /* an unnamed server is a wildcard to PMIX_CHECK_NSPACE, so it would
+     * otherwise drop whichever server the array held first */
+    PMIX_LOAD_PROCID(&bogus, NULL, 0);
+    rc = PMIx_tool_disconnect(&bogus);
+    report("disconnect from an unnamed server is rejected", PMIX_ERR_BAD_PARAM == rc,
+           PMIx_Error_string(rc));
+
     /* a tool may be handed a server module after the fact */
     rc = PMIx_tool_set_server_module(&mymodule);
     report("set_server_module accepted after init", PMIX_SUCCESS == rc, PMIx_Error_string(rc));

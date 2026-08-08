@@ -1178,11 +1178,24 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     /* see if they gave us a rendezvous URI to which we are to call back */
     evar = getenv("PMIX_LAUNCHER_RNDZ_URI");
     if (NULL != evar) {
-        /* attach to the specified server so it can
-         * tell us what we are to do - save our
-         * current server for now */
-        PMIX_LOAD_PROCID(&myserver, pmix_client_globals.myserver->info->pname.nspace,
-                         pmix_client_globals.myserver->info->pname.rank);
+        /* Attach to the specified server so it can tell us what we are to
+         * do - save our current server first, so we can go back to it once
+         * the debugger releases us.
+         *
+         * If we have no server, "back to it" means back to ourselves, and
+         * we have to say so with our own id. The stand-in peer that
+         * myserver points at on the do-not-connect path may carry no name
+         * at all (the self-assign block is skipped when the caller
+         * supplied PMIX_TOOL_NSPACE/RANK), and PMIX_CHECK_NSPACE treats an
+         * empty nspace as a wildcard - so restoring by that name would
+         * match whichever server the array happened to hold first, and
+         * quietly leave the debugger as our primary. */
+        if (pmix_atomic_check_bool(&pmix_globals.connected)) {
+            PMIX_LOAD_PROCID(&myserver, pmix_client_globals.myserver->info->pname.nspace,
+                             pmix_client_globals.myserver->info->pname.rank);
+        } else {
+            PMIX_LOAD_PROCID(&myserver, pmix_globals.myid.nspace, pmix_globals.myid.rank);
+        }
         PMIX_INFO_CREATE(iptr, 3);
         PMIX_INFO_LOAD(&iptr[0], PMIX_SERVER_URI, evar, PMIX_STRING);
         rc = 2; // give us two seconds to connect
@@ -2077,6 +2090,17 @@ static void disc(int sd, short args, void *cbdata)
     if (NULL == cb->proc) {
         pmix_atomic_unset_bool(&pmix_globals.connected);
         cb->status = PMIX_SUCCESS;
+        PMIX_POST_OBJECT(cb);
+        PMIX_WAKEUP_THREAD(&cb->lock);
+        return;
+    }
+
+    /* An unnamed server matches everything: PMIX_CHECK_NSPACE treats an
+     * invalid nspace as a wildcard, so the walk below would drop whichever
+     * server happens to be first in the array. Naming no server is not a
+     * way to disconnect an arbitrary one. */
+    if (PMIX_NSPACE_INVALID(cb->proc->nspace)) {
+        cb->status = PMIX_ERR_BAD_PARAM;
         PMIX_POST_OBJECT(cb);
         PMIX_WAKEUP_THREAD(&cb->lock);
         return;
