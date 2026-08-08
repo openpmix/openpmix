@@ -116,6 +116,7 @@ examples/resolve
 examples/multi_nspace_group
 examples/pub2
 examples/toolqry
+examples/toolswitch
 examples/simple_resolve
 examples/pubstress
 examples/monitor

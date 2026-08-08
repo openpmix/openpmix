@@ -30,6 +30,7 @@ two disagree, the README wins, and please fix this file.
 | `run-ptl-tests.sh` | The `src/mca/ptl` transport over real sockets between real hosts: interface selection, node-local rendezvous discovery, a tool attaching across nodes, the inbound message-size ceiling, an exhausted port range (README §17) |
 | `run-runtime-tests.sh` | The `src/runtime` bring-up/tear-down suite in the optimized configuration and on Linux — where the progress thread's CPU-affinity path exists at all — plus that path driven through a real `PMIx_Init`, and node identity across real servers (README §18) |
 | `run-server-tests.sh` | `src/server` — the server-role half of libpmix — across separate servers: direct modex, cross-namespace get, group blocks spanning nodes, IOF pull/dereg against a persistent DVM, and a valgrind pass on the daemon (README §19) |
+| `run-tool-tests.sh` | `src/tool` — the tool-role half of libpmix — with the tool and its servers on different nodes: switching the primary between two independent DVMs, a remote server dying, IOF relayed to a tool from other nodes, and the only valgrind pass the tool library gets (README §20) |
 | `swarm-common.sh` | **Sourced, never executed.** `$PMIX_SWARM` naming and the one copy of `cleanup_swarm` |
 
 ## Things that will bite you
@@ -152,6 +153,21 @@ two disagree, the README wins, and please fix this file.
   PRRTE's read `/src/prrte/src/prted/pmix/...`, which separates them
   cleanly. The image carries no valgrind, so the stage installs it into
   the one node it needs at run time and skips if there is no network.
+
+- **A PMIx server binds LOOPBACK unless remote connections were asked
+  for.** So does PRRTE's, and a loopback URI is unreachable from another
+  node by construction — which turns every cross-node tool stage into a
+  skip. `run-tool-tests.sh` starts its DVMs with
+  `PRTE_MCA_pmix_remote_connections=1` (the PRRTE-side parameter that
+  becomes the `PMIX_SERVER_REMOTE_CONNECTIONS` directive) for exactly this
+  reason. `run-ptl-tests.sh` predates that discovery and still reports the
+  skip. If a stage starts saying "listener is on loopback", that variable
+  is what is missing — it is not a PRRTE bug.
+
+- **`prterun` has no `--dvm-uri`; `prun` does.** A stage that wants a
+  tool attached to a *persistent* DVM has to use `prun`. `prterun` brings
+  up a DVM of its own, and handing it `--dvm-uri` fails the command line
+  with an unrelated-looking usage error.
 
 - **The build volume outlives your branch.** `pmix-build` persists
   across runs and across checkouts, so a tree in it can be older than
