@@ -185,6 +185,11 @@ void pmix_rte_finalize(void)
         }
     }
     PMIX_DESTRUCT(&pmix_globals.notifications);
+    /* the stdin read event and SIGCONT handler in src/common/pmix_iof.c
+     * are process-wide and outlive every request, so nothing else gives
+     * them back. This has to happen while the event base is still up -
+     * pmix_progress_thread_stop below is what frees it. */
+    pmix_iof_finalize();
     for (i = 0; i < pmix_globals.iof_requests.size; i++) {
         req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
         if (NULL != req) {

@@ -35,6 +35,7 @@
 #include "src/common/pmix_pfexec.h"
 #include "src/mca/ptl/ptl.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_basename.h"
@@ -132,6 +133,23 @@ static void process_cache(int sd, short args, void *cbdata)
     if (NULL == req->requestor) {
         return;
     }
+    /* and nothing to forward to a peer that has no identity yet or has
+     * already gone - the same two screens pmix_iof_process_iof applies
+     * before it reaches into requestor->info */
+    if (NULL == req->requestor->info || req->requestor->finalized) {
+        return;
+    }
+
+    /* NOTE: the forwarding below is currently unreachable, and knowing
+     * that is worth more than the code. The only requests that get here
+     * are the ones PMIx_IOF_pull built in this process, and it sets
+     * requestor only when we are our own server - in which case the
+     * requestor IS us, so the "never forward to myself" test below skips
+     * every entry. A request with no requestor returned above. So the
+     * delayed cache scan the blocking form of PMIx_IOF_pull arms delivers
+     * nothing: such a request is served through req->cbfunc when the IO
+     * arrives, and cached IO has no path to that callback. Settle what
+     * the right delivery is before making this live. */
 
     PMIX_LIST_FOREACH_SAFE (iof, ionext, &pmix_server_globals.iof, pmix_iof_cache_t) {
         /* if the channels don't match, then ignore it */
@@ -175,8 +193,15 @@ static void process_cache(int sd, short args, void *cbdata)
                 PMIX_RELEASE(msg);
                 return;
             }
-            /* provide the local handler ID */
-            PMIX_BFROPS_PACK(rc, req->requestor, msg, &req->local_id, 1, PMIX_SIZE);
+            /* Provide the handler ID *the requestor* knows this request
+             * by. The receiver uses it as an index into its own
+             * iof_requests array, so it has to be remote_id - local_id is
+             * our index into ours, and names a different request entirely.
+             * pmix_iof_process_iof, which packs the identical message for
+             * the identical receiver, gets this right. (Nothing reaches
+             * this today - see the note below - which is how the two
+             * drifted apart.) */
+            PMIX_BFROPS_PACK(rc, req->requestor, msg, &req->remote_id, 1, PMIX_SIZE);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
@@ -221,10 +246,28 @@ static void myreg(int sd, short args, void *cbdata)
     pmix_cmd_t cmd = PMIX_IOF_PULL_CMD;
     pmix_buffer_t *msg = NULL;
     pmix_status_t rc;
+    int idx;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     // store the request
-    req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    idx = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    if (0 > idx) {
+        /* the array could not be grown, so the request was never stored -
+         * there is no local id to hand back and nothing to remove. The
+         * negative return must not be passed off as one: it lands in a
+         * size_t, goes on the wire to the server as a huge value, and is
+         * reported to the caller as the handle of a live registration */
+        req->local_id = SIZE_MAX;
+        req->status = PMIX_ERR_NOMEM;
+        if (NULL != req->regcbfunc) {
+            req->regcbfunc(req->status, req->local_id, req->cbdata);
+            PMIX_RELEASE(req);
+        } else {
+            PMIX_WAKEUP_THREAD(&req->lock);
+        }
+        return;
+    }
+    req->local_id = (size_t) idx;
     req->status = PMIX_SUCCESS;
 
     if (NULL != req->requestor) {
@@ -344,6 +387,15 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
      * array to copy from */
     if (0 == nprocs || NULL == procs) {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* the blocking form posts to the progress thread and then waits on
+     * it, so calling it FROM that thread - from an event handler, or
+     * from the IOF delivery callback itself - is waiting for ourselves,
+     * and the progress thread never runs again. Say so instead, exactly
+     * as the server-side IOF entry points do */
+    if (NULL == regcbfunc && pmix_progress_thread_check_blocking("PMIx_IOF_pull")) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     req = PMIX_NEW(pmix_iof_req_t);
@@ -493,6 +545,10 @@ static void mydereg(int sd, short args, void *cbdata)
 
     /* pack the remote handler ID */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &remote_id, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
                         "pmix:iof_dereg sending to server");
@@ -543,6 +599,13 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_deregister(size_t iofhdlr, const pmix_info_t 
         return PMIX_ERR_UNREACH;
     }
 
+    /* see the note on PMIx_IOF_pull - a tool that decides it has seen
+     * enough output and deregisters from inside its own IOF callback is
+     * calling this from the progress thread */
+    if (NULL == cbfunc && pmix_progress_thread_check_blocking("PMIx_IOF_deregister")) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     // need to threadshift to access global data
     cd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == cd) {
@@ -565,7 +628,33 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_deregister(size_t iofhdlr, const pmix_info_t 
 }
 
 static pmix_event_t stdinsig_ev;
+static bool stdinsig_active = false;
 static pmix_iof_read_event_t *stdinev_global = NULL;
+
+/* Give back what the stdin machinery here holds process-wide.
+ *
+ * Both of these live for the life of the library rather than of a
+ * request, so nothing else ever released them. The read event was simply
+ * leaked; worse, a second PMIx_Init would build another one over the top
+ * of the pointer while the first still named an event registered on the
+ * base the previous cycle tore down - which anything reaching
+ * stdinev_global in between (a flow-control request, say) would walk.
+ *
+ * Called from pmix_rte_finalize, which runs it while the event base is
+ * still standing - deleting these afterwards would be the very
+ * use-after-free it exists to prevent.
+ */
+void pmix_iof_finalize(void)
+{
+    if (stdinsig_active) {
+        pmix_event_del(&stdinsig_ev);
+        stdinsig_active = false;
+    }
+    if (NULL != stdinev_global) {
+        PMIX_RELEASE(stdinev_global);
+        stdinev_global = NULL;
+    }
+}
 
 static void stdincbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
@@ -671,8 +760,20 @@ static void exec_push(int sd, short args, void *cbdata)
                              * filedescriptor is not a tty, don't worry about it
                              * and always stay connected.
                              */
-                            pmix_event_signal_set(pmix_globals.evauxbase, &stdinsig_ev, SIGCONT,
+                            /* the handler resolves and manipulates
+                             * stdinev_global and its libevent registration,
+                             * both of which belong to evbase - so the signal
+                             * event goes there too rather than on evauxbase,
+                             * which a host may have supplied as a separate
+                             * thread. And it has to be *added*: setting a
+                             * signal event only assigns it, so without this
+                             * a tool started in the background never resumes
+                             * reading stdin when it is foregrounded */
+                            pmix_event_signal_set(pmix_globals.evbase, &stdinsig_ev, SIGCONT,
                                                   pmix_iof_stdin_cb, NULL);
+                            if (0 == pmix_event_add(&stdinsig_ev, NULL)) {
+                                stdinsig_active = true;
+                            }
 
                             /* setup a read event to read stdin, but don't activate it yet. The
                              * dst_name indicates who should receive the stdin. If that recipient
@@ -843,6 +944,11 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntar
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* see the note on PMIx_IOF_pull */
+    if (NULL == cbfunc && pmix_progress_thread_check_blocking("PMIx_IOF_push")) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     // need to threadshift this request to process it since it accesses
@@ -1099,10 +1205,16 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 free(outdir);
                 return NULL;
             }
-            /* define a sink to that file descriptor */
+            /* define a sink to that file descriptor. It is tagged with
+             * stddiag as well as stderr because that is where stddiag is
+             * written (see pmix_iof_write_output): a sink that claims only
+             * stderr is never matched by the stddiag lookup, so every
+             * stddiag chunk would build another sink - re-opening this same
+             * file O_TRUNC and discarding what is already in it */
             snk = PMIX_NEW(pmix_iof_sink_t);
             PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
-                                 PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
+                                 PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL,
+                                 pmix_iof_write_handler);
             pmix_list_append(&nptr->sinks, &snk->super);
             free(outdir);
             return &snk->wev;
@@ -1127,6 +1239,12 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 /* setup the file */
                 pmix_asprintf(&outfile, "%s.%s.%0*u.out", nptr->iof_flags.file,
                               nptr->nspace, numdigs, rank);
+            }
+            /* pmix_asprintf leaves the pointer NULL when it fails, and
+             * everything below this point takes the name apart */
+            if (NULL == outfile) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                return NULL;
             }
             /* ensure the directory the file lands in exists.  This is taken
              * from the FINAL name, not from the name we were handed: a
@@ -1174,6 +1292,10 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 pmix_asprintf(&outfile, "%s.%s.%0*u.err", nptr->iof_flags.file,
                               nptr->nspace, numdigs, rank);
             }
+            if (NULL == outfile) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                return NULL;
+            }
             /* see the note on the stdout sink above */
             outdir = pmix_dirname(outfile);
             rc = pmix_os_dirpath_create(outdir, S_IRWXU | S_IRGRP | S_IXGRP);
@@ -1190,10 +1312,12 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
                 return NULL;
             }
-            /* define a sink to that file descriptor */
+            /* see the note on the directory sink above for why stddiag is
+             * tagged here too */
             snk = PMIX_NEW(pmix_iof_sink_t);
             PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
-                                 PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
+                                 PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL,
+                                 pmix_iof_write_handler);
             pmix_list_append(&nptr->sinks, &snk->super);
             return &snk->wev;
         }
@@ -1236,6 +1360,12 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
          * is not a string must be ignored rather than strdup'd from
          * whatever else shares the union */
         if (PMIX_STRING == info->value.type && NULL != info->value.data.string) {
+            /* this walks an array the caller composed, so the key can
+             * appear more than once - the last one wins, but only if the
+             * one before it is given back first */
+            if (NULL != flags->file) {
+                free(flags->file);
+            }
             flags->file = strdup(info->value.data.string);
             flags->set = true;
             flags->local_output = true;
@@ -1244,6 +1374,10 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_OUTPUT_TO_DIRECTORY) ||
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_DIRECTORY)) {
         if (PMIX_STRING == info->value.type && NULL != info->value.data.string) {
+            /* see the note on the file case above */
+            if (NULL != flags->directory) {
+                free(flags->directory);
+            }
             flags->directory = strdup(info->value.data.string);
             flags->set = true;
             flags->local_output = true;
@@ -1475,11 +1609,19 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                if (NULL != kv) {  // should never be NULL
+                /* the union must not be read until the type says which
+                 * member is live, and a string member may legitimately be
+                 * NULL - "unknown" is what this reports for a hostname it
+                 * cannot get, so use it here too rather than strdup(NULL) */
+                if (NULL != kv && NULL != kv->value &&
+                    PMIX_STRING == kv->value->type &&
+                    NULL != kv->value->data.string) {
                     cptr = strdup(kv->value->data.string);
-                    PMIX_RELEASE(kv);
                 } else {
                     cptr = strdup("unknown");
+                }
+                if (NULL != kv) {
+                    PMIX_RELEASE(kv);
                 }
             } else {
                 cptr = strdup("unknown");
@@ -1494,16 +1636,16 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                if (NULL != kv) { // should never be NULL
-                    rc = PMIx_Value_get_number(kv->value, &pid, PMIX_PID);
-                    PMIX_RELEASE(kv);
-                    if (PMIX_SUCCESS != rc) {
-                        pidstring = strdup("unknown");
-                    } else {
-                        pmix_asprintf(&pidstring, "%u", pid);
-                    }
+                /* PMIx_Value_get_number reads value->type without screening
+                 * the pointer, so the kval has to carry a value at all */
+                if (NULL != kv && NULL != kv->value &&
+                    PMIX_SUCCESS == PMIx_Value_get_number(kv->value, &pid, PMIX_PID)) {
+                    pmix_asprintf(&pidstring, "%u", pid);
                 } else {
                     pidstring = strdup("unknown");
+                }
+                if (NULL != kv) {
+                    PMIX_RELEASE(kv);
                 }
             } else {
                 pidstring = strdup("unknown");
@@ -1569,11 +1711,19 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                if (NULL != kv) {  // should never be NULL
+                /* the union must not be read until the type says which
+                 * member is live, and a string member may legitimately be
+                 * NULL - "unknown" is what this reports for a hostname it
+                 * cannot get, so use it here too rather than strdup(NULL) */
+                if (NULL != kv && NULL != kv->value &&
+                    PMIX_STRING == kv->value->type &&
+                    NULL != kv->value->data.string) {
                     cptr = strdup(kv->value->data.string);
-                    PMIX_RELEASE(kv);
                 } else {
                     cptr = strdup("unknown");
+                }
+                if (NULL != kv) {
+                    PMIX_RELEASE(kv);
                 }
             } else {
                 cptr = strdup("unknown");
@@ -1588,16 +1738,15 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                if (NULL != kv) {  // should never be NULL
-                    rc = PMIx_Value_get_number(kv->value, &pid, PMIX_PID);
-                    PMIX_RELEASE(kv);
-                    if (PMIX_SUCCESS != rc) {
-                        pidstring = strdup("unknown");
-                    } else {
-                        pmix_asprintf(&pidstring, "%u", pid);
-                    }
+                /* see the note on the xml form of this above */
+                if (NULL != kv && NULL != kv->value &&
+                    PMIX_SUCCESS == PMIx_Value_get_number(kv->value, &pid, PMIX_PID)) {
+                    pmix_asprintf(&pidstring, "%u", pid);
                 } else {
                     pidstring = strdup("unknown");
+                }
+                if (NULL != kv) {
+                    PMIX_RELEASE(kv);
                 }
             } else {
                 pidstring = strdup("unknown");
@@ -1627,10 +1776,24 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
     /* if we are to timestamp output, start the tag with that */
     if (myflags->timestamp) {
         time_t mytime;
-        /* get the timestamp */
+        char tod[32];
+        size_t tslen;
+        /* ctime() renders into a process-wide static buffer, and the
+         * newline strip below then writes into it - so this would corrupt
+         * the result of any ctime/asctime the application is holding on
+         * another thread. ctime_r gives us our own buffer (26 bytes is
+         * the defined maximum) and is allowed to decline a time it cannot
+         * represent rather than hand back a NULL to index into */
         time(&mytime);
-        cptr = ctime(&mytime);
-        cptr[strlen(cptr) - 1] = '\0'; /* remove trailing newline */
+        if (NULL == ctime_r(&mytime, tod)) {
+            pmix_snprintf(tod, sizeof(tod), "unknown");
+        } else {
+            tslen = strlen(tod);
+            if (0 < tslen && '\n' == tod[tslen - 1]) {
+                tod[tslen - 1] = '\0'; /* remove trailing newline */
+            }
+        }
+        cptr = tod;
 
         if (myflags->xml && !myflags->tag && !myflags->rank) {
             pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
@@ -1848,6 +2011,37 @@ process:
     return PMIX_SUCCESS;
 }
 
+/* Write out whatever we were holding for this source and stream because
+ * it had no newline yet.
+ *
+ * The end of a stream is the last chance to do that - nothing more is
+ * coming, so an unterminated final line has to go out now or not at all.
+ * It used to go out "not at all": the zero-byte marker took an early exit
+ * that never looked at the residual list, so the bytes sat there until
+ * something else swept it. A server sweeps it in PMIx_server_finalize,
+ * which at least prints the line, but out of order and at shutdown; a
+ * client or tool never sweeps it, so a rank whose last write did not end
+ * in a newline simply lost that write. */
+static void flush_residual(const pmix_proc_t *name, pmix_iof_channel_t stream)
+{
+    pmix_iof_residual_t *res, *next;
+    pmix_status_t rc;
+
+    PMIX_LIST_FOREACH_SAFE(res, next, &pmix_server_globals.iof_residuals, pmix_iof_residual_t) {
+        if (!PMIX_CHECK_PROCID(name, &res->name) || !(stream & res->stream)) {
+            continue;
+        }
+        rc = write_output_line(&res->name, res->channel, &res->flags,
+                               res->stream, res->copystdout, res->copystderr,
+                               &res->bo);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+        pmix_list_remove_item(&pmix_server_globals.iof_residuals, &res->super);
+        PMIX_RELEASE(res);
+    }
+}
+
 /* What to format output with when the namespace it came from has nothing to
  * say about it. A tool that has a spawn in flight has already parsed that
  * spawn's directives (see stash_spawn_iof_flags() in pmix_client_spawn.c);
@@ -2011,8 +2205,12 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
                          PMIx_IOF_channel_string(stream), PMIX_NAME_PRINT(name),
                          (NULL == channel) ? -1 : channel->fd);
 
-    /* zero bytes can just be passed along */
+    /* zero bytes can just be passed along - but not before anything we
+     * were holding back for the last, still-unterminated line, as this
+     * is the end of the stream and there will be no later chunk to
+     * complete it */
     if (0 == bo->size) {
+        flush_residual(name, stream);
         rc = write_output_line(name, channel, &myflags, stream,
                                false, false, bo);
         return rc;
@@ -2168,13 +2366,25 @@ void pmix_iof_write_handler(int sd, short args, void *cbdata)
     while (NULL != (item = pmix_list_remove_first(&wev->outputs))) {
         output = (pmix_iof_write_output_t *) item;
         if (0 == output->numbytes) {
-            /* don't reactivate the event */
+            /* the source that fed this marker has closed its stream */
             PMIX_RELEASE(output);
-            if (2 < wev->fd) {  // close the channel
+            if (2 < wev->fd) {
+                /* a sink of our own making, fed by exactly that one
+                 * source: close the channel and stop. "pending" is
+                 * deliberately left set so nothing re-arms the event on a
+                 * descriptor that is gone */
                 close(wev->fd);
                 wev->fd = -1;
+                return;
             }
-            return;
+            /* a shared stdout/stderr channel is fed by every source we
+             * output for, so one of them closing must not stop it. Skip
+             * the marker and keep draining: returning here would leave
+             * "pending" set with the event un-armed, and since
+             * write_output_line only activates the event when "pending"
+             * is clear, every later chunk from every other source would
+             * sit in this list unwritten until finalize */
+            continue;
         }
         num_written = write(wev->fd, output->data, output->numbytes);
         if (num_written < 0) {
@@ -2286,6 +2496,18 @@ void pmix_iof_stdin_cb(int sd, short args, void *cbdata)
     }
 }
 
+/* PMIx_Notify_event with a NULL cbfunc is its BLOCKING form: it posts a
+ * caddy to the progress thread and then PMIX_WAIT_THREADs on it. The
+ * callback below already runs on that thread, so waiting there is
+ * waiting for ourselves - the caddy can never fire, and the progress
+ * thread is dead for the life of the process. Handing it a do-nothing
+ * completion takes the non-blocking path instead, which is what every
+ * other in-library notifier does (see pmix_pfexec.c, psensor/file). */
+static void iof_ntfy_cbfunc(pmix_status_t status, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(status, cbdata);
+}
+
 static void iof_stdin_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                              pmix_buffer_t *buf, void *cbdata)
 {
@@ -2327,7 +2549,7 @@ static void iof_stdin_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         if (PMIX_ERR_IOF_COMPLETE != ret) {
             /* generate an IOF-failed event so the tool knows */
             PMIx_Notify_event(PMIX_ERR_IOF_FAILURE, &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL, NULL,
-                              0, NULL, NULL);
+                              0, iof_ntfy_cbfunc, NULL);
         }
         return;
     }
@@ -2865,7 +3087,12 @@ static void iof_read_event_destruct(pmix_iof_read_event_t *rev)
     if (rev->active) {
         pmix_event_del(&rev->ev);
     }
-    if (0 <= rev->fd) {
+    /* Only close a descriptor we opened. The read events this library
+     * builds are either on a pipe it created (pfexec's children) or on
+     * fileno(stdin), which belongs to the application - taking the
+     * caller's stdin away when the library shuts down is not ours to do.
+     * The write-event destructor guards itself the same way. */
+    if (2 < rev->fd) {
         pmix_output_verbose(20, pmix_client_globals.iof_output, "%s iof: closing fd %d",
                              PMIX_NAME_PRINT(&pmix_globals.myid), rev->fd);
         close(rev->fd);

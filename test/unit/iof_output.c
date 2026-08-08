@@ -1,0 +1,258 @@
+/*
+ * Copyright (c) 2026      Nanook Consulting  All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
+ *
+ * $HEADER$
+ */
+
+/*
+ * IOF output delivery: what happens at the end of a stream.
+ *
+ * A source that closes its output is announced by a zero-byte delivery.
+ * Two things used to go wrong when one arrived, and both of them are
+ * silent - the output simply never appears:
+ *
+ *  - The shared stdout/stderr sinks (fd 1 and fd 2) are fed by every
+ *    source a server outputs for, but the write handler treated a
+ *    zero-byte marker as "this channel is finished": it returned with
+ *    the sink still flagged "pending" and its write event un-armed.
+ *    Since output is only ever queued-and-armed when "pending" is clear,
+ *    every later chunk from every other source then sat in the queue
+ *    unwritten until finalize.
+ *
+ *  - Output that does not end in a newline is held back as a "residual"
+ *    until the rest of the line shows up. The end of the stream is the
+ *    last chance to write it, and the zero-byte path did not look: a
+ *    server flushed it at finalize (late, and out of order) and a client
+ *    or tool never flushed it at all.
+ *
+ * This drives the real path by standing a pipe up in place of stdout and
+ * another in place of stderr, then handing the library output through
+ * PMIx_server_IOF_deliver.
+ */
+
+#include "src/include/pmix_config.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "include/pmix.h"
+#include "include/pmix_server.h"
+
+#define WAIT_USEC    20000
+#define WAIT_TRIES   250
+#define SETTLE_TRIES 25
+#define BUFSIZE      4096
+
+static FILE *out = NULL; /* the real stdout, saved before we take it */
+static int rfd = -1;     /* read end of the pipe standing in for stdout */
+static int efd = -1;     /* read end of the pipe standing in for stderr */
+static int failures = 0;
+
+static void report(const char *what, bool pass)
+{
+    fprintf(out, "%-62s : %s\n", what, pass ? "PASS" : "FAIL");
+    fflush(out);
+    if (!pass) {
+        ++failures;
+    }
+}
+
+/* Collect what shows up on a captured stream, stopping once we have
+ * "want" bytes or run out of patience. Returns the byte count; the
+ * result is NUL-terminated so it can be compared as a string. */
+static size_t collect(int fd, char *buf, size_t want)
+{
+    size_t got = 0;
+    int i;
+    ssize_t n;
+
+    for (i = 0; i < WAIT_TRIES && got < want; i++) {
+        n = read(fd, &buf[got], BUFSIZE - 1 - got);
+        if (0 < n) {
+            got += (size_t) n;
+            continue;
+        }
+        usleep(WAIT_USEC);
+    }
+    buf[got] = '\0';
+    return got;
+}
+
+/* Give the progress thread a good run at whatever we handed it, for the
+ * cases where the assertion is that nothing comes out yet. */
+static size_t settle(int fd, char *buf)
+{
+    size_t got = 0;
+    int i;
+    ssize_t n;
+
+    for (i = 0; i < SETTLE_TRIES; i++) {
+        usleep(WAIT_USEC);
+        n = read(fd, &buf[got], BUFSIZE - 1 - got);
+        if (0 < n) {
+            got += (size_t) n;
+        }
+    }
+    buf[got] = '\0';
+    return got;
+}
+
+static bool deliver(const pmix_proc_t *src, pmix_iof_channel_t channel,
+                    const char *data, size_t len)
+{
+    pmix_byte_object_t bo;
+    pmix_status_t rc;
+
+    bo.bytes = (char *) data;
+    bo.size = len;
+    rc = PMIx_server_IOF_deliver(src, channel, &bo, NULL, 0, NULL, NULL);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        fprintf(out, "PMIx_server_IOF_deliver failed: %s\n", PMIx_Error_string(rc));
+        fflush(out);
+        return false;
+    }
+    return true;
+}
+
+/* nothing here reaches a host upcall - the module only has to exist */
+static pmix_server_module_t mymodule = {.push_stdin = NULL};
+
+/* replace "fd" with the write end of a fresh pipe, handing back a
+ * non-blocking read end */
+static int capture(int fd)
+{
+    int pipefd[2];
+
+    if (0 != pipe(pipefd)) {
+        fprintf(out, "pipe failed: %s\n", strerror(errno));
+        return -1;
+    }
+    if (0 > dup2(pipefd[1], fd)) {
+        fprintf(out, "dup2 failed: %s\n", strerror(errno));
+        return -1;
+    }
+    close(pipefd[1]);
+    if (0 > fcntl(pipefd[0], F_SETFL, O_NONBLOCK)) {
+        fprintf(out, "fcntl failed: %s\n", strerror(errno));
+        return -1;
+    }
+    return pipefd[0];
+}
+
+int main(int argc, char **argv)
+{
+    pmix_status_t rc;
+    pmix_proc_t src;
+    int savedout;
+    char buf[BUFSIZE];
+    size_t got;
+    (void) argc;
+    (void) argv;
+
+    /* keep a handle on the real stdout before we take it away, so the
+     * results can still be reported */
+    fflush(stdout);
+    savedout = dup(fileno(stdout));
+    if (0 > savedout) {
+        fprintf(stderr, "dup of stdout failed: %s\n", strerror(errno));
+        return 1;
+    }
+    out = fdopen(savedout, "w");
+    if (NULL == out) {
+        fprintf(stderr, "fdopen failed: %s\n", strerror(errno));
+        return 1;
+    }
+
+    fprintf(out, "\n=== PMIx IOF output delivery unit test ===\n\n");
+    fflush(out);
+
+    /* the sinks are built on fd 1 and fd 2 during server init, so the
+     * substitution has to be in place before that runs */
+    fflush(stderr);
+    rfd = capture(fileno(stdout));
+    efd = capture(fileno(stderr));
+    if (0 > rfd || 0 > efd) {
+        return 1;
+    }
+
+    rc = PMIx_server_init(&mymodule, NULL, 0);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(out, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
+        return 1;
+    }
+
+    /* ---- baseline: a complete line is written out ---- */
+    PMIX_LOAD_PROCID(&src, "outtest", 0);
+    if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "alpha\n", 6)) {
+        PMIx_server_finalize();
+        return 1;
+    }
+    got = collect(rfd, buf, 6);
+    report("a complete line reaches stdout", 6 == got && 0 == strcmp(buf, "alpha\n"));
+
+    /* ---- one source closing must not silence the shared channel ---- */
+    if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, NULL, 0)) {
+        PMIx_server_finalize();
+        return 1;
+    }
+    PMIX_LOAD_PROCID(&src, "outtest", 1);
+    if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "beta\n", 5)) {
+        PMIx_server_finalize();
+        return 1;
+    }
+    got = collect(rfd, buf, 5);
+    report("stdout still flows after another source closed",
+           5 == got && 0 == strcmp(buf, "beta\n"));
+
+    /* and the sink has to stay usable, not just take one more write */
+    if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "gamma\n", 6)) {
+        PMIx_server_finalize();
+        return 1;
+    }
+    got = collect(rfd, buf, 6);
+    report("and keeps flowing for every chunk after that",
+           6 == got && 0 == strcmp(buf, "gamma\n"));
+
+    /* ---- an unterminated last line is written when the stream ends ---- */
+    PMIX_LOAD_PROCID(&src, "outtest", 2);
+    if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "no-newline-here", 15)) {
+        PMIx_server_finalize();
+        return 1;
+    }
+    got = settle(rfd, buf);
+    report("a partial line is held back until the line completes", 0 == got);
+
+    if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, NULL, 0)) {
+        PMIx_server_finalize();
+        return 1;
+    }
+    got = collect(rfd, buf, 15);
+    report("the partial line is written out when the stream closes",
+           15 == got && 0 == strcmp(buf, "no-newline-here"));
+
+    /* ---- stderr is a separate shared sink, and behaves the same ---- */
+    PMIX_LOAD_PROCID(&src, "outtest", 3);
+    if (!deliver(&src, PMIX_FWD_STDERR_CHANNEL, NULL, 0) ||
+        !deliver(&src, PMIX_FWD_STDERR_CHANNEL, "delta\n", 6)) {
+        PMIx_server_finalize();
+        return 1;
+    }
+    got = collect(efd, buf, 6);
+    report("stderr still flows after a source closed",
+           6 == got && 0 == strcmp(buf, "delta\n"));
+
+    PMIx_server_finalize();
+    close(rfd);
+    close(efd);
+
+    fprintf(out, "\n%s\n", (0 == failures) ? "ALL PASSED" : "FAILURES DETECTED");
+    fflush(out);
+    return (0 == failures) ? 0 : 1;
+}
