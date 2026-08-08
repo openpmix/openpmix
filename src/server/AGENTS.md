@@ -123,6 +123,25 @@ Host up-calls use a tri-state return convention throughout:
 invoke the completion yourself"; any error = "rejected." Handle all
 three on every up-call site.
 
+**A spawn is relayed when we are attached to a server and fork/exec'd
+when we are not.** `server_switchyard` hands a command from a downstream
+tool to `pmix_tool_relay_op` whenever *we* are a tool, and falls through
+to the logic tree on **both** `PMIX_ERR_NOT_SUPPORTED` ("not a command we
+relay") and `PMIX_ERR_UNREACH` ("no server to relay it to"). The second
+arm is why `pmix_server_spawn` will fork/exec when it has no
+`pmix_host_server.spawn` but `pfexec` is open — the same rule
+`PMIx_Spawn` applies to a launcher's own requests. Two details make the
+gate safe: `pmix_pfexec_base_open()` is called from exactly one place in
+the tree (`PMIx_tool_init`, for a launcher or scheduler), so
+`pmix_pfexec_globals.initialized` really is the "can I fork/exec"
+question and a plain PMIx server is unaffected; and `pmix_tool_relay_op`
+returns both statuses **before** rewinding the buffer, so the
+fall-through keeps the unpack position the `cmd` read left. The pfexec
+arm hands `pmix_pfexec_base_spawn_job` a *second* setup caddy that
+borrows the first one's apps and directives with `copied` left false —
+pfexec releases the caddy it is given, and the arrays belong to the one
+holding the requester's callback. Covered by `test/unit/tool_relay`.
+
 **`PMIX_SUCCESS` from an up-call transfers ownership of the caddy to the
 host.** This is the arm most easily lost, because it is usually the one
 that needs no code: the handler returns and the host's callback does the

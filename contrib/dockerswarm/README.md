@@ -1344,14 +1344,18 @@ not this suite's business.
 
 ### What this deliberately does not cover
 
-**The tool-to-tool relay in `src/tool/pmix_tool_ops.c`
+**The forwarding half of `src/tool/pmix_tool_ops.c`
 (`pmix_tool_relay_op` / `tool_switchyard`).** That path needs a third
 party: a tool that has connected to *another tool* as its primary server
 and then sends it a command the receiving tool cannot service itself
-(today only `PMIX_SPAWNNB_CMD`), which the receiving tool must forward to
-a real server. PRRTE's launchers do not arrange that shape, so nothing
-here reaches it — and neither does `make check`. It is the one file in
-`src/tool` with no automated coverage at all.
+(today only `PMIX_SPAWNNB_CMD`), which the receiving tool must forward
+**on to a real server**. PRRTE's launchers do not arrange that shape, so
+nothing here reaches it.
+
+`test/unit/tool_relay` covers the other arm of the same decision — the
+receiving tool has *no* server, so it fork/execs the job itself — which
+is what makes the relay's "am I attached?" test observable. The
+forward-to-a-real-server arm remains uncovered anywhere.
 
 ### macOS mode
 
