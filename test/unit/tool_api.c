@@ -39,6 +39,7 @@
 #include "src/include/pmix_config.h"
 
 #include "include/pmix.h"
+#include "include/pmix_server.h"
 #include "include/pmix_tool.h"
 
 #include <stdio.h>
@@ -51,6 +52,10 @@
 
 static int npass = 0;
 static int nfail = 0;
+
+/* an empty module is enough: nothing here calls through it, and the
+ * point is whether the library accepts one at all */
+static pmix_server_module_t mymodule = {0};
 
 static void report(const char *name, int passed, const char *detail)
 {
@@ -279,6 +284,10 @@ int main(int argc, char **argv)
     report("disconnect from an unknown server reports PMIX_ERR_NOT_FOUND",
            PMIX_ERR_NOT_FOUND == rc, PMIx_Error_string(rc));
 
+    /* a tool may be handed a server module after the fact */
+    rc = PMIx_tool_set_server_module(&mymodule);
+    report("set_server_module accepted after init", PMIX_SUCCESS == rc, PMIx_Error_string(rc));
+
     rc = PMIx_tool_finalize();
     report("tool finalized cleanly", PMIX_SUCCESS == rc, PMIx_Error_string(rc));
 
@@ -286,6 +295,25 @@ int main(int argc, char **argv)
     rc = PMIx_tool_get_servers(&servers, &nservers);
     report("get_servers after finalize returns PMIX_ERR_INIT", PMIX_ERR_INIT == rc,
            PMIx_Error_string(rc));
+
+    /* ---------------------------------------------------------------
+     * a second cycle has to be able to do everything the first did.
+     * The "module has been set" latch is a global that no finalize
+     * resets, so a tool that cycles used to be refused its module on
+     * every init after the first - while init had already zeroed the
+     * table it would be called through.
+     * --------------------------------------------------------------- */
+    PMIX_INFO_LOAD(&tinfo, PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
+    rc = PMIx_tool_init(&myproc, &tinfo, 1);
+    PMIX_INFO_DESTRUCT(&tinfo);
+    report("second tool init succeeds", PMIX_SUCCESS == rc, PMIx_Error_string(rc));
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_tool_set_server_module(&mymodule);
+        report("set_server_module accepted again on the second cycle", PMIX_SUCCESS == rc,
+               PMIx_Error_string(rc));
+        rc = PMIx_tool_finalize();
+        report("second tool finalize succeeds", PMIX_SUCCESS == rc, PMIx_Error_string(rc));
+    }
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;
