@@ -18,7 +18,7 @@ described there all apply here and are not repeated. This file covers
 what is specific to `pcompress`: what the framework is for, the way its
 one active component is chosen (entirely at build time), the shared
 compressed-blob format its components must agree on, and the contract a
-component must honor. Each component subdirectory (`zlib/`, `zlibng/`)
+component must honor. Each component subdirectory (`zlib/`, `zlibng/`, `zstd/`)
 carries its own `AGENTS.md` with component-specific detail. There is no
 `docs/how-things-work/` page for this framework.
 
@@ -74,10 +74,13 @@ which keeps the **highest-priority** component's module and copies it into
 The unusual part is that the *real* selection happens at **configure
 time**, not run time:
 
-- Neither component's `component_query` gates on anything — each
-  unconditionally returns its module and a fixed priority (`zlibng` = 75,
-  `zlib` = 50). So on a host where **both** libraries were found at
-  configure time, `zlibng` wins; where only one was found, it wins.
+- No component's `component_query` gates on anything — each
+  unconditionally returns its module and a fixed priority (`zstd` = 90,
+  `zlibng` = 75, `zlib` = 50). So on a host where several libraries were
+  found at configure time the highest wins; where only one was found, it
+  wins. `zstd` is ranked first because it is both faster and smaller than
+  the zlib components on the payloads this framework actually sees — see
+  [`zstd/AGENTS.md`](zstd/AGENTS.md).
 - A component is only compiled at all if its `configure.m4` located the
   underlying library (`OAC_CHECK_PACKAGE`). If the library is absent, the
   component is never built, so it is not in `static-components.h` and
@@ -89,7 +92,9 @@ time**, not run time:
   entry points do nothing but return `false`.
 
 So "which compressor am I getting?" is answered by the configure summary
-line (`External Packages: ZLIB` / `ZLIBNG`), not by any MCA parameter.
+line (`External Packages: ZLIB` / `ZLIBNG` / `ZSTD`), not by any MCA
+parameter — though `--pmixmca pcompress <name>` can still force one of the
+built components at run time.
 
 ## Module interface (`pmix_compress_base_module_t`)
 
@@ -117,12 +122,12 @@ caller ships the data uncompressed.
 ### The two fields nobody implements (and two that everybody does)
 
 `init` and `finalize` are declared in the struct but set by **neither**
-the base default module **nor** `zlib` **nor** `zlibng` — they are always
+the base default module **nor** `zlib` **nor** `zlibng` **nor** `zstd` — they are always
 `NULL` in practice. `finalize` is safely guarded (`pcompress_base_close`
 calls it only when non-`NULL`).
 
 `get_decompressed_size` and `get_decompressed_strlen`, by contrast, **are**
-implemented by all three modules (the base default, `zlib`, and `zlibng`).
+implemented by every module (the base default, `zlib`, `zlibng`, and `zstd`).
 Their only call sites are in
 [`src/mca/bfrops/base/bfrop_base_fns.c`](../bfrops/base/bfrop_base_fns.c)
 (the `PMIX_COMPRESSED_STRING` / `PMIX_COMPRESSED_BYTE_OBJECT` cases of the
@@ -186,6 +191,7 @@ library can see.
 |-----------|----------------|---------|
 | `pcompress_zlib_level` | int, **1** | level passed to `deflateInit` |
 | `pcompress_zlibng_level` | int, **2** | level passed to `zng_deflateInit` |
+| `pcompress_zstd_level` | int, **3** | level passed to `ZSTD_compress` |
 
 The zlib defaults were a hard-coded **9** until these parameters were added.
 On a 25.6 MB aggregated modex, level 9 costs roughly twice the CPU of level 1
@@ -226,11 +232,23 @@ this is a contract, not an implementation detail:
 
 - The first 4 bytes are the **uncompressed** length, written with a raw
   `memcpy` of a `uint32_t` — i.e. **host byte order**, not network order.
-- The remainder is a standard zlib/DEFLATE stream. Because both `zlib`
-  and `zlib-ng` emit and read the standard DEFLATE format, and both use
-  this identical 4-byte framing, a blob produced by one is readable by
-  the other. That interoperability is what makes it safe for the build to
-  pick `zlibng` on one node and `zlib` on another.
+- The remainder is the compressed payload. For `zlib` and `zlib-ng` it is
+  a standard DEFLATE stream; because both emit and read that format and
+  both use this identical 4-byte framing, a blob produced by one is
+  readable by the other, which is what makes it safe for the build to pick
+  `zlibng` on one node and `zlib` on another.
+  **`zstd` breaks that symmetry**: it keeps the 4-byte prefix (so every
+  size query still works) but its payload is a zstd frame, which a
+  zlib-only peer cannot read. Compressed blobs *do* cross nodes — the
+  server compresses each daemon's fence bucket and the receivers inflate
+  it — so **every node in a job must run the same component**. In practice
+  that follows from a shared installation. `zstd`'s decompress checks the
+  zstd frame magic and refuses anything else, which converts the mixed-build
+  failure from a corrupted modex into a clean error; it does not make the
+  mixed build work. If heterogeneous deployments ever have to be
+  supported, the fix is to make the blob self-describing across the whole
+  framework — a scheme byte, or that sniff generalized into the base — not
+  a per-component workaround.
 - `compress` returns `false` (declines) when the input is shorter than
   `compress_limit`, when it is `>= UINT32_MAX` (the length would not fit
   the 4-byte prefix), or when the compressed result is **not** smaller
