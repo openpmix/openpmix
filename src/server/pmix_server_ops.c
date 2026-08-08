@@ -62,6 +62,7 @@
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_attributes.h"
 #include "src/common/pmix_iof.h"
+#include "src/common/pmix_pfexec.h"
 #include "src/common/pmix_monitor.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/bfrops/base/base.h"
@@ -629,11 +630,23 @@ void pmix_server_spawn_parser(pmix_peer_t *peer,
     }
 }
 
+/* Completion callback for a spawn we fork/exec'd ourselves. pfexec calls
+ * this with the caddy IT owns (and releases on return), so all it does is
+ * hand the result to the normal server completion path, which owns the
+ * caddy holding the requester's callback and does the IOF registration
+ * the requester asked for. */
+static void pfexec_spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+
+    pmix_server_spcbfunc(status, nspace, cd);
+}
+
 pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
                                 pmix_spawn_cbfunc_t cbfunc,
                                 void *cbdata)
 {
-    pmix_setup_caddy_t *cd;
+    pmix_setup_caddy_t *cd, *fcd;
     int32_t cnt;
     pmix_status_t rc;
     pmix_proc_t proc;
@@ -642,7 +655,14 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
                         "recvd SPAWN from %s",
                         PMIX_PNAME_PRINT(&peer->info->pname));
 
-    if (NULL == pmix_host_server.spawn) {
+    /* Our host is the first choice. Failing that we can still service the
+     * request if we are able to fork/exec it ourselves: a launcher that
+     * has no server attached is expected to launch locally rather than
+     * refuse (the same rule PMIx_Spawn applies to a launcher's own
+     * requests). pfexec is opened only by a launcher or scheduler tool,
+     * so this flag is exactly the "can I fork/exec" question - a plain
+     * PMIx server never has it set and its behavior is unchanged. */
+    if (NULL == pmix_host_server.spawn && !pmix_pfexec_globals.initialized) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -708,11 +728,34 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* mark that we created the data */
     cd->copied = true;
 
-    /* call the local server */
-    PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-    rc = pmix_host_server.spawn(&proc, cd->info, cd->ninfo,
-                                cd->apps, cd->napps,
-                                pmix_server_spcbfunc, cd);
+    if (NULL != pmix_host_server.spawn) {
+        /* call the local server */
+        PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
+        rc = pmix_host_server.spawn(&proc, cd->info, cd->ninfo,
+                                    cd->apps, cd->napps,
+                                    pmix_server_spcbfunc, cd);
+    } else {
+        /* No host to ask, so fork/exec it ourselves. pfexec takes a caddy
+         * of its own and releases it when the spawn completes, so give it
+         * a second one that BORROWS this one's apps and directives -
+         * "copied" stays false on it so its destructor leaves them to
+         * "cd", which owns them and outlives it. */
+        fcd = PMIX_NEW(pmix_setup_caddy_t);
+        if (NULL == fcd) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        fcd->info = cd->info;
+        fcd->ninfo = cd->ninfo;
+        fcd->apps = cd->apps;
+        fcd->napps = cd->napps;
+        fcd->spcbfunc = pfexec_spcbfunc;
+        fcd->cbdata = cd;
+        rc = pmix_pfexec_base_spawn_job(fcd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(fcd);
+        }
+    }
 
 cleanup:
     if (PMIX_SUCCESS != rc) {

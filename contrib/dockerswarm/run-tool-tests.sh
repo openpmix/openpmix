@@ -70,15 +70,17 @@
 #     gets, and it is the only one that gets it with real remote peers
 #     attached and detached.
 #
-# WHAT THIS DOES NOT COVER, and no other suite does either:
+# WHAT THIS DOES NOT COVER:
 #
-#   * the tool-to-tool relay in src/tool/pmix_tool_ops.c
-#     (pmix_tool_relay_op / tool_switchyard).  That path needs a THIRD
-#     party -- a tool that has connected to another tool as its primary
-#     server and then sends it a spawn, which the receiving tool must
-#     forward to a real server.  PRRTE's launchers do not arrange that
-#     shape, so nothing here reaches it; saying so is more useful than
-#     implying the tool library is fully covered.
+#   * the RELAY half of src/tool/pmix_tool_ops.c -- a tool that has
+#     connected to another tool as its primary server sending it a spawn
+#     which the receiving tool forwards ON to a real server.  PRRTE's
+#     launchers do not arrange that shape, so nothing here reaches it.
+#     test/unit/tool_relay covers the other half of the same decision
+#     (the receiving tool has NO server, so it fork/execs the job
+#     itself), which is what makes the relay's "am I attached?" test
+#     observable at all; the forward-to-a-real-server arm remains
+#     uncovered anywhere.
 #
 # Prints PASS/FAIL per case and a summary; exits non-zero if anything failed.
 

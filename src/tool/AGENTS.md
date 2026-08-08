@@ -253,14 +253,22 @@ our server. That is why `server_switchyard` routing to
 `PMIX_PROC_LAUNCHER` includes the `PMIX_PROC_TOOL` bit: a launcher with a
 server attached *should* pass the request up.
 
-The one place the code does not yet follow the rule is a spawn **proxied
-for a downstream tool** while we have no server: `pmix_tool_relay_op`
-returns `PMIX_ERR_UNREACH`, the switchyard returns it (it falls through
-to the logic tree only on `PMIX_ERR_NOT_SUPPORTED`), and the downstream
-tool gets an error rather than a locally fork/exec'd job. Closing that
-gap means giving `pmix_server_spawn()` a `pfexec` fallback — it currently
-refuses outright when `pmix_host_server.spawn` is NULL — which is a
-`src/server` change, not a `src/tool` one.
+A spawn **proxied for a downstream tool** follows the same rule, and
+used not to: `pmix_tool_relay_op` answers `PMIX_ERR_UNREACH` when we have
+no server, and `server_switchyard` fell through to the logic tree only on
+`PMIX_ERR_NOT_SUPPORTED` — so the downstream tool got an error instead of
+a launched job. The switchyard now falls through on **both**, and
+`pmix_server_spawn()` fork/execs when it has no `pmix_host_server.spawn`
+but `pfexec` is open. Two things make that gate right:
+`pmix_pfexec_base_open()` is called from exactly one place in the tree
+(`PMIx_tool_init`, for a launcher or scheduler), so
+`pmix_pfexec_globals.initialized` *is* the "can I fork/exec" question and
+a plain PMIx server's behavior is unchanged; and `pmix_tool_relay_op`
+returns both of those statuses **before** it rewinds the buffer, so the
+fall-through still has the unpack position the `cmd` read left.
+
+Covered by [`test/unit/tool_relay`](../../test/unit/tool_relay.c), which
+is also the only automated coverage `pmix_tool_ops.c` has.
 
 ## PTL receive callbacks (in `pmix_tool.c`)
 
@@ -467,7 +475,7 @@ named are the ones that fail against the unfixed library.
   `src/client` has no equivalent branch at all.** See item 14 and
   [openpmix#4101](https://github.com/openpmix/openpmix/issues/4101).
 - **The relay assumes both peers negotiated the same bfrops module and
-  buffer type.** `pmix_tool_relay_op` copies the downstream tool's raw
+  buffer type.** (Unchanged by the spawn-fallback work above.) `pmix_tool_relay_op` copies the downstream tool's raw
   payload into a fresh buffer and sends it to `myserver` unchanged, and
   `tool_switchyard` does the reverse. A tool forces the same modules on
   itself and its server, so this holds today — but it is an assumption,
@@ -484,6 +492,7 @@ named are the ones that fail against the unfixed library.
 | `tool_api` | the API surface a single unconnected tool can reach: identity values, `set_server` wait/timeout semantics, the server list of an unconnected tool, malformed directives (in forked children), and a second full cycle that sets a server module again |
 | `tool_rndz` | the whole `PMIX_LAUNCHER_RNDZ_URI` flow against a real server, including the restore of the original primary |
 | `tool_evcache` | affected-process restriction on events delivered to a tool, end to end with two handlers. Its header records that it does **not** reach the caching branch, and why |
+| `tool_relay` | a downstream tool's spawn arriving at a launcher tool with no server of its own: the relay declines, the switchyard falls through, and the launcher fork/execs it. The only automated coverage of `pmix_tool_ops.c` |
 | `tool_nspace` | a connecting tool leaves exactly one namespace object on the server's list |
 | `test/simple/tool_server_switch` (via `run_toolswitch.pl`) | the multi-server switch loop against two servers |
 
@@ -492,9 +501,7 @@ The multi-node half is
 (README §20): the tool and at least one of its servers on **different
 nodes**, driving `examples/toolswitch.c` through attach/switch/disconnect
 across hosts, a remote server dying, IOF relayed to a tool from other
-nodes, and the only valgrind pass `src/tool` gets anywhere. Note what it
-says it does not cover: nothing, anywhere, exercises the tool-to-tool
-relay in `pmix_tool_ops.c`.
+nodes, and the only valgrind pass `src/tool` gets anywhere.
 
 **A test that wants to see `PMIx_tool_init` fail must fork.** See the
 non-unwinding invariant above.

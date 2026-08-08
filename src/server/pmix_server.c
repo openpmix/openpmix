@@ -6339,15 +6339,23 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
                         PMIX_PEER_PRINT(peer),
                         (unsigned int) buf->bytes_used);
 
-    /* if I am a tool, all I can do is relay this to my primary server
-     * if I am connected - if not connected, then I must return an error */
+    /* If I am a tool, relay this to my primary server when I have one.
+     * The rule is relay-if-attached, service-it-myself otherwise - the
+     * same one PMIx_Spawn applies to a launcher's own requests. */
     if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         rc = pmix_tool_relay_op(cmd, peer, buf, tag);
-        if (PMIX_ERR_NOT_SUPPORTED != rc) {
+        if (PMIX_ERR_NOT_SUPPORTED != rc && PMIX_ERR_UNREACH != rc) {
             return rc;
         }
-        /* if the tool relay doesn't support it, let it
-         * be processed by the logic tree */
+        /* Fall through to the logic tree, either because this is not a
+         * command we relay (PMIX_ERR_NOT_SUPPORTED) or because we have no
+         * server to relay it to (PMIX_ERR_UNREACH). A launcher with no
+         * server attached fork/execs a spawn itself from there; a role
+         * that genuinely cannot service the command answers
+         * PMIX_ERR_NOT_SUPPORTED from the handler, which is the right
+         * answer to give the requester anyway. Note pmix_tool_relay_op
+         * returns both of those BEFORE it rewinds the buffer, so our
+         * unpack position is still where the cmd read left it. */
     }
 
     /* if I am a server, then redirect the cmd to the appropriate
