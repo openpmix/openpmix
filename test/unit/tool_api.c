@@ -45,6 +45,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 static int npass = 0;
@@ -58,6 +60,55 @@ static void report(const char *name, int passed, const char *detail)
     } else {
         fprintf(stdout, "  FAIL: %s (%s)\n", name, detail);
         ++nfail;
+    }
+}
+
+/* A malformed directive must be refused, not dereferenced. This has to
+ * run in a CHILD: PMIx_tool_init does not unwind, and a failed one leaves
+ * the one-time-init latch set, so a process that has tried a bad init
+ * cannot then do a good one. Exit codes: 0 = refused with
+ * PMIX_ERR_BAD_PARAM, 1 = accepted, 2 = some other error. A crash shows
+ * up as a signal, which is the case that used to happen. */
+static int bad_directive_child(const char *key)
+{
+    pmix_proc_t myproc;
+    pmix_info_t binfo;
+    pmix_status_t rc;
+    bool flag = true;
+
+    /* the key names a string; hand it a bool instead */
+    PMIX_INFO_LOAD(&binfo, key, &flag, PMIX_BOOL);
+    rc = PMIx_tool_init(&myproc, &binfo, 1);
+    if (PMIX_SUCCESS == rc) {
+        PMIx_tool_finalize();
+        return 1;
+    }
+    return (PMIX_ERR_BAD_PARAM == rc) ? 0 : 2;
+}
+
+static void check_bad_directive(const char *key)
+{
+    pid_t child;
+    int status = 0;
+    char name[128];
+
+    snprintf(name, sizeof(name), "a malformed %s is refused, not dereferenced", key);
+    child = fork();
+    if (0 > child) {
+        report(name, 0, "fork failed");
+        return;
+    }
+    if (0 == child) {
+        _exit(bad_directive_child(key));
+    }
+    waitpid(child, &status, 0);
+    if (!WIFEXITED(status)) {
+        report(name, 0, "the tool died on a signal");
+    } else if (0 != WEXITSTATUS(status)) {
+        report(name, 0, (1 == WEXITSTATUS(status)) ? "init accepted it"
+                                                   : "init failed with the wrong status");
+    } else {
+        report(name, 1, NULL);
     }
 }
 
@@ -105,6 +156,11 @@ int main(int argc, char **argv)
     rc = PMIx_tool_get_servers(&servers, &nservers);
     report("get_servers before init returns PMIX_ERR_INIT", PMIX_ERR_INIT == rc,
            PMIx_Error_string(rc));
+
+    /* these fork, so they must run before we bring the library up */
+    check_bad_directive(PMIX_TOOL_NSPACE);
+    check_bad_directive(PMIX_SERVER_TMPDIR);
+    check_bad_directive(PMIX_SYSTEM_TMPDIR);
 
     PMIX_INFO_LOAD(&tinfo, PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
     rc = PMIx_tool_init(&myproc, &tinfo, 1);
@@ -167,6 +223,10 @@ int main(int argc, char **argv)
     /* ---------------------------------------------------------------
      * the server list of a tool that has not attached to anything
      * --------------------------------------------------------------- */
+    rc = PMIx_tool_get_servers(NULL, &nservers);
+    report("get_servers with a NULL array pointer is rejected", PMIX_ERR_BAD_PARAM == rc,
+           PMIx_Error_string(rc));
+
     rc = PMIx_tool_get_servers(&servers, &nservers);
     report("get_servers on an unconnected tool reports no servers",
            PMIX_ERR_UNREACH == rc && 0 == nservers, PMIx_Error_string(rc));
