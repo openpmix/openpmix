@@ -127,9 +127,8 @@ call. Then, in order: send `PMIX_FINALIZE_CMD` to the server with a
 5-second timer guard (`fin_timeout`/`finwait_cbfunc`) and clear
 `pmix_globals.connected` however that went, kill any `pfexec`-launched
 children (launcher/server only, **before** the progress thread stops
-because killing needs it), delete the file-scope events init registered
-(stdin read, SIGCONT, keepalive pipe — **while their bases still
-exist**), stop the progress thread, dump and destruct the static IOF
+because killing needs it), delete the keepalive-pipe event and close its
+descriptor (**while its base still exists**), stop the progress thread, dump and destruct the static IOF
 sinks, release the client peer/pending lists, stop listening, release the
 server clients array, close `pnet`/`pmdl`, `PMIX_LIST_DESTRUCT` every
 `pmix_server_globals` list that `pmix_server_initialize` builds, free the
@@ -149,10 +148,12 @@ Three subtleties the current code documents inline and you must keep:
   pointer would silently ignore a changed `PMIX_SERVER_TMPDIR` on the
   next cycle. The many `PMIX_LIST_DESTRUCT`s exist for the same
   re-init-cleanliness reason (a tool may init→finalize→init).
-- The event teardown is guarded by file-scope booleans
-  (`stdin_setup`, `stdinsig_setup`, `keepalive_fd`) rather than
-  re-derived, because `PMIX_FWD_STDIN` and `PMIX_KEEPALIVE_PIPE` were
-  directives to *init* and finalize cannot see them.
+- The keepalive-pipe teardown is guarded by a file-scope `keepalive_fd`
+  rather than re-derived, because `PMIX_KEEPALIVE_PIPE` was a directive
+  to *init* and finalize cannot see it. The stdin read event and its
+  SIGCONT handler need no such bookkeeping here — they belong to
+  `src/common/pmix_iof.c`, and `pmix_iof_finalize()` releases them from
+  inside `pmix_rte_finalize`.
 
 ## The multi-server model
 
@@ -295,6 +296,19 @@ unpacking, exactly as the client recv callbacks do.
 
 ## Invariants and gotchas
 
+- **Stdin forwarding is the library's, not this file's.** A tool given
+  `PMIX_FWD_STDIN` calls `pmix_iof_setup_stdin_read()` and nothing more.
+  This file used to build a read event of its own in a file-scope
+  `pmix_iof_read_event_t`, and every way that could drift, it did: its
+  SIGCONT event was assigned but never added to a base (so a backgrounded
+  tool never resumed reading once foregrounded), the read event was never
+  released (so it and its libevent registration survived into the next
+  `PMIx_tool_init`, naming a base that had been torn down), it was
+  invisible to `pmix_iof_flow_control` — which only knows the library's
+  `stdinev_global` — so nothing could suspend a tool's stdin, and a later
+  `PMIx_IOF_push` would build a *second* read event on fd 0 that stole
+  bytes from the first. Do not reintroduce a private one. See the stdin
+  section of [`src/common/AGENTS.md`](../common/AGENTS.md).
 - **A tool's `myserver` may be itself.** On the do-not-connect /
   connect-optional / disconnected paths, `myserver` points at
   `pmix_globals.mypeer` and `pmix_globals.connected` is unset. Guard
@@ -333,15 +347,17 @@ unpacking, exactly as the client recv callbacks do.
   the whole library. Record a failure and keep tearing down.
 - **`pmix_event_signal_set` is `event_assign`, not `event_add`.** It
   only initializes the event; without a following `pmix_event_add` the
-  handler is never installed. The tool's SIGCONT/stdin handler was in
-  that state for a long time and silently did nothing.
+  handler is never installed. Both this file's SIGCONT/stdin handler and
+  the library's were in that state for a long time and silently did
+  nothing.
 - **Anything init registers on an event base, finalize has to take
-  down** — the stdin read event, the SIGCONT event, the keepalive-pipe
-  event. `pmix_rte_finalize` destroys the bases underneath them, and the
-  two that are file-scope statics are re-`PMIX_CONSTRUCT`ed by the next
-  init. Note the one trap in that teardown: `pmix_iof_read_event_t`'s
-  destructor closes whatever fd it holds, and the tool's is the
-  application's own **stdin** — clear the field before destructing.
+  down**, because `pmix_rte_finalize` destroys the bases underneath them.
+  What is left here is the keepalive-pipe event; the stdin read event and
+  its SIGCONT handler moved to `src/common/pmix_iof.c` and are released
+  by `pmix_iof_finalize()`. Note the trap that teardown carries either
+  way: `pmix_iof_read_event_t`'s destructor closes the descriptor it
+  holds, and for stdin that is the application's own — which is why the
+  destructor now closes only descriptors above 2.
 - **`pmix_server_globals.module_set` is a global that no finalize
   resets.** `PMIx_tool_init` clears it where it memsets
   `pmix_host_server`, so the two always agree; without that a cycling
@@ -424,14 +440,19 @@ named are the ones that fail against the unfixed library.
    installed**, because `pmix_event_signal_set` is `event_assign` and
    nothing added the event. A tool that is backgrounded and then resumed
    never reconsidered its stdin. Not unit-testable — it needs a tty — so
-   there is no regression test; the sibling defect in
-   `src/common/pmix_iof.c` is **still open**, see below.
+   there is no regression test. The identical defect in
+   `src/common/pmix_iof.c` is fixed too, and this file no longer has a
+   copy of its own to keep in step: see the stdin bullet under
+   *Invariants and gotchas*.
 10. **FIXED — init's file-scope events were never taken down.** The stdin
     read event, the SIGCONT event and the keepalive-pipe event all
     survived finalize; the keepalive pipe's descriptor leaked one per
-    init/finalize cycle. **`test/unit/tool_cycle`** now runs a second pass
-    with `PMIX_FWD_STDIN` and asserts the library did not close the
-    caller's stdin on the way out.
+    init/finalize cycle. Only the keepalive pipe is still this file's to
+    release. **`test/unit/tool_cycle`** runs a second pass with
+    `PMIX_FWD_STDIN` that stands a pipe on fd 0 and asserts, after every
+    finalize, that fd 0 is still open **and still that same pipe** — an
+    is-it-open test alone passes if the library closes it and something
+    later in the cycle is handed the descriptor back.
 11. **FIXED — `PMIx_tool_set_server_module` was refused on every cycle
     after the first**, because nothing resets
     `pmix_server_globals.module_set`. **`test/unit/tool_api`.**
@@ -465,12 +486,6 @@ named are the ones that fail against the unfixed library.
 
 ### Still open
 
-- **`src/common/pmix_iof.c` has the same missing `pmix_event_add` for
-  its SIGCONT handler** (`stdinsig_ev`), and never releases
-  `stdinev_global` either. It is the same defect as item 9 one directory
-  over, but fixing it properly needs a teardown hook in `src/common` that
-  this review did not design.
-  [openpmix#4100](https://github.com/openpmix/openpmix/issues/4100).
 - **The tool's event cache in `_notify_complete` looks unreachable, and
   `src/client` has no equivalent branch at all.** See item 14 and
   [openpmix#4101](https://github.com/openpmix/openpmix/issues/4101).

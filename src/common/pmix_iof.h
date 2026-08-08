@@ -265,9 +265,19 @@ static inline bool pmix_iof_fd_always_ready(int fd)
     } while (0);
 
 
-/* Release the process-wide stdin read event and SIGCONT handler this
- * file owns. Must be called while the event base is still up - i.e.
- * from pmix_rte_finalize, not after it. */
+/* Start reading our own stdin and forwarding it, arming the SIGCONT
+ * handler if the descriptor is a terminal. Every role that forwards its
+ * own stdin uses this - PMIx_IOF_push with PMIX_IOF_PUSH_STDIN, and a
+ * tool given PMIX_FWD_STDIN at init - so that there is exactly one read
+ * event on the descriptor and pmix_iof_flow_control can find it. Calling
+ * it again once the stream is running is a no-op. "procs"/"directives"
+ * may be NULL; they name who the stdin is destined for.
+ *
+ * pmix_iof_finalize() releases that read event and the SIGCONT handler.
+ * It must be called while the event base is still up - i.e. from
+ * pmix_rte_finalize, not after it. */
+PMIX_EXPORT pmix_status_t pmix_iof_setup_stdin_read(int fd, pmix_proc_t procs[], size_t nprocs,
+                                                    pmix_info_t directives[], size_t ndirs);
 PMIX_EXPORT void pmix_iof_finalize(void);
 
 PMIX_EXPORT pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t stream,
