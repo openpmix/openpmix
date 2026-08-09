@@ -87,8 +87,8 @@ caller of `pmix_psensor.start`** (the framework's own
 `pmix_psensor_base_start` is wired into the `pmix_psensor.start` slot, but
 nothing invokes it). What *is* still called is **`pmix_psensor.stop`**:
 
-- `src/server/pmix_server.c` calls `pmix_psensor.stop(peer, NULL)` when a
-  client departs, and
+- `src/server/pmix_server_registration.c` calls `pmix_psensor.stop(peer,
+  NULL)` when a client departs, and
 - `src/mca/ptl/base/ptl_base_sendrecv.c` calls it from the
   lost-connection teardown.
 

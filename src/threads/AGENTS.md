@@ -186,7 +186,7 @@ and cleaned up no matter which thread touched it first.
 ## Design notes worth knowing
 
 - **Direct `active` writes bypass the macros in a few init paths.** A
-  handful of sites (`src/server/pmix_server.c`,
+  handful of sites (`src/server/pmix_server_inventory.c`,
   `src/mca/pmdl/base/pmdl_base_frame.c`) set `lock.active = false`
   directly on a freshly constructed caddy/lock. That is a plain
   single-threaded initialization write on the owning thread *before* the

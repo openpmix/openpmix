@@ -180,7 +180,7 @@ Return storage
 
 ``modex_cbfunc`` may run on the host's own thread, so it does nothing but
 thread-shift onto the progress thread, landing in ``_mdxcbfunc``
-(``src/server/pmix_server.c``). That function stores the returned blob
+(``src/server/pmix_server_switchyard.c``). That function stores the returned blob
 and then replies to each waiting participant::
 
     PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &xfer, scd->data, scd->ndata);

@@ -65,8 +65,8 @@ producer/consumer shape but an unrelated purpose.
   tool, and must set up the environment for the children it spawns).
 
 The public entry points are reached through the global `pmix_pmdl` from:
-`pmix_server.c` (`register_nspace`, `deregister_nspace`, `setup_fork`,
-`harvest_envars`), `pmix_client_spawn.c` (`harvest_envars` during a
+`pmix_server_registration.c` (`register_nspace`, `deregister_nspace`),
+`pmix_server.c` (`setup_fork`), `pmix_server_setup.c` (`harvest_envars`), `pmix_client_spawn.c` (`harvest_envars` during a
 `PMIx_Spawn`), and `gds/hash` (`setup_nspace`, `setup_nspace_kv`,
 `setup_client` while unpacking job data). Because the global is
 statically initialized to the base stubs (see below), those calls are

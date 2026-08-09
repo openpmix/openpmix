@@ -231,8 +231,9 @@ and `PMIX_TOPO` (`pmix_topology_t`); see
 
 ## Callers (who depends on this layer)
 
-- **`src/server/pmix_server.c` / `pmix_server_ops.c`** — setup at server
-  init; locality-string generation for clients; cpuset parse; distances.
+- **`src/server/pmix_server.c` / `pmix_server_setup.c` / `pmix_server_ops.c`**
+  — setup at server init; locality-string generation for clients; cpuset
+  parse; distances.
 - **`src/client/pmix_client.c` / `pmix_client_topology.c`** — load on
   demand; `PMIx_Get_cpuset`, `PMIx_Get_relative_locality`,
   `PMIx_Compute_distances`, `PMIx_Load_topology`, `PMIx_Parse_cpuset_string`.

@@ -96,7 +96,7 @@ production launchers built against older releases still call them, and
 because the per-node process map is still carried internally in the string
 form. New code should prefer ``PMIx_generate_regex2``.
 
-All four entry points are thin wrappers in ``src/server/pmix_server.c``
+All four entry points are thin wrappers in ``src/server/pmix_server_setup.c``
 that check ``pmix_globals.initialized`` and forward to the corresponding
 ``pmix_preg`` module function::
 
@@ -334,7 +334,7 @@ Key Source Files
      - ``pmix_regex2_t`` and ``PMIX_REGEX2`` definitions
    * - ``include/pmix_deprecated.h``
      - deprecated ``PMIx_generate_regex`` / ``PMIx_generate_ppn`` / ``PMIX_REGEX``
-   * - ``src/server/pmix_server.c``
+   * - ``src/server/pmix_server_setup.c``
      - public API wrappers into ``pmix_preg``
    * - ``src/mca/preg/preg.h``
      - ``preg`` MCA module interface

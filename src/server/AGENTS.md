@@ -16,8 +16,8 @@ machinery, the direct-modex and group engines, and the invariants that
 are easy to break.
 
 Like `src/client` and `src/event`, **`src/server` is not an MCA
-framework.** There is no component structure — seven `.c` files and one
-header (`pmix_server_ops.h`) compiled straight into `libpmix` via
+framework.** There is no component structure — fourteen `.c` files and
+one header (`pmix_server_ops.h`) compiled straight into `libpmix` via
 [`Makefile.include`](Makefile.include). But this code *drives* the MCA
 frameworks heavily: nearly every command handler up-calls a `pmix_gds`,
 `pmix_bfrops`, `pmix_ptl`, `pmix_pnet`, `pmix_psec`, or `pmix_preg`
@@ -41,7 +41,14 @@ module where it cannot, and queue replies back. The file map:
 
 | File | Owns |
 |------|------|
-| `pmix_server.c` | The public `PMIx_server_*` API, init/finalize, nspace & client registration, `setup_fork`/`setup_application`, dmodex request, IOF delivery, process-set define/delete, **the switchyard** (`server_switchyard`) and message handler, and the large family of host-callback → reply functions. The canonical reference for the caddy/thread-shift model. |
+| `pmix_server.c` | `PMIx_server_init` / `PMIx_server_finalize` and the machinery they stand up: the `pmix_server_globals` definition, the MCA-parameter registration, the singleton and parent-died plumbing, the server's own event handler, and `PMIx_server_setup_fork` (which passes the modes negotiated at init down to a child). Also `pmix_server_lock_opcbfunc`, the completion callback every blocking public API substitutes when its caller passes no callback. |
+| `pmix_server_switchyard.c` | **The switchyard** (`server_switchyard`), `pmix_server_message_handler`, and the large family of host-callback → reply functions (`op_cbfunc` / `_opcbfunc`, `query_cbfunc` / `_qrycbfunc`, …). The canonical reference for the reply-ownership contract below. |
+| `pmix_server_registration.c` | `PMIx_server_register_nspace` / `deregister_nspace` and `register_client` / `deregister_client`, plus the peer-departure bookkeeping that mirrors them (`remove_client`, `pmix_server_peer_finalized`, `pmix_server_purge_events`) and `pmix_server_execute_collective`, which fires a collective the registration just unblocked. The canonical both-paths (blocking and non-blocking) example. |
+| `pmix_server_setup.c` | Everything that prepares a job before its processes run: `PMIx_server_register_resources` / `deregister_resources`, `PMIx_server_setup_application`, `PMIx_server_setup_local_support`, and the helper APIs a host uses to build that information (`PMIx_generate_regex`/`_ppn`, `PMIx_parse_regex2`, `PMIx_server_generate_locality_string`/`_cpuset_string`/`_cpuset`). |
+| `pmix_server_dmodex.c` | The data calls the host makes down into us: `PMIx_server_dmodex_request` (modex data for one of our local clients) and `PMIx_Store_internal`. |
+| `pmix_server_iof.c` | Standard-I/O forwarding: `pmix_server_iof_handler` (the PTL receive callback for output arriving from our host or another server), `PMIx_server_IOF_deliver`, `PMIx_server_IOF_flow_control`. |
+| `pmix_server_inventory.c` | `PMIx_server_collect_inventory` / `PMIx_server_deliver_inventory`. |
+| `pmix_server_pset.c` | `PMIx_server_define_process_set` / `PMIx_server_delete_process_set`. |
 | `pmix_server_ops.c` | The per-command handlers dispatched by the switchyard (abort, commit, publish/lookup/unpublish, spawn, register/deregister events, notify-from-client, query, log, alloc, job_ctrl, monitor, credentials, IOF reg/dereg/stdin, fabric/device/session/resblk/refresh), plus **all** the server-side `PMIX_CLASS_INSTANCE` con/destructors and the two tracker helpers `pmix_server_trk_complete` / `pmix_server_set_collective_status`. |
 | `pmix_server_fence.c` | The fence collective (barrier + modex data exchange) **and the shared collective-tracker engine** — `pmix_server_get_tracker`, `pmix_server_new_tracker`, `pmix_server_collect_data`, `pmix_server_trk_update`, `pmix_server_commit`. |
 | `pmix_server_connect.c` | The connect / disconnect collectives (built on the same tracker engine). |
@@ -60,8 +67,9 @@ the top of `pmix_server.c`, declared in `pmix_server_ops.h`): the
 
 This is the single most important thing to understand before touching
 anything here. Inbound messages land in `pmix_server_message_handler`
-(a registered PTL receive callback, `pmix_server.c:6252`), which calls
-`server_switchyard` (`pmix_server.c:5805`). The switchyard unpacks the
+(a registered PTL receive callback,
+`pmix_server_switchyard.c:2909`), which calls `server_switchyard`
+(`pmix_server_switchyard.c:2445`). The switchyard unpacks the
 `pmix_cmd_t` and dispatches on it. **The return value of every command
 handler encodes who owns the reply and the caddy:**
 
@@ -89,10 +97,10 @@ if (PMIX_SOMETHING_CMD == cmd) {
 }
 ```
 
-`PMIX_GDS_CADDY` (`pmix_server_ops.h:226`) allocates a
+`PMIX_GDS_CADDY` (`pmix_server_ops.h:232`) allocates a
 `pmix_server_caddy_t`, stashes the reply `tag` in `cd->hdr.tag`, and
 **RETAINs the peer** so the peer object survives until the reply is
-sent. The caddy's destructor (`cddes`, `pmix_server_ops.c:3129`) releases
+sent. The caddy's destructor (`cddes`, `pmix_server_ops.c:3470`) releases
 that peer retain plus `trk`, `info`, `query`, and `key`. So: **every
 error path in a handler that returns non-SUCCESS must NOT release the
 server caddy itself** (the switchyard does it); **every success path must
@@ -189,7 +197,7 @@ request; a component that did would crash immediately.
 | `pmix_setup_caddy_t` | `pmix_server_ops.h:43` | The workhorse inner caddy for handlers that need to carry unpacked args across a thread-shift or a blocking wait (setup_app, iof, resblk, fabric, …). Its destructor frees `info`/`apps` **only when `copied==true`**. |
 | `pmix_shift_caddy_t` | `pmix_globals.h:628` | Generic thread-shift caddy used to bounce host callbacks back onto the progress thread. |
 | `pmix_trkr_caddy_t` | `pmix_server_ops.h:36` | Tiny caddy that carries a tracker into the event base (`PMIX_EXECUTE_COLLECTIVE`). |
-| `pmix_dmdx_local_t` / `pmix_dmdx_request_t` / `pmix_dmdx_remote_t` | `pmix_server_ops.h:112/122/106` | Direct-modex deferral bookkeeping (see get.c). |
+| `pmix_dmdx_local_t` / `pmix_dmdx_request_t` / `pmix_dmdx_remote_t` | `pmix_server_ops.h:113/123/107` | Direct-modex deferral bookkeeping (see get.c). |
 | `pmix_query_caddy_t`, `pmix_cb_t`, `pmix_inventory_rollup_t` | globals / ops.h | Query/fetch and inventory roll-up carriers. |
 
 Any struct handed to `PMIX_THREADSHIFT` **must** carry a `pmix_event_t ev`
@@ -204,9 +212,13 @@ blocks the creator until the handler wakes it.
 The public `PMIx_server_*` setters follow the standard pattern: when the
 caller supplies a callback they thread-shift a caddy and return
 immediately; when `cbfunc == NULL` they construct a local
-`pmix_lock_t`, substitute an internal `opcbfunc` that wakes it, thread-
-shift, then `PMIX_WAIT_THREAD` and read the status back. `_register_nspace`
-/ `PMIx_server_register_nspace` is the canonical both-paths example.
+`pmix_lock_t`, substitute the shared `pmix_server_lock_opcbfunc` that
+wakes it, thread-shift, then `PMIX_WAIT_THREAD` and read the status back.
+`_register_nspace` / `PMIx_server_register_nspace`
+(`pmix_server_registration.c`) is the canonical both-paths example.
+That waker lives in `pmix_server.c` and is declared in
+`pmix_server_ops.h` because every one of these files needs it; do not
+re-roll a private copy.
 Never touch `pmix_server_globals` state before the thread-shift — do it
 inside the `_worker(int sd, short args, void *cbdata)` handler that runs
 on the progress thread.
@@ -227,7 +239,7 @@ has been registered, so `nlocal` is final).
 Each contributing client's `pmix_server_caddy_t` is appended to
 `trk->local_cbs` (with **no** extra retain — the list borrows the
 switchyard's reference). Completion is the single predicate
-`pmix_server_trk_complete` (`pmix_server_ops.c:3083`):
+`pmix_server_trk_complete` (`pmix_server_ops.c:3424`):
 
 ```
 def_complete && (len(local_cbs) + len(departed)) >= nlocal
@@ -244,13 +256,14 @@ the trickiest bugs):**
 
 - A tracker's `PMIX_NEW` reference is the *only* reference; being on the
   `collectives` list is **not** a refcount.
-- The tracker destructor `tdes` (`pmix_server_ops.c:3052`) `PMIX_LIST_DESTRUCT`s
+- The tracker destructor `tdes` (`pmix_server_ops.c:3393`) `PMIX_LIST_DESTRUCT`s
   `local_cbs` — thereby releasing every contributor caddy — but it does
   **not** unlink the tracker from `collectives`.
 - Therefore the *only* correct teardown is: cancel any armed timer,
   `pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super)`,
   then `PMIX_RELEASE(trk)` — exactly once. The canonical completion
-  paths (`_mdxcbfunc`, `_cnct`/`_discnct` in `pmix_server.c`) do this.
+  paths (`_mdxcbfunc`, `_cnct`/`_discnct` in `pmix_server_switchyard.c`)
+  do this.
 - **Never `PMIX_RELEASE` a tracker that is still linked in `collectives`**
   (dangling pointer → UAF on the next sweep), and **never release a
   tracker whose `local_cbs` still holds a caddy that the switchyard will
@@ -385,9 +398,9 @@ releasing on a host-error return, or the switchyard double-frees it.
 
 ## Peer lifecycle, tombstones, and event purging
 
-`pmix_server_peer_finalized` (`pmix_server.c:1495`) and its helper
+`pmix_server_peer_finalized` (`pmix_server_registration.c:460`) and its helper
 `remove_client` implement the **tombstone** model documented in the
-header comment (`pmix_server_ops.h:350`): a cleanly-finalized local
+header comment (`pmix_server_ops.h:387`): a cleanly-finalized local
 client whose socket dropped is left in place as an inert finalized peer
 at its `clients` slot (its `info->peerid` unchanged, slot not nulled),
 to be reclaimed at the next reconnect for that rank or at namespace
@@ -452,7 +465,7 @@ parsed inside an existing handler, not a new switchyard case.
 ## Building
 
 `src/server` compiles straight into `libpmix` via
-[`Makefile.include`](Makefile.include), which appends the seven `.c`
+[`Makefile.include`](Makefile.include), which appends the fourteen `.c`
 files to the top-level `sources` list and `pmix_server_ops.h` to
 `headers`. Nothing here is conditionally compiled, so a change takes
 effect with a plain top-level `make` on an already-configured tree; you
