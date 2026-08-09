@@ -785,7 +785,7 @@ inspection against the code that consumes them.
   lost by continuing: the directive is carried in the job-level info the
   client is about to send, and whoever launches for it does the harvest
   with its own `pmdl` (see `PMIx_server_setup_application`,
-  `src/server/pmix_server.c`). Both harvest sites now tolerate
+  `src/server/pmix_server_setup.c`). Both harvest sites now tolerate
   `PMIX_ERR_INIT` specifically, and nothing else.
 
   **This is why the role matters when reading this file.** `PMIx_Spawn_nb`

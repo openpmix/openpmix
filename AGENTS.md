@@ -597,7 +597,7 @@ It must **not** call `PMIX_WAKEUP_THREAD` in the non-blocking path — there is 
 
 ### Reference implementation
 
-`src/server/pmix_server.c` is the canonical reference.  The `PMIx_server_register_nspace` / `_register_nspace` pair shows both paths: when `cbfunc == NULL` the API constructs a local lock, substitutes an internal callback, and blocks; when a callback is provided it simply thread-shifts and returns.  Study that file before writing a new API or modifying an existing one.
+`src/server/pmix_server_registration.c` is the canonical reference.  The `PMIx_server_register_nspace` / `_register_nspace` pair shows both paths: when `cbfunc == NULL` the API constructs a local lock, substitutes an internal callback, and blocks; when a callback is provided it simply thread-shifts and returns.  Study that file before writing a new API or modifying an existing one.
 
 ### Rules to remember
 

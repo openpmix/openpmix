@@ -41,8 +41,8 @@ follows the same shape: a thin public `PMIx_*` function that validates
 state, packs the request into a **caddy**, and thread-shifts it onto the
 progress thread, plus the handlers that run there and the PTL receive
 callbacks that fire when the server replies. Read
-[`src/server/pmix_server.c`](../server/pmix_server.c) (the canonical
-reference named in the top-level guide) and `pmix_session.c` in this
+[`src/server/pmix_server_registration.c`](../server/pmix_server_registration.c)
+(the canonical reference named in the top-level guide) and `pmix_session.c` in this
 directory (the smallest complete example) before writing or changing an
 entry point.
 
@@ -194,7 +194,7 @@ whole of understanding this code:
 
 The second kind only works when the registration was **forwarded
 upstream**. `req->cbfunc` is invoked from exactly three places — the
-`PMIX_PTL_TAG_IOF` receive handlers in `pmix_server.c`, `pmix_client.c`
+`PMIX_PTL_TAG_IOF` receive handlers in `pmix_server_iof.c`, `pmix_client.c`
 and `pmix_tool.c` — and every one of them fires only when a message
 arrives on a socket. A client or tool with a server above it gets that:
 `myreg()` sees a NULL `requestor`, sends `PMIX_IOF_PULL_CMD` upstream, and
@@ -220,7 +220,7 @@ requestor from two places, both through `pmix_iof_process_iof()`:
 
 - `pmix_server_process_iof()` (`src/server/pmix_server_ops.c`) — the
   spawn-time, per-namespace registration.
-- `_iofreg()` (`src/server/pmix_server.c`) — the completion of a tool's
+- `_iofreg()` (`src/server/pmix_server_switchyard.c`) — the completion of a tool's
   `PMIx_IOF_pull` arriving over the wire. Note *where* it scans: after
   `PMIX_SERVER_QUEUE_REPLY` has sent the refid back, so the tool cannot
   be handed IO for a handler id it has not been told yet. Ordering, not a

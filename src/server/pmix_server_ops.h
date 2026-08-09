@@ -355,8 +355,18 @@ PMIX_EXPORT void pmix_server_execute_collective(int sd, short args, void *cbdata
 
 PMIX_EXPORT pmix_status_t pmix_server_initialize(void);
 
+/* Generic completion callback used by the blocking form of the public
+ * server APIs: it records the status where the waiting caller can read
+ * it and wakes the caller's lock. The cbdata must be a pmix_lock_t. */
+PMIX_EXPORT void pmix_server_lock_opcbfunc(pmix_status_t status, void *cbdata);
+
 PMIX_EXPORT void pmix_server_message_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                                              pmix_buffer_t *buf, void *cbdata);
+
+/* Receive callback registered with the PTL for output forwarded to us
+ * by our host or another server - see PMIx_server_init. */
+PMIX_EXPORT void pmix_server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                                         pmix_buffer_t *buf, void *cbdata);
 
 PMIX_EXPORT void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc);
 

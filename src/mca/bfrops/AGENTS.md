@@ -178,7 +178,8 @@ The peer's version string that feeds `assign_module` is exchanged in the
 `ptl` connection handshake (a process advertises its own
 `compat.bfrops->version`); see the `ptl` framework doc. Call sites that
 assign a module live in `ptl_base_connection_hdlr.c`, `ptl_client.c`,
-`pmix_server.c`, `pmix_tool.c`, and `common/pmix_data.c`.
+`pmix_server.c`, `pmix_server_switchyard.c`, `pmix_tool.c`, and
+`common/pmix_data.c`.
 
 ### Priority / version table
 

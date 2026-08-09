@@ -167,7 +167,7 @@ This must be the **single** completion predicate used everywhere the
 question "is this collective locally complete?" is asked. Today that
 question is asked, with a hand-rolled cardinality test, in at least six
 places (the fence, connect, and disconnect contribution paths; the two
-late-registration re-checks in ``pmix_server.c``; and the lost-connection
+late-registration re-checks in ``pmix_server_registration.c``; and the lost-connection
 handler). All of them must consult one shared predicate so the accounting
 can never diverge between call sites.
 

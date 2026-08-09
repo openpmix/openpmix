@@ -51,7 +51,7 @@ The code paths this plan touches:
 * **Completion test (connect/disconnect)** —
   ``src/server/pmix_server_connect.c``.
 * **Completion test (group)** — ``src/server/pmix_server_group.c``.
-* **Late-registration re-checks** — ``src/server/pmix_server.c``
+* **Late-registration re-checks** — ``src/server/pmix_server_registration.c``
   (``register_nspace`` and ``register_client`` paths).
 * **Lost-connection accounting** — ``lost_connection`` in
   ``src/mca/ptl/base/ptl_base_sendrecv.c``.
