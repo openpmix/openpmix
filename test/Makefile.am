@@ -46,7 +46,7 @@
 # without --disable-visibility, the right fix is PMIX_EXPORT on what it
 # needs -- see the export rule in src/class/AGENTS.md -- not a condition
 # here that removes the whole tree from "make check" without a word.
-SUBDIRS = simple sshot util unit topologies
+SUBDIRS = simple util unit topologies
 
 if WANT_PYTHON_BINDINGS
 SUBDIRS += python

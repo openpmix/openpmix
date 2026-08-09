@@ -257,11 +257,6 @@ test/simple/simpdist
 test/simple/legacy
 test/simple/refresh
 
-test/sshot/daemon
-test/sshot/generate
-test/sshot/server
-test/sshot/mytopo.json
-test/sshot/testcoord
 
 test/unit/client_api
 test/unit/common_api

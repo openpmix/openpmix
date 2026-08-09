@@ -38,7 +38,7 @@ noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
 # Unlike the "make check" tests, the programs here are launched by hand,
 # so nothing sets up the MCA component search path for them. Any
 # component built as a run-time-loadable plugin -- all of them under
-# --enable-mca-dso, and pcompress/pnet-sshot even in a default build --
+# --enable-mca-dso, and pcompress even in a default build --
 # sits in the build tree rather than on the library's default search
 # path, so a program run straight from a tree that has never been
 # installed fails PMIx_Init with "unable to find any usable plugins".
