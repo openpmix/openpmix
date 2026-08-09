@@ -8,12 +8,12 @@ Beyond the :ref:`required support libraries
 further libraries **if it finds them at configure time**, and will build
 without them otherwise.
 
-None of these is needed to produce a working PMIx. Each one is either
-enabling a capability that some sites want and others do not, or making
-something PMIx already does faster. The distinction matters when reading
-this page: a missing library from the first group means a feature is simply
-absent, while a missing library from the second group means PMIx still
-works but does more of the work itself.
+None of these is needed to produce a working PMIx. Each one either
+enables a capability that some sites want and others do not, or makes
+something PMIx already does faster |mdash| and the distinction matters:
+a missing library from the first group means a feature is simply absent,
+while a missing library from the second group means PMIx still works but
+does more of the work itself.
 
 .. important:: The **selection happens at configure time, not run time.**
    A component is compiled only if its library was found, so an absent
@@ -106,34 +106,6 @@ costs you that capability and nothing else.
    ``pdl`` is what loads MCA components built as DSOs. A build with
    neither ``pdlopen`` nor ``plibltdl`` can still work, but only if every
    component is compiled statically into the library.
-
-Checked for, but not currently used
------------------------------------
-
-``configure`` also probes for the following. They appear in the
-:ref:`output summary <label-install-configure-output-summary>` and accept
-``--with-`` options, which makes them look like functional dependencies;
-at present they are not, and providing them changes nothing about the
-library that gets built.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 12 10 30
-
-   * - Library
-     - ``configure`` option
-     - Status
-   * - `Jansson <https://github.com/akheron/jansson>`_
-     - ``--with-jansson``
-     - Used only by the ``test/sshot`` test programs, which are not part
-       of an installation. Nothing in ``libpmix`` links against it.
-   * - `libcurl <https://curl.se/libcurl/>`_
-     - ``--with-curl``
-     - Probed and reported; no code in the tree consumes it.
-
-They are documented here rather than omitted precisely because their
-presence in ``configure --help`` and in the summary invites the
-assumption that PMIx needs them.
 
 Specifying where to find them
 -----------------------------

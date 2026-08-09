@@ -50,17 +50,6 @@ Other capabilities
   ``pdl/plibltdl`` component for loading DSO components. The
   ``pdl/pdlopen`` component is preferred where both are available.
 
-Probed but unused
------------------
-
-* ``--with-jansson[=VALUE]``:
-* ``--with-curl[=VALUE]``:
-
-  These are accepted and reported in the configure summary, but no code
-  in ``libpmix`` uses either library; Jansson is used only by the
-  ``test/sshot`` test programs. They are listed here so their appearance
-  in ``configure --help`` is not mistaken for a dependency.
-
 Permitted values, and one important behavior
 --------------------------------------------
 
@@ -84,8 +73,6 @@ Permitted values, and one important behavior
 * ``--with-munge-libdir=LIBDIR``:
 * ``--with-smtp-libdir=LIBDIR``:
 * ``--with-libltdl-libdir=LIBDIR``:
-* ``--with-jansson-libdir=LIBDIR``:
-* ``--with-curl-libdir=LIBDIR``:
   :ref:`See the configure CLI
   options conventions <building-pmix-cli-options-conventions-label>`
   for a description of these options.
