@@ -233,8 +233,8 @@ enumerator's own dump back into it for exactly this reason.
 ### The framework lifecycle
 
 A framework is a `pmix_mca_base_framework_t` declared by
-`PMIX_MCA_BASE_FRAMEWORK_DECLARE()` and driven through three entry
-points in [`pmix_mca_base_framework.c`](pmix_mca_base_framework.c):
+`PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE()` and driven through three
+entry points in [`pmix_mca_base_framework.c`](pmix_mca_base_framework.c):
 
 ```
 pmix_mca_base_framework_register()   refcnt++, register MCA vars,
@@ -269,6 +269,39 @@ tearing anything down, so no later close can ever reach zero. The
 it — but only in a build with asserts enabled, which is not the one
 users get. `test/unit/mca/mca_base_framework.c` covers both failure
 paths and both holder cases.
+
+### The framework interface version
+
+A framework states the version of the interface its components are built
+against, and `open_components()` refuses a component that does not match
+it. This is the only version check that means anything per framework:
+the repository's is on the *MCA* version, one number for the whole
+project, which says nothing about whether a given module struct has
+changed underneath a plugin. Since components are run-time-loadable, an
+installed one older than the library loading it is what any partial
+upgrade produces — `pcompress` grew two entry points without a bump and
+an older plugin left them `NULL`.
+
+**The numbers live in one place: the framework's own header.** Three
+macros — `PMIX_MCA_<name>_MAJOR_VERSION`, `_MINOR_VERSION`,
+`_RELEASE_VERSION` — feed both the component version macro (so every
+component stamps them into its struct) and the framework declaration,
+which reaches them by pasting the framework's name through
+`PMIX_MCA_FW_VER()`. Neither side restates them, so they cannot drift.
+Bumping an interface is one edit in one header; the declaration is never
+touched. The framework name in those macro names is lower case because
+the preprocessor pastes tokens and does not upper-case them.
+
+**Two declaration macros, and the difference matters.**
+`PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE()` is what frameworks in this
+project use; a framework that uses it without defining those macros does
+not compile. `PMIX_MCA_BASE_FRAMEWORK_DECLARE()` is the original,
+unversioned form and its signature is frozen — it is reached through an
+installed header, and **PRRTE declares every one of its frameworks with
+it**. Such a framework reports version 0.0, which `open_components()`
+reads as "no version stated" and skips the check for, rather than
+refusing everything it owns. Both arms are covered by
+`test/unit/mca/mca_base_framework.c`.
 
 `framework_flags` carries `NOREGISTER` (skip the MCA variable stage
 entirely — used by frameworks that run before the variable system is

@@ -147,7 +147,20 @@ typedef pmix_mca_base_component_t pmix_pmdl_base_component_t;
 /*
  * Macro for use in components that are of type pmdl
  */
-#define PMIX_PMDL_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("pmdl", 1, 0, 0)
+/* The pmdl framework interface version. It is stated here and
+ * nowhere else: the component macro below stamps these numbers into
+ * every pmdl component, and the framework's declaration reaches the
+ * same three by pasting its name, so the two cannot drift apart.
+ * Bump it on any change to the module interface that a component
+ * built against the previous one would not survive. */
+#define PMIX_MCA_pmdl_MAJOR_VERSION   1
+#define PMIX_MCA_pmdl_MINOR_VERSION   0
+#define PMIX_MCA_pmdl_RELEASE_VERSION 0
+
+#define PMIX_PMDL_BASE_VERSION_1_0_0                                     \
+    PMIX_MCA_BASE_VERSION_1_0_0("pmdl", PMIX_MCA_pmdl_MAJOR_VERSION,   \
+                                PMIX_MCA_pmdl_MINOR_VERSION,           \
+                                PMIX_MCA_pmdl_RELEASE_VERSION)
 
 END_C_DECLS
 

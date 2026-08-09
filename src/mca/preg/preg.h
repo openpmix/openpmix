@@ -128,7 +128,20 @@ PMIX_EXPORT extern pmix_preg_module_t pmix_preg;
 /*
  * Macro for use in components that are of type preg
  */
-#define PMIX_PREG_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("preg", 1, 0, 0)
+/* The preg framework interface version. It is stated here and
+ * nowhere else: the component macro below stamps these numbers into
+ * every preg component, and the framework's declaration reaches the
+ * same three by pasting its name, so the two cannot drift apart.
+ * Bump it on any change to the module interface that a component
+ * built against the previous one would not survive. */
+#define PMIX_MCA_preg_MAJOR_VERSION   1
+#define PMIX_MCA_preg_MINOR_VERSION   0
+#define PMIX_MCA_preg_RELEASE_VERSION 0
+
+#define PMIX_PREG_BASE_VERSION_1_0_0                                     \
+    PMIX_MCA_BASE_VERSION_1_0_0("preg", PMIX_MCA_preg_MAJOR_VERSION,   \
+                                PMIX_MCA_preg_MINOR_VERSION,           \
+                                PMIX_MCA_preg_RELEASE_VERSION)
 
 END_C_DECLS
 

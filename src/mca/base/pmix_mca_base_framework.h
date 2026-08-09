@@ -130,6 +130,26 @@ typedef struct pmix_mca_base_framework_t {
     char *framework_project;
     /** Framework name */
     char *framework_name;
+    /** The framework interface version this build of the framework
+        speaks. A component records the same pair in its own struct, and
+        open_components() refuses one that does not match: a component is
+        a run-time-loadable plugin, so an installed one can be older than
+        the library loading it, and nothing else in the MCA compares
+        these.
+
+        Neither the framework nor its components state these numbers
+        directly. Both read them from the PMIX_MCA_<name>_*_VERSION
+        macros in the framework's own header, so there is exactly one
+        place to edit when the module interface changes - see
+        PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE below.
+
+        Zero means "this framework declares no interface version", which
+        is what the unversioned PMIX_MCA_BASE_FRAMEWORK_DECLARE produces
+        and what every framework outside this project therefore gets. The
+        check is skipped for such a framework rather than refusing
+        everything it owns. */
+    int framework_type_major_version;
+    int framework_type_minor_version;
     /** Description of this framework or NULL */
     const char *framework_description;
     /** Framework register function or NULL if the framework
@@ -219,17 +239,90 @@ PMIX_EXPORT bool pmix_mca_base_framework_is_registered(struct pmix_mca_base_fram
 PMIX_EXPORT bool pmix_mca_base_framework_is_open(struct pmix_mca_base_framework_t *framework);
 
 /**
+ * Reach the interface version a framework's own header states.
+ *
+ * A framework declares its version once, as three object-like macros in
+ * its <framework>.h - for example, in pcompress.h:
+ *
+ *   #define PMIX_MCA_pcompress_MAJOR_VERSION   3
+ *   #define PMIX_MCA_pcompress_MINOR_VERSION   0
+ *   #define PMIX_MCA_pcompress_RELEASE_VERSION 0
+ *
+ * Those are the numbers the framework's component version macro
+ * (PMIX_COMPRESS_BASE_VERSION_3_0_0) also expands to, so the version a
+ * component stamps into its struct and the version the framework
+ * compares it against are the same three integers. Nothing restates
+ * them, so they cannot drift apart.
+ *
+ * The name carries the framework's directory name verbatim, lower case
+ * and all: the preprocessor pastes tokens, it does not upper-case them,
+ * and the token this reaches for has to be the one
+ * PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE can build out of the name it
+ * is handed.
+ */
+#    define PMIX_MCA_FW_VER_(name, level) PMIX_MCA_##name##_##level##_VERSION
+#    define PMIX_MCA_FW_VER(name, level)  PMIX_MCA_FW_VER_(name, level)
+
+/**
+ * Macro to declare an MCA framework, stating an interface version
+ *
+ * Identical to PMIX_MCA_BASE_FRAMEWORK_DECLARE, except that the
+ * framework's interface version is picked up from the
+ * PMIX_MCA_<name>_MAJOR_VERSION / _MINOR_VERSION macros its own header
+ * defines (see PMIX_MCA_FW_VER above). It takes no version arguments
+ * precisely so that a version bump is one edit, in one header, and never
+ * reaches this declaration.
+ *
+ * A framework that uses this macro without defining those two macros
+ * does not compile, which is the point: within this project a framework
+ * states its version or says so loudly.
+ *
+ * Example:
+ *  PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, foo, NULL, pmix_foo_open,
+ *                                            pmix_foo_close, NULL,
+ *                                            MCA_BASE_FRAMEWORK_FLAG_LAZY)
+ */
+#    define PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(project, name, description, registerfn,   \
+                                                     openfn, closefn, static_components, flags) \
+        PMIX_MCA_BASE_FRAMEWORK_DECLARE_FULL(project, name, PMIX_MCA_FW_VER(name, MAJOR),       \
+                                             PMIX_MCA_FW_VER(name, MINOR), description,         \
+                                             registerfn, openfn, closefn, static_components,    \
+                                             flags)
+
+/**
  * Macro to declare an MCA framework
+ *
+ * This is the original, unversioned form, and its signature is frozen:
+ * it is reached through an installed header and companion projects -
+ * PRRTE declares every one of its frameworks with it - so it must keep
+ * compiling for a caller that knows nothing about interface versions.
+ * Such a framework reports version 0.0, which open_components() reads as
+ * "no version stated" and skips the component check for.
+ *
+ * Frameworks inside this project should use
+ * PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE instead.
  *
  * Example:
  *  PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, foo, NULL, pmix_foo_open, pmix_foo_close,
  * MCA_BASE_FRAMEWORK_FLAG_LAZY)
  */
-#    define PMIX_MCA_BASE_FRAMEWORK_DECLARE(project, name, description, registerfn, openfn, \
-                                            closefn, static_components, flags)              \
+#    define PMIX_MCA_BASE_FRAMEWORK_DECLARE(project, name, description, registerfn, openfn,  \
+                                            closefn, static_components, flags)               \
+        PMIX_MCA_BASE_FRAMEWORK_DECLARE_FULL(project, name, 0, 0, description, registerfn,    \
+                                             openfn, closefn, static_components, flags)
+
+/**
+ * The declaration both of the above expand to. Not to be called
+ * directly - use one of the two macros above.
+ */
+#    define PMIX_MCA_BASE_FRAMEWORK_DECLARE_FULL(project, name, type_major, type_minor,     \
+                                                 description, registerfn, openfn,           \
+                                                 closefn, static_components, flags)         \
         pmix_mca_base_framework_t project##_##name##_base_framework                         \
             = {.framework_project = #project,                                               \
                .framework_name = #name,                                                     \
+               .framework_type_major_version = type_major,                                  \
+               .framework_type_minor_version = type_minor,                                  \
                .framework_description = description,                                        \
                .framework_register = registerfn,                                            \
                .framework_open = openfn,                                                    \

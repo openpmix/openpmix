@@ -42,7 +42,7 @@ PMIX_EXPORT pmix_mca_base_component_t pmix_mca_pcompress_zstd_component = {
     /* Handle the general mca_component_t struct containing
      *  meta information about the component zstd
      */
-    PMIX_COMPRESS_BASE_VERSION_2_0_0,
+    PMIX_COMPRESS_BASE_VERSION_3_0_0,
 
     /* Component name and version */
     .pmix_mca_component_name = "zstd",

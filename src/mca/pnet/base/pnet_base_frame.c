@@ -95,7 +95,7 @@ static pmix_status_t pmix_pnet_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_pnet_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pnet, "PMIx Network Operations", NULL, pmix_pnet_open,
+PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, pnet, "PMIx Network Operations", NULL, pmix_pnet_open,
                                 pmix_pnet_close, pmix_mca_pnet_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 

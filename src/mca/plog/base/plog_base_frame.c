@@ -97,7 +97,7 @@ static pmix_status_t pmix_plog_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_plog_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, plog, "PMIx Logging Operations", pmix_plog_register,
+PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, plog, "PMIx Logging Operations", pmix_plog_register,
                                 pmix_plog_open, pmix_plog_close, pmix_mca_plog_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
