@@ -116,130 +116,6 @@ report:
     return;
 }
 
-static void process_cache(int sd, short args, void *cbdata)
-{
-    pmix_iof_req_t *req = (pmix_iof_req_t *) cbdata;
-    pmix_iof_cache_t *iof, *ionext;
-    bool found;
-    size_t n;
-    pmix_status_t rc;
-    pmix_buffer_t *msg;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
-
-    /* a request registered by a client or a launcher that has an
-     * upstream server carries no requestor peer - its IO is delivered
-     * through its own callback when the message arrives, not by
-     * packing one here - so there is nothing for us to forward */
-    if (NULL == req->requestor) {
-        return;
-    }
-    /* and nothing to forward to a peer that has no identity yet or has
-     * already gone - the same two screens pmix_iof_process_iof applies
-     * before it reaches into requestor->info */
-    if (NULL == req->requestor->info || req->requestor->finalized) {
-        return;
-    }
-
-    /* NOTE: the forwarding below is currently unreachable, and knowing
-     * that is worth more than the code. The only requests that get here
-     * are the ones PMIx_IOF_pull built in this process, and it sets
-     * requestor only when we are our own server - in which case the
-     * requestor IS us, so the "never forward to myself" test below skips
-     * every entry. A request with no requestor returned above. So the
-     * delayed cache scan the blocking form of PMIx_IOF_pull arms delivers
-     * nothing: such a request is served through req->cbfunc when the IO
-     * arrives, and cached IO has no path to that callback. Settle what
-     * the right delivery is before making this live. */
-
-    PMIX_LIST_FOREACH_SAFE (iof, ionext, &pmix_server_globals.iof, pmix_iof_cache_t) {
-        /* if the channels don't match, then ignore it */
-        if (!(iof->channel & req->channels)) {
-            continue;
-        }
-        /* never forward back to the source! This can happen if the source
-         * is a launcher */
-        if (PMIX_CHECK_NAMES(&iof->source, &req->requestor->info->pname)) {
-            continue;
-        }
-        /* never forward to myself */
-        if (PMIX_CHECK_NAMES(&req->requestor->info->pname, &pmix_globals.myid)) {
-            continue;
-        }
-        /* if the source does not match the request, then ignore it */
-        found = false;
-        for (n = 0; n < req->nprocs; n++) {
-            if (PMIX_CHECK_PROCID(&iof->source, &req->procs[n])) {
-                found = true;
-                break;
-            }
-        }
-        if (found) {
-            /* setup the msg */
-            if (NULL == (msg = PMIX_NEW(pmix_buffer_t))) {
-                PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-                return;
-            }
-            /* provide the source */
-            PMIX_BFROPS_PACK(rc, req->requestor, msg, &iof->source, 1, PMIX_PROC);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msg);
-                return;
-            }
-            /* provide the channel */
-            PMIX_BFROPS_PACK(rc, req->requestor, msg, &iof->channel, 1, PMIX_IOF_CHANNEL);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msg);
-                return;
-            }
-            /* Provide the handler ID *the requestor* knows this request
-             * by. The receiver uses it as an index into its own
-             * iof_requests array, so it has to be remote_id - local_id is
-             * our index into ours, and names a different request entirely.
-             * pmix_iof_process_iof, which packs the identical message for
-             * the identical receiver, gets this right. (Nothing reaches
-             * this today - see the note below - which is how the two
-             * drifted apart.) */
-            PMIX_BFROPS_PACK(rc, req->requestor, msg, &req->remote_id, 1, PMIX_SIZE);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msg);
-                return;
-            }
-            /* pack the number of info's provided */
-            PMIX_BFROPS_PACK(rc, req->requestor, msg, &iof->ninfo, 1, PMIX_SIZE);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msg);
-                return;
-            }
-            /* if some were provided, then pack them too */
-            if (0 < iof->ninfo) {
-                PMIX_BFROPS_PACK(rc, req->requestor, msg, iof->info, iof->ninfo, PMIX_INFO);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE(msg);
-                    return;
-                }
-            }
-            /* pack the data */
-            PMIX_BFROPS_PACK(rc, req->requestor, msg, iof->bo, 1, PMIX_BYTE_OBJECT);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msg);
-                return;
-            }
-            /* send it to the requestor */
-            PMIX_PTL_SEND_ONEWAY(rc, req->requestor, msg, PMIX_PTL_TAG_IOF);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msg);
-            }
-        }
-    }
-}
-
 static void myreg(int sd, short args, void *cbdata)
 {
     pmix_iof_req_t *req = (pmix_iof_req_t *) cbdata;
@@ -275,8 +151,6 @@ static void myreg(int sd, short args, void *cbdata)
         /* if there is a registration callback function, call it */
         if (NULL != req->regcbfunc) {
             req->regcbfunc(req->status, req->local_id, req->cbdata);
-            // process any cached IO
-            process_cache(0, 0, req);
         } else {
             PMIX_WAKEUP_THREAD(&req->lock);
         }
@@ -435,9 +309,6 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
         pmix_status_t status;
         PMIX_WAIT_THREAD(&req->lock);
         if (PMIX_SUCCESS == req->status) {
-            // we don't want the IO to arrive before we return from
-            // this call, so delay it a little
-            PMIX_THREADSHIFT_DELAY(req, process_cache, 1.0);
             return PMIX_OPERATION_SUCCEEDED;
         } else {
             // the request failed and myreg removed it from the
