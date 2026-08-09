@@ -214,14 +214,14 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
             proc.rank = PMIX_RANK_UNDEF;
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
             if (PMIX_SUCCESS != rc) {
-                if (PMIX_RANK_UNDEF == proc.rank) {
-                    // try again with wildcard
-                    proc.rank = PMIX_RANK_WILDCARD;
-                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-                    if (PMIX_SUCCESS != rc) {
-                        continue;
-                    }
-                } else {
+                /* try again with wildcard - the fetch takes a const proc
+                 * and so cannot have altered the rank we just set, but
+                 * the rank does matter to the gds: only a wildcard reaches
+                 * the job-level table, where an older peer (or a tool
+                 * registering itself) records its local peers */
+                proc.rank = PMIX_RANK_WILDCARD;
+                PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+                if (PMIX_SUCCESS != rc) {
                     continue;
                 }
             }
@@ -327,30 +327,27 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
         PMIX_DESTRUCT(&cb);
         goto done;
     }
-    if (PMIX_ERR_DATA_VALUE_NOT_FOUND == ret) {
-        // found the namespace and node, but the
-        // host did not provide the information
-        PMIX_DESTRUCT(&cb);
-        goto done;
+    /* Get here on any other error - most commonly
+     * PMIX_ERR_DATA_VALUE_NOT_FOUND, meaning the node is known to this
+     * namespace but the host recorded no list of peers against it. Take
+     * a second look with a wildcard rank before answering. The fetch
+     * takes a const proc and so cannot have altered the rank we set
+     * above, but the rank does matter to the gds: only a wildcard
+     * reaches the job-level table, which is where an older peer - or a
+     * tool that registered itself - records its local peers. The
+     * aggregate branch above always took this second look; a request
+     * naming a single namespace used to give up first, so the same
+     * server could answer the same question two different ways. */
+    rc = ret; // remember what the first, more specific, look said
+    proc.rank = PMIX_RANK_WILDCARD;
+    PMIX_GDS_FETCH_KV(ret, pmix_globals.mypeer, &cb);
+    if (PMIX_SUCCESS == ret) {
+        goto process;
     }
-    // get here if we see a different error
-    if (PMIX_RANK_UNDEF == proc.rank) {
-        // try again with wildcard
-        proc.rank = PMIX_RANK_WILDCARD;
-        PMIX_GDS_FETCH_KV(ret, pmix_globals.mypeer, &cb);
-        if (PMIX_SUCCESS == ret) {
-            goto process;
-        }
-        if (PMIX_ERR_NOT_FOUND == ret) {
-            // found the namespace, but the node is
-            // not present on that namespace - the
-            // default response is correct
-            ret = PMIX_SUCCESS;
-        }
-        // couldn't find it
-        PMIX_DESTRUCT(&cb);
-        goto done;
-    }
+    // the second look added nothing, so report the first answer
+    ret = rc;
+    PMIX_DESTRUCT(&cb);
+    goto done;
 
 process:
     /* sanity check */
