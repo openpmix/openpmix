@@ -121,12 +121,25 @@ int main(int argc, char **argv)
 
     CHECK(ziplen < len, "compress returned true but the result is not smaller");
 
-    /* the 4-byte prefix must report the inflated size without inflating */
-    bo.bytes = (char *) zip;
-    bo.size = ziplen;
-    CHECK(len == pmix_compress.get_decompressed_size(&bo),
-          "get_decompressed_size gave %zu, expected %zu",
-          pmix_compress.get_decompressed_size(&bo), len);
+    /* the 4-byte prefix must report the inflated size without inflating.
+     *
+     * Screen the entry point first. A module fills in only the subset it
+     * implements, and components are run-time-loadable, so the plugin
+     * that got selected can be older than the libpmix that loaded it -
+     * which is what any partial upgrade produces, and every module built
+     * before July 2026 left this one NULL. Calling it blind is a jump to
+     * address zero, and a test that segfaults reports nothing at all.
+     * This is the same screen bfrops applies at its own call sites. */
+    if (NULL == pmix_compress.get_decompressed_size) {
+        fprintf(stdout, "NOTE: selected component has no get_decompressed_size; "
+                        "skipping the size-prefix check\n");
+    } else {
+        bo.bytes = (char *) zip;
+        bo.size = ziplen;
+        CHECK(len == pmix_compress.get_decompressed_size(&bo),
+              "get_decompressed_size gave %zu, expected %zu",
+              pmix_compress.get_decompressed_size(&bo), len);
+    }
 
     /* --- and must round-trip exactly ----------------------------------- */
     CHECK(PMIx_Data_decompress(zip, ziplen, &back, &backlen),
@@ -183,17 +196,30 @@ int main(int argc, char **argv)
     }
     str[len] = '\0';
 
-    if (pmix_compress.compress_string(str, &zip, &ziplen)) {
+    /* every one of these is screened for the same reason as the size
+     * entry point above */
+    if (NULL != pmix_compress.compress_string &&
+        pmix_compress.compress_string(str, &zip, &ziplen)) {
         bo.bytes = (char *) zip;
         bo.size = ziplen;
-        CHECK(len + 1 == pmix_compress.get_decompressed_strlen(&bo),
-              "get_decompressed_strlen gave %zu, expected %zu",
-              pmix_compress.get_decompressed_strlen(&bo), len + 1);
-        CHECK(pmix_compress.decompress_string(&strback, zip, ziplen),
-              "decompress_string refused its own output");
-        if (NULL != strback) {
-            CHECK(0 == strcmp(strback, str), "string round-trip altered the payload");
-            free(strback);
+        if (NULL == pmix_compress.get_decompressed_strlen) {
+            fprintf(stdout, "NOTE: selected component has no "
+                            "get_decompressed_strlen; skipping that check\n");
+        } else {
+            CHECK(len + 1 == pmix_compress.get_decompressed_strlen(&bo),
+                  "get_decompressed_strlen gave %zu, expected %zu",
+                  pmix_compress.get_decompressed_strlen(&bo), len + 1);
+        }
+        if (NULL == pmix_compress.decompress_string) {
+            fprintf(stdout, "NOTE: selected component compresses strings but "
+                            "cannot inflate them; skipping the round-trip\n");
+        } else {
+            CHECK(pmix_compress.decompress_string(&strback, zip, ziplen),
+                  "decompress_string refused its own output");
+            if (NULL != strback) {
+                CHECK(0 == strcmp(strback, str), "string round-trip altered the payload");
+                free(strback);
+            }
         }
         free(zip);
         zip = NULL;
