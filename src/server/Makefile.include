@@ -27,6 +27,8 @@ sources += \
         server/pmix_server_inventory.c \
         server/pmix_server_pset.c \
         server/pmix_server_switchyard.c \
+        server/pmix_server_op_replies.c \
+        server/pmix_server_info_replies.c \
         server/pmix_server_get.c \
         server/pmix_server_group.c \
         server/pmix_server_fence.c \
