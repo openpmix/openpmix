@@ -392,3 +392,382 @@ pmix_status_t PMIx_server_IOF_flow_control(const pmix_proc_t *source,
     PMIX_THREADSHIFT(cd, _iofflowcontrol);
     return PMIX_SUCCESS;
 }
+
+pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
+                                      char nspace[])
+{
+    pmix_iof_req_t *req;
+    pmix_status_t rc;
+    pmix_iof_cache_t *iof, *ionext;
+
+    // if no channels to forward, just return success
+    if (PMIX_FWD_NO_CHANNELS == cd->channels) {
+        return PMIX_SUCCESS;
+    }
+
+    /* record the request */
+    req = PMIX_NEW(pmix_iof_req_t);
+    if (NULL == req) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(cd->peer);
+    req->requestor = cd->peer;
+    req->nprocs = 1;
+    PMIX_PROC_CREATE(req->procs, req->nprocs);
+    PMIX_LOAD_PROCID(&req->procs[0], nspace, PMIX_RANK_WILDCARD);
+    req->channels = cd->channels;
+    req->flags = cd->flags;
+    req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    /* process any cached IO */
+    PMIX_LIST_FOREACH_SAFE (iof, ionext, &pmix_server_globals.iof, pmix_iof_cache_t) {
+        rc = pmix_iof_process_iof(iof->channel, &iof->source, iof->bo,
+                                  iof->info, iof->ninfo, req);
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            /* remove it from the list since it has now been forwarded */
+            pmix_list_remove_item(&pmix_server_globals.iof, &iof->super);
+            PMIX_RELEASE(iof);
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                 pmix_op_cbfunc_t cbfunc,
+                                 void *cbdata)
+{
+    int32_t cnt;
+    pmix_status_t rc;
+    pmix_setup_caddy_t *cd;
+    pmix_iof_req_t *req;
+    size_t refid;
+
+    pmix_output_verbose(2, pmix_server_globals.iof_output, "recvd IOF PULL request from client");
+
+    if (NULL == pmix_host_server.iof_pull) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->cbdata = cbdata; // this is the pmix_server_caddy_t
+
+    /* unpack the number of procs */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nprocs, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* unpack the procs */
+    if (0 < cd->nprocs) {
+        PMIX_PROC_CREATE(cd->procs, cd->nprocs);
+        cnt = cd->nprocs;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, cd->procs, &cnt, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+
+    /* unpack the number of directives */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* unpack the directives */
+    if (0 < cd->ninfo) {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        cnt = cd->ninfo;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+
+    /* unpack the channels */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->channels, &cnt, PMIX_IOF_CHANNEL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
+    /* unpack their local reference id */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
+    /* add this peer/source/channel combination */
+    req = PMIX_NEW(pmix_iof_req_t);
+    if (NULL == req) {
+        rc = PMIX_ERR_NOMEM;
+        goto exit;
+    }
+    PMIX_RETAIN(peer);
+    req->requestor = peer;
+    req->nprocs = cd->nprocs;
+    if (0 < req->nprocs) {
+        PMIX_PROC_CREATE(req->procs, cd->nprocs);
+        memcpy(req->procs, cd->procs, req->nprocs * sizeof(pmix_proc_t));
+    }
+    req->channels = cd->channels;
+    req->remote_id = refid;
+    req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    cd->ncodes = req->local_id;
+
+    /* ask the host to execute the request */
+    rc = pmix_host_server.iof_pull(cd->procs, cd->nprocs,
+                                   cd->info, cd->ninfo,
+                                   cd->channels, cbfunc, cd);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        /* the host did it atomically - send the response. In
+         * this particular case, we can just use the cbfunc
+         * ourselves as it will threadshift and guarantee
+         * proper handling (i.e. that the refid will be
+         * returned in the response to the client) */
+        cbfunc(PMIX_SUCCESS, cd);
+        /* returning other than SUCCESS will cause the
+         * switchyard to release the cd object */
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_SUCCESS == rc) {
+        /* the host accepted the request and now owns cd - it will release
+         * it when it invokes the callback. Falling through to the exit
+         * label here would free the caddy out from under the host and
+         * leave the callback operating on freed memory. */
+        return PMIX_SUCCESS;
+    }
+
+exit:
+    PMIX_RELEASE(cd);
+    return rc;
+}
+
+pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                   pmix_op_cbfunc_t cbfunc,
+                                   void *cbdata)
+{
+    int32_t cnt;
+    pmix_status_t rc;
+    pmix_setup_caddy_t *cd;
+    pmix_iof_req_t *req;
+    size_t ninfo, refid;
+
+    pmix_output_verbose(2, pmix_server_globals.iof_output,
+                        "recvd IOF DEREGISTER from client");
+
+    if (NULL == pmix_host_server.iof_pull) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->cbdata = cbdata; // this is the pmix_server_caddy_t
+
+    /* unpack the number of directives */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* unpack the directives - note that we have to add one
+     * to tell the server to stop forwarding to this channel */
+    cd->ninfo = ninfo + 1;
+    PMIX_INFO_CREATE(cd->info, cd->ninfo);
+    if (0 < ninfo) {
+        cnt = ninfo;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+    /* add the directive to stop forwarding */
+    PMIX_INFO_LOAD(&cd->info[ninfo], PMIX_IOF_STOP, NULL, PMIX_BOOL);
+
+    /* unpack the handler ID */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
+    /* get the referenced handler */
+    req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid);
+    if (NULL == req) {
+        /* already gone? */
+        rc = PMIX_ERR_NOT_FOUND;
+        goto exit;
+    }
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, refid, NULL);
+    PMIX_RELEASE(req);
+
+    /* tell the server to stop */
+    rc = pmix_host_server.iof_pull(cd->procs, cd->nprocs,
+                                   cd->info, cd->ninfo,
+                                   cd->channels, cbfunc, cd);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        /* the host did it atomically - send the response. In
+         * this particular case, we can just use the cbfunc
+         * ourselves as it will threadshift and guarantee
+         * proper handling */
+        cbfunc(PMIX_SUCCESS, cd);
+        /* returning other than SUCCESS will cause the
+         * switchyard to release the cd object */
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_SUCCESS == rc) {
+        /* the host accepted the request and now owns cd - see the
+         * matching note in pmix_server_iofreg */
+        return PMIX_SUCCESS;
+    }
+
+exit:
+    /* mirror pmix_server_iofreg: on an async SUCCESS the host owns cd and
+     * releases it via the callback; on any error path here it was never
+     * handed off, so release it (previously it leaked on every error). */
+    PMIX_RELEASE(cd);
+    return rc;
+}
+
+static void stdcbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+
+    if (NULL != cd->opcbfunc) {
+        cd->opcbfunc(status, cd->cbdata);
+    }
+    if (NULL != cd->procs) {
+        PMIX_PROC_FREE(cd->procs, cd->nprocs);
+    }
+    if (NULL != cd->info) {
+        PMIX_INFO_FREE(cd->info, cd->ninfo);
+    }
+    if (NULL != cd->bo) {
+        PMIX_BYTE_OBJECT_FREE(cd->bo, 1);
+    }
+    PMIX_RELEASE(cd);
+}
+
+pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
+                                   pmix_buffer_t *buf,
+                                   pmix_op_cbfunc_t cbfunc,
+                                   void *cbdata)
+{
+    int32_t cnt;
+    pmix_status_t rc;
+    pmix_proc_t source;
+    pmix_setup_caddy_t *cd;
+
+    pmix_output_verbose(2, pmix_server_globals.iof_output,
+                        "recvd stdin IOF data from tool %s",
+                        PMIX_PEER_PRINT(peer));
+
+    if (NULL == pmix_host_server.push_stdin) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->opcbfunc = cbfunc;
+    cd->cbdata = cbdata;
+
+    /* remember that this peer feeds us stdin - it is who IOF flow
+     * control has to reach if our host tells us to stop taking it */
+    peer->stdin_producer = true;
+
+    /* unpack the number of targets */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nprocs, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    if (0 < cd->nprocs) {
+        PMIX_PROC_CREATE(cd->procs, cd->nprocs);
+        if (NULL == cd->procs) {
+            rc = PMIX_ERR_NOMEM;
+            goto error;
+        }
+        cnt = cd->nprocs;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, cd->procs, &cnt, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto error;
+        }
+    }
+
+    /* unpack the number of directives */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    if (0 < cd->ninfo) {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        if (NULL == cd->info) {
+            rc = PMIX_ERR_NOMEM;
+            goto error;
+        }
+        cnt = cd->ninfo;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto error;
+        }
+    }
+
+    /* unpack the data */
+    PMIX_BYTE_OBJECT_CREATE(cd->bo, 1);
+    if (NULL == cd->bo) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
+
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, cd->bo, &cnt, PMIX_BYTE_OBJECT);
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        /* it is okay for them to not send data */
+        PMIX_BYTE_OBJECT_FREE(cd->bo, 1);
+    } else if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+
+    /* pass the data to the host */
+    pmix_strncpy(source.nspace, peer->nptr->nspace, PMIX_MAX_NSLEN);
+    source.rank = peer->info->pname.rank;
+    if (PMIX_SUCCESS
+        != (rc = pmix_host_server.push_stdin(&source, cd->procs, cd->nprocs, cd->info, cd->ninfo,
+                                             cd->bo, stdcbfunc, cd))) {
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            /* the host completed atomically and will not call back - invoke
+             * the callback ourselves (it sends the reply and releases cd)
+             * and tell the switchyard we are done. Previously this path
+             * leaked cd (its procs, info, and byte object). */
+            stdcbfunc(PMIX_SUCCESS, cd);
+            return PMIX_SUCCESS;
+        }
+        goto error;
+    }
+    return rc;
+
+error:
+    PMIX_RELEASE(cd);
+    return rc;
+}

@@ -20,6 +20,10 @@ headers += \
 sources += \
         server/pmix_server.c \
         server/pmix_server_ops.c \
+        server/pmix_server_events.c \
+        server/pmix_server_control.c \
+        server/pmix_server_fabric.c \
+        server/pmix_server_classes.c \
         server/pmix_server_registration.c \
         server/pmix_server_setup.c \
         server/pmix_server_dmodex.c \

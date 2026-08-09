@@ -185,7 +185,7 @@ Two related facts worth knowing before you touch that code:
 are delivered in completely different ways. Knowing which is which is the
 whole of understanding this code:
 
-- **Registered by a remote peer**, in `pmix_server_ops.c`'s
+- **Registered by a remote peer**, in `pmix_server_iof.c`'s
   `PMIX_IOF_PULL_CMD` handler. `req->requestor` is that peer, and
   delivery means packing a message and sending it —
   `pmix_iof_process_iof()` is the only thing that does this.
@@ -218,7 +218,7 @@ that actually matters and which works. Cached output in
 `pmix_server_globals.iof` is delivered to a newly-registered *remote*
 requestor from two places, both through `pmix_iof_process_iof()`:
 
-- `pmix_server_process_iof()` (`src/server/pmix_server_ops.c`) — the
+- `pmix_server_process_iof()` (`src/server/pmix_server_iof.c`) — the
   spawn-time, per-namespace registration.
 - `_iofreg()` (`src/server/pmix_server_op_replies.c`) — the completion of a tool's
   `PMIx_IOF_pull` arriving over the wire. Note *where* it scans: after

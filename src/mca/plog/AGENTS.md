@@ -89,7 +89,7 @@ compiles against. Read it before anything else. It defines:
   one-field struct exposing `pmix_plog.log`, which points at
   `pmix_plog_base_log`. This is the single entry point callers outside
   the framework use (see `src/common/pmix_log.c` and
-  `src/server/pmix_server_ops.c`). Back-end code calls `pmix_plog.log(...)`,
+  `src/server/pmix_server_control.c`). Back-end code calls `pmix_plog.log(...)`,
   never a component's `log` directly.
 
 - **`pmix_plog_base_component_t`** — just a typedef of the standard

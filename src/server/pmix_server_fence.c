@@ -1175,3 +1175,48 @@ cleanup:
     PMIX_PROC_FREE(procs, nprocs);
     return rc;
 }
+
+/* The single predicate for deciding whether a collective's local phase
+ * is complete. The tracker definition must be complete (all participating
+ * nspaces registered, so nlocal is final) AND every expected local
+ * participant must be accounted for - either by having contributed (an
+ * entry on local_cbs) or by having departed before contributing (an entry
+ * on departed). A live participant that has not yet been heard from is on
+ * neither list, so the sum stays below nlocal until it either contributes
+ * or departs. The '>=' comparison is deliberate: it tolerates any
+ * over-count from fork/exec'd clones without falsely reporting the
+ * collective as incomplete. See docs/how-things-work/collectives. */
+bool pmix_server_trk_complete(pmix_server_trkr_t *trk)
+{
+    if (!trk->def_complete) {
+        return false;
+    }
+    return (pmix_list_get_size(&trk->local_cbs) +
+            pmix_list_get_size(&trk->departed)) >= trk->nlocal;
+}
+
+/* Record a collective's completion status in the tracker's info array. The
+ * participant handlers seed a PMIX_LOCAL_COLLECTIVE_STATUS slot; locate it by
+ * key rather than by position. It is the last element for the fence and
+ * disconnect families, but connect appends per-participant endpoint info and
+ * (for cross-namespace connects) job-level info AFTER that slot (see
+ * pmix_server_connect), so a positional write to info[ninfo-1] would clobber
+ * the appended info and leave the real status slot stale. Locating by key is
+ * correct for every family and cannot underflow when info is unset. If the
+ * slot is absent this is a no-op. Shared with the collective-status unit test
+ * (test/unit/collective_status.c). */
+void pmix_server_set_collective_status(pmix_info_t *info, size_t ninfo,
+                                       pmix_status_t status)
+{
+    size_t n;
+
+    if (NULL == info) {
+        return;
+    }
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_LOCAL_COLLECTIVE_STATUS)) {
+            info[n].value.data.status = status;
+            return;
+        }
+    }
+}

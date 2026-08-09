@@ -151,7 +151,7 @@ heartbeat handling — are interpreted *above* the framework in
    (`PMIX_MONITOR_CMD`); a server handles it locally. Either way it lands
    in `pmix_monitor_processing()` on the server's progress thread (the
    server-side unpack is `pmix_server_monitor()` in
-   `src/server/pmix_server_ops.c`).
+   `src/server/pmix_server_control.c`).
 
 2. **Scope resolution.** `pmix_monitor_processing()` inspects the target
    directives to decide whether the request involves **local** processes,

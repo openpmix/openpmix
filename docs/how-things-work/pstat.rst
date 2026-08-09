@@ -146,7 +146,7 @@ The path from the public call to the framework is:
 
 #. **Server side, entry.** A server calling the API locally, or receiving
    the command from a client (``pmix_server_monitor`` in
-   ``src/server/pmix_server_ops.c``), builds a ``pmix_cb_t`` carrying the
+   ``src/server/pmix_server_control.c``), builds a ``pmix_cb_t`` carrying the
    monitor, directives, and requestor identity, and thread-shifts it onto
    the progress thread via ``PMIX_THREADSHIFT(cb, pmix_monitor_processing)``.
 

@@ -139,7 +139,7 @@ under the migration sequence). The pieces landed where their data already
 lives:
 
 * ``pmix_server_trk_complete`` — the predicate above — in
-  ``pmix_server_ops.c``, declared in ``pmix_server_ops.h``; called from
+  ``pmix_server_fence.c``, declared in ``pmix_server_ops.h``; called from
   all six fence-family completion sites.
 * Locate/create stays in ``pmix_server_get_tracker`` /
   ``pmix_server_new_tracker``; contributions are still appended to
@@ -219,7 +219,7 @@ against each step.
 #. **[FOLDED] Extract a ``pmix_coll_*`` service.** After steps 1 and 2
    there was little left to extract for the fence family: locate/create
    already live in ``pmix_server_{get,new}_tracker``, the predicate is
-   ``pmix_server_trk_complete`` in ``pmix_server_ops.c``, and the loss
+   ``pmix_server_trk_complete`` in ``pmix_server_fence.c``, and the loss
    routine is the single block in ``lost_connection``. A separate
    ``pmix_coll_*`` namespace would have been churn without payoff, so this
    step was folded into steps 1-2 rather than done as a rename. The group
