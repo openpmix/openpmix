@@ -220,7 +220,7 @@ requestor from two places, both through `pmix_iof_process_iof()`:
 
 - `pmix_server_process_iof()` (`src/server/pmix_server_ops.c`) — the
   spawn-time, per-namespace registration.
-- `_iofreg()` (`src/server/pmix_server_switchyard.c`) — the completion of a tool's
+- `_iofreg()` (`src/server/pmix_server_op_replies.c`) — the completion of a tool's
   `PMIx_IOF_pull` arriving over the wire. Note *where* it scans: after
   `PMIX_SERVER_QUEUE_REPLY` has sent the refid back, so the tool cannot
   be handed IO for a handler id it has not been told yet. Ordering, not a

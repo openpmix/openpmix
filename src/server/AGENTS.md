@@ -16,7 +16,7 @@ machinery, the direct-modex and group engines, and the invariants that
 are easy to break.
 
 Like `src/client` and `src/event`, **`src/server` is not an MCA
-framework.** There is no component structure — fourteen `.c` files and
+framework.** There is no component structure — sixteen `.c` files and
 one header (`pmix_server_ops.h`) compiled straight into `libpmix` via
 [`Makefile.include`](Makefile.include). But this code *drives* the MCA
 frameworks heavily: nearly every command handler up-calls a `pmix_gds`,
@@ -42,7 +42,9 @@ module where it cannot, and queue replies back. The file map:
 | File | Owns |
 |------|------|
 | `pmix_server.c` | `PMIx_server_init` / `PMIx_server_finalize` and the machinery they stand up: the `pmix_server_globals` definition, the MCA-parameter registration, the singleton and parent-died plumbing, the server's own event handler, and `PMIx_server_setup_fork` (which passes the modes negotiated at init down to a child). Also `pmix_server_lock_opcbfunc`, the completion callback every blocking public API substitutes when its caller passes no callback. |
-| `pmix_server_switchyard.c` | **The switchyard** (`server_switchyard`), `pmix_server_message_handler`, and the large family of host-callback → reply functions (`op_cbfunc` / `_opcbfunc`, `query_cbfunc` / `_qrycbfunc`, …). The canonical reference for the reply-ownership contract below. |
+| `pmix_server_switchyard.c` | **The switchyard** (`server_switchyard`), `pmix_server_message_handler`, and the generic status-only replies that a dozen arms hand out by name — `op_cbfunc`, `op_cbfunc2`, `resop_cbfunc` and their `_`-prefixed handlers. These stay `static` because the switchyard is in the same file. The canonical reference for the reply-ownership contract below. |
+| `pmix_server_op_replies.c` | The host callbacks that complete a specific client operation and carry that operation's own payload: fence modex, direct-modex get, connect, disconnect, spawn, lookup, event registration, IOF register and deregister. |
+| `pmix_server_info_replies.c` | The host callbacks that hand host-supplied results back — alloc, query, session control, job control, monitor, credential get and validate, fabric, device distances, resolve peers and node. All eleven share one shape, so diff a new one against its neighbor here. |
 | `pmix_server_registration.c` | `PMIx_server_register_nspace` / `deregister_nspace` and `register_client` / `deregister_client`, plus the peer-departure bookkeeping that mirrors them (`remove_client`, `pmix_server_peer_finalized`, `pmix_server_purge_events`) and `pmix_server_execute_collective`, which fires a collective the registration just unblocked. The canonical both-paths (blocking and non-blocking) example. |
 | `pmix_server_setup.c` | Everything that prepares a job before its processes run: `PMIx_server_register_resources` / `deregister_resources`, `PMIx_server_setup_application`, `PMIx_server_setup_local_support`, and the helper APIs a host uses to build that information (`PMIx_generate_regex`/`_ppn`, `PMIx_parse_regex2`, `PMIx_server_generate_locality_string`/`_cpuset_string`/`_cpuset`). |
 | `pmix_server_dmodex.c` | The data calls the host makes down into us: `PMIx_server_dmodex_request` (modex data for one of our local clients) and `PMIx_Store_internal`. |
@@ -68,8 +70,8 @@ the top of `pmix_server.c`, declared in `pmix_server_ops.h`): the
 This is the single most important thing to understand before touching
 anything here. Inbound messages land in `pmix_server_message_handler`
 (a registered PTL receive callback,
-`pmix_server_switchyard.c:2909`), which calls `server_switchyard`
-(`pmix_server_switchyard.c:2445`). The switchyard unpacks the
+`pmix_server_switchyard.c:727`), which calls `server_switchyard`
+(`pmix_server_switchyard.c:258`). The switchyard unpacks the
 `pmix_cmd_t` and dispatches on it. **The return value of every command
 handler encodes who owns the reply and the caddy:**
 
@@ -114,16 +116,25 @@ when an error path releases a caddy the switchyard will also release).
 For any command the local server cannot answer itself, the handler
 up-calls the host module (`pmix_host_server.<fn>`), passing an internal
 completion callback and the caddy as `cbdata`. That callback (e.g.
-`op_cbfunc`, `query_cbfunc`, `alloc_cbfunc`, …) **may run on the host's
-own thread**, so it does nothing but re-thread-shift onto the progress
-thread via a `pmix_shift_caddy_t`, landing in a `_*cbfunc` handler
-(`_opcbfunc`, `_qrycbfunc`, …) that packs the reply and calls
-`PMIX_SERVER_QUEUE_REPLY` / `PMIX_PTL_SEND_ONEWAY`, then releases both
-caddies. Every one of these callbacks opens with a
+`op_cbfunc`, `pmix_server_query_cbfunc`, `pmix_server_alloc_cbfunc`, …)
+**may run on the host's own thread**, so it does nothing but
+re-thread-shift onto the progress thread via a `pmix_shift_caddy_t`,
+landing in a `_*cbfunc` handler (`_opcbfunc`, `_qrycbfunc`, …) that packs
+the reply and calls `PMIX_SERVER_QUEUE_REPLY` / `PMIX_PTL_SEND_ONEWAY`,
+then releases both caddies. Every one of these callbacks opens with a
 `pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)` early-out
 for the finalize race. When adding a command, copy the nearest existing
 `cmd → handler → host_cbfunc → _host_cbfunc` quadruple verbatim and
 preserve its release discipline.
+
+**Only the outer callback is visible outside its file.** The two reply
+files are named by the switchyard, so each outer callback there carries
+the `pmix_server_` prefix and is declared in `pmix_server_ops.h`
+(`pmix_server_query_cbfunc`, `pmix_server_modex_cbfunc`, …). The inner
+`_*cbfunc` progress-thread handler stays `static` — its only caller is
+the outer callback sitting directly above it, and keeping the pair
+adjacent is what makes the quadruple readable. Add a new pair the same
+way: outer prefixed and declared, inner static and adjacent.
 
 Host up-calls use a tri-state return convention throughout:
 `PMIX_SUCCESS` = "accepted, I will call your callback later";
@@ -166,7 +177,7 @@ argument.** The host hands down a `(relfn, relcbdata)` pair; `relfn` must
 be called with *that* `relcbdata` and nothing else. The temptation is to
 reach for whichever pointer is in scope — the tracker, the block, our own
 caddy — and several sites had. Note the two spellings are not
-interchangeable across files: `modex_cbfunc` parks the host's data in
+interchangeable across files: `pmix_server_modex_cbfunc` parks the host's data in
 `scd->relcbdata`, while `grpcbfunc` parks it in `scd->cbdata`, so the
 correct expression differs between `_mdxcbfunc` and `_grpcbfunc`. Check
 which one the *producing* callback set before copying a line.
@@ -176,13 +187,13 @@ host callback that receives a `(relfn, relcbdata)` pair owes the host that
 call, including on the arm where it has just failed to allocate its own
 thread-shift caddy and returns early. Five of them - alloc, query,
 session-control, job-control and monitor - returned without it, stranding
-the host's data for the life of the host process. `modex_cbfunc` and the
+the host's data for the life of the host process. `pmix_server_modex_cbfunc` and the
 fabric/dist family show the shape to copy.
 
 **An internal completion path must hand the callback the object that
 callback casts.** `_fabric_response` exists to answer a fabric request the
 `pnet` layer satisfied locally, and it called the switchyard's
-`fabric_cbfunc` with `qcd->cbdata` — a `pmix_server_caddy_t` — where that
+`pmix_server_fabric_cbfunc` with `qcd->cbdata` — a `pmix_server_caddy_t` — where that
 function casts to `pmix_query_caddy_t` and dereferences the result. The
 sibling `pmix_server_fabric_update` never set `qcd->cbfunc` at all. Both
 are latent only because no in-tree `pnet` component answers a fabric
@@ -262,7 +273,7 @@ the trickiest bugs):**
 - Therefore the *only* correct teardown is: cancel any armed timer,
   `pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super)`,
   then `PMIX_RELEASE(trk)` — exactly once. The canonical completion
-  paths (`_mdxcbfunc`, `_cnct`/`_discnct` in `pmix_server_switchyard.c`)
+  paths (`_mdxcbfunc`, `_cnct`/`_discnct` in `pmix_server_op_replies.c`)
   do this.
 - **Never `PMIX_RELEASE` a tracker that is still linked in `collectives`**
   (dangling pointer → UAF on the next sweep), and **never release a
@@ -465,7 +476,7 @@ parsed inside an existing handler, not a new switchyard case.
 ## Building
 
 `src/server` compiles straight into `libpmix` via
-[`Makefile.include`](Makefile.include), which appends the fourteen `.c`
+[`Makefile.include`](Makefile.include), which appends the sixteen `.c`
 files to the top-level `sources` list and `pmix_server_ops.h` to
 `headers`. Nothing here is conditionally compiled, so a change takes
 effect with a plain top-level `make` on an already-configured tree; you

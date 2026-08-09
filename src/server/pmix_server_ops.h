@@ -453,6 +453,61 @@ PMIX_EXPORT pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
                                                       pmix_info_t *pinfo,
                                                       size_t npinfo);
 
+/* The host-server completion callbacks the switchyard hands to its
+ * up-calls. Each one may run in the host's thread context, so each does
+ * nothing but thread-shift onto the progress thread, landing in a static
+ * handler that packs the reply and queues it. They live beside the
+ * command families they answer - operation completions in
+ * pmix_server_op_replies.c, host-supplied results in
+ * pmix_server_info_replies.c - and server_switchyard is their only
+ * caller. */
+PMIX_EXPORT void pmix_server_modex_cbfunc(pmix_status_t status, const char *data, size_t ndata,
+                                          void *cbdata, pmix_release_cbfunc_t relfn,
+                                          void *relcbdata);
+PMIX_EXPORT void pmix_server_get_cbfunc(pmix_status_t status, const char *data, size_t ndata,
+                                        void *cbdata, pmix_release_cbfunc_t relfn,
+                                        void *relcbdata);
+PMIX_EXPORT void pmix_server_cnct_cbfunc(pmix_status_t status, void *cbdata);
+PMIX_EXPORT void pmix_server_discnct_cbfunc(pmix_status_t status, void *cbdata);
+PMIX_EXPORT void pmix_server_spawn_cbfunc(pmix_status_t status, char *nspace, void *cbdata);
+PMIX_EXPORT void pmix_server_lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[],
+                                           size_t ndata, void *cbdata);
+PMIX_EXPORT void pmix_server_events_cbfunc(pmix_status_t status, void *cbdata);
+PMIX_EXPORT void pmix_server_iofreg_cbfunc(pmix_status_t status, void *cbdata);
+PMIX_EXPORT void pmix_server_iofdereg_cbfunc(pmix_status_t status, void *cbdata);
+
+PMIX_EXPORT void pmix_server_alloc_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
+                                          void *cbdata, pmix_release_cbfunc_t release_fn,
+                                          void *release_cbdata);
+PMIX_EXPORT void pmix_server_query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
+                                          void *cbdata, pmix_release_cbfunc_t release_fn,
+                                          void *release_cbdata);
+PMIX_EXPORT void pmix_server_sessctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
+                                             void *cbdata, pmix_release_cbfunc_t release_fn,
+                                             void *release_cbdata);
+PMIX_EXPORT void pmix_server_jctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
+                                          void *cbdata, pmix_release_cbfunc_t release_fn,
+                                          void *release_cbdata);
+PMIX_EXPORT void pmix_server_monitor_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
+                                            void *cbdata, pmix_release_cbfunc_t release_fn,
+                                            void *release_cbdata);
+PMIX_EXPORT void pmix_server_cred_cbfunc(pmix_status_t status, pmix_byte_object_t *credential,
+                                         pmix_info_t info[], size_t ninfo, void *cbdata);
+PMIX_EXPORT void pmix_server_validate_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo,
+                                             void *cbdata);
+PMIX_EXPORT void pmix_server_fabric_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
+                                           void *cbdata, pmix_release_cbfunc_t release_fn,
+                                           void *release_cbdata);
+PMIX_EXPORT void pmix_server_dist_cbfunc(pmix_status_t status, pmix_device_distance_t *dist,
+                                         size_t ndist, void *cbdata,
+                                         pmix_release_cbfunc_t release_fn, void *release_cbdata);
+PMIX_EXPORT void pmix_server_respeers_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo,
+                                             void *cbdata, pmix_release_cbfunc_t release_fn,
+                                             void *release_cbdata);
+PMIX_EXPORT void pmix_server_resnodes_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo,
+                                             void *cbdata, pmix_release_cbfunc_t release_fn,
+                                             void *release_cbdata);
+
 PMIX_EXPORT extern pmix_server_module_t pmix_host_server;
 PMIX_EXPORT extern pmix_server_globals_t pmix_server_globals;
 

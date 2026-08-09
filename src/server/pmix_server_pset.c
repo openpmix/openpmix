@@ -206,9 +206,3 @@ pmix_status_t PMIx_server_delete_process_set(char *pset_name)
     PMIX_DESTRUCT(&cd);
     return PMIX_SUCCESS;
 }
-
-/****    THE FOLLOWING CALLBACK FUNCTIONS ARE USED BY THE HOST SERVER    ****
- ****    THEY THEREFORE CAN OCCUR IN EITHER THE HOST SERVER'S THREAD     ****
- ****    CONTEXT, OR IN OUR OWN THREAD CONTEXT IF THE CALLBACK OCCURS    ****
- ****    IMMEDIATELY. THUS ANYTHING THAT ACCESSES A GLOBAL ENTITY        ****
- ****    MUST BE PUSHED INTO AN EVENT FOR PROTECTION                     ****/
