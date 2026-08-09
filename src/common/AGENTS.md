@@ -179,22 +179,66 @@ Two related facts worth knowing before you touch that code:
   per source, so this is the obvious thing to cache if detailed tagging
   ever shows up in a profile.
 
-### `process_cache()` cannot forward anything
+### An IOF request a process registers on *itself* has no delivery path
 
-`process_cache()` — and therefore the one-second `delayed_process_cache`
-timer that the blocking form of `PMIx_IOF_pull` arms — is dead in
-practice, and knowing that is worth more than the code. The only requests
-that reach it are the ones `PMIx_IOF_pull` built in this process, and it
-sets `req->requestor` **only** when we are our own server; the requestor
-is then ourselves, so the function's own "never forward to myself" test
-skips every cached entry. A request with no requestor returns at the top.
+`pmix_globals.iof_requests` holds two kinds of entry that look alike and
+are delivered in completely different ways. Knowing which is which is the
+whole of understanding this code:
 
-So cached IO is never delivered to a locally-registered pull. Such a
-request is served through `req->cbfunc` when IO arrives, and the cache has
-no path to that callback. Settle what the right delivery is before making
-this live — and note that the message it builds must carry
-`req->remote_id`, the id *the requestor* knows the request by, not
-`req->local_id`, which indexes our own array.
+- **Registered by a remote peer**, in `pmix_server_ops.c`'s
+  `PMIX_IOF_PULL_CMD` handler. `req->requestor` is that peer, and
+  delivery means packing a message and sending it —
+  `pmix_iof_process_iof()` is the only thing that does this.
+- **Registered by this process**, through its own `PMIx_IOF_pull`.
+  Delivery means invoking `req->cbfunc`.
+
+The second kind only works when the registration was **forwarded
+upstream**. `req->cbfunc` is invoked from exactly three places — the
+`PMIX_PTL_TAG_IOF` receive handlers in `pmix_server.c`, `pmix_client.c`
+and `pmix_tool.c` — and every one of them fires only when a message
+arrives on a socket. A client or tool with a server above it gets that:
+`myreg()` sees a NULL `requestor`, sends `PMIX_IOF_PULL_CMD` upstream, and
+the server later sends matching output back down.
+
+**A process that is its own server does not.** `PMIx_IOF_pull` sets
+`req->requestor = pmix_globals.mypeer` in that case, and from there:
+`pmix_iof_process_iof()` refuses it at its "never forward to myself" test,
+so the live path skips it; and there is no upstream, so no message ever
+arrives and `req->cbfunc` is never called. The registration is inert. The
+output still reaches the terminal, because `_iofdeliver` calls
+`pmix_iof_write_output()` before it walks the request array — but nothing
+is ever handed to the callback the caller registered.
+
+This is a gap, not a regression: it looks like a feature that was started
+and not finished. `requestor` is still load-bearing on that path, though —
+it is what tells `myreg()` not to send a registration upstream to itself.
+
+**None of this affects a peer that registers with us**, which is the case
+that actually matters and which works. Cached output in
+`pmix_server_globals.iof` is delivered to a newly-registered *remote*
+requestor from two places, both through `pmix_iof_process_iof()`:
+
+- `pmix_server_process_iof()` (`src/server/pmix_server_ops.c`) — the
+  spawn-time, per-namespace registration.
+- `_iofreg()` (`src/server/pmix_server.c`) — the completion of a tool's
+  `PMIx_IOF_pull` arriving over the wire. Note *where* it scans: after
+  `PMIX_SERVER_QUEUE_REPLY` has sent the refid back, so the tool cannot
+  be handed IO for a handler id it has not been told yet. Ordering, not a
+  timer, is what solves that.
+
+A third copy of this used to live here as `process_cache()`, reached only
+from `myreg()` and a one-second `delayed_process_cache` timer that the
+blocking `PMIx_IOF_pull` armed. Both only ever carry requests *this*
+process registered, so its own "never forward to myself" test rejected
+every entry and it had never once run. Being unreachable is also how it
+drifted out of step with its twin: it packed `req->local_id` where the
+identical message for the identical receiver needs `req->remote_id` — the
+id *the requestor* knows the request by, not our index into our own
+array. It and the timer are gone. If local delivery is ever wanted, it
+needs a design decision first — what invokes the callback, and whether
+the cache entry is consumed when it does — not a revival of that
+function, whose message-packing shape is wrong for a request that needs a
+callback rather than a socket write.
 
 ### Output-file naming lives here (`pmix_iof.c`)
 
