@@ -107,6 +107,87 @@ PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, utestreg, "a framework with one static com
                                 (const pmix_mca_base_component_t ***) utestreg_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_NO_DSO);
 
+/* A fourth framework, this one stating an interface version, with two
+ * static components: one built against that version and one built
+ * against the previous one. See test_version_check(). The three
+ * PMIX_MCA_utestver_*_VERSION macros are what a real framework puts in
+ * its <framework>.h, and are the only place the number appears - the
+ * declaration below reaches them by pasting the framework's name, and
+ * so does the component stanza. */
+#define PMIX_MCA_utestver_MAJOR_VERSION   2
+#define PMIX_MCA_utestver_MINOR_VERSION   0
+#define PMIX_MCA_utestver_RELEASE_VERSION 0
+
+#define PMIX_UTESTVER_BASE_VERSION_2_0_0                                   \
+    PMIX_MCA_BASE_VERSION_1_0_0("utestver", PMIX_MCA_utestver_MAJOR_VERSION, \
+                                PMIX_MCA_utestver_MINOR_VERSION,           \
+                                PMIX_MCA_utestver_RELEASE_VERSION)
+
+static pmix_mca_base_component_t utestver_current = {
+    PMIX_UTESTVER_BASE_VERSION_2_0_0,
+    .pmix_mca_component_name = "current",
+    .pmix_mca_component_major_version = 1,
+    .pmix_mca_component_minor_version = 0,
+    .pmix_mca_component_release_version = 0,
+};
+
+/* what an installed plugin from before the bump presents */
+static pmix_mca_base_component_t utestver_stale = {
+    PMIX_MCA_BASE_VERSION_1_0_0("utestver", 1, 0, 0),
+    .pmix_mca_component_name = "stale",
+    .pmix_mca_component_major_version = 1,
+    .pmix_mca_component_minor_version = 0,
+    .pmix_mca_component_release_version = 0,
+};
+
+/* The shape configure generates into a framework's static-components.h:
+ * an array of pointers *to* component pointers, one entry per
+ * component. pmix_mca_base_component_find() reads one component out of
+ * each entry, so a list of components hung off a single entry would
+ * present only its first. */
+static const pmix_mca_base_component_t *utestver_current_ptr = &utestver_current;
+static const pmix_mca_base_component_t *utestver_stale_ptr = &utestver_stale;
+static const pmix_mca_base_component_t **utestver_static_components[] = {&utestver_current_ptr,
+                                                                        &utestver_stale_ptr, NULL};
+
+PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, utestver, "a framework stating a version",
+                                          NULL, NULL, NULL,
+                                          (const pmix_mca_base_component_t ***)
+                                              utestver_static_components,
+                                          PMIX_MCA_BASE_FRAMEWORK_FLAG_NO_DSO);
+
+/* And a fifth declared the unversioned way - the shape every framework
+ * outside this project has, since PMIX_MCA_BASE_FRAMEWORK_DECLARE is
+ * reached through an installed header and PRRTE declares all of its
+ * frameworks with it. Its components state versions that match nothing;
+ * they must all survive, because a framework that states no version of
+ * its own has nothing to compare them against. */
+static pmix_mca_base_component_t utestnover_alpha = {
+    PMIX_MCA_BASE_VERSION_1_0_0("utestnover", 1, 0, 0),
+    .pmix_mca_component_name = "alpha",
+    .pmix_mca_component_major_version = 1,
+    .pmix_mca_component_minor_version = 0,
+    .pmix_mca_component_release_version = 0,
+};
+
+static pmix_mca_base_component_t utestnover_beta = {
+    PMIX_MCA_BASE_VERSION_1_0_0("utestnover", 7, 3, 0),
+    .pmix_mca_component_name = "beta",
+    .pmix_mca_component_major_version = 1,
+    .pmix_mca_component_minor_version = 0,
+    .pmix_mca_component_release_version = 0,
+};
+
+static const pmix_mca_base_component_t *utestnover_alpha_ptr = &utestnover_alpha;
+static const pmix_mca_base_component_t *utestnover_beta_ptr = &utestnover_beta;
+static const pmix_mca_base_component_t **utestnover_static_components[] = {&utestnover_alpha_ptr,
+                                                                          &utestnover_beta_ptr,
+                                                                          NULL};
+
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, utestnover, "an unversioned framework", NULL, NULL, NULL,
+                                (const pmix_mca_base_component_t ***) utestnover_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_NO_DSO);
+
 static void reset_counters(void)
 {
     n_register_calls = 0;
@@ -391,6 +472,69 @@ static void test_noregister(void)
     report("NOREGISTER framework returns to refcnt 0", 0 == fw->framework_refcnt);
 }
 
+/* The framework interface version: where it comes from, and what
+ * open_components() does with it.
+ *
+ * A component is a run-time-loadable plugin, so an installed one can be
+ * older than the library that loads it, and its module struct is
+ * whatever its header said at the time. Nothing else in the MCA compares
+ * the two -- the repository's own check is on the *MCA* version, which
+ * is one number for the whole project.
+ *
+ * Two things are pinned here. First, that the versioned declaration
+ * really does pick the numbers up from the framework's own
+ * PMIX_MCA_<name>_*_VERSION macros: that is what keeps a bump to one
+ * edit in one header rather than a number restated at the declaration
+ * and left behind. Second, that an unversioned framework is exempt
+ * rather than emptied. */
+static void test_version_check(void)
+{
+    pmix_mca_base_framework_t *fw = &pmix_utestver_base_framework;
+    pmix_mca_base_component_list_item_t *cli;
+    int rc;
+
+    report("the versioned declaration took the major from the header macro",
+           2 == fw->framework_type_major_version);
+    report("the versioned declaration took the minor from the header macro",
+           0 == fw->framework_type_minor_version);
+    report("an unversioned framework reports no version",
+           0 == pmix_utestfw_base_framework.framework_type_major_version
+               && 0 == pmix_utestfw_base_framework.framework_type_minor_version);
+
+    /* Register first, and check the discovery result before opening.
+     * Discovery does not look at versions, so both components must be on
+     * the list at this point - otherwise "one survived the open" would
+     * pass whether or not the check ever ran. */
+    rc = pmix_mca_base_framework_register(fw, PMIX_MCA_BASE_REGISTER_DEFAULT);
+    report("the versioned framework registers", PMIX_SUCCESS == rc);
+    report("discovery finds both components, versions notwithstanding",
+           2 == pmix_list_get_size(&fw->framework_components));
+
+    rc = pmix_mca_base_framework_open(fw, PMIX_MCA_BASE_OPEN_DEFAULT);
+    report("the versioned framework opens", PMIX_SUCCESS == rc);
+    report("opening refused the stale component",
+           1 == pmix_list_get_size(&fw->framework_components));
+    cli = (pmix_mca_base_component_list_item_t *) pmix_list_get_first(&fw->framework_components);
+    report("the component built against the current version survived",
+           NULL != cli && 0 == strcmp("current", cli->cli_component->pmix_mca_component_name));
+
+    rc = pmix_mca_base_framework_close(fw);
+    report("the versioned framework gives back the open reference",
+           PMIX_SUCCESS == rc && 1 == fw->framework_refcnt);
+    rc = pmix_mca_base_framework_close(fw);
+    report("the versioned framework closes", PMIX_SUCCESS == rc && 0 == fw->framework_refcnt);
+
+    /* the PRRTE-shaped case: no version stated, so nothing to refuse */
+    fw = &pmix_utestnover_base_framework;
+    rc = pmix_mca_base_framework_open(fw, PMIX_MCA_BASE_OPEN_DEFAULT);
+    report("the unversioned framework opens", PMIX_SUCCESS == rc);
+    report("an unversioned framework keeps every component whatever it claims",
+           2 == pmix_list_get_size(&fw->framework_components));
+
+    rc = pmix_mca_base_framework_close(fw);
+    report("the unversioned framework closes", PMIX_SUCCESS == rc && 0 == fw->framework_refcnt);
+}
+
 int main(int argc, char **argv)
 {
     int rc;
@@ -427,6 +571,7 @@ int main(int argc, char **argv)
     test_failed_open_when_not_sole_holder();
     test_cycling();
     test_noregister();
+    test_version_check();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 

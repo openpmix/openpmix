@@ -110,7 +110,28 @@ PMIX_EXPORT extern pmix_compress_base_module_t pmix_compress;
 /**
  * Macro for use in components that are of type COMPRESS
  */
-#define PMIX_COMPRESS_BASE_VERSION_2_0_0 PMIX_MCA_BASE_VERSION_1_0_0("pcompress", 2, 0, 0)
+/* The pcompress framework interface version. It is stated here and
+ * nowhere else: the component macro below stamps these numbers into
+ * every pcompress component, and the framework's declaration reaches the
+ * same three by pasting its name, so the two cannot drift apart.
+ *
+ * Bumped to 3.0.0 in August 2026: get_decompressed_size and
+ * get_decompressed_strlen were added to pmix_compress_base_module_t in
+ * July 2026 without one, so a plugin built before that loads into a
+ * library expecting them and leaves both NULL. open_components() now
+ * refuses a component whose version does not match the framework's, so
+ * this bump is what turns that skew into a clean "no compression
+ * available" instead of a jump to address zero. Bump it again on any
+ * further change to the module interface that a component built against
+ * the previous one would not survive. */
+#define PMIX_MCA_pcompress_MAJOR_VERSION   3
+#define PMIX_MCA_pcompress_MINOR_VERSION   0
+#define PMIX_MCA_pcompress_RELEASE_VERSION 0
+
+#define PMIX_COMPRESS_BASE_VERSION_3_0_0                                     \
+    PMIX_MCA_BASE_VERSION_1_0_0("pcompress", PMIX_MCA_pcompress_MAJOR_VERSION,   \
+                                PMIX_MCA_pcompress_MINOR_VERSION,           \
+                                PMIX_MCA_pcompress_RELEASE_VERSION)
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

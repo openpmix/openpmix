@@ -151,7 +151,12 @@ tree:
 1. Create `src/mca/<framework>/<component>/` with a `Makefile.am`, and a
    `configure.m4` **only** if the component can fail to be buildable.
 2. Give the component struct the exactly-correct public symbol name (see
-   `mca.h` above) and open it with the framework's version macro.
+   `mca.h` above) and open it with the framework's version macro. That
+   macro expands to the framework's `PMIX_MCA_<name>_*_VERSION` numbers,
+   which the framework's own declaration reads too — so a component that
+   opens with it is, by construction, checkable at load time against the
+   framework it is being loaded into. See "The framework interface
+   version" in [`base/AGENTS.md`](base/AGENTS.md).
 3. Register MCA variables from the component's *register* function, not
    its open function.
 4. **Regenerate the build system.** Adding or removing a component

@@ -202,7 +202,20 @@ typedef struct pmix_psec_base_component_t pmix_psec_base_component_t;
 /*
  * Macro for use in components that are of type psec
  */
-#define PMIX_PSEC_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("psec", 1, 0, 0)
+/* The psec framework interface version. It is stated here and
+ * nowhere else: the component macro below stamps these numbers into
+ * every psec component, and the framework's declaration reaches the
+ * same three by pasting its name, so the two cannot drift apart.
+ * Bump it on any change to the module interface that a component
+ * built against the previous one would not survive. */
+#define PMIX_MCA_psec_MAJOR_VERSION   1
+#define PMIX_MCA_psec_MINOR_VERSION   0
+#define PMIX_MCA_psec_RELEASE_VERSION 0
+
+#define PMIX_PSEC_BASE_VERSION_1_0_0                                     \
+    PMIX_MCA_BASE_VERSION_1_0_0("psec", PMIX_MCA_psec_MAJOR_VERSION,   \
+                                PMIX_MCA_psec_MINOR_VERSION,           \
+                                PMIX_MCA_psec_RELEASE_VERSION)
 
 END_C_DECLS
 

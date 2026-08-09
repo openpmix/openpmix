@@ -155,7 +155,7 @@ static int pmix_compress_base_close(void)
     return pmix_mca_base_framework_components_close(&pmix_pcompress_base_framework, NULL);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pcompress, "PCOMPRESS MCA", pmix_compress_base_register,
+PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, pcompress, "PCOMPRESS MCA", pmix_compress_base_register,
                                 pmix_compress_base_open, pmix_compress_base_close,
                                 pmix_mca_pcompress_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);

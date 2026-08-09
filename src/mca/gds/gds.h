@@ -537,7 +537,20 @@ typedef pmix_mca_base_component_t pmix_gds_base_component_t;
 /*
  * Macro for use in components that are of type gds
  */
-#define PMIX_GDS_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("gds", 1, 0, 0)
+/* The gds framework interface version. It is stated here and
+ * nowhere else: the component macro below stamps these numbers into
+ * every gds component, and the framework's declaration reaches the
+ * same three by pasting its name, so the two cannot drift apart.
+ * Bump it on any change to the module interface that a component
+ * built against the previous one would not survive. */
+#define PMIX_MCA_gds_MAJOR_VERSION   1
+#define PMIX_MCA_gds_MINOR_VERSION   0
+#define PMIX_MCA_gds_RELEASE_VERSION 0
+
+#define PMIX_GDS_BASE_VERSION_1_0_0                                     \
+    PMIX_MCA_BASE_VERSION_1_0_0("gds", PMIX_MCA_gds_MAJOR_VERSION,   \
+                                PMIX_MCA_gds_MINOR_VERSION,           \
+                                PMIX_MCA_gds_RELEASE_VERSION)
 
 END_C_DECLS
 

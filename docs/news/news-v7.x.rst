@@ -7,171 +7,33 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
- - Output from a spawned job that reaches a tool before the spawn reply
-   naming its namespace is now held until that reply arrives, rather than
-   formatted with a process-wide stand-in. The stand-in could not tell
-   two concurrent spawns apart - the second overwrote the first's
-   directives, so whichever job's output arrived first was formatted with
-   the other's - and it could not carry an output-to-file or
-   output-to-directory directive at all, since no file can be opened for
-   a namespace we have not been told about. For a spawn whose output was
-   directed to a file (where the default is not to write locally as
-   well), that meant such output was written nowhere: it is now written
-   to the file, as the spawn asked. Held output is released as soon as
-   the reply lands, in arrival order, and formatted with the directives
-   its own spawn was issued with. The amount held is bounded by the new
-   pmix_iof_pending_limit MCA parameter (default 1MB), past which output
-   falls back to the stand-in as before
- - A group formed through PMIx_Group_invite / PMIx_Group_join now
-   exchanges its members' endpoint data, which only the collective
-   PMIx_Group_construct did before. An acceptance carries the accepting
-   process's own contribution, the leader assembles them all and returns
-   the set in the PMIX_GROUP_CONSTRUCT_COMPLETE event, and every member
-   absorbs it into its local store - so a PMIx_Get against another
-   member is answered without leaving the process, as it already was for
-   a constructed group. Where the group was assigned a context ID the
-   values are stored qualified by it, matching what the collective path
-   stores; without one they are stored plain. What is exchanged is
-   documented explicitly now, on PMIx_Connect, PMIx_Group_construct and
-   PMIx_Group_join and at PMIX_GROUP_ENDPT_DATA: each participant
-   contributes exactly its own PMIx_Put values at PMIX_REMOTE and
-   PMIX_GLOBAL scope, less any reserved key. Every participant calls the
-   operation, so each supplies its own and no server sweeps for it -
-   which also means anything the runtime computed rather than the
-   application posting it is job-level data and travels separately
- - PMIX_GROUP_ASSIGN_CONTEXT_ID is now honored by PMIx_Group_invite and
-   PMIx_Group_join, which accepted the directive and silently did nothing
-   with it. Only the host environment can mint an ID that is unique
-   across its scope, and a group formed by invitation runs no server
-   collective through which one could be asked - so the leader now
-   requests it separately, through job control with no targets, once the
-   membership has resolved and before the completion event goes out. The
-   ID rides in that event and so reaches every member, and a pending
-   PMIx_Group_join returns it in its results, matching what
-   PMIx_Group_construct has always done. A host that does not support
-   the request is not fatal: the group forms without an ID, which is
-   what happened before in every case. The announcement now waits on one
-   host round trip, which forming a group by invitation can afford
- - The PMIX_GROUP_CONTEXT_ID_ASSIGNED event code is deprecated and has
-   moved to pmix_deprecated.h. It was defined but never generated - not
-   by this library and not by any known host - and the
-   PMIx_Group_construct man page promised delivery of the assigned
-   context ID through it, which never happened. The context ID is
-   returned in the results array, as that page also says and as the code
-   has always done. The constant remains so that code referencing it
-   still compiles, and the value -169 will not be reused; the Standard
-   will be updated to match
- - A PMIx server no longer drops an event one of its clients wanted. The
-   fan-out filter matched an event's affected processes against the
-   affected-process list a client's event registration had carried - but
-   that list belongs to a single registration message, and a handler
-   registered afterwards for a code the server is already forwarding
-   sends no message at all. So a process that registered one handler
-   restricted to a particular process and a second handler with no
-   restriction stopped receiving the code entirely for the second one.
-   The filter now matches on the event code, which is the only thing a
-   server can decide correctly; the affected-process and source-range
-   restrictions a handler registered with are enforced by the receiving
-   process, which is the only place that knows what each handler asked
-   for
- - A client now caches an event forwarded to it that none of its
-   handlers accepted, so a handler registering a moment later is still
-   given it - the behavior a tool has always had, and the reason the
-   notification cache exists. An event can legitimately arrive unmatched
-   because a handler's source range is never sent to the server, so the
-   server cannot filter on it
- - A collective no longer counts a participant's orderly PMIx_Finalize
-   as the loss of that participant. Such a rank has not left - its local
-   process count is deliberately retained and its peer object tombstoned
-   rather than retired, so it may PMIx_Init again and contribute -
-   and recording it as departed counted it twice, letting the collective
-   complete without it and return PMIX_ERR_PARTIAL_SUCCESS or
-   PMIX_ERR_LOST_CONNECTION to the ranks that did participate. A client
-   rapidly cycling init/finalize, as an MPI Sessions application does,
-   could thereby drift by whole fence cycles and intermittently hang.
-   Loss accounting now applies to an abnormal termination only. One
-   deliberate consequence: a rank that finalizes and does not return,
-   while its peers wait in a collective that names it, now leaves them
-   waiting rather than collapsing the collective - PMIX_TIMEOUT is the
-   remedy there
- - PMIx_Disconnect now honors PMIX_TIMEOUT while the server is still
-   collecting local contributions, as PMIx_Fence and PMIx_Connect
-   already did. Until every local participant has called, the request
-   has not been passed to the host environment, so nothing the host
-   might do about the timeout can reach it - which is precisely the
-   case the attribute is documented for, a participant that never
-   arrives. Such a disconnect previously blocked its callers
-   indefinitely and stranded the collective's tracker; it now completes
-   every waiting participant with PMIX_ERR_TIMEOUT
- - PMIx_Spawn and PMIx_Spawn_nb no longer treat a non-NULL job_info
-   pointer carrying a zero ninfo as an empty directive list. Such a call
-   failed the whole spawn with PMIX_ERR_EMPTY, a status naming nothing
-   the caller had done wrong; (info, ninfo) is a pair and a zero count
-   means "no directives" whatever the pointer is
- - PMIx_Spawn no longer writes into the caller's const pmix_app_t apps[].
-   An app may declare its directives by terminating them with an
-   end-marked info rather than setting ninfo, and the count worked out
-   from that scan was stored back into the caller's array - which
-   segfaults for a caller whose apps sit in read-only storage
- - An app-level PMIX_SETUP_APP_ENVARS directive is now honored for every
-   app that carries one. Only the first such app was served, because the
-   per-app harvest set the flag meaning "the job-level directive already
-   covered every app" - so an MPMD spawn whose second app asked for its
-   own programming model's envars silently got none. This affects the
-   roles that have a pmdl framework open: tool, launcher and server
- - PMIx_Compute_distances no longer reports device distances it does not
-   have. The reply handler took the count the server said it was sending
-   rather than the count that arrived, so an application could be handed
-   entries that were never written - zeroed, so a caller reading uuid
-   found a NULL. The distance array and its count now agree on every
-   path, including the failure ones
- - PMIx_Resolve_peers and PMIx_Resolve_nodes no longer crash on a node
-   that hosts none of a namespace's processes, and report the documented
-   empty result - PMIX_SUCCESS with a NULL array and a zero count -
-   rather than PMIX_ERR_NOMEM. Both the client and server halves of the
-   computation had this
- - PMIx_Lookup no longer reports a result count larger than the number of
-   entries it actually unpacked
- - PMIx_Fabric_update now reports a refresh the server never completed as
-   a failure instead of returning PMIX_SUCCESS with the caller's
-   pmix_fabric_t left stale
- - A group reference that expands to no members at all is now rejected
-   with PMIX_ERR_NOT_FOUND rather than yielding a NULL participant array
-   that the caller then indexes
- - PMIx_Group_invite and PMIx_Group_invite_nb no longer race their own
-   observer registration. An invitation could resolve inside the
-   registration call, after which the setup path was still writing to a
-   tracker the announcement chain already owned - which lost a
-   PMIX_GROUP_OPTIONAL directive, armed a timer on freed memory, and in
-   the non-blocking form used the tracker after it had been released
- - A PMIx_Get answered on the caller's thread that then declines the
-   short-circuit no longer leaves its fetched entries behind for the
-   ordinary path to inherit, which turned a scalar get into a
-   PMIX_DATA_ARRAY
- - A PMIx_Get for a reserved key that is not held locally is now allowed
-   to reach the host environment. The client used to force PMIX_IMMEDIATE
-   onto any such request, which confines the search to what the local
-   PMIx server already holds - and the client only reaches that point
-   after having asked that server's datastore and its own, so the flag
-   could only ever return the answer already in hand. It also stopped the
-   one party that may still know the value: a host frequently withholds
-   reserved keys it could supply, handing each daemon only the job-level
-   data its own local clients need rather than replicating every proc's
-   location keys on every node. Such a key is now requested like any
-   other, so the server can surface it to its host. A PMIX_IMMEDIATE the
-   caller passed itself is unaffected and is still honored
- - Relatedly, a server asked for a job-level reserved key it does not hold
-   no longer answers with an empty payload. That is indistinguishable from
-   "not found" to the client and it foreclosed the host, which is the one
-   party that may still have the value; the request is now passed up
-   instead. A server with no direct_modex support behaves as before,
-   reporting PMIX_ERR_NOT_FOUND. Only reserved keys are treated this way -
-   a miss on a key some process put says nothing about what the host knows
- - A reserved key requested for a process local to the server now fails
-   immediately with PMIX_ERR_NOT_FOUND rather than waiting out a timeout.
-   Such a key is ours from the moment the namespace is registered; it does
-   not arrive later in that client's commit, which carries only what the
-   client itself put, so there was never anything to wait for
+ - An MCA component whose framework interface version does not match the
+   framework it is being loaded into is now refused instead of being
+   opened. Nothing checked this before: the only version test in the
+   loader compares the *MCA* major.minor, which is one number for the
+   whole project and says nothing about whether a given framework's
+   module struct has changed underneath the component, and its "TODO --
+   add checks for project version (from framework)" has been there since
+   the file was inherited from Open MPI (whose copy still has it, worked
+   around by eight of its frameworks repeating the test themselves).
+   Because components are run-time-loadable, an installed plugin older
+   than the library loading it is what any partial upgrade produces, and
+   it presents whatever module struct its header had at the time - which
+   the library then calls through. pcompress grew two entry points in
+   July 2026 without a version bump, and a plugin from before that left
+   them NULL and turned the first size query into a jump to address
+   zero. pcompress is accordingly bumped to 3.0.0, so such a plugin is
+   now declined and the framework falls back to its own defaults - no
+   compression rather than a crash. A refused component is reported
+   through the usual mca_base_component_show_load_errors gate, which
+   defaults to "none"; set it to the framework name (or "all") to see
+   which plugins were dropped and why. Anyone carrying an out-of-tree
+   pcompress component must rebuild it. A framework states its interface
+   version as three macros in its own header, which both its components
+   and its declaration read, so there is one place to edit when it
+   changes; PMIX_MCA_BASE_FRAMEWORK_DECLARE is unchanged, and a framework
+   declared with it - as every framework outside this project is - states
+   no version and has its components checked as before
  - Every pcompress component now exposes its compression level as an MCA
    parameter - pcompress_zlib_level, pcompress_zlibng_level and
    pcompress_zstd_level - where the zlib components previously hard-coded

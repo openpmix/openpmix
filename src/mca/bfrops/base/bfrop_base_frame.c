@@ -129,7 +129,7 @@ static pmix_status_t pmix_bfrop_open(pmix_mca_base_open_flag_t flags)
     return rc;
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, bfrops, "PMIx Buffer Operations", pmix_bfrop_register,
+PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, bfrops, "PMIx Buffer Operations", pmix_bfrop_register,
                                 pmix_bfrop_open, pmix_bfrop_close,
                                 pmix_mca_bfrops_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);

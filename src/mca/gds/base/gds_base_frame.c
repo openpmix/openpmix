@@ -97,7 +97,7 @@ static pmix_status_t pmix_gds_open(pmix_mca_base_open_flag_t flags)
     return rc;
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, gds, "PMIx Generalized Data Store", NULL, pmix_gds_open,
+PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, gds, "PMIx Generalized Data Store", NULL, pmix_gds_open,
                                 pmix_gds_close, pmix_mca_gds_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 

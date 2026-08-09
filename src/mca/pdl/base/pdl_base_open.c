@@ -46,7 +46,7 @@ int pmix_pdl_base_open(pmix_mca_base_open_flag_t flags)
    But we must mark this framework is NO_DSO so that the MCA framework
    base doesn't try to open any dynamic components in this
    framework. */
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pdl, "Dynamic loader framework", NULL /* register */,
+PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, pdl, "Dynamic loader framework", NULL /* register */,
                                 pmix_pdl_base_open /* open */, NULL /* close */,
                                 pmix_mca_pdl_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_NO_DSO);

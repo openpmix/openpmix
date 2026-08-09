@@ -132,7 +132,7 @@ static pmix_status_t pmix_pmdl_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_pmdl_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pmdl, "PMIx Programming Model Operations", pmix_pmdl_register,
+PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, pmdl, "PMIx Programming Model Operations", pmix_pmdl_register,
                                 pmix_pmdl_open, pmix_pmdl_close, pmix_mca_pmdl_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 

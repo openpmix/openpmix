@@ -108,7 +108,7 @@ static int pmix_pstat_base_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_pstat_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pstat, "process statistics",
+PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, pstat, "process statistics",
                                 pmix_pstat_register, pmix_pstat_base_open,
                                 pmix_pstat_base_close, pmix_mca_pstat_base_static_components, 0);
 

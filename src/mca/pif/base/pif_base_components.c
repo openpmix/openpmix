@@ -35,7 +35,7 @@ static bool frameopen = false;
 /* instance the pmix_pif_t object */
 PMIX_CLASS_INSTANCE(pmix_pif_t, pmix_list_item_t, pmix_pif_construct, NULL);
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pif, NULL, pmix_pif_base_register, pmix_pif_base_open,
+PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, pif, NULL, pmix_pif_base_register, pmix_pif_base_open,
                                 pmix_pif_base_close, pmix_mca_pif_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 

@@ -325,7 +325,7 @@ static int open_components(pmix_mca_base_framework_t *framework)
     pmix_list_t *components = &framework->framework_components;
     int output_id = framework->framework_output;
     pmix_mca_base_component_list_item_t *cli, *next;
-    int ret;
+    int ret, vl;
 
     /* If pmix_mca_base_framework_register_components was called with the MCA_BASE_COMPONENTS_ALL
        flag we need to trim down and close any extra components we do not want open */
@@ -346,6 +346,69 @@ static int open_components(pmix_mca_base_framework_t *framework)
         pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
                             "mca: base: components_open: found loaded component %s",
                             component->pmix_mca_component_name);
+
+        /* Refuse a component that speaks a different version of this
+         * framework's interface than we do.
+         *
+         * The repository's own check, where a DSO is dlopen'd, compares
+         * only the *MCA* major.minor - which is one number for the whole
+         * project and so says nothing about whether this framework's
+         * module struct has changed underneath the component. Its comment
+         * has carried a "TODO -- add checks for project version (from
+         * framework)" for as long as the file has existed, and Open MPI's
+         * copy still does; eight of its frameworks work around it by
+         * repeating the test in their own find_available. Doing it here
+         * instead covers every framework at once, and covers static
+         * components too, where it catches a version macro someone forgot
+         * to bump alongside the framework.
+         *
+         * This is not a theoretical skew. Components are
+         * run-time-loadable, so an installed plugin older than the
+         * library that loads it is what any partial upgrade produces, and
+         * such a plugin's module struct is whatever its header said at
+         * the time. pcompress grew two entry points in July 2026 without
+         * a version bump; an older plugin loaded into a newer library
+         * left them NULL and the first call jumped to address zero.
+         *
+         * A framework that states no version - 0.0, which is what the
+         * unversioned PMIX_MCA_BASE_FRAMEWORK_DECLARE produces and so
+         * what every framework outside this project reports - is left
+         * alone. Refusing its components instead would break a companion
+         * project the moment it linked against a library carrying this
+         * check. */
+        if ((0 != framework->framework_type_major_version
+             || 0 != framework->framework_type_minor_version)
+            && (component->pmix_mca_type_major_version != framework->framework_type_major_version
+                || component->pmix_mca_type_minor_version
+                       != framework->framework_type_minor_version)) {
+            /* This is a load failure, not a preference: a plugin the
+             * user installed and expects to be using has just been
+             * dropped. Report it under the show_load_errors gate, the way
+             * the repository does - the gate picks the verbosity level
+             * rather than wrapping the call, and it goes to stream 0
+             * rather than framework_output, because the latter is closed
+             * (-1) unless someone has raised that framework's verbosity
+             * and the message would never be seen. */
+            vl = pmix_mca_base_show_load_errors(component->pmix_mca_type_name,
+                                                component->pmix_mca_component_name)
+                     ? PMIX_MCA_BASE_VERBOSE_ERROR
+                     : PMIX_MCA_BASE_VERBOSE_INFO;
+            pmix_output_verbose(vl, 0,
+                                "mca: base: components_open: component %s speaks %s "
+                                "v%d.%d.%d but this build speaks v%d.%d -- ignored. "
+                                "This is an installed component left over from an "
+                                "older build; remove or rebuild it.",
+                                component->pmix_mca_component_name,
+                                framework->framework_name,
+                                component->pmix_mca_type_major_version,
+                                component->pmix_mca_type_minor_version,
+                                component->pmix_mca_type_release_version,
+                                framework->framework_type_major_version,
+                                framework->framework_type_minor_version);
+            pmix_list_remove_item(components, &cli->super);
+            PMIX_RELEASE(cli);
+            continue;
+        }
 
         if (NULL != component->pmix_mca_open_component) {
             /* Call open if register didn't call it already */
