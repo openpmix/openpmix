@@ -387,7 +387,7 @@ cross-server timeout.
 The collective-status slot
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``pmix_server_set_collective_status()`` (in ``src/server/pmix_server_ops.c``)
+``pmix_server_set_collective_status()`` (in ``src/server/pmix_server_fence.c``)
 locates the ``PMIX_LOCAL_COLLECTIVE_STATUS`` entry **by key** (not by
 position) and writes the status in place; an absent slot is a no-op. Finding
 it by key matters for connect, which appends per-participant and job-level

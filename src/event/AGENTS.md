@@ -49,7 +49,7 @@ cached-notification hotel) with `max_events` / `event_eviction_time`,
 and `pmix_globals.cached_events` + `event_window` (the aggregation
 timer used by `PMIX_REPORT_EVENT`). Related code you will often touch
 in the same change: the server-side registration store
-(`pmix_server_globals.events`, filled in `src/server/pmix_server_ops.c`
+(`pmix_server_globals.events`, filled in `src/server/pmix_server_events.c`
 when clients send `PMIX_REGEVENTS_CMD`), and the notification receive
 paths in `src/client/pmix_client.c` (`pmix_client_notify_recv`) and
 `src/tool/pmix_tool.c` (`pmix_tool_notify_recv`), which construct

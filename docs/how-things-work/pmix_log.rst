@@ -94,7 +94,7 @@ The diagram below traces the full path for a log request.
                │       PMIX_PTL_SEND_RECV → log_cbfunc()
                │           │
                │           │  Server receives PMIX_LOG_CMD
-               │           │  pmix_server_log()  [src/server/pmix_server_ops.c]
+               │           │  pmix_server_log()  [src/server/pmix_server_control.c]
                │           │      Unpack timestamp, data[], directives[]
                │           │      Append PMIX_LOG_SOURCE (requester's proc)
                │           │      Optionally append PMIX_LOG_TIMESTAMP
