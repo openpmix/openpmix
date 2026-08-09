@@ -12,6 +12,7 @@ Building and installing PMIx
    vpath-builds
    compilers-and-flags
    required-support-libraries
+   optional-support-libraries
    configure-cli-options/index
    configure-output-summary
    make-targets
