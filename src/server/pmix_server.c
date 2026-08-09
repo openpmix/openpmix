@@ -120,6 +120,12 @@ pmix_server_globals_t pmix_server_globals = {
 
 // local variables
 static pmix_event_t parentdied;
+/* Records the descriptor PMIX_KEEPALIVE_PIPE named, so finalize can take
+ * that event back down and close it. It is a static rather than a local
+ * because finalize cannot re-derive the answer - the pipe was a directive
+ * to *init*, and init removes it from the environment. Mirrors the same
+ * bookkeeping in PMIx_tool_init/PMIx_tool_finalize. */
+static int keepalive_fd = -1;
 static char *security_mode = NULL;
 static char *bfrops_mode = NULL;
 static char *gds_mode = NULL;
@@ -178,9 +184,13 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
         return;
     }
 
-    /* decode it */
+    /* decode it - leave cb->status set to the store result so PMIx_server_init
+     * sees a storage failure rather than having it masked as success. The
+     * "nothing more to unpack" case is normalized to PMIX_SUCCESS by the
+     * module, so a parent that had no job data for us still succeeds here. */
     PMIX_GDS_STORE_JOB_INFO(cb->status, pmix_client_globals.myserver, nspace, buf);
-    cb->status = PMIX_SUCCESS;
+
+    free(nspace);
     PMIX_POST_OBJECT(cb);
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
@@ -548,6 +558,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 singleton = info[n].value.data.string;
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_MAU)) {
+                /* this comes straight from our host and nothing has
+                 * validated it - the key says what it is, never what is
+                 * in the value */
+                if (PMIX_DATA_ARRAY != info[n].value.type ||
+                    NULL == info[n].value.data.darray) {
+                    PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                    return PMIX_ERR_BAD_PARAM;
+                }
                 mau = info[n].value.data.darray;
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
@@ -613,11 +631,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     /* if we were given a keepalive pipe, register an
      * event to capture the event */
     if (NULL != (evar = getenv("PMIX_KEEPALIVE_PIPE"))) {
-        rc = strtol(evar, NULL, 10);
-        pmix_event_set(pmix_globals.evbase, &parentdied, rc, PMIX_EV_READ, pdiedfn, NULL);
+        keepalive_fd = strtol(evar, NULL, 10);
+        pmix_event_set(pmix_globals.evbase, &parentdied, keepalive_fd,
+                       PMIX_EV_READ, pdiedfn, NULL);
         pmix_event_add(&parentdied, NULL);
         pmix_unsetenv("PMIX_KEEPALIVE_PIPE", &environ);
-        pmix_fd_set_cloexec(rc); // don't let children inherit this
+        pmix_fd_set_cloexec(keepalive_fd); // don't let children inherit this
     }
 
     /* assign our internal bfrops module */
@@ -840,6 +859,15 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         kptr->value->type = PMIX_DATA_ARRAY;
         kptr->value->data.darray = mau;
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
+        /* The store deep-copied the array, and this value only *borrowed*
+         * our host's. Detach it before releasing: the kval destructor
+         * runs value_destruct, which frees a PMIX_DATA_ARRAY payload
+         * outright - so leaving it attached hands our caller's array back
+         * to the heap while the caller still holds it in its own info
+         * array and will free it again. Both neighbors below build a
+         * payload they own (PMIX_PROC_CREATE, pmix_asprintf); this one
+         * does not, which is what makes the detach necessary. */
+        kptr->value->data.darray = NULL;
         PMIX_RELEASE(kptr); // maintain accounting
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -1028,6 +1056,16 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server finalize called");
+
+    /* Take down the file-scope event init may have registered, while the
+     * base it is on still exists - otherwise it survives into a state
+     * where its base has been destroyed under it, and the descriptor it
+     * watches is never given back. Matches PMIx_tool_finalize. */
+    if (0 <= keepalive_fd) {
+        pmix_event_del(&parentdied);
+        close(keepalive_fd);
+        keepalive_fd = -1;
+    }
 
     /* wait here until all active events have been processed */
     PMIx_Progress_thread_stop(NULL, 0);

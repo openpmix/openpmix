@@ -6,7 +6,9 @@
  *
  * $HEADER$
  *
- * Unit tests for the PMIX_SINGLETON directive to PMIx_server_init().
+ * Unit tests for directives handed to PMIx_server_init() - PMIX_SINGLETON
+ * and PMIX_ALLOC_MAU. Both are values that come straight from the host,
+ * and the key says only what the directive is, never what is in the value.
  *
  * The value of PMIX_SINGLETON is the string representation of a proc ID -
  * i.e., "nspace.rank" - naming the singleton the server was started to
@@ -19,6 +21,15 @@
  * it did wrong. These tests pin the accept/reject boundary: a well-formed
  * value must register the singleton, and every malformed value must come
  * back as PMIX_ERR_BAD_PARAM without a crash.
+ *
+ * PMIX_ALLOC_MAU carries a pmix_data_array_t that belongs to the *caller*.
+ * Init stores it in the datastore, which deep-copies it - but it built the
+ * kval it stored through by pointing the value straight at the caller's
+ * array, and a kval destructor frees a PMIX_DATA_ARRAY payload outright.
+ * So releasing that kval handed the host's array back to the heap while
+ * the host still held it, and the host's own free of it was a double free.
+ * The test asserts both halves: the array still reads correctly after init
+ * returns, and the caller can still free it.
  *
  * Each case runs in a forked child because PMIx_server_init() can only be
  * meaningfully called once per process - a failed init leaves init_called
@@ -160,6 +171,112 @@ static void check(const char *name, const char *value, bool badtype, const char 
     report(name, expected == WEXITSTATUS(status), detail);
 }
 
+/* Attempt an init carrying PMIX_ALLOC_MAU. When "badtype" is set the
+ * directive is loaded as a scalar so the type screen is exercised;
+ * otherwise it carries a well-formed two-element array that this function
+ * owns, reads back after init, and then frees - which is where an init
+ * that released the caller's array shows up, as a double free. */
+static void mau_child(bool badtype)
+{
+    pmix_data_array_t *darray;
+    pmix_info_t *iptr;
+    pmix_info_t info;
+    pmix_status_t rc;
+    uint32_t scalar = 42;
+
+    PMIX_INFO_CONSTRUCT(&info);
+    PMIX_LOAD_KEY(info.key, PMIX_ALLOC_MAU);
+
+    if (badtype) {
+        info.value.type = PMIX_UINT32;
+        info.value.data.uint32 = scalar;
+        rc = PMIx_server_init(&mymodule, &info, 1);
+        if (PMIX_ERR_BAD_PARAM == rc) {
+            exit(CHILD_BADPARAM);
+        }
+        if (PMIX_SUCCESS == rc) {
+            PMIx_server_finalize();
+            exit(CHILD_ACCEPTED);
+        }
+        fprintf(stderr, "     init returned %s\n", PMIx_Error_string(rc));
+        exit(CHILD_OTHERERR);
+    }
+
+    PMIX_DATA_ARRAY_CREATE(darray, 2, PMIX_INFO);
+    if (NULL == darray) {
+        exit(CHILD_OTHERERR);
+    }
+    iptr = (pmix_info_t *) darray->array;
+    PMIX_INFO_LOAD(&iptr[0], "mau.first", "one", PMIX_STRING);
+    PMIX_INFO_LOAD(&iptr[1], "mau.second", "two", PMIX_STRING);
+
+    info.value.type = PMIX_DATA_ARRAY;
+    info.value.data.darray = darray;
+
+    rc = PMIx_server_init(&mymodule, &info, 1);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "     init returned %s\n", PMIx_Error_string(rc));
+        exit(CHILD_OTHERERR);
+    }
+
+    /* our array must have survived init untouched */
+    if (darray != info.value.data.darray || 2 != darray->size ||
+        NULL == darray->array) {
+        PMIx_server_finalize();
+        exit(CHILD_NOTFOUND);
+    }
+    iptr = (pmix_info_t *) darray->array;
+    if (!PMIX_CHECK_KEY(&iptr[0], "mau.first") ||
+        !PMIX_CHECK_KEY(&iptr[1], "mau.second")) {
+        PMIx_server_finalize();
+        exit(CHILD_NOTFOUND);
+    }
+
+    PMIx_server_finalize();
+    /* and we must still be able to give it back - against a library that
+     * released it for us this is a double free, and the allocator aborts */
+    PMIX_DATA_ARRAY_FREE(darray);
+    exit(CHILD_OK);
+}
+
+/* fork a child to attempt a PMIX_ALLOC_MAU init, then check its status */
+static void check_mau(const char *name, bool badtype, int expected)
+{
+    pid_t pid;
+    int status;
+    char detail[256];
+
+    fflush(stdout);
+    fflush(stderr);
+
+    pid = fork();
+    if (0 > pid) {
+        report(name, 0, "fork failed");
+        return;
+    }
+    if (0 == pid) {
+        mau_child(badtype);
+        /* not reached */
+        exit(CHILD_OTHERERR);
+    }
+
+    if (pid != waitpid(pid, &status, 0)) {
+        report(name, 0, "waitpid failed");
+        return;
+    }
+    if (WIFSIGNALED(status)) {
+        snprintf(detail, sizeof(detail), "server died on signal %d", WTERMSIG(status));
+        report(name, 0, detail);
+        return;
+    }
+    if (!WIFEXITED(status)) {
+        report(name, 0, "child did not exit normally");
+        return;
+    }
+    snprintf(detail, sizeof(detail), "expected exit %d, got %d", expected, WEXITSTATUS(status));
+    report(name, expected == WEXITSTATUS(status), detail);
+}
+
 /* a nspace longer than PMIX_MAX_NSLEN cannot name a real nspace */
 static char *overlong(void)
 {
@@ -208,6 +325,13 @@ int main(int argc, char **argv)
 
     /* the directive must carry a string */
     check("wrong data type", NULL, true, NULL, 0, CHILD_BADPARAM);
+
+    fprintf(stdout, "\nPMIX_ALLOC_MAU handling\n");
+
+    /* the caller's array must survive init and still be freeable */
+    check_mau("array is left to its owner", false, CHILD_OK);
+    /* the directive must carry a data array */
+    check_mau("wrong data type", true, CHILD_BADPARAM);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;
