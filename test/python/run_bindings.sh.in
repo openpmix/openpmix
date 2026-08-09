@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# Run the bindings unit suite against the extension in the BUILD tree.
+#
+# This exists for one reason: without it the suite silently tests
+# nothing. test_bindings.py reports an extension it cannot import as
+# "nothing to test" and exits 77 (SKIP), so a missing library path does
+# not look like a failure - it looks like a pass with a note. On macOS
+# that is exactly what happened, because the loader path set in
+# Makefile.am cannot reach a test run straight from its shebang; see
+# run_server.sh.in for the mechanism, and the note in Makefile.am for why
+# AM_TESTS_ENVIRONMENT is not where it can be fixed.
+#
+# See run_server.sh.in for why the build tree comes first.
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+egg=@PMIX_PYTHON_EGG_PATH@
+
+builddir=$(echo @PMIX_TOP_BUILDDIR@/bindings/python/build/lib.*)
+if [ -d "$builddir" ]; then
+    export PYTHONPATH="$builddir${egg:+:$egg}"
+else
+    export PYTHONPATH="$egg"
+fi
+
+# See run_server.sh.in for why the loader and component paths are set
+# here rather than inherited, and why the interpreter is named outright
+# rather than reached through a shebang.
+libs=@PMIX_TOP_BUILDDIR@/src/.libs
+DYLD_LIBRARY_PATH="$libs${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+LD_LIBRARY_PATH="$libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export DYLD_LIBRARY_PATH LD_LIBRARY_PATH
+. @PMIX_TOP_BUILDDIR@/test/pmix_test_env.sh
+
+# See run_server.sh.in for why this reaches through the source tree
+# rather than cd'ing into it.
+exec @PYTHON@ @PMIX_TOP_SRCDIR@/test/python/test_bindings.py
