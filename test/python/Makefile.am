@@ -13,6 +13,7 @@ CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 noinst_SCRIPTS = \
 	run_server.sh.in \
 	run_sched.sh.in \
+	run_bindings.sh.in \
     server.py \
     sched.py \
     client.py \
@@ -32,7 +33,7 @@ if WANT_PYTHON_BINDINGS
 # run_server.sh / run_sched.sh exercise the connected
 # client/server/scheduler round-trip paths.
 TESTS = \
-    test_bindings.py \
+    run_bindings.sh \
     test_construct.py \
     run_server.sh \
     run_sched.sh
@@ -55,13 +56,15 @@ TESTS = \
 # the time the test starts. It is left set because it costs nothing and
 # is correct on any platform without SIP.
 #
-# The two .sh tests therefore set it themselves, inside their own shell,
-# and name $(PYTHON) outright rather than reaching it through a
-# "#!/usr/bin/env python3" shebang (/usr/bin/env is protected too); see
-# run_server.sh.in. test_bindings.py has no such wrapper, so on macOS it
-# still cannot load the extension and reports SKIP - which is the silent
-# "tested nothing" this block exists to prevent, and wants the same
-# wrapper treatment.
+# Every test here therefore goes through a .sh wrapper that sets it
+# itself, inside its own shell, and names $(PYTHON) outright rather than
+# reaching it through a "#!/usr/bin/env python3" shebang (/usr/bin/env is
+# protected too); see run_server.sh.in. That is why the bindings suite is
+# run as run_bindings.sh rather than as test_bindings.py directly: it
+# reports an extension it cannot import as "nothing to test" and exits
+# SKIP, so without the wrapper a missing library path did not look like a
+# failure - it looked like a pass, which is the silent "tested nothing"
+# this whole block exists to prevent.
 # PYTHONPATH likewise has to name the *build* tree. test_bindings.py
 # falls back to locating the extension itself, but it does so relative to
 # its own __file__ -- which is in the source tree, where a VPATH build
