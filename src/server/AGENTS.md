@@ -589,6 +589,35 @@ misbehave by design).
   ownership discipline line for line.
 - **Preserve wire compatibility:** V1/version gating, append-only layouts,
   tolerate-short-buffer unpacks.
+- **A kval built to carry a *borrowed* payload must give it up before
+  release.** The recurring shape here is `PMIX_KVAL_NEW(kptr, KEY)` →
+  point `kptr->value` at something → `PMIX_GDS_STORE_KV` →
+  `PMIX_RELEASE(kptr)`. That release runs `kvdes`, which runs
+  `value_destruct`, which frees the value's payload *outright* — a
+  `PMIX_DATA_ARRAY` through `data_array_free`, a `PMIX_STRING` through
+  `free`. And the store does not take the payload: `pmix_hash_store`
+  deep-copies it. So a value pointed at memory that is not ours hands
+  that memory back to the heap while its real owner still holds it.
+  Most sites are safe because they build a payload they own
+  (`PMIX_PROC_CREATE`, `pmix_asprintf`); `PMIX_ALLOC_MAU` in
+  `PMIx_server_init` borrowed the *host's* `pmix_data_array_t` straight
+  out of the caller's `info[]`, so init freed it and the host's own free
+  of it was a double free. Either copy into the value, or NULL the
+  borrowed member before releasing. Covered by
+  `test/unit/singleton_register`.
+- **The server's own `mypeer->nptr` never reaches `pmix_globals.nspaces`,
+  and nothing depends on it.** The block in `PMIx_server_init` that would
+  prepend it is guarded on `NULL == mypeer->nptr`, which `pmix_rte_init`
+  has already made non-NULL — so it is dead, and the comment above it
+  ("ensure our own nspace is first on the list") describes an intent the
+  code does not carry out. This looks like it should break the
+  `PMIX_LAUNCHER_RNDZ_URI` path, where `job_data` stores our parent's
+  reply under our own nspace and `hash_store_job_info` looks that nspace
+  up on `pmix_globals.nspaces` before storing anything. It does not:
+  `pmix_gds_hash_get_tracker(nspace, true)`, called immediately above
+  that lookup, creates and appends the namespace itself. Verified by
+  instrumenting both sites. Do not "fix" the dead branch on the theory
+  that the lookup can fail.
 - **Screen the shape of anything the host hands you before indexing it.**
   A `pmix_info_t` carrying a `PMIX_DATA_ARRAY` is a host-supplied
   structure, and several sites here read `array[0]` and `array[1]`
