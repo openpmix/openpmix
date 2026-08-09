@@ -1,3 +1,5 @@
+.. _label-install-configure-output-summary:
+
 ``configure`` output summary
 ============================
 

@@ -26,6 +26,10 @@ These support libraries are fundamental to PMIx's operation
 and pretty universally available in all environments. Worst case,
 they can easily be built from their respective source tarballs.
 
+PMIx will additionally make use of several :ref:`optional support
+libraries <label-install-optional-support-libraries>` if it finds them,
+and will build without them if it does not.
+
 Library dependencies
 --------------------
 

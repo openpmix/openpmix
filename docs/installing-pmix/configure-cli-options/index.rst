@@ -15,4 +15,5 @@ below.
    installation
    runtime
    required-support-libraries
+   optional-support-libraries
    rpath-and-runpath
