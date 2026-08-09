@@ -13,6 +13,14 @@ else
     export PYTHONPATH="$egg"
 fi
 
-# See run_server.sh.in for why this reaches through the source tree
-# rather than cd'ing into it.
-exec @PMIX_TOP_SRCDIR@/test/python/sched.py
+# See run_server.sh.in for why the loader and component paths are set
+# here rather than inherited, why the interpreter is named outright
+# rather than reached through a shebang, and why this reaches through the
+# source tree rather than cd'ing into it.
+libs=@PMIX_TOP_BUILDDIR@/src/.libs
+DYLD_LIBRARY_PATH="$libs${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+LD_LIBRARY_PATH="$libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export DYLD_LIBRARY_PATH LD_LIBRARY_PATH
+. @PMIX_TOP_BUILDDIR@/test/pmix_test_env.sh
+
+exec @PYTHON@ @PMIX_TOP_SRCDIR@/test/python/sched.py

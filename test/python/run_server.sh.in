@@ -25,9 +25,35 @@ else
     export PYTHONPATH="$egg"
 fi
 
+# The extension is linked against libpmix but carries no rpath, so the
+# loader has to be told where the one we just built is. Makefile.am sets
+# DYLD_LIBRARY_PATH/LD_LIBRARY_PATH for that, and on macOS it does not
+# survive to here: System Integrity Protection strips every DYLD_*
+# variable when it executes a protected binary, and /bin/bash -- this
+# script's own interpreter -- is one. So the value is gone before the
+# first line runs, and setting it again here, inside the shell, is the
+# only place it can be set and still be inherited.
+#
+# For the same reason the interpreter is named outright below rather than
+# reached through this script's "#!/usr/bin/env python3" shebang:
+# /usr/bin/env is protected too, so going through it strips DYLD_* right
+# back off again. A @PYTHON@ that is itself under a protected directory
+# (/usr/bin/python3) cannot be helped -- there is nowhere left to put the
+# variable -- and such a build tests against the installed library.
+libs=@PMIX_TOP_BUILDDIR@/src/.libs
+DYLD_LIBRARY_PATH="$libs${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+LD_LIBRARY_PATH="$libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export DYLD_LIBRARY_PATH LD_LIBRARY_PATH
+
+# and the MCA components, for the same reason and from the same tree.
+# This is the file every other test in the suite gets through
+# AM_TESTS_ENVIRONMENT; the python tests define their own and so never
+# picked it up, leaving them loading plugins out of the install prefix.
+. @PMIX_TOP_BUILDDIR@/test/pmix_test_env.sh
+
 # Reach the script through the source tree: in a VPATH build the build
 # directory this runs from holds only the generated wrappers, not the
 # .py files.  Reach it rather than cd'ing into it -- a srcdir is not
 # necessarily writable (it is mounted read-only in the dockerswarm
 # builder), and automake runs a test from its build directory.
-exec @PMIX_TOP_SRCDIR@/test/python/server.py
+exec @PYTHON@ @PMIX_TOP_SRCDIR@/test/python/server.py
