@@ -969,7 +969,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                             "[%s:%d] WAITING IN INIT FOR RELEASE", pmix_globals.myid.nspace,
                             pmix_globals.myid.rank);
         cd = PMIX_NEW(pmix_rshift_caddy_t);
-        cd->codes = malloc(sizeof(int));
+        cd->codes = malloc(sizeof(pmix_status_t));
         cd->codes[0] = PMIX_DEBUGGER_RELEASE;
         cd->ncodes = 1;
         cd->info = evinfo;
@@ -1100,6 +1100,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
         }
     }
     PMIX_DESTRUCT(&pmix_server_globals.clients);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.remote_pnd);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.local_reqs);
@@ -1118,16 +1119,22 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     PMIX_LIST_DESTRUCT(&pmix_server_globals.psets);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.grp_collectives);
 
+    /* NULL each of these as it goes: they are file-scope statics that
+     * outlive the library, and pmix_server_initialize() is the only thing
+     * that repopulates them */
     if (NULL != security_mode) {
         free(security_mode);
+        security_mode = NULL;
     }
 
     if (NULL != bfrops_mode) {
         free(bfrops_mode);
+        bfrops_mode = NULL;
     }
 
     if (NULL != gds_mode) {
         free(gds_mode);
+        gds_mode = NULL;
     }
 
     /* close the psensor framework */
