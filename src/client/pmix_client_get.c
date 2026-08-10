@@ -658,8 +658,8 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata)
     pmix_cb_t *cb;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_OBJECT(cb);
     cb = (pmix_cb_t *) cbdata;
+    PMIX_ACQUIRE_OBJECT(cb);
     cb->status = status;
     /* the local get_data path invokes us with the value it already
      * stashed in cb->value - in that case it is ours to keep, so copying
@@ -1005,8 +1005,8 @@ static void get_data(int sd, short args, void *cbdata)
     pmix_kval_t *kv;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    PMIX_ACQUIRE_OBJECT(cb);
     cb = (pmix_cb_t*)cbdata;
+    PMIX_ACQUIRE_OBJECT(cb);
     lg = cb->lg;
     iptr = cb->info;
     nfo = cb->ninfo;
