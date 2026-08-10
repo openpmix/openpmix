@@ -122,6 +122,24 @@ The August 2026 second sweep of that directory added:
   init, because the defect was a missing `initialized` gate in front of a
   `pmix_globals.mypeer` dereference. Keep it there.
 
+The seventh sweep added `test_get_empty_group()`, which plants a
+`pmix_group_t` with no members on `pmix_client_globals.groups` and then
+does a wildcard `PMIx_Get` against its group id. Expanding that used to
+hand the caller the NULL `PMIx_Proc_create(0)` returns, with a count of
+zero, which `PMIx_Get` then `memcpy`'d out of — so this one **segfaults**
+against the unfixed library rather than failing.
+
+Two things about its shape are deliberate. The group is planted directly
+instead of being constructed and then emptied, because a singleton has no
+server to construct one with, and the subject is what the expansion does
+with an empty membership rather than how it got that way. And it covers
+`PMIx_Get` **only**: the other callers of the expansion — fence,
+connect/disconnect, group construct — answer their singleton or
+`connected` check well before they reach the group list, so a case for any
+of them would pass against the unfixed library and assert nothing. That
+is the same unreachability described at the end of this section; resist
+adding the "obvious" sibling cases.
+
 The third sweep added `test_topology_bad_params()`. The topology entry
 points are the one part of `src/client` that answers entirely out of
 hwloc, so they gate on `initialized` alone and a singleton reaches their
