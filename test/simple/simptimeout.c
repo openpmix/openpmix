@@ -139,6 +139,18 @@ int main(int argc, char **argv)
         }
         pmix_output(0, "CONNECT TIMEOUT SUCCEEDED");
 
+        /* check timeout on disconnect. Like connect, this has to time out
+         * in the server's local-collection phase - the other ranks never
+         * call, so the host is never asked and cannot be the one to
+         * bound it */
+        pmix_output(0, "TEST DISCONNECT TIMEOUT");
+        if (PMIX_ERR_TIMEOUT != (rc = PMIx_Disconnect(&proc, 1, &info, 1))) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Disconnect did not timeout: %s",
+                        myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+            goto done;
+        }
+        pmix_output(0, "DISCONNECT TIMEOUT SUCCEEDED");
+
         /* check timeout on Get */
         proc.rank = 1;
         pmix_output(0, "TEST GET TIMEOUT");
