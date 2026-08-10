@@ -255,13 +255,23 @@ and `PMIx_server_setup_local_support` leaked its `strdup` on the
 `PMIX_ERR_WOULD_BLOCK` arm. Do not "fix" this by moving `nspace` into the
 destructor - that turns the leak into a free of a string literal.
 
-A related trap sits one layer out: `pmix_server_process_iof` does
-`req->flags = cd->flags`, a **shallow** copy of a `pmix_iof_flags_t` whose
-`file` and `directory` members are `strdup`ed and owned by the caddy. The
-`pmix_iof_req_t` outlives the caddy, so those two pointers dangle the
-moment the caddy is released. It is latent only because nothing reads
-`pmix_iof_req_t::flags` today (`pmix_iof_process_iof` does not); the day
-something does, it needs its own copy.
+A related rule applies to `pmix_iof_flags_t`, which is copied by
+assignment in three places while two of its members are `strdup`ed:
+**a shallow copy of the flags owns nothing, so NULL `file` and
+`directory` right after it.** The strings belong to whatever parsed
+them - for `pmix_server_process_iof` that is the setup caddy, which is
+released long before the `pmix_iof_req_t` it copied into. Both client-side
+copies (`stash_spawn_iof_flags` and the spawn reply handler in
+`pmix_client_spawn.c`) NULL them explicitly; the server-side one did not,
+and left two dangling pointers in a long-lived request.
+
+Note which flags the output path actually consults, because it is not
+these: `pmix_iof_write_output` takes its formatting flags from
+`nptr->iof_flags`, `stand_in_flags()` or `pmix_globals.iof_flags` - the
+namespace and the process, never the request. `pmix_iof_req_t::flags` is
+written and never read, which is why the dangling pointers were harmless
+rather than a use-after-free. A reader added later would need its own
+copy of the strings, not the caddy's.
 
 Any struct handed to `PMIX_THREADSHIFT` **must** carry a `pmix_event_t ev`
 as its thread-shift member (the caddy contract from the top-level guide).

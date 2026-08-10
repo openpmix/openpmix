@@ -426,7 +426,13 @@ pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
     PMIX_PROC_CREATE(req->procs, req->nprocs);
     PMIX_LOAD_PROCID(&req->procs[0], nspace, PMIX_RANK_WILDCARD);
     req->channels = cd->channels;
+    /* a shallow copy of the flags owns nothing: file and directory are
+     * strdup'ed by the flag parser and freed with the caddy, which goes
+     * away long before this request does. The client and tool sides of
+     * the same copy say so explicitly - do the same here */
     req->flags = cd->flags;
+    req->flags.file = NULL;
+    req->flags.directory = NULL;
     req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
     /* process any cached IO */
     PMIX_LIST_FOREACH_SAFE (iof, ionext, &pmix_server_globals.iof, pmix_iof_cache_t) {
