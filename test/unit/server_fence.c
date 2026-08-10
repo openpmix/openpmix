@@ -45,6 +45,32 @@
  *      completion arms, so the layout is load-bearing rather than
  *      incidental, and a suite made only of malformed-count cases would
  *      not notice a screen that rejected everything.
+ *
+ *   the completion answers every participant, with the right status
+ *      pmix_server_modex_cbfunc is the other half of this handler: it is
+ *      what the host calls when the fence resolves, and it owes a reply
+ *      to each caddy the tracker collected. Two things about that loop
+ *      are invisible with a single participant, which is all the cases
+ *      above build:
+ *
+ *        - the status packed for each client is the collective's own,
+ *          held in a local across the whole loop, and
+ *          PMIX_GDS_MARK_MODEX_COMPLETE *assigns* the variable it is
+ *          given. Writing it into that local reported a failed fence as
+ *          PMIX_SUCCESS to every participant after the first - and the
+ *          gds/hash entry point is a no-op returning PMIX_SUCCESS, so it
+ *          did so on every ordinary server.
+ *        - a failure serving one participant used to leave the loop, and
+ *          the tracker release at the foot of the function then frees the
+ *          remaining caddies without a reply. Nothing else ever answers
+ *          them, so those clients sit in PMIx_Fence forever.
+ *
+ *      The case below drives the completion directly with a failing
+ *      status over a two-participant tracker and reads back what was
+ *      actually queued for each. Queueing works here because a peer
+ *      whose sd is negative never has its send event armed, so the
+ *      messages come to rest on send_msg and send_queue - the same idiom
+ *      test/unit/server_control.c uses to inspect a reply.
  */
 
 #include "src/include/pmix_config.h"
@@ -55,6 +81,7 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/ptl/ptl_types.h"
 #include "src/server/pmix_server_ops.h"
 
 #include <stdio.h>
@@ -207,6 +234,97 @@ static pmix_status_t drive_fence(size_t nprocs, size_t nprocs_real,
     return rc;
 }
 
+/* --- driving pmix_server_modex_cbfunc over a two-participant tracker ---
+ *
+ * The tracker and its caddies touch pmix_server_globals.collectives, so
+ * they are built on the progress thread like everything else here. The
+ * completion itself is called from main(), which is exactly how a host
+ * calls it - it does nothing but thread-shift. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    size_t nparticipants;
+    pmix_server_trkr_t *trk;
+} trkbuild_t;
+
+static void build_tracker(int sd, short args, void *cbdata)
+{
+    trkbuild_t *b = (trkbuild_t *) cbdata;
+    pmix_server_trkr_t *trk;
+    pmix_server_caddy_t *cd;
+    size_t n;
+
+    (void) sd;
+    (void) args;
+
+    trk = PMIX_NEW(pmix_server_trkr_t);
+    if (NULL == trk) {
+        b->trk = NULL;
+        PMIX_WAKEUP_THREAD(&b->lock);
+        return;
+    }
+    trk->type = PMIX_FENCENB_CMD;
+    trk->collect_type = PMIX_COLLECT_NO;
+    trk->nlocal = (uint32_t) b->nparticipants;
+    trk->def_complete = true;
+    trk->host_called = true;
+    for (n = 0; n < b->nparticipants; n++) {
+        cd = PMIX_NEW(pmix_server_caddy_t);
+        PMIX_RETAIN(pmix_globals.mypeer);
+        cd->peer = pmix_globals.mypeer;
+        cd->hdr.tag = (uint32_t) (100 + n);
+        pmix_list_append(&trk->local_cbs, &cd->super);
+    }
+    /* the completion unlinks it from here, so it has to be on the list */
+    pmix_list_append(&pmix_server_globals.collectives, &trk->super);
+    b->trk = trk;
+    PMIX_WAKEUP_THREAD(&b->lock);
+}
+
+/* Take the next reply the server queued for our own peer. With no socket
+ * the send event is never armed, so the first lands on send_msg and the
+ * rest accumulate on send_queue. */
+static pmix_buffer_t *take_queued_reply(void)
+{
+    pmix_peer_t *peer = pmix_globals.mypeer;
+    pmix_ptl_send_t *snd = peer->send_msg;
+    pmix_buffer_t *buf;
+
+    if (NULL != snd) {
+        peer->send_msg = NULL;
+    } else {
+        snd = (pmix_ptl_send_t *) pmix_list_remove_first(&peer->send_queue);
+        if (NULL == snd) {
+            return NULL;
+        }
+    }
+    buf = snd->data;
+    /* the buffer is ours now - the send's destructor would release it */
+    snd->data = NULL;
+    PMIX_RELEASE(snd);
+    return buf;
+}
+
+/* unpack the status a queued reply leads with; PMIX_ERR_NOT_FOUND if
+ * there was no reply at all */
+static pmix_status_t next_reply_status(void)
+{
+    pmix_buffer_t *reply;
+    pmix_status_t st, rc;
+    int32_t cnt = 1;
+
+    reply = take_queued_reply();
+    if (NULL == reply) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, reply, &st, &cnt, PMIX_STATUS);
+    PMIX_RELEASE(reply);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    return st;
+}
+
 /* The fence completion thread-shifts, so let anything queued behind us
  * run before we look at the results or finalize. PMIx_Store_internal
  * blocks on the progress thread, so anything queued ahead of it has run
@@ -283,6 +401,43 @@ int main(int argc, char **argv)
     /* nothing may be left parked on the collectives list */
     report("no tracker is left behind",
            0 == pmix_list_get_size(&pmix_server_globals.collectives));
+
+    /* --- the completion answers every participant with the collective's
+     *     own status --- *
+     * Two participants, and a fence the host failed. Against an unfixed
+     * library the first reply carries PMIX_ERR_TIMEOUT and the second
+     * carries PMIX_SUCCESS, because PMIX_GDS_MARK_MODEX_COMPLETE
+     * overwrote the status local after the first was packed. */
+    {
+        trkbuild_t b;
+        pmix_status_t st1, st2;
+
+        memset(&b, 0, sizeof(b));
+        PMIX_CONSTRUCT_LOCK(&b.lock);
+        b.nparticipants = 2;
+        PMIX_THREADSHIFT(&b, build_tracker);
+        PMIX_WAIT_THREAD(&b.lock);
+        PMIX_DESTRUCT_LOCK(&b.lock);
+
+        report("a two-participant tracker was built", NULL != b.trk);
+        if (NULL != b.trk) {
+            /* drain anything an earlier case may have left queued */
+            while (NULL != take_queued_reply()) {
+                continue;
+            }
+            pmix_server_modex_cbfunc(PMIX_ERR_TIMEOUT, NULL, 0, b.trk, NULL, NULL);
+            progress_barrier();
+
+            st1 = next_reply_status();
+            st2 = next_reply_status();
+            report("the first participant is told the fence failed",
+                   PMIX_ERR_TIMEOUT == st1);
+            report("the second participant is told the same thing",
+                   PMIX_ERR_TIMEOUT == st2);
+            report("the completion leaves no tracker behind",
+                   0 == pmix_list_get_size(&pmix_server_globals.collectives));
+        }
+    }
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
