@@ -71,6 +71,8 @@ static void _fabric_response(int sd, short args, void *cbdata)
     pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
+    PMIX_ACQUIRE_OBJECT(qcd);
+
     /* qcd->cbfunc is the switchyard's fabric_cbfunc, which expects the
      * query caddy - not the server caddy hanging off qcd->cbdata. Handing
      * it qcd->cbdata made it read a pmix_server_caddy_t as a
@@ -247,8 +249,7 @@ pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd, pmix_buffer_t *
     }
 
     /* setup the requesting peer name */
-    pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
-    proc.rank = cd->peer->info->pname.rank;
+    PMIX_LOAD_PROCID(&proc, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
     /* add the index. Nothing screens this allocation the way an unpack
      * would - the load below writes straight through it */
     qcd->ninfo = 1;
