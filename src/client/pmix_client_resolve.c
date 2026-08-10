@@ -160,7 +160,7 @@ static void resolve_peers(int sd, short args, void *cbdata)
     pmix_value_t *val;
     char **p, **tmp = NULL, *prs;
     pmix_proc_t *pa;
-    size_t m, n, np, ninfo;
+    size_t m, n, np, nalloc = 0, ninfo;
     int npeers;
     pmix_namespace_t *ns;
     char *key;
@@ -286,15 +286,24 @@ static void resolve_peers(int sd, short args, void *cbdata)
              * transfer below, not from the count above: the two disagree
              * if an append into tmp failed, and the difference would be
              * handed to the caller as procs it may index */
+            nalloc = np;
             np = 0;
             for (n = 0; NULL != tmp[n]; n++) {
-                /* find the nspace delimiter */
-                prs = strchr(tmp[n], ':');
+                /* Find the nspace delimiter, searching from the right. A
+                 * namespace is an arbitrary string assigned by the host and
+                 * may itself contain a colon, while the peer list appended
+                 * above is a comma-delimited list of ranks and cannot. So
+                 * the last colon is the one we inserted; taking the first
+                 * would split a namespace such as "job:a,b" in the middle,
+                 * and this pass would then find more comma-separated fields
+                 * in it than the counting pass above did - writing past the
+                 * end of the array that count sized. */
+                prs = strrchr(tmp[n], ':');
                 if (PMIX_UNLIKELY(NULL == prs)) {
                     /* should never happen, but silence a Coverity warning */
                     rc = PMIX_ERR_BAD_PARAM;
                     PMIx_Argv_free(tmp);
-                    PMIX_PROC_FREE(pa, np);
+                    PMIX_PROC_FREE(pa, nalloc);
                     cd->procs = NULL;
                     cd->nprocs = 0;
                     goto done;
@@ -302,15 +311,20 @@ static void resolve_peers(int sd, short args, void *cbdata)
                 *prs = '\0';
                 ++prs;
                 p = PMIx_Argv_split(prs, ',');
-                for (m = 0; NULL != p[m]; m++) {
+                /* never write more entries than were allocated, whatever
+                 * the two passes make of a malformed peer list */
+                for (m = 0; NULL != p[m] && np < nalloc; m++) {
                     PMIX_LOAD_NSPACE(pa[np].nspace, tmp[n]);
                     pa[np].rank = strtoul(p[m], NULL, 10);
                     ++np;
                 }
                 PMIx_Argv_free(p);
             }
-            PMIx_Argv_free(tmp);
+            /* report what was filled, not what was sized - they differ
+             * only if a malformed peer list left the fill short, and the
+             * tail would then be zeroed procs rather than real ones */
             cd->nprocs = np;
+            PMIx_Argv_free(tmp);
             rc = PMIX_SUCCESS;
         } else {
             /* nothing resolved - an entry is recorded only when it carried
