@@ -680,8 +680,11 @@ typedef struct {
     bool pntrval;
     bool stval;
     bool optional;
+    /* the caller asked for PMIX_IMMEDIATE. Recorded here, but acted on by
+     * the server: the directive rides up in the caller's info array, and
+     * the server is the party that can honor it by confining the search to
+     * the data it already holds. We never add one the caller did not give */
     bool immediate;
-    bool add_immediate;
     bool refresh_cache;
     pmix_scope_t scope;
     bool sessioninfo;

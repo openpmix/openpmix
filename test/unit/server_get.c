@@ -54,10 +54,19 @@
  *   local rank not yet connected,
  *      + IMMEDIATE                 -> PMIX_ERR_NOT_FOUND, nothing parked
  *   WILDCARD rank                  -> job-level data handed to the callback
+ *   WILDCARD, missing reserved key -> PMIX_ERR_NOT_FOUND, callback untouched
+ *   WILDCARD, missing plain key    -> unchanged: success, empty payload
  *
  * Every case additionally asserts that the request left local_reqs empty,
  * because a server that parks a request it can never answer hangs the
  * calling client rather than failing it.
+ *
+ * What this file cannot reach: the companion rule that a reserved key for
+ * a *local* target fails fast instead of waiting out a timeout. Getting
+ * there needs a local rank that has actually connected, because a
+ * registered-but-unconnected one is deferred by the peerid check well
+ * above that point - and this test has no real clients. The remote half
+ * of the same change is covered by run-server-tests.sh in the swarm.
  */
 
 #include "src/include/pmix_config.h"
@@ -325,6 +334,32 @@ int main(int argc, char **argv)
     report("wildcard get answered the caller", cb_fired && PMIX_SUCCESS == cb_status);
     report("wildcard get returned a payload", 0 < cb_ndata);
     report("wildcard get parks nothing", nothing_parked());
+
+    /* --- a reserved key we were never given ------------------------- */
+    /* The job registered above supplies no such key, so the job-level
+     * fetch finds nothing. That must NOT be answered as a success with an
+     * empty payload - the client cannot tell that apart from the value
+     * being absent, and it forecloses the one party that may still have
+     * it. The request goes up instead, and because this host module has
+     * no direct_modex it comes straight back as not-found. */
+    rc = do_get(GETUT_NSPACE, PMIX_RANK_WILDCARD, "pmix.getut.absent", NULL, 0);
+    report("wildcard get of a missing reserved key reports not-found",
+           PMIX_ERR_NOT_FOUND == rc);
+    report("wildcard get of a missing reserved key answers nothing", !cb_fired);
+    report("wildcard get of a missing reserved key parks nothing", nothing_parked());
+
+    /* --- the same, for a key that is not reserved -------------------- */
+    /* Only reserved keys are surfaced to the host: a non-reserved key is
+     * put by a process, so a job-level miss on one says nothing about
+     * what the host knows. This case is here to pin that narrowing - it
+     * still takes the original path and answers with an empty payload. */
+    rc = do_get(GETUT_NSPACE, PMIX_RANK_WILDCARD, "getut.absent", NULL, 0);
+    report("wildcard get of a missing non-reserved key still succeeds",
+           PMIX_SUCCESS == rc);
+    report("wildcard get of a missing non-reserved key answered the caller",
+           cb_fired && PMIX_SUCCESS == cb_status);
+    report("wildcard get of a missing non-reserved key parks nothing",
+           nothing_parked());
 
     PMIx_server_finalize();
 

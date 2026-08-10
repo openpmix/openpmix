@@ -665,8 +665,6 @@ static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
 {
     pmix_buffer_t *msg;
     pmix_status_t rc;
-    pmix_info_t *immediate;
-    size_t n, nimm;
     char *nspace = cb->proc->nspace;
 
     /* nope - see if we can get it */
@@ -693,25 +691,6 @@ static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
         return NULL;
     }
     /* pack the number of info structs */
-    if (cb->lg->add_immediate) {
-        nimm = cb->ninfo + 1;
-        PMIX_INFO_CREATE(immediate, nimm);
-        for (n=0; n < cb->ninfo; n++) {
-            PMIX_INFO_XFER(&immediate[n], &cb->info[n]);
-        }
-        PMIX_INFO_LOAD(&immediate[n], PMIX_IMMEDIATE, NULL, PMIX_BOOL);
-        /* if cb->info was already a library-allocated copy (e.g., the
-         * directive array built for a node/app/session-level get), release
-         * it now that its contents have been transferred - otherwise it is
-         * orphaned by the reassignment and leaks. A caller-provided array
-         * (infocopy == false) must be left untouched. */
-        if (cb->infocopy) {
-            PMIX_INFO_FREE(cb->info, cb->ninfo);
-        }
-        cb->info = immediate;
-        cb->ninfo = nimm;
-        cb->infocopy = true;
-    }
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cb->ninfo, 1, PMIX_SIZE);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -1366,8 +1345,8 @@ doget:
     cb->pname.rank = lg->p.rank;
 
     /* we didn't find the data in either the server or the internal hash
-     * components. If this is a NULL or reserved key, then we do NOT go
-     * up to the server unless special circumstances require it */
+     * components. If this is a NULL key, then we do NOT go up to the
+     * server unless special circumstances require it */
     if (NULL == cb->key) {
         /* if the server is pre-v3.2, or we are asking about the
          * job-level info from another namespace, then we have to
@@ -1378,17 +1357,29 @@ doget:
             proc.rank = PMIX_RANK_WILDCARD;
         }
     } else if (PMIX_CHECK_RESERVED_KEY(cb->key)) {
-        /* this is a reserved key - we should have had this info, but
-         * it is possible that some system don't provide it, thereby
-         * causing the app to manually distribute it. We will therefore
-         * request it from the server, but do so under the "immediate"
-         * use-case, adding that flag if they didn't already include it
-         */
+        /* This is a reserved key we should have been given at startup, so
+         * something is holding it. The request now goes up to the server
+         * like any other. This branch used to *force* PMIX_IMMEDIATE onto
+         * it, and that is what has been removed: the flag confines the
+         * search to what our own server already holds, and we have just
+         * established that it does not hold this - we asked its datastore
+         * and our own in the two fetches above. So the added flag could
+         * only ever have turned this into a slower way of reaching the
+         * answer we already had.
+         *
+         * Letting the request through matters because the server is not
+         * the last word on a reserved key. Its host frequently knows
+         * values it chose not to push down - a large machine may hand each
+         * daemon only the job-level data its own local clients need,
+         * rather than replicate every proc's location keys on every node -
+         * and the host is asked only if the request is surfaced to it.
+         *
+         * A PMIX_IMMEDIATE the caller supplied is untouched by this: it
+         * sits in cb->info, is packed into the request below, and the
+         * server honors it there. We simply no longer invent one. */
         pmix_output_verbose(5, pmix_client_globals.get_output,
-                            "pmix:client reserved key not locally found");
-        if (!lg->immediate) {
-            lg->add_immediate = true;
-        }
+                            "pmix:client reserved key not locally found - "
+                            "requesting it from the server");
     }
 
     /* if we got here, then we don't have the data for this proc. If we
