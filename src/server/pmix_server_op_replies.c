@@ -24,7 +24,7 @@
  * and disconnect, spawn, lookup, event registration, and IOF register
  * and deregister.
  *
-These are callbacks the host server invokes, so they can run in either
+ * These are callbacks the host server invokes, so they can run in either
  * the host's thread context or our own if the host answers immediately.
  * Anything touching a global entity is therefore pushed into an event
  * before it is used. The switchyard in pmix_server_switchyard.c is the
@@ -297,6 +297,8 @@ static void _getcbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply, buf;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(scd);
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         /* the host is still owed its release - see _mdxcbfunc */
@@ -631,7 +633,10 @@ void pmix_server_cnct_cbfunc(pmix_status_t status, void *cbdata)
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* nothing we can do - the tracker stays on the collectives list
+         * with its participants waiting, and touching it from here would
+         * be off the progress thread. Say so rather than failing mute */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return;
     }
     scd->status = status;
@@ -720,7 +725,10 @@ void pmix_server_discnct_cbfunc(pmix_status_t status, void *cbdata)
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* nothing we can do - the tracker stays on the collectives list
+         * with its participants waiting, and touching it from here would
+         * be off the progress thread. Say so rather than failing mute */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return;
     }
     scd->status = status;
@@ -942,6 +950,8 @@ static void _evcbfunc(int sd, short args, void *cbdata)
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
+    PMIX_ACQUIRE_OBJECT(scd);
+
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         PMIX_RELEASE(cd);
         PMIX_RELEASE(scd);
@@ -1026,7 +1036,6 @@ static void _iofreg(int sd, short args, void *cbdata)
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        rc = PMIX_ERR_NOMEM;
         goto cleanup;
     }
     /* start with the status */
@@ -1137,7 +1146,9 @@ static void _iofdreg(int sd, short args, void *cbdata)
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    PMIX_ACQUIRE_OBJECT(cd);
+    /* the shifter is the object that was posted, so it is the one to
+     * acquire - the setup caddy simply hangs off it */
+    PMIX_ACQUIRE_OBJECT(scdwrapper);
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         PMIX_RELEASE(scd);
@@ -1150,7 +1161,6 @@ static void _iofdreg(int sd, short args, void *cbdata)
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        rc = PMIX_ERR_NOMEM;
         goto cleanup;
     }
     /* its just the status */
