@@ -203,9 +203,6 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric register");
-
     if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
@@ -213,6 +210,9 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:fabric register");
 
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */
