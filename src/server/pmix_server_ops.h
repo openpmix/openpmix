@@ -69,11 +69,6 @@ typedef struct {
     bool xoff;      // IOF flow control: suspend (true) or resume (false)
     pmix_byte_object_t *bo;
     size_t nbo;
-    /* timestamp receipt of the notification so we
-     * can evict the oldest one if we get overwhelmed */
-    time_t ts;
-    /* what room of the hotel they are in */
-    int room;
     pmix_op_cbfunc_t opcbfunc;
     pmix_dmodex_response_fn_t cbfunc;
     pmix_setup_application_cbfunc_t setupcbfunc;
@@ -82,27 +77,6 @@ typedef struct {
     void *cbdata;
 } pmix_setup_caddy_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_setup_caddy_t);
-
-/* define a callback function returning inventory */
-typedef void (*pmix_inventory_cbfunc_t)(pmix_status_t status, pmix_list_t *inventory, void *cbdata);
-
-/* define an object for rolling up the inventory*/
-typedef struct {
-    pmix_object_t super;
-    pmix_lock_t lock;
-    pmix_event_t ev;
-    pmix_status_t status;
-    int requests;
-    int replies;
-    pmix_list_t payload; // list of pmix_kval_t containing the replies
-    pmix_info_t *info;
-    size_t ninfo;
-    pmix_inventory_cbfunc_t cbfunc;
-    pmix_info_cbfunc_t infocbfunc;
-    pmix_op_cbfunc_t opcbfunc;
-    void *cbdata;
-} pmix_inventory_rollup_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_inventory_rollup_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -152,14 +126,6 @@ typedef struct {
     bool active;
 } pmix_regevents_info_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
-
-typedef struct {
-    pmix_list_item_t super;
-    pmix_group_t *grp;
-    pmix_rank_t rank;
-    size_t idx;
-} pmix_group_caddy_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_group_caddy_t);
 
 typedef struct {
     pmix_list_item_t super;

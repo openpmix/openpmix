@@ -159,6 +159,9 @@ static void scadcon(pmix_setup_caddy_t *p)
     memset(&p->proc, 0, sizeof(pmix_proc_t));
     PMIX_CONSTRUCT_LOCK(&p->lock);
     p->nspace = NULL;
+    p->status = PMIX_SUCCESS;
+    p->uid = 0;
+    p->gid = 0;
     p->codes = NULL;
     p->ncodes = 0;
     p->procs = NULL;
@@ -309,33 +312,6 @@ PMIX_CLASS_INSTANCE(pmix_regevents_info_t,
                     pmix_list_item_t,
                     regcon, regdes);
 
-static void ilcon(pmix_inventory_rollup_t *p)
-{
-    PMIX_CONSTRUCT_LOCK(&p->lock);
-    p->status = PMIX_SUCCESS;
-    p->requests = 0;
-    p->replies = 0;
-    PMIX_CONSTRUCT(&p->payload, pmix_list_t);
-    p->info = NULL;
-    p->ninfo = 0;
-    p->cbfunc = NULL;
-    p->infocbfunc = NULL;
-    p->opcbfunc = NULL;
-    p->cbdata = NULL;
-}
-static void ildes(pmix_inventory_rollup_t *p)
-{
-    PMIX_DESTRUCT_LOCK(&p->lock);
-    PMIX_LIST_DESTRUCT(&p->payload);
-}
-PMIX_CLASS_INSTANCE(pmix_inventory_rollup_t,
-                    pmix_object_t,
-                    ilcon, ildes);
-
-PMIX_CLASS_INSTANCE(pmix_group_caddy_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
-
 static void iocon(pmix_iof_cache_t *p)
 {
     p->bo = NULL;
@@ -345,7 +321,7 @@ static void iocon(pmix_iof_cache_t *p)
 static void iodes(pmix_iof_cache_t *p)
 {
     PMIX_BYTE_OBJECT_FREE(p->bo, 1); // macro protects against NULL
-    if (0 < p->ninfo) {
+    if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
 }
