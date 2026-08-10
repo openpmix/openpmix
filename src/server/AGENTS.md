@@ -56,7 +56,7 @@ module where it cannot, and queue replies back. The file map:
 | `pmix_server_control.c` | The directive and service commands: query, log, allocate, job control, monitor, credential get and validate, session control, resource blocks, and the job-data cache refresh. |
 | `pmix_server_fabric.c` | `fabric_register` / `fabric_update` and the device-distance computation. |
 | `pmix_server_classes.c` | The `PMIX_CLASS_INSTANCE` con/destructors for every type declared in `pmix_server_ops.h` or `pmix_globals.h`, so the ownership rules a destructor encodes can be read in one place. A type private to a single file keeps its class beside it — `grp_block_t`/`grp_trk_t`/`grp_shifter_t` in `pmix_server_group.c`, `rank_blob_t` in `pmix_server_fence.c`, `pmix_dmdx_reply_caddy_t` in `pmix_server_get.c`, `pmix_srvr_epi_caddy_t` in `pmix_server_control.c`. |
-| `pmix_server_fence.c` | The fence collective (barrier + modex data exchange) **and the shared collective-tracker engine** — `pmix_server_get_tracker`, `pmix_server_new_tracker`, `pmix_server_collect_data`, `pmix_server_trk_update`, `pmix_server_commit`, plus the two predicates every family consults: `pmix_server_trk_complete` and `pmix_server_set_collective_status`. |
+| `pmix_server_fence.c` | The fence collective (barrier + modex data exchange) **and the shared collective-tracker engine** — `pmix_server_get_tracker`, `pmix_server_new_tracker`, `pmix_server_collect_data`, `pmix_server_commit`, plus the two predicates every family consults: `pmix_server_trk_complete` and `pmix_server_set_collective_status`. Also `PMIx_server_collect_job_info`, the public API a host uses to pull packed job-level info for a set of procs. |
 | `pmix_server_connect.c` | The connect / disconnect collectives (built on the same tracker engine). |
 | `pmix_server_group.c` | The group collectives (construct/destruct/leave/invite) — a **two-level** block/tracker engine distinct from the fence tracker, plus the peer-lost / member-left fault paths. |
 | `pmix_server_get.c` | Server-side `PMIx_Get` and direct modex (dmodex): the local-satisfy-vs-remote-fetch decision tree, the `local_reqs` / `remote_pnd` deferred-request lists, and the registration-completion re-entry points. |
@@ -424,6 +424,17 @@ that has to tear the tracker down itself (no completion function was ever
 attached) is bound by the same rule as everything else here: **unlink
 from `collectives` first, then release.**
 
+**Cancel the timer before the host up-call, at every site that makes
+one.** `pmix_server_fence` does, and says why at the call site: once the
+tracker is in the host's hands our timeout and the host's completion race,
+and the host can return a tracker we already released. The other two
+places that hand a tracker to `pmix_host_server.fence_nb` —
+`pmix_server_execute_collective` in `pmix_server_registration.c` and the
+lost-connection sweep in `src/mca/ptl/base/ptl_base_sendrecv.c` — do not
+cancel it. Both are reached only after a tracker has been sitting
+incomplete (a late registration, a departed participant), which is
+precisely when a `PMIX_TIMEOUT` timer is most likely to be armed.
+
 **Read `PMIX_TIMEOUT` into a variable of the width you ask for.**
 `PMIx_Value_get_number(value, dest, type)` writes exactly `sizeof(type)`
 bytes through `dest`. Handing it `&tv.tv_sec` while asking for
@@ -432,6 +443,34 @@ a little-endian host, which happens to work, and the high half on a
 big-endian one, which multiplies every timeout by 2^32. Convert through a
 `uint32_t` of its own and assign. The fence, connect and get handlers all
 do this now; `pmix_server_group` always did.
+
+**The modex blob handed *up* to the host belongs to the host, and nothing
+says so in the header.** `pmix_server_fence` unloads the assembled bucket
+into a bare `char *data` and passes it to `pmix_host_server.fence_nb`; so
+does `pmix_server_execute_collective`. Neither frees it, and that is not
+an oversight to "fix": the request direction carries no
+`(release_fn, release_cbdata)` pair the way the reply direction does, and
+the in-tree reference host parks the pointer on a caddy and reads it later
+from another thread (`fencenb_fn` in `test/simple/simptest.c`), so freeing
+it on return would be a use-after-free. Ownership transfers on the call.
+`simptest` then leaks it — that is a defect in the test host, not in the
+library, and it is the reason a naive valgrind run of the simple suite
+shows a per-fence leak here.
+
+**`pmix_cb_t::copy` is advisory and no fetch honors it.** Several sites
+here set `cb.copy = false` with a comment about letting the GDS return a
+pointer into local storage; `gds/hash` marks the parameter unused and
+`pmix_hash_fetch` allocates a fresh `pmix_kval_t` for every value it
+returns. So `PMIX_LIST_DESTRUCT(&cb.kvs)` is always correct and never
+drops a reference the datastore still holds. Do not "optimize" a caller
+on the theory that `copy = false` handed back a borrowed pointer.
+
+**`pmix_pending_resolve` always returns `PMIX_SUCCESS`.** Its callers
+check the status anyway, which is harmless, but do not build error
+handling on it — in particular `pmix_server_commit` returns that status
+to the client as the status of its *commit*, which would report one
+proc's `PMIx_Commit` as failed because some other proc's parked get could
+not be drained.
 
 ### Data collection
 
@@ -749,6 +788,22 @@ Two suites cover the halves:
   `PMIx_Query_info_nb` does in the *requestor's* process; a mistyped
   `PMIX_NSPACE` segfaulted the server until `pmix_parse_localquery`
   grew its own check.
+- [`test/unit/server_fence.c`](../../test/unit/server_fence.c) drives
+  `pmix_server_fence` from hand-packed wire buffers: the two malformed
+  counts above, and a well-formed request whose seeded info slots must
+  reach the host in the order the completion arms read them back. Its
+  helper thread-shifts, because the handler touches
+  `pmix_server_globals.collectives` and must not be called from `main()`.
+  The info-count case aborts rather than fails against an unfixed
+  library. Its host stub *declines* the fence on purpose — accepting
+  would leave the completion to the test, and queueing a reply to a peer
+  with no socket is not something a single-process program can do.
+  `test/unit/tracker_match.c` and `test/unit/trk_complete.c` cover the
+  tracker-identity and completion-predicate halves of the same file, and
+  [`test/unit/collect_job_info.c`](../../test/unit/collect_job_info.c)
+  covers `PMIx_server_collect_job_info`, including the case where one
+  named namespace cannot be answered for and must not discard the job
+  info collected for the others.
 - [`test/unit/server_fabric.c`](../../test/unit/server_fabric.c) drives
   `pmix_server_device_dists` from a hand-packed buffer that carries no
   topology — the "use your own" path — and asserts that a locally
@@ -867,6 +922,33 @@ misbehave by design).
   survive the round trip. Apply the same test to any new handler that
   reads a count before it reads the array, or that walks the `size_t`
   rather than the `int32_t` afterwards.
+
+  **The collective handlers are the third case, and the worst of them.**
+  Fence and connect both size their info array as `ninf + 2` and then
+  seed two slots at `info[ninf]` and `info[ninf+1]` — *before* anything
+  is unpacked into it. A wire count near `SIZE_MAX` wraps that `+ 2` down
+  to a one- or zero-element array (`PMIx_Info_create` answers NULL for
+  zero, which is caught, but not for one), and the seeds are then written
+  at `info[SIZE_MAX]`. That is an out-of-bounds write a local client
+  drives directly, and there is no unpack in front of it to screen
+  anything. The proc count in the same message is the mirror image: it is
+  multiplied by `sizeof(pmix_proc_t)` to size the proc array, and it is
+  the `size_t` — not the `int32_t` the unpack consumed — that the `qsort`
+  and the `PMIX_PROC_FREE` afterwards walk. `pmix_server_fence` now
+  screens both, with the same round-trip test; **`pmix_server_connect`
+  has the identical shape at both of its `ninfo = ninf + 2` sites and
+  still needs it.** Covered by `test/unit/server_fence.c`, whose
+  info-count case segfaults an unfixed library rather than failing it.
+
+  While you are there, note the layout those two seeds establish, because
+  the completion arms depend on it: for the fence and disconnect families
+  `PMIX_LOCAL_COLLECTIVE_STATUS` is the **last** element, and
+  `pmix_server_fence` reads it positionally as `trk->info[trk->ninfo-1]`
+  on both its local-only and its `PMIX_OPERATION_SUCCEEDED` arms. That is
+  correct only because connect is the family that appends past the slot —
+  which is exactly why `pmix_server_set_collective_status` locates it by
+  key instead. Do not copy the positional read into a family that
+  appends.
 - **`PMIX_LIST_DESTRUCT` is not idempotent.** It drains the list and then
   calls `PMIX_DESTRUCT`, which under `--enable-debug` zeroes the object's
   magic id and asserts on it — so a second destruct of the same list

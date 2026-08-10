@@ -311,6 +311,18 @@ pmix_server_trkr_t *pmix_server_get_tracker(char *id, pmix_proc_t *procs,
                 if (0 < i) {
                     sz = trk->npcs + i;
                     PMIX_PROC_CREATE(ptr, sz);
+                    if (NULL == ptr) {
+                        /* nothing screens this allocation downstream - the
+                         * next statement copies into it. Hand back the
+                         * tracker we found without the new participants
+                         * rather than dereferencing NULL; returning NULL
+                         * would be worse still, as the caller would then
+                         * create a second tracker for an id that already
+                         * has one */
+                        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                        PMIX_LIST_DESTRUCT(&cache);
+                        return trk;
+                    }
                     memcpy(ptr, trk->pcs, trk->npcs * sizeof(pmix_proc_t));
                     j = trk->npcs;
                     PMIX_LIST_FOREACH(p, &cache, pmix_proclist_t) {
@@ -593,6 +605,7 @@ static void _collect_job_info(int sd, short args, void *cbdata)
     pmix_proc_t proc;
     pmix_cb_t cb;
     pmix_status_t ret = PMIX_SUCCESS;
+    pmix_status_t rc;
     pmix_buffer_t pbkt;
     pmix_kval_t *kptr;
     pmix_byte_object_t pbo;
@@ -651,7 +664,14 @@ static void _collect_job_info(int sd, short args, void *cbdata)
         cb.scope = PMIX_SCOPE_UNDEF;
         cb.copy = false;
 
-        ret = PMIX_ERR_NOT_FOUND;
+        /* the fetch status is per-nspace and must not become the status of
+         * the whole request: a namespace we cannot answer for is skipped
+         * exactly like one we have never heard of, a few lines above. Left
+         * in 'ret', it made the outcome depend on which nspace happened to
+         * be last - and PMIx_server_collect_job_info only hands the buffer
+         * back on success, so one unanswerable nspace discarded the job
+         * info already collected for all the others */
+        rc = PMIX_ERR_NOT_FOUND;
         // have any local clients registered?
         if (0 < pmix_list_get_size(&nptr->ranks)) {
             // get one of the local clients so we will
@@ -660,16 +680,16 @@ static void _collect_job_info(int sd, short args, void *cbdata)
             if (NULL != rinfo) {
                 peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, rinfo->peerid);
                 if (NULL != peer) {
-                    PMIX_GDS_FETCH_KV(ret, peer, &cb);
+                    PMIX_GDS_FETCH_KV(rc, peer, &cb);
                 }
             }
         }
         // if we didn't find it there, try getting it
         // from our storage
-        if (PMIX_SUCCESS != ret) {
-            PMIX_GDS_FETCH_KV(ret, pmix_globals.mypeer, &cb);
-            if (PMIX_SUCCESS != ret) {
-                PMIX_ERROR_LOG(ret);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&cb);
                 continue;
             }
@@ -784,6 +804,14 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
              * may not be a contribution */
             PMIX_LOAD_PROCID(&pcs, scd->peer->info->pname.nspace, scd->peer->info->pname.rank);
             pbkt = PMIX_NEW(pmix_buffer_t);
+            if (NULL == pbkt) {
+                /* the pack below screens a NULL buffer, but its error arm
+                 * then releases it - so catch this here */
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                rc = PMIX_ERR_NOMEM;
+                PMIX_LIST_DESTRUCT(&rank_blobs);
+                goto cleanup;
+            }
             /* pack the rank */
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, &pcs, 1, PMIX_PROC);
             if (PMIX_SUCCESS != rc) {
@@ -827,8 +855,15 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
          * node and this information (and the flag) will be ignored,
          * meaning that no error is generated! */
         blob_info_byte= PMIX_COLLECT_YES;
-        /* pack the modex blob info byte */
+        /* pack the modex blob info byte - check it, as the blob packs
+         * below would otherwise overwrite the failure and ship a bucket
+         * whose first byte is a rank blob rather than the collect type */
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &blob_info_byte, 1, PMIX_BYTE);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_LIST_DESTRUCT(&rank_blobs);
+            goto cleanup;
+        }
 
         /* pack the collected blobs of processes */
         PMIX_LIST_FOREACH (blob, &rank_blobs, rank_blob_t) {
@@ -862,6 +897,10 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
         blob_info_byte= PMIX_COLLECT_NO;
         /* pack the modex blob info byte */
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &blob_info_byte, 1, PMIX_BYTE);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
     }
 
     if (!PMIX_BUFFER_IS_EMPTY(&bucket)) {
@@ -939,8 +978,15 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                         "recvd fence from %s with %d procs",
                         PMIX_PEER_PRINT(cd->peer), (int) nprocs);
     /* there must be at least one as the client has to at least provide
-     * their own namespace */
-    if (nprocs < 1) {
+     * their own namespace. Bound it from above as well, by the same
+     * round trip through the int32_t the unpack consumes it as: this
+     * count is multiplied by sizeof(pmix_proc_t) to size the allocation
+     * below, and a wire value large enough to wrap that product yields a
+     * short allocation whose element constructors then run off the end.
+     * It also keeps "cnt" from silently naming a different number of
+     * procs than the qsort and the free below walk. */
+    cnt = nprocs;
+    if (nprocs < 1 || 0 > cnt || (size_t) cnt != nprocs) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -962,6 +1008,21 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        goto cleanup;
+    }
+    /* This count comes off the wire, so screen it before it is used to
+     * size an allocation and then to index that allocation. Two slots are
+     * seeded at info[ninf] and info[ninf+1] *before* anything is unpacked,
+     * so a count near SIZE_MAX wraps "ninf + 2" down to a one-element
+     * array and writes the seeds far outside it; the same wrap can happen
+     * inside the allocator's "ninfo * sizeof(pmix_info_t)". Requiring the
+     * count to survive the round trip through the int32_t that the unpack
+     * below consumes it as - the screen pmix_server_register_events
+     * uses - bounds it well clear of both. */
+    cnt = ninf;
+    if (0 > cnt || (size_t) cnt != ninf) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
     ninfo = ninf + 2;
