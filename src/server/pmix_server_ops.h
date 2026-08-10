@@ -231,6 +231,19 @@ PMIX_EXPORT pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank
 PMIX_EXPORT void pmix_server_fail_local_reqs(pmix_dmdx_local_t *lcd,
                                              pmix_status_t status);
 
+/* The mirror of the above for the other deferral list. remote_pnd holds
+ * the host's own PMIx_server_dmodex_request calls, parked until the
+ * local client they name commits its data - and committing is the only
+ * thing that ever takes one off the list again. When that client departs
+ * instead, answer the host with a status: it is holding a request on
+ * behalf of a remote server whose client is blocked in PMIx_Get, and
+ * nothing else will ever tell it otherwise. Matches on either the
+ * departing peer or a proc (whose rank may be PMIX_RANK_WILDCARD for a
+ * whole namespace), exactly as pmix_server_purge_events does. */
+PMIX_EXPORT void pmix_server_fail_remote_pnd(pmix_peer_t *peer,
+                                             pmix_proc_t *proc,
+                                             pmix_status_t status);
+
 PMIX_EXPORT pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 
