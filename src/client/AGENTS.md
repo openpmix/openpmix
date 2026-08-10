@@ -1150,9 +1150,59 @@ and every early exit has to set it. No automated coverage: a singleton
 returns `PMIX_ERR_UNREACH` at the `connected` gate long before the PTL
 round-trip, and no in-tree host implements `pmix_server_module_t.fabric`.
 
+**A short-circuit that declines must leave the caddy as clean as it
+found it.** `try_local_fetch()` in `pmix_client_get.c` answers a get on
+the caller's thread when the GDS module says its store is safe to read
+there, and returns false to mean "not answered, take the ordinary path".
+Its failed-*fetch* return drains `cb->kvs` and rebuilds it for exactly
+that reason. Its failed-*`process_values()`* return did not — and
+`process_values()` does not drain the list either, since on the path it
+is written for the kval stays alive to own the value. So a decline after
+a **successful** fetch fell through to `get_data()` with the fetched
+entries still on `cb->kvs`, and `get_data()`'s own `PMIX_GDS_FETCH_KV`
+appends to that same list. That matters because `process_values()`
+distinguishes "the value" from "an aggregate of everything this proc
+put" by **counting** the list: one stale entry turns a scalar `PMIx_Get`
+into a `PMIX_DATA_ARRAY`. It now drains on both returns.
+
+Nothing leaks either way — `cbdes()` destructs `kvs` — which is why this
+is a wrong-answer bug rather than a leak, and why it would not show up
+under valgrind. Reachability is narrow: `process_values()` declines only
+on a malformed `PMIX_QUALIFIED_VALUE` in the datastore (see the fifth
+sweep — not producible by a local `PMIx_Put`) or an allocation failure.
+The rule to carry is the one the function's own comment already
+states: **a short-circuit is never a partial one.** If you add an early
+return to it, ask what state the slow path is about to inherit.
+
 Far more useful is what was examined and **rejected**, because each one
 looks like a defect until you chase it down. Do not re-open these
 without new evidence.
+
+- **`PMIX_ACQUIRE_OBJECT(cb)` sitting above the line that assigns `cb`**
+  — in `_value_cbfunc()` and `get_data()` — is not a read of an
+  uninitialized pointer. The macro is `#define PMIX_ACQUIRE_OBJECT(o)
+  pmix_atomic_rmb()` ([`pmix_threads.h`](../threads/pmix_threads.h)): it
+  discards its argument entirely, so the operand is never evaluated.
+  Reordered here for readability, but do not go looking for a bug behind
+  the same shape elsewhere in the tree.
+- **`PMIx_Value_get_number(kv->value, …)` is called without a NULL check
+  on `kv->value`** at the nodeid, appnum and sessionid fetches in
+  `get_data()`, and that function dereferences `value->type` as its
+  first act. The hostname fetch beside them *does* check. Left alone
+  because nothing demonstrates a local GDS fetch producing a kval with a
+  NULL value — `pmix_kval_t.value` is documented as legitimately
+  NULL-able by [`src/mca/bfrops/AGENTS.md`](../mca/bfrops/AGENTS.md),
+  but that is about what arrives off the wire through `pack_kval`, and
+  these three read the local datastore. If you decide to close it, the
+  screen belongs in `PMIx_Value_get_number` rather than at three call
+  sites here, since every other caller in the tree is equally exposed.
+- **`strdup(pmix_globals.hostname)` in `get_data()`'s invalid-rank
+  branch is unguarded** where the branch above it tests
+  `NULL != pmix_globals.hostname` first. It is safe:
+  [`pmix_rte_init`](../runtime/pmix_init.c) resolves the hostname from
+  the directive, then `PMIX_HOSTNAME`, then `gethostname()`, so the
+  field is non-NULL for the entire life of an initialized library. The
+  guarded sibling is being defensive, not covering a real state.
 
 - **A client's `PMIx_Fabric_deregister` never tells the server, and
   cannot.** There is no `PMIX_FABRIC_DEREGISTER_CMD` — the command enum
