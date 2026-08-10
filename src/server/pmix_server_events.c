@@ -50,6 +50,8 @@
 #include "pmix_server_ops.h"
 #include "src/client/pmix_client_ops.h"
 
+static void undo_activations(pmix_status_t *codes, size_t nactive);
+
 static void _check_cached_events(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *scd = (pmix_setup_caddy_t *) cbdata;
@@ -189,32 +191,39 @@ static void _check_cached_events(int sd, short args, void *cbdata)
     if (NULL != scd->info) {
         PMIX_INFO_FREE(scd->info, scd->ninfo);
     }
+    /* Answer the requestor with the status of its _registration_, not
+     * with whatever the replay above ran into. The only caller that
+     * leaves an opcbfunc on the caddy is the host-completed registration
+     * path, and the host said that succeeded - failing to hand a client a
+     * stale cached event does not undo it. Reporting the replay status
+     * would tell the client its handler was not registered while the
+     * server had in fact registered it, leaving a store entry the client
+     * would never deregister. The replay failure is logged above. */
     if (NULL != scd->opcbfunc) {
-        scd->opcbfunc(ret, scd->cbdata);
+        scd->opcbfunc(scd->status, scd->cbdata);
     }
     PMIX_RELEASE(scd);
 }
 
-/* provide a callback function for the host when it finishes
- * processing the registration */
-static void regevopcbfunc(pmix_status_t status, void *cbdata)
+/* our host refused a registration it had accepted for processing, so it
+ * is not forwarding those codes after all - give back the interest we
+ * recorded on its behalf when we made the request, or the next
+ * registrant for one of them will be told it succeeded and then never
+ * see the event. This mirrors what the server's registration of its
+ * _own_ handlers does when the host refuses asynchronously (see
+ * _reg_hdlr_complete in src/event/pmix_event_registration.c). The peer
+ * entries the request added to the store are deliberately left alone: a
+ * peer may hold several handlers for the same code, so there is no way
+ * to tell from here which entry belongs to the failed request. */
+static void _failed_registration(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
 
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
-        PMIX_RELEASE(cd);
-        return;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    /* if the registration succeeded, then check local cache */
-    if (PMIX_SUCCESS == status) {
-        cd->status = status;
-        PMIX_THREADSHIFT(cd, _check_cached_events);
-        return;
-    }
+    undo_activations(cd->codes, cd->nactive);
 
-    /* it didn't succeed, so cleanup and execute the callback
-     * so we don't hang */
+    /* cleanup and execute the callback so we don't hang */
     if (NULL != cd->codes) {
         free(cd->codes);
     }
@@ -222,9 +231,41 @@ static void regevopcbfunc(pmix_status_t status, void *cbdata)
         PMIX_INFO_FREE(cd->info, cd->ninfo);
     }
     if (NULL != cd->opcbfunc) {
-        cd->opcbfunc(status, cd->cbdata);
+        cd->opcbfunc(cd->status, cd->cbdata);
     }
     PMIX_RELEASE(cd);
+}
+
+/* provide a callback function for the host when it finishes
+ * processing the registration. This may be called on the host's own
+ * thread, so it does nothing here but thread-shift - the registration
+ * store it has to correct on failure is progress-thread state */
+static void regevopcbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        /* the caddy carries the codes and info arrays, but its destructor
+         * does not free them - so release them here */
+        if (NULL != cd->codes) {
+            free(cd->codes);
+        }
+        if (NULL != cd->info) {
+            PMIX_INFO_FREE(cd->info, cd->ninfo);
+        }
+        PMIX_RELEASE(cd);
+        return;
+    }
+
+    cd->status = status;
+
+    /* if the registration succeeded, then check local cache */
+    if (PMIX_SUCCESS == status) {
+        PMIX_THREADSHIFT(cd, _check_cached_events);
+        return;
+    }
+
+    PMIX_THREADSHIFT(cd, _failed_registration);
 }
 
 /* the host is done processing our request to stop forwarding a code -
@@ -271,7 +312,12 @@ bool pmix_server_prune_reginfo(pmix_regevents_info_t *reginfo)
     pmix_list_remove_item(&pmix_server_globals.events, &reginfo->super);
     if (reginfo->active) {
         codes = (pmix_status_t *) malloc(sizeof(pmix_status_t));
-        if (NULL != codes) {
+        if (NULL == codes) {
+            /* we cannot ask our host to stop, so it will keep forwarding
+             * a code nobody here wants - note it and carry on, as the
+             * registration itself is still correctly gone */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        } else {
             codes[0] = reginfo->code;
             stop_forwarding(codes, 1);
         }
@@ -427,6 +473,18 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    /* The count arrives off the wire in a size_t while the unpack below
+     * consumes it through an int32_t, so screen the truncation here.
+     * Every loop in this function walks the array for "ncodes" entries
+     * while only "cnt" of them were ever unpacked into it - and unlike an
+     * info array, this one comes from a bare malloc, so the entries past
+     * the unpack are uninitialized rather than constructed */
+    cnt = ncodes;
+    if (0 > cnt || (size_t) cnt != ncodes) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
     /* unpack the array of codes */
     if (0 < ncodes) {
         codes = (pmix_status_t *) malloc(ncodes * sizeof(pmix_status_t));
@@ -464,25 +522,50 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
     }
 
-    /* check the directives */
+    /* Check the directives. These came off the wire, so the type tag on
+     * each value is whatever the peer said it was - screen it before
+     * reading the union. A mistyped PMIX_EVENT_AFFECTED_PROC has us copy
+     * a pmix_proc_t out of whatever a scalar or a string pointer happens
+     * to be, and a mistyped PMIX_EVENT_AFFECTED_PROCS dereferences the
+     * same garbage as a pmix_data_array_t; even a correctly-typed array
+     * of some other element type would have us read past its end. The
+     * equivalent checks the client library makes run in the requestor's
+     * process, so they buy us nothing here. */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC)) {
-            if (NULL != affected) {
+            if (NULL != affected ||
+                PMIX_PROC != info[n].value.type ||
+                NULL == info[n].value.data.proc) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 rc = PMIX_ERR_BAD_PARAM;
                 goto cleanup;
             }
             naffected = 1;
             PMIX_PROC_CREATE(affected, naffected);
+            if (NULL == affected) {
+                naffected = 0;
+                rc = PMIX_ERR_NOMEM;
+                goto cleanup;
+            }
             memcpy(affected, info[n].value.data.proc, sizeof(pmix_proc_t));
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROCS)) {
-            if (NULL != affected) {
+            if (NULL != affected ||
+                PMIX_DATA_ARRAY != info[n].value.type ||
+                NULL == info[n].value.data.darray ||
+                PMIX_PROC != info[n].value.data.darray->type ||
+                NULL == info[n].value.data.darray->array ||
+                0 == info[n].value.data.darray->size) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 rc = PMIX_ERR_BAD_PARAM;
                 goto cleanup;
             }
             naffected = info[n].value.data.darray->size;
             PMIX_PROC_CREATE(affected, naffected);
+            if (NULL == affected) {
+                naffected = 0;
+                rc = PMIX_ERR_NOMEM;
+                goto cleanup;
+            }
             memcpy(affected, info[n].value.data.darray->array, naffected * sizeof(pmix_proc_t));
         }
     }
@@ -546,6 +629,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         prev->peer = peer;
         if (NULL != affected) {
             PMIX_PROC_CREATE(prev->affected, naffected);
+            if (NULL == prev->affected) {
+                PMIX_RELEASE(prev);
+                rc = PMIX_ERR_NOMEM;
+                goto cleanup;
+            }
             prev->naffected = naffected;
             memcpy(prev->affected, affected, naffected * sizeof(pmix_proc_t));
         }
@@ -583,6 +671,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
             prev->peer = peer;
             if (NULL != affected) {
                 PMIX_PROC_CREATE(prev->affected, naffected);
+                if (NULL == prev->affected) {
+                    PMIX_RELEASE(prev);
+                    rc = PMIX_ERR_NOMEM;
+                    goto cleanup;
+                }
                 prev->naffected = naffected;
                 memcpy(prev->affected, affected, naffected * sizeof(pmix_proc_t));
             }
@@ -606,6 +699,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
             prev->peer = peer;
             if (NULL != affected) {
                 PMIX_PROC_CREATE(prev->affected, naffected);
+                if (NULL == prev->affected) {
+                    PMIX_RELEASE(prev);
+                    rc = PMIX_ERR_NOMEM;
+                    goto cleanup;
+                }
                 prev->naffected = naffected;
                 memcpy(prev->affected, affected, naffected * sizeof(pmix_proc_t));
             }
@@ -641,10 +739,20 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         scd->peer = peer;
         scd->codes = codes;
         scd->ncodes = ncodes;
+        scd->nactive = nactive;
         scd->info = info;
         scd->ninfo = ninfo;
         scd->opcbfunc = cbfunc;
         scd->cbdata = cbdata;
+        /* hand the caddy the procs this registrant restricted its interest
+         * to, so the cached-event replay filters on them exactly as the
+         * two completed-locally paths below do. This has to happen before
+         * the up-call: the host is free to complete on another thread the
+         * moment it has the caddy, and the replay reads these */
+        scd->procs = affected;
+        scd->nprocs = naffected;
+        affected = NULL;
+        naffected = 0;
         /* only the codes needing activation were sorted to the front of
          * the array, so that is all we hand the host - the caddy still
          * carries the full array as the cached-event check needs it */
@@ -655,9 +763,6 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
             pmix_output_verbose(
                 2, pmix_server_globals.event_output,
                 "server register events: host server processing event registration");
-            if (NULL != affected) {
-                PMIX_PROC_FREE(affected, naffected);
-            }
             return rc;
         } else if (PMIX_OPERATION_SUCCEEDED == rc) {
             /* we need to check cached notifications, but we want to ensure
@@ -669,8 +774,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
              * callback prior to delivery of an event notification */
             if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
                 /* the caddy carries the codes and info arrays, but its
-                 * destructor does not free them - so release them here,
-                 * along with the affected array that was never attached */
+                 * destructor does not free them - so release them here.
+                 * The affected array it now owns goes with the caddy */
                 if (NULL != scd->codes) {
                     free(scd->codes);
                 }
@@ -678,17 +783,12 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
                     PMIX_INFO_FREE(scd->info, scd->ninfo);
                 }
                 PMIX_RELEASE(scd);
-                if (NULL != affected) {
-                    PMIX_PROC_FREE(affected, naffected);
-                }
                 return PMIX_ERR_NOT_AVAILABLE;
             }
 
-            /* scd->peer was already set (with its retain) above - taking a
-             * second reference here leaked one on every registration the
-             * host completed atomically */
-            scd->procs = affected;
-            scd->nprocs = naffected;
+            /* scd->peer and scd->procs were already set (with the peer's
+             * retain) above - taking a second reference here leaked one on
+             * every registration the host completed atomically */
             scd->opcbfunc = NULL;
             scd->cbdata = NULL;
             PMIX_THREADSHIFT(scd, _check_cached_events);
@@ -717,6 +817,10 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
 
         scd = PMIX_NEW(pmix_setup_caddy_t);
+        if (NULL == scd) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
         PMIX_RETAIN(peer);
         scd->peer = peer;
         scd->codes = codes;
@@ -734,7 +838,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
 
 cleanup:
     pmix_output_verbose(2, pmix_server_globals.event_output,
-                        "server register events: ninfo =%lu rc =%d", ninfo, rc);
+                        "server register events: ninfo =%lu rc =%d",
+                        (unsigned long) ninfo, rc);
     if (NULL != info) {
         PMIX_INFO_FREE(info, ninfo);
     }
@@ -753,7 +858,7 @@ void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t *buf)
     pmix_status_t rc, code;
     pmix_regevents_info_t *reginfo = NULL;
     pmix_regevents_info_t *reginfo_next;
-    pmix_peer_events_info_t *prev;
+    pmix_peer_events_info_t *prev, *prev_next;
 
     pmix_output_verbose(2, pmix_server_globals.event_output,
                         "%s recvd deregister events from %s",
@@ -767,13 +872,22 @@ void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t *buf)
         PMIX_LIST_FOREACH_SAFE (reginfo, reginfo_next, &pmix_server_globals.events,
                                 pmix_regevents_info_t) {
             if (code == reginfo->code) {
-                /* found it - remove this peer from the list */
-                PMIX_LIST_FOREACH (prev, &reginfo->peers, pmix_peer_events_info_t) {
+                /* Found it - remove _every_ registration this peer holds
+                 * for the code, not just the first. A peer can hold more
+                 * than one: its library packs the whole code list of a
+                 * handler whenever any code in that list is new to us, so
+                 * a second handler naming an already-registered code adds
+                 * a second entry here. It sends the deregistration only
+                 * when its last handler for the code is gone, so anything
+                 * of this peer's still sitting on the list is stale -
+                 * stopping at the first left one behind, which kept us
+                 * forwarding the code to a peer that had no handler for it
+                 * and kept the reginfo from ever being pruned. */
+                PMIX_LIST_FOREACH_SAFE (prev, prev_next, &reginfo->peers,
+                                        pmix_peer_events_info_t) {
                     if (prev->peer == peer) {
-                        /* found it */
                         pmix_list_remove_item(&reginfo->peers, &prev->super);
                         PMIX_RELEASE(prev);
-                        break;
                     }
                 }
                 /* if nobody is left registered for this code - not the
@@ -918,10 +1032,24 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer
     if (PMIX_GROUP_LEFT == cd->status) {
         char *grpid = NULL;
         pmix_proc_t *affected = NULL;
+        /* both of these are read out of the union, so confirm the type
+         * the peer tagged each with - a mistyped PMIX_GROUP_ID would be
+         * strcmp'd as a pointer built from a scalar, and a mistyped
+         * affected proc dereferenced the same way */
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GROUP_ID)) {
+                if (PMIX_STRING != cd->info[n].value.type) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    PMIX_ERROR_LOG(rc);
+                    goto exit;
+                }
                 grpid = cd->info[n].value.data.string;
             } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_EVENT_AFFECTED_PROC)) {
+                if (PMIX_PROC != cd->info[n].value.type) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    PMIX_ERROR_LOG(rc);
+                    goto exit;
+                }
                 affected = cd->info[n].value.data.proc;
             }
         }

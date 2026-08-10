@@ -49,6 +49,10 @@ typedef struct {
     pmix_status_t status;
     pmix_status_t *codes;
     size_t ncodes;
+    /* number of leading entries of "codes" that this request marked as
+     * newly active - the only ones an event registration may give back
+     * if its host up-call is subsequently refused */
+    size_t nactive;
     pmix_proc_t proc;
     pmix_proc_t *procs;
     size_t nprocs;

@@ -164,6 +164,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->gid = 0;
     p->codes = NULL;
     p->ncodes = 0;
+    p->nactive = 0;
     p->procs = NULL;
     p->nprocs = 0;
     p->apps = NULL;

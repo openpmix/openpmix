@@ -855,9 +855,9 @@ static pmix_status_t client_evreq(pmix_status_t *codes, size_t ncodes, bool dere
     return rc;
 }
 
-/* Count how many peers are recorded against the server's default-handler
- * entry, and say whether the entry exists at all. */
-static size_t default_reg_peers(bool *exists)
+/* Count how many peers are recorded against the server's entry for a
+ * code, and say whether the entry exists at all. */
+static size_t code_reg_peers(pmix_status_t code, bool *exists)
 {
     pmix_regevents_info_t *reginfo;
     pmix_peer_events_info_t *pr;
@@ -865,7 +865,7 @@ static size_t default_reg_peers(bool *exists)
 
     *exists = false;
     PMIX_LIST_FOREACH (reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
-        if (PMIX_MAX_ERR_CONSTANT != reginfo->code) {
+        if (code != reginfo->code) {
             continue;
         }
         *exists = true;
@@ -899,34 +899,78 @@ static void test_default_registration(void)
 
     fprintf(stdout, "default-handler registration:\n");
 
-    before = default_reg_peers(&existed);
+    before = code_reg_peers(PMIX_MAX_ERR_CONSTANT, &existed);
     report("no default entry exists yet", !existed && 0 == before);
 
     rc = client_evreq(NULL, 0, false);
     report("registering with no codes succeeds",
            PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
 
-    after = default_reg_peers(&exists);
+    after = code_reg_peers(PMIX_MAX_ERR_CONSTANT, &exists);
     report("the default entry was created", exists);
     report("the registrant is on it", 1 == after);
 
     /* a second default registration joins the same entry rather than
      * making another one */
     rc = client_evreq(NULL, 0, false);
-    after = default_reg_peers(&exists);
+    after = code_reg_peers(PMIX_MAX_ERR_CONSTANT, &exists);
     report("a second default registration joins the same entry",
            exists && 2 == after);
 
-    /* and deregistration finds what registration created. A client drops a
-     * default handler by naming PMIX_MAX_ERR_CONSTANT explicitly, not by
-     * sending an empty code list - see pmix_deregister_event_hdlr(). */
+    /* And deregistration finds what registration created - all of it. A
+     * client drops a default handler by naming PMIX_MAX_ERR_CONSTANT
+     * explicitly, not by sending an empty code list (see
+     * pmix_deregister_event_hdlr), and it sends that deregistration only
+     * once its _last_ handler for the code is gone. So every entry this
+     * peer holds for the code is stale by then. Removing just the first
+     * left one behind for the life of the connection: the server kept
+     * forwarding the code to a peer with no handler for it, and the
+     * entry could never be pruned, so the host was never told to stop
+     * either. */
     rc = client_evreq(&wildcard, 1, true);
-    after = default_reg_peers(&exists);
-    report("deregistering removes one registrant", 1 == after);
+    after = code_reg_peers(PMIX_MAX_ERR_CONSTANT, &exists);
+    report("deregistering clears every registration this peer holds",
+           !exists && 0 == after);
 
+    /* and a deregistration with nothing left to find is harmless */
     rc = client_evreq(&wildcard, 1, true);
-    after = default_reg_peers(&exists);
-    report("deregistering the last one empties the entry", 0 == after);
+    after = code_reg_peers(PMIX_MAX_ERR_CONSTANT, &exists);
+    report("a repeated deregistration is harmless", !exists && 0 == after);
+}
+
+/* The duplicate entries above are not an artifact of the default-handler
+ * case: they are how an ordinary coded registration behaves too, because
+ * the client library packs a handler's whole code list whenever any code
+ * in that list is new to the server. So a client that registers one
+ * handler for {A} and a second for {A, B} sends both lists, and the
+ * server records two registrations for A - deliberately, since each
+ * carries its own PMIX_EVENT_AFFECTED_PROC filter. It then sends exactly
+ * one deregistration for A, when its last handler for A goes away. */
+static void test_duplicate_code_registrations(void)
+{
+    pmix_status_t one[1] = {EVUT_CODE_ORDER};
+    pmix_status_t two[2] = {EVUT_CODE_ORDER, EVUT_CODE_ORDER2};
+    bool exists = false;
+    size_t n;
+
+    fprintf(stdout, "duplicate code registrations:\n");
+
+    client_evreq(one, 1, false);
+    client_evreq(two, 2, false);
+    n = code_reg_peers(EVUT_CODE_ORDER, &exists);
+    report("a code named by two handlers is recorded twice",
+           exists && 2 == n);
+    n = code_reg_peers(EVUT_CODE_ORDER2, &exists);
+    report("the code named by only one is recorded once", exists && 1 == n);
+
+    /* the single deregistration the client sends has to clear both */
+    client_evreq(one, 1, true);
+    n = code_reg_peers(EVUT_CODE_ORDER, &exists);
+    report("one deregistration clears both entries", !exists && 0 == n);
+
+    client_evreq(&two[1], 1, true);
+    n = code_reg_peers(EVUT_CODE_ORDER2, &exists);
+    report("the untouched code deregisters normally", !exists && 0 == n);
 }
 
 static void test_enviro_handshake(void)
@@ -1410,6 +1454,7 @@ int main(int argc, char **argv)
     /* must run before anything registers, so the default entry really is
      * absent when we ask for one */
     test_default_registration();
+    test_duplicate_code_registrations();
 
     /* registration placement and chain progression */
     test_chain_order();
