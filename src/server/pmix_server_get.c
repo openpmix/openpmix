@@ -106,6 +106,21 @@ static void relfn(void *cbdata)
     }
 }
 
+/* Is this tracker still on the pending list? A tracker handed to the host
+ * for a direct modex carries a reference of its own, so it outlives being
+ * retired - but a retired tracker must not be resolved or removed again. */
+static bool tracker_is_pending(pmix_dmdx_local_t *lcd)
+{
+    pmix_dmdx_local_t *cd;
+
+    PMIX_LIST_FOREACH (cd, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
+        if (cd == lcd) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Discard a local dmodex tracker that we created for a request we then
  * failed to launch. Each parked requester on loc_reqs holds its own
  * reference on the tracker, so simply releasing the tracker's creation
@@ -248,10 +263,28 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    /* This count comes off the wire under the client's control, and the
+     * usual "the unpack screens a NULL destination" argument does not
+     * cover it: PMIx_Info_create multiplies it by sizeof(pmix_info_t)
+     * without an overflow guard and then *constructs* that many elements,
+     * so a value large enough to wrap the product yields a short
+     * allocation the constructor loop immediately runs off the end of.
+     * The directive scan below walks the size_t as well, rather than the
+     * int32_t the unpack consumed. Require the count to survive the round
+     * trip through that int32_t - the same screen fence, connect and
+     * register_events apply - which bounds it well clear of the wrap. */
+    cnt = cd->ninfo;
+    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        cd->ninfo = 0;
+        return rc;
+    }
     if (0 < cd->ninfo) {
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
         if (NULL == cd->info) {
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            cd->ninfo = 0;
             return PMIX_ERR_NOMEM;
         }
         cnt = cd->ninfo;
@@ -349,7 +382,10 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&pbkt);
                     PMIX_DESTRUCT(&xfer);
-                    PMIX_DESTRUCT(&cb);
+                    /* cb was already destructed above - destructing it a
+                     * second time takes down its lock and its kvs list
+                     * twice, which aborts a debug build on the list's
+                     * magic id and is undefined on the mutex */
                     return rc;
                 }
                 PMIX_UNLOAD_BUFFER(&xfer, bo.bytes, bo.size);
@@ -696,6 +732,12 @@ request:
     } else if (PMIX_ERR_NOT_AVAILABLE == rc) {
         /* means they requested "immediate" */
         return PMIX_ERR_NOT_FOUND;
+    } else if (NULL == lcd) {
+        /* we failed to create a tracker at all (out of memory), so there
+         * is nothing parked and nothing that will ever answer this
+         * requester - hand the error back so the switchyard replies. Note
+         * that every arm below dereferences lcd */
+        return rc;
     }
 
     /* Getting here means that we didn't already have a request for
@@ -711,22 +753,46 @@ request:
      * resource manager server to please get the info for us from
      * whomever is hosting the target process */
     if (NULL != pmix_host_server.direct_modex) {
+        /* augment the tracker's own copy of the directives, not the
+         * caddy's. The host keeps every input valid until it calls us
+         * back, and the server caddy does not live that long - failing
+         * this tracker (its target departed) answers the requester and
+         * frees the caddy while the host still holds its info array.
+         * The tracker does live that long: we retain it below.
+         * pmix_pending_nspace_requests hands up the same array */
         if (NULL != key) {
-            sz = cd->ninfo;
+            sz = lcd->ninfo;
             PMIX_INFO_CREATE(info, sz + 1);
+            if (NULL == info) {
+                /* nothing screens this one - we index the array ourselves
+                 * instead of handing it to an unpack that would reject a
+                 * NULL destination. The tracker we just created carries
+                 * only this requester, so discarding it without callbacks
+                 * leaves the switchyard to answer them */
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                discard_local_tracker(lcd);
+                return PMIX_ERR_NOMEM;
+            }
             for (n = 0; n < sz; n++) {
-                PMIX_INFO_XFER(&info[n], &cd->info[n]);
+                PMIX_INFO_XFER(&info[n], &lcd->info[n]);
             }
             PMIX_INFO_LOAD(&info[sz], PMIX_REQUIRED_KEY, key, PMIX_STRING);
-            if (NULL != cd->info) {
-                PMIX_INFO_FREE(cd->info, cd->ninfo);
+            if (NULL != lcd->info) {
+                PMIX_INFO_FREE(lcd->info, lcd->ninfo);
             }
-            cd->info = info;
-            cd->ninfo = sz + 1;
+            lcd->info = info;
+            lcd->ninfo = sz + 1;
         }
-        rc = pmix_host_server.direct_modex(&lcd->proc, cd->info, cd->ninfo, dmdx_cbfunc, lcd);
+        /* the host holds this pointer until it calls dmdx_cbfunc, and the
+         * tracker can be retired out from under it in the meantime - a
+         * namespace deregistration for the target retires every tracker
+         * naming it - so take a reference for the host to hold */
+        PMIX_RETAIN(lcd);
+        rc = pmix_host_server.direct_modex(&lcd->proc, lcd->info, lcd->ninfo, dmdx_cbfunc, lcd);
         if (PMIX_SUCCESS != rc) {
-            /* may have a function entry but not support the request */
+            /* may have a function entry but not support the request - it
+             * will not call us back, so give the reference back */
+            PMIX_RELEASE(lcd);
             discard_local_tracker(lcd);
         }
     } else {
@@ -793,7 +859,15 @@ complete:
      * data to them */
     req = PMIX_NEW(pmix_dmdx_request_t);
     if (NULL == req) {
-        *ld = lcd;
+        if (PMIX_ERR_NOT_FOUND == rc) {
+            /* we created this tracker a few lines above for a requester we
+             * can no longer park on it - take it back off the list rather
+             * than leaving an empty tracker there for the life of the
+             * server. Leave *ld NULL: nothing is parked, so no caller may
+             * hand this tracker to the host */
+            pmix_list_remove_item(&pmix_server_globals.local_reqs, &lcd->super);
+            PMIX_RELEASE(lcd);
+        }
         return PMIX_ERR_NOMEM;
     }
     if (NULL != key) {
@@ -846,7 +920,13 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
         if (!found) {
             rc = PMIX_ERR_NOT_SUPPORTED;
             if (NULL != pmix_host_server.direct_modex) {
+                /* hand the host a reference of its own - see the matching
+                 * comment in pmix_server_get */
+                PMIX_RETAIN(cd);
                 rc = pmix_host_server.direct_modex(&cd->proc, cd->info, cd->ninfo, dmdx_cbfunc, cd);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_RELEASE(cd);
+                }
             }
             if (PMIX_SUCCESS != rc) {
                 pmix_dmdx_request_t *req, *req_next;
@@ -1094,9 +1174,16 @@ complete:
     PMIX_DESTRUCT(&pbkt);
 
     if (found) {
-        /* pass it back */
+        /* pass it back. Report SUCCESS to our caller even when rc carries
+         * an error: invoking cbfunc hands the server caddy to the reply
+         * path, which queues the client's answer and releases it. Both
+         * callers treat a non-SUCCESS return as "nobody has answered this
+         * requester yet" - pmix_server_get parks the caddy on a new dmodex
+         * tracker, and check_req calls the requester's cbfunc a second
+         * time - so returning rc here turned a failed assemble or pack
+         * into a double reply on a caddy that was already freed. */
         cbfunc(rc, data, sz, cbdata, relfn, data);
-        return rc;
+        return PMIX_SUCCESS;
     }
 
     /* nothing is being passed back, so nothing will call relfn for us -
@@ -1219,6 +1306,7 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
     bool found;
     pmix_buffer_t pbkt;
     pmix_cb_t cb;
+    pmix_proc_t wildcard;
 
     PMIX_ACQUIRE_OBJECT(caddy);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -1227,6 +1315,18 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                         "[%s:%d] process dmdx reply from %s:%u",
                         __FILE__, __LINE__,
                         caddy->lcd->proc.nspace, caddy->lcd->proc.rank);
+
+    /* the tracker is alive because we retained it for the host, but it may
+     * have been retired while the host was working - a departing target or
+     * a deregistered namespace fails and discards every tracker naming it,
+     * and those waiters have already been told. There is then nothing to
+     * resolve, and nothing to store the data for */
+    if (!tracker_is_pending(caddy->lcd)) {
+        pmix_output_verbose(2, pmix_server_globals.get_output,
+                            "[%s:%d] dmdx reply for a retired tracker - discarding",
+                            __FILE__, __LINE__);
+        goto release;
+    }
 
     /* find the nspace object for the proc whose data is being received */
     nptr = NULL;
@@ -1242,6 +1342,12 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
          * processes from it running on this host - so just record it
          * so we know we have the data for any future requests */
         nptr = PMIX_NEW(pmix_namespace_t);
+        if (NULL == nptr) {
+            /* everything below dereferences this, and pmix_pending_resolve
+             * takes it as its first argument */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            goto release;
+        }
         nptr->nspace = strdup(caddy->lcd->proc.nspace);
         /* add to the list */
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
@@ -1320,13 +1426,11 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                      * transfer it across to the individual nspace storage
                      * components */
                     PMIX_CONSTRUCT(&cb, pmix_cb_t);
-                    PMIX_PROC_CREATE(cb.proc, 1);
-                    if (NULL == cb.proc) {
-                        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                        PMIX_DESTRUCT(&cb);
-                        goto complete;
-                    }
-                    PMIX_LOAD_PROCID(cb.proc, nm->ns->nspace, PMIX_RANK_WILDCARD);
+                    /* point at a stack proc - cbdes deliberately never
+                     * frees this member, so a PMIX_PROC_CREATE here
+                     * leaked one proc on every reply that took this arm */
+                    PMIX_LOAD_PROCID(&wildcard, nm->ns->nspace, PMIX_RANK_WILDCARD);
+                    cb.proc = &wildcard;
                     cb.scope = PMIX_INTERNAL;
                     cb.copy = false;
                     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
@@ -1338,8 +1442,13 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                     PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
                         PMIX_GDS_STORE_KV(rc, peer, &caddy->lcd->proc, PMIX_INTERNAL, kv);
                         if (PMIX_SUCCESS != rc) {
+                            /* report it the same way the sibling arm below
+                             * does - a requester told SUCCESS here goes on
+                             * to fetch data that was never stored */
                             PMIX_ERROR_LOG(rc);
-                            break;
+                            caddy->status = rc;
+                            PMIX_DESTRUCT(&cb);
+                            goto complete;
                         }
                     }
                     PMIX_DESTRUCT(&cb);
@@ -1387,11 +1496,14 @@ complete:
     pmix_pending_resolve(nptr, caddy->lcd->proc.rank,
                          caddy->status, PMIX_REMOTE, caddy->lcd);
 
+release:
     /* now call the release function so the host server
      * knows it can release the data */
     if (NULL != caddy->relcbfunc) {
         caddy->relcbfunc(caddy->cbdata);
     }
+    /* give back the reference we took on the tracker for the host */
+    PMIX_RELEASE(caddy->lcd);
     PMIX_RELEASE(caddy);
 }
 
@@ -1407,6 +1519,8 @@ static void dmdx_cbfunc(pmix_status_t status, const char *data, size_t ndata, vo
         if (NULL != release_fn) {
             release_fn(release_cbdata);
         }
+        /* give back the reference the up-call took on our behalf -
+         * _process_dmdx_reply is the only other place that drops it */
         PMIX_RELEASE(lcd);
         return;
     }
@@ -1415,6 +1529,16 @@ static void dmdx_cbfunc(pmix_status_t status, const char *data, size_t ndata, vo
      * need to thread-shift into our local progress thread before
      * accessing any global info */
     caddy = PMIX_NEW(pmix_dmdx_reply_caddy_t);
+    if (NULL == caddy) {
+        /* nothing we can do beyond honoring the release contract with the
+         * host's own data and giving back the tracker reference the
+         * up-call took for it */
+        if (NULL != release_fn) {
+            release_fn(release_cbdata);
+        }
+        PMIX_RELEASE(lcd);
+        return;
+    }
     caddy->status = status;
     /* point to the callers cbfunc */
     caddy->relcbfunc = release_fn;

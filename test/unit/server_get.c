@@ -53,6 +53,11 @@
  *   unknown nspace + IMMEDIATE     -> PMIX_ERR_NOT_FOUND, nothing parked
  *   local rank not yet connected,
  *      + IMMEDIATE                 -> PMIX_ERR_NOT_FOUND, nothing parked
+ *   info count that wraps the
+ *      allocation                  -> PMIX_ERR_BAD_PARAM (kills an
+ *                                     unfixed library rather than
+ *                                     failing it - see the case)
+ *   info count that truncates      -> PMIX_ERR_BAD_PARAM
  *   WILDCARD rank                  -> job-level data handed to the callback
  *   WILDCARD, missing reserved key -> PMIX_ERR_NOT_FOUND, callback untouched
  *   WILDCARD, missing plain key    -> unchanged: success, empty payload
@@ -78,6 +83,7 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/server/pmix_server_ops.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -169,6 +175,67 @@ static pmix_buffer_t *build_get_request(const char *nspace, pmix_rank_t rank,
         }
     }
     return buf;
+}
+
+/* Build a GET request whose info count is a lie: the count is packed but
+ * no info structs follow it. A handler that trusts the count never gets as
+ * far as the unpack that would have caught it. */
+static pmix_buffer_t *build_bad_ninfo_request(const char *nspace, pmix_rank_t rank,
+                                              size_t ninfo)
+{
+    pmix_buffer_t *buf;
+    pmix_status_t rc;
+    char *cptr = (char *) nspace;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        return NULL;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &cptr, 1, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return NULL;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &rank, 1, PMIX_PROC_RANK);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return NULL;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return NULL;
+    }
+    return buf;
+}
+
+static pmix_status_t do_bad_ninfo_get(size_t ninfo)
+{
+    pmix_server_caddy_t *cd;
+    pmix_buffer_t *buf;
+    pmix_status_t rc;
+
+    cb_fired = false;
+
+    buf = build_bad_ninfo_request(GETUT_NSPACE, 3, ninfo);
+    if (NULL == buf) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd = PMIX_NEW(pmix_server_caddy_t);
+    if (NULL == cd) {
+        PMIX_RELEASE(buf);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(pmix_globals.mypeer);
+    cd->peer = pmix_globals.mypeer;
+    cd->hdr.tag = 0;
+
+    rc = pmix_server_get(buf, get_cbfunc, cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cd);
+    }
+    PMIX_RELEASE(buf);
+    return rc;
 }
 
 /* Drive one server-side GET. Returns what pmix_server_get() returned; the
@@ -327,6 +394,26 @@ int main(int argc, char **argv)
            PMIX_ERR_NOT_FOUND == rc);
     report("unconnected local rank with IMMEDIATE parks nothing", nothing_parked());
     PMIX_INFO_DESTRUCT(&imm);
+
+    /* --- a lying info count off the wire ---------------------------- */
+    /* The count is packed and no info structs follow it, so nothing
+     * downstream screens it. PMIx_Info_create multiplies it by
+     * sizeof(pmix_info_t) with no overflow guard and then constructs that
+     * many elements, so this value - chosen to wrap the product - hands
+     * back a two-element allocation the constructor loop walks off the end
+     * of. Like the info-count case in server_fence.c, this one kills an
+     * unfixed library rather than failing it. */
+    rc = do_bad_ninfo_get((SIZE_MAX / sizeof(pmix_info_t)) + 2);
+    report("wrapping info count is rejected", PMIX_ERR_BAD_PARAM == rc);
+    report("wrapping info count parks nothing", nothing_parked());
+
+    /* the same screen catches the count that merely truncates: it names a
+     * different number of directives than the scan below the unpack walks.
+     * Express it in terms of INT32_MAX rather than a shift, so it is still
+     * a rejected value where size_t is 32 bits wide */
+    rc = do_bad_ninfo_get(((size_t) INT32_MAX) + 1);
+    report("truncating info count is rejected", PMIX_ERR_BAD_PARAM == rc);
+    report("truncating info count parks nothing", nothing_parked());
 
     /* --- job-level data still comes back ---------------------------- */
     rc = do_get(GETUT_NSPACE, PMIX_RANK_WILDCARD, PMIX_JOB_SIZE, NULL, 0);

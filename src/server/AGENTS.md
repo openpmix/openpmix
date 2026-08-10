@@ -513,6 +513,38 @@ caller twice. If you ever discard an lcd that could have *other*
 requesters, they do need their callbacks — follow
 `pmix_pending_nspace_requests`, which drains with callbacks.
 
+**A tracker handed to the host carries a reference of its own.** Both
+sites that call `pmix_host_server.direct_modex` pass the `lcd` as
+`cbdata`, and the host holds that pointer until it calls `dmdx_cbfunc` -
+which may be long after we have decided the tracker is finished with. A
+namespace deregistration for the target retires *every* tracker naming
+it (see below), so the bare pointer the host was holding was a dangling
+one. Each up-call therefore takes a `PMIX_RETAIN` on the lcd and gives
+it back on exactly one of three arms: the host declines the call,
+`dmdx_cbfunc` finds the progress thread stopped, or `_process_dmdx_reply`
+finishes. The reply handler then has to ask `tracker_is_pending` whether
+the tracker is still on `local_reqs` before touching it - our reference
+keeps the object alive, it does not put it back on the list, and
+resolving an unlinked tracker would `pmix_list_remove_item` it a second
+time.
+
+The same reasoning governs the *directives*: the host keeps every input
+valid until it calls back, and the `pmix_server_caddy_t` does not live
+that long, so what goes up is `lcd->info` - the tracker's own copy, which
+`pmix_server_get` augments in place with `PMIX_REQUIRED_KEY` - and never
+`cd->info`. `pmix_pending_nspace_requests` always did it this way.
+
+**`_satisfy_request` reports whether it *answered*, not whether it
+succeeded.** Once it has data to hand back it invokes `cbfunc`, and that
+hands the server caddy to the reply path, which queues the client's
+answer and releases it. So every arm past that point must return
+`PMIX_SUCCESS` even when the status it passed was an error - both callers
+read a non-SUCCESS return as "nobody has answered this requester yet",
+and `pmix_server_get` responds by parking the caddy on a fresh dmodex
+tracker while `check_req` responds by calling the requester's `cbfunc` a
+second time. A failed assemble or a failed pack after the fetch had
+already succeeded therefore produced a double reply on a freed caddy.
+
 **A tracker on `local_reqs` whose target has departed must fail its
 waiters, not just disappear.** `pmix_server_purge_events` runs when a peer
 finalizes or a namespace is deregistered, and any direct-modex tracker
@@ -769,8 +801,11 @@ Two suites cover the halves:
 - [`test/unit/server_get.c`](../../test/unit/server_get.c) drives
   `pmix_server_get` directly against a registered nspace whose job size
   exceeds its local size, and asserts the classification and that nothing
-  is left parked on `local_reqs`. Read its header for what it pins down
-  and what it deliberately cannot reproduce.
+  is left parked on `local_reqs`. It also drives the handler from a
+  hand-packed buffer whose info count is a lie - one that wraps the
+  allocation and one that merely truncates - and those cases kill an
+  unfixed library rather than failing it. Read its header for what it
+  pins down and what it deliberately cannot reproduce.
 - [`test/unit/server_dmodex.c`](../../test/unit/server_dmodex.c) covers
   `PMIx_Store_internal` and the `remote_pnd` deferral above, including
   the departure drain. It orders itself off `PMIx_Store_internal` rather
@@ -923,6 +958,18 @@ misbehave by design).
   reads a count before it reads the array, or that walks the `size_t`
   rather than the `int32_t` afterwards.
 
+  Know *why* an oversized count is dangerous and not merely wasteful:
+  `PMIx_Info_create` computes `n * sizeof(pmix_info_t)` with no overflow
+  guard and then **constructs every one of the `n` elements**. A count
+  large enough to wrap that product therefore yields a short allocation
+  whose constructor loop runs straight off the end - so the crash happens
+  inside the allocation, before any of the "the unpack screens a NULL
+  destination" reasoning gets a chance to apply. `PMIX_PROC_CREATE` and
+  the other `_CREATE` macros are built the same way. That is why the
+  round-trip screen belongs on any count a peer controls, not only on the
+  ones with a visible `+ 2`. `pmix_server_get` needed it for exactly this
+  reason, and its wire count is covered by `test/unit/server_get.c`.
+
   **The collective handlers are the third case, and the worst of them.**
   Fence and connect both size their info array as `ninf + 2` and then
   seed two slots at `info[ninf]` and `info[ninf+1]` — *before* anything
@@ -1005,6 +1052,19 @@ misbehave by design).
   `_register_nspace` looks the namespace up by name and reuses the entry
   when registration eventually arrives. It is not a leak and not a
   phantom.
+- **Two things in `pmix_server_get.c` look like defects and are not.**
+  `get_job_data` returns `PMIX_SUCCESS` with an empty buffer when the
+  fetch finds nothing, and its callers pass that empty payload to the
+  client as a success. That is safe and should be left alone:
+  `_getnb_cbfunc` in `pmix_client_get.c` initializes its reported status
+  to `PMIX_ERR_NOT_FOUND` and only overwrites it if a value actually
+  turns up, so an empty success degrades to not-found at the requester -
+  the same bargain as the `refresh_cache` status above. And the
+  `direct_modex` up-call sites treat `PMIX_OPERATION_SUCCEEDED` as a
+  refusal rather than handling it as the third arm of the usual
+  tri-state. There is no coherent "done now, no callback" for this
+  up-call: its entire product is a data blob delivered through the
+  callback, and the header describes no such arm.
 - **A public API's non-blocking form still has to clean up when the
   caller passes no callback.** `PMIx_server_setup_application` and
   `PMIx_server_collect_inventory` take a callback and have no blocking
