@@ -547,7 +547,11 @@ pmix_status_t PMIx_server_setup_local_support(const pmix_nspace_t nspace, pmix_i
             /* we are ON the progress thread, so waiting for the event we
              * would post is waiting for ourselves - answer rather than
              * hang. The caller wanted the blocking form; the non-blocking
-             * one works fine from here */
+             * one works fine from here. The nspace copy is ours, and the
+             * handler that would have freed it is never going to run */
+            if (NULL != cd->nspace) {
+                free(cd->nspace);
+            }
             PMIX_RELEASE(cd);
             return PMIX_ERR_WOULD_BLOCK;
         }

@@ -17,10 +17,16 @@
  * $HEADER$
  */
 
-/* Construction and destruction of the server library's classes. Every
- * PMIX_CLASS_INSTANCE for a type declared in pmix_server_ops.h (or used
- * only by the server role) lives here, so the ownership rules a
- * destructor encodes can be read in one place. */
+/* Construction and destruction of the server library's classes. The
+ * PMIX_CLASS_INSTANCE for every type declared in pmix_server_ops.h, or
+ * declared in pmix_globals.h and used only by the server role, lives
+ * here so the ownership rules a destructor encodes can be read in one
+ * place. A type private to a single .c file keeps its class beside it
+ * instead - see pmix_server_group.c, pmix_server_fence.c,
+ * pmix_server_get.c and pmix_server_control.c.
+ *
+ * Note that PMIX_NEW does not zero the allocation, so a member a
+ * constructor here skips starts out as whatever was on the heap. */
 
 #include "src/include/pmix_config.h"
 

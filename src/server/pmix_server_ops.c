@@ -121,6 +121,12 @@ static void abcbfn(pmix_status_t status, void *cbdata)
     if (NULL != cd->opcbfunc) {
         cd->opcbfunc(status, cd->cbdata);
     }
+    /* the abort message was unpacked into the caddy, and the caddy's
+     * destructor does not free that member - it is borrowed as often
+     * as it is owned */
+    if (NULL != cd->nspace) {
+        free(cd->nspace);
+    }
     PMIX_RELEASE(cd);
 }
 
@@ -146,7 +152,8 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_RELEASE(cd);
         return rc;
     }
-    /* unpack the message */
+    /* unpack the message - this allocates, and from here on every path
+     * that discards the caddy owes it a free */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nspace, &cnt, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
@@ -157,8 +164,7 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nprocs, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(cd);
-        return rc;
+        goto error;
     }
 
     /* unpack any provided procs - these are the procs the caller
@@ -166,32 +172,37 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     if (0 < cd->nprocs) {
         PMIX_PROC_CREATE(cd->procs, cd->nprocs);
         if (NULL == cd->procs) {
-            PMIX_RELEASE(cd);
-            return PMIX_ERR_NOMEM;
+            rc = PMIX_ERR_NOMEM;
+            goto error;
         }
         cnt = cd->nprocs;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->procs, &cnt, PMIX_PROC);
         if (PMIX_SUCCESS != rc) {
-            PMIX_RELEASE(cd);
-            return rc;
+            goto error;
         }
     }
 
     /* let the local host's server execute it */
-    if (NULL != pmix_host_server.abort) {
-        pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
-        proc.rank = peer->info->pname.rank;
-        rc = pmix_host_server.abort(&proc, peer->info->server_object, cd->status,
-                                    cd->nspace, cd->procs, cd->nprocs,
-                                    abcbfn, cd);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_RELEASE(cd);
-        }
-    } else {
-        PMIX_RELEASE(cd);
+    if (NULL == pmix_host_server.abort) {
         rc = PMIX_ERR_NOT_SUPPORTED;
+        goto error;
+    }
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = peer->info->pname.rank;
+    rc = pmix_host_server.abort(&proc, peer->info->server_object, cd->status,
+                                cd->nspace, cd->procs, cd->nprocs,
+                                abcbfn, cd);
+    if (PMIX_SUCCESS != rc) {
+        goto error;
     }
 
+    return rc;
+
+error:
+    if (NULL != cd->nspace) {
+        free(cd->nspace);
+    }
+    PMIX_RELEASE(cd);
     return rc;
 }
 
