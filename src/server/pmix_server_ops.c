@@ -142,6 +142,9 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                         "recvd ABORT");
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
 
@@ -256,6 +259,18 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    /* screen the count before it sizes an allocation: PMIx_Info_create
+     * computes "n * sizeof(pmix_info_t)" with no overflow guard and then
+     * constructs every one of the n elements, so a count large enough to
+     * wrap that product yields a short allocation whose constructor loop
+     * runs straight off the end. This is the round-trip screen the
+     * collective and IOF handlers carry for the same reason. */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
     /* we will be adding one for the user id */
     cd = PMIX_NEW(pmix_setup_caddy_t);
     if (NULL == cd) {
@@ -269,9 +284,12 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
         rc = PMIX_ERR_NOMEM;
         goto cleanup;
     }
-    /* unpack the array of info objects */
-    if (0 < cd->ninfo) {
-        cnt = cd->ninfo;
+    /* unpack the array of info objects - gate on the count that came off
+     * the wire, not on the array size, which carries our own extra slot.
+     * With no info objects there is nothing left in the buffer, so the
+     * unpack the old gate always ran failed the whole publish. */
+    if (0 < ninfo) {
+        cnt = ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -364,13 +382,25 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
-        PMIx_Argv_append_nosize(&cd->keys, sptr);
+        rc = PMIx_Argv_append_nosize(&cd->keys, sptr);
         free(sptr);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
     }
     /* unpack the number of info objects */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    /* screen the count before it sizes an allocation - see the note in
+     * pmix_server_publish */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
@@ -459,13 +489,25 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
-        PMIx_Argv_append_nosize(&cd->keys, sptr);
+        rc = PMIx_Argv_append_nosize(&cd->keys, sptr);
         free(sptr);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
     }
     /* unpack the number of info objects */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    /* screen the count before it sizes an allocation - see the note in
+     * pmix_server_publish */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
@@ -534,8 +576,17 @@ static void _spcbfunc(int sd, short args, void *cbdata)
 void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+    pmix_server_caddy_t *scd;
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        /* the switchyard's caddy is parked on cbdata and scaddes does not
+         * reach it, so releasing only this caddy strands it and the
+         * retain it holds on the requesting peer. _spcbfunc, the arm that
+         * would otherwise hand it to the spawn completion, never runs. */
+        scd = (pmix_server_caddy_t *) cd->cbdata;
+        if (NULL != scd) {
+            PMIX_RELEASE(scd);
+        }
         PMIX_RELEASE(cd);
         return;
     }
@@ -657,6 +708,16 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_RELEASE(cd);
         return rc;
     }
+    /* screen the count before it sizes an allocation - see the note in
+     * pmix_server_publish. The parser below also walks this size_t rather
+     * than the int32_t the unpack consumed */
+    cnt = cd->ninfo;
+    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(cd);
+        return rc;
+    }
     if (0 < cd->ninfo) {
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
         if (NULL == cd->info) {
@@ -681,6 +742,15 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->napps, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    /* the same screen: PMIx_App_create multiplies and constructs exactly
+     * as PMIx_Info_create does, and scaddes walks this size_t when it
+     * frees the array */
+    cnt = cd->napps;
+    if (0 > cnt || (size_t) cnt != cd->napps) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
