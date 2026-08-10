@@ -142,7 +142,7 @@ int main(int argc, char **argv)
         /* check timeout on Get */
         proc.rank = 1;
         pmix_output(0, "TEST GET TIMEOUT");
-        if (PMIX_ERR_TIMEOUT == (rc = PMIx_Get(&proc, "1234", &info, 1, &val))) {
+        if (PMIX_ERR_TIMEOUT != (rc = PMIx_Get(&proc, "1234", &info, 1, &val))) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Get did not timeout: %s", myproc.nspace,
                         myproc.rank, PMIx_Error_string(rc));
             goto done;
