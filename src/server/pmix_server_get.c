@@ -64,7 +64,6 @@ extern pmix_server_module_t pmix_host_server;
 typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
-    volatile bool active;
     pmix_status_t status;
     const char *data;
     size_t ndata;
@@ -95,9 +94,9 @@ static pmix_status_t get_job_data(char *nspace, pmix_server_caddy_t *cd,
                                   char *key, pmix_buffer_t *pbkt);
 static void get_timeout(int sd, short args, void *cbdata);
 
-/* declare a function whose sole purpose is to
- * free data that we provided to our host server
- * when servicing dmodex requests */
+/* The release function we hand to the reply path along with a payload we
+ * unloaded from a buffer: the reply copies the bytes, then calls this to
+ * give the unload allocation back. */
 static void relfn(void *cbdata)
 {
     char *data = (char *) cbdata;
@@ -196,8 +195,9 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank, char *key,
         pmix_event_evtimer_add(&req->ev, tv);
         req->event_active = true;
     }
-    /* the peer object has been added to the new lcd tracker,
-     * so return success here */
+    /* hand the tracker back, along with the status that says whether we
+     * created it (PMIX_ERR_NOT_FOUND) or joined one already waiting on
+     * this same target (PMIX_SUCCESS) */
     *locald = lcd;
     return rc;
 }
@@ -899,7 +899,7 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
         pmix_rank_info_t *info;
         bool found = false;
 
-        if (0 != strncmp(nptr->nspace, cd->proc.nspace, PMIX_MAX_NSLEN)) {
+        if (!PMIX_CHECK_NSPACE(nptr->nspace, cd->proc.nspace)) {
             continue;
         }
 
@@ -931,7 +931,9 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
             if (PMIX_SUCCESS != rc) {
                 pmix_dmdx_request_t *req, *req_next;
                 PMIX_LIST_FOREACH_SAFE (req, req_next, &cd->loc_reqs, pmix_dmdx_request_t) {
-                    req->cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, req->cbdata, NULL, NULL);
+                    if (NULL != req->cbfunc) {
+                        req->cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, req->cbdata, NULL, NULL);
+                    }
                     pmix_list_remove_item(&cd->loc_reqs, &req->super);
                     PMIX_RELEASE(req);
                 }
@@ -1218,7 +1220,9 @@ static void check_req(pmix_namespace_t *nptr,
     if (PMIX_SUCCESS != status) {
         /* if we've got an error for this request - just forward it*/
         PMIX_LIST_FOREACH_SAFE(req, rnext, &ptr->loc_reqs, pmix_dmdx_request_t) {
-            req->cbfunc(status, NULL, 0, req->cbdata, NULL, NULL);
+            if (NULL != req->cbfunc) {
+                req->cbfunc(status, NULL, 0, req->cbdata, NULL, NULL);
+            }
             pmix_list_remove_item(&ptr->loc_reqs, &req->super);
             PMIX_RELEASE(req);
         }
@@ -1241,7 +1245,7 @@ static void check_req(pmix_namespace_t *nptr,
             } else {
                 key = NULL;
             }
-           rc = _satisfy_request(nptr, rank, key, &scd, diffnspace, scope,
+            rc = _satisfy_request(nptr, rank, key, &scd, diffnspace, scope,
                                   req->cbfunc, req->cbdata);
             if (PMIX_SUCCESS != rc) {
                 /* if we can't satisfy this particular request (missing key?) */
