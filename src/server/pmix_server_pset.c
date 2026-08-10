@@ -68,17 +68,58 @@ static void psetdef(int sd, short args, void *cbdata)
     pmix_data_array_t *darray;
     pmix_proc_t *ptr;
     pmix_pset_t *ps;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
+    /* Record the process set before announcing it. Defining it is what
+     * the caller asked for; the event is how local registrants find out.
+     * Announcing first meant an allocation failure here left us having
+     * advertised a set that does not exist. The order is not otherwise
+     * observable: PMIx_Notify_event with a callback thread-shifts, and
+     * we are already on the progress thread, so no handler can run until
+     * this one returns. */
+    ps = PMIX_NEW(pmix_pset_t);
+    if (NULL == ps) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    ps->name = strdup(cd->nspace);
+    ps->members = (pmix_proc_t *) malloc(cd->nprocs * sizeof(pmix_proc_t));
+    if (NULL == ps->name || NULL == ps->members) {
+        PMIX_RELEASE(ps);
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    memcpy(ps->members, cd->procs, cd->nprocs * sizeof(pmix_proc_t));
+    ps->nmembers = cd->nprocs;
+    pmix_list_append(&pmix_server_globals.psets, &ps->super);
+
+    /* now tell any local registrants about it */
     mydat = (mydata_t *) malloc(sizeof(mydata_t));
+    if (NULL == mydat) {
+        goto done;
+    }
     mydat->ninfo = 3;
     PMIX_INFO_CREATE(mydat->info, mydat->ninfo);
+    /* PMIx_Data_array_create answers NULL for a zero-element array as
+     * well as for a failed allocation, so this has to be checked before
+     * its "array" member is read - the caller's member count is screened
+     * up front for the same reason */
+    PMIX_DATA_ARRAY_CREATE(darray, cd->nprocs, PMIX_PROC);
+    if (NULL == mydat->info || NULL == darray) {
+        if (NULL != mydat->info) {
+            PMIX_INFO_FREE(mydat->info, mydat->ninfo);
+        }
+        if (NULL != darray) {
+            PMIX_DATA_ARRAY_FREE(darray);
+        }
+        free(mydat);
+        goto done;
+    }
     PMIX_INFO_LOAD(&mydat->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&mydat->info[1], PMIX_PSET_NAME, cd->nspace, PMIX_STRING);
-    PMIX_DATA_ARRAY_CREATE(darray, cd->nprocs, PMIX_PROC);
     PMIX_LOAD_KEY(mydat->info[2].key, PMIX_PSET_MEMBERS);
     mydat->info[2].value.type = PMIX_DATA_ARRAY;
     mydat->info[2].value.data.darray = darray;
@@ -86,31 +127,43 @@ static void psetdef(int sd, short args, void *cbdata)
     memcpy(ptr, cd->procs, cd->nprocs * sizeof(pmix_proc_t));
 
     /* a notification that is refused will never reach release_info, so
-     * hand the payload back ourselves in that case */
-    rc = PMIx_Notify_event(PMIX_PROCESS_SET_DEFINE, &pmix_globals.myid, PMIX_RANGE_LOCAL,
-                           mydat->info, mydat->ninfo, release_info, (void *) mydat);
-    if (PMIX_SUCCESS != rc) {
+     * hand the payload back ourselves in that case. It does not fail the
+     * call: the process set is defined either way, and reporting an
+     * undeliverable courtesy event as a failed definition would be a lie
+     * the caller cannot act on */
+    if (PMIX_SUCCESS != (rc = PMIx_Notify_event(PMIX_PROCESS_SET_DEFINE, &pmix_globals.myid,
+                                                PMIX_RANGE_LOCAL, mydat->info, mydat->ninfo,
+                                                release_info, (void *) mydat))) {
+        PMIX_ERROR_LOG(rc);
         release_info(rc, mydat);
     }
+    rc = PMIX_SUCCESS;
 
-    /* now record the process set */
-    ps = PMIX_NEW(pmix_pset_t);
-    ps->name = strdup(cd->nspace);
-    ps->members = (pmix_proc_t *) malloc(cd->nprocs * sizeof(pmix_proc_t));
-    memcpy(ps->members, cd->procs, cd->nprocs * sizeof(pmix_proc_t));
-    ps->nmembers = cd->nprocs;
-    pmix_list_append(&pmix_server_globals.psets, &ps->super);
-
-    PMIX_WAKEUP_THREAD(&cd->lock);
+done:
+    /* report through the waker the public entry point substituted, so
+     * the caller hears about a definition that did not happen */
+    cd->opcbfunc(rc, cd->cbdata);
 }
 
 pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members, size_t nmembers,
                                              const char *pset_name)
 {
     pmix_setup_caddy_t cd;
+    pmix_status_t rc;
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    /* This is a public entry point, so the host can hand us anything.
+     * Every one of these was a segfault on the progress thread: a NULL
+     * name reaches strdup and PMIX_INFO_LOAD, a NULL member array
+     * reaches memcpy, and a zero member count makes
+     * PMIx_Data_array_create answer NULL, which is then dereferenced for
+     * its "array" member. A process set with no members is not a thing
+     * we can describe in the event either. */
+    if (NULL == pset_name || NULL == members || 0 == nmembers) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
@@ -134,11 +187,15 @@ pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members, size_t 
     cd.cbdata = &cd.lock;
     PMIX_THREADSHIFT(&cd, psetdef);
     PMIX_WAIT_THREAD(&cd.lock);
+    /* read the status back before the lock goes away - this used to
+     * return PMIX_SUCCESS unconditionally, so a definition that failed
+     * looked to the host exactly like one that worked */
+    rc = cd.lock.status;
     /* protect the input */
     cd.procs = NULL;
     cd.nprocs = 0;
     PMIX_DESTRUCT(&cd);
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 static void psetdel(int sd, short args, void *cbdata)
@@ -147,25 +204,12 @@ static void psetdel(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     mydata_t *mydat;
     pmix_pset_t *ps;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    mydat = (mydata_t *) malloc(sizeof(mydata_t));
-    mydat->ninfo = 2;
-    PMIX_INFO_CREATE(mydat->info, mydat->ninfo);
-    PMIX_INFO_LOAD(&mydat->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&mydat->info[1], PMIX_PSET_NAME, cd->nspace, PMIX_STRING);
-
-    /* see the matching note in psetdef */
-    rc = PMIx_Notify_event(PMIX_PROCESS_SET_DELETE, &pmix_globals.myid, PMIX_RANGE_LOCAL,
-                           mydat->info, mydat->ninfo, release_info, (void *) mydat);
-    if (PMIX_SUCCESS != rc) {
-        release_info(rc, mydat);
-    }
-
-    /* now find this process set */
+    /* drop the process set first, for the reason given in psetdef */
     PMIX_LIST_FOREACH (ps, &pmix_server_globals.psets, pmix_pset_t) {
         if (0 == strcmp(cd->nspace, ps->name)) {
             pmix_list_remove_item(&pmix_server_globals.psets, &ps->super);
@@ -173,15 +217,51 @@ static void psetdel(int sd, short args, void *cbdata)
             break;
         }
     }
-    PMIX_WAKEUP_THREAD(&cd->lock);
+    /* a name we do not hold is not an error: the host is telling us the
+     * set is gone, and it being gone already is the outcome it wanted */
+
+    /* now tell any local registrants about it */
+    mydat = (mydata_t *) malloc(sizeof(mydata_t));
+    if (NULL == mydat) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    mydat->ninfo = 2;
+    PMIX_INFO_CREATE(mydat->info, mydat->ninfo);
+    if (NULL == mydat->info) {
+        free(mydat);
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    PMIX_INFO_LOAD(&mydat->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&mydat->info[1], PMIX_PSET_NAME, cd->nspace, PMIX_STRING);
+
+    /* see the matching note in psetdef */
+    if (PMIX_SUCCESS != (rc = PMIx_Notify_event(PMIX_PROCESS_SET_DELETE, &pmix_globals.myid,
+                                                PMIX_RANGE_LOCAL, mydat->info, mydat->ninfo,
+                                                release_info, (void *) mydat))) {
+        PMIX_ERROR_LOG(rc);
+        release_info(rc, mydat);
+    }
+    rc = PMIX_SUCCESS;
+
+done:
+    cd->opcbfunc(rc, cd->cbdata);
 }
 
 pmix_status_t PMIx_server_delete_process_set(char *pset_name)
 {
     pmix_setup_caddy_t cd;
+    pmix_status_t rc;
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    /* a NULL name reaches strcmp and PMIX_INFO_LOAD on the progress
+     * thread - see the matching screen in the define entry point */
+    if (NULL == pset_name) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
@@ -203,6 +283,9 @@ pmix_status_t PMIx_server_delete_process_set(char *pset_name)
     cd.cbdata = &cd.lock;
     PMIX_THREADSHIFT(&cd, psetdel);
     PMIX_WAIT_THREAD(&cd.lock);
+    /* read the status back before the lock goes away - see the matching
+     * note in the define entry point */
+    rc = cd.lock.status;
     PMIX_DESTRUCT(&cd);
-    return PMIX_SUCCESS;
+    return rc;
 }

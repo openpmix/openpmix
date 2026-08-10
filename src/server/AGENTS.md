@@ -388,6 +388,28 @@ to allocate. `_spcb` had the `PMIX_DESTRUCT(&cb)` inside its
 `PMIX_SUCCESS == rc` arm, and a fetch that finds nothing is the ordinary
 case for a job this server has not been told about yet.
 
+### A blocking entry point that never reads its lock's status
+
+The blocking pattern below is only half done if the handler wakes the
+lock directly. `PMIx_server_define_process_set` and
+`_delete_process_set` both set `cd.opcbfunc = pmix_server_lock_opcbfunc`
+and `cd.cbdata = &cd.lock` — and then their handlers called
+`PMIX_WAKEUP_THREAD(&cd->lock)` themselves and the entry points returned
+a literal `PMIX_SUCCESS`. The waker was dead code and every failure the
+handler could have reported was invisible to the host. Call
+`cd->opcbfunc(rc, cd->cbdata)` on every arm out of the handler, and read
+`cd.lock.status` back **before** `PMIX_DESTRUCT` takes the lock down.
+
+Related: these two are public `PMIx_server_*` entry points, so the host
+can hand them anything, and neither screened its arguments. A NULL pset
+name reaches `strdup`, `strcmp` and `PMIX_INFO_LOAD`; a NULL member
+array reaches `memcpy`; and a **zero** member count is the one that does
+not look like a bug — `PMIx_Data_array_create` answers NULL for a
+zero-element array exactly as it does for a failed allocation, and the
+next line read `darray->array`. All three segfaulted the progress
+thread. `test/unit/progress_threads.c` covers them, and its zero-count
+case kills an unfixed library rather than failing it.
+
 Any struct handed to `PMIX_THREADSHIFT` **must** carry a `pmix_event_t ev`
 as its thread-shift member (the caddy contract from the top-level guide).
 Do not stack-allocate a caddy that outlives its creating function — the
