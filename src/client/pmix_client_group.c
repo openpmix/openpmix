@@ -415,6 +415,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_group_tracker_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        return PMIX_ERR_NOMEM;
+    }
 
     /* push the message into our event base to send to the server */
     rc = PMIx_Group_construct_nb(grp, procs, nprocs, info, ninfo, info_cbfunc, cb);
@@ -737,14 +740,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ndinfo, 1, PMIX_SIZE);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(msg);
         goto done;
     }
     if (0 < ndinfo) {
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, dinfo, ndinfo, PMIX_INFO);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
             goto done;
         }
     }
@@ -1865,6 +1866,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
      * recv routine so we know which lock to release when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_group_tracker_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        return PMIX_ERR_NOMEM;
+    }
 
     rc = PMIx_Group_join_nb(grp, leader, opt, info, ninfo, info_cbfunc, cb);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -2491,7 +2495,6 @@ static void destruct_cbfunc(struct pmix_peer_t *pr,
      * the reply turns out to be: we asked to destruct, so we are done with
      * the group either way, and leaving it registered on one failure path
      * but not the other left the two disagreeing. */
-    grp = NULL;
     pmix_mutex_lock(&pmix_client_globals.grouplock);
     PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
         if (0 == strcmp(cb->grpid, grp->grpid)) {
