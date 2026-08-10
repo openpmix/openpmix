@@ -290,6 +290,7 @@ test/unit/spawn_api
 test/unit/server_get
 test/unit/server_control
 test/unit/server_dmodex
+test/unit/server_fabric
 test/unit/info_support
 test/unit/rndz_stale
 test/unit/singleton_register

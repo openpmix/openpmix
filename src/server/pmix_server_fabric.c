@@ -47,6 +47,25 @@
 
 #include "pmix_server_ops.h"
 
+/* Carrier for a locally computed distance array. The callback that
+ * receives one only thread-shifts; the reply is packed from it later, on
+ * the progress thread, so the array has to outlive the function that
+ * built it. That is what the (release_fn, release_cbdata) pair in the
+ * callback signature is for - the host path uses it to hold its own data
+ * alive, and the local path needs it for exactly the same reason. */
+typedef struct {
+    pmix_device_distance_t *dist;
+    size_t ndist;
+} pmix_dist_relcaddy_t;
+
+static void dist_relfn(void *cbdata)
+{
+    pmix_dist_relcaddy_t *rel = (pmix_dist_relcaddy_t *) cbdata;
+
+    PMIX_DEVICE_DIST_FREE(rel->dist, rel->ndist);
+    free(rel);
+}
+
 static void _fabric_response(int sd, short args, void *cbdata)
 {
     pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
@@ -230,9 +249,15 @@ pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd, pmix_buffer_t *
     /* setup the requesting peer name */
     pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = cd->peer->info->pname.rank;
-    /* add the index */
+    /* add the index. Nothing screens this allocation the way an unpack
+     * would - the load below writes straight through it */
     qcd->ninfo = 1;
     PMIX_INFO_CREATE(qcd->info, qcd->ninfo);
+    if (NULL == qcd->info) {
+        qcd->ninfo = 0;
+        rc = PMIX_ERR_NOMEM;
+        goto exit;
+    }
     PMIX_INFO_LOAD(&qcd->info[0], PMIX_FABRIC_INDEX, &index, PMIX_SIZE);
 
     /* ask the host to execute the request */
@@ -261,8 +286,9 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
     pmix_cpuset_t cpuset = {NULL, NULL};
     pmix_status_t rc;
     pmix_device_distance_t *distances;
+    pmix_dist_relcaddy_t *rel;
     size_t ndist;
-    int cnt;
+    int32_t cnt;
     pmix_cb_t cb;
     pmix_kval_t *kv;
     pmix_proc_t proc;
@@ -315,6 +341,14 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
 
     /* if the cpuset is NULL, see if we know the binding of the requesting process */
     if (NULL == cpuset.bitmap) {
+        /* the unpack hands back a "hwloc" source string even when it
+         * carried no bitmap, and pmix_hwloc_parse_cpuset_string below
+         * overwrites that member with a fresh one - so give the first
+         * back now, while we still have the pointer to it */
+        if (NULL != cpuset.source) {
+            free(cpuset.source);
+            cpuset.source = NULL;
+        }
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         /* the cb destructor does not own cb.key, so point it at the
          * string constant rather than a strdup that nothing would free */
@@ -352,15 +386,33 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
     /* compute the distances */
     rc = pmix_hwloc_compute_distances(&topo, &cpuset, cd->info, cd->ninfo, &distances, &ndist);
     if (PMIX_SUCCESS == rc) {
-        /* send the reply */
-        cbfunc(rc, distances, ndist, cd, NULL, NULL);
-        PMIX_DEVICE_DIST_FREE(distances, ndist);
+        /* Send the reply. The callback only thread-shifts, and the reply
+         * is packed from the array on the progress thread after we have
+         * returned - so freeing it here handed the packer freed memory.
+         * Give the callback a release function instead, and let the
+         * chain free the array once it is done with it. */
+        rel = (pmix_dist_relcaddy_t *) malloc(sizeof(pmix_dist_relcaddy_t));
+        if (NULL == rel) {
+            PMIX_DEVICE_DIST_FREE(distances, ndist);
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        rel->dist = distances;
+        rel->ndist = ndist;
+        cbfunc(rc, distances, ndist, cd, dist_relfn, rel);
     }
 
 cleanup:
     if (NULL != topo.topology &&
         topo.topology != pmix_globals.topology.topology) {
         pmix_hwloc_destruct_topology(&topo);
+    }
+    /* the unpack strdup's a source string even for the NULL topology that
+     * says "use your own" - and on that path we borrow the global
+     * topology, so the destruct above is skipped and nothing else would
+     * ever free it. It NULLs the member when it does run */
+    if (NULL != topo.source) {
+        free(topo.source);
     }
     if (NULL != cpuset.bitmap) {
         pmix_hwloc_destruct_cpuset(&cpuset);
