@@ -128,7 +128,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
                     ninfo = cd->info[i].value.data.darray->size;
                     /* the first position is the rank */
                     PMIX_LOAD_PROCID(&proc, cd->proc.nspace, iptr[0].value.data.rank);
-                    /* get the peer object for this rank */
+                    /* the remaining entries are that rank's data */
                     for (m=1; m < ninfo; m++) {
                         PMIX_KVAL_NEW(kv, iptr[m].key);
                         if (PMIX_UNLIKELY(NULL == kv)) {
@@ -758,10 +758,6 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_
     pmix_setup_caddy_t *cd;
     pmix_lock_t mylock;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "pmix:server deregister nspace %s",
-                        nspace);
-
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         if (NULL != cbfunc) {
             cbfunc(PMIX_ERR_INIT, cbdata);
@@ -779,6 +775,10 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_
         }
         return;
     }
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server deregister nspace %s",
+                        nspace);
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
     if (NULL == cd) {
