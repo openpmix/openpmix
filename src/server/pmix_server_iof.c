@@ -145,8 +145,9 @@ cleanup:
     PMIX_BYTE_OBJECT_DESTRUCT(&bo);
 }
 
-/* callback to receive job info */
-
+/* the progress-thread half of PMIx_server_IOF_deliver: write the output
+ * locally if we are meant to, hand it to every matching registration,
+ * and cache it if nobody has registered for it yet */
 static void _iofdeliver(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
