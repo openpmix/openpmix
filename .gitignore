@@ -293,6 +293,7 @@ test/unit/server_fence
 test/unit/server_connect
 test/unit/server_dmodex
 test/unit/server_fabric
+test/unit/server_resolve
 test/unit/info_support
 test/unit/rndz_stale
 test/unit/singleton_register
