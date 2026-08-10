@@ -52,10 +52,6 @@
 #endif
 #include <event.h>
 
-#ifndef MAX
-#    define MAX(a, b) ((a) > (b) ? (a) : (b))
-#endif
-
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_attributes.h"
@@ -142,15 +138,13 @@ static PMIX_CLASS_INSTANCE(grp_block_t,
                            pmix_list_item_t,
                            gbcon, gbdes);
 
+/* One per participating pmix_server_group() call. The timer, lock, id and
+ * status flags a tracker used to carry were never read: the local phase is
+ * timed, frozen and named by the BLOCK, which is the level the host and the
+ * fault paths work at. */
 typedef struct {
     pmix_list_item_t super;
-    pmix_event_t ev;
-    bool event_active;
-    pmix_lock_t lock;
-    char *id;
     grp_block_t *blk;
-    bool host_called;
-    bool hybrid;
     pmix_proc_t *pcs;
     size_t npcs;
     pmix_info_t *info;
@@ -159,12 +153,7 @@ typedef struct {
 } grp_trk_t;
 static void gtcon(grp_trk_t *t)
 {
-    t->event_active = false;
-    PMIX_CONSTRUCT_LOCK(&t->lock);
-    t->id = NULL;
     t->blk = NULL;
-    t->host_called = false;
-    t->hybrid = false;
     t->pcs = NULL;
     t->npcs = 0;
     t->info = NULL;
@@ -173,7 +162,6 @@ static void gtcon(grp_trk_t *t)
 }
 static void gtdes(grp_trk_t *t)
 {
-    PMIX_DESTRUCT_LOCK(&t->lock);
     /* t->blk is a non-owning back-reference: the block owns its trackers
      * (they live on blk->mbrs and are freed by this destructor when the
      * block is released), so the tracker must NOT hold a reference on the
