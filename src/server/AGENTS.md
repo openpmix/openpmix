@@ -1032,6 +1032,75 @@ before you "fix" one:
   convention every blocking `PMIx_server_*` form here follows (see
   `pmix_server_setup.c` and `pmix_server_registration.c`), not a slip.
 
+## Resolving peers and nodes
+
+`pmix_server_resolve.c` answers the two "convenience" queries. Both entry
+points have the same shape: unpack the request, build a one-element
+`pmix_query_t` on `cd->query` describing it, offer it to
+`pmix_host_server.query` because the host has the more global view, and
+only if that comes back with anything other than `PMIX_SUCCESS`
+thread-shift to a local handler that answers out of our own GDS. The two
+local handlers are also the fall-back target of the *reply* path: the
+error arms of `pmix_server_respeers_cbfunc` / `_resnodes_cbfunc` shift the
+same caddy to them when the host accepted the query and then failed it.
+So the local handlers may be entered from two places, and both rely on
+`cd->query->qualifiers` still carrying what the entry point put there —
+two elements for peers (nspace, hostname), one for node (nspace).
+
+**`docs/how-things-work/resolve.rst` is the contract, and it is not the
+one you would guess.** Read it before changing any status these handlers
+return; several answers that look like unreported failures are what the
+document requires:
+
+- A namespace that is known but currently has no nodes assigned answers
+  `PMIX_SUCCESS` with a **NULL** node list. That is a successfully
+  executed request, not a miss, and `PMIx_Resolve_nodes` says exactly the
+  same thing when it resolves out of the client's own store — so a server
+  that handed the raw fetch status back made one server answer one
+  question two different ways depending on which side computed it, and
+  cost the caller a documented success. Only `PMIX_ERR_NOT_FOUND` gets
+  this treatment; `PMIX_ERR_INVALID_NAMESPACE` (we have never heard of
+  it) and `PMIX_ERR_DATA_VALUE_NOT_FOUND` (the host never supplied the
+  data) are real answers and go back as they are.
+- The peers side is asymmetric on purpose. A node that is not on the
+  namespace's list is `PMIX_SUCCESS` with zero procs, but a node that
+  *is* on the list with no `PMIX_LOCAL_PEERS` recorded against it is
+  `PMIX_ERR_DATA_VALUE_NOT_FOUND` — the document spells out both. Do not
+  "make these consistent."
+
+**The tri-state does not apply to the `query` up-call here.** Both entry
+points treat anything other than `PMIX_SUCCESS` — including
+`PMIX_OPERATION_SUCCEEDED` — as "the host is not answering this one" and
+fall through to the local handler. That is right rather than a missed
+arm: the whole product of this up-call is an info array delivered through
+the callback, so there is no coherent "done now, no callback" result to
+receive, and the host having declared itself done means it will not call
+back and cannot double-answer the client. Same reasoning as the
+`direct_modex` up-call in `pmix_server_get.c`.
+
+**The aggregate peer walk counts in one pass and fills in another, and
+the two have to agree.** A request naming no namespace walks
+`pmix_globals.nspaces`, builds one `"<nspace>:<peerlist>"` string per
+namespace with `pmix_asprintf`, and accumulates the peer count as it
+goes; it then sizes a `pmix_proc_t` array from that count and walks the
+strings *again*, splitting each back apart to fill it. The split used
+`strchr`, i.e. the **first** colon — but a namespace is an arbitrary
+string the host assigned and nothing forbids a colon in it, so a
+namespace such as `"res:ut,x"` yielded three comma-separated fields on
+the way back where two peers had been counted on the way out, and the
+third was written past the end of the array. Split from the right
+(`strrchr`): the delimiter we inserted is the last colon, because the
+peer list is a comma-delimited list of ranks. And bound the fill by the
+allocated count anyway — a peer list is host-supplied data and the two
+passes agreeing is not something this function can prove. Note also that
+the array must be freed with the count that was *allocated*, not the
+count that was filled, on every path out.
+
+The whole file is covered by
+[`test/unit/server_resolve.c`](../../test/unit/server_resolve.c), which
+registers a colon-bearing namespace precisely to hold the two passes
+against each other.
+
 ## Wire format and interoperability
 
 Everything crossing the socket obeys the top-level Version
@@ -1147,6 +1216,19 @@ Two suites cover the halves:
   whose hwloc finds no OS devices (a bare macOS one), because there is
   then no answer to hold the contract against; the leak half of it only
   shows under valgrind.
+- [`test/unit/server_resolve.c`](../../test/unit/server_resolve.c) drives
+  `pmix_server_resolve_peers` / `pmix_server_resolve_node` from
+  hand-packed wire buffers against a host module with no `query` entry
+  point, so every request takes the local handler. It registers three
+  namespaces — a plain one, one whose *name* carries the `:` delimiter
+  the aggregate walk inserts, and one with no node map at all — and reads
+  the replies back off `send_msg`, per the `test/unit/server_control.c`
+  idiom. The colon-bearing namespace is what holds the aggregate walk's
+  counting pass and its filling pass against each other; against an
+  unfixed library that case reports the wrong peer count and may take the
+  process down on the out-of-bounds write first. The bare namespace pins
+  the "known namespace, no nodes assigned" answer that
+  `docs/how-things-work/resolve.rst` requires to be a success.
 - [`test/unit/event_chain.c`](../../test/unit/event_chain.c) drives
   `pmix_server_register_events` / `pmix_server_deregister_events` from
   hand-packed wire buffers alongside its client-side event-chain cases —

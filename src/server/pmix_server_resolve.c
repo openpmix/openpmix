@@ -165,7 +165,7 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
     char **p, **tmp = NULL, *prs;
     char *nspace, *nd;
     pmix_proc_t *pa = NULL;
-    size_t m, n, np = 0, ninfo = 3;
+    size_t m, n, np = 0, nalloc = 0, ninfo = 3;
     int npeers;
     pmix_namespace_t *ns;
     pmix_buffer_t *reply;
@@ -288,15 +288,24 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
                 goto done;
             }
             /* transfer the results */
+            nalloc = np;
             np = 0;
             for (n = 0; NULL != tmp[n]; n++) {
-                /* find the nspace delimiter */
-                prs = strchr(tmp[n], ':');
+                /* Find the nspace delimiter, searching from the right. A
+                 * namespace is an arbitrary string assigned by the host and
+                 * may itself contain a colon, while the peer list appended
+                 * above is a comma-delimited list of ranks and cannot. So
+                 * the last colon is the one we inserted; taking the first
+                 * would split a namespace such as "job:a,b" in the middle,
+                 * and this pass would then find more comma-separated fields
+                 * in it than the counting pass above did - writing past the
+                 * end of the array that count sized. */
+                prs = strrchr(tmp[n], ':');
                 if (NULL == prs) {
                     /* should never happen, but silence a Coverity warning */
                     ret = PMIX_ERR_BAD_PARAM;
                     PMIx_Argv_free(tmp);
-                    PMIX_PROC_FREE(pa, np);
+                    PMIX_PROC_FREE(pa, nalloc);
                     pa = NULL;
                     np = 0;
                     PMIX_DESTRUCT(&cb);
@@ -305,7 +314,9 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
                 *prs = '\0';
                 ++prs;
                 p = PMIx_Argv_split(prs, ',');
-                for (m = 0; NULL != p[m]; m++) {
+                /* never write more entries than were allocated, whatever
+                 * the two passes make of a malformed peer list */
+                for (m = 0; NULL != p[m] && np < nalloc; m++) {
                     PMIX_LOAD_NSPACE(pa[np].nspace, tmp[n]);
                     pa[np].rank = strtoul(p[m], NULL, 10);
                     ++np;
@@ -403,6 +414,7 @@ process:
         PMIX_DESTRUCT(&cb);
         goto done;
     }
+    nalloc = np;
     /* transfer the results */
     for (n = 0; n < np; n++) {
         PMIX_LOAD_NSPACE(pa[n].nspace, nspace);
@@ -420,6 +432,9 @@ done:
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        if (NULL != pa) {
+            PMIX_PROC_FREE(pa, nalloc);
+        }
         PMIX_RELEASE(cd);
         return;
     }
@@ -453,7 +468,9 @@ complete:
     PMIX_RELEASE(cd);
 
     if (NULL != pa) {
-        PMIX_PROC_FREE(pa, np);
+        /* free what was allocated, not what was packed - the two differ
+         * if a malformed peer list left the fill short */
+        PMIX_PROC_FREE(pa, nalloc);
     }
 }
 
@@ -594,7 +611,20 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_DESTRUCT(&cb);
-        ret = rc;
+        if (PMIX_ERR_NOT_FOUND == rc) {
+            /* the namespace is known to us, it simply has no nodes
+             * assigned to it at the moment. docs/how-things-work/resolve.rst
+             * is explicit that this is a successfully executed request
+             * answered with a NULL node list, not a failure, and
+             * PMIx_Resolve_nodes says exactly that when it resolves the
+             * request out of its own store. Passing the fetch status
+             * straight back made the same server answer the same question
+             * two different ways depending on which side computed it, and
+             * denied the caller the SUCCESS the contract promises. */
+            ret = PMIX_SUCCESS;
+        } else {
+            ret = rc;
+        }
         goto done;
     }
 
