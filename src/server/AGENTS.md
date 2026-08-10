@@ -900,9 +900,10 @@ nothing else. `_iofdreg` gets this right with three explicit releases;
 `PMIX_RETAIN` it holds on the requesting peer leaked on **every** IOF
 pull registration — pinning that peer, and everything hanging off it, for
 the life of the server. Both halves of the pair owe it: the outer
-callback's `progress_thread_stopped` arm had the same hole. Whenever a
-handler nests one caddy inside another, write down which one releases
-which; the destructors will not do it for you.
+callback's `progress_thread_stopped` arm had the same hole, and so did
+`pmix_server_spcbfunc`, the spawn completion, which nests the same way.
+Whenever a handler nests one caddy inside another, write down which one
+releases which; the destructors will not do it for you.
 
 **A registration the host refuses has to come back out of
 `pmix_globals.iof_requests`.** `pmix_server_iofreg` adds the
@@ -1208,6 +1209,28 @@ misbehave by design).
   to a zero-element array — `PMIx_Info_create` answers NULL, which
   nothing checked — and wrote the seed at `info[SIZE_MAX]`. Its proc
   count had the mirror problem. Both now carry the round-trip screen.
+
+  **The classic commands in `pmix_server_ops.c` were the last group
+  without it.** Publish, lookup and unpublish all size their array as
+  `ninfo + 1` so they can seed `PMIX_USERID` in the last slot, and spawn
+  sizes an info array and an app array straight from the wire —
+  `PMIx_App_create` multiplies and constructs exactly as
+  `PMIx_Info_create` does, and `scaddes` then walks the `size_t` when it
+  frees. All five counts now carry the screen. The key counts in lookup
+  and unpublish deliberately do **not**: each key is unpacked one at a
+  time inside the loop, so an absurd `nkeys` simply runs the buffer dry
+  and fails on the first short read — it never reaches an allocator.
+
+  Note also what the unpack itself protects you from, so you screen for
+  the right reason. `pmix_bfrops_base_unpack` reads the count the
+  *packer* wrote and unpacks `min(packed, provided)`, reporting success
+  whenever the storage was big enough. So handing it a `cnt` larger than
+  the array on the wire is harmless — `pmix_server_publish` passed
+  `ninfo + 1` where its two siblings pass `ninfo`, and that over-read
+  never did anything. What it did do was make the guard around the
+  unpack (`0 < cd->ninfo`, always true) fire for a publish carrying no
+  info objects at all, where the buffer is already exhausted; gate on
+  the wire count, not on the array size that carries your extra slot.
 
   While you are there, note the layout those two seeds establish, because
   the completion arms depend on it: for the fence and disconnect families
