@@ -7,6 +7,30 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A PMIx_Get for a reserved key that is not held locally is now allowed
+   to reach the host environment. The client used to force PMIX_IMMEDIATE
+   onto any such request, which confines the search to what the local
+   PMIx server already holds - and the client only reaches that point
+   after having asked that server's datastore and its own, so the flag
+   could only ever return the answer already in hand. It also stopped the
+   one party that may still know the value: a host frequently withholds
+   reserved keys it could supply, handing each daemon only the job-level
+   data its own local clients need rather than replicating every proc's
+   location keys on every node. Such a key is now requested like any
+   other, so the server can surface it to its host. A PMIX_IMMEDIATE the
+   caller passed itself is unaffected and is still honored
+ - Relatedly, a server asked for a job-level reserved key it does not hold
+   no longer answers with an empty payload. That is indistinguishable from
+   "not found" to the client and it foreclosed the host, which is the one
+   party that may still have the value; the request is now passed up
+   instead. A server with no direct_modex support behaves as before,
+   reporting PMIX_ERR_NOT_FOUND. Only reserved keys are treated this way -
+   a miss on a key some process put says nothing about what the host knows
+ - A reserved key requested for a process local to the server now fails
+   immediately with PMIX_ERR_NOT_FOUND rather than waiting out a timeout.
+   Such a key is ours from the moment the namespace is registered; it does
+   not arrive later in that client's commit, which carries only what the
+   client itself put, so there was never anything to wait for
  - Every pcompress component now exposes its compression level as an MCA
    parameter - pcompress_zlib_level, pcompress_zlibng_level and
    pcompress_zstd_level - where the zlib components previously hard-coded

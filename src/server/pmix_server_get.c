@@ -446,6 +446,21 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
             PMIX_DESTRUCT(&pbkt);
             return rc;
         }
+        /* get_job_data reports success whether or not it found what was
+         * asked for, so an empty buffer here means we do not hold this
+         * reserved key. Do not answer with it: an empty payload is
+         * indistinguishable from "not found" to the client, and our host
+         * may well have the value - a host is free to withhold job-level
+         * data it could supply, handing each of its daemons only what
+         * that daemon's own clients need. Ask it. If it offers no
+         * direct_modex support the request below fails right back to
+         * PMIX_ERR_NOT_FOUND, which is what we would have produced here
+         * anyway. */
+        if (NULL != key && PMIX_CHECK_RESERVED_KEY(key) &&
+            PMIX_BUFFER_IS_EMPTY(&pbkt)) {
+            PMIX_DESTRUCT(&pbkt);
+            goto request;
+        }
         /* unload the resulting payload */
         PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
         PMIX_DESTRUCT(&pbkt);
@@ -593,6 +608,20 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         if (PMIX_SUCCESS != rc) {
             /* if the target proc is local, then we just need to wait */
             if (local) {
+                /* ...unless this is a reserved key, in which case there is
+                 * nothing to wait for. A reserved key for a local client is
+                 * ours at the moment its namespace is registered - it does
+                 * not arrive later in that client's commit, which carries
+                 * only what the client itself put. So if we do not have it
+                 * now we are never going to, and the caller is better told
+                 * so at once than made to sit out a timeout. Nor can we
+                 * push the question up to our host: the local arm below
+                 * the "request" label answers a local rank from the
+                 * client's own commit rather than up-calling. Only a
+                 * remote target reaches the host. */
+                if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
+                    return PMIX_ERR_NOT_FOUND;
+                }
                 /* if they provided a timeout, we need to execute it here
                  * as we are not going to pass it upwards for the host
                  * to perform - we default it to 2 sec */

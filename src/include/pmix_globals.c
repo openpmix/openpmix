@@ -436,7 +436,6 @@ static void lgcon(pmix_get_logic_t *p)
     p->stval = false;
     p->optional = false;
     p->immediate = false;
-    p->add_immediate = false;
     p->refresh_cache = false;
     p->scope = PMIX_SCOPE_UNDEF;
     p->sessioninfo = false;
