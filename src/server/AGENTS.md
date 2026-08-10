@@ -657,7 +657,12 @@ Two suites cover the halves:
   `PMIX_LOG_TIMESTAMP` directives, and the RFC precedence rule that a
   repeated cleanup directory upgrades the entry already on the epilog.
   The bad-directive-count case aborts rather than fails against an
-  unfixed library, the same bargain `test/unit/iof_output.c` makes.
+  unfixed library, the same bargain `test/unit/iof_output.c` makes. It
+  also drives `pmix_server_query` with mistyped query qualifiers — the
+  server unpacks those off the wire, so it cannot rely on the screening
+  `PMIx_Query_info_nb` does in the *requestor's* process; a mistyped
+  `PMIX_NSPACE` segfaulted the server until `pmix_parse_localquery`
+  grew its own check.
 - [`contrib/dockerswarm/run-server-tests.sh`](../../contrib/dockerswarm/run-server-tests.sh)
   is the multi-node half: direct modex, spawn-plus-connect across
   namespaces, group blocks spanning nodes, IOF pull/dereg against a

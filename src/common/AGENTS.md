@@ -379,6 +379,16 @@ add or edit an entry point:
    an ordinary application mistake. For a data array, confirm
    `PMIX_DATA_ARRAY == value.type` **and** the array's own element type
    before walking it; `target_array()` in `pmix_monitor.c` is the pattern.
+
+   **Screen at the reader, not at the entry point.** That sweep put the
+   query check in `PMIx_Query_info_nb` and missed `pmix_parse_localquery`,
+   which reads the same three qualifiers — and which is *also* reached
+   from `pmix_server_query`, i.e. from qualifiers a client packed and this
+   process unpacked off the wire. A check that runs in the requestor's
+   process buys the server nothing: it is the peer's own honesty being
+   verified by the peer. Mistyping `PMIX_NSPACE` there segfaulted the
+   server outright. When you harden one of these, find every reader of the
+   value and put the check at the one they share.
 9. **A completion must happen exactly once, on every path.** The two
    failure modes are symmetric and both appear here. *Never* — a request
    that returns without invoking the callback hangs the blocking wrapper
