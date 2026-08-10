@@ -194,6 +194,35 @@ session-control, job-control and monitor - returned without it, stranding
 the host's data for the life of the host process. `pmix_server_modex_cbfunc` and the
 fabric/dist family show the shape to copy.
 
+**That includes the `progress_thread_stopped` arm, which is the one it is
+easiest to read as exempt.** Every callback in
+`pmix_server_info_replies.c` opens with that early-out, in both halves of
+the pair - the outer callback that may run on the host's thread and the
+inner `_*cbfunc` that runs after the shift. All eighteen of those arms
+tore down our own caddies and returned without calling `relfn`. The arm
+is not unreachable and it is not a special case: the flag goes up while
+`PMIx_server_finalize` is running, which is exactly when an in-flight
+host completion lands, and the host process outlives our finalize - so
+what is dropped there is stranded for good. Exactly one of the two arms
+can fire for a given request (the outer returns before shifting, so the
+inner never runs), which is why calling `relfn` in both is right rather
+than a double release.
+
+**A callback signature with no release function has to *copy* what it
+parks.** `pmix_credential_cbfunc_t` and `pmix_validation_cbfunc_t` -
+`pmix_server_cred_cbfunc` and `pmix_server_validate_cbfunc` - carry no
+`(relfn, relcbdata)` pair, so nothing the host passes survives the return
+of the call. Both of them only thread-shift, and pack the reply later on
+the progress thread. Validate always copied its info array and said why;
+cred copied the credential (`PMIX_BFROPS_COPY`) and then parked the info
+array *by pointer* beside it, so a host that answered from a stack frame
+- the natural thing for a one-element reply - had the server pack that
+frame after it was gone. Copy into the caddy and set `infocopy`, rather
+than freeing explicitly at the end: the flag also covers the early
+returns above the completion, which is where validate leaked its copy.
+The regression case is in `test/unit/server_control.c`, whose host stub
+destructs and overwrites its array the instant the callback returns.
+
 **An internal completion path must hand the callback the object that
 callback casts.** `_fabric_response` exists to answer a fabric request the
 `pnet` layer satisfied locally, and it called the switchyard's
@@ -858,7 +887,12 @@ Two suites cover the halves:
   server unpacks those off the wire, so it cannot rely on the screening
   `PMIx_Query_info_nb` does in the *requestor's* process; a mistyped
   `PMIX_NSPACE` segfaulted the server until `pmix_parse_localquery`
-  grew its own check.
+  grew its own check. Its `get_credential` case is the one place in the
+  suite that reads a *reply* back: `PMIX_SERVER_QUEUE_REPLY` never arms
+  the send event for a peer whose `sd` is negative, so the message comes
+  to rest on `peer->send_msg` and a single process can unpack what the
+  server actually packed. Use that idiom rather than a host stub's
+  arguments when what you need to pin down is what crossed the wire.
 - [`test/unit/server_fence.c`](../../test/unit/server_fence.c) drives
   `pmix_server_fence` from hand-packed wire buffers: the two malformed
   counts above, and a well-formed request whose seeded info slots must

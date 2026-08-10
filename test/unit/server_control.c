@@ -37,6 +37,20 @@
  *      PMIX_LOG_TIMESTAMP appended as well when the sender supplied a
  *      non-zero timestamp.
  *
+ *   get_credential: the host's reply info is copied, not borrowed
+ *      pmix_credential_cbfunc_t carries no (release_fn, release_cbdata)
+ *      pair, so nothing the host passes to it survives the return of the
+ *      call - and pmix_server_cred_cbfunc only thread-shifts, packing the
+ *      reply later on the progress thread. The credential itself was
+ *      always copied; the info array beside it was parked by pointer, so
+ *      a host that built it on its stack (the natural thing to do for a
+ *      one-element answer) had the server pack that frame after it had
+ *      been reused. The stub below deliberately destructs and overwrites
+ *      its array the instant the callback returns, so the queued reply
+ *      carries a recognizable key only if the copy really happened.
+ *      Read back from the peer's send queue, which is where a reply to a
+ *      socketless peer comes to rest.
+ *
  *   job control: a repeated cleanup directory upgrades the registered entry
  *      PMIX_REGISTER_CLEANUP_DIR for a path already on the epilog is a
  *      duplicate, and the RFC precedence rule is that the more permissive
@@ -56,6 +70,7 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/ptl/ptl_types.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
 
@@ -65,6 +80,10 @@
 #include <unistd.h>
 
 #define CTLUT_DIR "/tmp/pmix-server-control-ut-no-such-dir"
+
+/* the sentinel the credential case looks for in the queued reply */
+#define CTLUT_CREDKEY "credut.key"
+#define CTLUT_CREDVAL "credut-value"
 
 static int npass = 0;
 static int nfail = 0;
@@ -78,6 +97,11 @@ static void report(const char *name, int passed)
         fprintf(stdout, "  FAIL: %s\n", name);
         ++nfail;
     }
+}
+
+static void skip(const char *name, const char *why)
+{
+    fprintf(stdout, "  SKIP: %s (%s)\n", name, why);
 }
 
 /* what the host's log2 entry point was handed */
@@ -161,6 +185,111 @@ static void op_stub(pmix_status_t status, void *cbdata)
 {
     (void) status;
     (void) cbdata;
+}
+
+/* Answer the credential request from data this frame owns, then take it
+ * all back. pmix_credential_cbfunc_t hands down no release function, so
+ * this is exactly what the contract permits - and it is what a server
+ * that parked the array rather than copying it cannot survive. */
+static bool cred_fired = false;
+
+/* Overwrite through a volatile pointer: a plain memset over a local the
+ * function never reads again is dead code the compiler may drop, and the
+ * whole point of the case is that the overwrite really happens. */
+static void scribble(void *addr, size_t len)
+{
+    volatile unsigned char *p = (volatile unsigned char *) addr;
+    size_t n;
+
+    for (n = 0; n < len; n++) {
+        p[n] = 0x5a;
+    }
+}
+
+static pmix_status_t stub_get_credential(const pmix_proc_t *proc,
+                                         const pmix_info_t directives[], size_t ndirs,
+                                         pmix_credential_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_info_t reply[1];
+    pmix_byte_object_t cred;
+    char bytes[4] = {'c', 'r', 'e', 'd'};
+
+    (void) proc;
+    (void) directives;
+    (void) ndirs;
+
+    cred_fired = true;
+    cred.bytes = bytes;
+    cred.size = sizeof(bytes);
+    PMIX_INFO_LOAD(&reply[0], CTLUT_CREDKEY, CTLUT_CREDVAL, PMIX_STRING);
+
+    cbfunc(PMIX_SUCCESS, &cred, reply, 1, cbdata);
+
+    /* everything above is ours again the moment that call returns */
+    PMIX_INFO_DESTRUCT(&reply[0]);
+    scribble(reply, sizeof(reply));
+    scribble(bytes, sizeof(bytes));
+    return PMIX_SUCCESS;
+}
+
+/* Take the reply the server queued to a peer that has no socket. With
+ * sd < 0 the send event is never armed, so the message simply comes to
+ * rest on the peer and can be read back here. */
+static pmix_buffer_t *take_queued_reply(void)
+{
+    pmix_peer_t *peer = pmix_globals.mypeer;
+    pmix_ptl_send_t *snd = peer->send_msg;
+    pmix_buffer_t *buf;
+
+    if (NULL == snd) {
+        return NULL;
+    }
+    peer->send_msg = NULL;
+    buf = snd->data;
+    /* the buffer is ours now - the send's destructor would release it */
+    snd->data = NULL;
+    PMIX_RELEASE(snd);
+    return buf;
+}
+
+/* Drive one GET_CREDENTIAL request. The wire form is just the directive
+ * count followed by the directives. */
+static pmix_status_t do_get_credential(void)
+{
+    pmix_buffer_t *buf;
+    pmix_server_caddy_t *cd;
+    pmix_status_t rc;
+    size_t ndirs = 0;
+
+    cred_fired = false;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ndirs, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+
+    cd = PMIX_NEW(pmix_server_caddy_t);
+    if (NULL == cd) {
+        PMIX_RELEASE(buf);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(pmix_globals.mypeer);
+    cd->peer = pmix_globals.mypeer;
+    cd->hdr.tag = 0;
+
+    rc = pmix_server_get_credential(pmix_globals.mypeer, buf,
+                                    pmix_server_cred_cbfunc, cd);
+    if (PMIX_SUCCESS != rc) {
+        /* the switchyard owns the caddy on a non-success return */
+        PMIX_RELEASE(cd);
+    }
+    PMIX_RELEASE(buf);
+    return rc;
 }
 
 /* Build the wire form of a LOG request as a >= 3.0 client sends it:
@@ -382,6 +511,7 @@ int main(int argc, char **argv)
 
     mymodule.log2 = stub_log2;
     mymodule.job_control = stub_job_control;
+    mymodule.get_credential = stub_get_credential;
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
@@ -454,6 +584,70 @@ int main(int argc, char **argv)
         progress_barrier();
         report("mistyped RANK qualifier is rejected",
                PMIX_SUCCESS == rc && qry_fired && PMIX_ERR_BAD_PARAM == qry_status);
+    }
+
+    /* --- the credential reply must carry a copy of the host's info ---- */
+    {
+        pmix_buffer_t *reply;
+        pmix_status_t ret = PMIX_SUCCESS;
+        pmix_byte_object_t bo;
+        pmix_info_t *rinfo = NULL;
+        size_t rninfo = 0;
+        int32_t cnt;
+
+        /* nothing should be parked on us before this */
+        reply = take_queued_reply();
+        if (NULL != reply) {
+            PMIX_RELEASE(reply);
+        }
+
+        rc = do_get_credential();
+        progress_barrier();
+        report("credential request accepted", PMIX_SUCCESS == rc);
+        report("credential request reached the host", cred_fired);
+
+        reply = take_queued_reply();
+        if (NULL == reply) {
+            skip("credential reply carries the host's info",
+                 "no reply came to rest on this peer");
+        } else {
+            PMIX_BYTE_OBJECT_CONSTRUCT(&bo);
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, reply, &ret, &cnt, PMIX_STATUS);
+            report("credential reply carries a status", PMIX_SUCCESS == rc);
+            report("credential reply reports success", PMIX_SUCCESS == ret);
+            if (PMIX_SUCCESS == rc && PMIX_SUCCESS == ret) {
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, reply, &bo, &cnt,
+                                   PMIX_BYTE_OBJECT);
+                report("credential reply carries the credential",
+                       PMIX_SUCCESS == rc && 4 == bo.size && NULL != bo.bytes
+                           && 0 == memcmp(bo.bytes, "cred", 4));
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, reply, &rninfo, &cnt, PMIX_SIZE);
+                if (PMIX_SUCCESS == rc && 1 == rninfo) {
+                    PMIX_INFO_CREATE(rinfo, rninfo);
+                    cnt = (int32_t) rninfo;
+                    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, reply, rinfo, &cnt,
+                                       PMIX_INFO);
+                }
+                report("credential reply carries one info", PMIX_SUCCESS == rc
+                           && 1 == rninfo && NULL != rinfo);
+                /* the host destructed and overwrote its array before it
+                 * returned, so this only survives a real copy */
+                report("credential reply kept the host's key",
+                       NULL != rinfo && PMIX_CHECK_KEY(&rinfo[0], CTLUT_CREDKEY));
+                report("credential reply kept the host's value",
+                       NULL != rinfo && PMIX_STRING == rinfo[0].value.type
+                           && NULL != rinfo[0].value.data.string
+                           && 0 == strcmp(rinfo[0].value.data.string, CTLUT_CREDVAL));
+                if (NULL != rinfo) {
+                    PMIX_INFO_FREE(rinfo, rninfo);
+                }
+            }
+            PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+            PMIX_RELEASE(reply);
+        }
     }
 
     /* --- job control: register a cleanup directory -------------------- */
