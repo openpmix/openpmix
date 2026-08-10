@@ -581,7 +581,6 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* if they asked for enviro events, and our host doesn't support
      * register_events, then we cannot meet the request */
     if (enviro_events && NULL == pmix_host_server.register_events) {
-        enviro_events = false;
         rc = PMIX_ERR_NOT_SUPPORTED;
         goto cleanup;
     }
