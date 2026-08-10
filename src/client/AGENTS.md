@@ -213,6 +213,26 @@ gone — see [openpmix#4059][i4059].)
   send site owns the message on the failure path and must `PMIX_RELEASE`
   it — but must *not* release it on success, where the transport frees it.
   Several sites in this directory leaked the message here.
+
+  **Which role makes those failure paths reachable is worth knowing
+  before you decide one is dead code.** The peer these sites send to is
+  `pmix_client_globals.myserver`, and *nothing in the client role ever
+  sets `myserver->finalized`* — only `mypeer->finalized` is set, by
+  `PMIx_Finalize`. The paths become live because the **server and tool
+  roles alias the two**: `src/server/pmix_server.c` and two paths in
+  `src/tool/pmix_tool.c` assign `pmix_client_globals.myserver =
+  pmix_globals.mypeer`, so once `PMIx_server_finalize` /
+  `PMIx_tool_finalize` marks that object finalized, every send from this
+  directory fails. Keep the cleanup on those branches: it is not
+  defensive padding, it is the self-served case.
+
+  Note also the *other* way a send never completes, which the failure
+  return does **not** cover: `pmix_ptl_base_send_recv()` drops the
+  message and returns without ever invoking the recv callback when the
+  peer has `sd < 0` or a NULL `info`/`nptr`. `PMIX_PTL_SEND_RECV` has
+  already reported `PMIX_SUCCESS` by then, so a blocking caller waits on
+  a lock nothing will wake. That is why `PMIx_Finalize` arms a timer
+  around its wait rather than trusting the reply.
 - **A `PMIX_WAIT_THREAD` after a call that might not have fired its
   callback is a hang.** `PMIx_Notify_event` and
   `PMIx_Register_event_handler` invoke the completion callback only when
@@ -1012,6 +1032,75 @@ grep -n "PMIX_PTL_SEND_RECV" -A 7 src/client/*.c \
   the tracker. That is the documented contract for the callback signature,
   not a defect here, but it is the one place in this directory where a
   caller's mistake leaks library memory.
+
+## The seventh sweep — `pmix_client.c`, and five things it deliberately left alone
+
+The sweep found two leaks, both on error paths that only a failing
+server can reach, and both fixed: `job_data()` dropped the `nspace`
+string the unpack had just allocated when the identity did not match
+our own (the only exit of that function that did not free it), and
+`PMIx_Init` walked away from the `suri` the connect handed back — and,
+on the first of the three server-ID stores, from its `kval` too — on
+three of the error returns between `connect_to_peer` and the point
+where the URI is finally stored. The three stores now release and free
+identically; they used to disagree.
+
+Far more useful is what was examined and **rejected**, because each one
+looks like a defect until you chase it down. Do not re-open these
+without new evidence.
+
+- **`PMIx_Finalize` throws the server's reply away, and that is not the
+  `_commitfn`/`PMIx_Abort` defect.** The server *does* ack
+  `PMIX_FINALIZE_CMD` with a status — `op_cbfunc2()` in
+  [`pmix_server_switchyard.c`](../server/pmix_server_switchyard.c) packs
+  whatever the host's `client_finalized` returned — and `finwait_cbfunc`
+  discards the buffer, exactly the shape flagged for commit and abort
+  above. It stays that way on purpose: the caller cannot act on it (the
+  process is leaving), and `PMIx_Finalize` returning anything but
+  `PMIX_SUCCESS` would newly fail applications that check it. Changing
+  it is a behavior decision about a universally-called API, not a fix.
+- **`PMIx_Init`'s debugger-wait handler is left registered, holding a
+  pointer into a stack frame that is about to die, if the
+  `PMIX_READY_FOR_DEBUG` notification fails.** `PMIX_EVENT_RETURN_OBJECT`
+  is stored as a bare `cbobject` pointer (see the parser in
+  [`pmix_event_registration.c`](../event/pmix_event_registration.c)), and
+  it points at `releaselock` on `PMIx_Init`'s stack. On the success path
+  the handler is `PMIX_EVENT_ONESHOT` and removes itself when it fires,
+  so only the notify-failure return leaves it behind. It is not fixed
+  because the obvious fix does not work: `PMIx_Deregister_event_handler`
+  gates on `pmix_globals.initialized`, which `PMIx_Init` does not set
+  until forty lines later, so the public API is a no-op from there and
+  removing the handler means open-coding the threadshift the public
+  entry point performs. Weigh that against the reachability — the
+  process must ignore a failed `PMIx_Init`, keep running, and then be
+  sent a `PMIX_DEBUGGER_RELEASE` it never asked for.
+- **`pmix_globals.init_called` is set with `__atomic_test_and_set` and
+  cleared with a plain `= false`.** It is a bare `bool`, not an
+  `atomic_bool` like `initialized` beside it, so the clear is a
+  non-atomic store racing an atomic RMW. Left alone because it is not a
+  `src/client` decision: `pmix_client.c`, `pmix_server.c` and
+  `pmix_tool.c` all do exactly this, and the only interleaving that
+  reaches it is a concurrent `PMIx_Init`/`PMIx_Finalize`, which the
+  comment at the top of `PMIx_Init` already declines to support.
+- **The re-entrant `PMIx_Init` returns `PMIX_SUCCESS` where the first
+  call returned `PMIX_ERR_UNREACH`.** A second library in the same
+  process therefore reads "connected" from a singleton that is not, and
+  discovers otherwise only when a server round-trip fails. Recorded
+  rather than changed: the multi-init refcount path exists precisely for
+  those second callers, so altering what it returns is a contract change
+  affecting all of them.
+- **`PMIx_Abort`'s server-role branch calls `pmix_host_server.abort()`
+  with `NULL` for both `cbfunc` and `cbdata` and returns the host's
+  status verbatim.** The typedef documents the host as completing
+  through that callback, so a host honoring the contract either
+  dereferences NULL or never completes, and a host answering
+  `PMIX_OPERATION_SUCCEEDED` (-157) has that handed to the application
+  as a failure. Not changed because the library's own abort up-call in
+  [`pmix_server_ops.c`](../server/pmix_server_ops.c) treats
+  `PMIX_OPERATION_SUCCEEDED` as an error too, so this is a tree-wide
+  convention rather than a divergence here, and the in-tree host
+  (`test/simple/simptest.c`) ignores `cbfunc` entirely, so nothing
+  available demonstrates the failure.
 
 ## Coding conventions specific to this directory
 
