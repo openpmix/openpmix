@@ -237,6 +237,9 @@ static pmix_status_t get_endpts(pmix_info_t *xfer,
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIx_Info_list_release(ilist);
+                /* cb2 still holds the kvals the fetch handed us - this was
+                 * the one exit of this function that walked away from them */
+                PMIX_DESTRUCT(&cb2);
                 return rc;
             }
             // insert into a pmix_info_t for packing
@@ -304,6 +307,12 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
         sz = sz + 1;
     }
     PMIX_INFO_CREATE(icopy, sz);
+    if (PMIX_UNLIKELY(0 < sz && NULL == icopy)) {
+        if (lclendpts) {
+            PMIX_INFO_DESTRUCT(&local_endpts);
+        }
+        return PMIX_ERR_NOMEM;
+    }
 
     // check for group info
     for (n=0; n < ninfo; n++) {
@@ -458,8 +467,11 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     }
 
     /* check for bozo input - the group ID names the collective and is
-     * strdup'd onto the tracker below */
-    if (PMIX_UNLIKELY(NULL == grp)) {
+     * strdup'd onto the tracker below. A NULL procs array is legal (an
+     * "add members" or bootstrap participant supplies the membership
+     * separately), but only when it is declared empty: construct_msg()
+     * walks it for any positive count. */
+    if (PMIX_UNLIKELY(NULL == grp || (NULL == procs && 0 < nprocs))) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -705,10 +717,20 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
         PMIX_ERROR_LOG(rc);
         goto done;
     }
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, mbrs, nmbrs, PMIX_PROC);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        PMIX_ERROR_LOG(rc);
-        goto done;
+    /* Only pack the array when there is one, exactly as construct_msg() does.
+     * Both commands are unpacked by the same server routine
+     * (pmix_server_group), and it reads this field only under "0 < nprocs" -
+     * but PMIX_BFROPS_PACK writes an element count even for a zero-length
+     * array, so packing unconditionally put bytes on the wire that the server
+     * never consumes. Its next unpack then read that stray count as the
+     * directive count, succeeded having unpacked nothing, and left the
+     * server's ninf uninitialized. */
+    if (0 < nmbrs) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, mbrs, nmbrs, PMIX_PROC);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            goto done;
+        }
     }
 
     /* pack the info structs */
@@ -965,14 +987,19 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
     if (PMIX_UNLIKELY(NULL == cb->answered)) {
         return PMIX_ERR_NOMEM;
     }
+    /* Fill it in. Note that the wildcard job sizes are fetched a *second*
+     * time here: an elastic job that grew between the two passes would make
+     * this loop write past the array the first pass sized, so every write is
+     * bounded by what was actually allocated and a disagreement between the
+     * two counts is an error rather than a silently wrong membership. */
     m = 0;
-    for (n = 0; n < nprocs; n++) {
+    for (n = 0; n < nprocs && m < cb->nmembers; n++) {
         if (PMIX_RANK_WILDCARD == procs[n].rank) {
             rc = invite_job_size(&procs[n], &jsize);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 return rc;
             }
-            for (j = 0; j < jsize; j++) {
+            for (j = 0; j < jsize && m < cb->nmembers; j++) {
                 PMIX_LOAD_PROCID(&cb->members[m], procs[n].nspace, j);
                 m++;
             }
@@ -980,6 +1007,9 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
             PMIX_LOAD_PROCID(&cb->members[m], procs[n].nspace, procs[n].rank);
             m++;
         }
+    }
+    if (PMIX_UNLIKELY(m != cb->nmembers)) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
     }
     /* If we (the leader) named ourselves among the invitees, we have
      * obviously already answered by accepting - count that answer here, and
@@ -997,42 +1027,23 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
         }
     }
 
-    /* Watch for the invitees' answers. This is registered as an internal
-     * observer rather than an event handler: invite_observer() is the only
-     * thing that counts answers and calls invite_wake(), and as a handler it
-     * could be silently pre-empted by an application handler that ended the
-     * chain - a PMIX_GROUP_INVITE_ACCEPTED handler that logs who joined, say -
-     * leaving this invitation to block forever unless the caller supplied a
-     * PMIX_TIMEOUT. See openpmix#4059. Observers run ahead of the chain, so
-     * the answers now always reach us.
+    /* Everything the resolution path reads has to be on the tracker before
+     * the observer goes live, and nothing may be *armed* on the tracker
+     * afterwards. Registering the observer publishes it to the progress
+     * thread, and the invitation can resolve from there immediately: the
+     * registration replays matching cached notifications (see
+     * check_cached_events() in src/event/pmix_event_registration.c) into the
+     * observer sweep before it acknowledges the registration, so a leader
+     * whose every invitee has already terminated - and whose terminations
+     * were cached because nothing was watching for them - resolves the
+     * invitation inside the registration call itself.
      *
-     * We run on the caller's thread here, so waiting for the registration to
-     * complete before notifying the invitees is safe (and keeps an early
-     * acceptance from depending on the cached-event replay). The tracker is
-     * NOT handed to the registry to own - the invite path releases it in
-     * invite_teardown - so no release function is given. */
-    ncodes = sizeof(codes) / sizeof(pmix_status_t);
-    PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
-    rc = pmix_event_register_observer("pmix-group-invite", codes, ncodes,
-                                      invite_observer, cb, NULL,
-                                      regcbfunc, &lock);
-    /* only wait if the registration was actually accepted - regcbfunc is the
-     * only thing that ever wakes this lock, and it does not fire when the
-     * call itself failed */
-    if (PMIX_SUCCESS == rc) {
-        PMIX_WAIT_THREAD(&lock.lock);
-        rc = lock.status;
-        cb->ref = lock.ref;
-    }
-    PMIX_DESTRUCT(&lock);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        return rc;
-    }
-
-    /* check for directives - a timeout bounds how long we wait for the
-     * invitees to respond, and PMIX_GROUP_OPTIONAL selects reduced membership
-     * (form the group on whoever accepts) over the default all-or-nothing
-     * construct (abort if any invitee fails to join) */
+     * The directive scan, the range info and the timer therefore all happen
+     * here rather than below the registration, as they used to. That
+     * ordering had announce_step() read cb->optional before this scan set
+     * it, so a PMIX_GROUP_OPTIONAL invitation was aborted under the default
+     * all-or-nothing policy; and it armed the timeout timer on a tracker the
+     * announcement chain might already have retired. */
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
@@ -1067,6 +1078,60 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
     /* provide the group ID */
     PMIX_INFO_LOAD(&cb->info[n], PMIX_GROUP_ID, grp, PMIX_STRING);
 
+    /* If a timeout was requested, arm a timer so a non-responding invitee
+     * cannot hang the leader indefinitely. The handler runs on the progress
+     * thread; it is cancelled by invite_wake() once every invitee answers,
+     * and by invite_teardown() if we fail below. It is armed before the
+     * observer is registered so that every path that can resolve the
+     * invitation is downstream of it and therefore cancels it. */
+    if (0 < timeout) {
+        pmix_event_assign(&cb->ev, pmix_globals.evbase, -1, 0, invite_timeout, (void *) cb);
+        cb->timer_active = true;
+        tv.tv_sec = timeout;
+        tv.tv_usec = 0;
+        PMIX_POST_OBJECT(cb);
+        pmix_event_add(&cb->ev, &tv);
+    }
+
+    /* Hold a reference of our own for the rest of the setup. From the
+     * registration below onward the tracker belongs to the progress thread
+     * too, and the non-blocking form's completion (invite_finish) releases
+     * it - so without this the announcement could free the tracker while we
+     * are still reading cb->info to notify the invitees. */
+    PMIX_RETAIN(cb);
+
+    /* Watch for the invitees' answers. This is registered as an internal
+     * observer rather than an event handler: invite_observer() is the only
+     * thing that counts answers and calls invite_wake(), and as a handler it
+     * could be silently pre-empted by an application handler that ended the
+     * chain - a PMIX_GROUP_INVITE_ACCEPTED handler that logs who joined, say -
+     * leaving this invitation to block forever unless the caller supplied a
+     * PMIX_TIMEOUT. See openpmix#4059. Observers run ahead of the chain, so
+     * the answers now always reach us.
+     *
+     * We run on the caller's thread here, so waiting for the registration to
+     * complete before notifying the invitees is safe (and keeps an early
+     * acceptance from depending on the cached-event replay). The tracker is
+     * NOT handed to the registry to own - the invite path releases it in
+     * invite_teardown - so no release function is given. */
+    ncodes = sizeof(codes) / sizeof(pmix_status_t);
+    PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
+    rc = pmix_event_register_observer("pmix-group-invite", codes, ncodes,
+                                      invite_observer, cb, NULL,
+                                      regcbfunc, &lock);
+    /* only wait if the registration was actually accepted - regcbfunc is the
+     * only thing that ever wakes this lock, and it does not fire when the
+     * call itself failed */
+    if (PMIX_SUCCESS == rc) {
+        PMIX_WAIT_THREAD(&lock.lock);
+        rc = lock.status;
+        cb->ref = lock.ref;
+    }
+    PMIX_DESTRUCT(&lock);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        goto release;
+    }
+
     /* notify everyone of the invitation */
     PMIX_CONSTRUCT(&lock, pmix_group_tracker_t);
     rc = PMIx_Notify_event(PMIX_GROUP_INVITED, &pmix_globals.myid, PMIX_RANGE_CUSTOM,
@@ -1079,23 +1144,18 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
         rc = lock.status;
     }
     PMIX_DESTRUCT(&lock);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        return rc;
-    }
 
-    /* if a timeout was requested, arm a timer so a non-responding invitee
-     * cannot hang the leader indefinitely. The handler runs on the progress
-     * thread; it is cancelled by invite_wake() once every invitee answers. */
-    if (0 < timeout) {
-        pmix_event_assign(&cb->ev, pmix_globals.evbase, -1, 0, invite_timeout, (void *) cb);
-        cb->timer_active = true;
-        tv.tv_sec = timeout;
-        tv.tv_usec = 0;
-        PMIX_POST_OBJECT(cb);
-        pmix_event_add(&cb->ev, &tv);
+release:
+    /* If the invitation resolved while we were setting it up, the caller has
+     * already been completed and the tracker retired - our reference is all
+     * that is keeping it alive. Report success in that case: an error return
+     * from here has our caller run invite_teardown() on a tracker that has
+     * already been torn down and completed. */
+    if (cb->completed) {
+        rc = PMIX_SUCCESS;
     }
-
-    return PMIX_SUCCESS;
+    PMIX_RELEASE(cb);
+    return rc;
 }
 
 /* ---- announcing the outcome of an invitation ----------------------------
@@ -1158,10 +1218,16 @@ static void invite_finish(pmix_group_tracker_t *cb)
         pmix_event_del(&cb->ev);
         cb->timer_active = false;
     }
-    if (SIZE_MAX != cb->ref) {
-        pmix_event_deregister_observer(cb->ref, invite_relcb, cb);
+    if (SIZE_MAX != cb->ref &&
+        PMIX_SUCCESS == pmix_event_deregister_observer(cb->ref, invite_relcb, cb)) {
+        /* invite_relcb has the tracker now */
         cb->ref = SIZE_MAX;
     } else {
+        /* either there is nothing registered, or the deregistration was
+         * refused (the library is shutting down) - in which case no callback
+         * is coming and the tracker is still ours to free. Taking the
+         * deregistration on trust leaked it; invite_teardown checks the same
+         * return for the same reason. */
         PMIX_RELEASE(cb);
     }
 }
@@ -2074,13 +2140,22 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
         return PMIX_ERR_NOT_FOUND;
     }
 
-    /* the custom range is the membership, excluding ourselves */
+    /* The custom range is the membership, excluding ourselves. A group whose
+     * membership has drained is a reachable state - the PMIX_GROUP_LEFT
+     * handler decrements the count as members depart and does not drop the
+     * group when it hits zero - and PMIX_PROC_CREATE(0) returns NULL, so
+     * treating that NULL as an allocation failure reported PMIX_ERR_NOMEM for
+     * a group that is simply empty, and returned without dropping it: the
+     * caller could then never leave it. There is nobody to notify in that
+     * case, which is not an error. */
     nmbrs = grpobj->nmbrs;
-    PMIX_PROC_CREATE(range, nmbrs);
-    if (PMIX_UNLIKELY(NULL == range)) {
-        pmix_mutex_unlock(&pmix_client_globals.grouplock);
-        PMIX_RELEASE(cb);
-        return PMIX_ERR_NOMEM;
+    if (0 < nmbrs) {
+        PMIX_PROC_CREATE(range, nmbrs);
+        if (PMIX_UNLIKELY(NULL == range)) {
+            pmix_mutex_unlock(&pmix_client_globals.grouplock);
+            PMIX_RELEASE(cb);
+            return PMIX_ERR_NOMEM;
+        }
     }
     nrange = 0;
     for (m = 0; m < nmbrs; m++) {
@@ -2226,6 +2301,10 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     }
     if (0 < nmembers) {
         PMIX_PROC_CREATE(members, nmembers);
+        if (PMIX_UNLIKELY(NULL == members)) {
+            ret = PMIX_ERR_NOMEM;
+            goto report;
+        }
         cnt = nmembers;
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, members, &cnt, PMIX_PROC);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -2279,10 +2358,14 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
             /* store the info locally. This came off the wire, so the type is
              * the sending server's word rather than ours - a peer that sends
              * anything but a data array here (an older one, or a broken one)
-             * used to have us dereference whatever shared the union */
+             * used to have us dereference whatever shared the union. The
+             * length is that peer's word too: pmix_server_process_grpinfo()
+             * reads element [0] as the contributor's procID, so an empty
+             * array reaches it as a read past the end of the allocation */
             if (PMIX_DATA_ARRAY != grpinfo.value.type ||
                 NULL == grpinfo.value.data.darray ||
-                NULL == grpinfo.value.data.darray->array) {
+                NULL == grpinfo.value.data.darray->array ||
+                0 == grpinfo.value.data.darray->size) {
                 PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
                 ret = PMIX_ERR_INVALID_VAL;
                 PMIX_INFO_DESTRUCT(&grpinfo);
@@ -2308,7 +2391,8 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
                      * per entry */
                     if (PMIX_DATA_ARRAY != iptr[m].value.type ||
                         NULL == iptr[m].value.data.darray ||
-                        NULL == iptr[m].value.data.darray->array) {
+                        NULL == iptr[m].value.data.darray->array ||
+                        0 == iptr[m].value.data.darray->size) {
                         PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
                         ret = PMIX_ERR_INVALID_VAL;
                         PMIX_INFO_DESTRUCT(&grpinfo);
