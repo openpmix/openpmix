@@ -482,7 +482,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
-    int ret;
+    pmix_status_t ret;
     int32_t cnt;
 
     PMIX_ACQUIRE_OBJECT(cb);
@@ -621,12 +621,12 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     }
 
 report:
-    if (NULL != cb->cbfunc.lookupfn) {
-        /* hand back the status the SERVER returned, not the status of our
-         * last unpack - they are both PMIX_SUCCESS on the path that used to
-         * reach here, which is why reporting the wrong one went unnoticed */
-        cb->cbfunc.lookupfn(ret, pdata, ndata, cb->cbdata);
-    }
+    /* the callback is known to be non-NULL - a NULL one returned above,
+     * before anything was unpacked. Hand it the status the SERVER returned,
+     * not the status of our last unpack: they are both PMIX_SUCCESS on the
+     * path that used to reach here, which is why reporting the wrong one
+     * went unnoticed */
+    cb->cbfunc.lookupfn(ret, pdata, ndata, cb->cbdata);
 
     /* cleanup - every exit now runs the callback first and falls through
      * here, so there is nothing left to jump to */
