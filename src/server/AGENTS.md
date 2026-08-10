@@ -273,6 +273,25 @@ written and never read, which is why the dangling pointers were harmless
 rather than a use-after-free. A reader added later would need its own
 copy of the strings, not the caddy's.
 
+### `pmix_cb_t` borrows its directives, and never owns its `proc`
+
+`pmix_cb_t` carries two info arrays with two different ownership rules,
+and one member the destructor deliberately ignores:
+
+- `info`/`ninfo` are freed by `cbdes` only when `infocopy` is set.
+- `directives`/`ndirs` are freed only when `dircopy` is set. **Every
+  other site in the tree that fills this member borrows it** — it is the
+  caller's array, handed down through `PMIx_Process_monitor_nb` or the
+  IOF calls — so the flag exists for the one owner: `pmix_server_monitor`,
+  which unpacks the directives off the wire. Without it the array leaked
+  on every monitor command.
+- `proc` is **never** freed by the destructor, because it is as often a
+  pointer to a stack `pmix_proc_t` (`pmix_server_refresh_cache` does
+  exactly that) as it is an allocation. A handler that
+  `PMIX_PROC_CREATE`s one owes it a free on every path that does not
+  reach the completion — `pmix_monitor_processing`'s `relcbfunc` is what
+  frees it on the paths that do.
+
 Any struct handed to `PMIX_THREADSHIFT` **must** carry a `pmix_event_t ev`
 as its thread-shift member (the caddy contract from the top-level guide).
 Do not stack-allocate a caddy that outlives its creating function — the
@@ -611,6 +630,13 @@ Two suites cover the halves:
   exceeds its local size, and asserts the classification and that nothing
   is left parked on `local_reqs`. Read its header for what it pins down
   and what it deliberately cannot reproduce.
+- [`test/unit/server_control.c`](../../test/unit/server_control.c) drives
+  `pmix_server_log` and `pmix_server_job_ctrl` from hand-packed wire
+  buffers — the malformed-count screens, the appended `PMIX_LOG_SOURCE` /
+  `PMIX_LOG_TIMESTAMP` directives, and the RFC precedence rule that a
+  repeated cleanup directory upgrades the entry already on the epilog.
+  The bad-directive-count case aborts rather than fails against an
+  unfixed library, the same bargain `test/unit/iof_output.c` makes.
 - [`contrib/dockerswarm/run-server-tests.sh`](../../contrib/dockerswarm/run-server-tests.sh)
   is the multi-node half: direct modex, spawn-plus-connect across
   namespaces, group blocks spanning nodes, IOF pull/dereg against a
@@ -690,6 +716,32 @@ misbehave by design).
   that lookup, creates and appends the namespace itself. Verified by
   instrumenting both sites. Do not "fix" the dead branch on the theory
   that the lookup can fail.
+- **An unchecked `PMIX_*_CREATE` followed straight by an unpack is not a
+  bug.** `pmix_bfrops_base_unpack` screens `NULL == dst` and returns
+  `PMIX_ERR_BAD_PARAM`, so the near-universal shape here — `if (0 < n)
+  { PMIX_INFO_CREATE(array, n); cnt = n; unpack into array; }` — fails
+  cleanly when the allocation fails, whether from real memory pressure or
+  from an absurd count off the wire. Do not sprinkle NULL checks through
+  these handlers; it was audited and refuted.
+- **What *does* need screening is a wire count used before, or without,
+  the unpack.** Every count arrives as a `size_t` and is then consumed
+  through the `int32_t` that `PMIX_BFROPS_UNPACK` takes, so a peer can
+  send one that truncates to zero or to a negative number. That is
+  harmless wherever the only use is sizing an array the unpack
+  immediately guards — which is every handler here except
+  `pmix_server_log`, which indexes the directive array to append
+  `PMIX_LOG_SOURCE` *before* anything is unpacked into it (a negative
+  index off a NULL array) and hands `(info, ninfo)` to `plog` even when
+  the unpack was skipped. It now rejects a count that does not survive
+  the round trip. Apply the same test to any new handler that reads a
+  count before it reads the array.
+- **`PMIX_LIST_DESTRUCT` is not idempotent.** It drains the list and then
+  calls `PMIX_DESTRUCT`, which under `--enable-debug` zeroes the object's
+  magic id and asserts on it — so a second destruct of the same list
+  aborts the server, and nothing restores the id in between.
+  `pmix_server_job_ctrl` destructed its four cleanup lists mid-function
+  *and* again at its exit label, under a comment asserting the practice
+  was harmless. Destruct each local list exactly once, on the way out.
 - **Screen the shape of anything the host hands you before indexing it.**
   A `pmix_info_t` carrying a `PMIX_DATA_ARRAY` is a host-supplied
   structure, and several sites here read `array[0]` and `array[1]`
@@ -708,6 +760,21 @@ misbehave by design).
   session-directory cleanup and that guard becomes an `rmdir` of a
   system-defined directory. It sits below `pmix_rte_finalize()` for that
   reason and there is a comment at the site saying so.
+- **The status `pmix_server_refresh_cache` packs is discarded by the
+  client, on purpose.** `refcb` in `pmix_client_get.c` unpacks that
+  status, then drains kvals until the buffer runs out and overwrites the
+  status with `PMIX_SUCCESS`. That is not an oversight to repair from
+  this side: `refresh_cache()` is called for its side effect, and its
+  return value aborts the whole `PMIx_Get` — so propagating a
+  "nothing to refresh" `PMIX_ERR_NOT_FOUND` would fail gets that
+  currently succeed. Pack the honest status (it is the right thing on the
+  wire), but do not build anything here on the client acting on it.
+- **`pmix_server_job_ctrl` creating a namespace for an unknown target is
+  deliberate.** A job-control request may name a job this server has not
+  been told about yet, and the epilog directives need somewhere to hang;
+  `_register_nspace` looks the namespace up by name and reuses the entry
+  when registration eventually arrives. It is not a leak and not a
+  phantom.
 - **A public API's non-blocking form still has to clean up when the
   caller passes no callback.** `PMIx_server_setup_application` and
   `PMIx_server_collect_inventory` take a callback and have no blocking

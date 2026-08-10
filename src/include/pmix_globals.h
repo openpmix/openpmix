@@ -735,6 +735,7 @@ typedef struct {
     pmix_device_distance_t *dist;
     pmix_byte_object_t *bo;
     bool infocopy;
+    bool dircopy;
     size_t nvals;
     pmix_list_t kvs;
     bool copy;

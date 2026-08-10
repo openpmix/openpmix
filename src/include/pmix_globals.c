@@ -483,6 +483,7 @@ static void cbcon(pmix_cb_t *p)
     p->dist = NULL;
     p->bo = NULL;
     p->infocopy = false;
+    p->dircopy = false;
     p->nvals = 0;
     PMIX_CONSTRUCT(&p->kvs, pmix_list_t);
     p->copy = false;
@@ -510,8 +511,12 @@ static void cbdes(pmix_cb_t *p)
     if (p->infocopy) {
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
-    if (NULL != p->dist) {
-        PMIX_DEVICE_DIST_FREE(p->dist, p->nvals);
+    /* the directives are borrowed from the caller in every path that
+     * simply passes an API's argument down, so only an owner that says
+     * so gets them freed - see pmix_server_monitor, which unpacks them
+     * off the wire and therefore owns them */
+    if (p->dircopy) {
+        PMIX_INFO_FREE(p->directives, p->ndirs);
     }
     PMIX_LIST_DESTRUCT(&p->kvs);
 }

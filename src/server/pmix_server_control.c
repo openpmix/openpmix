@@ -139,7 +139,12 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
         return PMIX_ERR_NOMEM;
     }
     if (PMIX_PEER_IS_EARLIER(peer, 3, 0, 0)) {
-        timestamp = -1;
+        /* zero is the sender's own "no timestamp" value, and the only
+         * test applied below is "0 < timestamp" - a -1 sentinel would
+         * read as a very large positive time on a platform whose
+         * time_t is unsigned, and manufacture a garbage timestamp
+         * directive for exactly the peers too old to have sent one */
+        timestamp = 0;
     } else {
         /* unpack the timestamp */
         cnt = 1;
@@ -157,7 +162,19 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    /* the count arrives off the wire and is carried in a size_t while
+     * every use of it goes through the int32_t unpack count, so screen
+     * the truncation here. Unlike its siblings, this handler acts on
+     * cd->ninfo even when the unpack below is skipped - it hands the
+     * pair straight to plog - so a count that survives as zero would
+     * walk a NULL array. The directive count below is worse still: it
+     * indexes the array before anything is unpacked into it */
     cnt = cd->ninfo;
+    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
     /* the caddy owns this array and must release it when done */
     cd->infocopy = true;
@@ -177,22 +194,32 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
         goto exit;
     }
     cnt = cd->ndirs;
+    if (0 > cnt || (size_t) cnt != cd->ndirs) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     /* always add the source to the directives so we
      * can tell downstream if this gets "upcalled" to
      * our host for relay */
-    cd->ndirs = cnt + 1;
+    cd->ndirs = (size_t) cnt + 1;
     /* if a timestamp was sent, then we add it to the directives */
     if (0 < timestamp) {
         cd->ndirs++;
-        PMIX_INFO_CREATE(cd->directives, cd->ndirs);
-        PMIX_INFO_LOAD(&cd->directives[cnt], PMIX_LOG_SOURCE, &proc, PMIX_PROC);
-        PMIX_INFO_LOAD(&cd->directives[cnt + 1], PMIX_LOG_TIMESTAMP, &timestamp, PMIX_TIME);
-    } else {
-        PMIX_INFO_CREATE(cd->directives, cd->ndirs);
-        PMIX_INFO_LOAD(&cd->directives[cnt], PMIX_LOG_SOURCE, &proc, PMIX_PROC);
     }
-    /* the caddy owns this array and must release it when done */
+    PMIX_INFO_CREATE(cd->directives, cd->ndirs);
+    if (NULL == cd->directives) {
+        rc = PMIX_ERR_NOMEM;
+        goto exit;
+    }
+    /* the caddy owns this array and must release it when done - set
+     * before the loads below so an early return cannot strand it */
     cd->dircopy = true;
+    PMIX_INFO_LOAD(&cd->directives[(size_t) cnt], PMIX_LOG_SOURCE, &proc, PMIX_PROC);
+    if (0 < timestamp) {
+        PMIX_INFO_LOAD(&cd->directives[(size_t) cnt + 1], PMIX_LOG_TIMESTAMP,
+                       &timestamp, PMIX_TIME);
+    }
 
     /* unpack the directives */
     if (0 < cnt) {
@@ -356,9 +383,11 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* construct every local list up front so that a single cleanup at the
      * exit label covers all of them - the bad-param and no-memory paths in
      * the directive scan below used to jump past their destructors and
-     * leak whatever cleanup entries had already been cached. Draining a
-     * list twice is harmless (PMIX_LIST_DESTRUCT leaves it re-initialized),
-     * so the mid-function destructs can stay where they are. */
+     * leak whatever cleanup entries had already been cached. Every list is
+     * destructed exactly once, on the way out: PMIX_LIST_DESTRUCT ends in
+     * PMIX_DESTRUCT, which zeroes the object's magic id, so a second one
+     * on the same list trips the magic-id assertion in a --enable-debug
+     * build. Do not re-add the mid-function destructs. */
     PMIX_CONSTRUCT(&epicache, pmix_list_t);
     PMIX_CONSTRUCT(&cachedirs, pmix_list_t);
     PMIX_CONSTRUCT(&cachefiles, pmix_list_t);
@@ -530,7 +559,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 }
             }
         }
-        PMIX_LIST_DESTRUCT(&ignorefiles);
         /* now look at the directories */
         PMIX_LIST_FOREACH (cdir, &cachedirs, pmix_cleanup_dir_t) {
             PMIX_LIST_FOREACH (epicd, &epicache, pmix_srvr_epi_caddy_t) {
@@ -539,12 +567,16 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 PMIX_LIST_FOREACH (cdir2, &epicd->epi->cleanup_dirs, pmix_cleanup_dir_t) {
                     if (0 == strcmp(cdir2->path, cdir->path)) {
                         /* duplicate - check for difference in flags per RFC
-                         * precedence rules */
-                        if (!cdir->recurse && recurse) {
-                            cdir->recurse = recurse;
+                         * precedence rules. The entry that has to absorb the
+                         * more permissive flag is the one already registered
+                         * on the epilog (cdir2); cdir is the request-local
+                         * copy we are about to discard, and its flags are
+                         * never read, so upgrading it did nothing at all */
+                        if (!cdir2->recurse && recurse) {
+                            cdir2->recurse = recurse;
                         }
-                        if (!cdir->leave_topdir && leave_topdir) {
-                            cdir->leave_topdir = leave_topdir;
+                        if (!cdir2->leave_topdir && leave_topdir) {
+                            cdir2->leave_topdir = leave_topdir;
                         }
                         duplicate = true;
                         break;
@@ -556,8 +588,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                         if (0 == strcmp(cf->path, cdir->path)) {
                             /* return an error */
                             rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
-                            PMIX_LIST_DESTRUCT(&cachedirs);
-                            PMIX_LIST_DESTRUCT(&cachefiles);
                             goto exit;
                         }
                     }
@@ -570,7 +600,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 }
             }
         }
-        PMIX_LIST_DESTRUCT(&cachedirs);
         PMIX_LIST_FOREACH (cf, &cachefiles, pmix_cleanup_file_t) {
             PMIX_LIST_FOREACH (epicd, &epicache, pmix_srvr_epi_caddy_t) {
                 /* scan the existing list of files for any duplicate */
@@ -585,10 +614,8 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                     /* check for conflict with ignore */
                     PMIX_LIST_FOREACH (cf2, &epicd->epi->ignores, pmix_cleanup_file_t) {
                         if (0 == strcmp(cf->path, cf2->path)) {
-                            /* return an error - cachedirs was already
-                             * destructed above, so only cachefiles remains */
+                            /* return an error */
                             rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
-                            PMIX_LIST_DESTRUCT(&cachefiles);
                             goto exit;
                         }
                     }
@@ -599,7 +626,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 }
             }
         }
-        PMIX_LIST_DESTRUCT(&cachefiles);
         if (cnt == (int) cd->ninfo) {
             /* nothing more to do */
             rc = PMIX_OPERATION_SUCCEEDED;
@@ -686,6 +712,10 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* unpack the directives */
     if (0 < cb->ndirs) {
         PMIX_INFO_CREATE(cb->directives, cb->ndirs);
+        /* we unpacked these ourselves, so the caddy owns them - the
+         * common monitor code borrows its directives from the caller
+         * and so cannot free them on our behalf */
+        cb->dircopy = true;
         cnt = cb->ndirs;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cb->directives, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
@@ -699,6 +729,10 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
     return PMIX_SUCCESS;
 
 exit:
+    /* the pmix_cb_t destructor does not free the proc array - only the
+     * completion path through pmix_monitor_processing does, and we are
+     * not going to reach it */
+    PMIX_PROC_FREE(cb->proc, 1);
     PMIX_RELEASE(cb);
     return rc;
 }
@@ -864,6 +898,10 @@ pmix_status_t pmix_server_session_ctrl(pmix_server_caddy_t *cd,
     /* unpack the info */
     if (0 < scd->ninfo) {
         PMIX_INFO_CREATE(scd->info, scd->ninfo);
+        /* we unpacked this array, so the caddy owns it - without the
+         * flag the destructor leaves it behind on every path that does
+         * not reach _sessctrlcbfunc's explicit free */
+        scd->infocopy = true;
         cnt = scd->ninfo;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, scd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
@@ -958,6 +996,10 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
     /* unpack the info */
     if (0 < scd->ninfo) {
         PMIX_INFO_CREATE(scd->info, scd->ninfo);
+        /* the setup caddy frees info only when it is told it owns it,
+         * and _resopcbfunc frees only the block name - so without this
+         * the array leaked on every resource block request */
+        scd->copied = true;
         cnt = scd->ninfo;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, scd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
@@ -981,6 +1023,13 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
     return PMIX_SUCCESS;
 
 exit:
+    /* the setup caddy destructor never frees nspace - it is borrowed as
+     * often as it is owned - so the block name we unpacked is ours to
+     * release here, exactly as _resopcbfunc does on the reply path */
+    if (NULL != scd->nspace) {
+        free(scd->nspace);
+        scd->nspace = NULL;
+    }
     PMIX_RELEASE(scd);
     return rc;
 }
