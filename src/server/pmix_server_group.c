@@ -347,17 +347,26 @@ static pmix_status_t get_tracker(char *grpid, bool bootstrap, bool follower,
     PMIX_LIST_FOREACH(blk, &pmix_server_globals.grp_collectives, grp_block_t) {
         if (0 == strcmp(grpid, blk->id)) {
             // we do - pass it back
-            *block = blk;
             // new signature, so create a tracker for it
             trk = PMIX_NEW(grp_trk_t);
+            if (NULL == trk) {
+                return PMIX_ERR_NOMEM;
+            }
+            if (0 < nprocs) {
+                PMIX_PROC_CREATE(trk->pcs, nprocs);
+                if (NULL == trk->pcs) {
+                    PMIX_RELEASE(trk);
+                    return PMIX_ERR_NOMEM;
+                }
+                trk->npcs = nprocs;
+                memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
+            }
             // non-owning back-reference - see gtdes
             trk->blk = blk;
-            trk->npcs = nprocs;
-            PMIX_PROC_CREATE(trk->pcs, trk->npcs);
-            memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
             trk->info = info;
             trk->ninfo = ninfo;
             pmix_list_append(&blk->mbrs, &trk->super);
+            *block = blk;
             *tracker = trk;
             check_definition_complete(blk);
             return PMIX_SUCCESS;
@@ -367,17 +376,33 @@ static pmix_status_t get_tracker(char *grpid, bool bootstrap, bool follower,
 newblock:
     // new block
     blk = PMIX_NEW(grp_block_t);
+    if (NULL == blk) {
+        return PMIX_ERR_NOMEM;
+    }
     blk->id = strdup(grpid);
-    pmix_list_append(&pmix_server_globals.grp_collectives, &blk->super);
-    *block = blk;
+    if (NULL == blk->id) {
+        PMIX_RELEASE(blk);
+        return PMIX_ERR_NOMEM;
+    }
     // setup a tracker for it
     trk = PMIX_NEW(grp_trk_t);
-    // non-owning back-reference - see gtdes
-    trk->npcs = nprocs;
-    if (NULL != procs) {
-        PMIX_PROC_CREATE(trk->pcs, trk->npcs);
+    if (NULL == trk) {
+        PMIX_RELEASE(blk);
+        return PMIX_ERR_NOMEM;
+    }
+    if (NULL != procs && 0 < nprocs) {
+        PMIX_PROC_CREATE(trk->pcs, nprocs);
+        if (NULL == trk->pcs) {
+            PMIX_RELEASE(trk);
+            PMIX_RELEASE(blk);
+            return PMIX_ERR_NOMEM;
+        }
+        trk->npcs = nprocs;
         memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
     }
+    /* nothing below here can fail, so it is safe to publish the block and
+     * to take ownership of the caller's info array */
+    pmix_list_append(&pmix_server_globals.grp_collectives, &blk->super);
     trk->blk = blk;
     trk->info = info;
     trk->ninfo = ninfo;
@@ -387,8 +412,30 @@ newblock:
     } else {
         check_definition_complete(blk);
     }
+    *block = blk;
     *tracker = trk;
     return PMIX_SUCCESS;
+}
+
+/* An info that is supposed to carry an array of some element type carries
+ * whatever the sender actually put there. Everything screened with this
+ * arrives either off the wire from a local client or back down from the
+ * host, so reading the union on the strength of the key alone means
+ * dereferencing a pointer the sender chose - or walking past the end of a
+ * correctly-tagged array of some other type. Confirm the value is a data
+ * array, of the element type we are about to cast it to, and long enough
+ * to index. */
+static bool valid_darray(const pmix_info_t *info, pmix_data_type_t type,
+                         size_t minsz)
+{
+    if (PMIX_DATA_ARRAY != info->value.type ||
+        NULL == info->value.data.darray ||
+        type != info->value.data.darray->type ||
+        NULL == info->value.data.darray->array ||
+        minsz > info->value.data.darray->size) {
+        return false;
+    }
+    return true;
 }
 
 pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
@@ -492,6 +539,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
     size_t n, ctxid = SIZE_MAX, nmembers = 0;
     pmix_proc_t *members = NULL;
     bool ctxid_given = false;
+    bool packed;
     pmix_info_t *iptr, *pinfo;
     size_t ninfo, npinfo;
     pmix_list_t grpinfo;
@@ -522,12 +570,23 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
             }
 
         } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_MEMBERSHIP)) {
+            if (!valid_darray(&scd->info[n], PMIX_PROC, 1)) {
+                PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
+                continue;
+            }
             members = (pmix_proc_t*)scd->info[n].value.data.darray->array;
             nmembers = scd->info[n].value.data.darray->size;
 
         } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_INFO_ARRAY) ||
                    PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_INFO)) {
+            if (!valid_darray(&scd->info[n], PMIX_INFO, 1)) {
+                PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
+                continue;
+            }
             g = PMIX_NEW(pmix_info_caddy_t);
+            if (NULL == g) {
+                continue;
+            }
             g->info = &scd->info[n];
             pmix_list_append(&grpinfo, &g->super);
 
@@ -540,16 +599,17 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
 
     // if group info was provided, then we need to store it
     // in our hash table too
+    /* Every failure below reports itself through the reply loop rather
+     * than returning here. Returning left the block on grp_collectives
+     * with host_called already set, so nothing would ever complete it:
+     * its participants waited forever and the block, its trackers and
+     * their caddies leaked for the life of the server. */
     if (0 < pmix_list_get_size(&grpinfo)) {
         // must have been given a context ID
         if (!ctxid_given) {
-            if (NULL != scd->relfn) {
-                scd->relfn(scd->cbdata);
-            }
-            PMIX_RELEASE(scd);
-            PMIX_LIST_DESTRUCT(&grpinfo);
-            free(id);
-            return;
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            scd->status = PMIX_ERR_BAD_PARAM;
+            goto reply;
         }
         /* Each list member points to a pmix_info_t that contains
          * a data array of info from a given proc */
@@ -562,35 +622,31 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                 rc = pmix_server_process_grpinfo(ctxid, iptr, ninfo);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
-                    if (NULL != scd->relfn) {
-                        scd->relfn(scd->cbdata);
-                    }
-                    PMIX_RELEASE(scd);
-                    PMIX_LIST_DESTRUCT(&grpinfo);
-                    free(id);
-                    return;
+                    scd->status = rc;
+                    goto reply;
                 }
             } else {
                 // contains an array of group info arrays
                 for (n=0; n < ninfo; n++) {
+                    if (!valid_darray(&iptr[n], PMIX_INFO, 1)) {
+                        PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
+                        scd->status = PMIX_ERR_TYPE_MISMATCH;
+                        goto reply;
+                    }
                     pinfo = (pmix_info_t*)iptr[n].value.data.darray->array;
                     npinfo = iptr[n].value.data.darray->size;
                     rc = pmix_server_process_grpinfo(ctxid, pinfo, npinfo);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
-                        if (NULL != scd->relfn) {
-                            scd->relfn(scd->cbdata);
-                        }
-                        PMIX_RELEASE(scd);
-                        PMIX_LIST_DESTRUCT(&grpinfo);
-                        free(id);
-                        return;
+                        scd->status = rc;
+                        goto reply;
                     }
                 }
             }
         }
     }
 
+reply:
     // because bootstrap will have added multiple blocks to the collectives
     // for each bootstrap operation, cycle across the list to find them all.
     // Use the SAFE variant: matching blocks are removed and released below,
@@ -609,14 +665,19 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
             PMIX_LIST_FOREACH (cd, &trk->local_cbs, pmix_server_caddy_t) {
                 reply = PMIX_NEW(pmix_buffer_t);
                 if (NULL == reply) {
-                    break;
+                    continue;
                 }
+                /* Every pack failure below abandons the reply for THIS
+                 * participant and moves on to the next one. It must not
+                 * break out of the loop: the participants behind this one
+                 * are waiting on a reply nobody else will send, and their
+                 * caddies are freed a few lines below with the block. */
                 /* setup the reply, starting with the returned status */
                 PMIX_BFROPS_PACK(ret, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
                 if (PMIX_SUCCESS != ret) {
                     PMIX_ERROR_LOG(ret);
                     PMIX_RELEASE(reply);
-                    break;
+                    continue;
                 }
                 if (PMIX_SUCCESS == scd->status && PMIX_GROUP_CONSTRUCT == op) {
                     /* add the final membership */
@@ -624,14 +685,14 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS != ret) {
                         PMIX_ERROR_LOG(ret);
                         PMIX_RELEASE(reply);
-                        break;
+                        continue;
                     }
                     if (0 < nmembers) {
                         PMIX_BFROPS_PACK(ret, cd->peer, reply, members, nmembers, PMIX_PROC);
                         if (PMIX_SUCCESS != ret) {
                             PMIX_ERROR_LOG(ret);
                             PMIX_RELEASE(reply);
-                            break;
+                            continue;
                         }
                     }
                     /* if a ctxid was provided, pass it along */
@@ -639,14 +700,14 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS != ret) {
                         PMIX_ERROR_LOG(ret);
                         PMIX_RELEASE(reply);
-                        break;
+                        continue;
                     }
                     if (ctxid_given) {
                         PMIX_BFROPS_PACK(ret, cd->peer, reply, &ctxid, 1, PMIX_SIZE);
                         if (PMIX_SUCCESS != ret) {
                             PMIX_ERROR_LOG(ret);
                             PMIX_RELEASE(reply);
-                            break;
+                            continue;
                         }
                     }
                     /* add any group info */
@@ -655,17 +716,25 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS != ret) {
                         PMIX_ERROR_LOG(ret);
                         PMIX_RELEASE(reply);
-                        break;
+                        continue;
                     }
+                    /* this one is nested a level deeper than its siblings,
+                     * so a bare break escaped only the info loop and fell
+                     * through to queue the reply it had just released */
+                    packed = true;
                     if (0 < ninfo) {
                         PMIX_LIST_FOREACH(g, &grpinfo, pmix_info_caddy_t) {
                             PMIX_BFROPS_PACK(ret, cd->peer, reply, g->info, 1, PMIX_INFO);
                             if (PMIX_SUCCESS != ret) {
                                 PMIX_ERROR_LOG(ret);
                                 PMIX_RELEASE(reply);
+                                packed = false;
                                 break;
                             }
                         }
+                    }
+                    if (!packed) {
+                        continue;
                     }
                 }
 
@@ -903,6 +972,14 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
                 if (PMIX_CHECK_KEY(&trk->info[n], blk->info[m].key)) {
                     // check a few critical keys
                     if (PMIX_CHECK_KEY(&blk->info[m], PMIX_GROUP_ADD_MEMBERS)) {
+                        /* both of these were unpacked off the wire, so the
+                         * key having matched says nothing about the union */
+                        if (!valid_darray(&blk->info[m], PMIX_PROC, 1) ||
+                            !valid_darray(&trk->info[n], PMIX_PROC, 1)) {
+                            rc = PMIX_ERR_TYPE_MISMATCH;
+                            PMIX_ERROR_LOG(rc);
+                            goto bailout;
+                        }
                         // aggregate the members
                         nmarray = (pmix_proc_t*)blk->info[m].value.data.darray->array;
                         nmsize = blk->info[m].value.data.darray->size;
@@ -1073,6 +1150,22 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto error;
     }
+    /* Screen the count before it sizes an allocation. PMIx_Proc_create
+     * multiplies it by sizeof(pmix_proc_t) with no overflow guard and then
+     * constructs that many elements, so a wire value large enough to wrap
+     * the product yields a short allocation the constructor loop runs off
+     * the end of. It is also the size_t - not the int32_t the unpack
+     * consumes - that the memcpy in get_tracker and the PMIX_PROC_FREE
+     * below walk. Requiring the count to survive the round trip through
+     * that int32_t bounds it well clear of both, and is the same screen
+     * the fence, connect and disconnect handlers apply. */
+    cnt = nprocs;
+    if (0 > cnt || (size_t) cnt != nprocs) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        nprocs = 0;
+        goto error;
+    }
     if (0 < nprocs) {
         PMIX_PROC_CREATE(procs, nprocs);
         if (NULL == procs) {
@@ -1097,8 +1190,27 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto error;
     }
+    /* Same screen, and this handler needs it more than most: the status
+     * slot is seeded at info[ninf] *before* anything is unpacked into the
+     * array, so a count near SIZE_MAX wraps "ninf + 1" to zero - for which
+     * PMIx_Info_create answers NULL - and the seed is then written at
+     * info[SIZE_MAX]. There is no unpack in front of it to screen
+     * anything, and a local client drives it directly. The directive scan
+     * below walks the size_t as well. */
+    cnt = ninf;
+    if (0 > cnt || (size_t) cnt != ninf) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
     ninfo = ninf + 1;
     PMIX_INFO_CREATE(info, ninfo);
+    if (NULL == info) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        ninfo = 0;
+        goto error;
+    }
     /* store default response */
     rc = PMIX_SUCCESS;
     PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
@@ -1129,14 +1241,20 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     /* find/create the local tracker for this operation */
     rc = get_tracker(grpid, bootstrap, follower, procs, nprocs,
                      info, ninfo, &blk, &trk);
-    if (PMIX_EXISTS == rc) {
-        // we extended the trk's info array
-        PMIX_INFO_FREE(info, ninfo);
-        info = NULL;
-        ninfo = 0;
+    if (PMIX_SUCCESS != rc) {
+        /* it takes our arrays only on success, so everything we unpacked
+         * is still ours to free at the error label */
+        PMIX_ERROR_LOG(rc);
+        goto error;
     }
+    /* the tracker owns the info array now - the old PMIX_EXISTS arm here
+     * freed it instead, which get_tracker has never returned and which
+     * would have been a double free if it ever did */
+    info = NULL;
+    ninfo = 0;
     // grpid has been copied into the tracker
     free(grpid);
+    grpid = NULL;
     // get_tracker copied the participant array into the tracker, so
     // release our unpacked copy - the tracker's trk->pcs is used from
     // here on
@@ -1198,11 +1316,13 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
 
     rc = aggregate_info(blk);
     if (PMIX_SUCCESS != rc) {
-        pmix_list_remove_item(&trk->local_cbs, &cd->super);
-        // the trk will be released when we release the blk
-        pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
-        PMIX_RELEASE(blk);
-        return rc;
+        /* we only get here once every local participant has contributed, so
+         * the block holds all of their caddies - releasing it would free
+         * them without a reply and hang every one of them. Complete them
+         * all with the error instead, and report success: grpcbfunc has
+         * taken ownership of the caddies, this one included. */
+        grpcbfunc(rc, NULL, 0, blk, NULL, NULL);
+        return PMIX_SUCCESS;
     }
     /* if an expected member was lost before contributing, how we proceed
      * depends on the operation and its directives. For a construct without
@@ -1244,15 +1364,16 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             grpcbfunc(PMIX_SUCCESS, NULL, 0, blk, NULL, NULL);
             return PMIX_SUCCESS;
         }
-        /* detach this caddy from the tracker before releasing the block:
-         * releasing the block destructs trk->local_cbs, which would release
-         * this caddy, and the switchyard also releases it on our non-SUCCESS
-         * return -- a double free. The sibling error paths above do the same. */
-        pmix_list_remove_item(&trk->local_cbs, &cd->super);
-        /* remove the tracker from the list */
-        pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
-        PMIX_RELEASE(blk);
-        return rc;
+        /* the host refused after every local participant had contributed,
+         * so the block holds all of their caddies. Detaching just this one
+         * and releasing the block answers the caller and hangs everybody
+         * else; hand the refusal to all of them through the same path the
+         * PMIX_OPERATION_SUCCEEDED arm above uses. That also settles the
+         * double-free this used to guard against: grpcbfunc owns the
+         * caddies, so we must report success rather than let the
+         * switchyard release this one a second time. */
+        grpcbfunc(rc, NULL, 0, blk, NULL, NULL);
+        return PMIX_SUCCESS;
     }
 
     return PMIX_SUCCESS;
@@ -1347,8 +1468,8 @@ static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
         trk = (grp_trk_t *) pmix_list_get_first(&blk->mbrs);
         rc = aggregate_info(blk);
         if (PMIX_SUCCESS != rc) {
-            pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
-            PMIX_RELEASE(blk);
+            /* every contributor's caddy is on this block - tell them */
+            grpcbfunc(rc, NULL, 0, blk, NULL, NULL);
             return;
         }
         /* a member departed before contributing (that is why we are here).
@@ -1381,8 +1502,9 @@ static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
             /* the host will not call back - drive completion ourselves */
             grpcbfunc(PMIX_SUCCESS, NULL, 0, blk, NULL, NULL);
         } else if (PMIX_SUCCESS != rc) {
-            pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
-            PMIX_RELEASE(blk);
+            /* nothing else will answer these participants - we are here
+             * because no further participant call is coming */
+            grpcbfunc(rc, NULL, 0, blk, NULL, NULL);
         }
     }
 }

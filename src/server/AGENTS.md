@@ -614,10 +614,46 @@ every participant caddy, optionally synthesizes `PMIX_GROUP_MEMBER_FAILED`
 events for departed members, then unlinks and releases the block. The
 fault paths `pmix_server_grp_peer_lost` (connection dropped) and
 `pmix_server_grp_member_left` (voluntary `PMIx_Group_leave`) both funnel
-to `account_departed`. The same release-before-detach discipline as the
-fence tracker applies: releasing a block destructs its `grp_trk_t`s and
-their `local_cbs`, so remove the current `cd` from `local_cbs` before
-releasing on a host-error return, or the switchyard double-frees it.
+to `account_departed`.
+
+Releasing a block destructs its `grp_trk_t`s and their `local_cbs`,
+which is why the fence-family instinct — detach the current `cd`, then
+release — reads as correct here. **It is not, once the local phase is
+complete.** By the time the block is handed to the host, every local
+participant has contributed and its caddy is on the block; detaching
+only the caller's and releasing answers that one client and silently
+frees the other N-1 replies, hanging those clients. Every such path —
+the host refusing the up-call, `aggregate_info` failing, and the two
+mirrors of both inside `account_departed` — instead hands the whole
+block to `grpcbfunc` with the error, which replies to every participant
+and then tears the block down. The caller then returns `PMIX_SUCCESS`,
+because `grpcbfunc` has taken ownership of its caddy too. The one place
+the detach-and-release shape is still right is the follower/bootstrap
+arm, whose block is created for a single caller and holds exactly one
+caddy.
+
+For the same reason `_grpcbfunc` must never return early. Its block has
+`host_called` set, so nothing else in the tree will ever complete it —
+returning on a missing context ID or a `pmix_server_process_grpinfo`
+failure left the block on `grp_collectives` for the life of the server
+with its participants waiting forever. Record the failure in
+`scd->status` and fall through to the reply loop.
+
+Read that reply loop's `break`s carefully: each one abandons the reply
+for the participant being served, and they are all directly inside the
+`local_cbs` loop except the group-info pack, which sits one level
+deeper. A bare `break` there escaped only the info loop and fell through
+to `PMIX_SERVER_QUEUE_REPLY` on the buffer it had just released.
+
+Two things here are safe and look as though they should not be. A block
+handed to the host survives the call without any reference of its own —
+unlike the dmodex tracker above — because `host_called` is set before
+the up-call and `account_departed` skips any block carrying it, so
+`_grpcbfunc` is the only code that frees a block. And
+`notify_local_members_of_loss` hands a stack `pmix_info_t[2]` to
+`pmix_server_notify_client_of_event` and destructs it on the next line:
+that entry point deep-copies the array into its own caddy *before*
+thread-shifting, so nothing is borrowed across the shift.
 
 ## `pmix_server_resolve.c` is a twin of `src/client/pmix_client_resolve.c`
 
@@ -986,9 +1022,12 @@ misbehave by design).
   `test/unit/server_fence.c` and `test/unit/server_connect.c`, whose
   info-count cases kill an unfixed library rather than failing it. **Any
   new collective handler that seeds slots past the unpacked ones owes the
-  same screen** — the group handler builds its info array differently
-  (`ninfo = ninf + 1`, `pmix_server_group.c`) and should be read with
-  this in mind.
+  same screen**. The group handler was the fourth: it builds its array as
+  `ninfo = ninf + 1` and seeds `PMIX_LOCAL_COLLECTIVE_STATUS` at
+  `info[ninf]` before the unpack, so a count near `SIZE_MAX` wrapped that
+  to a zero-element array — `PMIx_Info_create` answers NULL, which
+  nothing checked — and wrote the seed at `info[SIZE_MAX]`. Its proc
+  count had the mirror problem. Both now carry the round-trip screen.
 
   While you are there, note the layout those two seeds establish, because
   the completion arms depend on it: for the fence and disconnect families
