@@ -1083,7 +1083,39 @@ zeroes its length — so the `pmix_buffer_t` it fills is what frees them.
 Use `PMIX_LOAD_BUFFER_NON_DESTRUCT` if you ever need the byte object to
 survive.
 
+**`pmix_client_fence.c` also came through all five with nothing to fix.**
+The one shape to understand before touching it is that
+`pmix_client_convert_group_procs()` always hands back a **fresh**
+`PMIX_PROC_CREATE`d array on success — never the caller's `procs` — so
+`PMIx_Fence_nb`'s `created` flag guarding `PMIX_PROC_FREE(rgs, nrg)` is
+freeing library memory, not the application's `const pmix_proc_t
+procs[]`. All four exits below the conversion honor it. The other thing
+worth knowing is that `nrg` is `>= 1` by the time `pack_fence()` runs:
+the zero-length expansion is caught one step earlier by
+`pmix_client_proc_is_included()`, which cannot find the caller in an
+empty array and returns `PMIX_ERR_NOT_A_MEMBER`.
 
+*Noted, not changed:*
+
+- **`PMIx_Fence_nb` blocks when handed a NULL `cbfunc`**, and it is the
+  only `_nb` entry point in this directory that does. It allocates its
+  caddy, sends, and then takes a `PMIX_WAIT_THREAD` branch of its own —
+  so a caller who chose the non-blocking form precisely to stay off a
+  blocking path gets a blocking call, and one that deadlocks outright if
+  it was issued from an event handler on the progress thread. Note the
+  directory has **three** different meanings for a NULL `cbfunc` and this
+  is the third: `PMIx_Get_nb`, `PMIx_Compute_distances_nb` and
+  `PMIx_Group_construct_nb` reject it with `PMIX_ERR_BAD_PARAM`, the two
+  fabric `_nb` entry points read it as "the caddy is in `cbdata`" (see
+  the invariant above), and fence blocks. Check which one you are looking
+  at before copying a NULL test between them.
+
+  Left alone because every way of resolving it is a behavior change to a
+  released public API rather than a fix: rejecting NULL breaks any caller
+  relying on the block, and returning without waiting silently converts
+  their synchronization into a fire-and-forget. `PMIx_Fence` does not go
+  through this branch — it passes `op_cbfunc` — so nothing in the library
+  depends on the answer.
 
 The sweep found two leaks, both on error paths that only a failing
 server can reach, and both fixed: `job_data()` dropped the `nspace`
