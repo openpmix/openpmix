@@ -54,10 +54,6 @@
 #endif
 #include <event.h>
 
-#ifndef MAX
-#    define MAX(a, b) ((a) > (b) ? (a) : (b))
-#endif
-
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_attributes.h"
