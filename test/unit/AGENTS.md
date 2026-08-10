@@ -347,6 +347,24 @@ Two things about the setup are easy to get wrong and were:
 The multi-node half of this file — the actual remote fetch — is
 [`contrib/dockerswarm/run-server-tests.sh`](../../contrib/dockerswarm/AGENTS.md).
 
+### `server_fabric` — and what a SKIP is for
+
+[`server_fabric.c`](server_fabric.c) drives `pmix_server_device_dists()`
+the way the switchyard does, to pin down that a locally computed distance
+array is handed to the completion callback with a **release function**
+rather than freed on the next line. That callback only thread-shifts, so
+the reply is packed from the array after the handler has returned, and
+freeing it there put freed heap on the wire.
+
+It is the one program here that reports **SKIP**, and the reason is worth
+copying rather than avoiding: hwloc needs at least one OS device to
+measure a distance against, and a bare macOS host has none, so the
+library correctly answers `PMIX_ERR_NOT_FOUND` and there is no result to
+hold the contract against. Reporting that as a pass would be a green line
+asserting nothing — on the developer platform, permanently. The
+assertions run on Linux, where hwloc reports network and block devices.
+Everything ahead of the computation runs on both.
+
 ### `resolve_api` — the local half of `PMIx_Resolve_peers`/`_nodes`
 
 [`resolve_api.c`](resolve_api.c) is the only program in this suite that

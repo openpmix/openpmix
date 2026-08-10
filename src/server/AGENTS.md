@@ -199,9 +199,39 @@ callback casts.** `_fabric_response` exists to answer a fabric request the
 `pnet` layer satisfied locally, and it called the switchyard's
 `pmix_server_fabric_cbfunc` with `qcd->cbdata` — a `pmix_server_caddy_t` — where that
 function casts to `pmix_query_caddy_t` and dereferences the result. The
-sibling `pmix_server_fabric_update` never set `qcd->cbfunc` at all. Both
-are latent only because no in-tree `pnet` component answers a fabric
-request; a component that did would crash immediately.
+sibling `pmix_server_fabric_update` did not set `qcd->cbfunc` at all.
+Both were latent only because no in-tree `pnet` component answers a
+fabric request — `pmix_pnet.register_fabric` returns
+`PMIX_ERR_NOT_SUPPORTED` when no active component implements it, so every
+arm of `pmix_server_fabric_register` above the host up-call is unreached
+today. Read the rest of that function with the same caution: its
+`PMIX_SUCCESS` arm answers a component that promised a callback by
+`PMIX_WAIT_THREAD`-ing on the switchyard's own thread, so a component
+that completed from the progress thread would deadlock the server rather
+than merely crash it.
+
+**A callback that only thread-shifts has not consumed your data.** The
+`(release_fn, release_cbdata)` pair is not decoration for the host path:
+`pmix_server_dist_cbfunc` and `pmix_server_fabric_cbfunc` both park their
+payload on a `pmix_shift_caddy_t` and pack the reply from it later, on the
+progress thread. `pmix_server_device_dists` computed the distances
+locally, passed `(NULL, NULL)` for the pair, and freed the array on the
+next line — so every locally answered `PMIx_Compute_distances` packed
+freed heap into the reply. A local producer needs a release function
+exactly as much as a remote one does; `dist_relfn` in
+`pmix_server_fabric.c` is the shape.
+
+**The hwloc unpackers hand back a `source` string even when they hand
+back nothing else.** `pmix_hwloc_unpack_topology` and
+`pmix_hwloc_unpack_cpuset` both `strdup("hwloc")` unconditionally, and
+`pmix_hwloc_destruct_{topology,cpuset}` free it only when they are also
+freeing the object it describes. So the two "the client didn't supply
+one, use ours" paths in `pmix_server_device_dists` — the common case for
+both arguments — each leaked that string on every request: the topology
+one because borrowing the global topology skips the destruct, the cpuset
+one because `pmix_hwloc_parse_cpuset_string` overwrites the member with a
+fresh `strdup`. Free it yourself on any path where you replace or borrow
+past one of these.
 
 ## The caddy zoo
 
@@ -719,6 +749,14 @@ Two suites cover the halves:
   `PMIx_Query_info_nb` does in the *requestor's* process; a mistyped
   `PMIX_NSPACE` segfaulted the server until `pmix_parse_localquery`
   grew its own check.
+- [`test/unit/server_fabric.c`](../../test/unit/server_fabric.c) drives
+  `pmix_server_device_dists` from a hand-packed buffer that carries no
+  topology — the "use your own" path — and asserts that a locally
+  computed distance array is handed over with a release function rather
+  than freed on the spot. Note it reports SKIP rather than PASS on a host
+  whose hwloc finds no OS devices (a bare macOS one), because there is
+  then no answer to hold the contract against; the leak half of it only
+  shows under valgrind.
 - [`test/unit/event_chain.c`](../../test/unit/event_chain.c) drives
   `pmix_server_register_events` / `pmix_server_deregister_events` from
   hand-packed wire buffers alongside its client-side event-chain cases —
