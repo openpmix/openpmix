@@ -934,11 +934,14 @@ misbehave by design).
   anything. The proc count in the same message is the mirror image: it is
   multiplied by `sizeof(pmix_proc_t)` to size the proc array, and it is
   the `size_t` — not the `int32_t` the unpack consumed — that the `qsort`
-  and the `PMIX_PROC_FREE` afterwards walk. `pmix_server_fence` now
-  screens both, with the same round-trip test; **`pmix_server_connect`
-  has the identical shape at both of its `ninfo = ninf + 2` sites and
-  still needs it.** Covered by `test/unit/server_fence.c`, whose
-  info-count case segfaults an unfixed library rather than failing it.
+  and the `PMIX_PROC_FREE` afterwards walk. Fence, connect and disconnect
+  now all screen both counts with the same round-trip test. Covered by
+  `test/unit/server_fence.c` and `test/unit/server_connect.c`, whose
+  info-count cases kill an unfixed library rather than failing it. **Any
+  new collective handler that seeds slots past the unpacked ones owes the
+  same screen** — the group handler builds its info array differently
+  (`ninfo = ninf + 1`, `pmix_server_group.c`) and should be read with
+  this in mind.
 
   While you are there, note the layout those two seeds establish, because
   the completion arms depend on it: for the fence and disconnect families

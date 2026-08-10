@@ -143,7 +143,15 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
      * with that situation. Instead, the client should at least send
      * us their own namespace for the use-case where the connection
      * spans all procs in that namespace */
-    if (nprocs < 1) {
+    /* Bound it from above as well, by the round trip through the int32_t
+     * the unpack consumes it as: this count is multiplied by
+     * sizeof(pmix_proc_t) to size the allocation below, and a wire value
+     * large enough to wrap that product yields a short allocation whose
+     * element constructors then run off the end. It also keeps "cnt" from
+     * silently naming a different number of procs than the qsort and the
+     * free below walk. */
+    cnt = nprocs;
+    if (nprocs < 1 || 0 > cnt || (size_t) cnt != nprocs) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         rc = PMIX_ERR_BAD_PARAM;
         goto cleanup;
@@ -168,6 +176,20 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    /* This count comes off the wire, so screen it before it is used to
+     * size an allocation and then to index that allocation. Two slots are
+     * seeded at info[ninf] and info[ninf+1] *before* anything is unpacked,
+     * so a count near SIZE_MAX wraps "ninf + 2" down to a one-element
+     * array and writes the seeds far outside it; the same wrap can happen
+     * inside the allocator's "ninfo * sizeof(pmix_info_t)". Requiring the
+     * count to survive the round trip through the int32_t that the unpack
+     * below consumes it as bounds it well clear of both. */
+    cnt = ninf;
+    if (0 > cnt || (size_t) cnt != ninf) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
@@ -332,7 +354,15 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * with that situation. Instead, the client should at least send
      * us their own namespace for the use-case where the connection
      * spans all procs in that namespace */
-    if (nprocs < 1) {
+    /* Bound it from above as well, by the round trip through the int32_t
+     * the unpack consumes it as: this count is multiplied by
+     * sizeof(pmix_proc_t) to size the allocation below, and a wire value
+     * large enough to wrap that product yields a short allocation whose
+     * element constructors then run off the end. It also keeps "cnt" from
+     * silently naming a different number of procs than the qsort and the
+     * free below walk. */
+    cnt = nprocs;
+    if (nprocs < 1 || 0 > cnt || (size_t) cnt != nprocs) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         rc = PMIX_ERR_BAD_PARAM;
         goto cleanup;
@@ -357,6 +387,20 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    /* This count comes off the wire, so screen it before it is used to
+     * size an allocation and then to index that allocation. Two slots are
+     * seeded at info[ninf] and info[ninf+1] *before* anything is unpacked,
+     * so a count near SIZE_MAX wraps "ninf + 2" down to a one-element
+     * array and writes the seeds far outside it; the same wrap can happen
+     * inside the allocator's "ninfo * sizeof(pmix_info_t)". Requiring the
+     * count to survive the round trip through the int32_t that the unpack
+     * below consumes it as bounds it well clear of both. */
+    cnt = ninf;
+    if (0 > cnt || (size_t) cnt != ninf) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
