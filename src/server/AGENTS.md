@@ -814,6 +814,33 @@ the client-driven pull/registration commands. Note `pmix_server_process_iof`
 drains the cache into a newly registered request so a late subscriber
 still sees recently produced output.
 
+## Inventory collection
+
+`pmix_server_inventory.c` is short and reads as though several things in
+it could be wrong. They are not, and the reasons are worth knowing
+before you "fix" one:
+
+- **An inventory sweep on a server with no `pnet`/`pgpu` components is a
+  success, not a failure.** Both entry points in the `pmix_pnet` /
+  `pmix_pgpu` API tables are always non-NULL (they are the `_base_`
+  functions, wired up statically in each framework's `*_base_frame.c`),
+  and each walks its `actives` list and returns `PMIX_SUCCESS` when that
+  list is empty. So the `goto report` arms mean a component really
+  failed.
+- **`PMIx_Info_list_convert` copies.** It `PMIx_Info_xfer`s every element
+  into a freshly created array, so `clct` owns what it hands back *and*
+  still owes the list a `PMIX_LIST_DESTRUCT`. Doing both is not a double
+  free. `PMIX_ERR_EMPTY` from it means "nothing collected" and is mapped
+  to success with a NULL array.
+- **`cirelease` is handed to the *host*, so it can run on the host's
+  thread.** That is safe only because it touches nothing global — it
+  frees the converted array and releases the caddy. Do not grow it into
+  something that walks `pmix_server_globals`; thread-shift instead.
+- The blocking arm of `PMIx_server_deliver_inventory` returning
+  `PMIX_OPERATION_SUCCEEDED` rather than `PMIX_SUCCESS` is the
+  convention every blocking `PMIx_server_*` form here follows (see
+  `pmix_server_setup.c` and `pmix_server_registration.c`), not a slip.
+
 ## Wire format and interoperability
 
 Everything crossing the socket obeys the top-level Version
