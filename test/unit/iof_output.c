@@ -45,6 +45,10 @@
 #include "include/pmix.h"
 #include "include/pmix_server.h"
 
+#include "src/include/pmix_globals.h"
+#include "src/mca/bfrops/bfrops.h"
+#include "src/server/pmix_server_ops.h"
+
 #define WAIT_USEC    20000
 #define WAIT_TRIES   250
 #define SETTLE_TRIES 25
@@ -155,7 +159,62 @@ static void wouldblock_cbfunc(pmix_status_t status, void *cbdata)
 }
 
 /* nothing here reaches a host upcall - the module only has to exist */
-static pmix_server_module_t mymodule = {.push_stdin = NULL};
+/* iof_pull only has to be non-NULL: the deregistration cases below are
+ * all rejected before the handler reaches it */
+static pmix_status_t stub_iof_pull(const pmix_proc_t procs[], size_t nprocs,
+                                   const pmix_info_t directives[], size_t ndirs,
+                                   pmix_iof_channel_t channels,
+                                   pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    (void) procs;
+    (void) nprocs;
+    (void) directives;
+    (void) ndirs;
+    (void) channels;
+    (void) cbfunc;
+    (void) cbdata;
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+static pmix_server_module_t mymodule = {.push_stdin = NULL,
+                                        .iof_pull = stub_iof_pull};
+
+static void iof_op_stub(pmix_status_t status, void *cbdata)
+{
+    (void) status;
+    (void) cbdata;
+}
+
+/* Drive one IOF DEREGISTER off a hand-packed wire buffer whose directive
+ * count is whatever the caller says. The handler sizes its array as
+ * "count + 1" so it can append the stop directive, and seeds that last
+ * slot itself - so a count near SIZE_MAX wraps the sum to zero,
+ * PMIx_Info_create answers NULL for a zero-element array, and the seed
+ * is written at info[SIZE_MAX]. A count that merely fails to survive the
+ * round trip through the int32_t the unpack consumes is the same
+ * hazard one step smaller. Both must be refused before any allocation. */
+static pmix_status_t do_iofdereg(size_t claimed_ninfo)
+{
+    pmix_buffer_t *buf;
+    pmix_status_t rc;
+    size_t refid = 0;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &claimed_ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &refid, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+    rc = pmix_server_iofdereg(pmix_globals.mypeer, buf, iof_op_stub, NULL);
+    PMIX_RELEASE(buf);
+    return rc;
+}
 
 /* replace "fd" with the write end of a fresh pipe, handing back a
  * non-blocking read end */
@@ -311,6 +370,19 @@ int main(int argc, char **argv)
         report("and the delivery that carried us there was still written",
                8 == got && 0 == strcmp(buf, "epsilon\n"));
     }
+
+    /* ---- wire counts a client controls, in the deregister handler ----
+     * these run last on purpose: a rejection logs to stderr, which is
+     * still a pipe nothing reads from here on */
+    report("a deregister count that wraps the +1 is refused",
+           PMIX_ERR_BAD_PARAM == do_iofdereg(SIZE_MAX));
+    report("a deregister count that truncates is refused",
+           PMIX_ERR_BAD_PARAM == do_iofdereg((size_t) 0x80000000UL));
+    /* and the screen must not cost the handler its ordinary job: a
+     * well-formed count carries on to the handler lookup, which is what
+     * rejects this one - nothing is registered under that refid */
+    report("a well-formed deregister gets past the screen",
+           PMIX_ERR_NOT_FOUND == do_iofdereg(0));
 
     PMIx_server_finalize();
     close(rfd);
