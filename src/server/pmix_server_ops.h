@@ -207,9 +207,17 @@ typedef struct {
         (c)->peer = (p);                     \
     } while (0)
 
+/* The caddy carries the tracker across an async hop onto the progress
+ * thread, so it takes a reference for the duration - anything else that
+ * runs in between (a departing participant completing the collective, for
+ * one) would otherwise release the tracker out from under the handler.
+ * The caddy's destructor gives the reference back. Note the reference
+ * keeps the object alive; it does NOT keep it on the collectives list, so
+ * a handler must still check that it is there before acting on it. */
 #define PMIX_SETUP_COLLECTIVE(c, t)        \
     do {                                   \
         (c) = PMIX_NEW(pmix_trkr_caddy_t); \
+        PMIX_RETAIN((t));                  \
         (c)->trk = (t);                    \
     } while (0)
 
@@ -524,6 +532,8 @@ PMIX_EXPORT bool pmix_server_trk_complete(pmix_server_trkr_t *trk);
 
 PMIX_EXPORT void pmix_server_set_collective_status(pmix_info_t *info, size_t ninfo,
                                                    pmix_status_t status);
+
+PMIX_EXPORT pmix_status_t pmix_server_get_collective_status(pmix_info_t *info, size_t ninfo);
 
 PMIX_EXPORT void pmix_server_grp_peer_lost(pmix_peer_t *peer);
 

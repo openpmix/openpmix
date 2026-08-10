@@ -71,6 +71,27 @@
  *      whose sd is negative never has its send event armed, so the
  *      messages come to rest on send_msg and send_queue - the same idiom
  *      test/unit/server_control.c uses to inspect a reply.
+ *
+ *   a namespace registration updates each pending tracker on its own
+ *      A collective that arrives before its namespaces are registered
+ *      parks, and _register_nspace is what later finishes defining it.
+ *      Two things there are invisible with a single tracker over a single
+ *      namespace, which is all any single-node functional test builds:
+ *
+ *        - the local count for a PMIX_RANK_WILDCARD participant was
+ *          *assigned* rather than accumulated, so a fence naming two
+ *          wildcard namespaces kept only the last-registered one's count.
+ *          It then went up to the host as soon as that many local procs
+ *          had contributed, and the rest of its participants arrived to
+ *          find the tracker gone.
+ *        - "are all this tracker's namespaces registered" was computed in
+ *          a variable hoisted above the tracker loop, so one tracker
+ *          naming a namespace we have not been told about left every
+ *          tracker behind it in the list marked incomplete. Whether a
+ *          collective completed depended on its position in the list.
+ *
+ *      The case below builds three trackers in a known order and reads
+ *      back what a registration did to each.
  */
 
 #include "src/include/pmix_config.h"
@@ -87,6 +108,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static int npass = 0;
 static int nfail = 0;
@@ -338,6 +360,56 @@ static void progress_barrier(void)
     PMIX_VALUE_DESTRUCT(&v);
 }
 
+/* Three trackers built in a known list order, so a registration can be
+ * observed acting on each of them separately. new_tracker touches
+ * pmix_server_globals.collectives, so it runs on the progress thread. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_server_trkr_t *acc;
+    pmix_server_trkr_t *bad;
+    pmix_server_trkr_t *carry;
+} regtrk_t;
+
+static void build_reg_trackers(int sd, short args, void *cbdata)
+{
+    regtrk_t *r = (regtrk_t *) cbdata;
+    pmix_proc_t procs[2];
+
+    (void) sd;
+    (void) args;
+
+    PMIX_LOAD_PROCID(&procs[0], "regnsA", PMIX_RANK_WILDCARD);
+    PMIX_LOAD_PROCID(&procs[1], "regnsB", PMIX_RANK_WILDCARD);
+    r->acc = pmix_server_new_tracker(NULL, procs, 2, PMIX_FENCENB_CMD);
+
+    PMIX_LOAD_PROCID(&procs[0], "regnsC", PMIX_RANK_WILDCARD);
+    r->bad = pmix_server_new_tracker(NULL, procs, 1, PMIX_FENCENB_CMD);
+
+    PMIX_LOAD_PROCID(&procs[0], "regnsB", PMIX_RANK_WILDCARD);
+    r->carry = pmix_server_new_tracker(NULL, procs, 1, PMIX_FENCENB_CMD);
+
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+static void drop_reg_trackers(int sd, short args, void *cbdata)
+{
+    regtrk_t *r = (regtrk_t *) cbdata;
+
+    (void) sd;
+    (void) args;
+
+    /* unlink before releasing - being on the list is not a reference */
+    pmix_list_remove_item(&pmix_server_globals.collectives, &r->acc->super);
+    PMIX_RELEASE(r->acc);
+    pmix_list_remove_item(&pmix_server_globals.collectives, &r->bad->super);
+    PMIX_RELEASE(r->bad);
+    pmix_list_remove_item(&pmix_server_globals.collectives, &r->carry->super);
+    PMIX_RELEASE(r->carry);
+
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -436,6 +508,67 @@ int main(int argc, char **argv)
                    PMIX_ERR_TIMEOUT == st2);
             report("the completion leaves no tracker behind",
                    0 == pmix_list_get_size(&pmix_server_globals.collectives));
+        }
+    }
+
+    /* --- a registration updates each pending tracker independently --- *
+     * Three namespaces: A fully registered up front, B registered only
+     * after the trackers exist, and C known (a client was registered for
+     * it) but whose nspace never is. Three trackers, in list order:
+     *
+     *   acc   {A wildcard, B wildcard} - new_tracker counts A only
+     *   bad   {C wildcard}             - can never be fully defined
+     *   carry {B wildcard}             - defined the moment B registers
+     *
+     * Registering B must take acc's count to A+B rather than replacing it
+     * with B, and must judge carry on carry's own namespaces rather than
+     * on the flag bad just cleared. */
+    {
+        regtrk_t r;
+        pmix_proc_t pr;
+        pmix_nspace_t ns;
+
+        PMIX_LOAD_PROCID(&pr, "regnsA", 0);
+        PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
+        PMIX_LOAD_PROCID(&pr, "regnsA", 1);
+        PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
+        PMIX_LOAD_NSPACE(ns, "regnsA");
+        PMIx_server_register_nspace(ns, 2, NULL, 0, NULL, NULL);
+
+        PMIX_LOAD_PROCID(&pr, "regnsB", 0);
+        PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
+        PMIX_LOAD_PROCID(&pr, "regnsB", 1);
+        PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
+        PMIX_LOAD_PROCID(&pr, "regnsC", 0);
+        PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
+
+        memset(&r, 0, sizeof(r));
+        PMIX_CONSTRUCT_LOCK(&r.lock);
+        PMIX_THREADSHIFT(&r, build_reg_trackers);
+        PMIX_WAIT_THREAD(&r.lock);
+        PMIX_DESTRUCT_LOCK(&r.lock);
+
+        report("three pending trackers were built",
+               NULL != r.acc && NULL != r.bad && NULL != r.carry);
+        if (NULL != r.acc && NULL != r.bad && NULL != r.carry) {
+            report("only the registered namespace is counted to start",
+                   2 == r.acc->nlocal);
+
+            PMIX_LOAD_NSPACE(ns, "regnsB");
+            PMIx_server_register_nspace(ns, 2, NULL, 0, NULL, NULL);
+            progress_barrier();
+
+            report("registering the second namespace adds to the count",
+                   4 == r.acc->nlocal);
+            report("a tracker naming an unregistered namespace stays undefined",
+                   !r.bad->def_complete);
+            report("a later tracker is judged on its own namespaces",
+                   r.carry->def_complete);
+
+            PMIX_CONSTRUCT_LOCK(&r.lock);
+            PMIX_THREADSHIFT(&r, drop_reg_trackers);
+            PMIX_WAIT_THREAD(&r.lock);
+            PMIX_DESTRUCT_LOCK(&r.lock);
         }
     }
 

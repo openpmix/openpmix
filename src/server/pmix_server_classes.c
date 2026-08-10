@@ -219,7 +219,19 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_setup_caddy_t,
                                 pmix_object_t,
                                 scadcon, scaddes);
 
-PMIX_CLASS_INSTANCE(pmix_trkr_caddy_t, pmix_object_t, NULL, NULL);
+static void tkcon(pmix_trkr_caddy_t *p)
+{
+    p->trk = NULL;
+}
+static void tkdes(pmix_trkr_caddy_t *p)
+{
+    /* PMIX_SETUP_COLLECTIVE retained the tracker so it could not be
+     * released while the caddy was in flight - give that back */
+    if (NULL != p->trk) {
+        PMIX_RELEASE(p->trk);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_trkr_caddy_t, pmix_object_t, tkcon, tkdes);
 
 static void dmcon(pmix_dmdx_remote_t *p)
 {

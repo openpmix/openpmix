@@ -515,6 +515,25 @@ The completion status is recorded into the tracker's info array by
 connect appends per-participant endpoint info and job-level info *after*
 that slot, so a positional write would clobber it.
 
+**Finishing a tracker's definition is per-tracker, and adds to the
+count.** `_register_nspace` and `_register_client` walk every incomplete
+tracker when a registration lands, and both halves of that walk were
+shared state when they should not have been. `all_def` - "are all of this
+tracker's namespaces registered" - was initialized above the loop, so one
+tracker naming a namespace we had not been told about left every tracker
+behind it in the list marked incomplete, and whether a collective
+completed depended on its position in `collectives`. And the
+`PMIX_RANK_WILDCARD` arm *assigned* `trk->nlocal` where
+`pmix_server_new_tracker` accumulates it, so a fence naming two wildcard
+namespaces kept only the last-registered one's count: it went up to the
+host as soon as that many local procs had contributed, and the rest
+arrived to find the tracker gone and hung on a fresh one nobody would
+complete. The count is now accumulated, guarded against double-counting by
+the namespace's *previous* `nlocalprocs` - `SIZE_MAX` there is exactly the
+question "could `new_tracker` have counted this one already?", since it
+counts a namespace only when the count is known and every tracker on the
+list predates this call. Both are covered by `test/unit/server_fence.c`.
+
 **Every collective owes `PMIX_TIMEOUT` a local timer, because the host
 cannot supply one.** The attribute is documented as bounding the whole
 operation, and the directives do reach the host in `trk->info` - but only
@@ -539,13 +558,49 @@ from `collectives` first, then release.**
 **Cancel the timer before the host up-call, at every site that makes
 one.** `pmix_server_fence` does, and says why at the call site: once the
 tracker is in the host's hands our timeout and the host's completion race,
-and the host can return a tracker we already released. The other two
-places that hand a tracker to `pmix_host_server.fence_nb` —
-`pmix_server_execute_collective` in `pmix_server_registration.c` and the
-lost-connection sweep in `src/mca/ptl/base/ptl_base_sendrecv.c` — do not
-cancel it. Both are reached only after a tracker has been sitting
-incomplete (a late registration, a departed participant), which is
+and the host can return a tracker we already released. Note the tracker
+destructor does **not** delete the event, so the same cancel is owed by
+any path that tears a tracker down itself. `pmix_server_execute_collective`
+now does both; the lost-connection sweep in
+`src/mca/ptl/base/ptl_base_sendrecv.c` still does not, and it is reached
 precisely when a `PMIX_TIMEOUT` timer is most likely to be armed.
+
+**`pmix_server_execute_collective` is the fourth up-call site, and it owes
+everything the other three do.** It is what fires a collective that a late
+`register_nspace` or `register_client` has just unblocked, and it had none
+of the discipline its siblings carry: it never cancelled the timer, never
+set `host_called`, never checked the host entry point was non-NULL (a
+comment claimed `pmix_server_new_tracker` had done so - it does not), and
+discarded the host's return value entirely, so a refusal left every
+participant blocked forever on a tracker stranded on the `collectives`
+list. Its own pack failures returned the same way. A collective reached
+through this path has no switchyard caddy to hand back - every caddy on
+`local_cbs` is already the tracker's - so the way to fail it is to drive
+the completion function with the error, which replies to each participant
+and tears the tracker down. That is what `fail_collective` is for.
+
+**Never build the modex bucket anywhere but `pmix_server_collect_data`.**
+`pmix_server_execute_collective` used to assemble it inline, and the copy
+had drifted: it shipped the bare collect-type byte plus rank blobs with
+neither the compression flag nor the enclosing byte object that
+`pmix_gds_base_store_modex` unpacks, and it packed with the first
+participant's `bfrops` module rather than `pmix_globals.mypeer`'s. So
+every fence that had to wait on a registration handed the host a blob no
+receiving server could parse - invisible to `make check`, because a
+single-node run never defers a fence. The clone de-duplication that copy
+carried now lives in `pmix_server_collect_data`, where both callers get
+it: a fork/exec'd clone shares its parent's `pmix_rank_info_t`, so
+identity of `&peer->info->pname` is what tells the two apart.
+
+**A tracker handed to `PMIX_EXECUTE_COLLECTIVE` crosses an async hop, so
+the caddy takes a reference.** `pmix_trkr_caddy_t` used to carry a bare
+pointer, and anything that ran between `pmix_event_active` and the
+handler - a departing participant completing the collective, a timeout -
+could release the tracker underneath it. The caddy now retains and its
+destructor releases. As with the dmodex tracker, **the reference keeps the
+object alive but does not put it back on the `collectives` list**, so
+`pmix_server_execute_collective` still asks `collective_is_pending` before
+acting on it, exactly as `_process_dmdx_reply` asks `tracker_is_pending`.
 
 **Read `PMIX_TIMEOUT` into a variable of the width you ask for.**
 `PMIx_Value_get_number(value, dest, type)` writes exactly `sizeof(type)`
@@ -1066,6 +1121,12 @@ Two suites cover the halves:
   library. Its host stub *declines* the fence on purpose — accepting
   would leave the completion to the test, and queueing a reply to a peer
   with no socket is not something a single-process program can do.
+  A further case builds three trackers in a known list order and drives
+  a `PMIx_server_register_nspace` across them, pinning both halves of the
+  tracker-update walk above: that a registration adds to a hybrid
+  tracker's local count rather than replacing it, and that a tracker
+  naming an unregistered namespace does not mark the trackers behind it
+  incomplete.
   A separate case drives the *completion*, `pmix_server_modex_cbfunc`,
   over a hand-built two-participant tracker with a failing status and
   reads back what was queued for each — the shape that catches both a
@@ -1290,6 +1351,27 @@ misbehave by design).
   and, for a data array, its *element* type, or a correctly-tagged array
   of some other type walks past its end. This is the client-side twin of
   the `pmix_parse_localquery` screen.
+- **The registration entry points build global state, so a failed
+  allocation must not be left on a global list.** `_register_nspace` and
+  `_register_client` both `strdup` the namespace name straight into a
+  freshly created `pmix_namespace_t` and appended it unchecked - and every
+  lookup in this directory `strcmp`s that member, so a transient failure
+  became a permanent segfault of the progress thread. `_register_client`
+  also trusted the "called only once per rank" contract in its own
+  comment: the "have we got everyone" test is an exact equality against
+  the length of `nptr->ranks`, so a second entry for a rank pushes that
+  list permanently past `nlocalprocs`, `all_registered` is never set, and
+  every collective involving the namespace hangs with nothing reporting
+  why. It now says so with `PMIX_ERR_DUPLICATE_KEY` instead.
+- **The `nlocalprocs < 0` arm of `_register_nspace` is the *update* path,
+  and it has its own rules.** It stores each directive through the gds
+  module by hand rather than going through `PMIX_GDS_ADD_NSPACE`. Two
+  things there are easy to get wrong: a `PMIX_VALUE_XFER` whose status is
+  discarded hands the datastore a value that was never populated (and the
+  store's own status then overwrites the transfer's), and the
+  `job_info_recvd` guard only works if something sets the flag - only the
+  full-registration path did, so a second update carrying
+  `PMIX_JOB_INFO_ARRAY` re-cached the whole array.
 - **`pmix_server_globals.system_tmpdir` is read by the directory-removal
   guard, so finalize must not free it early.** Only the string is freed
   here; the directory is removed by `pmix_ptl_close()` (inside

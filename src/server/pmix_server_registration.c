@@ -64,6 +64,9 @@ static void _register_nspace(int sd, short args, void *cbdata)
     pmix_gds_base_module_t *gds;
     pmix_kval_t *kv;
     pmix_proc_t proc;
+    pmix_nspace_caddy_t *nm;
+    size_t prev_nlocal;
+    bool counted;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
@@ -88,6 +91,15 @@ static void _register_nspace(int sd, short args, void *cbdata)
             goto release;
         }
         nptr->nspace = strdup(cd->proc.nspace);
+        if (NULL == nptr->nspace) {
+            /* do not put a nameless namespace on the global list - every
+             * lookup in this directory strcmp's that member, so it would
+             * turn a transient allocation failure into a permanent
+             * segfault of the progress thread */
+            PMIX_RELEASE(nptr);
+            rc = PMIX_ERR_NOMEM;
+            goto release;
+        }
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
     if (0 > cd->nlocalprocs) {
@@ -124,7 +136,14 @@ static void _register_nspace(int sd, short args, void *cbdata)
                             goto release;
                         }
                         PMIX_VALUE_XFER(rc, kv->value, &iptr[m].value);
-                        rc = gds->store(&proc, PMIX_REMOTE, kv);
+                        if (PMIX_SUCCESS == rc) {
+                            /* capture the store's own status - and do not
+                             * store at all if the transfer failed, or we
+                             * hand the datastore a value that was never
+                             * populated and then report the store's result
+                             * as though the transfer had succeeded */
+                            rc = gds->store(&proc, PMIX_REMOTE, kv);
+                        }
                         PMIX_RELEASE(kv); // maintain refcount
                         if (PMIX_SUCCESS != rc) {
                             goto release;
@@ -158,12 +177,23 @@ static void _register_nspace(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS != rc) {
                         goto release;
                     }
+                    /* record it, or the guard above never fires on this
+                     * path - only a prior full registration set the flag,
+                     * so a second update carrying job info cached the whole
+                     * array all over again */
+                    nptr->job_info_recvd = true;
                 }
             }
         }
         rc = PMIX_SUCCESS;
         goto release;
     }
+    /* remember whether this namespace's local-process count was already
+     * known, because that is exactly the question "has any live tracker
+     * already counted it?" - pmix_server_new_tracker counts a namespace
+     * only when the count is known, and every tracker in the list was
+     * created before this call */
+    prev_nlocal = nptr->nlocalprocs;
     nptr->nlocalprocs = cd->nlocalprocs;
 
     /* see if we already have everyone */
@@ -208,13 +238,21 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * the host server could have spawned the local client and
      * it called back into the collective -before- our local event
      * would fire the register_client callback. Deal with that here. */
-    all_def = true;
     PMIX_LIST_FOREACH (trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
         /* if this tracker is already complete, then we
          * don't need to update it */
         if (trk->def_complete) {
             continue;
         }
+        /* "are all this tracker's namespaces registered" is a question
+         * about THIS tracker, so reset it here. Hoisted above the loop it
+         * carried over: one tracker naming a namespace we have not been
+         * told about left the flag false for every tracker after it in
+         * the list, so those were marked incomplete - and stayed that way
+         * until some later registration happened to re-walk them with a
+         * clean flag. Whether a collective completed therefore depended
+         * on its position in the collectives list. */
+        all_def = true;
         /* the fact that the tracker is here means that the tracker was
          * created in response to at least one collective call being received
          * from a participant. However, not all local participants may have
@@ -246,7 +284,40 @@ static void _register_nspace(int sd, short args, void *cbdata)
             /* if this request was for all participants from this nspace, then
              * we handle this case here */
             if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
-                trk->nlocal = nptr->nlocalprocs;
+                /* Accumulate - do NOT assign. A hybrid collective names
+                 * several namespaces, and pmix_server_new_tracker already
+                 * added the local count of every one that was registered
+                 * when the tracker was created. Assigning here discarded
+                 * those, so a fence over two wildcard namespaces went up to
+                 * the host as soon as the last-registered one's local procs
+                 * had contributed - the rest then contributed to a tracker
+                 * that no longer existed and hung on a fresh one nobody
+                 * would ever complete.
+                 *
+                 * Guard against counting this namespace twice: only a
+                 * namespace whose count was previously unknown can have
+                 * been skipped by new_tracker. Record it on the tracker's
+                 * nspace list as new_tracker does for the ones it counts. */
+                if (SIZE_MAX == prev_nlocal) {
+                    counted = false;
+                    PMIX_LIST_FOREACH (nm, &trk->nslist, pmix_nspace_caddy_t) {
+                        if (0 == strcmp(nm->ns->nspace, nptr->nspace)) {
+                            counted = true;
+                            break;
+                        }
+                    }
+                    if (!counted) {
+                        nm = PMIX_NEW(pmix_nspace_caddy_t);
+                        if (NULL == nm) {
+                            rc = PMIX_ERR_NOMEM;
+                            goto release;
+                        }
+                        PMIX_RETAIN(nptr);
+                        nm->ns = nptr;
+                        pmix_list_append(&trk->nslist, &nm->super);
+                        trk->nlocal += nptr->nlocalprocs;
+                    }
+                }
                 /* the total number of procs in this nspace was provided
                  * in the data blob delivered to register_nspace, so check
                  * to see if all the procs are local */
@@ -297,6 +368,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const pmix_nspace_t nspace
     }
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
     pmix_strncpy(cd->proc.nspace, nspace, PMIX_MAX_NSLEN);
     cd->nlocalprocs = nlocalprocs;
     cd->opcbfunc = cbfunc;
@@ -434,6 +508,12 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
                     /* we have to remove this target, but leave the rest */
                     ntgs = ncd->ntargets - 1;
                     PMIX_PROC_CREATE(tgs, ntgs);
+                    if (NULL == tgs) {
+                        /* leave the notification's target list alone - it
+                         * names one departed proc, which is harmless,
+                         * where memcpy'ing into NULL is not */
+                        continue;
+                    }
                     p = 0;
                     for (m = 0; m < ncd->ntargets; m++) {
                         if (tgt != &ncd->targets[m]) {
@@ -746,163 +826,183 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_
     PMIX_THREADSHIFT(cd, _deregister_nspace);
 }
 
+/* Cancel a tracker's local-phase timeout.
+ *
+ * This must happen before the tracker is handed to the host, and before
+ * the tracker is released on any path that tears it down here. The
+ * tracker destructor does NOT delete the event, so a release with the
+ * timer still armed leaves libevent holding a pointer into freed memory;
+ * and once the host has the tracker, our timeout and the host's
+ * completion race - a timeout that wins releases a tracker the host is
+ * about to hand back. pmix_server_fence and pmix_server_connect both do
+ * this at their own up-call sites and say why. */
+static void cancel_collective_timer(pmix_server_trkr_t *trk)
+{
+    if (trk->event_active) {
+        pmix_event_del(&trk->ev);
+        trk->event_active = false;
+    }
+}
+
+/* Is this tracker still awaiting execution? The caddy that carried it
+ * onto the progress thread holds a reference, so the object outlives
+ * being retired - but the reference does not put it back on the
+ * collectives list. Anything that completes a collective (a departing
+ * participant, a timeout) unlinks it, and a tracker that has already been
+ * completed must not be handed to the host: its participants have been
+ * answered and its caddies freed. Mirrors tracker_is_pending in
+ * pmix_server_get.c, which guards the same window for direct modex. */
+static bool collective_is_pending(pmix_server_trkr_t *trk)
+{
+    pmix_server_trkr_t *t;
+
+    PMIX_LIST_FOREACH (t, &pmix_server_globals.collectives, pmix_server_trkr_t) {
+        if (t == trk) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Fail a collective we cannot hand to the host.
+ *
+ * Every caddy on local_cbs belongs to a client blocked in the collective,
+ * and by the time we are called the tracker has been declared locally
+ * complete - so no further contribution is coming and nothing else in the
+ * tree will ever answer them. Returning without completing the tracker
+ * therefore hangs every participant and strands the tracker on the
+ * collectives list for the life of the server. Drive the completion
+ * function instead: it replies to each participant and then unlinks and
+ * releases the tracker. If no completion function was ever attached, tear
+ * it down here - unlinking first, since being on the collectives list is
+ * not a reference. */
+static void fail_collective(pmix_server_trkr_t *trk, pmix_status_t status)
+{
+    cancel_collective_timer(trk);
+    trk->host_called = false; // the host will not be calling us back
+    if (PMIX_FENCENB_CMD == trk->type && NULL != trk->modexcbfunc) {
+        trk->modexcbfunc(status, NULL, 0, trk, NULL, NULL);
+        return;
+    }
+    if (NULL != trk->op_cbfunc) {
+        trk->op_cbfunc(status, trk);
+        return;
+    }
+    pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+    PMIX_RELEASE(trk);
+}
+
 void pmix_server_execute_collective(int sd, short args, void *cbdata)
 {
     pmix_trkr_caddy_t *tcd = (pmix_trkr_caddy_t *) cbdata;
     pmix_server_trkr_t *trk = tcd->trk;
-    pmix_server_caddy_t *cd;
-    pmix_peer_t *peer;
     char *data = NULL;
     size_t sz = 0;
-    pmix_byte_object_t bo;
-    pmix_buffer_t bucket, pbkt;
-    pmix_kval_t *kv;
-    pmix_proc_t proc;
-    bool first;
+    pmix_buffer_t bucket;
     pmix_status_t rc;
-    pmix_list_t pnames;
-    pmix_namelist_t *pn;
-    bool found;
-    pmix_cb_t cb;
 
     PMIX_ACQUIRE_OBJECT(tcd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    /* we don't need to check for non-NULL APIs here as
-     * that was already done when the tracker was created */
+    if (!collective_is_pending(trk)) {
+        pmix_output_verbose(2, pmix_server_globals.base_output,
+                            "pmix:server execute_collective on a retired tracker - discarding");
+        PMIX_RELEASE(tcd);
+        return;
+    }
+
+    /* Screen the host entry point we are about to call. The comment that
+     * used to sit here claimed this had already been done when the
+     * tracker was created, but pmix_server_new_tracker makes no such
+     * check - each handler checks its own entry point only on the arm
+     * where the collective completed while it was still holding it, which
+     * is by definition not the arm that lands us here. */
     if (PMIX_FENCENB_CMD == trk->type) {
-        /* if the user asked us to collect data, then we have
-         * to provide any locally collected data to the host
-         * server so they can circulate it - only take data
-         * from the specified procs as not everyone is necessarily
-         * participating! And only take data intended for remote
-         * distribution as local data will be added when we send
-         * the result to our local clients */
-        if (trk->hybrid) {
-            /* if this is a hybrid, then we pack everything using
-             * the daemon-level bfrops module as each daemon is
-             * going to have to unpack it, and then repack it for
-             * each participant. */
-            peer = pmix_globals.mypeer;
-        } else {
-            /* in some error situations, the list of local callbacks can
-             * be empty - if that happens, we just need to call the fence
-             * function to prevent others from hanging */
-            if (0 == pmix_list_get_size(&trk->local_cbs)) {
-                pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info, trk->ninfo, data, sz,
-                                          trk->modexcbfunc, trk);
-                PMIX_RELEASE(tcd);
-                return;
-            }
-            /* since all procs are the same, just use the first proc's module */
-            cd = (pmix_server_caddy_t *) pmix_list_get_first(&trk->local_cbs);
-            peer = cd->peer;
+        if (NULL == pmix_host_server.fence_nb) {
+            fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
+            PMIX_RELEASE(tcd);
+            return;
         }
+        /* Assemble the modex bucket with the shared builder, exactly as
+         * pmix_server_fence does. This was hand-rolled here, and the copy
+         * had drifted from the original in two ways that matter on the
+         * wire: it shipped the raw collect-type-plus-rank-blobs bucket
+         * with neither the compression flag nor the enclosing byte object
+         * that pmix_gds_base_store_modex unpacks, and it packed with the
+         * first participant's bfrops module instead of our own. So a fence
+         * that completed through this path - one that had to wait on a
+         * late register_nspace or register_client - handed the host a blob
+         * no receiving server could parse. Nothing here may build that
+         * payload a second way. */
         PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
-
-        unsigned char tmp = (unsigned char) trk->collect_type;
-        PMIX_BFROPS_PACK(rc, peer, &bucket, &tmp, 1, PMIX_BYTE);
-
-        if (PMIX_COLLECT_YES == trk->collect_type) {
-            pmix_output_verbose(2, pmix_server_globals.base_output, "fence - assembling data");
-            first = true;
-            PMIX_CONSTRUCT(&pnames, pmix_list_t);
-            PMIX_LIST_FOREACH (cd, &trk->local_cbs, pmix_server_caddy_t) {
-                /* see if we have already gotten the contribution from
-                 * this proc */
-                found = false;
-                PMIX_LIST_FOREACH (pn, &pnames, pmix_namelist_t) {
-                    if (pn->pname == &cd->peer->info->pname) {
-                        /* got it */
-                        found = true;
-                        break;
-                    }
-                }
-                if (found) {
-                    continue;
-                } else {
-                    /* record it, or the list stays empty forever: the
-                     * duplicate check above then never matches, a clone
-                     * sharing a rank with its parent has its remote data
-                     * packed into the bucket twice, and every one of these
-                     * objects is leaked because the list destructor below
-                     * has nothing to free */
-                    pn = PMIX_NEW(pmix_namelist_t);
-                    pn->pname = &cd->peer->info->pname;
-                    pmix_list_append(&pnames, &pn->super);
-                }
-                if (trk->hybrid || first) {
-                    /* setup the nspace */
-                    pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
-                    first = false;
-                }
-                proc.rank = cd->peer->info->pname.rank;
-                /* get any remote contribution - note that there
-                 * may not be a contribution */
-                PMIX_CONSTRUCT(&cb, pmix_cb_t);
-                cb.proc = &proc;
-                cb.scope = PMIX_REMOTE;
-                cb.copy = true;
-                PMIX_GDS_FETCH_KV(rc, peer, &cb);
-                if (PMIX_SUCCESS == rc) {
-                    /* pack the returned kvals */
-                    PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-                    /* start with the proc id */
-                    PMIX_BFROPS_PACK(rc, peer, &pbkt, &proc, 1, PMIX_PROC);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        PMIX_DESTRUCT(&cb);
-                        PMIX_DESTRUCT(&pbkt);
-                        PMIX_DESTRUCT(&bucket);
-                        PMIX_LIST_DESTRUCT(&pnames);
-                        PMIX_RELEASE(tcd);
-                        return;
-                    }
-                    PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
-                        PMIX_BFROPS_PACK(rc, peer, &pbkt, kv, 1, PMIX_KVAL);
-                        if (PMIX_SUCCESS != rc) {
-                            PMIX_ERROR_LOG(rc);
-                            PMIX_DESTRUCT(&cb);
-                            PMIX_DESTRUCT(&pbkt);
-                            PMIX_DESTRUCT(&bucket);
-                            PMIX_LIST_DESTRUCT(&pnames);
-                            PMIX_RELEASE(tcd);
-                            return;
-                        }
-                    }
-                    /* extract the resulting byte object */
-                    PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
-                    PMIX_DESTRUCT(&pbkt);
-                    /* now pack that into the bucket for return - the pack
-                     * copies, so the unloaded bytes are ours to free */
-                    PMIX_BFROPS_PACK(rc, peer, &bucket, &bo, 1, PMIX_BYTE_OBJECT);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        PMIX_DESTRUCT(&cb);
-                        PMIX_BYTE_OBJECT_DESTRUCT(&bo);
-                        PMIX_DESTRUCT(&bucket);
-                        PMIX_LIST_DESTRUCT(&pnames);
-                        PMIX_RELEASE(tcd);
-                        return;
-                    }
-                    PMIX_BYTE_OBJECT_DESTRUCT(&bo);
-                }
-                PMIX_DESTRUCT(&cb);
-            }
-            PMIX_LIST_DESTRUCT(&pnames);
+        rc = pmix_server_collect_data(trk, &bucket);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&bucket);
+            /* every participant is parked on this tracker and nothing
+             * else will ever answer them */
+            fail_collective(trk, rc);
+            PMIX_RELEASE(tcd);
+            return;
         }
         PMIX_UNLOAD_BUFFER(&bucket, data, sz);
         PMIX_DESTRUCT(&bucket);
-        pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info, trk->ninfo, data, sz,
-                                  trk->modexcbfunc, trk);
+        /* the blob transfers to the host on the call - the request
+         * direction carries no release function, and the reference host
+         * reads the pointer later from another thread */
+        cancel_collective_timer(trk);
+        trk->host_called = true;
+        rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info, trk->ninfo, data, sz,
+                                       trk->modexcbfunc, trk);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            fail_collective(trk, rc);
+        } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+            /* the host completed atomically and will not call us back, so
+             * we owe every participant the reply ourselves */
+            trk->host_called = false;
+            rc = pmix_server_get_collective_status(trk->info, trk->ninfo);
+            trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
+        }
     } else if (PMIX_CONNECTNB_CMD == trk->type) {
-        pmix_host_server.connect(trk->pcs, trk->npcs, trk->info, trk->ninfo, trk->op_cbfunc, trk);
+        if (NULL == pmix_host_server.connect) {
+            fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
+            PMIX_RELEASE(tcd);
+            return;
+        }
+        cancel_collective_timer(trk);
+        trk->host_called = true;
+        rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info, trk->ninfo, trk->op_cbfunc,
+                                      trk);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            fail_collective(trk, rc);
+        } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+            trk->host_called = false;
+            rc = pmix_server_get_collective_status(trk->info, trk->ninfo);
+            trk->op_cbfunc(rc, trk);
+        }
     } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
-        pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info, trk->ninfo, trk->op_cbfunc,
-                                    trk);
+        if (NULL == pmix_host_server.disconnect) {
+            fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
+            PMIX_RELEASE(tcd);
+            return;
+        }
+        cancel_collective_timer(trk);
+        trk->host_called = true;
+        rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info, trk->ninfo, trk->op_cbfunc,
+                                         trk);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            fail_collective(trk, rc);
+        } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+            trk->host_called = false;
+            rc = pmix_server_get_collective_status(trk->info, trk->ninfo);
+            trk->op_cbfunc(rc, trk);
+        }
     } else {
-        /* unknown type */
+        /* unknown type - nobody is going to complete this one, so tear it
+         * down here: cancel the timer first, since the tracker destructor
+         * does not, then unlink before releasing */
         PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        cancel_collective_timer(trk);
         pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
         PMIX_RELEASE(trk);
     }
@@ -947,17 +1047,40 @@ static void _register_client(int sd, short args, void *cbdata)
             goto cleanup;
         }
         nptr->nspace = strdup(cd->proc.nspace);
+        if (NULL == nptr->nspace) {
+            /* see the matching comment in _register_nspace */
+            PMIX_RELEASE(nptr);
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
-    /* setup a peer object for this client - since the host server
-     * only deals with the original processes and not any clones,
-     * we know this function will be called only once per rank */
+    /* Setup a peer object for this client - since the host server only
+     * deals with the original processes and not any clones, this should
+     * be called only once per rank. Say so rather than trusting it: the
+     * "have we got everyone" test below is an exact equality against the
+     * length of the ranks list, so a second entry for a rank pushes that
+     * list permanently past nlocalprocs, all_registered is never set, and
+     * every collective involving this namespace hangs with nothing
+     * anywhere reporting why. */
+    PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
+        if (info->pname.rank == cd->proc.rank) {
+            PMIX_ERROR_LOG(PMIX_ERR_DUPLICATE_KEY);
+            rc = PMIX_ERR_DUPLICATE_KEY;
+            goto cleanup;
+        }
+    }
     info = PMIX_NEW(pmix_rank_info_t);
     if (NULL == info) {
         rc = PMIX_ERR_NOMEM;
         goto cleanup;
     }
     info->pname.nspace = strdup(nptr->nspace);
+    if (NULL == info->pname.nspace) {
+        PMIX_RELEASE(info);
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
+    }
     info->pname.rank = cd->proc.rank;
     info->uid = cd->uid;
     info->gid = cd->gid;
@@ -973,13 +1096,14 @@ static void _register_client(int sd, short args, void *cbdata)
          * the host server could have spawned the local client and
          * it called back into the collective -before- our local event
          * would fire the register_client callback. Deal with that here. */
-        all_def = true;
         PMIX_LIST_FOREACH (trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
             /* if this tracker is already complete, then we
              * don't need to update it */
             if (trk->def_complete) {
                 continue;
             }
+            /* per-tracker - see the matching comment in _register_nspace */
+            all_def = true;
             /* the fact that the tracker is here means that the tracker was
              * created in response to at least one collective call being received
              * from a participant. However, not all local participants may have
