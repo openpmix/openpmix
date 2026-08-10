@@ -582,6 +582,62 @@ client, so the `pname` read is safe; `server_object` is simply NULL for a
 peer the host never registered as a client, which hosts already handle
 (and is what lets PRRTE tell the two apart).
 
+## The event registration store
+
+`pmix_server_globals.events` is a list of `pmix_regevents_info_t`, one
+per event code (plus one keyed `PMIX_MAX_ERR_CONSTANT` for default
+handlers), each owning a `peers` list of `pmix_peer_events_info_t` — one
+entry per registration message that named the code. Three invariants are
+easy to get wrong.
+
+**A peer legitimately holds more than one entry for the same code, so a
+deregistration has to clear them all.** The client library packs a
+handler's *whole* code list whenever any code in that list is new to this
+server, so a client that registers one handler for `{A}` and a second for
+`{A, B}` sends both lists and we record `A` twice — deliberately, since
+each entry carries that handler's own `PMIX_EVENT_AFFECTED_PROC` filter.
+It then sends exactly one deregistration for `A`, when its last handler
+for `A` goes away. `pmix_server_deregister_events` stopped at the first
+match and left the rest behind for the life of the connection: the server
+kept forwarding the code to a peer with no handler for it, and `peers`
+never emptied, so `pmix_server_prune_reginfo` never fired and the host was
+never told to stop either.
+
+**`reginfo->active` is a promise to every future registrant, so a host
+that refuses must have it given back — on both arms.** `mark_activations`
+sets it for the codes a request is about to ask the host about, sorting
+them to the front of the array so the host is handed just that subset;
+`undo_activations` is its inverse, and the only thing that reads the flag
+is the next registration deciding whether to ask again. The synchronous
+refusal always called `undo_activations`; the asynchronous one did not, so
+a host that accepted a registration for processing and then failed it left
+the code marked active forever — and every later registrant for it was
+told it succeeded and then never saw the event. `pmix_setup_caddy_t`
+carries `nactive` for exactly this. The undo runs on the progress thread
+(`_failed_registration`), *not* in the host callback, because the store is
+progress-thread state — `regevopcbfunc` may be called on the host's own
+thread and does nothing but thread-shift.
+
+The peer entries a failed registration added are deliberately *not*
+removed. A peer may hold several handlers for one code and nothing in the
+request identifies which entry belongs to it; those entries go when the
+peer deregisters or departs. Note also that
+`pmix_peer_events_info_t::enviro_events` is written and never read
+anywhere in the tree — the same shape as `pmix_iof_req_t::flags`.
+
+**The cached-event replay answers with the registration's status, not its
+own.** `_check_cached_events` runs after a successful registration to hand
+a late registrant anything already in the notification hotel that matches
+its codes, its affected-proc filter and the event's range. It used to
+report whatever the replay ran into, so failing to pack or queue one stale
+event told the client its handler was not registered — while the server
+had in fact registered it, leaving an entry the client would never
+deregister. Note that all three arms have to attach that filter to the
+caddy (`scd->procs`) and the host-completes-asynchronously arm did not, so
+it replayed events the registrant had said it did not want; attach it
+*before* the up-call, since the host may complete on another thread the
+moment it has the caddy.
+
 ## IOF forwarding
 
 Standard-I/O forwarding is buffered through `pmix_server_globals.iof`
@@ -663,6 +719,13 @@ Two suites cover the halves:
   `PMIx_Query_info_nb` does in the *requestor's* process; a mistyped
   `PMIX_NSPACE` segfaulted the server until `pmix_parse_localquery`
   grew its own check.
+- [`test/unit/event_chain.c`](../../test/unit/event_chain.c) drives
+  `pmix_server_register_events` / `pmix_server_deregister_events` from
+  hand-packed wire buffers alongside its client-side event-chain cases —
+  the default-handler entry that registration has to create, and the
+  duplicate `(peer, code)` entries a deregistration has to clear in full.
+  Its `client_evreq()` helper thread-shifts, because both of those touch
+  `pmix_server_globals` and must not be called from `main()`.
 - [`contrib/dockerswarm/run-server-tests.sh`](../../contrib/dockerswarm/run-server-tests.sh)
   is the multi-node half: direct modex, spawn-plus-connect across
   namespaces, group blocks spanning nodes, IOF pull/dereg against a
@@ -754,13 +817,18 @@ misbehave by design).
   through the `int32_t` that `PMIX_BFROPS_UNPACK` takes, so a peer can
   send one that truncates to zero or to a negative number. That is
   harmless wherever the only use is sizing an array the unpack
-  immediately guards — which is every handler here except
-  `pmix_server_log`, which indexes the directive array to append
-  `PMIX_LOG_SOURCE` *before* anything is unpacked into it (a negative
-  index off a NULL array) and hands `(info, ninfo)` to `plog` even when
-  the unpack was skipped. It now rejects a count that does not survive
-  the round trip. Apply the same test to any new handler that reads a
-  count before it reads the array.
+  immediately guards. Two handlers here are not that. `pmix_server_log`
+  indexes the directive array to append `PMIX_LOG_SOURCE` *before*
+  anything is unpacked into it (a negative index off a NULL array) and
+  hands `(info, ninfo)` to `plog` even when the unpack was skipped;
+  `pmix_server_register_events` walks its code array `ncodes` times while
+  only `cnt` entries were unpacked into it, and that array comes from a
+  bare `malloc`, so the tail is uninitialized rather than constructed
+  (an info array is safe here precisely because `PMIX_INFO_CREATE`
+  constructs every element). Both now reject a count that does not
+  survive the round trip. Apply the same test to any new handler that
+  reads a count before it reads the array, or that walks the `size_t`
+  rather than the `int32_t` afterwards.
 - **`PMIX_LIST_DESTRUCT` is not idempotent.** It drains the list and then
   calls `PMIX_DESTRUCT`, which under `--enable-debug` zeroes the object's
   magic id and asserts on it — so a second destruct of the same list
@@ -775,6 +843,19 @@ misbehave by design).
   and long enough first: `_register_nspace` and `_register_resources` both
   did not, and neither is reachable only from trusted code - a host is
   free to get this wrong.
+
+  **The same applies with more force to anything a *client* handed you.**
+  An info array a handler unpacked off the wire carries whatever type tag
+  the peer chose, so reading its union without checking that tag is
+  reading a pointer the peer picked. `pmix_server_register_events` took
+  `PMIX_EVENT_AFFECTED_PROC` and `PMIX_EVENT_AFFECTED_PROCS` straight out
+  of it, so a mistyped one had the server copy a `pmix_proc_t` out of a
+  scalar or dereference that scalar as a `pmix_data_array_t`; the group
+  branch of `pmix_server_event_recvd_from_client` did the same with
+  `PMIX_GROUP_ID` and `strcmp`'d the result. Confirm the value's type -
+  and, for a data array, its *element* type, or a correctly-tagged array
+  of some other type walks past its end. This is the client-side twin of
+  the `pmix_parse_localquery` screen.
 - **`pmix_server_globals.system_tmpdir` is read by the directory-removal
   guard, so finalize must not free it early.** Only the string is freed
   here; the directory is removed by `pmix_ptl_close()` (inside
