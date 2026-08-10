@@ -169,6 +169,14 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
 
 complete:
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric recv from server releasing");
+    /* rc is the authoritative outcome by this point - it carries the
+     * server's own status when that was the failure, and our local one
+     * (lost connection, bad reply) otherwise. Record it, because a
+     * blocking caller reached us with its stack caddy as cbdata and no
+     * callback, and reads cb->status rather than anything we pass along:
+     * leaving it at the constructor's PMIX_SUCCESS reported a fabric
+     * update that never happened as having succeeded. */
+    cb->status = rc;
     /* release the caller */
     if (NULL != cb->cbfunc.opfn) {
         cb->cbfunc.opfn(rc, cb->cbdata);
