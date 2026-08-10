@@ -330,6 +330,9 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &nspace, &cnt, PMIX_STRING);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc || !PMIX_CHECK_NSPACE(nspace, pmix_globals.myid.nspace))) {
         if (PMIX_SUCCESS == rc) {
+            /* the unpack succeeded, so it allocated the string - it is only
+             * the identity that is wrong, and this path owns it */
+            free(nspace);
             rc = PMIX_ERR_INVALID_VAL;
         }
         PMIX_ERROR_LOG(rc);
@@ -970,6 +973,9 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             rc = fallback_to_next_gds();
         }
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            /* the URI the connect handed us is ours until it is stored
+             * below - every other exit from this branch frees it */
+            free(suri);
             return rc;
         }
     }
@@ -984,11 +990,12 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         kptr->value->type = PMIX_STRING;
         kptr->value->data.string = strdup(pmix_client_globals.myserver->info->pname.nspace);
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
+        PMIX_RELEASE(kptr); // maintain accounting
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
+            free(suri);
             return rc;
         }
-        PMIX_RELEASE(kptr); // maintain accounting
         kptr = PMIX_NEW(pmix_kval_t);
         kptr->key = strdup(PMIX_SERVER_RANK);
         PMIX_VALUE_CREATE(kptr->value, 1);
@@ -998,6 +1005,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_RELEASE(kptr); // maintain accounting
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
+            free(suri);
             return rc;
         }
 
