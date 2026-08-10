@@ -155,7 +155,6 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     pmix_cmd_t cmd = PMIX_CONNECTNB_CMD;
     pmix_status_t rc;
     pmix_cb_t *cb, cb2;
-    pmix_byte_object_t bo;
     pmix_info_t xfer;
     pmix_kval_t *kv;
     void *ilist;
@@ -251,7 +250,6 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
      * "remote" scope as all local procs have access
      * to info posted by all other local procs, regardless
      * of their namespace */
-    PMIX_BYTE_OBJECT_CONSTRUCT(&bo);
     PMIX_CONSTRUCT(&cb2, pmix_cb_t);
     cb2.proc = &pmix_globals.myid;
     cb2.scope = PMIX_REMOTE;
@@ -363,7 +361,6 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                 // now add the kvals
                 PMIX_LIST_FOREACH (kv, &cb2.kvs, pmix_kval_t) {
                     PMIx_Info_list_add_value_unique(ilist, kv->key, kv->value, true);
-                    found = true;
                 }
                 // convert to array
                 rc = PMIx_Info_list_convert(ilist, &darray);
@@ -631,9 +628,12 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &bkt, &nspace, &cnt, PMIX_STRING);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
+            /* give up on the remaining blobs - the check below this loop
+             * reports rc to the caller. This used to "continue", which
+             * reads as "skip this blob and take the next one" but does
+             * the same thing, the loop condition being on rc */
             PMIX_DESTRUCT(&bkt);
-            continue;
+            break;
         }
         /* extract and process any proc-related info for this nspace */
         PMIX_GDS_STORE_JOB_INFO(rc, pmix_globals.mypeer, nspace, &bkt);

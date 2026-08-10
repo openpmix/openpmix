@@ -1033,7 +1033,28 @@ grep -n "PMIX_PTL_SEND_RECV" -A 7 src/client/*.c \
   not a defect here, but it is the one place in this directory where a
   caller's mistake leaks library memory.
 
-## The seventh sweep — `pmix_client.c`, and five things it deliberately left alone
+## The seventh sweep, and five things it deliberately left alone
+
+Each file in this pass was audited five times over, through one lens per
+pass — memory and lifetime, threading and the PMIx boundary, error paths
+and control flow, portability and representation, and caller contracts —
+rather than re-read the same way five times.
+
+**`pmix_client_connect.c` came through all five with nothing to fix**,
+which is worth recording because two of its shapes look alarming and are
+not. `PMIx_Connect_nb` hands the same `darray` to `PMIX_INFO_LOAD` and
+then destructs both it and the resulting `pmix_info_t` — that is correct,
+not a double free: `PMIx_Info_load` routes `PMIX_DATA_ARRAY` through
+`pmix_bfrops_base_copy_darray()`, so the info owns a deep copy. (The two
+call sites destruct the source in a different order relative to
+`append_optional()`; both are fine for the same reason.) And
+`wait_cbfunc`'s per-namespace blob loop never leaks `bo`, because
+`PMIX_LOAD_BUFFER` *takes* the bytes — it NULLs the source pointer and
+zeroes its length — so the `pmix_buffer_t` it fills is what frees them.
+Use `PMIX_LOAD_BUFFER_NON_DESTRUCT` if you ever need the byte object to
+survive.
+
+
 
 The sweep found two leaks, both on error paths that only a failing
 server can reach, and both fixed: `job_data()` dropped the `nspace`
