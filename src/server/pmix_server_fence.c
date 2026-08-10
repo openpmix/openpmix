@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -787,6 +787,9 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
     rank_blob_t *blob;
     uint8_t blob_info_byte;
     bool compressed;
+    pmix_list_t pnames;
+    pmix_namelist_t *pn;
+    bool found;
 
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
 
@@ -795,7 +798,34 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                            "fence - assembling data");
 
         PMIX_CONSTRUCT(&rank_blobs, pmix_list_t);
+        PMIX_CONSTRUCT(&pnames, pmix_list_t);
         PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
+            /* Contribute each participating rank once. A fork/exec'd clone
+             * shares its parent's pmix_rank_info_t, so both caddies name
+             * the same rank and would otherwise have that rank's remote
+             * data fetched and packed into the bucket twice. Identity of
+             * the rank_info's pname is the test, exactly as the clone
+             * accounting in the tracker engine uses it. */
+            found = false;
+            PMIX_LIST_FOREACH (pn, &pnames, pmix_namelist_t) {
+                if (pn->pname == &scd->peer->info->pname) {
+                    found = true;
+                    break;
+                }
+            }
+            if (found) {
+                continue;
+            }
+            pn = PMIX_NEW(pmix_namelist_t);
+            if (NULL == pn) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                rc = PMIX_ERR_NOMEM;
+                PMIX_LIST_DESTRUCT(&pnames);
+                PMIX_LIST_DESTRUCT(&rank_blobs);
+                goto cleanup;
+            }
+            pn->pname = &scd->peer->info->pname;
+            pmix_list_append(&pnames, &pn->super);
             /* get any remote contribution - note that there
              * may not be a contribution */
             PMIX_LOAD_PROCID(&pcs, scd->peer->info->pname.nspace, scd->peer->info->pname.rank);
@@ -805,6 +835,7 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                  * then releases it - so catch this here */
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 rc = PMIX_ERR_NOMEM;
+                PMIX_LIST_DESTRUCT(&pnames);
                 PMIX_LIST_DESTRUCT(&rank_blobs);
                 goto cleanup;
             }
@@ -812,6 +843,7 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, &pcs, 1, PMIX_PROC);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
+                PMIX_LIST_DESTRUCT(&pnames);
                 PMIX_LIST_DESTRUCT(&rank_blobs);
                 PMIX_RELEASE(pbkt);
                 goto cleanup;
@@ -828,6 +860,7 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_DESTRUCT(&cb);
+                        PMIX_LIST_DESTRUCT(&pnames);
                         PMIX_LIST_DESTRUCT(&rank_blobs);
                         PMIX_RELEASE(pbkt);
                         goto cleanup;
@@ -844,6 +877,7 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                 PMIX_RELEASE(pbkt);
             }
         }
+        PMIX_LIST_DESTRUCT(&pnames);
         /* mark the collection type so we can check on the
          * receiving end that all participants did the same. Note
          * that if the receiving end thinks that the collect flag
@@ -1279,4 +1313,25 @@ void pmix_server_set_collective_status(pmix_info_t *info, size_t ninfo,
             return;
         }
     }
+}
+
+/* The reader half of the above. Locate the slot by key for the same
+ * reason the setter does: connect appends per-participant endpoint and
+ * job-level info past it, so the positional read the fence handler uses
+ * on its own arms is only correct for the families that append nothing.
+ * A tracker carrying no status slot has not been degraded by anything,
+ * so report success. */
+pmix_status_t pmix_server_get_collective_status(pmix_info_t *info, size_t ninfo)
+{
+    size_t n;
+
+    if (NULL == info) {
+        return PMIX_SUCCESS;
+    }
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_LOCAL_COLLECTIVE_STATUS)) {
+            return info[n].value.data.status;
+        }
+    }
+    return PMIX_SUCCESS;
 }
