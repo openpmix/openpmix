@@ -899,7 +899,7 @@ pmix_status_t pmix_server_session_ctrl(pmix_server_caddy_t *cd,
         PMIX_INFO_CREATE(scd->info, scd->ninfo);
         /* we unpacked this array, so the caddy owns it - without the
          * flag the destructor leaves it behind on every path that does
-         * not reach _sessctrlcbfunc's explicit free */
+         * not reach _sctrl_cbfunc's explicit free */
         scd->infocopy = true;
         cnt = scd->ninfo;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, scd->info, &cnt, PMIX_INFO);

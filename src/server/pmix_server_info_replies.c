@@ -25,7 +25,7 @@
  * the caller - so they are near-identical to each other by design: when
  * adding one, diff it against its neighbor here.
  *
-These are callbacks the host server invokes, so they can run in either
+ * These are callbacks the host server invokes, so they can run in either
  * the host's thread context or our own if the host answers immediately.
  * Anything touching a global entity is therefore pushed into an event
  * before it is used. The switchyard in pmix_server_switchyard.c is the
@@ -184,44 +184,44 @@ void pmix_server_alloc_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ni
 
 static void _qrycbfunc(int sd, short args, void *cbdata)
 {
-    pmix_shift_caddy_t *scdwrapper = (pmix_shift_caddy_t*)cbdata;
-    pmix_server_caddy_t *scd = (pmix_server_caddy_t*)scdwrapper->cbdata;
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)scd->cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         /* the host's data is still the host's to reclaim, even here */
-        if (NULL != scdwrapper->cbfunc.relfn) {
-            scdwrapper->cbfunc.relfn(scdwrapper->relcbdata);
+        if (NULL != scd->cbfunc.relfn) {
+            scd->cbfunc.relfn(scd->relcbdata);
         }
+        PMIX_RELEASE(cd);
         PMIX_RELEASE(scd);
-        PMIX_RELEASE(scdwrapper);
         return;
     }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:query callback with status %s",
-                        PMIx_Error_string(scdwrapper->status));
+                        PMIx_Error_string(scd->status));
 
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         goto cleanup;
     }
-    PMIX_BFROPS_PACK(rc, scd->peer, reply, &scdwrapper->status, 1, PMIX_STATUS);
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
     /* pack the returned data */
-    PMIX_BFROPS_PACK(rc, scd->peer, reply, &scdwrapper->ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
-    if (0 < scdwrapper->ninfo) {
-        PMIX_BFROPS_PACK(rc, scd->peer, reply, scdwrapper->info, scdwrapper->ninfo, PMIX_INFO);
+    if (0 < scd->ninfo) {
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, scd->info, scd->ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -231,18 +231,18 @@ static void _qrycbfunc(int sd, short args, void *cbdata)
 
 complete:
     // send reply
-    PMIX_SERVER_QUEUE_REPLY(rc, scd->peer, scd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(reply);
     }
 
 cleanup:
     // cleanup
-    if (NULL != scdwrapper->cbfunc.relfn) {
-        scdwrapper->cbfunc.relfn(scdwrapper->relcbdata);
+    if (NULL != scd->cbfunc.relfn) {
+        scd->cbfunc.relfn(scd->relcbdata);
     }
+    PMIX_RELEASE(cd);
     PMIX_RELEASE(scd);
-    PMIX_RELEASE(scdwrapper);
 }
 
 void pmix_server_query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
@@ -618,7 +618,7 @@ static void _cred_cbfunc(int sd, short args, void *cbdata)
         return;
     }
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
+    pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:get credential callback with status %s",
                         PMIx_Error_string(scd->status));
 
@@ -756,7 +756,7 @@ static void _valcbfunc(int sd, short args, void *cbdata)
         return;
     }
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
+    pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:validate credential callback with status %s",
                         PMIx_Error_string(scd->status));
 
@@ -1069,7 +1069,7 @@ static void _respeerscbfunc(int sd, short args, void *cbdata)
     size_t np = 0;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    PMIX_ACQUIRE_OBJECT(cd);
+    PMIX_ACQUIRE_OBJECT(scd);
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         /* the host's data is still the host's to reclaim, even here */
@@ -1206,7 +1206,7 @@ static void _resnodescbfunc(int sd, short args, void *cbdata)
     char *nodelist = NULL;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    PMIX_ACQUIRE_OBJECT(cd);
+    PMIX_ACQUIRE_OBJECT(scd);
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         /* the host's data is still the host's to reclaim, even here */
