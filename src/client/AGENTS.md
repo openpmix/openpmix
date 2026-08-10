@@ -1033,7 +1033,7 @@ grep -n "PMIX_PTL_SEND_RECV" -A 7 src/client/*.c \
   not a defect here, but it is the one place in this directory where a
   caller's mistake leaks library memory.
 
-## The seventh sweep, and five things it deliberately left alone
+## The seventh sweep, and the things it deliberately left alone
 
 Each file in this pass was audited five times over, through one lens per
 pass — memory and lifetime, threading and the PMIx boundary, error paths
@@ -1095,9 +1095,55 @@ three of the error returns between `connect_to_peer` and the point
 where the URI is finally stored. The three stores now release and free
 identically; they used to disagree.
 
+**A blocking wrapper that reads `cb.status` needs a recv callback that
+writes it.** `PMIx_Fabric_update` reported `PMIX_SUCCESS` for a fabric
+refresh that never happened. It is the one blocking wrapper here that
+passes `cbfunc == NULL` — so the caddy `frecv` completes *is* its stack
+`pmix_cb_t`, and the wakeup branch runs rather than the callback branch.
+But `frecv` wrote `cb->status` in exactly one place: the unpack of the
+server's own status. Every other exit — the lost-connection empty
+buffer, a failed status unpack, a failed `ninfo`/`PMIX_INFO` unpack —
+carried its outcome only in the local `rc` that the *callback* branch
+passes along, leaving `cb->status` at the `PMIX_SUCCESS` `cbcon()` gave
+it. The wrapper then returned success with the caller's `pmix_fabric_t`
+untouched and stale. `frecv` now assigns `cb->status = rc` at
+`complete:`, where `rc` is authoritative on every path.
+
+Note the sibling did not have this: `PMIx_Fabric_register` passes
+`mycbfunc`, which records the status it is handed, so only the
+`cbfunc == NULL` shape is exposed. **When you add a blocking wrapper,
+check which of the two it is** — the "caddy is in `cbdata`" convention
+means the recv callback is writing the *caller's* status field directly,
+and every early exit has to set it. No automated coverage: a singleton
+returns `PMIX_ERR_UNREACH` at the `connected` gate long before the PTL
+round-trip, and no in-tree host implements `pmix_server_module_t.fabric`.
+
 Far more useful is what was examined and **rejected**, because each one
 looks like a defect until you chase it down. Do not re-open these
 without new evidence.
+
+- **A client's `PMIx_Fabric_deregister` never tells the server, and
+  cannot.** There is no `PMIX_FABRIC_DEREGISTER_CMD` — the command enum
+  in [`pmix_globals.h`](../include/pmix_globals.h) has only
+  `PMIX_FABRIC_REGISTER_CMD` (30) and `PMIX_FABRIC_UPDATE_CMD` (31). So
+  the client frees `fabric->info` locally and stops, while the
+  registration `pmix_server_fabric_register` made on its behalf stays on
+  `pmix_pnet_globals.fabrics` for the life of the server. Closing it
+  means a new wire command and a server handler, which is a protocol
+  addition rather than a review fix; recorded so the local-only
+  deregister is not mistaken for an oversight in this file.
+- **`pmix_pnet.register_fabric` returning `PMIX_OPERATION_IN_PROGRESS`
+  would break `PMIx_Fabric_register`'s blocking wrapper**, which treats
+  anything that is neither `PMIX_SUCCESS` nor `PMIX_OPERATION_SUCCEEDED`
+  as an error and destructs its stack caddy before the module's callback
+  can fire. [`pnet.h`](../mca/pnet/pnet.h) does document that return, but
+  the gap is not in this directory: `pmix_pnet_base_register_fabric`
+  records the fabric on `pmix_pnet_globals.fabrics` only for
+  `PMIX_OPERATION_SUCCEEDED`, so an async component's fabric could never
+  be resolved by a later update or deregister either. No shipped
+  component takes that path (see
+  [`src/mca/pnet/AGENTS.md`](../mca/pnet/AGENTS.md)). Fix the base first
+  if one ever does; patching the wrapper alone would hide half of it.
 
 - **`PMIx_Finalize` throws the server's reply away, and that is not the
   `_commitfn`/`PMIx_Abort` defect.** The server *does* ack
