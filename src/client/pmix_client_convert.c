@@ -83,11 +83,18 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                 /* the nspace matches this group ID */
 
                 if (PMIX_RANK_WILDCARD == inprocs[n].rank) {
-                    /* we need to replace this proc with the grp members */
+                    /* we need to replace this proc with the grp members.
+                     * A group can be sitting on the list with no members
+                     * left - the PMIX_GROUP_LEFT handler decrements nmbrs
+                     * as each one departs and does not drop the group when
+                     * it reaches zero - and that expands to nothing at all.
+                     * Report it the same way as a group rank past the end
+                     * of the membership below, rather than contributing
+                     * no participant and calling that success. */
                     for (i=0; i < grp->nmbrs; i++) {
                         append_unique(&cache, &grp->members[i]);
+                        found = true;
                     }
-                    found = true;
                     break;
                 }
 

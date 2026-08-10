@@ -54,6 +54,11 @@
 
 #include "include/pmix.h"
 
+#include "src/class/pmix_list.h"
+#include "src/client/pmix_client_ops.h"
+#include "src/include/pmix_globals.h"
+#include "src/threads/pmix_threads.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -330,6 +335,61 @@ static void test_group_lock_concurrency(void)
         pthread_join(tid[n], NULL);
     }
     check(1, "8 threads x 400 gets through the group-list lock completed");
+}
+
+/* A group can sit on pmix_client_globals.groups with no members left: the
+ * PMIX_GROUP_LEFT handler decrements nmbrs as each member departs and does
+ * not drop the group when it reaches zero. Expanding a wildcard reference
+ * to such a group yields no participants at all, and
+ * pmix_client_convert_group_procs() used to report that as success - it
+ * handed back the NULL that PMIx_Proc_create(0) returns along with a count
+ * of zero, and PMIx_Get's caller then memcpy'd out of procs[0]. That is a
+ * SIGSEGV on a call the API documents as legal, so this case asserts
+ * survival first and the error return second.
+ *
+ * The group is planted directly rather than driven through a real
+ * construct-then-leave, because a singleton has no server to construct one
+ * with. That is fair here: the subject is what the expansion does with an
+ * empty membership, not how the membership became empty. */
+static void test_get_empty_group(void)
+{
+    pmix_group_t *grp;
+    pmix_proc_t proc;
+    pmix_value_t *val = NULL;
+    pmix_status_t rc;
+
+    fprintf(stdout, "\n-- PMIx_Get against a group with no members --\n");
+
+    grp = PMIX_NEW(pmix_group_t);
+    if (NULL == grp) {
+        check(0, "allocate the empty group");
+        return;
+    }
+    grp->grpid = strdup("client.api.emptygroup");
+    /* the constructor already leaves members NULL and nmbrs 0 */
+
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+    pmix_list_append(&pmix_client_globals.groups, &grp->super);
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+
+    PMIX_LOAD_PROCID(&proc, "client.api.emptygroup", PMIX_RANK_WILDCARD);
+    rc = PMIx_Get(&proc, "client.api.absent.key", NULL, 0, &val);
+    check(PMIX_SUCCESS != rc, "PMIx_Get on a memberless group returns rather than crashing");
+    if (NULL != val) {
+        PMIX_VALUE_RELEASE(val);
+    }
+
+    /* PMIx_Get is the only entry point a singleton can drive into the
+     * expansion at all. The collectives that also call it - fence,
+     * connect/disconnect, group construct - answer their singleton or
+     * connected check first and never reach the group list, so a case
+     * for them here would pass against the unfixed library and prove
+     * nothing. Their side lives in the swarm suite. */
+
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+    pmix_list_remove_item(&pmix_client_globals.groups, &grp->super);
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+    PMIX_RELEASE(grp);
 }
 
 static void test_fabric(void)
@@ -642,6 +702,7 @@ int main(int argc, char **argv)
     test_fabric();
     test_group_join_outparams();
     test_group_construct_invite_outparams();
+    test_get_empty_group();
     test_group_lock_concurrency();
 
     rc = PMIx_Finalize(NULL, 0);

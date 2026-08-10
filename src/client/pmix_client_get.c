@@ -321,8 +321,10 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             return rc;
         }
-        if (1 < nprocs) {
-            /* we can't support multi-proc gets */
+        if (1 != nprocs) {
+            /* we can't support multi-proc gets - and the memcpy below
+             * needs exactly one, so a count of zero is equally unusable:
+             * PMIx_Proc_create() answers a zero size with NULL */
             PMIX_PROC_FREE(procs, nprocs);
             return PMIX_ERR_BAD_PARAM;
         }

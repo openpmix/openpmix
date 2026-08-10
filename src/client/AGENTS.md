@@ -1040,6 +1040,35 @@ pass — memory and lifetime, threading and the PMIx boundary, error paths
 and control flow, portability and representation, and caller contracts —
 rather than re-read the same way five times.
 
+**A group can outlive its membership, and expanding it yields nothing.**
+The `PMIX_GROUP_LEFT` handler in
+[`pmix_event_notification.c`](../event/pmix_event_notification.c)
+decrements `grp->nmbrs` as each member departs and does *not* drop the
+group when the count reaches zero — so a `pmix_group_t` with
+`nmbrs == 0` is a reachable state on `pmix_client_globals.groups`.
+`pmix_client_convert_group_procs()` expanded a `PMIX_RANK_WILDCARD`
+reference to such a group into no participants at all and called that
+success, handing back `*outsize == 0` and the **NULL** that
+`PMIx_Proc_create(0)` returns for a zero count. `PMIx_Get`'s caller then
+`memcpy`'d out of `procs[0]`: a SIGSEGV on a documented-legal call.
+Expansion to nothing is now the same `PMIX_ERR_NOT_FOUND` the function
+already returns for a group rank past the end of the membership, and
+`pmix_client_get.c` additionally requires exactly one proc back rather
+than merely not-more-than-one. **Those two are redundant, not two halves
+of one fix** — either alone closes the crash — so if you rework one,
+check what the other is still doing rather than assuming it is
+load-bearing. Regression: `test_get_empty_group()` in
+`test/unit/client_api.c`.
+
+Two general points fall out of it. `PMIx_Proc_create(0)` returning NULL
+means **any `PMIX_PROC_CREATE` whose count is computed rather than
+literal needs the count checked before the array is indexed.** And this
+function is the directory's one exception to the "define every OUT
+parameter before the first thing that can fail" rule — it sets
+`*outprocs`/`*outsize` only on success. All five callers return
+immediately on a failure status, so that is safe today; it is the kind
+of thing to preserve deliberately rather than discover.
+
 **`pmix_client_connect.c` came through all five with nothing to fix**,
 which is worth recording because two of its shapes look alarming and are
 not. `PMIx_Connect_nb` hands the same `darray` to `PMIX_INFO_LOAD` and
