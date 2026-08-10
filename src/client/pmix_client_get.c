@@ -402,7 +402,21 @@ static bool try_local_fetch(pmix_cb_t *cb, pmix_get_logic_t *lg)
         return false;
     }
     cb->status = process_values(cb);
-    return (PMIX_SUCCESS == cb->status && NULL != cb->value);
+    if (PMIX_SUCCESS == cb->status && NULL != cb->value) {
+        return true;
+    }
+    /* process_values() can decline - a malformed qualified value in the
+     * store, or a failed allocation - and it does not drain what the
+     * fetch put on the list. Leaving those entries is not a leak, the
+     * caddy destructor takes them, but the ordinary path below is about
+     * to fetch into that same list and process_values() decides between
+     * "the value" and "an aggregate of everything" by counting it. A
+     * stale entry therefore turns a scalar answer into a data array.
+     * Hand the slow path a clean caddy, exactly as the failed-fetch
+     * return above does - this is a short-circuit, never a partial one. */
+    PMIX_LIST_DESTRUCT(&cb->kvs);
+    PMIX_CONSTRUCT(&cb->kvs, pmix_list_t);
+    return false;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
@@ -1189,7 +1203,10 @@ static void get_data(int sd, short args, void *cbdata)
                             goto done;
                         }
                     } else {
-                        /* couldn't find this proc's appnum - nothing we can do */
+                        /* couldn't find this proc's appnum - nothing we can do.
+                         * Tear the caddy down first: see the hostname fetch
+                         * above, whose failure path had the same hole */
+                        PMIX_DESTRUCT(&cb2);
                         cb->status = PMIX_ERR_NOT_FOUND;
                         goto done;
                     }
@@ -1267,6 +1284,13 @@ static void get_data(int sd, short args, void *cbdata)
                             cb->status = rc;
                             goto done;
                         }
+                    } else {
+                        /* the fetch failed, so the caddy still has to come
+                         * down - the hostname and nodeid fetches above lost
+                         * theirs the same way. Unlike its siblings this one
+                         * carries on with sessionid left at UINT32_MAX, which
+                         * simply resolves to "no such session" below */
+                        PMIX_DESTRUCT(&cb2);
                     }
                 }
             } else {
