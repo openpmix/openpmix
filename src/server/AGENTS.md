@@ -206,7 +206,23 @@ host completion lands, and the host process outlives our finalize - so
 what is dropped there is stranded for good. Exactly one of the two arms
 can fire for a given request (the outer returns before shifting, so the
 inner never runs), which is why calling `relfn` in both is right rather
-than a double release.
+than a double release. The rule is not confined to that file: the two
+relfn-carrying pairs in `pmix_server_op_replies.c` - modex and get - had
+exactly the same four arms, and both now honor it.
+
+**A payload the release function owns must be disowned on every path that
+destructs the buffer holding it.** `PMIX_LOAD_BUFFER` does not copy and
+does not allocate: it points the buffer straight at the payload it is
+handed and NULLs the source pointer. So a `PMIX_DESTRUCT` of that buffer
+frees memory that belongs to whoever gave us the `(relfn, relcbdata)`
+pair, which is then freed a second time when the release function runs.
+`_getcbfunc` NULLed `base_ptr`/`bytes_used` before destructing on its
+success path and *not* on the arm where `PMIX_BFROPS_COPY_PAYLOAD`
+failed, so a failed copy was a double free of the host's blob. Disown the
+buffer immediately after the copy, before branching on its status - that
+way one line covers both arms. The same reasoning is why `_mdxcbfunc`
+uses `PMIX_LOAD_BUFFER_NON_DESTRUCT` and carries a comment saying not to
+destruct `xfer`.
 
 **A callback signature with no release function has to *copy* what it
 parks.** `pmix_credential_cbfunc_t` and `pmix_validation_cbfunc_t` -
@@ -351,6 +367,27 @@ and one member the destructor deliberately ignores:
   reach the completion — `pmix_monitor_processing`'s `relcbfunc` is what
   frees it on the paths that do.
 
+### What `scdes` does *not* free
+
+`pmix_shift_caddy_t` is the generic bounce caddy, and its destructor
+frees only `key`, `peer`, `pname.nspace`, `kv`, and the two info arrays
+under `infocopy`/`dircopy`. Everything else parked on it is the
+handler's to free by hand, on **every** path — `pdata` most of all, since
+`pmix_server_lookup_cbfunc` builds a whole `PMIX_PDATA_CREATE`d array
+there (it must: `pmix_lookup_cbfunc_t` carries no release function, so
+nothing the host passes survives the return). `_lkupcbfunc` freed it only
+on its success arm, so every pack failure and the finalize-race early-out
+leaked the array and every value in it. Free it at the common label, not
+beside the pack that consumed it.
+
+A related trap sits one level down: **a stack `pmix_cb_t` must be
+destructed on every path, not only where the fetch succeeded.** `cbcon`
+constructs a lock unconditionally and `cbdes` is the only thing that
+takes it down, and `pthread_mutex_init`/`pthread_cond_init` are allowed
+to allocate. `_spcb` had the `PMIX_DESTRUCT(&cb)` inside its
+`PMIX_SUCCESS == rc` arm, and a fetch that finds nothing is the ordinary
+case for a job this server has not been told about yet.
+
 Any struct handed to `PMIX_THREADSHIFT` **must** carry a `pmix_event_t ev`
 as its thread-shift member (the caddy contract from the top-level guide).
 Do not stack-allocate a caddy that outlives its creating function — the
@@ -425,6 +462,30 @@ the trickiest bugs):**
   `cd->trk = NULL`, which is a no-op: nothing in the tree ever assigns
   `pmix_server_caddy_t::trk` a non-NULL value, so `cddes`'s release of it
   is unreachable too. Removal from `local_cbs` is what does the work.
+
+**A completion loop owes a reply to *every* caddy on `local_cbs`, and the
+status it packs must survive the loop.** The three fence-family
+completions (`_mdxcbfunc`, `_cnct`, `_discnct`) walk `local_cbs` packing
+one reply per participant, and both halves of that were wrong:
+
+- **Leaving the loop on a per-participant failure hangs the rest.** The
+  timer was cancelled at the top and the tracker release at the foot
+  frees the remaining caddies without a reply, so nothing in the tree
+  will ever answer them. This is the fence-family twin of the group rule
+  below ("detaching only the caller's and releasing answers that one
+  client and silently frees the other N-1"). Serve the next participant
+  instead: `continue` where the reply cannot be built, and — in `_cnct`,
+  where the failure is per-participant job-info assembly rather than the
+  status pack — hand *that* client the error and carry on.
+- **`PMIX_GDS_MARK_MODEX_COMPLETE` assigns the variable it is given.**
+  `_mdxcbfunc` passed it the same local that held the collective's
+  status, one line after packing it, so every participant after the
+  first was told a failed fence had succeeded. `gds/hash`'s entry point
+  is a no-op returning `PMIX_SUCCESS`, so this fired on every ordinary
+  server rather than in some corner. Keep the collective's status in a
+  variable nothing else writes; use the pack-status local for the macro.
+  Covered by `test/unit/server_fence.c`, whose two-participant case
+  reads back what was queued for each.
 
 The completion status is recorded into the tracker's info array by
 `pmix_server_set_collective_status`, which locates the
@@ -829,6 +890,20 @@ zero frees the byte object's container while leaking its payload —
 `PMIx_Byte_object_free` runs its destruct loop `n` times and then frees
 the array, so zero means "free the box, keep the contents."
 
+**A two-caddy handler's completion owes the switchyard caddy its
+release.** `pmix_server_iofreg` and `iofdereg` park the switchyard's
+`pmix_server_caddy_t` on `cd->cbdata` of their own `pmix_setup_caddy_t`
+and then return `PMIX_SUCCESS`, so the switchyard lets go of it — and
+`scaddes` does not reach `cbdata`, so releasing the setup caddy releases
+nothing else. `_iofdreg` gets this right with three explicit releases;
+`_iofreg` released only the setup caddy, so the server caddy and the
+`PMIX_RETAIN` it holds on the requesting peer leaked on **every** IOF
+pull registration — pinning that peer, and everything hanging off it, for
+the life of the server. Both halves of the pair owe it: the outer
+callback's `progress_thread_stopped` arm had the same hole. Whenever a
+handler nests one caddy inside another, write down which one releases
+which; the destructors will not do it for you.
+
 **A registration the host refuses has to come back out of
 `pmix_globals.iof_requests`.** `pmix_server_iofreg` adds the
 `pmix_iof_req_t` — which takes a `PMIX_RETAIN` on the requestor — before
@@ -968,6 +1043,12 @@ Two suites cover the halves:
   library. Its host stub *declines* the fence on purpose — accepting
   would leave the completion to the test, and queueing a reply to a peer
   with no socket is not something a single-process program can do.
+  A separate case drives the *completion*, `pmix_server_modex_cbfunc`,
+  over a hand-built two-participant tracker with a failing status and
+  reads back what was queued for each — the shape that catches both a
+  reply loop that abandons participants and a status the loop clobbers.
+  It reads the replies off `send_msg`/`send_queue`, per the
+  `test/unit/server_control.c` idiom below.
   `test/unit/tracker_match.c` and `test/unit/trk_complete.c` cover the
   tracker-identity and completion-predicate halves of the same file, and
   [`test/unit/collect_job_info.c`](../../test/unit/collect_job_info.c)
