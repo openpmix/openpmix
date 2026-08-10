@@ -1103,12 +1103,21 @@ empty array and returns `PMIX_ERR_NOT_A_MEMBER`.
   so a caller who chose the non-blocking form precisely to stay off a
   blocking path gets a blocking call, and one that deadlocks outright if
   it was issued from an event handler on the progress thread. Note the
-  directory has **three** different meanings for a NULL `cbfunc` and this
-  is the third: `PMIx_Get_nb`, `PMIx_Compute_distances_nb` and
-  `PMIx_Group_construct_nb` reject it with `PMIX_ERR_BAD_PARAM`, the two
+  directory has **four** different meanings for a NULL `cbfunc` and this
+  is the last: `PMIx_Get_nb`, `PMIx_Compute_distances_nb` and
+  `PMIx_Group_invite_nb` reject it with `PMIX_ERR_BAD_PARAM`, the two
   fabric `_nb` entry points read it as "the caddy is in `cbdata`" (see
-  the invariant above), and fence blocks. Check which one you are looking
-  at before copying a NULL test between them.
+  the invariant above), the remaining group `_nb` entry points
+  (`PMIx_Group_construct_nb`, `PMIx_Group_join_nb`, `PMIx_Group_leave_nb`,
+  `PMIx_Group_destruct_nb`) accept it as fire-and-forget — their reply
+  handlers all test `NULL != cb->cbfunc` before completing, and the
+  operation still takes effect — and fence blocks. Check which one you are
+  looking at before copying a NULL test between them.
+
+  This entry used to name `PMIx_Group_construct_nb` among the rejecters.
+  It does not reject: it has never tested `cbfunc` at all, and
+  `construct_cbfunc` is written for the NULL case. Do not "restore" a
+  check that was never there.
 
   Left alone because every way of resolving it is a behavior change to a
   released public API rather than a fix: rejecting NULL breaks any caller
@@ -1279,6 +1288,151 @@ without new evidence.
   convention rather than a divergence here, and the in-tree host
   (`test/simple/simptest.c`) ignores `cbfunc` entirely, so nothing
   available demonstrates the failure.
+
+## The eighth sweep — `pmix_client_group.c` and the setup/progress-thread seam
+
+A second pass devoted to this one file, five lenses over it. The theme is
+not the type-tag hazard the fourth and fifth sweeps established — that
+ground held — but a different seam: **the moment a group tracker becomes
+the progress thread's, and what is still being written to it afterwards.**
+
+**Registering the invitation observer publishes the tracker, and the
+invitation can resolve inside that call.** `pmix_event_register_observer`
+runs `check_cached_events()` (see
+[`pmix_event_registration.c`](../event/pmix_event_registration.c)) before
+it acknowledges the registration, and that replays every matching cached
+notification through `pmix_invoke_local_event_hdlr` →
+`sweep_observers()` — synchronously, on the progress thread, with the
+brand-new observer already on the list. So a leader inviting procs that
+have *already* terminated, whose `PMIX_PROC_TERMINATED` events were cached
+because nothing was watching for them, has `invite_observer()` count every
+answer and call `invite_wake()` from inside the registration call itself.
+
+`invite_setup()` then went on to do three things to a tracker that the
+announcement chain already owned:
+
+- it set `cb->optional` from `PMIX_GROUP_OPTIONAL` *after* `announce_step()`
+  had read it, so an invitation the caller marked optional was aborted
+  under the default all-or-nothing policy;
+- it armed the timeout timer on a tracker the chain might already have
+  retired, leaving a live `pmix_event_t` on freed memory;
+- and in the `_nb` form it kept reading `cb->info` to notify the invitees
+  after `invite_finish()` had released the tracker — a use-after-free.
+
+The directive scan, the range info and the timer are now all established
+**before** the registration, and `invite_setup()` holds a reference of its
+own (`PMIX_RETAIN`/`PMIX_RELEASE`) across the registration and the
+notification so nothing can free the tracker underneath it. It also
+reports success when `cb->completed` is set on the way out, because the
+caller has been completed and the tracker retired by then — returning an
+error there had `PMIx_Group_invite_nb` run `invite_teardown()` on a
+tracker that was already torn down.
+
+**The rule worth carrying:** in this file, *registering an observer is a
+publication*. Everything the resolution path reads must be on the tracker
+before it, nothing may be armed on the tracker after it, and any use of
+the tracker below it needs a reference. The same reasoning applies to
+`setup_leader_watch()`, which is why that one hands the registry ownership
+via `watch_relcb` and touches nothing afterwards.
+
+*Wire format:*
+
+- **`PMIx_Group_destruct_nb` packed a field the server never unpacks.**
+  Both group commands are unpacked by the same routine,
+  `pmix_server_group()` in
+  [`pmix_server_group.c`](../server/pmix_server_group.c), which reads the
+  proc array only under `if (0 < nprocs)`. `construct_msg()` guards its
+  pack to match; destruct packed unconditionally — and
+  `pmix_bfrops_base_pack()` writes an element count even for a zero-length
+  array, so destructing a group whose membership had drained put bytes on
+  the wire that the server never consumed. Its next unpack read that stray
+  count as the directive count and *succeeded* having unpacked nothing
+  (`pmix_bfrops_base_unpack` reports `PMIX_SUCCESS` with `*num_vals = 0`
+  when the stored count is zero), leaving the server's `ninf` uninitialized
+  to size an allocation and then index it. Both halves are closed: the
+  client guards the pack, and `ninf` is initialized.
+
+  The general point: **a guarded unpack demands a guarded pack.** When two
+  commands share an unpack routine, they have to agree with it
+  field-for-field, and "pack it anyway, the count is zero" is not a no-op
+  on this wire.
+
+*Crashes on wire- or caller-supplied input:*
+
+- `pmix_server_process_grpinfo()` read `pinfo[0]` and dereferenced
+  `pinfo[0].value.data.proc` on nothing more than the key matching
+  `PMIX_PROCID`. All three of its callers — this file's
+  `construct_cbfunc()`, `pmix_server_setup.c` and `pmix_server_group.c` —
+  hand it an array that came off the wire, so neither the length nor the
+  union member was theirs to assume. The guard went into the helper, where
+  it covers all three; `construct_cbfunc()` additionally now requires a
+  non-empty array, which it was already checking for non-NULL.
+- `invite_setup()` fetched each wildcard's job size **twice** — once to
+  size `cb->members` and once to fill it — and wrote the second pass's
+  count into the first pass's allocation. An elastic job that grew between
+  the two overran the array. The writes are bounded now and a disagreement
+  is an error rather than a short membership.
+- `construct_cbfunc()` unpacked the returned membership into an unchecked
+  `PMIX_PROC_CREATE` result, and `construct_msg()` filled an unchecked
+  `PMIX_INFO_CREATE` one.
+- `PMIx_Group_construct[_nb]` accepted `procs == NULL` with `nprocs > 0`
+  and walked the array. A NULL `procs` is legal for an add-members or
+  bootstrap participant, but only when it is declared empty.
+
+*Leaks:*
+
+- `get_endpts()` was the one exit of that function that returned without
+  `PMIX_DESTRUCT`ing its `pmix_cb_t`, dropping the kvals the GDS fetch had
+  just handed it.
+- `invite_finish()` took `pmix_event_deregister_observer()` on trust. That
+  call fails once the library is shutting down, and when it does no
+  callback comes, so the tracker was never released. `invite_teardown()`
+  checks the same return for the same reason.
+
+*Correctness, lesser:*
+
+- `PMIx_Group_leave_nb()` treated the NULL from `PMIX_PROC_CREATE(0)` as an
+  allocation failure, so leaving a group whose membership had drained
+  returned `PMIX_ERR_NOMEM` — and returned *before* dropping the group, so
+  the caller could never leave it. An empty membership means there is
+  nobody to notify, which is not an error. (See the seventh sweep for why
+  `nmbrs == 0` is a reachable state.)
+
+*Noted, not changed:*
+
+- **`PMIx_Group_invite_nb` deadlocks if called from an event handler.**
+  `invite_setup()` runs on the caller's thread and takes two
+  `PMIX_WAIT_THREAD`s on operations that thread-shift — the observer
+  registration and the `PMIX_GROUP_INVITED` notification — so driving it
+  from a handler waits on the progress thread from the progress thread.
+  For the blocking `PMIx_Group_invite` that is merely the documented
+  property of this file; for the `_nb` form it is a contract defect, since
+  being callable from a handler is the whole point of the non-blocking
+  variant. Closing it means making the setup itself a chain of
+  non-blocking steps, the way `announce_step()` already is — a
+  restructure, not a review fix.
+- `cb->completed` and `cb->timer_active` are plain `bool`s read from the
+  caller's thread and written from the progress thread. Every read is
+  downstream of a mutex operation today, so the ordering is incidental
+  rather than declared. Left as-is because it matches the rest of the
+  file; if one more cross-thread flag appears here, the tracker wants a
+  lock rather than a fourth ad-hoc barrier.
+- `info_cbfunc()` calls `add_group()` with its own tracker's `notterm`,
+  which is always false — the flag lives on the tracker
+  `construct_cbfunc()` reads. That is harmless only because
+  `add_group()` ignores a repeat request and `construct_cbfunc()` gets
+  there first with the right value. On the *join* path there is no first
+  call, so a joiner never records `PMIX_GROUP_NOTIFY_TERMINATION` — which
+  is correct, since a joiner supplied no construct directives.
+
+*No regression coverage was added, and none is possible in `make check`.*
+Every finding above sits behind either a server round-trip or a cached-event
+replay, and the group entry points check `connected` before their
+arguments (see [Testing](#testing)), so a singleton cannot reach any of
+them. The thirteen `run_grp*.pl` tests do cover the reordered
+`invite_setup` end-to-end through `simptest` — construct, invite,
+invite-nb, join, decline, leave, destruct, both timeout cases, both abort
+cases, and the suppression case — and all pass.
 
 ## Coding conventions specific to this directory
 

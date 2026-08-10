@@ -403,9 +403,17 @@ pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
     pmix_status_t rc;
     pmix_proc_t procid;
 
-    // the first element in the array must be the procID
-    // of the process that contributed this info
-    if (!PMIX_CHECK_KEY(&pinfo[0], PMIX_PROCID)) {
+    /* The first element in the array must be the procID of the process that
+     * contributed this info. Every caller of this function hands it an array
+     * that arrived over the wire - from a peer's group contribution or from
+     * the host's setup blob - so neither the length nor the union member is
+     * ours to assume: an empty array made this read past the end of the
+     * allocation, and a PMIX_PROCID carrying anything but a pmix_proc_t made
+     * the memcpy read from whatever shared the union. */
+    if (0 == npinfo || NULL == pinfo ||
+        !PMIX_CHECK_KEY(&pinfo[0], PMIX_PROCID) ||
+        PMIX_PROC != pinfo[0].value.type ||
+        NULL == pinfo[0].value.data.proc) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
@@ -1029,7 +1037,10 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     char *grpid = NULL;
     pmix_proc_t *procs = NULL;
     pmix_info_t *info = NULL;
-    size_t n, ninfo = 0, ninf, nprocs = 0;
+    /* ninf is initialized because a peer whose message is short or malformed
+     * can have the unpack below report success without writing it - the count
+     * it found was zero - and ninf then sizes an allocation and indexes it */
+    size_t n, ninfo = 0, ninf = 0, nprocs = 0;
     grp_block_t *blk;
     grp_trk_t *trk;
     bool need_cxtid = false;
