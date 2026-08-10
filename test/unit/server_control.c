@@ -117,6 +117,25 @@ static pmix_status_t stub_log2(const pmix_proc_t *client,
     return PMIX_SUCCESS;
 }
 
+/* what the switchyard's query callback was told */
+static bool qry_fired = false;
+static pmix_status_t qry_status = PMIX_SUCCESS;
+
+static void qry_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
+                       void *cbdata, pmix_release_cbfunc_t relfn, void *relcbd)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
+
+    (void) info;
+    (void) ninfo;
+    qry_fired = true;
+    qry_status = status;
+    if (NULL != relfn) {
+        relfn(relcbd);
+    }
+    PMIX_RELEASE(cd);
+}
+
 /* the handler refuses to run at all without one of these, but none of the
  * cases below is supposed to reach it: they are all pure cleanup requests,
  * which the server answers itself */
@@ -214,6 +233,65 @@ static pmix_status_t do_log(time_t timestamp,
     return rc;
 }
 
+/* Drive one server-side QUERY carrying a single key and a single
+ * qualifier, packed with whatever value type the caller names. The
+ * server unpacks these off the wire, so it cannot lean on the screening
+ * PMIx_Query_info_nb does in the requestor's own process. */
+static pmix_status_t do_query(const char *key, const char *qualkey,
+                              const void *qualval, pmix_data_type_t qualtype)
+{
+    pmix_buffer_t *buf;
+    pmix_server_caddy_t *cd;
+    pmix_query_t qry;
+    pmix_status_t rc;
+    size_t nqueries = 1;
+
+    qry_fired = false;
+    qry_status = PMIX_SUCCESS;
+
+    PMIX_QUERY_CONSTRUCT(&qry);
+    PMIX_ARGV_APPEND(rc, qry.keys, key);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_QUERY_DESTRUCT(&qry);
+        return rc;
+    }
+    qry.nqual = 1;
+    PMIX_INFO_CREATE(qry.qualifiers, 1);
+    PMIX_INFO_LOAD(&qry.qualifiers[0], qualkey, qualval, qualtype);
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        PMIX_QUERY_DESTRUCT(&qry);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &nqueries, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &qry, 1, PMIX_QUERY);
+    }
+    PMIX_QUERY_DESTRUCT(&qry);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+
+    cd = PMIX_NEW(pmix_server_caddy_t);
+    if (NULL == cd) {
+        PMIX_RELEASE(buf);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(pmix_globals.mypeer);
+    cd->peer = pmix_globals.mypeer;
+    cd->hdr.tag = 0;
+
+    rc = pmix_server_query(pmix_globals.mypeer, buf, qry_cbfunc, cd);
+    if (PMIX_SUCCESS != rc) {
+        /* the switchyard owns the caddy on a non-success return */
+        PMIX_RELEASE(cd);
+    }
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
 /* Build and drive a JOB_CONTROL request carrying no targets, so the
  * cleanup directives land on the requesting peer's namespace epilog. */
 static pmix_status_t do_job_ctrl(pmix_info_t *info, size_t ninfo)
@@ -246,6 +324,19 @@ static pmix_status_t do_job_ctrl(pmix_info_t *info, size_t ninfo)
     rc = pmix_server_job_ctrl(pmix_globals.mypeer, buf, NULL, NULL);
     PMIX_RELEASE(buf);
     return rc;
+}
+
+/* A blocking round trip through the progress thread. pmix_server_query
+ * thread-shifts, so this is what makes its completion observable without
+ * a sleep: anything queued ahead of this call has run by the time it
+ * returns. */
+static void progress_barrier(void)
+{
+    pmix_value_t v;
+
+    PMIX_VALUE_LOAD(&v, "barrier", PMIX_STRING);
+    PMIx_Store_internal(&pmix_globals.myid, "server-control-ut.barrier", &v);
+    PMIX_VALUE_DESTRUCT(&v);
 }
 
 static pmix_cleanup_dir_t *only_epilog_dir(size_t *count)
@@ -335,6 +426,35 @@ int main(int argc, char **argv)
 
     PMIX_INFO_DESTRUCT(&data);
     PMIX_INFO_DESTRUCT(&dirs[0]);
+
+    /* --- query qualifiers arrive off the wire and must be screened ---- */
+    {
+        pmix_proc_t qp;
+        pmix_rank_t qr = 1;
+
+        PMIX_LOAD_PROCID(&qp, "server-control-ut-nspace", 0);
+        rc = do_query(PMIX_QUERY_NAMESPACES, PMIX_PROCID, &qp, PMIX_PROC);
+        progress_barrier();
+        report("well-formed PROCID qualifier is accepted",
+               PMIX_SUCCESS == rc && qry_fired && PMIX_ERR_BAD_PARAM != qry_status);
+
+        /* a PROCID tagged as a string makes the union a char* - reading
+         * it as a pmix_proc_t* walks off the end of that string */
+        rc = do_query(PMIX_QUERY_NAMESPACES, PMIX_PROCID, "not-a-proc", PMIX_STRING);
+        progress_barrier();
+        report("mistyped PROCID qualifier is rejected",
+               PMIX_SUCCESS == rc && qry_fired && PMIX_ERR_BAD_PARAM == qry_status);
+
+        rc = do_query(PMIX_QUERY_NAMESPACES, PMIX_NSPACE, &qr, PMIX_PROC_RANK);
+        progress_barrier();
+        report("mistyped NSPACE qualifier is rejected",
+               PMIX_SUCCESS == rc && qry_fired && PMIX_ERR_BAD_PARAM == qry_status);
+
+        rc = do_query(PMIX_QUERY_NAMESPACES, PMIX_RANK, "not-a-rank", PMIX_STRING);
+        progress_barrier();
+        report("mistyped RANK qualifier is rejected",
+               PMIX_SUCCESS == rc && qry_fired && PMIX_ERR_BAD_PARAM == qry_status);
+    }
 
     /* --- job control: register a cleanup directory -------------------- */
     PMIX_INFO_LOAD(&jc[0], PMIX_REGISTER_CLEANUP_DIR, CTLUT_DIR, PMIX_STRING);

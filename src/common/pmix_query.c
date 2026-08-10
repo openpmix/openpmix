@@ -298,14 +298,35 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
     for (n = 0; n < nqueries; n++) {
         rank_given = false;
         PMIX_LOAD_PROCID(&proc, NULL, PMIX_RANK_INVALID);
+        /* Screen each qualifier's type before reading its union. The
+         * identical check in PMIx_Query_info_nb below is not enough: it
+         * runs in the *requestor's* process, and this function is also
+         * reached from pmix_server_query, which unpacks these qualifiers
+         * straight off the wire. A peer that tags PMIX_PROCID as, say, a
+         * string then has us read a char* as a pmix_proc_t* - so the
+         * screen has to sit here, where both callers pass through. */
         for (p = 0; p < queries[n].nqual; p++) {
             if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_PROCID)) {
+                if (PMIX_PROC != queries[n].qualifiers[p].value.type ||
+                    NULL == queries[n].qualifiers[p].value.data.proc) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badparam;
+                }
                 PMIX_LOAD_NSPACE(proc.nspace, queries[n].qualifiers[p].value.data.proc->nspace);
                 proc.rank = queries[n].qualifiers[p].value.data.proc->rank;
                 rank_given = true;
             } else if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_NSPACE)) {
+                if (PMIX_STRING != queries[n].qualifiers[p].value.type ||
+                    NULL == queries[n].qualifiers[p].value.data.string) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badparam;
+                }
                 PMIX_LOAD_NSPACE(proc.nspace, queries[n].qualifiers[p].value.data.string);
             } else if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_RANK)) {
+                if (PMIX_PROC_RANK != queries[n].qualifiers[p].value.type) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badparam;
+                }
                 proc.rank = queries[n].qualifiers[p].value.data.rank;
                 rank_given = true;
             }
@@ -490,6 +511,19 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
     /* get here if the request returned PMIX_SUCCESS, which means
      * that the query is being processed and will call the cbfunc
      * when complete */
+
+badparam:
+    /* a qualifier we cannot read means we cannot run the query at all -
+     * drop the scratch state and report it. cb is not live here: this
+     * iteration has not constructed it yet, and the previous one
+     * destructed its own before looping */
+    PMIX_LIST_DESTRUCT(&unresolved);
+    if (NULL != cd->cbfunc) {
+        cd->cbfunc(rc, NULL, 0, cd->cbdata, _local_relcb, cd);
+    } else {
+        _local_relcb(cd);
+    }
+    return;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nqueries,
