@@ -523,7 +523,6 @@ static void _check_for_notify(pmix_info_t info[], size_t ninfo)
             return;
         }
         scd->infocopy = true;
-        scd->ninfo = m + 1;
         n = 0;
         if (NULL != model) {
             PMIX_INFO_XFER(&scd->info[n], model);
@@ -543,6 +542,10 @@ static void _check_for_notify(pmix_info_t info[], size_t ninfo)
         }
         /* mark that it is not to go to any default handlers */
         PMIX_INFO_LOAD(&scd->info[n], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        /* count what we actually filled, not what we sized for: m counts
+         * every matching key, so a caller that passed one of them twice
+         * left the tail of the array as zeroed entries with an empty key */
+        scd->ninfo = n + 1;
         scd->status = PMIX_MODEL_DECLARED;
         scd->proc = &pmix_globals.myid;
         scd->range = PMIX_RANGE_PROC_LOCAL;
