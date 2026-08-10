@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static int npass = 0;
 static int nfail = 0;
@@ -133,7 +134,8 @@ int main(int argc, char **argv)
     pmix_status_t rc;
     static pmix_server_module_t mymodule = {0};
     const char *nspace = "collect-job-test";
-    pmix_proc_t procs[1];
+    const char *bare = "collect-job-test-bare";
+    pmix_proc_t procs[2];
     pmix_data_buffer_t dbuf;
     char *unpacked = NULL;
     int32_t cnt;
@@ -208,6 +210,31 @@ int main(int argc, char **argv)
 
     rc = PMIx_server_collect_job_info(procs, 1, NULL);
     report("NULL buffer is rejected", PMIX_ERR_BAD_PARAM == rc);
+    PMIX_DATA_BUFFER_DESTRUCT(&dbuf);
+
+    /* A namespace we cannot answer for must not cost the caller the
+     * namespaces we can. Registering a *client* creates the namespace
+     * entry without any job info behind it, so the fetch for it fails
+     * while the fully registered one above succeeds. The per-namespace
+     * fetch status used to be left in the variable the whole request
+     * reported, so the outcome depended on which namespace happened to
+     * be last - and the API only hands the buffer back on success, so
+     * this one unanswerable namespace discarded the other's job info
+     * entirely. */
+    PMIX_LOAD_PROCID(&procs[1], bare, 0);
+    rc = PMIx_server_register_client(&procs[1], geteuid(), getegid(), NULL, NULL, NULL);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        fprintf(stderr, "register_client failed: %s\n", PMIx_Error_string(rc));
+        PMIx_server_finalize();
+        return 1;
+    }
+    PMIX_LOAD_PROCID(&procs[0], nspace, PMIX_RANK_WILDCARD);
+    PMIX_DATA_BUFFER_CONSTRUCT(&dbuf);
+    rc = PMIx_server_collect_job_info(procs, 2, &dbuf);
+    report("an unanswerable namespace does not fail the request",
+           PMIX_SUCCESS == rc);
+    report("the answerable namespace's job info survives it",
+           PMIX_SUCCESS == rc && 0 < dbuf.bytes_used);
     PMIX_DATA_BUFFER_DESTRUCT(&dbuf);
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

@@ -289,6 +289,7 @@ test/unit/resolve_api
 test/unit/spawn_api
 test/unit/server_get
 test/unit/server_control
+test/unit/server_fence
 test/unit/server_dmodex
 test/unit/server_fabric
 test/unit/info_support
