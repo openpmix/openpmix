@@ -52,29 +52,14 @@
 #endif
 #include <event.h>
 
-#ifndef MAX
-#    define MAX(a, b) ((a) > (b) ? (a) : (b))
-#endif
-
-#include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
-#include "src/common/pmix_attributes.h"
-#include "src/common/pmix_iof.h"
-#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
-#include "src/mca/plog/plog.h"
-#include "src/mca/pnet/pnet.h"
-#include "src/mca/psensor/psensor.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/pmix_name_fns.h"
-#include "src/util/pmix_output.h"
-#include "src/util/pmix_environ.h"
 #include "src/util/pmix_printf.h"
 
-#include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 
 pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
@@ -158,7 +143,7 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
 {
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     pmix_cb_t cb;
-    pmix_status_t rc, ret=PMIX_SUCCESS;
+    pmix_status_t rc, ret = PMIX_SUCCESS;
     pmix_info_t info[3];
     pmix_proc_t proc;
     pmix_kval_t *kv;
