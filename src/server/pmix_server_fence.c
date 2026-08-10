@@ -52,10 +52,6 @@
 #endif
 #include <event.h>
 
-#ifndef MAX
-#    define MAX(a, b) ((a) > (b) ? (a) : (b))
-#endif
-
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_attributes.h"
@@ -939,8 +935,11 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
         PMIX_BYTE_OBJECT_DESTRUCT(&bo); // releases the data
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&bkt);
         }
+        /* the unload above emptied it, so this only balances the
+         * construct - but destruct it on every path, not just the
+         * failing one */
+        PMIX_DESTRUCT(&bkt);
     }
 
 cleanup:

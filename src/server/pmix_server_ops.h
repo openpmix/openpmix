@@ -220,8 +220,6 @@ typedef struct {
         pmix_event_active(&((c)->ev), EV_WRITE, 1);                                 \
     } while (0)
 
-PMIX_EXPORT bool pmix_server_trk_update(pmix_server_trkr_t *trk);
-
 PMIX_EXPORT void pmix_pending_nspace_requests(pmix_namespace_t *nptr);
 PMIX_EXPORT pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
                                                pmix_status_t status, pmix_scope_t scope,
