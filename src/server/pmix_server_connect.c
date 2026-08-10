@@ -76,6 +76,54 @@
 #include "src/client/pmix_client_ops.h"
 #include "pmix_server_ops.h"
 
+/* Timeout for either collective in this file. The local-collection phase
+ * is ours to bound: until every local participant has contributed we
+ * have not called the host, so nothing the host might do about
+ * PMIX_TIMEOUT can help a participant that never arrives. */
+static void collective_timeout(int sd, short args, void *cbdata)
+{
+    pmix_server_trkr_t *trk = (pmix_server_trkr_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    pmix_output_verbose(2, pmix_server_globals.connect_output,
+                        "ALERT: %s timeout fired",
+                        (PMIX_CONNECTNB_CMD == trk->type) ? "connect" : "disconnect");
+
+    /* execute the provided callback function with the error */
+    if (NULL != trk->op_cbfunc) {
+        trk->op_cbfunc(PMIX_ERR_TIMEOUT, trk);
+        return; // the cbfunc will have cleaned up the tracker
+    }
+    /* no completion function was ever attached, so tear the tracker down
+     * ourselves - which means unlinking it from the collectives list first.
+     * Being on that list is not a reference; releasing while still linked
+     * leaves a dangling entry that the next sweep walks into. */
+    trk->event_active = false;
+    pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+    PMIX_RELEASE(trk);
+}
+
+/* Pull a PMIX_TIMEOUT out of the directives the client sent, if it gave
+ * one. Use the type-tolerant accessor rather than a raw union read so any
+ * integer type is accepted, and convert through a uint32_t of its own:
+ * the accessor writes exactly the width of the requested type, so handing
+ * it the address of a wider time_t would fill only half the field - the
+ * wrong half on a big-endian host. */
+static void check_timeout(pmix_info_t *info, size_t ninfo, struct timeval *tv)
+{
+    size_t n;
+    uint32_t tmo;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
+            if (PMIX_SUCCESS == PMIx_Value_get_number(&info[n].value, &tmo, PMIX_UINT32)) {
+                tv->tv_sec = tmo;
+            }
+            return;
+        }
+    }
+}
+
 pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                      pmix_op_cbfunc_t cbfunc)
 {
@@ -85,6 +133,7 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
     size_t nprocs, ninfo, ninf;
     pmix_server_trkr_t *trk;
     pmix_proc_t *procs = NULL;
+    struct timeval tv = {0, 0};
 
     /* unpack the number of procs */
     cnt = 1;
@@ -142,6 +191,8 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
         if (PMIX_SUCCESS != rc) {
             goto cleanup;
         }
+        /* check for a timeout */
+        check_timeout(info, ninf, &tv);
     }
 
     /* find/create the local tracker for this operation */
@@ -168,11 +219,29 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
     /* add this contributor to the tracker so they get
      * notified when we are done */
     pmix_list_append(&trk->local_cbs, &cd->super);
+
+    /* if a timeout was specified, arm it once - guard against re-arming for
+     * each contributor. Do not retain the tracker: its collectives-list
+     * reference persists until completion, and completion deletes the timer
+     * before releasing (mirroring the fence family). */
+    if (0 < tv.tv_sec && !trk->event_active) {
+        PMIX_THREADSHIFT_DELAY(trk, collective_timeout, tv.tv_sec);
+        trk->event_active = true;
+    }
+
     /* if all local contributions have been received,
      * let the local host's server know that we are at the
      * "fence" point - they will callback once the [dis]connect
      * across all participants has been completed */
     if (pmix_server_trk_complete(trk)) {
+        /* delete the local-phase timer before handing the tracker to the
+         * host, so a late internal timeout cannot race the host completion
+         * (which could return the tracker after we released it). Once handed
+         * up, the host owns any further timeout. */
+        if (trk->event_active) {
+            pmix_event_del(&trk->ev);
+            trk->event_active = false;
+        }
         if (trk->local) {
             /* the operation is being atomically completed and the host will
              * not be calling us back - ensure we notify all participants.
@@ -238,27 +307,6 @@ cleanup:
     return rc;
 }
 
-static void connect_timeout(int sd, short args, void *cbdata)
-{
-    pmix_server_trkr_t *trk = (pmix_server_trkr_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
-
-    pmix_output_verbose(2, pmix_server_globals.connect_output, "ALERT: connect timeout fired");
-
-    /* execute the provided callback function with the error */
-    if (NULL != trk->op_cbfunc) {
-        trk->op_cbfunc(PMIX_ERR_TIMEOUT, trk);
-        return; // the cbfunc will have cleaned up the tracker
-    }
-    /* no completion function was ever attached, so tear the tracker down
-     * ourselves - which means unlinking it from the collectives list first.
-     * Being on that list is not a reference; releasing while still linked
-     * leaves a dangling entry that the next sweep walks into. */
-    trk->event_active = false;
-    pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
-    PMIX_RELEASE(trk);
-}
-
 pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
                                   pmix_buffer_t *buf,
                                   pmix_op_cbfunc_t cbfunc)
@@ -269,7 +317,6 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     pmix_info_t *info = NULL, *iptr, endpt;
     size_t nprocs, ninfo, n, ninf;
     pmix_server_trkr_t *trk;
-    uint32_t tmo;
     struct timeval tv = {0, 0};
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
@@ -335,21 +382,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
             goto cleanup;
         }
         /* check for a timeout */
-        for (n = 0; n < ninf; n++) {
-            if (0 == strncmp(info[n].key, PMIX_TIMEOUT, PMIX_MAX_KEYLEN)) {
-                /* use the type-tolerant accessor rather than a raw union
-                 * read so any integer type for the timeout is accepted,
-                 * matching the fence family. Convert through a uint32_t of
-                 * its own: the accessor writes exactly the width of the
-                 * requested type, so handing it the address of a wider
-                 * time_t would fill only half the field - the wrong half
-                 * on a big-endian host. */
-                if (PMIX_SUCCESS == PMIx_Value_get_number(&info[n].value, &tmo, PMIX_UINT32)) {
-                    tv.tv_sec = tmo;
-                }
-                break;
-            }
-        }
+        check_timeout(info, ninf, &tv);
     }
 
     /* find/create the local tracker for this operation */
@@ -390,6 +423,11 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         // add the endpt to the end
         ninf = trk->ninfo + 1;
         PMIX_INFO_CREATE(iptr, ninf);
+        if (NULL == iptr) {
+            PMIX_INFO_DESTRUCT(&endpt);
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
         for (n=0; n < trk->ninfo; n++) {
             PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
         }
@@ -411,6 +449,11 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         // add the info to the end
         ninf = trk->ninfo + 1;
         PMIX_INFO_CREATE(iptr, ninf);
+        if (NULL == iptr) {
+            PMIX_INFO_DESTRUCT(&endpt);
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
         for (n=0; n < trk->ninfo; n++) {
             PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
         }
@@ -430,7 +473,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * reference persists until completion, and completion deletes the timer
      * before releasing (mirroring the fence family). */
     if (0 < tv.tv_sec && !trk->event_active) {
-        PMIX_THREADSHIFT_DELAY(trk, connect_timeout, tv.tv_sec);
+        PMIX_THREADSHIFT_DELAY(trk, collective_timeout, tv.tv_sec);
         trk->event_active = true;
     }
 

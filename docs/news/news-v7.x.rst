@@ -7,6 +7,15 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - PMIx_Disconnect now honors PMIX_TIMEOUT while the server is still
+   collecting local contributions, as PMIx_Fence and PMIx_Connect
+   already did. Until every local participant has called, the request
+   has not been passed to the host environment, so nothing the host
+   might do about the timeout can reach it - which is precisely the
+   case the attribute is documented for, a participant that never
+   arrives. Such a disconnect previously blocked its callers
+   indefinitely and stranded the collective's tracker; it now completes
+   every waiting participant with PMIX_ERR_TIMEOUT
  - PMIx_Spawn and PMIx_Spawn_nb no longer treat a non-NULL job_info
    pointer carrying a zero ninfo as an empty directive list. Such a call
    failed the whole spawn with PMIX_ERR_EMPTY, a status naming nothing

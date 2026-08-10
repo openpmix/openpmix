@@ -344,6 +344,17 @@ The completion status is recorded into the tracker's info array by
 connect appends per-participant endpoint info and job-level info *after*
 that slot, so a positional write would clobber it.
 
+**Every collective owes `PMIX_TIMEOUT` a local timer, because the host
+cannot supply one.** The attribute is documented as bounding the whole
+operation, and the directives do reach the host in `trk->info` - but only
+once the collective is complete enough to be handed up. Until the last
+local participant contributes, the host has never heard of the request,
+so the case the attribute exists for (a participant that never arrives)
+is exactly the case only we can bound. Fence and connect always armed
+one; disconnect did not, and hung its callers forever on a missing
+participant. `test/simple/simptimeout.c` covers all three, driven under
+`simptest`.
+
 Timers are armed with `PMIX_THREADSHIFT_DELAY(trk, ..._timeout, secs)`
 guarded by `!trk->event_active`, and the fence family does **not** add a
 retain when arming (the collectives-list reference is the sole
