@@ -65,11 +65,11 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_status_t rc;
     pmix_query_caddy_t *cd;
 
-     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-   pmix_output_verbose(2, pmix_server_globals.base_output,
+    pmix_output_verbose(2, pmix_server_globals.base_output,
                         "recvd query from client");
 
     cd = PMIX_NEW(pmix_query_caddy_t);
@@ -125,7 +125,6 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_shift_caddy_t *cd;
     pmix_proc_t proc;
     time_t timestamp;
-    PMIX_HIDE_UNUSED_PARAMS(cbfunc, cbdata);
 
     pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                         "pmix:server recvd log from client");
@@ -670,7 +669,7 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-   pmix_output_verbose(2, pmix_server_globals.base_output,
+    pmix_output_verbose(2, pmix_server_globals.base_output,
                         "recvd monitor request from client %s",
                         PMIX_PEER_PRINT(peer));
 
