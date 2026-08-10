@@ -99,6 +99,18 @@ void pmix_server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
         PMIX_ERROR_LOG(rc);
         return;
     }
+    /* this count came off the wire and is about to be multiplied by
+     * sizeof(pmix_info_t) to size an allocation whose element
+     * constructors then walk it, so a value large enough to wrap that
+     * product runs off the end of a short block before any NULL check
+     * gets a say. Require it to survive the round trip through the
+     * int32_t the unpack consumes it as - the screen the fence and
+     * event handlers use */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return;
+    }
     if (0 < ninfo) {
         PMIX_INFO_CREATE(info, ninfo);
         cnt = ninfo;
@@ -424,6 +436,13 @@ pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
     req->requestor = cd->peer;
     req->nprocs = 1;
     PMIX_PROC_CREATE(req->procs, req->nprocs);
+    if (NULL == req->procs) {
+        /* what follows is a load, not an unpack, so nothing downstream
+         * would screen a NULL here - the same reason pmix_server_iofreg
+         * checks its own proc allocation */
+        PMIX_RELEASE(req);
+        return PMIX_ERR_NOMEM;
+    }
     PMIX_LOAD_PROCID(&req->procs[0], nspace, PMIX_RANK_WILDCARD);
     req->channels = cd->channels;
     /* a shallow copy of the flags owns nothing: file and directory are
@@ -476,6 +495,15 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    /* screen the count before it sizes an allocation - see the note in
+     * pmix_server_iof_handler. This one is copied again below, walking
+     * the size_t rather than the int32_t the unpack consumed */
+    cnt = cd->nprocs;
+    if (0 > cnt || (size_t) cnt != cd->nprocs) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     /* unpack the procs */
     if (0 < cd->nprocs) {
         PMIX_PROC_CREATE(cd->procs, cd->nprocs);
@@ -494,9 +522,20 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    cnt = cd->ninfo;
+    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     /* unpack the directives */
     if (0 < cd->ninfo) {
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        /* we unpacked this array, so the caddy owns it - without the flag
+         * the destructor leaves it behind on every path that does not
+         * reach _iofreg's explicit free, which includes every error
+         * return below and _iofreg's own finalize-race early-out */
+        cd->copied = true;
         cnt = cd->ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
@@ -532,6 +571,14 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
     req->nprocs = cd->nprocs;
     if (0 < req->nprocs) {
         PMIX_PROC_CREATE(req->procs, cd->nprocs);
+        if (NULL == req->procs) {
+            /* nothing screens this one: what follows is a memcpy, not an
+             * unpack, so a failed allocation is a NULL destination that
+             * nobody would catch */
+            PMIX_RELEASE(req);
+            rc = PMIX_ERR_NOMEM;
+            goto exit;
+        }
         memcpy(req->procs, cd->procs, req->nprocs * sizeof(pmix_proc_t));
     }
     req->channels = cd->channels;
@@ -561,6 +608,15 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
          * leave the callback operating on freed memory. */
         return PMIX_SUCCESS;
     }
+
+    /* the host refused, so take the registration back out of the array.
+     * _iofreg does exactly this when the host fails the request
+     * asynchronously; the synchronous refusal left the entry behind,
+     * where it pinned the requestor's peer with its retain for the life
+     * of the server and went on matching output for a pull that was
+     * never granted */
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, req->local_id, NULL);
+    PMIX_RELEASE(req);
 
 exit:
     PMIX_RELEASE(cd);
@@ -597,10 +653,31 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    /* screen the count before the "+ 1" below: a wire value near
+     * SIZE_MAX wraps that sum down to zero, PMIx_Info_create answers
+     * NULL for a zero-element array, and the stop directive would then
+     * be seeded at info[SIZE_MAX]. The same wrap can happen inside the
+     * allocator's "ninfo * sizeof(pmix_info_t)". This is the screen the
+     * group and collective handlers carry for the same shape */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     /* unpack the directives - note that we have to add one
      * to tell the server to stop forwarding to this channel */
     cd->ninfo = ninfo + 1;
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
+    if (NULL == cd->info) {
+        rc = PMIX_ERR_NOMEM;
+        goto exit;
+    }
+    /* we built this array, so the caddy owns it. Nothing else frees it:
+     * unlike _iofreg, the deregistration completion has no explicit
+     * free, so without the flag every deregistration leaked its
+     * directives - and so did every error return below */
+    cd->copied = true;
     if (0 < ninfo) {
         cnt = ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
@@ -713,6 +790,14 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
         PMIX_ERROR_LOG(rc);
         goto error;
     }
+    /* screen the count before it sizes an allocation - see the note in
+     * pmix_server_iof_handler */
+    cnt = cd->nprocs;
+    if (0 > cnt || (size_t) cnt != cd->nprocs) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
     if (0 < cd->nprocs) {
         PMIX_PROC_CREATE(cd->procs, cd->nprocs);
         if (NULL == cd->procs) {
@@ -734,12 +819,22 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
         PMIX_ERROR_LOG(rc);
         goto error;
     }
+    cnt = cd->ninfo;
+    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
     if (0 < cd->ninfo) {
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
         if (NULL == cd->info) {
             rc = PMIX_ERR_NOMEM;
             goto error;
         }
+        /* we unpacked this array, so the caddy owns it - without the
+         * flag the destructor leaves it behind on every error return
+         * below, which is the only thing that frees it there */
+        cd->copied = true;
         cnt = cd->ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
@@ -754,6 +849,12 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
         rc = PMIX_ERR_NOMEM;
         goto error;
     }
+    /* the destructor frees the *bytes* only for the nbo objects it is
+     * told about, so leaving this at zero would free the container and
+     * leak the payload on every error return below. Note this is safe
+     * only because the object is ours: PMIx_server_IOF_deliver parks a
+     * borrowed one on this same member and detaches it instead */
+    cd->nbo = 1;
 
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, cd->bo, &cnt, PMIX_BYTE_OBJECT);

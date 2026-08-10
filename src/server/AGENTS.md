@@ -814,6 +814,44 @@ the client-driven pull/registration commands. Note `pmix_server_process_iof`
 drains the cache into a newly registered request so a late subscriber
 still sees recently produced output.
 
+**The three client-driven commands own the arrays they unpack, and the
+`pmix_setup_caddy_t` will not believe it without being told.** They are
+the mirror image of the two public push APIs, which park the *caller's*
+proc array and byte object on the same members and must detach them
+before releasing (see the caddy-zoo section). Here the arrays are ours,
+so the caddy needs `copied` set for `info` and a non-zero `nbo` for the
+byte object — and both were missing. Note the two halves fail
+differently: `pmix_server_iofreg` and `iofstdin` leaked only on their
+error returns, because their completions (`_iofreg`, `stdcbfunc`) free
+the array explicitly, while `pmix_server_iofdereg` leaked on *every*
+deregistration, since `_iofdereg` has no such free. And `nbo` left at
+zero frees the byte object's container while leaking its payload —
+`PMIx_Byte_object_free` runs its destruct loop `n` times and then frees
+the array, so zero means "free the box, keep the contents."
+
+**A registration the host refuses has to come back out of
+`pmix_globals.iof_requests`.** `pmix_server_iofreg` adds the
+`pmix_iof_req_t` — which takes a `PMIX_RETAIN` on the requestor — before
+the up-call, because the refid has to be in hand to report. `_iofreg`
+removes it again when the host fails the request *asynchronously*; the
+synchronous refusal did not, leaving an entry that pinned the peer for
+the life of the server and went on matching output for a pull that was
+never granted. Deregistration is deliberately not symmetric: it drops
+the local entry *before* the up-call and does not restore it if the host
+refuses, because the client asked to stop and the refid it would be
+handed back could not be the same one.
+
+**Every count these handlers read off the wire needs the round-trip
+screen**, for the reasons set out under "What *does* need screening"
+below. `pmix_server_iofdereg` is the `+ 1` shape: it sizes its array as
+`ninfo + 1` so it can seed `PMIX_IOF_STOP` in the last slot itself, so a
+count near `SIZE_MAX` wraps that sum to zero and writes the seed at
+`info[SIZE_MAX]`. `pmix_server_iof_handler`, `iofreg` and `iofstdin`
+are the plainer shape, but `iofreg` also copies its proc array again
+afterwards walking the `size_t` rather than the `int32_t` the unpack
+consumed. Covered by `test/unit/iof_output.c`, whose wrap case kills an
+unfixed library rather than failing it.
+
 ## Inventory collection
 
 `pmix_server_inventory.c` is short and reads as though several things in
