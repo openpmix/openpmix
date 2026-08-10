@@ -407,6 +407,9 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
         }
     }
 
+    /* and in any the host asked us for on a remote server's behalf */
+    pmix_server_fail_remote_pnd(peer, proc, PMIX_ERR_LOST_CONNECTION);
+
     /* purge this client from any cached notifications */
     for (i = 0; i < pmix_globals.max_events; i++) {
         pmix_hotel_knock(&pmix_globals.notifications, i, (void **) &ncd);

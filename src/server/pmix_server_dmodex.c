@@ -136,6 +136,10 @@ static void _dmodex_req(int sd, short args, void *cbdata)
         /* rank isn't known yet - defer
          * the request until we do */
         dcd = PMIX_NEW(pmix_dmdx_remote_t);
+        if (NULL == dcd) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
         dcd->cd = cd;
         pmix_list_append(&pmix_server_globals.remote_pnd, &dcd->super);
         return;
@@ -147,6 +151,10 @@ static void _dmodex_req(int sd, short args, void *cbdata)
         /* track the request so we can fulfill it once
          * data is recvd */
         dcd = PMIX_NEW(pmix_dmdx_remote_t);
+        if (NULL == dcd) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
         dcd->cd = cd;
         pmix_list_append(&pmix_server_globals.remote_pnd, &dcd->super);
         return;
@@ -183,6 +191,30 @@ cleanup:
     PMIX_RELEASE(cd);
 }
 
+void pmix_server_fail_remote_pnd(pmix_peer_t *peer, pmix_proc_t *proc,
+                                 pmix_status_t status)
+{
+    pmix_dmdx_remote_t *dcd, *dnxt;
+
+    PMIX_LIST_FOREACH_SAFE (dcd, dnxt, &pmix_server_globals.remote_pnd, pmix_dmdx_remote_t) {
+        if ((NULL != peer && NULL != peer->info
+             && PMIX_CHECK_NAMES(&peer->info->pname, &dcd->cd->proc))
+            || (NULL != proc && PMIX_CHECK_PROCID(proc, &dcd->cd->proc))) {
+            pmix_list_remove_item(&pmix_server_globals.remote_pnd, &dcd->super);
+            /* the only thing that ever takes a request off this list is
+             * the target committing its data, and the target has just
+             * gone away - so answer the host rather than dropping its
+             * request. A dropped one leaves the remote server that asked
+             * for the data, and the client behind it, waiting on a reply
+             * nobody is going to send */
+            if (NULL != dcd->cd->cbfunc) {
+                dcd->cd->cbfunc(status, NULL, 0, dcd->cd->cbdata);
+            }
+            PMIX_RELEASE(dcd);
+        }
+    }
+}
+
 PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
                                                      pmix_dmodex_response_fn_t cbfunc, void *cbdata)
 {
@@ -206,6 +238,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
                         PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(proc));
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
     pmix_strncpy(cd->proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
     cd->proc.rank = proc->rank;
     cd->cbfunc = cbfunc;
@@ -245,7 +280,9 @@ PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const cha
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    if (NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key)) {
+    /* the value is dereferenced by the transfer below, so screen it here
+     * alongside the key rather than faulting inside bfrops */
+    if (NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key) || NULL == val) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -274,7 +311,16 @@ PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const cha
         return PMIX_ERR_NOMEM;
     }
     cd->kv->key = strdup(key);
-    cd->kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+    /* construct the destination rather than handing the transfer raw
+     * heap: the transfer assigns the type before it copies the payload,
+     * so a copy that fails part way leaves a pointer-backed type sitting
+     * over an uninitialized union - and the kval destructor below then
+     * frees whatever was in it. A constructed value fails safe */
+    PMIX_VALUE_CREATE(cd->kv->value, 1);
+    if (NULL == cd->kv->value) {
+        PMIX_RELEASE(cd);
+        return PMIX_ERR_NOMEM;
+    }
     PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, cd->kv->value, val);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);

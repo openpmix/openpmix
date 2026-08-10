@@ -454,6 +454,22 @@ callback with a status before discarding the tracker: those requesters are
 same reference-counting trap as the one below - the difference is only
 whether the waiters deserve to be told.
 
+**`remote_pnd` is the same trap pointing the other way.** It holds the
+*host's* `PMIx_server_dmodex_request` calls (`pmix_server_dmodex.c`),
+parked when the local client they name has not committed its data yet -
+and `pmix_server_commit` unlinking one is the only thing that ever took a
+request back off the list. So a target that departs without ever
+committing (it aborted, it never called `PMIx_Put`, its namespace was
+deregistered) left the host holding a request it would never hear about
+again, and the remote server that asked - along with the client blocked
+in `PMIx_Get` behind it - waited forever. `pmix_server_purge_events` now
+calls `pmix_server_fail_remote_pnd`, the mirror of
+`pmix_server_fail_local_reqs`: answer the host with a status, then
+discard. Note the response function's contract while you are there - the
+public header says **"The PMIx server will free the data blob upon return
+from the response fn"**, which is why `_dmodex_req` frees `data`
+immediately after calling it.
+
 **Do not read a `PMIX_LIST_FOREACH` variable after the loop.** A loop
 that runs to completion leaves it pointing at the list's sentinel, which
 is a bare `pmix_list_item_t`; reading any later field of the element type
@@ -630,6 +646,11 @@ Two suites cover the halves:
   exceeds its local size, and asserts the classification and that nothing
   is left parked on `local_reqs`. Read its header for what it pins down
   and what it deliberately cannot reproduce.
+- [`test/unit/server_dmodex.c`](../../test/unit/server_dmodex.c) covers
+  `PMIx_Store_internal` and the `remote_pnd` deferral above, including
+  the departure drain. It orders itself off `PMIx_Store_internal` rather
+  than a sleep: that call blocks on the progress thread, so anything
+  queued ahead of it has run by the time it returns.
 - [`test/unit/server_control.c`](../../test/unit/server_control.c) drives
   `pmix_server_log` and `pmix_server_job_ctrl` from hand-packed wire
   buffers — the malformed-count screens, the appended `PMIX_LOG_SOURCE` /
