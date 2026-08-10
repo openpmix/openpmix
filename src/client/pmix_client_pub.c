@@ -591,8 +591,16 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         goto report;
     }
     if (0 < ndata) {
-        /* create the array storage */
+        /* create the array storage. The count came off the wire, so the
+         * allocation can genuinely fail - and reporting ndata with a NULL
+         * pdata would hand a pmix_lookup_cbfunc_t a count it is entitled to
+         * index */
         PMIX_PDATA_CREATE(pdata, ndata);
+        if (PMIX_UNLIKELY(NULL == pdata)) {
+            ret = PMIX_ERR_NOMEM;
+            ndata = 0;
+            goto report;
+        }
         cnt = ndata;
         /* unpack the returned values into the pdata array */
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, pdata, &cnt, PMIX_PDATA);
@@ -605,6 +613,11 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
             ret = rc;
             goto report;
         }
+        /* report what was actually unpacked, not what the peer said it was
+         * sending: the unpack succeeds having filled fewer entries when the
+         * two disagree, and the remainder are empty pdata the caller would
+         * otherwise be told to read */
+        ndata = cnt;
     }
 
 report:
