@@ -415,6 +415,45 @@ static void test_blocking_call_from_progress_thread(void)
 }
 
 /* ------------------------------------------------------------------
+ * The process-set entry points must screen what the host hands them
+ *
+ * Both are public APIs, so the host can pass anything, and every one of
+ * these arguments used to be carried straight onto the progress thread
+ * and dereferenced there: a NULL name reaches strdup and strcmp, a NULL
+ * member array reaches memcpy, and a zero member count makes
+ * PMIx_Data_array_create answer NULL - which was then read for its
+ * "array" member. Each case below segfaults an unfixed library rather
+ * than failing, the same bargain test/unit/iof_output.c makes.
+ */
+static void test_pset_params(void)
+{
+    pmix_proc_t members[2];
+    pmix_status_t rc;
+
+    PMIX_LOAD_PROCID(&members[0], "pset.ut.ns", 0);
+    PMIX_LOAD_PROCID(&members[1], "pset.ut.ns", 1);
+
+    rc = PMIx_server_define_process_set(members, 2, NULL);
+    report("pset:define rejects a NULL name", PMIX_ERR_BAD_PARAM == rc);
+
+    rc = PMIx_server_define_process_set(NULL, 2, "ut-pset");
+    report("pset:define rejects a NULL member array", PMIX_ERR_BAD_PARAM == rc);
+
+    rc = PMIx_server_define_process_set(members, 0, "ut-pset");
+    report("pset:define rejects a zero member count", PMIX_ERR_BAD_PARAM == rc);
+
+    rc = PMIx_server_delete_process_set(NULL);
+    report("pset:delete rejects a NULL name", PMIX_ERR_BAD_PARAM == rc);
+
+    /* a well-formed pair still has to work, or the screens above would
+     * be indistinguishable from a function that refuses everything */
+    rc = PMIx_server_define_process_set(members, 2, "ut-pset");
+    report("pset:a well-formed set is defined", PMIX_SUCCESS == rc);
+    rc = PMIx_server_delete_process_set("ut-pset");
+    report("pset:and deleted again", PMIX_SUCCESS == rc);
+}
+
+/* ------------------------------------------------------------------
  * The void deregistration APIs must report a dropped request
  *
  * PMIx_server_deregister_nspace and PMIx_server_deregister_client are
@@ -490,6 +529,7 @@ int main(int argc, char **argv)
     test_unknown_name();
     test_cpu_list_validation();
     test_blocking_call_from_progress_thread();
+    test_pset_params();
     /* must come last - it stops the shared progress thread */
     test_void_deregisters_report_a_dropped_request();
 
