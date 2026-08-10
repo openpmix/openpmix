@@ -55,7 +55,7 @@ module where it cannot, and queue replies back. The file map:
 | `pmix_server_events.c` | The event family: `register_events` / `deregister_events`, the registration store and the bookkeeping that decides when our host must start or stop forwarding a code (`pmix_server_activate_events`, `pmix_server_deactivate_events`, `pmix_server_prune_reginfo`), the cached-event replay for a late registrant, and `pmix_server_event_recvd_from_client`. |
 | `pmix_server_control.c` | The directive and service commands: query, log, allocate, job control, monitor, credential get and validate, session control, resource blocks, and the job-data cache refresh. |
 | `pmix_server_fabric.c` | `fabric_register` / `fabric_update` and the device-distance computation. |
-| `pmix_server_classes.c` | **All** the server-side `PMIX_CLASS_INSTANCE` con/destructors, so the ownership rules a destructor encodes can be read in one place. |
+| `pmix_server_classes.c` | The `PMIX_CLASS_INSTANCE` con/destructors for every type declared in `pmix_server_ops.h` or `pmix_globals.h`, so the ownership rules a destructor encodes can be read in one place. A type private to a single file keeps its class beside it — `grp_block_t`/`grp_trk_t`/`grp_shifter_t` in `pmix_server_group.c`, `rank_blob_t` in `pmix_server_fence.c`, `pmix_dmdx_reply_caddy_t` in `pmix_server_get.c`, `pmix_srvr_epi_caddy_t` in `pmix_server_control.c`. |
 | `pmix_server_fence.c` | The fence collective (barrier + modex data exchange) **and the shared collective-tracker engine** — `pmix_server_get_tracker`, `pmix_server_new_tracker`, `pmix_server_collect_data`, `pmix_server_trk_update`, `pmix_server_commit`, plus the two predicates every family consults: `pmix_server_trk_complete` and `pmix_server_set_collective_status`. |
 | `pmix_server_connect.c` | The connect / disconnect collectives (built on the same tracker engine). |
 | `pmix_server_group.c` | The group collectives (construct/destruct/leave/invite) — a **two-level** block/tracker engine distinct from the fence tracker, plus the peer-lost / member-left fault paths. |
@@ -215,6 +215,54 @@ request; a component that did would crash immediately.
 | `pmix_dmdx_local_t` / `pmix_dmdx_request_t` / `pmix_dmdx_remote_t` | `pmix_server_ops.h:113/123/107` | Direct-modex deferral bookkeeping (see get.c). |
 | `pmix_query_caddy_t`, `pmix_cb_t`, `pmix_inventory_rollup_t` | globals / ops.h | Query/fetch and inventory roll-up carriers. |
 
+### `pmix_setup_caddy_t` does not own its members uniformly
+
+This is the single most error-prone thing in the caddy zoo, because
+`scaddes` (`pmix_server_classes.c:182`) frees three groups of member on
+three different rules, and the rule is not visible at the assignment site:
+
+| Member | Freed by the destructor? |
+|--------|--------------------------|
+| `procs`/`nprocs`, `units`/`nunits`, `bo`/`nbo`, `peer`, `flags.file`/`.directory` | **Always** |
+| `info`/`ninfo`, `apps`/`napps` | Only when `copied` is true |
+| `nspace`, `keys` | **Never** |
+
+So a handler that parks the *caller's* proc array or byte object on a
+caddy — `PMIx_server_IOF_deliver` and `PMIx_server_IOF_flow_control` both
+do, and must, per the no-copy rule — has to detach it before the caddy is
+released, or the destructor calls `free()` on memory the host owns, often
+a stack frame. `_iofdeliver` and `_iofflowcontrol` do exactly that in
+their "release the caddy" blocks; both of their `PMIX_ERR_WOULD_BLOCK`
+early returns did not, so the blocking form called from the progress
+thread freed the caller's proc and byte object. `PMIx_server_define_process_set`
+shows the same idiom on a stack caddy ("protect the input"). Covered by
+`test/unit/iof_output.c`, whose case aborts rather than fails against an
+unfixed library.
+
+Note the asymmetry the two free helpers add: `PMIx_Proc_free(p, n)` frees
+`p` only when `0 < n`, but `PMIx_Byte_object_free(b, n)` frees `b`
+whenever it is non-NULL — so leaving `nbo` at zero does *not* protect a
+borrowed `bo`.
+
+The other half of the rule is the "never" row. `nspace` and `keys` are
+borrowed as often as they are owned - `PMIx_Register_attributes` parks the
+host's own `function` string and `attrs` array there, and the pset stack
+caddies park the caller's `pset_name` - so the destructor cannot free
+them and every site that *does* own one owes it a `free()` on every path
+that discards the caddy. Two forgot: `pmix_server_abort` unpacks the
+abort message into `nspace` (an allocation) and leaked it on every abort,
+and `PMIx_server_setup_local_support` leaked its `strdup` on the
+`PMIX_ERR_WOULD_BLOCK` arm. Do not "fix" this by moving `nspace` into the
+destructor - that turns the leak into a free of a string literal.
+
+A related trap sits one layer out: `pmix_server_process_iof` does
+`req->flags = cd->flags`, a **shallow** copy of a `pmix_iof_flags_t` whose
+`file` and `directory` members are `strdup`ed and owned by the caddy. The
+`pmix_iof_req_t` outlives the caddy, so those two pointers dangle the
+moment the caddy is released. It is latent only because nothing reads
+`pmix_iof_req_t::flags` today (`pmix_iof_process_iof` does not); the day
+something does, it needs its own copy.
+
 Any struct handed to `PMIX_THREADSHIFT` **must** carry a `pmix_event_t ev`
 as its thread-shift member (the caddy contract from the top-level guide).
 Do not stack-allocate a caddy that outlives its creating function — the
@@ -283,9 +331,12 @@ the trickiest bugs):**
   (dangling pointer → UAF on the next sweep), and **never release a
   tracker whose `local_cbs` still holds a caddy that the switchyard will
   also release** on a non-SUCCESS return (double free). When a host
-  up-call is rejected, remove the current `cd` from `local_cbs` (and set
-  `cd->trk = NULL`) *before* returning the error, as the connect
-  host-error path at `pmix_server_connect.c:421-434` demonstrates.
+  up-call is rejected, remove the current `cd` from `local_cbs` *before*
+  returning the error, as the connect host-error path at
+  `pmix_server_connect.c:421-434` demonstrates. Those paths also set
+  `cd->trk = NULL`, which is a no-op: nothing in the tree ever assigns
+  `pmix_server_caddy_t::trk` a non-NULL value, so `cddes`'s release of it
+  is unreachable too. Removal from `local_cbs` is what does the work.
 
 The completion status is recorded into the tracker's info array by
 `pmix_server_set_collective_status`, which locates the

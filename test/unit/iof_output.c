@@ -121,6 +121,39 @@ static bool deliver(const pmix_proc_t *src, pmix_iof_channel_t channel,
     return true;
 }
 
+/* What the blocking form of the two IOF push APIs returned when called
+ * from the progress thread, and a flag saying the attempt has happened. */
+static pmix_status_t wb_deliver = PMIX_SUCCESS;
+static pmix_status_t wb_flow = PMIX_SUCCESS;
+static volatile bool wb_done = false;
+
+/* Runs on the progress thread - a delivery completion is invoked from
+ * there, which is exactly the position a host is in when it forwards
+ * output from inside one of our callbacks.
+ *
+ * Both APIs must refuse the blocking form here rather than wait on the
+ * loop they are standing in. What that refusal must NOT do is hand the
+ * request caddy back with our proc and byte object still attached: the
+ * caddy destructor frees both unconditionally, so the refusal used to
+ * free two objects living in this frame. Against an unfixed library
+ * this aborts in the allocator rather than failing a check. */
+static void wouldblock_cbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_proc_t src;
+    pmix_byte_object_t bo;
+    (void) status;
+    (void) cbdata;
+
+    PMIX_LOAD_PROCID(&src, "wouldblock", 0);
+    bo.bytes = (char *) "never emitted\n";
+    bo.size = 14;
+    wb_deliver = PMIx_server_IOF_deliver(&src, PMIX_FWD_STDOUT_CHANNEL, &bo,
+                                         NULL, 0, NULL, NULL);
+    wb_flow = PMIx_server_IOF_flow_control(&src, PMIX_FWD_STDIN_CHANNEL, true,
+                                           NULL, 0, NULL, NULL);
+    wb_done = true;
+}
+
 /* nothing here reaches a host upcall - the module only has to exist */
 static pmix_server_module_t mymodule = {.push_stdin = NULL};
 
@@ -247,6 +280,37 @@ int main(int argc, char **argv)
     got = collect(efd, buf, 6);
     report("stderr still flows after a source closed",
            6 == got && 0 == strcmp(buf, "delta\n"));
+
+    /* ---- the blocking form, attempted from the progress thread ---- */
+    {
+        pmix_byte_object_t bo;
+        int i;
+
+        PMIX_LOAD_PROCID(&src, "outtest", 4);
+        bo.bytes = (char *) "epsilon\n";
+        bo.size = 8;
+        /* this frame owns src and bo, and must still own them when the
+         * completion returns - hence the wait rather than a fire and
+         * forget */
+        rc = PMIx_server_IOF_deliver(&src, PMIX_FWD_STDOUT_CHANNEL, &bo, NULL, 0,
+                                     wouldblock_cbfunc, NULL);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(out, "PMIx_server_IOF_deliver failed: %s\n", PMIx_Error_string(rc));
+            PMIx_server_finalize();
+            return 1;
+        }
+        for (i = 0; i < WAIT_TRIES && !wb_done; i++) {
+            usleep(WAIT_USEC);
+        }
+        report("a delivery completion runs and is answered", wb_done);
+        report("blocking IOF deliver from the progress thread is refused",
+               PMIX_ERR_WOULD_BLOCK == wb_deliver);
+        report("blocking IOF flow control from the progress thread is refused",
+               PMIX_ERR_WOULD_BLOCK == wb_flow);
+        got = collect(rfd, buf, 8);
+        report("and the delivery that carried us there was still written",
+               8 == got && 0 == strcmp(buf, "epsilon\n"));
+    }
 
     PMIx_server_finalize();
     close(rfd);

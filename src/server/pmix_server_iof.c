@@ -282,7 +282,13 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source, pmix_iof_channe
             /* we are ON the progress thread, so waiting for the event we
              * would post is waiting for ourselves - answer rather than
              * hang. The caller wanted the blocking form; the non-blocking
-             * one works fine from here */
+             * one works fine from here. The caddy is only borrowing the
+             * caller's proc and byte object, and its destructor frees both
+             * unconditionally - detach them as _iofdeliver does before
+             * handing the caddy back */
+            cd->procs = NULL;
+            cd->nprocs = 0;
+            cd->bo = NULL;
             PMIX_RELEASE(cd);
             return PMIX_ERR_WOULD_BLOCK;
         }
@@ -372,7 +378,11 @@ pmix_status_t PMIx_server_IOF_flow_control(const pmix_proc_t *source,
             /* we are ON the progress thread, so waiting for the event we
              * would post is waiting for ourselves - answer rather than
              * hang. The caller wanted the blocking form; the non-blocking
-             * one works fine from here */
+             * one works fine from here. Detach the caller's proc first -
+             * the caddy is only borrowing it, but its destructor frees it
+             * unconditionally */
+            cd->procs = NULL;
+            cd->nprocs = 0;
             PMIX_RELEASE(cd);
             return PMIX_ERR_WOULD_BLOCK;
         }
