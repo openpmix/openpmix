@@ -1724,6 +1724,108 @@ other.
   deliberately NULLs those two members on). Worth knowing before adding a
   reader.
 
+## Defects found in the August 2026 review (eleventh sweep — `pmix_client_topology.c`)
+
+Five lenses over the topology entry points. Four of the five are thin
+hwloc pass-throughs with nothing in them; everything below is in the
+`PMIx_Compute_distances` pair, and all of it is one rule — **a count and
+the array it describes have to agree on every path**, which is the ninth
+sweep's rule about `procs`/`nprocs` meeting a different payload type.
+
+- **`distcb()` set `cb->nvals` before it had an array**, then indexed an
+  unchecked `PMIX_DEVICE_DIST_CREATE`. The count is what `cbdes()` frees
+  against and what the blocking wrapper reads, so it now moves inside the
+  branch that allocated.
+- **`direcv()` sized a `PMIX_DEVICE_DIST_CREATE` from the wire and did not
+  check it**, then unpacked into it. This is the same site class the ninth
+  sweep closed for the wire-sized `PMIX_PROC_CREATE` in
+  `wait_peers_cbfunc()`: the peer's word decides the allocation, so the
+  NULL is as much "more than we can hold" as it is a short heap.
+- **`direcv()` reported the count the peer promised, not the one that
+  arrived.** `pmix_bfrops_base_unpack()` writes the number it actually
+  filled back through `num_vals` and returns `PMIX_SUCCESS` when the
+  payload is shorter than the declared element count, so the application
+  was handed `ndist` entries of which only some were written — the rest
+  zeroed, so a caller printing `uuid` gets a NULL into `%s`. Third
+  occurrence of this exact defect in this directory, after
+  `_lookup_cbfunc()` (`pmix_client_pub.c`) and `wait_peers_cbfunc()`
+  (`pmix_client_resolve.c`). **Assume any `PMIX_BFROPS_UNPACK` of an
+  array in this directory has it until you have checked.**
+  Its failure arm now frees against the *allocated* count before zeroing
+  the pair, because a failed element unpack may already have `strdup`'d
+  into some entries.
+
+*The reason one of these five entry points thread-shifts and four do not
+— read this before "making them consistent":*
+
+`PMIx_Load_topology` builds a stack caddy and `PMIX_THREADSHIFT`s to run
+`pmix_hwloc_load_topology()` on the progress thread. That is not
+ceremony: the function reads and writes **`pmix_globals.topology`**, the
+process-wide cached topology, on the "if we already have a suitable
+version, just return it" path. The stack caddy is safe for the usual
+reason — `PMIX_WAIT_THREAD` holds the frame until the handler wakes it.
+
+Its four siblings call straight into hwloc on the caller's thread, and
+two of them touch that same global: `pmix_hwloc_get_cpuset()` reads
+`pmix_globals.topology.topology`, and `PMIx_Compute_distances_nb` calls
+`pmix_hwloc_load_topology(&pmix_globals.topology)` and
+`pmix_hwloc_get_cpuset(&pmix_globals.cpuset, …)` outright — doing on the
+caller's thread precisely the write the sibling goes to the trouble of
+shifting for. Two application threads, one in `PMIx_Load_topology` and
+one in `PMIx_Compute_distances`, can therefore have the progress thread
+comparing `pmix_globals.topology.source` with `strncasecmp` while the
+caller's thread is assigning it.
+
+**Recorded, not changed.** Closing it means either shifting the other
+four — which `PMIx_Compute_distances_nb` cannot do, being the
+non-blocking form — or putting a lock around `pmix_globals.topology`,
+which is a `pmix_globals` decision rather than a `src/client` one. It is
+also the case the directory already warns about generally ("treat
+concurrent multithreaded use of these APIs with suspicion"). What is
+worth keeping is *why* the asymmetry exists, because from the code alone
+the shift looks removable.
+
+*Verified and clean, so a later sweep need not redo it:*
+
+- **The wire agrees.** This command packs cmd → topology → cpuset →
+  `ninfo` → info-under-`0 < ninfo`, and `pmix_server_device_dists`
+  ([`pmix_server_fabric.c`](../server/pmix_server_fabric.c)) unpacks the
+  same five in the same order with the same guard on the last. No
+  guarded-unpack/unguarded-pack mismatch of the kind the eighth sweep
+  found in the group commands.
+- **The `cnt = cb->nvals` narrowing (`size_t` → `int32_t`) is
+  unreachable.** A wire count above `INT32_MAX` would go negative in
+  `cnt`, but it has to survive `PMIX_DEVICE_DIST_CREATE` first — over a
+  hundred gigabytes — and the NULL check added above turns that into an
+  error return. Do not add a redundant bound; do keep the check.
+- **`notopo`/`nocpuset` are stack objects that never escape.** They are
+  packed synchronously, before the function returns.
+
+*Noted, not changed:*
+
+- `dcbfunc()` hands the caller `icbrelfn` and returns, so a user
+  `pmix_device_dist_cbfunc_t` that never calls it leaks the caddy. That
+  is the documented contract for the callback signature, exactly as the
+  sixth sweep recorded for `construct_cbfunc()` — the second of the two
+  places in this directory where a caller's mistake leaks library memory.
+- **No `make check` coverage is possible for any of the three.** Two are
+  allocation failures and the third needs a server reply whose declared
+  count exceeds its payload. Reaching `direcv` at all requires a client
+  whose *local* hwloc computation failed, which the third sweep already
+  recorded as something the test environments cannot arrange. The
+  argument checks on both entry points are covered in
+  `test/unit/client_api.c`; the reply handling is not covered anywhere.
+
+*The one that was not in this directory:*
+
+- **`pmix_hwloc_compute_distances()` indexed an unchecked
+  `PMIX_DEVICE_DIST_CREATE` too**, and set its `*ndist` out-parameter
+  *above* the `*dist` assignment, so a failure there would have handed
+  the caller a nonzero count with a NULL array — the same disagreement
+  the `direcv` fix closes, in the function that produces the answer when
+  the client can compute it itself. Fixed in
+  [`src/hwloc/pmix_hwloc.c`](../hwloc/pmix_hwloc.c).
+
 ## Coding conventions specific to this directory
 
 - **Mark the exceptional branch.** Error checks, parameter validation,
