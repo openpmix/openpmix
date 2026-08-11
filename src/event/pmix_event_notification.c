@@ -1174,6 +1174,23 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         rc = pmix_notify_event_cache(cd);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            /* The hotel did not take it, so give back the reference we
+             * took on its behalf and stop calling it cached: the "last
+             * target notified" arm below would otherwise release a
+             * reference the hotel never held, and the chain would decline
+             * to re-cache an event that is not in the cache. This does not
+             * free cd - the working reference this routine runs on is
+             * still held, and PMIX_RELEASE clears the pointer only when it
+             * drops the last one.
+             *
+             * Nothing reaches here today: the cache fails only for a hotel
+             * with no rooms, and pmix_hotel_init refuses that, so a
+             * max_events of zero fails PMIx_Init rather than running. The
+             * two sibling cache sites - in pmix_notify_server_of_event and
+             * in the tool's _notify_complete - both release on this arm,
+             * and this is the one that had also taken a reference. */
+            PMIX_RELEASE(cd);
+            cached = false;
         }
     }
 
@@ -1181,7 +1198,10 @@ static void _notify_client_event(int sd, short args, void *cbdata)
      * against our registrations */
     chain = PMIX_NEW(pmix_event_chain_t);
     chain->status = cd->status;
-    if (holdcd) {
+    if (cached) {
+        /* "cached", not "holdcd" - the two agree here only when the
+         * checkin above succeeded, and this asks whether the event is in
+         * the cache, not whether we are holding a reference for anyone */
         chain->cached = true;
     }
     PMIX_LOAD_PROCID(&chain->source, cd->source.nspace, cd->source.rank);

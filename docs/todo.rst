@@ -73,16 +73,6 @@ performs.  Weigh that against the reachability — the process must ignore
 a failed ``PMIx_Init``, keep running, and then be sent a
 ``PMIX_DEBUGGER_RELEASE`` it never asked for.
 
-A cached notification caddy still leaks on the cache-aging path
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-A cached notify caddy takes a reference that the event hotel owns.  The
-"all targets notified" checkout path was fixed to release it; pure
-cache-aging still leaks the working reference.  The fix needs
-"cached" and "posted upstairs" to be told apart — both currently set
-``holdcd = true`` — which is why it was deferred rather than attempted
-alongside the other leak fixes.
-
 Residual leaks on the group-leave path
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
