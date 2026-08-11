@@ -144,13 +144,20 @@ static void alloc_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         results->status = rc;
         goto complete;
     }
-    if (PMIX_SUCCESS != results->status) {
-        goto complete;
-    }
-
-    /* unpack any returned data */
+    /* unpack any returned data - the server packs it whatever the status is,
+     * and a status that is not PMIX_SUCCESS can still be carrying results:
+     * an operation the host accepted but has not finished (a Slurm
+     * allocation extend answers PMIX_OPERATION_IN_PROGRESS while handing
+     * back the allocation id the requester needs to track it) reaches here
+     * exactly that way. A reply that carries nothing but its status - which
+     * is what an error raised before the host was ever called looks like -
+     * simply runs out of buffer, and that is not an error either. */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &results->ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        results->ninfo = 0;
+        goto complete;
+    }
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         results->status = rc;
@@ -165,8 +172,10 @@ static void alloc_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
             results->status = rc;
             goto complete;
         }
-        /* locally cache the results */
-        for (n = 0; n < results->ninfo; n++) {
+        /* locally cache the results, but only those of a request that
+         * completed: caching what an in-progress or failed request handed
+         * back would let it shadow the answer the completed one brings */
+        for (n = 0; PMIX_SUCCESS == results->status && n < results->ninfo; n++) {
             kv = PMIX_NEW(pmix_kval_t);
             kv->key = strdup(results->info[n].key);
             PMIX_VALUE_CREATE(kv->value, 1);
