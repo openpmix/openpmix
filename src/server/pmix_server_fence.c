@@ -1335,3 +1335,169 @@ pmix_status_t pmix_server_get_collective_status(pmix_info_t *info, size_t ninfo)
     }
     return PMIX_SUCCESS;
 }
+
+/* Account for a lost peer across every in-flight fence/connect/disconnect
+ * collective. This is the fence family's counterpart to the group family's
+ * pmix_server_grp_peer_lost(), and both are called from the one place that
+ * learns a client's socket has dropped - lost_connection() in the PTL base.
+ * It lives here, beside the tracker engine it walks, so the two families'
+ * loss accounting sits next to the state it touches and can be exercised
+ * directly by a unit test (test/unit/trk_peer_lost.c).
+ *
+ * The tracker may be released here (a loss can complete the collective), so
+ * the walk uses FOREACH_SAFE. */
+void pmix_server_trk_peer_lost(pmix_peer_t *peer)
+{
+    pmix_server_trkr_t *trk, *tnxt;
+    pmix_server_caddy_t *rinfo;
+    pmix_proclist_t *dp;
+    pmix_status_t rc;
+    bool flag;
+    size_t n;
+
+    PMIX_LIST_FOREACH_SAFE (trk, tnxt, &pmix_server_globals.collectives, pmix_server_trkr_t) {
+        /* check if this peer should be participating in this collective */
+        flag = false;
+        for (n = 0; n < trk->npcs; n++) {
+            if (PMIX_CHECK_NAMES(&trk->pcs[n], &peer->info->pname)) {
+                flag = true;
+                break;
+            }
+        }
+        if (!flag) {
+            continue;
+        }
+        /* Determine whether this participant has already contributed.
+         * Its rank counts as contributed if any of its local peers -
+         * the client or a fork/exec'd clone sharing the same name -
+         * has an entry on local_cbs. If so, the contribution and the
+         * data it already delivered stand: we ignore the loss for
+         * this collective. We do NOT reduce the expected count and do
+         * NOT remove the contribution, so the collective neither
+         * completes early nor drops the departed peer's data. The
+         * dead peer's reply caddy is harmless - its socket has been
+         * closed, so the eventual QUEUE_REPLY is dropped rather than
+         * sent. */
+        flag = false;
+        PMIX_LIST_FOREACH (rinfo, &trk->local_cbs, pmix_server_caddy_t) {
+            if (PMIX_CHECK_NAMES(&rinfo->peer->info->pname, &peer->info->pname)) {
+                flag = true;
+                break;
+            }
+        }
+        if (flag) {
+            /* already contributed - nothing to account for */
+            continue;
+        }
+        /* This participant had not yet contributed and now never will.
+         * Record its rank as departed (once) so the collective can
+         * complete on the remaining live participants instead of
+         * hanging forever. Participation is tracked per rank, matching
+         * the way nlocal is counted, so a clone sharing the name does
+         * not add a second departed entry. */
+        flag = false;
+        PMIX_LIST_FOREACH (dp, &trk->departed, pmix_proclist_t) {
+            if (PMIX_CHECK_NAMES(&dp->proc, &peer->info->pname)) {
+                flag = true;
+                break;
+            }
+        }
+        if (!flag) {
+            dp = PMIX_NEW(pmix_proclist_t);
+            PMIX_LOAD_PROCID(&dp->proc, peer->info->pname.nspace,
+                             peer->info->pname.rank);
+            pmix_list_append(&trk->departed, &dp->super);
+        }
+        /* report the collective's health to the surviving participants:
+         * partial success if any expected participant is still awaited,
+         * else lost-connection */
+        if ((pmix_list_get_size(&trk->local_cbs) +
+             pmix_list_get_size(&trk->departed)) < trk->nlocal) {
+            rc = PMIX_ERR_PARTIAL_SUCCESS;
+        } else {
+            rc = PMIX_ERR_LOST_CONNECTION;
+        }
+        /* record the collective's health in the status slot the
+         * participant handlers seeded (located by key, since connect
+         * appends info after it - see pmix_server_set_collective_status) */
+        pmix_server_set_collective_status(trk->info, trk->ninfo, rc);
+        /* if the host has already been called for this tracker,
+         * then the local phase is frozen - just wait for the host
+         * to return from the operation */
+        if (trk->host_called) {
+            continue;
+        }
+        /* are we now locally complete? */
+        if (pmix_server_trk_complete(trk)) {
+            /* The loss of this participant is about to complete the
+             * collective, so an armed PMIX_TIMEOUT timer has to come
+             * down first - this is the same rule pmix_server_fence
+             * applies at its own completion point, and this sweep is
+             * where a timer is most likely to be armed, since a
+             * timeout is exactly what a participant dropping its
+             * connection would otherwise produce. Every arm below
+             * either hands the tracker to the host or drives a
+             * completion function, and both end with the tracker
+             * unlinked and released: a timer left armed then fires
+             * fence_timeout/connect_timeout on freed memory, or
+             * races the host's completion for the right to release
+             * it a second time. */
+            if (trk->event_active) {
+                pmix_event_del(&trk->ev);
+                trk->event_active = false;
+            }
+            /* if this is a local-only collective, then resolve it now */
+            if (trk->local) {
+                /* everyone else has called in - we need to let them know
+                 * that this proc has disappeared
+                 * as otherwise the collective will never complete */
+                if (PMIX_FENCENB_CMD == trk->type) {
+                    if (NULL != trk->modexcbfunc) {
+                        trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
+                    }
+                } else if (PMIX_CONNECTNB_CMD == trk->type) {
+                    if (NULL != trk->op_cbfunc) {
+                        trk->op_cbfunc(rc, trk);
+                    }
+                } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
+                    if (NULL != trk->op_cbfunc) {
+                        trk->op_cbfunc(rc, trk);
+                    }
+                } else if (PMIX_GROUP_CONSTRUCT_CMD == trk->type) {
+                    if (NULL != trk->op_cbfunc) {
+                        trk->op_cbfunc(rc, trk);
+                    }
+                }
+            } else {
+                /* if the host has not been called, then we need to pass the call
+                 * up to the host as otherwise the global collective will hang */
+                if (PMIX_FENCENB_CMD == trk->type) {
+                    trk->host_called = true;
+                    rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info,
+                                                   trk->ninfo, NULL, 0,
+                                                   trk->modexcbfunc, trk);
+                    if (PMIX_SUCCESS != rc) {
+                        pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+                        PMIX_RELEASE(trk);
+                    }
+                } else if (PMIX_CONNECTNB_CMD == trk->type) {
+                    trk->host_called = true;
+                    rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info,
+                                                  trk->ninfo, trk->op_cbfunc, trk);
+                    if (PMIX_SUCCESS != rc) {
+                        pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+                        PMIX_RELEASE(trk);
+                    }
+                } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
+                    trk->host_called = true;
+                    rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info,
+                                                     trk->ninfo, trk->op_cbfunc, trk);
+                    if (PMIX_SUCCESS != rc) {
+                        pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+                        PMIX_RELEASE(trk);
+                    }
+                }
+            }
+        }
+    }
+}
