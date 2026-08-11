@@ -70,6 +70,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_show_help.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 
@@ -773,6 +774,16 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
         rc = pmix_host_server.spawn(&proc, cd->info, cd->ninfo,
                                     cd->apps, cd->napps,
                                     pmix_server_spcbfunc, cd);
+        /* PMIX_OPERATION_SUCCEEDED cannot express this operation's result -
+         * the namespace of the job that was started, which comes back
+         * through the callback we always supply. Left alone it would reach
+         * the requesting client as a synthesized status-only reply, which
+         * that client reads as a success carrying no namespace */
+        if (PMIX_UNLIKELY(PMIX_OPERATION_SUCCEEDED == rc)) {
+            pmix_show_help("help-pmix-server.txt", "atomic-completion-unsupported",
+                           true, "PMIx_Spawn from a client");
+            rc = PMIX_ERR_NOT_SUPPORTED;
+        }
     } else {
         /* No host to ask, so fork/exec it ourselves. pfexec takes a caddy
          * of its own and releases it when the spawn completes, so give it

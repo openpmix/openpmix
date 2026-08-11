@@ -53,6 +53,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_show_help.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 
@@ -789,6 +790,14 @@ request:
          * naming it - so take a reference for the host to hold */
         PMIX_RETAIN(lcd);
         rc = pmix_host_server.direct_modex(&lcd->proc, lcd->info, lcd->ninfo, dmdx_cbfunc, lcd);
+        /* this up-call's entire product is a data blob delivered through
+         * dmdx_cbfunc, so an atomic "success" carrying nothing cannot be
+         * acted on - say so rather than treating it as a bare refusal */
+        if (PMIX_UNLIKELY(PMIX_OPERATION_SUCCEEDED == rc)) {
+            pmix_show_help("help-pmix-server.txt", "atomic-completion-unsupported",
+                           true, "direct_modex");
+            rc = PMIX_ERR_NOT_SUPPORTED;
+        }
         if (PMIX_SUCCESS != rc) {
             /* may have a function entry but not support the request - it
              * will not call us back, so give the reference back */
@@ -924,6 +933,12 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
                  * comment in pmix_server_get */
                 PMIX_RETAIN(cd);
                 rc = pmix_host_server.direct_modex(&cd->proc, cd->info, cd->ninfo, dmdx_cbfunc, cd);
+                if (PMIX_UNLIKELY(PMIX_OPERATION_SUCCEEDED == rc)) {
+                    /* see the matching note in pmix_server_get */
+                    pmix_show_help("help-pmix-server.txt", "atomic-completion-unsupported",
+                                   true, "direct_modex");
+                    rc = PMIX_ERR_NOT_SUPPORTED;
+                }
                 if (PMIX_SUCCESS != rc) {
                     PMIX_RELEASE(cd);
                 }

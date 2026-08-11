@@ -309,3 +309,17 @@ Detailed changes since v6.1.0:
    governs the namespaces registered after it: non-namespace information is
    copied into a namespace's data store when that namespace is registered,
    so a job already running retains it
+ - A host that answers a spawn or direct-modex up-call with
+   PMIX_OPERATION_SUCCEEDED is now told that it cannot, and the request
+   is failed to its requestor rather than reported as a success carrying
+   nothing. Both operations report a result - the namespace of the job
+   that was launched, or the data that was fetched - and the callback the
+   library supplies is the only channel for it, so an atomic completion
+   had nowhere to put the answer: a spawn came back to the application as
+   PMIX_SUCCESS with an empty namespace, over both the local and the
+   remote path, with nothing said. The library always supplies that
+   callback, so a host completing the work immediately can simply invoke
+   it - before returning, if it likes - and return PMIX_SUCCESS. The
+   pmix_server_module_t man page now states this, and PMIx_Spawn_nb no
+   longer returns PMIX_OPERATION_SUCCEEDED, which the Standard does not
+   define for it
