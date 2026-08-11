@@ -72,7 +72,7 @@ These run anywhere and are the bulk of the suite: `compress`, `preg`,
 `bfrops_helpers`, `info_support`, `iof_pattern`,
 `hwloc_datatype`, `tracker_match`, `trk_complete`, `collective_status`,
 `collect_job_info`, `progress_threads`, `runtime_init`, `pmix_log`,
-`server_get`.
+`server_get`, `resolve_api`.
 
 **Singleton client tests** — call the real public API in a process that
 comes up with no server. `client_cycle` (init/finalize cycling),
@@ -346,6 +346,48 @@ Two things about the setup are easy to get wrong and were:
 
 The multi-node half of this file — the actual remote fetch — is
 [`contrib/dockerswarm/run-server-tests.sh`](../../contrib/dockerswarm/AGENTS.md).
+
+### `resolve_api` — the local half of `PMIx_Resolve_peers`/`_nodes`
+
+[`resolve_api.c`](resolve_api.c) is the only program in this suite that
+reaches the *local computation* behind `PMIx_Resolve_peers` and
+`PMIx_Resolve_nodes` rather than just their argument checks (those are in
+`client_api.c`). It comes up as a PMIx server with a stub host module,
+and that is what routes it there: both APIs consult
+`pmix_host_server.query` first, and a stub module has none, so each falls
+through to the thread-shifted local path. No client, no socket, no DVM.
+
+The subject is a node that hosts **none** of a namespace's processes —
+an ordinary state, since a namespace's map can name a node it placed
+nothing on, and the datastore records that as a `PMIX_LOCAL_PEERS` value
+that is the *empty string* rather than a NULL one. `PMIx_Argv_split()`
+returns NULL for a string with no tokens, so the aggregate walk recorded
+such a namespace and then indexed that NULL, and the single-namespace
+path handed a zero count to `PMIX_PROC_CREATE` and reported the NULL it
+gets back as `PMIX_ERR_NOMEM`.
+
+Both halves were verified by reverting each fix independently: the
+aggregate case **segfaults** against the unfixed library (exit 139, with
+the buffered output lost, which is the signature described under
+`bfrops_malformed` above), and the single-namespace case fails its
+assertion.
+
+Two things about the setup are load-bearing:
+
+- The empty namespace is registered with a `PMIX_NODE_INFO_ARRAY` and
+  **no proc map**. `store_map()` derives its own `PMIX_LOCAL_PEERS` from
+  the proc map and *replaces* a host-supplied one, so adding a proc map
+  would quietly overwrite the value under test.
+- The namespace arguments are `pmix_nspace_t` variables, not string
+  literals. These APIs take a fixed-size array, and gcc rejects a shorter
+  literal outright under `-Werror=stringop-overread`.
+
+What it cannot reach is the matching empty-list guard in
+`resolve_nodes()`: `PMIX_NODE_LIST` is derived by joining the node map,
+so the hash datastore cannot produce an empty one through
+`PMIx_server_register_nspace`. That guard is hardening against a host
+that stores the key itself. The node cases here only pin the ordinary
+answers.
 
 ### `runtime_init` — the `src/runtime` bring-up regression test
 
