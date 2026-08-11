@@ -1,0 +1,290 @@
+Known gaps and deferred work
+============================
+
+This page inventories issues that were identified during the deep
+reviews of the PMIx source tree but were **deliberately not fixed at
+the time they were found**.  Each entry records what the problem is,
+why it was left alone, and what closing it would take.
+
+Three kinds of entry appear here:
+
+* **Open decisions** — a real defect whose fix requires a judgement
+  that the review was not entitled to make on its own (a change to a
+  published attribute, a released API's behavior, or the PMIx
+  Standard).
+* **Deferred work** — a real defect whose fix is larger, riskier, or
+  more entangled than the change it was found alongside.
+* **Coverage gaps** — code that is believed correct but that no test
+  reaches, usually because reaching it needs fault injection or
+  hardware the test environments do not have.
+
+Entries that are *by design* are also listed, under their own heading,
+so that they are not repeatedly "rediscovered" and re-fixed.
+
+.. note:: Each directory's ``AGENTS.md`` carries the full reasoning for
+          the items found in it.  Those files are orientation maps, not
+          work logs, so this page is the place that records an item as
+          still **open**.  Re-verify an entry before acting on it; the
+          code moves.
+
+Open decisions
+--------------
+
+``PMIX_GROUP_ENDPT_DATA`` has two contradictory documented types
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``include/pmix_common.h.in`` describes the attribute as a
+``pmix_byte_object_t``.  Both ``_register_resources`` (in
+``src/server/pmix_server_setup.c``) and
+:ref:`PMIx_server_register_resources(3) <man3-PMIx_server_register_resources>`
+treat it as a ``pmix_data_array_t*`` of ``pmix_info_t`` whose first two
+elements are the process identifier and the scope.  Nothing in the tree
+produces the attribute, so neither statement is exercised.
+
+The header comment is the more likely of the two to be stale —
+``PMIX_GROUP_JOB_INFO`` directly below it genuinely is a byte object and
+is read as one — but settling the question means consulting the PMIx
+Standard, not editing the type of a published attribute.  A type screen
+was added on that arm in the meantime, so a host that sends the wrong
+one now receives ``PMIX_ERR_TYPE_MISMATCH`` rather than provoking a
+segmentation fault.
+
+Qualifier-narrowed resource deregistration is documented but not implemented
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+:ref:`PMIx_server_deregister_resources(3) <man3-PMIx_server_deregister_resources>`
+describes removing one node's fabric device by passing a
+``PMIX_NODE_INFO_ARRAY`` carrying the ``PMIX_NODEID``/``PMIX_HOSTNAME``
+together with a ``PMIX_FABRIC_DEVICE_NAME``.  ``_deregister_resources``
+matches on the **key alone**, so such a request removes every entry
+carrying that key.  The function was corrected to remove *each* matching
+entry rather than stopping at the first, which is right for scalar keys
+and makes the array case correspondingly more destructive.  Either the
+qualifier match is implemented, or the man page is narrowed to describe
+what the code does.
+
+``PMIx_Fence_nb`` blocks when handed a ``NULL`` callback
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+It is the only non-blocking entry point in ``src/client`` that does.  A
+caller who chose the ``_nb`` form precisely to stay off a blocking path
+gets a blocking call, and one issued from an event handler on the
+progress thread deadlocks outright.  Every way of resolving it is a
+behavior change to a released public API rather than a fix: rejecting
+``NULL`` breaks any caller relying on the block, and returning without
+waiting silently converts that caller's synchronization into a
+fire-and-forget.  Nothing in the library depends on the answer —
+``PMIx_Fence`` passes its own callback and does not take this branch.
+
+.. note:: This directory has **four** different meanings for a ``NULL``
+          callback; check which one applies before copying a ``NULL``
+          test between entry points.  See ``src/client/AGENTS.md``.
+
+A host ``spawn`` that returns ``PMIX_OPERATION_SUCCEEDED`` is dropped
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The tree-wide convention for host up-calls is that
+``PMIX_OPERATION_SUCCEEDED`` means "done now, I will not call back — you
+invoke the completion yourself".  Both ``PMIx_Spawn_nb`` and
+``pmix_server_spawn`` instead treat it as an error: the caddy is
+released, the completion never fires, and the blocking ``PMIx_Spawn``
+wrapper maps the status to ``PMIX_SUCCESS`` and hands the caller an
+**empty namespace**.
+
+It is left alone because the spawn contract has no synchronous channel
+for the namespace in the first place, so a host completing atomically
+has no way to say what it launched; because both sites have the same
+shape, making this a convention rather than a divergence; and because
+nothing in the tree returns it.  Closing it properly means extending the
+``pmix_server_spawn_fn_t`` contract.
+
+``PMIX_DATA_SCOPE`` is read without a type check
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``process_request()`` in ``src/client`` reads
+``info[n].value.data.scope`` directly.  Unlike the neighboring
+directives this cannot crash — it is a scalar read out of the union —
+but a mistyped directive silently produces the wrong scope and therefore
+a wrong answer.  "Reject" and "ignore" are both defensible; the choice
+is a behavior decision.
+
+Deferred work
+-------------
+
+The ``PMIx_Init`` debugger-wait handler can outlive its return object
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``PMIX_EVENT_RETURN_OBJECT`` is stored as a bare ``cbobject`` pointer,
+and here it points at a lock on ``PMIx_Init``'s own stack frame.  On the
+success path the handler is ``PMIX_EVENT_ONESHOT`` and removes itself
+when it fires; only the notification-failure return leaves it
+registered.  The obvious fix does not work: ``PMIx_Deregister_event_handler``
+gates on ``pmix_globals.initialized``, which ``PMIx_Init`` does not set
+until forty lines later, so the public API is a no-op from there and
+removing the handler means open-coding the thread-shift the entry point
+performs.  Weigh that against the reachability — the process must ignore
+a failed ``PMIx_Init``, keep running, and then be sent a
+``PMIX_DEBUGGER_RELEASE`` it never asked for.
+
+A cached notification caddy still leaks on the cache-aging path
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A cached notify caddy takes a reference that the event hotel owns.  The
+"all targets notified" checkout path was fixed to release it; pure
+cache-aging still leaks the working reference.  The fix needs
+"cached" and "posted upstairs" to be told apart — both currently set
+``holdcd = true`` — which is why it was deferred rather than attempted
+alongside the other leak fixes.
+
+An outstanding direct-modex request leaks its caddy at teardown
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``dmrqdes`` (``src/server/pmix_server_classes.c``) deletes the request's
+timer event and releases its tracker and key, but never releases
+``req->cbdata``.  A request still outstanding when the server finalizes
+or purges therefore leaks the server caddy behind it.  An earlier fix to
+the over-retain in ``create_local_tracker`` made this smaller — one
+caddy rather than two — but did not close it.
+
+Residual leaks on the group-leave path
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Valgrind runs against a server library embedded in a launcher show small
+*indirect* libpmix leaks rooted in the departed client's peer and block
+cleanup — ``_register_client``, ``harvest_envars``,
+``ptl_base_connection_handler``, and the tracker's children.  They are
+entangled with a leak in the host's own group code, which is what makes
+attributing and fixing them delicate.  Left for separate, careful work.
+
+Hardening the spawn copy loop against allocation failure
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``strdup()``, ``PMIx_Argv_copy()`` and ``PMIx_Argv_prepend_nosize()``
+results in ``PMIx_Spawn_nb``'s copy loop are unchecked.  Doing half of
+this is worse than doing none of it, so the whole loop was left for a
+separate piece of work.  Note that the ``PMIX_NEW`` calls in that same
+function are an **open decision, not a considered one**: they were left
+on the strength of a claim that ``src/client`` never checks
+``PMIX_NEW``, and that claim was wrong.
+
+Two shared-state exposures that need a structural answer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+* The ``spawn_iof_flags`` stand-in is a single process-wide slot,
+  written from the caller's thread and read on the progress thread.  It
+  is safe for the case it was built for, but two spawns in flight at
+  once from one process means the second overwrites the first's flags.
+  A tool that needs concurrent spawns formatted differently forces the
+  stand-in to become per-request.
+* ``PMIx_Spawn_nb`` in a server role walks
+  ``pmix_server_globals.clients`` unlocked, on whatever thread the host
+  called it on, while the progress thread adds and removes clients.  The
+  cure is to thread-shift the whole entry point; the sibling call in
+  ``pmix_monitor.c`` has the same exposure.
+
+Smaller items carried forward
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+* ``PMIx_Value_get_number()`` is called without a ``NULL`` check on
+  ``kv->value`` at three fetches in ``src/client``'s ``get_data()``.
+  Nothing demonstrates a local datastore fetch producing such a kval, and
+  if it is closed the screen belongs inside ``PMIx_Value_get_number``
+  rather than at the call sites, since every caller in the tree is
+  equally exposed.
+* ``req->flags = cd->flags`` in ``pmix_server_process_iof()`` aliases the
+  caddy's ``file``/``directory`` strings, which are freed when the caddy
+  is released — so the IOF request is left holding two dangling
+  pointers.  It is harmless only because nothing reads them today.
+* ``pmix_globals.init_called`` is set with ``__atomic_test_and_set`` and
+  cleared with a plain assignment.  All three roles do this, and the
+  only interleaving that reaches it is a concurrent
+  ``PMIx_Init``/``PMIx_Finalize``, which is already unsupported.
+* ``refcb()`` in ``src/client`` overwrites the store status with the next
+  unpack's, so a store failure while absorbing a cache refresh is
+  silently dropped.
+* ``resolve_peers()``'s pre-v3.2 compatibility branch is dead code — the
+  rank it sets is unconditionally reset two lines later.  Not removed
+  without a pre-v3.2 server to test against.
+* The command-line parser drops a positional argument placed *before* an
+  option, a consequence of ``getopt`` reordering.  Put options first.
+* The relay in ``src/tool`` assumes the downstream tool and the upstream
+  server negotiated the same ``bfrops`` module and buffer type.  A tool
+  forces the same modules on itself and its server, so this holds today,
+  but the code does not check it.
+* The event-caching branch in the tool's ``_notify_complete`` appears to
+  be unreachable, and ``src/client`` has no equivalent branch at all.
+  Tracked as `openpmix#4101 <https://github.com/openpmix/openpmix/issues/4101>`_.
+
+Coverage gaps
+-------------
+
+* **The out-of-memory and finalize-race arms of the server switchyard's
+  host callbacks.**  ``op_cbfunc``, ``op_cbfunc2`` and ``resop_cbfunc``
+  in ``src/server/pmix_server_switchyard.c`` each have two arms that do
+  not thread-shift.  Both were fixed to release the caddy they own, but
+  neither is reachable from a unit test without fault injection — a
+  failed allocation, or the progress thread stopping while a host
+  completion is in flight.
+* **``test/simple/simptest`` cannot host a spawn.**  Its ``spawn_fn``
+  calls ``PMIx_server_setup_application()``, a thread-shifting API, and
+  then waits on the result — but ``spawn_fn`` is the host callback and
+  runs *on* the server's progress thread, so the fake launch deadlocks.
+  Spawn coverage therefore lives in the multi-node suite rather than in
+  ``make check``.  Do not add a ``run_*.pl`` that spawns until that path
+  is made asynchronous.
+* **The reply handling of the ``PMIx_Compute_distances`` pair is not
+  covered anywhere,** and cannot be: two of the three paths are
+  allocation failures and the third needs a server reply whose declared
+  count exceeds its payload.  Reaching the receive path at all requires
+  a client whose *local* hwloc computation failed.
+* **Two fixes in ``src/tool`` ship without regression tests** because
+  the conditions cannot be arranged in ``make check``: the SIGCONT
+  handler for forwarded stdin needs a tty, and the late-finalize-reply
+  guard needs a server that answers the finalize handshake more than
+  five seconds late.
+* **The process-set and resolve examples have never been leak-validated.**
+  Both hang in the test environments used so far, so valgrind is killed
+  before ``PMIx_Finalize`` runs and the report is inconclusive.
+* **``pps`` has never been validated against a live process-table
+  server.**  Its no-connect paths are covered by the tools smoke test;
+  the proc-table rendering is not.
+
+Not defects — by design
+-----------------------
+
+These look like bugs and are not.  They are recorded so that they are
+not "fixed" by a later reader.
+
+* **``pmix_srand()`` copies the seeded state into a file-static buffer**
+  (``src/util/pmix_alfg.c``).  It looks like a footgun, but it is the
+  only way to seed the global that ``pmix_random()`` reads, and the unit
+  test deliberately holds down that behavior.  ``pmix_random`` is unused
+  in-tree and the real ``pmix_srand`` callers use their own buffers, so
+  the "last writer wins" hazard is not reachable.  Do not drop the copy
+  without giving ``pmix_random`` another way to be seeded.
+* **``wait_signal_callback()`` reads the child-list size without a
+  lock** (``src/common/pmix_pfexec.c``).  This is a formal data race,
+  kept on purpose: the child is appended to the list before the ``fork()``
+  that can generate its ``SIGCHLD``, so the count cannot be stale for a
+  child that matters, and removing the guard would make pfexec call
+  ``waitpid(-1)`` on every ``SIGCHLD`` in a process with no children of
+  its own.  If it is restructured, replace the read with a counter
+  maintained across all six add/remove sites.
+* **A failed ``pmix_rte_init`` returns without unwinding.**  It emits a
+  diagnostic and returns, deliberately leaving the frameworks, globals
+  and event base it had already brought up, because a failed
+  ``PMIx_Init`` aborts the process.  New failure points should follow the
+  same pattern.
+* **``get_job_data`` returning success with an empty buffer is safe.**
+  The requesting client initializes its reported status to
+  ``PMIX_ERR_NOT_FOUND`` and overwrites it only if a value turns up, so
+  an empty success degrades to not-found at the requester.
+* **``pmix_server_job_ctrl`` creating a namespace for an unknown target
+  is intentional.**  A job-control request may name a job this server has
+  not been told about yet, and the epilog directives need somewhere to
+  hang; the entry is reused when registration arrives.
+* **The bare ``atomic_bool`` fields in ``pmix_globals_t``** are correct,
+  merely inconsistent with the typedefs used elsewhere, and the
+  ``PMIX_C_HAVE_*`` defines in the installed ``pmix_config.h`` are now
+  always ``1`` but are retained in case an out-of-tree consumer tests
+  them.
