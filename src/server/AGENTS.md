@@ -411,6 +411,39 @@ fence tracker applies: releasing a block destructs its `grp_trk_t`s and
 their `local_cbs`, so remove the current `cd` from `local_cbs` before
 releasing on a host-error return, or the switchyard double-frees it.
 
+## `pmix_server_resolve.c` is a twin of `src/client/pmix_client_resolve.c`
+
+`pmix_server_locally_resolve_peers()` / `..._node()` here and
+`resolve_peers()` / `resolve_nodes()` in
+[`src/client/pmix_client_resolve.c`](../client/AGENTS.md) are the same
+computation over the same datastore, written twice — the server answers
+for a client that round-tripped, the client answers for itself when it
+cannot reach a server. **Every defect found in one has so far been
+present in the other, in both directions.** Read the twin before you stop
+changing either.
+
+The recurring one is that `PMIx_Argv_split()` returns **NULL** for a
+string with no tokens rather than an empty array, and every list these
+functions read out of the datastore can legitimately be the empty string:
+a namespace's map can name a node it placed nothing on, and `store_map()`
+records that node's `PMIX_LOCAL_PEERS` as `strdup("")`. The `NULL ==
+string` guards throughout both files do not cover that state. Related,
+and reachable from the same input: `PMIX_PROC_CREATE(0)` hands back the
+same NULL an allocation failure does, so a zero peer count reported as
+`PMIX_ERR_NOMEM` where the empty answer was correct.
+
+The one that went the other way is worth keeping: the aggregate walk here
+resets `proc.rank` to `PMIX_RANK_UNDEF` per namespace, with a comment
+saying why, and the client's `try_fetch()` did not — so its answer
+depended on the order the namespaces sat in the list. See the ninth-sweep
+entry in the client's `AGENTS.md` for why that was benign against today's
+`hash` module, before deciding the reset is unnecessary.
+
+Regression coverage for the shared defects lives on the client side, in
+`test/unit/resolve_api.c`; it drives the public APIs in a server process
+whose stub host module has no `query`, which is exactly the configuration
+that reaches these local computations.
+
 ## Peer lifecycle, tombstones, and event purging
 
 `pmix_server_peer_finalized` (`pmix_server_registration.c:460`) and its helper
