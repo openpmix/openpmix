@@ -60,6 +60,7 @@ Table of contents
    building-apps/index
    developers/index
    contributing
+   todo
    code-of-conduct
    license
    security
