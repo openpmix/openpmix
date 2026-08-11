@@ -110,8 +110,14 @@ following attributes, which receive special handling:
 * ``PMIX_GROUP_INFO_ARRAY`` / ``PMIX_GROUP_INFO`` (pmix_data_array_t\*) |mdash|
   group information to be stored in the server's hash table. Requires a
   ``PMIX_GROUP_CONTEXT_ID`` to also be provided.
-* ``PMIX_GROUP_ENDPT_DATA`` (pmix_data_array_t\*) |mdash| per-process endpoint
-  information to be stored for the group.
+* ``PMIX_GROUP_ENDPT_DATA`` (pmix_data_array_t\*) |mdash| an array of
+  ``pmix_info_t`` carrying the endpoint data contributed by one member of the
+  group during construction. The first element must be that process'
+  ``PMIX_PROCID`` and the second the ``PMIX_DATA_SCOPE`` at which the remaining
+  elements are to be stored. This is the shape the PMIx client library builds
+  when it contributes endpoint data to a group construct, where it is keyed as
+  ``PMIX_PROC_INFO_ARRAY``; the host relabels each contribution with this
+  attribute when handing it back to the server.
 * ``PMIX_GROUP_CONTEXT_ID`` (size_t) |mdash| the context identifier associated
   with the group information being stored.
 * ``PMIX_GROUP_JOB_INFO`` (pmix_byte_object_t) |mdash| packed job-level
