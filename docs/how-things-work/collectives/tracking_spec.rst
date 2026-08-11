@@ -360,6 +360,31 @@ participants are still connected. Losing a participant after handoff only
 affects whether a reply can be delivered to that participant — never the
 completion or contents of the collective.
 
+**A driven completion claims the tracker.** ``host_called`` covers only
+the handoff to the host. A collective that never reaches the host - a
+strictly local fence is the ordinary case, and two error paths
+deliberately clear ``host_called`` - is completed by calling the
+tracker's own completion function, and that call is asynchronous: it
+thread-shifts, and only when the handler runs does it reply to the
+participants on ``local_cbs``, unlink the tracker from the collectives
+list and release it. Until then the tracker is still on the list and
+still satisfies the completion predicate, because ``local_cbs`` is
+drained by that handler and by nothing earlier. It therefore looks, to
+anything walking the list, exactly like a collective that is complete
+and unclaimed.
+
+Driving its completion a second time in that window hands two handlers
+the same tracker to unlink and release: the second reads and re-releases
+memory the first freed, and unlinks through freed list links, corrupting
+the collectives list. Admitting a *new* participant in that window is
+the same mistake from the other side - the caddy is freed with the
+tracker without ever being answered, hanging a client whose only mistake
+was to call its next collective promptly. A tracker whose completion has
+been driven must therefore be marked as spoken for, and every path that
+can reach a tracker - the lost-connection sweep, the collective timeouts,
+and the tracker lookup that joins a contributor to an in-flight
+collective - must honor that mark.
+
 **Group operations have the same requirement.** The group
 construct/destruct trackers (``grp_block_t`` / ``grp_trk_t`` on
 ``grp_collectives``) use the same counter-based accounting and are
@@ -401,6 +426,11 @@ all times:
    departed-before-contributing.**
 #. **After ``host_called`` is set, local loss accounting never re-drives
    completion** for that tracker.
+#. **Once a tracker's completion function has been driven, nothing drives
+   it again and no new participant joins it.** The completion is
+   asynchronous, so the tracker outlives the call on the collectives list;
+   for the duration it is spoken for, and every path that can reach a
+   tracker must skip it.
 #. **The rules apply uniformly** to fence, connect, disconnect, and group
    operations, and to both directly-connected clients and their clones.
 #. **Loss accounting is driven by abnormal termination only.** A rank
