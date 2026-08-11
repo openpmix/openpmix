@@ -93,17 +93,6 @@ cleanup — ``_register_client``, ``harvest_envars``,
 entangled with a leak in the host's own group code, which is what makes
 attributing and fixing them delicate.  Left for separate, careful work.
 
-Hardening the spawn copy loop against allocation failure
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The ``strdup()``, ``PMIx_Argv_copy()`` and ``PMIx_Argv_prepend_nosize()``
-results in ``PMIx_Spawn_nb``'s copy loop are unchecked.  Doing half of
-this is worse than doing none of it, so the whole loop was left for a
-separate piece of work.  Note that the ``PMIX_NEW`` calls in that same
-function are an **open decision, not a considered one**: they were left
-on the strength of a claim that ``src/client`` never checks
-``PMIX_NEW``, and that claim was wrong.
-
 Two shared-state exposures that need a structural answer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

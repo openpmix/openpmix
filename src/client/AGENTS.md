@@ -1736,17 +1736,11 @@ other.
   returns between the two actually free what the caddy already holds.
 
   This is the class the earlier sweeps have consistently closed
-  (`respeer()`, `construct_msg()`, `construct_cbfunc()`). The unchecked
-  `strdup()` / `PMIx_Argv_copy()` / `PMIx_Argv_prepend_nosize()` results
-  in the same loop are deliberately left: hardening this function against
-  allocation failure end-to-end is a separate piece of work, and doing
-  half of it is worse than none.
-
-  **This sweep also left `fcd = PMIX_NEW(pmix_setup_caddy_t)` and
-  `msg = PMIX_NEW(pmix_buffer_t)` unchecked on the strength of the ninth
-  sweep's claim that `PMIX_NEW` is never checked in this directory. That
-  claim was wrong** — see the corrected entry under the ninth sweep — so
-  treat this as an open decision rather than a considered one.
+  (`respeer()`, `construct_msg()`, `construct_cbfunc()`). The rest of the
+  loop was left at the time — the `strdup()`, `PMIx_Argv_copy()` and
+  `PMIx_Argv_prepend_nosize()` results, and the two `PMIX_NEW`s the whole
+  function hangs off — on the grounds that doing half of it is worse than
+  none. **That is now done; see the twelfth sweep below.**
 
 *Noted, not changed — do not re-open these without new evidence:*
 
@@ -1909,6 +1903,57 @@ the shift looks removable.
   the `direcv` fix closes, in the function that produces the answer when
   the client can compute it itself. Fixed in
   [`src/hwloc/pmix_hwloc.c`](../hwloc/pmix_hwloc.c).
+
+## The twelfth sweep — `PMIx_Spawn_nb` survives an allocation failure
+
+The tenth sweep closed the three `_CREATE` macros in the apps copy loop
+and deliberately left everything else, on the grounds that hardening this
+function against allocation failure end-to-end is one piece of work and
+half of it is worse than none. This is that piece of work. It changes no
+behavior on any path where nothing fails.
+
+Every allocation in `PMIx_Spawn_nb` is now checked: the two `PMIX_NEW`s
+the function hangs off (`fcd` and `msg`), `PMIx_Info_list_start()`, both
+`strdup()`s per app, both `pmix_basename()` results, both
+`PMIx_Argv_copy()` results, `PMIx_Argv_prepend_nosize()`, and
+`PMIx_Setenv()` in both harvest loops. Three things are worth carrying:
+
+- **The copy loop shares one exit** (`nomem:` at the foot of the
+  function), because `PMIX_RELEASE(fcd)` is the whole cleanup however far
+  the loop got. `fcd->copied` is set at construction and `PMIX_APP_CREATE`
+  constructs every element, so an app the loop never reached is an empty
+  one rather than garbage, and a half-filled one frees the members it did
+  get.
+- **`PMIx_Argv_copy()` answers NULL for a NULL source as well as for a
+  failure**, so the two are told apart by the *source*, not the result.
+  The `argv` copy is on a branch where `aptr->argv` is known non-NULL, so
+  a NULL back there is a failure; the `env` copy is not, so it is guarded
+  on `NULL != aptr->env` — an app that names no environment is the
+  ordinary case. (An argv whose first element is NULL still yields a
+  valid empty array, so that is not the ambiguous case it looks like.)
+- **`pmix_basename()` returns NULL for a NULL input and on failure**, and
+  both call sites in that branch pass something already known non-NULL —
+  our own copy of the cmd, and `aptr->argv[0]`, which the bozo check at
+  the top of the loop has already rejected as NULL. So a NULL there is an
+  allocation failure too.
+
+One behavior change came with it, and it is a consistency fix rather than
+hardening: **the per-app directive copy used `PMIX_INFO_XFER`, which
+discards its status by definition**, so a directive the copy could not
+carry was dropped in silence and the spawn went up with an empty slot
+where the caller had put something. The job-level directives twenty lines
+above have always failed the spawn in that case, through
+`PMIx_Info_list_xfer`. It now uses `PMIx_Info_xfer` and reports. Note
+`PMIX_UNDEF` transfers successfully, so a flag-only directive is
+unaffected.
+
+Coverage is in [`test/unit/spawn_api.c`](../../test/unit/spawn_api.c).
+**Nothing there tests the hardening directly** — a `make check` program
+cannot make an allocation fail — so what it holds down is the other half:
+that the argv-without-cmd, argv-not-starting-with-cmd and app-carrying-an-
+environment shapes still reach the host up-call, which is what a screen
+written the wrong way round would break. The `PMIX_INFO_XFER` change does
+have a real regression case, and it fails against the unfixed library.
 
 ## Coding conventions specific to this directory
 

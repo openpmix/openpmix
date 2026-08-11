@@ -249,8 +249,15 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         }
     }
 
-    // setup the caddy
+    /* Setup the caddy. Everything below is written to survive an
+     * allocation failure, so the two allocations the whole function hangs
+     * off - this one and the message near the foot - are checked too:
+     * leaving them out would be exactly the half-measure that kept this
+     * work parked. */
     fcd = PMIX_NEW(pmix_setup_caddy_t);
+    if (PMIX_UNLIKELY(NULL == fcd)) {
+        return PMIX_ERR_NOMEM;
+    }
     fcd->spcbfunc = cbfunc;
     fcd->cbdata = cbdata;
     /* everything we are about to put in the caddy's info and apps fields is
@@ -265,6 +272,10 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
      * one, which used to come back to the caller as the spawn's failure */
     if (NULL != job_info && 0 < ninfo) {
         xlist = PMIx_Info_list_start();
+        if (PMIX_UNLIKELY(NULL == xlist)) {
+            PMIX_RELEASE(fcd);
+            return PMIX_ERR_NOMEM;
+        }
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&job_info[n], PMIX_SETUP_APP_ENVARS)) {
                 /* harvested and applied to our copy of the apps, below */
@@ -329,6 +340,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         } else {
             fcd->apps[n].cmd = strdup(aptr->cmd);
         }
+        if (PMIX_UNLIKELY(NULL == fcd->apps[n].cmd)) {
+            goto nomem;
+        }
 
         /* if they didn't give us a desired working directory, then
          * take the one we are in */
@@ -342,41 +356,74 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         } else {
             fcd->apps[n].cwd = strdup(aptr->cwd);
         }
+        if (PMIX_UNLIKELY(NULL == fcd->apps[n].cwd)) {
+            goto nomem;
+        }
 
         /* if they didn't give us the cmd as the first argv, fix it */
         if (NULL == aptr->argv) {
             tmp = pmix_basename(aptr->cmd);
+            if (PMIX_UNLIKELY(NULL == tmp)) {
+                goto nomem;
+            }
             fcd->apps[n].argv = (char **) malloc(2 * sizeof(char *));
             if (PMIX_UNLIKELY(NULL == fcd->apps[n].argv)) {
-                if (NULL != tmp) {
-                    free(tmp);
-                }
-                PMIX_RELEASE(fcd);
-                return PMIX_ERR_NOMEM;
+                free(tmp);
+                goto nomem;
             }
             fcd->apps[n].argv[0] = tmp;
             fcd->apps[n].argv[1] = NULL;
         } else {
+            /* aptr->argv is non-NULL on this branch, and a copy of a
+             * non-NULL argv is NULL only if an allocation failed - even an
+             * argv whose first element is NULL yields a valid empty one */
             fcd->apps[n].argv = PMIx_Argv_copy(aptr->argv);
+            if (PMIX_UNLIKELY(NULL == fcd->apps[n].argv)) {
+                goto nomem;
+            }
             /* take the basename from our own copy of the cmd, not from
              * aptr->cmd: the caller is allowed to supply argv without a cmd
              * (we filled it in from argv[0] above), and pmix_basename(NULL)
              * returns NULL, which the strcmp below would then dereference */
             tmp = pmix_basename(fcd->apps[n].cmd);
             t2 = pmix_basename(aptr->argv[0]);
+            if (PMIX_UNLIKELY(NULL == tmp || NULL == t2)) {
+                /* both inputs are non-NULL here, so a NULL back is an
+                 * allocation failure rather than the bozo case */
+                if (NULL != tmp) {
+                    free(tmp);
+                }
+                if (NULL != t2) {
+                    free(t2);
+                }
+                goto nomem;
+            }
             if (0 != strcmp(tmp, t2)) {
                 // assume that the user may have put the argv
                 // for their cmd in the argv array, but not
                 // started with the actual cmd - so add it
                 // to the front of the array
-                PMIx_Argv_prepend_nosize(&fcd->apps[n].argv, tmp);
+                rc = PMIx_Argv_prepend_nosize(&fcd->apps[n].argv, tmp);
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                    free(tmp);
+                    free(t2);
+                    PMIX_RELEASE(fcd);
+                    return rc;
+                }
             }
             free(tmp);
             free(t2);
         }
 
-        // copy the env array
-        fcd->apps[n].env = PMIx_Argv_copy(aptr->env);
+        /* copy the env array - an app that names no environment is the
+         * ordinary case, and PMIx_Argv_copy answers NULL for that as well
+         * as for a failure, so only a non-NULL source can be told apart */
+        if (NULL != aptr->env) {
+            fcd->apps[n].env = PMIx_Argv_copy(aptr->env);
+            if (PMIX_UNLIKELY(NULL == fcd->apps[n].env)) {
+                goto nomem;
+            }
+        }
 
         // copy the #procs
         fcd->apps[n].maxprocs = aptr->maxprocs;
@@ -418,7 +465,16 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                  * not leave the app claiming directives it does not have */
                 fcd->apps[n].ninfo = nappinfo;
                 for (m = 0; m < nappinfo; m++) {
-                    PMIX_INFO_XFER(&fcd->apps[n].info[m], &aptr->info[m]);
+                    /* PMIX_INFO_XFER discards the status by definition, so
+                     * a directive we could not copy used to be dropped in
+                     * silence - while the job-level ones a few lines above
+                     * fail the spawn through PMIx_Info_list_xfer. Both
+                     * halves of one message now report the same way */
+                    rc = PMIx_Info_xfer(&fcd->apps[n].info[m], &aptr->info[m]);
+                    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                        PMIX_RELEASE(fcd);
+                        return rc;
+                    }
                 }
             }
         }
@@ -446,8 +502,14 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                         return rc;
                     }
                     PMIX_LIST_FOREACH (kv, &ilist, pmix_kval_t) {
-                        PMIx_Setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true,
-                                    &fcd->apps[n].env);
+                        rc = PMIx_Setenv(kv->value->data.envar.envar,
+                                         kv->value->data.envar.value, true,
+                                         &fcd->apps[n].env);
+                        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                            PMIX_LIST_DESTRUCT(&ilist);
+                            PMIX_RELEASE(fcd);
+                            return rc;
+                        }
                     }
                     PMIX_LIST_DESTRUCT(&ilist);
                     break;
@@ -489,8 +551,14 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         PMIX_LIST_FOREACH (kv, &ilist, pmix_kval_t) {
             /* cycle across all the apps and set this envar */
             for (n = 0; n < fcd->napps; n++) {
-                PMIx_Setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true,
-                            &fcd->apps[n].env);
+                rc = PMIx_Setenv(kv->value->data.envar.envar,
+                                 kv->value->data.envar.value, true,
+                                 &fcd->apps[n].env);
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                    PMIX_LIST_DESTRUCT(&ilist);
+                    PMIX_RELEASE(fcd);
+                    return rc;
+                }
             }
         }
         PMIX_LIST_DESTRUCT(&ilist);
@@ -570,6 +638,10 @@ envars_done:
     }
 
     msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msg)) {
+        PMIX_RELEASE(fcd);
+        return PMIX_ERR_NOMEM;
+    }
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -628,6 +700,16 @@ envars_done:
     }
 
     return rc;
+
+    /* Shared exit for the copy loop above. Releasing the caddy is all that
+     * is required however far the loop got: fcd->copied was set at
+     * construction, so scaddes frees the apps array, and PMIX_APP_CREATE
+     * constructed every element - so an app we never reached is an empty
+     * one rather than garbage, and a half-filled one frees the members it
+     * did get. */
+nomem:
+    PMIX_RELEASE(fcd);
+    return PMIX_ERR_NOMEM;
 }
 
 /* callback for wait completion */
