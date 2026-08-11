@@ -30,19 +30,30 @@ so that they are not repeatedly "rediscovered" and re-fixed.
 Open decisions
 --------------
 
-Qualifier-narrowed resource deregistration is documented but not implemented
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+A deregistration cannot retract what a namespace already holds
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :ref:`PMIx_server_deregister_resources(3) <man3-PMIx_server_deregister_resources>`
-describes removing one node's fabric device by passing a
-``PMIX_NODE_INFO_ARRAY`` carrying the ``PMIX_NODEID``/``PMIX_HOSTNAME``
-together with a ``PMIX_FABRIC_DEVICE_NAME``.  ``_deregister_resources``
-matches on the **key alone**, so such a request removes every entry
-carrying that key.  The function was corrected to remove *each* matching
-entry rather than stopping at the first, which is right for scalar keys
-and makes the array case correspondingly more destructive.  Either the
-qualifier match is implemented, or the man page is narrowed to describe
-what the code does.
+removes entries from the server's global cache, and the qualified form of
+it now removes exactly what the request named.  What it cannot do is take
+the information back from a namespace that already has it: the cache is
+copied into a namespace's data store once, when that namespace is first
+registered — ``hash_cache_job_info``, guarded by the per-namespace
+``gdata_added`` — and nothing re-reads it afterwards.  So a deregistration
+governs the namespaces registered *after* it, while a running job keeps
+its copy.  The rationale the call is documented with — that a host may
+decide client processes should no longer have access to the information —
+is therefore only half served.
+
+Closing it needs a delete-a-key entry point that the ``gds`` module struct
+does not have.  Adding one is not symmetric across the components.  For
+``hash``, the server could remove the key from each namespace's tables and
+message its local clients to do the same in theirs.  For ``shmem3`` that
+does not help: a client reads the shared segment directly, and removing
+data from it means putting a lock on a read path that is lock-free by
+design and is the reason that component exists.  Any real fix has to
+answer the ``shmem3`` case first; the messaging half is not worth building
+on its own.
 
 ``PMIx_Fence_nb`` blocks when handed a ``NULL`` callback
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
