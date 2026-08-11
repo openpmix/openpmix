@@ -386,6 +386,35 @@ Do not confuse them:
   ack destructs it. When adding an early return, recount who holds
   what on that path — most historical bugs here are a missed release or
   a missed completion callback on an error branch.
+
+  **`_notify_client_event` has exactly two references on its
+  `pmix_notify_caddy_t`, and `holdcd` and `cached` are what keep them
+  straight.** Write the two down before touching either flag, because
+  the variable used to carry both meanings and every bug in this
+  function has come from that:
+
+  - The **working** reference is the one `PMIX_NEW` made in
+    `pmix_server_notify_client_of_event` and thread-shifted in. This
+    routine owns it and gives it back at the foot — unless `holdcd` says
+    the host up-call accepted, in which case `local_cbfunc` gives it back
+    when the host calls. `holdcd` starts out holding the *caching*
+    decision and is reset to false before it takes on that second
+    meaning; the `PMIX_RANGE_RM` arm has to reset it too, since it jumps
+    over the reset, and not doing so leaked this reference and dropped
+    the caller's completion for every cached RM event. Covered by
+    `test_range_rm_completion` in `test/unit/event_chain.c`.
+  - The **hotel's** reference is the `PMIX_RETAIN` taken beside the
+    checkin. It comes back from exactly one of three places: the
+    eviction callback (`_notification_eviction_cbfunc`,
+    `src/runtime/pmix_init.c`), the replay checkout in
+    `check_cached_events`, or the "last custom target notified" checkout
+    in this routine. `cached` — not `holdcd` — is what says the hotel
+    holds it; the checkout arm here tested `holdcd` and was therefore
+    provably dead.
+
+  Both of those were fixed in July 2026 and both were still recorded as
+  open in `docs/todo.rst` a month later. Re-verify a leak claim against
+  the code before acting on it.
 - Every path that accepts user info arrays must keep the
   targets/affected distinction intact and must preserve the reserved
   two info slots (see the chain invariants above).
