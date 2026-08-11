@@ -398,11 +398,208 @@ pmix_status_t PMIx_server_register_resources(pmix_info_t info[], size_t ninfo,
     return PMIX_SUCCESS;
 }
 
+/* The two keys that say which node an array describes. Everything else
+ * in a qualifier names something to remove from the entry those two
+ * select, and everything else in a stored entry is something that entry
+ * describes. */
+static bool is_node_identifier(const pmix_info_t *info)
+{
+    return (PMIX_CHECK_KEY(info, PMIX_NODEID) || PMIX_CHECK_KEY(info, PMIX_HOSTNAME));
+}
+
+/* Read the node a qualifier array names.
+ *
+ * A request element carrying a data array is asking for a *narrowed*
+ * removal - this key, on that node, and possibly only these parts of it -
+ * rather than the removal of every entry carrying the key. The
+ * identifiers select the entry; anything else in the array selects
+ * elements within it. A qualifier carrying no identifier at all applies
+ * to every entry with that key, which is how a device that is unique
+ * system-wide is removed without naming its node.
+ *
+ * The keys do not make the union anything, so both are screened: these
+ * arrive from a host, which is free to get them wrong. */
+static pmix_status_t parse_node_qualifier(const pmix_info_t *info,
+                                          uint32_t *nodeid, bool *have_nodeid,
+                                          char **hostname, size_t *ntargets)
+{
+    pmix_info_t *iptr;
+    size_t n, niptr;
+    pmix_status_t rc;
+
+    *have_nodeid = false;
+    *hostname = NULL;
+    *ntargets = 0;
+
+    if (!pmix_server_valid_darray(info, PMIX_INFO, 1)) {
+        return PMIX_ERR_TYPE_MISMATCH;
+    }
+    iptr = (pmix_info_t *) info->value.data.darray->array;
+    niptr = info->value.data.darray->size;
+
+    for (n = 0; n < niptr; n++) {
+        if (PMIX_CHECK_KEY(&iptr[n], PMIX_NODEID)) {
+            rc = PMIx_Value_get_number(&iptr[n].value, nodeid, PMIX_UINT32);
+            if (PMIX_SUCCESS != rc) {
+                return PMIX_ERR_TYPE_MISMATCH;
+            }
+            *have_nodeid = true;
+
+        } else if (PMIX_CHECK_KEY(&iptr[n], PMIX_HOSTNAME)) {
+            if (PMIX_STRING != iptr[n].value.type ||
+                NULL == iptr[n].value.data.string) {
+                return PMIX_ERR_TYPE_MISMATCH;
+            }
+            *hostname = iptr[n].value.data.string;
+
+        } else {
+            ++(*ntargets);
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+/* Does the qualifier ask for this stored element to go?
+ *
+ * A target matches the element directly - same key, same value - or
+ * matches something inside it, which is how a fabric device is named: a
+ * node array holds a PMIX_FABRIC_DEVICE element whose own array carries
+ * the device's name and id, so a qualifier naming the device by either
+ * one selects that whole sub-array. */
+static bool element_selected(pmix_info_t *qual, size_t nqual, pmix_info_t *stored)
+{
+    pmix_info_t *sub;
+    size_t n, m, nsub;
+
+    for (n = 0; n < nqual; n++) {
+        if (is_node_identifier(&qual[n])) {
+            continue;
+        }
+        if (PMIX_CHECK_KEY(stored, qual[n].key) &&
+            PMIX_EQUAL == PMIx_Value_compare(&qual[n].value, &stored->value)) {
+            return true;
+        }
+        if (!pmix_server_valid_darray(stored, PMIX_INFO, 1)) {
+            continue;
+        }
+        sub = (pmix_info_t *) stored->value.data.darray->array;
+        nsub = stored->value.data.darray->size;
+        for (m = 0; m < nsub; m++) {
+            if (PMIX_CHECK_KEY(&sub[m], qual[n].key) &&
+                PMIX_EQUAL == PMIx_Value_compare(&qual[n].value, &sub[m].value)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* Remove from this entry every element the qualifier selects, rebuilding
+ * the stored array around the survivors.
+ *
+ * Reports through "empty" that nothing the entry described is left, so
+ * the caller drops the entry entirely rather than leave a husk naming a
+ * node and nothing else - which is what an empty registration would have
+ * produced, and would seed every namespace registered later with it. */
+static pmix_status_t prune_entry(pmix_kval_t *kv, pmix_info_t *qual, size_t nqual,
+                                 bool *empty)
+{
+    pmix_data_array_t *darray;
+    pmix_info_t *stored, *survivors;
+    size_t n, nstored, keep = 0, described = 0, k = 0;
+
+    *empty = false;
+    stored = (pmix_info_t *) kv->value->data.darray->array;
+    nstored = kv->value->data.darray->size;
+
+    /* count first: the replacement has to be sized before anything moves
+     * into it, and the answer also decides whether there is a
+     * replacement to build at all */
+    for (n = 0; n < nstored; n++) {
+        if (!element_selected(qual, nqual, &stored[n])) {
+            ++keep;
+            if (!is_node_identifier(&stored[n])) {
+                ++described;
+            }
+        }
+    }
+    if (keep == nstored) {
+        return PMIX_SUCCESS; /* the qualifier named nothing this entry has */
+    }
+    if (0 == described) {
+        *empty = true;
+        return PMIX_SUCCESS;
+    }
+
+    darray = PMIx_Data_array_create(keep, PMIX_INFO);
+    if (NULL == darray) {
+        return PMIX_ERR_NOMEM;
+    }
+    survivors = (pmix_info_t *) darray->array;
+    for (n = 0; n < nstored; n++) {
+        if (!element_selected(qual, nqual, &stored[n])) {
+            PMIX_INFO_XFER(&survivors[k], &stored[n]);
+            ++k;
+        }
+    }
+    /* the value owns the array it points at, so the one being displaced
+     * goes back through the same free that would have released it with
+     * the entry */
+    PMIx_Data_array_free(kv->value->data.darray);
+    kv->value->data.darray = darray;
+    return PMIX_SUCCESS;
+}
+
+/* Does this cached entry describe the node the qualifier named? Only an
+ * entry that is itself an array of info can, and its element types are
+ * no more ours to assume than the request's were - the entry came from a
+ * host too. A hostname must match exactly; PMIX_HOSTNAME_ALIASES is not
+ * consulted, since the host that registered the entry chose the spelling
+ * it wants to be addressed by. */
+static bool entry_names_node(pmix_kval_t *kv, uint32_t nodeid,
+                             bool have_nodeid, const char *hostname)
+{
+    pmix_info_t *iptr;
+    size_t n, niptr;
+    uint32_t nd;
+
+    if (NULL == kv->value || PMIX_DATA_ARRAY != kv->value->type ||
+        NULL == kv->value->data.darray ||
+        PMIX_INFO != kv->value->data.darray->type ||
+        NULL == kv->value->data.darray->array) {
+        return false;
+    }
+    iptr = (pmix_info_t *) kv->value->data.darray->array;
+    niptr = kv->value->data.darray->size;
+
+    for (n = 0; n < niptr; n++) {
+        if (have_nodeid && PMIX_CHECK_KEY(&iptr[n], PMIX_NODEID)) {
+            if (PMIX_SUCCESS == PMIx_Value_get_number(&iptr[n].value, &nd, PMIX_UINT32) &&
+                nd == nodeid) {
+                return true;
+            }
+
+        } else if (NULL != hostname && PMIX_CHECK_KEY(&iptr[n], PMIX_HOSTNAME)) {
+            if (PMIX_STRING == iptr[n].value.type &&
+                NULL != iptr[n].value.data.string &&
+                0 == strcmp(iptr[n].value.data.string, hostname)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static void _deregister_resources(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_kval_t *kv, *knext;
-    size_t n;
+    pmix_info_t *qual;
+    pmix_status_t rc, ret = PMIX_SUCCESS;
+    char *hostname;
+    uint32_t nodeid = 0;
+    bool have_nodeid, empty;
+    size_t n, nqual, ntargets;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -418,21 +615,73 @@ static void _deregister_resources(int sd, short args, void *cbdata)
      * silently did nothing. Clear every match, using the SAFE variant since
      * the matching item is released inside the walk.
      *
-     * Note this matches on the key alone. The man page also describes
-     * narrowing a removal with qualifiers - e.g. a PMIX_NODE_INFO_ARRAY
-     * naming one node's fabric device - and that is not implemented here,
-     * so such a request removes every entry carrying that key rather than
-     * the one the qualifiers describe. */
+     * A request element carrying a data array is a qualified request: its
+     * node identifiers narrow the sweep to the entries describing that
+     * node, and anything else it carries narrows it further to elements
+     * within those entries - the fabric device the man page describes.
+     * An element carrying anything else selects by key alone, which is
+     * what the man page's "only the key fields are used" describes and
+     * what every in-tree registration produces. */
     for (n = 0; n < cd->ninfo; n++) {
-        PMIX_LIST_FOREACH_SAFE (kv, knext, &pmix_server_globals.gdata, pmix_kval_t) {
-            if (PMIX_CHECK_KEY(kv, cd->info[n].key)) {
+        if (PMIX_DATA_ARRAY == cd->info[n].value.type) {
+            rc = parse_node_qualifier(&cd->info[n], &nodeid, &have_nodeid,
+                                      &hostname, &ntargets);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                /* keep the first failure: a later element's success must
+                 * not erase it, and the host is owed the reason */
+                if (PMIX_SUCCESS == ret) {
+                    ret = rc;
+                }
+                continue;
+            }
+            qual = (pmix_info_t *) cd->info[n].value.data.darray->array;
+            nqual = cd->info[n].value.data.darray->size;
+
+            PMIX_LIST_FOREACH_SAFE (kv, knext, &pmix_server_globals.gdata, pmix_kval_t) {
+                if (!PMIX_CHECK_KEY(kv, cd->info[n].key)) {
+                    continue;
+                }
+                if ((have_nodeid || NULL != hostname) &&
+                    !entry_names_node(kv, nodeid, have_nodeid, hostname)) {
+                    continue;
+                }
+                if (0 < ntargets) {
+                    /* an entry that is not an array of info describes no
+                     * elements to take out of it */
+                    if (NULL == kv->value || PMIX_DATA_ARRAY != kv->value->type ||
+                        NULL == kv->value->data.darray ||
+                        PMIX_INFO != kv->value->data.darray->type ||
+                        NULL == kv->value->data.darray->array) {
+                        continue;
+                    }
+                    rc = prune_entry(kv, qual, nqual, &empty);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        if (PMIX_SUCCESS == ret) {
+                            ret = rc;
+                        }
+                        continue;
+                    }
+                    if (!empty) {
+                        continue;
+                    }
+                }
                 pmix_list_remove_item(&pmix_server_globals.gdata, &kv->super);
                 PMIX_RELEASE(kv);
+            }
+
+        } else {
+            PMIX_LIST_FOREACH_SAFE (kv, knext, &pmix_server_globals.gdata, pmix_kval_t) {
+                if (PMIX_CHECK_KEY(kv, cd->info[n].key)) {
+                    pmix_list_remove_item(&pmix_server_globals.gdata, &kv->super);
+                    PMIX_RELEASE(kv);
+                }
             }
         }
     }
 
-    cd->opcbfunc(PMIX_SUCCESS, cd->cbdata);
+    cd->opcbfunc(ret, cd->cbdata);
     PMIX_RELEASE(cd);
 }
 

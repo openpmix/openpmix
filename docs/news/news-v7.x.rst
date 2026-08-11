@@ -283,3 +283,16 @@ Detailed changes since v6.1.0:
    exchange the library no longer performs. That stale type reached the
    generated attribute dictionary as well, so it is what the
    attribute-support queries and pattrs reported for the attribute
+ - PMIx_server_deregister_resources now honors the qualifiers its man page
+   describes. A request element carrying a data array narrows the removal:
+   PMIX_NODEID/PMIX_HOSTNAME choose the entries it applies to, and any
+   other member of the array chooses the elements to remove from within
+   them - matching an element directly or matching one that contains it,
+   which is how a PMIX_FABRIC_DEVICE is named by its PMIX_FABRIC_DEVICE_NAME
+   or PMIX_DEVICE_ID. Removing the last element an entry described removes
+   the entry as well. Previously every such request matched on the key
+   alone, so the man page's own example - remove one node's fabric device -
+   deleted every node entry the server held. Note that deregistration
+   governs the namespaces registered after it: non-namespace information is
+   copied into a namespace's data store when that namespace is registered,
+   so a job already running retains it
