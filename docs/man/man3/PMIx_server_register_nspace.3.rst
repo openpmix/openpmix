@@ -220,6 +220,9 @@ Large ``PMIX_NODE_MAP`` and ``PMIX_PROC_MAP`` values are commonly generated in
 compressed form using ``PMIx_generate_regex2`` prior to registration.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_server_deregister_nspace(3) <man3-PMIx_server_deregister_nspace>`,
    :ref:`PMIx_server_register_client(3) <man3-PMIx_server_register_client>`,

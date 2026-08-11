@@ -149,6 +149,9 @@ sequence of :ref:`PMIx_Data_pack(3) <man3-PMIx_Data_pack>` calls is recovered wi
 matching sequence of ``PMIx_Data_unpack`` calls issued in the same order.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Data_pack(3) <man3-PMIx_Data_pack>`,
    :ref:`PMIx_Data_copy(3) <man3-PMIx_Data_copy>`,

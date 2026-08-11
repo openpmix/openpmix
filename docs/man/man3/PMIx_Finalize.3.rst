@@ -100,6 +100,9 @@ should instead call ``PMIx_tool_finalize``, and processes hosting a PMIx server
 should call ``PMIx_server_finalize``.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Abort(3) <man3-PMIx_Abort>`,

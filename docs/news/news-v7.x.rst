@@ -283,13 +283,16 @@ Detailed changes since v6.1.0:
    exchange the library no longer performs. That stale type reached the
    generated attribute dictionary as well, so it is what the
    attribute-support queries and pattrs reported for the attribute
- - PMIx_Fence, and the blocking form of PMIx_Fence_nb, now report
-   PMIX_ERR_WOULD_BLOCK when called from the PMIx progress thread instead
-   of hanging there. The reply that releases the caller is delivered by
-   that thread, so waiting for it from within it waits for itself - which
-   is what any code running in a PMIx callback, an event handler above
-   all, would have done. The diagnostic names the call. PMIx_Fence_nb
-   with a callback is unaffected: that form is meant to be driven from a
-   handler. Note the blocking form of PMIx_Fence_nb is the one a caller
-   selects by passing a NULL cbfunc; the man page now says so, since the
-   other non-blocking entry points give that a different meaning
+ - Every blocking PMIx entry point now reports PMIX_ERR_WOULD_BLOCK when
+   called from within the PMIx progress thread, rather than hanging
+   there. Making such a call has always been disallowed - the work that
+   would release the caller is what that thread was about to do - but
+   only a minority of entry points said so, and the rest simply stopped:
+   an event handler that called PMIx_Fence, PMIx_Connect or
+   PMIx_Group_construct wedged the process with nothing reported. The
+   screen now covers all of them, sixty-one call sites, and emits a
+   diagnostic naming the call. Where the wait is conditional on a NULL
+   cbfunc - the fence, notify and event-registration entry points - only
+   that path is screened, since with a callback those are meant to be
+   driven from a handler. The affected man pages carry a PROGRESS THREAD
+   RESTRICTION section stating the rule and the return code

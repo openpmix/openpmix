@@ -140,6 +140,9 @@ this API has no additional effect once
 those operations for that namespace.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`PMIx_server_setup_application(3) <man3-PMIx_server_setup_application>`,

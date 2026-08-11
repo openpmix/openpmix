@@ -94,6 +94,9 @@ available to other processes, use :ref:`PMIx_Put(3) <man3-PMIx_Put>` followed by
 :ref:`PMIx_Commit(3) <man3-PMIx_Commit>` instead.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Put(3) <man3-PMIx_Put>`,

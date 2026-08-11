@@ -86,6 +86,9 @@ and should be freed with ``PMIX_PROC_FREE(servers, nservers)``; the Python
 binding returns an ordinary list and frees the underlying array automatically.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`,
    :ref:`PMIx_tool_attach_to_server(3) <man3-PMIx_tool_attach_to_server>`,

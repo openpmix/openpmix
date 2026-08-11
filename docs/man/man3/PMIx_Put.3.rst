@@ -133,6 +133,9 @@ obtained with :ref:`PMIx_Get(3) <man3-PMIx_Get>` by supplying the matching
 qualifiers, allowing several distinct values to be posted under the same key.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Commit(3) <man3-PMIx_Commit>`,

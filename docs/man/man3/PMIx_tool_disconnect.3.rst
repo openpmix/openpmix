@@ -86,6 +86,9 @@ To close *all* connections and release the library, call
 currently connected servers before selecting one to disconnect.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`,
    :ref:`PMIx_tool_finalize(3) <man3-PMIx_tool_finalize>`,

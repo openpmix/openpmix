@@ -55,6 +55,7 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 
 #include "pmix_client_ops.h"
@@ -123,6 +124,12 @@ PMIX_EXPORT pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Connect"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object as we need to pass it to the
@@ -437,6 +444,12 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect(const pmix_proc_t procs[], size_t npro
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Disconnect"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object as we need to pass it to the

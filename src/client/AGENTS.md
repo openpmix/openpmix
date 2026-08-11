@@ -1171,13 +1171,25 @@ empty array and returns `PMIX_ERR_NOT_A_MEMBER`.
   Nothing in the library depends on the answer: `PMIx_Fence` passes
   `op_cbfunc` and does not take this branch.
 
-  **These are the first two uses of that screen in `src/client`**, and
-  the same exposure exists at every other blocking entry point in this
-  directory — a `PMIx_Get`, `PMIx_Connect` or `PMIx_Group_construct`
-  issued from a handler hangs exactly as a fence did. Sweeping them is
-  worth doing as one piece of work rather than one file at a time; the
-  server side has carried the screen at thirteen entry points for a
-  while, and `src/server/pmix_server_setup.c` is the shape to copy.
+  **Every blocking entry point in the tree now carries that screen** —
+  sixty-one call sites, swept in one pass rather than a file at a time,
+  because the exposure was never particular to fence: a `PMIx_Get`,
+  `PMIx_Connect` or `PMIx_Group_construct` issued from a handler hung
+  exactly as a fence did. `PMIx_Get` and the three `PMIx_IOF_*` entry
+  points already had it before that sweep, as did thirteen
+  `PMIx_server_*` ones; `src/server/pmix_server_setup.c` remains the
+  shape to copy.
+
+  Two rules for adding an entry point here. **If it can wait, screen
+  it**, immediately before the first thing that can block and *after*
+  the early-outs that return without blocking — a singleton fence, an
+  unconnected client and a `PMIX_OPERATION_SUCCEEDED` all answer
+  without waiting, and turning those into `PMIX_ERR_WOULD_BLOCK` would
+  break calls that work. **And screen only the blocking path**: where
+  the wait is conditional on a NULL `cbfunc` (fence, notify, the two
+  event registrations), the guard carries the same condition, because
+  with a callback those entry points are meant to be driven from a
+  handler.
 
 The sweep found two leaks, both on error paths that only a failing
 server can reach, and both fixed: `job_data()` dropped the `nspace`

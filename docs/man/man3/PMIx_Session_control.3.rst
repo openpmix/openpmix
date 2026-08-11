@@ -182,6 +182,9 @@ non-blocking behavior based on whether ``cbfunc`` is ``NULL``.
 published PMIx Standard.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Allocation_request(3) <man3-PMIx_Allocation_request>`,

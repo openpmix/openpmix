@@ -30,6 +30,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -235,6 +236,12 @@ pmix_status_t PMIx_Session_control(uint32_t sessionID,
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Session_control"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     cd = PMIX_NEW(pmix_shift_caddy_t);

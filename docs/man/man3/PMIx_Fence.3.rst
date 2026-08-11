@@ -156,7 +156,8 @@ accepted for processing and the final status will be delivered to ``cbfunc``.
   library's progress engine has been stopped.
 * ``PMIX_ERR_INIT`` |mdash| the PMIx library has not been initialized.
 * ``PMIX_ERR_WOULD_BLOCK`` |mdash| the call would have blocked the PMIx progress
-  thread from within that thread. See `NOTES`_.
+  thread from within that thread. See
+  `PROGRESS THREAD RESTRICTION`_.
 
 A ``NULL`` ``cbfunc`` passed to ``PMIx_Fence_nb`` makes that call **blocking**:
 it does not return until the fence completes, and its return value is the
@@ -175,20 +176,7 @@ Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.
 
 
-NOTES
------
-
-**Neither blocking form may be called from the PMIx progress thread.** The
-reply that releases the caller is delivered by that thread, so waiting for it
-from within it waits forever. This reaches any code running in a PMIx callback
-|mdash| an event handler registered with
-:ref:`PMIx_Register_event_handler(3) <man3-PMIx_Register_event_handler>` above
-all. Both ``PMIx_Fence`` and the blocking (``NULL`` ``cbfunc``) form of
-``PMIx_Fence_nb`` detect this and return ``PMIX_ERR_WOULD_BLOCK`` immediately,
-accompanied by a diagnostic naming the call.
-
-To fence from a handler, call ``PMIx_Fence_nb`` with a callback: that form is
-meant to be driven from the progress thread and is unaffected.
+.. include:: /man/no-blocking-in-progress-thread.rst
 
 
 .. seealso::

@@ -99,6 +99,9 @@ example, during finalize), the request is silently dropped and any provided
 ``cbfunc`` is not invoked.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`,
    :ref:`PMIx_server_deregister_client(3) <man3-PMIx_server_deregister_client>`,

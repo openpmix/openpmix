@@ -81,6 +81,9 @@ a collective synchronization such as :ref:`PMIx_Fence(3) <man3-PMIx_Fence>` befo
 the peers issue :ref:`PMIx_Get(3) <man3-PMIx_Get>`.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Put(3) <man3-PMIx_Put>`,

@@ -226,6 +226,9 @@ tools, and other servers that call these functions will have their requests
 forwarded to the server supporting the scheduler.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Fabric_update(3) <man3-PMIx_Fabric_update>`,
    :ref:`PMIx_Fabric_deregister(3) <man3-PMIx_Fabric_deregister>`,

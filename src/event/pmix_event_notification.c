@@ -22,6 +22,7 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -113,6 +114,13 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* a NULL cbfunc asks for the blocking form, and what would release
+     * it runs on the progress thread. With a callback this entry point
+     * is meant to be driven from a handler and is unaffected */
+    if (NULL == cbfunc && pmix_progress_thread_check_blocking("PMIx_Notify_event")) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     scd = PMIX_NEW(pmix_shift_caddy_t);

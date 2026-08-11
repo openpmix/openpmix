@@ -353,6 +353,9 @@ Support for individual monitoring actions and directives is implementation- and
 host-environment-dependent.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Heartbeat(3) <man3-PMIx_Heartbeat>`,

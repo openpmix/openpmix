@@ -24,6 +24,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_error.h"
 
 static void _loadtp(int sd, short args, void *cbdata)
@@ -46,6 +47,12 @@ PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo)
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Load_topology"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
@@ -166,6 +173,12 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuse
 
     *distances = NULL;
     *ndist = 0;
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Compute_distances"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
 
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */

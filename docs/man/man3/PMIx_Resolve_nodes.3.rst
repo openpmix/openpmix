@@ -107,6 +107,9 @@ is the normal indication that no nodes host processes in the requested namespace
 |mdash| it is not an error.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`,

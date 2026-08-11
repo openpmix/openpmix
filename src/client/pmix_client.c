@@ -1258,6 +1258,15 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         return PMIX_SUCCESS;
     }
 
+    /* the teardown below waits on the progress thread more than once, and
+     * it stops that thread - so from the thread itself this is not merely
+     * a deadlock, it is the thread ending itself mid-callback */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Finalize"))) {
+        /* put the reference back - we did not finalize */
+        pmix_atomic_fetch_add(&client_init_cntr, 1);
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     // mark we are no longer initialized
     pmix_atomic_unset_bool(&pmix_globals.initialized);
     pmix_globals.init_called = false;
@@ -1420,6 +1429,12 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     /* if we aren't connected, don't attempt to send */
     if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Abort"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a buffer to hold the message */
@@ -1588,6 +1603,12 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Put"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
     cb->scope = scope;
@@ -1752,6 +1773,12 @@ PMIX_EXPORT pmix_status_t PMIx_Commit(void)
     }
     if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
         return PMIX_ERR_UNREACH;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Commit"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object */

@@ -106,6 +106,9 @@ describes an alternative signature for this function that takes an array of
 release accepts the simpler ``NULL``-terminated string array shown here.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`,

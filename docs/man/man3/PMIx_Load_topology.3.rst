@@ -100,6 +100,9 @@ the caller should inspect the returned ``source`` field to verify that the
 returned topology description is compatible with the caller's code.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>`,

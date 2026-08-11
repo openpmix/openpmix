@@ -139,6 +139,9 @@ of a connecting process against those registered here before completing the
 connection.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_server_deregister_client(3) <man3-PMIx_server_deregister_client>`,
    :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`,

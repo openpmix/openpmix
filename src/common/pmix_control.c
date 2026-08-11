@@ -30,6 +30,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -166,6 +167,12 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t n
     }
     if (NULL != nresults) {
         *nresults = 0;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Job_control"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object as we need to pass it to the

@@ -139,6 +139,9 @@ environment determines that client processes should no longer have access to the
 information.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`PMIx_server_register_resources(3) <man3-PMIx_server_register_resources>`,

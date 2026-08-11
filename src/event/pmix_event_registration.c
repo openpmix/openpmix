@@ -19,6 +19,7 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -1007,6 +1008,13 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* a NULL cbfunc asks for the blocking form, and what would release
+     * it runs on the progress thread. With a callback this entry point
+     * is meant to be driven from a handler and is unaffected */
+    if (NULL == cbfunc && pmix_progress_thread_check_blocking("PMIx_Register_event_handler")) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* need to thread shift this request so we can access
      * our global data to register this *local* event handler */
     cd = PMIX_NEW(pmix_rshift_caddy_t);
@@ -1410,6 +1418,13 @@ PMIX_EXPORT pmix_status_t PMIx_Deregister_event_handler(size_t event_hdlr_ref,
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* a NULL cbfunc asks for the blocking form, and what would release
+     * it runs on the progress thread. With a callback this entry point
+     * is meant to be driven from a handler and is unaffected */
+    if (NULL == cbfunc && pmix_progress_thread_check_blocking("PMIx_Deregister_event_handler")) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* need to thread shift this request */

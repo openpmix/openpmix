@@ -56,6 +56,7 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 
@@ -411,6 +412,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Group_construct"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -578,6 +585,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Group_destruct"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object as we need to pass it to the
@@ -1451,6 +1464,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t 
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Group_invite"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     cb = PMIX_NEW(pmix_group_tracker_t);
     if (PMIX_UNLIKELY(NULL == cb)) {
         return PMIX_ERR_NOMEM;
@@ -1862,6 +1881,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Group_join"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which lock to release when
      * the return message is recvd */
@@ -2033,6 +2058,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Group_leave"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object as we need to pass it to the

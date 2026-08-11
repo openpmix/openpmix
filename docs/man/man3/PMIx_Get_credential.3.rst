@@ -161,6 +161,9 @@ by the PMIx library and must not be released or modified by the caller; it is
 unrelated to the ``info`` array passed into the call.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Validate_credential(3) <man3-PMIx_Validate_credential>`,
