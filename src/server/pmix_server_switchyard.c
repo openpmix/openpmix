@@ -279,6 +279,7 @@ teardown:
 static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buffer_t *buf)
 {
     pmix_status_t rc = PMIX_ERR_NOT_SUPPORTED;
+    pmix_status_t ret;
     int32_t cnt;
     pmix_cmd_t cmd;
     pmix_server_caddy_t *cd;
@@ -414,14 +415,18 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
     }
 
     if (PMIX_COMMIT_CMD == cmd) {
-        rc = pmix_server_commit(peer, buf);
+        /* keep the commit's own status in a variable the pack does not
+         * write: PMIX_BFROPS_PACK assigns the status of the *pack* to the
+         * name it is given, so packing "rc" from "&rc" left the two
+         * meanings sharing one variable */
+        ret = pmix_server_commit(peer, buf);
         if (!PMIX_PEER_IS_V1(peer)) {
             reply = PMIX_NEW(pmix_buffer_t);
             if (NULL == reply) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 return PMIX_ERR_NOMEM;
             }
-            PMIX_BFROPS_PACK(rc, peer, reply, &rc, 1, PMIX_STATUS);
+            PMIX_BFROPS_PACK(rc, peer, reply, &ret, 1, PMIX_STATUS);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
             }
@@ -724,7 +729,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
         return rc;
     }
 
-
     if (PMIX_RESOLVE_PEERS_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         rc = pmix_server_resolve_peers(cd, buf, pmix_server_respeers_cbfunc);
@@ -767,7 +771,7 @@ void pmix_server_message_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
         if (PMIX_OPERATION_SUCCEEDED == ret) {
             ret = PMIX_SUCCESS;
         }
-        PMIX_BFROPS_PACK(rc, pr, reply, &ret, 1, PMIX_STATUS);
+        PMIX_BFROPS_PACK(rc, peer, reply, &ret, 1, PMIX_STATUS);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
