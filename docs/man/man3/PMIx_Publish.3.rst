@@ -159,6 +159,9 @@ same user whose range includes the requesting process. Choose the publication
 range deliberately so the intended recipients fall within it.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Lookup(3) <man3-PMIx_Lookup>`,

@@ -136,6 +136,9 @@ must match the one used at publication time. After a successful unpublish, the
 same key may be published again within that range.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Publish(3) <man3-PMIx_Publish>`,

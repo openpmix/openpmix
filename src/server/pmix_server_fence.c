@@ -67,6 +67,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 
@@ -758,6 +759,12 @@ pmix_status_t PMIx_server_collect_job_info(pmix_proc_t *procs, size_t nprocs,
 
     // we need to threadshift this request as it accesses
     // global data
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_server_collect_job_info"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.procs = procs;
     cb.nprocs = nprocs;

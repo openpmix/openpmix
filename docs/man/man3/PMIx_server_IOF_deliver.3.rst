@@ -161,6 +161,9 @@ collects output from remote processes and injects it here, and the library
 routes it to whichever local clients requested it.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`PMIx_IOF_pull(3) <man3-PMIx_IOF_pull>`,

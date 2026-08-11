@@ -85,6 +85,9 @@ Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Register_event_handler(3) <man3-PMIx_Register_event_handler>`,
    :ref:`PMIx_Notify_event(3) <man3-PMIx_Notify_event>`,

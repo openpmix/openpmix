@@ -314,6 +314,9 @@ conveyed in that event through the ``PMIX_ALLOC_STATUS`` (pmix_status_t)
 attribute, which carries the completion status of the allocation request.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Resource_block(3) <man3-PMIx_Resource_block>`,

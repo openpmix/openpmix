@@ -30,6 +30,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -225,6 +226,12 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request(pmix_alloc_directive_t directi
     }
     *results = NULL;
     *nresults = 0;
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Allocation_request"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
@@ -503,6 +510,12 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block(pmix_resource_block_directive_t di
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "%s pmix:resource block op",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Resource_block"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when

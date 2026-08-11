@@ -34,6 +34,7 @@
 #include "include/pmix.h"
 
 #include "src/client/pmix_client_ops.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/pcompress/pcompress.h"
@@ -197,6 +198,11 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target, pmix_data_bu
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         // must threadshift this request as it accesses
         // global data
+        /* the lookup runs on the progress thread and we wait for it, so
+         * from that thread we would be waiting for ourselves */
+        if (pmix_progress_thread_check_blocking("PMIx_Data_pack/unpack")) {
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         PMIX_CONSTRUCT(&scd, pmix_shift_caddy_t);
         scd.proc = (pmix_proc_t*)target;
         PMIX_THREADSHIFT(&scd, _findpeer);
@@ -285,6 +291,11 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *target, pmix_data_
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         // must threadshift this request as it accesses
         // global data
+        /* the lookup runs on the progress thread and we wait for it, so
+         * from that thread we would be waiting for ourselves */
+        if (pmix_progress_thread_check_blocking("PMIx_Data_pack/unpack")) {
+            return PMIX_ERR_WOULD_BLOCK;
+        }
         PMIX_CONSTRUCT(&scd, pmix_shift_caddy_t);
         scd.proc = (pmix_proc_t*)target;
         PMIX_THREADSHIFT(&scd, _findpeer);

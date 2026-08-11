@@ -134,6 +134,9 @@ Packing and unpacking are strictly ordered, complementary operations: values mus
 unpacked in the same sequence, and with the same types, in which they were packed.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Data_unpack(3) <man3-PMIx_Data_unpack>`,
    :ref:`PMIx_Data_copy(3) <man3-PMIx_Data_copy>`,

@@ -105,6 +105,9 @@ Standard. It is available only after the server library has been initialized
 with :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`,

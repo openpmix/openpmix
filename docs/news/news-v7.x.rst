@@ -283,6 +283,19 @@ Detailed changes since v6.1.0:
    exchange the library no longer performs. That stale type reached the
    generated attribute dictionary as well, so it is what the
    attribute-support queries and pattrs reported for the attribute
+ - Every blocking PMIx entry point now reports PMIX_ERR_WOULD_BLOCK when
+   called from within the PMIx progress thread, rather than hanging
+   there. Making such a call has always been disallowed - the work that
+   would release the caller is what that thread was about to do - but
+   only a minority of entry points said so, and the rest simply stopped:
+   an event handler that called PMIx_Fence, PMIx_Connect or
+   PMIx_Group_construct wedged the process with nothing reported. The
+   screen now covers all of them, sixty-one call sites, and emits a
+   diagnostic naming the call. Where the wait is conditional on a NULL
+   cbfunc - the fence, notify and event-registration entry points - only
+   that path is screened, since with a callback those are meant to be
+   driven from a handler. The affected man pages carry a PROGRESS THREAD
+   RESTRICTION section stating the rule and the return code
  - PMIx_server_deregister_resources now honors the qualifiers its man page
    describes. A request element carrying a data array narrows the removal:
    PMIX_NODEID/PMIX_HOSTNAME choose the entries it applies to, and any

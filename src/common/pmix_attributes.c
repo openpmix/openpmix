@@ -19,6 +19,7 @@
 #include "include/pmix_server.h"
 
 #include "src/client/pmix_client_ops.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/base/base.h"
@@ -155,6 +156,12 @@ PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function, char *attrs[]
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Register_attributes"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     scd = PMIX_NEW(pmix_setup_caddy_t);

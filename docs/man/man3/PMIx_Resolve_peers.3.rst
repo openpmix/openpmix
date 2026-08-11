@@ -113,6 +113,9 @@ The returned ``procs`` array is owned by the caller and must be released with
 the node hosts no processes in the requested namespace |mdash| it is not an error.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`,

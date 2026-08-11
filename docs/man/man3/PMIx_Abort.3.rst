@@ -111,6 +111,9 @@ Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>`,

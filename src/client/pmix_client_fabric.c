@@ -53,6 +53,7 @@
 #include "src/mca/pnet/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 
@@ -214,6 +215,12 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:fabric register");
 
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Fabric_register"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
@@ -348,6 +355,12 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:fabric update");
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Fabric_update"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
 
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */

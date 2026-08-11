@@ -366,6 +366,9 @@ process has published, not only the key named in the call, so one refresh
 updates the caller's whole view of that process.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Put(3) <man3-PMIx_Put>`,

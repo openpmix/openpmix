@@ -206,6 +206,9 @@ namespace is supported but should be used with care due to the bandwidth and
 memory footprint it can incur.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_IOF_push(3) <man3-PMIx_IOF_push>`,
    :ref:`PMIx_IOF_deregister(3) <man3-PMIx_IOF_deregister>`,

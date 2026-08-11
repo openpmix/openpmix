@@ -109,6 +109,9 @@ information; the other is to register for ``PMIX_FABRIC_UPDATE_PENDING`` and
 :ref:`PMIx_Fabric_register(3) <man3-PMIx_Fabric_register>` for details.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Fabric_register(3) <man3-PMIx_Fabric_register>`,
    :ref:`PMIx_Fabric_deregister(3) <man3-PMIx_Fabric_deregister>`,

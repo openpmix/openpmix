@@ -29,6 +29,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -102,6 +103,12 @@ PMIX_EXPORT pmix_status_t PMIx_Log(const pmix_info_t data[], size_t ndata,
     pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                         "%s pmix:log",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Log"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when

@@ -168,6 +168,9 @@ existed. A host can detect support at build time through the
 ``PMIX_CAP_IOF_FLOW_CONTROL`` capability flag in ``pmix_version.h``.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`PMIx_server_IOF_deliver(3) <man3-PMIx_server_IOF_deliver>`,

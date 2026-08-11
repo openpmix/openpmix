@@ -53,6 +53,7 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 
 #include "pmix_client_ops.h"
@@ -83,6 +84,12 @@ PMIX_EXPORT pmix_status_t PMIx_Publish(const pmix_info_t info[], size_t ninfo)
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Publish"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object to let us know when it is done */
@@ -218,6 +225,12 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata, const 
         if ('\0' != pdata[i].key[0]) {
             PMIx_Argv_append_nosize(&keys, pdata[i].key);
         }
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Lookup"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object as we need to pass it to the
@@ -363,6 +376,12 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish(char **keys, const pmix_info_t info[], 
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Unpublish"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object as we need to pass it to the

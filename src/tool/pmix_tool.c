@@ -1991,6 +1991,12 @@ pmix_status_t PMIx_tool_attach_to_server(pmix_proc_t *myproc, pmix_proc_t *serve
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_tool_attach_to_server"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     cb = PMIX_NEW(pmix_cb_t);
     cb->info = info;
     cb->ninfo = ninfo;
@@ -2103,6 +2109,12 @@ pmix_status_t PMIx_tool_disconnect(const pmix_proc_t *server)
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_tool_disconnect"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* disc() dereferences this whenever it is not NULL; a NULL server is
      * the documented "just mark me disconnected" form */
     cb = PMIX_NEW(pmix_cb_t);
@@ -2207,6 +2219,12 @@ pmix_status_t PMIx_tool_get_servers(pmix_proc_t *servers[], size_t *nservers)
     /* both OUT parameters are written unconditionally below */
     if (NULL == servers || NULL == nservers) {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_tool_get_servers"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     cb = PMIX_NEW(pmix_cb_t);
@@ -2336,6 +2354,12 @@ pmix_status_t PMIx_tool_set_server(const pmix_proc_t *server,
 
     if (NULL == server) {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_tool_set_server"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* threadshift this so we can access global structures */

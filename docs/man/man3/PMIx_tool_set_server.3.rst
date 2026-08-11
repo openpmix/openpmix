@@ -114,6 +114,9 @@ This function is available only to processes that initialized as *tools*
 via :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`,
    :ref:`PMIx_tool_attach_to_server(3) <man3-PMIx_tool_attach_to_server>`,

@@ -229,6 +229,9 @@ positive values, or negative values beyond the ``PMIX_EXTERNAL_ERR_BASE``
 boundary.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Deregister_event_handler(3) <man3-PMIx_Deregister_event_handler>`,
    :ref:`PMIx_Notify_event(3) <man3-PMIx_Notify_event>`,

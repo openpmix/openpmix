@@ -455,6 +455,9 @@ distinctly from ``PMIX_SUCCESS``. The blocking ``PMIx_Spawn`` absorbs this case
 internally and simply returns ``PMIX_SUCCESS`` with the namespace populated.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Connect(3) <man3-PMIx_Connect>`,

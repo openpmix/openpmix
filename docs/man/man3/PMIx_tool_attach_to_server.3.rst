@@ -152,6 +152,9 @@ server among them, and
 :ref:`PMIx_tool_disconnect(3) <man3-PMIx_tool_disconnect>` to drop a connection.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`,
    :ref:`PMIx_tool_disconnect(3) <man3-PMIx_tool_disconnect>`,

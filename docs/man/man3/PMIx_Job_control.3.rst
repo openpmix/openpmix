@@ -225,6 +225,9 @@ the allocation APIs to build coordinated responses to failures and other events
 delivered to the affected processes.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>`,

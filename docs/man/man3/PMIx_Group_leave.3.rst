@@ -130,6 +130,9 @@ invoked if any other value is returned.
 Any other value indicates an appropriate error condition.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Group_construct(3) <man3-PMIx_Group_construct>`,
    :ref:`PMIx_Group_invite(3) <man3-PMIx_Group_invite>`,

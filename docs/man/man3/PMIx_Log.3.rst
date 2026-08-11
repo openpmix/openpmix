@@ -283,6 +283,9 @@ generated timestamp:
     PMIx_Info_destruct(&directive);
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Info_construct(3) <man3-PMIx_Info_construct>`,
    :ref:`PMIx_Info_create(3) <man3-PMIx_Info_create>`,

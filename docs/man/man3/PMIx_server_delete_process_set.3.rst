@@ -87,6 +87,9 @@ only removes the definition on the local server; it does not propagate the
 deletion to peer servers.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`PMIx_server_define_process_set(3) <man3-PMIx_server_define_process_set>`,

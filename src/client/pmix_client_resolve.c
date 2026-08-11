@@ -55,6 +55,7 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 
@@ -472,6 +473,13 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves - both the host query
+     * below and the local fallback complete there */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Resolve_peers"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     // if the nodename is NULL, then they are asking for our
     // local host
     if (NULL == nodename) {
@@ -844,6 +852,13 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves - both the host query
+     * below and the local fallback complete there */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Resolve_nodes"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     // if we are a server, see if our host can answer the

@@ -51,6 +51,7 @@
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/ptl/ptl.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
@@ -89,6 +90,12 @@ PMIX_EXPORT pmix_status_t PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* the reply that would release us is delivered by the progress
+     * thread, so waiting for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Fence"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object as we need to pass it to the
@@ -151,6 +158,16 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    /* a NULL cbfunc makes this the blocking form - see the note on the
+     * wait below - so it inherits the blocking form's hazard: the reply
+     * it waits for is delivered by the progress thread. Only that case
+     * is screened; with a callback this entry point is meant to be
+     * driven from a handler */
+    if (PMIX_UNLIKELY(NULL == cbfunc &&
+                      pmix_progress_thread_check_blocking("PMIx_Fence_nb"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* check for bozo input */
     if (PMIX_UNLIKELY(NULL == procs && 0 != nprocs)) {
         return PMIX_ERR_BAD_PARAM;
@@ -209,6 +226,14 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
         return rc;
     }
 
+    /* A NULL cbfunc means the caller wants this operation to complete
+     * before we return - the one entry point in this directory that
+     * reads it that way, and the reason the screen at the top of this
+     * function exists. Every other _nb here either rejects a NULL, reads
+     * it as "the caddy is in cbdata", or treats it as fire-and-forget;
+     * check which one you are looking at before copying a NULL test
+     * between them. wait_cbfunc wakes this lock rather than invoking a
+     * callback precisely for this case. */
     if (NULL == cbfunc) {
         PMIX_WAIT_THREAD(&cb->lock);
         rc = cb->status;

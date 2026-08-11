@@ -1123,36 +1123,73 @@ empty array and returns `PMIX_ERR_NOT_A_MEMBER`.
 
 *Noted, not changed:*
 
-- **`PMIx_Fence_nb` blocks when handed a NULL `cbfunc`**, and it is the
-  only `_nb` entry point in this directory that does. It allocates its
-  caddy, sends, and then takes a `PMIX_WAIT_THREAD` branch of its own —
-  so a caller who chose the non-blocking form precisely to stay off a
-  blocking path gets a blocking call, and one that deadlocks outright if
-  it was issued from an event handler on the progress thread. Note the
-  directory has **four** different meanings for a NULL `cbfunc` and this
-  is the last: `PMIx_Get_nb`, `PMIx_Compute_distances_nb` and
-  `PMIx_Group_invite_nb` reject it with `PMIX_ERR_BAD_PARAM`, the two
-  fabric `_nb` entry points read it as "the caddy is in `cbdata`" (see
-  the invariant above), the remaining group `_nb` entry points
-  (`PMIx_Group_construct_nb`, `PMIx_Group_join_nb`, `PMIx_Group_leave_nb`,
-  `PMIx_Group_destruct_nb`) **and `PMIx_Spawn_nb`** accept it as
-  fire-and-forget — their reply handlers all test `NULL != cb->cbfunc`
-  (`NULL != fcd->spcbfunc` for spawn, in both `wait_cbfunc` and
-  `_lclcbfunc`) before completing, and the operation still takes effect —
-  and fence blocks. Check which one you are looking at before copying a
-  NULL test between them.
+- **A NULL `cbfunc` means "run this as the blocking form", and
+  `PMIx_Fence_nb` is where that convention is visible in this
+  directory.** It allocates its caddy, sends, and then takes a
+  `PMIX_WAIT_THREAD` branch of its own; `wait_cbfunc` wakes that lock
+  rather than invoking a callback for exactly this case. This entry used
+  to call it an anomaly — "the only `_nb` in this directory that blocks",
+  one of "four different meanings". That reads the exceptions as the
+  rule. **The convention is the project's, and it is not confined to this
+  directory**; what varies is whether a given entry point can express it.
+
+  It can be honored wherever the operation's whole result is a status.
+  Where the result can only come back *through* the callback, there is
+  nothing to honor it with — the `_nb` signature has no out-parameter its
+  blocking sibling would have — so those reject a NULL with
+  `PMIX_ERR_BAD_PARAM` and say why at the site: `PMIx_Get_nb` ("no way to
+  return the result"), `PMIx_Compute_distances_nb`, `PMIx_Group_invite_nb`.
+  Read those as the convention being inapplicable, not contradicted.
+
+  Two other readings live here and are worth knowing before you copy a
+  NULL test between entry points. The two fabric `_nb` entry points use
+  NULL to mean "the caddy is in `cbdata`" (see the invariant above) —
+  their blocking wrappers' internal signal, and the reason `frecv` writes
+  the *caller's* status field directly. And `PMIx_Group_construct_nb`,
+  `PMIx_Group_join_nb`, `PMIx_Group_leave_nb`, `PMIx_Group_destruct_nb`
+  and `PMIx_Spawn_nb` accept it as fire-and-forget: their reply handlers
+  test `NULL != cb->cbfunc` (`NULL != fcd->spcbfunc` for spawn, in both
+  `wait_cbfunc` and `_lclcbfunc`) and the operation still takes effect,
+  but nobody is told when it finishes.
 
   This entry used to name `PMIx_Group_construct_nb` among the rejecters.
   It does not reject: it has never tested `cbfunc` at all, and
   `construct_cbfunc` is written for the NULL case. Do not "restore" a
   check that was never there.
 
-  Left alone because every way of resolving it is a behavior change to a
-  released public API rather than a fix: rejecting NULL breaks any caller
-  relying on the block, and returning without waiting silently converts
-  their synchronization into a fire-and-forget. `PMIx_Fence` does not go
-  through this branch — it passes `op_cbfunc` — so nothing in the library
-  depends on the answer.
+  **The deadlock half of this is now closed; the shape is not.** Both
+  blocking paths — `PMIx_Fence` and the NULL-`cbfunc` form here — screen
+  `pmix_progress_thread_check_blocking()` and return
+  `PMIX_ERR_WOULD_BLOCK` rather than waiting on the progress thread from
+  the progress thread. The screen is deliberately *only* on the NULL
+  case in `PMIx_Fence_nb`: with a callback that entry point is meant to
+  be driven from a handler. What is left alone is whether an `_nb`
+  entry point should have a blocking mode at all, and that is a behavior
+  change to a released public API rather than a fix — rejecting NULL
+  breaks any caller relying on the block, and returning without waiting
+  silently converts their synchronization into a fire-and-forget.
+  Nothing in the library depends on the answer: `PMIx_Fence` passes
+  `op_cbfunc` and does not take this branch.
+
+  **Every blocking entry point in the tree now carries that screen** —
+  sixty-one call sites, swept in one pass rather than a file at a time,
+  because the exposure was never particular to fence: a `PMIx_Get`,
+  `PMIx_Connect` or `PMIx_Group_construct` issued from a handler hung
+  exactly as a fence did. `PMIx_Get` and the three `PMIx_IOF_*` entry
+  points already had it before that sweep, as did thirteen
+  `PMIx_server_*` ones; `src/server/pmix_server_setup.c` remains the
+  shape to copy.
+
+  Two rules for adding an entry point here. **If it can wait, screen
+  it**, immediately before the first thing that can block and *after*
+  the early-outs that return without blocking — a singleton fence, an
+  unconnected client and a `PMIX_OPERATION_SUCCEEDED` all answer
+  without waiting, and turning those into `PMIX_ERR_WOULD_BLOCK` would
+  break calls that work. **And screen only the blocking path**: where
+  the wait is conditional on a NULL `cbfunc` (fence, notify, the two
+  event registrations), the guard carries the same condition, because
+  with a callback those entry points are meant to be driven from a
+  handler.
 
 The sweep found two leaks, both on error paths that only a failing
 server can reach, and both fixed: `job_data()` dropped the `nspace`

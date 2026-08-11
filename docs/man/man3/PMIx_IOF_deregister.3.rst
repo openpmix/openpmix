@@ -119,6 +119,9 @@ The ``iofhdlr`` passed here must be the identifier returned by the matching
 identifier results in an error.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_IOF_pull(3) <man3-PMIx_IOF_pull>`,
    :ref:`PMIx_IOF_push(3) <man3-PMIx_IOF_push>`,

@@ -213,6 +213,9 @@ removed with
 :ref:`PMIx_Deregister_event_handler(3) <man3-PMIx_Deregister_event_handler>`.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Register_event_handler(3) <man3-PMIx_Register_event_handler>`,

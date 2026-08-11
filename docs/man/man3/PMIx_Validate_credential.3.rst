@@ -169,6 +169,9 @@ described in the credential, though the precise contents depend on the host
 environment and its associated security system.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Get_credential(3) <man3-PMIx_Get_credential>`,

@@ -28,6 +28,7 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -148,6 +149,12 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t n
         return PMIX_ERR_BAD_PARAM;
     }
     PMIX_BYTE_OBJECT_CONSTRUCT(credential);
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Get_credential"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
 
     PMIX_CONSTRUCT(&cb, pmix_query_caddy_t);
     rc = PMIx_Get_credential_nb(info, ninfo, mycdcb, &cb);
@@ -386,6 +393,12 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential(const pmix_byte_object_t *cre
     }
     if (NULL != nresults) {
         *nresults = 0;
+    }
+
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Validate_credential"))) {
+        return PMIX_ERR_WOULD_BLOCK;
     }
 
     PMIX_CONSTRUCT(&cb, pmix_query_caddy_t);

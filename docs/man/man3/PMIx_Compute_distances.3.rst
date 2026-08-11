@@ -191,6 +191,9 @@ inconsistent results from calls to this API by different threads if the
 ``PMIX_CPUBIND_THREAD`` binding envelope was used when generating the ``cpuset``.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Load_topology(3) <man3-PMIx_Load_topology>`,

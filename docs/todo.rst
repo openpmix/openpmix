@@ -55,23 +55,6 @@ design and is the reason that component exists.  Any real fix has to
 answer the ``shmem3`` case first; the messaging half is not worth building
 on its own.
 
-``PMIx_Fence_nb`` blocks when handed a ``NULL`` callback
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-It is the only non-blocking entry point in ``src/client`` that does.  A
-caller who chose the ``_nb`` form precisely to stay off a blocking path
-gets a blocking call, and one issued from an event handler on the
-progress thread deadlocks outright.  Every way of resolving it is a
-behavior change to a released public API rather than a fix: rejecting
-``NULL`` breaks any caller relying on the block, and returning without
-waiting silently converts that caller's synchronization into a
-fire-and-forget.  Nothing in the library depends on the answer —
-``PMIx_Fence`` passes its own callback and does not take this branch.
-
-.. note:: This directory has **four** different meanings for a ``NULL``
-          callback; check which one applies before copying a ``NULL``
-          test between entry points.  See ``src/client/AGENTS.md``.
-
 A host ``spawn`` that returns ``PMIX_OPERATION_SUCCEEDED`` is dropped
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

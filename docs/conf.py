@@ -138,7 +138,10 @@ templates_path = ['_templates']
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'venv', 'py*/**']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'venv', 'py*/**',
+                    # shared body text included by many man pages; not a
+                    # document of its own
+                    'man/no-blocking-in-progress-thread.rst']
 
 
 # -- Options for HTML output -------------------------------------------------

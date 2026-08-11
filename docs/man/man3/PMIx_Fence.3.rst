@@ -155,6 +155,18 @@ accepted for processing and the final status will be delivered to ``cbfunc``.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because the
   library's progress engine has been stopped.
 * ``PMIX_ERR_INIT`` |mdash| the PMIx library has not been initialized.
+* ``PMIX_ERR_WOULD_BLOCK`` |mdash| the call would have blocked the PMIx progress
+  thread from within that thread. See
+  `PROGRESS THREAD RESTRICTION`_.
+
+A ``NULL`` ``cbfunc`` passed to ``PMIx_Fence_nb`` makes that call **blocking**:
+it does not return until the fence completes, and its return value is the
+result of the fence rather than an indication that the request was accepted.
+That is the general PMIx convention for a non-blocking entry point handed no
+callback. It can only be honored where the operation's entire result is a
+status, as it is here |mdash| an entry point that has no way to hand back what
+the caller asked for, such as :ref:`PMIx_Get_nb(3) <man3-PMIx_Get>`, rejects a
+``NULL`` ``cbfunc`` with ``PMIX_ERR_BAD_PARAM`` instead.
 
 For a singleton process there are no peers to synchronize with, so the blocking
 form returns ``PMIX_SUCCESS`` (and the non-blocking form
@@ -162,6 +174,9 @@ form returns ``PMIX_SUCCESS`` (and the non-blocking form
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.
+
+
+.. include:: /man/no-blocking-in-progress-thread.rst
 
 
 .. seealso::

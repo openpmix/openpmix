@@ -224,6 +224,9 @@ was successfully accepted for processing; the final status is delivered to
 Any other value indicates an appropriate error condition.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Group_construct(3) <man3-PMIx_Group_construct>`,
    :ref:`PMIx_Group_join(3) <man3-PMIx_Group_join>`,

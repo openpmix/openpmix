@@ -162,6 +162,9 @@ Any other value indicates an appropriate error condition, such as the failure of
 member process when ``PMIX_GROUP_NOTIFY_TERMINATION`` was not requested.
 
 
+.. include:: /man/no-blocking-in-progress-thread.rst
+
+
 .. seealso::
    :ref:`PMIx_Group_construct(3) <man3-PMIx_Group_construct>`,
    :ref:`PMIx_Group_invite(3) <man3-PMIx_Group_invite>`,
