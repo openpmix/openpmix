@@ -7,6 +7,20 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A collective no longer counts a participant's orderly PMIx_Finalize
+   as the loss of that participant. Such a rank has not left - its local
+   process count is deliberately retained and its peer object tombstoned
+   rather than retired, so it may PMIx_Init again and contribute -
+   and recording it as departed counted it twice, letting the collective
+   complete without it and return PMIX_ERR_PARTIAL_SUCCESS or
+   PMIX_ERR_LOST_CONNECTION to the ranks that did participate. A client
+   rapidly cycling init/finalize, as an MPI Sessions application does,
+   could thereby drift by whole fence cycles and intermittently hang.
+   Loss accounting now applies to an abnormal termination only. One
+   deliberate consequence: a rank that finalizes and does not return,
+   while its peers wait in a collective that names it, now leaves them
+   waiting rather than collapsing the collective - PMIX_TIMEOUT is the
+   remedy there
  - PMIx_Disconnect now honors PMIX_TIMEOUT while the server is still
    collecting local contributions, as PMIx_Fence and PMIx_Connect
    already did. Until every local participant has called, the request
