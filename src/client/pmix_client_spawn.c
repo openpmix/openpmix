@@ -108,6 +108,12 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
                         "%s pmix: spawn called",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
+    /* ensure the nspace is initialized - note that nspace
+     * is a pmix_nspace_t object, and therefore it cannot
+     * be NULL. Do it above the state checks so it is defined
+     * on every return, not just the ones that get this far */
+    memset(nspace, 0, PMIX_MAX_NSLEN + 1);
+
     if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
     }
@@ -115,11 +121,6 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
-
-    /* ensure the nspace is initialized - note that nspace
-     * is a pmix_nspace_t object, and therefore it cannot
-     * be NULL */
-    memset(nspace, 0, PMIX_MAX_NSLEN + 1);
 
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
@@ -522,6 +523,10 @@ envars_done:
          * of job termination so we can setup the event registration */
         pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
                                  fcd->info, fcd->ninfo);
+        /* a no-op on this branch - the stash is for tools, and this branch
+         * has already excluded them. Kept so the two dispatch paths read
+         * the same way, and so relaxing the condition above does not
+         * silently drop the stash */
         stash_spawn_iof_flags(&fcd->flags);
 
         /* call the local host */
