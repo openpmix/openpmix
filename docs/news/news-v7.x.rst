@@ -275,3 +275,11 @@ Detailed changes since v6.1.0:
    directive array a launcher-spawned server uses to attach to its parent,
    and the result caddies of PMIx_server_setup_application and
    PMIx_server_collect_inventory when the caller supplies no callback
+ - PMIX_GROUP_ENDPT_DATA is now documented with the type it actually
+   carries: a pmix_data_array_t* of pmix_info_t, led by the contributing
+   process' PMIX_PROCID and the PMIX_DATA_SCOPE at which the remaining
+   elements are to be stored. The header had described it as a
+   pmix_byte_object_t, which was the shape of a group-construct data
+   exchange the library no longer performs. That stale type reached the
+   generated attribute dictionary as well, so it is what the
+   attribute-support queries and pattrs reported for the attribute

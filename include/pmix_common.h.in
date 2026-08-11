@@ -1351,7 +1351,11 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GROUP_ASSIGN_CONTEXT_ID        "pmix.grp.actxid"       // (bool) request that the RM assign a unique numerical (size_t) ID to this group
 #define PMIX_GROUP_CONTEXT_ID               "pmix.grp.ctxid"        // (size_t) context ID assigned to group
 #define PMIX_GROUP_LOCAL_ONLY               "pmix.grp.lcl"          // (bool) group operation only involves local procs
-#define PMIX_GROUP_ENDPT_DATA               "pmix.grp.endpt"        // (pmix_byte_object_t) data collected to be shared during construction
+#define PMIX_GROUP_ENDPT_DATA               "pmix.grp.endpt"        // (pmix_data_array_t*) Array of pmix_info_t containing the endpoint data
+                                                                    //        contributed by one member of a group during construction, to be
+                                                                    //        stored by the PMIx server. The array starts with the PMIX_PROCID
+                                                                    //        of the contributing process, followed by the PMIX_DATA_SCOPE at
+                                                                    //        which the remaining elements are to be stored
 #define PMIX_GROUP_NAMES                    "pmix.pgrp.nm"          // (pmix_data_array_t*) Returns an array of string names of the process groups
                                                                     //        in which the given process is a member.
 #define PMIX_GROUP_INFO                     "pmix.grp.info"         // (pmix_data_array_t*) Array of pmix_info_t containing data that is to be
