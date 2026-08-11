@@ -166,6 +166,7 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
     char *nspace, *nd;
     pmix_proc_t *pa = NULL;
     size_t m, n, np = 0, ninfo = 3;
+    int npeers;
     pmix_namespace_t *ns;
     pmix_buffer_t *reply;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -243,6 +244,24 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
                 PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
                 continue;
             }
+            /* count the peers BEFORE recording the entry. A namespace can
+             * have this node in its map with no procs of its own on it,
+             * and the host reports that as an empty peer list. The
+             * transfer pass below splits every recorded entry back apart,
+             * and PMIx_Argv_split() of a string with no tokens returns
+             * NULL - so recording an empty one dereferences that NULL the
+             * moment any other namespace contributes a proc and the pass
+             * runs at all. The client half of this walk, resolve_peers()
+             * in src/client/pmix_client_resolve.c, is the same code and
+             * had the same defect */
+            p = PMIx_Argv_split(kv->value->data.string, ',');
+            npeers = PMIx_Argv_count(p);
+            PMIx_Argv_free(p);
+            if (0 == npeers) {
+                PMIX_LIST_DESTRUCT(&cb.kvs);
+                PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
+                continue;
+            }
             /* prepend the nspace */
             if (0 > pmix_asprintf(&prs, "%s:%s", ns->nspace, kv->value->data.string)) {
                 PMIX_LIST_DESTRUCT(&cb.kvs);
@@ -251,11 +270,8 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
             }
             /* add to our list of results */
             PMIx_Argv_append_nosize(&tmp, prs);
-            /* split to count the npeers */
-            p = PMIx_Argv_split(kv->value->data.string, ',');
-            np += PMIx_Argv_count(p);
+            np += npeers;
             /* done with this entry */
-            PMIx_Argv_free(p);
             free(prs);
             // clean up and cycle around to next namespace
             PMIX_LIST_DESTRUCT(&cb.kvs);
@@ -366,11 +382,23 @@ process:
     /* split the procs to get a list */
     p = PMIx_Argv_split(kv->value->data.string, ',');
     np = PMIx_Argv_count(p);
+    if (0 == np) {
+        /* the node is in this namespace's map but hosts none of its
+         * procs - the documented empty answer, not an error. It has to be
+         * caught here because PMIX_PROC_CREATE(0) hands back exactly the
+         * NULL an allocation failure does, and the check below would
+         * report the empty result as PMIX_ERR_NOMEM */
+        PMIx_Argv_free(p);
+        ret = PMIX_SUCCESS;
+        PMIX_DESTRUCT(&cb);
+        goto done;
+    }
 
     /* allocate the proc array */
     PMIX_PROC_CREATE(pa, np);
     if (NULL == pa) {
         ret = PMIX_ERR_NOMEM;
+        np = 0;
         PMIx_Argv_free(p);
         PMIX_DESTRUCT(&cb);
         goto done;
@@ -538,12 +566,17 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
                 PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
                 continue;
             }
-            /* add to our list of results, ensuring uniqueness */
+            /* add to our list of results, ensuring uniqueness. An empty
+             * node list is the same "no nodes" answer as the NULL one
+             * caught above, and it has to be caught too: PMIx_Argv_split()
+             * of a string with no tokens returns NULL, not an empty array */
             p = PMIx_Argv_split(val->data.string, ',');
-            for (n = 0; NULL != p[n]; n++) {
-                PMIx_Argv_append_unique_nosize(&tmp, p[n]);
+            if (NULL != p) {
+                for (n = 0; NULL != p[n]; n++) {
+                    PMIx_Argv_append_unique_nosize(&tmp, p[n]);
+                }
+                PMIx_Argv_free(p);
             }
-            PMIx_Argv_free(p);
             PMIX_LIST_DESTRUCT(&cb.kvs);
             PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
         }
