@@ -115,6 +115,49 @@ callback.** Getting this wrong is the dominant bug class in this
 directory (leaks when a success path forgets to release, double-frees
 when an error path releases a caddy the switchyard will also release).
 
+Three things about the switchyard read as defects and are not. Check them
+against this list before "fixing" one:
+
+- **A failed `PMIX_SERVER_QUEUE_REPLY` cannot strand a client.** Several
+  arms release the reply and carry on returning `PMIX_SUCCESS`, which
+  looks like a client left blocked forever. The macro has exactly one
+  failure mode — `peer->finalized`, answered with `PMIX_ERR_UNREACH` —
+  so whenever it fails there is no longer a peer waiting for the answer,
+  and the synthesized reply the message handler would send instead could
+  not be queued either.
+- **`PMIX_DEREGEVENTS_CMD` answers nothing, deliberately.** It is the one
+  arm that returns `PMIX_SUCCESS` without queuing a reply and without an
+  async owner to queue one later. The client sends that command through
+  `PMIX_PTL_SEND_RECV` with a **NULL** callback (`dereg_event_hdlr` in
+  `src/event/pmix_event_registration.c`), so nothing is waiting on a tag.
+- **`PMIX_GDS_CADDY` and `PMIX_SERVER_QUEUE_REPLY` both dereference an
+  unchecked `PMIX_NEW`.** Making the macros NULL-safe does not help: the
+  handler on the next line dereferences the caddy it was given, so the
+  crash moves rather than goes away, and covering it properly would mean
+  a check at all thirty-odd dispatch arms for a condition under which the
+  library cannot service the request anyway. Left as is, on purpose.
+
+**The outer host callbacks own the caddy on *every* arm that does not
+thread-shift.** `op_cbfunc`, `op_cbfunc2` and `resop_cbfunc` each have
+two: the `progress_thread_stopped` early-out and the failure to allocate
+the `pmix_shift_caddy_t`. All three released the caddy on the first and
+dropped it on the second, stranding the `PMIX_RETAIN` it holds on the
+requesting peer — and with it the peer and everything hanging off it —
+for the life of the server.
+
+**And `resop_cbfunc` is not shaped like the other two.** `op_cbfunc`'s
+`cbdata` really is the switchyard's `pmix_server_caddy_t`: the handlers
+that name it (`pmix_server_abort`, `_publish`, `_unpublish`, `_log`,
+`_iofstdin`) park it on `cd->cbdata` of a caddy of their own and drive
+`cd->opcbfunc(status, cd->cbdata)` at the end. `pmix_server_resblk`
+instead hands its **own `pmix_setup_caddy_t`** to the host as the
+up-call's `cbdata`, with the server caddy nested inside it. So that
+callback owns three things — the server caddy, the caddy's `nspace`
+string, and the setup caddy — and neither destructor reaches the other
+two. It was declared as taking the wrong type, and both of its early
+returns released only the outermost object. When you add a callback
+here, read the *producing* handler to see which caddy it actually passes.
+
 ### The host-callback → reply pattern
 
 For any command the local server cannot answer itself, the handler
