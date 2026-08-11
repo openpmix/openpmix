@@ -210,7 +210,7 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
-    int cnt;
+    int32_t cnt;
 
     PMIX_HIDE_UNUSED_PARAMS(hdr);
 
