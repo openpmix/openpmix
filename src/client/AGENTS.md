@@ -949,13 +949,12 @@ to assume):*
   whose group we have already forgotten. Recovering would mean putting it
   back under the lock; leaving is terminal in practice, so this is
   recorded rather than restructured.
-- `invite_setup()` registers the answer observer before it has finished
-  populating the tracker (the range info, the timer). If every invitee
-  were already dead, a cached `PMIX_PROC_TERMINATED` replay could resolve
-  the invitation from the progress thread while the caller's thread is
-  still in `invite_setup`. The membership and flags it needs *are* in
-  place before registration, so this is narrow, and no invitee can accept
-  before the invitation is sent.
+- `invite_setup()` registered the answer observer before it had finished
+  populating the tracker. **Closed by the eighth sweep** — the directive
+  scan, the range info and the timer are all established before the
+  registration now, and that sweep's section explains why registering an
+  observer is a *publication*. Left here only as a pointer, because this
+  entry sat under "not changed" for four sweeps after it had been fixed.
 
 ## Defects found in the August 2026 review (fifth sweep — the union sweep)
 
@@ -1575,16 +1574,30 @@ alone:
 
 *Noted, not changed — do not re-open these without new evidence:*
 
-- **`PMIX_NEW` is not NULL-checked anywhere in this directory**, for
-  buffers or for caddies, and that is the convention rather than an
-  oversight in this file. The earlier sweeps flagged unchecked
-  `PMIX_INFO_CREATE` and `PMIX_PROC_CREATE` repeatedly and never flagged
-  `PMIX_NEW`. Adding checks here alone would be the inconsistency.
+- **`PMIX_NEW` is checked in some of this directory and not others, and
+  which you are looking at is not a convention — it is an open
+  inconsistency.** This entry used to assert that `PMIX_NEW` "is not
+  NULL-checked anywhere in this directory" and that adding a check would
+  therefore be the odd one out. **That is false, and it was false when it
+  was written.** Of the 81 `PMIX_NEW` sites in `src/client`, 14 are
+  followed immediately by `if (PMIX_UNLIKELY(NULL == …))` — six tracker
+  allocations in `pmix_client_group.c` and eight in `pmix_client.c`,
+  including `req = PMIX_NEW(pmix_buffer_t)` at
+  [`pmix_client.c`](pmix_client.c):395, which is the very "buffers" case
+  the old entry said nobody checked. Meanwhile `pmix_client_spawn.c`
+  leaves both its caddy and its message unchecked.
+
+  Do not read either half as settled. Deciding the convention and making
+  the directory consistent is tracked work, not something to resolve
+  ad hoc in whichever file you happen to be editing — and in particular
+  do not cite this entry as a reason to leave a new `PMIX_NEW`
+  unchecked, which is what it was used for.
 - **`pa[np].rank = strtoul(p[m], NULL, 10)` validates nothing** — a
   non-numeric token yields rank 0 and a value past `UINT32_MAX` truncates
-  silently. There are fourteen such sites in the tree, including the exact
-  mirror of this line in `pmix_server_resolve.c`. If this is ever worth
-  closing it wants a shared helper, not a screen here.
+  silently. There are ten such sites in the tree, including the exact
+  mirror of this line in `pmix_server_resolve.c`. (This entry said
+  fourteen; ten is what the tree holds.) If this is ever worth closing it
+  wants a shared helper, not a screen here.
 - **`kv->value` is dereferenced without a NULL check** at all four
   datastore reads. `pmix_kval_t.value` is legitimately NULL-able off the
   wire (see [`src/mca/bfrops/AGENTS.md`](../mca/bfrops/AGENTS.md)), but
@@ -1671,12 +1684,17 @@ other.
   returns between the two actually free what the caddy already holds.
 
   This is the class the earlier sweeps have consistently closed
-  (`respeer()`, `construct_msg()`, `construct_cbfunc()`). It is **not** an
-  invitation to check `PMIX_NEW`, and the unchecked `strdup()` /
-  `PMIx_Argv_copy()` / `PMIx_Argv_prepend_nosize()` results in the same
-  loop are deliberately left: hardening this function against allocation
-  failure end-to-end is a separate piece of work, and doing half of it is
-  worse than none.
+  (`respeer()`, `construct_msg()`, `construct_cbfunc()`). The unchecked
+  `strdup()` / `PMIx_Argv_copy()` / `PMIx_Argv_prepend_nosize()` results
+  in the same loop are deliberately left: hardening this function against
+  allocation failure end-to-end is a separate piece of work, and doing
+  half of it is worse than none.
+
+  **This sweep also left `fcd = PMIX_NEW(pmix_setup_caddy_t)` and
+  `msg = PMIX_NEW(pmix_buffer_t)` unchecked on the strength of the ninth
+  sweep's claim that `PMIX_NEW` is never checked in this directory. That
+  claim was wrong** — see the corrected entry under the ninth sweep — so
+  treat this as an open decision rather than a considered one.
 
 *Noted, not changed — do not re-open these without new evidence:*
 
