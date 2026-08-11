@@ -161,6 +161,7 @@ static void resolve_peers(int sd, short args, void *cbdata)
     char **p, **tmp = NULL, *prs;
     pmix_proc_t *pa;
     size_t m, n, np, ninfo;
+    int npeers;
     pmix_namespace_t *ns;
     char *key;
     pmix_kval_t *kv;
@@ -207,6 +208,15 @@ static void resolve_peers(int sd, short args, void *cbdata)
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
+            /* restart each namespace from UNDEF: try_fetch() mutates the
+             * rank to WILDCARD for its retry and does not put it back, and
+             * it declines outright for a rank that is not UNDEF - so
+             * leaving it mutated denied every subsequent namespace its own
+             * first-choice lookup, making the answer depend on the order
+             * the namespaces happen to sit in the list. The server's
+             * pmix_server_locally_resolve_peers() resets it for the same
+             * reason */
+            proc.rank = PMIX_RANK_UNDEF;
             rc = try_fetch(&cb);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 continue;
@@ -230,6 +240,22 @@ static void resolve_peers(int sd, short args, void *cbdata)
                 PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
                 continue;
             }
+            /* count the peers BEFORE recording the entry. An nspace can have
+             * this node in its map with no procs of its own on it, and the
+             * host reports that as an empty peer list. The transfer pass
+             * below splits every recorded entry back apart, and
+             * PMIx_Argv_split() of a string with no tokens returns NULL -
+             * so recording an empty one dereferences that NULL the moment
+             * any other nspace contributes a proc and the pass runs. */
+            p = PMIx_Argv_split(val->data.string, ',');
+            npeers = PMIx_Argv_count(p);
+            PMIx_Argv_free(p);
+            if (0 == npeers) {
+                /* no local peers on this node for this nspace */
+                PMIX_LIST_DESTRUCT(&cb.kvs);
+                PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
+                continue;
+            }
             /* prepend the nspace */
             if (PMIX_UNLIKELY(0 > pmix_asprintf(&prs, "%s:%s", ns->nspace, val->data.string))) {
                 PMIX_LIST_DESTRUCT(&cb.kvs);
@@ -238,11 +264,8 @@ static void resolve_peers(int sd, short args, void *cbdata)
             }
             /* add to our list of results */
             PMIx_Argv_append_nosize(&tmp, prs);
-            /* split to count the npeers */
-            p = PMIx_Argv_split(val->data.string, ',');
-            np += PMIx_Argv_count(p);
+            np += npeers;
             /* done with this entry */
-            PMIx_Argv_free(p);
             free(prs);
             // clean up and cycle around to next namespace
             PMIX_LIST_DESTRUCT(&cb.kvs);
@@ -257,8 +280,10 @@ static void resolve_peers(int sd, short args, void *cbdata)
                 goto done;
             }
             cd->procs = pa;
-            cd->nprocs = np;
-            /* transfer the results */
+            /* transfer the results. Note that nprocs is recorded from the
+             * transfer below, not from the count above: the two disagree
+             * if an append into tmp failed, and the difference would be
+             * handed to the caller as procs it may index */
             np = 0;
             for (n = 0; NULL != tmp[n]; n++) {
                 /* find the nspace delimiter */
@@ -283,10 +308,12 @@ static void resolve_peers(int sd, short args, void *cbdata)
                 PMIx_Argv_free(p);
             }
             PMIx_Argv_free(tmp);
+            cd->nprocs = np;
             rc = PMIX_SUCCESS;
         } else {
-            /* nothing resolved, but the walk above may still have collected
-             * entries (an nspace whose peer list was an empty string) */
+            /* nothing resolved - an entry is recorded only when it carried
+             * at least one peer, so tmp is empty here, but free it rather
+             * than depend on that */
             PMIx_Argv_free(tmp);
         }
         goto done;
@@ -332,6 +359,15 @@ process:
     /* split the procs to get a list */
     p = PMIx_Argv_split(val->data.string, ',');
     np = PMIx_Argv_count(p);
+    if (0 == np) {
+        /* the node is in this nspace's map but hosts none of its procs -
+         * the documented empty answer, not an error. It has to be caught
+         * here because PMIX_PROC_CREATE(0) hands back exactly the NULL an
+         * allocation failure does, and the check below would report the
+         * empty result as PMIX_ERR_NOMEM */
+        PMIx_Argv_free(p);
+        goto done;
+    }
 
     /* allocate the proc array */
     PMIX_PROC_CREATE(pa, np);
@@ -368,14 +404,18 @@ static void respeer(pmix_status_t status, pmix_info_t info[], size_t ninfo, void
     PMIX_ACQUIRE_OBJECT(cb);
 
     cb->status = status;
-    if (PMIX_SUCCESS == status) {
-        cb->ninfo = ninfo;
+    if (PMIX_SUCCESS == status && 0 < ninfo) {
         PMIX_INFO_CREATE(cb->info, ninfo);
-        /* this is our copy, so mark it as such - otherwise the caddy
-         * destructor leaves the whole array behind */
-        cb->infocopy = true;
-        for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&cb->info[n], &info[n]);
+        if (PMIX_UNLIKELY(NULL == cb->info)) {
+            cb->status = PMIX_ERR_NOMEM;
+        } else {
+            cb->ninfo = ninfo;
+            /* this is our copy, so mark it as such - otherwise the caddy
+             * destructor leaves the whole array behind */
+            cb->infocopy = true;
+            for (n=0; n < ninfo; n++) {
+                PMIX_INFO_XFER(&cb->info[n], &info[n]);
+            }
         }
     }
     if (NULL != release_fn) {
@@ -431,6 +471,15 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
             PMIX_QUERY_CONSTRUCT(&query);
             PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_RESOLVE_PEERS);
             PMIX_INFO_CREATE(iptr, 2);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc || NULL == iptr)) {
+                /* we cannot describe the request, so there is no point in
+                 * making it - fall through and work it out for ourselves */
+                if (NULL != iptr) {
+                    PMIX_INFO_FREE(iptr, 2);
+                }
+                PMIX_QUERY_DESTRUCT(&query);
+                goto local;
+            }
             str = (char*)nspace;
             PMIX_INFO_LOAD(&iptr[0], PMIX_NSPACE, str, PMIX_STRING);
             PMIX_INFO_SET_QUALIFIER(&iptr[0]);
@@ -474,6 +523,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
             }
             PMIX_DESTRUCT(&cb);
         }
+    local:
         // if we get here, then the host wasn't able to
         // provide us with what we need, so let's do it ourselves
         cd = PMIX_NEW(pmix_resolve_caddy_t);
@@ -559,7 +609,10 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     } else {
         // if the server couldn't process it, that's likely because it
         // is an older version that doesn't recognize the cmd. So
-        // process it ourselves
+        // process it ourselves. Note that we reuse the caddy here, so
+        // wait_peers_cbfunc() has to leave procs/nprocs agreeing with
+        // each other on every failure path - a count left standing over
+        // a released array would be handed straight to the caller
         cd->nodename = nd;
         PMIX_LOAD_NSPACE(cd->nspace, nspace);
         // reset the lock
@@ -638,12 +691,17 @@ static void resolve_nodes(int sd, short args, void *cbdata)
                 PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
                 continue;
             }
-            /* add to our list of results, ensuring uniqueness */
+            /* add to our list of results, ensuring uniqueness. An empty
+             * node list is the same "no nodes" answer as the NULL one
+             * caught above, and it has to be caught too: PMIx_Argv_split()
+             * of a string with no tokens returns NULL, not an empty array */
             p = PMIx_Argv_split(val->data.string, ',');
-            for (n = 0; NULL != p[n]; n++) {
-                PMIx_Argv_append_unique_nosize(&tmp, p[n]);
+            if (NULL != p) {
+                for (n = 0; NULL != p[n]; n++) {
+                    PMIx_Argv_append_unique_nosize(&tmp, p[n]);
+                }
+                PMIx_Argv_free(p);
             }
-            PMIx_Argv_free(p);
             PMIX_LIST_DESTRUCT(&cb.kvs);
             PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
         }
@@ -685,11 +743,23 @@ process:
     }
     kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
     val = kv->value;
-    if (PMIX_STRING != val->type || NULL == val->data.string) {
+    if (PMIX_STRING != val->type) {
+        /* report it as well as log it - rc is PMIX_SUCCESS on the way in
+         * here, so falling through left the caller being told the call
+         * succeeded with a NULL nodelist it is entitled to parse */
         PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
+        rc = PMIX_ERR_INVALID_VAL;
+        goto done;
+    }
+    if (NULL == val->data.string) {
+        /* no nodes recorded for this nspace - the default (empty) response
+         * is the correct answer, exactly as in the aggregate walk above */
         goto done;
     }
     cd->nodelist = strdup(val->data.string);
+    if (PMIX_UNLIKELY(NULL == cd->nodelist)) {
+        rc = PMIX_ERR_NOMEM;
+    }
 
 done:
     /* pass back the result */
@@ -711,13 +781,17 @@ static void resnode(pmix_status_t status, pmix_info_t info[], size_t ninfo, void
     PMIX_ACQUIRE_OBJECT(cb);
 
     cb->status = status;
-    if (PMIX_SUCCESS == status) {
-        cb->ninfo = ninfo;
+    if (PMIX_SUCCESS == status && 0 < ninfo) {
         PMIX_INFO_CREATE(cb->info, ninfo);
-        /* our copy - see respeer() above */
-        cb->infocopy = true;
-        for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&cb->info[n], &info[n]);
+        if (PMIX_UNLIKELY(NULL == cb->info)) {
+            cb->status = PMIX_ERR_NOMEM;
+        } else {
+            cb->ninfo = ninfo;
+            /* our copy - see respeer() above */
+            cb->infocopy = true;
+            for (n=0; n < ninfo; n++) {
+                PMIX_INFO_XFER(&cb->info[n], &info[n]);
+            }
         }
     }
     if (NULL != release_fn) {
@@ -762,6 +836,12 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
         if (NULL != pmix_host_server.query) {
             PMIX_QUERY_CONSTRUCT(&query);
             PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_RESOLVE_NODE);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                /* we cannot name what we are asking for, so there is no
+                 * point in asking - work it out for ourselves instead */
+                PMIX_QUERY_DESTRUCT(&query);
+                goto local;
+            }
             str = (char*)nspace;
             PMIX_INFO_LOAD(&info, PMIX_NSPACE, str, PMIX_STRING);
             PMIX_INFO_SET_QUALIFIER(&info);
@@ -791,6 +871,9 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
                         PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
                     } else {
                         *nodelist = strdup(val->data.string);
+                        if (PMIX_UNLIKELY(NULL == *nodelist)) {
+                            rc = PMIX_ERR_NOMEM;
+                        }
                         PMIX_DESTRUCT(&cb);
                         return rc;
                     }
@@ -798,6 +881,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
             }
             PMIX_DESTRUCT(&cb);
         }
+    local:
         // if we get here, then the host wasn't able to
         // provide us with what we need, so let's do it ourselves
         cd = PMIX_NEW(pmix_resolve_caddy_t);
@@ -927,18 +1011,39 @@ static void wait_peers_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &cd->nprocs, &cnt, PMIX_SIZE);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
+            cd->nprocs = 0;
             ret = rc;
             goto done;
         }
         if (0 < cd->nprocs) {
+            /* the count came off the wire, so this allocation can genuinely
+             * fail */
             PMIX_PROC_CREATE(cd->procs, cd->nprocs);
+            if (PMIX_UNLIKELY(NULL == cd->procs)) {
+                cd->nprocs = 0;
+                ret = PMIX_ERR_NOMEM;
+                goto done;
+            }
             cnt = cd->nprocs;
             PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, cd->procs, &cnt, PMIX_PROC);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_PROC_FREE(cd->procs, cd->nprocs);
+                cd->nprocs = 0;
                 ret = rc;
                 goto done;
+            }
+            if (0 == cnt) {
+                /* the peer's count and its payload disagreed and nothing was
+                 * filled in. PMIX_PROC_FREE is a no-op for a zero count, so
+                 * release the block before recording that count */
+                PMIX_PROC_FREE(cd->procs, cd->nprocs);
+                cd->nprocs = 0;
+            } else {
+                /* report what actually arrived, not what the server said it
+                 * was sending: the unpack succeeds having filled fewer
+                 * entries when the two disagree */
+                cd->nprocs = cnt;
             }
         }
     }

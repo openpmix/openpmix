@@ -436,6 +436,19 @@ segfaulted before. See [`test/unit/AGENTS.md`](../../test/unit/AGENTS.md).
 > "fix" a group parameter check by hoisting it above the state checks
 > just to make it testable — the ordering is the convention here.
 
+**Tier 1b — `test/unit/resolve_api.c` (in `make check`).** The one
+place in `make check` that reaches the *local computation* behind
+`PMIx_Resolve_peers`/`PMIx_Resolve_nodes` rather than just their argument
+checks. It comes up as a server with a stub host module — no `query`
+entry point, so both APIs fall through their host branch to the
+thread-shifted local path — and registers two namespaces on this one
+node, one with peers here and one whose `PMIX_LOCAL_PEERS` is explicitly
+the empty string. That is the input behind the ninth sweep's findings.
+Note the second namespace must be registered with a node-info array and
+**no proc map**: the map-driven derivation in `store_map()` replaces a
+host-supplied `PMIX_LOCAL_PEERS`, so a proc map would overwrite the value
+under test.
+
 **Tier 1a — `test/unit/run_grpinviteothers.pl` (in `make check`).**
 Drives `examples/group_invite_others` through `test/simple/simptest`:
 four clients, with rank 0 inviting ranks 1..3 and *not* joining. That
@@ -1433,6 +1446,156 @@ them. The thirteen `run_grp*.pl` tests do cover the reordered
 `invite_setup` end-to-end through `simptest` — construct, invite,
 invite-nb, join, decline, leave, destruct, both timeout cases, both abort
 cases, and the suppression case — and all pass.
+
+## Defects found in the August 2026 review (ninth sweep — `pmix_client_resolve.c`)
+
+Five lenses over the resolve pair. Almost everything found is one fact
+wearing four hats, so learn the fact rather than the four sites.
+
+**`PMIx_Argv_split()` returns NULL for a string with no tokens, not an
+empty array** — see `pmix_bfrops_base_tma_argv_split_inter()`, whose loop
+never runs for an empty source. Every list this file gets out of the
+datastore can legitimately be the **empty string**, because a namespace's
+map can name a node it placed nothing on, and `store_map()` records
+`PMIX_LOCAL_PEERS` for such a node as `strdup("")`. The `NULL == string`
+guards that are everywhere in this file do **not** cover that state; they
+are a different one. Three sites indexed the NULL:
+
+- `resolve_peers()`'s aggregate walk recorded an `"nspace:"` entry for the
+  empty namespace and then split every recorded entry back apart to fill
+  the proc array — a SIGSEGV on the progress thread, taken as soon as any
+  *other* namespace contributed a proc and made the transfer pass run.
+  Entries are now counted before they are recorded, so an empty one is
+  never recorded at all.
+- `resolve_nodes()`'s aggregate walk did the same with `PMIX_NODE_LIST`.
+  That one is hardening rather than a reproduced defect: `PMIX_NODE_LIST`
+  is derived by joining the node map, so the hash datastore cannot
+  produce an empty one — only a host storing the key itself could.
+- `pmix_server_locally_resolve_peers()` and `..._node()` in
+  [`pmix_server_resolve.c`](../server/pmix_server_resolve.c) are the
+  *same walk* and had the *same* defects. See the twin rule below.
+
+**And `PMIX_PROC_CREATE(0)` returns the same NULL an allocation failure
+does**, which is the seventh sweep's rule meeting the same empty list.
+Asking for a namespace by name on a node it placed nothing on counted
+zero peers, handed the count to `PMIX_PROC_CREATE`, and reported
+`PMIX_ERR_NOMEM` — where `PMIx_Resolve_peers(3)` documents an empty result
+as `PMIX_SUCCESS` with a NULL array and a zero count. Both the client and
+the server had it. Regression: `test/unit/resolve_api.c`.
+
+### `pmix_client_resolve.c` and `pmix_server_resolve.c` are twins
+
+`resolve_peers()`/`resolve_nodes()` here and
+`pmix_server_locally_resolve_peers()`/`..._node()` there are the same
+computation over the same datastore, written twice. **Every defect found
+in one of them was present in the other**, in both directions: the empty-
+list crash and the `PMIX_PROC_CREATE(0)` report went client → server this
+sweep, and the per-namespace rank reset went server → client (the server
+had already fixed it, with a comment saying why, while the client had
+not). When you change one, read the other before you stop.
+
+The rank reset is worth understanding rather than copying. `try_fetch()`
+mutates `cb->proc->rank` to `PMIX_RANK_WILDCARD` for its retry and does
+not put it back, and it *declines outright* for a rank that is not
+`PMIX_RANK_UNDEF` — so a single aggregate walk gave its first namespace a
+different lookup from all the rest, and the answer depended on the order
+the namespaces happened to sit in `pmix_globals.nspaces`. It was benign
+against today's `hash` module, and it is worth knowing exactly why before
+anyone decides the reset is unnecessary: for a `PMIX_NODE_INFO`-qualified
+fetch, `pmix_gds_hash_fetch()` sends both `UNDEF` and `WILDCARD` down the
+`!PMIX_RANK_IS_VALID` branch to `fetch_nodeinfo()`, and only `WILDCARD`
+additionally gets the `doover` retry against the job-level table. So
+`WILDCARD` is a superset there, and nothing was lost — by accident, and
+only for one module.
+
+### The caddy outlives the reply, and both halves must agree about it
+
+Both `PMIx_Resolve_peers` and `PMIx_Resolve_nodes` **reuse their
+`pmix_resolve_caddy_t`** when the server round-trip fails: they reset the
+lock and re-shift the *same* object into the local computation, because a
+server that does not recognize the command is the expected reason to fall
+back. Two rules follow, and neither is visible from the recv callback
+alone:
+
+- **The recv callback must leave `procs` and `nprocs` agreeing with each
+  other on every failure path.** `wait_peers_cbfunc()` freed the array on
+  a failed unpack and left the count standing; the local fallback then
+  found nothing, reported `PMIX_SUCCESS`, and the caller was handed a
+  NULL array with a non-zero count to index. `PMIX_PROC_FREE` nulls the
+  pointer it is given, so the caddy destructor was safe — this is a
+  wrong-answer bug, not a double free, which is why it would not show up
+  under valgrind.
+- **Report what actually arrived, not what the peer said it was
+  sending.** `pmix_bfrops_base_unpack()` reports `PMIX_SUCCESS` having
+  filled *fewer* entries when the wire count exceeds the payload, writing
+  the real number back through `num_vals`. Same defect and same fix as
+  `_lookup_cbfunc()` in `pmix_client_pub.c`; and the wire-sized
+  `PMIX_PROC_CREATE` needs its NULL check for the same reason that one
+  does.
+
+*Correctness, lesser:*
+
+- `resolve_nodes()` `PMIX_ERROR_LOG`ged `PMIX_ERR_INVALID_VAL` for a
+  `PMIX_NODE_LIST` that was not a string and then fell through to a
+  `done:` where `rc` was still `PMIX_SUCCESS` — so the caller was told the
+  call succeeded and handed a NULL `nodelist` it is entitled to parse. Its
+  sibling `resolve_peers()` set the status in the same spot. Note the two
+  halves of that test are *not* the same thing and are now split: a wrong
+  **type** is a datastore that has garbage under a reserved key and is an
+  error; a **NULL string** is "no nodes", which is the documented empty
+  answer.
+- Both host-query branches called `pmix_host_server.query` with a query
+  they had failed to build — the `PMIX_ARGV_APPEND` status was unchecked
+  and `PMIX_INFO_CREATE(iptr, 2)` was dereferenced unchecked. They now
+  skip the up-call and work the answer out locally, which is what the
+  branch already does for a host that cannot answer.
+- `respeer()`/`resnode()` dereferenced an unchecked `PMIX_INFO_CREATE`.
+- Two `strdup()` results were handed back as the answer without being
+  checked, so a failed allocation was reported as `PMIX_SUCCESS` with a
+  NULL string.
+- `resolve_peers()` recorded the *counted* peer total rather than the
+  number it actually transferred, so a failed `PMIx_Argv_append_nosize`
+  would have handed the caller phantom entries.
+
+*Noted, not changed — do not re-open these without new evidence:*
+
+- **`PMIX_NEW` is not NULL-checked anywhere in this directory**, for
+  buffers or for caddies, and that is the convention rather than an
+  oversight in this file. The earlier sweeps flagged unchecked
+  `PMIX_INFO_CREATE` and `PMIX_PROC_CREATE` repeatedly and never flagged
+  `PMIX_NEW`. Adding checks here alone would be the inconsistency.
+- **`pa[np].rank = strtoul(p[m], NULL, 10)` validates nothing** — a
+  non-numeric token yields rank 0 and a value past `UINT32_MAX` truncates
+  silently. There are fourteen such sites in the tree, including the exact
+  mirror of this line in `pmix_server_resolve.c`. If this is ever worth
+  closing it wants a shared helper, not a screen here.
+- **`kv->value` is dereferenced without a NULL check** at all four
+  datastore reads. `pmix_kval_t.value` is legitimately NULL-able off the
+  wire (see [`src/mca/bfrops/AGENTS.md`](../mca/bfrops/AGENTS.md)), but
+  these are local GDS fetches — the same reasoning the seventh sweep
+  recorded for `get_data()`.
+- **A lost connection between the `connected` check and the send hangs
+  these two APIs forever.** `pmix_ptl_base_send_recv()` drops the message
+  without invoking the recv callback when the peer has `sd < 0`, after
+  `PMIX_PTL_SEND_RECV` has already reported success — so the
+  `PMIX_WAIT_THREAD` below it waits on a lock nothing will wake. This is
+  the tree-wide condition described under [Invariants](#invariants-and-gotchas);
+  `PMIx_Finalize` is the only entry point that arms a timer against it.
+  Fixing it in this one file would be an inconsistency, not a fix.
+- **The `singleton` half of the "gate every round-trip" pattern is
+  genuinely redundant here.** `pmix_globals.connected` is set in exactly
+  one place — `ptl_base_fns.c` after a successful connect — so a
+  singleton never has it, and every sibling in this directory gates on
+  `!connected` alone.
+- `PMIX_INFO_LOAD(&iptr[0], PMIX_NSPACE, str, PMIX_STRING)` with a NULL
+  `str` is safe: `pmix_bfrops_base_value_load()` zeroes the union for a
+  NULL source rather than reaching `strdup`. A NULL nspace is the
+  documented "all namespaces" request and reaches both host queries.
+- The dead `PMIX_ERR_DATA_VALUE_NOT_FOUND` arm in both functions, and the
+  dead `proc.rank = PMIX_RANK_WILDCARD` store in the pre-v3.2 branch, are
+  unchanged and still carry their explaining comments. `try_fetch()`
+  returns only `PMIX_SUCCESS`, `PMIX_ERR_INVALID_NAMESPACE` and
+  `PMIX_ERR_NOT_FOUND`.
 
 ## Coding conventions specific to this directory
 
