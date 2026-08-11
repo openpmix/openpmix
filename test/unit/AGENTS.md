@@ -72,7 +72,7 @@ These run anywhere and are the bulk of the suite: `compress`, `preg`,
 `bfrops_helpers`, `info_support`, `iof_pattern`,
 `hwloc_datatype`, `tracker_match`, `trk_complete`, `collective_status`,
 `collect_job_info`, `progress_threads`, `runtime_init`, `pmix_log`,
-`server_get`, `resolve_api`.
+`server_get`, `resolve_api`, `spawn_api`.
 
 **Singleton client tests** — call the real public API in a process that
 comes up with no server. `client_cycle` (init/finalize cycling),
@@ -388,6 +388,36 @@ so the hash datastore cannot produce an empty one through
 `PMIx_server_register_nspace`. That guard is hardening against a host
 that stores the key itself. The node cases here only pin the ordinary
 answers.
+
+### `spawn_api` — `PMIx_Spawn`'s argument handling
+
+[`spawn_api.c`](spawn_api.c) borrows `resolve_api`'s stub-host-server
+trick for a different reason. `PMIx_Spawn_nb` gates on `connected`
+*before* it looks at `job_info` or copies the apps array, so a singleton
+client is turned away with `PMIX_ERR_UNREACH` and none of that code is
+reachable from `client_api.c` — which is why the only spawn checks there
+are the `apps`/`napps` ones that deliberately precede the gate. A
+**server** is let through the gate so it can hand the request to its own
+host, so with a stub module the directive scan and the apps copy both run
+and the call stops at the absent `pmix_host_server.spawn`.
+`PMIX_ERR_NOT_SUPPORTED` is therefore this file's "reached the end of the
+argument handling" marker, and every case asserts it.
+
+Two defects are pinned, both verified by reverting each fix
+independently (each case fails on its own, and only its own):
+
+- `PMIx_Spawn(job_info, 0, …)` — a non-NULL pointer with a zero count is
+  "no directives", but the scan entered on the pointer alone and the
+  resulting empty info list came back from `PMIx_Info_list_convert()` as
+  `PMIX_ERR_EMPTY`, which failed the spawn.
+- an app whose directives are **end-marked rather than counted**: the
+  scan wrote the count it worked out back into the caller's `const
+  pmix_app_t apps[]`. The sentinel has to sit past index 0 for the case
+  to mean anything — a sentinel at index 0 counts zero, and writing zero
+  over a zero proves nothing.
+
+The apps here carry `cmd = "true"` and are never launched; nothing in
+this file gets past the host up-call, by design.
 
 ### `runtime_init` — the `src/runtime` bring-up regression test
 

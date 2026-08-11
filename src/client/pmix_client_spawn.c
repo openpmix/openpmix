@@ -194,10 +194,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_SPAWNNB_CMD;
     pmix_status_t rc;
-    size_t n, m;
+    size_t n, m, nappinfo;
     pmix_setup_caddy_t *fcd = NULL;
     pmix_app_t *aptr;
-    bool jobenvars = false;
     bool forkexec = false;
     pmix_kval_t *kv;
     pmix_list_t ilist;
@@ -248,15 +247,22 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     fcd = PMIX_NEW(pmix_setup_caddy_t);
     fcd->spcbfunc = cbfunc;
     fcd->cbdata = cbdata;
+    /* everything we are about to put in the caddy's info and apps fields is
+     * built here and owned by us, so mark it copied now rather than after
+     * the arrays are filled - this is what tells the destructor (scaddes)
+     * to free them, and every error return below goes through it */
+    fcd->copied = true;
 
-    /* check job info for directives */
-    if (NULL != job_info) {
+    /* check job info for directives - a non-NULL pointer with a zero count
+     * is a legal way of saying "no directives", and it must not be treated
+     * as an empty list: PMIx_Info_list_convert() reports PMIX_ERR_EMPTY for
+     * one, which used to come back to the caller as the spawn's failure */
+    if (NULL != job_info && 0 < ninfo) {
         xlist = PMIx_Info_list_start();
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&job_info[n], PMIX_SETUP_APP_ENVARS)) {
                 /* harvested and applied to our copy of the apps, below */
                 joblevel_envars = true;
-                jobenvars = true;
             } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_PARENT_ID)) {
                 /* the directive comes straight from the caller, so verify it
                  * really carries a proc before dereferencing the union - a
@@ -295,10 +301,10 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
      * going to modify the individual app structs */
     fcd->napps = napps;
     PMIX_APP_CREATE(fcd->apps, fcd->napps);
-    /* we now own the info and apps arrays we filled into the caddy, so
-     * mark it copied - this is what tells the destructor (scaddes) to
-     * free them, on both the completion path and every error path below */
-    fcd->copied = true;
+    if (PMIX_UNLIKELY(NULL == fcd->apps)) {
+        PMIX_RELEASE(fcd);
+        return PMIX_ERR_NOMEM;
+    }
     for (n = 0; n < napps; n++) {
         aptr = (pmix_app_t *) &apps[n];
         /* protect against bozo case - an argv whose first element is NULL
@@ -335,6 +341,13 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         if (NULL == aptr->argv) {
             tmp = pmix_basename(aptr->cmd);
             fcd->apps[n].argv = (char **) malloc(2 * sizeof(char *));
+            if (PMIX_UNLIKELY(NULL == fcd->apps[n].argv)) {
+                if (NULL != tmp) {
+                    free(tmp);
+                }
+                PMIX_RELEASE(fcd);
+                return PMIX_ERR_NOMEM;
+            }
             fcd->apps[n].argv[0] = tmp;
             fcd->apps[n].argv[1] = NULL;
         } else {
@@ -365,7 +378,14 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         /* do a quick check of the apps directive array to ensure
          * the ninfo field has been set */
         if (NULL != aptr->info) {
-            if (0 == aptr->ninfo) {
+            /* count the directives into a local of our own. "apps" is the
+             * caller's const array, so the count we work out is not ours to
+             * write back into it - a caller whose apps sit in read-only
+             * storage would take a SIGSEGV on the store. Same boundary the
+             * envar harvest below respects: above the copy we are running
+             * on the caller's memory. */
+            nappinfo = aptr->ninfo;
+            if (0 == nappinfo) {
                 /* look for the info marked as "end" - test the bound
                  * before the dereference, or the guard below can never
                  * be reached (we would have walked off the array first) */
@@ -378,20 +398,31 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                     PMIX_RELEASE(fcd);
                     return PMIX_ERR_BAD_PARAM;
                 }
-                aptr->ninfo = m;
+                nappinfo = m;
             }
 
             // copy the info array
-            if (0 < aptr->ninfo) {
-                fcd->apps[n].ninfo = aptr->ninfo;
-                PMIX_INFO_CREATE(fcd->apps[n].info, fcd->apps[n].ninfo);
-                for (m=0; m < aptr->ninfo; m++) {
+            if (0 < nappinfo) {
+                PMIX_INFO_CREATE(fcd->apps[n].info, nappinfo);
+                if (PMIX_UNLIKELY(NULL == fcd->apps[n].info)) {
+                    PMIX_RELEASE(fcd);
+                    return PMIX_ERR_NOMEM;
+                }
+                /* only now that the array exists, so a failure above does
+                 * not leave the app claiming directives it does not have */
+                fcd->apps[n].ninfo = nappinfo;
+                for (m = 0; m < nappinfo; m++) {
                     PMIX_INFO_XFER(&fcd->apps[n].info[m], &aptr->info[m]);
                 }
             }
         }
 
-        if (!jobenvars) {
+        /* an app-level harvest applies to *this* app's environment only, so
+         * it must not be recorded as having covered the job - doing so meant
+         * the first app carrying the directive was the only one served, and
+         * an MPMD spawn whose second app asked for its own programming
+         * model's envars silently got none */
+        if (!joblevel_envars) {
             for (m = 0; m < fcd->apps[n].ninfo; m++) {
                 if (PMIX_CHECK_KEY(&fcd->apps[n].info[m], PMIX_SETUP_APP_ENVARS)) {
                     PMIX_CONSTRUCT(&ilist, pmix_list_t);
@@ -412,7 +443,6 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                         PMIx_Setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true,
                                     &fcd->apps[n].env);
                     }
-                    jobenvars = true;
                     PMIX_LIST_DESTRUCT(&ilist);
                     break;
                 }
