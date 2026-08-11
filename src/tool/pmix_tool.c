@@ -1802,6 +1802,13 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
      * cycle. pmix_server_initialize (called unconditionally from
      * PMIx_tool_init) reconstructs all of these on the next init. */
     PMIX_DESTRUCT(&pmix_server_globals.clients);
+    for (n = 0; n < pmix_server_globals.peer_cache.size; n++) {
+        peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.peer_cache, n);
+        if (NULL != peer) {
+            PMIX_RELEASE(peer);
+        }
+    }
+    PMIX_DESTRUCT(&pmix_server_globals.peer_cache);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.remote_pnd);

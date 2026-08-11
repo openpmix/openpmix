@@ -84,6 +84,7 @@ pmix_server_globals_t pmix_server_globals = {
     .module_set = false,
     .nspaces = PMIX_LIST_STATIC_INIT,
     .clients = PMIX_POINTER_ARRAY_STATIC_INIT,
+    .peer_cache = PMIX_POINTER_ARRAY_STATIC_INIT,
     .collectives = PMIX_LIST_STATIC_INIT,
     .remote_pnd = PMIX_LIST_STATIC_INIT,
     .local_reqs = PMIX_LIST_STATIC_INIT,
@@ -334,6 +335,8 @@ pmix_status_t pmix_server_initialize(void)
     /* setup the server-specific globals */
     PMIX_CONSTRUCT(&pmix_server_globals.clients, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_server_globals.clients, 1, INT_MAX, 1);
+    PMIX_CONSTRUCT(&pmix_server_globals.peer_cache, pmix_pointer_array_t);
+    pmix_pointer_array_init(&pmix_server_globals.peer_cache, 1, INT_MAX, 1);
     PMIX_CONSTRUCT(&pmix_server_globals.nspaces, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.collectives, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.remote_pnd, pmix_list_t);
@@ -1100,6 +1103,15 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
         }
     }
     PMIX_DESTRUCT(&pmix_server_globals.clients);
+    /* the synthetic peers we built to pack for foreign nspaces are ours
+     * alone - nothing else holds a reference on them */
+    for (i = 0; i < pmix_server_globals.peer_cache.size; i++) {
+        peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.peer_cache, i);
+        if (NULL != peer) {
+            PMIX_RELEASE(peer);
+        }
+    }
+    PMIX_DESTRUCT(&pmix_server_globals.peer_cache);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.remote_pnd);

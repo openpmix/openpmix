@@ -153,6 +153,14 @@ typedef struct {
     bool module_set;    // pmix_host_server has been set
     pmix_list_t nspaces;          // list of pmix_nspace_t for the nspaces we know about
     pmix_pointer_array_t clients; // array of pmix_peer_t local clients
+    /* array of synthetic pmix_peer_t objects created solely to carry the
+     * bfrops module of a foreign nspace we have been asked to pack data
+     * for. These are NOT local clients: they have no rank_info, no socket
+     * and no process behind them, so they are kept out of the clients
+     * array - everything that walks that array (monitoring, cleanup
+     * targeting, tool identity checks, peer lookup) reads peer->info as a
+     * matter of course. See _findpeer() in src/common/pmix_data.c */
+    pmix_pointer_array_t peer_cache;
     pmix_list_t collectives;      // list of active pmix_server_trkr_t
     pmix_list_t remote_pnd; // list of pmix_dmdx_remote_t awaiting arrival of data fror servicing
                             // remote req's
