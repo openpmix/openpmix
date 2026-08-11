@@ -925,6 +925,25 @@ callback with a status before discarding the tracker: those requesters are
 same reference-counting trap as the one below - the difference is only
 whether the waiters deserve to be told.
 
+**And that includes finalize, where a `PMIX_LIST_DESTRUCT` of
+`local_reqs` does nothing at all.** Destructing the list drops only each
+tracker's *creation* reference, and every request parked on it holds one
+of its own - so the tracker, its info array, each request, the server
+caddy each request carries and the peer that caddy retains all survive,
+now unreachable. Both roles that own the list (`PMIx_server_finalize` and
+`PMIx_tool_finalize`) therefore drain it with
+`pmix_server_fail_local_reqs` first, above the point where the peers are
+released. `PMIx_Progress_thread_stop` has already run by then, so
+`pmix_server_get_cbfunc` takes its `progress_thread_stopped` arm and
+simply releases the caddy rather than trying to reply to a client on a
+listener that is down. This is why `dmrqdes` does not release
+`req->cbdata` itself and carries a comment saying so: the single
+reference on that caddy travels with the request only until the request
+is answered, and the two paths that discard one unanswered
+(`discard_local_tracker`, which leaves it to the switchyard, and
+`pmix_server_fail_local_reqs`) own it explicitly. Covered by the last
+case in `test/unit/server_get.c`.
+
 **`remote_pnd` is the same trap pointing the other way.** It holds the
 *host's* `PMIx_server_dmodex_request` calls (`pmix_server_dmodex.c`),
 parked when the local client they name has not committed its data yet -

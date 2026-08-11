@@ -61,8 +61,11 @@
  *   WILDCARD rank                  -> job-level data handed to the callback
  *   WILDCARD, missing reserved key -> PMIX_ERR_NOT_FOUND, callback untouched
  *   WILDCARD, missing plain key    -> unchanged: success, empty payload
+ *   local rank not yet connected   -> parked, and answered PMIX_ERR_UNREACH
+ *                                     by PMIx_server_finalize
  *
- * Every case additionally asserts that the request left local_reqs empty,
+ * Every case but the last additionally asserts that the request left
+ * local_reqs empty,
  * because a server that parks a request it can never answer hangs the
  * calling client rather than failing it.
  *
@@ -469,7 +472,30 @@ int main(int argc, char **argv)
     report("wildcard get of a missing non-reserved key parks nothing",
            nothing_parked());
 
+    /* --- a request still parked when the server finalizes ----------- */
+    /* Same target as the IMMEDIATE case above, but willing to wait: rank 0
+     * is registered and has not connected, so the request is parked on
+     * local_reqs to await its commit. No PMIX_TIMEOUT is given and this
+     * arm passes a zero timeval, so nothing is armed that could answer the
+     * request behind our back - it is still sitting there when finalize
+     * runs. This has to be the last case, since everything above asserts
+     * that local_reqs is empty. */
+    rc = do_get(GETUT_NSPACE, 0, "some.local.key", NULL, 0);
+    report("unconnected local rank defers the request", PMIX_SUCCESS == rc);
+    report("deferred request parks a tracker", !nothing_parked());
+    report("deferred request is not answered while it waits", !cb_fired);
+
     PMIx_server_finalize();
+
+    /* Finalize owes that requester an answer, and owes itself the caddy
+     * back. A bare list destruct gives neither: every request parked on a
+     * tracker holds a reference on it, so destructing local_reqs drops
+     * only the creation reference and leaves the tracker, the request, the
+     * server caddy it holds and the peer that caddy retains alive and
+     * unreachable. The callback firing is the visible half; the leak is
+     * the half you need valgrind to see. */
+    report("finalize answers a parked requester",
+           cb_fired && PMIX_ERR_UNREACH == cb_status);
 
     fprintf(stdout, "server_get: %d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;
