@@ -7,6 +7,51 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - PMIx_Spawn and PMIx_Spawn_nb no longer treat a non-NULL job_info
+   pointer carrying a zero ninfo as an empty directive list. Such a call
+   failed the whole spawn with PMIX_ERR_EMPTY, a status naming nothing
+   the caller had done wrong; (info, ninfo) is a pair and a zero count
+   means "no directives" whatever the pointer is
+ - PMIx_Spawn no longer writes into the caller's const pmix_app_t apps[].
+   An app may declare its directives by terminating them with an
+   end-marked info rather than setting ninfo, and the count worked out
+   from that scan was stored back into the caller's array - which
+   segfaults for a caller whose apps sit in read-only storage
+ - An app-level PMIX_SETUP_APP_ENVARS directive is now honored for every
+   app that carries one. Only the first such app was served, because the
+   per-app harvest set the flag meaning "the job-level directive already
+   covered every app" - so an MPMD spawn whose second app asked for its
+   own programming model's envars silently got none. This affects the
+   roles that have a pmdl framework open: tool, launcher and server
+ - PMIx_Compute_distances no longer reports device distances it does not
+   have. The reply handler took the count the server said it was sending
+   rather than the count that arrived, so an application could be handed
+   entries that were never written - zeroed, so a caller reading uuid
+   found a NULL. The distance array and its count now agree on every
+   path, including the failure ones
+ - PMIx_Resolve_peers and PMIx_Resolve_nodes no longer crash on a node
+   that hosts none of a namespace's processes, and report the documented
+   empty result - PMIX_SUCCESS with a NULL array and a zero count -
+   rather than PMIX_ERR_NOMEM. Both the client and server halves of the
+   computation had this
+ - PMIx_Lookup no longer reports a result count larger than the number of
+   entries it actually unpacked
+ - PMIx_Fabric_update now reports a refresh the server never completed as
+   a failure instead of returning PMIX_SUCCESS with the caller's
+   pmix_fabric_t left stale
+ - A group reference that expands to no members at all is now rejected
+   with PMIX_ERR_NOT_FOUND rather than yielding a NULL participant array
+   that the caller then indexes
+ - PMIx_Group_invite and PMIx_Group_invite_nb no longer race their own
+   observer registration. An invitation could resolve inside the
+   registration call, after which the setup path was still writing to a
+   tracker the announcement chain already owned - which lost a
+   PMIX_GROUP_OPTIONAL directive, armed a timer on freed memory, and in
+   the non-blocking form used the tracker after it had been released
+ - A PMIx_Get answered on the caller's thread that then declines the
+   short-circuit no longer leaves its fetched entries behind for the
+   ordinary path to inherit, which turned a scalar get into a
+   PMIX_DATA_ARRAY
  - A PMIx_Get for a reserved key that is not held locally is now allowed
    to reach the host environment. The client used to force PMIX_IMMEDIATE
    onto any such request, which confines the search to what the local
