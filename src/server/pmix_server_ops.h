@@ -442,6 +442,18 @@ PMIX_EXPORT pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
                                                       pmix_info_t *pinfo,
                                                       size_t npinfo);
 
+/* An info that is supposed to carry an array of some element type carries
+ * whatever the sender actually put there. Everything screened with this
+ * arrives either off the wire from a local client or down from the host,
+ * so reading the union on the strength of the key alone means
+ * dereferencing a pointer the sender chose - or walking past the end of a
+ * correctly-tagged array of some other type. Confirm the value is a data
+ * array, of the element type we are about to cast it to, and long enough
+ * to index. */
+PMIX_EXPORT bool pmix_server_valid_darray(const pmix_info_t *info,
+                                          pmix_data_type_t type,
+                                          size_t minsz);
+
 /* The host-server completion callbacks the switchyard hands to its
  * up-calls. Each one may run in the host's thread context, so each does
  * nothing but thread-shift onto the progress thread, landing in a static

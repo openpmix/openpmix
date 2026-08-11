@@ -433,6 +433,93 @@ Never touch `pmix_server_globals` state before the thread-shift — do it
 inside the `_worker(int sd, short args, void *cbdata)` handler that runs
 on the progress thread.
 
+**`PMIX_RELEASE` NULLs the pointer it is given** when that release drops
+the last reference — both the debug and the optimized spelling end with
+`object = NULL` (`src/class/pmix_object.h:543`). So a handler that
+releases a caddy on an error arm and then falls into a shared exit label
+that tests `NULL == fcd` is correct, not a use-after-free, and an
+`x = NULL` written after a release is redundant rather than load-bearing.
+`_setup_app` reads exactly that way and was audited as a UAF twice before
+this was written down. The one case where it does *not* hold is an object
+someone else still holds a reference to — there the pointer survives the
+call, which is the intended meaning.
+
+## Preparing a job (`pmix_server_setup.c`)
+
+Everything here runs before a job's processes do. Three things in it are
+easy to get wrong and were.
+
+**A payload that lives in the caller's info array must be borrowed, not
+loaded.** `PMIX_LOAD_BUFFER` does not copy: it points the buffer at the
+payload it is handed and then NULLs the source pointer and zeroes the
+size. `_register_resources` used it on the `PMIX_GROUP_JOB_INFO` byte
+object, which sits inside `cd->info` — the host's own array, which the
+host owns and keeps valid until our callback fires. So the handler
+emptied the host's info element (a second registration with the same
+array then silently found no job info) and leaked the blob, because the
+buffer is never destructed — and destructing it would have been worse,
+freeing memory the host still owns. Use
+`PMIX_LOAD_BUFFER_NON_DESTRUCT` and do not destruct, the same bargain
+`_mdxcbfunc` makes with `xfer`.
+
+**An unpack loop that ends on `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER`
+must not report it.** Running the buffer dry is how the job-info walk
+*finishes*, and that status was still in `rc` when the handler drove the
+completion — so every registration carrying job info told the host it had
+failed, and the blocking form returned the error instead of
+`PMIX_OPERATION_SUCCEEDED`. The handler now keeps the status it reports
+in a variable of its own that records the *first* failure, since the
+transient `rc` of the last sub-operation is not the result of the call
+either: a later success used to erase an earlier error just as readily.
+
+**The global data cache appends, so deregistration has to clear every
+match.** `_register_resources` adds a `pmix_kval_t` to
+`pmix_server_globals.gdata` for any key that is not one of the four group
+keys, without checking whether that key is already there — so a host that
+re-registers a key to update its value leaves two entries, and
+`gds/hash` walks the list in order when it seeds a namespace, which makes
+the *later* one the one in effect. `_deregister_resources` stopped at the
+first match, so it removed the shadowed entry and left the live one: the
+deregistration silently did nothing. It now clears every entry carrying
+the key, which is what the man page ("each matching entry") requires.
+Note what is still missing there: the man page also describes narrowing a
+removal with qualifiers — a `PMIX_NODE_INFO_ARRAY` naming one node's
+fabric device — and nothing implements that, so such a request removes
+every entry carrying that key rather than the one described.
+
+**The helper APIs are pass-throughs, so the public entry point is the
+only place their arguments get screened.** `PMIx_generate_regex` /
+`_ppn` hand `input` and `regexp` straight to a `preg` component, and
+`preg/raw` `strncmp`s the one and writes through the other without
+looking; `PMIx_server_generate_locality_string` / `_cpuset_string` hand
+theirs to hwloc, which reports a bad cpuset *by writing NULL through the
+output pointer* and therefore cannot be the code that screens it. All
+four took the library down on a NULL. The `regex2` pair always screened
+its arguments here; the others now match it. (`PMIx_server_generate_cpuset`
+is the exception that needs nothing: `pmix_hwloc_parse_cpuset_string`
+screens both of its arguments and says so.)
+
+**And the group arrays a host registers need the same shape screen the
+group collective applies to the ones a client sends.** The
+`PMIX_GROUP_INFO` / `PMIX_GROUP_INFO_ARRAY` and `PMIX_GROUP_ENDPT_DATA`
+arms read `value.data.darray` — and, inside an endpoint array,
+`value.data.proc` and `value.data.scope` — on the strength of the key
+alone. `pmix_server_valid_darray` is that screen, shared with
+`pmix_server_group.c` through `pmix_server_ops.h`; positional element
+types still need checking by hand, since the array being of the right
+element type says nothing about what a given element carries.
+
+One thing to know before writing a host against this: `pmix_common.h`
+documents `PMIX_GROUP_ENDPT_DATA` as a `pmix_byte_object_t`, while both
+this code and
+[`PMIx_server_register_resources(3)`](../../docs/man/man3/PMIx_server_register_resources.3.rst)
+treat it as a `pmix_data_array_t` of `pmix_info_t` whose first two
+elements are the proc ID and the scope. Nothing in the tree produces the
+attribute, so neither statement is being exercised. The header comment
+looks like the stale one — `PMIX_GROUP_JOB_INFO` immediately below it
+*is* a byte object and is read as one — but that has not been settled
+against the Standard, so it is flagged here rather than quietly changed.
+
 ## The collective-tracker engine (fence / connect / disconnect)
 
 All three of these collectives share `pmix_server_trkr_t` and the engine
@@ -1216,6 +1303,22 @@ Two suites cover the halves:
   whose hwloc finds no OS devices (a bare macOS one), because there is
   then no answer to hold the contract against; the leak half of it only
   shows under valgrind.
+- [`test/unit/server_setup.c`](../../test/unit/server_setup.c) covers the
+  job-preparation calls above, driving every one of them through its
+  public entry point in the blocking form — which makes the ordering
+  deterministic without a single sleep, since a blocking
+  `PMIx_server_*` call does not return until its handler has run. It
+  builds its `PMIX_GROUP_JOB_INFO` blob with
+  `PMIx_server_collect_job_info`, which is what produces that format in
+  the first place, and then asserts both halves of the borrow rule: that
+  the call reports success rather than end-of-buffer, and that the
+  caller's byte object still has its bytes afterwards. It pairs every
+  mistyped array with a well-formed one, so the screens are held to
+  accepting what they should. Three groups of case there — the argument
+  screens and both mistyped arrays — take an unfixed library down rather
+  than failing it; that was checked by reverting each screen in turn, and
+  a regression therefore looks like an empty log and exit 139, not a FAIL
+  line.
 - [`test/unit/server_resolve.c`](../../test/unit/server_resolve.c) drives
   `pmix_server_resolve_peers` / `pmix_server_resolve_node` from
   hand-packed wire buffers against a host module with no `query` entry

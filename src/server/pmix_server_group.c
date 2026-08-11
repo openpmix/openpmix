@@ -405,16 +405,12 @@ newblock:
     return PMIX_SUCCESS;
 }
 
-/* An info that is supposed to carry an array of some element type carries
- * whatever the sender actually put there. Everything screened with this
- * arrives either off the wire from a local client or back down from the
- * host, so reading the union on the strength of the key alone means
- * dereferencing a pointer the sender chose - or walking past the end of a
- * correctly-tagged array of some other type. Confirm the value is a data
- * array, of the element type we are about to cast it to, and long enough
- * to index. */
-static bool valid_darray(const pmix_info_t *info, pmix_data_type_t type,
-                         size_t minsz)
+/* Confirm an info really carries a data array of the element type we are
+ * about to cast it to - see the header for why every array from a client
+ * or from the host needs this. Shared with pmix_server_setup.c, which
+ * screens the same group arrays when the host registers them directly. */
+bool pmix_server_valid_darray(const pmix_info_t *info, pmix_data_type_t type,
+                              size_t minsz)
 {
     if (PMIX_DATA_ARRAY != info->value.type ||
         NULL == info->value.data.darray ||
@@ -558,7 +554,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
             }
 
         } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_MEMBERSHIP)) {
-            if (!valid_darray(&scd->info[n], PMIX_PROC, 1)) {
+            if (!pmix_server_valid_darray(&scd->info[n], PMIX_PROC, 1)) {
                 PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
                 continue;
             }
@@ -567,7 +563,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
 
         } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_INFO_ARRAY) ||
                    PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_INFO)) {
-            if (!valid_darray(&scd->info[n], PMIX_INFO, 1)) {
+            if (!pmix_server_valid_darray(&scd->info[n], PMIX_INFO, 1)) {
                 PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
                 continue;
             }
@@ -616,7 +612,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
             } else {
                 // contains an array of group info arrays
                 for (n=0; n < ninfo; n++) {
-                    if (!valid_darray(&iptr[n], PMIX_INFO, 1)) {
+                    if (!pmix_server_valid_darray(&iptr[n], PMIX_INFO, 1)) {
                         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
                         scd->status = PMIX_ERR_TYPE_MISMATCH;
                         goto reply;
@@ -962,8 +958,8 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
                     if (PMIX_CHECK_KEY(&blk->info[m], PMIX_GROUP_ADD_MEMBERS)) {
                         /* both of these were unpacked off the wire, so the
                          * key having matched says nothing about the union */
-                        if (!valid_darray(&blk->info[m], PMIX_PROC, 1) ||
-                            !valid_darray(&trk->info[n], PMIX_PROC, 1)) {
+                        if (!pmix_server_valid_darray(&blk->info[m], PMIX_PROC, 1) ||
+                            !pmix_server_valid_darray(&trk->info[n], PMIX_PROC, 1)) {
                             rc = PMIX_ERR_TYPE_MISMATCH;
                             PMIX_ERROR_LOG(rc);
                             goto bailout;
