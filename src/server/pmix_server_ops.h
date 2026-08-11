@@ -547,6 +547,12 @@ PMIX_EXPORT void pmix_server_set_collective_status(pmix_info_t *info, size_t nin
 
 PMIX_EXPORT pmix_status_t pmix_server_get_collective_status(pmix_info_t *info, size_t ninfo);
 
+/* the two lost-connection entry points, one per tracker family - both are
+ * called from lost_connection() in the PTL base, and both account only for
+ * an abnormal termination (a peer that called PMIx_Finalize remains an
+ * expected participant and is ignored) */
+PMIX_EXPORT void pmix_server_trk_peer_lost(pmix_peer_t *peer);
+
 PMIX_EXPORT void pmix_server_grp_peer_lost(pmix_peer_t *peer);
 
 PMIX_EXPORT void pmix_server_grp_member_left(const char *grpid, const pmix_proc_t *proc);

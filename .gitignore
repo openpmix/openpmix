@@ -279,6 +279,7 @@ test/unit/collective_status
 test/unit/collect_job_info
 test/unit/trk_complete
 test/unit/tracker_match
+test/unit/trk_peer_lost
 test/unit/client_cycle
 test/unit/tool_cycle
 test/unit/event_chain

@@ -142,10 +142,11 @@ three sets of local participants:
     contribution.
 
 ``departed``
-    Local participants that were lost (connection dropped, abnormal
-    termination) **before** contributing. A participant enters
-    ``departed`` only if it was expected and had not already
-    contributed.
+    Local participants that were lost (abnormal termination) **before**
+    contributing. A participant enters ``departed`` only if it was
+    expected and had not already contributed. A rank that dropped its
+    connection by calling ``PMIx_Finalize`` is **not** departed — see
+    *A graceful finalize is not a departure* below.
 
 Completion rule
 ~~~~~~~~~~~~~~~
@@ -205,6 +206,42 @@ Note the asymmetry with the current implementation, which in every case
 both decrements the expected count *and* removes any prior contribution.
 Case A above forbids both of those adjustments; that is the specific
 change that fixes the vulnerability.
+
+A graceful finalize is not a departure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Neither case applies to a socket that dropped because the client called
+``PMIx_Finalize``. Such a rank has **not** left the accounting: the
+server deliberately keeps it — ``nptr->nlocalprocs`` is not decremented,
+the peer object is tombstoned rather than retired, and the rank stays a
+registered member of its namespace — precisely so it may ``PMIx_Init``
+again and be counted. Every tracker's ``expected`` set therefore still
+contains it, and it is still free to contribute.
+
+Recording it in ``departed`` as well counts the one rank twice, and the
+collective can then complete without it. The MPI Sessions cycle
+(``PMIx_Init`` → fence → ``PMIx_Finalize``, repeatedly) makes that
+routine: the ranks of cycle *N* finalizing behind a faster peer that has
+already opened cycle *N+1*'s fence satisfy that fence's ``expected``
+count between them, so it completes on a single contribution and reports
+``PMIX_ERR_LOST_CONNECTION``. The fence sequence then desynchronizes by
+whole cycles — the surviving ranks open a fence the fast rank has
+already passed, its next fence merges into theirs (a collect/no-collect
+mismatch there surfaces as ``PMIX_ERR_INVALID_ARG``), and the run either
+limps on out of step or wedges. See issue #4113, and #3931 for the
+original diagnosis.
+
+The rule is therefore: **loss accounting applies to an abnormal
+termination only.** A finalizing rank that had already contributed is
+Case A in any event, so ignoring the finalize entirely gives up nothing
+but Case B — which is the case that must not fire here.
+
+The corollary is that a rank which finalizes and never returns, while
+its peers wait in a collective it was expected to join, leaves them
+waiting. That program is erroneous — it is no different from a rank that
+simply never calls — and the remedy is the one PMIx already offers for
+it, ``PMIX_TIMEOUT``. The alternative, guessing that the rank is not
+coming back, is what breaks every well-formed program that recycles.
 
 Status reporting on loss
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -366,6 +403,10 @@ all times:
    completion** for that tracker.
 #. **The rules apply uniformly** to fence, connect, disconnect, and group
    operations, and to both directly-connected clients and their clones.
+#. **Loss accounting is driven by abnormal termination only.** A rank
+   whose connection dropped because it called ``PMIx_Finalize`` is never
+   recorded as departed and never degrades a collective's status, since
+   it remains in the expected set and may return.
 #. **Participation logic is shared, not copied.** Fence, connect, and
    disconnect are tracked by one tracker representation with one
    completion predicate and one lost-connection routine. Group operations,

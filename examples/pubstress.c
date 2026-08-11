@@ -55,6 +55,8 @@ int main(int argc, char **argv)
     int iters;
     size_t ninfo, bcount=0;
     char *keys[3];
+    pmix_proc_t *fenceprocs;
+    size_t nfence;
 
     if (1 < argc) {
         iters = strtol(argv[1], NULL, 10);
@@ -269,8 +271,25 @@ int main(int argc, char **argv)
         }
     }
 
-    PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
-    rc = PMIx_Fence(&proc, 1, NULL, 0);
+    /* Hold the BIGTEST participants here so that rank 2 does not unpublish
+     * those keys before ranks 3+ have finished looking them up. Name only
+     * those ranks: ranks 0 and 1 ran the FOOBAR/BAZ exchange above and have
+     * already gone on to PMIx_Finalize, so a wildcard fence would name them
+     * as participants and wait forever for a contribution that will never
+     * arrive. A rank that departs normally remains an expected participant
+     * in any collective that names it. */
+    nfence = nprocs - 2;
+    PMIX_PROC_CREATE(fenceprocs, nfence);
+    for (n = 0; n < (int) nfence; n++) {
+        PMIX_LOAD_PROCID(&fenceprocs[n], myproc.nspace, n + 2);
+    }
+    rc = PMIx_Fence(fenceprocs, nfence, NULL, 0);
+    PMIX_PROC_FREE(fenceprocs, nfence);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        goto done;
+    }
     if (2 == myproc.rank) {
         if (0 > asprintf(&keys[0], "BIGTEST:%s.%u:%d", myproc.nspace, myproc.rank, 0)) {
             goto done;

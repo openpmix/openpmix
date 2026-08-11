@@ -173,8 +173,15 @@ practice* for the rationale.
 
 The two tracker lists therefore remain separate
 (``pmix_server_globals.collectives`` and ``.grp_collectives``);
-``lost_connection`` traverses both — the fence family inline and the
-group family through the exported ``pmix_server_grp_peer_lost``.
+``lost_connection`` traverses both, through one exported entry point per
+family: ``pmix_server_trk_peer_lost`` (fence family, in
+``pmix_server_fence.c`` beside the tracker engine it walks) and
+``pmix_server_grp_peer_lost`` (group family). The fence-family routine
+was inline in ``lost_connection`` when first written and was lifted out
+later, so that the two families' loss accounting reads the same way and
+so that either can be driven directly by a unit test
+(``test/unit/trk_peer_lost.c``). References below to the fence family's
+"block in ``lost_connection``" describe that routine.
 
 Rewriting ``lost_connection`` (fence family — done)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
