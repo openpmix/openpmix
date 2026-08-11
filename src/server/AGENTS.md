@@ -573,16 +573,19 @@ alone. `pmix_server_valid_darray` is that screen, shared with
 types still need checking by hand, since the array being of the right
 element type says nothing about what a given element carries.
 
-One thing to know before writing a host against this: `pmix_common.h`
-documents `PMIX_GROUP_ENDPT_DATA` as a `pmix_byte_object_t`, while both
-this code and
-[`PMIx_server_register_resources(3)`](../../docs/man/man3/PMIx_server_register_resources.3.rst)
-treat it as a `pmix_data_array_t` of `pmix_info_t` whose first two
-elements are the proc ID and the scope. Nothing in the tree produces the
-attribute, so neither statement is being exercised. The header comment
-looks like the stale one — `PMIX_GROUP_JOB_INFO` immediately below it
-*is* a byte object and is read as one — but that has not been settled
-against the Standard, so it is flagged here rather than quietly changed.
+One thing to know before writing a host against this: the shape
+`PMIX_GROUP_ENDPT_DATA` carries here is the one a client builds. The
+array is `get_endpts()`'s in
+[`src/client/pmix_client_group.c`](../client/pmix_client_group.c) — the
+contributor's `PMIX_PROCID`, then the `PMIX_DATA_SCOPE` its remaining
+elements are to be stored at — contributed to the construct as
+`PMIX_PROC_INFO_ARRAY` and relabelled by the host when it hands each
+contribution back through this API. `pmix_common.h` described the
+attribute as a `pmix_byte_object_t` until August 2026; that was the
+shape of a group-construct exchange the library stopped performing
+several releases ago, and nothing in the tree had produced or consumed
+it since. `PMIX_GROUP_JOB_INFO` immediately below it *is* a byte object
+and is read as one.
 
 ## The collective-tracker engine (fence / connect / disconnect)
 
