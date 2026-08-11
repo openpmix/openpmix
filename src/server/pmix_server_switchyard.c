@@ -123,8 +123,12 @@ static void op_cbfunc(pmix_status_t status, void *cbdata)
     /* need to thread-shift this callback */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* we cannot answer the client, but the caddy is ours either way -
+         * dropping it strands the RETAIN it holds on the peer, and with it
+         * the peer and everything hanging off it, for the life of the
+         * server. Same as the finalize-race arm above. */
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(cd);
         return;
     }
     scd->status = status;
@@ -150,8 +154,9 @@ static void op_cbfunc2(pmix_status_t status, void *cbdata)
     /* need to thread-shift this callback */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* the caddy is ours either way - see op_cbfunc */
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(cd);
         return;
     }
     scd->status = status;
@@ -212,30 +217,46 @@ cleanup:
     }
 }
 
+/* Unlike op_cbfunc, what the host hands back here is the resource-block
+ * handler's own pmix_setup_caddy_t (pmix_server_resblk passes "scd" as the
+ * cbdata of the up-call), with the switchyard's server caddy nested inside
+ * it on cbdata. So this one owns three things, and neither destructor
+ * reaches the other two: scaddes does not free "nspace" and does not touch
+ * "cbdata". Both early returns below released only the outermost object -
+ * declared, on top of that, as the wrong type - and stranded the server
+ * caddy, the RETAIN it holds on the requesting peer, and the block name. */
 static void resop_cbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_shift_caddy_t *scd;
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)cbdata;
+    pmix_shift_caddy_t *scdwrapper;
+    pmix_setup_caddy_t *scd = (pmix_setup_caddy_t *) cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) scd->cbdata;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:resop_cbfunc called with %s status",
                         PMIx_Error_string(status));
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
-        PMIX_RELEASE(cd);
-        return;
+        goto teardown;
     }
 
     /* need to thread-shift this callback */
-    scd = PMIX_NEW(pmix_shift_caddy_t);
-    if (NULL == scd) {
-        /* nothing we can do */
+    scdwrapper = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scdwrapper) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        return;
+        goto teardown;
     }
-    scd->status = status;
-    scd->cbdata = cbdata;
-    PMIX_THREADSHIFT(scd, _resopcbfunc);
+    scdwrapper->status = status;
+    scdwrapper->cbdata = cbdata;
+    PMIX_THREADSHIFT(scdwrapper, _resopcbfunc);
+    return;
+
+teardown:
+    /* the same three releases _resopcbfunc makes on its way out */
+    PMIX_RELEASE(cd);
+    if (NULL != scd->nspace) {
+        free(scd->nspace);
+    }
+    PMIX_RELEASE(scd);
 }
 
 /* the switchyard is the primary message handling function. It's purpose
