@@ -1668,12 +1668,25 @@ misbehave by design).
   `_getnb_cbfunc` in `pmix_client_get.c` initializes its reported status
   to `PMIX_ERR_NOT_FOUND` and only overwrites it if a value actually
   turns up, so an empty success degrades to not-found at the requester -
-  the same bargain as the `refresh_cache` status above. And the
-  `direct_modex` up-call sites treat `PMIX_OPERATION_SUCCEEDED` as a
-  refusal rather than handling it as the third arm of the usual
-  tri-state. There is no coherent "done now, no callback" for this
-  up-call: its entire product is a data blob delivered through the
-  callback, and the header describes no such arm.
+  the same bargain as the `refresh_cache` status above.
+- **`PMIX_OPERATION_SUCCEEDED` is not a permitted return from `spawn` or
+  `direct_modex`, and both now say so.** The tri-state's third arm means
+  "done now, no callback — you invoke the completion yourself", which
+  works only where the operation's whole result is a status. These two
+  produce a result the return code cannot carry — the namespace of the
+  job that was launched, and the requested data blob — and the callback
+  is its only channel. Both `direct_modex` sites here already treated
+  the status as a refusal; they now emit the
+  `atomic-completion-unsupported` diagnostic naming the operation, as
+  `pmix_server_spawn` and `PMIx_Spawn_nb` do, so a host learns why its
+  request was failed rather than having it silently degrade. **The
+  library always supplies a non-NULL `cbfunc` to both**, so a host that
+  finished the work immediately invokes the callback — it may do so
+  before returning — and returns `PMIX_SUCCESS`. Every other up-call in
+  this directory can express its result in the status, and takes the
+  third arm normally. This is documented for hosts on the
+  [`pmix_server_module_t(5)`](../../docs/man/man5/pmix_server_module_t.5.rst)
+  man page.
 - **A public API's non-blocking form still has to clean up when the
   caller passes no callback.** `PMIx_server_setup_application` and
   `PMIx_server_collect_inventory` take a callback and have no blocking

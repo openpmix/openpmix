@@ -107,10 +107,26 @@ completion will be signaled:
   the final result.
 * ``PMIX_OPERATION_SUCCEEDED`` |mdash| the operation completed immediately and
   successfully. The host **must not** invoke ``cbfunc``; the library treats the
-  operation as already finished.
+  operation as already finished. **Not permitted where the operation's result
+  can only be delivered through the callback** |mdash| see below.
 * Any other (error) value |mdash| the request failed and the host **will not**
   invoke ``cbfunc``. The library reports the error to the client directly and
   releases any state it was holding for the request.
+
+.. important:: ``PMIX_OPERATION_SUCCEEDED`` is **not** an allowed return from
+               ``spawn`` or ``direct_modex``, and is treated as an error by the
+               library. Those two operations produce a result |mdash| the
+               namespace of the launched job, and the requested data blob
+               |mdash| that the return code cannot carry, so the only channel
+               for it is ``cbfunc``. The library always supplies a non-``NULL``
+               ``cbfunc`` to both, so a host that has completed the work
+               immediately loses nothing by using it: **invoke the callback,
+               which may be done before returning, and return
+               ``PMIX_SUCCESS``**. A host that returns
+               ``PMIX_OPERATION_SUCCEEDED`` from either receives a diagnostic
+               naming the operation, and the request is failed to its
+               requestor with ``PMIX_ERR_NOT_SUPPORTED`` rather than being
+               reported as a success carrying no result.
 
 **Data ownership.** All data passed into a host callback is owned by the PMIx
 server library and must not be freed by the host. Conversely, data the host
@@ -219,7 +235,9 @@ satisfied from local data). The blob is returned through a
 ``pmix_modex_cbfunc_t``. A timeout directive may be supplied to bound the wait.
 The request may carry a ``PMIX_REQUIRED_KEY`` (char*) naming the specific key the
 requester is waiting on, allowing the host to defer its response until that key
-has been posted by the target process.
+has been posted by the target process. Like ``spawn``, this operation's result
+reaches the requestor only through the callback, so
+``PMIX_OPERATION_SUCCEEDED`` is not an allowed return from it.
 
 publish
 ^^^^^^^
@@ -253,7 +271,9 @@ spawn
 :ref:`PMIx_Spawn(3) <man3-PMIx_Spawn>`. Launches the given array of applications.
 A failure to start any process causes the entire request to be terminated and an
 error returned. The namespace of the spawned job is returned through a
-``pmix_spawn_cbfunc_t``. The job-level information accompanying the request may
+``pmix_spawn_cbfunc_t``, which is the **only** channel for it |mdash| so this
+operation must not answer ``PMIX_OPERATION_SUCCEEDED``, even when the launch
+completed before the callback returned. See the return-value contract above. The job-level information accompanying the request may
 include ``PMIX_REQUESTOR_IS_TOOL`` or ``PMIX_REQUESTOR_IS_CLIENT`` (bool),
 indicating whether the process that issued the spawn request is a tool or a
 client, respectively; a host may use this to apply different policies to

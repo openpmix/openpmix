@@ -1735,21 +1735,35 @@ other.
 
 *Noted, not changed — do not re-open these without new evidence:*
 
-- **A host `spawn` that returns `PMIX_OPERATION_SUCCEEDED` is dropped on
-  the floor.** The tree-wide host up-call convention (see
-  [`src/server/AGENTS.md`](../server/AGENTS.md)) is that
-  `PMIX_OPERATION_SUCCEEDED` means "done now, I will not call back — you
-  invoke the completion yourself", and this site treats it as an error:
-  it releases the caddy, never fires `fcd->spcbfunc`, and the blocking
-  `PMIx_Spawn` wrapper then maps the status to `PMIX_SUCCESS` and hands
-  the caller an **empty nspace**. Left alone because the spawn contract has
-  no synchronous channel for the namespace in the first place — a host
-  completing atomically has no way to tell us what it launched — so the
-  return is not really usable here; because `pmix_server_spawn` in
-  `src/server` has the identical shape, making this a convention rather
-  than a divergence; and because nothing in the tree returns it (`pfexec`
-  does not, and the in-tree host modules do not). Closing it properly means
-  extending the `pmix_server_spawn_fn_t` contract, not editing this branch.
+- **A host `spawn` that returns `PMIX_OPERATION_SUCCEEDED` is now
+  refused, and the reason generalizes.** The tree-wide up-call
+  convention (see [`src/server/AGENTS.md`](../server/AGENTS.md)) is that
+  the status means "done now, I will not call back — you invoke the
+  completion yourself". That works only where the operation's whole
+  result is a status. **Spawn's result is the namespace of the job that
+  was started, and the callback is its only channel** — so an atomic
+  completion has nowhere to put the answer. Until August 2026 this site
+  passed the status straight back, and the blocking `PMIx_Spawn` wrapper
+  mapped it to `PMIX_SUCCESS` with the caller's nspace left empty; the
+  remote path did the same by way of a synthesized status-only reply.
+  Both now emit the `atomic-completion-unsupported` diagnostic naming
+  the operation and fail the request with `PMIX_ERR_NOT_SUPPORTED`.
+
+  Two things follow. **The library always supplies a non-NULL `cbfunc`
+  to this up-call** — `localcbfunc` here, `pmix_server_spcbfunc` in
+  `src/server` — so a host that completed the work immediately loses
+  nothing: it invokes the callback, which it may do *before returning*,
+  and returns `PMIX_SUCCESS`. Both call sites are safe with an inline
+  callback, since each releases the caddy only when `rc != PMIX_SUCCESS`.
+  And **`PMIx_Spawn_nb` no longer returns `PMIX_OPERATION_SUCCEEDED` to
+  its caller**, which the Standard never defined for it — its return
+  section is a bare `\returnsimplenb`, unlike `PMIx_Fence_nb`, which
+  lists the status explicitly. The atomic-completion arm in the blocking
+  wrapper is gone with it; do not restore one.
+
+  `direct_modex` is the same class for the same reason (its product is a
+  data blob delivered through the callback) and now carries the same
+  diagnostic. Those two are the only up-calls in this position.
 - **The `spawn_iof_flags` stand-in is process-wide and is written from the
   caller's thread** (`stash_spawn_iof_flags`) while `spawn_or_global_flags()`
   in [`pmix_iof.c`](../common/pmix_iof.c) reads it on the progress thread.

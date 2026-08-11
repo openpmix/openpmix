@@ -41,3 +41,20 @@ data type:
 The value must be a string of the form "nspace.rank" - for example,
 "singleton.0". The server cannot register the singleton and is
 unable to continue.
+#
+[atomic-completion-unsupported]
+The host environment answered a request with PMIX_OPERATION_SUCCEEDED,
+which is not a permitted return for this operation:
+
+  Operation:   %s
+
+This operation reports a result - the namespace of a job that was
+launched, or the data that was requested - and the only channel for
+that result is the callback function the PMIx server library supplied.
+That library always supplies one. There is therefore no way to return
+a result alongside PMIX_OPERATION_SUCCEEDED, and no way for the
+requesting process to learn the answer.
+
+A host that has completed the work immediately should invoke the
+callback function - it may do so before returning - and return
+PMIX_SUCCESS. The request has been failed to its requestor.

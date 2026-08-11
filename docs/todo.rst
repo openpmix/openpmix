@@ -55,24 +55,6 @@ design and is the reason that component exists.  Any real fix has to
 answer the ``shmem3`` case first; the messaging half is not worth building
 on its own.
 
-A host ``spawn`` that returns ``PMIX_OPERATION_SUCCEEDED`` is dropped
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The tree-wide convention for host up-calls is that
-``PMIX_OPERATION_SUCCEEDED`` means "done now, I will not call back — you
-invoke the completion yourself".  Both ``PMIx_Spawn_nb`` and
-``pmix_server_spawn`` instead treat it as an error: the caddy is
-released, the completion never fires, and the blocking ``PMIx_Spawn``
-wrapper maps the status to ``PMIX_SUCCESS`` and hands the caller an
-**empty namespace**.
-
-It is left alone because the spawn contract has no synchronous channel
-for the namespace in the first place, so a host completing atomically
-has no way to say what it launched; because both sites have the same
-shape, making this a convention rather than a divergence; and because
-nothing in the tree returns it.  Closing it properly means extending the
-``pmix_server_spawn_fn_t`` contract.
-
 ``PMIX_DATA_SCOPE`` is read without a type check
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
