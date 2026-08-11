@@ -55,16 +55,6 @@ design and is the reason that component exists.  Any real fix has to
 answer the ``shmem3`` case first; the messaging half is not worth building
 on its own.
 
-``PMIX_DATA_SCOPE`` is read without a type check
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``process_request()`` in ``src/client`` reads
-``info[n].value.data.scope`` directly.  Unlike the neighboring
-directives this cannot crash — it is a scalar read out of the union —
-but a mistyped directive silently produces the wrong scope and therefore
-a wrong answer.  "Reject" and "ignore" are both defensible; the choice
-is a behavior decision.
-
 Deferred work
 -------------
 

@@ -340,6 +340,8 @@ int main(int argc, char **argv)
     static pmix_server_module_t mymodule = {0};
     pmix_status_t rc;
     pmix_info_t imm;
+    pmix_info_t scopeinfo;
+    pmix_scope_t scope;
     bool flag = true;
 
     (void) argc;
@@ -387,6 +389,25 @@ int main(int argc, char **argv)
     rc = do_get("no-such-nspace", 0, "some.key", &imm, 1);
     report("unknown nspace with IMMEDIATE reports not-found", PMIX_ERR_NOT_FOUND == rc);
     report("unknown nspace with IMMEDIATE parks nothing", nothing_parked());
+
+    /* --- a mistyped PMIX_DATA_SCOPE qualifier ----------------------- */
+    /* the directive arrives off the wire, so its type tag is the peer's
+     * word. Read raw, the scope would be the low bytes of a pointer -
+     * which cannot crash (a scope is only ever compared, never used as an
+     * index) but selects which table is searched, so the request would be
+     * answered confidently and wrongly */
+    PMIX_INFO_LOAD(&scopeinfo, PMIX_DATA_SCOPE, "not-a-scope", PMIX_STRING);
+    rc = do_get(GETUT_NSPACE, 0, "some.local.key", &scopeinfo, 1);
+    report("mistyped PMIX_DATA_SCOPE is rejected", PMIX_ERR_BAD_PARAM == rc);
+    report("mistyped PMIX_DATA_SCOPE parks nothing", nothing_parked());
+    PMIX_INFO_DESTRUCT(&scopeinfo);
+
+    /* and a well-formed one still reaches the ordinary answer */
+    scope = PMIX_LOCAL;
+    PMIX_INFO_LOAD(&scopeinfo, PMIX_DATA_SCOPE, &scope, PMIX_SCOPE);
+    rc = do_get(GETUT_NSPACE, 3, "some.remote.key", &scopeinfo, 1);
+    report("well-formed PMIX_DATA_SCOPE is accepted", PMIX_ERR_BAD_PARAM != rc);
+    PMIX_INFO_DESTRUCT(&scopeinfo);
 
     /* --- a local rank that has not connected yet -------------------- */
     rc = do_get(GETUT_NSPACE, 0, "some.local.key", &imm, 1);

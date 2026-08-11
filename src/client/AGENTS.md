@@ -987,13 +987,28 @@ change here. Two clusters survived the earlier sweeps:
   and there is no singleton reproducer. It hardens the case where the
   datastore was filled from the server. Defensive, not demonstrated.
 
-*Noted, not changed:*
+*The one the sweep missed, closed later:*
 
-- `process_request()` takes `PMIX_DATA_SCOPE` as `info[n].value.data.scope`
-  with no type check. Unlike the others this cannot crash — it is a scalar
-  read out of the union — but a mistyped directive silently produces a
-  wrong scope and therefore a wrong answer. Left alone because "reject" and
-  "ignore" are both defensible and the choice is a behavior decision.
+- `process_request()` took `PMIX_DATA_SCOPE` as `info[n].value.data.scope`
+  with no type check, and this entry used to call that an open choice
+  between "reject" and "ignore". It was neither: **every other typed
+  qualifier in that same loop already rejects** — `PMIX_HOSTNAME` with an
+  explicit check, `PMIX_NODEID`/`PMIX_APPNUM`/`PMIX_SESSION_ID` through
+  `PMIx_Value_get_number` — and so does the server's own scope read in
+  `_register_resources`. Scope was simply the one left out, and it now
+  rejects with `PMIX_ERR_BAD_PARAM` like its neighbors.
+
+  Two things about it are worth keeping. It is the only member of this
+  class that **cannot crash**: a scope is compared against
+  `PMIX_LOCAL`/`PMIX_REMOTE`/`PMIX_GLOBAL` and never used as an index,
+  and `PMIx_Scope_string()` is a `switch` with a `default`, so the whole
+  cost of trusting it was a confidently wrong answer — which is why it
+  outlived the crashing members of its class by four sweeps. And the
+  **server had the same read**, in `pmix_server_get.c`, where the info
+  array came off the wire rather than from a local caller; that one is
+  fixed too. Only the type is checked, at both sites: nothing in the tree
+  range-checks an enum value, and a well-typed nonsense scope still falls
+  through to "no match".
 
 ### The stale-install trap — read this before believing any hand-built reproducer
 

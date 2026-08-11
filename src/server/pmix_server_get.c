@@ -330,6 +330,16 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GET_REFRESH_CACHE)) {
             refresh_cache = PMIX_INFO_TRUE(&cd->info[n]);
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_DATA_SCOPE)) {
+            /* this array was unpacked off the wire, so the type tag is the
+             * peer's word rather than ours. A mistyped scope cannot crash -
+             * a scope is only ever compared, never used as an index - but
+             * it selects which table is searched, so taking it on trust
+             * answers the request confidently and wrongly */
+            if (PMIX_UNLIKELY(PMIX_SCOPE != cd->info[n].value.type)) {
+                rc = PMIX_ERR_BAD_PARAM;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
             scope = cd->info[n].value.data.scope;
             scope_given = true;
         }
