@@ -1044,6 +1044,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     int i;
     pmix_peer_t *peer;
     pmix_namespace_t *ns;
+    pmix_dmdx_local_t *dlcd, *dnxt;
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -1091,6 +1092,18 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
     pmix_ptl_base_stop_listening();
+
+    /* Retire every direct-modex tracker still parked on local_reqs before
+     * we start letting go of peers. A bare PMIX_LIST_DESTRUCT of that list
+     * cannot do it: each request parked on a tracker holds a reference of
+     * its own, so destructing the list drops only the creation reference
+     * and leaves the tracker - and the server caddy each request holds,
+     * and the peer that caddy retains - alive and unreachable. Draining
+     * with a status hands each caddy back through the requester's
+     * callback, which is where the single reference on it lives */
+    PMIX_LIST_FOREACH_SAFE (dlcd, dnxt, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
+        pmix_server_fail_local_reqs(dlcd, PMIX_ERR_UNREACH);
+    }
 
     for (i = 0; i < pmix_server_globals.clients.size; i++) {
         peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i);

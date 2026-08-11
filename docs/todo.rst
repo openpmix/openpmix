@@ -83,16 +83,6 @@ cache-aging still leaks the working reference.  The fix needs
 ``holdcd = true`` — which is why it was deferred rather than attempted
 alongside the other leak fixes.
 
-An outstanding direct-modex request leaks its caddy at teardown
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``dmrqdes`` (``src/server/pmix_server_classes.c``) deletes the request's
-timer event and releases its tracker and key, but never releases
-``req->cbdata``.  A request still outstanding when the server finalizes
-or purges therefore leaks the server caddy behind it.  An earlier fix to
-the over-retain in ``create_local_tracker`` made this smaller — one
-caddy rather than two — but did not close it.
-
 Residual leaks on the group-leave path
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

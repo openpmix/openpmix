@@ -255,6 +255,16 @@ static void dmrqcon(pmix_dmdx_request_t *p)
     p->lcd = NULL;
     p->key = NULL;
 }
+/* Note what this does NOT free: cbdata, which is the switchyard's
+ * pmix_server_caddy_t. The single reference on that caddy travels with
+ * the request only until the request is answered - invoking cbfunc hands
+ * it to the reply path, which releases it - so releasing it here would be
+ * a double free on every ordinary completion. The two paths that discard
+ * a request without answering it own that caddy explicitly instead:
+ * discard_local_tracker leaves it to the switchyard, which is about to
+ * fail the very call that created it, and pmix_server_fail_local_reqs
+ * calls cbfunc with a status. Anything that tears down a tracker list
+ * must go through one of those two - see PMIx_server_finalize. */
 static void dmrqdes(pmix_dmdx_request_t *p)
 {
     if (p->event_active) {

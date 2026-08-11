@@ -1650,6 +1650,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     int n, i;
     pmix_peer_t *peer;
     pmix_pfexec_child_t *child, *nxt;
+    pmix_dmdx_local_t *dlcd, *dnxt;
     pmix_lock_t lock;
     bool myserver_is_mypeer;
 
@@ -1788,6 +1789,13 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_DESTRUCT(&pmix_client_globals.peers);
 
     pmix_ptl_base_stop_listening();
+
+    /* drain any parked direct-modex tracker before the peers go - see the
+     * matching comment in PMIx_server_finalize for why the list destruct
+     * below cannot free these */
+    PMIX_LIST_FOREACH_SAFE (dlcd, dnxt, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
+        pmix_server_fail_local_reqs(dlcd, PMIX_ERR_UNREACH);
+    }
 
     for (n = 0; n < pmix_server_globals.clients.size; n++) {
         peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, n);

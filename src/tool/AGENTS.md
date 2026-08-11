@@ -148,6 +148,11 @@ Three subtleties the current code documents inline and you must keep:
   pointer would silently ignore a changed `PMIX_SERVER_TMPDIR` on the
   next cycle. The many `PMIX_LIST_DESTRUCT`s exist for the same
   re-init-cleanliness reason (a tool may init→finalize→init).
+- `pmix_server_globals.local_reqs` is drained with
+  `pmix_server_fail_local_reqs` before the peers go, because a
+  `PMIX_LIST_DESTRUCT` of that list frees nothing — each parked request
+  holds a reference on its tracker. See the matching note in
+  [`src/server/AGENTS.md`](../server/AGENTS.md).
 - The keepalive-pipe teardown is guarded by a file-scope `keepalive_fd`
   rather than re-derived, because `PMIX_KEEPALIVE_PIPE` was a directive
   to *init* and finalize cannot see it. The stdin read event and its
