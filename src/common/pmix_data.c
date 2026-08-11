@@ -97,6 +97,21 @@ static void _findpeer(int sd, short args, void *cbdata)
         }
     }
 
+    /* not a local client - check the synthetic peers we built for
+     * foreign nspaces on an earlier pack/unpack */
+    for (i = 0; i < pmix_server_globals.peer_cache.size; i++) {
+        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.peer_cache, i);
+        if (NULL == peer) {
+            continue;
+        }
+        if (PMIx_Check_nspace(proc->nspace, peer->nptr->nspace)) {
+            scd->status = PMIX_SUCCESS;
+            scd->peer = peer;
+            PMIX_WAKEUP_THREAD(&scd->lock);
+            return;
+        }
+    }
+
     /* didn't find it, so try to get the library version of the target
      * from the host - the result will be cached, so we will only have
      * to retrieve it once */
@@ -150,8 +165,23 @@ static void _findpeer(int sd, short args, void *cbdata)
         PMIX_WAKEUP_THREAD(&scd->lock);
         return;
     }
-    /* cache the peer object */
-    pmix_pointer_array_add(&pmix_server_globals.clients, peer);
+    /* Cache the peer object so the next pack for this nspace can reuse it.
+     * It goes in the peer_cache, not the clients array: it stands for a
+     * foreign nspace, not a local client, and carries no rank_info, which
+     * every walker of the clients array reads as a matter of course.
+     * Record the index it lands at: peer->index is the object's own record
+     * of the slot it occupies, and the peer constructor leaves it at 0, so
+     * an unrecorded index has the peer claiming a slot that belongs to
+     * whatever else sits at the front of the array. */
+    peer->index = pmix_pointer_array_add(&pmix_server_globals.peer_cache, peer);
+    if (0 > peer->index) {
+        /* we could not cache it, and the caller only borrows what we hand
+         * back - returning it would leave nobody to free it */
+        PMIX_RELEASE(peer);
+        scd->status = PMIX_ERR_NOMEM;
+        PMIX_WAKEUP_THREAD(&scd->lock);
+        return;
+    }
     scd->status = PMIX_SUCCESS;
     scd->peer = peer;
     PMIX_WAKEUP_THREAD(&scd->lock);

@@ -577,6 +577,22 @@ typedef struct {
     pmix_event_t ev;
     bool event_active;
     bool host_called; // tracker has been passed up to host
+    /* This tracker's completion function has been called, so the tracker is
+     * spoken for: the completion thread-shifts, and when it runs it replies
+     * to every participant on local_cbs, unlinks the tracker from
+     * pmix_server_globals.collectives and releases it.
+     *
+     * Until that handler runs the tracker is still ON the collectives list
+     * and still answers pmix_server_trk_complete() - local_cbs is drained
+     * by the handler, nothing earlier - so without this flag anything that
+     * walks the list in that window sees a tracker that looks complete and
+     * unclaimed, and drives its completion a second time. Two completions
+     * means two handlers for one tracker: the second reads and re-releases
+     * memory the first freed, and unlinks through freed list links. The
+     * host path is covered by host_called, but a strictly local collective
+     * never sets that (and two error paths deliberately clear it), which is
+     * exactly the common case. See the collectives directory guide. */
+    bool completion_fired;
     bool local;       // operation is strictly local
     char *id;         // string identifier for the collective
     pmix_cmd_t type;

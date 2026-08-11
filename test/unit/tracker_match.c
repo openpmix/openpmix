@@ -111,6 +111,23 @@ int main(int argc, char **argv)
     found = pmix_server_get_tracker("no-such-collective", NULL, 0, PMIX_FENCENB_CMD);
     report("get_tracker rejects an unknown id", NULL == found);
 
+    /* A tracker whose completion has been driven is on its way out: the
+     * completion thread-shifts, and when it runs it answers everyone on
+     * local_cbs, unlinks the tracker and releases it. Until then it is
+     * still on the collectives list, so get_tracker can still see it - and
+     * must refuse it. Handing it to a new collective would append a caddy
+     * that gets freed with the tracker without ever being answered, hanging
+     * a client whose only mistake was to call the next collective quickly.
+     * Both identity routes have to refuse it, since either can reach a
+     * tracker in that state. */
+    t1->completion_fired = true;
+    found = pmix_server_get_tracker("trk-collective-A", NULL, 0, PMIX_FENCENB_CMD);
+    report("get_tracker refuses a fired tracker (by id)", NULL == found);
+
+    t2->completion_fired = true;
+    found = pmix_server_get_tracker(NULL, procsB, 2, PMIX_CONNECTNB_CMD);
+    report("get_tracker refuses a fired tracker (by proc set)", NULL == found);
+
     release_tracker(t1);
     release_tracker(t2);
 

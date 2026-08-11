@@ -730,6 +730,44 @@ now does both; the lost-connection sweep in
 `src/mca/ptl/base/ptl_base_sendrecv.c` still does not, and it is reached
 precisely when a `PMIX_TIMEOUT` timer is most likely to be armed.
 
+**Driving a tracker's completion claims it — `trk->completion_fired` says
+so.** `host_called` covers only the handoff to the host. A collective the
+host never sees — a strictly local fence is the *ordinary* case under
+`fence_localonly_opt`, and two error paths deliberately set `host_called`
+back to false — is finished by calling the tracker's own completion
+function, and every call site says the same reassuring thing: "the
+modexcbfunc thread-shifts the call prior to processing, so it is okay to
+call it directly from here." That is true about re-entrancy and
+misleading about lifetime. The shift means the tracker is still on
+`pmix_server_globals.collectives` when the call returns, and still
+answers `pmix_server_trk_complete()` — `local_cbs` is drained by the
+handler and by nothing earlier. So for that window the tracker looks, to
+anything walking the list, exactly like a collective that is complete and
+unclaimed.
+
+Two handlers for one tracker is a double free: each unlinks it from
+`collectives` and releases it, so the second reads and re-releases freed
+memory and unlinks through freed links. The list corruption outlives the
+event, and the abort usually lands much later — commonly in
+`PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives)` inside
+`PMIx_server_finalize`, which is why openpmix#4112 reads as a teardown
+bug. The trigger is routine: four ranks finalize right after a fence, so
+a dropped socket reaches the sweep while the fence's own completion is
+still queued.
+
+The flag is set in `pmix_server_modex_cbfunc`, `pmix_server_cnct_cbfunc`
+and `pmix_server_discnct_cbfunc` — one choke point per family, right
+before the thread-shift — rather than at the dozen sites that drive a
+completion, so a new site cannot forget it. It is set only once the shift
+is certain: the `PMIX_NEW` failure returns above it leave the tracker
+unclaimed, which is what lets a later sweep still rescue it. Everything
+that can reach a tracker honors it: the lost-connection sweep, both
+collective timeouts (a timer whose event is already queued fires even
+though every handoff deletes it), and `pmix_server_get_tracker`, which
+must refuse to join a new contributor to a dying tracker — that caddy
+would be freed with the tracker and never answered, hanging a client
+whose only mistake was to call its next collective promptly.
+
 **`pmix_server_execute_collective` is the fourth up-call site, and it owes
 everything the other three do.** It is what fires a collective that a late
 `register_nspace` or `register_client` has just unblocked, and it had none

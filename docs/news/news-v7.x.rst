@@ -323,6 +323,22 @@ Detailed changes since v6.1.0:
    governs the namespaces registered after it: non-namespace information is
    copied into a namespace's data store when that namespace is registered,
    so a job already running retains it
+ - Fixed a double completion of a collective tracker that corrupted the
+   server's collectives list and could abort a later PMIx_server_finalize
+   with an invalid free. A collective the host never sees - a strictly
+   local fence is the ordinary case - is finished by driving the tracker's
+   completion function, which thread-shifts: until its handler runs the
+   tracker is still on the collectives list and still tests as complete,
+   because only that handler drains the participant list. Anything that
+   walked the list in that window - the lost-connection sweep, a queued
+   collective timeout - saw a complete, unclaimed collective and drove its
+   completion a second time, and two handlers then each unlinked and
+   released the same tracker. The host handoff was already guarded by
+   host_called; a local completion had no equivalent. A tracker whose
+   completion has been driven is now marked, and every path that can reach
+   one honors the mark - including the tracker lookup, which would
+   otherwise join a new contributor to a tracker about to be freed,
+   hanging that client
  - A host that answers a spawn or direct-modex up-call with
    PMIX_OPERATION_SUCCEEDED is now told that it cannot, and the request
    is failed to its requestor rather than reported as a success carrying

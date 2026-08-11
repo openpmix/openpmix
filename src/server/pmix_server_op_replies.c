@@ -287,6 +287,15 @@ void pmix_server_modex_cbfunc(pmix_status_t status, const char *data, size_t nda
     scd->tracker = tracker;
     scd->cbfunc.relfn = relfn;
     scd->relcbdata = relcbd;
+    /* the tracker is now spoken for - _mdxcbfunc will unlink and release
+     * it, so nothing walking the collectives list in the meantime may
+     * complete it again. Marked here rather than at the dozen sites that
+     * drive a completion, so a new one cannot forget to. Only once we know
+     * we are actually going to shift: the NOMEM return above leaves the
+     * tracker unclaimed, which is what lets a later sweep rescue it. */
+    if (NULL != tracker) {
+        tracker->completion_fired = true;
+    }
     PMIX_THREADSHIFT(scd, _mdxcbfunc);
 }
 
@@ -641,6 +650,10 @@ void pmix_server_cnct_cbfunc(pmix_status_t status, void *cbdata)
     }
     scd->status = status;
     scd->tracker = tracker;
+    /* the tracker is now spoken for - see pmix_server_modex_cbfunc */
+    if (NULL != tracker) {
+        tracker->completion_fired = true;
+    }
     PMIX_THREADSHIFT(scd, _cnct);
 }
 
@@ -733,6 +746,10 @@ void pmix_server_discnct_cbfunc(pmix_status_t status, void *cbdata)
     }
     scd->status = status;
     scd->tracker = tracker;
+    /* the tracker is now spoken for - see pmix_server_modex_cbfunc */
+    if (NULL != tracker) {
+        tracker->completion_fired = true;
+    }
     PMIX_THREADSHIFT(scd, _discnct);
 }
 

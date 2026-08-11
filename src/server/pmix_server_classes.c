@@ -72,6 +72,7 @@ static void tcon(pmix_server_trkr_t *t)
 {
     t->event_active = false;
     t->host_called = false;
+    t->completion_fired = false;
     t->local = true;
     t->id = NULL;
     memset(t->pname.nspace, 0, PMIX_MAX_NSLEN + 1);

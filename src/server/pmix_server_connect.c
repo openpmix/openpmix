@@ -85,6 +85,12 @@ static void collective_timeout(int sd, short args, void *cbdata)
                         "ALERT: %s timeout fired",
                         (PMIX_CONNECTNB_CMD == trk->type) ? "connect" : "disconnect");
 
+    /* already spoken for - see the matching guard in fence_timeout */
+    if (trk->completion_fired) {
+        trk->event_active = false;
+        return;
+    }
+
     /* execute the provided callback function with the error */
     if (NULL != trk->op_cbfunc) {
         trk->op_cbfunc(PMIX_ERR_TIMEOUT, trk);

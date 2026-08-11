@@ -277,6 +277,17 @@ pmix_server_trkr_t *pmix_server_get_tracker(char *id, pmix_proc_t *procs,
      * involve only a single proc with WILDCARD rank - so this
      * shouldn't take long */
     PMIX_LIST_FOREACH (trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
+        /* a tracker whose completion has been driven is on its way out -
+         * its handler is thread-shifted and will reply to everyone on
+         * local_cbs, unlink the tracker and release it. It is still on
+         * this list until then, but it must not take a new participant:
+         * that caddy would be freed with the tracker without ever being
+         * answered, hanging a client whose only mistake was to call the
+         * next collective quickly. Skip it and let the caller open a
+         * fresh tracker for the new operation. */
+        if (trk->completion_fired) {
+            continue;
+        }
         /* Collective operation if unique identified by
          * the set of participating processes and the type of collective,
          * or by the operation ID
@@ -578,6 +589,16 @@ static void fence_timeout(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(2, pmix_server_globals.fence_output, "ALERT: fence timeout fired");
+
+    /* a completion already driven for this tracker owns it, and its
+     * handler will unlink and release it. Every hand-off deletes this
+     * timer, but a timer whose event is already queued fires anyway, so
+     * this is the guard that makes that harmless rather than a second
+     * completion of a tracker that is about to be freed. */
+    if (trk->completion_fired) {
+        trk->event_active = false;
+        return;
+    }
 
     /* execute the provided callback function with the error */
     if (NULL != trk->modexcbfunc) {
@@ -1446,6 +1467,18 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
          * then the local phase is frozen - just wait for the host
          * to return from the operation */
         if (trk->host_called) {
+            continue;
+        }
+        /* likewise if this tracker's completion has already been driven.
+         * It is still on the collectives list and still answers
+         * pmix_server_trk_complete() - its completion handler is
+         * thread-shifted and has not run yet - but it is spoken for, and
+         * completing it again would hand two handlers the same tracker to
+         * unlink and release. This is the common case, not an exotic one:
+         * a strictly local collective never sets host_called, so a
+         * participant dropping its connection in the window between a
+         * local fence completing and its handler running lands here. */
+        if (trk->completion_fired) {
             continue;
         }
         /* are we now locally complete? */
