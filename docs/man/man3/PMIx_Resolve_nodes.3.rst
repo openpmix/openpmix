@@ -91,8 +91,8 @@ negative value corresponding to a PMIx error constant is returned, including:
   library's progress engine has been stopped.
 * ``PMIX_ERR_UNREACH`` |mdash| the connection to the local PMIx server was lost
   while servicing the request.
-* ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid response was received while servicing
-  the request.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| ``nodelist`` was ``NULL``, or an invalid
+  response was received while servicing the request.
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.

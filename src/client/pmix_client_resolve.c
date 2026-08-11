@@ -167,6 +167,8 @@ static void resolve_peers(int sd, short args, void *cbdata)
     pmix_kval_t *kv;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
+    PMIX_ACQUIRE_OBJECT(cd);
+
     // restrict our search to already available info - do
     // not allow the search to call up to the server. This
     // avoids a threadlock situation
@@ -1063,7 +1065,7 @@ static void wait_node_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     int32_t cnt;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:client resolve_peers callback activated with %d bytes",
+                        "pmix:client resolve_nodes callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
