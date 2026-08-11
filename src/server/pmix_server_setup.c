@@ -143,7 +143,7 @@ static void _register_resources(int sd, short args, void *cbdata)
                 }
                 continue;
             }
-            pbo = (pmix_byte_object_t*)&cd->info[n].value.data.bo;
+            pbo = &cd->info[n].value.data.bo;
 
         } else {
             /* add any provided data to our global cache for all nspaces */
@@ -294,12 +294,11 @@ static void _register_resources(int sd, short args, void *cbdata)
             cnt = 1;
             PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &nspace, &cnt, PMIX_STRING);
             if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                if (PMIX_SUCCESS == ret) {
-                    ret = rc;
-                }
+                /* this ends the walk, so the check below the loop is what
+                 * logs it and records it - doing either here as well
+                 * reports the same failure twice */
                 PMIX_DESTRUCT(&bkt);
-                continue;
+                break;
             }
             /* extract and process any proc-related info for this nspace */
             PMIX_GDS_STORE_JOB_INFO(rc, pmix_globals.mypeer, nspace, &bkt);
