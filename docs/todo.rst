@@ -30,25 +30,6 @@ so that they are not repeatedly "rediscovered" and re-fixed.
 Open decisions
 --------------
 
-``PMIX_GROUP_ENDPT_DATA`` has two contradictory documented types
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``include/pmix_common.h.in`` describes the attribute as a
-``pmix_byte_object_t``.  Both ``_register_resources`` (in
-``src/server/pmix_server_setup.c``) and
-:ref:`PMIx_server_register_resources(3) <man3-PMIx_server_register_resources>`
-treat it as a ``pmix_data_array_t*`` of ``pmix_info_t`` whose first two
-elements are the process identifier and the scope.  Nothing in the tree
-produces the attribute, so neither statement is exercised.
-
-The header comment is the more likely of the two to be stale —
-``PMIX_GROUP_JOB_INFO`` directly below it genuinely is a byte object and
-is read as one — but settling the question means consulting the PMIx
-Standard, not editing the type of a published attribute.  A type screen
-was added on that arm in the meantime, so a host that sends the wrong
-one now receives ``PMIX_ERR_TYPE_MISMATCH`` rather than provoking a
-segmentation fault.
-
 Qualifier-narrowed resource deregistration is documented but not implemented
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
