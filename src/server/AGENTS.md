@@ -56,7 +56,7 @@ module where it cannot, and queue replies back. The file map:
 | `pmix_server_control.c` | The directive and service commands: query, log, allocate, job control, monitor, credential get and validate, session control, resource blocks, and the job-data cache refresh. |
 | `pmix_server_fabric.c` | `fabric_register` / `fabric_update` and the device-distance computation. |
 | `pmix_server_classes.c` | The `PMIX_CLASS_INSTANCE` con/destructors for every type declared in `pmix_server_ops.h` or `pmix_globals.h`, so the ownership rules a destructor encodes can be read in one place. A type private to a single file keeps its class beside it — `grp_block_t`/`grp_trk_t`/`grp_shifter_t` in `pmix_server_group.c`, `rank_blob_t` in `pmix_server_fence.c`, `pmix_dmdx_reply_caddy_t` in `pmix_server_get.c`, `pmix_srvr_epi_caddy_t` in `pmix_server_control.c`. |
-| `pmix_server_fence.c` | The fence collective (barrier + modex data exchange) **and the shared collective-tracker engine** — `pmix_server_get_tracker`, `pmix_server_new_tracker`, `pmix_server_collect_data`, `pmix_server_commit`, plus the two predicates every family consults: `pmix_server_trk_complete` and `pmix_server_set_collective_status`. Also `PMIx_server_collect_job_info`, the public API a host uses to pull packed job-level info for a set of procs. |
+| `pmix_server_fence.c` | The fence collective (barrier + modex data exchange) **and the shared collective-tracker engine** — `pmix_server_get_tracker`, `pmix_server_new_tracker`, `pmix_server_collect_data`, `pmix_server_commit`, plus the two predicates every family consults: `pmix_server_trk_complete` and `pmix_server_set_collective_status`, and the family's lost-connection accounting `pmix_server_trk_peer_lost` (the group family's counterpart lives in `pmix_server_group.c`). Also `PMIx_server_collect_job_info`, the public API a host uses to pull packed job-level info for a set of procs. |
 | `pmix_server_connect.c` | The connect / disconnect collectives (built on the same tracker engine). |
 | `pmix_server_group.c` | The group collectives (construct/destruct/leave/invite) — a **two-level** block/tracker engine distinct from the fence tracker, plus the peer-lost / member-left fault paths. |
 | `pmix_server_get.c` | Server-side `PMIx_Get` and direct modex (dmodex): the local-satisfy-vs-remote-fetch decision tree, the `local_reqs` / `remote_pnd` deferred-request lists, and the registration-completion re-entry points. |
@@ -614,6 +614,17 @@ contributing; the `>=` is deliberately tolerant of over-count from
 fork/exec'd clones. Participation is tracked **by identity**: a peer that
 already contributed (is on `local_cbs`) is never moved to `departed`, so
 its loss can neither complete the collective early nor discard its data.
+
+**`departed` means abnormally terminated, not gone.** The two loss
+entry points — `pmix_server_trk_peer_lost` and
+`pmix_server_grp_peer_lost`, both called from `lost_connection` — return
+immediately for a peer with `finalized` set. A rank that dropped its
+socket by calling `PMIx_Finalize` is still expected: `nlocalprocs` is
+deliberately *not* decremented for it and its peer object is tombstoned
+rather than retired, so it can `PMIx_Init` again and contribute. Counting
+it in `departed` as well counts the rank twice and lets a collective
+complete without it — which is how a client cycling init/finalize (MPI
+Sessions) desynchronized its fence sequence by whole cycles (#4113).
 
 **The tracker lifecycle contract (memorize this — it is the source of
 the trickiest bugs):**

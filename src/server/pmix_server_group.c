@@ -1494,13 +1494,24 @@ static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
 }
 
 /* Account for a lost peer across all in-flight group construct/destruct blocks.
- * This is the group-family analog of the fence/connect/disconnect accounting in
- * lost_connection(), expressed in the group's two-level structure, and is
- * called from that same handler. See account_departed(). */
+ * This is the group-family analog of pmix_server_trk_peer_lost(), expressed in
+ * the group's two-level structure, and is called from the same handler. See
+ * account_departed().
+ *
+ * As there, "lost" means an abnormal termination: a peer that dropped its
+ * connection by calling PMIx_Finalize remains an expected participant (its
+ * rank stays registered and counted, so it may PMIx_Init again and
+ * contribute), and recording it as departed would let a block complete
+ * without it. See pmix_server_trk_peer_lost() and issue #4113. */
 void pmix_server_grp_peer_lost(pmix_peer_t *peer)
 {
     grp_block_t *blk, *bnext;
     pmix_proc_t proc;
+
+    if (peer->finalized) {
+        /* an orderly departure - not a loss */
+        return;
+    }
 
     /* the peer's identity is carried as a pmix_name_t; account_departed works
      * in terms of pmix_proc_t (as the group membership arrays do), so convert */

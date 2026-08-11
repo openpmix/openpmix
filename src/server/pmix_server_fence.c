@@ -1344,6 +1344,15 @@ pmix_status_t pmix_server_get_collective_status(pmix_info_t *info, size_t ninfo)
  * loss accounting sits next to the state it touches and can be exercised
  * directly by a unit test (test/unit/trk_peer_lost.c).
  *
+ * "Lost" means abnormal termination. A peer that dropped its connection by
+ * calling PMIx_Finalize has NOT left the accounting: nptr->nlocalprocs is
+ * deliberately left alone for it and the peer object is tombstoned rather
+ * than retired, so the rank remains an expected participant and is free to
+ * PMIx_Init again and contribute - which is exactly what a client cycling
+ * init/finalize (MPI Sessions) does. Recording such a rank as departed
+ * would count it twice and let a collective complete without it. See
+ * docs/how-things-work/collectives and issue #4113.
+ *
  * The tracker may be released here (a loss can complete the collective), so
  * the walk uses FOREACH_SAFE. */
 void pmix_server_trk_peer_lost(pmix_peer_t *peer)
@@ -1354,6 +1363,11 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
     pmix_status_t rc;
     bool flag;
     size_t n;
+
+    if (peer->finalized) {
+        /* an orderly departure - not a loss */
+        return;
+    }
 
     PMIX_LIST_FOREACH_SAFE (trk, tnxt, &pmix_server_globals.collectives, pmix_server_trkr_t) {
         /* check if this peer should be participating in this collective */
