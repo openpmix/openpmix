@@ -110,20 +110,28 @@ static void distcb(pmix_status_t status, pmix_device_distance_t *dist, size_t nd
     size_t n;
 
     cb->status = status;
-    cb->nvals = ndist;
 
     if (PMIX_SUCCESS == status && 0 < ndist) {
-        PMIX_DEVICE_DIST_CREATE(cb->dist, cb->nvals);
-        for (n = 0; n < cb->nvals; n++) {
-            if (NULL != dist[n].uuid) {
-                cb->dist[n].uuid = strdup(dist[n].uuid);
+        PMIX_DEVICE_DIST_CREATE(cb->dist, ndist);
+        if (PMIX_UNLIKELY(NULL == cb->dist)) {
+            cb->status = PMIX_ERR_NOMEM;
+        } else {
+            /* claim the entries only once they exist - cb->nvals is what
+             * the caddy destructor frees against and what the blocking
+             * wrapper hands the caller, so it must never describe an
+             * array that is not there */
+            cb->nvals = ndist;
+            for (n = 0; n < ndist; n++) {
+                if (NULL != dist[n].uuid) {
+                    cb->dist[n].uuid = strdup(dist[n].uuid);
+                }
+                if (NULL != dist[n].osname) {
+                    cb->dist[n].osname = strdup(dist[n].osname);
+                }
+                cb->dist[n].type = dist[n].type;
+                cb->dist[n].mindist = dist[n].mindist;
+                cb->dist[n].maxdist = dist[n].maxdist;
             }
-            if (NULL != dist[n].osname) {
-                cb->dist[n].osname = strdup(dist[n].osname);
-            }
-            cb->dist[n].type = dist[n].type;
-            cb->dist[n].mindist = dist[n].mindist;
-            cb->dist[n].maxdist = dist[n].maxdist;
         }
     }
     if (NULL != release_fn) {
@@ -244,13 +252,34 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
         goto complete;
     }
     if (0 < cb->nvals) {
+        /* this count came off the wire, so the allocation is sized by the
+         * peer's word and can fail for that reason as much as for a short
+         * heap - either way there is nowhere to put the answer */
         PMIX_DEVICE_DIST_CREATE(cb->dist, cb->nvals);
+        if (PMIX_UNLIKELY(NULL == cb->dist)) {
+            cb->nvals = 0;
+            rc = PMIX_ERR_NOMEM;
+            goto complete;
+        }
         cnt = cb->nvals;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cb->dist, &cnt, PMIX_DEVICE_DIST);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
+            /* the unpack may have filled - and strdup'd into - some of the
+             * entries before it gave up, so free against the count we
+             * allocated, then leave the pair agreeing at empty. The caller
+             * is handed both, and an array and a count that disagree is a
+             * wrong answer rather than a leak */
+            PMIX_DEVICE_DIST_FREE(cb->dist, cb->nvals);
+            cb->nvals = 0;
             goto complete;
         }
+        /* the unpack writes back what it actually filled, which is fewer
+         * than the peer's count promised when the payload was short of it.
+         * Report that, not the promise: the count travels to the caller
+         * with the array, and the entries past the real end were never
+         * written. */
+        cb->nvals = cnt;
     }
 
 complete:
