@@ -525,10 +525,31 @@ the *later* one the one in effect. `_deregister_resources` stopped at the
 first match, so it removed the shadowed entry and left the live one: the
 deregistration silently did nothing. It now clears every entry carrying
 the key, which is what the man page ("each matching entry") requires.
-Note what is still missing there: the man page also describes narrowing a
-removal with qualifiers — a `PMIX_NODE_INFO_ARRAY` naming one node's
-fabric device — and nothing implements that, so such a request removes
-every entry carrying that key rather than the one described.
+
+**A request element carrying a data array is a qualified removal, and the
+two kinds of member in it do different things.** `PMIX_NODEID` and
+`PMIX_HOSTNAME` are *identifiers*: they choose which entries the request
+applies to, and an array carrying none applies to every entry with that
+key. Anything else is a *target*: it chooses elements to remove from
+inside those entries, matching an element directly or matching one that
+contains it — which is how a `PMIX_FABRIC_DEVICE`, whose own array
+carries the device's name and id, is named by either of them. An array
+with identifiers and no target removes the whole entry. Removing the last
+element an entry described removes the entry too, rather than leaving a
+husk naming a node and nothing else, which would seed every namespace
+registered afterwards with it. Before this, the walk matched on the key
+alone, so the man page's own example — one node's fabric device — deleted
+every node entry in the cache.
+
+**What no version of this can do is retract data already handed out.**
+`gdata` is copied into a namespace's hash tables once, when that
+namespace is first registered (`hash_cache_job_info`, guarded by the
+per-namespace `gdata_added`), and nothing re-reads it afterwards. So a
+deregistration governs the namespaces registered *after* it and leaves
+every running client's copy in place. Closing that needs a
+delete-a-key entry point the `gds` module struct does not have, and it
+cannot be built the obvious way for `shmem3`, whose lock-free read path
+is the reason it is fast. See `docs/todo.rst`.
 
 **The helper APIs are pass-throughs, so the public entry point is the
 only place their arguments get screened.** `PMIx_generate_regex` /
@@ -552,16 +573,19 @@ alone. `pmix_server_valid_darray` is that screen, shared with
 types still need checking by hand, since the array being of the right
 element type says nothing about what a given element carries.
 
-One thing to know before writing a host against this: `pmix_common.h`
-documents `PMIX_GROUP_ENDPT_DATA` as a `pmix_byte_object_t`, while both
-this code and
-[`PMIx_server_register_resources(3)`](../../docs/man/man3/PMIx_server_register_resources.3.rst)
-treat it as a `pmix_data_array_t` of `pmix_info_t` whose first two
-elements are the proc ID and the scope. Nothing in the tree produces the
-attribute, so neither statement is being exercised. The header comment
-looks like the stale one — `PMIX_GROUP_JOB_INFO` immediately below it
-*is* a byte object and is read as one — but that has not been settled
-against the Standard, so it is flagged here rather than quietly changed.
+One thing to know before writing a host against this: the shape
+`PMIX_GROUP_ENDPT_DATA` carries here is the one a client builds. The
+array is `get_endpts()`'s in
+[`src/client/pmix_client_group.c`](../client/pmix_client_group.c) — the
+contributor's `PMIX_PROCID`, then the `PMIX_DATA_SCOPE` its remaining
+elements are to be stored at — contributed to the construct as
+`PMIX_PROC_INFO_ARRAY` and relabelled by the host when it hands each
+contribution back through this API. `pmix_common.h` described the
+attribute as a `pmix_byte_object_t` until August 2026; that was the
+shape of a group-construct exchange the library stopped performing
+several releases ago, and nothing in the tree had produced or consumed
+it since. `PMIX_GROUP_JOB_INFO` immediately below it *is* a byte object
+and is read as one.
 
 ## The collective-tracker engine (fence / connect / disconnect)
 
