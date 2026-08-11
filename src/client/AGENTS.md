@@ -449,6 +449,20 @@ Note the second namespace must be registered with a node-info array and
 host-supplied `PMIX_LOCAL_PEERS`, so a proc map would overwrite the value
 under test.
 
+**Tier 1c — `test/unit/spawn_api.c` (in `make check`).** The same
+stub-host-server trick, applied to `PMIx_Spawn`. It exists because a
+singleton *client* cannot reach spawn's argument handling at all —
+`PMIx_Spawn_nb` gates on `connected` before it looks at `job_info`, and
+the apps copy sits below that gate too, so the only argument check a
+singleton reaches is the `apps`/`napps` one that deliberately precedes it
+(covered in `client_api.c`). A **server** is let through that gate so it
+can hand the request to its own host, so the directive scan and the apps
+copy both run and the call then stops at the absent
+`pmix_host_server.spawn`. `PMIX_ERR_NOT_SUPPORTED` is therefore the "got
+all the way through the argument handling" marker, and every case in the
+file asserts it. Use the same shape for anything else in this file whose
+input handling sits below a `connected` gate.
+
 **Tier 1a — `test/unit/run_grpinviteothers.pl` (in `make check`).**
 Drives `examples/group_invite_others` through `test/simple/simptest`:
 four clients, with rank 0 inviting ranks 1..3 and *not* joining. That
@@ -1122,10 +1136,12 @@ empty array and returns `PMIX_ERR_NOT_A_MEMBER`.
   fabric `_nb` entry points read it as "the caddy is in `cbdata`" (see
   the invariant above), the remaining group `_nb` entry points
   (`PMIx_Group_construct_nb`, `PMIx_Group_join_nb`, `PMIx_Group_leave_nb`,
-  `PMIx_Group_destruct_nb`) accept it as fire-and-forget — their reply
-  handlers all test `NULL != cb->cbfunc` before completing, and the
-  operation still takes effect — and fence blocks. Check which one you are
-  looking at before copying a NULL test between them.
+  `PMIx_Group_destruct_nb`) **and `PMIx_Spawn_nb`** accept it as
+  fire-and-forget — their reply handlers all test `NULL != cb->cbfunc`
+  (`NULL != fcd->spcbfunc` for spawn, in both `wait_cbfunc` and
+  `_lclcbfunc`) before completing, and the operation still takes effect —
+  and fence blocks. Check which one you are looking at before copying a
+  NULL test between them.
 
   This entry used to name `PMIx_Group_construct_nb` among the rejecters.
   It does not reject: it has never tested `cbfunc` at all, and
@@ -1596,6 +1612,117 @@ alone:
   unchanged and still carry their explaining comments. `try_fetch()`
   returns only `PMIX_SUCCESS`, `PMIX_ERR_INVALID_NAMESPACE` and
   `PMIX_ERR_NOT_FOUND`.
+
+## Defects found in the August 2026 review (tenth sweep — `pmix_client_spawn.c`)
+
+Five lenses over the spawn pair. The theme is **the boundary between the
+caller's arrays and ours**, which the third sweep opened when it moved the
+envar harvest below the apps copy. Everything above that copy is running on
+the application's memory and reading counts the application owns, and three
+of the findings are that boundary being crossed in one direction or the
+other.
+
+*The caller's arrays are the caller's:*
+
+- **`PMIx_Spawn_nb` wrote the computed directive count back into the
+  caller's `const pmix_app_t apps[]`.** An app may declare its directives by
+  terminating them with an end-marked info instead of setting `ninfo`; the
+  scan that counts them stored the result into `aptr->ninfo`, and `aptr` is
+  a cast-away-`const` alias for `&apps[n]`. The value written happens to be
+  the right one, which is why nothing ever misbehaved — but a caller whose
+  apps sit in read-only storage takes a SIGSEGV on the store. The count is a
+  local now. **This is the same defect the third sweep fixed for
+  `PMIx_Setenv()`, in the one other place above the copy that writes
+  through `aptr`** — if you add a third, put it below the copy or give it a
+  local.
+- **`(info, ninfo)` is a pair, and a zero count means "no directives"
+  whatever the pointer is.** The directive scan entered on `NULL !=
+  job_info` alone, built an info list from zero entries, and handed it to
+  `PMIx_Info_list_convert()` — which reports `PMIX_ERR_EMPTY` for an empty
+  list. `PMIx_Spawn(job_info, 0, …)` therefore failed the whole spawn with
+  a status that names nothing the caller did wrong. Every sibling that
+  builds an info list here already guards it: `pmix_client_connect.c` and
+  `pmix_client_group.c` both gate the `convert` on a `found` flag rather
+  than on the pointer. Regression: `test/unit/spawn_api.c`.
+
+*Correctness:*
+
+- **An app-level `PMIX_SETUP_APP_ENVARS` harvest served only the first app
+  that asked for one.** The per-app branch set the same `jobenvars` flag
+  that says "the job-level directive already covered every app", so after
+  app 0 harvested, app 1's own directive was never looked at. The two are
+  not the same thing — a job-level harvest is applied to *all* apps' `env`
+  (see the loop below `joblevel_envars`), an app-level one only to that
+  app's — so an MPMD spawn whose second app asked for its own programming
+  model's envars silently got none. The redundant flag is gone; the scan
+  gates on `joblevel_envars` alone. Note this only ever bit the roles that
+  *have* a `pmdl` open — tool, launcher, server — for the reason the third
+  sweep's entry gives.
+
+*Unchecked allocations that are then indexed:*
+
+- `PMIX_APP_CREATE(fcd->apps, …)`, the per-app `PMIX_INFO_CREATE`, and the
+  bare `malloc(2 * sizeof(char *))` for a synthesized `argv` were all
+  dereferenced on the next line. The server's own unpack of this very
+  message (`pmix_server_spawn`, `pmix_server_ops.c`) checks both of the
+  same two macros, so this was a divergence between the two halves of one
+  wire operation rather than a house style. `fcd->copied` is now set at
+  construction rather than after the arrays are filled, so the new error
+  returns between the two actually free what the caddy already holds.
+
+  This is the class the earlier sweeps have consistently closed
+  (`respeer()`, `construct_msg()`, `construct_cbfunc()`). It is **not** an
+  invitation to check `PMIX_NEW`, and the unchecked `strdup()` /
+  `PMIx_Argv_copy()` / `PMIx_Argv_prepend_nosize()` results in the same
+  loop are deliberately left: hardening this function against allocation
+  failure end-to-end is a separate piece of work, and doing half of it is
+  worse than none.
+
+*Noted, not changed — do not re-open these without new evidence:*
+
+- **A host `spawn` that returns `PMIX_OPERATION_SUCCEEDED` is dropped on
+  the floor.** The tree-wide host up-call convention (see
+  [`src/server/AGENTS.md`](../server/AGENTS.md)) is that
+  `PMIX_OPERATION_SUCCEEDED` means "done now, I will not call back — you
+  invoke the completion yourself", and this site treats it as an error:
+  it releases the caddy, never fires `fcd->spcbfunc`, and the blocking
+  `PMIx_Spawn` wrapper then maps the status to `PMIX_SUCCESS` and hands
+  the caller an **empty nspace**. Left alone because the spawn contract has
+  no synchronous channel for the namespace in the first place — a host
+  completing atomically has no way to tell us what it launched — so the
+  return is not really usable here; because `pmix_server_spawn` in
+  `src/server` has the identical shape, making this a convention rather
+  than a divergence; and because nothing in the tree returns it (`pfexec`
+  does not, and the in-tree host modules do not). Closing it properly means
+  extending the `pmix_server_spawn_fn_t` contract, not editing this branch.
+- **The `spawn_iof_flags` stand-in is process-wide and is written from the
+  caller's thread** (`stash_spawn_iof_flags`) while `spawn_or_global_flags()`
+  in [`pmix_iof.c`](../common/pmix_iof.c) reads it on the progress thread.
+  It is safe for the case it was built for: the store happens before
+  `PMIX_PTL_SEND_RECV`, and forwarded output cannot arrive before the
+  request goes out, so the send path's peer lock publishes it. What it does
+  **not** survive is two spawns in flight at once from one process — the
+  second overwrites the first's flags. That is inherent to a single
+  process-wide slot, not a bug in this file; if a tool ever needs
+  concurrent spawns formatted differently, the stand-in has to become a
+  per-request one.
+- **The server branch reads `pmix_server_globals.clients` from the
+  caller's thread.** `pmix_get_peer_object()` walks that pointer array
+  unlocked to resolve a `PMIX_PARENT_ID`, and `PMIx_Spawn_nb` in a server
+  role runs on whatever thread the host called it on, while the progress
+  thread adds and removes clients. Recorded rather than fixed because the
+  cure is to thread-shift the whole entry point — the sibling call in
+  `pmix_monitor.c` has exactly the same exposure — and because a host
+  spawning on behalf of a client it is concurrently losing is not a state
+  anything demonstrates.
+- **`req->flags = cd->flags` in `pmix_server_process_iof()` aliases the
+  caddy's `file`/`directory` strings**, which `scaddes` frees when
+  `_lclcbfunc` releases the caddy — so the IOF request is left holding two
+  dangling pointers. It is harmless today only because **nothing reads
+  `req->flags.file` or `req->flags.directory`**: the output path formats
+  from `nptr->iof_flags` (the namespace's copy, which `wait_cbfunc`
+  deliberately NULLs those two members on). Worth knowing before adding a
+  reader.
 
 ## Coding conventions specific to this directory
 
