@@ -35,6 +35,21 @@
  *      lives in a local. Note the sentinel has to sit past index 0 for
  *      this to be visible: a sentinel at index 0 counts zero, and writing
  *      zero over a zero proves nothing.
+ *
+ *   an app directive that cannot be copied
+ *      The apps copy transferred each directive with PMIX_INFO_XFER,
+ *      which discards its status by definition, so a directive the copy
+ *      could not carry was dropped in silence - while the job-level ones
+ *      have always failed the spawn, through PMIx_Info_list_xfer. Both
+ *      halves of one message now report the same way.
+ *
+ *   the argv / cmd / env shapes
+ *      These reach the strdup, PMIx_Argv_copy, pmix_basename and
+ *      PMIx_Argv_prepend_nosize results in the copy loop, all of which are
+ *      now checked for failure. Nothing here can *make* an allocation
+ *      fail, so these do not test the hardening directly; they hold the
+ *      ordinary paths down so a screen written the wrong way round cannot
+ *      turn a working spawn into an error.
  */
 
 #include "src/include/pmix_config.h"
@@ -148,6 +163,77 @@ int main(int argc, char **argv)
     app.ninfo = 0;
     PMIX_APP_DESTRUCT(&app);
     PMIX_INFO_FREE(appinfo, 2);
+
+    /* --- an app directive the copy cannot carry ---------------------- */
+    /* The apps copy used to transfer each app directive with
+     * PMIX_INFO_XFER, which discards its status by definition, so a
+     * directive that could not be copied was dropped in silence and the
+     * spawn went up carrying an empty slot where the caller had put
+     * something. The job-level directives a few lines above have always
+     * failed the spawn in that case, through PMIx_Info_list_xfer. This
+     * case holds the two halves of one message to the same answer.
+     *
+     * The library prints "PMIX-XFER-VALUE: UNSUPPORTED TYPE" on the way
+     * through, which is it declining rather than faulting - the same
+     * bargain test/unit/bfrops_null_object.c makes. */
+    PMIX_INFO_CREATE(appinfo, 1);
+    if (NULL == appinfo) {
+        fprintf(stderr, "test setup error: out of memory\n");
+        PMIx_server_finalize();
+        return 1;
+    }
+    PMIX_LOAD_KEY(appinfo[0].key, PMIX_PERSONALITY);
+    appinfo[0].value.type = (pmix_data_type_t) (PMIX_DATA_TYPE_MAX + 1);
+    PMIX_APP_CONSTRUCT(&app);
+    app.cmd = strdup("true");
+    app.maxprocs = 1;
+    app.info = appinfo;
+    app.ninfo = 1;
+    rc = PMIx_Spawn(NULL, 0, &app, 1, nspace);
+    report("an app directive that cannot be copied fails the spawn",
+           PMIX_ERR_NOT_SUPPORTED != rc && PMIX_SUCCESS != rc);
+    app.info = NULL;
+    app.ninfo = 0;
+    PMIX_APP_DESTRUCT(&app);
+    PMIX_INFO_FREE(appinfo, 1);
+
+    /* --- the argv/cmd/env paths through the copy loop ---------------- */
+    /* These three shapes are what the copy loop's strdup, PMIx_Argv_copy,
+     * pmix_basename and PMIx_Argv_prepend_nosize results are reached
+     * through, and every one of those is now checked. Nothing here can
+     * make an allocation fail - that is why the hardening has no direct
+     * regression test - but a screen written the wrong way round turns a
+     * working spawn into an error, and these catch that. */
+    PMIX_APP_CONSTRUCT(&app);
+    PMIx_Argv_append_nosize(&app.argv, "true");
+    app.maxprocs = 1;
+    rc = PMIx_Spawn(NULL, 0, &app, 1, nspace);
+    report("an app with argv and no cmd reaches the host up-call",
+           PMIX_ERR_NOT_SUPPORTED == rc);
+    PMIX_APP_DESTRUCT(&app);
+
+    /* argv[0] naming something other than the cmd is what drives the
+     * prepend, whose status the loop now reads */
+    PMIX_APP_CONSTRUCT(&app);
+    app.cmd = strdup("true");
+    PMIx_Argv_append_nosize(&app.argv, "-x");
+    app.maxprocs = 1;
+    rc = PMIx_Spawn(NULL, 0, &app, 1, nspace);
+    report("an app whose argv does not start with the cmd reaches the host up-call",
+           PMIX_ERR_NOT_SUPPORTED == rc);
+    PMIX_APP_DESTRUCT(&app);
+
+    /* an env array is copied only when the caller supplied one, since
+     * PMIx_Argv_copy answers NULL both for a NULL source and for a
+     * failure - so the guard has to be on the source, not the result */
+    PMIX_APP_CONSTRUCT(&app);
+    app.cmd = strdup("true");
+    PMIx_Argv_append_nosize(&app.env, "PMIX_SPAWNUT_VAR=1");
+    app.maxprocs = 1;
+    rc = PMIx_Spawn(NULL, 0, &app, 1, nspace);
+    report("an app carrying an environment reaches the host up-call",
+           PMIX_ERR_NOT_SUPPORTED == rc);
+    PMIX_APP_DESTRUCT(&app);
 
     PMIx_server_finalize();
 
