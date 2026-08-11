@@ -537,6 +537,39 @@ static void test_get_hostname_qualifier(void)
     PMIX_INFO_DESTRUCT(&info);
 }
 
+/* PMIX_DATA_SCOPE selects which table a get searches. A mistyped one
+ * cannot crash - a scope is only ever compared, never used as an index -
+ * so the whole cost of taking it on trust is a confidently wrong answer,
+ * which is why this went unnoticed longer than its neighbors. */
+static void test_get_scope_qualifier(void)
+{
+    pmix_info_t info;
+    pmix_value_t *val = NULL;
+    pmix_status_t rc;
+    pmix_scope_t scope = PMIX_LOCAL;
+
+    fprintf(stdout, "\n-- PMIx_Get with a malformed PMIX_DATA_SCOPE qualifier --\n");
+
+    /* right key, wrong type: the union member read would be the low bytes
+     * of whatever else was stored there */
+    PMIX_INFO_LOAD(&info, PMIX_DATA_SCOPE, "not-a-scope", PMIX_STRING);
+    rc = PMIx_Get(NULL, "client.api.absent.key", &info, 1, &val);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIX_DATA_SCOPE qualifier of the wrong type rejected");
+    check(NULL == val, "the OUT value is still defined on that rejection");
+    PMIX_INFO_DESTRUCT(&info);
+
+    /* and a well-formed one is still accepted - the screen has to let the
+     * ordinary case through, which a bare rejection test cannot show */
+    PMIX_INFO_LOAD(&info, PMIX_DATA_SCOPE, &scope, PMIX_SCOPE);
+    val = NULL;
+    rc = PMIx_Get(NULL, "client.api.absent.key", &info, 1, &val);
+    check(PMIX_ERR_BAD_PARAM != rc, "a well-formed PMIX_DATA_SCOPE qualifier is accepted");
+    PMIX_INFO_DESTRUCT(&info);
+    if (NULL != val) {
+        PMIX_VALUE_RELEASE(val);
+    }
+}
+
 /* PMIx_Spawn walks the apps array before it can know whether it will send
  * or fork, so an absent array has to be caught up front. */
 static void test_spawn_bad_params(void)
@@ -694,6 +727,7 @@ int main(int argc, char **argv)
     test_get_bad_params();
     test_get_pointer_and_static();
     test_get_hostname_qualifier();
+    test_get_scope_qualifier();
     test_put_bad_params();
     test_out_parameter_checks();
     test_compute_distances();

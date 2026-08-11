@@ -339,3 +339,27 @@ Detailed changes since v6.1.0:
    one honors the mark - including the tracker lookup, which would
    otherwise join a new contributor to a tracker about to be freed,
    hanging that client
+ - A host that answers a spawn or direct-modex up-call with
+   PMIX_OPERATION_SUCCEEDED is now told that it cannot, and the request
+   is failed to its requestor rather than reported as a success carrying
+   nothing. Both operations report a result - the namespace of the job
+   that was launched, or the data that was fetched - and the callback the
+   library supplies is the only channel for it, so an atomic completion
+   had nowhere to put the answer: a spawn came back to the application as
+   PMIX_SUCCESS with an empty namespace, over both the local and the
+   remote path, with nothing said. The library always supplies that
+   callback, so a host completing the work immediately can simply invoke
+   it - before returning, if it likes - and return PMIX_SUCCESS. The
+   pmix_server_module_t man page now states this, and PMIx_Spawn_nb no
+   longer returns PMIX_OPERATION_SUCCEEDED, which the Standard does not
+   define for it
+ - A mistyped PMIX_DATA_SCOPE qualifier on PMIx_Get is now rejected with
+   PMIX_ERR_BAD_PARAM rather than taken at face value, on both the client
+   and the server side. The scope selects which table the datastore
+   searches, so reading it out of a union that holds something else
+   answered the request confidently and wrongly - it could not crash,
+   since a scope is only ever compared and never used as an index, which
+   is why it outlived the qualifiers beside it. Every other typed
+   qualifier in the same code already rejected a type mismatch. The
+   server-side read is the more exposed of the two: that info array
+   arrives off the wire, so its type tag is the requesting peer's word

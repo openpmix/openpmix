@@ -164,6 +164,15 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_IMMEDIATE)) {
             lg->immediate = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_DATA_SCOPE)) {
+            /* the key does not make the union a scope, and this qualifier
+             * comes straight from the caller. Unlike its neighbors a
+             * mistyped one cannot crash - a scope is only ever compared,
+             * never used as an index - but it selects which table is
+             * searched, so it turns a get into a confidently wrong answer.
+             * Rejecting matches every other typed qualifier here */
+            if (PMIX_UNLIKELY(PMIX_SCOPE != info[n].value.type)) {
+                return PMIX_ERR_BAD_PARAM;
+            }
             lg->scope = info[n].value.data.scope;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GET_REFRESH_CACHE)) {
             /* immediately query the server */

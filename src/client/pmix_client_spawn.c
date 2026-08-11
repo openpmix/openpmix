@@ -60,6 +60,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/runtime/pmix_progress_threads.h"
+#include "src/util/pmix_show_help.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_getcwd.h"
@@ -132,16 +133,13 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
 
+    /* PMIx_Spawn_nb reports its result only through the callback - the
+     * namespace has nowhere else to travel - so it does not answer
+     * PMIX_OPERATION_SUCCEEDED and there is no atomic-completion arm to
+     * handle here. This used to test for one, and mapped it to
+     * PMIX_SUCCESS with the caller's namespace left empty */
     if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = PMIx_Spawn_nb(job_info, ninfo, apps, napps,
                                                            spawn_cbfunc, cb)))) {
-        /* note: the call may have returned PMIX_OPERATION_SUCCEEDED thus indicating
-         * that the spawn was atomically completed */
-        if (PMIX_OPERATION_SUCCEEDED == rc) {
-            if (NULL != cb->pname.nspace) {
-                PMIX_LOAD_NSPACE(nspace, cb->pname.nspace);
-            }
-            rc = PMIX_SUCCESS;
-        }
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -541,6 +539,17 @@ envars_done:
                                     fcd->info, fcd->ninfo,
                                     fcd->apps, fcd->napps,
                                     localcbfunc, fcd);
+        /* PMIX_OPERATION_SUCCEEDED is not a usable answer here. This
+         * up-call's entire product is the namespace of the job that was
+         * started, and it comes back through the callback - which we
+         * always supply, so a host has no reason to withhold it. Taking
+         * the status at face value would hand our caller a success and
+         * an empty namespace, which it cannot act on and cannot detect */
+        if (PMIX_UNLIKELY(PMIX_OPERATION_SUCCEEDED == rc)) {
+            pmix_show_help("help-pmix-server.txt", "atomic-completion-unsupported",
+                           true, "PMIx_Spawn");
+            rc = PMIX_ERR_NOT_SUPPORTED;
+        }
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_RELEASE(fcd);
         }
