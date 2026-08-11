@@ -166,6 +166,23 @@ static void lost_connection(pmix_peer_t *peer)
                 }
                 /* are we now locally complete? */
                 if (pmix_server_trk_complete(trk)) {
+                    /* The loss of this participant is about to complete the
+                     * collective, so an armed PMIX_TIMEOUT timer has to come
+                     * down first - this is the same rule pmix_server_fence
+                     * applies at its own completion point, and this sweep is
+                     * where a timer is most likely to be armed, since a
+                     * timeout is exactly what a participant dropping its
+                     * connection would otherwise produce. Every arm below
+                     * either hands the tracker to the host or drives a
+                     * completion function, and both end with the tracker
+                     * unlinked and released: a timer left armed then fires
+                     * fence_timeout/connect_timeout on freed memory, or
+                     * races the host's completion for the right to release
+                     * it a second time. */
+                    if (trk->event_active) {
+                        pmix_event_del(&trk->ev);
+                        trk->event_active = false;
+                    }
                     /* if this is a local-only collective, then resolve it now */
                     if (trk->local) {
                         /* everyone else has called in - we need to let them know
