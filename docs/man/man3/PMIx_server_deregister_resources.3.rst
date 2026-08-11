@@ -83,16 +83,34 @@ As with all non-blocking PMIx APIs, when a callback is supplied the caller
 DIRECTIVES
 ----------
 
-The ``key`` of each ``info`` element selects the entry to remove. Qualifiers may
-be included to scope the removal, for example:
+The ``key`` of each ``info`` element selects the entries to remove. An element
+whose value is **not** a data array selects by key alone: every registered entry
+carrying that key is removed.
 
-* ``PMIX_NODE_INFO_ARRAY`` (pmix_data_array_t\*) |mdash| scope the removal to a
-  specific node, identified within the array by ``PMIX_NODEID`` or
-  ``PMIX_HOSTNAME``.
-* ``PMIX_FABRIC_DEVICE_NAME`` (char*) |mdash| the name of a fabric device to
-  remove.
-* ``PMIX_DEVICE_ID`` (char*) |mdash| a system-unique device identifier; sufficient
-  on its own to remove the corresponding device.
+An element whose value **is** a ``pmix_data_array_t`` of ``pmix_info_t`` narrows
+the removal. Two kinds of member are recognized within it:
+
+* ``PMIX_NODEID`` (uint32_t) or ``PMIX_HOSTNAME`` (char*) |mdash| *identifiers*.
+  They restrict the removal to the registered entries describing that node. A
+  hostname must match exactly; ``PMIX_HOSTNAME_ALIASES`` is not consulted. An
+  array carrying no identifier applies to every entry with that key, which is how
+  a device that is unique across the system is removed without naming its node.
+* any other member |mdash| a *target*. It selects the elements to remove from
+  within the entries the identifiers chose. A target matches an element directly
+  (same key, same value), or matches an element that *contains* it: a
+  ``PMIX_FABRIC_DEVICE`` element carries its own array of ``pmix_info_t``, so a
+  target naming the device by ``PMIX_FABRIC_DEVICE_NAME`` or ``PMIX_DEVICE_ID``
+  removes that whole device from the node.
+
+An array carrying identifiers and no target removes the whole entry for the node
+it names. If removing the targets leaves an entry describing nothing |mdash| only
+the identifiers remain |mdash| the entry itself is removed, since what would be
+left is what an empty registration would have produced.
+
+For example, to remove one fabric device from a given node, the ``info`` array
+might include a ``PMIX_NODE_INFO_ARRAY`` containing the ``PMIX_NODEID`` or
+``PMIX_HOSTNAME`` that identifies the node hosting the device, together with a
+``PMIX_FABRIC_DEVICE_NAME`` specifying the device.
 
 
 CALLBACK FUNCTION
@@ -137,6 +155,14 @@ finalizing the library |mdash| the library cleans up such information as part of
 its normal finalize operations. Deregistration is needed only when the host
 environment determines that client processes should no longer have access to the
 information.
+
+.. important:: Deregistration takes effect for namespaces registered
+               **after** the call. Non-namespace resource information is copied
+               into a namespace's data store when that namespace is registered,
+               so a namespace already registered |mdash| and any client already
+               running under it |mdash| retains the information. A host that
+               needs the data withheld from a running job cannot achieve that
+               with this call alone.
 
 
 .. seealso::

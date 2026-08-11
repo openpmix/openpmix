@@ -205,6 +205,231 @@ static void test_cache(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* qualified deregistration                                            */
+/* ------------------------------------------------------------------ */
+
+/* build a PMIX_NODE_INFO_ARRAY naming a host, optionally with a nodeid
+ * and a fabric device. PMIx_Info_load routes a PMIX_DATA_ARRAY through
+ * copy_darray, so the info owns a deep copy and the source is ours to
+ * destruct */
+static void load_node_array(pmix_info_t *dest, const char *host,
+                            bool have_id, uint32_t nodeid, const char *device)
+{
+    pmix_data_array_t darray;
+    pmix_info_t *iptr;
+    size_t n = 0, cnt = 1;
+
+    if (have_id) {
+        ++cnt;
+    }
+    if (NULL != device) {
+        ++cnt;
+    }
+    PMIX_DATA_ARRAY_CONSTRUCT(&darray, cnt, PMIX_INFO);
+    iptr = (pmix_info_t *) darray.array;
+    PMIX_INFO_LOAD(&iptr[n], PMIX_HOSTNAME, host, PMIX_STRING);
+    ++n;
+    if (have_id) {
+        PMIX_INFO_LOAD(&iptr[n], PMIX_NODEID, &nodeid, PMIX_UINT32);
+        ++n;
+    }
+    if (NULL != device) {
+        PMIX_INFO_LOAD(&iptr[n], PMIX_FABRIC_DEVICE_NAME, device, PMIX_STRING);
+        ++n;
+    }
+    PMIX_INFO_LOAD(dest, PMIX_NODE_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+}
+
+/* the same, carrying a nodeid and nothing else */
+static void load_nodeid_array(pmix_info_t *dest, uint32_t nodeid)
+{
+    pmix_data_array_t darray;
+    pmix_info_t *iptr;
+
+    PMIX_DATA_ARRAY_CONSTRUCT(&darray, 1, PMIX_INFO);
+    iptr = (pmix_info_t *) darray.array;
+    PMIX_INFO_LOAD(&iptr[0], PMIX_NODEID, &nodeid, PMIX_UINT32);
+    PMIX_INFO_LOAD(dest, PMIX_NODE_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+}
+
+/* a node array carrying two fabric devices, each in its own sub-array -
+ * the shape PMIX_FABRIC_DEVICE describes, and the one a qualifier naming
+ * a device by name has to reach into */
+static void load_device_node(pmix_info_t *dest, const char *host, uint32_t nodeid,
+                             const char *dev1, const char *dev2)
+{
+    pmix_data_array_t darray, d1, d2;
+    pmix_info_t *iptr;
+
+    PMIX_DATA_ARRAY_CONSTRUCT(&d1, 1, PMIX_INFO);
+    PMIX_INFO_LOAD(&((pmix_info_t *) d1.array)[0], PMIX_FABRIC_DEVICE_NAME, dev1,
+                   PMIX_STRING);
+    PMIX_DATA_ARRAY_CONSTRUCT(&d2, 1, PMIX_INFO);
+    PMIX_INFO_LOAD(&((pmix_info_t *) d2.array)[0], PMIX_FABRIC_DEVICE_NAME, dev2,
+                   PMIX_STRING);
+
+    PMIX_DATA_ARRAY_CONSTRUCT(&darray, 4, PMIX_INFO);
+    iptr = (pmix_info_t *) darray.array;
+    PMIX_INFO_LOAD(&iptr[0], PMIX_HOSTNAME, host, PMIX_STRING);
+    PMIX_INFO_LOAD(&iptr[1], PMIX_NODEID, &nodeid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&iptr[2], PMIX_FABRIC_DEVICE, &d1, PMIX_DATA_ARRAY);
+    PMIX_INFO_LOAD(&iptr[3], PMIX_FABRIC_DEVICE, &d2, PMIX_DATA_ARRAY);
+    PMIX_DATA_ARRAY_DESTRUCT(&d1);
+    PMIX_DATA_ARRAY_DESTRUCT(&d2);
+
+    PMIX_INFO_LOAD(dest, PMIX_NODE_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+}
+
+/* does any cached node array still carry this device? */
+static bool cached_device(const char *name)
+{
+    pmix_kval_t *kv;
+    pmix_info_t *iptr, *sub;
+    size_t n, m;
+
+    PMIX_LIST_FOREACH (kv, &pmix_server_globals.gdata, pmix_kval_t) {
+        if (!PMIX_CHECK_KEY(kv, PMIX_NODE_INFO_ARRAY) || NULL == kv->value ||
+            PMIX_DATA_ARRAY != kv->value->type || NULL == kv->value->data.darray ||
+            NULL == kv->value->data.darray->array) {
+            continue;
+        }
+        iptr = (pmix_info_t *) kv->value->data.darray->array;
+        for (n = 0; n < kv->value->data.darray->size; n++) {
+            if (PMIX_DATA_ARRAY != iptr[n].value.type ||
+                NULL == iptr[n].value.data.darray ||
+                NULL == iptr[n].value.data.darray->array) {
+                continue;
+            }
+            sub = (pmix_info_t *) iptr[n].value.data.darray->array;
+            for (m = 0; m < iptr[n].value.data.darray->size; m++) {
+                if (PMIX_CHECK_KEY(&sub[m], PMIX_FABRIC_DEVICE_NAME) &&
+                    PMIX_STRING == sub[m].value.type &&
+                    NULL != sub[m].value.data.string &&
+                    0 == strcmp(sub[m].value.data.string, name)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/* does the cache still hold a node array naming this host? */
+static bool cached_node(const char *host)
+{
+    pmix_kval_t *kv;
+    pmix_info_t *iptr;
+    size_t n;
+
+    PMIX_LIST_FOREACH (kv, &pmix_server_globals.gdata, pmix_kval_t) {
+        if (!PMIX_CHECK_KEY(kv, PMIX_NODE_INFO_ARRAY) || NULL == kv->value ||
+            PMIX_DATA_ARRAY != kv->value->type || NULL == kv->value->data.darray ||
+            NULL == kv->value->data.darray->array) {
+            continue;
+        }
+        iptr = (pmix_info_t *) kv->value->data.darray->array;
+        for (n = 0; n < kv->value->data.darray->size; n++) {
+            if (PMIX_CHECK_KEY(&iptr[n], PMIX_HOSTNAME) &&
+                PMIX_STRING == iptr[n].value.type &&
+                NULL != iptr[n].value.data.string &&
+                0 == strcmp(iptr[n].value.data.string, host)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static void test_qualified_dereg(void)
+{
+    pmix_info_t info;
+    pmix_status_t rc;
+    size_t base;
+
+    base = ncached();
+
+    /* two nodes registered under the same key */
+    load_node_array(&info, "nodeA", true, 0, NULL);
+    rc = PMIx_server_register_resources(&info, 1, NULL, NULL);
+    report("register_resources accepts a node array", ok(rc));
+    PMIX_INFO_DESTRUCT(&info);
+
+    load_node_array(&info, "nodeB", true, 1, NULL);
+    rc = PMIx_server_register_resources(&info, 1, NULL, NULL);
+    report("register_resources accepts a second node array", ok(rc));
+    PMIX_INFO_DESTRUCT(&info);
+
+    report("both nodes are cached",
+           base + 2 == ncached() && cached_node("nodeA") && cached_node("nodeB"));
+
+    /* a qualifier naming one node by hostname removes that node only.
+     * Matching on the key alone - which is what this used to do - takes
+     * both, and nothing here can put the other one back */
+    load_node_array(&info, "nodeA", false, 0, NULL);
+    rc = PMIx_server_deregister_resources(&info, 1, NULL, NULL);
+    report("a hostname-qualified removal is accepted", ok(rc));
+    PMIX_INFO_DESTRUCT(&info);
+
+    report("the qualified removal took only the named node",
+           base + 1 == ncached() && !cached_node("nodeA") && cached_node("nodeB"));
+
+    /* the same, by nodeid alone - the qualifier carries no hostname, so
+     * only the nodeid can match it to the stored entry */
+    load_nodeid_array(&info, 1);
+    rc = PMIx_server_deregister_resources(&info, 1, NULL, NULL);
+    report("a nodeid-qualified removal is accepted", ok(rc));
+    PMIX_INFO_DESTRUCT(&info);
+
+    report("the nodeid-qualified removal took the second node",
+           base == ncached() && !cached_node("nodeB"));
+
+    /* a qualifier naming something inside the stored array takes that
+     * element out and leaves the rest of the node alone */
+    load_device_node(&info, "nodeC", 2, "mlx5_0", "mlx5_1");
+    rc = PMIx_server_register_resources(&info, 1, NULL, NULL);
+    report("register_resources accepts a node array carrying devices", ok(rc));
+    PMIX_INFO_DESTRUCT(&info);
+
+    load_node_array(&info, "nodeC", false, 0, "mlx5_0");
+    rc = PMIx_server_deregister_resources(&info, 1, NULL, NULL);
+    report("an element-level qualifier is accepted", ok(rc));
+    PMIX_INFO_DESTRUCT(&info);
+
+    report("the named device is gone and the node is not",
+           base + 1 == ncached() && cached_node("nodeC") &&
+           !cached_device("mlx5_0") && cached_device("mlx5_1"));
+
+    /* taking the last thing the entry described takes the entry: what is
+     * left names a node and nothing else, which is what an empty
+     * registration would have produced */
+    load_node_array(&info, "nodeC", false, 0, "mlx5_1");
+    rc = PMIx_server_deregister_resources(&info, 1, NULL, NULL);
+    report("removing the last device is accepted", ok(rc));
+    PMIX_INFO_DESTRUCT(&info);
+
+    report("the emptied entry was dropped",
+           base == ncached() && !cached_node("nodeC"));
+
+    /* re-register a plain node so the unqualified case below has
+     * something to clear */
+    load_node_array(&info, "nodeC", true, 2, NULL);
+    rc = PMIx_server_register_resources(&info, 1, NULL, NULL);
+    report("register_resources accepts a third node array", ok(rc));
+    PMIX_INFO_DESTRUCT(&info);
+
+    /* an unqualified request still selects by key alone */
+    PMIX_INFO_LOAD(&info, PMIX_NODE_INFO_ARRAY, NULL, PMIX_UNDEF);
+    rc = PMIx_server_deregister_resources(&info, 1, NULL, NULL);
+    report("an unqualified removal is accepted", ok(rc));
+    PMIX_INFO_DESTRUCT(&info);
+
+    report("the unqualified removal cleared the key", base == ncached());
+}
+
+/* ------------------------------------------------------------------ */
 /* PMIX_GROUP_JOB_INFO                                                 */
 /* ------------------------------------------------------------------ */
 static void test_job_info(void)
@@ -348,6 +573,7 @@ int main(int argc, char **argv)
 
     test_arg_screens();
     test_cache();
+    test_qualified_dereg();
     test_job_info();
     test_group_arrays();
 
