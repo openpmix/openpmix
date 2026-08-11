@@ -1469,6 +1469,13 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
         goto cleanup;
     }
     PMIX_DEVICE_DIST_CREATE(array, n);
+    if (PMIX_UNLIKELY(NULL == array)) {
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
+    }
+    /* claim the entries only once they exist - the count is set ahead of
+     * the array below, so a failure here has to leave it at the zero the
+     * default returns established, not at a size nothing backs */
     *ndist = n;
     n = 0;
     PMIX_LIST_FOREACH (d, &dists, pmix_devdist_item_t) {
