@@ -27,6 +27,16 @@ so that they are not repeatedly "rediscovered" and re-fixed.
           still **open**.  Re-verify an entry before acting on it; the
           code moves.
 
+.. note:: **Every entry below was checked against the tree on
+          2026-08-11**, and that pass removed two: one whose fix had
+          landed a month before this page first recorded it as open, and
+          one that had been fixed since.  It also corrected a claim that
+          was never true.  Treat that as the standing expectation rather
+          than a one-off — an entry here is a lead, not a finding, and
+          the two entries that cannot be checked by reading the tree
+          (the group-leave leaks, and the two "never validated" coverage
+          gaps) are the ones most likely to have gone stale unnoticed.
+
 Open decisions
 --------------
 
@@ -67,7 +77,7 @@ success path the handler is ``PMIX_EVENT_ONESHOT`` and removes itself
 when it fires; only the notification-failure return leaves it
 registered.  The obvious fix does not work: ``PMIx_Deregister_event_handler``
 gates on ``pmix_globals.initialized``, which ``PMIx_Init`` does not set
-until forty lines later, so the public API is a no-op from there and
+until well after that return, so the public API is a no-op from there and
 removing the handler means open-coding the thread-shift the entry point
 performs.  Weigh that against the reachability — the process must ignore
 a failed ``PMIx_Init``, keep running, and then be sent a
@@ -93,10 +103,14 @@ Two shared-state exposures that need a structural answer
   A tool that needs concurrent spawns formatted differently forces the
   stand-in to become per-request.
 * ``PMIx_Spawn_nb`` in a server role walks
-  ``pmix_server_globals.clients`` unlocked, on whatever thread the host
-  called it on, while the progress thread adds and removes clients.  The
-  cure is to thread-shift the whole entry point; the sibling call in
-  ``pmix_monitor.c`` has the same exposure.
+  ``pmix_server_globals.clients`` unlocked — through the ``static
+  inline`` ``pmix_get_peer_object()`` in ``pmix_server_ops.h`` — on
+  whatever thread the host called it on, while the progress thread adds
+  and removes clients.  The cure is to thread-shift the whole entry
+  point.  Note this is the *only* exposed caller: the other one, in
+  ``pmix_monitor.c``, sits inside ``pmix_monitor_processing()``, which is
+  reached by ``PMIX_THREADSHIFT`` and therefore already runs on the
+  progress thread.
 
 Smaller items carried forward
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -107,10 +121,6 @@ Smaller items carried forward
   if it is closed the screen belongs inside ``PMIx_Value_get_number``
   rather than at the call sites, since every caller in the tree is
   equally exposed.
-* ``req->flags = cd->flags`` in ``pmix_server_process_iof()`` aliases the
-  caddy's ``file``/``directory`` strings, which are freed when the caddy
-  is released — so the IOF request is left holding two dangling
-  pointers.  It is harmless only because nothing reads them today.
 * ``pmix_globals.init_called`` is set with ``__atomic_test_and_set`` and
   cleared with a plain assignment.  All three roles do this, and the
   only interleaving that reaches it is a concurrent
@@ -118,9 +128,12 @@ Smaller items carried forward
 * ``refcb()`` in ``src/client`` overwrites the store status with the next
   unpack's, so a store failure while absorbing a cache refresh is
   silently dropped.
-* ``resolve_peers()``'s pre-v3.2 compatibility branch is dead code — the
-  rank it sets is unconditionally reset two lines later.  Not removed
-  without a pre-v3.2 server to test against.
+* The rank ``resolve_peers()`` sets in its pre-v3.2 compatibility branch
+  is a dead store — it is unconditionally reset a few lines later, and
+  ``try_fetch()`` retries an ``UNDEF`` rank as ``WILDCARD``, which is why
+  the legacy path still resolves.  Only the store is dead; the ``key``
+  and ``ninfo`` that branch sets do take effect, so it cannot simply be
+  deleted.  Not touched without a pre-v3.2 server to test against.
 * The command-line parser drops a positional argument placed *before* an
   option, a consequence of ``getopt`` reordering.  Put options first.
 * The relay in ``src/tool`` assumes the downstream tool and the upstream
