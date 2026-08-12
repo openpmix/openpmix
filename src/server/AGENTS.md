@@ -814,18 +814,25 @@ big-endian one, which multiplies every timeout by 2^32. Convert through a
 `uint32_t` of its own and assign. The fence, connect and get handlers all
 do this now; `pmix_server_group` always did.
 
-**The modex blob handed *up* to the host belongs to the host, and nothing
-says so in the header.** `pmix_server_fence` unloads the assembled bucket
-into a bare `char *data` and passes it to `pmix_host_server.fence_nb`; so
-does `pmix_server_execute_collective`. Neither frees it, and that is not
-an oversight to "fix": the request direction carries no
+**The modex blob handed *up* to the host belongs to the host.**
+`pmix_server_fence` unloads the assembled bucket into a bare `char *data`
+and passes it to `pmix_host_server.fence_nb`; so does
+`pmix_server_execute_collective`. Neither frees it, and that is not an
+oversight to "fix": the request direction carries no
 `(release_fn, release_cbdata)` pair the way the reply direction does, and
-the in-tree reference host parks the pointer on a caddy and reads it later
-from another thread (`fencenb_fn` in `test/simple/simptest.c`), so freeing
-it on return would be a use-after-free. Ownership transfers on the call.
-`simptest` then leaks it — that is a defect in the test host, not in the
-library, and it is the reason a naive valgrind run of the simple suite
-shows a per-fence leak here.
+a host is entitled to park the pointer and read it later from another
+thread — `fencenb_fn` in `test/simple/simptest.c` does exactly that — so
+freeing it on return would be a use-after-free. Ownership transfers on
+the call, and `pmix_server_fencenb_fn_t` in `include/pmix_server.h` now
+says so, as does the
+[`pmix_server_module_t(5)`](../../docs/man/man5/pmix_server_module_t.5.rst)
+man page. It did not until August 2026, and both in-tree hosts leaked it:
+PRRTE still does ([prrte#2649](https://github.com/openpmix/prrte/issues/2649)),
+and `simptest` was the reason a naive valgrind run of the simple suite
+showed a per-fence leak here. `simptest` now hands it back through the
+release function the modex callback takes — which is the point worth
+carrying: `pmix_server_modex_cbfunc` only thread-shifts, so a host cannot
+free the blob when that callback returns either.
 
 **`pmix_cb_t::copy` is advisory and no fetch honors it.** Several sites
 here set `cb.copy = false` with a comment about letting the GDS return a
