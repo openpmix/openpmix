@@ -69,6 +69,40 @@ pmix_pif_base_component_t pmix_mca_pif_linux_ipv6_component = {
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, pif, linux_ipv6)
 
+/* Ask the kernel for a device's flags.
+ *
+ * /proc/net/if_inet6 has no flags column, and pmix_if_list cannot answer
+ * either: it is the list we are building, so a device whose IPv4 address
+ * has not been discovered yet is simply absent. Falling back to a bare
+ * IFF_UP loses IFF_LOOPBACK, which makes ::1 look like an ordinary
+ * routable interface to everything downstream, including the code that
+ * chooses which of our addresses to advertise to other hosts.
+ */
+static bool if_linux_ipv6_flags(const char *ifname, uint32_t *flags)
+{
+    struct ifreq ifr;
+    int sd;
+
+    sd = socket(AF_INET6, SOCK_DGRAM, 0);
+    if (sd < 0) {
+        sd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sd < 0) {
+            return false;
+        }
+    }
+
+    memset(&ifr, 0, sizeof(ifr));
+    pmix_strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name) - 1);
+    if (ioctl(sd, SIOCGIFFLAGS, &ifr) < 0) {
+        close(sd);
+        return false;
+    }
+    close(sd);
+
+    *flags = (uint32_t)(unsigned short) ifr.ifr_flags;
+    return true;
+}
+
 /* configure using getifaddrs(3) */
 static int if_linux_ipv6_open(void)
 {
@@ -136,7 +170,9 @@ static int if_linux_ipv6_open(void)
             ((struct sockaddr_in6 *) &intf->if_addr)->sin6_family = AF_INET6;
             ((struct sockaddr_in6 *) &intf->if_addr)->sin6_scope_id = scope;
             intf->if_mask = pfxlen;
-            if (PMIX_SUCCESS == pmix_ifindextoflags(pmix_ifnametoindex(ifname), &flag)) {
+            if (if_linux_ipv6_flags(ifname, &flag)) {
+                intf->if_flags = flag;
+            } else if (PMIX_SUCCESS == pmix_ifindextoflags(pmix_ifnametoindex(ifname), &flag)) {
                 intf->if_flags = flag;
             } else {
                 intf->if_flags = IFF_UP;
