@@ -121,6 +121,15 @@ typedef pmix_status_t (*pmix_server_abort_fn_t)(const pmix_proc_t *proc, void *s
  * cbfunc. A _NULL_ data value indicates that the local procs had
  * no data to contribute.
  *
+ * OWNERSHIP OF THE DATA BLOB TRANSFERS TO THE HOST ON THIS CALL, and
+ * the host is responsible for freeing it. Unlike the reply direction,
+ * this call carries no release function with which the library could
+ * reclaim it: the host is free to park the pointer and read it later
+ * from another thread, so the library cannot free it when this call
+ * returns. Free it with free() once you no longer need it - note that
+ * PMIx_Data_embed() copies rather than consumes, so a host that embeds
+ * the blob in a message of its own still owns the original.
+ *
  * The array of info structs is used to pass user-requested options to the server.
  * This can include directives as to the algorithm to be used to execute the
  * fence operation. The directives are optional _unless_ the _mandatory_ flag

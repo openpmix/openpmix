@@ -212,6 +212,17 @@ aggregated result through a ``pmix_modex_cbfunc_t``. A NULL ``data`` means the
 local processes had nothing to contribute. Directives in the ``info`` array
 steer the collective and are optional unless the mandatory flag is set.
 
+**Ownership of the** ``data`` **blob transfers to the host on this call**, and
+the host must ``free()`` it once it is done with it. This direction carries no
+release function with which the library could reclaim the blob, and it cannot
+free it when the call returns: the host is entitled to park the pointer and
+read it later from another thread, so freeing it here would be a use-after-free.
+Note that :ref:`PMIx_Data_embed(3) <man3-PMIx_Data_embed>` *copies* rather than
+consumes, so a host that embeds the blob into a message of its own still owns
+the original and must still free it. ``fence_nb`` is the only module function
+that hands the host a bare data blob this way; the other collectives carry
+their payloads in ``pmix_info_t`` arrays, which the library owns.
+
 The ``info`` array may include ``PMIX_LOCAL_COLLECTIVE_STATUS``
 (pmix_status_t), by which the PMIx server library reports to the host the status
 of the local portion of the collective |mdash| for example, an error detected

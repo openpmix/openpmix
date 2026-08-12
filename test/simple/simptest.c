@@ -839,6 +839,18 @@ static pmix_status_t abort_fn(const pmix_proc_t *proc, void *server_object, int 
     return PMIX_SUCCESS;
 }
 
+/* Give the modex blob back once the library has finished with it. The
+ * blob is ours: ownership of the data handed to fence_nb transfers to
+ * the host on the call (see pmix_server_module_t), and the one modex_resp
+ * builds is our own malloc. It cannot simply be freed after the callback
+ * returns - pmix_server_modex_cbfunc only thread-shifts, and packs the
+ * reply from this pointer later on the progress thread - so it goes back
+ * through the release function the callback takes for exactly this. */
+static void fence_relfn(void *cbdata)
+{
+    free(cbdata);
+}
+
 static void fencbfn(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *scd = (pmix_shift_caddy_t *) cbdata;
@@ -846,7 +858,11 @@ static void fencbfn(int sd, short args, void *cbdata)
 
     /* pass the provided data back to each participating proc */
     if (NULL != scd->cbfunc.modexcbfunc) {
-        scd->cbfunc.modexcbfunc(scd->status, scd->data, scd->ndata, scd->cbdata, NULL, NULL);
+        scd->cbfunc.modexcbfunc(scd->status, scd->data, scd->ndata, scd->cbdata,
+                                fence_relfn, (void *) scd->data);
+    } else if (NULL != scd->data) {
+        /* nobody to hand it to, so it is still ours to free */
+        free((void *) scd->data);
     }
     PMIX_RELEASE(scd);
 }
