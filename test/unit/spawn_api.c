@@ -59,6 +59,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
+#include "src/threads/pmix_threads.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,6 +77,31 @@ static void report(const char *name, int passed)
         fprintf(stdout, "  FAIL: %s\n", name);
         ++nfail;
     }
+}
+
+/* A host module entry point, so the server-role branch gets past its
+ * "can this host spawn at all?" screen and reaches the thread-shifted
+ * tail. It is never actually called by the cases below - each of them
+ * fails at the parent lookup, which happens first. */
+static bool host_spawn_called = false;
+static pmix_status_t stub_spawn(const pmix_proc_t *proc, const pmix_info_t job_info[], size_t ninfo,
+                                const pmix_app_t apps[], size_t napps,
+                                pmix_spawn_cbfunc_t cbfunc, void *cbdata)
+{
+    (void) proc; (void) job_info; (void) ninfo; (void) apps; (void) napps;
+    (void) cbfunc; (void) cbdata;
+    host_spawn_called = true;
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+/* completion recorder for the non-blocking form */
+static pmix_lock_t spawnlock;
+static pmix_status_t spawn_status = PMIX_SUCCESS;
+static void spawn_done(pmix_status_t status, char nspace[], void *cbdata)
+{
+    (void) nspace; (void) cbdata;
+    spawn_status = status;
+    PMIX_WAKEUP_THREAD(&spawnlock);
 }
 
 int main(int argc, char **argv)
@@ -234,6 +260,54 @@ int main(int argc, char **argv)
     report("an app carrying an environment reaches the host up-call",
            PMIX_ERR_NOT_SUPPORTED == rc);
     PMIX_APP_DESTRUCT(&app);
+
+    /* --- the server-role tail runs on the progress thread ------------ */
+    /* Resolving a PMIX_PARENT_ID means walking pmix_server_globals.clients,
+     * which belongs to the progress thread, so that walk and the host
+     * up-call that depends on it were moved off the caller's thread. Two
+     * things follow, and both are asserted below: the request is now
+     * *accepted* rather than refused synchronously, and the failure comes
+     * back through the callback instead of the return.
+     *
+     * Give the module a spawn entry point first, or the branch stops at
+     * the "can this host spawn?" screen above the shift and none of this
+     * is reached. The parent named is deliberately not one of our clients
+     * - there are none - so the lookup fails, which is the one error this
+     * handler produces without involving the host at all. */
+    pmix_host_server.spawn = stub_spawn;
+    host_spawn_called = false;
+
+    PMIX_INFO_LOAD(&jobinfo[0], PMIX_PARENT_ID, &pmix_globals.myid, PMIX_PROC);
+    PMIX_APP_CONSTRUCT(&app);
+    app.cmd = strdup("true");
+    app.maxprocs = 1;
+
+    PMIX_CONSTRUCT_LOCK(&spawnlock);
+    spawn_status = PMIX_SUCCESS;
+    rc = PMIx_Spawn_nb(jobinfo, 1, &app, 1, spawn_done, NULL);
+    report("a spawn naming a parent is accepted rather than refused",
+           PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_WAIT_THREAD(&spawnlock);
+        report("an unresolvable parent is reported through the callback",
+               PMIX_ERR_NOT_FOUND == spawn_status);
+        report("the host was not asked to spawn for a parent we could not find",
+               !host_spawn_called);
+    }
+    PMIX_DESTRUCT_LOCK(&spawnlock);
+    PMIX_APP_DESTRUCT(&app);
+
+    /* and the blocking form still reports it as its own return, because
+     * its wrapper reads the status the callback delivered */
+    PMIX_APP_CONSTRUCT(&app);
+    app.cmd = strdup("true");
+    app.maxprocs = 1;
+    rc = PMIx_Spawn(jobinfo, 1, &app, 1, nspace);
+    report("the blocking form still returns the parent failure itself",
+           PMIX_ERR_NOT_FOUND == rc);
+    PMIX_APP_DESTRUCT(&app);
+    PMIX_INFO_DESTRUCT(&jobinfo[0]);
+    pmix_host_server.spawn = NULL;
 
     PMIx_server_finalize();
 

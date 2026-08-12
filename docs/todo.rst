@@ -28,14 +28,15 @@ so that they are not repeatedly "rediscovered" and re-fixed.
           code moves.
 
 .. note:: **Every entry below was checked against the tree on
-          2026-08-11**, and that pass removed two: one whose fix had
-          landed a month before this page first recorded it as open, and
-          one that had been fixed since.  It also corrected a claim that
-          was never true.  Treat that as the standing expectation rather
-          than a one-off — an entry here is a lead, not a finding, and
-          the two entries that cannot be checked by reading the tree
-          (the group-leave leaks, and the two "never validated" coverage
-          gaps) are the ones most likely to have gone stale unnoticed.
+          2026-08-11.**  That pass retired three of them — one whose fix
+          had landed a month before this page first recorded it as open,
+          one that had been fixed since, and one that a fresh valgrind
+          run against a launcher could no longer reproduce — and
+          corrected a claim that was never true.  Treat that as the
+          standing expectation rather than a one-off: an entry here is a
+          lead, not a finding.  The two "never validated" coverage gaps
+          are the only remaining entries that cannot be checked by
+          reading the tree, so they are where the next stale one will be.
 
 Open decisions
 --------------
@@ -65,6 +66,31 @@ design and is the reason that component exists.  Any real fix has to
 answer the ``shmem3`` case first; the messaging half is not worth building
 on its own.
 
+Two concurrent spawns cannot be formatted differently
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``pmix_globals.spawn_iof_flags`` is a single process-wide slot holding
+the output-formatting directives of the spawn a tool has in flight.  It
+exists because forwarded output can arrive *before* the spawn reply names
+the namespace it belongs to, and until it existed that output was
+formatted with the process-wide defaults instead — so ``prun --output
+tag`` lost the tag on whichever rank happened to be quickest.  Two spawns
+in flight at once from one process means the second overwrites the
+first's flags.
+
+This cannot simply "become per-request", which is how it was recorded
+before.  The reader is ``spawn_or_global_flags()`` in
+``src/common/pmix_iof.c``, reached from ``pmix_iof_write_output()``
+precisely when the arriving output names a namespace we have no record
+of; the only things in scope there are that unknown namespace and the
+stream.  Nothing identifies *which* in-flight spawn the output came
+from, and nothing can until the reply arrives — which is the very thing
+the stand-in exists to cover for.  So the choices are: keep one slot and
+accept that concurrent spawns share it; let the reply establish the
+flags, which re-opens the window the stand-in was built to close; or
+carry something in the IOF message that names the spawn, which is a
+wire-format and Standard question rather than a bug fix.
+
 Deferred work
 -------------
 
@@ -82,25 +108,6 @@ removing the handler means open-coding the thread-shift the entry point
 performs.  Weigh that against the reachability — the process must ignore
 a failed ``PMIx_Init``, keep running, and then be sent a
 ``PMIX_DEBUGGER_RELEASE`` it never asked for.
-
-Two shared-state exposures that need a structural answer
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-* The ``spawn_iof_flags`` stand-in is a single process-wide slot,
-  written from the caller's thread and read on the progress thread.  It
-  is safe for the case it was built for, but two spawns in flight at
-  once from one process means the second overwrites the first's flags.
-  A tool that needs concurrent spawns formatted differently forces the
-  stand-in to become per-request.
-* ``PMIx_Spawn_nb`` in a server role walks
-  ``pmix_server_globals.clients`` unlocked — through the ``static
-  inline`` ``pmix_get_peer_object()`` in ``pmix_server_ops.h`` — on
-  whatever thread the host called it on, while the progress thread adds
-  and removes clients.  The cure is to thread-shift the whole entry
-  point.  Note this is the *only* exposed caller: the other one, in
-  ``pmix_monitor.c``, sits inside ``pmix_monitor_processing()``, which is
-  reached by ``PMIX_THREADSHIFT`` and therefore already runs on the
-  progress thread.
 
 Smaller items carried forward
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

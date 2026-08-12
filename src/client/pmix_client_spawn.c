@@ -193,6 +193,83 @@ static void localcbfunc(pmix_status_t status,
     PMIX_THREADSHIFT(fcd, _lclcbfunc);
 }
 
+/* The server-role tail of PMIx_Spawn_nb, run on the progress thread.
+ *
+ * A host may call PMIx_Spawn_nb from whatever thread it likes, and
+ * resolving a PMIX_PARENT_ID means walking pmix_server_globals.clients -
+ * which the progress thread adds to and removes from, and which nothing
+ * in the tree locks, because everything else that touches it is already
+ * on that thread. Running the walk on the caller's thread was the one
+ * place that assumption was broken. The up-call below has to come with
+ * it: it needs the peer the walk found.
+ *
+ * The cost is that the two failures here are reported through the
+ * caller's callback rather than as the return of PMIx_Spawn_nb. That is
+ * what a non-blocking form promises anyway, and it does not change
+ * PMIx_Spawn - the blocking wrapper reads the status the callback
+ * delivers, so a host using that form sees exactly what it saw before.
+ */
+static void _spawn_for_host(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *fcd = (pmix_setup_caddy_t *) cbdata;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(fcd);
+
+    /* if I am spawning on behalf of someone else, then that peer is the
+     * "spawner" - PMIX_RANK_INVALID is how the entry point says nobody
+     * was named, since the caddy constructor zeroes proc and rank zero
+     * is a rank a parent can really have */
+    if (PMIX_RANK_INVALID != fcd->proc.rank) {
+        fcd->peer = pmix_get_peer_object(&fcd->proc);
+        if (PMIX_UNLIKELY(NULL == fcd->peer)) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+            fcd->status = PMIX_ERR_NOT_FOUND;
+            _lclcbfunc(0, 0, fcd);
+            return;
+        }
+    } else {
+        fcd->peer = pmix_globals.mypeer;
+    }
+    PMIX_RETAIN(fcd->peer);
+
+    /* run a quick check of the directives to see if any IOF
+     * requests were included so we can set that up now - helps
+     * to catch any early output - and a request for notification
+     * of job termination so we can setup the event registration */
+    pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
+                             fcd->info, fcd->ninfo);
+    /* a no-op on this branch - the stash is for tools, and the entry
+     * point has already excluded them. Kept so the two dispatch paths
+     * read the same way, and so relaxing that condition does not
+     * silently drop the stash */
+    stash_spawn_iof_flags(&fcd->flags);
+
+    /* call the local host */
+    rc = pmix_host_server.spawn(&pmix_globals.myid,
+                                fcd->info, fcd->ninfo,
+                                fcd->apps, fcd->napps,
+                                localcbfunc, fcd);
+    /* PMIX_OPERATION_SUCCEEDED is not a usable answer here. This
+     * up-call's entire product is the namespace of the job that was
+     * started, and it comes back through the callback - which we
+     * always supply, so a host has no reason to withhold it. Taking
+     * the status at face value would hand our caller a success and
+     * an empty namespace, which it cannot act on and cannot detect */
+    if (PMIX_UNLIKELY(PMIX_OPERATION_SUCCEEDED == rc)) {
+        pmix_show_help("help-pmix-server.txt", "atomic-completion-unsupported",
+                       true, "PMIx_Spawn");
+        rc = PMIX_ERR_NOT_SUPPORTED;
+    }
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        /* a host that completed the request inline must return SUCCESS,
+         * so reaching here means nothing has answered the caller yet */
+        fcd->status = rc;
+        _lclcbfunc(0, 0, fcd);
+    }
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t ninfo,
                                         const pmix_app_t apps[], size_t napps,
                                         pmix_spawn_cbfunc_t cbfunc, void *cbdata)
@@ -570,58 +647,26 @@ envars_done:
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
 
+        /* screened here rather than in the handler because it costs
+         * nothing to read - the host module table is established at init
+         * and never changes - so a host that cannot spawn at all still
+         * learns so from the return value */
         if (PMIX_UNLIKELY(NULL == pmix_host_server.spawn)) {
             PMIX_RELEASE(fcd);
             return PMIX_ERR_NOT_SUPPORTED;
         }
 
-        /* if I am spawning on behalf of someone else, then
-         * that peer is the "spawner" */
+        /* Everything left on this branch reads state that belongs to the
+         * progress thread, so hand it over rather than doing it here -
+         * see _spawn_for_host. Carry the parent on the caddy, using a
+         * rank no parent can have to mean "none was named". */
         if (proxy) {
-            /* find the parent's peer object */
-            fcd->peer = pmix_get_peer_object(&parent);
-            if (PMIX_UNLIKELY(NULL == fcd->peer)) {
-                PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-                PMIX_RELEASE(fcd);
-                return PMIX_ERR_NOT_FOUND;
-            }
+            PMIX_XFER_PROCID(&fcd->proc, &parent);
         } else {
-            fcd->peer = pmix_globals.mypeer;
+            PMIX_LOAD_PROCID(&fcd->proc, NULL, PMIX_RANK_INVALID);
         }
-        PMIX_RETAIN(fcd->peer);
-
-        /* run a quick check of the directives to see if any IOF
-         * requests were included so we can set that up now - helps
-         * to catch any early output - and a request for notification
-         * of job termination so we can setup the event registration */
-        pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
-                                 fcd->info, fcd->ninfo);
-        /* a no-op on this branch - the stash is for tools, and this branch
-         * has already excluded them. Kept so the two dispatch paths read
-         * the same way, and so relaxing the condition above does not
-         * silently drop the stash */
-        stash_spawn_iof_flags(&fcd->flags);
-
-        /* call the local host */
-        rc = pmix_host_server.spawn(&pmix_globals.myid,
-                                    fcd->info, fcd->ninfo,
-                                    fcd->apps, fcd->napps,
-                                    localcbfunc, fcd);
-        /* PMIX_OPERATION_SUCCEEDED is not a usable answer here. This
-         * up-call's entire product is the namespace of the job that was
-         * started, and it comes back through the callback - which we
-         * always supply, so a host has no reason to withhold it. Taking
-         * the status at face value would hand our caller a success and
-         * an empty namespace, which it cannot act on and cannot detect */
-        if (PMIX_UNLIKELY(PMIX_OPERATION_SUCCEEDED == rc)) {
-            pmix_show_help("help-pmix-server.txt", "atomic-completion-unsupported",
-                           true, "PMIx_Spawn");
-            rc = PMIX_ERR_NOT_SUPPORTED;
-        }
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_RELEASE(fcd);
-        }
-        return rc;
+        PMIX_THREADSHIFT(fcd, _spawn_for_host);
+        return PMIX_SUCCESS;
     }
 
     /* if we are not connected, then just fork/exec

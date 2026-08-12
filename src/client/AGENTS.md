@@ -1781,18 +1781,35 @@ other.
   request goes out, so the send path's peer lock publishes it. What it does
   **not** survive is two spawns in flight at once from one process — the
   second overwrites the first's flags. That is inherent to a single
-  process-wide slot, not a bug in this file; if a tool ever needs
-  concurrent spawns formatted differently, the stand-in has to become a
-  per-request one.
-- **The server branch reads `pmix_server_globals.clients` from the
+  process-wide slot, not a bug in this file, and **it cannot be closed by
+  making the slot per-request**, which is how this entry used to end.
+  `spawn_or_global_flags()` is reached exactly when the arriving output
+  names a namespace we have no record of, and the only things in scope
+  there are that unknown namespace and the stream — nothing says which
+  in-flight spawn the output came from, and nothing can until the reply
+  arrives, which is the very thing the stand-in covers for. See
+  `docs/todo.rst`, where it is now recorded as an open decision rather
+  than as work waiting to be done.
+- **FIXED — the server branch read `pmix_server_globals.clients` from the
   caller's thread.** `pmix_get_peer_object()` walks that pointer array
   unlocked to resolve a `PMIX_PARENT_ID`, and `PMIx_Spawn_nb` in a server
   role runs on whatever thread the host called it on, while the progress
-  thread adds and removes clients. Recorded rather than fixed because the
-  cure is to thread-shift the whole entry point — the sibling call in
-  `pmix_monitor.c` has exactly the same exposure — and because a host
-  spawning on behalf of a client it is concurrently losing is not a state
-  anything demonstrates.
+  thread adds and removes clients. Everything below the "can this host
+  spawn at all?" screen now runs in `_spawn_for_host` on the progress
+  thread, which is where the rest of the tree assumes that array is only
+  ever touched. **Know what the fix costs**: the parent-not-found and
+  host-refused failures are now reported through the caller's callback
+  rather than as the return of `PMIx_Spawn_nb`. That is what a
+  non-blocking form promises anyway, and `PMIx_Spawn` is unchanged
+  because its wrapper reads the status the callback delivers — but a
+  host driving the `_nb` form and checking only the return will no longer
+  see those two. Covered by `test/unit/spawn_api.c`.
+
+  Note this was the *only* exposed caller. The sibling in
+  `pmix_monitor.c`, which this entry used to name as having "exactly the
+  same exposure", does not: it sits inside `pmix_monitor_processing()`,
+  which is reached by `PMIX_THREADSHIFT` and so already runs on the
+  progress thread.
 - **`req->flags = cd->flags` in `pmix_server_process_iof()` aliases the
   caddy's `file`/`directory` strings**, which `scaddes` frees when
   `_lclcbfunc` releases the caddy — so the IOF request is left holding two
