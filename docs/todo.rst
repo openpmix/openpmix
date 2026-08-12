@@ -83,16 +83,6 @@ performs.  Weigh that against the reachability — the process must ignore
 a failed ``PMIx_Init``, keep running, and then be sent a
 ``PMIX_DEBUGGER_RELEASE`` it never asked for.
 
-Residual leaks on the group-leave path
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Valgrind runs against a server library embedded in a launcher show small
-*indirect* libpmix leaks rooted in the departed client's peer and block
-cleanup — ``_register_client``, ``harvest_envars``,
-``ptl_base_connection_handler``, and the tracker's children.  They are
-entangled with a leak in the host's own group code, which is what makes
-attributing and fixing them delicate.  Left for separate, careful work.
-
 Two shared-state exposures that need a structural answer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -183,6 +173,20 @@ Not defects — by design
 
 These look like bugs and are not.  They are recorded so that they are
 not "fixed" by a later reader.
+
+* **The fence modex bucket reported as a libpmix leak belongs to the
+  host.**  ``pmix_server_fence`` unloads the assembled bucket with
+  ``PMIX_UNLOAD_BUFFER`` and hands the bare pointer to
+  ``pmix_host_server.fence_nb``; ownership transfers on the call, and the
+  request direction carries no ``(release_fn, release_cbdata)`` pair the
+  way the reply direction does.  We cannot free it on return — the host
+  parks it and reads it from another thread — so a host that does not
+  free it leaks about 128 bytes per collecting fence.  In a valgrind run
+  against a launcher this looks exactly like a libpmix leak and nothing
+  else does: the allocation is ``pmix_server_collect_data``, the stack
+  bottoms out in ``progress_engine``, and there is no ``prte_`` frame
+  anywhere in it.  Both in-tree hosts (PRRTE and ``test/simple/simptest``)
+  currently leak it.  See ``src/server/AGENTS.md``.
 
 * **``pmix_srand()`` copies the seeded state into a file-static buffer**
   (``src/util/pmix_alfg.c``).  It looks like a footgun, but it is the
