@@ -11,9 +11,11 @@
 # test swarm (README.md) -- no commit required, never stale.
 #
 # This harness is PMIx-centric: the code under test is the openpmix tree this
-# script lives in.  PRRTE master is baked (as source) into the image and built
-# against your PMIx here, so the launcher's PMIx *server* library is the one you
-# are testing -- which is what makes it exercise server-side collective code.
+# script lives in.  PRRTE is only the launcher: its source is kept in the shared
+# volume at the HEAD of $PRRTE_REF (seeded from the copy baked into the image,
+# then fetched forward on every build) and is compiled against your PMIx here,
+# so the launcher's PMIx *server* library is the one you are testing -- which is
+# what makes it exercise server-side collective code.
 #
 # The PMIx tree is built OUT OF TREE (VPATH) so the source stays pristine:
 #
@@ -85,7 +87,14 @@ EVENT_EXAMPLES="group_invite group_invite_others group_invite_suppress group_inv
 # local, and the producer/consumer mismatch this catches made every process
 # report NO shared locality with its own node-mates.
 TOPO_EXAMPLES="topology"
-BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die group_leave $EVENT_EXAMPLES $TOPO_EXAMPLES"
+# The spawned-job output-forwarding exerciser, driven by run-spawn-iof.sh: a
+# client-issued PMIx_Spawn that names no output directives, so the child job
+# should be treated the way its parent is being treated. It has to run across
+# real nodes because the question is which daemon holds the subscription and
+# which one the output arrives at -- co-located, it passes against a library
+# that routes nothing. See docs/how-things-work/iof_inheritance.rst.
+IOF_EXAMPLES="spawn_iof"
+BUILD_EXAMPLES="$GROUP_EXAMPLES group_die connect_die group_leave $EVENT_EXAMPLES $TOPO_EXAMPLES $IOF_EXAMPLES"
 
 # The Python bindings are built with PMIx (--enable-python-bindings) and staged,
 # together with the maintained test scripts from test/python and the swarm's own
@@ -128,12 +137,14 @@ build_linux() {
     build_image
     docker volume create "$VOLUME" >/dev/null
 
-    echo ">>> building PMIx (your tree) + PRRTE (baked master) into volume $VOLUME"
+    echo ">>> building PMIx (your tree) + PRRTE ($PRRTE_REF) into volume $VOLUME"
     docker run --rm \
         -v "$root":/pmix-src:ro \
         -v "$VOLUME":/opt/prte \
         -e BUILD_EXAMPLES="$BUILD_EXAMPLES" \
         -e PYTHON_BINDINGS="$PYTHON_BINDINGS" \
+        -e PRRTE_REPO="$PRRTE_REPO" \
+        -e PRRTE_REF="$PRRTE_REF" \
         "$IMAGE" bash -euo pipefail -c '
             jobs=$(nproc)
 
@@ -184,20 +195,56 @@ build_linux() {
             make -j"$jobs"
             make install
 
-            echo ">>>> PRRTE (baked master) VPATH build -> /opt/prte/prte"
+            # ---- the launcher, at the HEAD of $PRRTE_REF --------------------
+            # The image bakes a PRRTE clone, and that clone is exactly as old
+            # as the image: "PRRTE master" stops being true the day after the
+            # image is built, and rebuilding the image does NOT fix it -- the
+            # `git clone` RUN layer is cached, so docker hands back the same
+            # commit. A test that depends on a PRRTE-side behavior would then
+            # be run against a launcher nobody can name.
+            #
+            # So the clone we actually build lives in the VOLUME, where it can
+            # be fetched forward between runs, and the baked copy is only the
+            # no-network fallback. autogen is re-run only when the commit
+            # actually moved -- it is the expensive half.
+            prte_src=/opt/prte/prrte-src
+            if [ ! -d "$prte_src/.git" ]; then
+                echo ">>>> cloning PRRTE $PRRTE_REF -> $prte_src"
+                rm -rf "$prte_src"
+                git clone --quiet --recursive -b "$PRRTE_REF" \
+                          "$PRRTE_REPO" "$prte_src" || {
+                    echo "   (clone failed -- using the baked copy in the image)"
+                    rm -rf "$prte_src"; cp -a /src/prrte "$prte_src"; }
+            fi
+            was=$(git -C "$prte_src" rev-parse HEAD 2>/dev/null || echo none)
+            if git -C "$prte_src" fetch --quiet origin "$PRRTE_REF" 2>/dev/null; then
+                git -C "$prte_src" checkout --quiet --detach FETCH_HEAD
+                git -C "$prte_src" submodule --quiet update --init --recursive
+            else
+                echo "   (cannot reach $PRRTE_REPO -- building the PRRTE already here)"
+            fi
+            now=$(git -C "$prte_src" rev-parse HEAD 2>/dev/null || echo none)
+            echo ">>>> PRRTE $PRRTE_REF at ${now:0:10}"
+            if [ ! -x "$prte_src/configure" ] || [ "$was" != "$now" ]; then
+                echo "   (source moved -- autogen)"
+                ( cd "$prte_src" && ./autogen.pl > /tmp/prte-autogen.log 2>&1 ) \
+                    || { tail -20 /tmp/prte-autogen.log; exit 1; }
+            fi
+
+            echo ">>>> PRRTE VPATH build -> /opt/prte/prte"
             mkdir -p /opt/prte/vpath-prte && cd /opt/prte/vpath-prte
-            # A rebuilt image re-clones PRRTE, so a build directory left by an
-            # older image is stale: its Makefiles carry the previous clone`s
-            # timestamps and maintainer mode then tries to regenerate the build
-            # system with whatever aclocal/automake version the image happens to
-            # have, which fails on the unexpanded OAC macros. Start over
-            # whenever the baked source is newer than this build directory.
-            if [ -f config.status ] && [ /src/prrte/configure -nt config.status ]; then
-                echo "   (baked PRRTE source is newer -- reconfiguring from scratch)"
+            # A moved PRRTE source leaves this build directory stale: its
+            # Makefiles carry the previous clone`s timestamps and maintainer
+            # mode then tries to regenerate the build system with whatever
+            # aclocal/automake version the image happens to have, which fails
+            # on the unexpanded OAC macros. Start over whenever the source is
+            # newer than this build directory.
+            if [ -f config.status ] && [ "$prte_src/configure" -nt config.status ]; then
+                echo "   (PRRTE source is newer -- reconfiguring from scratch)"
                 cd / && rm -rf /opt/prte/vpath-prte && mkdir -p /opt/prte/vpath-prte
                 cd /opt/prte/vpath-prte
             fi
-            [ -f config.status ] || /src/prrte/configure \
+            [ -f config.status ] || "$prte_src"/configure \
                 --prefix=/opt/prte/prte --with-pmix=/opt/prte/pmix --enable-debug
             make -j"$jobs"
             make install

@@ -31,6 +31,7 @@ two disagree, the README wins, and please fix this file.
 | `run-runtime-tests.sh` | The `src/runtime` bring-up/tear-down suite in the optimized configuration and on Linux — where the progress thread's CPU-affinity path exists at all — plus that path driven through a real `PMIx_Init`, and node identity across real servers (README §18) |
 | `run-server-tests.sh` | `src/server` — the server-role half of libpmix — across separate servers: direct modex, cross-namespace get, group blocks spanning nodes, IOF pull/dereg against a persistent DVM, and a valgrind pass on the daemon (README §19) |
 | `run-tool-tests.sh` | `src/tool` — the tool-role half of libpmix — with the tool and its servers on different nodes: switching the primary between two independent DVMs, a remote server dying, IOF relayed to a tool from other nodes, and the only valgrind pass the tool library gets (README §20) |
+| `run-spawn-iof.sh` | Output forwarding for a job spawned by an ordinary client, with the spawning rank on a daemon other than the tool's — the reproducer for `docs/how-things-work/iof_inheritance.rst` (README §21) |
 | `swarm-common.sh` | **Sourced, never executed.** `$PMIX_SWARM` naming and the one copy of `cleanup_swarm` |
 
 ## Things that will bite you
@@ -173,6 +174,17 @@ two disagree, the README wins, and please fix this file.
   across runs and across checkouts, so a tree in it can be older than
   the source you are testing. When results make no sense, check what is
   actually in `/opt/prte` before doubting the code.
+
+- **The PRRTE clone baked into the image is not "PRRTE master" — it is
+  PRRTE master as of the day the image was built, and rebuilding the
+  image does not refresh it.** Docker caches the `git clone` RUN layer,
+  so `./build.sh image` hands back the identical commit. `build.sh` now
+  keeps the clone it actually builds in the volume
+  (`/opt/prte/prrte-src`), fetches it forward to the head of
+  `$PRRTE_REF` on every build, and prints the commit; the baked copy is
+  only the seed and the no-network fallback. This matters whenever the
+  behavior under test has a PRRTE half — you cannot conclude anything
+  about a launcher whose commit you cannot name.
 
 ## Adding a runner
 
