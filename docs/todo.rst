@@ -114,10 +114,6 @@ Smaller items carried forward
   directly, as the branch intended, is still untried** — that is a
   behavior change on a path only a pre-v3.2 server exercises, and there
   is none to test against.
-* The relay in ``src/tool`` assumes the downstream tool and the upstream
-  server negotiated the same ``bfrops`` module and buffer type.  A tool
-  forces the same modules on itself and its server, so this holds today,
-  but the code does not check it.
 * The event-caching branch in the tool's ``_notify_complete`` appears to
   be unreachable, and ``src/client`` has no equivalent branch at all.
   Tracked as `openpmix#4101 <https://github.com/openpmix/openpmix/issues/4101>`_.

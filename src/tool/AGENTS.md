@@ -494,12 +494,37 @@ named are the ones that fail against the unfixed library.
 - **The tool's event cache in `_notify_complete` looks unreachable, and
   `src/client` has no equivalent branch at all.** See item 14 and
   [openpmix#4101](https://github.com/openpmix/openpmix/issues/4101).
-- **The relay assumes both peers negotiated the same bfrops module and
-  buffer type.** (Unchanged by the spawn-fallback work above.) `pmix_tool_relay_op` copies the downstream tool's raw
-  payload into a fresh buffer and sends it to `myserver` unchanged, and
-  `tool_switchyard` does the reverse. A tool forces the same modules on
-  itself and its server, so this holds today — but it is an assumption,
-  not something the code checks.
+  What is *no longer* open is the branch itself: it indexed an unchecked
+  `PMIX_INFO_CREATE` and an unchecked `PMIX_PROC_CREATE`, and its
+  allocation-failure arms fell straight into the chain release, leaking
+  the caddy with everything already copied into it. Those are fixed, and
+  the same two allocations were fixed in the event layer's copy of this
+  block (`_notify_client_event` in
+  [`pmix_event_notification.c`](../event/pmix_event_notification.c) —
+  the two are copy-paste siblings, so check both when you touch either).
+  Note the `cd->nondefault` assignment sitting inside the
+  `0 < chain->ninfo` guard is **not** a defect: `nondefault` is only
+  ever set from a `PMIX_EVENT_NON_DEFAULT` directive in the info array,
+  so it cannot be true when there is no info. What remains open is the
+  question the issue is about — whether a server-forwarded event can
+  reach a tool with no handler for it, and whether a client should cache
+  one when it does — which is an event-delivery semantics decision.
+- **FIXED — the relay assumed both peers negotiated the same bfrops
+  module and buffer type.** `pmix_tool_relay_op` copies the downstream
+  tool's raw payload into a fresh buffer and sends it to `myserver`
+  unchanged, and `tool_switchyard` does the reverse, so a relay that
+  crossed an encoding boundary would be *misread* at the far end rather
+  than refused. A tool forces the same modules on itself and its server,
+  so this still holds by construction — the point is that the code now
+  says so instead of assuming it, and reports
+  `relay-encoding-mismatch` plus `PMIX_ERR_PACK_MISMATCH` if it ever
+  stops holding.
+
+  **The status matters as much as the check.** `server_switchyard`
+  falls through to its logic tree on `PMIX_ERR_NOT_SUPPORTED` and
+  `PMIX_ERR_UNREACH`, so returning either of those would have made an
+  encoding mismatch fork/exec the spawn locally instead of reporting
+  it. Any new refusal added here needs a status outside that pair.
 
 ## Testing
 

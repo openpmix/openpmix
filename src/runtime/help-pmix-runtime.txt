@@ -170,3 +170,25 @@ returned PMIX_ERR_WOULD_BLOCK without performing the operation. An API
 that reports no status has instead completed the operation
 asynchronously, which is indistinguishable to the caller except that it
 did not wait.
+#
+[relay-encoding-mismatch]
+A PMIx tool cannot relay a request on behalf of a tool that connected to
+it, because the two connections do not use the same encoding.
+
+  Requesting tool:  %s
+    its bfrops module:  %s   (buffer type %d)
+  Our own server:
+    its bfrops module:  %s   (buffer type %d)
+
+A relayed request is passed along exactly as it arrived - the bytes are
+copied onward without being unpacked, and the answer is copied back the
+same way. That is only sound while both ends agree on how those bytes are
+encoded. They disagree here, so relaying the request would hand the far
+end a message it would misread rather than reject.
+
+This is not expected: a tool imposes its own bfrops module and buffer
+type on itself and on the server it attaches to, so the two normally
+match by construction. Reaching this message most likely means a peer was
+given its modules by some other path - please report it.
+
+The request has been refused rather than relayed.
