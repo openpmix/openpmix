@@ -317,6 +317,12 @@ pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_
             if (0 < chain->ninfo) {
                 cd->ninfo = chain->ninfo;
                 PMIX_INFO_CREATE(cd->info, cd->ninfo);
+                if (NULL == cd->info) {
+                    cd->ninfo = 0;
+                    rc = PMIX_ERR_NOMEM;
+                    PMIX_RELEASE(cd);
+                    goto cleanup;
+                }
                 cd->nondefault = chain->nondefault;
                 /* need to copy the info */
                 for (n = 0; n < cd->ninfo; n++) {
@@ -326,6 +332,12 @@ pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_
             if (NULL != chain->targets) {
                 cd->ntargets = chain->ntargets;
                 PMIX_PROC_CREATE(cd->targets, cd->ntargets);
+                if (NULL == cd->targets) {
+                    cd->ntargets = 0;
+                    rc = PMIX_ERR_NOMEM;
+                    PMIX_RELEASE(cd);
+                    goto cleanup;
+                }
                 memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
             }
             if (NULL != chain->affected) {
