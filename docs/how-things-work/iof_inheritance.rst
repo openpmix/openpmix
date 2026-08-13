@@ -67,29 +67,42 @@ The division follows the architectural split: PRRTE learns to route a job's outp
 
 4. Initialize a spawned child's set from its parent's, subject to the ``inherit`` rule. This is the routing half of the desired behavior, and it is what makes the property hold regardless of where the originating tool attached.
 
-**Planned - PMIx.**
+**PMIx - done.**
 
-5. Add a **delivery-time ancestry fallback**. When output for a namespace matches no subscription - the point at which the server currently falls through to caching it - walk that namespace's ``PMIX_PARENT_ID`` chain and re-test the subscriptions against each ancestor. Any daemon that receives a child's output and holds a subscription for one of its ancestors then delivers it, with no new wire protocol and no propagation of subscriptions between servers. This is what makes the PRRTE routing change sufficient, and it makes the "tool attaches later, then the job spawns" case fall out without further work.
+5. A **delivery-time ancestry fallback**. When output for a namespace matches no subscription - the point at which the server used to fall through to caching it - the server walks that namespace's ``PMIX_PARENT_ID`` chain and tests the subscriptions against each ancestor. A daemon that receives a child's output and holds a subscription for one of its ancestors delivers it, with no new wire protocol and no propagation of subscriptions between servers. See ``inherit_from_ancestry()`` in ``src/server/pmix_server_iof.c``.
 
-6. Provide a way for PRRTE's inheritance decision to reach PMIx. The timing is favorable: ``pmix_server_process_iof()`` runs from the spawn *completion*, after the host has processed the spawn, so the host has already decided by the time PMIx acts. The proposed mechanism is a new boolean attribute - absent meaning "inherit" - that PRRTE sets in the child namespace's job information; PMIx consults it when deciding whether to inherit. A server-wide default established at ``PMIx_server_init`` was considered and rejected because it cannot express a per-spawn override.
+   Two details of the implementation answered open questions that were on this page:
 
-The existing spawn-time inheritance (item 5's predecessor) is kept rather than replaced. It is what implements the precedence rule itself - the spawn request's own attributes against the parent's settings - and it answers the common co-located case without waiting for output to arrive.
+   * A match **clones** the ancestor's subscriptions onto the child's namespace rather than delivering that one chunk, so every later chunk takes the ordinary path and the datastore is consulted once per namespace instead of once per line. The clones are the same ones the spawn-time path creates, made by the same function, and have the same lifetime.
+
+   * The walk is **transitive**, bounded by ``PMIX_IOF_MAX_ANCESTRY``. "Treated the way its parent is treated" says nothing about depth, and the chain is host-supplied data, so the bound is what keeps a malformed or circular one from spinning the progress thread. It stops at the first ancestor anybody here is watching: once the clones exist, that generation's watchers are this namespace's watchers.
+
+   This turned out to close more than it was expected to. ``PMIX_PARENT_ID`` is per-process job data, so it is available on any server the namespace was registered with, and PRRTE funnels every daemon's output through the HNP, which hands everything it receives to its own PMIx server - which is where an ordinary ``prun`` or ``prterun`` tool's subscription lives. So for a tool attached to the HNP, the fallback alone is sufficient: ``run-spawn-iof.sh`` now passes with the tool, the spawning rank and the child job on three different daemons, against unmodified PRRTE.
+
+6. Provide a way for PRRTE's inheritance decision to reach PMIx. The timing is favorable: ``pmix_server_process_iof()`` runs from the spawn *completion*, after the host has processed the spawn, so the host has already decided by the time PMIx acts. The proposed mechanism is a new boolean attribute - absent meaning "inherit" - that PRRTE sets in the child namespace's job information; PMIx consults it when deciding whether to inherit. A server-wide default established at ``PMIx_server_init`` was considered and rejected because it cannot express a per-spawn override. **Still to do**, and note the fallback needs it as much as the spawn-time path does: it runs on a different daemon, so a decision that reaches only the spawner's daemon would be honored on one server and ignored on the other.
+
+The spawn-time inheritance is kept rather than replaced. It is what implements the precedence rule itself - the spawn request's own attributes against the parent's settings - and it answers the co-located case without waiting for output to arrive. The two are independent: neither needs the other to have happened, and where both apply the second finds the subscription the first created and does nothing.
+
+**What is left for PRRTE.** Items 1-4 are still the answer for a tool that is *not* attached to the HNP, and for a tool that attaches to a running DVM and pulls a job's output. Neither of those is reachable from the PMIx side: the first needs the output relayed to a daemon PRRTE does not currently send it to, and the second needs the request recorded against the job at all.
 
 Open questions
 --------------
 
-* Does ``PMIX_PARENT_ID`` reach a child namespace's registration on daemons that did not process the spawn? The delivery-time fallback depends on it. If it does not, PRRTE must include it.
+* Is a new attribute the right channel for the host's inheritance decision, and what should it be called? The alternative is for PRRTE to suppress inheritance by some other means and for PMIx to have no opinion. **Still open**, and it is now the only PMIx-side item left.
 
-* Is a new attribute the right channel for the host's inheritance decision, and what should it be called? The alternative is for PRRTE to suppress inheritance by some other means and for PMIx to have no opinion.
+Answered
+--------
 
-* Should the ancestry walk be transitive - a grandchild inheriting through a child that itself inherited - or only one level? Transitive is the more obviously correct reading of "treated the way its parent is treated", and costs nothing extra on the miss path.
+* *Does* ``PMIX_PARENT_ID`` *reach a child namespace's registration on daemons that did not process the spawn?* **Yes.** PRRTE adds it to the per-process job data in ``prte_pmix_server_register_nspace()``, which every daemon registering the namespace receives; ``pmix_pfexec`` records it for the job as a whole. The lookup tries the specific rank and then the wildcard, so both shapes answer. Demonstrated by ``run-spawn-iof.sh`` case 3, where the decision is taken on a daemon that hosts neither the spawner nor the child.
 
-* Should a match found through the ancestry walk register a real subscription for the child, so subsequent chunks take the fast path, or be re-tested per delivery? Registering is faster but adds a lifetime question; re-testing is simpler and only runs on output that would otherwise have been cached.
+* *Should the ancestry walk be transitive?* **Transitive**, bounded. See item 5.
+
+* *Should a match register a real subscription for the child, or be re-tested per delivery?* **Register.** Re-testing looked simpler until the cost was written down: it puts a datastore fetch in front of every line a watched job writes, where registering pays once per namespace. The lifetime question it seemed to add is not a new one - the clone is identical to the one the spawn-time path already creates, and is made by the same function.
 
 Sequencing and testing
 ----------------------
 
-The PMIx delivery-time fallback should land before the PRRTE routing change, because it is what makes the routing change pay off; until it is in place, relaying a child's output to a daemon holding only the parent's subscription still matches nothing.
+The PMIx delivery-time fallback landed first, and it turned out to be sufficient on its own for a tool attached to the HNP - which is every tool PRRTE's own launchers produce. The remaining PRRTE work is what a tool attached elsewhere needs.
 
 None of this is reachable from ``make check``. The spawn-time inheritance is covered by ``test/unit/iof_inherit.c``, which drives the parser and the registration directly and reads the subscription list back - it establishes which subscriptions are created and for whom, which needs no spawn, and no spawn is available in any case because ``test/simple/simptest`` cannot host one. Everything described above as planned is about *which daemon* holds a subscription and *where* bytes are relayed, so it can only be demonstrated across several daemons. The ten-container swarm under ``contrib/dockerswarm`` is the vehicle for that, and the cases worth building there are:
 

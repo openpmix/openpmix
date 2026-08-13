@@ -49,6 +49,10 @@
 
 #include "pmix_server_ops.h"
 
+/* defined below, beside the spawn-time inheritance it is the other half
+ * of - _iofdeliver reaches for it on its miss path */
+static size_t inherit_from_ancestry(const pmix_proc_t *source);
+
 void pmix_server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                             pmix_buffer_t *buf, void *cbdata)
 {
@@ -206,6 +210,28 @@ static void _iofdeliver(int sd, short args, void *cbdata)
              * so there is no need to cache it */
             found = true;
             rc = PMIX_SUCCESS;
+        }
+    }
+
+    /* Nobody here is subscribed to this namespace - but it may be the
+     * child of one they are. Ask before the bytes go into the cache to
+     * age out: this is the only point at which the server that RECEIVES
+     * a spawned job's output gets to make the inheritance decision, and
+     * on a multi-node DVM it is not the server that processed the spawn.
+     * A match leaves clones behind, so the walk above answers every
+     * later chunk and this runs once per namespace rather than once per
+     * chunk. */
+    if (!found && 0 < inherit_from_ancestry(cd->procs)) {
+        for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+            req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+            if (NULL == req) {
+                continue;
+            }
+            rc = pmix_iof_process_iof(cd->channels, cd->procs, cd->bo, cd->info, cd->ninfo, req);
+            if (PMIX_OPERATION_SUCCEEDED == rc) {
+                found = true;
+                rc = PMIX_SUCCESS;
+            }
         }
     }
 
@@ -460,7 +486,7 @@ static void drain_cache(const char *nspace)
     }
 }
 
-/* Give the child job the output-forwarding its parent has.
+/* Clone every subscription covering "parent" onto "nspace".
  *
  * "The parent's settings" are not recorded anywhere as settings - what
  * exists is the set of live subscriptions covering the spawning process's
@@ -473,22 +499,14 @@ static void drain_cache(const char *nspace)
  * output arrives at the requestor under the same handler id the parent's
  * does and is treated identically there.
  *
- * Returns the number of subscriptions inherited - zero means the parent
- * has nobody watching it either, and the caller falls back to the MCA
- * parameter.
+ * Returns the number of subscriptions cloned - zero means nobody is
+ * watching that parent here.
  */
-static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
+static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
 {
     pmix_iof_req_t *req, *nreq;
-    pmix_proc_t parent;
     size_t m, ninherited = 0;
     int i, limit;
-
-    if (NULL == cd->peer || NULL == cd->peer->info) {
-        return 0;
-    }
-    PMIX_LOAD_PROCID(&parent, cd->peer->info->pname.nspace,
-                     cd->peer->info->pname.rank);
 
     /* the array grows as we add to it, so bound the walk to what was
      * there when we started - a clone can never be its own parent */
@@ -516,7 +534,7 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
          * request registered for the job as a whole carries
          * PMIX_RANK_WILDCARD, which PMIX_CHECK_PROCID matches */
         for (m = 0; m < req->nprocs; m++) {
-            if (PMIX_CHECK_PROCID(&parent, &req->procs[m])) {
+            if (PMIX_CHECK_PROCID(parent, &req->procs[m])) {
                 break;
             }
         }
@@ -551,7 +569,7 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
                             "PMIx:SERVER job %s inheriting %s forwarding to %s from %s",
                             nspace, PMIx_IOF_channel_string(nreq->channels),
                             PMIX_PNAME_PRINT(&req->requestor->info->pname),
-                            PMIX_NAME_PRINT(&parent));
+                            PMIX_NAME_PRINT(parent));
     }
     /* every clone exists now, so the cached head of the stream can be
      * shared out among all of them */
@@ -559,6 +577,139 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
         drain_cache(nspace);
     }
     return ninherited;
+}
+
+/* Give the child job the output forwarding its parent has, at the moment
+ * the spawn completes. The spawning process is the parent, and it is a
+ * local client of ours - so this only ever finds anything on the server
+ * that processed the spawn. See inherit_from_ancestry() for the other
+ * half, which runs where the output arrives.
+ */
+static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
+{
+    pmix_proc_t parent;
+
+    if (NULL == cd->peer || NULL == cd->peer->info) {
+        return 0;
+    }
+    PMIX_LOAD_PROCID(&parent, cd->peer->info->pname.nspace,
+                     cd->peer->info->pname.rank);
+
+    return clone_iof_reqs(&parent, nspace);
+}
+
+/* How far the ancestry walk below will climb. The chain is data - each
+ * link is a PMIX_PARENT_ID the host stored - so a bound is what keeps a
+ * malformed or circular one from spinning the progress thread. Nothing
+ * legitimate is anywhere near this deep.
+ */
+#define PMIX_IOF_MAX_ANCESTRY 16
+
+/* Who spawned the job this process belongs to?
+ *
+ * PMIX_PARENT_ID is per-process job data supplied by the host, so it is
+ * available on any server the namespace was registered with - including
+ * ones that had nothing to do with the spawn, which is the entire point
+ * of the caller. A host that records it for the job as a whole rather
+ * than per rank (pmix_pfexec does) is answered by the second fetch.
+ */
+static bool get_parent_id(const pmix_proc_t *proc, pmix_proc_t *parent)
+{
+    pmix_cb_t cb;
+    pmix_info_t optional;
+    pmix_kval_t *kv;
+    pmix_proc_t wild;
+    pmix_status_t rc;
+    bool found = false;
+    int pass;
+
+    PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+    PMIX_LOAD_PROCID(&wild, proc->nspace, PMIX_RANK_WILDCARD);
+
+    for (pass = 0; pass < 2 && !found; pass++) {
+        if (1 == pass && PMIX_RANK_WILDCARD == proc->rank) {
+            break;      // the second fetch would repeat the first
+        }
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = (0 == pass) ? (pmix_proc_t *) proc : &wild;
+        cb.key = PMIX_PARENT_ID;
+        cb.info = &optional;
+        cb.ninfo = 1;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+            kv = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs);
+            /* the union must not be read until the type says which member
+             * is live, and PMIX_PROC carries a pointer that a mistyped or
+             * truncated store can leave NULL */
+            if (NULL != kv && NULL != kv->value && PMIX_PROC == kv->value->type &&
+                NULL != kv->value->data.proc) {
+                PMIX_LOAD_PROCID(parent, kv->value->data.proc->nspace,
+                                 kv->value->data.proc->rank);
+                found = true;
+            }
+            if (NULL != kv) {
+                PMIX_RELEASE(kv);
+            }
+        }
+        PMIX_DESTRUCT(&cb);
+    }
+    PMIX_INFO_DESTRUCT(&optional);
+
+    return found;
+}
+
+/* The delivery-time half of inheritance: output has arrived for a
+ * namespace nobody here is subscribed to. Before it is cached and lost,
+ * ask whether it belongs to a job that was SPAWNED by one somebody here
+ * IS subscribed to - a subscription covering a parent job covers its
+ * children.
+ *
+ * This is what makes inheritance work when the spawn was processed
+ * somewhere else. pmix_server_process_iof() runs on the server hosting
+ * the spawning process, which on a multi-node DVM is not the server
+ * holding the watching tool's subscription; this runs on the server the
+ * output actually reaches, which is that one. Neither needs the other to
+ * have happened, and no subscription crosses the wire.
+ *
+ * The walk is transitive because "treated the way its parent is treated"
+ * says nothing about depth - a grandchild of a watched job is watched.
+ * It stops at the first ancestor anybody here is subscribed to: once the
+ * clones exist, that generation's watchers are this namespace's watchers.
+ *
+ * A match CLONES rather than delivering once, so every later chunk from
+ * this namespace takes the ordinary path above. That costs one entry per
+ * watcher and gives the fallback the same lifetime the spawn-time clones
+ * have; re-deriving it per chunk would put a datastore fetch in front of
+ * every line of a watched job's output.
+ */
+static size_t inherit_from_ancestry(const pmix_proc_t *source)
+{
+    pmix_proc_t anc, parent;
+    size_t ninherited;
+    int depth;
+
+    PMIX_LOAD_PROCID(&anc, source->nspace, source->rank);
+
+    for (depth = 0; depth < PMIX_IOF_MAX_ANCESTRY; depth++) {
+        if (!get_parent_id(&anc, &parent)) {
+            return 0;       // no parent recorded - this job is a root
+        }
+        if (PMIX_CHECK_NSPACE(parent.nspace, anc.nspace)) {
+            return 0;       // a job cannot have spawned itself
+        }
+        ninherited = clone_iof_reqs(&parent, source->nspace);
+        if (0 < ninherited) {
+            pmix_output_verbose(2, pmix_server_globals.iof_output,
+                                "PMIx:SERVER job %s inherited %d subscription(s) "
+                                "from ancestor %s at delivery",
+                                source->nspace, (int) ninherited,
+                                PMIX_NAME_PRINT(&parent));
+            return ninherited;
+        }
+        PMIX_LOAD_PROCID(&anc, parent.nspace, parent.rank);
+    }
+
+    return 0;
 }
 
 pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,

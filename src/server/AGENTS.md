@@ -1233,20 +1233,62 @@ Two things fall out that are easy to get wrong:
   worth inheriting, and the `info` read is load-bearing rather than
   defensive because the verbose line dereferences it.
 
-**Known limit — this fixes the case where the spawn is processed on the
-server that holds the parent's subscription**, which covers a single-node
-DVM, `prterun`, and any layout where the spawner's daemon is also the
-tool's daemon. On a multi-node DVM it is not sufficient by itself: PRRTE
-registers a tool's IOF request with *the daemon that tool attached to*
-and routes a job's output there using `jdata->originator`, which for a
-client-issued spawn is set to the daemon hosting the spawner rather than
-the one hosting the tool. So the cloned request is created on a server
-the HNP will indeed relay the child's output to, but the parent's
-subscription that it would clone lives on a different daemon and is not
-visible there. Closing that needs the PRRTE side; see
-`src/mca/iof/AGENTS.md` in PRRTE for the relay path.
+**Inheritance is decided in two places, and the second is the one that
+works on a multi-node DVM.** `pmix_server_process_iof()` runs on the
+server that *processed the spawn* — the one hosting the spawning
+process. The watching tool's subscription lives on the server the *tool*
+attached to. On a single-node DVM or under `prterun` those are the same
+server and the spawn-time clone is the whole story; on a multi-node DVM
+they are not, and the clone gets built where the output never arrives.
 
-Coverage: [`test/unit/iof_inherit.c`](../../test/unit/iof_inherit.c).
+So `_iofdeliver` carries the other half: when a chunk of output matches
+no subscription — the point at which it would otherwise go into the
+cache to age out — `inherit_from_ancestry()` walks the source
+namespace's `PMIX_PARENT_ID` chain and clones the subscriptions covering
+the first ancestor anybody here is watching. That decision is taken on
+the server the output *reaches*, which for every PRRTE launcher is the
+HNP: every prted forwards to the HNP, and the HNP hands everything it
+receives to its own PMIx server, where a `prun`/`prterun` tool's
+subscription is. Four things about it are load-bearing:
+
+- **It clones rather than delivering the one chunk.** Every later chunk
+  from that namespace then takes the ordinary walk above, so the
+  datastore is consulted once per namespace instead of once per line of
+  a watched job's output. The clone is made by the same
+  `clone_iof_reqs()` the spawn-time path uses and has the same lifetime,
+  so this adds no lifetime question that was not already there.
+- **`PMIX_PARENT_ID` is per-process job data**, which is why the lookup
+  works on a server that had nothing to do with the spawn: PRRTE adds it
+  in `prte_pmix_server_register_nspace()` for every daemon that
+  registers the namespace. `pmix_pfexec` records it for the job as a
+  whole instead, so `get_parent_id()` tries the specific rank and then
+  the wildcard.
+- **The walk is transitive and bounded** (`PMIX_IOF_MAX_ANCESTRY`). A
+  grandchild of a watched job is watched; the chain is host-supplied
+  data, so the bound is what stops a malformed or circular one from
+  spinning the progress thread.
+- **The two halves are independent.** Neither needs the other to have
+  run, and where both apply the second finds the subscription the first
+  created and does nothing.
+
+What is still PRRTE's is a tool attached to a **non-HNP** daemon, and a
+tool that attaches to a running DVM and `PMIx_IOF_pull`s a job's output:
+the first never receives another node's output at all (the HNP relays
+elsewhere only by `jdata->originator`), and the second is not recorded
+against the job anywhere. Both need PRRTE to keep a *set* of interested
+daemons; see `src/mca/iof/AGENTS.md` in PRRTE for the relay path, and
+[`docs/how-things-work/iof_inheritance.rst`](../../docs/how-things-work/iof_inheritance.rst)
+for the whole design.
+
+Coverage: [`test/unit/iof_inherit.c`](../../test/unit/iof_inherit.c) for
+both halves — note its delivery cases deliberately use a channel the
+watcher did not subscribe to, so `pmix_iof_process_iof()` returns at its
+channel test and the identity-only peer stubs never reach a pack. The
+multi-daemon half is
+[`contrib/dockerswarm/run-spawn-iof.sh`](../../contrib/dockerswarm/run-spawn-iof.sh),
+whose case 3 puts the tool, the spawning rank and the child job on three
+different daemons — the geometry in which nothing about the answer can
+be local.
 
 [i4120]: https://github.com/openpmix/openpmix/issues/4120
 

@@ -298,6 +298,140 @@ static void test_inheritance(void)
     PMIX_RELEASE(client);
 }
 
+/* Register a namespace whose job data records who spawned it, which is
+ * what a host supplies to every server the namespace is registered with
+ * - including servers that had nothing to do with the spawn. */
+static pmix_status_t register_child(const char *nspace, const char *parent_ns,
+                                    pmix_rank_t parent_rank)
+{
+    pmix_info_t info[2];
+    pmix_proc_t parent;
+    pmix_status_t rc;
+    uint32_t one = 1;
+
+    PMIX_LOAD_PROCID(&parent, parent_ns, parent_rank);
+    PMIX_INFO_LOAD(&info[0], PMIX_PARENT_ID, &parent, PMIX_PROC);
+    PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+
+    rc = PMIx_server_register_nspace((char *) nspace, 0, info, 2, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    return rc;
+}
+
+/* Hand the server a chunk of output from a namespace, as a host does.
+ *
+ * The channel is deliberately one the watcher did NOT subscribe to. What
+ * is under test is the ANCESTRY decision - whether a subscription gets
+ * cloned onto this namespace at all - and stopping short of the actual
+ * forwarding is what lets these peers stay the identity-only stubs the
+ * rest of this file builds: pmix_iof_process_iof() returns at its
+ * channel test, before it reaches the pack that would need a bfrops
+ * module and a socket. Do not "fix" the mismatch.
+ */
+static void deliver_from(const char *nspace, pmix_rank_t rank)
+{
+    pmix_proc_t source;
+    pmix_byte_object_t bo;
+    pmix_info_t local;
+    char text[] = "output\n";
+    bool flag = false;
+
+    PMIX_LOAD_PROCID(&source, nspace, rank);
+    bo.bytes = text;
+    bo.size = strlen(text);
+    /* not ours to emit - keeps the test's own stdout clean */
+    PMIX_INFO_LOAD(&local, PMIX_IOF_LOCAL_OUTPUT, &flag, PMIX_BOOL);
+
+    PMIx_server_IOF_deliver(&source, PMIX_FWD_STDOUT_CHANNEL, &bo, &local, 1, NULL, NULL);
+
+    PMIX_INFO_DESTRUCT(&local);
+}
+
+/* The delivery-time half of inheritance.
+ *
+ * The spawn-time clone above is made by the server that PROCESSED the
+ * spawn - the one hosting the spawning process. On a multi-node DVM that
+ * is not the server holding the watching tool's subscription, so the
+ * clone is built where the output does not arrive and the server that
+ * does receive it has nothing to match against. This is the other end:
+ * output arrives for a namespace nobody here watches, and before it is
+ * cached and lost the server asks whether it is the child of a job that
+ * someone here does watch.
+ */
+static void test_delivery_ancestry(void)
+{
+    pmix_peer_t *watcher;
+    pmix_iof_req_t *req;
+    int count;
+
+    watcher = mkpeer("toolns", 0, true);
+
+    /* somebody here watches the parent job's stderr, and nothing at all
+     * names the child. The drop is not tidying: a childjob subscription
+     * left behind by the spawn-time cases above would let every case
+     * here pass without the delivery-time path running at all. */
+    drop_watches("childjob");
+    watch_job(watcher, "parentjob", PMIX_FWD_STDERR_CHANNEL, 9);
+
+    if (PMIX_SUCCESS != register_child("childjob", "parentjob", 0)) {
+        report("ancestry: could not register the child namespace", false);
+        goto cleanup;
+    }
+
+    /* ---- output from an unwatched child finds its parent's watcher ---- */
+    deliver_from("childjob", 0);
+    req = find_watch("childjob", &count);
+    report("ancestry: delivery creates the child's subscription",
+           NULL != req && 1 == count);
+    if (NULL != req) {
+        report("ancestry: it goes to the ancestor's watcher",
+               req->requestor == watcher);
+        report("ancestry: it carries the ancestor's channels",
+               PMIX_FWD_STDERR_CHANNEL == req->channels);
+        report("ancestry: it keeps the watcher's handler id", 9 == req->remote_id);
+    }
+
+    /* ---- the walk is transitive ----
+     *
+     * A grandchild is watched too: "treated the way its parent is
+     * treated" says nothing about depth. Note the child's own clone is
+     * dropped first, so the grandchild's answer has to come from two
+     * levels up rather than from the entry the case above created. */
+    if (PMIX_SUCCESS != register_child("grandchild", "childjob", 0)) {
+        report("ancestry: could not register the grandchild namespace", false);
+        goto cleanup;
+    }
+    drop_watches("childjob");
+    deliver_from("grandchild", 0);
+    req = find_watch("grandchild", &count);
+    report("ancestry: a grandchild inherits through an unwatched parent",
+           NULL != req && 1 == count && (NULL == req || req->requestor == watcher));
+    drop_watches("grandchild");
+
+    /* ---- a job with no ancestry gets nothing ----
+     *
+     * There is nowhere for its output to go, and inventing a
+     * subscription would be worse than caching it. */
+    if (PMIX_SUCCESS != register_child("orphanjob", "unwatchedjob", 0)) {
+        report("ancestry: could not register the orphan namespace", false);
+        goto cleanup;
+    }
+    deliver_from("orphanjob", 0);
+    find_watch("orphanjob", &count);
+    report("ancestry: an unwatched ancestry creates no subscription", 0 == count);
+
+cleanup:
+    drop_watches("childjob");
+    drop_watches("grandchild");
+    drop_watches("orphanjob");
+    drop_watches("parentjob");
+    PMIX_RELEASE(watcher);
+}
+
 static pmix_server_module_t mymodule = {0};
 
 int main(int argc, char **argv)
@@ -313,6 +447,7 @@ int main(int argc, char **argv)
 
     test_spawn_parser();
     test_inheritance();
+    test_delivery_ancestry();
 
     PMIx_server_finalize();
 

@@ -33,10 +33,16 @@
 # subscription to clone is right there, and the case passes.  That is a real
 # configuration -- a single-node DVM, or prterun on one node -- and it is
 # also the configuration in which this test proves almost nothing, because a
-# library that routes nothing at all still passes it.  The case that carries
-# the information is the one where the spawning rank sits on a DIFFERENT
-# daemon.  Both are run here, in that order, because the first is what says
-# the rig itself works when the second fails.
+# library that routes nothing at all still passes it.  The cases that carry
+# the information are the ones where the spawning rank sits on a DIFFERENT
+# daemon, and they are run after the co-located one because that one is what
+# says the rig itself works when a later case fails.
+#
+# The far end of the same question is where the child's output ARRIVES.  A
+# child placed on the tool's own node reaches the tool's server from a
+# process that server hosts, which a delivery-time decision could answer out
+# of local state; case 3 pushes tool, spawner and child onto three different
+# daemons so that nothing about the answer can be local.
 #
 # Nothing in `make check` reaches this: test/unit/iof_inherit.c drives the
 # parser and the registration directly and reads the subscription list back,
@@ -51,12 +57,15 @@
 # with IOF.  Each case reports both: what came back through the tool, and
 # what actually ran where.
 #
-# WHAT THIS DOES NOT COVER.  Two further cases from the design document are
-# not built here yet: the same spawn under a tool that attached to a NON-HNP
-# daemon, and a tool that attaches to a running DVM, pulls a job's output
-# with PMIx_IOF_pull, and then observes the output of a job that job spawns.
-# Both depend on PRRTE recording a set of interested daemons, which does not
-# exist yet; until it does they would only restate this runner's result.
+# WHAT THIS DOES NOT COVER.  Every case here attaches its tool to the HNP,
+# which is what prun and prterun do.  A tool attached to a NON-HNP daemon is
+# not reachable for another node's output at all -- the HNP hands everything
+# it receives to its OWN PMIx server, and relays elsewhere only by
+# jdata->originator -- and a tool that attaches to a running DVM and pulls a
+# job's output with PMIx_IOF_pull is not recorded against that job anywhere.
+# Both need PRRTE to keep a SET of interested daemons for a job, which does
+# not exist yet; neither is a PMIx-side gap and neither can be built here
+# until it does.
 #
 # Prints PASS/FAIL per case and a summary; exits non-zero if anything failed.
 
@@ -267,7 +276,39 @@ test_linux() {
     cleanup_swarm
 
     # ------------------------------------------------------------------
-    # Case 3: the same, under prterun rather than a persistent DVM.
+    # Case 3: three different daemons -- tool, spawner, child.
+    #
+    # Case 2 leaves the child's placement to the mapper, which fills from
+    # the first free slot -- node1, the tool's own node. So the output
+    # arrives at the tool's server from a process that server hosts, and
+    # a delivery-time decision made there could be reading local state
+    # rather than routed output. Listing node2 FIRST puts rank 0 (the
+    # spawner) there and rank 1 on node1, which consumes the free slot
+    # the child would have taken and pushes it out to node3.
+    #
+    # Tool on node1, spawner on node2, child on node3: no two of the
+    # three are the same daemon, and the child's bytes reach the tool
+    # only by being relayed to the HNP and matched there.
+    # ------------------------------------------------------------------
+    banner "case 3: tool, spawner and child on three different daemons"
+    clear_markers
+    OUT="$(RUN "prte --daemonize --host $DVM_HOSTS >/tmp/iof-dvm.log 2>&1; sleep 5;
+                prun --host node2:1,node1:1 -np 2 --timeout 90 $PROG --markers $MARKERS 2>&1;
+                echo '--- done ---';
+                pterm >/dev/null 2>&1")"
+    RAN="$(collect_markers)"
+    show_layout
+    if [ "$(echo "$RAN" | sed -n 's/.*host //p' | sort -u | wc -l)" -lt 3 ]; then
+        # The mapper placed things differently than the geometry above
+        # assumes, so whatever this run shows is not the case described.
+        skp "three-daemon: the ranks did not land on three distinct nodes"
+    else
+        judge "three-daemon" "the child's output crossed two daemons to reach the tool"
+    fi
+    cleanup_swarm
+
+    # ------------------------------------------------------------------
+    # Case 4: the same, under prterun rather than a persistent DVM.
     #
     # prterun brings up a DVM of its own and is the tool, so "the tool's
     # daemon" is the HNP by construction -- and the HNP is prterun itself,
@@ -282,7 +323,7 @@ test_linux() {
     # here is therefore weaker evidence than a pass in case 2 -- it is here
     # to show what a user sees, not to stand in for it.
     # ------------------------------------------------------------------
-    banner "case 3: the same under prterun"
+    banner "case 4: the same under prterun"
     clear_markers
     OUT="$(RUN "prterun --host node2:1,node3:1,node4:1,node5:1,node6:1 \
                     -np 1 --timeout 90 $PROG --markers $MARKERS 2>&1;
