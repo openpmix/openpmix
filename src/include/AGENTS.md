@@ -269,9 +269,10 @@ or macro signature ripples across the tree.
   `pmix_shmem.c`). Includes `pmix_stdatomic.h`.
 
 **Design note — the `__atomic_*` builtins in `pmix_stdatomic.h` are
-deliberate, not a bug, and are equally required.** Four of its convenience
+deliberate, not a bug, and are equally required.** Five of its convenience
 macros (`pmix_atomic_store_int`, `pmix_atomic_load_int`,
-`pmix_atomic_fetch_add`, `pmix_atomic_test_and_set`) use the GCC/Clang
+`pmix_atomic_fetch_add`, and the `pmix_atomic_test_and_set` /
+`pmix_atomic_clear` pair) use the GCC/Clang
 `__atomic_*` builtins rather than the C11 generic functions — this is the
 *only* place in the tree that does. The reason: their callers operate
 atomically on **ordinary, non-`_Atomic`-qualified** globals
@@ -287,6 +288,14 @@ compromise. Note the memory ordering differs on purpose:
 `pmix_atomic_fetch_add` here is `SEQ_CST` (init/finalize counters),
 whereas the differently-named `pmix_atomic_fetch_add_32` in
 `pmix_atomic.h` is relaxed (shared-memory refcounts in `pmix_shmem.c`).
+
+**`pmix_atomic_test_and_set` and `pmix_atomic_clear` are a pair — use
+the second to clear what the first set.** A plain `= false` is a
+non-atomic store racing an atomic read-modify-write, which is what all
+three roles did to `pmix_globals.init_called` until August 2026. This is
+also why the flag stays a plain `bool` rather than becoming
+`pmix_atomic_bool_t`: `__atomic_clear` takes an ordinary object, and
+qualifying the flag would drag in the three init counters beside it.
 
 **Inconsistency to be aware of:** `pmix_globals_t` declares its flags as
 bare C11 `atomic_bool` (`initialized`, `util_initialized`, `connected`,

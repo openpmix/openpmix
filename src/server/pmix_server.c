@@ -1056,7 +1056,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 
     // mark we are no longer initialized
     pmix_atomic_unset_bool(&pmix_globals.initialized);
-    pmix_globals.init_called = false;
+    pmix_atomic_clear(&pmix_globals.init_called);
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server finalize called");

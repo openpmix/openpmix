@@ -38,6 +38,13 @@ so that they are not repeatedly "rediscovered" and re-fixed.
           are the only remaining entries that cannot be checked by
           reading the tree, so they are where the next stale one will be.
 
+          Three of the "smaller items carried forward" were closed on
+          2026-08-13 — the ``PMIx_Value_get_number`` screen (now in the
+          function itself, where every caller in the tree gets it), the
+          ``init_called`` clear (now ``pmix_atomic_clear``, the required
+          partner of the ``__atomic_test_and_set`` that sets it), and
+          ``refcb()``'s dropped store status.
+
 Open decisions
 --------------
 
@@ -97,10 +104,6 @@ Deferred work
 Smaller items carried forward
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-* ``pmix_globals.init_called`` is set with ``__atomic_test_and_set`` and
-  cleared with a plain assignment.  All three roles do this, and the
-  only interleaving that reaches it is a concurrent
-  ``PMIx_Init``/``PMIx_Finalize``, which is already unsupported.
 * The rank ``resolve_peers()`` sets in its pre-v3.2 compatibility branch
   is a dead store — it is unconditionally reset a few lines later, and
   ``try_fetch()`` retries an ``UNDEF`` rank as ``WILDCARD``, which is why

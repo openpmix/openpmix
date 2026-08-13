@@ -56,4 +56,14 @@ typedef _Atomic uintptr_t pmix_atomic_uintptr_t;
 
 #define pmix_atomic_test_and_set(addr) __atomic_test_and_set(addr, __ATOMIC_SEQ_CST)
 
+/* the required partner of pmix_atomic_test_and_set - a flag that was set with
+ * a test-and-set must be cleared with this, not with a plain assignment, or
+ * the clear is a non-atomic store racing an atomic read-modify-write. Both
+ * take a pointer to an ordinary (non-_Atomic) object - pmix_globals.init_called
+ * is a plain bool - which is why this pair spells itself with the compiler's
+ * __atomic_* builtins rather than the C11 generic functions beside them:
+ * atomic_store/atomic_load require an _Atomic-qualified operand. See the
+ * design note in src/include/AGENTS.md */
+#define pmix_atomic_clear(addr) __atomic_clear(addr, __ATOMIC_SEQ_CST)
+
 #endif

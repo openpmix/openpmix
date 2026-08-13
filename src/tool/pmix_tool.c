@@ -1667,7 +1667,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     /* reset the one-time-init latch so a subsequent PMIx_tool_init in this
      * process starts a fresh library instance rather than short-circuiting
      * on the still-set flag and returning PMIX_ERR_INIT */
-    pmix_globals.init_called = false;
+    pmix_atomic_clear(&pmix_globals.init_called);
     pmix_globals.mypeer->finalized = true;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
