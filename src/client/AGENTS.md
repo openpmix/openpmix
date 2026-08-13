@@ -575,11 +575,15 @@ regression coverage in `test/unit/client_api.c`.
 
 *Known, left alone (deliberately):*
 
-- `resolve_peers()` sets `proc.rank = PMIX_RANK_WILDCARD` for a pre-v3.2
-  server and then unconditionally resets it to `PMIX_RANK_UNDEF` two
-  lines later, so the legacy branch is dead. `try_fetch()` retries an
-  UNDEF rank as WILDCARD, which is why the path still works. Not changed
-  without a pre-v3.2 server to test against; see the comment in the code.
+- `resolve_peers()` set `proc.rank = PMIX_RANK_WILDCARD` for a pre-v3.2
+  server and then unconditionally reset it to `PMIX_RANK_UNDEF` two
+  lines later. **The dead store is gone**; the legacy branch now varies
+  only the `key` and `ninfo`, which is all it ever really did, and the
+  path resolves because `try_fetch()` retries an UNDEF rank as WILDCARD.
+  What is still untried is the branch's *intent* — fetching at WILDCARD
+  directly rather than by way of the retry — because that is a behavior
+  change on a path only a pre-v3.2 server exercises and there is none to
+  test against. The comment in the code says so.
 - **The library's own event handlers could be silently suppressed by the
   application — [openpmix#4059][i4059]. Mostly fixed; read this before
   touching the group event code.** Both registrations here
@@ -1749,11 +1753,12 @@ alone:
   `str` is safe: `pmix_bfrops_base_value_load()` zeroes the union for a
   NULL source rather than reaching `strdup`. A NULL nspace is the
   documented "all namespaces" request and reaches both host queries.
-- The dead `PMIX_ERR_DATA_VALUE_NOT_FOUND` arm in both functions, and the
-  dead `proc.rank = PMIX_RANK_WILDCARD` store in the pre-v3.2 branch, are
-  unchanged and still carry their explaining comments. `try_fetch()`
+- The dead `PMIX_ERR_DATA_VALUE_NOT_FOUND` arm in both functions is
+  unchanged and still carries its explaining comment. `try_fetch()`
   returns only `PMIX_SUCCESS`, `PMIX_ERR_INVALID_NAMESPACE` and
-  `PMIX_ERR_NOT_FOUND`.
+  `PMIX_ERR_NOT_FOUND`. (The `proc.rank = PMIX_RANK_WILDCARD` store this
+  entry used to name beside it has since been deleted — see the first
+  sweep's entry for what that did and did not close.)
 
 ## Defects found in the August 2026 review (tenth sweep — `pmix_client_spawn.c`)
 

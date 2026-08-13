@@ -104,12 +104,16 @@ Deferred work
 Smaller items carried forward
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-* The rank ``resolve_peers()`` sets in its pre-v3.2 compatibility branch
-  is a dead store — it is unconditionally reset a few lines later, and
-  ``try_fetch()`` retries an ``UNDEF`` rank as ``WILDCARD``, which is why
-  the legacy path still resolves.  Only the store is dead; the ``key``
-  and ``ninfo`` that branch sets do take effect, so it cannot simply be
-  deleted.  Not touched without a pre-v3.2 server to test against.
+* **The pre-v3.2 branch of** ``resolve_peers()`` **no longer carries a
+  dead store**, but what it *meant* to do is still not done.  The branch
+  assigned ``PMIX_RANK_WILDCARD`` and was then overwritten with
+  ``PMIX_RANK_UNDEF`` before anything read it; the assignment is gone and
+  the branch now varies only the ``key`` and ``ninfo``, which is what it
+  always really did.  The legacy path resolves because ``try_fetch()``
+  retries an ``UNDEF`` rank as ``WILDCARD``.  **Fetching at ``WILDCARD``
+  directly, as the branch intended, is still untried** — that is a
+  behavior change on a path only a pre-v3.2 server exercises, and there
+  is none to test against.
 * The command-line parser drops a positional argument placed *before* an
   option, a consequence of ``getopt`` reordering.  Put options first.
 * The relay in ``src/tool`` assumes the downstream tool and the upstream

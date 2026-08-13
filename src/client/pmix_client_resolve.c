@@ -175,22 +175,26 @@ static void resolve_peers(int sd, short args, void *cbdata)
     // avoids a threadlock situation
     PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, NULL, PMIX_BOOL);
 
-    /* if I am a client and my server is earlier than v3.2.x, then
-     * I need to look for this data under rank=PMIX_RANK_WILDCARD
-     * with a key equal to the nodename */
+    /* if I am a client and my server is earlier than v3.2.x, then I need to
+     * look for this data keyed by the nodename rather than under
+     * PMIX_LOCAL_PEERS with node-info qualifiers.
+     *
+     * NOTE: what the legacy branch varies is the key and the number of
+     * directives - not the rank. Both branches look the data up at
+     * PMIX_RANK_UNDEF, set once below, because try_fetch() retries an UNDEF
+     * rank as WILDCARD and that is what reaches a pre-v3.2 server's
+     * wildcard-filed entry. This branch used to assign PMIX_RANK_WILDCARD
+     * here as well, which read as the thing that made the legacy path work
+     * and was in fact a dead store - the assignment below overwrote it
+     * before anyone looked. Removing it changes nothing; *restoring the
+     * intent* - fetching at WILDCARD directly rather than by way of the
+     * retry - is the part that wants a pre-v3.2 server to test against, and
+     * there is none. See docs/todo.rst. */
     if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
         PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)) {
-        /* NOTE: pre-v3.2 servers filed this under the wildcard rank keyed by
-         * the node name, but the reset below puts the rank back to UNDEF for
-         * both branches, so this assignment has no effect. try_fetch() retries
-         * an UNDEF rank as WILDCARD, which is why the legacy path still
-         * resolves; the dead store is left as-is rather than "fixed" blind,
-         * since no pre-v3.2 server is available to test the difference. */
-        proc.rank = PMIX_RANK_WILDCARD;
         key = cd->nodename;
         ninfo = 1;
     } else {
-        proc.rank = PMIX_RANK_UNDEF;
         key = PMIX_LOCAL_PEERS;
         PMIX_INFO_LOAD(&info[1], PMIX_NODE_INFO, NULL, PMIX_BOOL);
         PMIX_INFO_LOAD(&info[2], PMIX_HOSTNAME, cd->nodename, PMIX_STRING);
