@@ -46,6 +46,8 @@ This part is fixed. A spawn that names no output channel now clones the subscrip
 
 **The inheritance is performed on the wrong daemon for a multi-node DVM.** ``pmix_server_process_iof()`` runs on whichever PMIx server received the spawn command, which is the daemon hosting the *spawning process*. The tool's subscription for the parent job lives on the daemon the *tool* attached to. When those differ, the clone is built where the output does not arrive, and the server that does have the output has nothing to match it against.
 
+This is now demonstrated rather than argued: ``contrib/dockerswarm/run-spawn-iof.sh`` runs the same one-rank job twice against the same six-node DVM and the same tool, moving only the rank. With the rank on the tool's own daemon the child's output comes back on both channels; with the rank one node over, none of it does. The run also sharpens the diagnosis in a way worth keeping. In the failing case the child job happened to be placed on the *tool's own node*, so its output reached the very server that holds the tool's subscription - and was still dropped, because no subscription for the child's namespace was ever created anywhere. The two halves of the gap are therefore independent: this one is a PMIx bug about *where* the inheritance is performed, and it would still bite after PRRTE learns to route a child's output correctly.
+
 **PRRTE has no notion of a set of interested daemons.** ``jdata->originator`` is a single ``pmix_proc_t`` - "originator of a dynamic spawn" - and ``prte_iof_hnp_relay_to_tool()`` relays a job's output to exactly that one daemon. For a client-issued spawn the field is set to the requesting process and then overwritten at the HNP with the daemon that forwarded the launch request, so a child job's output is relayed toward the *spawner's* daemon rather than toward any tool.
 
 **A tool that pulls an existing job's output is not recorded anywhere.** The ``iof_pull`` upcall handler defines sinks on the daemon's own ``stdout``/``stderr`` and returns; it does not record which tool asked, or on which daemon it sits. Consequently a tool attached to a daemon that hosts none of a job's processes receives nothing from the other nodes - and this is true of the *parent* job, not merely of a child. The last of the desired properties above therefore cannot be layered on top of the current code; the parent case has to be built first.
@@ -95,4 +97,12 @@ None of this is reachable from ``make check``. The spawn-time inheritance is cov
 * the same under ``prterun`` rather than a persistent DVM;
 * a tool that attaches to a non-master daemon, pulls a running job's output, and then observes the output of a job that job spawns.
 
-The first of these is also the reproducer for the current gap, so it is worth building before any of the planned work, to hold the analysis above down.
+The first two are built, in ``contrib/dockerswarm/run-spawn-iof.sh``, driving ``examples/spawn_iof.c``; README §21 describes the geometry. The runner reports:
+
+* **spawner on the tool's daemon** - the child's output comes back on both channels. This is the control: it says the example, the launcher and the capture work, so that the next line means something.
+* **spawner one node over** - nothing of the child's output comes back. This is the reproducer, and it fails today.
+* **the same under prterun** - the output does reach the terminal. ``prterun`` also writes output locally, so its terminal is fed by a route that has nothing to do with the subscription being inherited; a pass here is not evidence that the inheritance worked, and the runner says so rather than counting it.
+
+Reading a negative result needs one more thing, because "the forwarding dropped it" and "the child never ran" look identical from the tool and want opposite repairs. ``spawn_iof --markers <dir>`` therefore has every process drop a file of its identity on the node it is running on, by a channel with nothing to do with IOF; the runner gathers those from all ten nodes and prints the layout under every case. That is how the failing case above can say *where* the child ran.
+
+The third case waits on the PRRTE work: it depends on a tool's ``iof_pull`` being recorded against a job at all, which is item 2 of the plan. Until then it would only restate the second case's result.
