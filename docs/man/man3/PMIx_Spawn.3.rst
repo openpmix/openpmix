@@ -344,8 +344,33 @@ non-``IOF`` output attributes (see the note below).
 
 Selecting which streams to forward:
 
+If the request names none of the three output attributes below, the spawned job
+**inherits its parent's output forwarding**: whoever is receiving the output of
+the job that issued the spawn also receives the output of the job it spawned, on
+the same channels and with the same formatting. This is what makes a child
+launched by an ordinary application process |mdash| an ``MPI_Comm_spawn``, for
+example |mdash| appear where its parent's output appears, without the parent
+having to describe a destination it has no way to know.
+
+Naming *any* one of them turns inheritance off and the request is taken exactly
+as written, including a channel explicitly set to ``false`` (which is how a
+spawn asks for silence from a job whose parent is being watched). Partial
+requests are not merged into the inherited set.
+
+A tool is not a member of a job and so has no parent to inherit from; a spawn
+issued by a tool that names no output attribute continues to default to
+forwarding all three output channels to that tool.
+
+When there is nothing to inherit |mdash| the request named no channel *and*
+nobody is watching the spawning job's output |mdash| no forwarding is set up.
+There is deliberately no fallback to forwarding the child's output to the
+process that spawned it: output is never forwarded to an application process,
+which would only emit it again on its own ``stdout`` for the runtime to
+collect and forward a second time.
+
 * ``PMIX_FWD_STDIN`` (bool) |mdash| forward this process's ``stdin`` to the target
-  processes.
+  processes. This is the opposite direction and has no bearing on the output
+  inheritance described above.
 * ``PMIX_FWD_STDOUT`` (bool) |mdash| forward the spawned processes' ``stdout`` to
   this process (typically used by a tool).
 * ``PMIX_FWD_STDERR`` (bool) |mdash| forward the spawned processes' ``stderr`` to

@@ -239,6 +239,7 @@ static void _spawn_for_host(int sd, short args, void *cbdata)
      * to catch any early output - and a request for notification
      * of job termination so we can setup the event registration */
     pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
+                             &fcd->inherit_iof,
                              fcd->info, fcd->ninfo);
     /* a no-op on this branch - the stash is for tools, and the entry
      * point has already excluded them. Kept so the two dispatch paths
@@ -734,6 +735,7 @@ envars_done:
 
     /* check for IOF flags */
     pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
+                             &fcd->inherit_iof,
                              fcd->info, fcd->ninfo);
     stash_spawn_iof_flags(&fcd->flags);
 

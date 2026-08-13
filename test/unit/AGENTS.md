@@ -69,10 +69,25 @@ They fall into three groups.
 These run anywhere and are the bulk of the suite: `compress`, `preg`,
 `bfrops_regex2`, `bfrops_alloc_inherit`, `bfrops_darray`,
 `bfrops_malformed`, `bfrops_get_number`, `bfrops_null_object`,
-`bfrops_helpers`, `info_support`, `iof_pattern`,
+`bfrops_helpers`, `info_support`, `iof_pattern`, `iof_inherit`,
 `hwloc_datatype`, `tracker_match`, `trk_complete`, `collective_status`,
 `collect_job_info`, `progress_threads`, `runtime_init`, `pmix_log`,
 `server_get`, `resolve_api`, `spawn_api`.
+
+`iof_inherit` covers the rule that a spawned job takes its parent's
+output forwarding when the spawn request names no channel of its own
+(see [`src/server/AGENTS.md`](../../src/server/AGENTS.md) and
+[openpmix#4120](https://github.com/openpmix/openpmix/issues/4120)). It
+drives `pmix_server_spawn_parser` and `pmix_server_process_iof` directly
+and reads `pmix_globals.iof_requests` back rather than moving real
+output: what is under test is which subscriptions get created and for
+whom, and no spawn is needed to establish that — nor could one be used,
+since `test/simple/simptest` cannot host a spawn. Its two inheritance
+cases fail against an unfixed library, which was checked by neutering
+the inheritance branch and re-running. Note the deliberate absence of a
+"nothing to inherit" fallback: the case asserting that **no**
+subscription is created there is load-bearing, because forwarding a
+child's output to the process that spawned it is a loopback.
 
 **Singleton client tests** — call the real public API in a process that
 comes up with no server. `client_cycle` (init/finalize cycling),
