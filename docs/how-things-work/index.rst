@@ -17,6 +17,7 @@ find information on that subject here.
    collectives/index.rst
    modex.rst
    inheritance/index.rst
+   iof_inheritance.rst
    resolve.rst
    adding_datatypes.rst
    pmix_log.rst
