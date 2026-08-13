@@ -471,6 +471,12 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         [[#include <stdatomic.h>]],
         [[_Bool flag = 0; (void) __atomic_test_and_set(&flag, __ATOMIC_SEQ_CST);]])
 
+    # the required partner of the above: a flag set with a test-and-set has to
+    # be cleared with this, not with a plain store
+    PMIX_REQUIRE_ATOMIC([__atomic_clear],
+        [[#include <stdatomic.h>]],
+        [[_Bool flag = 0; __atomic_clear(&flag, __ATOMIC_SEQ_CST);]])
+
     ##################################
     # Header files
     ##################################
