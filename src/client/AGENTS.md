@@ -1326,21 +1326,50 @@ without new evidence.
   process is leaving), and `PMIx_Finalize` returning anything but
   `PMIX_SUCCESS` would newly fail applications that check it. Changing
   it is a behavior decision about a universally-called API, not a fix.
-- **`PMIx_Init`'s debugger-wait handler is left registered, holding a
-  pointer into a stack frame that is about to die, if the
-  `PMIX_READY_FOR_DEBUG` notification fails.** `PMIX_EVENT_RETURN_OBJECT`
-  is stored as a bare `cbobject` pointer (see the parser in
+- **FIXED — `PMIx_Init`'s debugger-wait handler was left registered,
+  holding a pointer into a stack frame that was about to die, if the
+  `PMIX_READY_FOR_DEBUG` notification failed.**
+  `PMIX_EVENT_RETURN_OBJECT` is stored as a bare `cbobject` pointer (see
+  the parser in
   [`pmix_event_registration.c`](../event/pmix_event_registration.c)), and
   it points at `releaselock` on `PMIx_Init`'s stack. On the success path
   the handler is `PMIX_EVENT_ONESHOT` and removes itself when it fires,
-  so only the notify-failure return leaves it behind. It is not fixed
-  because the obvious fix does not work: `PMIx_Deregister_event_handler`
-  gates on `pmix_globals.initialized`, which `PMIx_Init` does not set
-  until forty lines later, so the public API is a no-op from there and
-  removing the handler means open-coding the threadshift the public
-  entry point performs. Weigh that against the reachability — the
-  process must ignore a failed `PMIx_Init`, keep running, and then be
-  sent a `PMIX_DEBUGGER_RELEASE` it never asked for.
+  so only the notify-failure return left it behind.
+
+  The reason this sat open for several sweeps is worth keeping, because
+  it is the same trap for anything else this function has to undo:
+  **`PMIx_Init` runs before `pmix_globals.initialized` is set, so every
+  public entry point is a no-op from inside it.**
+  `PMIx_Deregister_event_handler` gates on exactly that. The way out is
+  the one the *registration* already uses forty lines above — threadshift
+  straight to the internal handler — so `dereg_event_hdlr` is now
+  exported as `pmix_internal_dereg_event_hdlr`, the mirror of the
+  `pmix_internal_reg_event_hdlr` beside it, and `dereg_debugger_wait()`
+  posts to it and blocks. Blocking is the point: the registration holds a
+  pointer into the frame we are leaving, so the removal has to land
+  before we return.
+
+  Two things fall out that are easy to get wrong if you touch this.
+  **The handler index arrives as a status** — `mycbfn` assigns the
+  `refid` into `cd->status` on success, which is why the registration is
+  checked with `0 > rc` — so it has to be saved into `evref` before `rc`
+  is reused by the notify below it. And the internal handler **releases
+  its own caddy** after invoking `cbfunc.opcbfn`, so the poster must not.
+
+  The reachability the earlier entry weighed this against is unchanged
+  and still narrow: the process must ignore a failed `PMIx_Init`, keep
+  running, and then be sent a `PMIX_DEBUGGER_RELEASE` it never asked
+  for. There is no `make check` coverage — reaching it needs the
+  debugger-stop key set on the namespace *and* the ready-for-debug
+  notification to fail.
+
+  Note what is **not** a problem here, so it is not "fixed" later: on the
+  success path the oneshot deregistration happens on the progress thread
+  *after* `notification_fn` has already woken `releaselock`, so
+  `PMIx_Init` can return and the frame die before the handler object is
+  released. That is safe because nothing in the teardown reads
+  `cbobject` — `relfn` is NULL for an ordinary handler, only observers
+  set one.
 - **`pmix_globals.init_called` is set with `__atomic_test_and_set` and
   cleared with a plain `= false`.** It is a bare `bool`, not an
   `atomic_bool` like `initialized` beside it, so the clear is a

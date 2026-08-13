@@ -339,6 +339,16 @@ PMIX_EXPORT void pmix_internal_notify_event(int sd, short args, void *cbdata);
 
 PMIX_EXPORT void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata);
 
+/* The deregistration counterpart, exposed for the same reason its sibling
+ * is: PMIx_Init registers the debugger-wait handler by threadshifting to
+ * pmix_internal_reg_event_hdlr directly, because it runs before
+ * pmix_globals.initialized is set and the public entry points gate on it.
+ * Anything that has to take such a registration back before init completes
+ * must threadshift to this the same way. The caddy is a
+ * pmix_shift_caddy_t whose ref carries the handler index; this releases it
+ * after invoking cbfunc.opcbfn, so the poster must not. */
+PMIX_EXPORT void pmix_internal_dereg_event_hdlr(int sd, short args, void *cbdata);
+
 #define PMIX_REPORT_EVENT(e, p, r, f)                                                          \
     do {                                                                                       \
         pmix_event_chain_t *ch, *cp;                                                           \

@@ -94,21 +94,6 @@ wire-format and Standard question rather than a bug fix.
 Deferred work
 -------------
 
-The ``PMIx_Init`` debugger-wait handler can outlive its return object
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``PMIX_EVENT_RETURN_OBJECT`` is stored as a bare ``cbobject`` pointer,
-and here it points at a lock on ``PMIx_Init``'s own stack frame.  On the
-success path the handler is ``PMIX_EVENT_ONESHOT`` and removes itself
-when it fires; only the notification-failure return leaves it
-registered.  The obvious fix does not work: ``PMIx_Deregister_event_handler``
-gates on ``pmix_globals.initialized``, which ``PMIx_Init`` does not set
-until well after that return, so the public API is a no-op from there and
-removing the handler means open-coding the thread-shift the entry point
-performs.  Weigh that against the reachability — the process must ignore
-a failed ``PMIx_Init``, keep running, and then be sent a
-``PMIX_DEBUGGER_RELEASE`` it never asked for.
-
 Smaller items carried forward
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -168,6 +153,10 @@ Coverage gaps
   handler for forwarded stdin needs a tty, and the late-finalize-reply
   guard needs a server that answers the finalize handshake more than
   five seconds late.
+* **The debugger-wait teardown in ``PMIx_Init`` is not exercised.**
+  Reaching it needs the debugger-stop key set on the namespace *and* the
+  ``PMIX_READY_FOR_DEBUG`` notification to then fail, which no test
+  environment can arrange without fault injection.
 * **The process-set and resolve examples have never been leak-validated.**
   Both hang in the test environments used so far, so valgrind is killed
   before ``PMIx_Finalize`` runs and the report is inconclusive.
