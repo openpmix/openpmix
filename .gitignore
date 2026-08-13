@@ -302,6 +302,7 @@ test/unit/singleton_register
 test/unit/iof_pattern
 test/unit/iof_flow
 test/unit/iof_output
+test/unit/iof_inherit
 test/unit/proc_array_id
 test/unit/get_perf
 test/unit/ptl_uri

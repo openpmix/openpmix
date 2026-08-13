@@ -1182,6 +1182,74 @@ the client-driven pull/registration commands. Note `pmix_server_process_iof`
 drains the cache into a newly registered request so a late subscriber
 still sees recently produced output.
 
+**A spawned job inherits its parent's forwarding, and the reason it has
+to is worth understanding before touching `pmix_server_spawn_parser`.**
+That parser used to default the output channels on only for a **tool**,
+so a spawn issued by an ordinary client subscribed to nothing and the
+child's output matched no request, was cached, and aged out unseen
+([openpmix#4120][i4120]). The fix is *not* to forward the child's output
+to the spawning client: a client has nowhere to put it — every place
+that would arm local writing is deliberately tool-only, and
+`pmix_globals.iof_flags.local_output` is false for a non-singleton
+client — so that merely moves the drop one hop later.
+
+What the child gets instead is whatever the *parent job* has.
+"The parent's settings" are not stored anywhere as settings; what exists
+is the set of live subscriptions covering the spawning process's job,
+which is the same thing seen from the other end — **whoever receives the
+parent's output should receive the child's**. `inherit_parent_iof()`
+clones each such request onto the child's namespace, keeping the
+requestor, channels, formatting *and `remote_id`*, so the child's output
+lands at the requestor under the handler id the parent's already uses.
+
+The ordering is: a channel named on the spawn wins, else the parent's
+subscriptions. **There is deliberately no third level.** If nothing is
+watching the parent there is nowhere for the child's output to go, and
+falling back to forwarding it to the spawner would be a loopback rather
+than a fallback — output is never forwarded to an application process,
+which would only emit it again on its own stdout for the runtime to
+collect and forward a second time. (An `iof_spawn_default` MCA parameter
+was written for that slot and removed before merge for this reason;
+PRRTE's existing `prte_rmaps_default_inherit` is the place to control
+inheritance from, and layering a second one would only confuse users.)
+`pmix_server_spawn_parser` reports the first of those through its
+`inherit` out-parameter — **naming any one
+output channel turns inheritance off for all of them**, including naming
+one `false`, which is how a spawn asks for silence from a job whose
+parent is being watched. A tool is not a member of a job, so it has no
+parent and keeps its own "forward everything to me" default; `prun`
+depends on that.
+
+Two things fall out that are easy to get wrong:
+
+- **`drain_cache()` is driven by namespace, not by request.** A job can
+  inherit more than one watcher, and a cache entry is consumed the moment
+  it is forwarded — so draining per-request would hand the cached head of
+  the stream to whichever watcher was cloned first and the rest of the
+  stream to all of them.
+- **The clone is subject to the same screens `pmix_iof_process_iof`
+  applies before forwarding** (non-NULL requestor, non-NULL
+  `requestor->info`, not finalized). A request it would refuse is not
+  worth inheriting, and the `info` read is load-bearing rather than
+  defensive because the verbose line dereferences it.
+
+**Known limit — this fixes the case where the spawn is processed on the
+server that holds the parent's subscription**, which covers a single-node
+DVM, `prterun`, and any layout where the spawner's daemon is also the
+tool's daemon. On a multi-node DVM it is not sufficient by itself: PRRTE
+registers a tool's IOF request with *the daemon that tool attached to*
+and routes a job's output there using `jdata->originator`, which for a
+client-issued spawn is set to the daemon hosting the spawner rather than
+the one hosting the tool. So the cloned request is created on a server
+the HNP will indeed relay the child's output to, but the parent's
+subscription that it would clone lives on a different daemon and is not
+visible there. Closing that needs the PRRTE side; see
+`src/mca/iof/AGENTS.md` in PRRTE for the relay path.
+
+Coverage: [`test/unit/iof_inherit.c`](../../test/unit/iof_inherit.c).
+
+[i4120]: https://github.com/openpmix/openpmix/issues/4120
+
 **The three client-driven commands own the arrays they unpack, and the
 `pmix_setup_caddy_t` will not believe it without being told.** They are
 the mirror image of the two public push APIs, which park the *caller's*

@@ -180,6 +180,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->keys = NULL;
     p->channels = PMIX_FWD_NO_CHANNELS;
     pmix_iof_init_flags(&p->flags);
+    p->inherit_iof = false;
     p->xoff = false;
     p->bo = NULL;
     p->nbo = 0;

@@ -70,6 +70,10 @@ typedef struct {
     size_t napps;
     pmix_iof_channel_t channels;
     pmix_iof_flags_t flags;
+    /* nothing in the spawn request decided which output channels the child
+     * job should have forwarded, so the child inherits its parent's - see
+     * pmix_server_spawn_parser() and pmix_server_process_iof() */
+    bool inherit_iof;
     bool xoff;      // IOF flow control: suspend (true) or resume (false)
     pmix_byte_object_t *bo;
     size_t nbo;
@@ -284,9 +288,14 @@ PMIX_EXPORT pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t
 
 PMIX_EXPORT pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_spawn_cbfunc_t cbfunc, void *cbdata);
+/* Parse a spawn request's output-forwarding directives. On return,
+ * *inherit is true when nothing in the request decided which channels to
+ * forward, which is the caller's signal to give the child job its
+ * parent's settings instead - see pmix_server_process_iof(). */
 PMIX_EXPORT void pmix_server_spawn_parser(pmix_peer_t *peer,
                                           pmix_iof_channel_t *channels,
                                           pmix_iof_flags_t *flags,
+                                          bool *inherit,
                                           pmix_info_t *info,
                                           size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,

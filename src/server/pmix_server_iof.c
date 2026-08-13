@@ -416,12 +416,172 @@ pmix_status_t PMIx_server_IOF_flow_control(const pmix_proc_t *source,
     return PMIX_SUCCESS;
 }
 
+/* Hand the output already in the cache to the subscriptions just built
+ * for a job. A job's first bytes routinely beat its own spawn reply back
+ * to us, so without this the opening lines of every spawned job are lost.
+ *
+ * This is driven by namespace rather than by one request because a job
+ * can inherit more than one watcher, and a cache entry is consumed the
+ * moment it is forwarded: draining per-request would give the cached
+ * head of the stream to whichever watcher happened to be cloned first
+ * and the rest of it to all of them. Every request naming the job is
+ * offered each entry, and the entry is dropped once anyone took it. */
+static void drain_cache(const char *nspace)
+{
+    pmix_iof_cache_t *iof, *ionext;
+    pmix_iof_req_t *req;
+    pmix_status_t rc;
+    bool taken;
+    int i;
+
+    PMIX_LIST_FOREACH_SAFE (iof, ionext, &pmix_server_globals.iof, pmix_iof_cache_t) {
+        taken = false;
+        for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+            req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+            if (NULL == req || 0 == req->nprocs) {
+                continue;
+            }
+            if (!PMIX_CHECK_NSPACE(req->procs[0].nspace, nspace)) {
+                continue;
+            }
+            /* the source still has to match, so an entry from some other
+             * job is simply declined here */
+            rc = pmix_iof_process_iof(iof->channel, &iof->source, iof->bo,
+                                      iof->info, iof->ninfo, req);
+            if (PMIX_OPERATION_SUCCEEDED == rc) {
+                taken = true;
+            }
+        }
+        if (taken) {
+            /* remove it from the list since it has now been forwarded */
+            pmix_list_remove_item(&pmix_server_globals.iof, &iof->super);
+            PMIX_RELEASE(iof);
+        }
+    }
+}
+
+/* Give the child job the output-forwarding its parent has.
+ *
+ * "The parent's settings" are not recorded anywhere as settings - what
+ * exists is the set of live subscriptions covering the spawning process's
+ * own job, which is the same thing seen from the other end: whoever is
+ * receiving the parent job's output is who should receive the child's.
+ * So each matching request is cloned onto the child's namespace with the
+ * same requestor, channels and formatting.
+ *
+ * The clone keeps the original's remote_id deliberately, so the child's
+ * output arrives at the requestor under the same handler id the parent's
+ * does and is treated identically there.
+ *
+ * Returns the number of subscriptions inherited - zero means the parent
+ * has nobody watching it either, and the caller falls back to the MCA
+ * parameter.
+ */
+static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
+{
+    pmix_iof_req_t *req, *nreq;
+    pmix_proc_t parent;
+    size_t m, ninherited = 0;
+    int i, limit;
+
+    if (NULL == cd->peer || NULL == cd->peer->info) {
+        return 0;
+    }
+    PMIX_LOAD_PROCID(&parent, cd->peer->info->pname.nspace,
+                     cd->peer->info->pname.rank);
+
+    /* the array grows as we add to it, so bound the walk to what was
+     * there when we started - a clone can never be its own parent */
+    limit = pmix_globals.iof_requests.size;
+    for (i = 0; i < limit; i++) {
+        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL == req) {
+            continue;
+        }
+        /* a request with no requestor peer was registered by this process
+         * for itself and is delivered through its own callback; there is
+         * nothing about it to give the child. The same screens
+         * pmix_iof_process_iof applies before forwarding apply here
+         * before cloning - a request it would refuse is not worth
+         * inheriting - and the info read is load-bearing rather than
+         * defensive, because the verbose line below dereferences it */
+        if (NULL == req->requestor || NULL == req->requestor->info ||
+            req->requestor->finalized) {
+            continue;
+        }
+        if (PMIX_FWD_NO_CHANNELS == req->channels) {
+            continue;
+        }
+        /* does it cover the job the spawning process belongs to? A
+         * request registered for the job as a whole carries
+         * PMIX_RANK_WILDCARD, which PMIX_CHECK_PROCID matches */
+        for (m = 0; m < req->nprocs; m++) {
+            if (PMIX_CHECK_PROCID(&parent, &req->procs[m])) {
+                break;
+            }
+        }
+        if (m >= req->nprocs) {
+            continue;
+        }
+
+        nreq = PMIX_NEW(pmix_iof_req_t);
+        if (NULL == nreq) {
+            return ninherited;
+        }
+        PMIX_PROC_CREATE(nreq->procs, 1);
+        if (NULL == nreq->procs) {
+            PMIX_RELEASE(nreq);
+            return ninherited;
+        }
+        nreq->nprocs = 1;
+        PMIX_LOAD_PROCID(&nreq->procs[0], nspace, PMIX_RANK_WILDCARD);
+        PMIX_RETAIN(req->requestor);
+        nreq->requestor = req->requestor;
+        nreq->channels = req->channels;
+        nreq->remote_id = req->remote_id;
+        /* a shallow copy of the flags owns nothing - see the note in
+         * pmix_server_process_iof below */
+        nreq->flags = req->flags;
+        nreq->flags.file = NULL;
+        nreq->flags.directory = NULL;
+        nreq->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, nreq);
+        ++ninherited;
+
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "PMIx:SERVER job %s inheriting %s forwarding to %s from %s",
+                            nspace, PMIx_IOF_channel_string(nreq->channels),
+                            PMIX_PNAME_PRINT(&req->requestor->info->pname),
+                            PMIX_NAME_PRINT(&parent));
+    }
+    /* every clone exists now, so the cached head of the stream can be
+     * shared out among all of them */
+    if (0 < ninherited) {
+        drain_cache(nspace);
+    }
+    return ninherited;
+}
+
 pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
                                       char nspace[])
 {
     pmix_iof_req_t *req;
-    pmix_status_t rc;
-    pmix_iof_cache_t *iof, *ionext;
+
+    /* Nothing in the spawn request said which channels to forward, so
+     * the child job takes its parent's - and if the parent has nobody
+     * watching it, there is nowhere for the child's output to go
+     * either. We deliberately do NOT fall back to forwarding it to the
+     * spawner: output is never forwarded to an application process,
+     * which would only emit it on its own stdout for the runtime to
+     * pick up and forward again. */
+    if (cd->inherit_iof) {
+        if (0 == inherit_parent_iof(cd, nspace)) {
+            pmix_output_verbose(2, pmix_server_globals.iof_output,
+                                "PMIx:SERVER job %s has nothing to inherit - "
+                                "its parent's output is not being forwarded",
+                                nspace);
+        }
+        return PMIX_SUCCESS;
+    }
 
     // if no channels to forward, just return success
     if (PMIX_FWD_NO_CHANNELS == cd->channels) {
@@ -455,15 +615,7 @@ pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
     req->flags.directory = NULL;
     req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
     /* process any cached IO */
-    PMIX_LIST_FOREACH_SAFE (iof, ionext, &pmix_server_globals.iof, pmix_iof_cache_t) {
-        rc = pmix_iof_process_iof(iof->channel, &iof->source, iof->bo,
-                                  iof->info, iof->ninfo, req);
-        if (PMIX_OPERATION_SUCCEEDED == rc) {
-            /* remove it from the list since it has now been forwarded */
-            pmix_list_remove_item(&pmix_server_globals.iof, &iof->super);
-            PMIX_RELEASE(iof);
-        }
-    }
+    drain_cache(nspace);
     return PMIX_SUCCESS;
 }
 

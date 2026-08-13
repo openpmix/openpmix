@@ -598,6 +598,7 @@ void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
 void pmix_server_spawn_parser(pmix_peer_t *peer,
                               pmix_iof_channel_t *channels,
                               pmix_iof_flags_t *flags,
+                              bool *inherit,
                               pmix_info_t *info,
                               size_t ninfo)
 {
@@ -636,9 +637,18 @@ void pmix_server_spawn_parser(pmix_peer_t *peer,
     /* we will construct any required iof request tracker upon completion of the spawn
      * as we need the nspace of the spawned application! */
 
+    /* Naming ANY output channel decides the matter for all of them: the
+     * request is taken verbatim, including a channel the requestor
+     * explicitly turned off. Merging a partial request into an inherited
+     * set would make "forward stdout" quietly mean something different
+     * depending on what the parent job happened to be doing. */
+    *inherit = !(stdout_found || stderr_found || stddiag_found);
+
     if (PMIX_PEER_IS_TOOL(peer)) {
         /* if the requestor is a tool, we default to forwarding all
-         * output IO channels */
+         * output IO channels. A tool is not a member of a job, so it has
+         * no parent whose settings it could inherit - this default IS its
+         * setting, and it is what a launcher such as prun relies on. */
         if (!stdout_found) {
             *channels |= PMIX_FWD_STDOUT_CHANNEL;
         }
@@ -648,6 +658,7 @@ void pmix_server_spawn_parser(pmix_peer_t *peer,
         if (!stddiag_found) {
             *channels |= PMIX_FWD_STDDIAG_CHANNEL;
         }
+        *inherit = false;
     }
 }
 
@@ -732,7 +743,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
          * to catch any early output - and a request for notification
          * of job termination so we can setup the event registration */
         pmix_server_spawn_parser(peer, &cd->channels, &cd->flags,
-                                 cd->info, cd->ninfo);
+                                 &cd->inherit_iof, cd->info, cd->ninfo);
     }
 
     /* unpack the number of apps */
