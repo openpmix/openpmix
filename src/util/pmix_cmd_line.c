@@ -230,7 +230,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     int option_index = 0;   /* getopt_long stores the option index here. */
     int n, m, opt, argc, argind;
     bool found;
-    char *ptr, *str, **argv;
+    char *ptr, *str, **argv, *shortopts;
     const char *optname;
     pmix_cmd_line_store_fn_t mystore;
 
@@ -238,6 +238,26 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
      * we have to protect it here */
     argv = PMIx_Argv_copy(pargv);
     argc = PMIx_Argv_count(argv);
+
+    /* Prefix the short-option string with '+' so getopt stops at the first
+     * non-option token instead of permuting non-options to the end of argv.
+     *
+     * Two things depend on this. The loop below means to stop at the first
+     * thing that is not an option - that token is the executable, and
+     * everything from there on belongs to *it*, not to us - and it decides
+     * that by looking at argv[optind]. With permutation, getopt has already
+     * moved the non-options past optind by the time we look, so the loop
+     * broke too late and the tail started after the very argument it was
+     * supposed to start with: "prog positional --verbose" parsed the option
+     * and dropped the positional entirely. And the option-name recovery
+     * below reads argv[optind-1] to see which spelling the user typed,
+     * which is only meaningful while argv is still in the order they typed
+     * it in.
+     *
+     * The cost is that an option placed *after* the first non-option is no
+     * longer ours - it goes to the tail. That is the intent: a launcher
+     * must not eat the flags belonging to the application it launches. */
+    pmix_asprintf(&shortopts, "+%s", (NULL == shorts) ? "" : shorts);
     // assign a default store_fn if one isn't provided
     if (NULL == storefn) {
         mystore = check_store;
@@ -260,6 +280,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
         // every caller to mistake the program name for a positional
         // argument.
         PMIx_Argv_free(argv);
+        free(shortopts);
         return PMIX_SUCCESS;
     }
 
@@ -277,7 +298,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
             // Don't process any further.
             break;
         }
-        opt = getopt_long(argc, argv, shorts, myoptions, &option_index);
+        opt = getopt_long(argc, argv, shortopts, myoptions, &option_index);
         switch (opt) {
             case 0:
                 /* if this is an MCA param of some type, store it */
@@ -299,6 +320,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             free(str);
                         }
                         PMIx_Argv_free(argv);
+                        free(shortopts);
                         return PMIX_ERR_SILENT;
                     }
                     pmix_asprintf(&str, "%s=%s", argv[optind-1], argv[optind]);
@@ -375,6 +397,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             free(str);
                         }
                         PMIx_Argv_free(argv);
+                        free(shortopts);
                         return PMIX_OPERATION_SUCCEEDED;
                     }
                     if (0 == strcmp(ptr, "verbose") || 0 == strcmp(ptr, "v")) {
@@ -385,6 +408,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             free(str);
                         }
                         PMIx_Argv_free(argv);
+                        free(shortopts);
                         return PMIX_OPERATION_SUCCEEDED;
                     }
                     if (0 == strcmp(ptr, "help") || 0 == strcmp(ptr, "h")) {
@@ -400,6 +424,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             free(str);
                         }
                         PMIx_Argv_free(argv);
+                        free(shortopts);
                         return PMIX_OPERATION_SUCCEEDED;
                     }
                     /* see if we have help on that subject */
@@ -419,6 +444,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         free(str);
                     }
                     PMIx_Argv_free(argv);
+                    free(shortopts);
                     return PMIX_OPERATION_SUCCEEDED;
                 } else if (NULL == optarg) {
                     // high-level help request
@@ -433,6 +459,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         free(str);
                     }
                     PMIx_Argv_free(argv);
+                    free(shortopts);
                     return PMIX_OPERATION_SUCCEEDED;
                 } else {  // unrecognized option
                     str = pmix_show_help_string("help-cli.txt", "unrecognized-option", true,
@@ -444,6 +471,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     }
                 }
                 PMIx_Argv_free(argv);
+                free(shortopts);
                 return PMIX_ERR_SILENT;
             case 'V':
                 str = pmix_show_help_string(helpfile, "version", false,
@@ -457,6 +485,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 }
                 // if they ask for the version, that is all we do
                 PMIx_Argv_free(argv);
+                free(shortopts);
                 return PMIX_OPERATION_SUCCEEDED;
             case 'v':
                 /* Name the option from the character getopt handed back, not
@@ -550,6 +579,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                             free(str);
                                         }
                                         PMIx_Argv_free(argv);
+                                        free(shortopts);
                                         return PMIX_ERR_SILENT;
                                     }
                                     ptr = NULL;
@@ -578,6 +608,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             // directives and the application
                             results->tail = PMIx_Argv_copy(&argv[optind]);
                             PMIx_Argv_free(argv);
+                            free(shortopts);
                             return PMIX_SUCCESS;
                         }
                         str = pmix_show_help_string("help-cli.txt", "short-no-long", true,
@@ -588,6 +619,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             free(str);
                         }
                         PMIx_Argv_free(argv);
+                        free(shortopts);
                         return PMIX_ERR_SILENT;
                     }
                 }
@@ -612,6 +644,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             free(str);
                         }
                         PMIx_Argv_free(argv);
+                        free(shortopts);
                         return PMIX_ERR_SILENT;
                     }
                 }
@@ -632,6 +665,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     free(str);
                 }
                 PMIx_Argv_free(argv);
+                free(shortopts);
                 return PMIX_ERR_SILENT;
         }
     }
@@ -645,6 +679,7 @@ done:
         }
     }
     PMIx_Argv_free(argv);
+    free(shortopts);
     return PMIX_SUCCESS;
 }
 

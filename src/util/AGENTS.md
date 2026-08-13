@@ -108,12 +108,30 @@ function of its own.
 
 The parser is intricate and
 carries several special cases (`-v` repeat counting, `--` separator,
-MCA-param option pairs, the `-np` shortcut, optional `-h` argument). Two
-parser quirks that bit `src/tools` and are worth remembering: a bare
-invocation (`argc == 1`) returns early with `tail == NULL` (it must *not*
-fall through the `done:` copy, which would leave the program name in the
-tail), and a positional placed *before* an option is dropped by getopt's
-reordering — put options first.
+MCA-param option pairs, the `-np` shortcut, optional `-h` argument). One
+quirk that bit `src/tools` is worth remembering: a bare invocation
+(`argc == 1`) returns early with `tail == NULL` (it must *not* fall
+through the `done:` copy, which would leave the program name in the
+tail).
+
+**The first token that is not an option ends the option list**, and the
+short-option string is prefixed with `'+'` to make getopt agree with
+that. Without it getopt permutes non-options to the end of argv as it
+goes, so by the time the loop looked at `argv[optind]` to decide it had
+reached one, they had already been moved past it: the tail began *after*
+the token it should have begun with, and a lone positional was dropped
+altogether while the option beyond it was parsed as though it were the
+tool's. Two things depend on the `'+'`, so do not remove it — the tail
+boundary, and the option-name recovery that reads `argv[optind-1]` to
+see which spelling the user typed, which is only meaningful while argv
+is still in the order they typed it in.
+
+The cost is deliberate: an option placed *after* the first non-option is
+no longer the tool's, it goes to the tail. That is what a launcher
+needs, since the tokens after the executable are the *application's*
+flags and must not be eaten. Regression cases are
+`test_parse_positional_first` / `test_parse_positional_after_options` in
+[`test/unit/util/util_cmd_line.c`](../../test/unit/util/util_cmd_line.c).
 
 ### `pmix_hash` — the TMA-aware datastore helper
 

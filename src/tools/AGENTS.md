@@ -98,10 +98,15 @@ matching `PMIX_OPTION_SHORT_DEFINE` (or vice-versa) is a latent parse bug.
 >   `pmix_cmd_line_parse` (the `argc == 1` early-out now returns with
 >   `tail == NULL` instead of falling through the `done:` copy); a bare
 >   `pevent`/`plookup`/`pquery` now correctly prints its usage/guard.
-> - A **positional placed before an option** (`pquery key --uri x`) is
->   still dropped by the parser's option/positional reordering — put
->   options first (`pquery --uri x key`). This is a `pmix_cmd_line`
->   limitation, not a per-tool bug.
+> - A **positional placed before an option** (`pquery key --uri x`) used
+>   to be dropped outright by getopt's option/positional reordering,
+>   while the option beyond it was still parsed as the tool's. It is not
+>   dropped now: the first non-option ends the option list, so that
+>   invocation yields a tail of `["key", "--uri", "x"]` and no `--uri`.
+>   Options still have to come first to be *seen* (`pquery --uri x key`),
+>   which is the intended reading — the tokens after the first
+>   non-option belong to it, not to the tool. See the `pmix_cmd_line`
+>   section of [`src/util/AGENTS.md`](../util/AGENTS.md).
 >
 > `pmix_info` additionally compares `join(results.tail)` against `argv[0]`
 > as belt-and-suspenders; new tools need only null-check `results.tail`.
