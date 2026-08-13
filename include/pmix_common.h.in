@@ -1332,6 +1332,15 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_IOF_LOCAL_OUTPUT               "pmix.iof.local"        // (bool) Write output streams to local stdout/err
 #define PMIX_IOF_OUTPUT_RAW                 "pmix.iof.raw"          // (bool) Do not buffer output to be written as complete lines - output
                                                                     //        characters as the stream delivers them
+#define PMIX_IOF_INHERIT                    "pmix.iof.inhrt"        // (bool) Provided by the host in the job-level information of a
+                                                                    //        dynamically spawned job: whether that job is to inherit the
+                                                                    //        output forwarding of the job that spawned it - i.e., whether
+                                                                    //        whoever is receiving the parent job's output is to receive
+                                                                    //        this job's output as well. Absence of the attribute means
+                                                                    //        "true", so a host says nothing unless it is turning
+                                                                    //        inheritance off. Directives on the spawn request itself take
+                                                                    //        precedence: naming any of PMIX_FWD_STDOUT/STDERR/STDDIAG
+                                                                    //        settles the matter and this attribute is not consulted.
 
 /* Attributes for controlling contents of application setup data */
 #define PMIX_SETUP_APP_ENVARS               "pmix.setup.env"        // (bool) harvest and include relevant envars

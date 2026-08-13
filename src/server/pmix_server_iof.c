@@ -579,19 +579,96 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
     return ninherited;
 }
 
+/* Does the host allow this job to inherit? PMIX_IOF_INHERIT is job-level
+ * information the host supplies with the spawned namespace, so it reaches
+ * every server the namespace is registered with - which matters, because
+ * the two places that ask are on different daemons. Absent means yes: a
+ * host says nothing unless it is turning inheritance off.
+ *
+ * "Absent" and "we have never heard of this namespace" are the same
+ * answer here, and deliberately so at the only site where they can
+ * differ - see inherit_parent_iof() below.
+ */
+static bool iof_inherit_allowed(const char *nspace)
+{
+    pmix_cb_t cb;
+    pmix_info_t optional;
+    pmix_kval_t *kv;
+    pmix_proc_t wild;
+    pmix_status_t rc;
+    bool allowed = true;
+
+    PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+    PMIX_LOAD_PROCID(&wild, nspace, PMIX_RANK_WILDCARD);
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = &wild;
+    cb.key = PMIX_IOF_INHERIT;
+    cb.info = &optional;
+    cb.ninfo = 1;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+        kv = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs);
+        /* the union must not be read until the type says which member is
+         * live - this is host-supplied data */
+        if (NULL != kv && NULL != kv->value && PMIX_BOOL == kv->value->type) {
+            allowed = kv->value->data.flag;
+        }
+        if (NULL != kv) {
+            PMIX_RELEASE(kv);
+        }
+    }
+    PMIX_DESTRUCT(&cb);
+    PMIX_INFO_DESTRUCT(&optional);
+
+    return allowed;
+}
+
 /* Give the child job the output forwarding its parent has, at the moment
  * the spawn completes. The spawning process is the parent, and it is a
  * local client of ours - so this only ever finds anything on the server
  * that processed the spawn. See inherit_from_ancestry() for the other
  * half, which runs where the output arrives.
+ *
+ * This is the one site where "the host said nothing" and "we cannot ask
+ * yet" are distinguishable and must not be conflated. We run from the
+ * spawn COMPLETION, and whether the child's namespace has been
+ * registered with this server by now is up to the host - a daemon
+ * hosting none of the child's processes may never register it at all. A
+ * fetch that finds nothing there would read as "inherit", which is the
+ * wrong way to be wrong: it would clone against the host's wishes and
+ * nothing would take the clone back. So an unknown namespace defers to
+ * the delivery-time half, which cannot run before the namespace exists
+ * and therefore always has a real answer.
  */
 static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
 {
     pmix_proc_t parent;
+    pmix_namespace_t *ns, *nptr = NULL;
 
     if (NULL == cd->peer || NULL == cd->peer->info) {
         return 0;
     }
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (PMIX_CHECK_NSPACE(ns->nspace, nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL == nptr) {
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "PMIx:SERVER job %s not registered here yet - "
+                            "leaving inheritance to delivery", nspace);
+        return 0;
+    }
+    if (!iof_inherit_allowed(nspace)) {
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "PMIx:SERVER job %s: host declined output inheritance",
+                            nspace);
+        return 0;
+    }
+
     PMIX_LOAD_PROCID(&parent, cd->peer->info->pname.nspace,
                      cd->peer->info->pname.rank);
 
@@ -687,6 +764,16 @@ static size_t inherit_from_ancestry(const pmix_proc_t *source)
     pmix_proc_t anc, parent;
     size_t ninherited;
     int depth;
+
+    /* The host's decision, read where it is reliable: output cannot
+     * arrive for a namespace this server has not been told about, so
+     * unlike the spawn-time site there is no "cannot ask yet" here. */
+    if (!iof_inherit_allowed(source->nspace)) {
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "PMIx:SERVER job %s: host declined output inheritance",
+                            source->nspace);
+        return 0;
+    }
 
     PMIX_LOAD_PROCID(&anc, source->nspace, source->rank);
 

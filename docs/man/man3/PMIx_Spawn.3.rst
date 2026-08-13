@@ -368,6 +368,15 @@ process that spawned it: output is never forwarded to an application process,
 which would only emit it again on its own ``stdout`` for the runtime to
 collect and forward a second time.
 
+The host environment has the final say. A host that does not want a spawned
+job to inherit |mdash| because the user asked its launcher not to, for example
+|mdash| sets ``PMIX_IOF_INHERIT`` to ``false`` in the job-level information it
+supplies for the spawned namespace, and no forwarding is inherited for that
+job. Absence of the attribute means inheritance is allowed, so a host that has
+no opinion sends nothing. This does not override a request that named a channel
+of its own; naming a channel has already settled the matter before the host's
+preference is consulted.
+
 * ``PMIX_FWD_STDIN`` (bool) |mdash| forward this process's ``stdin`` to the target
   processes. This is the opposite direction and has no bearing on the output
   inheritance described above.

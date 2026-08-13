@@ -1,7 +1,7 @@
 Output Forwarding for Spawned Jobs
 ==================================
 
-This page describes how the output of a *dynamically spawned* job is routed, what the current implementation does and does not do, and the plan for closing the gap. It is a working design document rather than a description of finished behavior: the sections marked **Planned** are not implemented yet.
+This page describes how the output of a *dynamically spawned* job is routed, what the current implementation does and does not do, and what is left. It is a working design document rather than a description of finished behavior. The PMIx side is implemented; the items still marked **Planned - PRRTE** are not, and the "What is missing" section below is kept as the description of the defect each fix closed rather than as a statement of current behavior.
 
 The behavior we want
 --------------------
@@ -67,7 +67,7 @@ The division follows the architectural split: PRRTE learns to route a job's outp
 
 4. Initialize a spawned child's set from its parent's, subject to the ``inherit`` rule. This is the routing half of the desired behavior, and it is what makes the property hold regardless of where the originating tool attached.
 
-**PMIx - done.**
+**PMIx - done.** Both items below are implemented.
 
 5. A **delivery-time ancestry fallback**. When output for a namespace matches no subscription - the point at which the server used to fall through to caching it - the server walks that namespace's ``PMIX_PARENT_ID`` chain and tests the subscriptions against each ancestor. A daemon that receives a child's output and holds a subscription for one of its ancestors delivers it, with no new wire protocol and no propagation of subscriptions between servers. See ``inherit_from_ancestry()`` in ``src/server/pmix_server_iof.c``.
 
@@ -79,19 +79,20 @@ The division follows the architectural split: PRRTE learns to route a job's outp
 
    This turned out to close more than it was expected to. ``PMIX_PARENT_ID`` is per-process job data, so it is available on any server the namespace was registered with, and PRRTE funnels every daemon's output through the HNP, which hands everything it receives to its own PMIx server - which is where an ordinary ``prun`` or ``prterun`` tool's subscription lives. So for a tool attached to the HNP, the fallback alone is sufficient: ``run-spawn-iof.sh`` now passes with the tool, the spawning rank and the child job on three different daemons, against unmodified PRRTE.
 
-6. Provide a way for PRRTE's inheritance decision to reach PMIx. The timing is favorable: ``pmix_server_process_iof()`` runs from the spawn *completion*, after the host has processed the spawn, so the host has already decided by the time PMIx acts. The proposed mechanism is a new boolean attribute - absent meaning "inherit" - that PRRTE sets in the child namespace's job information; PMIx consults it when deciding whether to inherit. A server-wide default established at ``PMIx_server_init`` was considered and rejected because it cannot express a per-spawn override. **Still to do**, and note the fallback needs it as much as the spawn-time path does: it runs on a different daemon, so a decision that reaches only the spawner's daemon would be honored on one server and ignored on the other.
+6. A channel for the host's inheritance decision: ``PMIX_IOF_INHERIT``, a boolean the host places in the job-level information of the spawned namespace. Absent means "inherit", so a host says nothing unless it is turning inheritance off. Both decision points consult it through ``iof_inherit_allowed()``.
+
+   Job information is the channel rather than anything carried with the spawn request, and that follows from the two decision points being on *different daemons*: the flag has to be readable by the server the output arrives at, which may have had nothing to do with the spawn. Job info is exactly the thing PRRTE already ships to every daemon that registers the namespace - it is how ``PMIX_PARENT_ID`` gets there. Nothing about it is read by the spawned processes; it is server-side state that happens to be keyed by their namespace. A server-wide default at ``PMIx_server_init`` was rejected because it cannot express a per-job answer, and PRRTE's inherit setting is per-job.
+
+   The spawn-time site needs one more rule, because it is the only place where "the host said nothing" and "we cannot ask yet" are distinguishable. It runs from the spawn *completion*, and whether the child's namespace has been registered with that server by then is the host's business - a daemon hosting none of the child's processes may never register it at all. A fetch that found nothing there would read as "inherit", which is the wrong way to be wrong: it would clone against the host's wishes and nothing would take the clone back. So an unregistered namespace defers to the delivery-time half, which cannot run before the namespace exists and therefore always has a real answer. Deferring is never *behaviorally* wrong - it only postpones a decision that the other half will make correctly.
 
 The spawn-time inheritance is kept rather than replaced. It is what implements the precedence rule itself - the spawn request's own attributes against the parent's settings - and it answers the co-located case without waiting for output to arrive. The two are independent: neither needs the other to have happened, and where both apply the second finds the subscription the first created and does nothing.
 
 **What is left for PRRTE.** Items 1-4 are still the answer for a tool that is *not* attached to the HNP, and for a tool that attaches to a running DVM and pulls a job's output. Neither of those is reachable from the PMIx side: the first needs the output relayed to a daemon PRRTE does not currently send it to, and the second needs the request recorded against the job at all.
 
-Open questions
---------------
-
-* Is a new attribute the right channel for the host's inheritance decision, and what should it be called? The alternative is for PRRTE to suppress inheritance by some other means and for PMIx to have no opinion. **Still open**, and it is now the only PMIx-side item left.
-
 Answered
 --------
+
+* *Is a new attribute the right channel for the host's inheritance decision?* **Yes**, and it is ``PMIX_IOF_INHERIT`` in the spawned namespace's job information. The alternative considered - PMIx having no opinion, and a spawn controlling its own output through the ``PMIX_FWD_*`` directives it already has - would have left a launcher's ``inherit`` setting silently not covering output forwarding. See item 6.
 
 * *Does* ``PMIX_PARENT_ID`` *reach a child namespace's registration on daemons that did not process the spawn?* **Yes.** PRRTE adds it to the per-process job data in ``prte_pmix_server_register_nspace()``, which every daemon registering the namespace receives; ``pmix_pfexec`` records it for the job as a whole. The lookup tries the specific rank and then the wildcard, so both shapes answer. Demonstrated by ``run-spawn-iof.sh`` case 3, where the decision is taken on a daemon that hosts neither the spawner nor the child.
 
