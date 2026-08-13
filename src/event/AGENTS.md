@@ -290,6 +290,18 @@ whose last local registration just disappeared (the caller then sends
 that buffer as a `PMIX_DEREGEVENTS_CMD`). A default-handler
 deregistration packs the `PMIX_MAX_ERR_CONSTANT` wildcard instead.
 
+**Both halves of the pipeline are reachable without the public entry
+points, and that is deliberate.** `pmix_internal_reg_event_hdlr` and
+`pmix_internal_dereg_event_hdlr` are the threadshift targets
+`PMIx_Register_event_handler` / `PMIx_Deregister_event_handler` post to,
+and they are exported because the public calls gate on
+`pmix_globals.initialized` — so code that runs *before* a role finishes
+initializing cannot use them. `PMIx_Init`'s debugger-wait handler is the
+case that needs both: it registers one, and on the notify-failure return
+it has to take it back while `initialized` is still unset. Post a
+`pmix_shift_caddy_t` whose `ref` is the handler index; the handler
+invokes `cbfunc.opcbfn` and then releases the caddy itself.
+
 ## Notification flow
 
 `PMIx_Notify_event` thread-shifts to `pmix_internal_notify_event`, then

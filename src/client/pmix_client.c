@@ -442,6 +442,18 @@ static void mycbfn(pmix_status_t status, size_t refid, void *cbdata)
     PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
+/* wake the caller of a deregistration we had to open-code because the
+ * public entry point is not yet available to us - see the debugger-wait
+ * teardown in PMIx_Init */
+static void deregopcb(pmix_status_t status, void *cbdata)
+{
+    pmix_lock_t *lock = (pmix_lock_t *) cbdata;
+
+    PMIX_ACQUIRE_OBJECT(lock);
+    lock->status = status;
+    PMIX_WAKEUP_THREAD(lock);
+}
+
 static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                             pmix_info_t results[], size_t nresults,
@@ -642,6 +654,36 @@ cleanup:
     PMIX_BYTE_OBJECT_DESTRUCT(&bo);
 }
 
+/* Remove the debugger-wait handler PMIx_Init registered.
+ *
+ * This has to be open-coded because PMIx_Deregister_event_handler gates on
+ * pmix_globals.initialized, which PMIx_Init does not set until it is nearly
+ * done - so the public entry point is a no-op from here. Registration has
+ * the same problem and solves it the same way, by threadshifting straight
+ * to the internal handler, and this is that call's mirror image.
+ *
+ * It blocks: the registration holds a pointer into our caller's stack
+ * frame, and the point of removing it is that the frame is about to die. */
+static void dereg_debugger_wait(size_t evref)
+{
+    pmix_shift_caddy_t *cd;
+    pmix_lock_t lock;
+
+    cd = PMIX_NEW(pmix_shift_caddy_t);
+    if (PMIX_UNLIKELY(NULL == cd)) {
+        /* nothing else we can do - the handler stays registered */
+        return;
+    }
+    PMIX_CONSTRUCT_LOCK(&lock);
+    cd->ref = evref;
+    cd->cbfunc.opcbfn = deregopcb;
+    cd->cbdata = &lock;
+    /* the handler releases the caddy after invoking our callback */
+    PMIX_THREADSHIFT(cd, pmix_internal_dereg_event_hdlr);
+    PMIX_WAIT_THREAD(&lock);
+    PMIX_DESTRUCT_LOCK(&lock);
+}
+
 static int client_init_cntr = 0;
 
 pmix_status_t PMIx_Init(pmix_proc_t *proc,
@@ -655,7 +697,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_proc_t wildcard, srvr;
     pmix_info_t ginfo, evinfo[4];
     pmix_lock_t releaselock;
-    size_t n;
+    size_t n, evref = 0;
     bool found;
     pmix_ptl_posted_recv_t *rcv;
     pid_t pid;
@@ -1123,6 +1165,10 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                 PMIX_DESTRUCT_LOCK(&releaselock);
                 return rc;
             }
+            /* a successful registration reports the handler's index as its
+             * status - hold onto it, as rc is about to be reused, and it is
+             * the only way to take the registration back */
+            evref = (size_t) rc;
 
             /* notify the host that we are waiting. The announcement is aimed
              * solely at our local server, which upcalls it to the host - the
@@ -1156,8 +1202,13 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             PMIX_INFO_DESTRUCT(&evinfo[2]);
             PMIX_INFO_DESTRUCT(&evinfo[3]);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                // failed to notify ready-for-debug
+                // failed to notify ready-for-debug. Nobody knows we are
+                // waiting, so nothing will release us - but the handler we
+                // just registered holds a pointer to releaselock, which is
+                // on this stack frame and is about to go away. Take the
+                // registration back before we leave.
                 PMIX_ERROR_LOG(rc);
+                dereg_debugger_wait(evref);
                 PMIX_DESTRUCT_LOCK(&releaselock);
                 return rc;
             }

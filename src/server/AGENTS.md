@@ -128,7 +128,8 @@ against this list before "fixing" one:
 - **`PMIX_DEREGEVENTS_CMD` answers nothing, deliberately.** It is the one
   arm that returns `PMIX_SUCCESS` without queuing a reply and without an
   async owner to queue one later. The client sends that command through
-  `PMIX_PTL_SEND_RECV` with a **NULL** callback (`dereg_event_hdlr` in
+  `PMIX_PTL_SEND_RECV` with a **NULL** callback
+  (`pmix_internal_dereg_event_hdlr` in
   `src/event/pmix_event_registration.c`), so nothing is waiting on a tag.
 - **`PMIX_GDS_CADDY` and `PMIX_SERVER_QUEUE_REPLY` both dereference an
   unchecked `PMIX_NEW`.** Making the macros NULL-safe does not help: the

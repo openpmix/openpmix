@@ -1325,7 +1325,7 @@ pmix_status_t pmix_deregister_event_hdlr(size_t event_hdlr_ref,
     return PMIX_SUCCESS;
 }
 
-static void dereg_event_hdlr(int sd, short args, void *cbdata)
+void pmix_internal_dereg_event_hdlr(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
     pmix_buffer_t *msg = NULL;
@@ -1392,7 +1392,7 @@ pmix_status_t pmix_event_deregister_observer(size_t obsid,
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "pmix_event_deregister_observer shifting to progress thread");
-    PMIX_THREADSHIFT(cd, dereg_event_hdlr);
+    PMIX_THREADSHIFT(cd, pmix_internal_dereg_event_hdlr);
 
     return PMIX_SUCCESS;
 }
@@ -1441,7 +1441,7 @@ PMIX_EXPORT pmix_status_t PMIx_Deregister_event_handler(size_t event_hdlr_ref,
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "pmix_deregister_event_hdlr shifting to progress thread");
-    PMIX_THREADSHIFT(cd, dereg_event_hdlr);
+    PMIX_THREADSHIFT(cd, pmix_internal_dereg_event_hdlr);
 
     if (NULL == cbfunc) {
         PMIX_WAIT_THREAD(&cd->lock);
