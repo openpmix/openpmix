@@ -167,14 +167,19 @@ static pmix_status_t register_child(const char *nspace, const char *parent_ns,
 {
     pmix_info_t info[2];
     pmix_proc_t parent;
+    pmix_nspace_t ns;
     pmix_status_t rc;
     uint32_t one = 1;
 
+    /* a pmix_nspace_t, not the caller's string: this API takes a
+     * fixed-size array, and gcc rejects a shorter literal outright under
+     * -Werror=stringop-overread. Same reason as test/unit/resolve_api.c */
+    PMIX_LOAD_NSPACE(ns, nspace);
     PMIX_LOAD_PROCID(&parent, parent_ns, parent_rank);
     PMIX_INFO_LOAD(&info[0], PMIX_PARENT_ID, &parent, PMIX_PROC);
     PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &one, PMIX_UINT32);
 
-    rc = PMIx_server_register_nspace((char *) nspace, 0, info, 2, NULL, NULL);
+    rc = PMIx_server_register_nspace(ns, 0, info, 2, NULL, NULL);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         rc = PMIX_SUCCESS;
     }
@@ -191,16 +196,19 @@ static pmix_status_t register_child_noinherit(const char *nspace,
 {
     pmix_info_t info[3];
     pmix_proc_t parent;
+    pmix_nspace_t ns;
     pmix_status_t rc;
     uint32_t one = 1;
     bool no = false;
 
+    /* see register_child() above for why this is not the caller's string */
+    PMIX_LOAD_NSPACE(ns, nspace);
     PMIX_LOAD_PROCID(&parent, parent_ns, parent_rank);
     PMIX_INFO_LOAD(&info[0], PMIX_PARENT_ID, &parent, PMIX_PROC);
     PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &one, PMIX_UINT32);
     PMIX_INFO_LOAD(&info[2], PMIX_IOF_INHERIT, &no, PMIX_BOOL);
 
-    rc = PMIx_server_register_nspace((char *) nspace, 0, info, 3, NULL, NULL);
+    rc = PMIx_server_register_nspace(ns, 0, info, 3, NULL, NULL);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         rc = PMIX_SUCCESS;
     }
