@@ -130,6 +130,13 @@ typedef pmix_status_t (*pmix_server_abort_fn_t)(const pmix_proc_t *proc, void *s
  * PMIx_Data_embed() copies rather than consumes, so a host that embeds
  * the blob in a message of its own still owns the original.
  *
+ * Note the asymmetry within this one call: procs and info belong to the
+ * library, are valid only until the operation is completed, and are
+ * freed by the library afterwards - while data is the host's from the
+ * moment the call is made. Every other array handed to a host callback
+ * follows the procs/info rule, so a correct instinct about the rest of
+ * this interface is exactly wrong for this one argument.
+ *
  * The array of info structs is used to pass user-requested options to the server.
  * This can include directives as to the algorithm to be used to execute the
  * fence operation. The directives are optional _unless_ the _mandatory_ flag
