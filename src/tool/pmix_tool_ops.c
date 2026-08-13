@@ -24,6 +24,7 @@
 #include "src/mca/ptl/ptl.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_show_help.h"
 
 #include "pmix_tool_ops.h"
 
@@ -83,6 +84,34 @@ pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer,
 
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
+    }
+
+    /* Both directions of this relay move the payload verbatim - we copy the
+     * downstream tool's bytes onward without unpacking them, and
+     * tool_switchyard copies the server's answer back the same way - so the
+     * two ends have to have negotiated the same encoding. That holds today
+     * because a tool forces its own bfrops module and buffer type on both
+     * itself and its server, but nothing here has ever checked it, and a
+     * relayed message that crossed an encoding boundary would be silently
+     * misread at the far end rather than refused. Say so instead.
+     *
+     * PMIX_ERR_PACK_MISMATCH is deliberately not one of the two statuses
+     * server_switchyard falls through on: this is not "a command we do not
+     * relay" (PMIX_ERR_NOT_SUPPORTED) and not "no server to relay it to"
+     * (PMIX_ERR_UNREACH), and fork/exec'ing the spawn ourselves would not
+     * answer it either. The requester gets the status back as the result of
+     * its command. */
+    if (peer->nptr->compat.bfrops != pmix_client_globals.myserver->nptr->compat.bfrops ||
+        peer->nptr->compat.type != pmix_client_globals.myserver->nptr->compat.type) {
+        pmix_show_help("help-pmix-runtime.txt", "relay-encoding-mismatch", true,
+                       PMIX_PNAME_PRINT(&peer->info->pname),
+                       (NULL == peer->nptr->compat.bfrops)
+                           ? "unknown" : peer->nptr->compat.bfrops->version,
+                       (int) peer->nptr->compat.type,
+                       (NULL == pmix_client_globals.myserver->nptr->compat.bfrops)
+                           ? "unknown" : pmix_client_globals.myserver->nptr->compat.bfrops->version,
+                       (int) pmix_client_globals.myserver->nptr->compat.type);
+        return PMIX_ERR_PACK_MISMATCH;
     }
 
     s = PMIX_NEW(pmix_shift_caddy_t);
