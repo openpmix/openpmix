@@ -136,7 +136,13 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
     pmix_proc_t proc;
     pmix_buffer_t pbkt;
     bool compressed, decompressed, found;
-    pmix_collect_t last_blob_info_byte, blob_info_byte;
+    pmix_collect_t last_blob_info_byte;
+    /* PMIX_BYTE writes exactly one byte through this pointer, and
+     * pmix_collect_t is an enum carrying a negative member - so the
+     * compiler makes it int-sized and an unpack into it leaves three
+     * bytes of the comparisons below reading whatever was on the stack.
+     * pmix_server_collect_data packs a uint8_t; read one back. */
+    uint8_t blob_info_byte;
     pmix_list_t nspaces;
     pmix_proclist_t *plist;
 
@@ -220,8 +226,8 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
                 goto exit;
             }
             if (PMIX_COLLECT_INVALID == last_blob_info_byte) {
-                last_blob_info_byte = blob_info_byte;
-            } else if (last_blob_info_byte != blob_info_byte) {
+                last_blob_info_byte = (pmix_collect_t) blob_info_byte;
+            } else if (last_blob_info_byte != (pmix_collect_t) blob_info_byte) {
                 // we have a mismatch - report the error
                 pmix_show_help("help-pmix-server.txt", "collection-mismatch", true);
                 rc = PMIX_ERR_BAD_PARAM;
