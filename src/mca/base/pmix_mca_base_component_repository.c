@@ -382,6 +382,21 @@ static pmix_mca_base_component_repository_item_t *find_component(const char *typ
     pmix_list_t *component_list;
     int ret;
 
+    /* Nothing has ever been added, so there is nothing to find. The
+     * repository is created and its table initialized by
+     * pmix_mca_base_component_repository_init(), which only runs once a
+     * DSO is opened - so in a statically linked build it never runs at
+     * all, and this table has no slots. Every one of the sibling entry
+     * points tests the flag for that reason; this one did not, so each
+     * component released at framework close looked itself up in an
+     * un-init'd table. Harmless (the lookup answers PMIX_ERROR and we
+     * would return NULL anyway), but it printed
+     * "pmix_hash_table_init() has not been called" at the user on every
+     * debug build - three times per prun. */
+    if (!initialized) {
+        return NULL;
+    }
+
     ret = pmix_hash_table_get_value_ptr(&pmix_mca_base_component_repository, type, strlen(type),
                                         (void **) &component_list);
     if (PMIX_SUCCESS != ret) {
