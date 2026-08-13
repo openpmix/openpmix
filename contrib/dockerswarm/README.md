@@ -14,9 +14,17 @@ is only the nickname.
 > This harness is adapted from PRRTE's `contrib/dockerswarm`, inverted to be
 > **PMIx-centric**: the code under test is *your live openpmix working tree*
 > (bind-mounted, built out-of-tree, never stale, no commit required). PRRTE is
-> just the launcher — its master branch is baked into the image as source and
+> just the launcher — its source lives in the shared volume, is fetched forward
+> to the head of `$PRRTE_REF` (default `master`) on every `build.sh`, and is
 > built **against your PMIx** at run time, so the launcher's PMIx *server*
 > library is the one you are testing.
+>
+> The image bakes a PRRTE clone too, but only as a seed and as the no-network
+> fallback. Do not rely on it for "this is master": it is exactly as old as the
+> image, and *rebuilding the image does not refresh it* — docker caches the
+> `git clone` layer and hands back the same commit. `build.sh` prints the
+> commit it is actually building, and `prte_info --version` in a node reports
+> what is installed.
 
 ---
 
