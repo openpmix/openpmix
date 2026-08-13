@@ -1374,3 +1374,95 @@ servers — so the attach/switch/disconnect reference accounting runs for
 real. It runs `toolswitch -q` (queries skipped: a second DVM on the same
 host answers out of the same state as the first). Do not let it stand in
 for the linux mode.
+
+---
+
+## 21. Output forwarding for a spawned job (`run-spawn-iof.sh`)
+
+```sh
+./run-spawn-iof.sh linux      # the swarm; there is no macOS mode
+```
+
+A job spawned through `PMIx_Spawn` should be treated the way its parent
+is being treated: whoever receives the parent job's output should receive
+the child's. [`docs/how-things-work/iof_inheritance.rst`](../../docs/how-things-work/iof_inheritance.rst)
+is the design document; this runner is its reproducer.
+
+### Why one host cannot answer this
+
+Responsibility is split between the two projects, and the split is what
+makes the geometry matter:
+
+* **PMIx** decides who gets a copy, by walking the subscriptions
+  (`pmix_iof_req_t`) held by **one** PMIx server — the server inside the
+  daemon that the requesting tool attached to.
+* **PRRTE** decides which daemon a job's output is relayed to.
+
+So two daemons appear in the story and they need not be the same one:
+the daemon **the tool attached to**, which holds the subscription
+covering the parent job, and the daemon hosting **the rank that calls
+`PMIx_Spawn`**, which is where the spawn command lands and therefore
+where PMIx performs the inheritance.
+
+Put the spawning rank on the tool's own daemon and the two coincide. That
+is a real configuration — a single-node DVM, or `prterun` on one node —
+and it is also the configuration in which the test proves nearly nothing:
+a library that routes nothing at all still passes it.
+
+### The cases
+
+| # | Launch | Tool's daemon | Spawning rank | What it is for |
+|---|--------|---------------|---------------|----------------|
+| 1 | persistent DVM, `prun --host node1:1` | node1 (HNP) | node1 | **Control.** Says the example, the launcher and the capture all work. |
+| 2 | persistent DVM, `prun --host node2:1` | node1 (HNP) | node2 | **The reproducer.** Only the placement of one rank differs from case 1. |
+| 3 | `prterun`, node1 left out of `--host` | node1 (`prterun` itself) | node2 | What a user sees under `prterun`. Weaker evidence — see below. |
+
+The DVM spans six nodes and the parent job is one rank, because `--host`
+**is** the allocation: a parent that fills it leaves the spawn nowhere to
+land, and the job then blocks until the launch timeout — which reads
+exactly like a library hang and is not one.
+
+Case 3 is reported separately because `prterun` also writes output
+*locally*, which can carry a child's bytes to the terminal by a route
+that has nothing to do with the subscription being inherited. A pass
+there is not a substitute for a pass in case 2.
+
+### Reading a failure
+
+If the child's lines never come back, that alone does not say whether the
+forwarding dropped them or the child never ran — and those want opposite
+repairs. So the example is run as `spawn_iof --markers /tmp`, which makes
+every process also drop a file of the same content **on the node it ran
+on**, by a channel that has nothing to do with IOF. The runner gathers
+those from all ten nodes and prints them under every case, so each result
+comes with the layout that produced it. `judge` uses them: "the child job
+never ran" and "the child ran on node4 but none of its output reached the
+tool" are different verdicts.
+
+The parent's own output is checked first and separately. If the tool is
+not receiving *that*, the premise of the case is gone and the child's
+absence says nothing about inheritance; the runner says so rather than
+returning a confident wrong answer.
+
+Markers go to each node's own `/tmp` because the shared volume is mounted
+**read-only** in the node containers. The name deliberately does not
+match `pmix*` — that is the glob `cleanup_swarm` sweeps between cases,
+and these files have to survive until they are collected.
+
+### What it deliberately does not cover
+
+Two further cases from the design document are not built here:
+
+* the same spawn under a tool that attached to a **non-HNP** daemon;
+* a tool that attaches to a running DVM, pulls a job's output with
+  `PMIx_IOF_pull`, and then observes the output of a job that job spawns.
+
+Both need PRRTE to record a *set* of interested daemons for a job, which
+does not exist yet — `jdata->originator` is a single process. Until it
+does, both would only restate what case 2 already reports.
+
+### No macOS mode
+
+The subject is which daemon holds a subscription. One host has one
+daemon, so only the control case can be built there. The script says that
+and exits rather than running something that would look like coverage.

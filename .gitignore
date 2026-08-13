@@ -133,6 +133,7 @@ examples/group_invite_decline
 examples/group_invite_abort
 examples/group_invite_others
 examples/spawn_reuse
+examples/spawn_iof
 examples/group_badinfo
 examples/group_invite_suppress
 examples/group_invite_nb
