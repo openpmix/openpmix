@@ -1505,7 +1505,7 @@ static void refcb(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     int32_t cnt;
-    pmix_status_t rc, ret;
+    pmix_status_t rc, ret, strc, store_rc = PMIX_SUCCESS;
     pmix_kval_t kv;
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
@@ -1534,19 +1534,33 @@ static void refcb(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
         goto done;
     }
 
-    // unpack and store any returned data
+    /* unpack and store any returned data. The unpack is what terminates the
+     * loop, so the store cannot be allowed to overwrite its status - but a
+     * store failure must not be dropped either. The caller asked explicitly
+     * for fresh data, and the alternative to reporting it is to hand them the
+     * stale copy without a word. Record the first one and report it below.
+     * Note this deliberately does not resurrect the status the *server* sent:
+     * refresh_cache() is called for its side effect and its return aborts the
+     * enclosing PMIx_Get, so a "nothing to refresh" answer must not fail gets
+     * that succeed today - see the note in src/server/AGENTS.md */
     PMIX_CONSTRUCT(&kv, pmix_kval_t);
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &kv, &cnt, PMIX_KVAL);
     while (PMIX_SUCCESS == rc) {
-        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, cb->proc, PMIX_INTERNAL, &kv);
+        PMIX_GDS_STORE_KV(strc, pmix_globals.mypeer, cb->proc, PMIX_INTERNAL, &kv);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != strc && PMIX_SUCCESS == store_rc)) {
+            PMIX_ERROR_LOG(strc);
+            store_rc = strc;
+        }
         PMIX_DESTRUCT(&kv);
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &kv, &cnt, PMIX_KVAL);
     }
     PMIX_DESTRUCT(&kv);
-    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+    if (PMIX_SUCCESS != store_rc) {
+        ret = store_rc;
+    } else if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
         ret = PMIX_SUCCESS;
     } else {
         ret = rc;

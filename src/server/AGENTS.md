@@ -1859,6 +1859,10 @@ misbehave by design).
   "nothing to refresh" `PMIX_ERR_NOT_FOUND` would fail gets that
   currently succeed. Pack the honest status (it is the right thing on the
   wire), but do not build anything here on the client acting on it.
+
+  What the client *does* report is a failure to **store** what arrived,
+  which is a different thing and is not a legitimate outcome the way a
+  not-found answer is. Do not read the two as one rule.
 - **`pmix_server_job_ctrl` creating a namespace for an unknown target is
   deliberate.** A job-control request may name a job this server has not
   been told about yet, and the epilog directives need somewhere to hang;

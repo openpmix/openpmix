@@ -101,9 +101,6 @@ Smaller items carried forward
   cleared with a plain assignment.  All three roles do this, and the
   only interleaving that reaches it is a concurrent
   ``PMIx_Init``/``PMIx_Finalize``, which is already unsupported.
-* ``refcb()`` in ``src/client`` overwrites the store status with the next
-  unpack's, so a store failure while absorbing a cache refresh is
-  silently dropped.
 * The rank ``resolve_peers()`` sets in its pre-v3.2 compatibility branch
   is a dead store — it is unconditionally reset a few lines later, and
   ``try_fetch()`` retries an ``UNDEF`` rank as ``WILDCARD``, which is why

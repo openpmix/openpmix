@@ -881,16 +881,34 @@ inspection against the code that consumes them.
   logged and reported, and the unpack still ends the loop.
 
   **The behavior decision this entry used to defer is worth stating
-  rather than re-deferring.** Reporting the store failure does fail a
-  `PMIx_Get` that would previously have succeeded — `refresh_cache()`'s
-  return aborts the enclosing get — and that is the point: the caller
-  asked explicitly for fresh data, and the alternative is to hand them
-  the stale copy without a word. A store failure here is never a
-  legitimate outcome (the hash module replaces a duplicate rather than
-  refusing it), which is what distinguishes it from the status the
-  *server* sent. That one is still discarded, deliberately: a "nothing
-  to refresh" `PMIX_ERR_NOT_FOUND` must not fail gets that succeed
-  today. See the matching note in
+  rather than re-deferring, and so is the reason for it.** Reporting the
+  store failure does fail a `PMIx_Get` that would previously have
+  succeeded — `refresh_cache()`'s return aborts the enclosing get. The
+  reason to accept that is not that a partial refresh is rare; it is
+  that **the caller cannot recover from one**. This data is the
+  library's, not theirs: they asked through `PMIX_GET_REFRESH_CACHE` for
+  what the server holds now, and if only some of it landed there is
+  nothing they can inspect to tell which keys are current and which are
+  stale. An error over the whole operation is the only answer they can
+  act on.
+
+  **Know what such a failure can and cannot be**, because the obvious
+  guess is wrong. It is never a duplicate: `pmix_hash_store()` ignores a
+  repeat whose value is unchanged and *replaces* one whose value
+  differs, reporting success either way, so nothing about re-delivering
+  a key can fail. What is left is an allocation failure — the job
+  tracker, the proc entry, the key registration, the value copy — or a
+  kval we cannot make sense of, meaning a NULL key or a
+  `PMIX_QUALIFIED_VALUE` whose payload is not a non-empty data array.
+  The array-expansion arms of `pmix_gds_hash_store()` (including the
+  duplicate node/proc-map detection, which *does* refuse) are not
+  reachable from here: `pmix_server_refresh_cache` fetches
+  `PMIX_REMOTE` scope for one rank, so what comes back is per-proc put
+  data rather than job-level arrays.
+
+  The status the *server* sent is still discarded, deliberately: a
+  "nothing to refresh" `PMIX_ERR_NOT_FOUND` must not fail gets that
+  succeed today. See the matching note in
   [`src/server/AGENTS.md`](../server/AGENTS.md).
 - `pmix_client_convert_group_procs()` holds `grouplock` across a
   `PMIX_GDS_FETCH_KV` for `PMIX_JOB_SIZE`. That is safe only because
