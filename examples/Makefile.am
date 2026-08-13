@@ -89,7 +89,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   simple simple_server abort group_die connect_die group_leave \
                   group_destruct_die group_invite group_invite_timeout group_invite_decline \
                   group_invite_abort group_invite_others group_invite_suppress group_invite_nb topology \
-                  spawn_reuse spawn_iof group_badinfo datatypes toolswitch
+                  spawn_reuse spawn_iof iof_watcher group_badinfo datatypes toolswitch
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -192,6 +192,10 @@ spawn_reuse_LDADD = $(top_builddir)/src/libpmix.la
 spawn_iof_SOURCES = spawn_iof.c examples.h
 spawn_iof_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 spawn_iof_LDADD = $(top_builddir)/src/libpmix.la
+
+iof_watcher_SOURCES = iof_watcher.c examples.h
+iof_watcher_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+iof_watcher_LDADD = $(top_builddir)/src/libpmix.la
 
 group_invite_suppress_SOURCES = group_invite_suppress.c examples.h
 group_invite_suppress_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)

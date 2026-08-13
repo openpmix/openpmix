@@ -57,15 +57,19 @@
 # with IOF.  Each case reports both: what came back through the tool, and
 # what actually ran where.
 #
-# WHAT THIS DOES NOT COVER.  Every case here attaches its tool to the HNP,
-# which is what prun and prterun do.  A tool attached to a NON-HNP daemon is
-# not reachable for another node's output at all -- the HNP hands everything
-# it receives to its OWN PMIx server, and relays elsewhere only by
-# jdata->originator -- and a tool that attaches to a running DVM and pulls a
-# job's output with PMIx_IOF_pull is not recorded against that job anywhere.
-# Both need PRRTE to keep a SET of interested daemons for a job, which does
-# not exist yet; neither is a PMIx-side gap and neither can be built here
-# until it does.
+# THE TOOL'S OWN DAEMON IS THE THIRD VARIABLE.  Cases 1-4 all attach their
+# tool to the HNP, which is what prun and prterun do, and the HNP is special:
+# every prted forwards to it, and it hands everything it receives to its OWN
+# PMIx server.  So those cases never ask whether output can reach a tool
+# whose subscription is held somewhere else.  Case 5 does -- it puts the tool
+# on a non-HNP daemon and has it pull a job that was ALREADY RUNNING, which
+# is the only case here that depends on the runtime recording an interest
+# after the fact rather than at launch.
+#
+# WHAT THIS DOES NOT COVER.  Output forwarding to a tool that is watching a
+# job through something other than PMIx_IOF_pull or a spawn it issued -- no
+# such path exists today -- and the stdin direction, which is not what any
+# of this is about.
 #
 # Prints PASS/FAIL per case and a summary; exits non-zero if anything failed.
 
@@ -92,6 +96,7 @@ root="$(cd "$here/../.." && pwd)"
 PMIX_PREFIX=/opt/prte/pmix
 STAGE=/opt/prte/tests-iof
 PROG="$STAGE/spawn_iof"
+WATCHER="$STAGE/iof_watcher"
 
 # The DVM spans six nodes; a parent job of one rank leaves five nodes' worth
 # of slots free.  --host IS the allocation, so a parent that fills it leaves
@@ -216,15 +221,17 @@ test_linux() {
         -e STAGE="$STAGE" \
         "$IMAGE" bash -euo pipefail -c '
             mkdir -p "$STAGE"
-            gcc -O0 -g -o "$STAGE/spawn_iof" /pmix-src/examples/spawn_iof.c \
-                -I"$PFX/include" -I/pmix-src/examples \
-                -L"$PFX/lib" -lpmix -Wl,-rpath,"$PFX/lib"
+            for ex in spawn_iof iof_watcher; do
+                gcc -O0 -g -o "$STAGE/$ex" "/pmix-src/examples/$ex.c" \
+                    -I"$PFX/include" -I/pmix-src/examples \
+                    -L"$PFX/lib" -lpmix -Wl,-rpath,"$PFX/lib" || exit 1
+            done
         '
     rc=$?
     if [ "$rc" != 0 ]; then
         bad "could not build examples/spawn_iof.c (rc=$rc)"; return
     fi
-    ok "built spawn_iof"
+    ok "built spawn_iof and iof_watcher"
 
     # ------------------------------------------------------------------
     # Case 1: the spawning rank is on the tool's own daemon.
@@ -331,6 +338,61 @@ test_linux() {
     RAN="$(collect_markers)"
     show_layout
     judge "prterun" "the child's output reached the terminal"
+    clear_markers
+    cleanup_swarm
+
+    # ------------------------------------------------------------------
+    # Case 5: a tool attaches to a NON-HNP daemon, pulls a running job's
+    # output, and then sees the output of a job that job spawns.
+    #
+    # This is the case none of the others reach, and the only one that
+    # exercises the runtime recording an interest AFTER a job is already
+    # running. The tool is started on node3 and attaches to node3's own
+    # daemon - not the HNP - so its subscription is held by a PMIx server
+    # that hosts none of the job's processes. Nothing it wants is local:
+    # the parent rank is on node2 and the child lands elsewhere again, so
+    # every byte it sees had to be relayed to node3 on purpose.
+    #
+    # ORDERING IS THE POINT. The watcher has to be subscribed BEFORE the
+    # child exists, or a pass would only show cached output being
+    # replayed. --delay holds the spawn open long enough for that, and
+    # the two lines asserted below are both written AFTER the watcher
+    # subscribes: "spawned" by the parent when the delay expires, and the
+    # child's own output after that. Nothing here depends on the cache.
+    # ------------------------------------------------------------------
+    banner "case 5: a tool on a non-HNP daemon pulls a running job, then sees its child"
+    clear_markers
+    RUN "prte --daemonize --host $DVM_HOSTS >/tmp/iof-dvm.log 2>&1" >/dev/null 2>&1
+    sleep 5
+    # the parent announces itself at once, then waits before spawning
+    RUN "nohup prun --host node2:1 -np 1 --timeout 150 \
+             $PROG --markers $MARKERS --delay 30 > /tmp/iof-parent.log 2>&1 &" >/dev/null 2>&1
+    sleep 10
+    pns="$(RUN "sed -n 's/^SPAWN_IOF parent \\([^:]*\\):.*/\\1/p' /tmp/iof-parent.log | head -1" | tr -d '\r\n ')"
+    if [ -z "$pns" ]; then
+        bad "watcher: the parent job never announced a namespace to attach to"
+        RUN "cat /tmp/iof-parent.log 2>/dev/null | tail -5" >&2
+    else
+        # 45s covers the parent's remaining delay plus the child's run
+        WOUT="$(ON 3 "timeout 90 $WATCHER $pns 45 2>&1")"
+        RAN="$(collect_markers)"
+        show_layout
+        if ! echo "$WOUT" | grep -q 'WATCHER watching'; then
+            bad "watcher: could not attach to node3's daemon or register the pull"
+            echo "     $(echo "$WOUT" | tr '\n' ' ' | tail -c 200)" >&2
+        elif ! echo "$RAN" | grep -q 'SPAWN_IOF child '; then
+            bad "watcher: the child job never ran -- not an IOF result"
+        elif ! echo "$WOUT" | grep -q 'SPAWN_IOF spawned '; then
+            bad "watcher: the running PARENT job's output never reached the tool"
+            echo "     $(echo "$WOUT" | tr '\n' ' ' | tail -c 300)" >&2
+        elif ! echo "$WOUT" | grep -q 'SPAWN_IOF child '; then
+            bad "watcher: saw the parent but NOT the job it spawned"
+            echo "     $(echo "$WOUT" | tr '\n' ' ' | tail -c 300)" >&2
+        else
+            ok "watcher: a tool on a non-HNP daemon saw the running job AND its child"
+        fi
+    fi
+    RUN "pterm >/dev/null 2>&1; rm -f /tmp/iof-parent.log" >/dev/null 2>&1
     clear_markers
     cleanup_swarm
 }
