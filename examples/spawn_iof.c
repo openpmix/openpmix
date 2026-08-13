@@ -142,11 +142,21 @@ int main(int argc, char **argv)
     pmix_nspace_t child;
     mylock_t mylock;
     bool am_child = false;
-    int i, secs;
+    int i, secs, delay = 0;
 
     for (i = 1; i < argc; i++) {
         if (0 == strcmp(argv[i], "child")) {
             am_child = true;
+        } else if (0 == strcmp(argv[i], "--delay")) {
+            /* wait before spawning, so a watcher started after us can be
+             * subscribed to this job BEFORE the child exists - which is
+             * the ordering the "tool attaches to a running job" case is
+             * about. Nothing else needs it. */
+            if (argc == ++i) {
+                fprintf(stderr, "--delay requires a number of seconds\n");
+                exit(1);
+            }
+            delay = atoi(argv[i]);
         } else if (0 == strcmp(argv[i], "--markers")) {
             if (argc == ++i) {
                 fprintf(stderr, "--markers requires a directory\n");
@@ -154,7 +164,8 @@ int main(int argc, char **argv)
             }
             markerdir = argv[i];
         } else {
-            fprintf(stderr, "usage: %s [child] [--markers <dir>]\n", argv[0]);
+            fprintf(stderr, "usage: %s [child] [--markers <dir>] [--delay <secs>]\n",
+                    argv[0]);
             exit(1);
         }
     }
@@ -195,6 +206,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "SPAWN_IOF %s:%u could not register for job termination: %s\n",
                 myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         goto done;
+    }
+
+    if (0 < delay) {
+        sleep(delay);
     }
 
     PMIX_APP_CREATE(app, 1);

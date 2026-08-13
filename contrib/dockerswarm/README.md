@@ -1417,6 +1417,7 @@ a library that routes nothing at all still passes it.
 | 2 | persistent DVM, `prun --host node2:1` | node1 (HNP) | node2 | node1 | Only the placement of one rank differs from case 1. This is the case that failed before the delivery-time fallback landed. |
 | 3 | persistent DVM, `prun --host node2:1,node1:1 -np 2` | node1 (HNP) | node2 | node3 | **The strong one.** Three different daemons, so nothing about the answer can be read out of local state. |
 | 4 | `prterun`, node1 left out of `--host` | node1 (`prterun` itself) | node2 | node3 | What a user sees under `prterun`. Weaker evidence — see below. |
+| 5 | persistent DVM; `iof_watcher` started on **node3** | node3 (**not** the HNP) | node2 | elsewhere | A tool that pulls a job **already running**, from a daemon that hosts none of it. |
 
 Case 3 is worth understanding before changing the geometry. Case 2 leaves
 the child's placement to the mapper, which fills from the first free slot
@@ -1461,22 +1462,33 @@ Markers go to each node's own `/tmp` because the shared volume is mounted
 match `pmix*` — that is the glob `cleanup_swarm` sweeps between cases,
 and these files have to survive until they are collected.
 
+### Case 5, and why the tool's own daemon is a third variable
+
+Cases 1–4 all attach their tool to the HNP, which is what `prun` and
+`prterun` do — and the HNP is special: every `prted` forwards to it, and
+it hands everything it receives to its *own* PMIx server. So none of them
+asks whether output can reach a tool whose subscription is held
+somewhere else.
+
+Case 5 does. `examples/iof_watcher.c` calls `PMIx_tool_init` with no
+directives, so it attaches to whatever server is local to the node it is
+started on; started on node3 it is a tool on a **non-HNP** daemon that
+hosts none of the job's processes. It then pulls a job that is **already
+running** — the only case here that depends on the runtime recording an
+interest after the fact rather than at launch.
+
+**Ordering is the point, not a detail.** The watcher has to be
+subscribed *before* the child exists, or a pass would only show cached
+output being replayed. `spawn_iof --delay` holds the spawn open long
+enough for that, and both lines the case asserts on — the parent's
+`spawned` line and the child's own output — are written *after* the
+watcher subscribes. Nothing in it depends on the cache.
+
 ### What it deliberately does not cover
 
-Every case here attaches its tool to the HNP, which is what `prun` and
-`prterun` do. Two further cases from the design document are not built:
-
-* the same spawn under a tool that attached to a **non-HNP** daemon;
-* a tool that attaches to a running DVM, pulls a job's output with
-  `PMIx_IOF_pull`, and then observes the output of a job that job spawns.
-
-Neither is a PMIx-side gap. The first daemon never receives another
-node's output at all — the HNP hands everything it receives to its *own*
-PMIx server and relays elsewhere only by `jdata->originator` — and the
-second request is not recorded against the job anywhere. Both need PRRTE
-to keep a *set* of interested daemons for a job, which does not exist yet
-(`jdata->originator` is a single process), and neither can be built here
-until it does.
+Output forwarding to a tool watching a job through something other than
+`PMIx_IOF_pull` or a spawn it issued — no such path exists today — and
+the `stdin` direction, which is not what any of this is about.
 
 ### No macOS mode
 
