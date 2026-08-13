@@ -1271,6 +1271,35 @@ subscription is. Four things about it are load-bearing:
   run, and where both apply the second finds the subscription the first
   created and does nothing.
 
+**The host gets the final say through `PMIX_IOF_INHERIT`, and where it is
+read follows from the two halves being on different daemons.** The
+attribute is a boolean the host places in the *job-level information of
+the spawned namespace*; absent means "inherit", so a host sends it only
+to say no. Nothing about it is read by the spawned processes — it is
+server-side state that happens to be keyed by their namespace, read out
+of the local datastore by `iof_inherit_allowed()` exactly as
+`PMIX_PARENT_ID` is. That channel is what makes it reach the server the
+output arrives at, which may have had nothing to do with the spawn; a
+directive carried with the spawn request, or a server-wide default at
+`PMIx_server_init`, would reach one of the two sites and not the other
+(and the latter cannot express a per-job answer at all, while PRRTE's
+`inherit` is per-job).
+
+**At the spawn-time site, "the host said nothing" and "we cannot ask yet"
+must not be conflated** — it is the one place they are distinguishable.
+That site runs from the spawn *completion*, and whether the child's
+namespace has been registered with this server by then is the host's
+business: a daemon hosting none of the child's processes may never
+register it. A fetch that found nothing would read as "inherit", which is
+the wrong way to be wrong — it would clone against the host's wishes and
+nothing takes a clone back. So `inherit_parent_iof()` looks the namespace
+up in `pmix_globals.nspaces` first and returns without cloning when it is
+absent, leaving the decision to the delivery-time half, which cannot run
+before the namespace exists. Deferring is never behaviorally wrong; it
+only postpones. That is also why `test/unit/iof_inherit.c` registers its
+child namespace before driving the spawn-time cases — without that they
+exercise the deferral rather than the inheritance.
+
 What is still PRRTE's is a tool attached to a **non-HNP** daemon, and a
 tool that attaches to a running DVM and `PMIx_IOF_pull`s a job's output:
 the first never receives another node's output at all (the HNP relays

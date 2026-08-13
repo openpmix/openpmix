@@ -159,6 +159,57 @@ static pmix_status_t run_spawn_iof(pmix_peer_t *spawner, bool inherit,
     return rc;
 }
 
+/* Register a namespace whose job data records who spawned it, which is
+ * what a host supplies to every server the namespace is registered with
+ * - including servers that had nothing to do with the spawn. */
+static pmix_status_t register_child(const char *nspace, const char *parent_ns,
+                                    pmix_rank_t parent_rank)
+{
+    pmix_info_t info[2];
+    pmix_proc_t parent;
+    pmix_status_t rc;
+    uint32_t one = 1;
+
+    PMIX_LOAD_PROCID(&parent, parent_ns, parent_rank);
+    PMIX_INFO_LOAD(&info[0], PMIX_PARENT_ID, &parent, PMIX_PROC);
+    PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+
+    rc = PMIx_server_register_nspace((char *) nspace, 0, info, 2, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    return rc;
+}
+
+/* The same, plus the host's PMIX_IOF_INHERIT decision. Absence of that
+ * attribute means "inherit", so a host only sends it to say no. */
+static pmix_status_t register_child_noinherit(const char *nspace,
+                                              const char *parent_ns,
+                                              pmix_rank_t parent_rank)
+{
+    pmix_info_t info[3];
+    pmix_proc_t parent;
+    pmix_status_t rc;
+    uint32_t one = 1;
+    bool no = false;
+
+    PMIX_LOAD_PROCID(&parent, parent_ns, parent_rank);
+    PMIX_INFO_LOAD(&info[0], PMIX_PARENT_ID, &parent, PMIX_PROC);
+    PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[2], PMIX_IOF_INHERIT, &no, PMIX_BOOL);
+
+    rc = PMIx_server_register_nspace((char *) nspace, 0, info, 3, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    PMIX_INFO_DESTRUCT(&info[2]);
+    return rc;
+}
+
 static void test_spawn_parser(void)
 {
     pmix_peer_t *client, *tool;
@@ -237,6 +288,15 @@ static void test_inheritance(void)
     watch_job(watcher, "parentjob",
               PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL, 7);
 
+    /* The host registers the spawned namespace with us; the spawn-time
+     * path will not clone onto a namespace it has never been told about
+     * (see below), so registering it is what makes these the ordinary
+     * case rather than the deferral one. */
+    if (PMIX_SUCCESS != register_child("childjob", "parentjob", 0)) {
+        report("inherit: could not register the child namespace", false);
+        goto done;
+    }
+
     /* ---- the child inherits it ---- */
     run_spawn_iof(client, true, PMIX_FWD_NO_CHANNELS, "childjob");
     req = find_watch("childjob", &count);
@@ -293,33 +353,24 @@ static void test_inheritance(void)
         PMIX_RELEASE(watcher2);
     }
 
+    /* ---- a namespace we have not been told about is left alone ----
+     *
+     * The spawn completion can reach us before - or without - the host
+     * registering the spawned namespace here: a daemon hosting none of
+     * the child's processes may never register it at all. The host's
+     * PMIX_IOF_INHERIT decision travels with that registration, so
+     * cloning now would be deciding on the host's behalf with its answer
+     * unread. The delivery-time path cannot run before the namespace
+     * exists, so it always has a real answer; leave it to that. */
+    run_spawn_iof(client, true, PMIX_FWD_NO_CHANNELS, "unregisteredjob");
+    find_watch("unregisteredjob", &count);
+    report("inherit: an unregistered namespace defers to delivery", 0 == count);
+    drop_watches("unregisteredjob");
+
+done:
     drop_watches("parentjob");
     PMIX_RELEASE(watcher);
     PMIX_RELEASE(client);
-}
-
-/* Register a namespace whose job data records who spawned it, which is
- * what a host supplies to every server the namespace is registered with
- * - including servers that had nothing to do with the spawn. */
-static pmix_status_t register_child(const char *nspace, const char *parent_ns,
-                                    pmix_rank_t parent_rank)
-{
-    pmix_info_t info[2];
-    pmix_proc_t parent;
-    pmix_status_t rc;
-    uint32_t one = 1;
-
-    PMIX_LOAD_PROCID(&parent, parent_ns, parent_rank);
-    PMIX_INFO_LOAD(&info[0], PMIX_PARENT_ID, &parent, PMIX_PROC);
-    PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &one, PMIX_UINT32);
-
-    rc = PMIx_server_register_nspace((char *) nspace, 0, info, 2, NULL, NULL);
-    if (PMIX_OPERATION_SUCCEEDED == rc) {
-        rc = PMIX_SUCCESS;
-    }
-    PMIX_INFO_DESTRUCT(&info[0]);
-    PMIX_INFO_DESTRUCT(&info[1]);
-    return rc;
 }
 
 /* Hand the server a chunk of output from a namespace, as a host does.
@@ -424,7 +475,23 @@ static void test_delivery_ancestry(void)
     find_watch("orphanjob", &count);
     report("ancestry: an unwatched ancestry creates no subscription", 0 == count);
 
+    /* ---- the host can turn inheritance off ----
+     *
+     * PMIX_IOF_INHERIT=false in the job data is how a host says a
+     * spawned job is not to be treated the way its parent is - PRRTE's
+     * "inherit" setting reaching us. The ancestry is intact and the
+     * parent is watched, so only the attribute stands between this job
+     * and a subscription. */
+    if (PMIX_SUCCESS != register_child_noinherit("quietjob", "parentjob", 0)) {
+        report("ancestry: could not register the quiet namespace", false);
+        goto cleanup;
+    }
+    deliver_from("quietjob", 0);
+    find_watch("quietjob", &count);
+    report("ancestry: PMIX_IOF_INHERIT=false suppresses inheritance", 0 == count);
+
 cleanup:
+    drop_watches("quietjob");
     drop_watches("childjob");
     drop_watches("grandchild");
     drop_watches("orphanjob");
