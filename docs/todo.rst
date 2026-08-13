@@ -97,12 +97,6 @@ Deferred work
 Smaller items carried forward
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-* ``PMIx_Value_get_number()`` is called without a ``NULL`` check on
-  ``kv->value`` at three fetches in ``src/client``'s ``get_data()``.
-  Nothing demonstrates a local datastore fetch producing such a kval, and
-  if it is closed the screen belongs inside ``PMIx_Value_get_number``
-  rather than at the call sites, since every caller in the tree is
-  equally exposed.
 * ``pmix_globals.init_called`` is set with ``__atomic_test_and_set`` and
   cleared with a plain assignment.  All three roles do this, and the
   only interleaving that reaches it is a concurrent

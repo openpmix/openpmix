@@ -92,6 +92,17 @@ static pmix_status_t check_pid(const pmix_value_t *value,
 pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
                                     void *dest, pmix_data_type_t type)
 {
+    /* the type tag is the first thing every branch below reads, and the
+     * destination is written by every one that matches, so both have to be
+     * screened here. Callers reach this with the "value" member of a
+     * pmix_kval_t - which is a pointer that is legitimately NULL for a kval
+     * that arrived off the wire (see src/mca/bfrops/AGENTS.md) - so the
+     * screen belongs here rather than at the call sites, all of which are
+     * equally exposed */
+    if (NULL == value || NULL == dest) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     if (PMIX_SIZE == value->type) {
         if (PMIX_SIZE == type) {
             size_t *sz;

@@ -873,12 +873,25 @@ inspection against the code that consumes them.
   No test drives it, so this has never been noticed. Fixing it means
   making that path asynchronous; until then, do not add a `run_*.pl`
   that spawns.
-- `refcb()` overwrites the `PMIX_GDS_STORE_KV` status with the next
-  unpack's before anyone reads it, so a store failure while absorbing a
-  cache refresh is silently dropped. The loop is driven by the unpack,
-  which is the right termination condition; reporting the store error
-  would change what `PMIx_Get` returns for a refresh that partially
-  succeeded, and that is a behavior decision, not a bug fix.
+- **FIXED — `refcb()` overwrote the `PMIX_GDS_STORE_KV` status with the
+  next unpack's** before anyone read it, so a store failure while
+  absorbing a cache refresh was silently dropped. The loop is driven by
+  the unpack, which is the right termination condition, so the store
+  status now lives in a variable of its own: the first failure is
+  logged and reported, and the unpack still ends the loop.
+
+  **The behavior decision this entry used to defer is worth stating
+  rather than re-deferring.** Reporting the store failure does fail a
+  `PMIx_Get` that would previously have succeeded — `refresh_cache()`'s
+  return aborts the enclosing get — and that is the point: the caller
+  asked explicitly for fresh data, and the alternative is to hand them
+  the stale copy without a word. A store failure here is never a
+  legitimate outcome (the hash module replaces a duplicate rather than
+  refusing it), which is what distinguishes it from the status the
+  *server* sent. That one is still discarded, deliberately: a "nothing
+  to refresh" `PMIX_ERR_NOT_FOUND` must not fail gets that succeed
+  today. See the matching note in
+  [`src/server/AGENTS.md`](../server/AGENTS.md).
 - `pmix_client_convert_group_procs()` holds `grouplock` across a
   `PMIX_GDS_FETCH_KV` for `PMIX_JOB_SIZE`. That is safe only because
   the hash module answers locally and never up-calls the server. If a
@@ -1274,17 +1287,25 @@ without new evidence.
   discards its argument entirely, so the operand is never evaluated.
   Reordered here for readability, but do not go looking for a bug behind
   the same shape elsewhere in the tree.
-- **`PMIx_Value_get_number(kv->value, …)` is called without a NULL check
-  on `kv->value`** at the nodeid, appnum and sessionid fetches in
-  `get_data()`, and that function dereferences `value->type` as its
-  first act. The hostname fetch beside them *does* check. Left alone
-  because nothing demonstrates a local GDS fetch producing a kval with a
-  NULL value — `pmix_kval_t.value` is documented as legitimately
-  NULL-able by [`src/mca/bfrops/AGENTS.md`](../mca/bfrops/AGENTS.md),
-  but that is about what arrives off the wire through `pack_kval`, and
-  these three read the local datastore. If you decide to close it, the
-  screen belongs in `PMIx_Value_get_number` rather than at three call
-  sites here, since every other caller in the tree is equally exposed.
+- **FIXED — `PMIx_Value_get_number(kv->value, …)` was called without a
+  NULL check on `kv->value`** at the nodeid, appnum and sessionid
+  fetches in `get_data()`, and that function dereferences `value->type`
+  as its first act. The hostname fetch beside them always checked. It
+  sat open for several sweeps on the grounds that nothing demonstrates a
+  local GDS fetch producing a kval with a NULL value —
+  `pmix_kval_t.value` is documented as legitimately NULL-able by
+  [`src/mca/bfrops/AGENTS.md`](../mca/bfrops/AGENTS.md), but that is
+  about what arrives off the wire through `pack_kval`, and these three
+  read the local datastore.
+
+  **The screen went into `PMIx_Value_get_number` itself, not here**, and
+  that is the part worth carrying: there are thirty-odd callers in the
+  tree and every one of them was equally exposed, so three checks in
+  this file would have been the least useful place to put it. A NULL
+  value or a NULL destination is now `PMIX_ERR_BAD_PARAM`. Regression:
+  `test_null_arguments_are_refused()` in
+  [`test/unit/bfrops_get_number.c`](../../test/unit/bfrops_get_number.c),
+  which segfaults rather than fails against the unfixed library.
 - **`strdup(pmix_globals.hostname)` in `get_data()`'s invalid-rank
   branch is unguarded** where the branch above it tests
   `NULL != pmix_globals.hostname` first. It is safe:
@@ -1370,14 +1391,23 @@ without new evidence.
   released. That is safe because nothing in the teardown reads
   `cbobject` — `relfn` is NULL for an ordinary handler, only observers
   set one.
-- **`pmix_globals.init_called` is set with `__atomic_test_and_set` and
-  cleared with a plain `= false`.** It is a bare `bool`, not an
-  `atomic_bool` like `initialized` beside it, so the clear is a
-  non-atomic store racing an atomic RMW. Left alone because it is not a
-  `src/client` decision: `pmix_client.c`, `pmix_server.c` and
-  `pmix_tool.c` all do exactly this, and the only interleaving that
-  reaches it is a concurrent `PMIx_Init`/`PMIx_Finalize`, which the
-  comment at the top of `PMIx_Init` already declines to support.
+- **FIXED — `pmix_globals.init_called` was set with
+  `__atomic_test_and_set` and cleared with a plain `= false`.** It is a
+  bare `bool`, not an `atomic_bool` like `initialized` beside it, so the
+  clear was a non-atomic store racing an atomic RMW. It was left alone
+  for several sweeps because it is not a `src/client` decision —
+  `pmix_client.c`, `pmix_server.c` and `pmix_tool.c` all did exactly
+  this, and the only interleaving that reaches it is a concurrent
+  `PMIx_Init`/`PMIx_Finalize`, which the comment at the top of
+  `PMIx_Init` already declines to support.
+
+  It is closed the way it had to be closed — in all three roles at once,
+  with `pmix_atomic_clear()`, the required partner of the builtin that
+  sets it (see [`src/include/AGENTS.md`](../include/AGENTS.md)). Note
+  the type is deliberately unchanged: `__atomic_test_and_set` and
+  `__atomic_clear` both take a pointer to an ordinary object, and
+  `_Atomic`-qualifying the flag would mean doing the same to the three
+  init counters beside it.
 - **The re-entrant `PMIx_Init` returns `PMIX_SUCCESS` where the first
   call returned `PMIX_ERR_UNREACH`.** A second library in the same
   process therefore reads "connected" from a singleton that is not, and

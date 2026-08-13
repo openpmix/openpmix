@@ -378,6 +378,34 @@ static void test_negative_into_unsigned_is_refused(void)
     report("a negative value is refused by every unsigned destination", ok);
 }
 
+/* Neither argument was screened, and both are dereferenced unconditionally:
+ * the value for its type tag, the destination by whichever arm matches. A
+ * NULL value is the one that actually arrives - callers pass the "value"
+ * member of a pmix_kval_t, which is a pointer that can legitimately be NULL.
+ * Against the unfixed library this case segfaults rather than failing. */
+static void test_null_arguments_are_refused(void)
+{
+    pmix_value_t v;
+    int64_t out = 0;
+    int ok = 1;
+
+    setval(&v, PMIX_INT32, 42);
+
+    if (PMIX_ERR_BAD_PARAM != PMIx_Value_get_number(NULL, &out, PMIX_INT64)) {
+        fprintf(stdout, "    a NULL value was not refused\n");
+        ok = 0;
+    }
+    if (PMIX_ERR_BAD_PARAM != PMIx_Value_get_number(&v, NULL, PMIX_INT64)) {
+        fprintf(stdout, "    a NULL destination was not refused\n");
+        ok = 0;
+    }
+    if (PMIX_ERR_BAD_PARAM != PMIx_Value_get_number(NULL, NULL, PMIX_INT64)) {
+        fprintf(stdout, "    two NULLs were not refused\n");
+        ok = 0;
+    }
+    report("a NULL value or destination is refused", ok);
+}
+
 /* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
@@ -395,6 +423,7 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "\n=== PMIx_Value_get_number unit tests ===\n\n");
 
+    test_null_arguments_are_refused();
     test_every_source_type_is_handled();
     test_success_means_exact();
     test_refusal_means_unrepresentable();

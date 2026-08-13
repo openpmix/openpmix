@@ -226,6 +226,17 @@ on review:
 - **`PMIX_PID` was not a source type at all.** There was no
   `check_pid()`, and the dispatcher's `PMIX_PID` branch had no `else`,
   so every conversion out of a pid returned `PMIX_ERR_BAD_PARAM`.
+- **Neither argument was screened.** The dispatcher reads `value->type`
+  as its first act and every arm that matches writes through `dest`, so
+  a NULL for either was a segfault — and the NULL that actually arrives
+  is the value: callers pass the `value` member of a `pmix_kval_t`,
+  which is a pointer that is legitimately NULL off the wire. Three call
+  sites in `src/client`'s `get_data()` carried this as a known gap for
+  four sweeps before it was closed **here**, which is the point worth
+  keeping: there are thirty-odd callers in the tree and every one was
+  equally exposed, so a screen at any of them was the wrong place for
+  it. This is the same rule as "put the screen in the `_tma_` inline,
+  not in the `PMIx_` wrapper" below.
 - **Range constants.** `check_int64()` bounded `PMIX_PID` and
   `PMIX_STATUS` — both *signed* 32-bit — by `UINT32_MAX` and did not
   check the negative side at all. `check_float()` bounded `PMIX_UINT`
