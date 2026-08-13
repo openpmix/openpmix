@@ -114,8 +114,6 @@ Smaller items carried forward
   directly, as the branch intended, is still untried** — that is a
   behavior change on a path only a pre-v3.2 server exercises, and there
   is none to test against.
-* The command-line parser drops a positional argument placed *before* an
-  option, a consequence of ``getopt`` reordering.  Put options first.
 * The relay in ``src/tool`` assumes the downstream tool and the upstream
   server negotiated the same ``bfrops`` module and buffer type.  A tool
   forces the same modules on itself and its server, so this holds today,

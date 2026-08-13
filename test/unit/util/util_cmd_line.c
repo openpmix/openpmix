@@ -152,6 +152,57 @@ static void test_parse_not_taken(void)
     PMIX_DESTRUCT(&res);
 }
 
+/* The first token that is not an option ends the option list: it is the
+ * executable, and it plus everything after it is the tail.
+ *
+ * getopt permutes non-options to the end of argv as it goes, which used to
+ * defeat that: by the time the parse loop looked at argv[optind] to decide
+ * it had reached a non-option, getopt had already moved the non-options
+ * past optind. The tail then began *after* the token it should have begun
+ * with - and where the positional was the only one, as in the first case
+ * here, it was dropped altogether while the option beyond it was parsed as
+ * though it were ours. A launcher must not eat the flags of the
+ * application it launches. */
+static void test_parse_positional_first(void)
+{
+    char *argv[] = {"prog", "positional", "--verbose", NULL};
+    pmix_cli_result_t res;
+    int rc;
+
+    PMIX_CONSTRUCT(&res, pmix_cli_result_t);
+    rc = pmix_cmd_line_parse(argv, "", myopts, NULL, &res, NULL);
+    report("positional_first: returns SUCCESS", PMIX_SUCCESS == rc);
+    report("positional_first: tail is not empty", NULL != res.tail);
+    report("positional_first: tail begins with the positional",
+           NULL != res.tail && NULL != res.tail[0]
+               && 0 == strcmp(res.tail[0], "positional"));
+    report("positional_first: option beyond it is the tail's, not ours",
+           !pmix_cmd_line_is_taken(&res, PMIX_CLI_VERBOSE)
+               && NULL != res.tail && NULL != res.tail[1]
+               && 0 == strcmp(res.tail[1], "--verbose"));
+    PMIX_DESTRUCT(&res);
+}
+
+/* The ordinary shape - options first - is unchanged: they are parsed, and
+ * the tail is everything from the first non-option on. */
+static void test_parse_positional_after_options(void)
+{
+    char *argv[] = {"prog", "--verbose", "positional", "extra", NULL};
+    pmix_cli_result_t res;
+    int rc;
+
+    PMIX_CONSTRUCT(&res, pmix_cli_result_t);
+    rc = pmix_cmd_line_parse(argv, "", myopts, NULL, &res, NULL);
+    report("positional_after: returns SUCCESS", PMIX_SUCCESS == rc);
+    report("positional_after: verbose taken",
+           pmix_cmd_line_is_taken(&res, PMIX_CLI_VERBOSE));
+    report("positional_after: tail is the two trailing tokens",
+           NULL != res.tail && 2 == PMIx_Argv_count(res.tail)
+               && 0 == strcmp(res.tail[0], "positional")
+               && 0 == strcmp(res.tail[1], "extra"));
+    PMIX_DESTRUCT(&res);
+}
+
 /* ================================================================== */
 /* The table                                                          */
 /* ================================================================== */
@@ -802,6 +853,8 @@ int main(int argc, char **argv)
     test_parse_required_arg();
     test_parse_multiple_options();
     test_parse_not_taken();
+    test_parse_positional_first();
+    test_parse_positional_after_options();
 
     fprintf(stdout, "\n--- command-line table ---\n");
     run_table();
