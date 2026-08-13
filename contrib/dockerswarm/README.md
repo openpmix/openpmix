@@ -1411,21 +1411,33 @@ a library that routes nothing at all still passes it.
 
 ### The cases
 
-| # | Launch | Tool's daemon | Spawning rank | What it is for |
-|---|--------|---------------|---------------|----------------|
-| 1 | persistent DVM, `prun --host node1:1` | node1 (HNP) | node1 | **Control.** Says the example, the launcher and the capture all work. |
-| 2 | persistent DVM, `prun --host node2:1` | node1 (HNP) | node2 | **The reproducer.** Only the placement of one rank differs from case 1. |
-| 3 | `prterun`, node1 left out of `--host` | node1 (`prterun` itself) | node2 | What a user sees under `prterun`. Weaker evidence — see below. |
+| # | Launch | Tool's daemon | Spawning rank | Child | What it is for |
+|---|--------|---------------|---------------|-------|----------------|
+| 1 | persistent DVM, `prun --host node1:1` | node1 (HNP) | node1 | node2 | **Control.** Says the example, the launcher and the capture all work. |
+| 2 | persistent DVM, `prun --host node2:1` | node1 (HNP) | node2 | node1 | Only the placement of one rank differs from case 1. This is the case that failed before the delivery-time fallback landed. |
+| 3 | persistent DVM, `prun --host node2:1,node1:1 -np 2` | node1 (HNP) | node2 | node3 | **The strong one.** Three different daemons, so nothing about the answer can be read out of local state. |
+| 4 | `prterun`, node1 left out of `--host` | node1 (`prterun` itself) | node2 | node3 | What a user sees under `prterun`. Weaker evidence — see below. |
+
+Case 3 is worth understanding before changing the geometry. Case 2 leaves
+the child's placement to the mapper, which fills from the first free slot
+— node1, the tool's own node. The child's output therefore reaches the
+tool's server from a process that server hosts, and a delivery-time
+decision taken there could be reading local state rather than routed
+output. Listing node2 **first** puts rank 0 (the spawner) there and rank
+1 on node1, which consumes the slot the child would have taken and pushes
+it out to node3. The runner checks that three distinct nodes really
+appear and reports SKIP rather than PASS if the mapper placed things
+some other way.
 
 The DVM spans six nodes and the parent job is one rank, because `--host`
 **is** the allocation: a parent that fills it leaves the spawn nowhere to
 land, and the job then blocks until the launch timeout — which reads
 exactly like a library hang and is not one.
 
-Case 3 is reported separately because `prterun` also writes output
+Case 4 is reported separately because `prterun` also writes output
 *locally*, which can carry a child's bytes to the terminal by a route
 that has nothing to do with the subscription being inherited. A pass
-there is not a substitute for a pass in case 2.
+there is not a substitute for a pass in cases 2 and 3.
 
 ### Reading a failure
 
@@ -1451,15 +1463,20 @@ and these files have to survive until they are collected.
 
 ### What it deliberately does not cover
 
-Two further cases from the design document are not built here:
+Every case here attaches its tool to the HNP, which is what `prun` and
+`prterun` do. Two further cases from the design document are not built:
 
 * the same spawn under a tool that attached to a **non-HNP** daemon;
 * a tool that attaches to a running DVM, pulls a job's output with
   `PMIx_IOF_pull`, and then observes the output of a job that job spawns.
 
-Both need PRRTE to record a *set* of interested daemons for a job, which
-does not exist yet — `jdata->originator` is a single process. Until it
-does, both would only restate what case 2 already reports.
+Neither is a PMIx-side gap. The first daemon never receives another
+node's output at all — the HNP hands everything it receives to its *own*
+PMIx server and relays elsewhere only by `jdata->originator` — and the
+second request is not recorded against the job anywhere. Both need PRRTE
+to keep a *set* of interested daemons for a job, which does not exist yet
+(`jdata->originator` is a single process), and neither can be built here
+until it does.
 
 ### No macOS mode
 
