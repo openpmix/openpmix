@@ -128,12 +128,19 @@ static void _notify_complete(pmix_status_t status, void *cbdata)
      * be registered later */
     if (PMIX_ERR_NOT_FOUND == status && !chain->cached) {
         cd = PMIX_NEW(pmix_notify_caddy_t);
+        if (NULL == cd) {
+            goto cleanup;
+        }
         cd->status = chain->status;
         PMIX_LOAD_PROCID(&cd->source, chain->source.nspace, chain->source.rank);
         cd->range = chain->range;
         if (0 < chain->ninfo) {
             cd->ninfo = chain->ninfo;
             PMIX_INFO_CREATE(cd->info, cd->ninfo);
+            if (NULL == cd->info) {
+                cd->ninfo = 0;
+                goto relcd;
+            }
             cd->nondefault = chain->nondefault;
             /* need to copy the info */
             for (n = 0; n < cd->ninfo; n++) {
@@ -143,6 +150,10 @@ static void _notify_complete(pmix_status_t status, void *cbdata)
         if (NULL != chain->targets) {
             cd->ntargets = chain->ntargets;
             PMIX_PROC_CREATE(cd->targets, cd->ntargets);
+            if (NULL == cd->targets) {
+                cd->ntargets = 0;
+                goto relcd;
+            }
             memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
         }
         if (NULL != chain->affected) {
@@ -150,7 +161,7 @@ static void _notify_complete(pmix_status_t status, void *cbdata)
             PMIX_PROC_CREATE(cd->affected, cd->naffected);
             if (NULL == cd->affected) {
                 cd->naffected = 0;
-                goto cleanup;
+                goto relcd;
             }
             memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
         }
@@ -163,6 +174,14 @@ static void _notify_complete(pmix_status_t status, void *cbdata)
         }
         chain->cached = true;
     }
+    PMIX_RELEASE(chain);
+    return;
+
+relcd:
+    /* the caddy never reached the cache, so nothing else will free it -
+     * the affected-array arm used to fall straight into the chain release
+     * below and leak everything the caddy had already been given */
+    PMIX_RELEASE(cd);
 
 cleanup:
     PMIX_RELEASE(chain);

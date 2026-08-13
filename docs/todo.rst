@@ -98,11 +98,44 @@ flags, which re-opens the window the stand-in was built to close; or
 carry something in the IOF message that names the spawn, which is a
 wire-format and Standard question rather than a bug fix.
 
+A tool caches an event nobody handled; a client discards it
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When a local event chain in a tool ends with nothing having handled the
+event, ``_notify_complete`` in ``src/tool/pmix_tool.c`` parks a copy in
+the notification hotel so that a handler registered *later* can still be
+given it.  A client in the same position simply releases the chain — the
+equivalent branch does not exist in ``src/client/pmix_client.c``.
+
+Only one of those can be right, and choosing is a statement about
+event-delivery behavior in a released library rather than a bug fix.
+Either the tool's branch is unreachable and should go, or it is correct
+and the client is losing events a late registrant was entitled to see.
+
+Nothing has been found that reaches it.  A server forwards an event to a
+tool only if that tool registered for the code, and it applies the
+tool's affected-proc filter before forwarding, so a tool does not
+normally receive an event it has no handler for.  The one shape that
+might — an event already on the wire when the handler is deregistered —
+**has not been confirmed**, and should not be treated as evidence until
+somebody checks whether the server stops forwarding before or after the
+deregistration round-trips.
+
+What is *not* at issue is the branch's correctness if it is entered:
+its two unchecked allocations and its caddy-leaking failure arms are
+fixed, as are the same two in the event layer's copy of the block
+(``_notify_client_event``).  Tracked as
+`openpmix#4101 <https://github.com/openpmix/openpmix/issues/4101>`_.
+
 Deferred work
 -------------
 
 Smaller items carried forward
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The items that stood under this heading were closed on 2026-08-13; what
+is left of them is recorded here, because in two cases the fix does not
+cover the whole of what the entry described.
 
 * **The pre-v3.2 branch of** ``resolve_peers()`` **no longer carries a
   dead store**, but what it *meant* to do is still not done.  The branch
@@ -114,9 +147,11 @@ Smaller items carried forward
   directly, as the branch intended, is still untried** — that is a
   behavior change on a path only a pre-v3.2 server exercises, and there
   is none to test against.
-* The event-caching branch in the tool's ``_notify_complete`` appears to
-  be unreachable, and ``src/client`` has no equivalent branch at all.
-  Tracked as `openpmix#4101 <https://github.com/openpmix/openpmix/issues/4101>`_.
+* **A malformed** ``PMIX_QUALIFIED_VALUE`` **or a NULL key arriving in a
+  cache refresh now fails the enclosing** ``PMIx_Get``.  See the
+  ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
+  the only answer an application can act on.  Recorded here because it is
+  the one behavior change in that group of fixes.
 
 Coverage gaps
 -------------
@@ -176,6 +211,16 @@ not "fixed" by a later reader.
   anywhere in it.  Both in-tree hosts (PRRTE and ``test/simple/simptest``)
   currently leak it.  See ``src/server/AGENTS.md``.
 
+* **The event-caching blocks assign ``cd->nondefault`` inside their**
+  ``0 < chain->ninfo`` **guard**, which reads as though a non-default
+  event carrying no info would be parked as a default one and then
+  delivered to default handlers that should not see it.  It cannot
+  happen: every path that sets ``chain->nondefault`` reads it out of a
+  ``PMIX_EVENT_NON_DEFAULT`` directive in the info array, so the flag is
+  only ever true when there is info to have carried it.  Hoisting the
+  assignment out of the guard is equivalent, not a fix.  Both copies —
+  ``_notify_complete`` in ``src/tool`` and ``_notify_client_event`` in
+  ``src/event`` — are left as they are.
 * **``pmix_srand()`` copies the seeded state into a file-static buffer**
   (``src/util/pmix_alfg.c``).  It looks like a footgun, but it is the
   only way to seed the global that ``pmix_random()`` reads, and the unit
