@@ -356,7 +356,7 @@ test_linux() {
         -e PFX="$PMIX_PREFIX" \
         "$IMAGE" bash -euo pipefail -c '
             mkdir -p /opt/prte/tests-gds
-            for p in datatypes dmodex client modex_twice get_timing; do
+            for p in datatypes dmodex client modex_twice get_timing fence_timing; do
                 gcc -O0 -g -o /opt/prte/tests-gds/$p /pmix-src/examples/$p.c \
                     -I"$PFX/include" -I/pmix-src/examples \
                     -L"$PFX/lib" -lpmix -Wl,-rpath,"$PFX/lib"
@@ -368,10 +368,11 @@ test_linux() {
         return
     fi
     ok "built examples/datatypes, examples/dmodex, examples/client and examples/modex_twice"
-    # get_timing is a measurement tool, not a test - it is built here so it
-    # is to hand, but nothing below runs it. Timings do not belong in a
-    # pass/fail suite; run it directly, twice, with and without
-    # PMIX_MCA_pmix_client_fast_get=1.
+    # get_timing and fence_timing are measurement tools, not tests - they
+    # are built here so they are to hand, but nothing below runs them.
+    # Timings do not belong in a pass/fail suite. Run get_timing directly,
+    # twice, with and without PMIX_MCA_pmix_client_fast_get=1; run
+    # fence_timing twice, once as-is and once with --pmixmca gds hash.
 
     if ! RUN 'command -v prterun >/dev/null'; then
         skp "no prterun in the containers -- run ./build.sh first"
