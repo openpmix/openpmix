@@ -374,7 +374,17 @@ PMIX_EXPORT void pmix_server_message_handler(struct pmix_peer_t *pr, pmix_ptl_hd
 PMIX_EXPORT void pmix_server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                                          pmix_buffer_t *buf, void *cbdata);
 
-PMIX_EXPORT void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc);
+/* Discard what a departed peer (or namespace) left behind: its event and
+ * IOF registrations, cached notifications naming it, and the direct-modex
+ * trackers waiting on data it will now never publish.
+ *
+ * "status" is what those waiters are told, and it is the caller's to say
+ * because only the caller knows what happened.  A peer that FINALIZED took
+ * its data with it and nothing was lost - the answer is that the key is not
+ * there.  A peer whose connection dropped is the case LOST_CONNECTION
+ * describes. */
+PMIX_EXPORT void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc,
+                                          pmix_status_t status);
 
 /* Record that the server itself has registered for the given event
  * codes. Only system (environmental) codes are tracked as those are the

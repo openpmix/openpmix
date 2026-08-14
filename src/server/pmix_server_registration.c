@@ -411,7 +411,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const pmix_nspace_t nspace
     return PMIX_SUCCESS;
 }
 
-void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
+void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc,
+                              pmix_status_t status)
 {
     pmix_regevents_info_t *reginfo, *regnext;
     pmix_peer_events_info_t *prev, *pnext;
@@ -476,13 +477,17 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
              * its own reference on the tracker and owns the server caddy of
              * the client behind it, so releasing the tracker alone left it
              * alive but unreachable and left those clients waiting on a
-             * reply nobody would ever send. */
-            pmix_server_fail_local_reqs(dlcd, PMIX_ERR_LOST_CONNECTION);
+             * reply nobody would ever send.
+             *
+             * What they are told is our caller's to decide - see the header.
+             * These are OTHER local procs, still running, and the status
+             * lands as the return of their PMIx_Get. */
+            pmix_server_fail_local_reqs(dlcd, status);
         }
     }
 
     /* and in any the host asked us for on a remote server's behalf */
-    pmix_server_fail_remote_pnd(peer, proc, PMIX_ERR_LOST_CONNECTION);
+    pmix_server_fail_remote_pnd(peer, proc, status);
 
     /* purge this client from any cached notifications */
     for (i = 0; i < pmix_globals.max_events; i++) {
@@ -717,7 +722,7 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
 
     /* remove any event registrations, IOF registrations, and
      * cached notifications targeting procs from this nspace */
-    pmix_server_purge_events(NULL, &cd->proc);
+    pmix_server_purge_events(NULL, &cd->proc, PMIX_ERR_NOT_FOUND);
 
     // find the nspace object
     nptr = NULL;
