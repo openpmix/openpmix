@@ -342,6 +342,33 @@ else leans on the client and server agreeing about global indices;
 until then it runs harmlessly at `store_job_info` time, before an
 application has threads.
 
+### The `/proc/self/maps` scan is not the expensive part — measured
+
+`pmix_vmem_find_hole()` reads and parses all of `/proc/self/maps` on
+every segment creation, which looks like an obvious thing to cache: one
+scan per job segment, per session segment, and per modex generation.
+It is not worth caching, and this is recorded so nobody re-derives the
+suspicion and pays for the fix.
+
+Measured cost is about **0.17 µs per VMA**, essentially linear:
+
+| VMAs | scan |
+|---|---|
+| 16 | 5 µs |
+| 516 | 91 µs |
+| 2016 | 345 µs |
+| 8016 | 1.3 ms |
+
+A PRRTE daemon in `contrib/dockerswarm` carries **72** VMAs, so the scan
+costs it roughly 15 µs — under 1% of the per-segment cost. Caching a
+hole would trade that for a stale-address failure mode on a path whose
+whole correctness rests on client and server agreeing about an address.
+
+Reconsider only where the VMA count is genuinely large — a DSO-heavy
+build with several fabric providers and a GPU runtime could plausibly
+reach the high hundreds, and the table above says what that would cost.
+Measure the daemon before assuming it.
+
 ### The fixed-address attach failure and GDS fallback
 
 A client may be unable to map the segment at the server's chosen address —
