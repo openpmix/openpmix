@@ -192,7 +192,10 @@ The core mechanism is a **bump allocator over shared memory**, the
   address matches, every in-segment pointer resolves correctly with no
   fix-up. Clients never install the TMA function pointers — they only read.
 
-### The allocator keeps its bookkeeping in-band
+### The allocator keeps its bookkeeping in-band, and does not zero
+
+Two properties of `tma_malloc`/`tma_calloc`/`tma_strdup` that are easy to
+undo by accident:
 
 - **Every block carries a 16-byte header** (`pmix_gds_shmem3_tma_alloc_t`:
   the extent plus a magic) immediately ahead of the address handed out.
@@ -213,6 +216,26 @@ The core mechanism is a **bump allocator over shared memory**, the
   makes three to five allocations per key/value stored, so the tax landed
   on every byte of every modex. Do not reintroduce out-of-band
   bookkeeping here.
+
+- **Nothing zeroes a block, and nothing needs to.** A bump allocator only
+  ever hands out space no caller has touched, and
+  `pmix_shmem_segment_create()` opens its backing file `O_CREAT | O_TRUNC`
+  and `ftruncate`s it from empty — so every page of a fresh segment reads
+  as zero. `tma_calloc()` therefore returns zeroed storage without writing
+  a byte, and so, incidentally, does `tma_malloc()`. The `memset` that used
+  to be there only forced the whole segment resident up front instead of
+  letting demand paging bring in what is actually used, and the segment is
+  sized *far* larger than its contents (see `get_modex_sizing_data()`), so
+  that was the largest avoidable cost in building one.
+
+  **The `O_TRUNC` is load-bearing**, not tidiness. Segments are unlinked
+  when their last holder lets go, so a backing path collides only with a
+  file some earlier server left behind when it died — but the path is built
+  from the pid, and pids get reused. Without the truncate, `ftruncate()` to
+  the same or a smaller size leaves that corpse's bytes in place and only
+  the extension past the old end reads as zero. If that guarantee ever
+  weakens, restore the `memset` in `tma_carve()` rather than at the call
+  sites.
 
 ### Every segment carries its own key index
 
