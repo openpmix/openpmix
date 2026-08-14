@@ -77,6 +77,17 @@ typedef struct {
  * as pmix_hash_proc_alloc. */
 int pmix_hash_proc_alloc = 128;
 
+/* How many qualifier slots to give a proc up front. Most procs publish no
+ * qualified values at all, so this stays far below pmix_hash_proc_alloc -
+ * but it must not be 1. pmix_pointer_array's grow_table() rounds the new
+ * size up to a multiple of the block size, so a block size of 1 grows the
+ * array by exactly one slot per addition: a proc publishing q qualified
+ * values did q reallocs. That is merely wasteful on the heap, and worse
+ * under the gds/shmem3 TMA, where free is a no-op - each of those reallocs
+ * copies the array and strands the old one in the shared segment, which is
+ * part of what the segment sizing fluff is paying for. */
+#define PMIX_HASH_QUAL_ALLOC 8
+
 static void pdcon(pmix_proc_data_t *p)
 {
     pmix_tma_t *const tma = pmix_obj_get_tma(&p->super);
@@ -88,7 +99,8 @@ static void pdcon(pmix_proc_data_t *p)
     p->data = PMIX_NEW(pmix_pointer_array_t, tma);
     pmix_pointer_array_init(p->data, nalloc, INT_MAX, nalloc);
     p->quals = PMIX_NEW(pmix_pointer_array_t, tma);
-    pmix_pointer_array_init(p->quals, 1, INT_MAX, 1);
+    pmix_pointer_array_init(p->quals, PMIX_HASH_QUAL_ALLOC, INT_MAX,
+                            PMIX_HASH_QUAL_ALLOC);
 }
 static void pddes(pmix_proc_data_t *p)
 {
