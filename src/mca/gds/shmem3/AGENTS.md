@@ -192,6 +192,28 @@ The core mechanism is a **bump allocator over shared memory**, the
   address matches, every in-segment pointer resolves correctly with no
   fix-up. Clients never install the TMA function pointers — they only read.
 
+### The allocator keeps its bookkeeping in-band
+
+- **Every block carries a 16-byte header** (`pmix_gds_shmem3_tma_alloc_t`:
+  the extent plus a magic) immediately ahead of the address handed out.
+  The *only* consumer is `tma_realloc()`, which needs the old size to know
+  how much to copy — nothing else in the segment is reached by walking
+  allocations, so this is not part of the shared layout and does **not**
+  belong in `PMIX_GDS_SHMEM3_LAYOUT_ID`. Keep the header a multiple of 8:
+  `addr_align()` keeps the bump pointer 8-byte aligned and the payload
+  address is the header address plus its size, so an odd-sized header
+  misaligns every object in the segment.
+
+  This replaced a side hash table mapping address → extent, which the
+  allocator kept on the process heap. It cost **two heap allocations and a
+  ptr-keyed hash insert on every allocation**, grew monotonically (`free`
+  is a no-op, so nothing was ever removed), and had to be walked entry by
+  entry at teardown — all to answer a question `tma_realloc` is the sole
+  asker of. Worth knowing *why* that was so expensive: `pmix_hash_store()`
+  makes three to five allocations per key/value stored, so the tax landed
+  on every byte of every modex. Do not reintroduce out-of-band
+  bookkeeping here.
+
 ### Every segment carries its own key index
 
 The hash tables in a segment store keys as **integers**, and those
