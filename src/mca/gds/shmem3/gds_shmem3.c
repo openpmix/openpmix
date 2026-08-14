@@ -22,6 +22,7 @@
 
 #include "src/include/pmix_dictionary.h"
 
+#include "src/util/pmix_hash.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_string_copy.h"
 #include "src/util/pmix_vmem.h"
@@ -70,8 +71,10 @@ typedef struct {
     uint32_t session_id;
     /** Size of packed data. */
     size_t packed_size;
-    /** Number of hash elements found. */
+    /** Number of elements the local hash table needs - one per rank. */
     size_t hash_table_size;
+    /** Number of key/value pairs those elements will hold between them. */
+    size_t nkvals;
 } pmix_gds_shmem3_packed_local_job_info_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem3_packed_local_job_info_t);
 
@@ -98,6 +101,7 @@ packed_job_info_construct(
     pji->session_id = UINT32_MAX;
     pji->packed_size = 0;
     pji->hash_table_size = 0;
+    pji->nkvals = 0;
 }
 
 PMIX_CLASS_INSTANCE(
@@ -1490,6 +1494,25 @@ server_cache_job_info(
 }
 
 /**
+ * Internally the hash table can do some interesting sizing calculations, so we
+ * just construct a temporary one with the number of expected elements, then
+ * query it for its actual capacity.
+ */
+static inline size_t
+get_actual_hashtab_capacity(
+    size_t num_elements
+) {
+    pmix_hash_table_t tmp;
+    PMIX_CONSTRUCT(&tmp, pmix_hash_table_t);
+    pmix_hash_table_init(&tmp, num_elements);
+    // Grab the actual capacity.
+    const size_t result = tmp.ht_capacity;
+    PMIX_DESTRUCT(&tmp);
+
+    return result;
+}
+
+/**
  *
  */
 static pmix_status_t
@@ -1500,8 +1523,13 @@ prepare_shmem3_stores_for_local_job_data(
     pmix_status_t rc = PMIX_SUCCESS;
     static const float fluff = 3.0;
     const size_t kvsize = (sizeof(pmix_kval_t) + sizeof(pmix_value_t));
-    // Initial hash table size.
+    // Elements the table needs - one per rank it will hold.
     const size_t htsize = pji->hash_table_size;
+    // Key/value pairs those elements hold between them. The table is
+    // sized by the first number and its contents by this one; they are
+    // not interchangeable, and using htsize for both is what made the
+    // table thousands of times larger than it had to be.
+    const size_t nkvals = pji->nkvals;
     // Calculate a rough estimate on the amount of storage required to store the
     // values associated with the pmix_gds_shmem3_shared_job_data_t. Err on the
     // side of overestimation.
@@ -1509,16 +1537,19 @@ prepare_shmem3_stores_for_local_job_data(
     // We need to store a hash table in the shared-memory segment, so calculate
     // a rough estimate on the memory required for its storage.
     seg_size += sizeof(pmix_hash_table_t);
-    seg_size += htsize * pmix_hash_table_sizeof_hash_element();
+    seg_size += get_actual_hashtab_capacity(htsize)
+                * pmix_hash_table_sizeof_hash_element();
+    // Each element points at a per-rank structure with its own arrays.
+    seg_size += htsize * pmix_hash_sizeof_proc_storage();
     // Add a little extra to compensate for the value storage requirements. Here
-    // we add an additional storage space for each entry.
-    seg_size += htsize * kvsize;
+    // we add an additional storage space for each key/value pair.
+    seg_size += nkvals * kvsize;
     // The keyindex that translates the indices in that table lives in
     // this segment too, and it is not small: the object, its pointer
     // array, its own string -> entry hash table (which the keyindex
     // constructor sizes for the whole reserved dictionary), and one
     // entry per distinct key with two copies of the key string plus the
-    // copy the lookup table makes. Bound the entry count by htsize -
+    // copy the lookup table makes. Bound the entry count by nkvals -
     // the real number of distinct keys is normally far smaller.
     //
     // Leaving this out is not a slow leak, it is a hard failure: the
@@ -1534,7 +1565,7 @@ prepare_shmem3_stores_for_local_job_data(
     seg_size += PMIX_KEYINDEX_LOOKUP_SIZE
                 * pmix_hash_table_sizeof_hash_element();
     seg_size += PMIX_KEYINDEX_TABLE_SIZE * sizeof(void *);
-    seg_size += htsize * (sizeof(pmix_regattr_input_t)
+    seg_size += nkvals * (sizeof(pmix_regattr_input_t)
                           + sizeof(void *)
                           + 3 * (PMIX_MAX_KEYLEN + 1));
     // Finally add the data size contribution, plus a little extra.
@@ -1881,32 +1912,27 @@ fetch_local_job_data(
     return rc;
 }
 
-/**
- * Internally the hash table can do some interesting sizing calculations, so we
- * just construct a temporary one with the number of expected elements, then
- * query it for its actual capacity.
- */
-static inline size_t
-get_actual_hashtab_capacity(
-    size_t num_elements
-) {
-    pmix_hash_table_t tmp;
-    PMIX_CONSTRUCT(&tmp, pmix_hash_table_t);
-    pmix_hash_table_init(&tmp, num_elements);
-    // Grab the actual capacity.
-    const size_t result = tmp.ht_capacity;
-    PMIX_DESTRUCT(&tmp);
-
-    return result;
-}
-
 static inline pmix_status_t
 get_local_job_data_info(
     pmix_cb_t *job_cb,
     pmix_gds_shmem3_packed_local_job_info_t *pji
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    size_t nhtentries = 0;
+    /* Entries in job->smdata->local_hashtab. That table is keyed by RANK,
+     * so what goes in it is one element per rank a PMIX_PROC_INFO_ARRAY
+     * describes, plus a single element for PMIX_RANK_WILDCARD that every
+     * plain job-level key shares - see
+     * pmix_gds_shmem3_store_local_job_data_in_shmem3(). Counting the
+     * *infos* inside each array, and one per plain key, described a table
+     * that does not exist. */
+    size_t nprocarrays = 0;
+    bool have_job_level_kv = false;
+    /* How many key/value pairs go into that table between them. This is a
+     * different quantity from the element count, and the estimate below
+     * needs both: the elements size the table, the pairs size the values
+     * hanging off it and the key index describing them. Conflating the
+     * two is what made the element count wrong in the first place. */
+    size_t nkvals = 0;
     uint32_t sid = UINT32_MAX;
 
     pmix_buffer_t data;
@@ -1920,9 +1946,12 @@ get_local_job_data_info(
             NULL != kvi->value->data.darray &&
             NULL != kvi->value->data.darray->array &&
             0 != kvi->value->data.darray->size) {
-            // PMIX_PROC_INFO_ARRAY is stored in the hash table.
+            /* A PMIX_PROC_INFO_ARRAY becomes one hash-table entry: every
+             * info in it is stored against the single rank the array
+             * describes. */
             if (PMIX_CHECK_KEY(kvi, PMIX_PROC_INFO_ARRAY)) {
-                nhtentries += kvi->value->data.darray->size;
+                nprocarrays += 1;
+                nkvals += kvi->value->data.darray->size;
             }
             // See if this is the job's session ID. If so, capture it.
             pmix_info_t *info = (pmix_info_t *)kvi->value->data.darray->array;
@@ -1934,9 +1963,12 @@ get_local_job_data_info(
                 }
             }
         }
-        // Just a key/value pair, so they will likely go into the hash table.
+        /* Just a key/value pair. They all go into the hash table under
+         * PMIX_RANK_WILDCARD, so however many there are they share one
+         * entry between them. */
         else {
-            nhtentries += 1;
+            have_job_level_kv = true;
+            nkvals += 1;
         }
 
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &data, kvi, 1, PMIX_KVAL);
@@ -1947,7 +1979,10 @@ get_local_job_data_info(
     }
     pji->session_id = sid;
     pji->packed_size = data.bytes_used;
-    pji->hash_table_size = get_actual_hashtab_capacity(nhtentries);
+    /* Entries, not capacity: pmix_hash_table_init() applies the density
+     * ratio itself, so passing it a capacity double-applied it. */
+    pji->hash_table_size = nprocarrays + (have_job_level_kv ? 1 : 0);
+    pji->nkvals = nkvals;
 out:
     PMIX_DESTRUCT(&data);
     return rc;
@@ -2305,8 +2340,10 @@ store_job_info(
  * Returns size required to store modex data.
  */
 static pmix_gds_shmem3_modex_info_t
-get_modex_sizing_data(const pmix_buffer_t *buff)
-{
+get_modex_sizing_data(
+    const pmix_gds_shmem3_job_t *job,
+    const pmix_buffer_t *buff
+) {
     const size_t kval_size = sizeof(pmix_kval_t);
     // The default values if not provided with modex size info. More fluff than
     // in other places because this calculation is more imprecise. In many ways
@@ -2316,11 +2353,32 @@ get_modex_sizing_data(const pmix_buffer_t *buff)
     size_t segment_size = buff->bytes_used * 5;
     // Get an estimate on the number of kvals we need to store.
     const size_t nkvals = (segment_size / (float)kval_size) + kval_size;
-    // Get the required hash table size based on number of kvals.
-    const size_t nhtelems = get_actual_hashtab_capacity(nkvals);
-    // We also need storage space for the hash table and its elements.
+    /* The modex table is keyed by RANK, not by key: pmix_hash_store()
+     * looks up one pmix_proc_data_t per rank and hangs that rank's values
+     * off it in a pointer array. So the table needs one element per rank
+     * whose data lands in this segment - the procs of this namespace,
+     * since a blob for another namespace goes to that job's own segment -
+     * and not, as it used to compute, one per byte-group of payload. At
+     * 32 ranks that was the difference between 32 elements and tens of
+     * thousands, every one of which had to be zeroed into a fresh
+     * mapping before the first value could be stored.
+     *
+     * nprocs comes from the host's PMIX_JOB_SIZE and is not guaranteed to
+     * have arrived; the table grows itself if this is short, so a floor
+     * of one is a slow path rather than a wrong answer. */
+    size_t nranks = (size_t)job->nspace->nprocs;
+    if (0 == nranks) {
+        nranks = 1;
+    }
+    // Entries, not capacity: pmix_hash_table_init() applies the density
+    // ratio itself, so handing it a capacity would double-apply it.
+    const size_t nhtelems = nranks;
+    // We also need storage space for the hash table, its elements, and the
+    // per-rank structures those elements point at.
     segment_size += sizeof(pmix_hash_table_t);
-    segment_size += nhtelems * pmix_hash_table_sizeof_hash_element();
+    segment_size += get_actual_hashtab_capacity(nhtelems)
+                    * pmix_hash_table_sizeof_hash_element();
+    segment_size += nranks * pmix_hash_sizeof_proc_storage();
     // The keyindex that translates the indices in that hash table lives
     // in this segment too: the object, its pointer array, its own string
     // -> entry hash table, and one entry per distinct key with two
@@ -2422,7 +2480,7 @@ server_store_modex_cb(pmix_proc_t *proc,
         char segname[PMIX_PATH_MAX];
         snprintf(segname, sizeof(segname), "modexdata.%u", job->modex_generation);
         // Get the global packed buffer size from ctx.
-        pmix_gds_shmem3_modex_info_t minfo = get_modex_sizing_data(pbkt);
+        pmix_gds_shmem3_modex_info_t minfo = get_modex_sizing_data(job, pbkt);
         // Create and attach to the shared-memory
         // segment that will back these data.
         rc = shmem3_segment_create_and_attach(

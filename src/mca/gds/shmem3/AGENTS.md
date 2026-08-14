@@ -237,6 +237,42 @@ undo by accident:
   weakens, restore the `memset` in `tma_carve()` rather than at the call
   sites.
 
+### These hash tables are keyed by rank, not by key
+
+Both `job->smdata->local_hashtab` and `job->smmodex->hashtab` hold **one
+element per rank**. `pmix_hash_store()` looks up a single
+`pmix_proc_data_t` for the rank and hangs that rank's values off it in a
+pointer array; the values are not table elements. Job-level keys all
+share the one element belonging to `PMIX_RANK_WILDCARD`.
+
+That makes *two* numbers matter when pre-sizing a segment, and they are
+not interchangeable:
+
+| quantity | sizes | where it comes from |
+|---|---|---|
+| **elements** | the table itself, and the per-rank structures its elements point at | the modex: `job->nspace->nprocs`. The job segment: one per `PMIX_PROC_INFO_ARRAY`, plus one if there is any plain job-level key |
+| **key/value pairs** | the stored values, and the key index describing them | the modex: estimated from the blob. The job segment: the infos inside each proc array, plus each plain key |
+
+Both estimates used to feed the *pair* count into the table, so a 32-rank
+job built a table with tens of thousands of elements — each of which had
+to be zeroed into a fresh mapping before a single value could be stored.
+Keep the two apart when you touch `get_modex_sizing_data()` or
+`get_local_job_data_info()`; collapsing them is the original bug.
+
+Two smaller traps in the same arithmetic:
+
+- **`pmix_hash_table_init()` takes an element count, not a capacity.** It
+  applies the density ratio itself (`est_capacity = n * denom / numer`),
+  so passing it `get_actual_hashtab_capacity(n)` — as both paths did —
+  doubled the table a second time. Use the raw count for `init()` and
+  `get_actual_hashtab_capacity()` only to turn a count into *bytes* for
+  the segment estimate.
+- **An element costs more than a `pmix_hash_element_t`.** Each one points
+  at a `pmix_proc_data_t` with two pointer arrays of its own, and that
+  storage is in the segment too. `pmix_hash_sizeof_proc_storage()` in
+  `src/util/pmix_hash.c` reports it, because the type is private to that
+  file; keep it in step with `pdcon()` there.
+
 ### Every segment carries its own key index
 
 The hash tables in a segment store keys as **integers**, and those

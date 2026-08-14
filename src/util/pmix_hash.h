@@ -39,6 +39,12 @@ PMIX_EXPORT pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
  * in pmix_hash.c for what the trade actually is. */
 PMIX_EXPORT extern int pmix_hash_proc_alloc;
 
+/* Bytes one rank occupies in a table, over and above its hash-table
+ * element: the per-proc object plus the two pointer arrays it builds.
+ * A caller that must size a datastore before filling it - gds/shmem3
+ * pre-sizes a shared-memory segment - cannot see that type, so it asks. */
+PMIX_EXPORT size_t pmix_hash_sizeof_proc_storage(void);
+
 PMIX_EXPORT pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank,
                                           const char *key,
                                           pmix_info_t *qualifiers, size_t nquals,
