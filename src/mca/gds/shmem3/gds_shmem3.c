@@ -334,6 +334,14 @@ tma_alloc_header(
 /**
  * Carves a block of the requested size out of the segment, stamping its
  * header. The caller owns initializing the returned storage.
+ *
+ * Nothing zeroes the block, and nothing needs to: pmix_shmem_segment_create()
+ * truncates its backing file from empty, so every page of a fresh segment
+ * reads as zero and every block this hands out comes from space no caller has
+ * yet touched. Writing zeros over zeros only forced the whole segment
+ * resident up front - the largest avoidable cost in building one - instead of
+ * letting demand paging bring in what is actually used. If that guarantee
+ * ever weakens, restore the memset here rather than at the call sites.
  */
 static inline void *
 tma_carve(
@@ -369,13 +377,7 @@ tma_malloc(
     if (0 == size) {
         return NULL;
     }
-    void *const base = tma_carve(tma, size);
-#if PMIX_ENABLE_DEBUG
-    if (PMIX_LIKELY(NULL != base)) {
-        memset(base, 0, size);
-    }
-#endif
-    return base;
+    return tma_carve(tma, size);
 }
 
 static inline void *
@@ -395,11 +397,8 @@ tma_calloc(
     if (0 == real_size) {
         return NULL;
     }
-    void *const base = tma_carve(tma, real_size);
-    if (PMIX_LIKELY(NULL != base)) {
-        memset(base, 0, real_size);
-    }
-    return base;
+    // See tma_carve(): a fresh segment is already zero.
+    return tma_carve(tma, real_size);
 }
 
 static inline void *

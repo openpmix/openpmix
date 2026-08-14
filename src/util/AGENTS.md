@@ -156,6 +156,24 @@ this file only *consumes* it) and the `a.b.c.d[/mask]` tuple parser
 `pmix_iftupletoaddr`, which returns masks in **host** order. Mind that
 byte-order difference if you ever mix the two.
 
+### `pmix_shmem` — a created segment reads as zero
+
+`pmix_shmem_segment_create()` opens its backing file `O_CREAT | O_TRUNC`
+and `ftruncate`s it to the full size, so a freshly created segment is a
+sparse file whose every page reads as zero. **That is a contract, not an
+incidental property**: `gds/shmem3`'s bump allocator relies on it to hand
+out zeroed storage without writing a byte (see `tma_carve()` and
+[`src/mca/gds/shmem3/AGENTS.md`](../mca/gds/shmem3/AGENTS.md)), which is
+what keeps building a segment from faulting in its whole — heavily
+over-estimated — extent up front.
+
+The `O_TRUNC` is the load-bearing half. Segments are unlinked when their
+last holder lets go, so a path collides only with a file left behind by a
+server that died; but the path carries a pid, and pids get reused, and
+`ftruncate()` to the same or a smaller size would leave that file's bytes
+in place. There is exactly one caller of this function and it always
+populates the segment from scratch, so the truncate costs nothing.
+
 ### `keyval/` — the flex lexer
 
 `keyval_lex.l` is the flex source; `keyval_lex.c` is a **generated build
