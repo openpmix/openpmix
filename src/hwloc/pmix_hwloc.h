@@ -78,6 +78,52 @@ PMIX_EXPORT pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pm
                                                        pmix_info_t info[], size_t ninfo,
                                                        pmix_device_distance_t **dist, size_t *ndist);
 
+/* One device found in a topology.
+ *
+ * "dev" is the identity an application sees - the same uuid and osname
+ * reported through PMIX_DEVICE_DISTANCES, so a caller that assigns a device
+ * to a process can name it in terms the process will recognize.  The other
+ * two fields describe where the device sits, which is what a caller placing
+ * processes needs and what a distance array cannot express.
+ */
+typedef struct {
+    pmix_device_t dev;
+    /* PCI bus id ("0000:06:00.0"), or NULL for a device with no PCI
+     * ancestor.  This is the sort key: see pmix_hwloc_get_devices(). */
+    char *busid;
+    /* Nearest ancestor carrying a cpuset - the set of PUs local to this
+     * device.  Borrowed from the topology, so it is valid only as long as
+     * the topology is, and must not be freed. */
+    hwloc_obj_t locality;
+} pmix_hwloc_device_t;
+
+/* Enumerate the devices of the given type(s) in a topology.
+ *
+ * The unit is the PCI *function*, not the OS device: a GPU commonly exposes
+ * several OS devices (a DRM card node, a render node, and a vendor compute
+ * node such as "cuda0" or "rsmi0") and they are one device, not three.
+ *
+ * Devices come back ordered by PCI bus id ascending, with any device having
+ * no PCI ancestor last, ordered by name.  That ordering is deterministic,
+ * identical on every node carrying the same hardware, and stable across
+ * reboots - which matters because a caller assigning devices to processes
+ * has to make the same assignment everywhere.
+ *
+ * "type" is a bitmask of the desired types; PMIX_DEVTYPE_UNKNOWN means all.
+ * "devid" restricts the result to a single device matching it by osname or
+ * uuid, and may be NULL.
+ *
+ * An empty result is not an error: the caller decides what "this node has no
+ * such device" means.  Release the array with pmix_hwloc_release_devices().
+ */
+PMIX_EXPORT pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
+                                                 pmix_device_type_t type,
+                                                 const char *devid,
+                                                 pmix_hwloc_device_t **devs,
+                                                 size_t *ndevs);
+
+PMIX_EXPORT void pmix_hwloc_release_devices(pmix_hwloc_device_t *devs, size_t ndevs);
+
 PMIX_EXPORT pmix_status_t pmix_hwloc_check_vendor(pmix_topology_t *topo,
                                                   unsigned short vendorID,
                                                   uint16_t class);

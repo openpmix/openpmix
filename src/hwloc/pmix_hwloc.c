@@ -1496,6 +1496,396 @@ cleanup:
     return rc;
 }
 
+/* ---------------------------------------------------------------------
+ * Device enumeration
+ * --------------------------------------------------------------------- */
+
+/* The vendor compute backends hwloc knows how to label.  An OS device
+ * carrying one of these is unambiguously a compute device: it is the
+ * runtime's own view of the card rather than a display node that happens to
+ * sit on the same PCI function. */
+static bool osdev_is_compute_backend(hwloc_obj_t osdev)
+{
+    const char *backend;
+
+    if (HWLOC_OBJ_OSDEV_COPROC == osdev->attr->osdev.type) {
+        return true;
+    }
+    backend = hwloc_obj_get_info_by_name(osdev, "Backend");
+    if (NULL == backend) {
+        return false;
+    }
+    return (0 == strcasecmp(backend, "CUDA")
+            || 0 == strcasecmp(backend, "NVML")
+            || 0 == strcasecmp(backend, "RSMI")
+            || 0 == strcasecmp(backend, "LevelZero")
+            || 0 == strcasecmp(backend, "OpenCL"));
+}
+
+static bool osdev_is_render_node(hwloc_obj_t osdev)
+{
+    return (NULL != osdev->name && 0 == strncasecmp(osdev->name, "renderD", 7));
+}
+
+/* The PCI function an OS device hangs off, or NULL if it has none. */
+static hwloc_obj_t pci_ancestor(hwloc_obj_t osdev)
+{
+    hwloc_obj_t p;
+
+    for (p = osdev->parent; NULL != p; p = p->parent) {
+        if (HWLOC_OBJ_PCI_DEVICE == p->type) {
+            return p;
+        }
+        if (HWLOC_OBJ_BRIDGE != p->type && HWLOC_OBJ_OS_DEVICE != p->type) {
+            /* climbed out of the I/O subtree without finding one */
+            break;
+        }
+    }
+    return NULL;
+}
+
+/* Whether a display-class device is one an application can compute on.
+ *
+ * hwloc reports a plain display adapter - a BMC's VGA controller, say -
+ * with the same osdev type as a GPU, and on a machine whose topology was
+ * gathered without the vendor backends there is no "cuda0" to tell them
+ * apart.  Two rules decide it, applied together rather than as a ladder:
+ *
+ *   1. the function carries a vendor compute node (cuda0, rsmi0, ze0, ...)
+ *      or a coprocessor OS device;
+ *   2. the function is PCI class 03xx - a display controller - and exposes
+ *      a DRM *render* node.  A render node is what makes a display device
+ *      usable for compute; a management controller has only a card node.
+ *
+ * They are a union rather than a priority ladder because a mixed-vendor
+ * node can carry one card whose backend is loaded and one whose is not, and
+ * a ladder that stopped at rule 1 would report only the first.
+ */
+static bool is_compute_gpu(hwloc_obj_t osdev, hwloc_obj_t pci)
+{
+    hwloc_obj_t child;
+    bool has_render = false;
+
+    if (NULL == pci) {
+        /* no function to group by - judge the OS device on its own */
+        return osdev_is_compute_backend(osdev);
+    }
+    for (child = pci->io_first_child; NULL != child; child = child->next_sibling) {
+        if (HWLOC_OBJ_OS_DEVICE != child->type) {
+            continue;
+        }
+        if (osdev_is_compute_backend(child)) {
+            return true;
+        }
+        if (osdev_is_render_node(child)) {
+            has_render = true;
+        }
+    }
+    return (has_render && 0x03 == (pci->attr->pcidev.class_id >> 8));
+}
+
+/* Which of two OS devices on one function should name it.  A vendor compute
+ * node is the most useful name and the one an application is most likely to
+ * recognize; a render node beats a card node (which is what PMIx has always
+ * skipped); otherwise keep what we have, so the result follows hwloc's own
+ * order and stays deterministic. */
+static bool osdev_preferred(hwloc_obj_t candidate, hwloc_obj_t incumbent)
+{
+    if (osdev_is_compute_backend(candidate)) {
+        return !osdev_is_compute_backend(incumbent);
+    }
+    if (osdev_is_compute_backend(incumbent)) {
+        return false;
+    }
+    if (osdev_is_render_node(candidate)) {
+        return !osdev_is_render_node(incumbent);
+    }
+    return false;
+}
+
+/* Build the uuid PMIx reports for a device.  An application correlates the
+ * device it was given against the ones it can see, so this grammar must not
+ * vary between the paths that produce it - hence one function.  Returns
+ * PMIX_ERR_TAKE_NEXT_OPTION for a device type that has no uuid form, which
+ * the caller reads as "not a device I can report". */
+static pmix_status_t build_device_uuid(hwloc_obj_t osdev, char **uuid)
+{
+    unsigned i;
+    char *addr = NULL, *ngid = NULL, *sgid = NULL;
+    int cnt;
+
+    *uuid = NULL;
+
+    switch (osdev->attr->osdev.type) {
+        case HWLOC_OBJ_OSDEV_NETWORK:
+            for (i = 0; i < osdev->infos_count; i++) {
+                if (0 == strcasecmp(osdev->infos[i].name, "Address")) {
+                    addr = osdev->infos[i].value;
+                    break;
+                }
+            }
+            if (NULL == addr) {
+                return PMIX_ERROR;
+            }
+            /* could be IPv4 or IPv6 */
+            cnt = countcolons(addr);
+            if (5 == cnt) {
+                pmix_asprintf(uuid, "ipv4://%s", addr);
+            } else if (19 == cnt) {
+                pmix_asprintf(uuid, "ipv6://%s", addr);
+            } else {
+                return PMIX_ERROR;
+            }
+            break;
+
+        case HWLOC_OBJ_OSDEV_OPENFABRICS:
+            for (i = 0; i < osdev->infos_count; i++) {
+                if (0 == strcasecmp(osdev->infos[i].name, "NodeGUID")) {
+                    ngid = osdev->infos[i].value;
+                } else if (0 == strcasecmp(osdev->infos[i].name, "SysImageGUID")) {
+                    sgid = osdev->infos[i].value;
+                }
+            }
+            if (NULL == ngid || NULL == sgid) {
+                return PMIX_ERROR;
+            }
+            pmix_asprintf(uuid, "fab://%s::%s", ngid, sgid);
+            break;
+
+        case HWLOC_OBJ_OSDEV_GPU:
+        case HWLOC_OBJ_OSDEV_COPROC:
+            pmix_asprintf(uuid, "gpu://%s::%s", pmix_globals.hostname, osdev->name);
+            break;
+
+        case HWLOC_OBJ_OSDEV_BLOCK:
+            pmix_asprintf(uuid, "blk://%s::%s", pmix_globals.hostname, osdev->name);
+            break;
+
+        default:
+            return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    if (NULL == *uuid) {
+        return PMIX_ERR_NOMEM;
+    }
+    return PMIX_SUCCESS;
+}
+
+/* one candidate device while we are still collecting */
+typedef struct {
+    pmix_list_item_t super;
+    hwloc_obj_t osdev;     /* the OS device that names the function */
+    hwloc_obj_t pci;       /* the function, or NULL */
+    pmix_device_type_t type;
+} pmix_devcand_t;
+static void cndcon(pmix_devcand_t *p)
+{
+    p->osdev = NULL;
+    p->pci = NULL;
+    p->type = PMIX_DEVTYPE_UNKNOWN;
+}
+static PMIX_CLASS_INSTANCE(pmix_devcand_t, pmix_list_item_t, cndcon, NULL);
+
+/* Order by PCI bus id, with a device that has no PCI ancestor sorting last
+ * by name.  The busid is rendered zero-padded and fixed-width, so comparing
+ * the strings orders them exactly as comparing domain/bus/device/function
+ * numerically would. */
+static int devcmp(const void *a, const void *b)
+{
+    const pmix_hwloc_device_t *da = (const pmix_hwloc_device_t *) a;
+    const pmix_hwloc_device_t *db = (const pmix_hwloc_device_t *) b;
+    uint64_t ka, kb;
+
+    /* NULL busid means no PCI ancestor: sort those last, by name */
+    ka = (NULL == da->busid) ? UINT64_MAX : 0;
+    kb = (NULL == db->busid) ? UINT64_MAX : 0;
+    if (ka != kb) {
+        return (ka < kb) ? -1 : 1;
+    }
+    if (NULL == da->busid) {
+        return strcmp((NULL == da->dev.osname) ? "" : da->dev.osname,
+                      (NULL == db->dev.osname) ? "" : db->dev.osname);
+    }
+    return strcmp(da->busid, db->busid);
+}
+
+pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
+                                     pmix_device_type_t type,
+                                     const char *devid,
+                                     pmix_hwloc_device_t **devs,
+                                     size_t *ndevs)
+{
+    hwloc_obj_t osdev, pci, tgt;
+    pmix_list_t cands;
+    pmix_devcand_t *c, *cnext, *match;
+    pmix_hwloc_device_t *array = NULL;
+    pmix_device_type_t dtype;
+    pmix_status_t rc = PMIX_SUCCESS;
+    size_t n, ncands, ntypes;
+    char *uuid = NULL;
+
+    if (NULL == topo || NULL == topo->topology || NULL == devs || NULL == ndevs) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *devs = NULL;
+    *ndevs = 0;
+
+    /* an unspecified type means every type we know */
+    if (PMIX_DEVTYPE_UNKNOWN == type) {
+        ntypes = sizeof(table) / sizeof(pmix_type_conversion_t);
+        for (n = 0; n < ntypes; n++) {
+            type |= table[n].pxtype;
+        }
+    }
+
+    PMIX_CONSTRUCT(&cands, pmix_list_t);
+
+    /* Collect one candidate per PCI function.  Walking OS devices and
+     * grouping them is what makes a GPU exposing a card node, a render node
+     * and a vendor node come out as one device instead of three. */
+    osdev = hwloc_get_next_osdev(topo->topology, NULL);
+    while (NULL != osdev) {
+        dtype = PMIX_DEVTYPE_UNKNOWN;
+        ntypes = sizeof(table) / sizeof(pmix_type_conversion_t);
+        for (n = 0; n < ntypes; n++) {
+            if (osdev->attr->osdev.type == table[n].hwtype) {
+                dtype = table[n].pxtype;
+                break;
+            }
+        }
+        if (PMIX_DEVTYPE_UNKNOWN == dtype || !(type & dtype)) {
+            goto next;
+        }
+        pci = pci_ancestor(osdev);
+        /* a display-class device has to earn its place */
+        if ((PMIX_DEVTYPE_GPU == dtype || PMIX_DEVTYPE_COPROC == dtype)
+            && !is_compute_gpu(osdev, pci)) {
+            goto next;
+        }
+        /* have we already got this function? */
+        match = NULL;
+        if (NULL != pci) {
+            PMIX_LIST_FOREACH (c, &cands, pmix_devcand_t) {
+                if (c->pci == pci) {
+                    match = c;
+                    break;
+                }
+            }
+        }
+        if (NULL != match) {
+            if (osdev_preferred(osdev, match->osdev)) {
+                match->osdev = osdev;
+                match->type = dtype;
+            }
+            goto next;
+        }
+        c = PMIX_NEW(pmix_devcand_t);
+        if (NULL == c) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        c->osdev = osdev;
+        c->pci = pci;
+        c->type = dtype;
+        pmix_list_append(&cands, &c->super);
+
+    next:
+        osdev = hwloc_get_next_osdev(topo->topology, osdev);
+    }
+
+    /* drop the ones we cannot name, or that the caller did not ask for by
+     * name, then build the result */
+    PMIX_LIST_FOREACH_SAFE (c, cnext, &cands, pmix_devcand_t) {
+        rc = build_device_uuid(c->osdev, &uuid);
+        if (PMIX_SUCCESS != rc) {
+            /* a device we cannot name is not one we can report */
+            pmix_list_remove_item(&cands, &c->super);
+            PMIX_RELEASE(c);
+            continue;
+        }
+        if (NULL != devid
+            && 0 != strcasecmp(devid, c->osdev->name)
+            && 0 != strcasecmp(devid, uuid)) {
+            free(uuid);
+            pmix_list_remove_item(&cands, &c->super);
+            PMIX_RELEASE(c);
+            continue;
+        }
+        free(uuid);
+        uuid = NULL;
+    }
+    rc = PMIX_SUCCESS;
+
+    ncands = pmix_list_get_size(&cands);
+    if (0 == ncands) {
+        /* not an error - the caller decides what an empty result means */
+        goto cleanup;
+    }
+
+    array = (pmix_hwloc_device_t *) calloc(ncands, sizeof(pmix_hwloc_device_t));
+    if (NULL == array) {
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
+    }
+
+    n = 0;
+    PMIX_LIST_FOREACH (c, &cands, pmix_devcand_t) {
+        PMIx_Device_construct(&array[n].dev);
+        rc = build_device_uuid(c->osdev, &array[n].dev.uuid);
+        if (PMIX_SUCCESS != rc) {
+            goto cleanup;
+        }
+        array[n].dev.osname = strdup(c->osdev->name);
+        array[n].dev.type = c->type;
+        if (NULL != c->pci) {
+            pmix_asprintf(&array[n].busid, "%04x:%02x:%02x.%01x",
+                          c->pci->attr->pcidev.domain, c->pci->attr->pcidev.bus,
+                          c->pci->attr->pcidev.dev, c->pci->attr->pcidev.func);
+        }
+        /* the device's locality is the nearest ancestor that has a cpuset */
+        if (NULL == c->osdev->cpuset) {
+            tgt = c->osdev->parent;
+            while (NULL != tgt && NULL == tgt->cpuset) {
+                tgt = tgt->parent;
+            }
+        } else {
+            tgt = c->osdev;
+        }
+        array[n].locality = tgt;
+        ++n;
+    }
+
+    qsort(array, ncands, sizeof(pmix_hwloc_device_t), devcmp);
+
+    *devs = array;
+    *ndevs = ncands;
+    array = NULL;
+
+cleanup:
+    if (NULL != array) {
+        pmix_hwloc_release_devices(array, ncands);
+    }
+    PMIX_LIST_DESTRUCT(&cands);
+    return rc;
+}
+
+void pmix_hwloc_release_devices(pmix_hwloc_device_t *devs, size_t ndevs)
+{
+    size_t n;
+
+    if (NULL == devs) {
+        return;
+    }
+    for (n = 0; n < ndevs; n++) {
+        PMIx_Device_destruct(&devs[n].dev);
+        if (NULL != devs[n].busid) {
+            free(devs[n].busid);
+        }
+        /* locality is borrowed from the topology */
+    }
+    free(devs);
+}
+
 pmix_status_t pmix_hwloc_check_vendor(pmix_topology_t *topo,
                                       unsigned short vendorID,
                                       uint16_t class)
