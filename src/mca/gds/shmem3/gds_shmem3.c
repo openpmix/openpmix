@@ -181,19 +181,43 @@ strtost(
 
 /**
  * Stores TMA memory allocation information.
+ *
+ * One of these sits immediately ahead of every block the TMA hands out, so
+ * the block carries its own size. Two properties matter:
+ *
+ * - It must stay a multiple of 8 bytes. addr_align() keeps the bump pointer
+ *   8-byte aligned, and the payload address is the header address plus this
+ *   size, so a header that is not a multiple of 8 would misalign every
+ *   object in the segment.
+ * - It lives in the segment, but nothing outside this file reads it, so it
+ *   is not part of the shared *layout*: clients reach in-segment objects
+ *   through pointers, never by walking allocations. It therefore does not
+ *   belong in PMIX_GDS_SHMEM3_LAYOUT_ID and does not require a rename.
+ *
+ * This replaced a side hash table (addr -> extent) that the allocator
+ * maintained on the process heap. That table cost two heap allocations and
+ * a ptr-keyed hash insert on *every* allocation - and, because free is a
+ * no-op here, it only ever grew, then had to be walked entry by entry at
+ * teardown. All of it existed to answer one question, asked only by
+ * tma_realloc(): how big was this block? A header answers it for the price
+ * of 16 bytes of segment space, which is noise against the sizing fluff
+ * these segments already carry.
  */
 typedef struct {
     /** Size of allocation. */
     size_t extent;
+    /** Marks the header as one this allocator wrote; see tma_realloc(). */
+    uint64_t magic;
 } pmix_gds_shmem3_tma_alloc_t;
+
+/** Distinguishes our header from whatever else a bad pointer points at. */
+#define PMIX_GDS_SHMEM3_TMA_ALLOC_MAGIC 0x504d495833544d41ULL // "PMIX3TMA"
 
 /**
  * Holds allocation context information.
  */
 typedef struct {
     pmix_object_t super;
-    /** Address to allocation information table. */
-    pmix_hash_table_t addr2info;
     /** Handle to shared-memory backing store. */
     pmix_shmem_t *shmem3;
     /** Points to a value that maintains the next available address. */
@@ -205,9 +229,6 @@ static void
 shmem3_allocator_construct(
     pmix_gds_shmem3_alloc_ctx_t *a
 ) {
-    PMIX_CONSTRUCT(&a->addr2info, pmix_hash_table_t);
-    pmix_hash_table_init(&a->addr2info, 2048);
-
     a->shmem3 = NULL;
     a->data_ptr = NULL;
 }
@@ -216,12 +237,6 @@ static void
 shmem3_allocator_destruct(
     pmix_gds_shmem3_alloc_ctx_t *a
 ) {
-    pmix_gds_shmem3_tma_alloc_t *value;
-    void *key;
-
-    PMIX_HASH_TABLE_FOREACH_PTR(key, value, &a->addr2info, { free(value); });
-    PMIX_DESTRUCT(&a->addr2info);
-
     a->shmem3 = NULL;
     a->data_ptr = NULL;
 }
@@ -305,35 +320,45 @@ tma_alloc_request_will_overflow(
     return wo;
 }
 
-static inline void
-tma_register_alloc(
-    pmix_tma_t *tma,
-    void *base,
-    size_t extent
+/**
+ * Returns the bookkeeping header for a block this allocator handed out.
+ */
+static inline pmix_gds_shmem3_tma_alloc_t *
+tma_alloc_header(
+    void *ptr
 ) {
-    uintptr_t key = (uintptr_t)base;
-
-    pmix_gds_shmem3_tma_alloc_t *value = calloc(1, sizeof(*value));
-    value->extent = extent;
-
-    pmix_hash_table_set_value_ptr(
-        &tma_get_alloc_ctx(tma)->addr2info,
-        &key, sizeof(key), value
-    );
+    return (pmix_gds_shmem3_tma_alloc_t *)
+        ((char *)ptr - sizeof(pmix_gds_shmem3_tma_alloc_t));
 }
 
-static inline pmix_status_t
-tma_get_registered_alloc(
+/**
+ * Carves a block of the requested size out of the segment, stamping its
+ * header. The caller owns initializing the returned storage.
+ */
+static inline void *
+tma_carve(
     pmix_tma_t *tma,
-    void *addr,
-    pmix_gds_shmem3_tma_alloc_t **result
+    size_t size
 ) {
-    uintptr_t key = (uintptr_t)addr;
+    const size_t hdrsize = sizeof(pmix_gds_shmem3_tma_alloc_t);
+    // The header comes out of the segment too, so it is part of the request
+    // as far as the capacity check is concerned. Adding it must not be what
+    // wraps the sum.
+    if (PMIX_UNLIKELY(SIZE_MAX - hdrsize < size)) {
+        errno = ENOMEM;
+        perror(EMSG_SHMEM3_OOM);
+        abort();
+    }
+    if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, size + hdrsize))) {
+        return NULL;
+    }
+    pmix_gds_shmem3_tma_alloc_t *const hdr = tma_get_curraddr(tma);
+    hdr->extent = size;
+    hdr->magic = PMIX_GDS_SHMEM3_TMA_ALLOC_MAGIC;
 
-    return pmix_hash_table_get_value_ptr(
-        &tma_get_alloc_ctx(tma)->addr2info, &key,
-        sizeof(uintptr_t), (void **)result
-    );
+    void *const base = (char *)hdr + hdrsize;
+    tma_set_curraddr(tma, addr_align(base, size));
+    return base;
 }
 
 static inline void *
@@ -344,16 +369,13 @@ tma_malloc(
     if (0 == size) {
         return NULL;
     }
-    if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, size))) {
-        return NULL;
-    }
-    void *const current = tma_get_curraddr(tma);
-    tma_register_alloc(tma, current, size);
+    void *const base = tma_carve(tma, size);
 #if PMIX_ENABLE_DEBUG
-    memset(current, 0, size);
+    if (PMIX_LIKELY(NULL != base)) {
+        memset(base, 0, size);
+    }
 #endif
-    tma_set_curraddr(tma, addr_align(current, size));
-    return current;
+    return base;
 }
 
 static inline void *
@@ -373,14 +395,11 @@ tma_calloc(
     if (0 == real_size) {
         return NULL;
     }
-    if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, real_size))) {
-        return NULL;
+    void *const base = tma_carve(tma, real_size);
+    if (PMIX_LIKELY(NULL != base)) {
+        memset(base, 0, real_size);
     }
-    void *const current = tma_get_curraddr(tma);
-    tma_register_alloc(tma, current, real_size);
-    memset(current, 0, real_size);
-    tma_set_curraddr(tma, addr_align(current, real_size));
-    return current;
+    return base;
 }
 
 static inline void *
@@ -398,15 +417,17 @@ tma_realloc(
         pmix_tma_free(tma, ptr);
         return NULL;
     }
-    // Find the allocation info based on the provided address.
-    pmix_gds_shmem3_tma_alloc_t *alloc = NULL;
-    int rc = tma_get_registered_alloc(tma, ptr, &alloc);
-    if (PMIX_SUCCESS != rc) {
+    // Every block we hand out carries its size just ahead of it. A pointer
+    // that does not is one this allocator never produced, which means the
+    // caller has crossed a heap block with a segment block - keep saying so
+    // rather than copying from an extent we invented.
+    pmix_gds_shmem3_tma_alloc_t *const hdr = tma_alloc_header(ptr);
+    if (PMIX_UNLIKELY(PMIX_GDS_SHMEM3_TMA_ALLOC_MAGIC != hdr->magic)) {
         errno = EFAULT;
         perror(EMSG_SHMEM3_IS_BROKEN);
         abort();
     }
-    const size_t old_size = alloc->extent;
+    const size_t old_size = hdr->extent;
     if (new_size != old_size) {
         void *new_base = pmix_tma_malloc(tma, new_size);
         if (NULL == new_base) {
@@ -427,14 +448,11 @@ tma_strdup(
 ) {
     const size_t size = strlen(s) + 1;
 
-    if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, size))) {
+    void *const base = tma_carve(tma, size);
+    if (PMIX_UNLIKELY(NULL == base)) {
         return NULL;
     }
-
-    void *const current = tma_get_curraddr(tma);
-    tma_register_alloc(tma, current, size);
-    tma_set_curraddr(tma, addr_align(current, size));
-    return (char *)memmove(current, s, size);
+    return (char *)memmove(base, s, size);
 }
 
 static inline void
