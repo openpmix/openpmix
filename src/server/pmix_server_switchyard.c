@@ -456,8 +456,11 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_FINALIZE_CMD == cmd) {
         peer->nptr->nfinalized++;
-        /* purge events */
-        pmix_server_purge_events(peer, NULL);
+        /* purge events.  This peer finalized - it did not vanish - so a
+         * request parked on data it never published is answered "not
+         * found", not "lost connection": the asker's own session is
+         * perfectly healthy and telling it otherwise reads as fatal. */
+        pmix_server_purge_events(peer, NULL, PMIX_ERR_NOT_FOUND);
         PMIX_GDS_CADDY(cd, peer, tag);
         /* Call the local server, if supported. A tool counts here just as a
          * client does: the host was told when the tool connected, and this

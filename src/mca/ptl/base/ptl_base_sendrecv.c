@@ -111,8 +111,10 @@ static void lost_connection(pmix_peer_t *peer)
             }
         }
 
-        /* purge any notifications cached for this client */
-        pmix_server_purge_events(peer, NULL);
+        /* purge any notifications cached for this client.  Here the
+         * connection really did drop, so that is what anyone parked on
+         * this peer's data is told. */
+        pmix_server_purge_events(peer, NULL, PMIX_ERR_LOST_CONNECTION);
 
         if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
             /* only connection I can lose is to my server, so mark it */
