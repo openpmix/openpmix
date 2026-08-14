@@ -849,12 +849,20 @@ typedef struct {
  * size has to be estimated *before* anything is allocated in it. The
  * allocator behind it is a bump allocator with nowhere to grow, so an
  * estimate that disagrees with these does not run slow, it aborts the
- * server. Keep the estimate in gds_shmem3.c in step with these. */
+ * server. Rather than restating them at the estimate, ask
+ * pmix_keyindex_sizeof_fixed_storage() below. */
 #define PMIX_KEYINDEX_TABLE_SIZE  1024
 #define PMIX_KEYINDEX_TABLE_BLOCK  128
 /* sized past the reserved dictionary so the common case never rehashes */
 #define PMIX_KEYINDEX_LOOKUP_SIZE 2048
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_keyindex_t);
+
+/** Bytes an *empty* pmix_keyindex_t occupies: the object plus the pointer
+ * array and lookup table its constructor builds, both at fixed capacity.
+ * Reported rather than restated so a caller reserving space for one cannot
+ * drift from keyindex_construct(). See pmix_hash_sizeof_key_entry() for
+ * what each registered key adds on top. */
+PMIX_EXPORT size_t pmix_keyindex_sizeof_fixed_storage(void);
 
 #define PMIX_KEYINDEX_STATIC_INIT                 \
 {                                                 \

@@ -1486,25 +1486,6 @@ server_cache_job_info(
 }
 
 /**
- * Internally the hash table can do some interesting sizing calculations, so we
- * just construct a temporary one with the number of expected elements, then
- * query it for its actual capacity.
- */
-static inline size_t
-get_actual_hashtab_capacity(
-    size_t num_elements
-) {
-    pmix_hash_table_t tmp;
-    PMIX_CONSTRUCT(&tmp, pmix_hash_table_t);
-    pmix_hash_table_init(&tmp, num_elements);
-    // Grab the actual capacity.
-    const size_t result = tmp.ht_capacity;
-    PMIX_DESTRUCT(&tmp);
-
-    return result;
-}
-
-/**
  *
  */
 static pmix_status_t
@@ -1529,37 +1510,33 @@ prepare_shmem3_stores_for_local_job_data(
     // We need to store a hash table in the shared-memory segment, so calculate
     // a rough estimate on the memory required for its storage.
     seg_size += sizeof(pmix_hash_table_t);
-    seg_size += get_actual_hashtab_capacity(htsize)
-                * pmix_hash_table_sizeof_hash_element();
+    seg_size += pmix_hash_table_sizeof_storage(htsize);
     // Each element points at a per-rank structure with its own arrays.
     seg_size += htsize * pmix_hash_sizeof_proc_storage();
     // Add a little extra to compensate for the value storage requirements. Here
     // we add an additional storage space for each key/value pair.
     seg_size += nkvals * kvsize;
-    // The keyindex that translates the indices in that table lives in
-    // this segment too, and it is not small: the object, its pointer
-    // array, its own string -> entry hash table (which the keyindex
-    // constructor sizes for the whole reserved dictionary), and one
-    // entry per distinct key with two copies of the key string plus the
-    // copy the lookup table makes. Bound the entry count by nkvals -
-    // the real number of distinct keys is normally far smaller.
-    //
-    // Leaving this out is not a slow leak, it is a hard failure: the
-    // TMA behind the segment is a bump allocator with nowhere to grow,
-    // so the server aborts partway through register_job_info() and
-    // every client sits waiting for job data that will never arrive.
-    seg_size += sizeof(pmix_keyindex_t);
-    seg_size += sizeof(pmix_pointer_array_t);
-    seg_size += sizeof(pmix_hash_table_t);
-    // Both children are constructed at a fixed capacity whatever the
-    // key count turns out to be, so count them at that size rather than
-    // scaling them with it.
-    seg_size += PMIX_KEYINDEX_LOOKUP_SIZE
-                * pmix_hash_table_sizeof_hash_element();
-    seg_size += PMIX_KEYINDEX_TABLE_SIZE * sizeof(void *);
-    seg_size += nkvals * (sizeof(pmix_regattr_input_t)
-                          + sizeof(void *)
-                          + 3 * (PMIX_MAX_KEYLEN + 1));
+    /* The keyindex that translates the indices in that table lives in
+     * this segment too, and an empty one is already ~170 KB. On top of
+     * that each distinct key costs a record and three copies of its own
+     * string. Bound the entry count by nkvals - the real number of
+     * distinct keys is normally far smaller.
+     *
+     * The key *lengths* are bounded by the data, not by PMIX_MAX_KEYLEN:
+     * every one of these keys arrived in the buffer we just packed, so
+     * their strings cannot total more than it holds. Reserving the
+     * 511-byte maximum for each instead made this term alone dwarf the
+     * payload it was protecting.
+     *
+     * Leaving this out is not a slow leak, it is a hard failure: the
+     * TMA behind the segment is a bump allocator with nowhere to grow,
+     * so the server aborts partway through register_job_info() and
+     * every client sits waiting for job data that will never arrive. */
+    seg_size += pmix_keyindex_sizeof_fixed_storage();
+    seg_size += nkvals * pmix_hash_sizeof_key_entry(0);
+    /* Three copies per registered key, plus the copy newkval() strdups
+     * for every value that lands on a list rather than in the table. */
+    seg_size += 4 * pji->packed_size;
     // Finally add the data size contribution, plus a little extra.
     seg_size += pji->packed_size;
     // Include some extra fluff that empirically seems reasonable.
@@ -2368,30 +2345,28 @@ get_modex_sizing_data(
     // We also need storage space for the hash table, its elements, and the
     // per-rank structures those elements point at.
     segment_size += sizeof(pmix_hash_table_t);
-    segment_size += get_actual_hashtab_capacity(nhtelems)
-                    * pmix_hash_table_sizeof_hash_element();
+    segment_size += pmix_hash_table_sizeof_storage(nhtelems);
     segment_size += nranks * pmix_hash_sizeof_proc_storage();
-    // The keyindex that translates the indices in that hash table lives
-    // in this segment too: the object, its pointer array, its own string
-    // -> entry hash table, and one entry per distinct key with two
-    // copies of the key string (the entry's name and string) plus the
-    // copy the lookup table makes of its key. We cannot know the number
-    // of distinct keys without unpacking, so bound it by nkvals - the
-    // real count is normally far smaller, and the fluff below covers the
-    // per-entry allocations.
-    segment_size += sizeof(pmix_keyindex_t);
-    segment_size += sizeof(pmix_pointer_array_t);
-    segment_size += sizeof(pmix_hash_table_t);
-    segment_size += nkvals * (sizeof(pmix_regattr_input_t)
-                              + sizeof(void *)
-                              + 3 * (PMIX_MAX_KEYLEN + 1));
-    segment_size += get_actual_hashtab_capacity(nkvals)
-                    * pmix_hash_table_sizeof_hash_element();
-    // The keyindex's two children are constructed at fixed capacities
-    // whatever nkvals says, so they have to be counted at those sizes.
-    segment_size += PMIX_KEYINDEX_LOOKUP_SIZE
-                    * pmix_hash_table_sizeof_hash_element();
-    segment_size += PMIX_KEYINDEX_TABLE_SIZE * sizeof(void *);
+    /* The keyindex that translates the indices in that hash table lives
+     * in this segment too. An empty one is already ~170 KB - both its
+     * children are built at a fixed capacity whatever the key count turns
+     * out to be - and each distinct key then costs a record plus three
+     * copies of its own string. We cannot know the number of distinct
+     * keys without unpacking, so bound it by nkvals; the real count is
+     * normally far smaller.
+     *
+     * The key *lengths* are bounded by the blob, not by PMIX_MAX_KEYLEN.
+     * Every key here arrived in the buffer being unpacked, so the key
+     * strings cannot total more than that buffer decompresses to.
+     * Reserving 511 bytes for each instead made this one term roughly
+     * fifty times the payload - by far the largest thing in this
+     * estimate, and the reason a 1.3 MB modex was getting an 80 MB
+     * segment. */
+    segment_size += pmix_keyindex_sizeof_fixed_storage();
+    segment_size += nkvals * pmix_hash_sizeof_key_entry(0);
+    // Three copies of every key string, against a payload already scaled
+    // by the compression factor above.
+    segment_size += 3 * (buff->bytes_used * 5);
     // Include some extra fluff that empirically seems reasonable.
     segment_size *= fluff;
     // Adjust (increase or decrease) segment size by the given parameter size.

@@ -108,6 +108,12 @@ static void pmix_hash_table_destruct(pmix_hash_table_t *ht)
  * Init, etc
  */
 
+/* The density pmix_hash_table_init() applies to a requested element count.
+ * Shared with pmix_hash_table_sizeof_storage(), which has to reproduce the
+ * same arithmetic for a caller that must reserve the storage up front. */
+#define PMIX_HASH_TABLE_DENSITY_NUMER 1
+#define PMIX_HASH_TABLE_DENSITY_DENOM 2
+
 static size_t pmix_hash_round_capacity_up(size_t capacity)
 {
     /* round up to (1 mod 30) */
@@ -162,8 +168,12 @@ pmix_hash_table_init2(pmix_hash_table_t *ht, size_t estimated_max_size, int dens
 int /* PMIX_ return code */
 pmix_hash_table_init(pmix_hash_table_t *ht, size_t table_size)
 {
-    /* default to density of 1/2 and growth of 2/1 */
-    return pmix_hash_table_init2(ht, table_size, 1, 2, 2, 1);
+    /* default to density of 1/2 and growth of 2/1. The density is named
+     * because pmix_hash_table_sizeof_storage() has to apply the same ratio
+     * to answer how much this call will allocate. */
+    return pmix_hash_table_init2(ht, table_size,
+                                 PMIX_HASH_TABLE_DENSITY_NUMER,
+                                 PMIX_HASH_TABLE_DENSITY_DENOM, 2, 1);
 }
 
 int /* PMIX_ return code */
@@ -982,6 +992,20 @@ size_t
 pmix_hash_table_sizeof_hash_element(void)
 {
     return sizeof(pmix_hash_element_t);
+}
+
+size_t
+pmix_hash_table_sizeof_storage(size_t nelements)
+{
+    /* Mirror pmix_hash_table_init()/init2(): the request is scaled by the
+     * default density ratio and then rounded up. Keep the two in step -
+     * a caller reserving storage from this and then calling init() has no
+     * other way to learn the answer, and being short is not a slow path
+     * for the bump allocator in gds/shmem3, it is an abort. */
+    const size_t est_capacity = nelements * PMIX_HASH_TABLE_DENSITY_DENOM
+                                / PMIX_HASH_TABLE_DENSITY_NUMER;
+
+    return pmix_hash_round_capacity_up(est_capacity) * sizeof(pmix_hash_element_t);
 }
 
 /* there was/is no traversal for the ptr case; it would go here */

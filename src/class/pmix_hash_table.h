@@ -360,6 +360,21 @@ PMIX_EXPORT size_t
 pmix_hash_table_sizeof_hash_element(void);
 
 /**
+ * Returns the bytes pmix_hash_table_init(ht, nelements) will allocate for
+ * the element array - the capacity it rounds that request up to, times the
+ * element size. A caller that has to reserve storage before the table is
+ * built (gds/shmem3 pre-sizes a shared-memory segment) needs this and
+ * cannot compute it: both the density ratio and the rounding are private
+ * to the implementation.
+ *
+ * Note this answers a question about *storage*. Do not feed the result
+ * back to pmix_hash_table_init(), which takes an element count and applies
+ * the density ratio itself.
+ */
+PMIX_EXPORT size_t
+pmix_hash_table_sizeof_storage(size_t nelements);
+
+/**
  * @brief Returns next power-of-two of the given value.
  *
  * @param value The integer value to return power of 2

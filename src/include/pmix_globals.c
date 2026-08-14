@@ -211,6 +211,25 @@ static void keyindex_construct(pmix_keyindex_t *ki)
     ki->next_id = 0;
 }
 
+size_t pmix_keyindex_sizeof_fixed_storage(void)
+{
+    /* Mirror keyindex_construct() above: the object, its pointer array and
+     * that array's slots and free-bit map, its lookup table and that
+     * table's elements. Both children are built at a fixed capacity
+     * whatever the key count turns out to be, so this is the whole cost of
+     * an empty key index - and it is not small, which is exactly why a
+     * caller reserving space for one has to be told rather than guess. */
+    const size_t bits_per_word = 8 * sizeof(uint64_t);
+
+    return sizeof(pmix_keyindex_t)
+           + sizeof(pmix_pointer_array_t)
+           + PMIX_KEYINDEX_TABLE_SIZE * sizeof(void *)
+           + ((PMIX_KEYINDEX_TABLE_SIZE + bits_per_word - 1) / bits_per_word)
+                 * sizeof(uint64_t)
+           + sizeof(pmix_hash_table_t)
+           + pmix_hash_table_sizeof_storage(PMIX_KEYINDEX_LOOKUP_SIZE);
+}
+
 static void keyindex_destruct(pmix_keyindex_t *ki)
 {
     pmix_tma_t *const tma = pmix_obj_get_tma(&ki->super);
