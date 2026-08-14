@@ -963,6 +963,28 @@ pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
     return lookup_key(inid, key, kidx, true);
 }
 
+size_t pmix_hash_sizeof_key_entry(size_t keylen)
+{
+    /* Mirror the registration branch of lookup_key() above: the attribute
+     * record, its two copies of the key string, the two-element
+     * description vector and the string it holds, the slot the pointer
+     * array takes, and the third copy of the key that the lookup table
+     * makes for itself.
+     *
+     * Three copies of the key string is the part worth knowing, because a
+     * caller reserving space for a key index will otherwise reach for
+     * PMIX_MAX_KEYLEN and be wrong by more than an order of magnitude:
+     * real keys run tens of bytes against a 511-byte maximum. */
+    static const size_t description_len = sizeof("USER DEFINED");
+
+    return sizeof(pmix_regattr_input_t)
+           + 2 * (keylen + 1)
+           + 2 * sizeof(char *)
+           + description_len
+           + sizeof(void *)
+           + keylen;
+}
+
 pmix_regattr_input_t* pmix_hash_find_key(uint32_t inid,
                                          const char *key,
                                          pmix_keyindex_t *kidx)

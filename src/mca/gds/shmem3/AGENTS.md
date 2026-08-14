@@ -294,6 +294,28 @@ rewrites on every put.
 (`pmix_hash_find_key()` and `pmix_hash_lookup_key()` with a known
 index). Registering would mean a reader writing into the segment.
 
+**Ask the code that spends the memory how much it spends.** The estimate
+is a shadow model of what storing will cost, and every time it has been
+wrong it was because it restated something it should have asked for.
+Four sizing entry points exist for exactly this, each living beside the
+code it describes so the two cannot drift:
+
+| ask | for | lives beside |
+|---|---|---|
+| `pmix_hash_table_sizeof_storage(n)` | the element array `init(ht, n)` allocates | `pmix_hash_table_init()` |
+| `pmix_hash_sizeof_proc_storage()` | one rank's per-proc object and its arrays | `pdcon()` |
+| `pmix_keyindex_sizeof_fixed_storage()` | an *empty* key index (~170 KB) | `keyindex_construct()` |
+| `pmix_hash_sizeof_key_entry(len)` | one newly registered key | `lookup_key()` |
+
+Do not open-code any of these here. The estimate previously reserved
+`3 * (PMIX_MAX_KEYLEN + 1)` per assumed key/value pair — three copies of
+a *511-byte* key — which came to roughly fifty times the payload and was
+single-handedly the largest term in the calculation. Real keys run tens
+of bytes, and their true bound is the data: every key that will be
+registered arrived in the buffer being packed or unpacked, so the key
+strings cannot total more than that buffer holds. Bound them by the
+payload, never by the maximum.
+
 **And whatever you put in a segment has to be in that segment's size
 estimate before it is put there.** A keyindex is not small — it
 constructs a 2048-slot lookup table and a 1024-slot pointer array

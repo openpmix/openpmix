@@ -45,6 +45,13 @@ PMIX_EXPORT extern int pmix_hash_proc_alloc;
  * pre-sizes a shared-memory segment - cannot see that type, so it asks. */
 PMIX_EXPORT size_t pmix_hash_sizeof_proc_storage(void);
 
+/* Bytes registering one previously unseen key adds to a key index: the
+ * attribute record, the three copies made of the key string, and the
+ * description vector. Pair with pmix_keyindex_sizeof_fixed_storage() for
+ * the empty index itself. Reported rather than restated so a caller
+ * reserving the space cannot drift from the code that spends it. */
+PMIX_EXPORT size_t pmix_hash_sizeof_key_entry(size_t keylen);
+
 PMIX_EXPORT pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank,
                                           const char *key,
                                           pmix_info_t *qualifiers, size_t nquals,
