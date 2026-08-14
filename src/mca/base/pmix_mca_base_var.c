@@ -18,6 +18,8 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -639,13 +641,40 @@ static int int_from_string(const char *src, pmix_mca_base_var_enum_t *enumerator
     return PMIX_SUCCESS;
 }
 
+/*
+ * Parse a string as a boolean: any string strtoull() reads as an integer
+ * (zero is false, anything else true), or "true"/"false" (any prefix,
+ * case-insensitive). Returns PMIX_SUCCESS and sets *value, or
+ * PMIX_ERR_VALUE_OUT_OF_BOUNDS (leaving *value untouched) if src matches
+ * neither.
+ */
+static int bool_from_string(const char *src, bool *value)
+{
+    char *tmp;
+    uint64_t int_value;
+
+    int_value = strtoull(src, &tmp, 0);
+    if ('\0' == tmp[0]) {
+        *value = !!int_value;
+        return PMIX_SUCCESS;
+    }
+    if (0 == strncasecmp(src, "true", strlen(src))) {
+        *value = true;
+        return PMIX_SUCCESS;
+    }
+    if (0 == strncasecmp(src, "false", strlen(src))) {
+        *value = false;
+        return PMIX_SUCCESS;
+    }
+    return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
+}
+
 static int var_set_from_string(pmix_mca_base_var_t *var, char *src)
 {
     pmix_mca_base_var_storage_t *dst = var->mbv_storage;
     uint64_t int_value = 0;
     int ret;
     bool *boolcastme;
-    char *tmp;
 
     switch (var->mbv_type) {
     case PMIX_MCA_BASE_VAR_TYPE_INT:
@@ -693,19 +722,7 @@ static int var_set_from_string(pmix_mca_base_var_t *var, char *src)
 
     case PMIX_MCA_BASE_VAR_TYPE_BOOL:
         boolcastme = (bool *) var->mbv_storage;
-        int_value = strtoull(src, &tmp, 0);
-        if (tmp[0] == '\0') {
-            *boolcastme = !!int_value;
-        } else {
-            if (0 == strncasecmp(src, "true", strlen(src))) {
-                *boolcastme = true;
-            } else if (0 == strncasecmp(src, "false", strlen(src))) {
-                *boolcastme = false;
-            } else {
-                return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
-            }
-        }
-        return PMIX_SUCCESS;
+        return bool_from_string(src, boolcastme);
 
     case PMIX_MCA_BASE_VAR_TYPE_DOUBLE:
         dst->lfval = strtod(src, NULL);
@@ -1535,31 +1552,56 @@ static int var_set_from_env(pmix_mca_base_var_t *var, pmix_mca_base_var_t *origi
 
     if (deprecated && !pmix_mca_base_var_suppress_deprecated_warning) {
         const char *new_variable = "None (going away)";
+        bool redundant = false;
 
         if (is_synonym) {
             new_variable = original->mbv_full_name;
+
+            /* Both names set to the same value: a compatibility shim, no
+             * need to tell them to stop using the old one. */
+            char *orig_source, *orig_value;
+            int oret;
+
+            oret = var_get_env(original, original->mbv_long_name, &orig_source, &orig_value);
+            if (PMIX_SUCCESS != oret) {
+                oret = var_get_env(original, original->mbv_full_name, &orig_source, &orig_value);
+            }
+            (void) orig_source;
+
+            if (PMIX_SUCCESS == oret) {
+                if (PMIX_MCA_BASE_VAR_TYPE_BOOL == original->mbv_type) {
+                    bool a, b;
+                    redundant = (PMIX_SUCCESS == bool_from_string(orig_value, &a))
+                                && (PMIX_SUCCESS == bool_from_string(value_env, &b))
+                                && a == b;
+                } else {
+                    redundant = (0 == strcmp(orig_value, value_env));
+                }
+            }
         }
 
-        switch (original->mbv_source) {
-        case PMIX_MCA_BASE_VAR_SOURCE_ENV:
-            pmix_show_help("help-pmix-mca-var.txt", "deprecated-mca-env", true, var_full_name,
-                           new_variable);
-            break;
-        case PMIX_MCA_BASE_VAR_SOURCE_COMMAND_LINE:
-            pmix_show_help("help-pmix-mca-var.txt", "deprecated-mca-cli", true, var_full_name,
-                           new_variable);
-            break;
-        case PMIX_MCA_BASE_VAR_SOURCE_FILE:
-        case PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE:
-            pmix_show_help("help-pmix-mca-var.txt", "deprecated-mca-file", true, var_full_name,
-                           pmix_mca_base_var_source_file(original), new_variable);
-            break;
+        if (!redundant) {
+            switch (original->mbv_source) {
+            case PMIX_MCA_BASE_VAR_SOURCE_ENV:
+                pmix_show_help("help-pmix-mca-var.txt", "deprecated-mca-env", true, var_full_name,
+                               new_variable);
+                break;
+            case PMIX_MCA_BASE_VAR_SOURCE_COMMAND_LINE:
+                pmix_show_help("help-pmix-mca-var.txt", "deprecated-mca-cli", true, var_full_name,
+                               new_variable);
+                break;
+            case PMIX_MCA_BASE_VAR_SOURCE_FILE:
+            case PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE:
+                pmix_show_help("help-pmix-mca-var.txt", "deprecated-mca-file", true, var_full_name,
+                               pmix_mca_base_var_source_file(original), new_variable);
+                break;
 
-        case PMIX_MCA_BASE_VAR_SOURCE_DEFAULT:
-        case PMIX_MCA_BASE_VAR_SOURCE_MAX:
-        case PMIX_MCA_BASE_VAR_SOURCE_SET:
-            /* silence compiler warnings about unhandled enumerations */
-            break;
+            case PMIX_MCA_BASE_VAR_SOURCE_DEFAULT:
+            case PMIX_MCA_BASE_VAR_SOURCE_MAX:
+            case PMIX_MCA_BASE_VAR_SOURCE_SET:
+                /* silence compiler warnings about unhandled enumerations */
+                break;
+            }
         }
     }
 
