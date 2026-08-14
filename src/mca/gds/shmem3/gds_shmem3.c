@@ -86,14 +86,6 @@ typedef struct {
     size_t num_ht_elements;
 } pmix_gds_shmem3_modex_info_t;
 
-/**
- * Stores modex context information.
- */
-typedef struct {
-    size_t buff_size;
-    size_t nprocs;
-} pmix_gds_shmem3_modex_ctx_t;
-
 static void
 packed_job_info_construct(
     pmix_gds_shmem3_packed_local_job_info_t *pji
