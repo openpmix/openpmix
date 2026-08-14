@@ -102,6 +102,27 @@ static void pdcon(pmix_proc_data_t *p)
     pmix_pointer_array_init(p->quals, PMIX_HASH_QUAL_ALLOC, INT_MAX,
                             PMIX_HASH_QUAL_ALLOC);
 }
+size_t pmix_hash_sizeof_proc_storage(void)
+{
+    /* Mirror pdcon(): the object itself, plus the two pointer arrays it
+     * constructs and the storage each of those allocates (the slot array
+     * and its free-bit map). A caller pre-sizing a datastore before
+     * filling it - gds/shmem3 has to size a shared-memory segment up
+     * front - cannot see pmix_proc_data_t, so it has to ask. Keep this in
+     * step with pdcon(); it is the only reason the two can drift. */
+    const size_t nalloc = (0 < pmix_hash_proc_alloc)
+                          ? (size_t)pmix_hash_proc_alloc : 128;
+    const size_t bits_per_word = 8 * sizeof(uint64_t);
+
+    return sizeof(pmix_proc_data_t)
+           + 2 * sizeof(pmix_pointer_array_t)
+           + nalloc * sizeof(void *)
+           + ((nalloc + bits_per_word - 1) / bits_per_word) * sizeof(uint64_t)
+           + PMIX_HASH_QUAL_ALLOC * sizeof(void *)
+           + (((size_t)PMIX_HASH_QUAL_ALLOC + bits_per_word - 1) / bits_per_word)
+                 * sizeof(uint64_t);
+}
+
 static void pddes(pmix_proc_data_t *p)
 {
     int n;
