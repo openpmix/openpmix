@@ -1671,18 +1671,46 @@ static pmix_status_t build_device_uuid(hwloc_obj_t osdev, char **uuid)
     return PMIX_SUCCESS;
 }
 
+/* Does this OS device answer to the caller's name?  Either spelling counts:
+ * the OS name hwloc gave it, or the uuid PMIx reports for it. */
+static bool osdev_named(hwloc_obj_t osdev, const char *devid)
+{
+    char *uuid = NULL;
+    bool found;
+
+    if (NULL == devid || NULL == osdev->name) {
+        return false;
+    }
+    if (0 == strcasecmp(devid, osdev->name)) {
+        return true;
+    }
+    if (PMIX_SUCCESS != build_device_uuid(osdev, &uuid)) {
+        return false;
+    }
+    found = (0 == strcasecmp(devid, uuid));
+    free(uuid);
+    return found;
+}
+
 /* one candidate device while we are still collecting */
 typedef struct {
     pmix_list_item_t super;
     hwloc_obj_t osdev;     /* the OS device that names the function */
     hwloc_obj_t pci;       /* the function, or NULL */
     pmix_device_type_t type;
+    /* the caller asked for this device by name or uuid.  Recorded per
+     * candidate because the name they used may belong to an OS device other
+     * than the one chosen to name the function - a fabric device and its
+     * network device commonly share a function, and only one of the two can
+     * be the name we report. */
+    bool named;
 } pmix_devcand_t;
 static void cndcon(pmix_devcand_t *p)
 {
     p->osdev = NULL;
     p->pci = NULL;
     p->type = PMIX_DEVTYPE_UNKNOWN;
+    p->named = false;
 }
 static PMIX_CLASS_INSTANCE(pmix_devcand_t, pmix_list_item_t, cndcon, NULL);
 
@@ -1773,7 +1801,13 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
             }
         }
         if (NULL != match) {
-            if (osdev_preferred(osdev, match->osdev)) {
+            /* the name the caller used wins the right to name the function -
+             * asking for mlx5_0 and being told about ib0 is not an answer */
+            if (osdev_named(osdev, devid)) {
+                match->osdev = osdev;
+                match->type = dtype;
+                match->named = true;
+            } else if (!match->named && osdev_preferred(osdev, match->osdev)) {
                 match->osdev = osdev;
                 match->type = dtype;
             }
@@ -1787,6 +1821,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         c->osdev = osdev;
         c->pci = pci;
         c->type = dtype;
+        c->named = osdev_named(osdev, devid);
         pmix_list_append(&cands, &c->super);
 
     next:
@@ -1803,9 +1838,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
             PMIX_RELEASE(c);
             continue;
         }
-        if (NULL != devid
-            && 0 != strcasecmp(devid, c->osdev->name)
-            && 0 != strcasecmp(devid, uuid)) {
+        if (NULL != devid && !c->named) {
             free(uuid);
             pmix_list_remove_item(&cands, &c->super);
             PMIX_RELEASE(c);
