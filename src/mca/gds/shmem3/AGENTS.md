@@ -273,22 +273,41 @@ Two smaller traps in the same arithmetic:
   `src/util/pmix_hash.c` reports it, because the type is private to that
   file; keep it in step with `pdcon()` there.
 
-### Every segment carries its own key index
+### Every segment carries its own key index — for the non-reserved keys
 
-The hash tables in a segment store keys as **integers**, and those
-integers are minted per process in order of first encounter — so no two
-processes can be assumed to agree on one. A segment is read by processes
-that did not write it, which makes the process-global
-`pmix_globals.keyindex` the wrong translation table for anything in
-there.
+The hash tables in a segment store keys as **integers**, and an integer
+in there crosses a process boundary: the server writes it, every local
+client reads it. The two ends agree in two different ways, and only one
+of them needs anything stored in the segment.
 
-So each segment carries its own: `job->smdata->keyindex` and
-`job->smmodex->keyindex`, both allocated in the segment through its TMA.
-The server mints against them when it stores, and
-`pmix_gds_shmem3_fetch()` translates through them when it reads — that
-path never consults `pmix_globals.keyindex`, which is what lets a read
-of shared data be independent of a structure the progress thread
-rewrites on every put.
+**Reserved attributes agree by construction.** Their ids come from the
+generated dictionary, and those ids are pinned in
+`contrib/dictionary_ids.txt` (see
+[`src/include/AGENTS.md`](../../../include/AGENTS.md)) precisely so that
+they are the same in every process and every release. Nothing has to be
+carried, so nothing is — `lookup_key()` resolves any id below
+`PMIX_INDEX_BOUNDARY` against the process-global index instead. That is
+what removed the need for the old dictionary exchange, in which the
+server shipped its whole key index in the job-info reply and the client
+renumbered its own to match; **do not bring it back**, and see the
+Gotchas below.
+
+**Non-reserved keys do not.** A key the Standard does not define is
+numbered on first encounter, in an order that depends on what arrived
+and when, so no two processes can be assumed to agree. Those are what
+the per-segment index holds.
+
+So each segment carries `job->smdata->keyindex` and
+`job->smmodex->keyindex`, allocated in the segment through its TMA and
+holding the non-reserved keys only. The server mints against them when
+it stores, and `pmix_gds_shmem3_fetch()` translates through them when it
+reads. A private index numbers from `PMIX_INDEX_BOUNDARY` upward, which
+is what makes the id itself say which half it came from.
+
+The reserved half used to live here too. That meant the server allocated
+several hundred entries out of the segment — a record and three copies
+of the key string apiece — for every generation, to say what the
+dictionary already said.
 
 **Clients must reach these only through the non-registering lookups**
 (`pmix_hash_find_key()` and `pmix_hash_lookup_key()` with a known

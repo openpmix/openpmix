@@ -63,7 +63,12 @@
  * segment too. The trailing version term is for changes that alter meaning
  * without altering any size.
  */
-#define PMIX_GDS_SHMEM3_LAYOUT_VERSION 1u
+/* 2: a segment's key index carries only the non-reserved keys. Reserved
+ *    ids come from the dictionary and agree across processes, so they are
+ *    resolved against the process-global index instead. No size changed,
+ *    but a peer built before this looks for reserved keys in a table that
+ *    no longer holds them. */
+#define PMIX_GDS_SHMEM3_LAYOUT_VERSION 2u
 
 #define PMIX_GDS_SHMEM3_LAYOUT_ID                                            \
     ((uint32_t)(                                                             \
@@ -225,21 +230,15 @@ typedef struct {
     pmix_list_t *appinfo;
     /** Stores static local (node) job data. */
     pmix_hash_table_t *local_hashtab;
-    /** Translates the key indices stored in local_hashtab above.
+    /** Translates the NON-RESERVED key indices stored in local_hashtab.
      *
-     * Same reasoning as the modex segment's keyindex, and for the same
-     * reason it has to live here rather than being the process-global
-     * one: the indices in that table cross a process boundary, written
-     * by the server and read by every local client, and no two
-     * processes can be assumed to number a key alike.
-     *
-     * This used to be the global keyindex on both sides, kept in step
-     * by shipping the server's copy in the job-info reply and merging
-     * it into the client's. That worked, but it made every read of
-     * shared data depend on a process-global structure the progress
-     * thread mutates on every put - growing its pointer array and
-     * rehashing its lookup table - which is exactly what a reader
-     * cannot tolerate.
+     * Same split as the modex segment's keyindex; see the note there. A
+     * reserved attribute's id comes from the dictionary and is the same
+     * in every process, so it is not carried here - lookup_key() sends
+     * anything below PMIX_INDEX_BOUNDARY to the process-global index
+     * instead. What is left is the keys a host supplied that the
+     * Standard does not define, which are numbered on first encounter
+     * and so genuinely cannot be agreed in advance.
      *
      * Clients map the segment read-only, so they must reach this only
      * through pmix_hash_find_key() and friends, which never register. */
@@ -253,18 +252,27 @@ typedef struct {
     void *current_addr;
     /** Stores static modex data. */
     pmix_hash_table_t *hashtab;
-    /** Translates the key indices stored in hashtab above.
+    /** Translates the NON-RESERVED key indices stored in hashtab above.
      *
-     * This lives in the segment, rather than being the process-global
-     * keyindex, because the indices in that table cross a process
-     * boundary here: the server writes them and every local client
-     * reads them. A non-reserved key's global index is assigned per
-     * process in order of first encounter, so no two processes can be
-     * assumed to agree on one - and the reserved half is only stable
-     * between processes built from the same PMIx release. Keeping the
-     * translation beside the data it describes means the indices only
-     * have to be consistent within this segment, which they are because
-     * exactly one process writes them.
+     * An index in that table crosses a process boundary - the server
+     * writes it and every local client reads it - so the two ends have
+     * to agree on what it means. They agree in two different ways, and
+     * only one of them needs anything stored here:
+     *
+     *  - a RESERVED attribute is numbered by the dictionary, and those
+     *    ids are pinned in contrib/dictionary_ids.txt precisely so that
+     *    they are the same in every process and every release. Nothing
+     *    has to be carried, so nothing is: lookup_key() resolves any id
+     *    below PMIX_INDEX_BOUNDARY against the process-global index.
+     *  - a NON-RESERVED key is numbered on first encounter, in an order
+     *    that depends on what arrived and when, so no two processes can
+     *    be assumed to agree. Those go here, beside the data they
+     *    describe, where they only have to be consistent within this one
+     *    segment - which they are, because exactly one process writes it.
+     *
+     * The reserved half used to be carried here too, which meant the
+     * server allocated several hundred entries out of the segment, for
+     * every generation, to say what the dictionary already said.
      *
      * Clients map the segment read-only, so they must reach this only
      * through pmix_hash_find_key() and friends, which never register. */
