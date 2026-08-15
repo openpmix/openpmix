@@ -7,6 +7,23 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A group formed through PMIx_Group_invite / PMIx_Group_join now
+   exchanges its members' endpoint data, which only the collective
+   PMIx_Group_construct did before. An acceptance carries the accepting
+   process's own contribution, the leader assembles them all and returns
+   the set in the PMIX_GROUP_CONSTRUCT_COMPLETE event, and every member
+   absorbs it into its local store - so a PMIx_Get against another
+   member is answered without leaving the process, as it already was for
+   a constructed group. Where the group was assigned a context ID the
+   values are stored qualified by it, matching what the collective path
+   stores; without one they are stored plain. What is exchanged is
+   documented explicitly now, on PMIx_Connect, PMIx_Group_construct and
+   PMIx_Group_join and at PMIX_GROUP_ENDPT_DATA: each participant
+   contributes exactly its own PMIx_Put values at PMIX_REMOTE and
+   PMIX_GLOBAL scope, less any reserved key. Every participant calls the
+   operation, so each supplies its own and no server sweeps for it -
+   which also means anything the runtime computed rather than the
+   application posting it is job-level data and travels separately
  - PMIX_GROUP_ASSIGN_CONTEXT_ID is now honored by PMIx_Group_invite and
    PMIx_Group_join, which accepted the directive and silently did nothing
    with it. Only the host environment can mint an ID that is unique

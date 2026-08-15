@@ -1364,7 +1364,14 @@ typedef uint32_t pmix_rank_t;
                                                                     //        contributed by one member of a group during construction, to be
                                                                     //        stored by the PMIx server. The array starts with the PMIX_PROCID
                                                                     //        of the contributing process, followed by the PMIX_DATA_SCOPE at
-                                                                    //        which the remaining elements are to be stored
+                                                                    //        which the remaining elements are to be stored.
+                                                                    //        The contribution is exactly that process's own PMIx_Put values
+                                                                    //        at PMIX_REMOTE and PMIX_GLOBAL scope, less any reserved key.
+                                                                    //        Every member of a group supplies its own - no server sweeps
+                                                                    //        for it - so what an endpoint exchange contains is what its
+                                                                    //        members put. Data the runtime computed rather than the
+                                                                    //        application posting it (fabric endpoint assignments, for
+                                                                    //        example) is job-level information and travels separately
 #define PMIX_GROUP_NAMES                    "pmix.pgrp.nm"          // (pmix_data_array_t*) Returns an array of string names of the process groups
                                                                     //        in which the given process is a member.
 #define PMIX_GROUP_INFO                     "pmix.grp.info"         // (pmix_data_array_t*) Array of pmix_info_t containing data that is to be

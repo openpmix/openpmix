@@ -110,6 +110,19 @@ jobs. Upon completion of the construct procedure, each group member has access
 to the job-level information of all namespaces represented in the group and the
 contact information for every group member.
 
+That contact information is contributed by the members themselves, and what it
+consists of is worth being precise about: each member supplies exactly the
+values it posted with :ref:`PMIx_Put(3) <man3-PMIx_Put>` at ``PMIX_REMOTE`` or
+``PMIX_GLOBAL`` scope, less any reserved key. Every member of a group calls one
+of the group construction entry points |mdash| that is what makes it a member
+|mdash| so each supplies its own, and no server or host is required to sweep
+the membership collecting it. The corollary is that the exchange contains what
+its members put and nothing more; information the runtime computed rather than
+the application posting it, such as fabric endpoint assignments, is job-level
+data and reaches members that way instead. Where the group was assigned a
+context ID, each contributed value is stored qualified by it, so the same key
+from the same process in two different groups does not collide.
+
 ``PMIx_Group_construct`` is the blocking form: it does not return until all
 specified processes have joined the group (or the operation fails). Returned
 values are delivered in the ``results`` array. ``PMIx_Group_construct_nb`` is the
