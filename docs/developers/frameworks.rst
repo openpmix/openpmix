@@ -15,7 +15,6 @@ this writing |date|:
 * ``gds``: Generalized DataStore for storing job-level and other data
 * ``pcompress``: Compress to support compression of large data objects
 * ``pdl``: DLopen support
-* ``pfexec``: Fork/Exec support to allow tools to start child processes
 * ``pgpu``: GPU support
 * ``pif``: Interface discovery
 * ``pinstalldirs``: Install Directories - provides a struct containing
@@ -28,14 +27,9 @@ this writing |date|:
 * ``pnet``: Network support, including computation of endpoints to
   support the ``instant on`` launch procedure
 * ``preg``: Regular expression generator and parser
-* ``prm``: Resource Manager support - translation of generic PMIx directives
-  (e.g., mapping and resource definitions) to RM-specific values and
-  general RM-specific support
 * ``psec``: Security operations such as connection handshakes
 * ``psensor``: Sensor framework for monitoring processes, including
   resource utilization and state-of-health (e.g., heartbeat)
-* ``psquash``: Internal framework for squashing integer data values
-  during transmission
 * ``pstat``: Statistics, including reporting resource usage at the
   process, node, and disk levels
 * ``ptl``: Transport Layer for client-server and tool-server
