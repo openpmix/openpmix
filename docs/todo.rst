@@ -21,6 +21,11 @@ Three kinds of entry appear here:
 Entries that are *by design* are also listed, under their own heading,
 so that they are not repeatedly "rediscovered" and re-fixed.
 
+The page opens with a fourth thing that is not an issue at all —
+**Review coverage**, which records where the deep review has and has not
+yet been, so that the remaining work is visible rather than rediscovered
+each time somebody asks.
+
 .. note:: Each directory's ``AGENTS.md`` carries the full reasoning for
           the items found in it.  Those files are orientation maps, not
           work logs, so this page is the place that records an item as
@@ -44,6 +49,100 @@ so that they are not repeatedly "rediscovered" and re-fixed.
           ``init_called`` clear (now ``pmix_atomic_clear``, the required
           partner of the ``__atomic_test_and_set`` that sets it), and
           ``refcb()``'s dropped store status.
+
+Review coverage
+---------------
+
+Assessed on **2026-08-15** from the commit history.  Move an entry out of
+"Not yet reviewed" as its review lands, and refresh the churn figures in
+"Reviewed, but changed materially since" when a re-review closes one.
+
+.. note:: **An** ``AGENTS.md`` **is not evidence of a review.**  Every
+          directory under ``src/`` has one; most were written in the July
+          2026 orientation sweep, before any review started.  What marks
+          a reviewed directory is a run of repair commits — "Repair…",
+          "Screen…", "Close the … holes", "Sweep the leftovers in…" —
+          and a commit that records the result in the guide.
+
+Reviewed and current
+^^^^^^^^^^^^^^^^^^^^
+
+``src/class``, ``src/common``, ``src/event``, ``src/include``,
+``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
+``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
+``src/mca/ptl``, and ``bindings/python``.  ``src/client``, ``src/server``,
+``src/hwloc``, ``src/util`` and ``src/mca/gds/shmem3`` were reviewed too,
+but have moved since — see below.
+
+Not yet reviewed
+^^^^^^^^^^^^^^^^
+
+Each of these has an orientation guide and nothing else: no findings were
+ever recorded in it, and only drive-by fixes have landed.  Ordered by
+size, which is a rough proxy for how much there is to find.
+
+* ``src/mca/pstat`` (with ``plinux``, ``pmacos``, ``test``) — 4988
+  lines.  Four bug fixes on 2026-07-04, never a sweep.
+* ``src/mca/pnet`` (with ``base``, ``tcp``, ``opa``, ``nvd``,
+  ``simptest``) — 4064 lines.  Revived on 2026-07-15 and not looked at
+  since.
+* ``src/mca/preg`` (with ``native``, ``raw``, ``compress``) — 2641
+  lines.  It parses regular expressions arriving off the wire, which
+  makes it the highest-risk member of this list.
+* ``src/mca/pgpu`` (with ``amd``, ``intel``, ``nvd``, ``test``) — 2467
+  lines.  The 2026-07-15 "repair the stale components" work was not a
+  review.
+* ``src/mca/pmdl`` (with ``ompi``) — 2422 lines.
+* ``src/util/keyval`` — 2397 lines of lexer and parser, and the only
+  directory in ``src/`` with **no** ``AGENTS.md`` at all.
+* ``src/mca/pcompress`` (with ``zlib``, ``zlibng``, ``zstd``, ``lz4``) —
+  2394 lines.  ``zstd`` (2026-08-08) and ``lz4`` (2026-08-15) are new
+  code that has never been read by anyone but its author.
+* ``src/mca/plog`` (with ``smtp``, ``stdfd``, ``syslog``) — 2176 lines.
+  Three fixes on 2026-07-04 only.
+* ``src/mca/psec`` (with ``native``, ``none``, ``munge``,
+  ``dummy_handshake``) — 1901 lines.  This is the connection-handshake
+  code; two small fixes on 2026-07-14/15 are all it has had.
+* ``src/mca/psensor`` (with ``file``, ``heartbeat``) — 1398 lines.
+* ``src/mca/pdl``, ``src/mca/pinstalldirs``, ``src/mca/pif`` — about
+  3200 lines between them, and the lowest risk of the group.
+* ``src/threads`` — 737 lines.  The 2026-07-17 cleanup fixed a TSD key
+  leak and removed dead code, but was not a full pass.
+
+Outside ``src/``, nothing has been reviewed: ``examples/`` (16678 lines,
+leak-swept only), ``test/simple`` (11011), ``test/unit/util`` and
+``test/unit/mca``, and the public headers in ``include/``.
+
+Reviewed, but changed materially since
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Ordered by how much of the directory the review no longer covers.
+
+#. **``src/util``** — reviewed 2026-07-17/18, the oldest review in the
+   tree.  31 commits and +1440/-203 across 16 files since, none of it
+   re-read: the CLI option-parsing rework, the ``dirpath`` conversion to
+   descriptor-based operations, and the ``pmix_hash`` qualifier arrays.
+#. **``src/hwloc``** — reviewed 2026-08-02.  The 2026-08-10 → 15 work
+   added a device enumerator and reworked the distance computation,
+   +753 lines in ``pmix_hwloc.c`` alone, against a five-line touch to the
+   guide.  Effectively new, unreviewed code.
+#. **``src/mca/gds/shmem3``** — reviewed 2026-08-03, then redesigned
+   between 2026-08-04 and 15 (string key index, per-segment key indexes,
+   tables sized by rank): 16 commits, +833/-916.  The guide was rewritten
+   alongside it, but a redesign is not a review.
+#. **``src/client``** — the per-file review is current through
+   2026-08-13.  What sits outside it is the group-invite and context-id
+   work of 2026-08-15: +355 lines in ``pmix_client_group.c`` and +245 in
+   ``pmix_client_spawn.c``.
+#. **``src/server``** — the 2026-08-09 → 15 commit run *is* the review,
+   performed after the source was split into function-oriented files, so
+   the body of the directory is covered.  Outside it is the same late
+   feature work: group invite/endpoint exchange (2026-08-15) and the
+   spawn output-forwarding inheritance (2026-08-12/13).
+
+Lower priority, with current guides and modest churn: ``src/mca/base``
+(+162/-79), ``src/common`` (+197/-12), ``src/event`` (+196/-11), and
+``src/mca/ptl`` (mostly deletions).
 
 Open decisions
 --------------
