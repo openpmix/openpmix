@@ -93,11 +93,29 @@ BUILT_SOURCES = $(libpmixglobal_gen)
 
 $(libpmixglobal_gen): $(abs_top_srcdir)/include/pmix_common.h.in \
                       $(abs_top_srcdir)/include/pmix_deprecated.h \
+                      $(abs_top_srcdir)/contrib/dictionary_ids.txt \
                       $(abs_top_srcdir)/src/common/pmix_attributes.c
 	        $(PMIX_V_GEN) $(PYTHON) $(abs_top_srcdir)/contrib/construct_dictionary.py \
                         --root $(abs_top_srcdir) \
                         --out .
 	        $(PMIX_V_GEN) $(PYTHON) $(abs_top_srcdir)/contrib/construct_event_strings.py
+
+# Assign ids to newly added attributes and rewrite contrib/dictionary_ids.txt.
+#
+# Deliberately NOT part of the ordinary build. An attribute id is a value
+# that peers from different releases have to agree on, so handing one out
+# is a decision that belongs in a commit next to the header change that
+# prompted it - not something a build does silently, where two branches
+# would each take the same id and only find out when the data resolves to
+# the wrong attribute. A build with an unassigned attribute fails and says
+# to run this.
+update-dictionary:
+	        $(PYTHON) $(abs_top_srcdir)/contrib/construct_dictionary.py \
+                        --root $(abs_top_srcdir) \
+                        --out . \
+                        --update-ids
+	        @echo "contrib/dictionary_ids.txt updated -- commit it with your header change"
+.PHONY: update-dictionary
 
 MAINTAINERCLEANFILES = $(libpmixglobal_gen)
 

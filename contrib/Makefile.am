@@ -30,6 +30,7 @@ EXTRA_DIST = \
     buildrpm.sh \
     construct_dictionary.py \
     construct_event_strings.py \
+    dictionary_ids.txt \
     pmix_jenkins.sh \
     pmix-release.sh \
     pmix.spec \

@@ -65,6 +65,13 @@ endif
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
 
+# Convenience passthrough: the dictionary generator tells a developer to
+# run "make update-dictionary" when an attribute has no id yet, and it is
+# less than helpful if that only works from src/include.
+update-dictionary:
+	$(MAKE) -C src/include update-dictionary
+.PHONY: update-dictionary
+
 dist-hook:
 	env LS_COLORS= sh "$(top_srcdir)/config/distscript.sh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_REPO_REV)"
 
