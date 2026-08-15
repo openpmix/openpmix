@@ -103,6 +103,17 @@ typedef struct {
      * not requested or the host could not provide one. */
     bool assignid;
     size_t ctxid;
+    /* Endpoint data contributed by the members, one PMIX_PROC_INFO_ARRAY
+     * each: our own if we are a member, plus whatever each acceptance
+     * carried. The leader assembles these and hands them back to everybody in
+     * the completion event, which is what gives an invite/join group the
+     * exchange PMIx_Group_construct gets from its collective.
+     *
+     * Allocated with nmembers+1 slots (every member may contribute, and the
+     * leader need not be among them) and filled to nendpts; the destructor
+     * frees the allocated count, not the fill. */
+    pmix_info_t *endpts;
+    size_t nendpts;
     pmix_event_t ev;
     bool timer_active;
     bool completed;
@@ -148,6 +159,8 @@ static void gtcon(pmix_group_tracker_t *p)
     p->notterm = false;
     p->assignid = false;
     p->ctxid = SIZE_MAX;
+    p->endpts = NULL;
+    p->nendpts = 0;
     p->timer_active = false;
     p->completed = false;
     p->info = NULL;
@@ -178,6 +191,13 @@ static void gtdes(pmix_group_tracker_t *p)
     }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    if (NULL != p->endpts) {
+        /* freed against the count that was allocated, not the fill - see the
+         * member's comment */
+        PMIX_INFO_FREE(p->endpts, p->nmembers + 1);
+        p->endpts = NULL;
+        p->nendpts = 0;
     }
     if (NULL != p->ainfo) {
         PMIX_INFO_FREE(p->ainfo, p->nainfo);
@@ -264,6 +284,103 @@ static pmix_status_t get_endpts(pmix_info_t *xfer,
     }
     PMIX_DESTRUCT(&cb2);
     return PMIX_SUCCESS;
+}
+
+/* Store the endpoint data a group's members contributed - the inverse of
+ * get_endpts() above, and the client-side twin of
+ * pmix_server_process_grpinfo(), which does this job on the server for the
+ * collective construct path.
+ *
+ * Each contribution is one PMIX_PROC_INFO_ARRAY shaped exactly as
+ * get_endpts() built it: the contributor's PMIX_PROCID first, the
+ * PMIX_DATA_SCOPE its values were fetched at second, and that process's own
+ * puts after. Anything else in the array we are handed is ignored.
+ *
+ * When the group was assigned a context ID, each value is stored as a
+ * PMIX_QUALIFIED_VALUE tagged with it, so the same key from the same process
+ * in two different groups does not collide - the shape the collective path
+ * already stores. Without an ID there is nothing to qualify with, so the
+ * values are stored plain, which is where a PMIx_Get carrying no group
+ * qualifier looks for them.
+ *
+ * All of this arrived in an event from another process, so no part of its
+ * shape is ours to assume. A contribution we cannot make sense of is skipped
+ * rather than failed: the construct has already completed by the time we are
+ * called, and the members that did send usable data should stay usable. */
+static void store_endpts(const pmix_info_t info[], size_t ninfo, size_t ctxid)
+{
+    size_t n, m, nel;
+    pmix_info_t *iptr, *piptr;
+    pmix_proc_t procid;
+    pmix_kval_t kp;
+    pmix_value_t val;
+    pmix_data_array_t darray;
+    pmix_status_t rc;
+
+    if (NULL == info) {
+        return;
+    }
+    /* a stack kval whose key and value are borrowed on both arms below - the
+     * datastore deep-copies what it is given, so nothing here is handed over
+     * and this must never be destructed */
+    PMIX_CONSTRUCT(&kp, pmix_kval_t);
+
+    for (n = 0; n < ninfo; n++) {
+        if (!PMIX_CHECK_KEY(&info[n], PMIX_PROC_INFO_ARRAY)) {
+            continue;
+        }
+        if (PMIX_DATA_ARRAY != info[n].value.type ||
+            NULL == info[n].value.data.darray ||
+            PMIX_INFO != info[n].value.data.darray->type ||
+            NULL == info[n].value.data.darray->array ||
+            0 == info[n].value.data.darray->size) {
+            continue;
+        }
+        iptr = (pmix_info_t *) info[n].value.data.darray->array;
+        nel = info[n].value.data.darray->size;
+        /* the contributor names itself in the first position */
+        if (!PMIX_CHECK_KEY(&iptr[0], PMIX_PROCID) ||
+            PMIX_PROC != iptr[0].value.type ||
+            NULL == iptr[0].value.data.proc) {
+            continue;
+        }
+        memcpy(&procid, iptr[0].value.data.proc, sizeof(pmix_proc_t));
+        if (PMIX_CHECK_PROCID(&procid, &pmix_globals.myid)) {
+            /* our own contribution, already in our store */
+            continue;
+        }
+        for (m = 1; m < nel; m++) {
+            if (PMIX_CHECK_KEY(&iptr[m], PMIX_DATA_SCOPE)) {
+                /* describes the contribution rather than being part of it */
+                continue;
+            }
+            if (SIZE_MAX == ctxid) {
+                kp.key = iptr[m].key;
+                kp.value = &iptr[m].value;
+                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &procid, PMIX_GLOBAL, &kp);
+            } else {
+                PMIX_DATA_ARRAY_CONSTRUCT(&darray, 2, PMIX_INFO);
+                piptr = (pmix_info_t *) darray.array;
+                if (NULL == piptr) {
+                    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+                    continue;
+                }
+                /* the value itself first, then the qualifier that scopes it */
+                PMIX_INFO_XFER(&piptr[0], &iptr[m]);
+                PMIX_INFO_LOAD(&piptr[1], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
+                PMIX_INFO_SET_QUALIFIER(&piptr[1]);
+                kp.key = PMIX_QUALIFIED_VALUE;
+                kp.value = &val;
+                val.type = PMIX_DATA_ARRAY;
+                val.data.darray = &darray;
+                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &procid, PMIX_GLOBAL, &kp);
+                PMIX_DATA_ARRAY_DESTRUCT(&darray);
+            }
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+            }
+        }
+    }
 }
 
 static pmix_status_t construct_msg(pmix_buffer_t *msg,
@@ -816,7 +933,7 @@ static void invite_observer(pmix_status_t status, const pmix_proc_t *source,
 {
     pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbobject;
     const pmix_proc_t *responder = source;
-    size_t n;
+    size_t n, m;
 
     if (PMIX_UNLIKELY(NULL == cb)) {
         pmix_output(0, "%s: INVITE OBSERVER NULL OBJECT", PMIX_NAME_PRINT(&pmix_globals.myid));
@@ -866,6 +983,20 @@ static void invite_observer(pmix_status_t status, const pmix_proc_t *source,
                 cb->nanswered++;
                 if (PMIX_GROUP_INVITE_ACCEPTED == status) {
                     cb->responded[n] = true;
+                    /* An acceptance carries the acceptor's endpoint data, if
+                     * it posted any. Collect it - we are the only process
+                     * that sees every acceptance, so assembling the set is
+                     * ours to do, and announce_step() hands it back to all
+                     * the members. Bounded by what was allocated: the array
+                     * has one slot per member plus one for us, and a member
+                     * is credited here only once. */
+                    for (m = 0; NULL != cb->endpts && m < ninfo &&
+                                cb->nendpts < cb->nmembers + 1; m++) {
+                        if (PMIX_CHECK_KEY(&info[m], PMIX_PROC_INFO_ARRAY)) {
+                            PMIX_INFO_XFER(&cb->endpts[cb->nendpts], &info[m]);
+                            ++cb->nendpts;
+                        }
+                    }
                 }
             }
             break;
@@ -979,6 +1110,7 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
     uint32_t jsize, j;
     int timeout = 0;
     struct timeval tv;
+    bool ismember, haveendpts;
 
     cb->grpid = strdup(grp);
 
@@ -1044,12 +1176,36 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
      * count started one ahead of the flags and the invitation resolved one
      * answer early. Under the default all-or-nothing policy that made the
      * last invitee look like a non-responder and aborted the construct. */
+    ismember = false;
     for (m = 0; m < cb->nmembers; m++) {
         if (PMIX_CHECK_PROCID(&cb->members[m], &pmix_globals.myid)) {
             cb->responded[m] = true;
             cb->answered[m] = true;
             cb->nanswered++;
+            ismember = true;
             break;
+        }
+    }
+
+    /* Somewhere to collect the members' endpoint data. Every member may
+     * contribute one array and the leader may or may not be a member, so
+     * nmembers+1 is the bound; gtdes frees against that count. */
+    PMIX_INFO_CREATE(cb->endpts, cb->nmembers + 1);
+    if (PMIX_UNLIKELY(NULL == cb->endpts)) {
+        return PMIX_ERR_NOMEM;
+    }
+    /* If we are a member, our own puts are part of what the group exchanges,
+     * so contribute them here - an acceptance carries the acceptor's, and
+     * nothing else would carry ours. A leader that is not a member is not in
+     * the group and has nothing to contribute. */
+    if (ismember) {
+        haveendpts = false;
+        rc = get_endpts(&cb->endpts[cb->nendpts], PMIX_REMOTE, &haveendpts);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            return rc;
+        }
+        if (haveendpts) {
+            ++cb->nendpts;
         }
     }
 
@@ -1328,7 +1484,7 @@ static void ctxid_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
 static void announce_step(pmix_group_tracker_t *cb)
 {
     pmix_proc_t *members;
-    size_t i, nmembers, nfailed, nainfo;
+    size_t i, k, idx, nmembers, nfailed, nainfo;
     pmix_data_array_t darray;
     pmix_status_t rc;
 
@@ -1470,7 +1626,7 @@ static void announce_step(pmix_group_tracker_t *cb)
                     ++nmembers;
                 }
             }
-            nainfo = 4;
+            nainfo = 4 + cb->nendpts;
             if (SIZE_MAX != cb->ctxid) {
                 ++nainfo;
             }
@@ -1492,9 +1648,21 @@ static void announce_step(pmix_group_tracker_t *cb)
             PMIX_INFO_LOAD(&cb->ainfo[3], PMIX_GROUP_ID, cb->grpid, PMIX_STRING);
             /* the loads above copied the array into the info structs */
             PMIX_PROC_FREE(members, cb->nmembers);
+            idx = 4;
             if (SIZE_MAX != cb->ctxid) {
-                PMIX_INFO_LOAD(&cb->ainfo[4], PMIX_GROUP_CONTEXT_ID, &cb->ctxid, PMIX_SIZE);
+                PMIX_INFO_LOAD(&cb->ainfo[idx], PMIX_GROUP_CONTEXT_ID, &cb->ctxid, PMIX_SIZE);
+                ++idx;
             }
+            /* hand every member the endpoint data the members contributed,
+             * so a group formed by invitation exchanges what one formed by
+             * PMIx_Group_construct does */
+            for (k = 0; k < cb->nendpts; k++) {
+                PMIX_INFO_XFER(&cb->ainfo[idx], &cb->endpts[k]);
+                ++idx;
+            }
+            /* and store it ourselves - the members do the same on receipt,
+             * but this event does not come back to its own source */
+            store_endpts(cb->endpts, cb->nendpts, cb->ctxid);
             rc = PMIx_Notify_event(PMIX_GROUP_CONSTRUCT_COMPLETE, &pmix_globals.myid,
                                    PMIX_RANGE_CUSTOM, cb->ainfo, cb->nainfo,
                                    announce_next, (void *) cb);
@@ -1814,7 +1982,7 @@ static void leader_watch_observer(pmix_status_t status, const pmix_proc_t *sourc
     pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbobject;
     const pmix_proc_t *departed = NULL;
     const char *grpid = NULL;
-    size_t n;
+    size_t n, ctxid = SIZE_MAX;
     PMIX_HIDE_UNUSED_PARAMS(source);
 
     if (PMIX_UNLIKELY(NULL == cb || cb->completed)) {
@@ -1839,6 +2007,10 @@ static void leader_watch_observer(pmix_status_t status, const pmix_proc_t *sourc
             if (PMIX_STRING == info[n].value.type && NULL != info[n].value.data.string) {
                 grpid = info[n].value.data.string;
             }
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_CONTEXT_ID)) {
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &ctxid, PMIX_SIZE)) {
+                ctxid = SIZE_MAX;
+            }
         }
     }
 
@@ -1848,6 +2020,13 @@ static void leader_watch_observer(pmix_status_t status, const pmix_proc_t *sourc
     if (PMIX_GROUP_CONSTRUCT_COMPLETE == status || PMIX_GROUP_CONSTRUCT_ABORT == status) {
         if (NULL == grpid || 0 == strcmp(grpid, cb->grpid)) {
             cb->completed = true;
+            if (PMIX_GROUP_CONSTRUCT_COMPLETE == status) {
+                /* absorb the endpoint data the members contributed. It is
+                 * deliberately not passed on to the caller as a "result" of
+                 * the join - it is not something the join produced, it is
+                 * group data to be found later through PMIx_Get */
+                store_endpts(info, ninfo, ctxid);
+            }
             /* the group itself was already recorded in
              * pmix_client_globals.groups by the bookkeeping that runs at the
              * top of pmix_invoke_local_event_hdlr, ahead of this sweep */
@@ -2037,8 +2216,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
     pmix_status_t code;
     pmix_data_range_t range;
     bool waitsconstruct;
+    pmix_info_t endpts;
+    bool haveendpts;
+    size_t n;
     /* join accepts no directives today - the accept/decline notification it
-     * issues carries only the leader's address. A PMIX_TIMEOUT here used to
+     * issues carries the leader's address and this process's own endpoint
+     * data, neither of which the caller supplies. A PMIX_TIMEOUT here used to
      * be recognized and then discarded by a loop that did nothing with it;
      * saying so plainly is better than pretending to honor it. */
     PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
@@ -2098,18 +2281,53 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
         cb->cbdata = cbdata;
     }
 
+    /* An acceptance is this process joining the group, so it is also this
+     * process's opportunity to contribute its endpoint data - every member
+     * calls one of the group entry points, so each supplies its own and
+     * nobody has to sweep for it. The leader collects these and hands the
+     * whole set back in the completion event. A decline joins nothing and
+     * contributes nothing. */
+    haveendpts = false;
+    if (PMIX_GROUP_ACCEPT == opt) {
+        rc = get_endpts(&endpts, PMIX_REMOTE, &haveendpts);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_RELEASE(cb);
+            return rc;
+        }
+    }
+
     /* only notify the leader so we don't hit all procs */
+    n = 0;
     if (NULL != leader) {
         range = PMIX_RANGE_CUSTOM;
-        PMIX_INFO_CREATE(cb->info, 1);
+        ++n;
+    } else {
+        range = PMIX_RANGE_SESSION;
+    }
+    if (haveendpts) {
+        ++n;
+    }
+    if (0 < n) {
+        PMIX_INFO_CREATE(cb->info, n);
         if (PMIX_UNLIKELY(NULL == cb->info)) {
+            if (haveendpts) {
+                PMIX_INFO_DESTRUCT(&endpts);
+            }
             PMIX_RELEASE(cb);
             return PMIX_ERR_NOMEM;
         }
-        PMIX_INFO_LOAD(&cb->info[0], PMIX_EVENT_CUSTOM_RANGE, leader, PMIX_PROC);
-        cb->ninfo = 1;
-    } else {
-        range = PMIX_RANGE_SESSION;
+        cb->ninfo = n;
+        n = 0;
+        if (NULL != leader) {
+            PMIX_INFO_LOAD(&cb->info[n], PMIX_EVENT_CUSTOM_RANGE, leader, PMIX_PROC);
+            ++n;
+        }
+        if (haveendpts) {
+            PMIX_INFO_XFER(&cb->info[n], &endpts);
+        }
+    }
+    if (haveendpts) {
+        PMIX_INFO_DESTRUCT(&endpts);
     }
 
     rc = PMIx_Notify_event(code, &pmix_globals.myid, range,

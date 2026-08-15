@@ -114,14 +114,27 @@ constructed or its construction has failed (as determined by the leader); likewi
 the callback function of the non-blocking form is executed upon the same
 conditions.
 
+An acceptance also carries this process's own endpoint data to the leader
+|mdash| exactly the values it posted with :ref:`PMIx_Put(3) <man3-PMIx_Put>` at
+``PMIX_REMOTE`` or ``PMIX_GLOBAL`` scope, less any reserved key. The leader
+assembles the contributions of all the accepting members and returns them in
+the ``PMIX_GROUP_CONSTRUCT_COMPLETE`` event, where each member absorbs them
+into its local store; a subsequent :ref:`PMIx_Get(3) <man3-PMIx_Get>` against
+another member is then satisfied without leaving the process. This is the same
+exchange :ref:`PMIx_Group_construct(3) <man3-PMIx_Group_construct>` performs
+through its collective, and the same rule applies: what is exchanged is what
+the members put, so anything the runtime computed rather than the application
+posting it is job-level data and does not travel this way. A declining process
+joins nothing and contributes nothing.
+
 An accepting process learns of that outcome from the leader's
 ``PMIX_GROUP_CONSTRUCT_COMPLETE`` or ``PMIX_GROUP_CONSTRUCT_ABORT`` event, so it is
 those events that complete this call, and ``results`` carries what the leader
-announced about the group |mdash| its ``PMIX_GROUP_ID`` and its
-``PMIX_GROUP_MEMBERSHIP``. Note that a group formed by invitation does not
-currently carry a ``PMIX_GROUP_CONTEXT_ID``, even if the leader asked for one:
-see the caution under
-:ref:`PMIx_Group_invite(3) <man3-PMIx_Group_invite>`.
+announced about the group |mdash| its ``PMIX_GROUP_ID``, its
+``PMIX_GROUP_MEMBERSHIP``, and its ``PMIX_GROUP_CONTEXT_ID`` if the leader
+requested one and the host was able to assign it. The contributed endpoint data
+is *not* reported in ``results``: it is not something the join produced, and it
+is stored for retrieval through :ref:`PMIx_Get(3) <man3-PMIx_Get>` instead.
 Loss of the leader before the construct resolves completes the call with
 ``PMIX_GROUP_LEADER_FAILED``, since the construct can no longer resolve.
 

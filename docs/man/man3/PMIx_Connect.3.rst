@@ -112,6 +112,18 @@ different namespaces, each participant receives the job-level information for th
 namespaces other than its own, so that subsequent :ref:`PMIx_Get(3)
 <man3-PMIx_Get>` queries against the connected peers can be satisfied locally.
 
+Each participant also contributes its own endpoint data to the operation, and
+what that consists of is worth being precise about: it is exactly the values
+that process posted with :ref:`PMIx_Put(3) <man3-PMIx_Put>` at ``PMIX_REMOTE``
+or ``PMIX_GLOBAL`` scope, less any reserved key. Because every participant must
+call ``PMIx_Connect`` |mdash| that is what makes it a participant |mdash| each
+supplies its own, and no server or host is required to sweep the participants
+collecting it. The corollary is that an endpoint exchange contains what its
+participants put and nothing more; information the runtime computed rather than
+the application posting it, such as fabric endpoint assignments, is job-level
+data and reaches participants through the job-level information described
+above.
+
 A process can only engage in one connect operation involving the identical
 ``procs`` array at a time. However, a process can be simultaneously engaged in
 multiple connect operations, each involving a different ``procs`` array.

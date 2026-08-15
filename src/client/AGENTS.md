@@ -1509,6 +1509,57 @@ the tracker below it needs a reference. The same reasoning applies to
 `setup_leader_watch()`, which is why that one hands the registry ownership
 via `watch_relcb` and touches nothing afterwards.
 
+**That rule is what shapes the two things the invite path gained in
+August 2026** — a context ID ([openpmix#4068][i4068]) and the members'
+endpoint data ([openpmix#4082][i4082]) — so read it before touching
+either.
+
+`cb->assignid` and `cb->endpts` are both established in `invite_setup()`
+*above* the observer registration, for exactly the reason `cb->optional`
+is: the invitation can resolve inside that call. The endpoint array is
+sized `nmembers + 1` there and never grown, so `invite_observer()` can
+harvest an acceptance's contribution without allocating on the progress
+thread; note `gtdes` frees it against the **allocated** count, not
+`nendpts`.
+
+The context ID is fetched in a new announcement state,
+`PMIX_GRP_ANNOUNCE_CTXID`, between reporting the non-accepters and
+broadcasting the completion. Three things about it are deliberate. It runs
+*there* rather than in `invite_setup()` because an ID requested up front is
+burned whenever the construct goes on to abort. It goes out through
+`PMIx_Job_control_nb` — a public API, which is allowed here because the
+rule against calling those internally is about the ones that *block*; this
+one packs and sends, or thread-shifts and returns, and queueing onto the
+thread you are already on is fine. And its directive array is `cb->ainfo`
+rather than a local, because that call borrows the array across the shift
+and `announce_next()` is what frees it.
+
+**A host that cannot answer is not a failure.** `ctxid_cbfunc` leaves
+`cb->ctxid` at `SIZE_MAX` and the group forms without an ID, which is what
+happened on this path in every case before. PRRTE answers
+`PMIX_ERR_NOT_SUPPORTED` for a job-control directive it does not know, so
+an older host degrades to the old behavior with no version gate.
+
+**`store_endpts()` is the inverse of `get_endpts()`, and the qualifier is
+load-bearing.** With an ID assigned, each contributed value is stored as a
+`PMIX_QUALIFIED_VALUE` tagged with it, matching what
+`pmix_server_process_grpinfo()` does on the collective path; without one
+they are stored plain. `lookup_keyval()` in
+[`src/util/pmix_hash.c`](../util/pmix_hash.c) will not match a qualified
+entry against an unqualified fetch, so the two cases are not
+interchangeable and a reader has to know which it is looking for. Both
+callers pass the whole info array and let the helper pick the
+`PMIX_PROC_INFO_ARRAY` elements out of it; everything it reads came off an
+event from another process, so it screens the shape and skips what it
+cannot parse rather than failing a group that has already formed.
+
+Coverage is `test/unit/run_grpinviteendpts.pl`, and the absence of a
+`PMIx_Commit` in its client is the test — see
+[`test/unit/AGENTS.md`](../../test/unit/AGENTS.md).
+
+[i4068]: https://github.com/openpmix/openpmix/issues/4068
+[i4082]: https://github.com/openpmix/openpmix/issues/4082
+
 *Wire format:*
 
 - **`PMIx_Group_destruct_nb` packed a field the server never unpacks.**
