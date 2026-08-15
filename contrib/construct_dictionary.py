@@ -118,8 +118,9 @@ def load_id_map(path):
                 print("DUPLICATE ID {v} IN {path}".format(v=value, path=path))
                 return 1
             ids[key] = value
-            if 2 < len(tokens):
-                names[key] = tokens[2]
+            # the third column is derived from the scan, not read back
+            # from here - a name that stops defining this string has to
+            # drop out of it rather than linger
         if value > highest:
             highest = value
 
