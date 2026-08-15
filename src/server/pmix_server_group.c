@@ -80,7 +80,6 @@ typedef struct {
     int grpop;              // the group operation being tracked
     pmix_event_t ev;
     bool event_active;
-    bool need_cxtid;
     pmix_proc_t *pcs;
     size_t npcs;
     pmix_info_t *info;
@@ -103,7 +102,6 @@ static void gbcon(grp_block_t *p)
     p->id = NULL;
     p->grpop = PMIX_GROUP_NONE;
     p->event_active = false;
-    p->need_cxtid = false;
     p->pcs = NULL;
     p->npcs = 0;
     p->info = NULL;
@@ -1104,7 +1102,6 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     size_t n, ninfo = 0, ninf = 0, nprocs = 0;
     grp_block_t *blk;
     grp_trk_t *trk;
-    bool need_cxtid = false;
     bool bootstrap = false;
     bool follower = false;
     uint32_t tmo = 0;
@@ -1206,12 +1203,11 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             goto error;
         }
     }
-    /* check directives */
+    /* check directives. Note that PMIX_GROUP_ASSIGN_CONTEXT_ID is not one of
+     * them: it travels to the host inside trk->info and is answered there, so
+     * there is nothing for this layer to do with it. */
     for (n = 0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ASSIGN_CONTEXT_ID)) {
-            need_cxtid = PMIX_INFO_TRUE(&info[n]);
-
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_BOOTSTRAP)) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_BOOTSTRAP)) {
             // we don't care what the number is, we only care that
             // bootstrap is being given
             bootstrap = true;
@@ -1248,10 +1244,6 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     }
     // mark as a construct op
     blk->grpop = op;
-    // track ctx id request
-    if (!blk->need_cxtid) {
-        blk->need_cxtid = need_cxtid;
-    }
     // track the callback
     pmix_list_append(&trk->local_cbs, &cd->super);
 
