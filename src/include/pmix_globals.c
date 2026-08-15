@@ -208,7 +208,14 @@ static void keyindex_construct(pmix_keyindex_t *ki)
     ki->lookup = PMIX_NEW(pmix_hash_table_t, tma);
     pmix_hash_table_init(ki->lookup, PMIX_KEYINDEX_LOOKUP_SIZE);
 
-    ki->next_id = 0;
+    /* Non-reserved keys are numbered from the top of the reserved range
+     * upward, so an id says which half it came from. That matters for a
+     * key index living in a gds/shmem3 segment: it carries only the
+     * non-reserved keys, because the reserved ones already have ids
+     * every process agrees on, and lookup_key() tells the two apart by
+     * comparing against PMIX_INDEX_BOUNDARY. Matches
+     * PMIX_KEYINDEX_STATIC_INIT. */
+    ki->next_id = PMIX_INDEX_BOUNDARY;
 }
 
 size_t pmix_keyindex_sizeof_fixed_storage(void)

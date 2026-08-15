@@ -871,6 +871,61 @@ void pmix_hash_register_key(uint32_t inid,
 
 // skg: Note that one may have to add a TMA wrapper for this call if changes are
 // made to how pmix_hash operates. Something for developers to keep in mind.
+/* Is this a key index other than the process-global one? Only
+ * gds/shmem3 has any - one per shared segment - and they behave
+ * differently for reserved keys; see resolve_reserved() below. */
+static inline bool is_private_keyindex(pmix_keyindex_t *kidx)
+{
+    return (NULL != kidx && &pmix_globals.keyindex != kidx);
+}
+
+/* Resolve a reserved attribute against the process-global index.
+ *
+ * A key index that lives in a shared-memory segment does not carry the
+ * reserved attributes, and must not: their ids come from the dictionary
+ * and are identical in every process by construction (see
+ * contrib/dictionary_ids.txt), so numbering them again per segment would
+ * be several hundred entries of pure duplication - and every one of them
+ * allocated out of the segment, on the server, for every generation.
+ *
+ * So a private index holds only the keys whose ids genuinely cannot be
+ * agreed in advance: the non-reserved ones, minted per process in order
+ * of first encounter. The two are told apart by the id itself, which is
+ * below PMIX_INDEX_BOUNDARY for exactly the reserved half.
+ *
+ * Returns the global entry for a reserved key, or NULL to say "not
+ * reserved - use the private index". */
+static pmix_regattr_input_t *resolve_reserved(uint32_t inid, const char *key)
+{
+    pmix_regattr_input_t *ptr;
+
+    if (UINT32_MAX != inid) {
+        /* an id below the boundary is reserved by definition */
+        if ((uint32_t) PMIX_INDEX_BOUNDARY <= inid) {
+            return NULL;
+        }
+        return pmix_pointer_array_get_item(pmix_globals.keyindex.table, (int) inid);
+    }
+
+    if (NULL == key || 0 == strlen(key) || NULL == pmix_globals.keyindex.lookup) {
+        return NULL;
+    }
+    ptr = NULL;
+    if (PMIX_SUCCESS != pmix_hash_table_get_value_ptr(pmix_globals.keyindex.lookup,
+                                                      key, strlen(key),
+                                                      (void **) &ptr)) {
+        return NULL;
+    }
+    /* The global index also holds this process's *own* non-reserved
+     * keys, numbered from the boundary up. Those say nothing about how
+     * another process numbered the same key, so they are not an answer
+     * here. */
+    if (NULL != ptr && (uint32_t) PMIX_INDEX_BOUNDARY <= ptr->index) {
+        return NULL;
+    }
+    return ptr;
+}
+
 static pmix_regattr_input_t* lookup_key(uint32_t inid,
                                         const char *key,
                                         pmix_keyindex_t *kidx,
@@ -879,6 +934,19 @@ static pmix_regattr_input_t* lookup_key(uint32_t inid,
     int id;
     pmix_regattr_input_t *ptr = NULL;
     pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
+
+    if (is_private_keyindex(kidx)) {
+        ptr = resolve_reserved(inid, key);
+        if (NULL != ptr) {
+            return ptr;
+        }
+        if (UINT32_MAX != inid && (uint32_t) PMIX_INDEX_BOUNDARY > inid) {
+            /* a reserved id this build does not know - a peer that has
+             * attributes we do not. Nothing to translate it to, which is
+             * the honest answer rather than a wrong one. */
+            return NULL;
+        }
+    }
 
     if (UINT32_MAX == inid) {
         if (NULL == key) {
