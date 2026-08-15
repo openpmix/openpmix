@@ -229,8 +229,7 @@ The following attributes are relevant to this operation:
   and re-applies it to the destruct automatically.
 * ``PMIX_GROUP_ASSIGN_CONTEXT_ID`` (bool) |mdash| request that the resource
   manager assign a unique numerical (``size_t``) context ID to the group. The
-  value is returned in the ``results`` array (or in the callback) and is also
-  delivered in the ``PMIX_GROUP_CONTEXT_ID_ASSIGNED`` event.
+  value is returned in the ``results`` array (or in the callback).
 * ``PMIX_GROUP_BOOTSTRAP`` (size_t) |mdash| select the *bootstrap* construction
   method (see `DESCRIPTION`_). The value is the number of leaders that will start
   the construction. Each leader passes only its own process ID in ``procs``.

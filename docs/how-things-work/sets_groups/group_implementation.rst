@@ -454,7 +454,6 @@ Event                                         Value   Role
 ``PMIX_GROUP_CONSTRUCT_COMPLETE``             -166    Group formed; carries final ``PMIX_GROUP_MEMBERSHIP``
 ``PMIX_GROUP_LEADER_SELECTED``                -167    App-driven reselection result
 ``PMIX_GROUP_LEADER_FAILED``                  -168    Leader lost; surfaced to a joining member's handlers
-``PMIX_GROUP_CONTEXT_ID_ASSIGNED``            -169    Context ID assigned
 ``PMIX_GROUP_MEMBER_FAILED``                  -170    Server-synthesized on a lost member (survive path)
 ============================================  ======  ================================================================
 

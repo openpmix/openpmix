@@ -7,6 +7,13 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - The PMIX_GROUP_CONTEXT_ID_ASSIGNED event code has been removed. It was
+   defined but never generated - not by this library and not by any known
+   host - and the PMIx_Group_construct man page promised delivery of the
+   assigned context ID through it, which never happened. The context ID
+   is returned in the results array, as that page also says and as the
+   code has always done. The value -169 is retired and will not be
+   reused; the Standard will be updated to match
  - A PMIx server no longer drops an event one of its clients wanted. The
    fan-out filter matched an event's affected processes against the
    affected-process list a client's event registration had carried - but
