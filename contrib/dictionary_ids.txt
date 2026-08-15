@@ -30,7 +30,7 @@
 pmix.undef             0     PMIX_ATTR_UNDEF
 pmix.evext             1     PMIX_EXTERNAL_PROGRESS
 pmix.evflush           2     PMIX_PROGRESS_THREAD_FLUSH
-pmix.evname            3     PMIX_PROGRESS_THREAD_NAME,PMIX_EVENT_HDLR_NAME
+pmix.evname            3     PMIX_EVENT_HDLR_NAME
 pmix.evaux             4     PMIX_EXTERNAL_AUX_EVENT_BASE
 pmix.srvr.tool         5     PMIX_SERVER_TOOL_SUPPORT
 pmix.srvr.ftools       6     PMIX_SERVER_ALLOW_FOREIGN_TOOLS
@@ -311,7 +311,7 @@ pmix.srvr.fns          280   PMIX_SERVER_FUNCTIONS
 pmix.tool.fns          281   PMIX_TOOL_FUNCTIONS
 pmix.host.fns          282   PMIX_HOST_FUNCTIONS
 pmix.qry.asrvrs        283   PMIX_QUERY_AVAIL_SERVERS
-pmix.qry.quals         284   PMIX_QUERY_QUALIFIERS,PMIX_QUERY_SUPPORTED_QUALIFIERS
+pmix.qry.quals         284   PMIX_QUERY_QUALIFIERS
 pmix.qry.res           285   PMIX_QUERY_RESULTS
 pmix.qry.minau         286   PMIX_QUERY_MIN_ALLOC_UNIT
 pmix.qry.resblks       287   PMIX_QUERY_RES_BLOCKS
@@ -686,3 +686,5 @@ pmix.bfrops.mod        655   PMIX_BFROPS_MODULE
 pmix.pnet.setapp       656   PMIX_PNET_SETUP_APP
 pmix.iof.stop          657   PMIX_IOF_STOP
 pmix.note.lnch         658   PMIX_NOTIFY_LAUNCH
+pmix.pthrdnm           659   PMIX_PROGRESS_THREAD_NAME
+pmix.qry.supqual       660   PMIX_QUERY_SUPPORTED_QUALIFIERS

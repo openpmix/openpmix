@@ -158,7 +158,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EXTERNAL_PROGRESS              "pmix.evext"            // (bool) The host shall progress the PMIx library via
                                                                     //        calls to PMIx_Progress
 #define PMIX_PROGRESS_THREAD_FLUSH          "pmix.evflush"          // (bool) Flush the internal progress thread before stopping
-#define PMIX_PROGRESS_THREAD_NAME           "pmix.evname"           // (char*) Name of specific progress thread to stop. NULL is
+#define PMIX_PROGRESS_THREAD_NAME           "pmix.pthrdnm"          // (char*) Name of specific progress thread to stop. NULL is
                                                                     //         interpreted to mean all threads
 #define PMIX_EXTERNAL_AUX_EVENT_BASE        "pmix.evaux"            // (void*) event base to be used for auxiliary
                                                                     //        functions (e.g., capturing signals) that would
@@ -743,7 +743,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TOOL_ATTRIBUTES                "pmix.tool.attrs"       // (char*) comma-delimited list of functions, including "all"
                                                                     //        when used in a query, indicates whether or not to include
                                                                     //        attributes supported by the PMIx tool library
-#define PMIX_QUERY_SUPPORTED_QUALIFIERS     "pmix.qry.quals"        // (bool) return comma-delimited list of qualifiers supported by
+#define PMIX_QUERY_SUPPORTED_QUALIFIERS     "pmix.qry.supqual"      // (bool) return comma-delimited list of qualifiers supported by
                                                                     //        a query on the provided key, instead of actually performing
                                                                     //        the query on the key.
 #define PMIX_RESOURCE_BLOCK_NAME            "pmix.resblkname"       // (char*) Name of the resource block being queried about
