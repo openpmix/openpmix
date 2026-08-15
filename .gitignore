@@ -286,6 +286,7 @@ test/unit/client_cycle
 test/unit/tool_cycle
 test/unit/event_chain
 test/unit/hwloc_datatype
+test/unit/hwloc_devices
 test/unit/progress_threads
 test/unit/runtime_init
 test/unit/resolve_api
