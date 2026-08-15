@@ -145,10 +145,8 @@ No directory under `src/mca/` may break this pattern (except `base/` subdirector
 | `pmdl` | Programming Model support — collects env-vars and parameters for MPI, OpenMP, etc. |
 | `pnet` | Network support and endpoint computation for "instant on" launch |
 | `preg` | Regular expression generator and parser; multi-select |
-| `prm` | Resource Manager translation of generic PMIx directives |
 | `psec` | Security operations (connection handshakes); multi-select |
 | `psensor` | Process monitoring, resource utilization, and health checks |
-| `psquash` | Internal integer squashing during transmission |
 | `pstat` | System statistics at process, node, and disk levels |
 | `ptl` | Transport Layer for client-server and tool-server communication; single-select |
 

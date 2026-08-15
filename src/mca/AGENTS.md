@@ -135,11 +135,8 @@ Naming follows from the prefix rule: files are
 | [`pstat`](pstat/) | single | process/node/disk statistics |
 | [`ptl`](ptl/) | single | client/server and tool/server transport |
 
-Note that the top-level [`AGENTS.md`](../../AGENTS.md) also lists `prm`
-and `psquash`. Neither directory exists in this tree any more; the table
-above is what is actually here. Trust `ls` over either document, and
-each framework's own `AGENTS.md` over this table's one-word
-select column.
+Trust `ls` over this table, and each framework's own `AGENTS.md` over
+its one-word select column.
 
 **`pdl` is special: it is opened by the MCA base itself**, in
 `pmix_mca_base_component_repository_init()`, before any other framework
