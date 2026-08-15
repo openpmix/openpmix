@@ -164,6 +164,27 @@ static void test_topo2(const char *dir)
     devs = NULL;
     ndevs = 0;
 
+    /* Naming a device that shares its PCI function with another: mlx5_0 and
+     * ib0 are one device, and only one of the two names it.  Asking for
+     * either has to find it, or "--map-by device=mlx5_0" - the whole reason
+     * a caller names a device - finds nothing on a machine where the
+     * network device happened to sort first. */
+    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_UNKNOWN, "mlx5_0", &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs, "topo2: the fabric device is found by its own name");
+    if (1 == ndevs) {
+        ok(NULL != devs[0].dev.osname && 0 == strcmp(devs[0].dev.osname, "mlx5_0"),
+           "topo2: and it is reported under the name that was asked for");
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+    ndevs = 0;
+
+    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_UNKNOWN, "ib0", &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs, "topo2: the network device on that same function too");
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+    ndevs = 0;
+
     /* the fabric and network devices sit on different functions */
     rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_OPENFABRICS, NULL, &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 1 == ndevs, "topo2: one openfabrics device");
