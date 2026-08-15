@@ -138,6 +138,7 @@ examples/iof_watcher
 examples/group_badinfo
 examples/group_invite_suppress
 examples/group_invite_nb
+examples/group_invite_endpts
 examples/topology
 examples/group_construct_abort
 examples/group_daemon_fail
@@ -323,6 +324,7 @@ test/unit/run_toolcycle.pl
 test/unit/run_toolswitch.pl
 test/unit/run_grpmember.pl
 test/unit/run_grpinvite.pl
+test/unit/run_grpinviteendpts.pl
 test/unit/run_grpbadinfo.pl
 test/unit/run_grpinviteothers.pl
 test/unit/run_grpinvitesuppress.pl

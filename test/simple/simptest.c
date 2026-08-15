@@ -1236,11 +1236,46 @@ static pmix_status_t alloc_fn(const pmix_proc_t *client, pmix_alloc_directive_t 
     return PMIX_OPERATION_SUCCEEDED;
 }
 
+/* the results array below is packed after a thread shift, so it has to
+ * outlive the callback that receives it */
+static void jctrl_relfn(void *cbdata)
+{
+    pmix_info_t *results = (pmix_info_t *) cbdata;
+
+    PMIX_INFO_FREE(results, 1);
+}
+
 static pmix_status_t jctrl_fn(const pmix_proc_t *requestor, const pmix_proc_t targets[],
                               size_t ntargets, const pmix_info_t directives[], size_t ndirs,
                               pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
-    PMIX_HIDE_UNUSED_PARAMS(requestor, targets, ntargets, directives, ndirs, cbfunc, cbdata);
+    static size_t next_ctxid = 1;
+    pmix_info_t *results;
+    size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(requestor, targets, ntargets);
+
+    /* Answer a group context-id request. This is how PMIx_Group_invite asks
+     * for the ID its PMIX_GROUP_ASSIGN_CONTEXT_ID directive promises: that
+     * method runs no server collective, so there is no group up-call to carry
+     * the request and it arrives here instead. A real host must mint an ID
+     * that is unique across its whole scope; one test server need only avoid
+     * repeating itself. */
+    for (n = 0; n < ndirs; n++) {
+        if (PMIX_CHECK_KEY(&directives[n], PMIX_GROUP_ASSIGN_CONTEXT_ID) &&
+            PMIX_INFO_TRUE(&directives[n])) {
+            if (NULL == cbfunc) {
+                return PMIX_ERR_NOT_SUPPORTED;
+            }
+            PMIX_INFO_CREATE(results, 1);
+            if (NULL == results) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_INFO_LOAD(&results[0], PMIX_GROUP_CONTEXT_ID, &next_ctxid, PMIX_SIZE);
+            ++next_ctxid;
+            cbfunc(PMIX_SUCCESS, results, 1, cbdata, jctrl_relfn, results);
+            return PMIX_SUCCESS;
+        }
+    }
     return PMIX_OPERATION_SUCCEEDED;
 }
 
