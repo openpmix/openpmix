@@ -378,7 +378,7 @@ Many components only build when a piece of hardware, a fabric, or an
 optional third-party library is present — the GPU vendor components
 (`pgpu/{amd,intel,nvd}`), some transports (`pnet/nvd` and the opt-in
 `pnet/{simptest,tcp}`), the test components (`pgpu/test`), and the library
-wrappers (`pcompress/{zlib,zlibng}`, `plog/smtp`, `psec/munge`). On a
+wrappers (`pcompress/{zlib,zlibng,zstd,lz4}`, `plog/smtp`, `psec/munge`). On a
 machine that lacks those dependencies, that code is silently left out of
 the build and never gets compiler coverage.
 
@@ -404,7 +404,7 @@ tree, and do not run `make check` / the functional test suite against
 one.** The shims return placeholder values rather than doing real work, so
 any test that exercises a shimmed component *will* misbehave — and it is
 **expected**, not a bug to chase. A concrete example that has burned us
-before: with the `pcompress/{zlib,zlibng}` shims in place, `deflate`
+before: with the `pcompress/{zlib,zlibng,zstd,lz4}` shims in place, `deflate`
 becomes a no-op, so compression produces an empty payload and a
 compression round-trip yields an empty string. That makes
 `test/unit/preg` fail its "large list" case and the `test/unit/compress`

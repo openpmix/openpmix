@@ -44,6 +44,12 @@ worthwhile on any system that runs jobs at scale.
      - ``--with-zlibng``
      - Builds the ``pcompress/zlibng`` component |mdash| a faster
        implementation of the same DEFLATE format ``zlib`` produces.
+   * - `LZ4 <https://lz4.org/>`_
+     - ``--with-lz4``
+     - Builds the ``pcompress/lz4`` component. The fastest of the four
+       and the least dense, so it is not preferred over ``zstd`` by
+       default; it is the one to select where daemon CPU matters more
+       than bytes on the wire.
    * - `zlib <https://zlib.net/>`_
      - ``--with-zlib``
      - Builds the ``pcompress/zlib`` component. Almost universally
@@ -59,18 +65,35 @@ can be silenced with ``pcompress_base_silence_warning=1`` if the trade is
 deliberate.
 
 **You do not need more than one.** Exactly one component is active,
-chosen by priority: ``zstd`` (90), then ``zlibng`` (75), then ``zlib``
-(50). Building several is harmless |mdash| the highest-priority one wins
-and the others are simply never selected.
+chosen by priority: ``zstd`` (90), then ``zlibng`` (75), then ``lz4``
+(60), then ``zlib`` (50). Building several is harmless |mdash| the
+highest-priority one wins and the others are simply never selected, and
+any of them can be forced at run time with ``--pmixmca pcompress
+<name>``.
+
+.. important:: **You need the development package, not just the runtime
+   library.** A ``pcompress`` component is compiled only if ``configure``
+   finds the library's **headers** |mdash| ``zstd.h``, ``lz4frame.h``,
+   ``zlib.h``. A system carrying ``libzstd.so`` but not ``libzstd-dev``
+   builds no ``zstd`` component at all, and silently falls back to
+   whichever lower-priority library *does* have headers installed. The
+   distribution packages are typically ``libzstd-dev``, ``liblz4-dev``
+   and ``zlib1g-dev`` (Debian/Ubuntu), or ``libzstd-devel``,
+   ``lz4-devel`` and ``zlib-devel`` (RHEL/SUSE). Check the ``External
+   Packages`` lines of the ``configure`` summary to see what was actually
+   found.
 
 .. warning:: **All processes in a job must use the same component.**
    ``zlib`` and ``zlib-ng`` both emit standard DEFLATE and are freely
    interchangeable, so a build that picks one on one node and the other
-   elsewhere is fine. A ``zstd`` blob is **not** DEFLATE, and compressed
-   data does cross nodes, so a mix of ``zstd`` and zlib-based
-   installations within one job will not interoperate. In practice this
-   follows from a shared installation; it is worth knowing during a
-   rolling upgrade.
+   elsewhere is fine. A ``zstd`` or ``lz4`` blob is **not** DEFLATE, and
+   compressed data does cross nodes, so mixing either of those with each
+   other or with a zlib-based installation within one job will not
+   interoperate. Both refuse a blob that does not carry their own frame
+   magic, so the mismatch surfaces as a clean error rather than as
+   corrupted data |mdash| but it does not work. In practice this follows
+   from a shared installation; it is worth knowing during a rolling
+   upgrade.
 
 Optional features
 -----------------
