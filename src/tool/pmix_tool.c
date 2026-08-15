@@ -115,75 +115,25 @@ static void pdiedfn(int fd, short flags, void *arg)
                       _pdiedcb, (void*)cb);
 }
 
-static void _notify_complete(pmix_status_t status, void *cbdata)
+/* Release the carrier chain once pmix_server_notify_client_of_event has
+ * finished with the event it was built from. That call is where a tool's
+ * local delivery happens: it caches the event, fans it out to any tools
+ * connected to us, and walks our own handlers against a chain of its own
+ * making. So this chain never visits a handler list, and the status
+ * handed here is the notification's, not a report of whether anything
+ * matched.
+ *
+ * That is why this is not pmix_event_notify_complete, which parks an
+ * event nothing accepted: the client hangs that on final_cbfunc because
+ * its chain really is the one walked, and a tool has no equivalent
+ * moment. The tool carried a copy of the parking code here for years
+ * with no way to reach it - see openpmix#4101. */
+static void release_chain(pmix_status_t status, void *cbdata)
 {
     pmix_event_chain_t *chain = (pmix_event_chain_t *) cbdata;
-    pmix_notify_caddy_t *cd;
-    size_t n;
-    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(status);
 
     PMIX_ACQUIRE_OBJECT(chain);
-
-    /* if the event wasn't found, then cache it as it might
-     * be registered later */
-    if (PMIX_ERR_NOT_FOUND == status && !chain->cached) {
-        cd = PMIX_NEW(pmix_notify_caddy_t);
-        if (NULL == cd) {
-            goto cleanup;
-        }
-        cd->status = chain->status;
-        PMIX_LOAD_PROCID(&cd->source, chain->source.nspace, chain->source.rank);
-        cd->range = chain->range;
-        if (0 < chain->ninfo) {
-            cd->ninfo = chain->ninfo;
-            PMIX_INFO_CREATE(cd->info, cd->ninfo);
-            if (NULL == cd->info) {
-                cd->ninfo = 0;
-                goto relcd;
-            }
-            cd->nondefault = chain->nondefault;
-            /* need to copy the info */
-            for (n = 0; n < cd->ninfo; n++) {
-                PMIX_INFO_XFER(&cd->info[n], &chain->info[n]);
-            }
-        }
-        if (NULL != chain->targets) {
-            cd->ntargets = chain->ntargets;
-            PMIX_PROC_CREATE(cd->targets, cd->ntargets);
-            if (NULL == cd->targets) {
-                cd->ntargets = 0;
-                goto relcd;
-            }
-            memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
-        }
-        if (NULL != chain->affected) {
-            cd->naffected = chain->naffected;
-            PMIX_PROC_CREATE(cd->affected, cd->naffected);
-            if (NULL == cd->affected) {
-                cd->naffected = 0;
-                goto relcd;
-            }
-            memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
-        }
-        /* cache it */
-        rc = pmix_notify_event_cache(cd);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(cd);
-            goto cleanup;
-        }
-        chain->cached = true;
-    }
-    PMIX_RELEASE(chain);
-    return;
-
-relcd:
-    /* the caddy never reached the cache, so nothing else will free it -
-     * the affected-array arm used to fall straight into the chain release
-     * below and leak everything the caddy had already been given */
-    PMIX_RELEASE(cd);
-
-cleanup:
     PMIX_RELEASE(chain);
 }
 
@@ -207,10 +157,11 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         return;
     }
 
-    /* start the local notification chain */
+    /* Build the chain we will hand to pmix_server_notify_client_of_event
+     * below. No final_cbfunc: nothing walks a handler list against this
+     * chain, so there is no completion for one to be the completion of.
+     * See release_chain above. */
     chain = PMIX_NEW(pmix_event_chain_t);
-    chain->final_cbfunc = _notify_complete;
-    chain->final_cbdata = chain;
 
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &cmd, &cnt, PMIX_COMMAND);
@@ -276,23 +227,15 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
         range = PMIX_RANGE_LOCAL;
     }
-    /* Record the range on the chain, and translate the directives the
+    /* Record the range on the chain and translate the directives the
      * event carried into the chain's own fields, the way the client's
-     * equivalent (pmix_client_notify_recv) always has. It matters because
-     * of what happens when no handler matches: _notify_complete parks the
-     * event for a handler that registers later, and it builds that parked
-     * copy out of chain->range, chain->nondefault, chain->targets and
-     * chain->affected. Left at their constructed defaults, the parked
-     * event has PMIX_RANGE_UNDEF and no affected procs - restrictions
-     * every later check then accepts.
-     *
-     * Be clear about the reach of this: no arrangement was found that
-     * gets a server-forwarded event into that branch, because the server
-     * filters on the tool's registered codes and affected procs before it
-     * forwards anything, so a mismatched event never arrives to be
-     * parked. This keeps the two recv paths saying the same thing and
-     * makes the branch right if it is ever entered; it is not a fix for
-     * an observed failure. */
+     * equivalent (pmix_client_notify_recv) always has. Nothing below
+     * reads them from here - pmix_server_notify_client_of_event is given
+     * the info array and works out the range, targets and affected procs
+     * for itself - so this is consistency between the two recv paths
+     * rather than a fix for an observed failure. Keep them in step: a
+     * reader comparing the two should not have to work out that the
+     * difference does not matter. */
     chain->range = range;
     pmix_prep_event_chain(chain, chain->info, ninfo, false);
 
@@ -317,7 +260,7 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         chain->source.nspace, chain->source.rank);
 
     rc = pmix_server_notify_client_of_event(chain->status, &chain->source, range,
-                                            chain->info, chain->ninfo, _notify_complete, chain);
+                                            chain->info, chain->ninfo, release_chain, chain);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(chain);

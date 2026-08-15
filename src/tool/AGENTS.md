@@ -476,13 +476,14 @@ named are the ones that fail against the unfixed library.
     handshake later than five seconds.
 14. **FIXED (consistency, not an observed failure) —
     `pmix_tool_notify_recv` never stored the unpacked range on the chain
-    and never ran `pmix_prep_event_chain`.** Those fields are what
-    `_notify_complete` builds a *parked* event out of when no handler
-    matches, so a parked event would carry `PMIX_RANGE_UNDEF` and no
-    affected procs. No arrangement was found that gets a server-forwarded
-    event into that branch — the server filters on the tool's registered
-    codes and affected procs before forwarding — so treat this as keeping
-    the two recv paths saying the same thing.
+    and never ran `pmix_prep_event_chain`.** This was justified at the
+    time by what the parking branch below it would have read; that branch
+    has since been shown to be unreachable here and removed (see *Still
+    open*), and nothing else reads those fields off this chain —
+    `pmix_server_notify_client_of_event` is handed the info array and
+    works the range, targets and affected procs out for itself. Keep them
+    in step anyway, so a reader comparing the two recv paths does not
+    have to derive that the difference does not matter.
 15. **FIXED — malformed directives were dereferenced.**
     `PMIX_TOOL_NSPACE`, `PMIX_SERVER_TMPDIR` and `PMIX_SYSTEM_TMPDIR` each
     went straight to `strdup()`, so a caller that supplied the key with
@@ -491,24 +492,43 @@ named are the ones that fail against the unfixed library.
 
 ### Still open
 
-- **The tool's event cache in `_notify_complete` looks unreachable, and
-  `src/client` has no equivalent branch at all.** See item 14 and
+- **RESOLVED — the tool's event cache in `_notify_complete` was dead
+  code, and it was dead for a reason nobody had spotted.**
   [openpmix#4101](https://github.com/openpmix/openpmix/issues/4101).
-  What is *no longer* open is the branch itself: it indexed an unchecked
-  `PMIX_INFO_CREATE` and an unchecked `PMIX_PROC_CREATE`, and its
-  allocation-failure arms fell straight into the chain release, leaking
-  the caddy with everything already copied into it. Those are fixed, and
-  the same two allocations were fixed in the event layer's copy of this
-  block (`_notify_client_event` in
-  [`pmix_event_notification.c`](../event/pmix_event_notification.c) —
-  the two are copy-paste siblings, so check both when you touch either).
-  Note the `cd->nondefault` assignment sitting inside the
-  `0 < chain->ninfo` guard is **not** a defect: `nondefault` is only
-  ever set from a `PMIX_EVENT_NON_DEFAULT` directive in the info array,
-  so it cannot be true when there is no info. What remains open is the
-  question the issue is about — whether a server-forwarded event can
-  reach a tool with no handler for it, and whether a client should cache
-  one when it does — which is an event-delivery semantics decision.
+  The branch parked an event when its completion was told
+  `PMIX_ERR_NOT_FOUND` — but that status comes from
+  `pmix_invoke_local_event_hdlr`, and **a tool never runs its chain
+  through it**. `pmix_tool_notify_recv` hands the event to
+  `pmix_server_notify_client_of_event`, which caches it, fans it out to
+  any tools connected to us, and walks our handlers against a chain of
+  its own making; the status our completion is then given is the
+  *notification's*, never a report that nothing matched. The chain the
+  tool builds is a carrier, nothing more.
+
+  So the parking code has moved to where it can fire — the client, whose
+  `pmix_client_notify_recv` really does call
+  `pmix_invoke_local_event_hdlr` and which used to drop such an event —
+  and now lives once, as `pmix_event_notify_complete` in
+  [`pmix_event_notification.c`](../event/pmix_event_notification.c).
+  What is left here is `release_chain`, which releases the carrier and
+  says why it is not that function. **Note the roles are not
+  asymmetric in behavior and never were**: a tool has always parked
+  *every* forwarded event, through the hotel check-in at the top of
+  `_notify_client_event`; what it never had was a way to reach its own
+  second copy of the code.
+
+  The earlier note that an event no handler wants "cannot arrive at the
+  tool at all, because the server filters on codes and affected procs"
+  was wrong twice over, and is worth knowing about because both halves
+  bite elsewhere. The server does not filter on a handler's *source
+  range* — that never leaves the registering process — so an unmatched
+  event arrives routinely. And it should never have been filtering on
+  affected procs either; that filter dropped events and is gone (see
+  [`src/event/AGENTS.md`](../event/AGENTS.md)).
+
+  Covered by [`test/unit/event_forward.c`](../../test/unit/event_forward.c),
+  which drives a real client behind a real socket; both of its cases
+  fail against the unfixed library.
 - **FIXED — the relay assumed both peers negotiated the same bfrops
   module and buffer type.** `pmix_tool_relay_op` copies the downstream
   tool's raw payload into a fresh buffer and sends it to `myserver`

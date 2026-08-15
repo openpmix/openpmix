@@ -215,6 +215,92 @@ pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd)
     return rc;
 }
 
+/* Completion of a chain built from an event our server forwarded to us -
+ * see the declaration in pmix_event.h for where it is used and why it
+ * lives here.
+ *
+ * A forwarded event that matched no local handler is parked in the
+ * notification cache so a handler registering a moment later still gets
+ * it, exactly as the server parks the events it fans out. That an event
+ * can arrive here unmatched at all is not a corner case: the server's
+ * fan-out filters on the code alone, while this process filters each
+ * handler on the event's source range and affected procs as well, and
+ * the handler's range is never sent to the server (see the note in
+ * _notify_client_event). So an event no handler accepts is an ordinary
+ * outcome of a registration that named a range, and dropping it here
+ * cost a later registrant an event the cache exists to preserve. */
+void pmix_event_notify_complete(pmix_status_t status, void *cbdata)
+{
+    pmix_event_chain_t *chain = (pmix_event_chain_t *) cbdata;
+    pmix_notify_caddy_t *cd;
+    size_t n;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_OBJECT(chain);
+
+    if (PMIX_ERR_NOT_FOUND != status || chain->cached) {
+        PMIX_RELEASE(chain);
+        return;
+    }
+
+    cd = PMIX_NEW(pmix_notify_caddy_t);
+    if (NULL == cd) {
+        PMIX_RELEASE(chain);
+        return;
+    }
+    cd->status = chain->status;
+    PMIX_LOAD_PROCID(&cd->source, chain->source.nspace, chain->source.rank);
+    cd->range = chain->range;
+    /* nondefault can only have come from a directive in the info array,
+     * so this is a no-op when there is none - but read it unconditionally
+     * rather than from inside the guard below, where it looked like a
+     * defect every time somebody read this function */
+    cd->nondefault = chain->nondefault;
+    if (0 < chain->ninfo) {
+        cd->ninfo = chain->ninfo;
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        if (NULL == cd->info) {
+            cd->ninfo = 0;
+            goto relcd;
+        }
+        for (n = 0; n < cd->ninfo; n++) {
+            PMIX_INFO_XFER(&cd->info[n], &chain->info[n]);
+        }
+    }
+    if (NULL != chain->targets) {
+        cd->ntargets = chain->ntargets;
+        PMIX_PROC_CREATE(cd->targets, cd->ntargets);
+        if (NULL == cd->targets) {
+            cd->ntargets = 0;
+            goto relcd;
+        }
+        memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
+    }
+    if (NULL != chain->affected) {
+        cd->naffected = chain->naffected;
+        PMIX_PROC_CREATE(cd->affected, cd->naffected);
+        if (NULL == cd->affected) {
+            cd->naffected = 0;
+            goto relcd;
+        }
+        memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
+    }
+    rc = pmix_notify_event_cache(cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto relcd;
+    }
+    chain->cached = true;
+    PMIX_RELEASE(chain);
+    return;
+
+relcd:
+    /* the caddy never reached the cache, so nothing else will free it -
+     * releasing only the chain would leak everything already copied in */
+    PMIX_RELEASE(cd);
+    PMIX_RELEASE(chain);
+}
+
 /* as a client, we pass the notification to our server */
 pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_t *source,
                                           pmix_data_range_t range, const pmix_info_t info[],
@@ -1344,12 +1430,27 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                     if (matched) {
                         continue;
                     }
-                    /* check if the affected procs (if given) match those they
-                     * wanted to know about */
-                    if (!pmix_notify_check_affected(cd->affected, cd->naffected, pr->affected,
-                                                    pr->naffected)) {
-                        continue;
-                    }
+                    /* Deliberately NOT filtered on pr->affected here. That
+                     * array is the affected-proc restriction carried by one
+                     * registration *message*, and a peer's handlers do not
+                     * agree on it: _add_hdlr sends a message only when a
+                     * code is new to us or the handler carries directives,
+                     * so a handler registered later for an already-active
+                     * code with no restriction at all never tells us it
+                     * exists. Filtering on the one record we hold therefore
+                     * dropped events that an unrestricted local handler had
+                     * asked for, and no deregistration can restore the
+                     * distinction either (it clears every entry the peer
+                     * holds for the code).
+                     *
+                     * So this filter matches on the code alone and is a fast
+                     * path, not the authority: the receiving process applies
+                     * the affected-proc and source-range restrictions per
+                     * handler in pmix_invoke_local_event_hdlr, which is the
+                     * only place that knows what each handler asked for.
+                     * pmix_peer_events_info_t still records what the message
+                     * said - it is what _check_cached_events replays
+                     * against - it just does not gate delivery. */
                     if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer) && NULL != cd->targets) {
                         rngtrk.procs = cd->targets;
                         rngtrk.nprocs = cd->ntargets;

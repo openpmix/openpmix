@@ -239,6 +239,19 @@ gone — see [openpmix#4059][i4059].)
   they return `PMIX_SUCCESS`; waiting on the lock unconditionally (as the
   group invite path did) blocks forever on any error. Guard every wait
   with `if (PMIX_SUCCESS == rc)`.
+- **An event our server forwarded that no local handler accepted is
+  parked, not dropped.** `pmix_client_notify_recv` hangs
+  `pmix_event_notify_complete` (in [`src/event`](../event/AGENTS.md)) on
+  the chain's `final_cbfunc`, and that is the one completion in the tree
+  that is told whether anything matched — `pmix_invoke_local_event_hdlr`
+  reports `PMIX_ERR_NOT_FOUND` when the walk finds nothing. Arriving
+  unmatched is ordinary rather than exceptional: a handler's source range
+  never leaves this process, so the server cannot filter on it. Until
+  August 2026 this callback released the chain and nothing else, so such
+  an event was lost to a handler registering a moment later; the parking
+  code sat in `src/tool` instead, where it could not fire. See
+  [openpmix#4101](https://github.com/openpmix/openpmix/issues/4101) and
+  `test/unit/event_forward.c`.
 - **A zero-byte recv buffer means the connection was lost.** Every PTL
   recv callback must check `PMIX_BUFFER_IS_EMPTY(buf)` before unpacking.
 

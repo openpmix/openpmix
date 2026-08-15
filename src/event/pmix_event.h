@@ -285,6 +285,19 @@ PMIX_EXPORT pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain, const
  * affected, plus any additional info provided by the server */
 PMIX_EXPORT void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain);
 
+/* The completion of a chain built from an event our server forwarded to
+ * us: park the event if nothing accepted it, then release the chain.
+ * pmix_client_notify_recv hangs it on chain->final_cbfunc with the chain
+ * itself as final_cbdata.
+ *
+ * It lives here rather than in src/client because parking an event is
+ * event-layer business, and because the tool's receive path used to
+ * carry its own copy of it - reachable from nowhere, since a tool hands
+ * its forwarded events to pmix_server_notify_client_of_event and never
+ * walks a handler list against the chain it built (see the comment on
+ * release_chain in src/tool/pmix_tool.c, and openpmix#4101). */
+PMIX_EXPORT void pmix_event_notify_complete(pmix_status_t status, void *cbdata);
+
 PMIX_EXPORT bool pmix_notify_check_range(pmix_range_trkr_t *rng, const pmix_proc_t *proc);
 
 PMIX_EXPORT bool pmix_notify_check_affected(pmix_proc_t *interested, size_t ninterested,
