@@ -29,11 +29,27 @@ ENV DEBIAN_FRONTEND=noninteractive
 # and setup.py needs setuptools plus Python.h.  The distro packages are used
 # deliberately rather than pip -- Ubuntu 24.04 marks its Python environment
 # "externally managed" (PEP 668), so a plain `pip install` refuses to run.
+# The compression dev packages are load-bearing, not incidental. A pcompress
+# component is compiled only if its configure.m4 finds the library's HEADERS,
+# and the runtime .so alone is not enough - so an image carrying libzstd.so.1
+# but not libzstd-dev silently builds zlib only, and every measurement taken
+# in the swarm is then made against the framework's lowest-priority, slowest
+# component rather than the one a real deployment selects. That was the state
+# of this image until Aug 2026, which is how a fence profile came to show 83%
+# of its instructions in zlib. Keep zlib/zstd/lz4 dev packages here so the
+# harness measures what production runs, and add the dev package with any new
+# pcompress component.
+#
+# valgrind and time are here for the same reason: profiling the daemons needed
+# them, and installing them by hand into a running container does not survive
+# the next `docker compose up`.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential gcc g++ make \
         autoconf automake libtool m4 flex \
         perl python3 python3-dev python3-setuptools cython3 git \
-        libevent-dev libhwloc-dev zlib1g-dev \
+        libevent-dev libhwloc-dev \
+        zlib1g-dev libzstd-dev liblz4-dev \
+        valgrind time \
         openssh-server openssh-client \
         iproute2 iputils-ping procps less vim ca-certificates \
     && rm -rf /var/lib/apt/lists/*
