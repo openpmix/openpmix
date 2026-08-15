@@ -39,6 +39,14 @@
  *
  *   PMIX_PERF_KEYS    keys published per rank (default 32)
  *   PMIX_PERF_VALSZ   bytes in each value     (default 1024)
+ *   PMIX_PERF_COMPRESSIBLE  1 to fill values with repetitive data instead
+ *                     of random (default 0)
+ *
+ * That last one exists because whether compressing the modex pays is the
+ * question, not a detail: pcompress decides on size alone and never looks
+ * at the data, so an incompressible payload costs the full compression and
+ * returns nothing. Measure both ends before concluding anything about a
+ * codec.
  */
 
 #include <pmix.h>
@@ -90,6 +98,19 @@ static void fill_incompressible(char *buf, size_t len, unsigned seed)
     }
 }
 
+/* The other end of the range: a short repeating pattern, which any of the
+ * codecs collapses. Real modex values sit somewhere between this and the
+ * PRNG above - repetitive key names wrapped around opaque endpoint bytes. */
+static void fill_compressible(char *buf, size_t len, unsigned seed)
+{
+    static const char pattern[] = "pmix.endpoint.fabric.device.coordinates=0123456789 ";
+    size_t i, n = sizeof(pattern) - 1;
+
+    for (i = 0; i < len; i++) {
+        buf[i] = pattern[(i + seed) % n];
+    }
+}
+
 /* A fence over the whole namespace, optionally collecting the data. */
 static pmix_status_t fence_all(bool collect, double *usec)
 {
@@ -126,12 +147,15 @@ int main(int argc, char **argv)
     char *payload = NULL;
     double barrier_us = 0.0, modex_us = 0.0;
     int nkeys, valsz, i;
+    bool compressible;
     uint32_t nprocs = 0;
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     nkeys = env_int("PMIX_PERF_KEYS", 32);
     valsz = env_int("PMIX_PERF_VALSZ", 1024);
+    compressible = (NULL != getenv("PMIX_PERF_COMPRESSIBLE")
+                    && 0 != strcmp("0", getenv("PMIX_PERF_COMPRESSIBLE")));
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         fprintf(stderr, "fence_timing: PMIx_Init failed: %s\n", PMIx_Error_string(rc));
@@ -168,8 +192,13 @@ int main(int argc, char **argv)
      * it to our own server - neither is the collective we are scoring. */
     for (i = 0; i < nkeys; i++) {
         snprintf(key, sizeof(key), "fence-timing-%u-%d", (unsigned) myproc.rank, i);
-        fill_incompressible(payload, (size_t) valsz,
-                            (unsigned) (myproc.rank * 1000003u + (unsigned) i));
+        if (compressible) {
+            fill_compressible(payload, (size_t) valsz,
+                              (unsigned) (myproc.rank * 1000003u + (unsigned) i));
+        } else {
+            fill_incompressible(payload, (size_t) valsz,
+                                (unsigned) (myproc.rank * 1000003u + (unsigned) i));
+        }
         PMIX_VALUE_CONSTRUCT(&value);
         value.type = PMIX_BYTE_OBJECT;
         value.data.bo.bytes = payload;
@@ -226,10 +255,10 @@ int main(int argc, char **argv)
     /* Only rank 0 reports, so the lines are not interleaved. */
     if (0 == myproc.rank) {
         fprintf(stdout,
-                "fence_timing: nprocs=%u keys=%d valsz=%d "
+                "fence_timing: nprocs=%u keys=%d valsz=%d payload=%s "
                 "barrier=%.1f us modex=%.1f us premium=%.1f us\n",
-                nprocs, nkeys, valsz, barrier_us, modex_us,
-                modex_us - barrier_us);
+                nprocs, nkeys, valsz, compressible ? "compressible" : "random",
+                barrier_us, modex_us, modex_us - barrier_us);
         fflush(stdout);
     }
 
