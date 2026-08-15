@@ -90,15 +90,6 @@ static const char pmix_version_string[] = "OpenPMIx " PMIX_VERSION
 
 #define PMIX_MAX_RETRIES 10
 
-static void _notify_complete(pmix_status_t status, void *cbdata)
-{
-    pmix_event_chain_t *chain = (pmix_event_chain_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(status);
-
-    PMIX_ACQUIRE_OBJECT(chain);
-    PMIX_RELEASE(chain);
-}
-
 static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                                     pmix_buffer_t *buf, void *cbdata)
 {
@@ -126,7 +117,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return;
     }
-    chain->final_cbfunc = _notify_complete;
+    chain->final_cbfunc = pmix_event_notify_complete;
     chain->final_cbdata = chain;
 
     cnt = 1;

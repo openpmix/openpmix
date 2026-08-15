@@ -7,6 +7,25 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A PMIx server no longer drops an event one of its clients wanted. The
+   fan-out filter matched an event's affected processes against the
+   affected-process list a client's event registration had carried - but
+   that list belongs to a single registration message, and a handler
+   registered afterwards for a code the server is already forwarding
+   sends no message at all. So a process that registered one handler
+   restricted to a particular process and a second handler with no
+   restriction stopped receiving the code entirely for the second one.
+   The filter now matches on the event code, which is the only thing a
+   server can decide correctly; the affected-process and source-range
+   restrictions a handler registered with are enforced by the receiving
+   process, which is the only place that knows what each handler asked
+   for
+ - A client now caches an event forwarded to it that none of its
+   handlers accepted, so a handler registering a moment later is still
+   given it - the behavior a tool has always had, and the reason the
+   notification cache exists. An event can legitimately arrive unmatched
+   because a handler's source range is never sent to the server, so the
+   server cannot filter on it
  - A collective no longer counts a participant's orderly PMIx_Finalize
    as the loss of that participant. Such a rank has not left - its local
    process count is deliberately retained and its peer object tombstoned

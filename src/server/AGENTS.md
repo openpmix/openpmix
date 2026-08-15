@@ -1128,8 +1128,15 @@ easy to get wrong.
 deregistration has to clear them all.** The client library packs a
 handler's *whole* code list whenever any code in that list is new to this
 server, so a client that registers one handler for `{A}` and a second for
-`{A, B}` sends both lists and we record `A` twice — deliberately, since
-each entry carries that handler's own `PMIX_EVENT_AFFECTED_PROC` filter.
+`{A, B}` sends both lists and we record `A` twice — each entry carrying
+that handler's own `PMIX_EVENT_AFFECTED_PROC` filter. **That filter does
+not gate delivery**, and must not: a handler registered later for an
+already-active code sends no message at all, so the entries we hold do
+not describe every handler the peer has. `_notify_client_event` forwards
+on the code alone and the receiver filters per handler — see the fan-out
+section of [`src/event/AGENTS.md`](../event/AGENTS.md). What still reads
+the recorded filter is `_check_cached_events`, replaying against the
+registration that is in front of it.
 It then sends exactly one deregistration for `A`, when its last handler
 for `A` goes away. `pmix_server_deregister_events` stopped at the first
 match and left the rest behind for the life of the connection: the server

@@ -321,11 +321,12 @@ call because it may be cached) and thread-shifts to
    `pmix_prep_event_chain`;
 3. unless the range is `PMIX_RANGE_RM` or `PMIX_RANGE_PROC_LOCAL`,
    walks `pmix_server_globals.events` and sends a `PMIX_NOTIFY_CMD`
-   message to every registered peer that passes the
-   source/target/affected filters — deduplicated via a `pmix_namelist_t`
-   tracker, never echoing to the event's source or to itself. With
-   custom targets it counts down `nleft` and evicts the cached entry
-   once every target has been notified;
+   message to every peer registered for the **code** — deduplicated via
+   a `pmix_namelist_t` tracker, never echoing to the event's source or
+   to itself, and (for a server that is not itself a tool) still subject
+   to the event's own custom-target range. With custom targets it counts
+   down `nleft` and evicts the cached entry once every target has been
+   notified;
 4. if this server is itself the event's source (and the event is not
    `PMIX_RANGE_LOCAL` / `PMIX_EVENT_STAYS_LOCAL`), up-calls
    `pmix_host_server.notify_event` so the host can broadcast beyond
@@ -364,6 +365,14 @@ Do not confuse them:
   the oldest occupant when full. Entries are checked out (and
   released) when replayed, when all custom targets have been notified,
   or on eviction.
+
+  Three places check an event in, and knowing which is which saves
+  re-deriving it: `_notify_client_event` parks **every** event a server
+  role fans out (a tool included — that call is how a tool delivers a
+  forwarded event to itself); `pmix_notify_server_of_event` parks a
+  `PMIX_RANGE_PROC_LOCAL` one it did not send; and
+  `pmix_event_notify_complete` parks a *forwarded* event that the
+  receiving process's own handlers all declined.
 - **The `PMIX_REPORT_EVENT` aggregation window**
   (`pmix_globals.cached_events` + the `event_window` timer +
   `pmix_event_timeout_cb`). Purpose: coalesce *internally generated*
@@ -375,6 +384,56 @@ Do not confuse them:
   must stay at the end; that is why the macro prepends). When the timer
   fires, the chain is pushed through the server fan-out (server role)
   or the local chain (everyone else).
+
+## The fan-out filter is a fast path, not the authority
+
+**`_notify_client_event` matches a peer on the event code and nothing
+else about that peer's registrations.** This is the single most important
+thing to get right when touching the fan-out, and it was wrong until
+August 2026: the loop also required the event's affected procs to
+intersect `pr->affected`, the affected-proc list carried by one
+registration *message*.
+
+That cannot work, because a peer's handlers do not agree on it and the
+server is not told when they disagree. `_add_hdlr` sends a registration
+message only when a code is new to this server **or** the handler carries
+directives — so a handler registered afterwards for an already-active
+code with no restrictions sends nothing at all, and the server's one
+record still says what some earlier handler asked for. The result was a
+silently dropped event: register a handler restricted to process P and
+then a general handler for the same code, and the general one stops
+seeing the code. Nor can the record be repaired by bookkeeping —
+`pmix_server_deregister_events` clears *every* entry a peer holds for a
+code, because nothing in a deregistration says which handler it belongs
+to.
+
+So the division of labor is:
+
+- **the server filters on the code** (plus the event's own
+  `PMIX_EVENT_CUSTOM_RANGE` targets and the default-handler/nondefault
+  rule, both of which are properties of the *event*, not of a
+  registration);
+- **the receiving process filters per handler**, on the source range and
+  the affected procs, in `pmix_invoke_local_event_hdlr` — the only place
+  that knows what each handler asked for;
+- **anything the receiver then declined is parked**
+  (`pmix_event_notify_complete`), because a handler registering a moment
+  later may want it.
+
+A corollary worth remembering when reading the fan-out: **a handler's
+source range never leaves its own process.**
+`pmix_internal_reg_event_hdlr` consumes `PMIX_RANGE` and
+`PMIX_EVENT_CUSTOM_RANGE` and does not put either on the `xfer` list, and
+`pmix_peer_events_info_t` has no range member. An event forwarded to a
+process whose only handler for that code registered a range is therefore
+routine, and arriving-and-matching-nothing is an ordinary outcome rather
+than a corner case. `pmix_peer_events_info_t::affected` is still recorded
+— `_check_cached_events` replays against it — it just does not gate
+delivery.
+
+Covered by [`test/unit/event_forward.c`](../../test/unit/event_forward.c),
+whose two cases drive a real client behind a real socket; each fails
+against the unfixed library.
 
 ## Threading and ownership rules
 

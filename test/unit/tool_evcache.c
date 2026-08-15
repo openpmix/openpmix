@@ -33,18 +33,18 @@
  *   5. the server notifies the code about Z, and B must fire - so the
  *      test cannot pass by never delivering anything at all.
  *
- * WHAT THIS DOES NOT REACH, and it is worth knowing before extending it.
- * The original target was the tool's *cached*-event path: when no
- * handler matches, _notify_complete parks the event for a handler that
- * registers later, and it builds the parked copy out of chain->range and
- * chain->affected - which pmix_tool_notify_recv never filled in. But the
- * server filters on the tool's registered codes and affected procs
- * before forwarding, so an event no handler wants does not arrive at the
- * tool at all and is never parked. Instrumenting _notify_complete during
- * this run shows it called exactly once, with PMIX_SUCCESS. Do not
- * assume a change to that branch is covered here. Whether that branch is
- * reachable at all - src/client has no equivalent - is
- * openpmix#4101.
+ * WHERE THE PARKED EVENT COMES FROM, since this file used to say the
+ * opposite. A tool hands an event its server forwarded straight to
+ * pmix_server_notify_client_of_event, which caches it in the
+ * notification hotel, fans it out to any tools connected to us, and
+ * walks our handlers against a chain of its own. So the caching this
+ * test relies on is that one, not the copy of the parking code that
+ * used to sit in the tool's own completion callback - which was
+ * unreachable, because the chain the tool builds never visits a handler
+ * list and its completion is therefore never told that nothing matched.
+ * That dead copy is gone; the client keeps the live one
+ * (pmix_event_notify_complete). See openpmix#4101, and
+ * test/unit/event_forward.c for the client half.
  */
 
 #include "src/include/pmix_config.h"

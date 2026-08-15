@@ -318,6 +318,47 @@ under either, so it cannot fail on them. That half is
 separate nodes by
 [`contrib/dockerswarm/run-bfrops-tests.sh`](../../contrib/dockerswarm/AGENTS.md).
 
+### `event_forward` — what a server forwards, and what a client keeps
+
+[`event_forward.c`](event_forward.c) is the only program here that runs a
+real **client** against a real server, and it has to: both behaviors it
+pins down live on the socket between them. It registers an nspace, forks,
+and **execs itself** with a `client` argument — an exec rather than a bare
+fork, because the parent has an initialized PMIx server in it and
+`PMIx_Init` in a forked child finds the one-time-init latch already set.
+
+Two cases, from [openpmix#4101](https://github.com/openpmix/openpmix/issues/4101):
+
+- the server's fan-out must not drop an event a local handler wanted. The
+  client registers a handler restricted to one process and then an
+  unrestricted one — which sends nothing to the server, the code being
+  already active — and the event names a third process;
+- an event the client's handlers all declined must be parked and replayed
+  to a handler registering afterwards. The declining handler restricts on
+  its *source range*, which never leaves the client's process, so the
+  server forwards an event it has no way to know is unwanted.
+
+Both fail against the unfixed library, which was checked by reverting
+each fix independently.
+
+**Passing the parent's environment to the exec is load-bearing**, and
+getting it wrong produces a very convincing false result. Handing
+`execve` only what `PMIx_server_setup_fork` produces strands the child
+without the library search path — and libtool starts an
+uninstalled test through a wrapper script that sets exactly that — so the
+child silently runs against the *installed* PMIx instead of the one under
+test. That is the stale-install trap from
+[`src/client/AGENTS.md`](../../src/client/AGENTS.md) wearing a different
+hat: the parent behaves correctly, the child behaves like last month's
+library, and the disagreement looks like a bug in the code under review.
+`PMIx_Argv_copy(environ)` first, then `PMIx_server_setup_fork`, exactly
+as `test/simple/simptest.c` does.
+
+The second case's blocking round trip is the other load-bearing detail:
+it puts the notification ahead of the second registration on the same
+socket, so a library that parks nothing cannot pass by delivering the
+event live.
+
 ### `server_get` — the server-side `PMIx_Get` regression test
 
 [`server_get.c`](server_get.c) comes up as a PMIx server with a stub host
