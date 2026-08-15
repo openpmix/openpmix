@@ -73,10 +73,29 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
         PMIX_CONSTRUCT(&host_attrs, pmix_list_t);
         PMIX_CONSTRUCT(&tool_attrs, pmix_list_t);
 
-        /* cycle across the dictionary and load a hash
-         * table with translations of key -> index */
+        /* Cycle across the dictionary and load a hash table with
+         * translations of key -> index.
+         *
+         * Two different numbers here, and they are not interchangeable.
+         * The table is *indexed* by attribute id, so size it by the id
+         * boundary; the array is *iterated* by position, so walk it by
+         * the entry count. Attribute ids are append-only and a retired
+         * one leaves a gap, so the boundary runs ahead of the count as
+         * soon as any attribute is removed - walking to the boundary
+         * would read off the end of the array. */
         pmix_pointer_array_set_size(pmix_globals.keyindex.table, PMIX_INDEX_BOUNDARY);  // minimize realloc's
-        for (n=0; n < PMIX_INDEX_BOUNDARY; n++) {
+        for (n=0; n < PMIX_DICTIONARY_SIZE; n++) {
+            /* Two entries can legitimately share an id: an attribute
+             * and its deprecated alias are one attribute as far as the
+             * datastore is concerned, because both define the same
+             * string and the string is what a lookup keys on. The
+             * second one has nothing to add - and pmix_hash_register_key()
+             * would drop it on the floor, leaking everything allocated
+             * for it - so recognize that here instead. */
+            if (NULL != pmix_pointer_array_get_item(pmix_globals.keyindex.table,
+                                                    pmix_dictionary[n].index)) {
+                continue;
+            }
             p = (pmix_regattr_input_t*)pmix_malloc(sizeof(pmix_regattr_input_t));
             p->index = pmix_dictionary[n].index;
             p->name = strdup(pmix_dictionary[n].name);

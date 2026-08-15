@@ -233,6 +233,25 @@ and [`docs/contributing.rst`](docs/contributing.rst):
   code. Remember too that values in `-230`..`-330` are reserved as system
   events by the `PMIX_SYSTEM_EVENT()` macro range.
 
+**Attribute ids are append-only too, and live in
+`contrib/dictionary_ids.txt`.** Every attribute in
+[`include/pmix_common.h.in`](include/pmix_common.h.in) and
+[`include/pmix_deprecated.h`](include/pmix_deprecated.h) carries a numeric
+id that `gds/shmem3` stores in memory shared with peer processes, so two
+releases that disagree about an id resolve to the wrong attribute rather
+than to an error. The ids are pinned in that file rather than derived from
+scan order, under the same never-reuse discipline as the status codes: a
+new attribute gets the next free id at the end, a removed one keeps its id
+as `RETIRED:`. Adding an attribute therefore needs one extra step —
+
+```sh
+make update-dictionary
+```
+
+— and the result is committed with the header change. A normal build will
+not assign an id; it fails and says so, so that two branches cannot hand
+out the same one.
+
 **Constant-on-left comparisons:** Always write `NULL == ptr` rather than `ptr == NULL`.  This turns typos (`=` instead of `==`) into compile errors.
 
 **Always brace blocks:** Use `{ }` around every conditional or loop body, even single-line ones.
