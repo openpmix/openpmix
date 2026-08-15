@@ -94,6 +94,15 @@ typedef struct {
      * carried into the persistent pmix_group_t so it can be re-applied to the
      * later destruct (see add_group / PMIx_Group_destruct_nb). */
     bool notterm;
+    /* whether PMIX_GROUP_ASSIGN_CONTEXT_ID was requested, and the value the
+     * host assigned if it was. The invite/join method runs no server-side
+     * collective, so there is no group up-call for the host to answer -
+     * announce_step() asks for the ID with its own job-control request once
+     * the membership is known, and puts it in the completion event. SIZE_MAX
+     * means "none", which is what the group is announced with when the ID was
+     * not requested or the host could not provide one. */
+    bool assignid;
+    size_t ctxid;
     pmix_event_t ev;
     bool timer_active;
     bool completed;
@@ -120,8 +129,9 @@ typedef struct {
 /* the announcement chain's states, in the order they are traversed */
 #define PMIX_GRP_ANNOUNCE_START    0
 #define PMIX_GRP_ANNOUNCE_FAILED   1
-#define PMIX_GRP_ANNOUNCE_COMPLETE 2
-#define PMIX_GRP_ANNOUNCE_DONE     3
+#define PMIX_GRP_ANNOUNCE_CTXID    2
+#define PMIX_GRP_ANNOUNCE_COMPLETE 3
+#define PMIX_GRP_ANNOUNCE_DONE     4
 
 static void gtcon(pmix_group_tracker_t *p)
 {
@@ -136,6 +146,8 @@ static void gtcon(pmix_group_tracker_t *p)
     p->nanswered = 0;
     p->optional = false;
     p->notterm = false;
+    p->assignid = false;
+    p->ctxid = SIZE_MAX;
     p->timer_active = false;
     p->completed = false;
     p->info = NULL;
@@ -1067,6 +1079,8 @@ static pmix_status_t invite_setup(pmix_group_tracker_t *cb, const char *grp,
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_OPTIONAL)) {
                 cb->optional = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ASSIGN_CONTEXT_ID)) {
+                cb->assignid = PMIX_INFO_TRUE(&info[n]);
             }
         }
     }
@@ -1263,6 +1277,48 @@ static void announce_next(pmix_status_t status, void *cbdata)
     announce_step(cb);
 }
 
+/* The host has answered our request for a group context ID. Record whatever
+ * it gave us and resume the announcement.
+ *
+ * A host that cannot assign one is not an error here: the group still forms,
+ * it simply forms without an ID, which is strictly better than the silent
+ * drop this path used to perform. PRRTE answers PMIX_ERR_NOT_SUPPORTED for a
+ * job-control directive it does not recognize, so an older host degrades to
+ * exactly that without any version gate. */
+static void ctxid_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
+                         void *cbdata, pmix_release_cbfunc_t release_fn,
+                         void *release_cbdata)
+{
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
+    pmix_status_t rc;
+    size_t n;
+
+    if (PMIX_SUCCESS == status && NULL != info) {
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_CONTEXT_ID)) {
+                /* the host's word for what this carries, so check it */
+                rc = PMIx_Value_get_number(&info[n].value, &cb->ctxid, PMIX_SIZE);
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                    PMIX_ERROR_LOG(rc);
+                    cb->ctxid = SIZE_MAX;
+                }
+                break;
+            }
+        }
+    }
+    if (SIZE_MAX == cb->ctxid) {
+        pmix_output_verbose(2, pmix_client_globals.group_output,
+                            "pmix:group invite: no context id assigned for %s (%s)",
+                            cb->grpid, PMIx_Error_string(status));
+    }
+
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+    /* frees the directive array we sent and takes the next step */
+    announce_next(status, cb);
+}
+
 /* Advance the announcement. Each iteration either dispatches a notification
  * and returns (the completion callback re-enters us) or falls through to the
  * next state. A notification that fails to dispatch never fires its
@@ -1272,7 +1328,7 @@ static void announce_next(pmix_status_t status, void *cbdata)
 static void announce_step(pmix_group_tracker_t *cb)
 {
     pmix_proc_t *members;
-    size_t i, nmembers, nfailed;
+    size_t i, nmembers, nfailed, nainfo;
     pmix_data_array_t darray;
     pmix_status_t rc;
 
@@ -1329,7 +1385,7 @@ static void announce_step(pmix_group_tracker_t *cb)
                 ++cb->aidx;
             }
             if (cb->aidx >= cb->nmembers) {
-                cb->astate = PMIX_GRP_ANNOUNCE_COMPLETE;
+                cb->astate = PMIX_GRP_ANNOUNCE_CTXID;
                 break;
             }
             i = cb->aidx;
@@ -1344,6 +1400,52 @@ static void announce_step(pmix_group_tracker_t *cb)
                                    PMIX_RANGE_PROC_LOCAL, cb->ainfo, cb->nainfo,
                                    announce_next, (void *) cb);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_INFO_FREE(cb->ainfo, cb->nainfo);
+                cb->ainfo = NULL;
+                cb->nainfo = 0;
+                break;
+            }
+            return;
+
+        case PMIX_GRP_ANNOUNCE_CTXID:
+            /* If a context ID was requested, get one before announcing - the
+             * completion event is the only thing the members will see, so the
+             * ID has to be in hand by the time it goes out.
+             *
+             * Only the host can mint an ID that is unique across its scope,
+             * and the invite/join method never reaches pmix_host_server.group,
+             * so there is no group up-call to carry the request. Ask through
+             * job control instead, with no targets: the directive names what
+             * we want and the group it is for, and the answer comes back in
+             * the results. This waits on a host round trip, which the
+             * announcement did not before - acceptable, since forming a group
+             * by invitation is not a performance path.
+             *
+             * PMIx_Job_control_nb is a public entry point, but the rule
+             * against calling those from inside the library is about the ones
+             * that block: this one either packs and sends, or thread-shifts
+             * and returns, and queueing onto the thread we are already on is
+             * fine. It does borrow the directive array across that shift,
+             * which is why the array is cb->ainfo rather than a local. */
+            cb->astate = PMIX_GRP_ANNOUNCE_COMPLETE;
+            if (!cb->assignid) {
+                break;
+            }
+            PMIX_INFO_CREATE(cb->ainfo, 2);
+            if (PMIX_UNLIKELY(NULL == cb->ainfo)) {
+                break;
+            }
+            cb->nainfo = 2;
+            PMIX_INFO_LOAD(&cb->ainfo[0], PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
+            PMIX_INFO_LOAD(&cb->ainfo[1], PMIX_GROUP_ID, cb->grpid, PMIX_STRING);
+            rc = PMIx_Job_control_nb(NULL, 0, cb->ainfo, cb->nainfo,
+                                     ctxid_cbfunc, (void *) cb);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                /* no callback is coming - announce without an ID */
+                pmix_output_verbose(2, pmix_client_globals.group_output,
+                                    "pmix:group invite: context id request for %s "
+                                    "was refused (%s)", cb->grpid,
+                                    PMIx_Error_string(rc));
                 PMIX_INFO_FREE(cb->ainfo, cb->nainfo);
                 cb->ainfo = NULL;
                 cb->nainfo = 0;
@@ -1368,13 +1470,17 @@ static void announce_step(pmix_group_tracker_t *cb)
                     ++nmembers;
                 }
             }
-            PMIX_INFO_CREATE(cb->ainfo, 4);
+            nainfo = 4;
+            if (SIZE_MAX != cb->ctxid) {
+                ++nainfo;
+            }
+            PMIX_INFO_CREATE(cb->ainfo, nainfo);
             if (PMIX_UNLIKELY(NULL == cb->ainfo)) {
                 PMIX_PROC_FREE(members, cb->nmembers);
                 cb->status = PMIX_ERR_NOMEM;
                 break;
             }
-            cb->nainfo = 4;
+            cb->nainfo = nainfo;
             darray.type = PMIX_PROC;
             darray.array = members;
             darray.size = nmembers;
@@ -1386,6 +1492,9 @@ static void announce_step(pmix_group_tracker_t *cb)
             PMIX_INFO_LOAD(&cb->ainfo[3], PMIX_GROUP_ID, cb->grpid, PMIX_STRING);
             /* the loads above copied the array into the info structs */
             PMIX_PROC_FREE(members, cb->nmembers);
+            if (SIZE_MAX != cb->ctxid) {
+                PMIX_INFO_LOAD(&cb->ainfo[4], PMIX_GROUP_CONTEXT_ID, &cb->ctxid, PMIX_SIZE);
+            }
             rc = PMIx_Notify_event(PMIX_GROUP_CONSTRUCT_COMPLETE, &pmix_globals.myid,
                                    PMIX_RANGE_CUSTOM, cb->ainfo, cb->nainfo,
                                    announce_next, (void *) cb);
