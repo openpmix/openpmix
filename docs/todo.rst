@@ -50,6 +50,19 @@ each time somebody asks.
           partner of the ``__atomic_test_and_set`` that sets it), and
           ``refcb()``'s dropped store status.
 
+          **Checked again on 2026-08-15**, which retired one more: the
+          open decision about a tool caching an event nobody handled
+          while a client discarded it.  The fan-out fix for
+          `openpmix#4101 <https://github.com/openpmix/openpmix/issues/4101>`_
+          answered it — a client now parks such an event, the tool's
+          unreachable copy of the parking code is gone, and
+          ``test/unit/event_forward`` covers both halves.  Two entries
+          were corrected rather than retired, both because the code had
+          moved: the tool's SIGCONT stdin handler now lives in
+          ``src/common``, and the ``cd->nondefault`` blocks are down to
+          one that still assigns inside its guard.  Everything else was
+          re-verified against the tree and stands as written.
+
 Review coverage
 ---------------
 
@@ -197,35 +210,6 @@ flags, which re-opens the window the stand-in was built to close; or
 carry something in the IOF message that names the spawn, which is a
 wire-format and Standard question rather than a bug fix.
 
-A tool caches an event nobody handled; a client discards it
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-When a local event chain in a tool ends with nothing having handled the
-event, ``_notify_complete`` in ``src/tool/pmix_tool.c`` parks a copy in
-the notification hotel so that a handler registered *later* can still be
-given it.  A client in the same position simply releases the chain — the
-equivalent branch does not exist in ``src/client/pmix_client.c``.
-
-Only one of those can be right, and choosing is a statement about
-event-delivery behavior in a released library rather than a bug fix.
-Either the tool's branch is unreachable and should go, or it is correct
-and the client is losing events a late registrant was entitled to see.
-
-Nothing has been found that reaches it.  A server forwards an event to a
-tool only if that tool registered for the code, and it applies the
-tool's affected-proc filter before forwarding, so a tool does not
-normally receive an event it has no handler for.  The one shape that
-might — an event already on the wire when the handler is deregistered —
-**has not been confirmed**, and should not be treated as evidence until
-somebody checks whether the server stops forwarding before or after the
-deregistration round-trips.
-
-What is *not* at issue is the branch's correctness if it is entered:
-its two unchecked allocations and its caddy-leaking failure arms are
-fixed, as are the same two in the event layer's copy of the block
-(``_notify_client_event``).  Tracked as
-`openpmix#4101 <https://github.com/openpmix/openpmix/issues/4101>`_.
-
 Deferred work
 -------------
 
@@ -274,11 +258,15 @@ Coverage gaps
   allocation failures and the third needs a server reply whose declared
   count exceeds its payload.  Reaching the receive path at all requires
   a client whose *local* hwloc computation failed.
-* **Two fixes in ``src/tool`` ship without regression tests** because
-  the conditions cannot be arranged in ``make check``: the SIGCONT
-  handler for forwarded stdin needs a tty, and the late-finalize-reply
-  guard needs a server that answers the finalize handshake more than
-  five seconds late.
+* **Two fixes found in ``src/tool`` ship without regression tests**
+  because the conditions cannot be arranged in ``make check``: the
+  SIGCONT handler for forwarded stdin needs a tty, and the
+  late-finalize-reply guard needs a server that answers the finalize
+  handshake more than five seconds late.  Only the second is still in
+  ``src/tool``; the stdin read event and its SIGCONT handler moved to
+  ``src/common/pmix_iof.c`` when the tool was given the library's
+  forwarding instead of its own, and are untested there for the same
+  reason.
 * **The debugger-wait teardown in ``PMIx_Init`` is not exercised.**
   Reaching it needs the debugger-stop key set on the namespace *and* the
   ``PMIX_READY_FOR_DEBUG`` notification to then fail, which no test
@@ -310,16 +298,18 @@ not "fixed" by a later reader.
   anywhere in it.  Both in-tree hosts (PRRTE and ``test/simple/simptest``)
   currently leak it.  See ``src/server/AGENTS.md``.
 
-* **The event-caching blocks assign ``cd->nondefault`` inside their**
-  ``0 < chain->ninfo`` **guard**, which reads as though a non-default
-  event carrying no info would be parked as a default one and then
-  delivered to default handlers that should not see it.  It cannot
-  happen: every path that sets ``chain->nondefault`` reads it out of a
-  ``PMIX_EVENT_NON_DEFAULT`` directive in the info array, so the flag is
-  only ever true when there is info to have carried it.  Hoisting the
-  assignment out of the guard is equivalent, not a fix.  Both copies —
-  ``_notify_complete`` in ``src/tool`` and ``_notify_client_event`` in
-  ``src/event`` — are left as they are.
+* **An event-caching block that assigns ``cd->nondefault`` inside its**
+  ``0 < ninfo`` **guard is not dropping a flag.**  It reads as though a
+  non-default event carrying no info would be parked as a default one
+  and then delivered to default handlers that should not see it.  It
+  cannot happen: every path that sets ``chain->nondefault`` reads it out
+  of a ``PMIX_EVENT_NON_DEFAULT`` directive in the info array, so the
+  flag is only ever true when there is info to have carried it.  Moving
+  the assignment out of the guard is equivalent, not a fix — two of the
+  three caching blocks now assign unconditionally only because the
+  guarded form kept being re-reported.  The third, in
+  ``pmix_notify_server_of_event``, still assigns inside the guard and is
+  equally correct.
 * **``pmix_srand()`` copies the seeded state into a file-static buffer**
   (``src/util/pmix_alfg.c``).  It looks like a footgun, but it is the
   only way to seed the global that ``pmix_random()`` reads, and the unit
