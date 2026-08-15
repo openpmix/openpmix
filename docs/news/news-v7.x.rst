@@ -7,6 +7,19 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - PMIX_GROUP_ASSIGN_CONTEXT_ID is now honored by PMIx_Group_invite and
+   PMIx_Group_join, which accepted the directive and silently did nothing
+   with it. Only the host environment can mint an ID that is unique
+   across its scope, and a group formed by invitation runs no server
+   collective through which one could be asked - so the leader now
+   requests it separately, through job control with no targets, once the
+   membership has resolved and before the completion event goes out. The
+   ID rides in that event and so reaches every member, and a pending
+   PMIx_Group_join returns it in its results, matching what
+   PMIx_Group_construct has always done. A host that does not support
+   the request is not fatal: the group forms without an ID, which is
+   what happened before in every case. The announcement now waits on one
+   host round trip, which forming a group by invitation can afford
  - The PMIX_GROUP_CONTEXT_ID_ASSIGNED event code has been removed. It was
    defined but never generated - not by this library and not by any known
    host - and the PMIx_Group_construct man page promised delivery of the
