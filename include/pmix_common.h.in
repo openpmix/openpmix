@@ -1549,6 +1549,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DEVICE_TYPE                    "pmix.dev.type"        // (pmix_device_type_t) Bitmask specifying the type(s) of device(s) whose
                                                                    //         information is being requested. Only used as a directive/qualifier.
 #define PMIX_DEVICE_ID                      "pmix.dev.id"          // (char*) System-wide UUID or node-local OS name of a particular device.
+                                                                   //         When used to report the device(s) a process has been
+                                                                   //         assigned - e.g. in that process's own proc info - the
+                                                                   //         value is instead a pmix_data_array_t of pmix_device_t,
+                                                                   //         and is an array even when it holds one device.
 
 
 /* Descriptive Attributes */
