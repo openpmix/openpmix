@@ -13,16 +13,25 @@ Compression
 
 * ``--with-zstd[=VALUE]``:
 * ``--with-zlibng[=VALUE]``:
+* ``--with-lz4[=VALUE]``:
 * ``--with-zlib[=VALUE]``:
 
   These options specify where to find the headers and libraries for
   `Zstandard <https://facebook.github.io/zstd/>`_, `zlib-ng
-  <https://github.com/zlib-ng/zlib-ng>`_ and `zlib <https://zlib.net/>`_
-  respectively. Each builds the matching ``pcompress`` component.
+  <https://github.com/zlib-ng/zlib-ng>`_, `LZ4 <https://lz4.org/>`_ and
+  `zlib <https://zlib.net/>`_ respectively. Each builds the matching
+  ``pcompress`` component.
+
+  Note that each needs the library's **development** package |mdash| the
+  headers, not just the shared object. A system with ``libzstd.so`` but
+  no ``zstd.h`` builds no ``zstd`` component and quietly falls back to
+  whatever else has headers installed.
 
   Only one component is active at run time |mdash| the highest priority
-  one built (``zstd``, then ``zlibng``, then ``zlib``) |mdash| so there
-  is no need to provide more than one, and no harm in providing several.
+  one built (``zstd``, then ``zlibng``, then ``lz4``, then ``zlib``)
+  |mdash| so there is no need to provide more than one, and no harm in
+  providing several. Any of them can be forced at run time with
+  ``--pmixmca pcompress <name>``.
 
   A build with none of them works, but compresses nothing: expect longer
   start-up times and larger memory footprints at scale, and a warning to
@@ -69,6 +78,7 @@ Permitted values, and one important behavior
 
 * ``--with-zstd-libdir=LIBDIR``:
 * ``--with-zlibng-libdir=LIBDIR``:
+* ``--with-lz4-libdir=LIBDIR``:
 * ``--with-zlib-libdir=LIBDIR``:
 * ``--with-munge-libdir=LIBDIR``:
 * ``--with-smtp-libdir=LIBDIR``:
