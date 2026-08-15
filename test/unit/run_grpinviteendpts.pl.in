@@ -1,0 +1,133 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# Exercise the two things a group formed by invitation carries beyond its
+# membership: the context ID its PMIX_GROUP_ASSIGN_CONTEXT_ID directive asks
+# for, and the endpoint data its members contribute. A single persistent
+# server (test/simple/simptest) forks four clients
+# (examples/group_invite_endpts); each posts one PMIx_Put value at
+# PMIX_REMOTE scope and deliberately does not commit or fence it, so nothing
+# but the group operation can carry it to the other members. Rank 0 invites
+# the whole job asking for a context ID; ranks 1..3 accept from their
+# PMIX_GROUP_INVITED handlers, which is also what contributes their data.
+# Every member must then find the context ID in the completion event and read
+# back every peer's value with an OPTIONAL, context-id-qualified PMIx_Get.
+#
+# Against a library that drops the directive (openpmix#4068) or does not
+# exchange the endpoint data (openpmix#4082) the clients exit non-zero. See
+# src/client/pmix_client_group.c and examples/group_invite_endpts.c.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen hands us
+# every possible component directory in PMIX_COMPONENT_LIBRARY_PATHS; turn each
+# into an absolute path to the built component so the MCA base can find them
+# without a prior install.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# simptest forks its clients from its own directory; run from there and name the
+# client (built under examples/) by absolute path so simptest can exec it.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+my $client = $mybuilddir . "/examples/group_invite_endpts";
+my $nprocs = 4;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise arm a
+# Perl alarm so a wedged run can never hang "make check" forever.
+my @cmd = ("./simptest", "-n", "$nprocs", "-e", "$client");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run the server in a child we control, merging stderr into stdout, and slurp
+# the output. The alarm (when armed) bounds the wait.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec simptest: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: simptest exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The server must exit 0: a client that failed (never invited, never notified of
+# completion, or could not fence/destruct) drives a non-zero exit.
+if (0 != $status) {
+    print "FAIL: simptest did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm the run actually exercised both halves rather than passing
+# vacuously: every one of the four members must report that it received a
+# context ID and that it read back every peer's contribution.
+my $ncid   = () = ($output =~ /CONTEXT_ID received: PASS/g);
+my $nendpt = () = ($output =~ /ENDPT data verified for all peers: PASS/g);
+my $server_done = ($output =~ /Test finished OK!/);
+if ($ncid < $nprocs) {
+    print "FAIL: only $ncid/$nprocs members were given a group context id\n";
+    exit(1);
+}
+if ($nendpt < $nprocs) {
+    print "FAIL: only $nendpt/$nprocs members read back their peers' endpoint data\n";
+    exit(1);
+}
+if (!$server_done) {
+    print "FAIL: server did not finish cleanly after the clients ran\n";
+    exit(1);
+}
+print "PASS: invite/join exchanged a context id and endpoint data across all $nprocs members\n";
+exit(0);

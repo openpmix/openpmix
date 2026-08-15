@@ -664,6 +664,34 @@ construct being all-or-nothing — aborts it. The driver greps for
 than showing up as a timeout. See `invite_setup()` in
 [`src/client/pmix_client_group.c`](../../src/client/pmix_client_group.c).
 
+### `run_grpinviteendpts.pl` — what an invited group carries beyond membership
+
+[`run_grpinviteendpts.pl.in`](run_grpinviteendpts.pl.in) drives
+[`examples/group_invite_endpts.c`](../../examples/group_invite_endpts.c)
+over the same four-client simptest run, and covers the two things that
+path gained in August 2026: the context ID its
+`PMIX_GROUP_ASSIGN_CONTEXT_ID` directive promises (openpmix#4068, which it
+had been accepting and dropping), and the members' endpoint data
+(openpmix#4082).
+
+**The absence of a `PMIx_Commit` is the test.** Each rank posts one value
+at `PMIX_REMOTE` scope and deliberately never commits or fences it, so no
+modex can carry it; a `PMIx_Get` that finds it afterwards can only have
+been satisfied out of what the group exchanged. The gets are
+`PMIX_OPTIONAL` so the request cannot leave the process, and carry the
+context ID as a **qualifier** — a contribution to a group that was
+assigned an ID is stored qualified by it, and `lookup_keyval()` in
+[`src/util/pmix_hash.c`](../../src/util/pmix_hash.c) deliberately does not
+match a qualified entry against an unqualified fetch. Both halves were
+checked by disabling `store_endpts()` and confirming the run fails.
+
+It also needs a host that answers the context-id request, which arrives
+as a `PMIx_Job_control` directive because the invite method runs no
+server collective. `jctrl_fn` in
+[`test/simple/simptest.c`](../simple/simptest.c) does; a host that does
+not is a legitimate configuration but not one this test can check, so a
+missing ID is reported as a failure rather than passing quietly.
+
 ## Running
 
 ```sh
