@@ -435,7 +435,7 @@ pmix.jctrl.kill        404   PMIX_JOB_CTRL_KILL
 pmix.jctrl.restart     405   PMIX_JOB_CTRL_RESTART
 pmix.jctrl.ckpt        406   PMIX_JOB_CTRL_CHECKPOINT
 pmix.jctrl.ckptev      407   PMIX_JOB_CTRL_CHECKPOINT_EVENT
-pmix.jctrl.ckptsig     408   PMIX_JOB_CTRL_CHECKPOINT_SIGNAL,PMIX_JOB_CTRL_CHECKPOINT_TIMEOUT
+pmix.jctrl.ckptsig     408   PMIX_JOB_CTRL_CHECKPOINT_SIGNAL
 pmix.jctrl.ckmethod    409   PMIX_JOB_CTRL_CHECKPOINT_METHOD
 pmix.jctrl.sig         410   PMIX_JOB_CTRL_SIGNAL
 pmix.jctrl.pvn         411   PMIX_JOB_CTRL_PROVISION
@@ -609,7 +609,7 @@ pmix.fab.grps          578   PMIX_FABRIC_GROUPS
 pmix.fab.vndr          579   PMIX_FABRIC_VENDOR
 pmix.fab.id            580   PMIX_FABRIC_IDENTIFIER
 pmix.fab.idx           581   PMIX_FABRIC_INDEX
-pmix.fab.coord         582   PMIX_FABRIC_COORDINATES,PMIX_FABRIC_DEVICE_COORDINATES
+pmix.fab.coord         582   PMIX_FABRIC_COORDINATES
 pmix.fabdev.vendid     583   PMIX_FABRIC_DEVICE_VENDORID
 pmix.fab.nverts        584   PMIX_FABRIC_NUM_DEVICES
 pmix.fab.dims          585   PMIX_FABRIC_DIMS
@@ -688,3 +688,5 @@ pmix.iof.stop          657   PMIX_IOF_STOP
 pmix.note.lnch         658   PMIX_NOTIFY_LAUNCH
 pmix.pthrdnm           659   PMIX_PROGRESS_THREAD_NAME
 pmix.qry.supqual       660   PMIX_QUERY_SUPPORTED_QUALIFIERS
+pmix.jctrl.ckpttime    661   PMIX_JOB_CTRL_CHECKPOINT_TIMEOUT
+pmix.fabdev.coord      662   PMIX_FABRIC_DEVICE_COORDINATES

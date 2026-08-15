@@ -1039,7 +1039,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_JOB_CTRL_CHECKPOINT            "pmix.jctrl.ckpt"       // (char*) checkpoint the specified processes and assign the given ID to it
 #define PMIX_JOB_CTRL_CHECKPOINT_EVENT      "pmix.jctrl.ckptev"     // (bool) use event notification to trigger process checkpoint
 #define PMIX_JOB_CTRL_CHECKPOINT_SIGNAL     "pmix.jctrl.ckptsig"    // (int) use the given signal to trigger process checkpoint
-#define PMIX_JOB_CTRL_CHECKPOINT_TIMEOUT    "pmix.jctrl.ckptsig"    // (int) time in seconds to wait for checkpoint to complete
+#define PMIX_JOB_CTRL_CHECKPOINT_TIMEOUT    "pmix.jctrl.ckpttime"   // (int) time in seconds to wait for checkpoint to complete
 #define PMIX_JOB_CTRL_CHECKPOINT_METHOD     "pmix.jctrl.ckmethod"   // (pmix_data_array_t*) array of pmix_info_t declaring each
                                                                     //      method and value supported by this application
 #define PMIX_JOB_CTRL_SIGNAL                "pmix.jctrl.sig"        // (int) send given signal to specified processes
@@ -1521,7 +1521,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_FABRIC_DEVICE_ADDRESS          "pmix.fabdev.addr"     // (char*) The primary link-level address associated with the device, such as a
                                                                    //         MAC address. If multiple addresses are available, only one will be
                                                                    //         reported.
-#define PMIX_FABRIC_DEVICE_COORDINATES      "pmix.fab.coord"       // (pmix_geometry_t) The pmix_geometry_t fabric coordinates for the device, including
+#define PMIX_FABRIC_DEVICE_COORDINATES      "pmix.fabdev.coord"    // (pmix_geometry_t) The pmix_geometry_t fabric coordinates for the device, including
                                                                    //          values for all supported coordinate views.
 #define PMIX_FABRIC_DEVICE_MTU              "pmix.fabdev.mtu"      // (size_t) The maximum transfer unit of link level frames or packets,
                                                                    //          in bytes.
