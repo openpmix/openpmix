@@ -1185,23 +1185,21 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
 {
     hwloc_obj_t obj = NULL;
     hwloc_obj_t tgt;
-    hwloc_obj_t device;
     hwloc_obj_t ancestor;
     hwloc_obj_t pu;
     unsigned dp, depth;
     unsigned maxdist = 0;
     unsigned mindist = UINT_MAX;
-    unsigned i;
     pmix_list_t dists;
     pmix_devdist_item_t *d;
     pmix_device_distance_t *array;
-    size_t n, ntypes, dn;
-    int cnt;
+    size_t n, dn, k, ndevs = 0;
     unsigned w, width, pudepth;
     pmix_device_type_t type = 0;
     char **devids = NULL;
     bool found;
-    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_hwloc_device_t *devs = NULL;
+    pmix_status_t rc = PMIX_SUCCESS, prc;
 
     if (NULL == topo || NULL == cpuset || NULL == dist || NULL == ndist) {
         return PMIX_ERR_BAD_PARAM;
@@ -1220,15 +1218,17 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     *dist = NULL;
     *ndist = 0;
 
-    /* determine number of types we support */
-    ntypes = sizeof(table) / sizeof(pmix_type_conversion_t);
-
     /* determine what they want us to look at */
     if (NULL == info) {
-        /* find everything */
-        for (n = 0; n < ntypes; n++) {
-            type |= table[n].pxtype;
-        }
+        /* The devices a process communicates through - which is what asking
+         * "how far away is it?" is normally about.  Block and DMA devices
+         * are deliberately not in the default: this function has never
+         * reported a distance for one, and a caller that wants them can ask
+         * by naming the type.  Coprocessors ARE included, because that is
+         * where a vendor labels a GPU's compute node ("cuda0"), and leaving
+         * them out lost every GPU on a machine whose backend was loaded. */
+        type = PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS
+               | PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_COPROC;
     } else {
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_TYPE)) {
@@ -1271,196 +1271,116 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     pudepth = (unsigned) hwloc_get_type_depth(topo->topology, HWLOC_OBJ_PU);
     width = hwloc_get_nbobjs_by_depth(topo->topology, pudepth);
 
-    /* loop over the specified devices in the topology */
-    for (n = 0; n < ntypes; n++) {
-        if (!(type & table[n].pxtype)) {
-            continue;
-        }
-        if (HWLOC_OBJ_OSDEV_BLOCK == table[n].hwtype || HWLOC_OBJ_OSDEV_DMA == table[n].hwtype
-            || HWLOC_OBJ_OSDEV_COPROC == table[n].hwtype
-            ) {
-            continue;
-        }
-        device = hwloc_get_obj_by_type(topo->topology, HWLOC_OBJ_OS_DEVICE, 0);
-        while (NULL != device) {
-            if (device->attr->osdev.type == table[n].hwtype) {
-
-                d = PMIX_NEW(pmix_devdist_item_t);
-                pmix_list_append(&dists, &d->super);
-
-                d->dist.type = table[n].pxtype;
-
-                /* Construct a UUID for this device */
-                if (HWLOC_OBJ_OSDEV_NETWORK == table[n].hwtype) {
-                    char *addr = NULL;
-                    /* find the address */
-                    for (i = 0; i < device->infos_count; i++) {
-                        if (0 == strcasecmp(device->infos[i].name, "Address")) {
-                            addr = device->infos[i].value;
-                            break;
-                        }
-                    }
-                    if (NULL == addr) {
-                        /* couldn't find an address - report it as an error */
-                        rc = PMIX_ERROR;
-                        goto cleanup;
-                    }
-                    /* could be IPv4 or IPv6 */
-                    cnt = countcolons(addr);
-                    if (5 == cnt) {
-                        pmix_asprintf(&d->dist.uuid, "ipv4://%s", addr);
-                    } else if (19 == cnt) {
-                        pmix_asprintf(&d->dist.uuid, "ipv6://%s", addr);
-                    } else {
-                        /* unknown address type */
-                        rc = PMIX_ERROR;
-                        goto cleanup;
-                    }
-                } else if (HWLOC_OBJ_OSDEV_OPENFABRICS == table[n].hwtype) {
-                    char *ngid = NULL;
-                    char *sgid = NULL;
-                    /* find the UIDs */
-                    for (i = 0; i < device->infos_count; i++) {
-                        if (0 == strcasecmp(device->infos[i].name, "NodeGUID")) {
-                            ngid = device->infos[i].value;
-                        } else if (0 == strcasecmp(device->infos[i].name, "SysImageGUID")) {
-                            sgid = device->infos[i].value;
-                        }
-                    }
-                    if (NULL == ngid || NULL == sgid) {
-                        rc = PMIX_ERROR;
-                        goto cleanup;
-                    }
-                    pmix_asprintf(&d->dist.uuid, "fab://%s::%s", ngid, sgid);
-                } else if (HWLOC_OBJ_OSDEV_GPU == table[n].hwtype) {
-                    /* if the name starts with "card", then this is just the aux card of the GPU */
-                    if (0 == strncasecmp(device->name, "card", 4)) {
-                        pmix_list_remove_item(&dists, &d->super);
-                        PMIX_RELEASE(d);
-                        device = hwloc_get_next_osdev(topo->topology, device);
-                        continue;
-                    }
-                    pmix_asprintf(&d->dist.uuid, "gpu://%s::%s", pmix_globals.hostname,
-                                  device->name);
-                } else {
-                    /* unknown type */
-                    pmix_list_remove_item(&dists, &d->super);
-                    PMIX_RELEASE(d);
-                    device = hwloc_get_next_osdev(topo->topology, device);
-                    continue;
-                }
-
-                /* if device id was given, then check if this one matches either
-                 * the UUID or osname */
-                if (NULL != devids) {
-                    found = false;
-                    for (dn = 0; NULL != devids[dn]; dn++) {
-                        if (0 == strcasecmp(devids[dn], device->name)
-                            || 0 == strcasecmp(devids[dn], d->dist.uuid)) {
-                            found = true;
-                        }
-                    }
-                    if (!found) {
-                        /* skip this one */
-                        pmix_list_remove_item(&dists, &d->super);
-                        PMIX_RELEASE(d);
-                        device = hwloc_get_next_osdev(topo->topology, device);
-                        continue;
-                    }
-                }
-                /* save the osname */
-                d->dist.osname = strdup(device->name);
-                if (NULL == device->cpuset) {
-                    /* climb the topology until we find a non-NULL cpuset */
-                    tgt = device->parent;
-                    while (NULL != tgt && NULL == tgt->cpuset) {
-                        tgt = tgt->parent;
-                    }
-                    if (NULL == tgt) {
-                        rc = PMIX_ERR_NOT_FOUND;
-                        goto cleanup;
-                    }
-                } else {
-                    tgt = device;
-                }
-                /* Loop over the PUs the process is bound to, measuring each
-                 * one's distance to this device.
-                 *
-                 * The min/max pair exists precisely because a process may be
-                 * bound to more than one location and those locations may sit
-                 * at different distances from the device - that is what
-                 * pmix_device_distance_t(5) says the two fields are for. So
-                 * the ancestor has to be taken between THIS PU and the device.
-                 * It used to be taken between `obj` - the single lowest object
-                 * covering the entire cpuset - and the device, which does not
-                 * vary with w at all: every iteration recomputed the same
-                 * value, the PU was fetched and then ignored, and mindist and
-                 * maxdist came out equal for every device on every machine.
-                 * The documented multi-location case could not be
-                 * represented. `obj` is still what tells us the cpuset covers
-                 * something below the machine (checked far above); it is not
-                 * the thing to measure from. */
-                maxdist = 0;
-                mindist = UINT_MAX;
-                for (w = 0; w < width; w++) {
-                    /* get the pu at this index */
-                    pu = hwloc_get_obj_by_depth(topo->topology, pudepth, w);
-                    /* is this PU in our cpuset? */
-                    if (NULL == pu || NULL == pu->cpuset ||
-                        !hwloc_bitmap_intersects(pu->cpuset, cpuset->bitmap)) {
-                        continue;
-                    }
-                    /* find the common ancestor between this location and the device */
-                    ancestor = hwloc_get_common_ancestor_obj(topo->topology, pu, tgt);
-                    if (NULL != ancestor) {
-                        if (0 == ancestor->depth) {
-                            /* we only share the machine - need to do something more
-                             * to compute the distance. This can, however, get a little
-                             * hairy as there is no good measure of package-to-package
-                             * distance - it is all typically given in terms of NUMA
-                             * domains, which is no longer a valid way of looking at
-                             * locations due to overlapping domains. For now, we will
-                             * just take the depth of this location and add the depth
-                             * of the topology to ensure it sorts further away than
-                             * anything that shares an ancestor below the machine
-                             * (those are all < depth) */
-                            dp = pu->depth + depth;
-                        } else {
-                            /* the depth value can be used as an indicator of relative
-                             * locality - the higher the value, the closer the device.
-                             * We invert the pyramid to set the dist to be closer for
-                             * smaller values */
-                            dp = depth - ancestor->depth;
-                        }
-                    } else {
-                        /* shouldn't happen - consider this an error condition */
-                        rc = PMIX_ERROR;
-                        goto cleanup;
-                    }
-                    if (mindist > dp) {
-                        mindist = dp;
-                    }
-                    if (maxdist < dp) {
-                        maxdist = dp;
-                    }
-                }
-                if (UINT_MAX == mindist) {
-                    /* no location in the cpuset lies in this topology, so we
-                     * measured nothing. Report the documented "distance is
-                     * unknown" sentinel in BOTH fields - leaving maxdist at 0
-                     * claimed the device was as close as possible while
-                     * mindist said it was unknown, and min > max besides. */
-                    d->dist.mindist = UINT16_MAX;
-                    d->dist.maxdist = UINT16_MAX;
-                } else {
-                    d->dist.mindist = mindist;
-                    d->dist.maxdist = maxdist;
-                }
-            }
-            device = hwloc_get_next_osdev(topo->topology, device);
-        }
+    /* Enumerate the devices, then measure each one.
+     *
+     * The enumeration is pmix_hwloc_get_devices()' job rather than a second
+     * walk written here.  These two answers are handed to the same
+     * application - one says which devices exist, the other how far away
+     * they are - so a device the two disagree about, in name or in
+     * existence, is worse than either answer alone.  Sharing the enumerator
+     * is what makes them agree by construction: it is also what gives this
+     * function per-PCI-function dedup (a GPU exposing a card node, a render
+     * node and a vendor node is one device, not three) and a deterministic
+     * order, neither of which the walk here used to have. */
+    prc = pmix_hwloc_get_devices(topo, type, (NULL == devids) ? NULL : devids[0],
+                                 &devs, &ndevs);
+    if (PMIX_SUCCESS != prc) {
+        rc = prc;
+        goto cleanup;
     }
 
+    for (k = 0; k < ndevs; k++) {
+        /* a caller may name several devices; get_devices() takes one, so
+         * filter the rest here */
+        if (NULL != devids) {
+            found = false;
+            for (dn = 0; NULL != devids[dn]; dn++) {
+                if (0 == strcasecmp(devids[dn], devs[k].dev.osname)
+                    || 0 == strcasecmp(devids[dn], devs[k].dev.uuid)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                continue;
+            }
+        }
+
+        d = PMIX_NEW(pmix_devdist_item_t);
+        pmix_list_append(&dists, &d->super);
+        d->dist.type = devs[k].dev.type;
+        d->dist.uuid = strdup(devs[k].dev.uuid);
+        d->dist.osname = strdup(devs[k].dev.osname);
+
+        tgt = devs[k].locality;
+        if (NULL == tgt) {
+            /* nothing in the topology is local to it */
+            d->dist.mindist = UINT16_MAX;
+            d->dist.maxdist = UINT16_MAX;
+            continue;
+        }
+
+        /* Loop over the PUs the process is bound to, measuring each one's
+         * distance to this device.
+         *
+         * The min/max pair exists precisely because a process may be bound
+         * to more than one location and those locations may sit at
+         * different distances from the device - that is what
+         * pmix_device_distance_t(5) says the two fields are for.  So the
+         * ancestor has to be taken between THIS PU and the device. */
+        maxdist = 0;
+        mindist = UINT_MAX;
+        for (w = 0; w < width; w++) {
+            pu = hwloc_get_obj_by_depth(topo->topology, pudepth, w);
+            if (NULL == pu || NULL == pu->cpuset
+                || !hwloc_bitmap_intersects(pu->cpuset, cpuset->bitmap)) {
+                continue;
+            }
+            ancestor = hwloc_get_common_ancestor_obj(topo->topology, pu, tgt);
+            if (NULL == ancestor) {
+                /* shouldn't happen - consider this an error condition */
+                rc = PMIX_ERROR;
+                goto cleanup;
+            }
+            if (0 == ancestor->depth) {
+                /* we only share the machine - need to do something more
+                 * to compute the distance. This can, however, get a little
+                 * hairy as there is no good measure of package-to-package
+                 * distance - it is all typically given in terms of NUMA
+                 * domains, which is no longer a valid way of looking at
+                 * locations due to overlapping domains. For now, we will
+                 * just take the depth of this location and add the depth
+                 * of the topology to ensure it sorts further away than
+                 * anything that shares an ancestor below the machine
+                 * (those are all < depth) */
+                dp = pu->depth + depth;
+            } else {
+                /* the depth value can be used as an indicator of relative
+                 * locality - the higher the value, the closer the device.
+                 * We invert the pyramid to set the dist to be closer for
+                 * smaller values */
+                dp = depth - ancestor->depth;
+            }
+            if (mindist > dp) {
+                mindist = dp;
+            }
+            if (maxdist < dp) {
+                maxdist = dp;
+            }
+        }
+        if (UINT_MAX == mindist) {
+            /* no location in the cpuset lies in this topology, so we
+             * measured nothing. Report the documented "distance is
+             * unknown" sentinel in BOTH fields - leaving maxdist at 0
+             * claimed the device was as close as possible while
+             * mindist said it was unknown, and min > max besides. */
+            d->dist.mindist = UINT16_MAX;
+            d->dist.maxdist = UINT16_MAX;
+        } else {
+            d->dist.mindist = mindist;
+            d->dist.maxdist = maxdist;
+        }
+    }
     /* create the return array */
     n = pmix_list_get_size(&dists);
     if (0 == n) {
@@ -1490,6 +1410,9 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
 
 cleanup:
     PMIX_LIST_DESTRUCT(&dists);
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+    }
     if (NULL != devids) {
         PMIx_Argv_free(devids);
     }
@@ -1747,7 +1670,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
     pmix_list_t cands;
     pmix_devcand_t *c, *cnext, *match;
     pmix_hwloc_device_t *array = NULL;
-    pmix_device_type_t dtype;
+    pmix_device_type_t dtype, matchtype;
     pmix_status_t rc = PMIX_SUCCESS;
     size_t n, ncands, ntypes;
     char *uuid = NULL;
@@ -1781,7 +1704,17 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
                 break;
             }
         }
-        if (PMIX_DEVTYPE_UNKNOWN == dtype || !(type & dtype)) {
+        /* A GPU is a GPU whether hwloc labelled its compute node GPU or
+         * COPROC: "cuda0" is a coprocessor OS device and "renderD128" a gpu
+         * one, and they are commonly two views of the same card.  Since the
+         * function is named by whichever of them is most useful, a caller
+         * asking for GPU alone would otherwise lose every GPU on a machine
+         * whose vendor backend is loaded. */
+        matchtype = dtype;
+        if (PMIX_DEVTYPE_GPU == dtype || PMIX_DEVTYPE_COPROC == dtype) {
+            matchtype = PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_COPROC;
+        }
+        if (PMIX_DEVTYPE_UNKNOWN == dtype || !(type & matchtype)) {
             goto next;
         }
         pci = pci_ancestor(osdev);

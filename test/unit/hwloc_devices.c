@@ -287,6 +287,78 @@ static void test_topo1(const char *dir)
     free_topo(&topo);
 }
 
+/* The enumerator and the distance array are handed to the same application:
+ * one says which devices exist, the other how far away they are.  A device
+ * the two disagree about - in name, or in existence - is worse than either
+ * answer alone, because nothing the application can do will reconcile them.
+ * Since compute_distances() is built on get_devices(), that agreement is
+ * structural; this pins it so it stays that way. */
+static void test_distances_agree(const char *dir)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_cpuset_t cpuset = PMIX_CPUSET_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    pmix_device_distance_t *dist = NULL;
+    size_t ndevs = 0, ndist = 0, i, j;
+    char path[1024];
+    pmix_status_t rc;
+    bool matched;
+    hwloc_topology_t t;
+
+    snprintf(path, sizeof(path), "%s/test-topo2.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        fprintf(stderr, "FAIL: could not load %s\n", path);
+        ++failures;
+        return;
+    }
+    t = (hwloc_topology_t) topo.topology;
+
+    /* bind to the whole machine so every device is measurable */
+    cpuset.source = strdup("hwloc");
+    cpuset.bitmap = hwloc_bitmap_dup(hwloc_get_root_obj(t)->cpuset);
+
+    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_NETWORK
+                                       | PMIX_DEVTYPE_OPENFABRICS,
+                                NULL, &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 0 < ndevs, "agree: the enumerator finds devices");
+
+    rc = pmix_hwloc_compute_distances(&topo, &cpuset, NULL, 0, &dist, &ndist);
+    ok(PMIX_SUCCESS == rc, "agree: distances computed");
+    ok(ndist == ndevs, "agree: the two report the same number of devices");
+
+    /* every device the enumerator found has a distance entry under the same
+     * name - the string an application correlates the two by */
+    for (i = 0; i < ndevs; i++) {
+        matched = false;
+        for (j = 0; j < ndist; j++) {
+            if (NULL != dist[j].uuid && NULL != devs[i].dev.uuid
+                && 0 == strcmp(dist[j].uuid, devs[i].dev.uuid)) {
+                matched = true;
+                break;
+            }
+        }
+        ok(matched, "agree: each enumerated device has a distance under the same uuid");
+    }
+
+    /* and the GPU is there under its vendor compute node, not dropped for
+     * being a coprocessor rather than a "gpu" OS device */
+    matched = false;
+    for (j = 0; j < ndist; j++) {
+        if (NULL != dist[j].osname && 0 == strcmp(dist[j].osname, "rsmi0")) {
+            matched = true;
+        }
+    }
+    ok(matched, "agree: the GPU appears in the distances under its compute node");
+
+    if (NULL != dist) {
+        PMIx_Device_distance_free(dist, ndist);
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    hwloc_bitmap_free(cpuset.bitmap);
+    free(cpuset.source);
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -308,6 +380,7 @@ int main(int argc, char **argv)
 
     test_topo2(dir);
     test_topo1(dir);
+    test_distances_agree(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);
