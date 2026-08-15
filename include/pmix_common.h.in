@@ -1733,10 +1733,9 @@ typedef int pmix_status_t;
 #define PMIX_GROUP_CONSTRUCT_COMPLETE               -166
 #define PMIX_GROUP_LEADER_SELECTED                  -167
 #define PMIX_GROUP_LEADER_FAILED                    -168
-                                                 // -169 retired: was
-                                                 // PMIX_GROUP_CONTEXT_ID_ASSIGNED, which
-                                                 // nothing ever generated. Do not reuse
-                                                 // the value.
+                                                 // -169 is PMIX_GROUP_CONTEXT_ID_ASSIGNED,
+                                                 // deprecated and moved to
+                                                 // pmix_deprecated.h. Do not reuse the value.
 #define PMIX_GROUP_MEMBER_FAILED                    -170
 #define PMIX_ERR_REPEAT_ATTR_REGISTRATION           -171
 #define PMIX_ERR_IOF_FAILURE                        -172

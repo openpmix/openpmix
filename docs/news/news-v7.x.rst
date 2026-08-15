@@ -37,13 +37,15 @@ Detailed changes since v6.1.0:
    the request is not fatal: the group forms without an ID, which is
    what happened before in every case. The announcement now waits on one
    host round trip, which forming a group by invitation can afford
- - The PMIX_GROUP_CONTEXT_ID_ASSIGNED event code has been removed. It was
-   defined but never generated - not by this library and not by any known
-   host - and the PMIx_Group_construct man page promised delivery of the
-   assigned context ID through it, which never happened. The context ID
-   is returned in the results array, as that page also says and as the
-   code has always done. The value -169 is retired and will not be
-   reused; the Standard will be updated to match
+ - The PMIX_GROUP_CONTEXT_ID_ASSIGNED event code is deprecated and has
+   moved to pmix_deprecated.h. It was defined but never generated - not
+   by this library and not by any known host - and the
+   PMIx_Group_construct man page promised delivery of the assigned
+   context ID through it, which never happened. The context ID is
+   returned in the results array, as that page also says and as the code
+   has always done. The constant remains so that code referencing it
+   still compiles, and the value -169 will not be reused; the Standard
+   will be updated to match
  - A PMIx server no longer drops an event one of its clients wanted. The
    fan-out filter matched an event's affected processes against the
    affected-process list a client's event registration had carried - but
