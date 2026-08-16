@@ -267,6 +267,19 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_globals.output_limit);
 
+    /* Bound on the output a tool will hold while waiting for a spawn reply
+     * to say how that output should be formatted (see the pending-cache
+     * comment on pmix_globals_t). Past it, output falls back to the
+     * process-wide stand-in, which is what every chunk got before the cache
+     * existed - so the limit trades formatting fidelity for a ceiling on
+     * how much of a job's early output we will buffer. */
+    pmix_globals.iof_pending_limit = 1048576;
+    (void) pmix_mca_base_var_register("pmix", "iof", NULL, "pending_limit",
+                                      "Maximum bytes of output to hold while awaiting the spawn "
+                                      "reply that says how to format it [default: 1MB]",
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+                                      &pmix_globals.iof_pending_limit);
+
     pmix_globals.xml_output = false;
     (void) pmix_mca_base_var_register("pmix", "iof", NULL, "xml_output",
                                       "Display all output in XML format (default: false)",

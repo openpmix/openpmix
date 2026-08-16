@@ -7,6 +7,21 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - Output from a spawned job that reaches a tool before the spawn reply
+   naming its namespace is now held until that reply arrives, rather than
+   formatted with a process-wide stand-in. The stand-in could not tell
+   two concurrent spawns apart - the second overwrote the first's
+   directives, so whichever job's output arrived first was formatted with
+   the other's - and it could not carry an output-to-file or
+   output-to-directory directive at all, since no file can be opened for
+   a namespace we have not been told about. For a spawn whose output was
+   directed to a file (where the default is not to write locally as
+   well), that meant such output was written nowhere: it is now written
+   to the file, as the spawn asked. Held output is released as soon as
+   the reply lands, in arrival order, and formatted with the directives
+   its own spawn was issued with. The amount held is bounded by the new
+   pmix_iof_pending_limit MCA parameter (default 1MB), past which output
+   falls back to the stand-in as before
  - A group formed through PMIx_Group_invite / PMIx_Group_join now
    exchanges its members' endpoint data, which only the collective
    PMIx_Group_construct did before. An acceptance carries the accepting
