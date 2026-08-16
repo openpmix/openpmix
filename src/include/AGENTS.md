@@ -174,6 +174,20 @@ AND INIT/FINALIZE THE GLOBAL CLASSES."* It is almost entirely
   `unlink`/`rmdir`).
 - Thin libevent wrappers `pmix_event_assign()` / `pmix_event_new()`
   (the `pmix_event_*` macros they back live in `pmix_types.h`).
+- `pmix_event_del_checked()` — the one wrapper here that is **not**
+  thin, and the reason `pmix_event_del()` is not simply `event_del()`.
+  Deleting an event takes the lock of the base it sits on, and objects
+  in this file outlive that base: every role releases its peers after
+  `pmix_rte_finalize()` has freed it (see the two-reference note on
+  `mypeer` in [`src/runtime/AGENTS.md`](../runtime/AGENTS.md)), and
+  `pdes()` reaches the peer's own events, its namespace, that
+  namespace's IOF sinks, and each sink's write event. There is nothing
+  left to delete by then, so the wrapper declines once `evbase` and
+  `evauxbase` are both NULL rather than reaching into freed memory —
+  where the failure mode is not a crash but a permanent block on a mutex
+  in reused heap, appearing and disappearing with unrelated changes.
+  A destructor here may call `pmix_event_del()` freely *because* of
+  that; do not push the check back out into the callers.
 - `pmix_dstor_new_tma()` / `pmix_dstor_release_tma()` and the
   `keyindex` con/destructor — note these are **TMA-aware** (they honor a
   `pmix_tma_t` custom allocator so the objects can live in shared

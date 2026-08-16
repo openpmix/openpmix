@@ -330,31 +330,16 @@ static void pdes(pmix_peer_t *p)
     if (0 <= p->sd) {
         CLOSE_THE_SOCKET(p->sd);
     }
-    /* Only while there is still an event base to delete them from.
-     *
-     * Each role releases its peers *after* pmix_rte_finalize(), which is
-     * what stops the progress thread and frees the base - see the
-     * two-reference note on mypeer in src/runtime/pmix_finalize.c. By
-     * then libevent has already torn every event off that base, so there
-     * is nothing here left to delete; what event_del() does instead is
-     * take the base's lock, which is freed memory. Whatever has since
-     * been written over it decides what happens - usually nothing, but a
-     * byte pattern that reads as "held" hangs the process on a mutex
-     * nobody will ever release. A connected peer is what makes this
-     * reachable, since a peer that never armed its events has neither
-     * flag set: it hung a tool cycling init/finalize against a real
-     * server, and only on the machines whose heap happened to land the
-     * wrong value there.
-     *
-     * pmix_rte_finalize() NULLs evbase once the base is gone, which is
-     * the only in-scope thing here that can say so. */
-    if (NULL != pmix_globals.evbase) {
-        if (p->send_ev_active) {
-            pmix_event_del(&p->send_event);
-        }
-        if (p->recv_ev_active) {
-            pmix_event_del(&p->recv_event);
-        }
+    /* This is the destructor that runs with no event base left - a role
+     * releases its peers after pmix_rte_finalize() has freed it - so the
+     * deletes below are the ones pmix_event_del_checked() exists for.
+     * The flags are cleared either way, so the state a released peer
+     * leaves behind says what is true of it. */
+    if (p->send_ev_active) {
+        pmix_event_del(&p->send_event);
+    }
+    if (p->recv_ev_active) {
+        pmix_event_del(&p->recv_event);
     }
     p->send_ev_active = false;
     p->recv_ev_active = false;
@@ -895,6 +880,38 @@ pmix_event_t *pmix_event_new(pmix_event_base_t *b, int fd, short fg, event_callb
 
     ev = event_new(b, fd, fg, (event_callback_fn) cbfn, cbd);
     return ev;
+}
+
+/* An object that owns an event normally dies before the base that event
+ * is registered on, and then this is just event_del(). Some cannot: each
+ * role releases its peers *after* pmix_rte_finalize(), because the
+ * two-reference arrangement on mypeer described in
+ * src/runtime/pmix_finalize.c requires it - and pmix_rte_finalize() is
+ * what stops the progress thread and frees the base. So the peer
+ * destructor below, and everything it reaches (its namespace, that
+ * namespace's IOF sinks, and each sink's write event), can run with no
+ * base left.
+ *
+ * There is nothing for them to delete by then: libevent tore every event
+ * off the base when it freed it. What event_del() does instead is take
+ * the base's lock, which is memory that has been handed back. Usually
+ * the bytes there still read as an unheld mutex and nobody notices; when
+ * they do not, the process blocks on a mutex no thread will ever release
+ * and the only symptom is a hang with no output. That is a defect whose
+ * appearance depends on what the allocator happens to reuse, so it comes
+ * and goes with unrelated changes elsewhere.
+ *
+ * Rather than leave each such destructor to remember, decline here for
+ * all of them: no base, nothing registered, nothing to delete.
+ * pmix_rte_finalize() NULLs both pointers once the base is gone, and
+ * they are NULL before the first init as well - a window in which no
+ * event can have been added either. */
+int pmix_event_del_checked(struct event *ev)
+{
+    if (NULL == pmix_globals.evbase && NULL == pmix_globals.evauxbase) {
+        return 0;
+    }
+    return event_del(ev);
 }
 
 static void tcon(pmix_timer_t *p)
