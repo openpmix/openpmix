@@ -210,7 +210,14 @@ PMIX_EXPORT int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase, i
     pmix_event_assign((x), (b), (fd), (fg), (event_callback_fn)(cb), (arg))
 
 #define pmix_event_add(ev, tv)      event_add((ev), (tv))
-#define pmix_event_del(ev)          event_del((ev))
+
+/* Deleting an event takes the lock of the base it is registered on, so
+ * it is only meaningful while that base is alive. This declines once
+ * ours is gone rather than reaching into freed memory - see the
+ * definition in pmix_globals.c for why an object holding an event can
+ * outlive the base at all. */
+PMIX_EXPORT int pmix_event_del_checked(struct event *ev);
+#define pmix_event_del(ev)          pmix_event_del_checked((ev))
 #define pmix_event_active(x, y, z)  event_active((x), (y), (z))
 #define pmix_event_base_loopexit(b) event_base_loopexit(b, NULL)
 

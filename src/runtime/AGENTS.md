@@ -206,6 +206,32 @@ before "fixing" either one — each has cost a debugging session.
   finalize; if you add state with the same shape, expect the same
   constraint.
 
+### The consequence: an object can outlive the base its events are on
+
+The late release above happens *after* `pmix_progress_thread_stop(NULL)`
+has freed the event base, and a peer owns two libevent events — as does
+everything the peer reaches on its way out: its namespace, that
+namespace's IOF sinks, and each sink's write event. `event_del()` on any
+of them then takes the lock of a base that has been handed back to the
+allocator.
+
+Nothing is being deleted at that point (libevent tore every event off the
+base when it freed it), so the call is pure hazard: whatever has since
+been written over the lock decides what happens. Usually the bytes still
+read as an unheld mutex and nobody notices — which is why this survived
+for so long — and when they do not, the process blocks forever on a mutex
+no thread will release, with no output and no clue. It presents as a hang
+that comes and goes with unrelated changes elsewhere in the library,
+because what moves is the heap, not the code.
+
+`pmix_event_del()` is therefore not `event_del()`: it routes through
+`pmix_event_del_checked()` in
+[`src/include/pmix_globals.c`](../include/pmix_globals.c), which declines
+once both `evbase` and `evauxbase` are NULL. **Do not "simplify" that
+back into a direct call**, and note that the two pointers being NULL is
+the only in-scope signal that the base is gone — which is part of why
+`pmix_rte_finalize` NULLs them rather than leaving them dangling.
+
 ## MCA parameters (`pmix_params.c`)
 
 `pmix_register_params` is latched by the file-scope `pmix_register_done`
