@@ -47,7 +47,7 @@ static int component_query(pmix_mca_base_module_t **module, int *priority);
  */
 PMIX_EXPORT pmix_ptl_base_component_t pmix_mca_ptl_client_component = {
     .base = {
-        PMIX_PTL_BASE_VERSION_2_0_0,
+        PMIX_MCA_BASE_VERSION(ptl),
 
         /* Component name and version */
         .pmix_mca_component_name = "client",

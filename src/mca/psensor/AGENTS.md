@@ -119,7 +119,9 @@ supply both):
 The component data structure is just a typedef of the standard
 `pmix_mca_base_component_t` (**`pmix_psensor_base_component_t`**), and the
 version macro every component struct opens with is
-**`PMIX_PSENSOR_BASE_VERSION_1_0_0`**. The exported global
+**`PMIX_MCA_BASE_VERSION(psensor)`**, which stamps in the framework's
+interface version from the three **`PMIX_MCA_psensor_*_VERSION`** macros
+this header states. The exported global
 **`pmix_psensor`** (in `psensor_base_frame.c`) holds the two base
 dispatch functions; all back-end code that drives the framework calls
 through `pmix_psensor.start(...)` / `pmix_psensor.stop(...)`.
@@ -306,7 +308,7 @@ help file of its own.
 
 Adding a monitor means creating `src/mca/psensor/<name>/` with the usual
 `Makefile.am`, a component struct opened with
-`PMIX_PSENSOR_BASE_VERSION_1_0_0`, and a module supplying `start`/`stop`;
+`PMIX_MCA_BASE_VERSION(psensor)`, and a module supplying `start`/`stop`;
 the framework picks it up through `static-components.h` with no core
 changes. Editing a `Makefile.am` only needs a plain `make`; adding or
 removing a *component directory* changes the build wiring resolved by

@@ -55,7 +55,7 @@ static int if_linux_ipv6_open(void);
 
 /* Discovers Linux IPv6 interfaces */
 pmix_pif_base_component_t pmix_mca_pif_linux_ipv6_component = {
-    PMIX_PIF_BASE_VERSION_2_0_0,
+    PMIX_MCA_BASE_VERSION(pif),
 
     /* Component name and version */
     .pmix_mca_component_name = "linux_ipv6",

@@ -25,7 +25,7 @@ pmix_pinstalldirs_base_component_t pmix_mca_pinstalldirs_env_component = {
     /* First, the mca_component_t struct containing meta information
        about the component itself */
     .component = {
-        PMIX_PINSTALLDIRS_BASE_VERSION_1_0_0,
+        PMIX_MCA_BASE_VERSION(pinstalldirs),
 
         /* Component name and version */
         "env",

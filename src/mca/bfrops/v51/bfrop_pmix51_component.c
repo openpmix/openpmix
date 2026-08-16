@@ -50,7 +50,7 @@ static pmix_bfrops_module_t *assign_module(void);
  */
 pmix_bfrops_base_component_t pmix_mca_bfrops_v51_component = {
     .base = {
-        PMIX_BFROPS_BASE_VERSION_1_0_0,
+        PMIX_MCA_BASE_VERSION(bfrops),
 
         /* Component name and version */
         .pmix_mca_component_name = "v51",

@@ -154,7 +154,7 @@ base, a psec component adds:
 | `assign_module` | returns this component's `pmix_psec_module_t *` — the hook the base uses to hand out a module by name |
 
 Every component struct opens with the version macro
-`PMIX_PSEC_BASE_VERSION_1_0_0` and sets `.pmix_mca_component_name` to its
+`PMIX_MCA_BASE_VERSION(psec)` and sets `.pmix_mca_component_name` to its
 directory name.
 
 ## The base layer

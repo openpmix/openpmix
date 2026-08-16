@@ -70,12 +70,15 @@ Three name-length limits are fixed here and used to size fields all over
 the tree: project 15, framework 31, component 63 (each `+1` for the
 terminator).
 
-A component struct is opened with its framework's version macro, which
-expands through `PMIX_MCA_BASE_VERSION_1_0_0()` in this header:
+A component struct is opened with `PMIX_MCA_BASE_VERSION()` from this
+header, naming its framework as a bare token — the framework's directory
+name, which the macro both stringifies into the struct and pastes into
+the `PMIX_MCA_<framework>_*_VERSION` macros the framework's own header
+states:
 
 ```c
 pmix_gds_base_component_t pmix_mca_gds_hash_component = {
-    PMIX_GDS_BASE_VERSION_1_0_0,
+    PMIX_MCA_BASE_VERSION(gds),
     .pmix_mca_component_name = "hash",
     ...
 };
@@ -95,7 +98,7 @@ The layout is strict — nothing under `src/mca` may deviate:
 
 ```
 src/mca/<framework>/
-├── <framework>.h            the framework's public API: module struct + version macro
+├── <framework>.h            the framework's public API: module struct + interface version
 ├── base/                    framework infrastructure, NOT a component
 │   ├── base.h
 │   ├── <framework>_base_frame.c     PMIX_MCA_BASE_FRAMEWORK_DECLARE
@@ -151,10 +154,11 @@ tree:
 1. Create `src/mca/<framework>/<component>/` with a `Makefile.am`, and a
    `configure.m4` **only** if the component can fail to be buildable.
 2. Give the component struct the exactly-correct public symbol name (see
-   `mca.h` above) and open it with the framework's version macro. That
-   macro expands to the framework's `PMIX_MCA_<name>_*_VERSION` numbers,
-   which the framework's own declaration reads too — so a component that
-   opens with it is, by construction, checkable at load time against the
+   `mca.h` above) and open it with
+   `PMIX_MCA_BASE_VERSION(<framework>)`. That macro pastes the
+   framework's `PMIX_MCA_<name>_*_VERSION` numbers, which the
+   framework's own declaration reads too — so a component that opens
+   with it is, by construction, checkable at load time against the
    framework it is being loaded into. See "The framework interface
    version" in [`base/AGENTS.md`](base/AGENTS.md).
 3. Register MCA variables from the component's *register* function, not

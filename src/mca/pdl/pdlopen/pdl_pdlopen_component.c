@@ -47,7 +47,7 @@ pmix_pdl_pdlopen_component_t pmix_mca_pdl_pdlopen_component = {
         /* First, the mca_component_t struct containing meta information
            about the component itself */
         .base_version = {
-            PMIX_PDL_BASE_VERSION_1_0_0,
+            PMIX_MCA_BASE_VERSION(pdl),
 
             /* Component name and version */
             .pmix_mca_component_name = "pdlopen",

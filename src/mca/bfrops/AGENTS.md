@@ -135,7 +135,7 @@ Also in [`bfrops.h`](bfrops.h). Beyond the standard
 - `assign_module` — a `component`-level function returning this
   component's module (used by the base `assign_module` dispatcher).
 
-Every component's struct opens with `PMIX_BFROPS_BASE_VERSION_1_0_0`.
+Every component's struct opens with `PMIX_MCA_BASE_VERSION(bfrops)`.
 
 ## Selection, assignment, and lifecycle
 

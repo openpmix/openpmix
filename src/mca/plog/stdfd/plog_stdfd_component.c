@@ -23,7 +23,7 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  * Struct of function pointers that need to be initialized
  */
 pmix_plog_base_component_t pmix_mca_plog_stdfd_component = {
-    PMIX_PLOG_BASE_VERSION_1_0_0,
+    PMIX_MCA_BASE_VERSION(plog),
 
     .pmix_mca_component_name = "stdfd",
     PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,

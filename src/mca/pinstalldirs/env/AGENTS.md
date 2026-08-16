@@ -77,7 +77,7 @@ programmatically at init time.
 
 `env` provides a `pmix_pinstalldirs_base_component_t` named
 `pmix_mca_pinstalldirs_env_component`, opened with
-`PMIX_PINSTALLDIRS_BASE_VERSION_1_0_0`. Two things distinguish it from
+`PMIX_MCA_BASE_VERSION(pinstalldirs)`. Two things distinguish it from
 `config`:
 
 - It is **not `const`** — `init` writes into its own `install_dirs_data`

@@ -284,11 +284,9 @@ typedef struct pmix_mca_base_component_2_1_0_t pmix_mca_base_component_t;
 typedef struct pmix_mca_base_component_2_1_0_t pmix_mca_base_component_2_1_0_t;
 
 /**
- * Macro for framework author convenience.
- *
- * This macro is used by frameworks defining their component types,
- * indicating that they subscribe to the MCA version 2.0.0.  See
- * component header files (e.g., coll.h) for examples of its usage.
+ * The version of the MCA itself - the component struct layout and the
+ * lifecycle around it, which is one version for the whole project and
+ * says nothing about any individual framework's interface.
  */
 #define PMIX_MCA_BASE_VERSION_MAJOR   2
 #define PMIX_MCA_BASE_VERSION_MINOR   1
@@ -307,9 +305,54 @@ typedef struct pmix_mca_base_component_2_1_0_t pmix_mca_base_component_2_1_0_t;
     .pmix_mca_type_name = TYPE,                                                                   \
     PMIX_MCA_BASE_MAKE_VERSION(type, type_major, type_minor, type_release)
 
-#define PMIX_MCA_BASE_VERSION_1_0_0(type, type_major, type_minor, type_release) \
-    PMIX_MCA_BASE_VERSION_2_1_0("pmix", PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION, \
-                                PMIX_RELEASE_VERSION, type, type_major, type_minor, type_release)
+/**
+ * Reach the interface version a framework's own header states.
+ *
+ * A framework declares its version once, as three object-like macros in
+ * its <framework>.h - for example, in pcompress.h:
+ *
+ *   #define PMIX_MCA_pcompress_MAJOR_VERSION   3
+ *   #define PMIX_MCA_pcompress_MINOR_VERSION   0
+ *   #define PMIX_MCA_pcompress_RELEASE_VERSION 0
+ *
+ * Both sides of the load-time version check reach those same three
+ * integers by pasting the framework's name: the component stamp below,
+ * and the framework's own declaration through
+ * PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE. Nothing restates them, so
+ * the version a component carries and the version it is checked against
+ * cannot drift apart, and bumping an interface is one edit in one
+ * header.
+ *
+ * The name carries the framework's directory name verbatim, lower case
+ * and all: the preprocessor pastes tokens, it does not upper-case them.
+ */
+#define PMIX_MCA_FW_VER_(name, level) PMIX_MCA_##name##_##level##_VERSION
+#define PMIX_MCA_FW_VER(name, level)  PMIX_MCA_FW_VER_(name, level)
+
+/**
+ * Open a component struct.
+ *
+ * Every component in this project begins its base struct with this,
+ * naming its framework as a bare token - the framework's directory
+ * name, so that the same token both stringifies into the struct and
+ * pastes into the version macros above:
+ *
+ *   pmix_gds_base_component_t pmix_mca_gds_hash_component = {
+ *       .base = {
+ *           PMIX_MCA_BASE_VERSION(gds),
+ *           .pmix_mca_component_name = "hash",
+ *           ...
+ *
+ * A framework whose header states no interface version does not compile
+ * through here, which is the point: within this project a framework
+ * states its version or says so loudly.
+ */
+#define PMIX_MCA_BASE_VERSION(type)                                                 \
+    PMIX_MCA_BASE_VERSION_2_1_0("pmix", PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,     \
+                                PMIX_RELEASE_VERSION, #type,                        \
+                                PMIX_MCA_FW_VER(type, MAJOR),                       \
+                                PMIX_MCA_FW_VER(type, MINOR),                       \
+                                PMIX_MCA_FW_VER(type, RELEASE))
 
 
 

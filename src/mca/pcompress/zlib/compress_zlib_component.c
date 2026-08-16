@@ -53,7 +53,7 @@ PMIX_EXPORT pmix_mca_base_component_t pmix_mca_pcompress_zlib_component = {
     /* Handle the general mca_component_t struct containing
      *  meta information about the component zlib
      */
-    PMIX_COMPRESS_BASE_VERSION_3_0_0,
+    PMIX_MCA_BASE_VERSION(pcompress),
 
     /* Component name and version */
     .pmix_mca_component_name = "zlib",

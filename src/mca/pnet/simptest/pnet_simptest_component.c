@@ -45,7 +45,7 @@ static pmix_status_t component_register(void);
  */
 pmix_pnet_simptest_component_t pmix_mca_pnet_simptest_component = {
     .super = {
-        PMIX_PNET_BASE_VERSION_1_0_0,
+        PMIX_MCA_BASE_VERSION(pnet),
 
         /* Component name and version */
         .pmix_mca_component_name = "simptest",

@@ -30,7 +30,7 @@ static pmix_status_t syslog_register(void);
  */
 pmix_plog_syslog_component_t pmix_mca_plog_syslog_component = {
     .super = {
-        PMIX_PLOG_BASE_VERSION_1_0_0,
+        PMIX_MCA_BASE_VERSION(plog),
 
         .pmix_mca_component_name = "syslog",
         PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,

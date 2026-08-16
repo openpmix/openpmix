@@ -48,7 +48,7 @@ static pmix_status_t component_register(void);
  */
 pmix_pgpu_test_component_t pmix_mca_pgpu_test_component = {
     .super = {
-        PMIX_PGPU_BASE_VERSION_1_0_0,
+        PMIX_MCA_BASE_VERSION(pgpu),
 
         /* Component name and version */
         .pmix_mca_component_name = "test",

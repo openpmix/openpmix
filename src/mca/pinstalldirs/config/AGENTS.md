@@ -75,7 +75,7 @@ the framework doc's expansion section.
 
 `config` provides a `pmix_pinstalldirs_base_component_t` named
 `pmix_mca_pinstalldirs_config_component`, opened with
-`PMIX_PINSTALLDIRS_BASE_VERSION_1_0_0`. Two things distinguish it from
+`PMIX_MCA_BASE_VERSION(pinstalldirs)`. Two things distinguish it from
 `env`:
 
 - It is declared **`const`** — its data is fixed at compile time and

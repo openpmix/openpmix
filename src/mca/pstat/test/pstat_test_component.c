@@ -56,7 +56,7 @@ const pmix_pstat_base_component_t pmix_mca_pstat_test_component = {
     /* Indicate that we are a pstat v1.1.0 component (which also
        implies a specific MCA version) */
 
-    PMIX_PSTAT_BASE_VERSION_1_0_0,
+    PMIX_MCA_BASE_VERSION(pstat),
 
     /* Component name and version */
 

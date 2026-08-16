@@ -152,8 +152,9 @@ global module.
 - **`pmix_pgpu_base_component_t`** is a plain typedef of
   `pmix_mca_base_component_t`; components wrap it in a larger struct to
   hold their MCA-param state (see any component's `*_component_t`).
-- **`PMIX_PGPU_BASE_VERSION_1_0_0`** is the version macro every component
-  struct must open with.
+- The three **`PMIX_MCA_pgpu_*_VERSION`** macros state the framework's
+  interface version — the numbers `PMIX_MCA_BASE_VERSION(pgpu)` stamps
+  into every component struct.
 
 ## Directory layout
 
@@ -354,7 +355,7 @@ regenerate-the-help-content golden rule does not apply here.
 
 ## When adding or modifying a component
 
-- Open the component struct with `PMIX_PGPU_BASE_VERSION_1_0_0` and set
+- Open the component struct with `PMIX_MCA_BASE_VERSION(pgpu)` and set
   `.pmix_mca_component_name` to your directory name. Emit the component-
   init symbol with `PMIX_MCA_BASE_COMPONENT_INIT(pmix, pgpu, <name>)` —
   the third argument **must** match the struct's component name

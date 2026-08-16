@@ -100,8 +100,9 @@ compiles against. It is deliberately tiny:
   each provides only a `pmix_mca_query_component` that hands back its
   module and a priority.
 
-- **`PMIX_PSTAT_BASE_VERSION_1_0_0`** — the version macro every
-  component's component struct must open with.
+- The three **`PMIX_MCA_pstat_*_VERSION`** macros — the framework's
+  interface version, which `PMIX_MCA_BASE_VERSION(pstat)` stamps into
+  every component struct.
 
 - The global **`pmix_pstat`** — the selected module, the single symbol
   the rest of the library calls through (`pmix_pstat.query(...)`).
@@ -381,7 +382,7 @@ Remember the top-level golden rules that bite here:
 
 ## When adding or modifying a component
 
-- Open the component struct with `PMIX_PSTAT_BASE_VERSION_1_0_0` and set
+- Open the component struct with `PMIX_MCA_BASE_VERSION(pstat)` and set
   `pmix_mca_component_name` to your component's directory name.
 - Provide a `pmix_mca_query_component` that hands back your
   `pmix_pstat_base_module_t` and a priority. Return no module / a failure

@@ -34,7 +34,7 @@ IPv4. It is not built on BSD/macOS (which use the `bsdx_*` components).
 
 ## The component struct
 
-Same shape as the others: `PMIX_PIF_BASE_VERSION_2_0_0`, name
+Same shape as the others: `PMIX_MCA_BASE_VERSION(pif)`, name
 `"linux_ipv6"`, single `.pmix_mca_open_component = if_linux_ipv6_open`.
 
 ## What `if_linux_ipv6_open` does

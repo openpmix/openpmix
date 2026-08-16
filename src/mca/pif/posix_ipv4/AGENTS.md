@@ -40,7 +40,7 @@ which gate the MAC and MTU ioctls below. Compile mode is hard-set to
 
 ## The component struct
 
-Same shape as the other `pif` components: `PMIX_PIF_BASE_VERSION_2_0_0`,
+Same shape as the other `pif` components: `PMIX_MCA_BASE_VERSION(pif)`,
 name `"posix_ipv4"`, single `.pmix_mca_open_component = if_posix_open`.
 
 ## What `if_posix_open` does

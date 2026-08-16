@@ -26,7 +26,7 @@ static int psensor_file_query(pmix_mca_base_module_t **module, int *priority);
 
 pmix_psensor_file_component_t pmix_mca_psensor_file_component = {
     .super = {
-        PMIX_PSENSOR_BASE_VERSION_1_0_0,
+        PMIX_MCA_BASE_VERSION(psensor),
 
         /* Component name and version */
         .pmix_mca_component_name = "file",
