@@ -37,24 +37,25 @@ a normal build it is *not* compiled at all — it only becomes the winner
 when `pdlopen` is disabled or unavailable. See the framework doc: this is
 a configure-time decision, not a run-time one.
 
-> **Heads-up — this component's source is stale.** Unlike `pdlopen`, the
-> `plibltdl` C sources have not been kept current with the tree's symbol
-> renames and header reorganization. As checked in they reference
-> pre-rename identifiers and old include paths — for example
-> `#include "pmix/mca/dl/dl.h"` and `#include "pmix/constants.h"` (the
-> current layout is `src/mca/pdl/pdl.h`), `PMIX_DL_BASE_VERSION_1_0_0`
-> (now `PMIX_MCA_BASE_VERSION(pdl)`), the un-prefixed `mca_base_module_t`
-> / `mca_base_component_var_register` / `MCA_BASE_MAKE_VERSION` /
-> `.mca_component_name` MCA symbols (now `pmix_mca_*` / `.pmix_mca_*`),
-> the `mca_pdl_plibltpdl_component` global, and the macro
-> `PMIX_DL_LIBLTDL_HAVE_LT_DLADVISE` (its `configure.m4` actually defines
-> `PMIX_PDL_PLIBLTDL_HAVE_LT_DLADVISE`). This is why `pdlopen` is
-> effectively always the component that builds: `plibltdl` would need
-> these references updated before it could compile against the current
-> tree. If you are tasked with reviving libltdl support, budget for a
-> symbol/include modernization pass, and use `pdlopen` as the reference
-> for the current MCA conventions. The description below reflects the
-> component's *intended* design.
+> **Note — this component is rarely compiled, so verify it deliberately.**
+> Because `pdlopen` outranks it, a normal build never touches these
+> sources, and they had drifted out of compilable shape once already:
+> until August 2026 they still carried pre-rename identifiers and old
+> include paths (`pmix/mca/dl/dl.h`, `PMIX_DL_BASE_VERSION_1_0_0`, the
+> un-prefixed `mca_base_*` MCA symbols, a `mca_pdl_plibltpdl_component`
+> global, and `PMIX_DL_LIBLTDL_HAVE_LT_DLADVISE` where its `configure.m4`
+> defines `PMIX_PDL_PLIBLTDL_HAVE_LT_DLADVISE`). Nothing in CI catches
+> that, since no default configuration builds it. If you change anything
+> here — or anything in `pdl.h` or the MCA conventions it depends on —
+> compile it on purpose:
+>
+> ```sh
+> ./configure --disable-pmix-dlopen <other options>   # makes pdlopen lose
+> make
+> ```
+>
+> Add `--enable-mca-dso` to that and `make check` to exercise the module
+> for real, since only a DSO build asks `pdl` to load anything.
 
 ## The private handle
 
@@ -62,7 +63,7 @@ a configure-time decision, not a run-time one.
 
 ```c
 struct pmix_pdl_handle_t {
-    lt_dlhandle ltpdl_handle;   // the libltdl handle
+    lt_dlhandle ltdl_handle;    // the libltdl handle
 #if PMIX_ENABLE_DEBUG
     char *filename;             // strdup of the opened name, debug builds only
 #endif
@@ -85,25 +86,25 @@ compiled in.
 ## The module
 
 ```c
-pmix_pdl_base_module_t pmix_pdl_plibltpdl_module = {
-    .open = plibltpdl_open,
-    .lookup = plibltpdl_lookup,
-    .close = plibltpdl_close,
-    .foreachfile = plibltpdl_foreachfile
+pmix_pdl_base_module_t pmix_pdl_plibltdl_module = {
+    .open = plibltdl_open,
+    .lookup = plibltdl_lookup,
+    .close = plibltdl_close,
+    .foreachfile = plibltdl_foreachfile
 };
 ```
 
-- **`plibltpdl_open`** — when `lt_dladvise` is available, selects the
+- **`plibltdl_open`** — when `lt_dladvise` is available, selects the
   matching advise object from the `use_ext` × `private_namespace` matrix
   and calls `lt_dlopenadvise(fname, advise)`. Otherwise it falls back to
   `lt_dlopenext(fname)` (when `use_ext`) or plain `lt_dlopen(fname)`. On
   success it `calloc`s the handle; on failure it returns `PMIX_ERROR`
   with `*err_msg` set to a **`strdup` of `lt_dlerror()`**.
-- **`plibltpdl_lookup`** — `lt_dlsym`; `PMIX_SUCCESS` if non-NULL, else
+- **`plibltdl_lookup`** — `lt_dlsym`; `PMIX_SUCCESS` if non-NULL, else
   `PMIX_ERROR` with a `strdup`'d `lt_dlerror()`.
-- **`plibltpdl_close`** — `lt_dlclose`, frees the debug filename and the
+- **`plibltdl_close`** — `lt_dlclose`, frees the debug filename and the
   handle, returns `lt_dlclose`'s value.
-- **`plibltpdl_foreachfile`** — a thin wrapper over libltdl's own
+- **`plibltdl_foreachfile`** — a thin wrapper over libltdl's own
   `lt_dlforeachfile(search_path, func, data)`; returns `PMIX_SUCCESS` if
   libltdl returned 0, else `PMIX_ERROR`. (Contrast `pdlopen`, which
   hand-rolls the directory walk and basename de-duplication; here libltdl
@@ -114,16 +115,16 @@ pmix_pdl_base_module_t pmix_pdl_plibltpdl_module = {
 - **Its `err_msg` strings are heap-allocated (`strdup`), unlike
   `pdlopen`'s.** This is a genuine behavioral difference between the two
   components: `pdlopen` hands back a pointer into the static `dlerror`
-  buffer, whereas `plibltpdl` `strdup`s `lt_dlerror()`. The framework
+  buffer, whereas `plibltdl` `strdup`s `lt_dlerror()`. The framework
   contract says callers must not free `err_msg`, so these `strdup`ed
   strings are, strictly, leaked on the error path — preserve the
   framework's ownership contract if you rework this, and prefer matching
   `pdlopen`'s non-allocating behavior.
 - **The `lt_dladvise`-absent fallback loses the private/public
-  distinction.** With old libltdl, `plibltpdl_open` uses
+  distinction.** With old libltdl, `plibltdl_open` uses
   `lt_dlopenext`/`lt_dlopen`, which cannot express `RTLD_LOCAL` vs
   `RTLD_GLOBAL`; the `private_namespace` argument is effectively ignored
   in that path.
-- **See the staleness note above before touching this file.** Any real
-  change here almost certainly needs the symbol/include modernization
-  first, or it will not compile.
+- **Nothing builds this component by default, so a change here is
+  unverified until you configure `--disable-pmix-dlopen` and build it.**
+  See the note under "When it is selected".
