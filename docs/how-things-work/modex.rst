@@ -105,14 +105,30 @@ datastore — once for ``PMIX_LOCAL`` scope and once for ``PMIX_REMOTE``
 The message is sent even when the process contributed nothing, so the
 server always learns that this client has finished contributing.
 
-**The payload is cumulative.** ``cb->key`` is left ``NULL``, so each of
-those two fetches returns everything the process has ever put at that
-scope — not just what is new. ``pmix_globals.commits_pending`` gates
-*whether* to fetch, never *what*, so a single new ``PMIx_Put`` causes the
-whole accumulated set to be shipped again, and n put/commit cycles move
-O(n²) bytes. The same is true one level up, in ``pmix_server_collect_data``
-below. See :ref:`the delta design <modex-delta>` for the planned
-replacement and for why the cumulative path has to survive it.
+**Only what has changed is sent.** ``PMIx_Put`` records each key it
+stores against the scopes it stored it at, and the commit fetches just
+those keys. A key published several times before one commit is recorded
+once, because the datastore replaces such a value in place — so the
+commit owes the server one copy of it, not one per ``PMIx_Put``.
+
+That record is not the only way a commit is built. Both fetches can also
+be made with a ``NULL`` key, which returns everything the process has
+published at that scope; that is what every commit did until this
+release, and it remains the fallback for the cases a per-key record
+cannot express — a qualified value (which has no key a later fetch could
+ask for it back by), a tool that has repointed at a different server, or
+the first commit after ``PMIx_Init``. The two paths are selected by
+``pmix_client_globals.commit_resync``.
+
+**The record is kept whether or not there is a server to send to**, which
+matters for the process that initializes as a singleton and connects
+later: the puts it made beforehand are still owed to whatever server it
+eventually reaches.
+
+The remaining cumulative site is one level up, in
+``pmix_server_collect_data`` below — the server still contributes each
+local process's whole published set to a collecting fence. See
+:ref:`the delta design <modex-delta>` for what that needs.
 
 **The wire carries key strings, not indices.**
 ``pmix_bfrops_base_pack_kval`` packs ``kval->key`` as a ``PMIX_STRING``
@@ -516,10 +532,10 @@ Two watermarks, at two levels:
   It cannot use the fence as its boundary even if that were desirable,
   because a client never sees ``PMIX_COLLECT_DATA`` — the directive is
   packed verbatim into the fence message and interpreted only by the
-  server.
+  server. **This half is implemented**; see *Transmission* above.
 * **The server** contributes what has arrived since this process last
   contributed to a collecting fence. A barrier-only fence exchanges
-  nothing and so does not move the watermark.
+  nothing and so does not move the watermark. Not yet implemented.
 
 **The server's watermark is qualified by the participant set.** A per-process
 watermark alone is not sound: a process that contributed to a fence over one

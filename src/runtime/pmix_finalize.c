@@ -273,7 +273,6 @@ void pmix_rte_finalize(void)
     pmix_globals.external_progress = false;
     pmix_globals.external_topology = false;
     pmix_globals.pushstdin = false;
-    pmix_globals.commits_pending = false;
     /* pmix_iof_finalize above drained the pending-output cache and
      * destructed its list; put the accounting that goes with it back to
      * the static-init values so the next cycle does not start out
