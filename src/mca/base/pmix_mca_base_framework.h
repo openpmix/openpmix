@@ -299,6 +299,13 @@ PMIX_EXPORT bool pmix_mca_base_framework_is_open(struct pmix_mca_base_framework_
  * PRTE_MCA_BASE_FRAMEWORK_DECLARE pastes PRTE_MCA_<name>_*_VERSION and
  * hands the result here. Treat the argument list as part of the installed
  * interface for that reason.
+ *
+ * Such a project has to be able to ask whether the PMIx it is being built
+ * against offers this, because the failure otherwise lands as a syntax
+ * error inside its own headers - the version numbers arrive where an
+ * older macro expected something else. PMIX_CAP_MCA_FW_VERSION is that
+ * question: it is defined from the release that carries both this macro
+ * and the PMIX_MCA_BASE_VERSION_2_1_0 stamp its components need.
  */
 #    define PMIX_MCA_BASE_FRAMEWORK_DECLARE_FULL(project, name, type_major, type_minor,     \
                                                  description, registerfn, openfn,           \
