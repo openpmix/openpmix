@@ -537,13 +537,23 @@ call so the results do not depend on whatever is in the developer's
 `~/.pmix`. **Keep that**: without it the suite passes or fails according
 to the machine it runs on.
 
-For the configurations a developer's own `make check` cannot produce —
-notably a Linux tree built `--enable-mca-dso`, where every component is
-a real `dlopen`ed plugin and the repository code path in this directory
-is actually exercised — use
-[`contrib/dockerswarm/run-mca-tests.sh`](../../../contrib/dockerswarm/run-mca-tests.sh).
 On macOS with the default static build, the whole repository/`dlopen`
-half of this directory never runs.
+half of this directory never runs. Two things cover it. The `mca-dso`
+job in
+[`.github/workflows/builds.yaml`](../../../.github/workflows/builds.yaml)
+builds a Linux tree `--enable-mca-dso` — every component a real
+`dlopen`ed plugin — and runs the suite against it on every pull request,
+on both `pdl` loaders; and
+[`contrib/dockerswarm/run-mca-tests.sh`](../../../contrib/dockerswarm/run-mca-tests.sh)
+does the same across nodes.
+
+**That job earns its keep on more than this directory**, which is worth
+knowing before anyone trims it: with every component static, nothing is
+ever unmapped, so a framework left open at finalize is invisible.
+`PMIx_server_finalize` had been missing `pmix_mca_base_framework_close`
+for `pmdl` since the framework was added, and the only symptom anywhere
+was a second `PMIx_server_init` in a DSO build dereferencing module
+pointers into plugins the repository had already unloaded.
 
 ## Issues found in the August 2026 review
 
