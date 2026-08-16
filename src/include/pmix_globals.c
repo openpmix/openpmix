@@ -330,12 +330,34 @@ static void pdes(pmix_peer_t *p)
     if (0 <= p->sd) {
         CLOSE_THE_SOCKET(p->sd);
     }
-    if (p->send_ev_active) {
-        pmix_event_del(&p->send_event);
+    /* Only while there is still an event base to delete them from.
+     *
+     * Each role releases its peers *after* pmix_rte_finalize(), which is
+     * what stops the progress thread and frees the base - see the
+     * two-reference note on mypeer in src/runtime/pmix_finalize.c. By
+     * then libevent has already torn every event off that base, so there
+     * is nothing here left to delete; what event_del() does instead is
+     * take the base's lock, which is freed memory. Whatever has since
+     * been written over it decides what happens - usually nothing, but a
+     * byte pattern that reads as "held" hangs the process on a mutex
+     * nobody will ever release. A connected peer is what makes this
+     * reachable, since a peer that never armed its events has neither
+     * flag set: it hung a tool cycling init/finalize against a real
+     * server, and only on the machines whose heap happened to land the
+     * wrong value there.
+     *
+     * pmix_rte_finalize() NULLs evbase once the base is gone, which is
+     * the only in-scope thing here that can say so. */
+    if (NULL != pmix_globals.evbase) {
+        if (p->send_ev_active) {
+            pmix_event_del(&p->send_event);
+        }
+        if (p->recv_ev_active) {
+            pmix_event_del(&p->recv_event);
+        }
     }
-    if (p->recv_ev_active) {
-        pmix_event_del(&p->recv_event);
-    }
+    p->send_ev_active = false;
+    p->recv_ev_active = false;
 
     if (NULL != p->info) {
         PMIX_RELEASE(p->info);
