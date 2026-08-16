@@ -82,19 +82,34 @@ static long parse_cycles(const char *str)
     return ncycles;
 }
 
+/* how long wait_reg() will wait for a registration callback before giving
+ * up. Generous - the operation is local and takes milliseconds - but
+ * bounded, because a callback that never comes used to spin here forever
+ * and the run only ended when the harness timeout killed it, taking the
+ * buffered account of how far we got with it. */
+#define REG_WAIT_SECS 60
+
 static volatile int regdone;
 static void reg_cbfunc(pmix_status_t status, void *cbdata)
 {
     PMIX_HIDE_UNUSED_PARAMS(status, cbdata);
     regdone = 1;
 }
-static void wait_reg(void)
+static int wait_reg(const char *what)
 {
     struct timespec ts = {0, 1000000};
+    long tries = REG_WAIT_SECS * 1000;
+
     while (0 == regdone) {
+        if (0 >= tries--) {
+            fprintf(stderr, "%s: no registration callback within %d seconds\n",
+                    what, REG_WAIT_SECS);
+            return 1;
+        }
         nanosleep(&ts, NULL);
     }
     regdone = 0;
+    return 0;
 }
 
 static void tool_connect_fn(pmix_info_t *info, size_t ninfo,
@@ -156,7 +171,9 @@ static pmix_status_t register_job(const char *name)
         return rc;
     }
     if (PMIX_SUCCESS == rc) {
-        wait_reg();
+        if (0 != wait_reg("register_nspace")) {
+            return PMIX_ERR_TIMEOUT;
+        }
     }
 
     PMIX_LOAD_PROCID(&client, nspace, 0);
@@ -165,7 +182,9 @@ static pmix_status_t register_job(const char *name)
         return rc;
     }
     if (PMIX_SUCCESS == rc) {
-        wait_reg();
+        if (0 != wait_reg("register_client")) {
+            return PMIX_ERR_TIMEOUT;
+        }
     }
     return PMIX_SUCCESS;
 }
@@ -201,6 +220,11 @@ static int run_tool_child(const char *mode, long ncycles)
     }
 
     for (i = 0; i < ncycles; i++) {
+        /* a heartbeat, so a run that wedges says which cycle it wedged on
+         * rather than only which phase - see the buffering note in main() */
+        if (0 == i % 10) {
+            fprintf(stdout, "  %-6s child: cycle %ld\n", mode, i);
+        }
         if (pure) {
             /* connect to the parent as the scheduler; PMIx_tool_init then
              * skips its job-info request, so no job need be registered */
@@ -257,6 +281,8 @@ static int run_phase(const char *self, const char *mode, long ncycles, char **ba
         PMIx_Argv_free(child_env);
         return 1;
     }
+
+    fprintf(stdout, "  %-6s phase: starting %ld cycles\n", mode, ncycles);
 
     snprintf(cycles_str, sizeof(cycles_str), "%ld", ncycles);
     PMIx_Argv_append_nosize(&child_argv, (char *) self);
@@ -318,6 +344,11 @@ static int run_server(char *self, long ncycles)
     fprintf(stdout, "\n=== server-side tool init/finalize cycling test (%ld cycles) ===\n\n",
             ncycles);
 
+    /* These markers are what tells a wedged run apart from a run that
+     * never got started: with stdout line buffered (see main()), whatever
+     * is missing from the log is where it stopped. */
+    fprintf(stdout, "  server: initializing\n");
+
     /* A minimal server that accepts tool connections and advertises itself
      * as the scheduler (so the pure tool can init with no job registered
      * for it). */
@@ -329,6 +360,7 @@ static int run_server(char *self, long ncycles)
     }
 
     /* register one job so the client-tool phase has job info to retrieve */
+    fprintf(stdout, "  server: registering job\n");
     if (PMIX_SUCCESS != (rc = register_job("foobar"))) {
         fprintf(stderr, "register_job failed: %s\n", PMIx_Error_string(rc));
         PMIx_server_finalize();
@@ -350,6 +382,13 @@ static int run_server(char *self, long ncycles)
 int main(int argc, char **argv)
 {
     long ncycles = DEFAULT_CYCLES;
+
+    /* "make check" runs us with stdout on a pipe, where it is block
+     * buffered - so a run that wedges and is killed by the harness
+     * timeout takes every line it had written with it, and the failure
+     * arrives with no account of how far it got. Line buffering costs
+     * nothing here and leaves that account behind. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
 
     if (3 < argc && 0 == strcmp(argv[1], "--tool-child")) {
         ncycles = parse_cycles(argv[3]);
