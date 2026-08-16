@@ -39,7 +39,7 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  */
 pmix_pmdl_ompi_component_t pmix_mca_pmdl_ompi_component = {
     .super = {
-        PMIX_PMDL_BASE_VERSION_1_0_0,
+        PMIX_MCA_BASE_VERSION(pmdl),
 
         /* Component name and version */
         .pmix_mca_component_name = "ompi",

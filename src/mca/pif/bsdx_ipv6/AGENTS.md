@@ -36,7 +36,7 @@ consumers such as `pmix_ifgetaliases`, not this component).
 
 ## The component struct
 
-Identical in shape to `bsdx_ipv4`: `PMIX_PIF_BASE_VERSION_2_0_0`, name
+Identical in shape to `bsdx_ipv4`: `PMIX_MCA_BASE_VERSION(pif)`, name
 `"bsdx_ipv6"`, and a single `.pmix_mca_open_component = if_bsdx_ipv6_open`.
 No module, no priority.
 

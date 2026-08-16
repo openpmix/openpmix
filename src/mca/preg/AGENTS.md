@@ -147,8 +147,9 @@ compiles against. It defines **`pmix_preg_module_t`** (the `.name` field
 plus the ten function pointers above; a component may leave any pointer
 `NULL` and the base will skip it), the exported global
 **`pmix_preg`** module through which all back-end code calls the
-framework, and **`PMIX_PREG_BASE_VERSION_1_0_0`**, the version macro every
-component struct must open with. It also defines `PMIX_MAX_NODE_PREFIX`
+framework, and the three **`PMIX_MCA_preg_*_VERSION`** macros stating the
+framework's interface version — the numbers
+`PMIX_MCA_BASE_VERSION(preg)` stamps into every component struct. It also defines `PMIX_MAX_NODE_PREFIX`
 (8192) — the cap on a node-name prefix length used by the native
 generator.
 
@@ -288,7 +289,7 @@ runtime (its `component_query` returns an error) if no `pcompress` module
 is available, so its symbols must never be assumed to be in the active
 list. Adding a component means creating `src/mca/preg/<name>/` with the
 usual `Makefile.am`, a component struct opened with
-`PMIX_PREG_BASE_VERSION_1_0_0`, and a module; the framework picks it up
+`PMIX_MCA_BASE_VERSION(preg)`, and a module; the framework picks it up
 through `static-components.h`. Editing a `Makefile.am` only needs a plain
 `make`; adding or removing a *component directory* changes the build
 wiring resolved by `configure`, so re-run
@@ -300,7 +301,7 @@ help-content golden rule does not usually bite here.
 
 ## When adding or modifying a component
 
-- Open the component struct with `PMIX_PREG_BASE_VERSION_1_0_0` and set
+- Open the component struct with `PMIX_MCA_BASE_VERSION(preg)` and set
   `pmix_mca_component_name` to your directory name.
 - Choose a **unique tag** for your encoding and make every generator emit
   it and every parser gate on it with `strncmp`/`strcmp`, returning

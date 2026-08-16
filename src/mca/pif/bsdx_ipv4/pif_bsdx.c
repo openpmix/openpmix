@@ -60,7 +60,7 @@ static int if_bsdx_open(void);
  * DragonFly
  */
 pmix_pif_base_component_t pmix_mca_pif_bsdx_ipv4_component = {
-    PMIX_PIF_BASE_VERSION_2_0_0,
+    PMIX_MCA_BASE_VERSION(pif),
 
     /* Component name and version */
     .pmix_mca_component_name = "bsdx_ipv4",

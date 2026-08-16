@@ -173,10 +173,12 @@ struct pmix_pinstalldirs_base_component_2_0_0_t {
   data is a compile-time constant); `env` uses it to read the
   environment and the `PMIX_PREFIX` attribute.
 
-`PMIX_PINSTALLDIRS_BASE_VERSION_1_0_0` is the version macro every
-component's `component` sub-struct must open with. Note the struct is
-versioned `2_0_0` in its type name while the MCA version macro is
-`1_0_0`; match the existing components rather than "fixing" this.
+`PMIX_MCA_BASE_VERSION(pinstalldirs)` is the version macro every
+component's `component` sub-struct must open with; it stamps in the
+framework's interface version from the three
+`PMIX_MCA_pinstalldirs_*_VERSION` macros this header states. Note the
+struct is versioned `2_0_0` in its type name while that interface version
+is 1.0.0; match the existing components rather than "fixing" this.
 
 ## Directory layout
 
@@ -302,7 +304,7 @@ text.
 Adding a third source of install paths is rare, but if you do:
 
 - Open the component's `component` sub-struct with
-  `PMIX_PINSTALLDIRS_BASE_VERSION_1_0_0` and set the component name.
+  `PMIX_MCA_BASE_VERSION(pinstalldirs)` and set the component name.
 - Fill in `install_dirs_data` for the fields you can supply and leave the
   rest `NULL` — the base only takes non-`NULL` fields, and only for
   fields no higher-priority component already set.

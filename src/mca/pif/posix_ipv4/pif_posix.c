@@ -60,7 +60,7 @@ static int if_posix_open(void);
  * BSD-flavors supported elsewhere
  */
 pmix_pif_base_component_t pmix_mca_pif_posix_ipv4_component = {
-    PMIX_PIF_BASE_VERSION_2_0_0,
+    PMIX_MCA_BASE_VERSION(pif),
 
     /* Component name and version */
     .pmix_mca_component_name = "posix_ipv4",

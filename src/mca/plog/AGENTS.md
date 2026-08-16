@@ -97,8 +97,9 @@ compiles against. Read it before anything else. It defines:
   as-is; components needing configuration state (`syslog`, `smtp`) embed
   it as a `super` field in a larger struct.
 
-- **`PMIX_PLOG_BASE_VERSION_1_0_0`** — the version macro every component's
-  component struct must open with.
+- The three **`PMIX_MCA_plog_*_VERSION`** macros — the framework's
+  interface version, which `PMIX_MCA_BASE_VERSION(plog)` stamps into
+  every component struct.
 
 ## How a log request flows
 
@@ -295,7 +296,7 @@ Remember the top-level golden rules that bite here specifically:
 
 ## When adding or modifying a component
 
-- Open the component struct with `PMIX_PLOG_BASE_VERSION_1_0_0` and set
+- Open the component struct with `PMIX_MCA_BASE_VERSION(plog)` and set
   `pmix_mca_component_name` to your component's directory name.
 - Provide a `query` function returning your `pmix_plog_module_t` and a
   priority. Return no module (or a failure) when the component cannot run

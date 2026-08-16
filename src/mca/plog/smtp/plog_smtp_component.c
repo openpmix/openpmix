@@ -44,7 +44,7 @@ static pmix_status_t smtp_register(void);
  */
 pmix_plog_smtp_component_t pmix_mca_plog_smtp_component = {
     .super = {
-        PMIX_PLOG_BASE_VERSION_1_0_0,
+        PMIX_MCA_BASE_VERSION(plog),
 
         .pmix_mca_component_name = "smtp",
 

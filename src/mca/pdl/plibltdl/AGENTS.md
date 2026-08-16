@@ -43,7 +43,7 @@ a configure-time decision, not a run-time one.
 > pre-rename identifiers and old include paths — for example
 > `#include "pmix/mca/dl/dl.h"` and `#include "pmix/constants.h"` (the
 > current layout is `src/mca/pdl/pdl.h`), `PMIX_DL_BASE_VERSION_1_0_0`
-> (now `PMIX_PDL_BASE_VERSION_1_0_0`), the un-prefixed `mca_base_module_t`
+> (now `PMIX_MCA_BASE_VERSION(pdl)`), the un-prefixed `mca_base_module_t`
 > / `mca_base_component_var_register` / `MCA_BASE_MAKE_VERSION` /
 > `.mca_component_name` MCA symbols (now `pmix_mca_*` / `.pmix_mca_*`),
 > the `mca_pdl_plibltpdl_component` global, and the macro

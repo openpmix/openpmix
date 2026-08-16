@@ -284,13 +284,16 @@ an older plugin left them `NULL`.
 
 **The numbers live in one place: the framework's own header.** Three
 macros — `PMIX_MCA_<name>_MAJOR_VERSION`, `_MINOR_VERSION`,
-`_RELEASE_VERSION` — feed both the component version macro (so every
-component stamps them into its struct) and the framework declaration,
-which reaches them by pasting the framework's name through
-`PMIX_MCA_FW_VER()`. Neither side restates them, so they cannot drift.
-Bumping an interface is one edit in one header; the declaration is never
-touched. The framework name in those macro names is lower case because
-the preprocessor pastes tokens and does not upper-case them.
+`_RELEASE_VERSION` — feed both `PMIX_MCA_BASE_VERSION(<name>)`, which
+every component struct opens with, and the framework declaration. Both
+reach them by pasting the framework's name through `PMIX_MCA_FW_VER()`
+in [`../mca.h`](../mca.h), so neither side restates them and they cannot
+drift. Bumping an interface is one edit in one header; neither the
+components nor the declaration are touched. There is no per-framework
+component macro — a numbered `PMIX_PTL_BASE_VERSION_2_0_0` would be a
+name nothing keeps true once the numbers moved into the header. The
+framework name in those macro names is lower case because the
+preprocessor pastes tokens and does not upper-case them.
 
 **Two declaration macros, and the difference matters.**
 `PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE()` is what frameworks in this

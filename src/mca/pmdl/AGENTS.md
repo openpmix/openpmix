@@ -220,8 +220,9 @@ they are used.
 compiles against. It defines `pmix_pmdl_module_t`,
 `pmix_pmdl_API_module_t`, the exported global `pmix_pmdl`, the component
 typedef `pmix_pmdl_base_component_t` (a bare
-`pmix_mca_base_component_t`), and **`PMIX_PMDL_BASE_VERSION_1_0_0`**, the
-version macro every component struct must open with.
+`pmix_mca_base_component_t`), and the three **`PMIX_MCA_pmdl_*_VERSION`**
+macros stating the framework's interface version — the numbers
+`PMIX_MCA_BASE_VERSION(pmdl)` stamps into every component struct.
 
 ### `base/base.h` — the active-module wrapper and globals
 

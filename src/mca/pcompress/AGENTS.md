@@ -325,8 +325,10 @@ the configure summary. A host with neither library builds no component,
 and the framework runs on the base default no-op module.
 
 Note the version macro every component opens with is
-**`PMIX_COMPRESS_BASE_VERSION_2_0_0`** (component version 2.0.0, even
-though the module struct type is named `..._1_0_0_t`).
+**`PMIX_MCA_BASE_VERSION(pcompress)`**, which stamps in the framework's
+interface version — 3.0.0, from the three `PMIX_MCA_pcompress_*_VERSION`
+macros in `pcompress.h`, even though the module struct type is still
+named `..._1_0_0_t`.
 
 Golden rules that bite here:
 

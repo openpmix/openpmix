@@ -44,7 +44,7 @@ static pmix_psec_module_t *assign_module(void);
  */
 pmix_psec_base_component_t pmix_mca_psec_munge_component = {
     .base = {
-        PMIX_PSEC_BASE_VERSION_1_0_0,
+        PMIX_MCA_BASE_VERSION(psec),
 
         /* Component name and version */
         .pmix_mca_component_name = "munge",

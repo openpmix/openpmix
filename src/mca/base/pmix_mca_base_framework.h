@@ -239,37 +239,14 @@ PMIX_EXPORT bool pmix_mca_base_framework_is_registered(struct pmix_mca_base_fram
 PMIX_EXPORT bool pmix_mca_base_framework_is_open(struct pmix_mca_base_framework_t *framework);
 
 /**
- * Reach the interface version a framework's own header states.
- *
- * A framework declares its version once, as three object-like macros in
- * its <framework>.h - for example, in pcompress.h:
- *
- *   #define PMIX_MCA_pcompress_MAJOR_VERSION   3
- *   #define PMIX_MCA_pcompress_MINOR_VERSION   0
- *   #define PMIX_MCA_pcompress_RELEASE_VERSION 0
- *
- * Those are the numbers the framework's component version macro
- * (PMIX_COMPRESS_BASE_VERSION_3_0_0) also expands to, so the version a
- * component stamps into its struct and the version the framework
- * compares it against are the same three integers. Nothing restates
- * them, so they cannot drift apart.
- *
- * The name carries the framework's directory name verbatim, lower case
- * and all: the preprocessor pastes tokens, it does not upper-case them,
- * and the token this reaches for has to be the one
- * PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE can build out of the name it
- * is handed.
- */
-#    define PMIX_MCA_FW_VER_(name, level) PMIX_MCA_##name##_##level##_VERSION
-#    define PMIX_MCA_FW_VER(name, level)  PMIX_MCA_FW_VER_(name, level)
-
-/**
  * Macro to declare an MCA framework, stating an interface version
  *
  * Identical to PMIX_MCA_BASE_FRAMEWORK_DECLARE, except that the
  * framework's interface version is picked up from the
  * PMIX_MCA_<name>_MAJOR_VERSION / _MINOR_VERSION macros its own header
- * defines (see PMIX_MCA_FW_VER above). It takes no version arguments
+ * defines, reached by pasting the framework's name through
+ * PMIX_MCA_FW_VER() in mca.h - the same three integers PMIX_MCA_BASE_VERSION()
+ * stamps into every one of its components. It takes no version arguments
  * precisely so that a version bump is one edit, in one header, and never
  * reaches this declaration.
  *

@@ -107,13 +107,11 @@ typedef struct pmix_compress_base_module_1_0_0_t pmix_compress_base_module_t;
 
 PMIX_EXPORT extern pmix_compress_base_module_t pmix_compress;
 
-/**
- * Macro for use in components that are of type COMPRESS
- */
 /* The pcompress framework interface version. It is stated here and
- * nowhere else: the component macro below stamps these numbers into
- * every pcompress component, and the framework's declaration reaches the
- * same three by pasting its name, so the two cannot drift apart.
+ * nowhere else: components stamp it into their struct with
+ * PMIX_MCA_BASE_VERSION(pcompress), and the framework's declaration
+ * reaches the same three by pasting its name, so the two cannot drift
+ * apart.
  *
  * Bumped to 3.0.0 in August 2026: get_decompressed_size and
  * get_decompressed_strlen were added to pmix_compress_base_module_t in
@@ -127,11 +125,6 @@ PMIX_EXPORT extern pmix_compress_base_module_t pmix_compress;
 #define PMIX_MCA_pcompress_MAJOR_VERSION   3
 #define PMIX_MCA_pcompress_MINOR_VERSION   0
 #define PMIX_MCA_pcompress_RELEASE_VERSION 0
-
-#define PMIX_COMPRESS_BASE_VERSION_3_0_0                                     \
-    PMIX_MCA_BASE_VERSION_1_0_0("pcompress", PMIX_MCA_pcompress_MAJOR_VERSION,   \
-                                PMIX_MCA_pcompress_MINOR_VERSION,           \
-                                PMIX_MCA_pcompress_RELEASE_VERSION)
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

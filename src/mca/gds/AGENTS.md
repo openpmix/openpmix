@@ -290,8 +290,9 @@ neither component reimplements the wire structure; they only supply the
 typedef `pmix_gds_base_component_t` (just
 `pmix_mca_base_component_t` — `gds` components that need per-component
 state, like both shipped ones, wrap it in a larger struct themselves), the
-`PMIX_GDS_*` macros, and `PMIX_GDS_BASE_VERSION_1_0_0`, the version macro
-every component struct must open with. It also carries the load-bearing
+`PMIX_GDS_*` macros, and the three `PMIX_MCA_gds_*_VERSION` macros that
+state the framework's interface version — the numbers
+`PMIX_MCA_BASE_VERSION(gds)` stamps into every component struct. It also carries the load-bearing
 comment that **the GDS is not guaranteed to be thread-safe** — see
 Threading.
 
@@ -349,7 +350,7 @@ finder). On macOS, therefore, only `hash` exists; on 64-bit Linux both
 build and `shmem3` is preferred at runtime when `/proc/self/maps` is
 present. Adding a component means creating `src/mca/gds/<name>/` with the
 usual `Makefile.am` and (if it has build prerequisites) a `configure.m4`, a
-component struct opened with `PMIX_GDS_BASE_VERSION_1_0_0`, and a module;
+component struct opened with `PMIX_MCA_BASE_VERSION(gds)`, and a module;
 the framework picks it up through `static-components.h`.
 
 Per the top-level golden rules: editing a `Makefile.am` only needs a plain

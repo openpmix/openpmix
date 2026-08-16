@@ -171,23 +171,15 @@ struct pmix_pdl_base_module_1_0_0_t {
 typedef struct pmix_pdl_base_module_1_0_0_t pmix_pdl_base_module_1_0_0_t;
 typedef struct pmix_pdl_base_module_1_0_0_t pmix_pdl_base_module_t;
 
-/**
- * Macro for use in components that are of type PDL
- */
-/* The pdl framework interface version. It is stated here and
- * nowhere else: the component macro below stamps these numbers into
- * every pdl component, and the framework's declaration reaches the
- * same three by pasting its name, so the two cannot drift apart.
- * Bump it on any change to the module interface that a component
- * built against the previous one would not survive. */
+/* The pdl framework interface version. It is stated here and nowhere
+ * else: components stamp it into their struct with
+ * PMIX_MCA_BASE_VERSION(pdl), and the framework's declaration reaches
+ * the same three by pasting its name, so the two cannot drift apart.
+ * Bump it on any change to the module interface that a component built
+ * against the previous one would not survive. */
 #define PMIX_MCA_pdl_MAJOR_VERSION   1
 #define PMIX_MCA_pdl_MINOR_VERSION   0
 #define PMIX_MCA_pdl_RELEASE_VERSION 0
-
-#define PMIX_PDL_BASE_VERSION_1_0_0                                     \
-    PMIX_MCA_BASE_VERSION_1_0_0("pdl", PMIX_MCA_pdl_MAJOR_VERSION,   \
-                                PMIX_MCA_pdl_MINOR_VERSION,           \
-                                PMIX_MCA_pdl_RELEASE_VERSION)
 
 END_C_DECLS
 

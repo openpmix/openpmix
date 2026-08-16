@@ -38,7 +38,7 @@ macOS/BSD build this and `bsdx_ipv6` are the two `pif` components present;
 
 ```c
 pmix_pif_base_component_t pmix_mca_pif_bsdx_ipv4_component = {
-    PMIX_PIF_BASE_VERSION_2_0_0,
+    PMIX_MCA_BASE_VERSION(pif),
     .pmix_mca_component_name = "bsdx_ipv4",
     PMIX_MCA_BASE_MAKE_VERSION(component, ...),
     .pmix_mca_open_component = if_bsdx_open

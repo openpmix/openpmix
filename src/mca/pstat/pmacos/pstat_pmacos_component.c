@@ -50,7 +50,7 @@ static int pstat_pmacos_component_query(pmix_mca_base_module_t **module, int *pr
 
 const pmix_pstat_base_component_t pmix_mca_pstat_pmacos_component = {
 
-    PMIX_PSTAT_BASE_VERSION_1_0_0,
+    PMIX_MCA_BASE_VERSION(pstat),
 
     /* Component name and version */
     .pmix_mca_component_name = "pmacos",

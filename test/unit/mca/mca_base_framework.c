@@ -86,12 +86,23 @@ PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, utestnoreg, "a NOREGISTER framework",
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_NOREGISTER
                                     | PMIX_MCA_BASE_FRAMEWORK_FLAG_NO_DSO);
 
+/* A component stanza that states its framework's interface version as
+ * three literal numbers instead of reaching for the ones the framework's
+ * header states. No real component does this - they all open with
+ * PMIX_MCA_BASE_VERSION(<framework>) - but these tests need components
+ * whose version deliberately is *not* the framework's, which that macro
+ * cannot express by construction. */
+#define UTEST_COMPONENT_VERSION(type, maj, min, rel)                          \
+    PMIX_MCA_BASE_VERSION_2_1_0("pmix", PMIX_MAJOR_VERSION,                   \
+                                PMIX_MINOR_VERSION, PMIX_RELEASE_VERSION,     \
+                                type, maj, min, rel)
+
 /* A third framework, this one with a real static component, so that a
  * registration can fail *after* component discovery has already put
  * something on framework_components. See
  * test_failed_register_unwinds_components(). */
 static pmix_mca_base_component_t utestreg_alpha = {
-    PMIX_MCA_BASE_VERSION_1_0_0("utestreg", 1, 0, 0),
+    UTEST_COMPONENT_VERSION("utestreg", 1, 0, 0),
     .pmix_mca_component_name = "alpha",
     .pmix_mca_component_major_version = 1,
     .pmix_mca_component_minor_version = 0,
@@ -118,13 +129,8 @@ PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, utestreg, "a framework with one static com
 #define PMIX_MCA_utestver_MINOR_VERSION   0
 #define PMIX_MCA_utestver_RELEASE_VERSION 0
 
-#define PMIX_UTESTVER_BASE_VERSION_2_0_0                                   \
-    PMIX_MCA_BASE_VERSION_1_0_0("utestver", PMIX_MCA_utestver_MAJOR_VERSION, \
-                                PMIX_MCA_utestver_MINOR_VERSION,           \
-                                PMIX_MCA_utestver_RELEASE_VERSION)
-
 static pmix_mca_base_component_t utestver_current = {
-    PMIX_UTESTVER_BASE_VERSION_2_0_0,
+    PMIX_MCA_BASE_VERSION(utestver),
     .pmix_mca_component_name = "current",
     .pmix_mca_component_major_version = 1,
     .pmix_mca_component_minor_version = 0,
@@ -133,7 +139,7 @@ static pmix_mca_base_component_t utestver_current = {
 
 /* what an installed plugin from before the bump presents */
 static pmix_mca_base_component_t utestver_stale = {
-    PMIX_MCA_BASE_VERSION_1_0_0("utestver", 1, 0, 0),
+    UTEST_COMPONENT_VERSION("utestver", 1, 0, 0),
     .pmix_mca_component_name = "stale",
     .pmix_mca_component_major_version = 1,
     .pmix_mca_component_minor_version = 0,
@@ -163,7 +169,7 @@ PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, utestver, "a framework stating a
  * they must all survive, because a framework that states no version of
  * its own has nothing to compare them against. */
 static pmix_mca_base_component_t utestnover_alpha = {
-    PMIX_MCA_BASE_VERSION_1_0_0("utestnover", 1, 0, 0),
+    UTEST_COMPONENT_VERSION("utestnover", 1, 0, 0),
     .pmix_mca_component_name = "alpha",
     .pmix_mca_component_major_version = 1,
     .pmix_mca_component_minor_version = 0,
@@ -171,7 +177,7 @@ static pmix_mca_base_component_t utestnover_alpha = {
 };
 
 static pmix_mca_base_component_t utestnover_beta = {
-    PMIX_MCA_BASE_VERSION_1_0_0("utestnover", 7, 3, 0),
+    UTEST_COMPONENT_VERSION("utestnover", 7, 3, 0),
     .pmix_mca_component_name = "beta",
     .pmix_mca_component_major_version = 1,
     .pmix_mca_component_minor_version = 0,

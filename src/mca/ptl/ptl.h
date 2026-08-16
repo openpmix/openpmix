@@ -179,23 +179,15 @@ typedef struct pmix_ptl_base_component_t pmix_ptl_base_component_t;
 /* export the PTL module struct */
 PMIX_EXPORT extern pmix_ptl_module_t pmix_ptl;
 
-/*
- * Macro for use in components that are of type ptl
- */
-/* The ptl framework interface version. It is stated here and
- * nowhere else: the component macro below stamps these numbers into
- * every ptl component, and the framework's declaration reaches the
- * same three by pasting its name, so the two cannot drift apart.
- * Bump it on any change to the module interface that a component
- * built against the previous one would not survive. */
+/* The ptl framework interface version. It is stated here and nowhere
+ * else: components stamp it into their struct with
+ * PMIX_MCA_BASE_VERSION(ptl), and the framework's declaration reaches
+ * the same three by pasting its name, so the two cannot drift apart.
+ * Bump it on any change to the module interface that a component built
+ * against the previous one would not survive. */
 #define PMIX_MCA_ptl_MAJOR_VERSION   2
 #define PMIX_MCA_ptl_MINOR_VERSION   0
 #define PMIX_MCA_ptl_RELEASE_VERSION 0
-
-#define PMIX_PTL_BASE_VERSION_2_0_0                                     \
-    PMIX_MCA_BASE_VERSION_1_0_0("ptl", PMIX_MCA_ptl_MAJOR_VERSION,   \
-                                PMIX_MCA_ptl_MINOR_VERSION,           \
-                                PMIX_MCA_ptl_RELEASE_VERSION)
 
 END_C_DECLS
 
