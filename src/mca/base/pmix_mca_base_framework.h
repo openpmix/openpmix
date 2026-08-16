@@ -289,8 +289,16 @@ PMIX_EXPORT bool pmix_mca_base_framework_is_open(struct pmix_mca_base_framework_
                                              openfn, closefn, static_components, flags)
 
 /**
- * The declaration both of the above expand to. Not to be called
- * directly - use one of the two macros above.
+ * The declaration both of the above expand to.
+ *
+ * Frameworks in this project use one of the two macros above rather than
+ * this one. A companion project is the exception, and a sanctioned one:
+ * the versioned form reaches its numbers by pasting a PMIX_ prefix, which
+ * is this project's namespace, so a project whose frameworks state their
+ * own versions builds its equivalent on top of this - PRRTE's
+ * PRTE_MCA_BASE_FRAMEWORK_DECLARE pastes PRTE_MCA_<name>_*_VERSION and
+ * hands the result here. Treat the argument list as part of the installed
+ * interface for that reason.
  */
 #    define PMIX_MCA_BASE_FRAMEWORK_DECLARE_FULL(project, name, type_major, type_minor,     \
                                                  description, registerfn, openfn,           \
