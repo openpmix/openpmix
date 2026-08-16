@@ -1919,23 +1919,44 @@ other.
   `direct_modex` is the same class for the same reason (its product is a
   data blob delivered through the callback) and now carries the same
   diagnostic. Those two are the only up-calls in this position.
-- **The `spawn_iof_flags` stand-in is process-wide and is written from the
-  caller's thread** (`stash_spawn_iof_flags`) while `spawn_or_global_flags()`
-  in [`pmix_iof.c`](../common/pmix_iof.c) reads it on the progress thread.
-  It is safe for the case it was built for: the store happens before
+- **FIXED — two spawns in flight at once shared one set of output
+  directives, and the entry that recorded it had ruled out the fix.**
+  `stash_spawn_iof_flags` writes `pmix_globals.spawn_iof_flags`, a single
+  process-wide slot, from the caller's thread; `spawn_or_global_flags()`
+  in [`pmix_iof.c`](../common/pmix_iof.c) reads it on the progress thread
+  when output arrives naming a namespace we have no record of. The second
+  spawn overwrote the first's flags, and the first reply to land cleared
+  the slot for both — so whichever job's output arrived first was
+  formatted with the other's directives, or with none.
+
+  This entry used to say the problem "cannot be closed by making the slot
+  per-request", which is true and was mistaken for the whole answer. The
+  reader really does have nothing in scope but the unknown namespace and
+  the stream, and really cannot learn more until the reply arrives — so
+  **the output waits for the reply** rather than being formatted on a
+  guess. `PMIx_Spawn_nb` now calls `pmix_iof_spawn_begin()` before the
+  send, `wait_cbfunc` calls `pmix_iof_release_pending(nspace)` right
+  after it records the flags on the namespace and `pmix_iof_spawn_end()`
+  on every exit, and the held bytes are written with that spawn's own
+  directives. See the pending-cache section of
+  [`src/common/AGENTS.md`](../common/AGENTS.md) for the rules, and
+  `test/unit/iof_pending` for coverage.
+
+  Two things fall out that are easy to get wrong here. **`begin` and
+  `end` must ask the same question**, which is why both go through
+  `spawn_iof_tracked()` rather than repeating the `PMIX_PEER_IS_TOOL &&
+  flags->set` test — a spawn counted in and not counted out holds output
+  indefinitely, and the failed-`PMIX_PTL_SEND_RECV` path is the one that
+  is easy to miss, since no reply is coming to do it. And **the release
+  goes above the `end`**, not below: `end` at zero flushes what is left
+  with the process-wide flags, so releasing after it would hand this
+  spawn's output the defaults it was waiting to escape.
+
+  The stand-in itself stays, as the answer for output past
+  `pmix_globals.iof_pending_limit`. Its thread-safety argument is
+  unchanged and still worth knowing: the store happens before
   `PMIX_PTL_SEND_RECV`, and forwarded output cannot arrive before the
-  request goes out, so the send path's peer lock publishes it. What it does
-  **not** survive is two spawns in flight at once from one process — the
-  second overwrites the first's flags. That is inherent to a single
-  process-wide slot, not a bug in this file, and **it cannot be closed by
-  making the slot per-request**, which is how this entry used to end.
-  `spawn_or_global_flags()` is reached exactly when the arriving output
-  names a namespace we have no record of, and the only things in scope
-  there are that unknown namespace and the stream — nothing says which
-  in-flight spawn the output came from, and nothing can until the reply
-  arrives, which is the very thing the stand-in covers for. See
-  `docs/todo.rst`, where it is now recorded as an open decision rather
-  than as work waiting to be done.
+  request goes out, so the send path's peer lock publishes it.
 - **FIXED — the server branch read `pmix_server_globals.clients` from the
   caller's thread.** `pmix_get_peer_object()` walks that pointer array
   unlocked to resolve a `PMIX_PARENT_ID`, and `PMIx_Spawn_nb` in a server

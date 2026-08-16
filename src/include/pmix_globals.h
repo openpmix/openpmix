@@ -923,17 +923,37 @@ typedef struct {
     bool external_topology;
     bool external_progress;
     pmix_iof_flags_t iof_flags;
-    /* Output-formatting flags belonging to a spawn we have issued but whose
-     * namespace we have not been told yet. A tool's spawn directives are
-     * parsed before the request goes out (see pmix_server_spawn_parser() in
-     * PMIx_Spawn_nb, "helps to catch any early output"), but they can only be
-     * recorded against the namespace once the reply names it - and a proc
-     * that writes and exits immediately can get its output to us first. That
-     * output has nowhere to look for its format, so it came out unformatted.
-     * Holding the flags here gives it somewhere. Cleared once the reply has
-     * been processed and the per-namespace flags are in place. Note the file
-     * and directory members are deliberately left NULL: this copy does not
-     * own strings, it only carries the formatting decisions. */
+    /* Output arriving for a namespace we cannot yet format for.
+     *
+     * A tool's spawn directives are parsed before the request goes out (see
+     * pmix_server_spawn_parser() in PMIx_Spawn_nb, "helps to catch any early
+     * output"), but they can only be recorded against the namespace once the
+     * reply names it - and a proc that writes and exits immediately can get
+     * its output to us first. Nothing in scope at that moment says which of
+     * our in-flight spawns the output belongs to, and nothing can until the
+     * reply arrives. So the bytes are held here instead of being formatted
+     * on a guess, and the reply - which knows both the namespace and the
+     * directives it was issued with - releases them.
+     *
+     * spawns_in_flight counts the spawns we have issued that carried output
+     * directives and have not yet been answered; while it is non-zero there
+     * is a reply coming that can name a namespace, so output for a namespace
+     * we have no formatting for is worth holding. It is incremented on the
+     * caller's thread ahead of the send and decremented on the progress
+     * thread by the reply handler, hence the atomic. iof_pending and
+     * iof_pending_bytes are progress-thread state, bounded by
+     * iof_pending_limit; past the limit the stand-in below is used instead.
+     *
+     * spawn_iof_flags is that stand-in: the directives of the most recent
+     * such spawn, kept only as the overflow answer and cleared once nothing
+     * is in flight. It cannot distinguish concurrent spawns, which is why
+     * the cache exists. Note its file and directory members are deliberately
+     * left NULL - that copy does not own strings, it only carries the
+     * formatting decisions. */
+    pmix_atomic_size_t spawns_in_flight;
+    pmix_list_t iof_pending;
+    size_t iof_pending_bytes;
+    size_t iof_pending_limit;
     pmix_iof_flags_t spawn_iof_flags;
     pmix_keyindex_t keyindex;
 } pmix_globals_t;

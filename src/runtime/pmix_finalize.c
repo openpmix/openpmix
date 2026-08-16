@@ -274,6 +274,12 @@ void pmix_rte_finalize(void)
     pmix_globals.external_topology = false;
     pmix_globals.pushstdin = false;
     pmix_globals.commits_pending = false;
+    /* pmix_iof_finalize above drained the pending-output cache and
+     * destructed its list; put the accounting that goes with it back to
+     * the static-init values so the next cycle does not start out
+     * believing it is already holding bytes for a spawn that is gone */
+    atomic_store(&pmix_globals.spawns_in_flight, 0);
+    pmix_globals.iof_pending_bytes = 0;
     /* the file/directory strings were freed above; this clears the
      * formatting decisions that came with them */
     pmix_iof_init_flags(&pmix_globals.iof_flags);

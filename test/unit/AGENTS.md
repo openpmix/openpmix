@@ -92,7 +92,36 @@ child's output to the process that spawned it is a loopback.
 **Singleton client tests** — call the real public API in a process that
 comes up with no server. `client_cycle` (init/finalize cycling),
 `tool_cycle`, `singleton_register`, `rndz_stale`, `event_chain`,
-`gds_fallback`, `client_api`.
+`gds_fallback`, `client_api`, `iof_pending`.
+
+### `iof_pending` — output held for a spawn reply that has not landed
+
+The only test here that comes up as a **tool**, because the thing under
+test is tool-only: a client is never sent a spawned job's output. It
+stands pipes up in place of stdout and stderr the way `iof_output` does,
+then drives `pmix_iof_spawn_begin` / `pmix_iof_write_output` /
+`pmix_iof_release_pending` / `pmix_iof_spawn_end` directly, each
+thread-shifted onto the progress thread — all of them touch
+`pmix_globals` state that belongs to it.
+
+No spawn is issued and none could be (`test/simple/simptest` cannot host
+one), so what it pins down is the cache's own contract rather than the
+round trip: that nothing is held when no spawn is in flight, that two
+concurrent spawns' output is released separately and formatted with each
+one's own directives — the case a single process-wide slot cannot serve,
+and the reason this exists — that arrival order survives, that the
+last spawn being answered flushes what is left, and that the byte limit
+makes the cache fall back rather than grow. Most of its cases fail
+against an unfixed library, which was checked by making
+`hold_for_spawn_reply` decline unconditionally and re-running.
+
+The two assertions worth reading before editing it are the negative
+ones. "held while a spawn is in flight" asserts that **nothing** appears
+within a settle window, which is the only way to distinguish held from
+written; and the second concurrent spawn's case asserts its output is
+*not* tagged, which is what fails when both spawns share one set of
+flags. A change that makes the release eager, or that drops the
+per-namespace match, passes every positive case and fails those two.
 
 **Perl-driven server tests** — `run_*.pl`, generated from `.pl.in` by
 `configure`, which start a `test/simple` server and drive real clients

@@ -165,6 +165,61 @@ lose the user's output *silently*.
   and out of order, and a client or tool never sweeps that list at all
   (`iof_sink_destruct` gates `flush_sink_residuals` on being a server).
 
+### Output a tool cannot format yet is held, not guessed at
+
+A tool receives forwarded output for the jobs it spawns, and a rank that
+writes and exits immediately can get its first chunk here *before* the
+spawn reply names the namespace it came from. Nothing in scope at that
+moment says which of the tool's in-flight spawns produced it — the only
+things `pmix_iof_write_output()` has are that unknown namespace and the
+stream — and nothing can until the reply arrives.
+
+So it is not formatted at that moment. `hold_for_spawn_reply()` parks the
+bytes on `pmix_globals.iof_pending`, and the spawn reply — which knows
+both the namespace and the directives that spawn was issued with —
+releases them through `pmix_iof_release_pending()`. Five things about
+that arrangement are load-bearing:
+
+- **The gate is "is a spawn of ours unanswered", not "is this namespace
+  unknown".** `pmix_globals.spawns_in_flight` is bumped by
+  `pmix_iof_spawn_begin()` before the request goes out and dropped by
+  `pmix_iof_spawn_end()` when the reply (or a synthesized
+  lost-connection reply) lands. With nothing in flight there is no reply
+  coming that could name a namespace, so output for an unknown one — a
+  `PMIx_IOF_pull` against a job we did not spawn — must go straight
+  through rather than wait for something that never happens.
+- **Declining to hold is always safe, which is what makes the bound and
+  the allocation failures harmless.** The caller then does exactly what
+  it did before this cache existed: `spawn_or_global_flags()`, the
+  process-wide stand-in. That stand-in is now *only* the overflow answer;
+  `pmix_globals.iof_pending_limit` (MCA `pmix_iof_pending_limit`) is
+  where it starts being used again.
+- **`release_pending()` writes with `may_hold = false`.** Without it, a
+  spawn whose directives leave `iof_flags.set` false would find the
+  namespace record still saying nothing, hand the chunk straight back to
+  `hold_for_spawn_reply()`, and spin. That is the whole reason
+  `pmix_iof_write_output()` is a wrapper around a static `write_output()`
+  carrying the flag.
+- **A zero-size chunk is held too.** It is the end-of-stream marker, and
+  letting it past would put it ahead of the output it ends.
+- **`pmix_iof_spawn_end()` drops the count and, at zero, flushes
+  everything left.** Output nobody's reply ever named belongs to no spawn
+  of ours, so it goes out with the process-wide flags rather than sitting
+  there. Every path that ends a spawn owes this call, the failed
+  `PMIX_PTL_SEND_RECV` included — `spawn_iof_tracked()` in
+  `src/client/pmix_client_spawn.c` is the single predicate both the begin
+  and the end ask, precisely so they cannot disagree. A spawn counted in
+  and never counted out holds output until the limit and then forever.
+
+Everything but `pmix_iof_spawn_begin()` is progress-thread only.
+`begin()` runs on the caller's thread, and the count is atomic for that
+reason; it is published by being stored ahead of the send, since nothing
+can be forwarded to us before the request has left — the same bargain
+`stash_spawn_iof_flags()` makes.
+
+Coverage is [`test/unit/iof_pending.c`](../../test/unit/iof_pending.c),
+which comes up as a tool and drives the entry points directly.
+
 Two related facts worth knowing before you touch that code:
 
 - `pmix_server_globals.iof_residuals` is **statically initialized**

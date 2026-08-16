@@ -148,6 +148,21 @@ typedef struct {
 } pmix_iof_residual_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_residual_t);
 
+/* One chunk of output being held because nothing yet says how to format
+ * it - see the pending-cache comment on pmix_globals_t and the entry
+ * points below. Deliberately unlike pmix_iof_residual_t above, this
+ * carries no flags and no channel: the whole point is that neither is
+ * known yet, and both are worked out when the chunk is finally written.
+ * A zero-size bo is a legitimate entry - it is the end-of-stream marker,
+ * which has to keep its place in the sequence. */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_proc_t name;
+    pmix_iof_channel_t stream;
+    pmix_byte_object_t bo;
+} pmix_iof_pending_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_pending_t);
+
 /* Write event macro's */
 
 static inline bool pmix_iof_fd_always_ready(int fd)
@@ -294,6 +309,33 @@ PMIX_EXPORT pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels,
                                                pmix_iof_req_t *req);
 PMIX_EXPORT void pmix_iof_init_flags(pmix_iof_flags_t *flags);
 PMIX_EXPORT void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags);
+
+/* Holding output until a spawn reply says how to format it.
+ *
+ * A tool receives forwarded output for the jobs it spawns, and that
+ * output can beat the spawn reply here - so it can arrive naming a
+ * namespace we have never been told about, with nothing in scope to say
+ * which of our in-flight spawns it came from. pmix_iof_write_output()
+ * holds such output rather than formatting it on a guess, and these are
+ * the two ends of that arrangement.
+ *
+ * pmix_iof_spawn_begin() records a spawn as issued and unanswered; it
+ * must be called before the request goes out, because the reply - and
+ * the output - can arrive as soon as it has. pmix_iof_spawn_end() is its
+ * partner and is owed by every path that ends the spawn, the failed send
+ * included; when the last one is answered it releases anything still
+ * held, since output left over belongs to no spawn of ours.
+ *
+ * pmix_iof_release_pending() writes out what was held for one namespace.
+ * Call it once that namespace's formatting flags are in place and before
+ * pmix_iof_spawn_end(), so the held output is formatted with the
+ * directives its own spawn was issued with.
+ *
+ * begin() may be called from any thread; the other two are progress-
+ * thread only, as is everything they touch. */
+PMIX_EXPORT void pmix_iof_spawn_begin(void);
+PMIX_EXPORT void pmix_iof_spawn_end(void);
+PMIX_EXPORT void pmix_iof_release_pending(const char *nspace);
 
 /* IOF flow control.
  *

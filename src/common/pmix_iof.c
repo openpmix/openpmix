@@ -49,6 +49,15 @@
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
 
+/* the pending-output cache and the write path it feeds are defined far
+ * below, but pmix_iof_finalize() drains the one and the drain calls the
+ * other - see the comments at their definitions */
+static pmix_status_t write_output(const pmix_proc_t *name,
+                                  pmix_iof_channel_t stream,
+                                  const pmix_byte_object_t *bo,
+                                  bool may_hold);
+static void release_pending(const char *nspace);
+
 static void myregcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
 {
@@ -525,6 +534,16 @@ void pmix_iof_finalize(void)
         PMIX_RELEASE(stdinev_global);
         stdinev_global = NULL;
     }
+    /* Anything still being held for a spawn reply is never going to get
+     * one now. Write it with whatever we have rather than dropping it,
+     * the way pmix_iof_flush_residuals() does at server finalize - and
+     * with the same caveat, that the progress thread is already paused
+     * by the time we get here, so this is best effort. It is normally
+     * empty: pmix_iof_spawn_end() drains the cache when the last spawn
+     * is answered, and a lost connection completes that reply too. */
+    release_pending(NULL);
+    PMIX_LIST_DESTRUCT(&pmix_globals.iof_pending);
+    pmix_globals.iof_pending_bytes = 0;
 }
 
 /* Start reading our own stdin into stdinev_global, arming the SIGCONT
@@ -1940,10 +1959,12 @@ static void flush_residual(const pmix_proc_t *name, pmix_iof_channel_t stream)
 }
 
 /* What to format output with when the namespace it came from has nothing to
- * say about it. A tool that has a spawn in flight has already parsed that
- * spawn's directives (see stash_spawn_iof_flags() in pmix_client_spawn.c);
- * output that beat the reply here belongs to that spawn, so those flags are
- * the right answer rather than the process-wide default. */
+ * say about it and we are not holding the bytes for a reply. A tool that has
+ * a spawn in flight has already parsed that spawn's directives (see
+ * stash_spawn_iof_flags() in pmix_client_spawn.c), so those flags are a
+ * better guess than the process-wide default - but they are a guess, which
+ * is why they are now reached only once the pending cache has declined to
+ * hold the output. */
 static pmix_iof_flags_t spawn_or_global_flags(void)
 {
     if (pmix_globals.spawn_iof_flags.set) {
@@ -1965,6 +1986,14 @@ static pmix_iof_flags_t spawn_or_global_flags(void)
  * for a tool - and went to the terminal after all. The result was that a
  * nondeterministic subset of the job's output appeared on a terminal the user
  * had asked to keep clean: whichever ranks' first chunk beat the reply.
+ *
+ * Note what that fix could not do, and why this is no longer the first
+ * answer tried: it suppresses the local write but has nowhere to put the
+ * output instead, because no file can be opened for a namespace we have not
+ * been told about - so a file-only spawn's early output was written nowhere
+ * at all. Holding it for the reply is what makes the file reachable. This
+ * remains the answer for output past pmix_globals.iof_pending_limit, where
+ * suppressing is still better than writing to the wrong place.
  */
 static pmix_iof_flags_t stand_in_flags(bool *outputio)
 {
@@ -1976,9 +2005,120 @@ static pmix_iof_flags_t stand_in_flags(bool *outputio)
     return flags;
 }
 
-pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
-                                    pmix_iof_channel_t stream,
-                                    const pmix_byte_object_t *bo)
+/* Take custody of output we cannot yet format, reporting whether we did.
+ *
+ * The condition is narrow on purpose. Only a tool receives forwarded output
+ * for a job it spawned, and only while one of our spawns is unanswered is
+ * there a reply coming that can name a namespace - with nothing in flight,
+ * output for an unknown namespace is from something else entirely (a
+ * PMIx_IOF_pull against a job we did not spawn, say) and holding it would
+ * delay it for a reply that never comes.
+ *
+ * Declining is always safe: the caller then does what it did before this
+ * cache existed. That is what the limit relies on, and what makes an
+ * allocation failure here a formatting question rather than a lost chunk.
+ *
+ * Runs on the progress thread, as every caller of pmix_iof_write_output()
+ * does, so the list and the byte count need no lock. */
+static bool hold_for_spawn_reply(const pmix_proc_t *name,
+                                 pmix_iof_channel_t stream,
+                                 const pmix_byte_object_t *bo)
+{
+    pmix_iof_pending_t *pend;
+
+    if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer) ||
+        0 == atomic_load(&pmix_globals.spawns_in_flight)) {
+        return false;
+    }
+    if (pmix_globals.iof_pending_limit < pmix_globals.iof_pending_bytes + bo->size) {
+        return false;
+    }
+    pend = PMIX_NEW(pmix_iof_pending_t);
+    if (PMIX_UNLIKELY(NULL == pend)) {
+        return false;
+    }
+    PMIX_XFER_PROCID(&pend->name, name);
+    pend->stream = stream;
+    /* a zero-size chunk is the end-of-stream marker and carries no bytes -
+     * it still has to be held, or it would overtake the output it ends */
+    if (0 < bo->size) {
+        pend->bo.bytes = (char *) malloc(bo->size);
+        if (PMIX_UNLIKELY(NULL == pend->bo.bytes)) {
+            PMIX_RELEASE(pend);
+            return false;
+        }
+        memcpy(pend->bo.bytes, bo->bytes, bo->size);
+        pend->bo.size = bo->size;
+    }
+    pmix_list_append(&pmix_globals.iof_pending, &pend->super);
+    pmix_globals.iof_pending_bytes += bo->size;
+
+    pmix_output_verbose(2, pmix_client_globals.iof_output,
+                        "%s iof: holding %lu bytes from %s pending spawn reply",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        (unsigned long) bo->size, PMIX_NAME_PRINT(name));
+    return true;
+}
+
+/* Write out everything we were holding, optionally only for one namespace.
+ *
+ * Each entry is unlinked before it is written, and the write is told not to
+ * hold: without that, a spawn whose directives set no flags would find the
+ * namespace record still saying nothing, hand the chunk straight back to
+ * hold_for_spawn_reply(), and spin. Order within the list is arrival order
+ * and is preserved, which is the whole reason the marker above is held. */
+static void release_pending(const char *nspace)
+{
+    pmix_iof_pending_t *pend, *next;
+    pmix_status_t rc;
+
+    PMIX_LIST_FOREACH_SAFE(pend, next, &pmix_globals.iof_pending, pmix_iof_pending_t) {
+        if (NULL != nspace && !PMIX_CHECK_NSPACE(pend->name.nspace, nspace)) {
+            continue;
+        }
+        pmix_list_remove_item(&pmix_globals.iof_pending, &pend->super);
+        pmix_globals.iof_pending_bytes -= pend->bo.size;
+        rc = write_output(&pend->name, pend->stream, &pend->bo, false);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+        PMIX_RELEASE(pend);
+    }
+}
+
+void pmix_iof_release_pending(const char *nspace)
+{
+    release_pending(nspace);
+}
+
+void pmix_iof_spawn_begin(void)
+{
+    atomic_fetch_add_explicit(&pmix_globals.spawns_in_flight, 1, memory_order_seq_cst);
+}
+
+void pmix_iof_spawn_end(void)
+{
+    /* fetch_sub returns the value before the subtraction */
+    if (1 < atomic_fetch_sub_explicit(&pmix_globals.spawns_in_flight, 1,
+                                      memory_order_seq_cst)) {
+        return;
+    }
+    /* that was the last one. Nothing is coming that can name a namespace
+     * now, so the stand-in has nothing left to stand in for, and whatever
+     * is still held belongs to no spawn of ours - write it with the
+     * process-wide flags, which is what it would have had all along */
+    pmix_iof_init_flags(&pmix_globals.spawn_iof_flags);
+    pmix_globals.spawn_iof_flags.set = false;
+    release_pending(NULL);
+}
+
+/* The body of pmix_iof_write_output(). "may_hold" is false only when the
+ * caller is the pending cache draining itself, which must not be handed its
+ * own output back - see release_pending(). */
+static pmix_status_t write_output(const pmix_proc_t *name,
+                                  pmix_iof_channel_t stream,
+                                  const pmix_byte_object_t *bo,
+                                  bool may_hold)
 {
     pmix_status_t rc;
     size_t n, start;
@@ -2013,6 +2153,17 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
     channel = NULL;
     /* default outputio to our flag */
     outputio = pmix_globals.iof_flags.local_output;
+
+    /* Nothing on the namespace says how this output is to be formatted, or
+     * even whether we are meant to write it at all. If a spawn of ours is
+     * still unanswered, its reply will say - and that is an exact answer
+     * where stand_in_flags() below is a guess that cannot tell two
+     * concurrent spawns apart. So hold the bytes for it rather than
+     * committing to a format now. */
+    if (may_hold && (NULL == nptr || !nptr->iof_flags.set) &&
+        hold_for_spawn_reply(name, stream, bo)) {
+        return PMIX_SUCCESS;
+    }
 
     if (NULL != nptr) {
         if (nptr->iof_flags.set) {
@@ -2176,6 +2327,13 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
         free(inputdata);
     }
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
+                                    pmix_iof_channel_t stream,
+                                    const pmix_byte_object_t *bo)
+{
+    return write_output(name, stream, bo, true);
 }
 
 void pmix_iof_flush_residuals(void)
@@ -3066,3 +3224,19 @@ static void iofresdes(pmix_iof_residual_t *p)
 PMIX_CLASS_INSTANCE(pmix_iof_residual_t,
                     pmix_list_item_t,
                     iofrescon, iofresdes);
+
+static void iofpendcon(pmix_iof_pending_t *p)
+{
+    PMIX_LOAD_PROCID(&p->name, NULL, PMIX_RANK_UNDEF);
+    p->stream = PMIX_FWD_NO_CHANNELS;
+    PMIX_BYTE_OBJECT_CONSTRUCT(&p->bo);
+}
+static void iofpenddes(pmix_iof_pending_t *p)
+{
+    if (NULL != p->bo.bytes) {
+        free(p->bo.bytes);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_iof_pending_t,
+                    pmix_list_item_t,
+                    iofpendcon, iofpenddes);

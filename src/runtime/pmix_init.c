@@ -123,6 +123,10 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .external_topology = false,
     .external_progress = false,
     .iof_flags = PMIX_IOF_FLAGS_STATIC_INIT,
+    .spawns_in_flight = 0,
+    .iof_pending = PMIX_LIST_STATIC_INIT,
+    .iof_pending_bytes = 0,
+    .iof_pending_limit = 0,
     .spawn_iof_flags = PMIX_IOF_FLAGS_STATIC_INIT,
     .keyindex = PMIX_KEYINDEX_STATIC_INIT
 };
@@ -395,6 +399,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_pointer_array_init(&pmix_globals.iof_requests, 128, INT_MAX, 128);
     /* setup the stdin forwarding target list */
     PMIX_CONSTRUCT(&pmix_globals.stdin_targets, pmix_list_t);
+    /* and the list of output waiting on a spawn reply to say how it is
+     * to be formatted - see pmix_iof_write_output() */
+    PMIX_CONSTRUCT(&pmix_globals.iof_pending, pmix_list_t);
     memcpy(&pmix_globals.iof_flags, &flags, sizeof(pmix_iof_flags_t));
 
     /* Setup client verbosities as all procs are allowed to

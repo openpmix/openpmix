@@ -63,6 +63,17 @@ each time somebody asks.
           one that still assigns inside its guard.  Everything else was
           re-verified against the tree and stands as written.
 
+          A second entry went the same way on 2026-08-16: the open
+          decision about two concurrent spawns not being formattable
+          differently.  It listed three unattractive choices and missed
+          a fourth — hold the output until the reply that can identify
+          it arrives, rather than formatting it on a guess at all.  The
+          entry is retired; see ``test/unit/iof_pending``.  Worth noting
+          *why* it read as closed, since the shape recurs: it framed the
+          problem as "which flags does this output get", which really
+          has no answer at that moment, when the question that does have
+          one is "does this output have to be formatted yet".
+
 Review coverage
 ---------------
 
@@ -184,31 +195,6 @@ data from it means putting a lock on a read path that is lock-free by
 design and is the reason that component exists.  Any real fix has to
 answer the ``shmem3`` case first; the messaging half is not worth building
 on its own.
-
-Two concurrent spawns cannot be formatted differently
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``pmix_globals.spawn_iof_flags`` is a single process-wide slot holding
-the output-formatting directives of the spawn a tool has in flight.  It
-exists because forwarded output can arrive *before* the spawn reply names
-the namespace it belongs to, and until it existed that output was
-formatted with the process-wide defaults instead — so ``prun --output
-tag`` lost the tag on whichever rank happened to be quickest.  Two spawns
-in flight at once from one process means the second overwrites the
-first's flags.
-
-This cannot simply "become per-request", which is how it was recorded
-before.  The reader is ``spawn_or_global_flags()`` in
-``src/common/pmix_iof.c``, reached from ``pmix_iof_write_output()``
-precisely when the arriving output names a namespace we have no record
-of; the only things in scope there are that unknown namespace and the
-stream.  Nothing identifies *which* in-flight spawn the output came
-from, and nothing can until the reply arrives — which is the very thing
-the stand-in exists to cover for.  So the choices are: keep one slot and
-accept that concurrent spawns share it; let the reply establish the
-flags, which re-opens the window the stand-in was built to close; or
-carry something in the IOF message that names the spawn, which is a
-wire-format and Standard question rather than a bug fix.
 
 Deferred work
 -------------

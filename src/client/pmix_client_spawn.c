@@ -48,6 +48,7 @@
 #include <event.h>
 
 #include "src/class/pmix_list.h"
+#include "src/common/pmix_iof.h"
 #include "src/common/pmix_pfexec.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"
@@ -73,22 +74,42 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
                         void *cbdata);
 static void spawn_cbfunc(pmix_status_t status, char nspace[], void *cbdata);
 
+/* Whether this spawn's output arrangements are ours to carry until the
+ * reply lands. Only a tool receives forwarded output for the jobs it
+ * spawns, and only a spawn that carried output directives has anything
+ * the reply will tell us that the process-wide defaults do not. Both
+ * halves of the arrangement below ask this rather than each keeping its
+ * own copy of the test, because they have to agree: a spawn counted as
+ * in flight that is never counted back out holds output forever. */
+static bool spawn_iof_tracked(pmix_iof_flags_t *flags)
+{
+    return PMIX_PEER_IS_TOOL(pmix_globals.mypeer) && flags->set;
+}
+
 /* Hold a spawn's output-formatting flags where output can find them before
  * the reply names the namespace they belong to.
  *
- * Only meaningful for a tool: a tool receives forwarded output for the jobs
- * it spawned, so output arriving for a namespace it has not been told about
- * yet can only be from the spawn it just issued. Until this existed, that
- * output fell back to the process-wide defaults and came out unformatted -
- * so "prun --output tag" lost the tag on whichever rank happened to be
- * quickest, which showed up as an intermittent failure whenever anything
- * slowed the reply down (two pruns against one DVM was enough).
+ * A tool receives forwarded output for the jobs it spawned, so output
+ * arriving for a namespace it has not been told about yet is most likely
+ * from the spawn it just issued. Until this existed, that output fell back
+ * to the process-wide defaults and came out unformatted - so "prun --output
+ * tag" lost the tag on whichever rank happened to be quickest, which showed
+ * up as an intermittent failure whenever anything slowed the reply down
+ * (two pruns against one DVM was enough).
+ *
+ * "Most likely" is as far as this can go, which is why it is no longer the
+ * primary answer: one process-wide slot cannot tell two concurrent spawns
+ * apart, and it cannot carry file or directory directives at all, since no
+ * sink can be opened for a namespace we have not been told about. The
+ * output is held for the reply instead (see pmix_iof_spawn_begin() in
+ * src/common/pmix_iof.c) and this remains only as the answer for output
+ * that overflows the bound on that.
  *
  * The string members are not copied: this stand-in owns nothing.
  */
 static void stash_spawn_iof_flags(pmix_iof_flags_t *flags)
 {
-    if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer) || !flags->set) {
+    if (!spawn_iof_tracked(flags)) {
         return;
     }
     memcpy(&pmix_globals.spawn_iof_flags, flags, sizeof(pmix_iof_flags_t));
@@ -738,10 +759,23 @@ envars_done:
                              &fcd->inherit_iof,
                              fcd->info, fcd->ninfo);
     stash_spawn_iof_flags(&fcd->flags);
+    /* Record the spawn as issued and unanswered before the request goes
+     * out, not after: the reply - and the job's first output - can arrive
+     * the moment it has. Storing it ahead of the send is also what
+     * publishes it to the progress thread, since nothing can be forwarded
+     * to us before the request has left. */
+    if (spawn_iof_tracked(&fcd->flags)) {
+        pmix_iof_spawn_begin();
+    }
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) fcd);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        /* no reply is coming, so nothing else will count this one back
+         * out - and a spawn left in flight holds output indefinitely */
+        if (spawn_iof_tracked(&fcd->flags)) {
+            pmix_iof_spawn_end();
+        }
         PMIX_RELEASE(msg);
         PMIX_RELEASE(fcd);
     }
@@ -846,14 +880,24 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
             if (fcd->flags.nocopy) {
                 nptr->iof_flags.local_output = false;
             }
-            /* the namespace now carries its own flags, so the stand-in for
-             * output that arrived before this reply is no longer wanted */
-            pmix_iof_init_flags(&pmix_globals.spawn_iof_flags);
-            pmix_globals.spawn_iof_flags.set = false;
+            /* The namespace now carries its own flags, which is the answer
+             * any output we held for it has been waiting for. Release it
+             * here, before the count is dropped below, so it is written
+             * with this spawn's directives rather than the process-wide
+             * defaults - and while we are still on the progress thread, so
+             * it goes out ahead of anything this job sends next. */
+            pmix_iof_release_pending(nspace);
         }
     }
 
 report:
+    /* every exit owes this: the reply has arrived (or has been synthesized
+     * for a lost connection), so this spawn is no longer one the pending
+     * cache should be holding output for. It is also what clears the
+     * stand-in flags once nothing at all is in flight. */
+    if (spawn_iof_tracked(&fcd->flags)) {
+        pmix_iof_spawn_end();
+    }
     if (NULL != fcd->spcbfunc) {
         fcd->spcbfunc(ret, nspace, fcd->cbdata);
     }
