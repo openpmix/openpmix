@@ -142,6 +142,7 @@ static pmix_status_t register_job(const char *name)
     pmix_info_t jinfo[1];
     pmix_proc_t client;
     uint32_t one = 1;
+    int timedout = 0;
     /* PMIx_server_register_nspace takes a pmix_nspace_t -- a
      * PMIX_MAX_NSLEN+1 array, not a pointer -- so hand it one.  Passing a
      * bare string draws -Wstringop-overread: the compiler reads the array
@@ -166,14 +167,23 @@ static pmix_status_t register_job(const char *name)
 
     regdone = 0;
     rc = PMIx_server_register_nspace(nspace, 1, jinfo, 1, reg_cbfunc, NULL);
+    /* The array has to stay alive until the callback fires. The caddy
+     * that carries this request to the progress thread points at the
+     * caller's info rather than copying it, so a caller that releases it
+     * on return has handed the progress thread freed memory. Destructing
+     * it here read back as an intermittent PMIX_ERR_TYPE_MISMATCH out of
+     * the job-array processing when the type field happened to be
+     * overwritten - and, when the array's size field was what got reused,
+     * as a walk over however many elements that garbage claimed. */
+    if (PMIX_SUCCESS == rc) {
+        timedout = wait_reg("register_nspace");
+    }
     PMIX_INFO_DESTRUCT(&jinfo[0]);
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         return rc;
     }
-    if (PMIX_SUCCESS == rc) {
-        if (0 != wait_reg("register_nspace")) {
-            return PMIX_ERR_TIMEOUT;
-        }
+    if (0 != timedout) {
+        return PMIX_ERR_TIMEOUT;
     }
 
     PMIX_LOAD_PROCID(&client, nspace, 0);
