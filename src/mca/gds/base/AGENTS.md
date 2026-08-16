@@ -67,6 +67,7 @@ pmix_gds_base_module_t *pmix_gds_base_assign_module(pmix_info_t *info, size_t ni
 pmix_gds_base_module_t *pmix_gds_base_get_fallback_module(pmix_gds_base_module_t *failing);
 pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc, char ***env);
 pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
+                                        const char *nspace,
                                         pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                         void *cbdata);
 pmix_status_t pmix_gds_base_proc_array_id(const pmix_info_t *array, size_t size,
@@ -123,6 +124,33 @@ across servers (otherwise the `collection-mismatch` topic in
 `cb_fn(&proc, &pbkt)` once per proc blob, and finally calls
 `cb_fn(&proc, NULL)` once per **nspace** that appeared, to signal "done".
 
+### The flag byte is screened before it is compared
+
+**Agreeing with each other is not the same as being a value we can act
+on.** The cross-server comparison is only an equality test, so before
+August 2026 a byte every sender agreed on and no datastore understood
+passed straight through and its blobs were stored as an ordinary full
+contribution. The walker now screens the value first:
+
+- `PMIX_MODEX_DELTA` — a contribution carrying only what its processes
+  published since they last took part in a collecting fence. Recognized
+  and **refused** (`PMIX_ERR_NOT_SUPPORTED`, `delta-modex-unsupported`)
+  until the datastores can chain modex generations, because storing a
+  delta as a full set drops every key the sender left out — and for
+  `shmem3`, which retires the previous generation on the strength of the
+  new one standing alone, drops that generation with it. Nothing emits it
+  yet; see openpmix#4087 and
+  [`docs/how-things-work/modex.rst`](../../../../docs/how-things-work/modex.rst).
+- anything other than `PMIX_COLLECT_NO`/`PMIX_COLLECT_YES` — a value no
+  release ever defined, so `PMIX_ERR_BAD_PARAM`.
+
+Note the cross-version property this rests on: the equality check is what
+an **older** release already performs, so a peer that starts sending a new
+marker is rejected by old and new receivers alike with no change to the old
+code. That is why the marker landed before anything that emits it.
+Regression coverage is `test_store_modex_blob_info()` in
+`test/unit/gds_datastore.c`.
+
 ### The callback contract, which is not obvious and has been broken
 
 **`cb_fn` must return `PMIX_SUCCESS` for a blob it consumed.** The walker
@@ -165,9 +193,11 @@ There is nothing else. `pmix_gds_modex_key_fmt_t`, the
 `PMIX_GDS_*_IS_SET` accessors and `pmix_gds_modex_blob_info_t` were all
 deleted in August 2026: they were the residue of the modex keymap
 (below) and nothing had read or written any of them since 2024. The
-collect flag the walker reads is a plain
-`PMIX_COLLECT_YES`/`PMIX_COLLECT_NO` byte, not a bitmask — do not
-reintroduce the bit accessors on the theory that it is one.
+flag byte the walker reads is a plain `pmix_collect_t` value, not a
+bitmask — do not reintroduce the bit accessors on the theory that it is
+one. If a second thing ever does need saying about a contribution,
+decide then whether to make the byte a bitmask, converting both ends, or
+to add another value, as `PMIX_MODEX_DELTA` did.
 
 ## The modex keymap, and why it is not coming back
 
@@ -235,6 +265,23 @@ that number came from, and the section after it for why large string
 values are no longer compressed individually before they reach the
 bucket — the same cross-rank redundancy argument, pointing the other
 way.
+||||||| parent of 442f2f2aa (Screen the modex contribution's flag byte, and name the delta marker)
+- **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`) and the
+  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags, with the
+  `PMIX_GDS_*_IS_SET` accessors — the encoding a modex reader uses to
+  learn how keys were written and whether data was collected.
+=======
+- **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`) and the
+  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags with their
+  `PMIX_GDS_*_IS_SET` accessors. **These describe an encoding the tree does
+  not use.** Nothing outside this header references any of them — the flag
+  byte a contribution actually carries is a plain `pmix_collect_t` value,
+  packed as a `uint8_t` by `pmix_server_collect_data` and read back as one
+  here, not a bitmask. Do not reach for the bit macros on the assumption
+  that they describe the wire; if a second thing ever does need saying
+  about a contribution, decide then whether to make the byte a bitmask (and
+  convert both ends) or to add another value, as `PMIX_MODEX_DELTA` did.
+>>>>>>> 442f2f2aa (Screen the modex contribution's flag byte, and name the delta marker)
 
 ## When working here
 

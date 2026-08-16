@@ -264,11 +264,28 @@ const char *pmix_command_string(pmix_cmd_t cmd);
 PMIX_EXPORT extern pmix_status_t pmix_tool_init_info(void);
 
 /* define a set of flags to direct collection
- * of data during operations */
+ * of data during operations.
+ *
+ * The first three are internal: pmix_server_trkr_t.collect_type holds one
+ * of them, and several places test it against PMIX_COLLECT_YES to decide
+ * whether to collect at all.
+ *
+ * PMIX_MODEX_DELTA is different in kind. It is never assigned to
+ * collect_type - it exists solely as a value of the per-server flag byte
+ * carried in the modex envelope (see pmix_gds_base_store_modex), where it
+ * says "this contribution holds only what changed since the contributing
+ * process last took part in a collecting fence" rather than that process's
+ * whole published set. Nothing emits it yet; see openpmix#4087 and
+ * docs/how-things-work/modex.rst.
+ *
+ * Because it travels on the wire it is append-only, exactly like the
+ * command enum above: give a new marker the next free value and never
+ * renumber an existing one. */
 typedef enum {
     PMIX_COLLECT_INVALID = -1,
     PMIX_COLLECT_NO,
     PMIX_COLLECT_YES,
+    PMIX_MODEX_DELTA,
     PMIX_COLLECT_MAX
 } pmix_collect_t;
 

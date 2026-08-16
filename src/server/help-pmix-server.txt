@@ -21,6 +21,21 @@ collection strategy (i.e., collect vs non-collect) that differs
 from the other nodes. This must be corrected in order for us
 to proceed.
 #
+[delta-modex-unsupported]
+A participating node contributed "delta" modex data to a collective
+operation (e.g., PMIx_Fence) - i.e., only the values that node's
+processes published since they last took part in a collective that
+collected data, rather than everything they have published.
+
+This version of PMIx cannot store such a contribution: it would
+record the values that were sent and silently lose the ones the
+sender left out. The operation has therefore been failed rather
+than completed with incomplete data.
+
+This normally means the participating nodes are running different
+PMIx versions. Please run a version of PMIx that supports delta
+modex data on every node, or one that does not request it on any.
+#
 [bad-singleton]
 The PMIx server was given a malformed value for the PMIX_SINGLETON
 directive:

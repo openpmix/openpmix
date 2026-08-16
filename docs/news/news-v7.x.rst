@@ -7,6 +7,24 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - The per-server flag byte carried in the modex envelope is now screened
+   before it is used. That byte says what kind of contribution a server
+   made, and the only check on it was that the contributing servers agreed
+   with each other - so a value they all agreed on, and that no datastore
+   knew how to act on, passed straight through and its data was stored as
+   though it were an ordinary full contribution. It is now rejected with
+   PMIX_ERR_BAD_PARAM. A new value, PMIX_MODEX_DELTA, is defined for a
+   contribution carrying only what the sending processes published since
+   they last took part in a collecting fence; nothing emits it yet, and a
+   contribution marked with it is refused with PMIX_ERR_NOT_SUPPORTED and
+   a help message rather than stored, because storing a delta as a full
+   set would drop every key the sender left out. Since the agreement check
+   is what an older release already performs, a job mixing a release that
+   sends delta data with one that cannot store it fails loudly on both
+   sides instead of silently losing data. No behavior changes for a job
+   whose nodes all run the same release. See openpmix#4087 and the
+   "Planned: Delta Exchange and Data Deletion" section of
+   docs/how-things-work/modex.rst.
  - An MCA component whose framework interface version does not match the
    framework it is being loaded into is now refused instead of being
    opened. Nothing checked this before: the only version test in the
