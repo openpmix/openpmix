@@ -1669,6 +1669,23 @@ misbehave by design).
   free).
 - **Handle all three host up-call return codes** (`PMIX_SUCCESS`,
   `PMIX_OPERATION_SUCCEEDED`, error) at every `pmix_host_server.*` site.
+- **Every framework `PMIx_server_init` opens, `PMIx_server_finalize` must
+  close.** `pmix_rte_finalize` closes the frameworks `pmix_rte_init`
+  opened and no others, so the four this file opens — `pmdl`, `psensor`,
+  `pnet`, `pgpu` — are ours to give back. `pmdl` was missing for as long
+  as it has existed, and the shape of the damage is worth knowing because
+  a static build hides all of it: the framework's reference count never
+  reaches zero, so its close function never runs, so
+  `pmix_pmdl_globals.actives` keeps the modules it selected *and*
+  `selected` stays true. A second `PMIx_server_init` then finds the
+  framework already open, rebuilds nothing and re-selects nothing, and
+  walks a list of modules that live inside component DSOs the repository
+  unloaded during the first finalize. Under `--enable-mca-dso` that is a
+  segfault on the first `parse_file_envars`; statically linked it is
+  merely a leak, which is why it survived. Covered by
+  `test/unit/runtime_init.c`'s second cycle, but **only** in the CI
+  `mca-dso` job — check a new open/close pair by hand against
+  `grep -c framework_open` / `_close`.
 - **Never touch `pmix_server_globals` off the progress thread** — thread-
   shift first; re-thread-shift host callbacks that may arrive on the
   host's thread.

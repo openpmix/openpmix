@@ -1168,6 +1168,13 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     (void) pmix_mca_base_framework_close(&pmix_pnet_base_framework);
     (void) pmix_mca_base_framework_close(&pmix_pgpu_base_framework);
     (void) pmix_mca_base_framework_close(&pmix_pstat_base_framework);
+    /* close the pmdl framework - PMIx_server_init opened it, and this is
+     * the only place that gives that reference back. Leaving it open
+     * leaves pmix_pmdl_globals.actives holding this cycle's modules,
+     * which point into the component DSOs; a re-init then finds the
+     * framework already open, so the list is neither rebuilt nor
+     * re-selected and every entry on it names an unloaded plugin */
+    (void) pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
 
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {

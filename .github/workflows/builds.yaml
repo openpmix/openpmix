@@ -129,6 +129,67 @@ jobs:
         make install
         make uninstall
 
+  mca-dso:
+    # Every component built as a run-time-loadable plugin, rather than
+    # statically linked into libpmix.
+    #
+    # This is a configuration users really get - it is how the component
+    # tree is meant to be deployed, and how a distribution can ship a
+    # plugin separately from the library - but nothing in CI built it, so
+    # the whole dlopen half of src/mca/base and every "what happens when
+    # a component is unloaded" question went unexercised. That is how a
+    # missing pmix_mca_base_framework_close() in PMIx_server_finalize
+    # survived: with everything static nothing is ever unmapped, so the
+    # stale module pointers it left behind were harmless, and only a DSO
+    # build turned them into a segfault on the second PMIx_server_init.
+    #
+    # The loader axis is here for a related reason. pdl picks its
+    # component at configure time and pdlopen wins wherever a native
+    # dlopen exists, so plibltdl is compiled by no default build
+    # anywhere - and it had rotted out of compiling entirely, unnoticed,
+    # against several years of symbol renames. --disable-pmix-dlopen is
+    # what makes it lose, and is the only thing that keeps the fallback
+    # loader honest.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        loader: ['pdlopen', 'plibltdl']
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends software-properties-common libhwloc-dev libevent-dev libltdl-dev
+    - name: Git clone OpenPMIx
+      uses: actions/checkout@v6
+      with:
+            submodules: recursive
+    - name: Build OpenPMIx with every component as a DSO
+      run: |
+        ./autogen.pl
+
+        loader=
+        if test "${{ matrix.loader }}" = plibltdl; then
+            # make pdlopen fail its probe so the libltdl component,
+            # priority 50, becomes the framework's single component
+            loader=--disable-pmix-dlopen
+        fi
+
+        ./configure --prefix=${PWD}/install --enable-devel-check \
+            --enable-mca-dso $loader
+        make -j
+
+        # confirm the axis actually did what it says: a static build
+        # would pass the suite below without exercising any of this
+        grep -q "pmix_mca_pdl_${{ matrix.loader }}_component" \
+            src/mca/pdl/base/static-components.h
+        test -n "$(find src/mca -name '*.so' -print -quit)"
+
+        cd test
+        make check
+        cd ..
+        make install
+        make uninstall
+
   sanitizer:
     # AddressSanitizer over the unit suite.
     #

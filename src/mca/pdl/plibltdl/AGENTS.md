@@ -44,18 +44,22 @@ a configure-time decision, not a run-time one.
 > include paths (`pmix/mca/dl/dl.h`, `PMIX_DL_BASE_VERSION_1_0_0`, the
 > un-prefixed `mca_base_*` MCA symbols, a `mca_pdl_plibltpdl_component`
 > global, and `PMIX_DL_LIBLTDL_HAVE_LT_DLADVISE` where its `configure.m4`
-> defines `PMIX_PDL_PLIBLTDL_HAVE_LT_DLADVISE`). Nothing in CI catches
-> that, since no default configuration builds it. If you change anything
-> here — or anything in `pdl.h` or the MCA conventions it depends on —
-> compile it on purpose:
+> defines `PMIX_PDL_PLIBLTDL_HAVE_LT_DLADVISE`). No default configuration
+> builds it, so nothing said a word. The `mca-dso` job in
+> [`.github/workflows/builds.yaml`](../../../.github/workflows/builds.yaml)
+> now carries a `plibltdl` axis for exactly that reason — but if you
+> change anything here, or anything in `pdl.h` or the MCA conventions it
+> depends on, compile it locally rather than finding out from CI:
 >
 > ```sh
-> ./configure --disable-pmix-dlopen <other options>   # makes pdlopen lose
-> make
+> ./configure --disable-pmix-dlopen --enable-mca-dso <other options>
+> make && make -C test check
 > ```
 >
-> Add `--enable-mca-dso` to that and `make check` to exercise the module
-> for real, since only a DSO build asks `pdl` to load anything.
+> `--disable-pmix-dlopen` is what makes `pdlopen` lose its probe, and
+> `--enable-mca-dso` is what gives the loader something to load: a static
+> build never asks `pdl` to open anything at all, so it compiles this
+> component without executing a line of it.
 
 ## The private handle
 

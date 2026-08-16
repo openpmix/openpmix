@@ -48,12 +48,16 @@ Three subdirectories carry their own suites:
   `pmix_info` advertises and the library then rejects is a bug rather
   than a cosmetic mismatch.
 
-  What that suite cannot cover is the `dlopen` half of `src/mca/base`:
-  the component repository is `#if PMIX_HAVE_PDL_SUPPORT` and does
-  nothing at all in a statically-linked build, which is what a developer
-  on macOS has. That half belongs to
-  `contrib/dockerswarm/run-mca-tests.sh`, which builds an
-  `--enable-mca-dso` tree.
+  What that suite cannot cover *in a developer's own build* is the
+  `dlopen` half of `src/mca/base`: the component repository is
+  `#if PMIX_HAVE_PDL_SUPPORT` and does nothing at all in a
+  statically-linked build, which is what a developer on macOS has. The
+  `mca-dso` job in `.github/workflows/builds.yaml` runs these same
+  programs against an `--enable-mca-dso` Linux tree on every pull
+  request, and `contrib/dockerswarm/run-mca-tests.sh` does it across
+  nodes. Reproduce a failure from either with
+  `./configure --enable-mca-dso` locally — the programs are unchanged,
+  only what they are linked against is.
 
 ## What lives here
 
