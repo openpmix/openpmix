@@ -556,6 +556,22 @@ silently storing a partial modex.
    ``PMIX_COLLECT_YES`` in several places that decide whether to collect at
    all.
 
+**This much is implemented.** ``PMIX_MODEX_DELTA`` is defined, and
+``pmix_gds_base_store_modex`` now screens the flag byte before comparing
+it across servers — refusing a delta contribution with
+``PMIX_ERR_NOT_SUPPORTED`` and the ``delta-modex-unsupported`` help
+message, and an undefined value with ``PMIX_ERR_BAD_PARAM``. Nothing emits
+the marker yet, so no behavior changes for a job whose nodes all run this
+release. What it buys is that the refusal is in place *before* anything can
+send one, which is why it landed first and on its own. Regression coverage
+is ``test_store_modex_blob_info()`` in ``test/unit/gds_datastore.c``.
+
+Screening the value matters independently of the delta work: the
+cross-server comparison only asks whether the senders agree with each
+other, so before this a byte they all agreed on and no datastore could act
+on passed straight through and its blobs were stored as though they were an
+ordinary full contribution.
+
 Generations in shared memory
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
