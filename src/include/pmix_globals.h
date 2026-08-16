@@ -920,7 +920,6 @@ typedef struct {
     pmix_event_base_t *evauxbase;
     int debug_output;
     pmix_events_t events; // my event handler registrations.
-    bool commits_pending;
     struct timeval event_window;
     pmix_list_t cached_events;         // events waiting in the window prior to processing
     pmix_pointer_array_t iof_requests; // array of pmix_iof_req_t IOF requests

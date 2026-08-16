@@ -263,6 +263,7 @@ test/simple/refresh
 
 
 test/unit/client_api
+test/unit/client_commit
 test/unit/common_api
 test/unit/compress
 test/unit/compress_block

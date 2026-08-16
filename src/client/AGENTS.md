@@ -185,6 +185,69 @@ those trackers now and releases them when the event lists are
 destructed, so the private survivor list and its finalize hook are
 gone — see [openpmix#4059][i4059].)
 
+## What a commit sends, and the fallback that makes it safe
+
+`PMIx_Commit` used to fetch this process's whole local and remote store
+on every call — two `PMIX_GDS_FETCH_KV`s with a `NULL` key — so one new
+`PMIx_Put` re-sent everything and n put/commit cycles moved O(n²) bytes
+(openpmix#4087). `_putfn` now records which keys each scope owes the
+server in `pmix_client_globals.dirty_local`/`dirty_remote`, and
+`_commitfn` fetches only those.
+
+**The cumulative fetch is still there and must stay.** It is not a legacy
+path: `pmix_client_globals.commit_resync` selects it, and it is the only
+correct answer for everything the per-key record cannot express. Set the
+flag — through `pmix_client_commit_resync()` — at any new such point
+rather than trying to make the record cover it. The existing ones:
+
+- **A `PMIX_QUALIFIED_VALUE`.** Every qualified value is stored under
+  that one key with the real key and its qualifiers inside the array, and
+  `lookup_keyval()` in [`src/util/pmix_hash.c`](../util/pmix_hash.c)
+  deliberately will not match a qualified entry against an unqualified
+  fetch — so there is no key to ask for it back by.
+- **A tool repointing `pmix_client_globals.myserver`** (four sites in
+  [`pmix_tool.c`](../tool/pmix_tool.c)). The incoming server has seen
+  nothing we sent the outgoing one. This is the case that makes the
+  fallback load-bearing rather than defensive: a tool that puts, commits
+  to server A, then switches to B would otherwise send B nothing at all.
+- **Finalize**, so a second `PMIx_Init` in the same process starts
+  cumulative instead of trusting what a previous cycle told a previous
+  server. The static initializer starts `true` for the same reason.
+- A per-key fetch that misses, which means the record and the datastore
+  disagree; `pack_commit_scope` falls back for that scope rather than
+  sending something quietly short.
+
+Three properties are easy to break:
+
+- **Record on the success path only.** `_putfn` marks a key after
+  `PMIX_GDS_STORE_KV` succeeds — a key whose store failed has nothing to
+  fetch back. (It used to set the old `commits_pending` either way, which
+  was harmless only because the fetch was cumulative.)
+- **Record even when there is no server.** `PMIx_Init`'s re-entrant
+  branch clears `pmix_client_globals.singleton` when a later init
+  connects, so a process that published while it was a singleton must
+  still owe that data to whatever server it eventually reaches. Do not
+  add a `singleton` guard to `_putfn`. The *role* guard is different and
+  is correct: a server that is not also a tool never commits at all.
+- **Append uniquely.** A key published repeatedly between two commits is
+  one key to send — the datastore replaces such a value in place. A
+  record that grew per put would make a republishing loop send far more
+  than the cumulative fetch it replaced, which is the opposite of the
+  point. `test_repeat_put_recorded_once()` in
+  [`test/unit/client_commit.c`](../../test/unit/client_commit.c) holds
+  that line.
+
+The record is cleared once `PMIX_PTL_SEND_RECV` has taken the message,
+and deliberately **not** on the failure paths above: nothing was sent, so
+it still describes exactly what the next commit owes. `_putfn` and
+`_commitfn` both run on the progress thread, so nothing can be recorded
+between packing and clearing.
+
+**Nothing here changes the wire.** The commit message is the same
+sequence of `{scope, buffer}` blocks it always was, and the server
+accumulates what arrives, so a client and server of different releases
+interoperate in both directions.
+
 ## Invariants and gotchas
 
 - **`PMIx_Init` returns `PMIX_ERR_UNREACH`, not `PMIX_SUCCESS`, on the

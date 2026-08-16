@@ -44,6 +44,12 @@ involve transmitting the entire collection of data posted by the process to the
 local PMIx server. ``PMIx_Commit`` is an asynchronous operation: it returns to the
 caller immediately while the data is staged to the server in the background.
 
+This implementation ordinarily transmits only what has been posted since the
+previous ``PMIx_Commit``, falling back to the entire collection where that is
+not sufficient. Either way the effect on the caller is the same, and a key
+posted more than once between two commits is transmitted once, carrying the
+value it had when ``PMIx_Commit`` was called.
+
 .. note::
    Users are advised to always include the call to ``PMIx_Commit`` in case the
    local implementation requires it. Committing does not by itself circulate the

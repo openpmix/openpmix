@@ -96,7 +96,7 @@ child's output to the process that spawned it is a loopback.
 **Singleton client tests** — call the real public API in a process that
 comes up with no server. `client_cycle` (init/finalize cycling),
 `tool_cycle`, `singleton_register`, `rndz_stale`, `event_chain`,
-`gds_fallback`, `client_api`, `iof_pending`.
+`gds_fallback`, `client_api`, `client_commit`, `iof_pending`.
 
 ### `iof_pending` — output held for a spawn reply that has not landed
 
@@ -203,6 +203,39 @@ pointers had survived in them:
   this case with junk locality strings passes against the unfixed
   library and proves nothing. Both forms are in the test so the
   distinction stays visible.
+
+### `client_commit` — what `PMIx_Commit` will send
+
+[`client_commit.c`](client_commit.c) covers the delta-commit record
+described in [`src/client/AGENTS.md`](../../src/client/AGENTS.md): which
+keys `PMIx_Put` marks as owed to the server, and the cases that fall back
+to the cumulative fetch instead.
+
+It runs as a **singleton, and therefore never reaches `_commitfn`** —
+`PMIx_Commit` short-circuits with `PMIX_SUCCESS` when there is no server.
+What it reaches is the record the commit consults, which is readable
+because `pmix_client_globals` is exported. That is deliberate rather
+than a compromise: which keys a commit *would* fetch is the half of the
+change that decides correctness, and it is the half a single process can
+observe. The other half — that the commit sends them and the server
+stores them — needs a server and lives in `contrib/dockerswarm`;
+`examples/modex_twice.c` is the end-to-end shape.
+
+Two cases carry the weight, and both fail against an unfixed library
+(checked by neutering each independently):
+
+- `test_repeat_put_recorded_once()` — a key published eight times before
+  one commit is one key to send. This is what keeps the change from
+  regressing the metric it exists to improve: the datastore replaces such
+  a value in place, so a record that grew per put would send it eight
+  times where the old cumulative fetch sent it once.
+- `test_qualified_put_forces_resync()` — a `PMIX_QUALIFIED_VALUE` cannot
+  be recorded by key at all, so it must set the cumulative flag.
+
+The scope cases assert the record mirrors the datastore's own routing:
+`PMIX_GLOBAL` is owed to both scopes because `gds/hash` files it into
+both tables, and `PMIX_INTERNAL` to neither because it never leaves the
+process.
 
 ### `bfrops_darray` and `bfrops_malformed` — the `src/mca/bfrops` regression tests
 

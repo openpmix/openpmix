@@ -7,6 +7,21 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - PMIx_Commit now transmits only what the process has posted since the
+   previous commit. It used to fetch and send that process's entire local
+   and remote store every time, so a single new PMIx_Put caused everything
+   published so far to be sent again and n put/commit cycles moved O(n^2)
+   bytes. PMIx_Put records which keys each scope owes the server and the
+   commit fetches just those; a key posted repeatedly between two commits
+   is still sent once, carrying the value it had when PMIx_Commit was
+   called. The cumulative fetch remains as the fallback for the cases a
+   per-key record cannot express - a PMIX_QUALIFIED_VALUE, which has no
+   key a later fetch could ask for it back by; a tool that has repointed
+   at another server through PMIx_tool_set_server or _attach_to_server,
+   which has seen none of what we sent the previous one; and the first
+   commit after PMIx_Init. Nothing changes for the caller, and nothing
+   changes on the wire, so a client and server of different releases
+   interoperate exactly as before. See openpmix#4087.
  - The per-server flag byte carried in the modex envelope is now screened
    before it is used. That byte says what kind of contribution a server
    made, and the only check on it was that the contributing servers agreed
