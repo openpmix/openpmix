@@ -829,7 +829,13 @@ inspection against the code that consumes them.
   `PMIX_VALUE_CREATE`, which zeroes and sets `PMIX_UNDEF`. The rule
   worth carrying: **anything a destructor will inspect has to be valid
   from the moment the object exists**, not from the moment the happy
-  path fills it in.
+  path fills it in. (The compression branch itself is gone as of
+  August 2026 — `_putfn` stores the value exactly as the caller gave it.
+  See "Strings are not compressed individually" in
+  [`src/mca/pcompress/AGENTS.md`](../mca/pcompress/AGENTS.md) for why,
+  and do not reintroduce a conversion here: it compressed the copy the
+  *datastore* keeps, so a `PMIx_Get` of our own put came back as bytes
+  the caller has no API to expand.)
 - `PMIx_Spawn_nb` took `PMIX_PARENT_ID` straight to `PMIX_XFER_PROCID`
   without checking that the value really carried a `pmix_proc_t`. Same
   defect as the `PMIX_HOSTNAME` qualifier fixed in `process_request()`
