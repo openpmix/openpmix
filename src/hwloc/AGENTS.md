@@ -274,6 +274,21 @@ a normal build does exercise it.
 
 ## Pitfalls specific to this directory
 
+- **A device uuid names the node the device is on, not the node reading
+  the topology.** `pmix_hwloc_get_devices()` takes the hostname as a
+  *required* parameter and `build_device_uuid()` uses it — neither reads
+  `pmix_globals.hostname`, and a `NULL` is `PMIX_ERR_BAD_PARAM` rather
+  than a convenience default. The reason is that the interesting caller
+  reads someone else's topology: PRRTE's mapper runs on the head node and
+  enumerates every compute node's devices, and while it read the global
+  it stamped the head node's hostname onto every device in the job. The
+  uuid travels *instead of* an ordinal precisely so a process can compute
+  the same string locally from `PMIX_DEVICE_DISTANCES` and correlate the
+  two, and that correlation then worked on exactly one node. Nothing
+  detects it: the string is well-formed, unique, and consistently wrong.
+  `pmix_hwloc_compute_distances()` is the one caller entitled to pass
+  `pmix_globals.hostname`, because it measures against a cpuset of *this*
+  machine's PUs and so can only ever be reading the local topology.
 - **Always check `source` first, and match it with `strncasecmp(...,
   "hwloc", 5)`.** Returning `PMIX_ERR_TAKE_NEXT_OPTION` (not an error) for
   a non-hwloc object is the contract. A `NULL` source is legal on *input*

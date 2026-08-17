@@ -45,6 +45,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* The node whose topology we claim to be reading.  Deliberately NOT the
+ * hostname this test process is running under: a device uuid names the node
+ * the device lives on, and the two are the same only when the topology is
+ * the local one.  Every enumeration below therefore says whose topology it
+ * has, exactly as a mapper reading another node's topology must. */
+#define TESTHOST "test-node-01"
+
 static int failures = 0;
 static int checks = 0;
 
@@ -131,7 +138,7 @@ static void test_topo2(const char *dir)
 
     /* THE case: one GPU, not two (the display controller) and not three or
      * four (the extra OS devices on the same function) */
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
     ok(PMIX_SUCCESS == rc, "topo2: gpu enumeration succeeds");
     ok(1 == ndevs, "topo2: exactly one compute GPU");
     if (1 == ndevs) {
@@ -151,13 +158,13 @@ static void test_topo2(const char *dir)
     ndevs = 0;
 
     /* lookup by name, and by a name that is not there */
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_GPU, "rsmi0", &devs, &ndevs);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, "rsmi0", &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 1 == ndevs, "topo2: gpu by osname finds it");
     pmix_hwloc_release_devices(devs, ndevs);
     devs = NULL;
     ndevs = 0;
 
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_GPU, "no-such-device", &devs, &ndevs);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, "no-such-device", &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 0 == ndevs,
        "topo2: an unknown device name is empty, not an error");
     pmix_hwloc_release_devices(devs, ndevs);
@@ -169,7 +176,7 @@ static void test_topo2(const char *dir)
      * either has to find it, or "--map-by device=mlx5_0" - the whole reason
      * a caller names a device - finds nothing on a machine where the
      * network device happened to sort first. */
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_UNKNOWN, "mlx5_0", &devs, &ndevs);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, "mlx5_0", &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 1 == ndevs, "topo2: the fabric device is found by its own name");
     if (1 == ndevs) {
         ok(NULL != devs[0].dev.osname && 0 == strcmp(devs[0].dev.osname, "mlx5_0"),
@@ -179,20 +186,20 @@ static void test_topo2(const char *dir)
     devs = NULL;
     ndevs = 0;
 
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_UNKNOWN, "ib0", &devs, &ndevs);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, "ib0", &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 1 == ndevs, "topo2: the network device on that same function too");
     pmix_hwloc_release_devices(devs, ndevs);
     devs = NULL;
     ndevs = 0;
 
     /* the fabric and network devices sit on different functions */
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_OPENFABRICS, NULL, &devs, &ndevs);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_OPENFABRICS, NULL, &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 1 == ndevs, "topo2: one openfabrics device");
     pmix_hwloc_release_devices(devs, ndevs);
     devs = NULL;
     ndevs = 0;
 
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_NETWORK, NULL, &devs, &ndevs);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_NETWORK, NULL, &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 2 == ndevs, "topo2: two network devices");
     pmix_hwloc_release_devices(devs, ndevs);
     devs = NULL;
@@ -202,7 +209,7 @@ static void test_topo2(const char *dir)
      * devices (ib0) shares its PCI function with the openfabrics device
      * (mlx5_0).  Asked for both types at once they are one device, so the
      * union is 2 rather than the 3 an OS-device count would give. */
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS,
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS,
                                 NULL, &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 2 == ndevs,
        "topo2: network+openfabrics dedup to one device per PCI function");
@@ -211,7 +218,7 @@ static void test_topo2(const char *dir)
     ndevs = 0;
 
     /* everything, in PCI order */
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_UNKNOWN, NULL, &devs, &ndevs);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, NULL, &devs, &ndevs);
     ok(PMIX_SUCCESS == rc, "topo2: enumerating every type succeeds");
     ok(0 < ndevs, "topo2: every-type enumeration is non-empty");
     ok(ordered_by_busid(devs, ndevs), "topo2: devices come back in PCI bus order");
@@ -238,14 +245,14 @@ static void test_topo1(const char *dir)
     }
 
     /* this topology has no GPU at all - an empty result, not an error */
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 0 == ndevs, "topo1: no GPUs is empty, not an error");
     ok(NULL == devs, "topo1: an empty result hands back no array");
     pmix_hwloc_release_devices(devs, ndevs);
     devs = NULL;
     ndevs = 0;
 
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_UNKNOWN, NULL, &devs, &ndevs);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, NULL, &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 0 < ndevs, "topo1: devices are found");
     ok(ordered_by_busid(devs, ndevs), "topo1: devices come back in PCI bus order");
 
@@ -317,7 +324,12 @@ static void test_distances_agree(const char *dir)
     cpuset.source = strdup("hwloc");
     cpuset.bitmap = hwloc_bitmap_dup(hwloc_get_root_obj(t)->cpuset);
 
-    rc = pmix_hwloc_get_devices(&topo, PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_NETWORK
+    /* pmix_globals.hostname, not TESTHOST, and that is the point: distances
+     * are only ever computed for the local node, so this is the one caller
+     * whose hostname is not a choice.  Handing the enumerator anything else
+     * here would make the two disagree on every uuid. */
+    rc = pmix_hwloc_get_devices(&topo, pmix_globals.hostname,
+                                PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_NETWORK
                                        | PMIX_DEVTYPE_OPENFABRICS,
                                 NULL, &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 0 < ndevs, "agree: the enumerator finds devices");
@@ -359,6 +371,102 @@ static void test_distances_agree(const char *dir)
     free_topo(&topo);
 }
 
+/* A device uuid names the node the device is on, not the node doing the
+ * reading.
+ *
+ * This is the property that makes the uuid worth carrying at all: a process
+ * is handed the uuid of the device it was assigned, computes the same string
+ * locally from PMIX_DEVICE_DISTANCES, and correlates the two.  A caller
+ * reading a remote topology - the mapper on the head node, which is the only
+ * caller that reads one - therefore has to supply the node's name, because
+ * the alternative (this process's own hostname) would stamp the head node on
+ * every device in the job and nothing would ever correlate.  Enumerating one
+ * topology under two names is the whole test.
+ *
+ * Not every uuid moves, and that is correct rather than an exception to work
+ * around: a fabric or network device is named by its own GUIDs or MAC, which
+ * identify the card wherever it is plugged in.  Only the grammars that spell
+ * a hostname - gpu:// and blk:// - may differ between the two readings, and
+ * they must. */
+static void test_uuid_names_the_node(const char *dir)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *a = NULL, *b = NULL;
+    size_t na = 0, nb = 0, i, nhosted = 0;
+    char path[1024], expect[512];
+    const char *grammar;
+    pmix_status_t rc;
+    bool same_osname = true, moved = true, stable = true, named = true;
+
+    snprintf(path, sizeof(path), "%s/test-topo2.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        fprintf(stderr, "FAIL: could not load %s\n", path);
+        ++failures;
+        return;
+    }
+
+    /* a hostname is required, not defaulted: silently substituting the local
+     * one is precisely the bug this parameter exists to make impossible */
+    rc = pmix_hwloc_get_devices(&topo, NULL, PMIX_DEVTYPE_UNKNOWN, NULL, &a, &na);
+    ok(PMIX_ERR_BAD_PARAM == rc, "hostname: a NULL hostname is refused");
+    ok(NULL == a && 0 == na, "hostname: a refused call hands back nothing");
+
+    rc = pmix_hwloc_get_devices(&topo, "node-a", PMIX_DEVTYPE_UNKNOWN, NULL, &a, &na);
+    ok(PMIX_SUCCESS == rc && 0 < na, "hostname: enumeration as node-a succeeds");
+    rc = pmix_hwloc_get_devices(&topo, "node-b", PMIX_DEVTYPE_UNKNOWN, NULL, &b, &nb);
+    ok(PMIX_SUCCESS == rc && 0 < nb, "hostname: enumeration as node-b succeeds");
+    ok(na == nb, "hostname: one topology yields the same device count either way");
+
+    if (na == nb) {
+        for (i = 0; i < na; i++) {
+            if (NULL == a[i].dev.osname || NULL == b[i].dev.osname
+                || 0 != strcmp(a[i].dev.osname, b[i].dev.osname)) {
+                same_osname = false;
+            }
+            if (NULL == a[i].dev.uuid || NULL == b[i].dev.uuid) {
+                same_osname = false;
+                continue;
+            }
+            grammar = NULL;
+            if (0 == strncmp(a[i].dev.uuid, "gpu://", 6)) {
+                grammar = "gpu";
+            } else if (0 == strncmp(a[i].dev.uuid, "blk://", 6)) {
+                grammar = "blk";
+            }
+            if (NULL == grammar) {
+                /* named by the hardware itself - it must NOT move */
+                if (0 != strcmp(a[i].dev.uuid, b[i].dev.uuid)) {
+                    stable = false;
+                }
+                continue;
+            }
+            ++nhosted;
+            if (0 == strcmp(a[i].dev.uuid, b[i].dev.uuid)) {
+                moved = false;
+            }
+            snprintf(expect, sizeof(expect), "%s://node-a::%s", grammar, a[i].dev.osname);
+            if (0 != strcmp(a[i].dev.uuid, expect)) {
+                named = false;
+            }
+            snprintf(expect, sizeof(expect), "%s://node-b::%s", grammar, b[i].dev.osname);
+            if (0 != strcmp(b[i].dev.uuid, expect)) {
+                named = false;
+            }
+        }
+        ok(same_osname, "hostname: the devices themselves are unchanged");
+        /* without this the three checks below would pass on a topology
+         * carrying nothing the hostname reaches */
+        ok(0 < nhosted, "hostname: the topology has devices whose uuid names a node");
+        ok(moved, "hostname: no two nodes share a host-named device uuid");
+        ok(stable, "hostname: a device named by its own hardware ids does not move");
+        ok(named, "hostname: each uuid names the node it was asked about");
+    }
+
+    pmix_hwloc_release_devices(a, na);
+    pmix_hwloc_release_devices(b, nb);
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -373,7 +481,8 @@ int main(int argc, char **argv)
     dir = PMIX_TEST_TOPO_DIR;
 #endif
 
-    /* the gpu:// uuid embeds the hostname */
+    /* compute_distances() reads this for the local node it measures; the
+     * enumerator no longer reads it at all */
     if (NULL == pmix_globals.hostname) {
         pmix_globals.hostname = strdup("testhost");
     }
@@ -381,6 +490,7 @@ int main(int argc, char **argv)
     test_topo2(dir);
     test_topo1(dir);
     test_distances_agree(dir);
+    test_uuid_names_the_node(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);

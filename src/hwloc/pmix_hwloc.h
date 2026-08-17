@@ -109,6 +109,15 @@ typedef struct {
  * reboots - which matters because a caller assigning devices to processes
  * has to make the same assignment everywhere.
  *
+ * "hostname" is the node the topology describes, and is REQUIRED - a NULL
+ * is PMIX_ERR_BAD_PARAM rather than a convenience default.  A device's uuid
+ * names the node it lives on, so producing one means saying which node that
+ * is, and the answer is not "wherever this code happens to be running": a
+ * caller reading another node's topology (a mapper on the head node, say)
+ * would otherwise stamp its own hostname on every device in the job, and
+ * the process that later computes the same uuid locally would not match it.
+ * Pass pmix_globals.hostname only when the topology really is this node's.
+ *
  * "type" is a bitmask of the desired types; PMIX_DEVTYPE_UNKNOWN means all.
  * "devid" restricts the result to a single device matching it by osname or
  * uuid, and may be NULL.
@@ -117,6 +126,7 @@ typedef struct {
  * such device" means.  Release the array with pmix_hwloc_release_devices().
  */
 PMIX_EXPORT pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
+                                                 const char *hostname,
                                                  pmix_device_type_t type,
                                                  const char *devid,
                                                  pmix_hwloc_device_t **devs,
