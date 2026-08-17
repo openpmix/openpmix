@@ -1877,7 +1877,8 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_DATA_ARRAY                 39
 #define PMIX_PROC_RANK                  40
 #define PMIX_QUERY                      41
-#define PMIX_COMPRESSED_STRING          42  // string compressed with zlib
+// Hole left by deprecation of PMIX_COMPRESSED_STRING (nothing produces
+// one; a string value is carried as PMIX_STRING)
 #define PMIX_ALLOC_DIRECTIVE            43
 // Hole left by deprecation/removal of PMIX_INFO_ARRAY
 #define PMIX_IOF_CHANNEL                45
