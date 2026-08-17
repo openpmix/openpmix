@@ -160,10 +160,75 @@ Two other things to keep in mind if you touch it:
 - **`pmix_gds_globals`** — `actives`, `initialized`, `selected`, `all_mods`.
 - **`pmix_gds_base_active_module_t`** — one entry on `actives`, pairing a
   module with the priority it was inserted at and its component.
-- **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`) and the
-  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags, with the
-  `PMIX_GDS_*_IS_SET` accessors — the encoding a modex reader uses to
-  learn how keys were written and whether data was collected.
+- **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`), the
+  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags and the
+  `PMIX_GDS_*_IS_SET` accessors — **all dead**. Nothing in the tree
+  reads or writes any of them; they are the residue of the modex keymap,
+  described below. The collect flag the walker actually reads is a plain
+  `PMIX_COLLECT_YES`/`PMIX_COLLECT_NO` byte, not a bitmask.
+
+## The modex keymap, and why it is not coming back
+
+The envelope above writes each `pmix_kval_t`'s key as a string, once per
+proc that published it. Every process on a node normally publishes the
+*same* handful of keys, so a 64-process node repeats each key string 64
+times, and key text is around 40% of the raw bucket. That is an obvious
+thing to fix and it has been fixed once already, so before anyone fixes
+it again:
+
+**2019** (`8cfbac9ea`) added a keymap: the bucket carried a string table
+in its header and each kval carried a `uint32` index into it, selected
+per fence against the native format by the `pmix_gds_modex_key_fmt_t`
+above. **October 2024** (`184ca966e`) removed it *and, in the same
+commit, compressed the bucket instead* — which is the part that matters.
+It was not removed and left unreplaced; it was replaced by something
+that measures better.
+
+Measured on a modex-shaped payload whose values are distinct per rank,
+so the only thing either scheme has to work with is the repeated key
+text (64 procs, 8 keys, `pcompress_zlib_level` 1):
+
+| | bytes | vs. raw |
+|---|---|---|
+| raw, keys as strings | 17408 | — |
+| keymap, no compression | 10756 | −38% |
+| compression, keys as strings | 7681 | −56% |
+| keymap **and** compression | 7394 | −58% |
+
+A keymap on top of what the tree already does is worth **3.7%**. LZ77
+back-references encode a repeated key string in two or three bytes; the
+one-byte index is the entire remaining margin, and it costs a string
+table, an index space, a second wire format to keep interoperable
+forever, and a decode path that has to bound an index that arrived off
+the wire.
+
+Two further things worth knowing before reviving it:
+
+- **A job-wide keymap is worth less, not more.** The dominant repetition
+  is procs-per-node × keys-per-proc, and a per-node map already captures
+  all of it; the measured keymap header is 132 bytes, so deduplicating
+  it across N nodes saves about 1.8% of the aggregate. The host would
+  also have to decode a blob it currently treats as opaque — PRRTE hands
+  the bucket straight to `prte_grpcomm.fence` as a byte object — which
+  would mean publishing this envelope as API surface and owning it
+  forever.
+- **The 2019 implementation had defects that are easy to reintroduce.**
+  Its format-selection pre-pass ran a full `PMIX_GDS_FETCH_KV` with
+  `cb.copy = true` over every local proc purely to count keys, then threw
+  the result away and fetched again to pack — a deep copy of the whole
+  node's modex, discarded. The sizing loop that consumed those counts
+  assigned rather than accumulated (`=`, not `+=`), so the native-vs-keymap
+  decision was made on the last key alone. And `modex_unpack_kval()`
+  indexed the map with a `uint32` taken straight off the wire and no
+  bound against the map's length — a remote out-of-bounds read whose NULL
+  check was performed on the already-out-of-bounds element.
+
+The small-payload corner that a keymap *did* still win — a node whose
+bucket fell under `pmix_compress_base.compress_limit` and was therefore
+shipped raw — was closed in August 2026 by lowering that limit from 4096
+to 1024. See "Choosing `compress_limit`" in
+[`../../pcompress/AGENTS.md`](../../pcompress/AGENTS.md) for the curve
+that number came from.
 
 ## When working here
 

@@ -305,9 +305,10 @@ Threading.
   one entry on `actives`, pairing a module with the priority it was
   inserted at and its component.
 - **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`) and the
-  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags — used when
-  (de)serializing modex blobs so a reader knows the key encoding and
-  whether data was collected.
+  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags — dead
+  since the modex keymap was removed in 2024; no code reads or writes
+  them. See "The modex keymap, and why it is not coming back" in
+  [`base/AGENTS.md`](base/AGENTS.md) before reviving the idea.
 
 ## Directory layout
 
