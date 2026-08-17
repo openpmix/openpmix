@@ -11,7 +11,7 @@ depends on.
 
 | File | Contents |
 |------|----------|
-| [`base.h`](base.h) | the internal base API — `pmix_gds_globals`, the active-module wrapper class, the modex blob-info flags, and the exported helpers below |
+| [`base.h`](base.h) | the internal base API — `pmix_gds_globals`, the active-module wrapper class, and the exported helpers below |
 | [`gds_base_frame.c`](gds_base_frame.c) | `PMIX_MCA_BASE_FRAMEWORK_DECLARE`, the globals, `pmix_gds_open`/`pmix_gds_close`, and the `pmix_gds_base_active_module_t` class instance |
 | [`gds_base_select.c`](gds_base_select.c) | `pmix_gds_base_select()` — query every component, init each returned module, build the priority-ordered `actives` list |
 | [`gds_base_fns.c`](gds_base_fns.c) | the five exported helpers: available-modules, assign-module, fallback-module, setup-fork, store-modex, plus `pmix_gds_base_proc_array_id()` |
@@ -160,12 +160,14 @@ Two other things to keep in mind if you touch it:
 - **`pmix_gds_globals`** — `actives`, `initialized`, `selected`, `all_mods`.
 - **`pmix_gds_base_active_module_t`** — one entry on `actives`, pairing a
   module with the priority it was inserted at and its component.
-- **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`), the
-  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags and the
-  `PMIX_GDS_*_IS_SET` accessors — **all dead**. Nothing in the tree
-  reads or writes any of them; they are the residue of the modex keymap,
-  described below. The collect flag the walker actually reads is a plain
-  `PMIX_COLLECT_YES`/`PMIX_COLLECT_NO` byte, not a bitmask.
+There is nothing else. `pmix_gds_modex_key_fmt_t`, the
+`PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags, the
+`PMIX_GDS_*_IS_SET` accessors and `pmix_gds_modex_blob_info_t` were all
+deleted in August 2026: they were the residue of the modex keymap
+(below) and nothing had read or written any of them since 2024. The
+collect flag the walker reads is a plain
+`PMIX_COLLECT_YES`/`PMIX_COLLECT_NO` byte, not a bitmask — do not
+reintroduce the bit accessors on the theory that it is one.
 
 ## The modex keymap, and why it is not coming back
 
