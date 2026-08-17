@@ -204,6 +204,57 @@ static inline bool is_delete_scope(pmix_scope_t scope)
             || PMIX_DEL_GLOBAL == scope || PMIX_DEL_INTERNAL == scope);
 }
 
+/* Tell the namespace's own datastore to stop answering for a key.
+ *
+ * Storing the removal into pmix_globals.mypeer corrects the "hash" store
+ * every client keeps, and that is only half of it. A namespace served by
+ * another module - gds/shmem3, reading a shared segment it is not
+ * allowed to rewrite - holds its own copy and answers out of it, so it
+ * has to be told separately or it keeps handing back the deleted key.
+ *
+ * Both halves are needed on both paths that remove a key: the one where
+ * a server tells us about somebody's deletion, and the one where we are
+ * the process doing the deleting. The second is easy to overlook,
+ * because a rank deleting its OWN key has already applied it to its own
+ * store - but its own committed data is also in the modex, which is a
+ * different module's segment, and that copy answers first. */
+static void del_key_in_nspace_module(const pmix_proc_t *proc, const char *key)
+{
+    pmix_namespace_t *nptr;
+    pmix_status_t rc;
+
+    if (NULL == proc || NULL == key) {
+        return;
+    }
+    /* The module that answers a get for server-provided data is reached
+     * through the SERVER peer's namespace object, not through
+     * pmix_globals.nspaces. On a client those are different objects -
+     * our own carries "hash", which the caller has already corrected,
+     * and only the server peer's carries the module holding the modex.
+     * Walking pmix_globals.nspaces alone therefore told nobody anything,
+     * which is why a rank went on reading a key it had just deleted.
+     *
+     * The module screens the namespace itself - it has no tracker for
+     * one it never served - so this needs no matching test here. */
+    if (NULL != pmix_client_globals.myserver
+        && NULL != pmix_client_globals.myserver->nptr) {
+        PMIX_GDS_DEL_KEY(rc, pmix_client_globals.myserver->nptr, proc, key);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+    /* Any other namespace we hold cached data for. */
+    PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strncmp(nptr->nspace, proc->nspace, PMIX_MAX_NSLEN)) {
+            PMIX_GDS_DEL_KEY(rc, nptr, proc, key);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            return;
+        }
+    }
+}
+
 /* A server telling us that a key has been deleted, so our own copy of it
  * goes too. See pmix_server_notify_deleted().
  *
@@ -218,7 +269,6 @@ static void client_data_delete_handler(struct pmix_peer_t *pr,
     pmix_scope_t scope;
     char *key = NULL;
     pmix_kval_t *kv;
-    pmix_namespace_t *nptr;
     pmix_status_t rc;
     int32_t cnt;
 
@@ -266,18 +316,8 @@ static void client_data_delete_handler(struct pmix_peer_t *pr,
         PMIX_ERROR_LOG(rc);
     }
     /* our own peer is pinned to "hash", which is what the store above
-     * corrected. If this namespace is served by another module - one
-     * reading a shared segment it cannot rewrite - that module has to be
-     * told separately so it stops answering for the key. */
-    PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strncmp(nptr->nspace, proc.nspace, PMIX_MAX_NSLEN)) {
-            PMIX_GDS_DEL_KEY(rc, nptr, &proc, kv->key);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            break;
-        }
-    }
+     * corrected - the namespace's own module has to be told separately */
+    del_key_in_nspace_module(&proc, kv->key);
     PMIX_RELEASE(kv);
 }
 
@@ -1776,6 +1816,12 @@ static void _putfn(int sd, short args, void *cbdata)
             PMIX_ERROR_LOG(rc);
             goto done;
         }
+        /* The store above is against our own peer, which is pinned to
+         * "hash". Our own committed data is ALSO in the modex, which
+         * belongs to whichever module serves this namespace and answers
+         * ahead of the hash - so deleting our own key without telling
+         * that module leaves us still reading it. */
+        del_key_in_nspace_module(&pmix_globals.myid, kv->key);
         mark_deleted(cb->scope, kv->key);
         goto done;
     }
