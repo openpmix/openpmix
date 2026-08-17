@@ -61,6 +61,7 @@
 #define PMIX_CAP_IOF_FLOW_CONTROL 14
 #define PMIX_CAP_DEVICE_ENUM     15
 #define PMIX_CAP_MCA_FW_VERSION  16
+#define PMIX_CAP_DATA_DELETE     17
 
 
 /*****    DEPRECATED    *****/

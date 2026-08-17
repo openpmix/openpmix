@@ -109,6 +109,14 @@ PMIX_EXPORT const char *PMIx_Scope_string(pmix_scope_t scope)
         return "SHARE ACROSS ALL NODES";
     case PMIX_INTERNAL:
         return "STORE INTERNALLY";
+    case PMIX_DEL_LOCAL:
+        return "DELETE FROM LOCAL NODE SCOPE";
+    case PMIX_DEL_REMOTE:
+        return "DELETE FROM REMOTE NODE SCOPE";
+    case PMIX_DEL_GLOBAL:
+        return "DELETE FROM ALL SCOPES";
+    case PMIX_DEL_INTERNAL:
+        return "DELETE FROM INTERNAL STORE";
     default:
         return "UNKNOWN SCOPE";
     }

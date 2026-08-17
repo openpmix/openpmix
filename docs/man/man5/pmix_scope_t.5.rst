@@ -24,6 +24,10 @@ C Syntax
    #define PMIX_REMOTE         2   // share with procs not on this node
    #define PMIX_GLOBAL         3   // share with all procs (local + remote)
    #define PMIX_INTERNAL       4   // store data in the internal tables
+   #define PMIX_DEL_LOCAL      5   // remove from the local scope
+   #define PMIX_DEL_REMOTE     6   // remove from the remote scope
+   #define PMIX_DEL_GLOBAL     7   // remove from both local and remote
+   #define PMIX_DEL_INTERNAL   8   // remove from the internal tables
 
 
 Python Syntax
@@ -61,6 +65,18 @@ processes to which the data is to be made available. Defined values include:
    * - `PMIX_INTERNAL`
      - 4
      - The data is to be stored in the internal tables of the local PMIx library and is not to be shared with any other process.
+   * - `PMIX_DEL_LOCAL`
+     - 5
+     - Remove the key from the local scope. The audience is the same as ``PMIX_LOCAL``; the key is removed rather than stored.
+   * - `PMIX_DEL_REMOTE`
+     - 6
+     - Remove the key from the remote scope. The audience is the same as ``PMIX_REMOTE``; the key is removed rather than stored.
+   * - `PMIX_DEL_GLOBAL`
+     - 7
+     - Remove the key from both the local and remote scopes.
+   * - `PMIX_DEL_INTERNAL`
+     - 8
+     - Remove the key from the internal tables of the local PMIx library. Nothing was shared, so this takes effect immediately and involves no other process.
 
 
 ERRORS

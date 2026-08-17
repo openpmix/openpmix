@@ -652,8 +652,8 @@ modex keeps today's behavior — drop the previous generation, one segment
 live — and only a delta grows the chain. The interim state, after the chain
 exists but before contributions are deltas, therefore costs nothing.
 
-Deleting a key (not yet implemented)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Deleting a key
+^^^^^^^^^^^^^^
 
 Deletion is expressed through ``PMIx_Put`` rather than a new API, using four
 additional ``pmix_scope_t`` values — ``PMIX_DEL_LOCAL``, ``PMIX_DEL_REMOTE``,
@@ -669,6 +669,28 @@ process. The other three are applied locally and then travel in the commit
 stream — the commit message is already a sequence of ``{scope, buffer}``
 blocks, so a deletion block needs no format change at all, only the new
 scope value.
+
+**A deletion cannot ride the delta record.** That record names keys for
+the commit to *fetch back*, and a deleted key is precisely the one the
+fetch will not find. Deletions are therefore stated directly, as their
+own ``PMIX_DEL_*`` block, and they are emitted **before** the data
+blocks: the server applies blocks in order, so a key deleted and then
+published again in the same interval ends up present, and one published
+and then deleted ends up absent. A delete also forces that commit to be
+cumulative, which is what removes any need to order the per-key record
+against the deletions.
+
+The server screens the scope of every block it receives now. Previously
+an unrecognized one silently discarded the data it labelled and carried
+on; that is the wrong answer for a peer saying something we cannot act
+on, and it is also what makes ``PMIX_ERR_NOT_SUPPORTED`` from
+``PMIx_Put`` — checked against the server's version before the request is
+ever made — the only way a caller can learn that its server is too old.
+
+**This much is implemented**: the scopes, the local removal, the commit
+block, and the server applying it to ``gds/hash``. What is not yet done
+is everything below — propagating a removal to the *other* local clients
+of a namespace, and the ``shmem3`` tombstones.
 
 The two datastores then diverge, exactly as the deletion problem always
 predicted:

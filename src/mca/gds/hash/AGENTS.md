@@ -128,6 +128,17 @@ below.
   retrying elsewhere. Since `hash` implements every slot this never fires
   today, but do not remove a slot's implementation assuming "something else
   will pick it up" — for `hash`, nothing will.
+- **A delete scope removes rather than stores, and is handled before
+  anything reads the value.** `PMIX_DEL_INTERNAL`/`_LOCAL`/`_REMOTE`/
+  `_GLOBAL` reach `store` like any other scope, but the kval carries no
+  value - so the delete arm sits above the array-expansion cases and the
+  verbose line at the top had to stop dereferencing `kv->value->type`.
+  It removes from the same tables the storing counterpart writes,
+  including the copy of a process's own data kept in `internal`.
+  `pmix_hash_remove_data()` translates through the **non-registering**
+  key lookup, which is what keeps a delete of a key nobody stored from
+  growing the keyindex with that name; "not found" is success, because
+  the caller asked for the key to be absent and it is.
 - **Scope routing is the contract.** The `INTERNAL`/`REMOTE`/`LOCAL`/`GLOBAL`
   → table mapping in `store` must stay in lockstep with the scope filtering
   in `fetch`; a change to one without the other silently loses or leaks

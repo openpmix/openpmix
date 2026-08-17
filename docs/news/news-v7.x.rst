@@ -7,6 +7,27 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - PMIx_Put gained four scope values - PMIX_DEL_LOCAL, PMIX_DEL_REMOTE,
+   PMIX_DEL_GLOBAL and PMIX_DEL_INTERNAL - naming the same audiences as
+   their storing counterparts but directing that the key be removed
+   rather than stored. The value is ignored and may be NULL, and removing
+   a key that was never stored is not an error. The removal takes effect
+   on the calling process at once and reaches the local server through
+   the usual commit, so a PMIX_DEL_INTERNAL - which was never shared - is
+   complete on return. This is a permitted extension: PMIx_Put(3) already
+   states that an implementation may support additional scope values and
+   must answer PMIX_ERR_NOT_SUPPORTED for one it does not, which is what
+   a server predating these returns. That check is made up front, in
+   PMIx_Put, because a server that does not recognize a scope would
+   otherwise drop the block and let the delete appear to succeed.
+   Companion projects can detect support through PMIX_CAP_DATA_DELETE.
+   Propagating a removal to the other clients of a namespace, and to
+   gds/shmem3's shared segments, is not yet implemented. See
+   openpmix#4087.
+ - A PMIx server now rejects a commit whose scope it does not recognize
+   rather than silently discarding the data that scope labelled. It also
+   rejects PMIX_INTERNAL, which names data that never leaves the process
+   and so has no business on the wire.
  - A PMIx server can now contribute only what its processes published
    since they last took part in a collecting fence, rather than
    everything they have published, controlled by the new

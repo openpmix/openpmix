@@ -128,6 +128,18 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &scope, &cnt, PMIX_SCOPE);
     while (PMIX_SUCCESS == rc) {
+        /* Screen the scope before consuming the block it labels. There
+         * used to be no else arm below, so a scope this server did not
+         * recognize silently dropped every kval in its block and carried
+         * on - the wrong answer for a peer telling us something we cannot
+         * act on. PMIX_INTERNAL is rejected too: it names data that never
+         * leaves the process, so it has no business on the wire. */
+        if (PMIX_LOCAL != scope && PMIX_REMOTE != scope && PMIX_GLOBAL != scope
+            && PMIX_DEL_LOCAL != scope && PMIX_DEL_REMOTE != scope
+            && PMIX_DEL_GLOBAL != scope) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            return PMIX_ERR_BAD_PARAM;
+        }
         /* unpack and store the blob */
         cnt = 1;
         PMIX_CONSTRUCT(&b2, pmix_buffer_t);
@@ -162,6 +174,33 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                     PMIX_DESTRUCT(&b2);
                     return rc;
                 }
+            }
+            /* A delete goes to the same store its counterpart would
+             * have, and the module removes the key rather than adding
+             * it. */
+            if (PMIX_DEL_LOCAL == scope || PMIX_DEL_GLOBAL == scope) {
+                PMIX_GDS_STORE_KV(rc, peer, &proc, scope, kp);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kp);
+                    PMIX_DESTRUCT(&b2);
+                    return rc;
+                }
+            }
+            if (PMIX_DEL_REMOTE == scope || PMIX_DEL_GLOBAL == scope) {
+                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, scope, kp);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kp);
+                    PMIX_DESTRUCT(&b2);
+                    return rc;
+                }
+                /* A later fence contribution must not re-publish what was
+                 * just removed. The pending list a delta is built from
+                 * still holds the old value, so make the next
+                 * contribution cumulative - that one is built from the
+                 * datastore, which no longer has the key. */
+                pmix_server_modex_resync(&proc);
             }
             if (pmix_server_globals.fence_delta_modex
                 && (PMIX_REMOTE == scope || PMIX_GLOBAL == scope)) {
