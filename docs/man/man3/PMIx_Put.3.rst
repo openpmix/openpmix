@@ -137,6 +137,22 @@ by itself invalidate it. Such a peer must ask for the update with
 ``PMIX_GET_REFRESH_CACHE`` |mdash| see
 :ref:`PMIx_Get(3) <man3-PMIx_Get>`.
 
+**Deleting a key.** The removal requested by a ``PMIX_DEL_*`` scope is applied
+to the calling process at once. The local PMIx server, and every other client
+of that server that had already been handed the key, are corrected when the
+removal is committed with :ref:`PMIx_Commit(3) <man3-PMIx_Commit>`; the server
+tells them with a one-way notification that carries no acknowledgement, so
+that correction arrives promptly rather than synchronously and a peer that
+races it can see the old value once more. Processes on *other* nodes stop
+seeing the key at the next collecting
+:ref:`PMIx_Fence(3) <man3-PMIx_Fence>` |mdash| the exchange is additive, so the
+removal has to be stated there, and a barrier-only fence does not carry it.
+
+Within a single commit interval the server applies the removals before the
+values published alongside them, so a key that is deleted and then posted
+again before the next ``PMIx_Commit`` ends up **present**, while one that is
+posted and then deleted ends up **absent**.
+
 **Qualified values.** A value may be posted together with one or more qualifiers
 that scope its later retrieval by using the reserved key
 ``PMIX_QUALIFIED_VALUE``. In that case ``val`` must be a ``pmix_value_t`` of type
