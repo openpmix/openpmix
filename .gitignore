@@ -86,6 +86,7 @@ examples/debugger
 examples/debuggerd
 examples/datatypes
 examples/delete_key
+examples/modex_attach_fail
 examples/dmodex
 examples/dynamic
 examples/modex_twice

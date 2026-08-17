@@ -1341,6 +1341,14 @@ shmem3_attach(
         // below detaches the segment if the real attach actually succeeded.
         rc = PMIX_ERR_NOT_AVAILABLE;
     }
+    if (PMIX_UNLIKELY(pmix_gds_shmem3_force_modex_attach_failure &&
+                      PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id)) {
+        /* Testing only: fail just this segment. Unlike the parameter
+         * above, this leaves the client on shmem3 through PMIx_Init and
+         * so reaches the fence-time attach - the path that has no GDS
+         * fallback to take. */
+        rc = PMIX_ERR_NOT_AVAILABLE;
+    }
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         // We were given a fixed base address but could not map the segment
         // there in this process's address space -- its VM layout (ASLR,
@@ -1378,9 +1386,30 @@ shmem3_attach(
 out:
     if (PMIX_SUCCESS != rc) {
         (void)pmix_shmem_segment_detach(shmem3);
-        // remove the job from the tracker
-        pmix_list_remove_item(&pmix_mca_gds_shmem3_component.jobs, &job->super);
-        PMIX_RELEASE(job);
+        if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
+            /* Only this segment is lost. The job and session segments
+             * this client has been reading since PMIx_Init are mapped
+             * and perfectly good, so keep the tracker: dropping it here
+             * took them down too, and left the client answering every
+             * job-level lookup for its OWN namespace with
+             * PMIX_ERR_INVALID_NAMESPACE - long after the fence that
+             * caused it. See openpmix#4156.
+             *
+             * What the client actually loses is the fast path to remote
+             * procs' data. The fetch side already copes: it gates every
+             * modex read on PMIX_GDS_SHMEM3_READY_FOR_USE, so a job
+             * without a modex segment simply misses, and the miss goes
+             * up to the server like any other. Clearing the status is
+             * what leaves a later generation free to attach cleanly. */
+            pmix_gds_shmem3_clearall_status(job, shmem3_id);
+        }
+        else {
+            // remove the job from the tracker
+            pmix_list_remove_item(
+                &pmix_mca_gds_shmem3_component.jobs, &job->super
+            );
+            PMIX_RELEASE(job);
+        }
     }
     else {
         pmix_gds_shmem3_set_status(
@@ -2896,6 +2925,28 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
         // Looks like we have to attach and initialize it.
         rc = shmem3_segment_attach_and_init(job, &usb);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            /* A modex we could not map is a slower client, not a broken
+             * one, and there is no "next option" to take at fence time
+             * anyway: PMIX_GDS_RECV_MODEX_COMPLETE resolves one module,
+             * and the modex data it describes cannot be re-delivered in
+             * another module's format. Reporting the failure upward put
+             * PMIX_ERR_TAKE_NEXT_OPTION in the application's hands as the
+             * return of PMIx_Fence, where it was either checked and
+             * treated as a failed fence or - more often - not checked at
+             * all. Say what happened and let the fence succeed; the data
+             * is still reachable, one request to the server at a time.
+             * See openpmix#4156. */
+            if (PMIX_ERR_TAKE_NEXT_OPTION == rc &&
+                PMIX_GDS_SHMEM3_MODEX_ID == usb.smid) {
+                PMIX_GDS_SHMEM3_VOUT(
+                    "%s: could not map the modex segment for namespace=%s; "
+                    "this process will fetch remote data from its server "
+                    "instead of reading it from shared memory",
+                    __func__, usb.nsid
+                );
+                rc = PMIX_SUCCESS;
+                break;
+            }
             break;
         }
     } while (false);
