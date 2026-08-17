@@ -488,10 +488,11 @@ one section because the two halves are one problem: **the mechanism that
 lets a modex carry only what changed is the same mechanism that lets a key
 be deleted**, and neither can be built without the other.
 
-The exchange half is implemented — the commit delta, the server's fence
-delta behind ``pmix_server_fence_delta_modex``, and the ``shmem3``
-generation chain that makes a non-self-contained modex readable. The
-deletion half, described at the end, is not.
+Both halves are implemented — the commit delta, the server's fence delta
+behind ``pmix_server_fence_delta_modex``, the ``shmem3`` generation chain
+that makes a non-self-contained modex readable, and the ``PMIX_DEL_*``
+scopes with the propagation that carries a removal to the other clients
+of a server and, through a collecting fence, to the other nodes.
 
 Why deletion needs this
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -552,9 +553,10 @@ set of peers would contribute nothing to a later fence over a different set,
 and the servers holding only the second set's processes would never learn its
 keys — two sub-communicators fencing independently is enough to reach it.
 Each process is therefore stamped with the participant set of the fence it
-last contributed to, and a delta is sent only when the current fence's set is
-contained in that stamp. Otherwise the contribution is cumulative and the
-stamp is replaced.
+last contributed to, and a delta is sent only when the current fence's set
+matches that stamp exactly. Otherwise the contribution is cumulative and the
+stamp is replaced. Equality rather than containment is deliberate: it can
+only cost an unnecessary cumulative contribution, never a short one.
 
 Telling a delta from a full contribution
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -745,24 +747,6 @@ acknowledgement, so a removal reaches the other processes on the node
 *promptly* rather than *synchronously*. A reader that raced it can see
 the old value once more.
 
-The two datastores then diverge, exactly as the deletion problem always
-predicted:
-
-* ``hash`` removes the key outright and the server messages each local
-  client to do the same in its own tables.
-* ``shmem3`` writes a **tombstone** — the key with a ``PMIX_UNDEF`` value —
-  into a new segment in the chain. A lookup walking newest to oldest that
-  reaches a tombstone stops and reports the key as not found, without any
-  published segment ever being written.
-
-.. warning::
-
-   The tombstone walk has to be consulted by the **job-data** lookup, not
-   only the modex one. ``deregister_resources`` targets job-level
-   information, which lives in the job segment rather than the modex
-   segment — so a chain that covers only the modex closes none of the
-   problem this work exists to solve.
-
 An older server silently discards a scope it does not recognize rather than
 reporting an error, so a delete issued against one would appear to succeed
 and do nothing. ``PMIx_Put`` therefore checks the server's version and
@@ -788,12 +772,13 @@ Summary
   its numbering once at initialization, and for modex data by giving each
   modex segment its own key index, written by the one process that owns
   the segment.
-* Both the commit and the fence contribution are **cumulative today**. The
-  planned delta exchange keeps the cumulative path as a resync fallback,
-  marks a delta in the envelope's existing flag byte so a mixed-version job
-  fails loudly, and turns ``shmem3``'s modex generations into a chain that
-  is searched newest to oldest.
+* The commit sends only what changed; the fence contribution does too when
+  ``pmix_server_fence_delta_modex`` is set. Both keep the cumulative path
+  as a resync fallback, a delta is marked in the envelope's existing flag
+  byte so a mixed-version job fails loudly, and ``shmem3``'s modex
+  generations become a chain that is searched newest to oldest.
 * **Deleting a key is the same mechanism seen from the other side**: a
-  tombstone in a newer segment, found by that same search — which is what
-  finally lets a deregistration retract information a running job already
-  holds.
+  ``PMIX_DEL_*`` scope on ``PMIx_Put``, stated in the commit and in the
+  next collecting fence, and answered by a removal in ``hash`` and a
+  tombstone in ``shmem3`` — which is what finally lets a deregistration
+  retract information a running job already holds.
