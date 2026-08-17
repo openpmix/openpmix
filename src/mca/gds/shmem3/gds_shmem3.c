@@ -2003,9 +2003,26 @@ unpack_shmem3_connection_info(
             usb->is_delta = ('0' != val[0]);
         }
         else {
-            rc = PMIX_ERR_BAD_PARAM;
-            PMIX_ERROR_LOG(rc);
-            break;
+            /* A key we have not been taught to hear. Skip it.
+             *
+             * This blob grows the way every other PMIx wire structure
+             * grows - by appending - and the project's own rule is that
+             * a reader tolerates what it does not recognize. Refusing
+             * the whole blob instead makes every future addition a flag
+             * day: a server that has learned to send one more field
+             * cannot talk to a client that has not yet learned to read
+             * it, and the client does not degrade, it fails PMIx_Init.
+             *
+             * That is not hypothetical - it is what a newer server
+             * describing its address-space arena to an older client
+             * does, and the xversion CI job is where it shows up. The
+             * fields such a client skips are ones it has no use for by
+             * construction: it does not know the feature they describe,
+             * so it does exactly what it did before they existed. */
+            PMIX_GDS_SHMEM3_VOUT(
+                "%s: ignoring unrecognized seg blob key=%s",
+                __func__, kv.key
+            );
         }
         // Done with this one.
         PMIX_DESTRUCT(&kv);
