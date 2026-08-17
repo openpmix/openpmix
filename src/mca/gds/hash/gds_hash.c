@@ -1314,14 +1314,17 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
                     return rc;
                 }
             }
-            /* the copy of my own data kept in the internal table to
-             * simplify retrieval goes with it - see the store path
-             * below, which is what put it there */
-            rc = PMIX_SUCCESS;
-            if (proc->rank == pmix_globals.myid.rank
-                && PMIX_CHECK_NSPACE(proc->nspace, pmix_globals.myid.nspace)) {
-                rc = pmix_hash_remove_data(&trk->internal, proc->rank, kv->key, NULL);
-            }
+            /* And the internal table, unconditionally rather than only
+             * for our own rank. It holds two things that look alike from
+             * here: the copy of our own data kept to simplify retrieval,
+             * and - on a client - whatever we have *read* about another
+             * process, which accept_kvs_resp() stores at PMIX_INTERNAL
+             * under that process's rank. The second is the whole reason a
+             * server tells its clients about a removal at all, so
+             * skipping it when the rank is not ours left the cached copy
+             * of a peer's deleted key in place and the delete looked
+             * like it had done nothing. */
+            rc = pmix_hash_remove_data(&trk->internal, proc->rank, kv->key, NULL);
         }
         if (PMIX_ERR_NOT_FOUND == rc) {
             rc = PMIX_SUCCESS;
