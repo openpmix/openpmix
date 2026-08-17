@@ -7,6 +7,27 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A deletion now reaches the data that has already been handed out.
+   Removing a key from a PMIx server's own store was only half of it: a
+   client caches what it reads about other processes and holds the
+   job-level data it was given at initialization, so every local client
+   that had looked the key up still had it. The server now tells its
+   local clients, on a PTL tag of its own so that a peer too old to know
+   about deletion never receives one. It goes to every local client
+   except the one that asked, and is not restricted to the affected
+   namespace, since a process may have cached data belonging to any
+   namespace it asked about.
+   This is also what answers PMIx_server_deregister_resources. The global
+   cache is copied into a namespace's datastore once, when that namespace
+   is first registered, and nothing re-reads it - so a deregistration
+   governed only the namespaces registered afterwards and left every
+   running job with its copy. It now takes the key back from the
+   namespaces that already hold it, and from their clients. A qualified
+   deregistration that prunes elements out of an entry rather than
+   removing it is deliberately not propagated: the host asked for part of
+   a value to go, so a deletion would take more than was asked. A
+   namespace using gds/shmem3 also still keeps its copy, in its shared
+   segment. See openpmix#4087.
  - PMIx_Put gained four scope values - PMIX_DEL_LOCAL, PMIX_DEL_REMOTE,
    PMIX_DEL_GLOBAL and PMIX_DEL_INTERNAL - naming the same audiences as
    their storing counterparts but directing that the key be removed

@@ -687,10 +687,42 @@ on, and it is also what makes ``PMIX_ERR_NOT_SUPPORTED`` from
 ``PMIx_Put`` — checked against the server's version before the request is
 ever made — the only way a caller can learn that its server is too old.
 
-**This much is implemented**: the scopes, the local removal, the commit
-block, and the server applying it to ``gds/hash``. What is not yet done
-is everything below — propagating a removal to the *other* local clients
-of a namespace, and the ``shmem3`` tombstones.
+Propagation
+^^^^^^^^^^^
+
+Removing the key from the server's own store is only half of it. A client
+caches what it reads about other processes and holds the job-level data it
+was given at initialization, so every local client that ever looked the
+key up still has it. The server therefore tells its local clients, on a
+PTL tag of its own — a peer too old to know that tag never posted a
+receive for it, which is the same reasoning IOF flow control uses. It goes
+to every local client except the one that asked for the deletion, and is
+deliberately not restricted to the affected namespace: a process may have
+cached data belonging to any namespace it asked about, and one that never
+held the key removes nothing.
+
+That is also what finally answers
+:ref:`PMIx_server_deregister_resources(3) <man3-PMIx_server_deregister_resources>`.
+The global cache is copied into a namespace's datastore once, when that
+namespace is first registered, and nothing re-reads it — so a
+deregistration used to govern the namespaces registered *afterwards* and
+leave every running job with its copy. It now takes the key back from the
+namespaces that already hold it, and from their clients.
+
+One case is deliberately excluded. A *qualified* deregistration that
+prunes elements out of an entry rather than removing it has asked for
+part of a value to go, so the correct propagation is the pruned value —
+not a deletion, which would take from a namespace more than the host
+asked to remove. That needs an update push, which does not exist.
+
+**What is left is ``gds/shmem3``.** A client of a namespace using it reads
+the shared segment directly, and a published segment is never written
+again — so retracting from one means writing a new generation carrying a
+tombstone, an entry marked ``PMIX_UNDEF`` that the newest-to-oldest walk
+reads as "deleted" and stops on. The chain that makes such a walk possible
+now exists; what does not is a way to *advertise* a new generation outside
+a fence reply, which is the only point at which a client is currently
+told about one.
 
 The two datastores then diverge, exactly as the deletion problem always
 predicted:

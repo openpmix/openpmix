@@ -197,6 +197,76 @@ error:
     pmix_invoke_local_event_hdlr(chain);
 }
 
+/* Is this scope a request to remove the key rather than store it? */
+static inline bool is_delete_scope(pmix_scope_t scope)
+{
+    return (PMIX_DEL_LOCAL == scope || PMIX_DEL_REMOTE == scope
+            || PMIX_DEL_GLOBAL == scope || PMIX_DEL_INTERNAL == scope);
+}
+
+/* A server telling us that a key has been deleted, so our own copy of it
+ * goes too. See pmix_server_notify_deleted().
+ *
+ * We may never have had the key - a client caches only what it asked
+ * about - and removing something absent is not an error, so nothing here
+ * reports one. */
+static void client_data_delete_handler(struct pmix_peer_t *pr,
+                                       pmix_ptl_hdr_t *hdr,
+                                       pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_proc_t proc;
+    pmix_scope_t scope;
+    char *key = NULL;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    int32_t cnt;
+
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, cbdata);
+
+    /* a zero-byte buffer means the connection was lost */
+    if (NULL == buf || PMIX_BUFFER_IS_EMPTY(buf)) {
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &proc, &cnt, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &scope, &cnt, PMIX_SCOPE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &key, &cnt, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    /* the scope arrived off the wire, so it is the sender's word rather
+     * than ours - act only on one that really asks for a removal */
+    if (NULL == key || !is_delete_scope(scope)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        if (NULL != key) {
+            free(key);
+        }
+        return;
+    }
+    kv = PMIX_NEW(pmix_kval_t);
+    if (PMIX_UNLIKELY(NULL == kv)) {
+        free(key);
+        return;
+    }
+    kv->key = key; // the kval owns it now
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, scope, kv);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    PMIX_RELEASE(kv);
+}
+
 pmix_client_globals_t pmix_client_globals = {
     .myserver = NULL,
     .singleton = false,
@@ -260,13 +330,6 @@ void pmix_client_commit_resync(void)
         pmix_client_globals.del_remote = NULL;
     }
     pmix_client_globals.commit_resync = true;
-}
-
-/* Is this scope a request to remove the key rather than store it? */
-static inline bool is_delete_scope(pmix_scope_t scope)
-{
-    return (PMIX_DEL_LOCAL == scope || PMIX_DEL_REMOTE == scope
-            || PMIX_DEL_GLOBAL == scope || PMIX_DEL_INTERNAL == scope);
 }
 
 /* Note that this key has been deleted, so the commit can say so.
@@ -901,6 +964,11 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
     rcv->tag = PMIX_PTL_TAG_IOF_CONTROL;
     rcv->cbfunc = pmix_iof_flow_control_handler;
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+    /* and the "a key you may have cached has been deleted" recv */
+    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+    rcv->tag = PMIX_PTL_TAG_DATA_DELETE;
+    rcv->cbfunc = client_data_delete_handler;
     pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
     /* create the default iof handler */
     iofreq = PMIX_NEW(pmix_iof_req_t);

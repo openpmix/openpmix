@@ -224,6 +224,12 @@ typedef uint32_t pmix_ptl_tag_t;
  * unpack it as a truncated output message. Its own tag means such a
  * peer simply never receives one. */
 #define PMIX_PTL_TAG_IOF_CONTROL 3
+/* A server telling its local clients that a key has been deleted, so
+ * their own copies of it go too. It gets its own tag for the same
+ * reason flow control does: a peer too old to know about deletion
+ * simply never receives one, where a shared tag would hand it a
+ * message it would unpack as something else. */
+#define PMIX_PTL_TAG_DATA_DELETE 4
 
 /* define the start of dynamic tags that are
  * assigned for send/recv operations */
