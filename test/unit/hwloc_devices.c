@@ -467,6 +467,89 @@ static void test_uuid_names_the_node(const char *dir)
     free_topo(&topo);
 }
 
+/* The vendor's own identity for a device, which is the only handle a GPU
+ * runtime will accept.
+ *
+ * Three properties, and the middle one is the whole reason this is not a
+ * one-line read off the named device:
+ *
+ *   - nvml-4gpu names each function by "cuda0" (the first vendor compute
+ *     node it meets) while NVIDIAUUID lives on the sibling "nvml0" of the
+ *     same PCI function.  A scan of the named device alone reports "no
+ *     identity" on exactly the machines that have one.
+ *   - test-topo2 is the other arrangement - AMDUUID sits on "rsmi0", which
+ *     is also the device that names the function - so both paths are
+ *     covered rather than just whichever one the first fixture happened to
+ *     use.
+ *   - drm-4gpu is the same machine as nvml-4gpu seen by an hwloc built
+ *     without the vendor backends.  Its GPUs are found and placed exactly
+ *     as well; they simply cannot be named, and NULL is the honest answer
+ *     rather than a failure.
+ */
+static void test_vendor_identity(const char *dir)
+{
+    struct {
+        const char *file;
+        const char *osname;   /* the device that names the function */
+        const char *prefix;   /* what its vendor id must start with, or NULL */
+        size_t ndevs;
+    } cases[] = {
+        {"nvml-4gpu.xml", "cuda0", "GPU-", 4},
+        {"test-topo2.xml", "rsmi0", "d364", 1},
+        {"drm-4gpu.xml", NULL, NULL, 4},
+    };
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, i, c, nident;
+    char path[1024];
+    pmix_status_t rc;
+
+    for (c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        snprintf(path, sizeof(path), "%s/%s", dir, cases[c].file);
+        if (0 != load_topo_file(path, &topo)) {
+            fprintf(stderr, "FAIL: could not load %s\n", path);
+            ++failures;
+            continue;
+        }
+        rc = pmix_hwloc_get_devices(&topo, TESTHOST,
+                                    PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_COPROC,
+                                    NULL, &devs, &ndevs);
+        ok(PMIX_SUCCESS == rc, "vendor: enumeration succeeds");
+        ok(cases[c].ndevs == ndevs, "vendor: the expected number of GPUs");
+
+        nident = 0;
+        for (i = 0; i < ndevs; i++) {
+            if (NULL != devs[i].vendor_id) {
+                ++nident;
+            }
+        }
+        if (NULL == cases[c].prefix) {
+            ok(0 == nident, "vendor: no backend means no identity, not a failure");
+        } else {
+            ok(nident == ndevs, "vendor: every GPU carries a vendor identity");
+            if (0 < ndevs) {
+                ok(NULL != devs[0].dev.osname
+                       && 0 == strcmp(devs[0].dev.osname, cases[c].osname),
+                   "vendor: the function is named as expected");
+                ok(NULL != devs[0].vendor_id
+                       && 0 == strncmp(devs[0].vendor_id, cases[c].prefix,
+                                       strlen(cases[c].prefix)),
+                   "vendor: the identity is the vendor's own, in its own grammar");
+            }
+            /* two GPUs on one machine are never the same GPU */
+            if (1 < ndevs) {
+                ok(NULL != devs[0].vendor_id && NULL != devs[1].vendor_id
+                       && 0 != strcmp(devs[0].vendor_id, devs[1].vendor_id),
+                   "vendor: distinct devices carry distinct identities");
+            }
+        }
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+        ndevs = 0;
+        free_topo(&topo);
+    }
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -491,6 +574,7 @@ int main(int argc, char **argv)
     test_topo1(dir);
     test_distances_agree(dir);
     test_uuid_names_the_node(dir);
+    test_vendor_identity(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);

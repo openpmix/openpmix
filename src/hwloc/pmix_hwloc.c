@@ -1456,6 +1456,54 @@ static bool osdev_is_render_node(hwloc_obj_t osdev)
     return (NULL != osdev->name && 0 == strncasecmp(osdev->name, "renderD", 7));
 }
 
+/* The info key each vendor's hwloc backend records its device identity
+ * under: NVML writes NVIDIAUUID, RSMI writes AMDUUID, Level Zero writes
+ * LevelZeroUUID.  There is no generic spelling to fall back on, which is
+ * why this is a table rather than a rule.
+ *
+ * Deliberately not BXIUUID, which hwloc also writes: that is a network
+ * interconnect, and this is about naming a device to the vendor runtime
+ * that will compute on it. */
+static const char *vendor_id_keys[] = {"NVIDIAUUID", "AMDUUID", "LevelZeroUUID", NULL};
+
+/* The vendor's identifier for the device this OS device belongs to, or NULL.
+ *
+ * Scanned across the whole PCI function rather than read off the given OS
+ * device, because the two are routinely different objects: a topology with
+ * both the CUDA and NVML backends loaded exposes "cuda0" and "nvml0" on one
+ * function, get_devices() names the function by the first vendor compute
+ * node it meets - "cuda0" - and the uuid is on "nvml0".  Reading only the
+ * named device would report "no identity" on precisely the machines that
+ * have one. */
+static char *vendor_id_of(hwloc_obj_t osdev, hwloc_obj_t pci)
+{
+    hwloc_obj_t child;
+    const char *val;
+    unsigned k;
+
+    for (k = 0; NULL != vendor_id_keys[k]; k++) {
+        val = hwloc_obj_get_info_by_name(osdev, vendor_id_keys[k]);
+        if (NULL != val) {
+            return strdup(val);
+        }
+    }
+    if (NULL == pci) {
+        return NULL;
+    }
+    for (child = pci->io_first_child; NULL != child; child = child->next_sibling) {
+        if (HWLOC_OBJ_OS_DEVICE != child->type) {
+            continue;
+        }
+        for (k = 0; NULL != vendor_id_keys[k]; k++) {
+            val = hwloc_obj_get_info_by_name(child, vendor_id_keys[k]);
+            if (NULL != val) {
+                return strdup(val);
+            }
+        }
+    }
+    return NULL;
+}
+
 /* The PCI function an OS device hangs off, or NULL if it has none. */
 static hwloc_obj_t pci_ancestor(hwloc_obj_t osdev)
 {
@@ -1821,6 +1869,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         }
         array[n].dev.osname = strdup(c->osdev->name);
         array[n].dev.type = c->type;
+        array[n].vendor_id = vendor_id_of(c->osdev, c->pci);
         if (NULL != c->pci) {
             pmix_asprintf(&array[n].busid, "%04x:%02x:%02x.%01x",
                           c->pci->attr->pcidev.domain, c->pci->attr->pcidev.bus,
@@ -1864,6 +1913,9 @@ void pmix_hwloc_release_devices(pmix_hwloc_device_t *devs, size_t ndevs)
         PMIx_Device_destruct(&devs[n].dev);
         if (NULL != devs[n].busid) {
             free(devs[n].busid);
+        }
+        if (NULL != devs[n].vendor_id) {
+            free(devs[n].vendor_id);
         }
         /* locality is borrowed from the topology */
     }

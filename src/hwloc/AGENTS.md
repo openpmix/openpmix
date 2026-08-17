@@ -289,6 +289,22 @@ a normal build does exercise it.
   `pmix_hwloc_compute_distances()` is the one caller entitled to pass
   `pmix_globals.hostname`, because it measures against a cpuset of *this*
   machine's PUs and so can only ever be reading the local topology.
+- **A device's vendor identity is usually absent, and that is not a
+  failure.** `pmix_hwloc_device_t.vendor_id` carries the handle a GPU
+  runtime will actually accept — NVIDIA's `GPU-<uuid>` and its AMD and
+  Level Zero equivalents — and hwloc records it only from the matching
+  vendor backend (`NVIDIAUUID`, `AMDUUID`, `LevelZeroUUID`). An hwloc
+  built without them describes the same GPUs with no way to name any of
+  them, so `NULL` is the common answer and callers decide what it means.
+  Two properties worth knowing: the identity is harvested across the
+  whole PCI **function**, not read off the OS device that names it (with
+  CUDA and NVML both loaded the function is named `cuda0` while the uuid
+  sits on `nvml0`, so reading only the named device reports "no identity"
+  on exactly the machines that have one); and *whether* a topology has
+  identities is structural — an absent info attribute changes an object's
+  info count, which `hwloc_topology_diff_build()` calls "too complex" —
+  while the *values* are per-node and must be read from that node's own
+  topology.
 - **Always check `source` first, and match it with `strncasecmp(...,
   "hwloc", 5)`.** Returning `PMIX_ERR_TAKE_NEXT_OPTION` (not an error) for
   a non-hwloc object is the contract. A `NULL` source is legal on *input*

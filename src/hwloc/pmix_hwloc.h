@@ -91,6 +91,24 @@ typedef struct {
     /* PCI bus id ("0000:06:00.0"), or NULL for a device with no PCI
      * ancestor.  This is the sort key: see pmix_hwloc_get_devices(). */
     char *busid;
+    /* The vendor's own identifier for this device - an NVIDIA
+     * "GPU-<uuid>", an AMD uuid, a Level Zero uuid - or NULL when the
+     * topology carries none.
+     *
+     * This is the only handle a vendor runtime accepts for naming a
+     * specific device, so it is what makes an assignment actionable rather
+     * than merely reportable: dev.uuid identifies the device within PMIx,
+     * but no GPU library has ever heard of it.
+     *
+     * It is NULL far more often than not.  hwloc records it only from its
+     * vendor backends (NVML, RSMI, Level Zero), so a topology gathered by
+     * an hwloc built without them describes the same hardware with no way
+     * to name any of it.  Whether that is fatal is the caller's policy
+     * question, not this layer's - but note that whether the field CAN be
+     * filled is a property of the topology rather than of the node, since
+     * an absent attribute changes the topology's shape.  Its VALUE is
+     * per-node and must be read from that node's own topology. */
+    char *vendor_id;
     /* Nearest ancestor carrying a cpuset - the set of PUs local to this
      * device.  Borrowed from the topology, so it is valid only as long as
      * the topology is, and must not be freed. */
