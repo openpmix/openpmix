@@ -218,6 +218,7 @@ static void client_data_delete_handler(struct pmix_peer_t *pr,
     pmix_scope_t scope;
     char *key = NULL;
     pmix_kval_t *kv;
+    pmix_namespace_t *nptr;
     pmix_status_t rc;
     int32_t cnt;
 
@@ -263,6 +264,19 @@ static void client_data_delete_handler(struct pmix_peer_t *pr,
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, scope, kv);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+    }
+    /* our own peer is pinned to "hash", which is what the store above
+     * corrected. If this namespace is served by another module - one
+     * reading a shared segment it cannot rewrite - that module has to be
+     * told separately so it stops answering for the key. */
+    PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strncmp(nptr->nspace, proc.nspace, PMIX_MAX_NSLEN)) {
+            PMIX_GDS_DEL_KEY(rc, nptr, &proc, kv->key);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
+        }
     }
     PMIX_RELEASE(kv);
 }

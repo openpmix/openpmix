@@ -715,14 +715,35 @@ part of a value to go, so the correct propagation is the pruned value —
 not a deletion, which would take from a namespace more than the host
 asked to remove. That needs an update push, which does not exist.
 
-**What is left is ``gds/shmem3``.** A client of a namespace using it reads
-the shared segment directly, and a published segment is never written
-again — so retracting from one means writing a new generation carrying a
-tombstone, an entry marked ``PMIX_UNDEF`` that the newest-to-oldest walk
-reads as "deleted" and stops on. The chain that makes such a walk possible
-now exists; what does not is a way to *advertise* a new generation outside
-a fence reply, which is the only point at which a client is currently
-told about one.
+``gds/shmem3`` needs a different answer, because it cannot take the key
+out: a client reads the shared segment directly, and a segment a client
+can see is never written again. It records a **tombstone** instead — the
+key stays where it is and the module stops answering for it.
+
+The tombstone is deliberately *not* in shared memory. Putting it there
+would mean a whole new segment, mapped by every local client, for a few
+bytes per deleted key — and it would still not save the step that
+actually matters, since a client attaching after the removal has to be
+told either way. Each process keeps its own record instead, built from
+the notification its server already sends, and the list is added to the
+cached job-info reply so a later arrival is told at attach time.
+
+Reads consult it. Job-segment data is written once and never
+re-published, so a tombstone against it always applies. Modex data can
+legitimately come back, so a tombstone records the modex generation
+current when it was made and shadows only generations up to that one —
+a key deleted and then published again in a later fence is alive again.
+
+The module interface gained one optional entry point for this,
+``del_key``. ``gds/hash`` leaves it ``NULL``, because a delete reaches
+its store like any other scope and it simply removes the key; the macro
+reads a ``NULL`` slot as success. It exists for a module that keeps data
+somewhere its store cannot reach.
+
+**One property to know**: the notification is a one-way push with no
+acknowledgement, so a removal reaches the other processes on the node
+*promptly* rather than *synchronously*. A reader that raced it can see
+the old value once more.
 
 The two datastores then diverge, exactly as the deletion problem always
 predicted:

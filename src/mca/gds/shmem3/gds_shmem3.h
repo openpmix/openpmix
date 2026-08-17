@@ -279,6 +279,29 @@ typedef struct {
     pmix_keyindex_t *keyindex;
 } pmix_gds_shmem3_shared_modex_data_t;
 
+/* A key this job has been told to stop answering for.
+ *
+ * Deliberately NOT in shared memory. A segment a client can see is never
+ * written again, so a tombstone cannot go into one that already holds
+ * the key - it would have to be a new segment, mapped by every local
+ * client, for a few bytes per deleted key. Each process keeps its own
+ * record instead, built from the notification its server already sends,
+ * and a client that attaches later is given the list in the job-info
+ * reply.
+ *
+ * "generation" is the modex generation current when the removal was
+ * recorded. Job-segment data is written once and never re-published, so
+ * a tombstone against it always applies; modex data can legitimately
+ * come back, so a tombstone only shadows generations up to the one it
+ * was recorded at. */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_rank_t rank;
+    char *key;
+    uint32_t generation;
+} pmix_gds_shmem3_tombstone_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem3_tombstone_t);
+
 /* A modex generation this job has finished with but must keep.
  *
  * A delta contribution carries only what changed, so the generation it
@@ -291,6 +314,9 @@ typedef struct {
     pmix_gds_shmem3_status_t status;
     pmix_shmem_t *shmem3;
     pmix_gds_shmem3_shared_modex_data_t *smmodex;
+    /** which generation this was, so a tombstone recorded later can be
+     * told from one recorded before it - see pmix_gds_shmem3_tombstone_t */
+    uint32_t generation;
 } pmix_gds_shmem3_modex_seg_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem3_modex_seg_t);
 
@@ -338,6 +364,9 @@ typedef struct {
      * told to each client in the segment blob so it can make the same
      * keep-or-drop decision this server made. */
     bool modex_is_delta;
+    /** Keys this job has been told to stop answering for. Process-local;
+     * see pmix_gds_shmem3_tombstone_t. */
+    pmix_list_t tombstones;
     /** Modex generations older than the current one, newest first.
      *
      * Non-empty only when a delta contribution has been stored: such a

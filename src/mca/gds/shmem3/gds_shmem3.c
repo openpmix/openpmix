@@ -54,6 +54,11 @@
  * must keep the generations before it; "0" when it stands on its own and
  * supersedes them. Only ever packed for the modex segment. */
 #define SHMEM3_SEG_DELTA_KEY "PMIX_GDS_SHMEM3_SEG_DELTA"
+/* A key this job has stopped answering for, as "<rank>:<key>". The
+ * segments still contain it - they are never rewritten - so a client
+ * attaching after the removal has to be told, or it would read what
+ * every process already attached has been told to ignore. */
+#define SHMEM3_TOMBSTONE_KEY "PMIX_GDS_SHMEM3_TOMBSTONE"
 
 
 #define EMSG_SHMEM3_IS_BROKEN "\n***\nAn unrecoverable error occurred in the " \
@@ -576,6 +581,7 @@ job_construct(
     job->smmodex = NULL;
     job->modex_is_delta = false;
     PMIX_CONSTRUCT(&job->modex_prior, pmix_list_t);
+    PMIX_CONSTRUCT(&job->tombstones, pmix_list_t);
     // Connection info
     job->conni = NULL;
 }
@@ -674,6 +680,7 @@ job_destruct(
      * the class destructor gives it back the same way the loop below
      * does for the current one. */
     PMIX_LIST_DESTRUCT(&job->modex_prior);
+    PMIX_LIST_DESTRUCT(&job->tombstones);
 
     static const pmix_gds_shmem3_job_shmem3_id_t shmem3_ids[] = {
         PMIX_GDS_SHMEM3_JOB_ID,
@@ -723,12 +730,39 @@ job_destruct(
  * job->smmodex, so it has to go before that pointer is cleared.
  */
 static void
+tombstone_construct(
+    pmix_gds_shmem3_tombstone_t *t
+) {
+    t->rank = PMIX_RANK_UNDEF;
+    t->key = NULL;
+    t->generation = 0;
+}
+
+static void
+tombstone_destruct(
+    pmix_gds_shmem3_tombstone_t *t
+) {
+    if (NULL != t->key) {
+        free(t->key);
+        t->key = NULL;
+    }
+}
+
+PMIX_CLASS_INSTANCE(
+    pmix_gds_shmem3_tombstone_t,
+    pmix_list_item_t,
+    tombstone_construct,
+    tombstone_destruct
+);
+
+static void
 modex_seg_construct(
     pmix_gds_shmem3_modex_seg_t *seg
 ) {
     seg->status = 0;
     seg->shmem3 = NULL;
     seg->smmodex = NULL;
+    seg->generation = 0;
 }
 
 static void
@@ -786,6 +820,7 @@ retire_modex_segment(
     seg->status = job->modex_shmem3_status;
     seg->shmem3 = job->modex_shmem3;
     seg->smmodex = job->smmodex;
+    seg->generation = job->modex_generation;
     pmix_list_prepend(&job->modex_prior, &seg->super);
 
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
@@ -2141,6 +2176,46 @@ pack_shmem3_seg_blob(
     return rc;
 }
 
+/* Pack this job's tombstones for a connecting client - see
+ * SHMEM3_TOMBSTONE_KEY. Packs nothing, successfully, for the ordinary
+ * job nobody has deleted from. */
+static pmix_status_t
+pack_tombstones(
+    pmix_gds_shmem3_job_t *job,
+    pmix_peer_t *peer,
+    pmix_buffer_t *buffer
+) {
+    pmix_gds_shmem3_tombstone_t *t;
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_kval_t kv;
+
+    PMIX_LIST_FOREACH (t, &job->tombstones, pmix_gds_shmem3_tombstone_t) {
+        if (NULL == t->key) {
+            continue;
+        }
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM3_TOMBSTONE_KEY);
+        kv.value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.key || NULL == kv.value)) {
+            PMIX_DESTRUCT(&kv);
+            return PMIX_ERR_NOMEM;
+        }
+        kv.value->type = PMIX_STRING;
+        if (0 > pmix_asprintf(&kv.value->data.string, "%s:%u:%s",
+                              job->nspace_id, (unsigned) t->rank, t->key)) {
+            PMIX_DESTRUCT(&kv);
+            return PMIX_ERR_NOMEM;
+        }
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        PMIX_DESTRUCT(&kv);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 static pmix_status_t
 cache_connection_info_for_job_shmem3(
     pmix_gds_shmem3_job_t *job
@@ -2170,6 +2245,14 @@ cache_connection_info_for_job_shmem3(
     rc = pack_shmem3_seg_blob(
         job, PMIX_GDS_SHMEM3_JOB_ID, me, job->conni
     );
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+    // Anything this job has stopped answering for. The segments still
+    // contain it, so a client attaching now has to be told, or it would
+    // read what every already-attached process has been told to ignore.
+    rc = pack_tombstones(job, me, job->conni);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto out;
@@ -2385,6 +2468,42 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
 }
 
 static pmix_status_t
+del_key(
+    const pmix_proc_t *proc,
+    const char *key
+);
+
+/* Record a key the server has stopped answering for, from the job-info
+ * reply. The value is "<nspace>:<rank>:<key>" - the key may itself
+ * contain a colon, so only the first two separators are significant. */
+static pmix_status_t
+unpack_tombstone(
+    pmix_kval_t *kv
+) {
+    char *sep1, *sep2;
+    pmix_proc_t proc;
+    unsigned long rank;
+
+    if (NULL == kv->value || PMIX_STRING != kv->value->type
+        || NULL == kv->value->data.string) {
+        return PMIX_ERR_TYPE_MISMATCH;
+    }
+    sep1 = strchr(kv->value->data.string, ':');
+    if (NULL == sep1) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    sep2 = strchr(sep1 + 1, ':');
+    if (NULL == sep2 || sep2 == sep1 + 1) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *sep1 = '\0';
+    *sep2 = '\0';
+    rank = strtoul(sep1 + 1, NULL, 10);
+    PMIX_LOAD_PROCID(&proc, kv->value->data.string, (pmix_rank_t) rank);
+    return del_key(&proc, sep2 + 1);
+}
+
+static pmix_status_t
 client_connect_to_shmem3_from_buffi(
     pmix_buffer_t *buff
 ) {
@@ -2406,6 +2525,12 @@ client_connect_to_shmem3_from_buffi(
 
         if (PMIX_CHECK_KEY(&kval, SHMEM3_SEG_BLOB_KEY)) {
             rc = unpack_shmem3_seg_blob_and_attach_if_necessary(&kval);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                break;
+            }
+        }
+        else if (PMIX_CHECK_KEY(&kval, SHMEM3_TOMBSTONE_KEY)) {
+            rc = unpack_tombstone(&kval);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 break;
             }
@@ -2529,6 +2654,68 @@ get_modex_sizing_data(
 /**
  * This gets called for each process participating in the modex.
  */
+/**
+ * Stop answering for this key.
+ *
+ * The data itself stays where it is: it lives in a shared segment that
+ * local clients have mapped, and such a segment is never written again.
+ * The removal is recorded instead, and every read consults the record.
+ *
+ * Called on the server when a deregistration or a client's delete
+ * retracts a key, and on each client when its server passes that on -
+ * so every process holding the segment ends up with the same record. A
+ * client that attaches afterwards is given the list in the job-info
+ * reply, which is why the cached reply is dropped here.
+ */
+static pmix_status_t
+del_key(
+    const pmix_proc_t *proc,
+    const char *key
+) {
+    pmix_gds_shmem3_job_t *job;
+    pmix_gds_shmem3_tombstone_t *t;
+    pmix_status_t rc;
+
+    if (NULL == proc || NULL == key) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* do not create a tracker for a namespace we know nothing about -
+     * there is no data of ours for the key to shadow */
+    rc = pmix_gds_shmem3_get_job_tracker(proc->nspace, false, &job);
+    if (PMIX_SUCCESS != rc) {
+        return PMIX_SUCCESS;
+    }
+    /* already recorded for this rank? then nothing to do - but refresh
+     * the generation, since a later removal shadows more than an
+     * earlier one did */
+    PMIX_LIST_FOREACH (t, &job->tombstones, pmix_gds_shmem3_tombstone_t) {
+        if (t->rank == proc->rank && NULL != t->key && 0 == strcmp(t->key, key)) {
+            t->generation = job->modex_generation;
+            return PMIX_SUCCESS;
+        }
+    }
+    t = PMIX_NEW(pmix_gds_shmem3_tombstone_t);
+    if (PMIX_UNLIKELY(NULL == t)) {
+        return PMIX_ERR_NOMEM;
+    }
+    t->rank = proc->rank;
+    t->key = strdup(key);
+    if (PMIX_UNLIKELY(NULL == t->key)) {
+        PMIX_RELEASE(t);
+        return PMIX_ERR_NOMEM;
+    }
+    t->generation = job->modex_generation;
+    pmix_list_append(&job->tombstones, &t->super);
+
+    /* the cached job-info reply still says the key exists, and it is
+     * what the next client to attach is handed - build a fresh one */
+    if (NULL != job->conni) {
+        PMIX_RELEASE(job->conni);
+        job->conni = NULL;
+    }
+    return PMIX_SUCCESS;
+}
+
 static pmix_status_t
 server_store_modex_cb(pmix_proc_t *proc,
                       pmix_buffer_t *pbkt,
@@ -2860,6 +3047,7 @@ pmix_gds_base_module_t pmix_shmem3_module = {
     .setup_fork = server_setup_fork,
     .add_nspace = server_add_nspace,
     .del_nspace = del_nspace,
+    .del_key = del_key,
     .assemb_kvs_req = NULL,
     .accept_kvs_resp = NULL,
     .mark_modex_complete = server_mark_modex_complete,
