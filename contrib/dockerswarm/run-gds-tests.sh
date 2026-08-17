@@ -142,7 +142,7 @@ GEOMETRIES="${GEOMETRIES:-node1:1,node2:1|2 node1:1,node2:1,node3:1,node4:1|4 no
 #   rather than on the exit status, which proves nothing here.
 run_across_nodes() {
     local prog="$1" hosts="$2" np="$3" envs="${4:-}" label="${5:-}"
-    local out rc nok xargs exports v
+    local out rc nok xargs exports v trace
 
     xargs=""; exports=""
     for v in $envs; do
@@ -150,9 +150,24 @@ run_across_nodes() {
         exports="$exports export $v;"
     done
 
+    # SWARM_TRACE=1 makes the PMIx *servers* audible.
+    #
+    # They live inside the prted on each node, and PRRTE daemonizes every
+    # daemon but the HNP - so their stderr goes nowhere. Without this flag
+    # a run shows node1 and nothing else, which reads as "that code path
+    # never ran" when the truth is it ran somewhere the output was thrown
+    # away. Each line is tagged [host:pid]; confirm all $np nodes appear
+    # before concluding anything from a trace:
+    #
+    #   grep -oE '^\[[a-z0-9]+:[0-9]+\]' out | sort | uniq -c
+    #
+    # Off by default: it keeps the daemons in the foreground and is noisy.
+    trace=""
+    [ "${SWARM_TRACE:-0}" = 1 ] && trace="--leave-session-attached"
+
     cleanup_swarm
     out="$(RUN "$exports prterun --host $hosts -np $np --map-by node $xargs \
-                --timeout 120 /opt/prte/tests-gds/$prog 2>&1")"
+                $trace --timeout 120 /opt/prte/tests-gds/$prog 2>&1")"
     rc=$?
 
     if echo "$out" | grep -qiE 'time limit for job|timed out|DVM timeout'; then
