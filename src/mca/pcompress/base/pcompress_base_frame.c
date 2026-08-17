@@ -119,9 +119,22 @@ pmix_compress_base_t pmix_compress_base = {
 static int pmix_compress_base_register(pmix_mca_base_register_flag_t flags)
 {
     (void) flags;
-    pmix_compress_base.compress_limit = 4096;
+    /* Inputs below this size are never offered to the compressor. The
+     * floor exists to keep us from spending CPU where there is nothing
+     * to gain - it is not a correctness guard, because every component
+     * declines any result that is not strictly smaller than its input.
+     * A fence bucket from a node running four processes is around a
+     * kilobyte and still deflates to well under two-thirds of that for
+     * about 13us, so 4096 - the value this carried until August 2026 -
+     * left every small-node job shipping its modex raw. See the
+     * "Choosing compress_limit" note in AGENTS.md before changing it;
+     * this same threshold decides when PMIx_Put converts a large string
+     * value into a PMIX_COMPRESSED_STRING. */
+    pmix_compress_base.compress_limit = 1024;
     (void) pmix_mca_base_var_register("pmix", "pcompress", "base", "limit",
-                                      "Threshold beyond which data will be compressed",
+                                      "Size in bytes below which data is left uncompressed. "
+                                      "Also the length above which PMIx_Put converts a string "
+                                      "value into a PMIX_COMPRESSED_STRING.",
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_compress_base.compress_limit);
 
