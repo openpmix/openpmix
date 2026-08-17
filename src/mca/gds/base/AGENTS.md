@@ -228,9 +228,13 @@ Two further things worth knowing before reviving it:
 The small-payload corner that a keymap *did* still win — a node whose
 bucket fell under `pmix_compress_base.compress_limit` and was therefore
 shipped raw — was closed in August 2026 by lowering that limit from 4096
-to 1024. See "Choosing `compress_limit`" in
+to 256, which is where the compressor starts declining on its own. See
+"Choosing `compress_limit`" in
 [`../../pcompress/AGENTS.md`](../../pcompress/AGENTS.md) for the curve
-that number came from.
+that number came from, and the section after it for why large string
+values are no longer compressed individually before they reach the
+bucket — the same cross-rank redundancy argument, pointing the other
+way.
 
 ## When working here
 
