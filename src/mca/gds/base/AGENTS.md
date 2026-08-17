@@ -242,8 +242,29 @@ way.
   caddy pattern anywhere in `gds`; the thread-shift happens above it, in
   the caller. See the Threading section of the framework doc.
 - **A change to the envelope layout in `store_modex` is a wire-format
-  change.** Peers built from different releases exchange these blobs.
-  Treat the layout as append-only per the top-level interoperability rules.
+  change** — but not a *cross-version* one, and the distinction is worth
+  getting right before you either panic about it or take liberties with
+  it.
+
+  This envelope is exchanged **server to server**, and those two servers
+  never connect to each other: each packs and unpacks with
+  `pmix_globals.mypeer`, its own native bfrops, because the host carries
+  the blob between them as an opaque byte object. So there is no
+  handshake on this path and **nothing to version-negotiate against**.
+
+  That is survivable only because the Standard requires every server in
+  a DVM to be running the same PMIx version; cross-version support is
+  promised between a server and its *clients*, not between servers. It
+  is why the October 2024 commit could insert a `bool compressed` ahead
+  of the payload without a version gate — a change that would otherwise
+  have made every pre-2024 server misread the collect flag.
+
+  Two rules follow. **Do not "fix" the absence of a version gate here**
+  by adding one; there is no negotiated peer version on this path to
+  gate on. And **do not treat that freedom as general**: it belongs to
+  the server-to-server envelope specifically. Anything a *client* reads
+  is genuinely cross-version and stays append-only per the top-level
+  interoperability rules.
 - **The helpers here are `PMIX_EXPORT`ed and the components' are not.**
   That is why `test/unit/gds_datastore` and `test/unit/gds_fallback` can
   test this directory directly but have to reach the components through
