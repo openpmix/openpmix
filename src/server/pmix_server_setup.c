@@ -642,6 +642,14 @@ static void retract_from_namespaces(const char *key)
             PMIX_ERROR_LOG(rc);
         }
         PMIX_RELEASE(kv);
+        /* mypeer's module is "hash", which is where the store above
+         * landed. A namespace served by another module keeps its own
+         * copy - gds/shmem3 in a shared segment it cannot rewrite - so
+         * tell that module too. */
+        PMIX_GDS_DEL_KEY(rc, nptr, &proc, key);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
         pmix_server_notify_deleted(&proc, PMIX_DEL_INTERNAL, key, NULL);
     }
 }

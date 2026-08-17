@@ -204,6 +204,14 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             }
             if (PMIX_DEL_LOCAL == scope || PMIX_DEL_REMOTE == scope
                 || PMIX_DEL_GLOBAL == scope) {
+                /* The stores above went to "hash" - shmem3 leaves its
+                 * store slot NULL and the macro falls back. A namespace
+                 * served by shmem3 keeps its copy in a shared segment it
+                 * cannot rewrite, so tell that module separately. */
+                PMIX_GDS_DEL_KEY(rc, nptr, &proc, kp->key);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                }
                 /* our store is corrected; the local clients that cached
                  * this key still have it. The requester applied it to
                  * its own store before sending, so skip it. */

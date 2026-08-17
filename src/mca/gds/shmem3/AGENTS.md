@@ -486,6 +486,41 @@ second actually tests the chain - its `gen1` keys are published before
 the first fence and never again, so under a delta they exist *only* in
 the retired generation.
 
+## Deletion: a tombstone, and why it is not in the segment
+
+This component cannot take a key out. The data is in a segment local
+clients have mapped, and a segment a client can see is never written
+again — so `del_key` records that the key is gone and every read
+consults the record.
+
+**The record is process-local**, on `job->tombstones`. Putting it in
+shared memory would mean a new segment, mapped by every local client,
+for a few bytes per deleted key — and it would not save the step that
+matters, because a client attaching after the removal has to be told
+either way. Each process builds its own from the notification its server
+sends (`pmix_server_notify_deleted`), and `pack_tombstones()` adds the
+list to the cached job-info reply so a later arrival gets it at attach
+time. Note `del_key()` drops `job->conni` for exactly that reason: the
+cached reply still says the key exists.
+
+**A tombstone carries the modex generation it was recorded at.** Job
+data is written once and never re-published, so `job_fetch()` asks with
+`UINT32_MAX` and a tombstone against it always applies. Modex data can
+legitimately come back, so `modex_fetch()` asks with each generation's
+own number as it walks, and a tombstone shadows only generations up to
+the one it was made at — a key deleted and then published again in a
+later fence is alive again.
+
+Two shapes of read, two filters. A keyed lookup that finds only
+tombstoned entries in a generation keeps walking rather than reporting a
+hit; a NULL-key lookup — "everything this process published" — has its
+result filtered per generation, bounded by the `mark` so entries from
+newer generations are judged against theirs and not this one's.
+
+`gds/hash` leaves `del_key` NULL: a delete reaches its store like any
+other scope and it removes the key outright. The macro reads a NULL slot
+as success.
+
 ## Gotchas
 
 - **Never `PMIX_CONSTRUCT` data destined for shared memory.** As the file's
