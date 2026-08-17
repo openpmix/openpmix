@@ -57,6 +57,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+static pmix_proc_t myproc;
 static int npass = 0;
 static int nfail = 0;
 
@@ -248,9 +249,119 @@ static void test_resync_drops_the_record(void)
     report("resync asks for a cumulative commit", pmix_client_globals.commit_resync);
 }
 
+
+/* Delete a key. Returns true if PMIx_Put accepted the request. */
+static bool delete_key(const char *key, pmix_scope_t scope)
+{
+    pmix_status_t rc;
+
+    rc = PMIx_Put(scope, key, NULL);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "    PMIx_Put(delete %s) failed: %s\n", key,
+                PMIx_Error_string(rc));
+        return false;
+    }
+    return true;
+}
+
+/* Can this process still read the key back out of its own store? */
+static bool can_read(const char *key)
+{
+    pmix_value_t *val = NULL;
+    pmix_status_t rc;
+    bool found;
+
+    rc = PMIx_Get(&myproc, key, NULL, 0, &val);
+    found = (PMIX_SUCCESS == rc && NULL != val);
+    if (NULL != val) {
+        PMIX_VALUE_RELEASE(val);
+    }
+    return found;
+}
+
+/* The delete scopes remove the key rather than storing it, and take
+ * effect on this process's own store immediately - exactly as a put
+ * does. This is the half a singleton can see end to end. */
+static void test_delete_removes_the_key(void)
+{
+    fprintf(stdout, "\n-- a delete scope removes the key --\n");
+
+    clear_record();
+    if (!put_key("cc.del.global", PMIX_GLOBAL, 11)) {
+        return;
+    }
+    report("the key is readable once published", can_read("cc.del.global"));
+    if (!delete_key("cc.del.global", PMIX_DEL_GLOBAL)) {
+        return;
+    }
+    report("the key is gone after PMIX_DEL_GLOBAL", !can_read("cc.del.global"));
+
+    /* internal data never leaves the process, so its delete is purely
+     * local and must work without any server in sight */
+    clear_record();
+    if (!put_key("cc.del.internal", PMIX_INTERNAL, 12)) {
+        return;
+    }
+    report("an internal key is readable once published",
+           can_read("cc.del.internal"));
+    if (!delete_key("cc.del.internal", PMIX_DEL_INTERNAL)) {
+        return;
+    }
+    report("the key is gone after PMIX_DEL_INTERNAL",
+           !can_read("cc.del.internal"));
+
+    /* deleting something that was never there is not an error - the
+     * caller asked for it to be absent, and it is */
+    clear_record();
+    report("deleting an absent key succeeds",
+           delete_key("cc.del.never.stored", PMIX_DEL_GLOBAL));
+
+    /* a delete carries no value, and a put still requires one */
+    report("a put with no value is still refused",
+           PMIX_ERR_BAD_PARAM == PMIx_Put(PMIX_GLOBAL, "cc.del.noval", NULL));
+}
+
+/* A deletion cannot ride the dirty-key record - that names keys for the
+ * commit to fetch back, and a deleted key is the one it will not find -
+ * so it is recorded separately, and forces the commit to be cumulative
+ * so a delete and a re-publish in one interval need no ordering. */
+static void test_delete_is_recorded_for_the_commit(void)
+{
+    fprintf(stdout, "\n-- what a delete tells the next commit --\n");
+
+    clear_record();
+    if (!put_key("cc.rec.global", PMIX_GLOBAL, 1)
+        || !delete_key("cc.rec.global", PMIX_DEL_GLOBAL)) {
+        return;
+    }
+    report("a global delete is recorded at local scope",
+           1 == count_in(pmix_client_globals.del_local, "cc.rec.global"));
+    report("a global delete is recorded at remote scope",
+           1 == count_in(pmix_client_globals.del_remote, "cc.rec.global"));
+    report("a delete forces the next commit to be cumulative",
+           pmix_client_globals.commit_resync);
+
+    clear_record();
+    if (!delete_key("cc.rec.remote", PMIX_DEL_REMOTE)) {
+        return;
+    }
+    report("a remote delete is recorded remote only",
+           1 == count_in(pmix_client_globals.del_remote, "cc.rec.remote")
+               && 0 == count_in(pmix_client_globals.del_local, "cc.rec.remote"));
+
+    /* an internal delete never leaves the process, so there is nothing
+     * to tell a server about */
+    clear_record();
+    if (!delete_key("cc.rec.internal", PMIX_DEL_INTERNAL)) {
+        return;
+    }
+    report("an internal delete is recorded at no scope",
+           0 == count_in(pmix_client_globals.del_local, "cc.rec.internal")
+               && 0 == count_in(pmix_client_globals.del_remote, "cc.rec.internal"));
+}
+
 int main(int argc, char **argv)
 {
-    pmix_proc_t myproc;
     pmix_status_t rc;
 
     (void) argc;
@@ -280,6 +391,8 @@ int main(int argc, char **argv)
     test_repeat_put_recorded_once();
     test_qualified_put_forces_resync();
     test_resync_drops_the_record();
+    test_delete_removes_the_key();
+    test_delete_is_recorded_for_the_commit();
 
     PMIx_Finalize(NULL, 0);
 

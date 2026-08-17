@@ -96,6 +96,16 @@ typedef struct {
     char **dirty_local;
     char **dirty_remote;
     bool commit_resync;
+    /* Keys deleted since the last commit, per scope a delete targets.
+     *
+     * A deletion cannot ride the dirty-key record: that names keys for
+     * the commit to fetch back, and a deleted key is precisely the one
+     * the fetch will not find. It has to be stated explicitly, so the
+     * commit emits it as its own PMIX_DEL_* scope block - before the
+     * data blocks, so a key deleted and then published again in the same
+     * interval ends up present rather than absent. */
+    char **del_local;
+    char **del_remote;
 } pmix_client_globals_t;
 
 PMIX_EXPORT extern pmix_client_globals_t pmix_client_globals;

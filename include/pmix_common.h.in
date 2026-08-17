@@ -1931,6 +1931,18 @@ typedef uint8_t pmix_scope_t;
 #define PMIX_REMOTE         2   // share with procs not on this node
 #define PMIX_GLOBAL         3   // share with all procs (local + remote)
 #define PMIX_INTERNAL       4   // store data in the internal tables
+/* The delete scopes name the same audiences as their storing
+ * counterparts, but direct that the key be removed rather than stored.
+ * The value passed with them is ignored and may be NULL. Removing a key
+ * that was never stored is not an error.
+ *
+ * PMIx_Put(3) permits an implementation to define scope values of its
+ * own and requires PMIX_ERR_NOT_SUPPORTED for one it does not
+ * understand, which is what a server predating these answers. */
+#define PMIX_DEL_LOCAL      5   // remove from the local scope
+#define PMIX_DEL_REMOTE     6   // remove from the remote scope
+#define PMIX_DEL_GLOBAL     7   // remove from both local and remote
+#define PMIX_DEL_INTERNAL   8   // remove from the internal tables
 
 /* define a range for data "published" by PMIx
  */

@@ -1273,7 +1273,10 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
                         "%s gds:hash:hash_store for proc %s key %s type %s scope %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(proc),
                         PMIx_Get_attribute_name(kv->key),
-                        PMIx_Data_type_string(kv->value->type), PMIx_Scope_string(scope));
+                        /* a delete carries no value */
+                        (NULL == kv->value) ? "NONE"
+                                            : PMIx_Data_type_string(kv->value->type),
+                        PMIx_Scope_string(scope));
 
     if (NULL == kv->key) {
         return PMIX_ERR_BAD_PARAM;
@@ -1283,6 +1286,47 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
     trk = pmix_gds_hash_get_tracker(proc->nspace, true);
     if (NULL == trk) {
         return PMIX_ERR_NOMEM;
+    }
+
+    /* A delete names the same audiences as its storing counterpart but
+     * removes the key instead of adding it. It carries no value, so none
+     * of the array expansion below applies and none of it may run.
+     *
+     * pmix_hash_remove_data() translates the key through the
+     * non-registering lookup, so deleting a key that was never stored
+     * neither fails nor grows the keyindex with a name nobody stored.
+     * That is also why "not found" is not an error here: asking for a
+     * key to be gone when it already is has got what it asked for. */
+    if (PMIX_DEL_INTERNAL == scope || PMIX_DEL_LOCAL == scope
+        || PMIX_DEL_REMOTE == scope || PMIX_DEL_GLOBAL == scope) {
+        if (PMIX_DEL_INTERNAL == scope) {
+            rc = pmix_hash_remove_data(&trk->internal, proc->rank, kv->key, NULL);
+        } else {
+            if (PMIX_DEL_LOCAL == scope || PMIX_DEL_GLOBAL == scope) {
+                rc = pmix_hash_remove_data(&trk->local, proc->rank, kv->key, NULL);
+                if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+                    return rc;
+                }
+            }
+            if (PMIX_DEL_REMOTE == scope || PMIX_DEL_GLOBAL == scope) {
+                rc = pmix_hash_remove_data(&trk->remote, proc->rank, kv->key, NULL);
+                if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+                    return rc;
+                }
+            }
+            /* the copy of my own data kept in the internal table to
+             * simplify retrieval goes with it - see the store path
+             * below, which is what put it there */
+            rc = PMIX_SUCCESS;
+            if (proc->rank == pmix_globals.myid.rank
+                && PMIX_CHECK_NSPACE(proc->nspace, pmix_globals.myid.nspace)) {
+                rc = pmix_hash_remove_data(&trk->internal, proc->rank, kv->key, NULL);
+            }
+        }
+        if (PMIX_ERR_NOT_FOUND == rc) {
+            rc = PMIX_SUCCESS;
+        }
+        return rc;
     }
 
     /* if this is node/app data, then process it accordingly */

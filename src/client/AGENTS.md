@@ -248,6 +248,37 @@ sequence of `{scope, buffer}` blocks it always was, and the server
 accumulates what arrives, so a client and server of different releases
 interoperate in both directions.
 
+### A deletion is stated, not recorded
+
+`PMIX_DEL_LOCAL`/`_REMOTE`/`_GLOBAL`/`_INTERNAL` remove a key rather than
+storing one, and they cannot use the record above: it names keys for the
+commit to *fetch back*, and a deleted key is exactly the one the fetch
+will not find. `mark_deleted()` keeps them in `del_local`/`del_remote`
+instead, and `pack_delete_scope()` states them directly — each as a kval
+with a `PMIX_UNDEF` value, because the server's delete path ignores the
+value and an empty one packs where a `NULL` would not.
+
+Three things about it are load-bearing:
+
+- **The delete blocks are emitted before the data blocks.** The server
+  applies them in order, so a key deleted and then published again in one
+  interval ends up present, and one published and then deleted ends up
+  absent.
+- **A delete forces the commit to be cumulative.** That is what removes
+  any need to order the per-key record against the deletions — the data
+  blocks are then built from the datastore, which already reflects both.
+- **`pmix_client_commit_resync()` drops the pending deletions too**, and
+  that is correct rather than lossy: every reason to resync is that the
+  server about to be talked to has never seen anything we published, so
+  there is nothing there to delete.
+
+`_putfn` handles a delete **above** everything that reads `cb->value` — a
+delete carries none — and `PMIx_Put` relaxes its `NULL == val` check only
+for these scopes. It also refuses them outright when the server is too
+old to act on one: an unrecognized scope block used to be discarded
+silently, so the delete would otherwise appear to succeed and do
+nothing.
+
 ## Invariants and gotchas
 
 - **`PMIx_Init` returns `PMIX_ERR_UNREACH`, not `PMIX_SUCCESS`, on the
