@@ -59,6 +59,8 @@
  * attaching after the removal has to be told, or it would read what
  * every process already attached has been told to ignore. */
 #define SHMEM3_TOMBSTONE_KEY "PMIX_GDS_SHMEM3_TOMBSTONE"
+#define SHMEM3_SEG_ARBS_KEY "PMIX_GDS_SHMEM3_SEG_ARBS"
+#define SHMEM3_SEG_ARSZ_KEY "PMIX_GDS_SHMEM3_SEG_ARSZ"
 
 
 #define EMSG_SHMEM3_IS_BROKEN "\n***\nAn unrecoverable error occurred in the " \
@@ -124,6 +126,11 @@ typedef struct {
     size_t seg_size;
     size_t seg_hadr;
     bool is_delta;
+    /** The job's address-space arena, if it has one. Carried on every
+     *  seg blob rather than only the first, so a client that has not yet
+     *  reserved it learns of it from whichever blob reaches it first. */
+    size_t arena_base;
+    size_t arena_size;
 } pmix_gds_shmem3_unpacked_seg_blob_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem3_unpacked_seg_blob_t);
 
@@ -137,6 +144,8 @@ unpacked_seg_blob_construct(
     ub->seg_size = 0;
     ub->seg_hadr = 0;
     ub->is_delta = false;
+    ub->arena_base = 0;
+    ub->arena_size = 0;
 }
 
 static void
@@ -582,6 +591,12 @@ job_construct(
     job->modex_is_delta = false;
     PMIX_CONSTRUCT(&job->modex_prior, pmix_list_t);
     PMIX_CONSTRUCT(&job->tombstones, pmix_list_t);
+    // Address-space arena
+    job->arena_base = 0;
+    job->arena_size = 0;
+    job->arena_static_used = 0;
+    job->arena_slot_bytes = 0;
+    job->arena_slots = 0;
     // Connection info
     job->conni = NULL;
 }
@@ -709,6 +724,18 @@ job_destruct(
         PMIX_RELEASE(shmem3);
         // Invalidate the shmem3 flags.
         pmix_gds_shmem3_clearall_status(job, sid);
+    }
+
+    /* The arena goes last: releasing it unmaps everything inside it, so
+     * every segment that was carved from it has to have let go first.
+     * The session segment is deliberately NOT in there - a session
+     * outlives the job that first described it, and unmapping a shared
+     * session's segment along with this job's arena would pull it out
+     * from under whoever still holds a reference. */
+    if (0 != job->arena_size) {
+        pmix_vmem_release(job->arena_base, job->arena_size);
+        job->arena_base = 0;
+        job->arena_size = 0;
     }
 
     if (job->session) {
@@ -1242,6 +1269,40 @@ get_shmem3_session_name(
 }
 
 /**
+ * The rule to use when a segment has to place itself independently.
+ *
+ * See VMEM_HOLE_BIGGEST_OFFSET: the midpoint of the biggest hole is where
+ * every implementation of this idea in the stack converges, so it is the
+ * worst place to put something that another process also has to map.
+ */
+static inline pmix_vmem_hole_kind_t
+segment_hole_kind(void)
+{
+    return pmix_gds_shmem3_offset_placement
+        ? VMEM_HOLE_BIGGEST_OFFSET
+        : VMEM_HOLE_BIGGEST;
+}
+
+/**
+ * Is [addr, addr+size) inside this job's arena?
+ */
+static inline bool
+addr_in_arena(
+    const pmix_gds_shmem3_job_t *job,
+    uintptr_t addr,
+    size_t size
+) {
+    if (0 == job->arena_size || 0 == size) {
+        return false;
+    }
+    if (addr < job->arena_base || size > job->arena_size) {
+        return false;
+    }
+    // Written as a subtraction so the sum cannot wrap.
+    return (addr - job->arena_base) <= (job->arena_size - size);
+}
+
+/**
  * Attaches to the given shared-memory segment.
  */
 static pmix_status_t
@@ -1261,9 +1322,18 @@ shmem3_attach(
         return rc;
     }
 
+    /* If this address is inside the arena we reserved for the job, then
+     * we are not asking for it - we are already holding it, and mapping
+     * over our own reservation cannot be refused. That is the point of
+     * having reserved it: the client's address space has moved on since
+     * PMIx_Init, but this range has been ours the whole time. */
+    const pmix_shmem_flags_t aflags =
+        addr_in_arena(job, req_addr, shmem3->size)
+            ? PMIX_SHMEM_MAP_OVER_RESERVATION
+            : PMIX_SHMEM_MUST_MAP_AT_RADDR;
+
     rc = pmix_shmem_segment_attach(
-        shmem3, req_addr, PMIX_SHMEM_MUST_MAP_AT_RADDR,
-        PMIX_GDS_SHMEM3_LAYOUT_ID
+        shmem3, req_addr, aflags, PMIX_GDS_SHMEM3_LAYOUT_ID
     );
     if (PMIX_UNLIKELY(pmix_gds_shmem3_force_client_attach_failure)) {
         // Testing only: pretend the fixed-address attach failed so the
@@ -1438,6 +1508,205 @@ shmem3_segment_fix_perms(
 }
 
 /**
+ * Reserve this job's address-space arena.
+ *
+ * Called by the server once, before it creates the first of the job's
+ * segments, and mirrored by each client the first time it is told about
+ * the arena - which is inside PMIx_Init, while the client's address space
+ * is still close to empty and a fixed address is still easy to come by.
+ * That timing is the whole idea: the address a client will need at fence
+ * time, when it is full of MPI, is claimed while it is not.
+ *
+ * A failure here is not one: without an arena every segment places itself
+ * as it did before, which is what the caller does anyway when the arena
+ * cannot hold what it is asked for.
+ */
+static void
+arena_reserve(
+    pmix_gds_shmem3_job_t *job,
+    size_t job_segsize
+) {
+    if (0 == pmix_gds_shmem3_arena_slot_size) {
+        // Explicitly disabled.
+        return;
+    }
+    if (0 != job->arena_size) {
+        // Already have one.
+        return;
+    }
+
+    /* Ask what the segment will actually occupy, rather than assuming it
+     * is the size we asked for: a segment maps a page of header ahead of
+     * its data. Carving to the requested size instead left every segment
+     * overlapping the next by that page. */
+    const size_t statics = pmix_shmem_utils_segment_footprint(job_segsize);
+    size_t slot = pmix_shmem_utils_pad_to_page(
+        pmix_gds_shmem3_arena_slot_size
+    );
+    /* A job whose job-level data alone exceeds the configured slot is
+     * one whose modex will not be small either. Do not hand it slots it
+     * is guaranteed to overflow. */
+    if (slot < statics) {
+        slot = statics;
+    }
+
+    /* One slot per modex generation that can be live at once. More than
+     * one is live whenever a contribution carried only what changed -
+     * the generations before it are still the only copy of what it did
+     * not repeat - so this is a depth, not the two an alternation would
+     * need. The bitmap in arena_alloc_modex() is what caps it at 32. */
+    size_t slots = pmix_gds_shmem3_arena_modex_slots;
+    if (0 == slots) {
+        return;
+    }
+    if (slots > 32) {
+        slots = 32;
+    }
+    // Guard the arithmetic rather than trust two tunables to be sane.
+    if (slot > (SIZE_MAX - statics) / slots) {
+        return;
+    }
+    const size_t total = statics + (slots * slot);
+
+    uintptr_t base = 0;
+    if (PMIX_SUCCESS != pmix_vmem_reserve(segment_hole_kind(), total, &base)) {
+        PMIX_GDS_SHMEM3_VOUT(
+            "%s: could not reserve a %zu B arena for namespace=%s; "
+            "segments will be placed individually",
+            __func__, total, job->nspace_id
+        );
+        return;
+    }
+    job->arena_base = base;
+    job->arena_size = total;
+    job->arena_static_used = 0;
+    job->arena_slot_bytes = slot;
+    job->arena_slots = slots;
+
+    PMIX_GDS_SHMEM3_VOUT(
+        "%s: reserved arena [0x%zx, 0x%zx) (%zu B, %zu slots of %zu B) "
+        "for namespace=%s",
+        __func__, (size_t)base, (size_t)(base + total), total, slots, slot,
+        job->nspace_id
+    );
+}
+
+/**
+ * Hand out arena space for a segment that lives as long as the job does.
+ *
+ * Returns false if there is no arena or it cannot hold this, in which
+ * case the caller places the segment the old way.
+ */
+static bool
+arena_alloc_static(
+    pmix_gds_shmem3_job_t *job,
+    size_t size,
+    uintptr_t *addr
+) {
+    if (0 == job->arena_size || 0 == job->arena_slots) {
+        return false;
+    }
+    const size_t statics =
+        job->arena_size - (job->arena_slots * job->arena_slot_bytes);
+    if (size > statics - job->arena_static_used) {
+        return false;
+    }
+    *addr = job->arena_base + job->arena_static_used;
+    job->arena_static_used += size;
+    return true;
+}
+
+/**
+ * Where the modex slots begin - everything below this is the static
+ * region the job segment came out of.
+ */
+static inline uintptr_t
+arena_modex_base(
+    const pmix_gds_shmem3_job_t *job
+) {
+    return job->arena_base + job->arena_size
+           - (job->arena_slots * job->arena_slot_bytes);
+}
+
+/**
+ * Mark the slot a mapped segment occupies, if it is in the arena.
+ */
+static inline void
+note_slot_in_use(
+    const pmix_gds_shmem3_job_t *job,
+    const pmix_shmem_t *shmem3,
+    uint32_t *inuse
+) {
+    if (NULL == shmem3 || !shmem3->attached || NULL == shmem3->hdr_address) {
+        return;
+    }
+    const uintptr_t addr = (uintptr_t)shmem3->hdr_address;
+    const uintptr_t mbase = arena_modex_base(job);
+
+    if (addr < mbase || addr >= job->arena_base + job->arena_size) {
+        // Placed outside the arena; owns no slot.
+        return;
+    }
+    *inuse |= (uint32_t)1 << ((addr - mbase) / job->arena_slot_bytes);
+}
+
+/**
+ * Hand out an arena slot for a new modex generation.
+ *
+ * A generation cannot simply take the slot before last. It used to be
+ * true that at most one was live at a time, and this alternated between
+ * two slots on that basis; it stopped being true when a contribution
+ * became able to carry only what changed. A delta generation leaves
+ * every generation before it mapped and answerable on job->modex_prior,
+ * so the slot each of those sits in is still in use, and writing over
+ * one would take away data nothing else holds a copy of.
+ *
+ * So read the occupancy off the segments themselves - the current
+ * generation and every retired one - rather than keeping a count.
+ * Deriving it means there is no allocation tally to be left stale by a
+ * path that releases a generation without telling us, and the whole
+ * thing is a walk of a list that is empty in the common case.
+ *
+ * Returns false when every slot is taken, which is not an error: the
+ * caller places the generation outside the arena exactly as it would
+ * have without one.
+ */
+static bool
+arena_alloc_modex(
+    pmix_gds_shmem3_job_t *job,
+    size_t size,
+    uintptr_t *addr
+) {
+    uint32_t inuse = 0;
+
+    if (0 == job->arena_size || 0 == job->arena_slots) {
+        return false;
+    }
+    if (size > job->arena_slot_bytes) {
+        return false;
+    }
+
+    note_slot_in_use(job, job->modex_shmem3, &inuse);
+    pmix_gds_shmem3_modex_seg_t *seg;
+    PMIX_LIST_FOREACH (seg, &job->modex_prior, pmix_gds_shmem3_modex_seg_t) {
+        note_slot_in_use(job, seg->shmem3, &inuse);
+    }
+
+    for (size_t slot = 0; slot < job->arena_slots; ++slot) {
+        if (0 == (inuse & ((uint32_t)1 << slot))) {
+            *addr = arena_modex_base(job) + (slot * job->arena_slot_bytes);
+            return true;
+        }
+    }
+    PMIX_GDS_SHMEM3_VOUT(
+        "%s: all %zu modex slots are in use for namespace=%s; placing "
+        "generation %u outside the arena",
+        __func__, job->arena_slots, job->nspace_id, job->modex_generation
+    );
+    return false;
+}
+
+/**
  * Create and attach to a shared-memory segment.
  */
 static pmix_status_t
@@ -1476,50 +1745,95 @@ shmem3_segment_create_and_attach(
         PMIX_ERROR_LOG(rc);
         goto out;
     }
-    // Find a hole in virtual memory and attach the segment there.
+    // Place the segment. Out of the job's arena where it fits, because a
+    // reserved address is one every client can be sure of holding too;
+    // otherwise from a hole located here and now, which is what the arena
+    // exists to avoid having to do.
     //
-    // The hole is located by scanning /proc/self/maps and is then claimed by a
-    // separate mmap(); those two steps are not atomic. PMIx runs its internal
-    // work on a single progress thread, so PMIx never races itself here -- but
-    // the address space is process-wide, so other activity in the process can
-    // take the located hole in between: another thread, the dynamic loader
-    // (dlopen as components/namespaces come up), the C allocator growing an
-    // arena via mmap, or AddressSanitizer's own mappings. This is rare in
-    // general but considerably more likely under ASAN and during
-    // MPI_Comm_spawn. Because the server chooses this address (clients are
-    // later told whichever one we land on), recover from a lost hole by
-    // selecting a new one and retrying rather than failing the spawned job's
-    // PMIx_Init.
-    //
-    // Bypass shmem3_attach() here: on a failed map it reports a client-style
-    // address mismatch and tears the job down, which is wrong for the server,
-    // which chose the address and can simply try another hole.
-    enum { MAX_ATTACH_ATTEMPTS = 16 };
-    for (int attempt = 1; ; ++attempt) {
-        size_t base_addr = 0;
-        rc = pmix_vmem_find_hole(
-            VMEM_HOLE_BIGGEST, &base_addr, real_segsize
-        );
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            goto out;
-        }
+    // Carve by what the mapping will occupy, not by what we asked to
+    // store: pmix_shmem_segment_create() put a page of header in front of
+    // it, and shmem3->size below reports the larger number.
+    const size_t mapped_size = pmix_shmem_utils_segment_footprint(
+        real_segsize
+    );
+    uintptr_t arena_addr = 0;
+    const bool from_arena =
+        (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id)
+            ? arena_alloc_modex(job, mapped_size, &arena_addr)
+            : arena_alloc_static(job, mapped_size, &arena_addr);
+
+    if (from_arena) {
         PMIX_GDS_SHMEM3_VOUT(
-            "%s: %s found vmhole at address=0x%zx (attempt %d)",
-            __func__, segment_name, base_addr, attempt
+            "%s: %s placed in arena at address=0x%zx",
+            __func__, segment_name, (size_t)arena_addr
         );
         rc = pmix_shmem_segment_attach(
-            shmem3, (uintptr_t)base_addr, PMIX_SHMEM_MUST_MAP_AT_RADDR,
+            shmem3, arena_addr, PMIX_SHMEM_MAP_OVER_RESERVATION,
             PMIX_GDS_SHMEM3_LAYOUT_ID
         );
-        if (PMIX_LIKELY(PMIX_SUCCESS == rc)) {
-            break;
-        }
-        // Only the "could not map at the requested address" case is retryable;
-        // pmix_shmem_segment_attach() already detached its failed attempt.
-        if (PMIX_ERR_NOT_AVAILABLE != rc || attempt >= MAX_ATTACH_ATTEMPTS) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            // Mapping over our own reservation cannot lose a race for the
+            // address, so this is a real failure, not a lost hole.
             PMIX_ERROR_LOG(rc);
             goto out_release;
+        }
+    }
+    else {
+        // Find a hole in virtual memory and attach the segment there.
+        //
+        // The hole is located by scanning /proc/self/maps and is then claimed
+        // by a separate mmap(); those two steps are not atomic. PMIx runs its
+        // internal work on a single progress thread, so PMIx never races
+        // itself here -- but the address space is process-wide, so other
+        // activity in the process can take the located hole in between:
+        // another thread, the dynamic loader (dlopen as components/namespaces
+        // come up), the C allocator growing an arena via mmap, or
+        // AddressSanitizer's own mappings. This is rare in general but
+        // considerably more likely under ASAN and during MPI_Comm_spawn.
+        // Because the server chooses this address (clients are later told
+        // whichever one we land on), recover from a lost hole by selecting a
+        // new one and retrying rather than failing the spawned job's
+        // PMIx_Init.
+        //
+        // Note what this retry cannot do anything about: it re-picks an
+        // address that is free *here*, and the client that has to map at the
+        // same one is a different process. That is the failure the arena
+        // above addresses, and reaching this path means we are back to
+        // hoping - which is why the placement rule matters here most.
+        //
+        // Bypass shmem3_attach() here: on a failed map it reports a
+        // client-style address mismatch and tears the job down, which is
+        // wrong for the server, which chose the address and can simply try
+        // another hole.
+        enum { MAX_ATTACH_ATTEMPTS = 16 };
+        for (int attempt = 1; ; ++attempt) {
+            size_t base_addr = 0;
+            rc = pmix_vmem_find_hole(
+                segment_hole_kind(), &base_addr, real_segsize
+            );
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
+            PMIX_GDS_SHMEM3_VOUT(
+                "%s: %s found vmhole at address=0x%zx (attempt %d)",
+                __func__, segment_name, base_addr, attempt
+            );
+            rc = pmix_shmem_segment_attach(
+                shmem3, (uintptr_t)base_addr, PMIX_SHMEM_MUST_MAP_AT_RADDR,
+                PMIX_GDS_SHMEM3_LAYOUT_ID
+            );
+            if (PMIX_LIKELY(PMIX_SUCCESS == rc)) {
+                break;
+            }
+            // Only the "could not map at the requested address" case is
+            // retryable; pmix_shmem_segment_attach() already detached its
+            // failed attempt.
+            if (PMIX_ERR_NOT_AVAILABLE != rc ||
+                attempt >= MAX_ATTACH_ATTEMPTS) {
+                PMIX_ERROR_LOG(rc);
+                goto out_release;
+            }
         }
     }
     pmix_gds_shmem3_set_status(job, shmem3_id, PMIX_GDS_SHMEM3_ATTACHED);
@@ -1682,6 +1996,12 @@ prepare_shmem3_stores_for_local_job_data(
     seg_size *= fluff;
     // Adjust (increase or decrease) segment size by the given parameter size.
     seg_size *= pmix_gds_shmem3_segment_size_multiplier;
+    /* Reserve this job's address space before placing anything in it.
+     * Everything below, and every modex this job ever produces, is then
+     * carved from a range that clients will hold too - which is what a
+     * fixed-address attach needs and cannot otherwise be given, because
+     * the client that has to honor it does not exist yet. */
+    arena_reserve(job, seg_size);
     // Create and attach to the shared-memory segment associated with this job.
     // This will be the backing store for data associated with static, read-only
     // data shared between the server and its clients.
@@ -1850,6 +2170,58 @@ pack_shmem3_connection_info(
             PMIX_ERROR_LOG(rc);
             break;
         }
+        if (0 == job->arena_size) {
+            // Nothing more to say - this job has no arena.
+            break;
+        }
+        PMIX_DESTRUCT(&kv);
+        /* Describe the arena. This rides on every seg blob rather than
+         * only the first, so a client reserves it on the strength of
+         * whichever one reaches it first and does not depend on the
+         * order they were packed in. */
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM3_SEG_ARBS_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        kv.value->type = PMIX_STRING;
+        nw = pmix_asprintf(
+            &kv.value->data.string, "%zx", (size_t)job->arena_base
+        );
+        if (PMIX_UNLIKELY(nw == -1)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_DESTRUCT(&kv);
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM3_SEG_ARSZ_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        kv.value->type = PMIX_STRING;
+        nw = pmix_asprintf(&kv.value->data.string, "%zx", job->arena_size);
+        if (PMIX_UNLIKELY(nw == -1)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         if (PMIX_GDS_SHMEM3_MODEX_ID != shmem3_id) {
             break;
         }
@@ -2001,6 +2373,20 @@ unpack_shmem3_connection_info(
         else if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_DELTA_KEY)) {
             /* only the modex carries this; absent means "stands alone" */
             usb->is_delta = ('0' != val[0]);
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_ARBS_KEY)) {
+            rc = strtost(val, 16, &usb->arena_base);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_ARSZ_KEY)) {
+            rc = strtost(val, 16, &usb->arena_size);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
         }
         else {
             /* A key we have not been taught to hear. Skip it.
@@ -2423,6 +2809,40 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             break;
+        }
+        /* Claim the job's arena the first time we are told about it.
+         *
+         * This is the moment that matters. We are inside PMIx_Init, the
+         * address space is nearly as empty as it will ever be, and the
+         * range we are claiming is the one the server will place THIS
+         * job's later segments in - including the modex, which does not
+         * exist yet and will be handed to us at a fence, by which time
+         * this process is full of whatever it went on to load. Taking the
+         * address now is what makes that later attach a certainty rather
+         * than a coin toss.
+         *
+         * Failing is survivable and deliberately quiet: without the
+         * reservation each attach falls back to asking for its address
+         * and hoping, which is exactly what this component did before. */
+        if (0 != usb.arena_size && 0 == job->arena_size) {
+            if (PMIX_SUCCESS == pmix_vmem_reserve_at(
+                    (uintptr_t)usb.arena_base, usb.arena_size)) {
+                job->arena_base = (uintptr_t)usb.arena_base;
+                job->arena_size = usb.arena_size;
+                PMIX_GDS_SHMEM3_VOUT(
+                    "%s: reserved arena [0x%zx, 0x%zx) for namespace=%s",
+                    __func__, usb.arena_base,
+                    usb.arena_base + usb.arena_size, usb.nsid
+                );
+            }
+            else {
+                PMIX_GDS_SHMEM3_VOUT(
+                    "%s: could not reserve arena [0x%zx, 0x%zx) for "
+                    "namespace=%s; attaching without one",
+                    __func__, usb.arena_base,
+                    usb.arena_base + usb.arena_size, usb.nsid
+                );
+            }
         }
         // Make sure we aren't already attached to the given shmem3.
         if (pmix_gds_shmem3_has_status(job, usb.smid, PMIX_GDS_SHMEM3_ATTACHED)) {
