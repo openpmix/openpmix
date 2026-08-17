@@ -50,6 +50,10 @@
 #define SHMEM3_SEG_PATH_KEY "PMIX_GDS_SHMEM3_SEG_PATH"
 #define SHMEM3_SEG_SIZE_KEY "PMIX_GDS_SHMEM3_SEG_SIZE"
 #define SHMEM3_SEG_HADR_KEY "PMIX_GDS_SHMEM3_SEG_HADR"
+/* "1" when this modex generation holds only what changed, so the client
+ * must keep the generations before it; "0" when it stands on its own and
+ * supersedes them. Only ever packed for the modex segment. */
+#define SHMEM3_SEG_DELTA_KEY "PMIX_GDS_SHMEM3_SEG_DELTA"
 
 
 #define EMSG_SHMEM3_IS_BROKEN "\n***\nAn unrecoverable error occurred in the " \
@@ -114,6 +118,7 @@ typedef struct {
     char *seg_path;
     size_t seg_size;
     size_t seg_hadr;
+    bool is_delta;
 } pmix_gds_shmem3_unpacked_seg_blob_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem3_unpacked_seg_blob_t);
 
@@ -126,6 +131,7 @@ unpacked_seg_blob_construct(
     ub->seg_path = NULL;
     ub->seg_size = 0;
     ub->seg_hadr = 0;
+    ub->is_delta = false;
 }
 
 static void
@@ -568,6 +574,8 @@ job_construct(
     job->modex_generation = 0;
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
+    job->modex_is_delta = false;
+    PMIX_CONSTRUCT(&job->modex_prior, pmix_list_t);
     // Connection info
     job->conni = NULL;
 }
@@ -662,6 +670,11 @@ job_destruct(
         PMIX_RELEASE(job->conni);
     }
 
+    /* Retired modex generations. Each holds its own segment handle, and
+     * the class destructor gives it back the same way the loop below
+     * does for the current one. */
+    PMIX_LIST_DESTRUCT(&job->modex_prior);
+
     static const pmix_gds_shmem3_job_shmem3_id_t shmem3_ids[] = {
         PMIX_GDS_SHMEM3_JOB_ID,
         PMIX_GDS_SHMEM3_MODEX_ID,
@@ -709,6 +722,97 @@ job_destruct(
  * step. Order matters - the allocator context is reached through
  * job->smmodex, so it has to go before that pointer is cleared.
  */
+static void
+modex_seg_construct(
+    pmix_gds_shmem3_modex_seg_t *seg
+) {
+    seg->status = 0;
+    seg->shmem3 = NULL;
+    seg->smmodex = NULL;
+}
+
+static void
+modex_seg_destruct(
+    pmix_gds_shmem3_modex_seg_t *seg
+) {
+    if (NULL == seg->shmem3) {
+        return;
+    }
+    /* Mirrors what release_modex_segment() does for the current
+     * generation - keep the two in step. Order matters: the allocator
+     * context is reached through smmodex, so it goes first. */
+    if (PMIX_GDS_SHMEM3_MINE & seg->status) {
+        if (NULL != seg->smmodex) {
+            PMIX_RELEASE(seg->smmodex->tma.data_context);
+        }
+    }
+    PMIX_RELEASE(seg->shmem3);
+    seg->shmem3 = NULL;
+    seg->smmodex = NULL;
+    seg->status = 0;
+}
+
+PMIX_CLASS_INSTANCE(
+    pmix_gds_shmem3_modex_seg_t,
+    pmix_list_item_t,
+    modex_seg_construct,
+    modex_seg_destruct
+);
+
+/**
+ * Set the current modex generation aside instead of letting it go.
+ *
+ * A delta contribution holds only what changed, so the generation before
+ * it is still the only copy of everything the delta did not repeat. Move
+ * it to the head of job->modex_prior - newest first, which is the order
+ * a read walks - and leave this job ready to create the next one.
+ *
+ * The backing file is reference counted, so a client still reading the
+ * retired generation is undisturbed either way; what this changes is
+ * that *we* keep our handle, and therefore keep answering out of it.
+ */
+static pmix_status_t
+retire_modex_segment(
+    pmix_gds_shmem3_job_t *job
+) {
+    if (!pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_MODEX_ID,
+                                    PMIX_GDS_SHMEM3_ATTACHED)) {
+        return PMIX_SUCCESS;
+    }
+    pmix_gds_shmem3_modex_seg_t *seg = PMIX_NEW(pmix_gds_shmem3_modex_seg_t);
+    if (PMIX_UNLIKELY(NULL == seg)) {
+        return PMIX_ERR_NOMEM;
+    }
+    seg->status = job->modex_shmem3_status;
+    seg->shmem3 = job->modex_shmem3;
+    seg->smmodex = job->smmodex;
+    pmix_list_prepend(&job->modex_prior, &seg->super);
+
+    job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
+    job->smmodex = NULL;
+    pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_MODEX_ID);
+    return PMIX_SUCCESS;
+}
+
+/**
+ * Let go of every retired modex generation.
+ *
+ * A cumulative contribution repeats everything its process has published,
+ * so the generation carrying it stands on its own and nothing older can
+ * still be the only copy of anything.
+ */
+static void
+drop_modex_priors(
+    pmix_gds_shmem3_job_t *job
+) {
+    pmix_gds_shmem3_modex_seg_t *seg;
+
+    while (NULL != (seg = (pmix_gds_shmem3_modex_seg_t *)
+                          pmix_list_remove_first(&job->modex_prior))) {
+        PMIX_RELEASE(seg);
+    }
+}
+
 static void
 release_modex_segment(
     pmix_gds_shmem3_job_t *job
@@ -1711,6 +1815,33 @@ pack_shmem3_connection_info(
             PMIX_ERROR_LOG(rc);
             break;
         }
+        if (PMIX_GDS_SHMEM3_MODEX_ID != shmem3_id) {
+            break;
+        }
+        /* Say whether this modex generation stands on its own, so the
+         * client makes the same keep-or-drop decision this server made.
+         * Only the modex is ever republished, so only it carries this. */
+        PMIX_DESTRUCT(&kv);
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM3_SEG_DELTA_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        kv.value->type = PMIX_STRING;
+        kv.value->data.string = strdup(job->modex_is_delta ? "1" : "0");
+        if (PMIX_UNLIKELY(NULL == kv.value->data.string)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
     } while (false);
     PMIX_DESTRUCT(&kv);
 
@@ -1831,6 +1962,10 @@ unpack_shmem3_connection_info(
                 PMIX_ERROR_LOG(rc);
                 break;
             }
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_DELTA_KEY)) {
+            /* only the modex carries this; absent means "stands alone" */
+            usb->is_delta = ('0' != val[0]);
         }
         else {
             rc = PMIX_ERR_BAD_PARAM;
@@ -2215,7 +2350,19 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                 usb.seg_path, usb.nsid
             );
             if (PMIX_GDS_SHMEM3_MODEX_ID == usb.smid) {
-                release_modex_segment(job);
+                if (usb.is_delta) {
+                    /* the arriving generation holds only what changed,
+                     * so ours is still the only copy of the rest - keep
+                     * it and read back through it */
+                    rc = retire_modex_segment(job);
+                    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                        PMIX_ERROR_LOG(rc);
+                        break;
+                    }
+                } else {
+                    release_modex_segment(job);
+                    drop_modex_priors(job);
+                }
             } else {
                 /* Only the modex is republished today. Anything else
                  * changing underneath us is not something this path
@@ -2384,12 +2531,18 @@ get_modex_sizing_data(
  */
 static pmix_status_t
 server_store_modex_cb(pmix_proc_t *proc,
-                      pmix_buffer_t *pbkt)
+                      pmix_buffer_t *pbkt,
+                      uint8_t kind)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     int32_t cnt;
     pmix_kval_t kv;
     pmix_gds_shmem3_job_t *job;
+
+    /* PMIX_MODEX_DELTA means this contribution holds only what its
+     * processes published since they last took part in a collecting
+     * fence, so the generation it lands in does not stand on its own. */
+    const bool isdelta = (PMIX_MODEX_DELTA == (pmix_collect_t) kind);
 
     rc = pmix_gds_shmem3_get_job_tracker(proc->nspace, false, &job);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -2417,12 +2570,13 @@ server_store_modex_cb(pmix_proc_t *proc,
     /* A blob arriving for a modex we already finished means a new one has
      * begun - a second fence.
      *
-     * Dropping the finished generation is only correct while the modex
-     * payload is cumulative, which it is today: a commit ships the
-     * process's whole local store and a server contributes each local
-     * proc's full set from its own. If commit becomes a true delta,
-     * this has to carry data forward or search back. See openpmix#4087;
-     * examples/modex_twice.c is the canary. The finished segment has been advertised
+     * Whether the finished generation can be dropped depends on what is
+     * arriving. A cumulative contribution repeats everything its
+     * processes have published, so it supersedes what came before and
+     * the older generations go. A delta repeats nothing, so they are
+     * kept and a read walks them (see modex_fetch in
+     * gds_shmem3_fetch.c). See openpmix#4087; examples/modex_twice.c is
+     * the canary. Either way the finished segment has been advertised
      * and local clients have it mapped, so it must not be written again:
      * storing into it can rehash the table and reallocate the key index
      * underneath a reader, and the segment was sized for the first
@@ -2438,9 +2592,24 @@ server_store_modex_cb(pmix_proc_t *proc,
                 __func__, job->modex_generation, job->modex_generation + 1,
                 proc->nspace
             );
-            release_modex_segment(job);
+            if (isdelta) {
+                /* keep it - it is still the only copy of everything the
+                 * arriving delta does not repeat */
+                rc = retire_modex_segment(job);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    return rc;
+                }
+            } else {
+                /* a cumulative contribution repeats everything, so it
+                 * supersedes this generation and every one behind it */
+                release_modex_segment(job);
+                drop_modex_priors(job);
+            }
             job->modex_generation++;
         }
+        /* what the clients have to be told about this generation */
+        job->modex_is_delta = isdelta;
         /* The name has to differ per generation or the backing paths
          * collide - they are built from the nspace, this pid and this
          * name. */

@@ -7,6 +7,32 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A PMIx server can now contribute only what its processes published
+   since they last took part in a collecting fence, rather than
+   everything they have published, controlled by the new
+   pmix_server_fence_delta_modex MCA parameter. It defaults to false: a
+   server from a release that predates the delta marker rejects the whole
+   collective rather than storing a contribution it cannot interpret -
+   the right failure, but it means a job running mixed releases works
+   today and would stop working if this defaulted on. Enable it once
+   every node understands the marker. A delta is only sent when every
+   local participant has already contributed to a fence over the same
+   participant set; anything else falls back to the full set, which
+   keeps two sub-communicators fencing independently from withholding
+   data from each other. The watermark advances only once the host has
+   taken the bucket, since the request has three arms that discard it.
+ - gds/shmem3 keeps modex generations rather than always dropping the
+   previous one. A cumulative contribution repeats everything, so it
+   still supersedes the generation before it and every one behind that.
+   A delta repeats nothing, so the previous generation is retired instead
+   and a read walks the generations newest-first: a keyed lookup stops at
+   the newest one holding the key, and a whole-process lookup consults
+   all of them while dropping a copy of a key a newer generation already
+   supplied. The chain is empty unless a delta has been stored, so the
+   ordinary case is the single lookup it has always been, and any
+   cumulative fence collapses it again. Segment blobs gained a field
+   telling the client which kind it is looking at, so it makes the same
+   decision its server made.
  - PMIx_Commit now transmits only what the process has posted since the
    previous commit. It used to fetch and send that process's entire local
    and remote store every time, so a single new PMIx_Put caused everything
@@ -28,18 +54,14 @@ Detailed changes since v6.1.0:
    with each other - so a value they all agreed on, and that no datastore
    knew how to act on, passed straight through and its data was stored as
    though it were an ordinary full contribution. It is now rejected with
-   PMIX_ERR_BAD_PARAM. A new value, PMIX_MODEX_DELTA, is defined for a
-   contribution carrying only what the sending processes published since
-   they last took part in a collecting fence; nothing emits it yet, and a
-   contribution marked with it is refused with PMIX_ERR_NOT_SUPPORTED and
-   a help message rather than stored, because storing a delta as a full
-   set would drop every key the sender left out. Since the agreement check
-   is what an older release already performs, a job mixing a release that
-   sends delta data with one that cannot store it fails loudly on both
-   sides instead of silently losing data. No behavior changes for a job
-   whose nodes all run the same release. See openpmix#4087 and the
-   "Planned: Delta Exchange and Data Deletion" section of
-   docs/how-things-work/modex.rst.
+   PMIX_ERR_BAD_PARAM. A new value, PMIX_MODEX_DELTA, marks a contribution
+   carrying only what the sending processes published since they last took
+   part in a collecting fence, and the value is now handed to the
+   datastore, which decides what it means for its own storage. Since the
+   agreement check is what an older release already performs, a job mixing
+   a release that sends delta data with one that cannot store it fails
+   loudly on both sides instead of silently losing data. See openpmix#4087
+   and the delta-exchange section of docs/how-things-work/modex.rst.
  - An MCA component whose framework interface version does not match the
    framework it is being loaded into is now refused instead of being
    opened. Nothing checked this before: the only version test in the

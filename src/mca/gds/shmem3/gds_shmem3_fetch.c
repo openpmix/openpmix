@@ -540,6 +540,96 @@ fetch_sessioninfo(
 }
 
 // TODO(skg) This needs plenty of work.
+/* Drop entries added at or after "mark" whose key an earlier entry
+ * already supplied. The list is filled newest generation first, so the
+ * earlier copy is the current one and the later copy is stale. */
+static void
+drop_shadowed(
+    pmix_list_t *kvs,
+    size_t mark
+) {
+    pmix_kval_t *later, *nxt, *earlier;
+    size_t n, m;
+
+    n = 0;
+    PMIX_LIST_FOREACH_SAFE (later, nxt, kvs, pmix_kval_t) {
+        if (n++ < mark) {
+            continue;
+        }
+        m = 0;
+        PMIX_LIST_FOREACH (earlier, kvs, pmix_kval_t) {
+            if (m++ >= mark) {
+                break;
+            }
+            if (NULL != earlier->key && NULL != later->key
+                && 0 == strcmp(earlier->key, later->key)) {
+                pmix_list_remove_item(kvs, &later->super);
+                PMIX_RELEASE(later);
+                break;
+            }
+        }
+    }
+}
+
+/* Read the modex, newest generation first.
+ *
+ * A generation built from a delta contribution holds only what changed,
+ * so a key may live only in an older one. For a keyed lookup the newest
+ * generation that has it wins and the walk stops there. For a NULL-key
+ * lookup - "everything this proc published" - every generation has to be
+ * consulted, and a copy of a key a newer one already supplied has to be
+ * dropped, or the caller gets that key twice with the stale value
+ * second.
+ *
+ * job->modex_prior is empty unless a delta has been stored, so in the
+ * ordinary case this is the single lookup it has always been. */
+static pmix_status_t
+modex_fetch(
+    pmix_gds_shmem3_job_t *job,
+    pmix_rank_t rank,
+    const char *key,
+    pmix_info_t *qualifiers,
+    size_t nqual,
+    pmix_list_t *kvs
+) {
+    pmix_gds_shmem3_modex_seg_t *seg;
+    pmix_status_t rc = PMIX_ERR_NOT_FOUND;
+    pmix_status_t r2;
+    size_t mark;
+
+    if (pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_MODEX_ID,
+                                   PMIX_GDS_SHMEM3_READY_FOR_USE)
+        && NULL != job->smmodex) {
+        rc = pmix_hash_fetch(job->smmodex->hashtab, rank, key, qualifiers,
+                             nqual, kvs, job->smmodex->keyindex);
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+        if (PMIX_SUCCESS == rc && NULL != key) {
+            return rc;
+        }
+    }
+    PMIX_LIST_FOREACH (seg, &job->modex_prior, pmix_gds_shmem3_modex_seg_t) {
+        if (NULL == seg->smmodex) {
+            continue;
+        }
+        mark = pmix_list_get_size(kvs);
+        r2 = pmix_hash_fetch(seg->smmodex->hashtab, rank, key, qualifiers,
+                             nqual, kvs, seg->smmodex->keyindex);
+        if (PMIX_ERR_NOMEM == r2) {
+            return r2;
+        }
+        if (PMIX_SUCCESS == r2) {
+            if (NULL != key) {
+                return r2;
+            }
+            drop_shadowed(kvs, mark);
+            rc = PMIX_SUCCESS;
+        }
+    }
+    return rc;
+}
+
 static pmix_status_t
 shmem3_fetch_from_job(
     pmix_gds_shmem3_job_t *job,
@@ -593,10 +683,20 @@ shmem3_fetch_from_job(
     // global one, so a read has to translate through that same table.
     // See the comment on pmix_gds_shmem3_shared_modex_data_t.keyindex.
     //
-    // Both segments carry their own. Nothing on this path consults
-    // pmix_globals.keyindex, which is what lets a read of shared data be
-    // independent of a structure the progress thread rewrites.
-    pmix_keyindex_t *const remote_kidx = mdrfu ? job->smmodex->keyindex : NULL;
+    // Every segment carries its own, which is what lets a read of shared
+    // data be independent of pmix_globals.keyindex - a structure the
+    // progress thread rewrites. The modex side of that lives in
+    // modex_fetch(), which has to pair each generation's table with that
+    // generation's index; only the job segment's is needed here.
+    /* There is modex data to read if the current generation is ready OR
+     * any retired one survives - the two differ during the window in
+     * which a delta is being stored, when the current generation has
+     * been set aside and its replacement is not yet published. */
+    const bool have_modex = mdrfu || 0 < pmix_list_get_size(&job->modex_prior);
+    /* Which store the lookup below is against. This cannot be inferred
+     * from ht any more: the modex is a chain of generations rather than
+     * one table, and its newest may be absent while older ones are not. */
+    bool useremote = false;
     pmix_keyindex_t *const local_kidx = job->smdata->keyindex;
 
     // If the rank is wildcard and key is NULL, then the caller is asking for a
@@ -751,10 +851,12 @@ shmem3_fetch_from_job(
         PMIX_SCOPE_UNDEF == scope ||
         PMIX_RANK_WILDCARD == proc->rank) {
         ht = local_ht;
+        useremote = false;
     }
     else if (PMIX_REMOTE == scope) {
         // Note that this ht can be NULL.
         ht = remote_ht;
+        useremote = true;
     }
     else {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -765,10 +867,12 @@ doover:
     // If rank=PMIX_RANK_UNDEF, then we need to search all
     // known ranks for this nspace as any one of them could
     // be the source.
-    if (PMIX_RANK_UNDEF == proc->rank && ht) {
+    if (PMIX_RANK_UNDEF == proc->rank && (useremote ? have_modex : (NULL != ht))) {
         for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
-            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs,
-                                 (ht == remote_ht) ? remote_kidx : local_kidx);
+            rc = useremote
+                     ? modex_fetch(job, rnk, key, qualifiers, nqual, kvs)
+                     : pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs,
+                                       local_kidx);
             if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
@@ -806,11 +910,11 @@ doover:
         }
     }
     else {
-        if (ht) {
-            rc = pmix_hash_fetch(
-                ht, proc->rank, key, qualifiers, nqual, kvs,
-                (ht == remote_ht) ? remote_kidx : local_kidx
-            );
+        if (useremote ? have_modex : (NULL != ht)) {
+            rc = useremote
+                     ? modex_fetch(job, proc->rank, key, qualifiers, nqual, kvs)
+                     : pmix_hash_fetch(ht, proc->rank, key, qualifiers, nqual,
+                                       kvs, local_kidx);
         }
         else {
             rc = PMIX_ERR_NOT_FOUND;
@@ -823,9 +927,10 @@ doover:
             return PMIX_SUCCESS;
         }
         if (PMIX_GLOBAL == scope) {
-            if (ht == local_ht) {
+            if (!useremote) {
                 // We need to do this again for the remote data.
                 ht = remote_ht;
+                useremote = true;
                 goto doover;
             }
         }
@@ -849,10 +954,9 @@ doover:
         if (PMIX_RANK_IS_VALID(proc->rank)) {
             pmix_kval_t *kv;
             if (PMIX_LOCAL == scope) {
-                if (NULL != remote_ht) {
+                if (have_modex) {
                     /* check the remote scope */
-                    rc = pmix_hash_fetch(remote_ht, proc->rank, key, qualifiers, nqual, kvs,
-                                         remote_kidx);
+                    rc = modex_fetch(job, proc->rank, key, qualifiers, nqual, kvs);
                     if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
                         while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
                             PMIX_RELEASE(kv);

@@ -281,12 +281,16 @@ static void info_con(pmix_rank_info_t *info)
     info->modex_recvd = false;
     info->proc_cnt = 0;
     info->server_object = NULL;
+    PMIX_CONSTRUCT(&info->pending_modex, pmix_list_t);
+    info->modex_sig = 0;
+    info->modex_contributed = false;
 }
 static void info_des(pmix_rank_info_t *info)
 {
     if (NULL != info->pname.nspace) {
         free(info->pname.nspace);
     }
+    PMIX_LIST_DESTRUCT(&info->pending_modex);
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_rank_info_t,
                                 pmix_list_item_t,

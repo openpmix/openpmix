@@ -279,6 +279,21 @@ typedef struct {
     pmix_keyindex_t *keyindex;
 } pmix_gds_shmem3_shared_modex_data_t;
 
+/* A modex generation this job has finished with but must keep.
+ *
+ * A delta contribution carries only what changed, so the generation it
+ * lands in does not stand on its own and the ones before it cannot be
+ * dropped. They are held here, newest first, and a read walks them in
+ * that order. A cumulative contribution supersedes everything before it
+ * and collapses the whole list. */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_gds_shmem3_status_t status;
+    pmix_shmem_t *shmem3;
+    pmix_gds_shmem3_shared_modex_data_t *smmodex;
+} pmix_gds_shmem3_modex_seg_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem3_modex_seg_t);
+
 typedef struct {
     pmix_list_item_t super;
     /** User ID */
@@ -317,6 +332,19 @@ typedef struct {
     pmix_gds_shmem3_shared_job_data_t *smdata;
     /** Points to shared modex data located in a shared-memory segment. */
     pmix_gds_shmem3_shared_modex_data_t *smmodex;
+    /** Does the current modex generation hold only what changed?
+     *
+     * Set when it was built from a PMIX_MODEX_DELTA contribution, and
+     * told to each client in the segment blob so it can make the same
+     * keep-or-drop decision this server made. */
+    bool modex_is_delta;
+    /** Modex generations older than the current one, newest first.
+     *
+     * Non-empty only when a delta contribution has been stored: such a
+     * generation holds just what changed, so what came before it is
+     * still the only copy of everything it did not repeat. A read walks
+     * this after the current generation. */
+    pmix_list_t modex_prior;
     /** Packed connection information to this segment. */
     pmix_buffer_t *conni;
 } pmix_gds_shmem3_job_t;

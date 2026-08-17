@@ -69,7 +69,8 @@ static pmix_status_t hash_store_modex(pmix_buffer_t *buff,
                                       void *cbdata);
 
 static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
-                                       pmix_buffer_t *pbkt);
+                                       pmix_buffer_t *pbkt,
+                                       uint8_t kind);
 
 static pmix_status_t setup_fork(const pmix_proc_t *peer, char ***env);
 
@@ -1440,12 +1441,19 @@ static pmix_status_t hash_store_modex(pmix_buffer_t *buf,
 }
 
 static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
-                                       pmix_buffer_t *pbkt)
+                                       pmix_buffer_t *pbkt,
+                                       uint8_t kind)
 {
     pmix_job_t *trk;
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_kval_t kv;
     int32_t cnt;
+
+    /* This store accumulates - a value replaces the one it matches and
+     * everything else stays - so a delta contribution needs no different
+     * handling here. It matters to a datastore that retires what an
+     * earlier modex left behind; see gds/shmem3. */
+    PMIX_HIDE_UNUSED_PARAMS(kind);
 
     if (NULL == pbkt) {
         return PMIX_SUCCESS;

@@ -180,6 +180,7 @@ typedef struct {
     char *tmpdir;             // temporary directory for this server
     char *system_tmpdir;      // system tmpdir
     bool fence_localonly_opt; // local-only fence optimization
+    bool fence_delta_modex;   // contribute only what changed since our last collecting fence
     pmix_list_t grp_collectives;  // group-op collectives
     pmix_pointer_array_t monitors;  // monitoring operations
     // verbosity for server get operations
@@ -563,6 +564,17 @@ PMIX_EXPORT pmix_server_trkr_t *pmix_server_get_tracker(char *id, pmix_proc_t *p
 
 PMIX_EXPORT pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *procs,
                                                         size_t nprocs, pmix_cmd_t type);
+
+/* Record that every local participant of this tracker has had its
+ * contribution taken by the host, so the next one can carry only what
+ * changes from here. Call it once the up-call has been accepted, never
+ * from the collection itself - see the comment on the definition. */
+PMIX_EXPORT void pmix_server_modex_contributed(pmix_server_trkr_t *trk);
+
+/* Force this proc's next fence contribution to be cumulative. Call it
+ * wherever remote-scope data reaches our datastore for a local proc by
+ * some route other than pmix_server_commit. */
+PMIX_EXPORT void pmix_server_modex_resync(const pmix_proc_t *proc);
 
 PMIX_EXPORT pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                                                    pmix_buffer_t *buf);

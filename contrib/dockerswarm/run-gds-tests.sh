@@ -109,7 +109,7 @@ PMIX_PREFIX=/opt/prte/pmix
 GDS_PROGRAMS="gds_datastore gds_fallback proc_array_id"
 
 # Geometries: one slot per host so every get crosses a server boundary.
-GEOMETRIES="node1:1,node2:1|2 node1:1,node2:1,node3:1,node4:1|4 node1:1,node2:1,node3:1,node4:1,node5:1,node6:1,node7:1,node8:1|8"
+GEOMETRIES="${GEOMETRIES:-node1:1,node2:1|2 node1:1,node2:1,node3:1,node4:1|4 node1:1,node2:1,node3:1,node4:1,node5:1,node6:1,node7:1,node8:1|8}"
 
 # The build stages below copy the source into the container and build it
 # there, rather than configuring a VPATH tree against the read-only mount
@@ -398,6 +398,28 @@ test_linux() {
         hosts="${geom%|*}"; np="${geom#*|}"
         run_across_nodes modex_twice "$hosts" "$np" "" "(default)" \
             && ok "$np servers: second fence visible, first fence kept"
+    done
+
+    banner "a second collecting fence carrying only what changed"
+    # The case the segment chain exists for. With
+    # pmix_server_fence_delta_modex on, each server contributes only what
+    # its procs published since the previous collecting fence - so
+    # modex_twice's gen1 keys, published before the first fence and never
+    # again, are NOT in the second fence's payload. They survive only if
+    # gds/shmem3 kept the generation that carried them and reads back
+    # through it. A chain that does not work fails this and passes the
+    # cumulative cases above, which is exactly why this case is here.
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes modex_twice "$hosts" "$np" \
+            "PMIX_MCA_pmix_server_fence_delta_modex=1" "(delta modex)" \
+            && ok "$np servers with delta modex: second fence visible, first kept"
+    done
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes client "$hosts" "$np" \
+            "PMIX_MCA_pmix_server_fence_delta_modex=1" "(delta modex)" \
+            && ok "$np servers with delta modex: put/commit/fence/get across servers"
     done
 
     banner "every get through the progress thread (fast path disabled)"

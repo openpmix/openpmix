@@ -159,7 +159,9 @@ needs to own the *bulk job/modex data* path; individual `put`/`get` traffic
 falls back. `cache_job_info` also returns `PMIX_ERR_NOT_SUPPORTED`: unlike
 `hash`, `shmem3` does not pre-cache — it fetches the fully-assembled
 job data lazily inside `register_job_info` when the first client connects.
-Like `hash`, it is `is_tsafe = false`.
+Unlike `hash`, it is `is_tsafe = true`: a fetch holds a reference on the
+job tracker and reads only data that is never written again, so it may
+run off the progress thread.
 
 ## The shared-segment model
 
@@ -447,16 +449,42 @@ second modex overran it and **aborted the server** — taking the daemon,
 and the job, with it. `examples/modex_twice.c` reproduces that from four
 nodes up.
 
-**It rests on the modex payload being cumulative,** and that is worth
-knowing before changing `PMIx_Commit` (see openpmix#4087). Today a commit ships the
-process's entire local store (a NULL-key fetch in `_commitfn`) and a
-server contributes each local proc's full set from its own store, so
-generation N+1 is self-contained and N can be dropped. If commit ever
-becomes a true delta — sending only what changed — that stops holding,
-and this code has to carry data forward into the new segment or search
-back through generations. `examples/modex_twice.c` is the canary: its
-`gen1` keys are published before the first fence and never again, and it
-asserts they are still readable after the second.
+**Whether the finished generation can be dropped depends on what is
+arriving**, and the flag byte in the modex envelope is what says so (see
+openpmix#4087 and `docs/how-things-work/modex.rst`).
+
+A **cumulative** contribution repeats everything its processes have
+published, so the generation carrying it stands on its own: the previous
+one is released exactly as before, and every retired one behind it goes
+with it (`drop_modex_priors`). That is still the default, because
+`pmix_server_fence_delta_modex` defaults off.
+
+A **delta** contribution repeats nothing, so the previous generation is
+still the only copy of everything the delta left out. It is *retired*
+onto `job->modex_prior` rather than released (`retire_modex_segment`),
+and `modex_fetch()` in `gds_shmem3_fetch.c` walks that list newest-first.
+A keyed lookup stops at the newest generation holding the key; a
+NULL-key lookup consults every generation and drops a copy of a key a
+newer one already supplied, or the caller sees it twice with the stale
+value second.
+
+`job->modex_prior` is empty unless a delta has been stored, so the
+ordinary case is the single lookup it has always been. The chain grows
+only while deltas keep arriving and collapses on the next cumulative
+contribution - which the participant-set guard on the server side forces
+whenever a fence's membership changes.
+
+The client makes the same keep-or-drop decision, from a
+`SHMEM3_SEG_DELTA_KEY` field in the segment blob. Adding a field there
+was possible because this component has never been in a release; once it
+ships, that blob is a wire format like any other.
+
+`examples/modex_twice.c` is the canary, and
+`contrib/dockerswarm/run-gds-tests.sh` drives it **twice**: once
+cumulatively and once with `pmix_server_fence_delta_modex=1`. Only the
+second actually tests the chain - its `gen1` keys are published before
+the first fence and never again, so under a delta they exist *only* in
+the retired generation.
 
 ## Gotchas
 

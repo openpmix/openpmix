@@ -158,9 +158,11 @@ static size_t modex_ndone = 0;    /* callbacks carrying NULL     */
 static pmix_rank_t modex_ranks[8];
 static char modex_nspaces[8][PMIX_MAX_NSLEN + 1];
 static pmix_status_t modex_cb_rc = PMIX_SUCCESS;
+static pmix_collect_t modex_last_kind = PMIX_COLLECT_INVALID;
 
-static pmix_status_t modex_cb(pmix_proc_t *proc, pmix_buffer_t *pbkt)
+static pmix_status_t modex_cb(pmix_proc_t *proc, pmix_buffer_t *pbkt, uint8_t kind)
 {
+    modex_last_kind = (pmix_collect_t) kind;
     if (NULL == pbkt) {
         ++modex_ndone;
         return PMIX_SUCCESS;
@@ -428,17 +430,24 @@ static void test_store_modex_blob_info(void)
         rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
         report("PMIX_COLLECT_YES is still stored",
                PMIX_SUCCESS == rc && 1 == modex_nblobs);
+        report("the callback is told it was cumulative",
+               PMIX_COLLECT_YES == modex_last_kind);
     }
     PMIX_DESTRUCT(&buf);
 
-    /* a marker we recognize and cannot honor */
+    /* a delta contribution is stored, and the kind reaches the callback
+     * so a datastore that retires what an earlier modex left behind can
+     * tell the difference */
     modex_nblobs = modex_ndone = 0;
+    modex_last_kind = PMIX_COLLECT_INVALID;
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     rc = build_modex(&buf, "gds-modex-ns", ranks, 1, PMIX_MODEX_DELTA);
     if (PMIX_SUCCESS == rc) {
         rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
-        report("a delta contribution is refused, not half-stored",
-               PMIX_ERR_NOT_SUPPORTED == rc);
+        report("a delta contribution is stored",
+               PMIX_SUCCESS == rc && 1 == modex_nblobs);
+        report("the callback is told it was a delta",
+               PMIX_MODEX_DELTA == modex_last_kind);
     }
     PMIX_DESTRUCT(&buf);
 

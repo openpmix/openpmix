@@ -231,24 +231,15 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
              * they all agree on and none of us can act on would otherwise
              * pass straight through. Two cases, and they fail differently:
              *
-             * PMIX_MODEX_DELTA is a marker we recognize and cannot yet
-             * honor. A delta contribution carries only what the sender
-             * published since it last took part in a collecting fence, so
-             * storing it as though it were a full one drops every key the
-             * sender left out - and for gds/shmem3, which retires the
-             * previous modex generation on the strength of the new one
-             * being self-contained, drops that whole generation. Refuse it
-             * until the datastores can chain generations (openpmix#4087).
+             * PMIX_MODEX_DELTA is honored - the kind is handed to the
+             * component's callback, which decides what it means for its
+             * own storage (gds/hash accumulates, so nothing; gds/shmem3
+             * keeps the generations a delta does not repeat).
              *
              * Anything else is a value no release ever defined, so the
              * sender is not something this code can reason about. */
-            if (PMIX_MODEX_DELTA == blob_info) {
-                pmix_show_help("help-pmix-server.txt", "delta-modex-unsupported", true);
-                rc = PMIX_ERR_NOT_SUPPORTED;
-                PMIX_DESTRUCT(&bkt3);
-                goto exit;
-            }
-            if (PMIX_COLLECT_NO != blob_info && PMIX_COLLECT_YES != blob_info) {
+            if (PMIX_COLLECT_NO != blob_info && PMIX_COLLECT_YES != blob_info
+                && PMIX_MODEX_DELTA != blob_info) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 rc = PMIX_ERR_BAD_PARAM;
                 PMIX_DESTRUCT(&bkt3);
@@ -316,7 +307,7 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
                 }
 
                 // call the specific GDS component-provided function to store it
-                rc = cb_fn(&proc, &pbkt);
+                rc = cb_fn(&proc, &pbkt, blob_info_byte);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&pbkt);
@@ -357,7 +348,7 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
     // indicate that we are done processing the modex - need to alert
     // for each nspace involved
     PMIX_LIST_FOREACH(plist, &nspaces, pmix_proclist_t) {
-        rc = cb_fn(&plist->proc, NULL);
+        rc = cb_fn(&plist->proc, NULL, (uint8_t) last_blob_info_byte);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             break;

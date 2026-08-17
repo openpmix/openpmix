@@ -200,7 +200,7 @@ on its own.
 writing a published segment at all: a deletion becomes a *tombstone* in a
 newer segment, found by the same newest-to-oldest search that a delta modex
 needs.  The two are one problem, which is why the design covers both — see
-:ref:`Planned: Delta Exchange and Data Deletion <modex-delta>` in
+:ref:`Delta Exchange and Data Deletion <modex-delta>` in
 :doc:`how-things-work/modex`, tracked as `openpmix#4087
 <https://github.com/openpmix/openpmix/issues/4087>`_.  This entry is retired
 when that work lands.

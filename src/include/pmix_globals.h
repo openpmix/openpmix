@@ -434,6 +434,23 @@ typedef struct pmix_rank_info_t {
     bool modex_recvd;
     int proc_cnt;        // #clones of this rank we know about
     void *server_object; // pointer to rank-specific object provided by server
+    /* Delta-modex bookkeeping, server side - see pmix_server_collect_data.
+     *
+     * pending_modex holds the PMIX_REMOTE-scope kvals this rank has
+     * committed since it last contributed to a collecting fence, so that
+     * contribution can carry what changed instead of everything the rank
+     * has ever published. It lives here rather than on the peer because a
+     * fork/exec'd clone shares its parent's rank_info, which is the same
+     * identity the collection dedups on.
+     *
+     * modex_sig digests the participant set of the fence this rank last
+     * contributed to, and modex_contributed says whether it means
+     * anything yet. A delta is only sound for a fence over the same set:
+     * contributing one to a fence over some *other* set would leave every
+     * server holding only that set's procs never learning these keys. */
+    pmix_list_t pending_modex;
+    uint64_t modex_sig;
+    bool modex_contributed;
 } pmix_rank_info_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_rank_info_t);
 

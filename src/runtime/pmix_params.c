@@ -260,6 +260,25 @@ pmix_status_t pmix_register_params(void)
         PMIX_MCA_BASE_VAR_TYPE_BOOL,
         &pmix_server_globals.fence_localonly_opt);
 
+    /* Default off, and that is not timidity. Turning it on makes this
+     * server mark its fence contribution PMIX_MODEX_DELTA, and a server
+     * from a release that predates that marker rejects the whole
+     * collective rather than storing a contribution it cannot interpret
+     * (see pmix_gds_base_store_modex). That is the right failure - the
+     * alternative is silently losing data - but it means a job whose
+     * nodes are running mixed releases works today and would stop
+     * working if this defaulted on. Enable it once every node is running
+     * a release that understands the marker. */
+    pmix_server_globals.fence_delta_modex = false;
+    (void) pmix_mca_base_var_register(
+        "pmix", "pmix", "server", "fence_delta_modex",
+        "Contribute only the data posted since this process last took part in a "
+        "collecting fence, rather than everything it has posted (default: false). "
+        "Requires every node in the job to be running a PMIx release that "
+        "understands delta modex data",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_server_globals.fence_delta_modex);
+
     /* check for maximum number of pending output messages */
     pmix_globals.output_limit = (size_t) INT_MAX;
     (void) pmix_mca_base_var_register("pmix", "iof", NULL, "output_limit",
