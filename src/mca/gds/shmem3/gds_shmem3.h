@@ -138,6 +138,16 @@ PMIX_EXPORT extern size_t pmix_gds_shmem3_arena_modex_slots;
 PMIX_EXPORT extern bool pmix_gds_shmem3_offset_placement;
 
 /**
+ * Testing-only MCA parameter. When true, a client's attach is forced to
+ * fail only for the modex segment, leaving the job and session attaches
+ * at PMIx_Init alone. This is the case force_client_attach_failure
+ * cannot reach: that one fails every attach, so the client falls back to
+ * hash during PMIx_Init and never gets as far as a fence. Never set this
+ * in production.
+ */
+PMIX_EXPORT extern bool pmix_gds_shmem3_force_modex_attach_failure;
+
+/**
  * IDs for pmix_shmem_ts in pmix_gds_shmem3_job_t.
  */
 typedef enum {

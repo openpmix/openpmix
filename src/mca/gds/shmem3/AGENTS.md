@@ -404,6 +404,15 @@ and triggers the framework's **GDS fallback** (`fallback_to_next_gds` in
 to exercise this path in tests without depending on each process's VM
 layout — never set it in production.
 
+**That fallback only exists at init.** It is reached because
+`PMIx_Init` re-requests its job data, and the *server* can re-register
+that data in another module's format. Nothing equivalent is possible for
+a modex: `PMIX_GDS_RECV_MODEX_COMPLETE` resolves a single module, and
+`PMIX_GDS_FALLBACK_CMD` re-sends job data only — a completed modex
+cannot be re-delivered in `hash` format without a new wire command. So
+the two attach failures are genuinely different problems, and the next
+section is about the other one.
+
 ### The address-space arena — why a fence-time attach must not need luck
 
 A client attaches the **job** segment during `PMIx_Init`, when its
@@ -489,6 +498,7 @@ terabytes of empty space.
 | `gds_shmem3_arena_modex_slots` | size_t (default `4`, capped at 32) | how many modex generations the arena can hold at once. More than one is live only where deltas are in play; past the last slot a generation is placed outside the arena. |
 | `gds_shmem3_offset_placement` | bool (default `true`) | place segments a quarter of the way into the biggest hole instead of at its midpoint. |
 | `gds_shmem3_force_client_attach_failure` | bool (default `false`) | **testing only** — force *every* client attach to fail, so the init-time GDS fallback can be exercised. |
+| `gds_shmem3_force_modex_attach_failure` | bool (default `false`) | **testing only** — force only the *modex* attach to fail. This is the one `force_client_attach_failure` cannot reach: that one fails the init attach too, so the client leaves `PMIx_Init` on `hash` and never reaches a fence on `shmem3`. Drives `examples/modex_attach_fail.c`. |
 
 These are the *only* `gds` MCA parameters in the tree; the framework core
 registers none.

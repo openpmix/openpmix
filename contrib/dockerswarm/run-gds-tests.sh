@@ -223,6 +223,24 @@ run_across_nodes() {
             bad "$prog $label, $np servers: both fences reported ok but exit was $rc"
             return 1
         fi
+    elif [ "$prog" = modex_attach_fail ]; then
+        # Every rank has to say OK: the fence succeeded, its own
+        # namespace's job data was still reachable, and it still got a
+        # peer's value - by whatever route. Counting the OK lines rather
+        # than trusting the exit status matters here, because the failure
+        # this covers is one a caller that ignores a return code does not
+        # see (openpmix#4156 reached production through exactly that).
+        nok=$(echo "$out" | grep -c 'MODEX-ATTACH-FAIL OK')
+        if [ "$nok" != "$np" ]; then
+            bad "$prog $label, $np servers: only $nok/$np ranks degraded cleanly"
+            echo "$out" | grep -iE 'FAILED|TAKE_NEXT_OPTION|INVALID_NAMESPACE' \
+                | head -3 | sed 's/^/       /'
+            return 1
+        fi
+        if [ "$rc" != 0 ]; then
+            bad "$prog $label, $np servers: every rank was OK but exit was $rc"
+            return 1
+        fi
     elif [ "$prog" = client ]; then
         # client reports per key per peer and returns 0 regardless, so
         # count the confirmations: each of the $np ranks confirms one key
@@ -385,7 +403,8 @@ test_linux() {
         -e PFX="$PMIX_PREFIX" \
         "$IMAGE" bash -euo pipefail -c '
             mkdir -p /opt/prte/tests-gds
-            for p in datatypes dmodex client modex_twice delete_key get_timing fence_timing; do
+            for p in datatypes dmodex client modex_twice delete_key \
+                     modex_attach_fail get_timing fence_timing; do
                 gcc -O0 -g -o /opt/prte/tests-gds/$p /pmix-src/examples/$p.c \
                     -I"$PFX/include" -I/pmix-src/examples \
                     -L"$PFX/lib" -lpmix -Wl,-rpath,"$PFX/lib"
@@ -520,6 +539,34 @@ test_linux() {
         run_across_nodes datatypes "$hosts" "$np" \
             "PMIX_MCA_gds_shmem3_force_client_attach_failure=1" "(fallback)" \
             && ok "$np servers: clients fell back and still read every peer"
+    done
+
+    banner "a modex the client cannot map (openpmix#4156)"
+    # The OTHER attach failure, and the one with no fallback available.
+    # force_client_attach_failure above cannot reach it: that fails every
+    # attach, so the client leaves PMIx_Init on gds/hash and never gets to
+    # a fence on shmem3. This one fails only the modex segment, which is
+    # attached at fence time - and used to take the client's job and
+    # session segments down with it while handing PMIx_Fence's caller
+    # PMIX_ERR_TAKE_NEXT_OPTION.
+    #
+    # Two nodes minimum is not a convention here, it is the whole test: a
+    # single-node job exchanges no remote data, so no modex segment is
+    # ever sent to the client and there is nothing to fail.
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes modex_attach_fail "$hosts" "$np" \
+            "PMIX_MCA_gds_shmem3_force_modex_attach_failure=1" "(no modex map)" \
+            && ok "$np servers: fence succeeded and job data survived"
+    done
+
+    banner "the same program with the modex mapping normally"
+    # The control. If this fails, the program is broken rather than the
+    # degradation path it is meant to be checking.
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes modex_attach_fail "$hosts" "$np" "" "(modex mapped)" \
+            && ok "$np servers: baseline with the modex segment mapped"
     done
 }
 
