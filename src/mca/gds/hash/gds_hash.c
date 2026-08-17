@@ -1529,6 +1529,37 @@ static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, pbkt, &kv, &cnt, PMIX_KVAL);
 
     while (PMIX_SUCCESS == rc) {
+        /* An entry whose value is PMIX_UNDEF is not data - it is the
+         * contributing process saying the key is gone. The modex is
+         * additive, so a contribution that merely stops carrying a key
+         * removes nothing here; the removal has to be stated, and this
+         * is where it is acted on. We can take the key straight out,
+         * unlike a datastore whose copy is in a segment it cannot
+         * rewrite. */
+        if (NULL != kv.value && PMIX_UNDEF == kv.value->type) {
+            pmix_rank_t drank = (PMIX_RANK_UNDEF == proc->rank) ? 0 : proc->rank;
+            rc = pmix_hash_remove_data(&trk->remote, drank, kv.key, NULL);
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kv);
+                return rc;
+            }
+            /* Our own store is corrected, but our local clients cached
+             * this key when they read it - the modex answers a get from
+             * the reader's own copy once it has one. Pass the removal on
+             * to them, which is what finally closes the loop from the
+             * process that deleted the key to a reader on another node. */
+            if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+                pmix_proc_t dproc;
+                PMIX_LOAD_PROCID(&dproc, proc->nspace, drank);
+                pmix_server_notify_deleted(&dproc, PMIX_DEL_REMOTE, kv.key, NULL);
+            }
+            PMIX_DESTRUCT(&kv);
+            PMIX_CONSTRUCT(&kv, pmix_kval_t);
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, pbkt, &kv, &cnt, PMIX_KVAL);
+            continue;
+        }
         if (PMIX_RANK_UNDEF == proc->rank) {
             /* if the rank is undefined, then we store it on the
              * remote table of rank=0 as we know that rank must
