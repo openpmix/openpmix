@@ -479,6 +479,30 @@ the whole failure mode above. `VMEM_HOLE_BIGGEST_OFFSET` is the
 alternative, selected by the `offset_placement` parameter (on by
 default), and it lands a **quarter** of the way into the hole.
 
+**Deterministic placement has a second edge, and it needs blunting.**
+Being a pure function of the map is what lets a server and its clients
+agree on an address without exchanging one — but it also makes two
+things that have no reason to agree land on top of each other, and
+concurrent jobs on a node are exactly that. So the address is displaced
+within a window around the quarter point by a *scatter* value, which
+`shmem3` derives by hashing the namespace (`nspace_scatter()`, FNV-1a):
+identical for every process of one job, different between jobs. The
+independent-placement path mixes in the segment id and the retry count
+as well, since otherwise a job's three segments would all be aimed at
+one address and a retry would keep naming the address it just lost.
+
+Be careful about what evidence exists for this. Two jobs launched on a
+node land far apart **whether or not anything scatters them**, because
+ASLR has already moved each server's load base and the placement is
+computed relative to it — the concurrent-jobs stage in
+`run-gds-tests.sh` passes with the scatter compiled out, which was
+confirmed by doing it. Where the scatter earns its place is where ASLR
+does not do that job: systems with randomization disabled (not rare in
+HPC, where it is turned off for reproducibility) and non-PIE
+executables. Neither is reachable from the swarm, so the property is
+pinned down in [`test/unit/util/util_vmem.c`](../../../../test/unit/util/util_vmem.c)
+against the placement function directly, where it *is* decidable.
+
 The quarter is not arbitrary, and the obvious alternative is worse:
 placing at the **top** of the hole was tried first and failed
 immediately in the swarm, because the top of that hole is the underside

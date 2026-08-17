@@ -1284,6 +1284,40 @@ segment_hole_kind(void)
 }
 
 /**
+ * A value that differs between jobs and is the same everywhere within
+ * one, used to keep concurrent jobs' segments from being placed on top
+ * of each other.
+ *
+ * The namespace is the right thing to derive it from: it is unique
+ * within the scope of the resource manager, which is exactly the scope
+ * over which two jobs can be resident on a node at once, and every
+ * process of a job knows it. It matters that this is a pure function of
+ * the name and nothing else - a server and its clients never compare
+ * notes about the address, they each compute it and are expected to
+ * arrive at the same one.
+ *
+ * FNV-1a, because it is four lines and the requirement is only that
+ * different names land in different places, not that anything is hard to
+ * guess. A collision costs a failed reservation and a fall back to
+ * placing segments individually, which is where we were before.
+ */
+static inline uint64_t
+nspace_scatter(
+    const char *nspace
+) {
+    uint64_t h = 14695981039346656037ULL;
+
+    if (NULL == nspace) {
+        return 0;
+    }
+    for (const unsigned char *p = (const unsigned char *)nspace; *p; ++p) {
+        h ^= (uint64_t)*p;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+/**
  * Is [addr, addr+size) inside this job's arena?
  */
 static inline bool
@@ -1598,7 +1632,9 @@ arena_reserve(
     const size_t total = statics + (slots * slot);
 
     uintptr_t base = 0;
-    if (PMIX_SUCCESS != pmix_vmem_reserve(segment_hole_kind(), total, &base)) {
+    if (PMIX_SUCCESS != pmix_vmem_reserve(segment_hole_kind(),
+                                          nspace_scatter(job->nspace_id),
+                                          total, &base)) {
         PMIX_GDS_SHMEM3_VOUT(
             "%s: could not reserve a %zu B arena for namespace=%s; "
             "segments will be placed individually",
@@ -1835,10 +1871,17 @@ shmem3_segment_create_and_attach(
         // wrong for the server, which chose the address and can simply try
         // another hole.
         enum { MAX_ATTACH_ATTEMPTS = 16 };
+        /* Spread by namespace here too, for the same reason the arena
+         * does. Segment id and attempt go into it as well: without them
+         * this job's three segments would each be pointed at one address
+         * and a retry would keep naming the one it just lost. */
+        const uint64_t scatter =
+            nspace_scatter(job->nspace_id) + (uint64_t)shmem3_id;
         for (int attempt = 1; ; ++attempt) {
             size_t base_addr = 0;
-            rc = pmix_vmem_find_hole(
-                segment_hole_kind(), &base_addr, real_segsize
+            rc = pmix_vmem_find_hole_scattered(
+                segment_hole_kind(), scatter + (uint64_t)attempt,
+                &base_addr, real_segsize
             );
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);

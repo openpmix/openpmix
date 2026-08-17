@@ -140,6 +140,7 @@ GEOMETRIES="${GEOMETRIES:-node1:1,node2:1|2 node1:1,node2:1,node3:1,node4:1|4 no
 #   over its checks, so the only usable signal is the absence of its
 #   failure lines together with rank 0's finalize line. Grade it that way
 #   rather than on the exit status, which proves nothing here.
+
 run_across_nodes() {
     local prog="$1" hosts="$2" np="$3" envs="${4:-}" label="${5:-}"
     local out rc nok xargs exports v trace
@@ -260,6 +261,78 @@ run_across_nodes() {
             bad "$prog $label, $np servers: no rank reached finalize"
             return 1
         fi
+    fi
+    return 0
+}
+
+# Two jobs at once over the same nodes.
+#
+# Concurrent jobs on a node are ordinary, and each one's server reserves
+# its own address-space arena. This checks the obvious things: both jobs
+# get the right answers, no arena reservation fails, and the two jobs are
+# not sitting on the same base.
+#
+# BE CLEAR ABOUT WHAT THIS DOES NOT SHOW. gds/shmem3 spreads jobs by
+# hashing the namespace into the placement, and this test does NOT
+# demonstrate that it works - it passes just as happily with the scatter
+# compiled out, which was confirmed by doing exactly that. The reason is
+# that ASLR has already moved each server's load base, the placement is
+# computed relative to it, and so two servers diverge anyway here. Where
+# the scatter earns its place is where ASLR does not do that job -
+# systems with randomization disabled, and non-PIE executables - neither
+# of which this swarm can produce. That property is pinned down in
+# test/unit/util/util_vmem.c instead, against the placement function
+# directly, where it is decidable.
+#
+# So read a pass here as "two jobs coexist", not as "the spreading
+# works".
+run_concurrent_jobs() {
+    local hosts="$1" np="$2"
+    local out apass bpass abase bbase missed cmd
+
+    cleanup_swarm
+
+    cmd='export PMIX_MCA_gds_base_verbose=2;
+         rm -rf /tmp/gdsjobA.log /tmp/gdsjobB.log /tmp/gdsjobA /tmp/gdsjobB;
+         mkdir -p /tmp/gdsjobA /tmp/gdsjobB;
+         ( TMPDIR=/tmp/gdsjobA prterun --host '"$hosts"' -np '"$np"' \
+             --map-by node --timeout 180 /opt/prte/tests-gds/datatypes \
+             > /tmp/gdsjobA.log 2>&1 ) &
+         ( TMPDIR=/tmp/gdsjobB prterun --host '"$hosts"' -np '"$np"' \
+             --map-by node --timeout 180 /opt/prte/tests-gds/datatypes \
+             > /tmp/gdsjobB.log 2>&1 ) &
+         wait;
+         echo "APASS=$(grep -c "datatypes: rank .*: PASS" /tmp/gdsjobA.log)";
+         echo "BPASS=$(grep -c "datatypes: rank .*: PASS" /tmp/gdsjobB.log)";
+         echo "ABASE=$(grep -ho "reserved arena \[0x[0-9a-f]*" /tmp/gdsjobA.log | head -1)";
+         echo "BBASE=$(grep -ho "reserved arena \[0x[0-9a-f]*" /tmp/gdsjobB.log | head -1)";
+         echo "MISSED=$(cat /tmp/gdsjobA.log /tmp/gdsjobB.log | grep -c "could not reserve arena")"'
+
+    out="$(RUN "$cmd")"
+
+    apass=$(echo "$out" | sed -n 's/^APASS=//p')
+    bpass=$(echo "$out" | sed -n 's/^BPASS=//p')
+    abase=$(echo "$out" | sed -n 's/^ABASE=//p')
+    bbase=$(echo "$out" | sed -n 's/^BBASE=//p')
+    missed=$(echo "$out" | sed -n 's/^MISSED=//p')
+
+    if [ "$apass" != "$np" ] || [ "$bpass" != "$np" ]; then
+        bad "concurrent jobs, $np servers: ranks passing A=$apass B=$bpass (want $np each)"
+        return 1
+    fi
+    if [ "${missed:-0}" != 0 ]; then
+        bad "concurrent jobs, $np servers: $missed arena reservation(s) failed"
+        return 1
+    fi
+    # No arena at all (shmem3 not selected, or reserving unavailable) is
+    # not a failure of this test, but it does mean it proved nothing.
+    if [ -z "$abase" ] || [ -z "$bbase" ]; then
+        skp "concurrent jobs, $np servers: no arena was reserved - nothing to compare"
+        return 1
+    fi
+    if [ "$abase" = "$bbase" ]; then
+        bad "concurrent jobs, $np servers: both jobs took the same arena base ($abase)"
+        return 1
     fi
     return 0
 }
@@ -558,6 +631,16 @@ test_linux() {
         run_across_nodes modex_attach_fail "$hosts" "$np" \
             "PMIX_MCA_gds_shmem3_force_modex_attach_failure=1" "(no modex map)" \
             && ok "$np servers: fence succeeded and job data survived"
+    done
+
+    banner "two jobs at once over the same nodes"
+    # Only the larger geometries: the point is contention between two
+    # servers on a node, which two nodes show as well as eight, and each
+    # of these stands up two DVMs.
+    for geom in node1:1,node2:1\|2 node1:1,node2:1,node3:1,node4:1\|4; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_concurrent_jobs "$hosts" "$np" \
+            && ok "$np servers x2: both jobs coexisted on separate arenas"
     done
 
     banner "the same program with the modex mapping normally"
