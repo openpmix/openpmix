@@ -174,6 +174,36 @@ server that died; but the path carries a pid, and pids get reused, and
 in place. There is exactly one caller of this function and it always
 populates the segment from scratch, so the truncate costs nothing.
 
+### `pmix_vmem` — reserving an address before you need it
+
+`pmix_vmem_find_hole()` answers "where could I map something?", which is
+only useful if you map it immediately, and useless if the process that
+has to map at the *same* address is a different one that will get there
+later. `pmix_vmem_reserve()` / `_reserve_at()` / `_restore()` /
+`_release()` exist for that second case: claim the range now, with an
+inaccessible `PROT_NONE` anonymous mapping that commits nothing, and map
+over it later with `MAP_FIXED` — which cannot fail for want of the
+address, because you have been holding it.
+
+Two rules for a caller:
+
+- **Give the range back with `pmix_vmem_restore()`, not `munmap()`,** when
+  you are done with something you mapped inside it. Unmapping punches a
+  hole in the reservation and hands the address to whatever asks next.
+  `pmix_shmem_segment_detach()` does this for you when the segment was
+  attached with `PMIX_SHMEM_MAP_OVER_RESERVATION`.
+- **Ask `pmix_shmem_utils_segment_footprint()` where a segment ends.** It
+  is not the size you asked for — a segment carries a page-aligned header
+  ahead of its data — so placing segments back to back by the requested
+  size overlaps each with the next.
+
+`pmix_gds_shmem3` is the caller, and
+[its AGENTS.md](../mca/gds/shmem3/AGENTS.md) explains the whole design
+under "The address-space arena". Note also `VMEM_HOLE_BIGGEST_OFFSET`,
+which exists because the midpoint that `use_hole()` picks is the same
+midpoint hwloc and Open MPI pick — see the comment on `use_hole_offset()`
+for why the top of the hole is a worse answer than either.
+
 ### `keyval/` — the flex lexer
 
 `keyval_lex.l` is the flex source; `keyval_lex.c` is a **generated build
