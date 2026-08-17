@@ -178,8 +178,57 @@ Two MCA parameters are registered in `pcompress_base_frame.c`
 
 | Parameter | Type / default | Meaning |
 |-----------|----------------|---------|
-| `pcompress_base_limit` | size_t, **4096** | value written into `compress_limit`; the byte threshold below which data is left uncompressed |
+| `pcompress_base_limit` | size_t, **1024** | value written into `compress_limit`; the byte threshold below which data is left uncompressed |
 | `pcompress_base_silence_warning` | bool, **false** | value written into `silent`; suppresses the base default's "unavailable" warning |
+
+### Choosing `compress_limit`
+
+The floor is an economy measure, not a safety one: every component
+already declines a result that is not strictly smaller than its input, so
+lowering it cannot make a payload grow. What it buys or wastes is CPU.
+
+It was **4096** until August 2026, and that turned out to be far above
+where compression stops paying. Measured on modex-shaped payloads — the
+per-node fence bucket, whose values are endpoint blobs and therefore
+close to incompressible, so the compressor has only the repeated key
+strings to work with. `zstd` is what actually runs wherever it was
+built (priority 90); `zlib` at level 1 is shown beside it because it is
+the fallback and because its cost is easy to attribute:
+
+| procs on the node | bucket | `zstd` ratio | `zlib`-1 ratio | `zlib`-1 deflate |
+|---|---|---|---|---|
+| 1 | 272 | — | 0.93 | 9.0 us |
+| 2 | 544 | — | 0.70 | 9.6 us |
+| 4 | 1088 | 0.55 | 0.58 | 13.2 us |
+| 8 | 2176 | 0.47 | 0.52 | 17.3 us |
+| 16 | 4352 | 0.43 | 0.48 | 24.1 us |
+| 64 | 17408 | 0.40 | 0.44 | 60.9 us |
+
+(The two smallest rows have no `zstd` figure because they sit below the
+new limit and are therefore never offered to it. Their `zlib` numbers
+come from calling deflate directly, and are what justifies not going
+lower still: at 272 bytes there is almost nothing left to win.)
+
+There is no crossover — the ratio improves monotonically with size and
+the cost stays in the tens of microseconds, paid once per node per
+fence. The old 4096 meant a node running fewer than about sixteen
+processes shipped its modex raw, which is most of the GPU-dense machines
+now in service. **1024** was chosen rather than something smaller for one
+reason that has nothing to do with compression: the same parameter is
+read by `PMIX_STRING_SIZE_CHECK`, so it also decides the length above
+which `PMIx_Put` turns a string value into a `PMIX_COMPRESSED_STRING`
+that the receiving application sees typed as such. Lowering the threshold
+therefore changes the type of a class of values an application gets back
+from `PMIx_Get`, and 1024 keeps that blast radius small while still
+covering every node worth compressing. **If you lower it further, that
+string-typing consequence is the thing to think about, not the CPU.**
+
+Note that `PMIX_VALUE_COMPRESSED_STRING_UNPACK` — the macro that would
+inflate such a value back into a `PMIX_STRING` — currently has no call
+sites, which is why the compressed form reaches the application at all.
+Giving the two parameters independent lives (a string threshold separate
+from the block threshold) is the clean fix if the coupling ever becomes a
+problem.
 
 Each component additionally registers its own compression level, and every
 one of them is a parameter rather than a constant for the same reason: the
