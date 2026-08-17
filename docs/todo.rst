@@ -196,14 +196,25 @@ design and is the reason that component exists.  Any real fix has to
 answer the ``shmem3`` case first; the messaging half is not worth building
 on its own.
 
-**That fix is now designed**, and the ``shmem3`` case is answered by not
-writing a published segment at all: a deletion becomes a *tombstone* in a
-newer segment, found by the same newest-to-oldest search that a delta modex
-needs.  The two are one problem, which is why the design covers both — see
-:ref:`Delta Exchange and Data Deletion <modex-delta>` in
+**This is now largely closed.**  ``PMIx_Put`` gained delete scopes, a
+deregistration takes the key back from the namespaces that already hold it,
+and the server tells its local clients so their cached copies go too — so
+for a namespace using ``gds/hash``, which is the default and the only
+module on macOS, the information really is retracted.
+
+Two pieces remain.  A *qualified* deregistration that prunes elements out
+of an entry rather than removing it is deliberately not propagated: the
+host asked for part of a value to go, so the right answer is the pruned
+value rather than a deletion, and that needs an update push which does not
+exist.  And a namespace using ``gds/shmem3`` keeps its copy in a shared
+segment: retracting from one means writing a new generation carrying a
+``PMIX_UNDEF`` tombstone, and while the newest-to-oldest walk that would
+find it now exists, there is no way to advertise a new generation outside
+a fence reply.
+
+See :ref:`Delta Exchange and Data Deletion <modex-delta>` in
 :doc:`how-things-work/modex`, tracked as `openpmix#4087
-<https://github.com/openpmix/openpmix/issues/4087>`_.  This entry is retired
-when that work lands.
+<https://github.com/openpmix/openpmix/issues/4087>`_.
 
 Deferred work
 -------------

@@ -202,6 +202,13 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                  * datastore, which no longer has the key. */
                 pmix_server_modex_resync(&proc);
             }
+            if (PMIX_DEL_LOCAL == scope || PMIX_DEL_REMOTE == scope
+                || PMIX_DEL_GLOBAL == scope) {
+                /* our store is corrected; the local clients that cached
+                 * this key still have it. The requester applied it to
+                 * its own store before sending, so skip it. */
+                pmix_server_notify_deleted(&proc, scope, kp->key, peer);
+            }
             if (pmix_server_globals.fence_delta_modex
                 && (PMIX_REMOTE == scope || PMIX_GLOBAL == scope)) {
                 /* Keep this for the next collecting fence, which may be
@@ -862,6 +869,75 @@ pmix_status_t PMIx_server_collect_job_info(pmix_proc_t *procs, size_t nprocs,
     rc = cb.status;
     PMIX_DESTRUCT(&cb);
     return rc;
+}
+
+/* Tell our local clients that a key has been deleted, so their own
+ * copies of it go too.
+ *
+ * A client caches what it reads about other processes, and holds the
+ * job-level data it was given at init, so removing a key from this
+ * server's store is only half of it - every local client that ever
+ * looked the key up still has it. This is the other half.
+ *
+ * Sent to every local client except the one that asked for the deletion,
+ * which has already applied it to its own store. It is deliberately not
+ * restricted to clients of the affected namespace: a process may have
+ * cached data belonging to any namespace it has asked about, and a
+ * client that never held the key simply removes nothing.
+ *
+ * One message per key. Deletions are rare - this is not a path that
+ * needs batching, and one message per key keeps the wire format a
+ * single-key statement rather than a list whose length has to be
+ * screened on receipt.
+ *
+ * A peer too old to know the tag never posted a receive for it, so it
+ * cannot be reached this way; PMIx_Put refuses a delete against such a
+ * server up front, which is where the caller learns about it. */
+void pmix_server_notify_deleted(const pmix_proc_t *proc,
+                                pmix_scope_t scope,
+                                const char *key,
+                                pmix_peer_t *skip)
+{
+    pmix_peer_t *peer;
+    pmix_buffer_t *msg;
+    pmix_status_t rc;
+    int n;
+
+    if (NULL == proc || NULL == key) {
+        return;
+    }
+    for (n = 0; n < pmix_server_globals.clients.size; n++) {
+        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
+        if (NULL == peer || peer == skip || peer->finalized) {
+            continue;
+        }
+        /* a peer that predates this cannot act on it - and has no
+         * receive posted for the tag either */
+        if (PMIX_PEER_IS_EARLIER(peer, 7, 0, 0)) {
+            continue;
+        }
+        msg = PMIX_NEW(pmix_buffer_t);
+        if (PMIX_UNLIKELY(NULL == msg)) {
+            return;
+        }
+        PMIX_BFROPS_PACK(rc, peer, msg, proc, 1, PMIX_PROC);
+        if (PMIX_SUCCESS == rc) {
+            PMIX_BFROPS_PACK(rc, peer, msg, &scope, 1, PMIX_SCOPE);
+        }
+        if (PMIX_SUCCESS == rc) {
+            PMIX_BFROPS_PACK(rc, peer, msg, &key, 1, PMIX_STRING);
+        }
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            continue;
+        }
+        PMIX_PTL_SEND_ONEWAY(rc, peer, msg, PMIX_PTL_TAG_DATA_DELETE);
+        if (PMIX_SUCCESS != rc) {
+            /* the peer is finalized - it has no copy left to correct */
+            PMIX_RELEASE(msg);
+        }
+    }
 }
 
 /* Digest a fence's participant set.

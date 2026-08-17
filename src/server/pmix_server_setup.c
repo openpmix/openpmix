@@ -598,8 +598,57 @@ static bool entry_names_node(pmix_kval_t *kv, uint32_t nodeid,
     return false;
 }
 
+/* Take a key back from every namespace that already holds it.
+ *
+ * The global cache is copied into a namespace's datastore once, when
+ * that namespace is first registered - hash_cache_job_info(), guarded by
+ * the per-namespace gdata_added flag - and nothing re-reads it. So
+ * removing an entry from the cache governs the namespaces registered
+ * after it and leaves every running job with its copy. That is what
+ * docs/todo.rst recorded as an open decision; this is the half of the
+ * answer that reaches the data already handed out.
+ *
+ * Job-level values live under PMIX_RANK_WILDCARD, and mypeer's module is
+ * "hash" on a server, whose tracker is found from the namespace in the
+ * proc - so one store per namespace reaches each one's tables. The local
+ * clients were given their own copy at init and are told separately.
+ *
+ * A namespace assigned gds/shmem3 keeps the copy in its shared segment:
+ * a published segment is never written again, so retracting from one
+ * means a new generation carrying a tombstone. See openpmix#4087. */
+static void retract_from_namespaces(const char *key)
+{
+    pmix_namespace_t *nptr;
+    pmix_proc_t proc;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+
+    if (NULL == key) {
+        return;
+    }
+    PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
+        PMIX_LOAD_PROCID(&proc, nptr->nspace, PMIX_RANK_WILDCARD);
+        kv = PMIX_NEW(pmix_kval_t);
+        if (PMIX_UNLIKELY(NULL == kv)) {
+            return;
+        }
+        kv->key = strdup(key);
+        if (PMIX_UNLIKELY(NULL == kv->key)) {
+            PMIX_RELEASE(kv);
+            return;
+        }
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_DEL_INTERNAL, kv);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+        PMIX_RELEASE(kv);
+        pmix_server_notify_deleted(&proc, PMIX_DEL_INTERNAL, key, NULL);
+    }
+}
+
 static void _deregister_resources(int sd, short args, void *cbdata)
 {
+    bool retracted = false;
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_kval_t *kv, *knext;
     pmix_info_t *qual;
@@ -677,15 +726,31 @@ static void _deregister_resources(int sd, short args, void *cbdata)
                 }
                 pmix_list_remove_item(&pmix_server_globals.gdata, &kv->super);
                 PMIX_RELEASE(kv);
+                retracted = true;
             }
+            /* Note what is deliberately not retracted: the arm above
+             * that *pruned* an entry rather than removing it. There the
+             * host asked for elements to be taken out of a value, so the
+             * correct propagation is the pruned value, not a deletion -
+             * pushing a removal would take from a namespace more than
+             * the host asked to remove. That needs an update push, which
+             * does not exist yet. */
 
         } else {
             PMIX_LIST_FOREACH_SAFE (kv, knext, &pmix_server_globals.gdata, pmix_kval_t) {
                 if (PMIX_CHECK_KEY(kv, cd->info[n].key)) {
                     pmix_list_remove_item(&pmix_server_globals.gdata, &kv->super);
                     PMIX_RELEASE(kv);
+                    retracted = true;
                 }
             }
+        }
+        if (retracted) {
+            /* the cache no longer has it; take it back from the
+             * namespaces that were seeded from the cache, and from the
+             * local clients that were given their own copy */
+            retract_from_namespaces(cd->info[n].key);
+            retracted = false;
         }
     }
 

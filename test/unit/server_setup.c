@@ -205,6 +205,80 @@ static void test_cache(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* retraction: a deregistration reaching data already handed out        */
+/* ------------------------------------------------------------------ */
+
+/* The global cache is copied into a namespace's datastore once, when
+ * that namespace is first registered, and nothing re-reads it. So
+ * removing an entry from the cache used to govern only the namespaces
+ * registered afterwards, while a running job kept its copy - the open
+ * decision docs/todo.rst recorded. Deregistration now takes the key back
+ * from the namespaces that already have it.
+ *
+ * Job-level values live under PMIX_RANK_WILDCARD, which is what the get
+ * below asks for. */
+static void test_retraction(void)
+{
+    pmix_info_t info;
+    pmix_status_t rc;
+    pmix_proc_t wildcard;
+    pmix_value_t *val;
+    pmix_nspace_t ns;
+
+    fprintf(stdout, "\n-- deregistration retracts from a registered namespace --\n");
+
+    PMIX_LOAD_NSPACE(ns, "sut-retract");
+
+    /* register the key BEFORE the namespace, so the namespace is seeded
+     * from the cache - that is the only time the copy is made */
+    PMIX_INFO_LOAD(&info, SUT_KEY, "handed-out", PMIX_STRING);
+    rc = PMIx_server_register_resources(&info, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&info);
+    if (!ok(rc)) {
+        report("retraction precondition: the key registers", false);
+        return;
+    }
+
+    {
+        pmix_info_t jinfo[2];
+        uint32_t nprocs = 1;
+
+        PMIX_INFO_LOAD(&jinfo[0], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+        PMIX_INFO_LOAD(&jinfo[1], PMIX_UNIV_SIZE, &nprocs, PMIX_UINT32);
+        rc = PMIx_server_register_nspace(ns, 1, jinfo, 2, NULL, NULL);
+        PMIX_INFO_DESTRUCT(&jinfo[0]);
+        PMIX_INFO_DESTRUCT(&jinfo[1]);
+    }
+    if (!ok(rc)) {
+        report("retraction precondition: the namespace registers", false);
+        return;
+    }
+
+    PMIX_LOAD_PROCID(&wildcard, ns, PMIX_RANK_WILDCARD);
+    val = NULL;
+    rc = PMIx_Get(&wildcard, SUT_KEY, NULL, 0, &val);
+    report("the namespace was seeded with the key",
+           PMIX_SUCCESS == rc && NULL != val);
+    if (NULL != val) {
+        PMIX_VALUE_RELEASE(val);
+    }
+
+    /* now take it back */
+    PMIX_INFO_LOAD(&info, SUT_KEY, NULL, PMIX_UNDEF);
+    rc = PMIx_server_deregister_resources(&info, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&info);
+    report("deregister_resources accepts the retraction", ok(rc));
+
+    val = NULL;
+    rc = PMIx_Get(&wildcard, SUT_KEY, NULL, 0, &val);
+    report("the namespace no longer has the key",
+           PMIX_SUCCESS != rc || NULL == val);
+    if (NULL != val) {
+        PMIX_VALUE_RELEASE(val);
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* qualified deregistration                                            */
 /* ------------------------------------------------------------------ */
 
@@ -574,6 +648,7 @@ int main(int argc, char **argv)
     test_arg_screens();
     test_cache();
     test_qualified_dereg();
+    test_retraction();
     test_job_info();
     test_group_arrays();
 

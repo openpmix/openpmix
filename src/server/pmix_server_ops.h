@@ -576,6 +576,14 @@ PMIX_EXPORT void pmix_server_modex_contributed(pmix_server_trkr_t *trk);
  * some route other than pmix_server_commit. */
 PMIX_EXPORT void pmix_server_modex_resync(const pmix_proc_t *proc);
 
+/* Tell our local clients that a key has been deleted so their cached
+ * copies go too. "skip" is the peer that asked for the deletion and has
+ * already applied it, or NULL. */
+PMIX_EXPORT void pmix_server_notify_deleted(const pmix_proc_t *proc,
+                                            pmix_scope_t scope,
+                                            const char *key,
+                                            pmix_peer_t *skip);
+
 PMIX_EXPORT pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                                                    pmix_buffer_t *buf);
 
