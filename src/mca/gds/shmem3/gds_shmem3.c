@@ -2844,6 +2844,41 @@ server_store_modex_cb(pmix_proc_t *proc,
         const pmix_rank_t rank = proc->rank;
         // If the rank is undefined, then we store it on the remote table of
         // rank=0 as we know that rank must always exist.
+        /* An entry whose value is PMIX_UNDEF is the contributing process
+         * saying the key is gone. It is stored like anything else - this
+         * component cannot take a key out of a segment its clients have
+         * mapped, so the read path steps over it instead - but our own
+         * local clients cached the key when they read it, and their
+         * copies are in their own hash tables where nothing here reaches.
+         * Tell them, exactly as gds/hash does when it applies one.
+         *
+         * Our own process holds a second copy as well, and it is not in
+         * a segment. A direct modex - a client asking for a peer this
+         * server has no fence data for - caches the answer through
+         * pmix_globals.mypeer, which is pinned to "hash", so it lands in
+         * that module's remote table (pmix_server_dmodex.c). Nothing
+         * about storing into a shmem3 segment reaches it, and it is the
+         * copy that answers the next such request: leaving it in place
+         * let the server re-serve the deleted key to the very client it
+         * had just told to drop it, which the client then cached again. */
+        if (NULL != kv.value && PMIX_UNDEF == kv.value->type
+            && PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+            pmix_proc_t dproc;
+            pmix_kval_t dkv;
+            pmix_status_t drc;
+
+            PMIX_LOAD_PROCID(&dproc, proc->nspace,
+                             (PMIX_RANK_UNDEF == rank) ? 0 : rank);
+            /* a view of the key, so it must not be destructed */
+            dkv.key = kv.key;
+            dkv.value = NULL;
+            PMIX_GDS_STORE_KV(drc, pmix_globals.mypeer, &dproc,
+                              PMIX_DEL_REMOTE, &dkv);
+            if (PMIX_SUCCESS != drc) {
+                PMIX_ERROR_LOG(drc);
+            }
+            pmix_server_notify_deleted(&dproc, PMIX_DEL_REMOTE, kv.key, NULL);
+        }
         if (PMIX_CHECK_KEY(&kv, PMIX_QUALIFIED_VALUE)) {
             rc = pmix_gds_shmem3_store_qualified(
                 ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, kv.value,
