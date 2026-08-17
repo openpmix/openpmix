@@ -66,8 +66,8 @@ Publication: ``PMIx_Put``
 
 ``PMIx_Put`` (``src/client/pmix_client.c``) validates its arguments and
 thread-shifts to ``_putfn``, which builds a ``pmix_kval_t`` holding a
-copy of the key string and the value — compressing large strings into a
-``PMIX_COMPRESSED_STRING`` — and hands it to the datastore::
+copy of the key string and the value exactly as the caller supplied it,
+and hands it to the datastore::
 
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, cb->scope, kv);
     ...
