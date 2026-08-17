@@ -1281,8 +1281,14 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
      * is what makes them agree by construction: it is also what gives this
      * function per-PCI-function dedup (a GPU exposing a card node, a render
      * node and a vendor node is one device, not three) and a deterministic
-     * order, neither of which the walk here used to have. */
-    prc = pmix_hwloc_get_devices(topo, type, (NULL == devids) ? NULL : devids[0],
+     * order, neither of which the walk here used to have.
+     *
+     * pmix_globals.hostname is the right node here, and is the only place in
+     * the tree where that is true by construction: distances are measured
+     * against a cpuset of this machine's PUs, so the topology being read can
+     * only be the local one. */
+    prc = pmix_hwloc_get_devices(topo, pmix_globals.hostname, type,
+                                 (NULL == devids) ? NULL : devids[0],
                                  &devs, &ndevs);
     if (PMIX_SUCCESS != prc) {
         rc = prc;
@@ -1450,6 +1456,73 @@ static bool osdev_is_render_node(hwloc_obj_t osdev)
     return (NULL != osdev->name && 0 == strncasecmp(osdev->name, "renderD", 7));
 }
 
+/* The info key each vendor's hwloc backend records its device identity
+ * under: NVML writes NVIDIAUUID, RSMI writes AMDUUID, Level Zero writes
+ * LevelZeroUUID.  There is no generic spelling to fall back on, which is
+ * why this is a table rather than a rule.
+ *
+ * Deliberately not BXIUUID, which hwloc also writes: that is a network
+ * interconnect, and this is about naming a device to the vendor runtime
+ * that will compute on it. */
+static const struct {
+    const char *key;
+    const char *vendor;
+} vendor_id_keys[] = {
+    {"NVIDIAUUID", "NVIDIA"},
+    {"AMDUUID", "AMD"},
+    {"LevelZeroUUID", "INTEL"},
+    {NULL, NULL}
+};
+
+/* The vendor's identifier for the device this OS device belongs to, or NULL.
+ *
+ * Scanned across the whole PCI function rather than read off the given OS
+ * device, because the two are routinely different objects: a topology with
+ * both the CUDA and NVML backends loaded exposes "cuda0" and "nvml0" on one
+ * function, get_devices() names the function by the first vendor compute
+ * node it meets - "cuda0" - and the uuid is on "nvml0".  Reading only the
+ * named device would report "no identity" on precisely the machines that
+ * have one. */
+static bool vendor_id_read(hwloc_obj_t osdev, char **id, char **vendor)
+{
+    const char *val;
+    unsigned k;
+
+    for (k = 0; NULL != vendor_id_keys[k].key; k++) {
+        val = hwloc_obj_get_info_by_name(osdev, vendor_id_keys[k].key);
+        if (NULL != val) {
+            *id = strdup(val);
+            *vendor = strdup(vendor_id_keys[k].vendor);
+            return true;
+        }
+    }
+    return false;
+}
+
+static void vendor_id_of(hwloc_obj_t osdev, hwloc_obj_t pci,
+                         char **id, char **vendor)
+{
+    hwloc_obj_t child;
+
+    *id = NULL;
+    *vendor = NULL;
+
+    if (vendor_id_read(osdev, id, vendor)) {
+        return;
+    }
+    if (NULL == pci) {
+        return;
+    }
+    for (child = pci->io_first_child; NULL != child; child = child->next_sibling) {
+        if (HWLOC_OBJ_OS_DEVICE != child->type) {
+            continue;
+        }
+        if (vendor_id_read(child, id, vendor)) {
+            return;
+        }
+    }
+}
+
 /* The PCI function an OS device hangs off, or NULL if it has none. */
 static hwloc_obj_t pci_ancestor(hwloc_obj_t osdev)
 {
@@ -1530,8 +1603,15 @@ static bool osdev_preferred(hwloc_obj_t candidate, hwloc_obj_t incumbent)
  * device it was given against the ones it can see, so this grammar must not
  * vary between the paths that produce it - hence one function.  Returns
  * PMIX_ERR_TAKE_NEXT_OPTION for a device type that has no uuid form, which
- * the caller reads as "not a device I can report". */
-static pmix_status_t build_device_uuid(hwloc_obj_t osdev, char **uuid)
+ * the caller reads as "not a device I can report".
+ *
+ * "hostname" is the node this topology describes and is supplied by the
+ * caller rather than read from pmix_globals: it names the node the device
+ * lives on, not the node this code is running on, and those are the same
+ * thing only when the topology is the local one.  See the note on
+ * pmix_hwloc_get_devices() in the header. */
+static pmix_status_t build_device_uuid(hwloc_obj_t osdev, const char *hostname,
+                                       char **uuid)
 {
     unsigned i;
     char *addr = NULL, *ngid = NULL, *sgid = NULL;
@@ -1577,11 +1657,11 @@ static pmix_status_t build_device_uuid(hwloc_obj_t osdev, char **uuid)
 
         case HWLOC_OBJ_OSDEV_GPU:
         case HWLOC_OBJ_OSDEV_COPROC:
-            pmix_asprintf(uuid, "gpu://%s::%s", pmix_globals.hostname, osdev->name);
+            pmix_asprintf(uuid, "gpu://%s::%s", hostname, osdev->name);
             break;
 
         case HWLOC_OBJ_OSDEV_BLOCK:
-            pmix_asprintf(uuid, "blk://%s::%s", pmix_globals.hostname, osdev->name);
+            pmix_asprintf(uuid, "blk://%s::%s", hostname, osdev->name);
             break;
 
         default:
@@ -1596,7 +1676,7 @@ static pmix_status_t build_device_uuid(hwloc_obj_t osdev, char **uuid)
 
 /* Does this OS device answer to the caller's name?  Either spelling counts:
  * the OS name hwloc gave it, or the uuid PMIx reports for it. */
-static bool osdev_named(hwloc_obj_t osdev, const char *devid)
+static bool osdev_named(hwloc_obj_t osdev, const char *hostname, const char *devid)
 {
     char *uuid = NULL;
     bool found;
@@ -1607,7 +1687,7 @@ static bool osdev_named(hwloc_obj_t osdev, const char *devid)
     if (0 == strcasecmp(devid, osdev->name)) {
         return true;
     }
-    if (PMIX_SUCCESS != build_device_uuid(osdev, &uuid)) {
+    if (PMIX_SUCCESS != build_device_uuid(osdev, hostname, &uuid)) {
         return false;
     }
     found = (0 == strcasecmp(devid, uuid));
@@ -1661,6 +1741,7 @@ static int devcmp(const void *a, const void *b)
 }
 
 pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
+                                     const char *hostname,
                                      pmix_device_type_t type,
                                      const char *devid,
                                      pmix_hwloc_device_t **devs,
@@ -1675,7 +1756,11 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
     size_t n, ncands, ntypes;
     char *uuid = NULL;
 
-    if (NULL == topo || NULL == topo->topology || NULL == devs || NULL == ndevs) {
+    /* the hostname is not optional: a uuid that names the wrong node is
+     * worse than no uuid, and defaulting it to the local one is exactly how
+     * that happens */
+    if (NULL == topo || NULL == topo->topology || NULL == hostname
+        || NULL == devs || NULL == ndevs) {
         return PMIX_ERR_BAD_PARAM;
     }
     *devs = NULL;
@@ -1736,7 +1821,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         if (NULL != match) {
             /* the name the caller used wins the right to name the function -
              * asking for mlx5_0 and being told about ib0 is not an answer */
-            if (osdev_named(osdev, devid)) {
+            if (osdev_named(osdev, hostname, devid)) {
                 match->osdev = osdev;
                 match->type = dtype;
                 match->named = true;
@@ -1754,7 +1839,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         c->osdev = osdev;
         c->pci = pci;
         c->type = dtype;
-        c->named = osdev_named(osdev, devid);
+        c->named = osdev_named(osdev, hostname, devid);
         pmix_list_append(&cands, &c->super);
 
     next:
@@ -1764,7 +1849,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
     /* drop the ones we cannot name, or that the caller did not ask for by
      * name, then build the result */
     PMIX_LIST_FOREACH_SAFE (c, cnext, &cands, pmix_devcand_t) {
-        rc = build_device_uuid(c->osdev, &uuid);
+        rc = build_device_uuid(c->osdev, hostname, &uuid);
         if (PMIX_SUCCESS != rc) {
             /* a device we cannot name is not one we can report */
             pmix_list_remove_item(&cands, &c->super);
@@ -1797,12 +1882,13 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
     n = 0;
     PMIX_LIST_FOREACH (c, &cands, pmix_devcand_t) {
         PMIx_Device_construct(&array[n].dev);
-        rc = build_device_uuid(c->osdev, &array[n].dev.uuid);
+        rc = build_device_uuid(c->osdev, hostname, &array[n].dev.uuid);
         if (PMIX_SUCCESS != rc) {
             goto cleanup;
         }
         array[n].dev.osname = strdup(c->osdev->name);
         array[n].dev.type = c->type;
+        vendor_id_of(c->osdev, c->pci, &array[n].vendor_id, &array[n].vendor);
         if (NULL != c->pci) {
             pmix_asprintf(&array[n].busid, "%04x:%02x:%02x.%01x",
                           c->pci->attr->pcidev.domain, c->pci->attr->pcidev.bus,
@@ -1846,6 +1932,12 @@ void pmix_hwloc_release_devices(pmix_hwloc_device_t *devs, size_t ndevs)
         PMIx_Device_destruct(&devs[n].dev);
         if (NULL != devs[n].busid) {
             free(devs[n].busid);
+        }
+        if (NULL != devs[n].vendor_id) {
+            free(devs[n].vendor_id);
+        }
+        if (NULL != devs[n].vendor) {
+            free(devs[n].vendor);
         }
         /* locality is borrowed from the topology */
     }

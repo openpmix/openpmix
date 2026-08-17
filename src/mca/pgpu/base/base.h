@@ -83,6 +83,20 @@ PMIX_EXPORT pmix_status_t pmix_pgpu_base_allocate(char *nspace,
 PMIX_EXPORT pmix_status_t pmix_pgpu_base_setup_local(char *nspace,
                                                      pmix_info_t info[], size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_pgpu_base_setup_fork(const pmix_proc_t *peer, char ***env);
+
+/* Set "vendor"'s visible-devices variable "envar" in *env from the devices
+ * this process was mapped against, naming them by the vendor's own
+ * identifier.  Shared by the components because every vendor spells this
+ * the same way at bottom; they differ only in whose devices are theirs and
+ * what the variable is called.
+ *
+ * Returns PMIX_ERR_TAKE_NEXT_OPTION when there is nothing to say - the
+ * process was not mapped against a device, or none of the devices it got
+ * belong to this vendor - which is the ordinary case and not an error. */
+PMIX_EXPORT pmix_status_t pmix_pgpu_base_set_visible_devices(const pmix_proc_t *proc,
+                                                             const char *vendor,
+                                                             const char *envar,
+                                                             char ***env);
 PMIX_EXPORT void pmix_pgpu_base_child_finalized(pmix_proc_t *peer);
 PMIX_EXPORT void pmix_pgpu_base_local_app_finalized(pmix_namespace_t *nptr);
 PMIX_EXPORT void pmix_pgpu_base_deregister_nspace(char *nspace);

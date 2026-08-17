@@ -67,6 +67,27 @@ typedef pmix_status_t (*pmix_pgpu_base_module_setup_local_fn_t)(pmix_nspace_env_
                                                                 size_t ninfo);
 
 /**
+ * Contribute environment variables to one process about to be forked.
+ *
+ * Called once per local child, from PMIx_server_setup_fork, after the
+ * namespace-wide envars cached by setup_local have been replayed. This is
+ * the only pgpu hook that sees an individual process, and therefore the
+ * only place a per-rank value can be set - a GPU assignment is per rank,
+ * while everything setup_local caches is per namespace.
+ *
+ * The module runs on the daemon that will fork the child, so the topology
+ * it reads (pmix_globals.topology) is that node's own. That matters: a
+ * device's vendor identity varies from node to node, and the copy the
+ * head node holds may belong to whichever node reported first.
+ *
+ * Return PMIX_SUCCESS having done nothing if this process is none of the
+ * module's business; only a real failure should return an error, which
+ * aborts the fork.
+ */
+typedef pmix_status_t (*pmix_pgpu_base_module_setup_fork_fn_t)(const pmix_proc_t *proc,
+                                                               char ***env);
+
+/**
  * Provide an opportunity to cleanup when a
  * local application process terminates
  */
@@ -141,6 +162,7 @@ typedef struct {
     pmix_pgpu_base_module_fini_fn_t finalize;
     pmix_pgpu_base_module_allocate_fn_t allocate;
     pmix_pgpu_base_module_setup_local_fn_t setup_local;
+    pmix_pgpu_base_module_setup_fork_fn_t setup_fork;
     pmix_pgpu_base_module_child_finalized_fn_t child_finalized;
     pmix_pgpu_base_module_local_app_finalized_fn_t local_app_finalized;
     pmix_pgpu_base_module_dregister_nspace_fn_t deregister_nspace;
@@ -192,7 +214,7 @@ typedef pmix_mca_base_component_t pmix_pgpu_base_component_t;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_pgpu_MAJOR_VERSION   1
+#define PMIX_MCA_pgpu_MAJOR_VERSION   2
 #define PMIX_MCA_pgpu_MINOR_VERSION   0
 #define PMIX_MCA_pgpu_RELEASE_VERSION 0
 

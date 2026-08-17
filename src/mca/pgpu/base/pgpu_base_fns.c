@@ -20,6 +20,8 @@
 #include "src/include/pmix_globals.h"
 
 #include "src/class/pmix_list.h"
+#include "src/hwloc/pmix_hwloc.h"
+#include "src/mca/gds/gds.h"
 #include "src/mca/preg/preg.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
@@ -155,6 +157,8 @@ pmix_status_t pmix_pgpu_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     pmix_nspace_env_cache_t *ns, *ns2;
     pmix_envar_list_item_t *ev;
+    pmix_pgpu_base_active_module_t *active;
+    pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output, "pgpu: setup_fork called");
 
@@ -177,6 +181,130 @@ pmix_status_t pmix_pgpu_base_setup_fork(const pmix_proc_t *proc, char ***env)
         }
     }
 
+    /* Then let each module contribute anything that is specific to THIS
+     * process.  The cache above is per namespace, so it can carry only
+     * what every rank of the job shares; a device assignment is per rank
+     * and has nowhere else to be set.
+     *
+     * A module declining is the normal case - most processes are not
+     * mapped against a device at all - so only a genuine failure is
+     * propagated, and it aborts the fork rather than launching a process
+     * that would silently use the wrong hardware. */
+    PMIX_LIST_FOREACH (active, &pmix_pgpu_globals.actives, pmix_pgpu_base_active_module_t) {
+        if (NULL == active->module->setup_fork) {
+            continue;
+        }
+        rc = active->module->setup_fork(proc, env);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc
+            && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            return rc;
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+/* Set a vendor's "visible devices" variable for one process from the
+ * devices it was mapped against.
+ *
+ * Every GPU vendor spells this the same way at bottom - a variable naming
+ * the subset of devices the process may use - so the loop belongs here and
+ * the components differ only in which vendor's devices are theirs and what
+ * the variable is called.
+ *
+ * Two things it deliberately does not do. It does not fall back to an
+ * index when the vendor identity is missing: the runtimes number devices
+ * in an order PMIx does not know (CUDA's default is fastest-first, not bus
+ * order), so an index would name a device other than the one that was
+ * assigned, and a wrong value in these variables truncates the visible set
+ * silently rather than failing. And it does not consult the mapper's
+ * decision - it reads what the process was told, so a process that was not
+ * mapped against a device is simply left alone.
+ *
+ * The identity is read from THIS node's topology, which is the reason this
+ * runs at fork time on the daemon rather than anywhere on the head node: a
+ * device's vendor identity differs between nodes, and the head node's copy
+ * of a topology may belong to whichever node reported it first.
+ */
+pmix_status_t pmix_pgpu_base_set_visible_devices(const pmix_proc_t *proc,
+                                                 const char *vendor,
+                                                 const char *envar,
+                                                 char ***env)
+{
+    pmix_cb_t cb;
+    pmix_kval_t *kv;
+    pmix_data_array_t *darray;
+    pmix_device_t *dev;
+    pmix_hwloc_device_t *devs;
+    size_t ndevs, n, d;
+    char **ids = NULL, *val;
+    pmix_status_t rc;
+
+    if (NULL == proc || NULL == vendor || NULL == envar || NULL == env) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* what device(s) was this process given?  Absent is the common case -
+     * the job was not mapped by device - and is not an error */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = (pmix_proc_t *) proc;
+    cb.copy = true;
+    cb.key = PMIX_DEVICE_ID;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    cb.key = NULL;
+    if (PMIX_SUCCESS != rc || 1 != pmix_list_get_size(&cb.kvs)) {
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+    if (NULL == kv->value || PMIX_DATA_ARRAY != kv->value->type
+        || NULL == kv->value->data.darray) {
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    darray = kv->value->data.darray;
+    dev = (pmix_device_t *) darray->array;
+
+    for (n = 0; n < darray->size; n++) {
+        if (NULL == dev[n].osname) {
+            continue;
+        }
+        /* resolve the assignment against the local topology.  The name is
+         * the handle: it is what the enumerator called this device on this
+         * node, and it is what the mapper recorded */
+        devs = NULL;
+        ndevs = 0;
+        rc = pmix_hwloc_get_devices(&pmix_globals.topology, pmix_globals.hostname,
+                                    PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_COPROC,
+                                    dev[n].osname, &devs, &ndevs);
+        if (PMIX_SUCCESS != rc) {
+            continue;
+        }
+        for (d = 0; d < ndevs; d++) {
+            /* a node may carry cards from more than one vendor, and each
+             * wants its own variable, so take only our own */
+            if (NULL == devs[d].vendor_id || NULL == devs[d].vendor
+                || 0 != strcasecmp(devs[d].vendor, vendor)) {
+                continue;
+            }
+            PMIx_Argv_append_nosize(&ids, devs[d].vendor_id);
+        }
+        pmix_hwloc_release_devices(devs, ndevs);
+    }
+    PMIX_DESTRUCT(&cb);
+
+    if (NULL == ids) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    val = PMIx_Argv_join(ids, ',');
+    PMIx_Argv_free(ids);
+    if (NULL == val) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
+                        "pgpu: %s=%s for %s", envar, val, PMIX_NAME_PRINT(proc));
+    PMIx_Setenv(envar, val, true, env);
+    free(val);
     return PMIX_SUCCESS;
 }
 

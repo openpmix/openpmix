@@ -1286,6 +1286,18 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
         return rc;
     }
 
+    /* get any GPU contribution.
+     *
+     * This call was missing, which made the whole pgpu envar path dead
+     * code: allocate() harvested the vendor's environment variables,
+     * setup_local() unpacked them into the namespace cache, and nothing
+     * ever replayed the cache into a child.  So a component could be
+     * selected, do its work, and have no effect anybody could observe. */
+    if (PMIX_SUCCESS != (rc = pmix_pgpu.setup_fork(proc, env))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
     /* get any GDS contributions */
     if (PMIX_SUCCESS != (rc = pmix_gds_base_setup_fork(proc, env))) {
         PMIX_ERROR_LOG(rc);

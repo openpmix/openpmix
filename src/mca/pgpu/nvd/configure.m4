@@ -22,14 +22,19 @@
 AC_DEFUN([MCA_pmix_pgpu_nvd_CONFIG],[
     AC_CONFIG_FILES([src/mca/pgpu/nvd/Makefile])
 
-    # No real NVIDIA-runtime detection exists yet, so this component
-    # only builds under --enable-test-build for compile coverage.
-    AS_IF([test "$pmix_testbuild" = "1"],
-          [$1
-           pmix_pgpu_nvd_happy=yes],
-          [$2
-           pmix_pgpu_nvd_happy=no])
+    # This component builds everywhere. It links nothing and needs no
+    # vendor SDK: all it does is read info attributes hwloc already
+    # recorded and set environment variables, so there is nothing here
+    # for configure to look for. Whether it does any work is settled at
+    # RUN time by its own component_open, which asks the local topology
+    # whether this vendor's hardware is present and declines if it is
+    # not - and that is the only place the question can be answered,
+    # since the machine that builds PMIx is routinely not the machine
+    # that runs it. Gating it at build time instead meant a cluster with
+    # NVIDIA GPUs got no support unless somebody had thought to
+    # configure --enable-test-build.
+    $1
+    pmix_pgpu_nvd_happy=yes
 
     PMIX_SUMMARY_ADD([GPUs], [NVIDIA], [], [$pmix_pgpu_nvd_happy])
 ])
-
