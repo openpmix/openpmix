@@ -225,6 +225,80 @@ int main(int argc, char **argv)
         zip = NULL;
     }
     free(str);
+    str = NULL;
+
+    /* --- a compressed string must not survive deserialization ----------
+     *
+     * PMIx offers no way for an application to expand a
+     * PMIX_COMPRESSED_STRING, so one that reaches a caller through
+     * PMIx_Get is bytes they cannot read, and one that reaches the
+     * datastore is stored in a form nothing can match against. Peers
+     * still send them - every released PMIx compressed large string
+     * values on the way out - so unpack has to expand what it is given
+     * and hand back a plain PMIX_STRING. Regression for the leak that
+     * opened when the two PMIX_VALUE_COMPRESSED_STRING_UNPACK call sites
+     * were dropped from the client get path. */
+    if (NULL != pmix_compress.compress_string &&
+        NULL != pmix_compress.decompress_string) {
+        pmix_data_buffer_t dbuf;
+        pmix_value_t vsrc, vdst;
+        int32_t cnt = 1;
+
+        str = (char *) malloc(8192 + 1);
+        if (NULL == str) {
+            fprintf(stderr, "out of memory\n");
+            return 1;
+        }
+        fill_modexish((uint8_t *) str, 8192);
+        for (n = 0; n < 8192; n++) {
+            if (0 == str[n]) {
+                str[n] = 'x';
+            }
+        }
+        str[8192] = '\0';
+
+        if (!pmix_compress.compress_string(str, &zip, &ziplen)) {
+            fprintf(stdout, "NOTE: component declined an 8k string; "
+                            "skipping the compressed-value unpack check\n");
+        } else {
+            /* hand-build exactly what an older peer puts on the wire */
+            memset(&vsrc, 0, sizeof(vsrc));
+            vsrc.type = PMIX_COMPRESSED_STRING;
+            vsrc.data.bo.bytes = (char *) zip;
+            vsrc.data.bo.size = ziplen;
+
+            PMIX_DATA_BUFFER_CONSTRUCT(&dbuf);
+            rc = PMIx_Data_pack(NULL, &dbuf, &vsrc, 1, PMIX_VALUE);
+            CHECK(PMIX_SUCCESS == rc, "packing a compressed-string value failed: %s",
+                  PMIx_Error_string(rc));
+            if (PMIX_SUCCESS == rc) {
+                memset(&vdst, 0, sizeof(vdst));
+                rc = PMIx_Data_unpack(NULL, &dbuf, &vdst, &cnt, PMIX_VALUE);
+                CHECK(PMIX_SUCCESS == rc, "unpacking a compressed-string value failed: %s",
+                      PMIx_Error_string(rc));
+                if (PMIX_SUCCESS == rc) {
+                    CHECK(PMIX_STRING == vdst.type,
+                          "unpack returned type %s, expected PMIX_STRING - a compressed "
+                          "string reached the caller unexpanded",
+                          PMIx_Data_type_string(vdst.type));
+                    if (PMIX_STRING == vdst.type) {
+                        CHECK(NULL != vdst.data.string && 0 == strcmp(vdst.data.string, str),
+                              "the expanded string does not match what was compressed");
+                    }
+                    PMIX_VALUE_DESTRUCT(&vdst);
+                }
+            }
+            PMIX_DATA_BUFFER_DESTRUCT(&dbuf);
+            free(zip);
+            zip = NULL;
+        }
+        free(str);
+        str = NULL;
+    }
+
+    if (NULL != str) {
+        free(str);
+    }
     free(raw);
 
     PMIx_server_finalize();

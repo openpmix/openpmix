@@ -1542,8 +1542,6 @@ static void _putfn(int sd, short args, void *cbdata)
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
     pmix_kval_t *kv = NULL;
-    uint8_t *tmp;
-    size_t len;
 
     /* need to acquire the cb object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cb);
@@ -1572,25 +1570,16 @@ static void _putfn(int sd, short args, void *cbdata)
         rc = PMIX_ERR_NOMEM;
         goto done;
     }
-    if (PMIX_STRING_SIZE_CHECK(cb->value)) {
-        /* compress large strings */
-        if (pmix_compress.compress_string(cb->value->data.string, &tmp, &len)) {
-            if (PMIX_UNLIKELY(NULL == tmp)) {
-                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                rc = PMIX_ERR_NOMEM;
-                PMIX_ERROR_LOG(rc);
-                goto done;
-            }
-            kv->value->type = PMIX_COMPRESSED_STRING;
-            kv->value->data.bo.bytes = (char *) tmp;
-            kv->value->data.bo.size = len;
-            rc = PMIX_SUCCESS;
-        } else {
-            PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, kv->value, cb->value);
-        }
-    } else {
-        PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, kv->value, cb->value);
-    }
+    /* Store the value as the caller gave it to us. A large string used to
+     * be converted to a PMIX_COMPRESSED_STRING here, which compressed the
+     * copy we hand the datastore as well as the one we later put on the
+     * wire - so a PMIx_Get of our own put came back as bytes the caller
+     * has no way to expand, and the modex carried a pre-compressed blob
+     * that the bucket-level compression could no longer find any
+     * redundancy in. Compression of the fence payload belongs to the
+     * fence, which compresses the whole bucket; see
+     * src/mca/pcompress/AGENTS.md for the measurements. */
+    PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, kv->value, cb->value);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto done;

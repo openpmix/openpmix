@@ -28,31 +28,14 @@
 extern "C" {
 #endif
 
-/* define a macro for quickly checking if a string exceeds the
- * compression limit */
-#define PMIX_STRING_SIZE_CHECK(s)                         \
-    (PMIX_STRING == (s)->type && NULL != (s)->data.string \
-     && pmix_compress_base.compress_limit < strlen((s)->data.string))
-
-#define PMIX_VALUE_COMPRESSED_STRING_UNPACK(s)                                    \
-    do {                                                                          \
-        char *tmp;                                                                \
-        /* if this is a compressed string, then uncompress it */                  \
-        if (PMIX_COMPRESSED_STRING == (s)->type) {                                \
-            pmix_compress.decompress_string(&tmp, (uint8_t *) (s)->data.bo.bytes, \
-                                            (s)->data.bo.size);                   \
-            if (NULL == tmp) {                                                    \
-                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);                                   \
-                rc = PMIX_ERR_NOMEM;                                              \
-                PMIX_VALUE_RELEASE(s);                                            \
-                val = NULL;                                                       \
-            } else {                                                              \
-                PMIX_VALUE_DESTRUCT(s);                                           \
-                (s)->data.string = tmp;                                           \
-                (s)->type = PMIX_STRING;                                          \
-            }                                                                     \
-        }                                                                         \
-    } while (0)
+/* A value is never left holding a PMIX_COMPRESSED_STRING: there is no
+ * public way for an application to expand one, so pmix_bfrops_base_unpack_val()
+ * expands every one it receives and hands back a PMIX_STRING. The two
+ * macros that used to live here - PMIX_STRING_SIZE_CHECK, which decided
+ * whether PMIx_Put should compress a string before storing it, and
+ * PMIX_VALUE_COMPRESSED_STRING_UNPACK, which was meant to undo that at
+ * the far end and had lost its last call site - are gone with that
+ * decision. */
 
 typedef struct {
     size_t compress_limit;

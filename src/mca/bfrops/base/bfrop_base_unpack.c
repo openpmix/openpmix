@@ -27,6 +27,7 @@
 
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/pcompress/base/base.h"
 #include "src/mca/preg/preg.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
@@ -694,6 +695,45 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_b
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.regex2, &m, PMIX_REGEX2, regtypes);
             return ret;
+
+        case PMIX_COMPRESSED_STRING: {
+            /* A compressed string is a transport encoding, not a thing a
+             * value is allowed to still be once it has been received. We
+             * publish no way for an application to expand one - there is
+             * no PMIx_Value_decompress - so a PMIX_COMPRESSED_STRING that
+             * survives deserialization is handed to whoever called
+             * PMIx_Get as an opaque byte object they cannot read, and is
+             * stored by the datastore in a form nothing can match. Expand
+             * it here, where every value that arrives from anywhere passes
+             * exactly once, and let it be a string from that point on.
+             *
+             * Peers still send these - every released PMIx compressed
+             * large string values on the way out - so this is not dead
+             * compatibility code, and it must stay whatever this release
+             * chooses to send. */
+            pmix_byte_object_t bo;
+            char *str = NULL;
+
+            PMIX_BYTE_OBJECT_CONSTRUCT(&bo);
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &bo, &m, PMIX_BYTE_OBJECT, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+                return ret;
+            }
+            if (!pmix_compress.decompress_string(&str, (uint8_t *) bo.bytes, bo.size)) {
+                /* the peer said these bytes are a compressed string. If we
+                 * cannot expand them - no compression library on this side,
+                 * or a component that does not read the sender's format -
+                 * we have no string, and handing back the compressed bytes
+                 * under a PMIX_STRING tag would be worse than an error. */
+                PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+                return PMIX_ERR_UNPACK_FAILURE;
+            }
+            PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+            val->type = PMIX_STRING;
+            val->data.string = str;
+            return PMIX_SUCCESS;
+        }
 
         default:
             if (value_type_overflows_union(val->type)) {
