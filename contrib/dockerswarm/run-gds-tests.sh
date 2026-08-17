@@ -175,6 +175,20 @@ run_across_nodes() {
             bad "$prog $label, $np servers: every rank passed but exit was $rc"
             return 1
         fi
+    elif [ "$prog" = delete_key ]; then
+        # every rank exits non-zero if the deleted key was still readable
+        # after the notification's grace period, or if any other rank's
+        # keys went with it
+        if [ "$rc" != 0 ]; then
+            bad "$prog $label, $np servers: a rank still saw the deleted key, or lost one it should have kept"
+            echo "$out" | grep -iE 'STILL readable|cannot read|failed' | head -3 | sed 's/^/       /'
+            return 1
+        fi
+        nok=$(echo "$out" | grep -c 'deleted key gone, others kept' || true)
+        if [ "$nok" -lt "$np" ]; then
+            bad "$prog $label, $np servers: only $nok/$np ranks confirmed the deletion"
+            return 1
+        fi
     elif [ "$prog" = modex_twice ]; then
         # rank 0 prints one line per fence, and every rank exits non-zero
         # if any peer's value was missing or wrong. Both lines are needed:
@@ -356,7 +370,7 @@ test_linux() {
         -e PFX="$PMIX_PREFIX" \
         "$IMAGE" bash -euo pipefail -c '
             mkdir -p /opt/prte/tests-gds
-            for p in datatypes dmodex client modex_twice get_timing fence_timing; do
+            for p in datatypes dmodex client modex_twice delete_key get_timing fence_timing; do
                 gcc -O0 -g -o /opt/prte/tests-gds/$p /pmix-src/examples/$p.c \
                     -I"$PFX/include" -I/pmix-src/examples \
                     -L"$PFX/lib" -lpmix -Wl,-rpath,"$PFX/lib"
@@ -367,7 +381,7 @@ test_linux() {
         bad "could not build the cross-node clients (rc=$rc)"
         return
     fi
-    ok "built examples/datatypes, examples/dmodex, examples/client and examples/modex_twice"
+    ok "built examples/datatypes, examples/dmodex, examples/client, examples/modex_twice and examples/delete_key"
     # get_timing and fence_timing are measurement tools, not tests - they
     # are built here so they are to hand, but nothing below runs them.
     # Timings do not belong in a pass/fail suite. Run get_timing directly,
@@ -420,6 +434,22 @@ test_linux() {
         run_across_nodes client "$hosts" "$np" \
             "PMIX_MCA_pmix_server_fence_delta_modex=1" "(delta modex)" \
             && ok "$np servers with delta modex: put/commit/fence/get across servers"
+    done
+
+    banner "deleting a published key"
+    # The key is published, circulated by a fence and read by every rank -
+    # so by the time rank 0 deletes it, it is in every peer's cache and,
+    # under shmem3, in a shared segment that is never rewritten. Every
+    # rank must stop being able to read it while keeping the others.
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes delete_key "$hosts" "$np" "" "(default)" \
+            && ok "$np servers: deleted key gone everywhere, others kept"
+    done
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes delete_key "$hosts" "$np" "PMIX_MCA_gds=hash" "(hash)" \
+            && ok "$np servers on hash: deleted key gone everywhere, others kept"
     done
 
     banner "every get through the progress thread (fast path disabled)"
