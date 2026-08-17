@@ -116,6 +116,28 @@ PMIX_EXPORT extern double pmix_gds_shmem3_segment_size_multiplier;
 PMIX_EXPORT extern bool pmix_gds_shmem3_force_client_attach_failure;
 
 /**
+ * Address space reserved for each modex slot in a job's arena, in bytes.
+ * Setting it to zero disables the arena entirely, which restores the
+ * pre-arena behavior of placing every segment independently.
+ */
+PMIX_EXPORT extern size_t pmix_gds_shmem3_arena_slot_size;
+
+/**
+ * How many modex slots a job's arena holds - that is, how many modex
+ * generations can be live at once and still be placed in it. More than
+ * one is live whenever a fence contributed only what changed, since the
+ * generations before such a one remain the only copy of what it did not
+ * repeat. Capped at 32 by the occupancy bitmap.
+ */
+PMIX_EXPORT extern size_t pmix_gds_shmem3_arena_modex_slots;
+
+/**
+ * Whether to keep away from the midpoint of the biggest hole when
+ * choosing an address (see VMEM_HOLE_BIGGEST_OFFSET). On by default.
+ */
+PMIX_EXPORT extern bool pmix_gds_shmem3_offset_placement;
+
+/**
  * IDs for pmix_shmem_ts in pmix_gds_shmem3_job_t.
  */
 typedef enum {
@@ -374,6 +396,38 @@ typedef struct {
      * still the only copy of everything it did not repeat. A read walks
      * this after the current generation. */
     pmix_list_t modex_prior;
+    /** Base of this job's reserved address-space arena, or 0 if it has
+     *  none. See "The address-space arena" in AGENTS.md.
+     *
+     * Every process that takes part in this job - the server and each of
+     * its local clients - holds the SAME range, in its own address space,
+     * from the moment it learns of the job. Segments are then mapped over
+     * that reservation rather than into whatever happens to be free,
+     * which is what makes a fixed-address attach reliable at a point in
+     * the run when the process is no longer empty.
+     */
+    uintptr_t arena_base;
+    /** Size of the reservation above. Zero means there is none. */
+    size_t arena_size;
+    /** Bytes of the arena handed out to segments that live for as long as
+     *  the job does (the job segment). Server-side only: a client maps
+     *  wherever the server tells it to, so it has no carving to do. */
+    size_t arena_static_used;
+    /** Size of each modex slot at the top of the arena.
+     *
+     * A modex generation gets a slot of its own and holds it for as long
+     * as it is readable, which is NOT just until the next one arrives: a
+     * delta generation carries only what changed, so the generations
+     * before it stay mapped and answerable on job->modex_prior. The
+     * slots therefore have to be allocated and freed, not alternated
+     * between - see arena_alloc_modex(), which reads the occupancy off
+     * the live segments rather than keeping a tally that could drift.
+     * Server-side only, like arena_static_used. */
+    size_t arena_slot_bytes;
+    /** How many modex slots the arena was reserved with. A generation
+     *  that arrives when they are all taken places itself outside the
+     *  arena, the way everything did before there was one. */
+    size_t arena_slots;
     /** Packed connection information to this segment. */
     pmix_buffer_t *conni;
 } pmix_gds_shmem3_job_t;

@@ -404,12 +404,91 @@ and triggers the framework's **GDS fallback** (`fallback_to_next_gds` in
 to exercise this path in tests without depending on each process's VM
 layout — never set it in production.
 
+### The address-space arena — why a fence-time attach must not need luck
+
+A client attaches the **job** segment during `PMIx_Init`, when its
+address space is nearly empty, and the **modex** segment at a *fence*,
+by which time it has loaded an MPI stack, opened components, grown
+arenas, and registered fabric memory. The server picks both addresses
+from its own `/proc/self/maps`. The first attach therefore almost always
+works and the second is a gamble — openpmix#4156 was that gamble lost,
+about 1 run in 25 on a four-node job, taking every rank on a node at once.
+
+The fix is to stop asking. At `register_job_info` time the server calls
+`arena_reserve()`, which claims **one contiguous range** big enough for
+the job segment plus a slot per modex generation that can be live at
+once, using `pmix_vmem_reserve()` — an
+inaccessible `PROT_NONE` mapping that commits no memory and costs one
+VMA. The range travels to clients on every seg blob
+(`SHMEM3_SEG_ARBS_KEY` / `SHMEM3_SEG_ARSZ_KEY`), and each client claims
+the same range in `unpack_shmem3_seg_blob_and_attach_if_necessary()` —
+inside `PMIx_Init`, the one moment it reliably can. Every later mapping,
+including each modex generation, is then `MAP_FIXED` over ground the
+process already holds (`PMIX_SHMEM_MAP_OVER_RESERVATION`), which cannot
+lose a race for the address.
+
+Four things about it are load-bearing:
+
+- **Carve by the footprint, not the requested size.** A segment maps a
+  page of header ahead of its data, so `pmix_shmem_utils_segment_footprint()`
+  is what says where it ends. Carving to the requested size instead
+  overlapped each segment with the next by one page, and the next
+  `MAP_FIXED` silently replaced it — a prompt, spectacular segfault in
+  the daemon.
+- **Detach restores the reservation.** `pmix_shmem_segment_detach()`
+  re-maps `PROT_NONE` over an in-arena range rather than unmapping it
+  (`pmix_vmem_restore()`), or the first modex generation to be released
+  would punch a hole in the arena for something else to take.
+- **A modex generation holds its slot for as long as it is readable,
+  which is not just until the next one arrives.** This started life as
+  an alternation between two slots, on the assumption that only one
+  generation was live at a time. That assumption died with openpmix#4087:
+  a *delta* contribution repeats nothing, so every generation before it
+  stays mapped and answerable on `job->modex_prior`, and reusing the
+  slot from two generations ago would erase data nothing else holds.
+  `arena_alloc_modex()` therefore reads occupancy off the live segments
+  — the current one plus each retired one — and takes the lowest free
+  slot. Deriving it rather than keeping a tally means no path that
+  releases a generation can leave the accounting stale. A generation
+  arriving when all slots are taken places itself outside the arena.
+- **The session segment is deliberately outside the arena.** A session
+  outlives the job that first described it (`component.sessions` holds a
+  reference), and `job_destruct()` releases the whole arena, so a shared
+  session's segment inside it would be unmapped under a live holder.
+
+If the arena cannot be reserved, or a modex does not fit its slot, every
+segment places itself independently exactly as before — degraded, never
+broken.
+
+### Placement: not the midpoint, and definitely not the edge
+
+`pmix_vmem_find_hole(VMEM_HOLE_BIGGEST)` puts a segment at the
+**midpoint of the biggest hole**, and hwloc and Open MPI — which share
+this routine's ancestry — aim there too. That convergence is what makes
+an address picked in one process likely to be taken in another, which is
+the whole failure mode above. `VMEM_HOLE_BIGGEST_OFFSET` is the
+alternative, selected by the `offset_placement` parameter (on by
+default), and it lands a **quarter** of the way into the hole.
+
+The quarter is not arbitrary, and the obvious alternative is worse:
+placing at the **top** of the hole was tried first and failed
+immediately in the swarm, because the top of that hole is the underside
+of the executable's load address — the region where ASLR moves processes
+around the most and where the heap grows. On aarch64, clients on a
+second node could not reserve the range their own server had chosen. A
+quarter of the way in is far from the crowded midpoint, far from the
+populated region near the binary, and still deep inside tens of
+terabytes of empty space.
+
 ## MCA parameters (registered in `gds_shmem3_component.c`)
 
 | Parameter | Type | Meaning |
 |-----------|------|---------|
 | `gds_shmem3_segment_size_multiplier` | double (default `1.0`) | scales the computed segment sizes; raise it if a job overflows a segment (which aborts). |
-| `gds_shmem3_force_client_attach_failure` | bool (default `false`) | **testing only** — force the client's fixed-address attach to fail so the GDS fallback can be exercised. |
+| `gds_shmem3_arena_slot_size` | size_t (default 1 GiB) | address space reserved per modex slot. `0` disables the arena and restores independent placement. Virtual address space only — nothing is committed. |
+| `gds_shmem3_arena_modex_slots` | size_t (default `4`, capped at 32) | how many modex generations the arena can hold at once. More than one is live only where deltas are in play; past the last slot a generation is placed outside the arena. |
+| `gds_shmem3_offset_placement` | bool (default `true`) | place segments a quarter of the way into the biggest hole instead of at its midpoint. |
+| `gds_shmem3_force_client_attach_failure` | bool (default `false`) | **testing only** — force *every* client attach to fail, so the init-time GDS fallback can be exercised. |
 
 These are the *only* `gds` MCA parameters in the tree; the framework core
 registers none.
