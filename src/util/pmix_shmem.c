@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,6 +17,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_string_copy.h"
+#include "src/util/pmix_vmem.h"
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
@@ -96,11 +97,25 @@ segment_attach(
     // address), use MAP_FIXED_NOREPLACE: the kernel either honors the address
     // exactly or fails with EEXIST. A bare address is only a hint that the
     // kernel may silently relocate even when the target range is free.
+    //
+    // Unless, that is, the caller is mapping over a range it already
+    // reserved. Then the address is not a request that might be refused -
+    // the range is held, by the caller, for exactly this - so MAP_FIXED
+    // takes it back with no chance of EEXIST. This is the one path that is
+    // immune to the address having been claimed by something else while
+    // the process was busy, which is the whole point of reserving.
     int mmap_flags = MAP_SHARED;
-    const int must_map_at_raddr =
-        (flags & PMIX_SHMEM_MUST_MAP_AT_RADDR) &&
+    const int over_reservation =
+        (flags & PMIX_SHMEM_MAP_OVER_RESERVATION) &&
         (uintptr_t) NULL != desired_base_address;
-    if (must_map_at_raddr) {
+    const int must_map_at_raddr =
+        over_reservation ||
+        ((flags & PMIX_SHMEM_MUST_MAP_AT_RADDR) &&
+         (uintptr_t) NULL != desired_base_address);
+    if (over_reservation) {
+        mmap_flags |= MAP_FIXED;
+    }
+    else if (must_map_at_raddr) {
         mmap_flags |= MAP_FIXED_NOREPLACE;
     }
     mmap_addr = mmap(
@@ -135,6 +150,9 @@ out:
     }
     else {
         shmem->attached = true;
+        /* Remember how we got here: detach has to hand this range back to
+         * the reservation it came out of, not simply drop it. */
+        shmem->in_reservation = (0 != over_reservation);
     }
     // Always set base addresses. On error it is useful for reporting.
     shmem->hdr_address = mmap_addr;
@@ -175,15 +193,13 @@ pmix_shmem_segment_create(
     uint32_t layout_id
 ) {
     int rc = PMIX_SUCCESS;
-    // Real size of the segment. The data region begins a full page in
+    // Real size of the segment: the data region begins a full page in
     // (data_addr_from_base() rounds the header up to a page boundary), so
-    // the segment must reserve that page-aligned header offset PLUS a
-    // page-rounded data region of the requested size. Rounding
-    // "size + sizeof(header)" as a single quantity would under-allocate the
-    // data region whenever size is not a page multiple, leaving the tail of
-    // the requested range past the end of the mapping.
-    const size_t real_size = pmix_shmem_utils_pad_to_page(sizeof(pmix_shmem_header_t))
-                             + pmix_shmem_utils_pad_to_page(size);
+    // this is larger than what the caller asked to store. The arithmetic
+    // is in pmix_shmem_utils_segment_footprint() because callers placing
+    // segments adjacently need the same answer, and two copies of it
+    // would drift.
+    const size_t real_size = pmix_shmem_utils_segment_footprint(size);
 
     /* O_TRUNC is what makes "a freshly created segment reads as zero" a
      * guarantee rather than an assumption. Segments are unlinked when their
@@ -263,8 +279,21 @@ pmix_shmem_segment_detach(
     int rc = 0;
 
     if (shmem && shmem->attached) {
-        rc = munmap(shmem->hdr_address, shmem->size);
+        if (shmem->in_reservation) {
+            /* This range was carved out of a reservation the caller is
+             * still holding, and it expects to be able to place something
+             * here again. Unmapping would give the address back to the
+             * system - and the next thing to ask for one could take it,
+             * which is the failure the reservation exists to prevent. Put
+             * the placeholder back in the same call that removes us. */
+            rc = (PMIX_SUCCESS == pmix_vmem_restore(
+                      (uintptr_t)shmem->hdr_address, shmem->size)) ? 0 : -1;
+        }
+        else {
+            rc = munmap(shmem->hdr_address, shmem->size);
+        }
         shmem->attached = false;
+        shmem->in_reservation = false;
         shmem->hdr_address = NULL;
         shmem->data_address = NULL;
     }
@@ -356,11 +385,24 @@ pmix_shmem_utils_pad_to_page(
     return size + pad;
 }
 
+size_t
+pmix_shmem_utils_segment_footprint(
+    size_t size
+) {
+    /* The two paddings are deliberately separate. Rounding
+     * "size + sizeof(header)" as a single quantity would under-allocate
+     * the data region whenever size is not a page multiple, leaving the
+     * tail of the requested range past the end of the mapping. */
+    return pmix_shmem_utils_pad_to_page(sizeof(pmix_shmem_header_t))
+           + pmix_shmem_utils_pad_to_page(size);
+}
+
 static void
 shmem_construct(
     pmix_shmem_t *s
 ) {
     s->attached = false;
+    s->in_reservation = false;
     s->size = 0;
     s->hdr_address = NULL;
     s->data_address = NULL;

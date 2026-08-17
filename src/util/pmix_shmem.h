@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,7 +27,25 @@ typedef enum {
      * Indicates that during attach the requested address
      * must match the address returned by memory mapping.
      */
-    PMIX_SHMEM_MUST_MAP_AT_RADDR = 0x01
+    PMIX_SHMEM_MUST_MAP_AT_RADDR = 0x01,
+    /**
+     * Indicates that the caller already owns the requested address range
+     * - it holds a reservation covering it (see pmix_vmem_reserve()) -
+     * and the mapping is to be placed over that reservation.
+     *
+     * This turns the attach from "map here if the address happens to be
+     * free" into "map here", which is the whole reason a caller goes to
+     * the trouble of reserving: the address cannot have been taken by
+     * anything else in the meantime, because the reservation is what was
+     * holding it.
+     *
+     * Only pass this for a range the caller genuinely reserved. It maps
+     * MAP_FIXED, which silently replaces whatever is at the address,
+     * so a wrong address here unmaps something that mattered.
+     *
+     * Implies PMIX_SHMEM_MUST_MAP_AT_RADDR.
+     */
+    PMIX_SHMEM_MAP_OVER_RESERVATION = 0x02
 } pmix_shmem_flag_t;
 
 typedef struct pmix_shmem_t {
@@ -35,6 +53,9 @@ typedef struct pmix_shmem_t {
     pmix_object_t super;
     /** Flag indicating if attached to segment. */
     volatile bool attached;
+    /** True if this mapping was placed over a caller-held reservation,
+     *  and so must be given back to it rather than simply unmapped. */
+    bool in_reservation;
     /** Size of shared-memory segment. */
     size_t size;
     /** Address of shared memory segment header. */
@@ -146,6 +167,26 @@ pmix_shmem_segment_protect_data(
  */
 PMIX_EXPORT size_t
 pmix_shmem_utils_pad_to_page(
+    size_t size
+);
+
+/**
+ * How much address space a segment created for "size" bytes of data
+ * actually occupies once mapped.
+ *
+ * This is NOT "size", and the difference has teeth: a segment carries an
+ * internal header ahead of the data region, and the data region begins on
+ * the page after it, so the mapping runs a page longer than the caller
+ * asked for. A caller that has to know where the segment ENDS - one
+ * placing segments next to each other in a range it is managing - must
+ * ask, or it will overlap the next one by that page and find out later,
+ * somewhere else, as corruption.
+ *
+ * Kept here, beside pmix_shmem_segment_create()'s own arithmetic, so the
+ * two cannot drift.
+ */
+PMIX_EXPORT size_t
+pmix_shmem_utils_segment_footprint(
     size_t size
 );
 
