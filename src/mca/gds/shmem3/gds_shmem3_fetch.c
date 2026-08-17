@@ -1084,9 +1084,28 @@ doover:
     }
     else {
         if (PMIX_GLOBAL == scope || PMIX_SCOPE_UNDEF == scope) {
-            if (ht == local_ht) {
+            if (!useremote) {
                 // We need to also try the remote data.
                 ht = remote_ht;
+                /* Say which store the retry is against, exactly as the
+                 * success path above does. Everything past "doover"
+                 * dispatches on this flag rather than on ht, because the
+                 * modex is a chain of generations rather than one table;
+                 * arriving there with it still false ran the JOB fetch
+                 * over the MODEX table, paired with the job segment's key
+                 * index. The indices are minted per segment, so that
+                 * pairing does not resolve the key and the lookup misses
+                 * whatever is there.
+                 *
+                 * It missed on the ordinary path, not a corner: an
+                 * unqualified PMIx_Get arrives as PMIX_SCOPE_UNDEF, finds
+                 * nothing local, and reaches the modex only through here.
+                 * Every remote key therefore went up to the server, and a
+                 * request for a rank that had already finished never came
+                 * back - a dmdx tracker is created with no timeout - so
+                 * the caller blocked forever. That is an 8-rank job over
+                 * 8 nodes hanging better than half the time. */
+                useremote = true;
                 goto doover;
             }
         }
