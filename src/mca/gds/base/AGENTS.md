@@ -121,8 +121,9 @@ buff
 The walker decompresses where flagged, checks the collect flag is the same
 across servers (otherwise the `collection-mismatch` topic in
 `help-pmix-server.txt` fires and it returns `PMIX_ERR_BAD_PARAM`), calls
-`cb_fn(&proc, &pbkt)` once per proc blob, and finally calls
-`cb_fn(&proc, NULL)` once per **nspace** that appeared, to signal "done".
+`cb_fn(&proc, &pbkt, kind)` once per proc blob, and finally calls
+`cb_fn(&proc, NULL, kind)` once per **nspace** that appeared, to signal
+"done".
 
 ### The flag byte is screened before it is compared
 
@@ -132,17 +133,20 @@ August 2026 a byte every sender agreed on and no datastore understood
 passed straight through and its blobs were stored as an ordinary full
 contribution. The walker now screens the value first:
 
-- `PMIX_MODEX_DELTA` — a contribution carrying only what its processes
-  published since they last took part in a collecting fence. Recognized
-  and **refused** (`PMIX_ERR_NOT_SUPPORTED`, `delta-modex-unsupported`)
-  until the datastores can chain modex generations, because storing a
-  delta as a full set drops every key the sender left out — and for
-  `shmem3`, which retires the previous generation on the strength of the
-  new one standing alone, drops that generation with it. Nothing emits it
-  yet; see openpmix#4087 and
-  [`docs/how-things-work/modex.rst`](../../../../docs/how-things-work/modex.rst).
-- anything other than `PMIX_COLLECT_NO`/`PMIX_COLLECT_YES` — a value no
-  release ever defined, so `PMIX_ERR_BAD_PARAM`.
+- `PMIX_COLLECT_NO`, `PMIX_COLLECT_YES`, `PMIX_MODEX_DELTA` — accepted.
+- anything else — a value no release ever defined, so `PMIX_ERR_BAD_PARAM`.
+
+**The kind is handed to `cb_fn`**, because what a delta means differs by
+component. `gds/hash` accumulates — a value replaces the one it matches
+and everything else stays — so it needs nothing. It matters to a
+datastore that retires what an earlier modex left behind: `gds/shmem3`
+drops the previous generation for a cumulative contribution and keeps it
+for a delta, because a delta is not self-contained. See openpmix#4087 and
+[`docs/how-things-work/modex.rst`](../../../../docs/how-things-work/modex.rst).
+
+The parameter is typed `uint8_t` rather than `pmix_collect_t` on purpose:
+that enum lives in `pmix_globals.h`, which includes this framework's
+header rather than the other way round.
 
 Note the cross-version property this rests on: the equality check is what
 an **older** release already performs, so a peer that starts sending a new

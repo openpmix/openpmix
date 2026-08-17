@@ -71,7 +71,7 @@ and hands it to the datastore::
 
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, cb->scope, kv);
     ...
-    pmix_globals.commits_pending = true;
+    mark_dirty(cb->scope, kv);
 
 Two things about the destination are fixed and worth knowing:
 
@@ -88,8 +88,9 @@ scope into one of three hash tables on the namespace's tracker:
 ``internal`` (for ``PMIX_INTERNAL``), ``local``, and ``remote``, with
 ``PMIX_GLOBAL`` stored into both ``local`` and ``remote``.
 
-The value is *not* sent anywhere yet. ``PMIx_Put`` is purely local; only
-the ``commits_pending`` flag records that something is outstanding.
+The value is *not* sent anywhere yet. ``PMIx_Put`` is purely local; all
+that happens beyond the store is that the key is recorded as owed to the
+server, for the commit below to pick up.
 
 Transmission: ``PMIx_Commit``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -478,15 +479,19 @@ module produced it.
 
 .. _modex-delta:
 
-Planned: Delta Exchange and Data Deletion
------------------------------------------
+Delta Exchange and Data Deletion
+--------------------------------
 
-Everything above describes the library as it is today. This section
-describes work that is designed but not yet implemented, tracked as
+This section covers work tracked as
 `openpmix#4087 <https://github.com/openpmix/openpmix/issues/4087>`_. It is
-recorded here because the two halves are one problem: **the mechanism that
+one section because the two halves are one problem: **the mechanism that
 lets a modex carry only what changed is the same mechanism that lets a key
 be deleted**, and neither can be built without the other.
+
+The exchange half is implemented — the commit delta, the server's fence
+delta behind ``pmix_server_fence_delta_modex``, and the ``shmem3``
+generation chain that makes a non-self-contained modex readable. The
+deletion half, described at the end, is not.
 
 Why deletion needs this
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -535,7 +540,11 @@ Two watermarks, at two levels:
   server. **This half is implemented**; see *Transmission* above.
 * **The server** contributes what has arrived since this process last
   contributed to a collecting fence. A barrier-only fence exchanges
-  nothing and so does not move the watermark. Not yet implemented.
+  nothing and so does not move the watermark. **Implemented**, behind the
+  ``pmix_server_fence_delta_modex`` MCA parameter — see below for why it
+  defaults off. The watermark moves only once the host has *taken* the
+  bucket: the request has three arms that discard it, and draining
+  earlier would lose those deltas for good.
 
 **The server's watermark is qualified by the participant set.** A per-process
 watermark alone is not sound: a process that contributed to a fence over one
@@ -572,6 +581,18 @@ silently storing a partial modex.
    ``PMIX_COLLECT_YES`` in several places that decide whether to collect at
    all.
 
+**Why the parameter defaults off.** A server from a release that predates
+the marker rejects the whole collective rather than storing a contribution
+it cannot interpret. That is the right failure — the alternative is
+silently losing data — but it means a job whose nodes run mixed releases
+works today and would stop working if this defaulted on. Turn it on once
+every node understands the marker.
+
+The kind is handed to the datastore, because what it means differs by
+component. ``gds/hash`` accumulates — a value replaces the one it matches
+and everything else stays — so a delta needs nothing special there. It
+matters to a datastore that retires what an earlier modex left behind.
+
 **This much is implemented.** ``PMIX_MODEX_DELTA`` is defined, and
 ``pmix_gds_base_store_modex`` now screens the flag byte before comparing
 it across servers — refusing a delta contribution with
@@ -592,17 +613,37 @@ Generations in shared memory
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``shmem3`` already gives each modex its own segment and hands the previous
-one off, which is correct only while every generation is self-contained —
-the component's own source says so. Once a contribution can be a delta,
-generation N+1 no longer stands alone, so the segments become a
-**newest-to-oldest chain** and a lookup walks it until it finds the key.
+one off, which is correct only while every generation is self-contained.
+Once a contribution can be a delta, generation N+1 no longer stands alone,
+so the segments become a **newest-to-oldest chain** and a lookup walks it
+until it finds the key. This is implemented.
+
+What the arriving contribution is decides which happens. A cumulative one
+repeats everything its processes have published, so it supersedes the
+generation before it *and every one behind that* — the chain collapses to
+a single segment, exactly as before. A delta repeats nothing, so the
+previous generation is retired rather than released and stays readable.
+The chain therefore only grows while deltas are arriving, and any
+cumulative fence collapses it again — which is also what bounds it, since
+the participant-set guard forces a cumulative contribution whenever the
+fence's membership changes.
+
+The walk has two shapes. A keyed lookup stops at the newest generation
+that has the key. A ``NULL``-key lookup — "everything this process
+published" — has to consult every generation and drop a copy of a key a
+newer one already supplied, or the caller gets that key twice with the
+stale value second.
 
 Three properties make that work without disturbing the read path:
 
 * The backing file is reference counted, so releasing the server's handle
   leaves a client that still has the segment mapped with a valid mapping.
 * Clients already tell generations apart by backing path, which the segment
-  blob carries, so **nothing on the wire changes**.
+  blob carries. The blob gained one field — whether this generation stands
+  on its own — so a client makes the same keep-or-drop decision its server
+  made. (``shmem3`` has never been in a release, so its segment format is
+  still free to change; once it ships, this is locked down like any other
+  wire format.)
 * Each segment carries its own key index, so a generation is self-describing
   and no two generations need to agree about numbering.
 
@@ -611,8 +652,8 @@ modex keeps today's behavior — drop the previous generation, one segment
 live — and only a delta grows the chain. The interim state, after the chain
 exists but before contributions are deltas, therefore costs nothing.
 
-Deleting a key
-^^^^^^^^^^^^^^
+Deleting a key (not yet implemented)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Deletion is expressed through ``PMIx_Put`` rather than a new API, using four
 additional ``pmix_scope_t`` values — ``PMIX_DEL_LOCAL``, ``PMIX_DEL_REMOTE``,

@@ -466,6 +466,11 @@ pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
         /* store it */
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &procid, PMIX_GLOBAL, &kp);
         PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        if (PMIX_SUCCESS == rc) {
+            /* stored outside pmix_server_commit - see the matching call
+             * in pmix_server_setup.c */
+            pmix_server_modex_resync(&procid);
+        }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;

@@ -163,6 +163,30 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                     return rc;
                 }
             }
+            if (pmix_server_globals.fence_delta_modex
+                && (PMIX_REMOTE == scope || PMIX_GLOBAL == scope)) {
+                /* Keep this for the next collecting fence, which may be
+                 * able to contribute only what has changed.
+                 *
+                 * Gated on the parameter because the list is only ever
+                 * drained by a collecting fence: with deltas off it would
+                 * hold a second copy of everything the process has ever
+                 * committed and nothing would ever take it away. Even
+                 * with them on, a job that commits but never fences with
+                 * data accumulates - there is simply no contribution to
+                 * hand it to - but that is now something the parameter
+                 * asked for rather than the default.
+                 *
+                 * Retain
+                 * before the release below rather than at the top of the
+                 * loop: the two error returns above leave the loop with
+                 * the kval only partly stored, and those must not put it
+                 * on the list. The list hangs off the rank_info rather
+                 * than the peer because a fork/exec'd clone shares it,
+                 * which is the identity the collection dedups on. */
+                PMIX_RETAIN(kp);
+                pmix_list_append(&info->pending_modex, &kp->super);
+            }
             PMIX_RELEASE(kp); // maintain accounting
             kp = PMIX_NEW(pmix_kval_t);
             cnt = 1;
@@ -801,6 +825,124 @@ pmix_status_t PMIx_server_collect_job_info(pmix_proc_t *procs, size_t nprocs,
     return rc;
 }
 
+/* Digest a fence's participant set.
+ *
+ * A delta contribution is only sound for a fence over the same
+ * participants: contributing one to a fence over some *other* set would
+ * leave every server holding only that set's procs never learning the
+ * keys we left out - two sub-communicators fencing independently is
+ * enough to reach that. Comparing the sets directly would mean keeping a
+ * copy of one per local rank, which on a large job is the job's whole
+ * proc array per rank, so we keep a 64-bit digest and require it to
+ * match exactly.
+ *
+ * Requiring equality rather than containment is deliberate. It is the
+ * conservative half of the rule, so it can only cost an unnecessary
+ * cumulative contribution, never a short one - and it still covers the
+ * case that matters, a job that fences repeatedly over the same set.
+ *
+ * The digest is taken over the fields rather than the raw bytes because
+ * pmix_proc_t may carry padding between its nspace array and its rank,
+ * and padding is not guaranteed to hold the same thing twice. Note the
+ * array need not be sorted for this to be correct: a different ordering
+ * of the same set simply digests differently, and the only consequence
+ * is a cumulative contribution we could in principle have made a delta.
+ */
+static uint64_t participant_signature(const pmix_proc_t *procs, size_t nprocs)
+{
+    uint64_t h = 14695981039346656037ULL; /* FNV-1a 64-bit offset basis */
+    size_t n, i;
+    const unsigned char *p;
+
+#define PMIX_SIG_BYTE(b)                            \
+    do {                                            \
+        h ^= (uint64_t) (unsigned char) (b);        \
+        h *= 1099511628211ULL;                      \
+    } while (0)
+
+    for (i = 0; i < sizeof(nprocs); i++) {
+        PMIX_SIG_BYTE((nprocs >> (8 * i)) & 0xff);
+    }
+    if (NULL == procs) {
+        return h;
+    }
+    for (n = 0; n < nprocs; n++) {
+        for (p = (const unsigned char *) procs[n].nspace; '\0' != *p; p++) {
+            PMIX_SIG_BYTE(*p);
+        }
+        PMIX_SIG_BYTE(0);
+        for (i = 0; i < sizeof(pmix_rank_t); i++) {
+            PMIX_SIG_BYTE((procs[n].rank >> (8 * i)) & 0xff);
+        }
+    }
+#undef PMIX_SIG_BYTE
+    return h;
+}
+
+/* Record that every local participant's contribution has reached the
+ * host, so the next one can carry only what changes from here.
+ *
+ * This is deliberately NOT done inside pmix_server_collect_data. That
+ * runs before the up-call, and its caller has three arms that discard
+ * the bucket - collect_data failing, the host refusing the request, and
+ * fail_collective. Draining there would lose those deltas for good,
+ * because nothing else remembers them: the datastore still holds the
+ * values, but the record of which ones this rank had yet to send does
+ * not survive.
+ *
+ * Draining a rank twice is a no-op and stamping it twice is idempotent,
+ * so unlike the collection itself this needs no clone dedup. */
+void pmix_server_modex_contributed(pmix_server_trkr_t *trk)
+{
+    pmix_server_caddy_t *scd;
+    pmix_rank_info_t *info;
+    uint64_t sig;
+
+    if (PMIX_COLLECT_YES != trk->collect_type) {
+        return;
+    }
+    sig = participant_signature(trk->pcs, trk->npcs);
+    PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
+        info = scd->peer->info;
+        if (NULL == info) {
+            continue;
+        }
+        PMIX_LIST_DESTRUCT(&info->pending_modex);
+        PMIX_CONSTRUCT(&info->pending_modex, pmix_list_t);
+        info->modex_sig = sig;
+        info->modex_contributed = true;
+    }
+}
+
+/* Force this proc's next fence contribution to be cumulative.
+ *
+ * pmix_server_commit is not the only way remote-scope data arrives for a
+ * local proc - a host can register a group's endpoint data through
+ * PMIx_server_register_resources, and the group collective stores
+ * members' contributions directly. Neither goes through the commit path,
+ * so neither is on the pending list, and a delta built from that list
+ * alone would silently omit it. */
+void pmix_server_modex_resync(const pmix_proc_t *proc)
+{
+    pmix_namespace_t *nptr;
+    pmix_rank_info_t *info;
+
+    if (NULL == proc) {
+        return;
+    }
+    PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 != strncmp(nptr->nspace, proc->nspace, PMIX_MAX_NSLEN)) {
+            continue;
+        }
+        PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
+            if (PMIX_RANK_WILDCARD == proc->rank || info->pname.rank == proc->rank) {
+                info->modex_contributed = false;
+            }
+        }
+        return;
+    }
+}
+
 pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                                        pmix_buffer_t *buf)
 {
@@ -818,12 +960,35 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
     pmix_list_t pnames;
     pmix_namelist_t *pn;
     bool found;
+    bool usedelta;
+    uint64_t sig;
 
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
 
     if (PMIX_COLLECT_YES == trk->collect_type) {
        pmix_output_verbose(2, pmix_server_globals.fence_output,
                            "fence - assembling data");
+
+        /* Decide once, for the whole bucket, whether this contribution
+         * can be a delta. The flag byte that says so describes the
+         * server's contribution as a whole, so the bucket cannot be part
+         * delta and part not - and a delta is only sound if *every*
+         * local participant has already contributed to a fence over this
+         * same participant set. Anything else falls back to sending
+         * each rank's full published set, which is what this always
+         * used to do. */
+        sig = participant_signature(trk->pcs, trk->npcs);
+        usedelta = pmix_server_globals.fence_delta_modex;
+        if (usedelta) {
+            PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
+                if (NULL == scd->peer->info
+                    || !scd->peer->info->modex_contributed
+                    || scd->peer->info->modex_sig != sig) {
+                    usedelta = false;
+                    break;
+                }
+            }
+        }
 
         PMIX_CONSTRUCT(&rank_blobs, pmix_list_t);
         PMIX_CONSTRUCT(&pnames, pmix_list_t);
@@ -876,6 +1041,27 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                 PMIX_RELEASE(pbkt);
                 goto cleanup;
             }
+            if (usedelta) {
+                /* pack what this rank has committed since it last
+                 * contributed - an empty list is a legitimate answer,
+                 * and the receiver reads a proc with no kvals as "this
+                 * rank published nothing new" */
+                PMIX_LIST_FOREACH (kv, &scd->peer->info->pending_modex, pmix_kval_t) {
+                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, kv, 1, PMIX_KVAL);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_LIST_DESTRUCT(&pnames);
+                        PMIX_LIST_DESTRUCT(&rank_blobs);
+                        PMIX_RELEASE(pbkt);
+                        goto cleanup;
+                    }
+                }
+                blob = PMIX_NEW(rank_blob_t);
+                blob->buf = pbkt;
+                pmix_list_append(&rank_blobs, &blob->super);
+                pbkt = NULL;
+                continue;
+            }
             PMIX_CONSTRUCT(&cb, pmix_cb_t);
             cb.proc = &pcs;
             cb.scope = PMIX_REMOTE;
@@ -912,7 +1098,7 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
          * is false, then store_modex will not be called on that
          * node and this information (and the flag) will be ignored,
          * meaning that no error is generated! */
-        blob_info_byte= PMIX_COLLECT_YES;
+        blob_info_byte = usedelta ? PMIX_MODEX_DELTA : PMIX_COLLECT_YES;
         /* pack the modex blob info byte - check it, as the blob packs
          * below would otherwise overwrite the failure and ship a bucket
          * whose first byte is a rank blob rather than the collect type */
@@ -1266,6 +1452,12 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         trk->host_called = true;
         rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info, trk->ninfo, data, sz,
                                        trk->modexcbfunc, trk);
+        if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+            /* the host has taken the bucket, so what it carries is no
+             * longer outstanding. Do this before the completion below,
+             * which can release the tracker. */
+            pmix_server_modex_contributed(trk);
+        }
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             /* clear the caddy from this tracker so it can be
              * released upon return - the switchyard will send an

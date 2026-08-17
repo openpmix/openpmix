@@ -213,6 +213,14 @@ static void _register_resources(int sd, short args, void *cbdata)
                  * gds/shmem3 does. We are assigned "hash" today, so this
                  * happened to work - but only by that coincidence. */
                 PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, proc, scope, &kp);
+                if (PMIX_SUCCESS == rc
+                    && (PMIX_REMOTE == scope || PMIX_GLOBAL == scope)) {
+                    /* this did not come through pmix_server_commit, so it
+                     * is not on that proc's pending list - a delta fence
+                     * contribution built from that list alone would omit
+                     * it. Make the next one cumulative. */
+                    pmix_server_modex_resync(proc);
+                }
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     if (PMIX_SUCCESS == ret) {
