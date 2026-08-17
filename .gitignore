@@ -85,8 +85,10 @@ examples/client4
 examples/debugger
 examples/debuggerd
 examples/datatypes
+examples/delete_key
 examples/dmodex
 examples/dynamic
+examples/modex_twice
 examples/fault
 examples/jctrl
 examples/pmix1client
