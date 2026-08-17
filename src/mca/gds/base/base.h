@@ -78,26 +78,24 @@ struct pmix_gds_globals_t {
     char *all_mods;
 };
 
-typedef enum {
-    PMIX_MODEX_KEY_INVALID = -1,
-    PMIX_MODEX_KEY_NATIVE_FMT,
-    PMIX_MODEX_KEY_KEYMAP_FMT,
-    PMIX_MODEX_KEY_MAX
-} pmix_gds_modex_key_fmt_t;
-
-/* define a modex blob info */
-typedef uint8_t pmix_gds_modex_blob_info_t;
-
-#define PMIX_GDS_COLLECT_BIT 0x0001
-#define PMIX_GDS_KEYMAP_BIT  0x0002
-
-#define PMIX_GDS_KEYMAP_IS_SET(byte)  (PMIX_GDS_KEYMAP_BIT & (byte))
-#define PMIX_GDS_COLLECT_IS_SET(byte) (PMIX_GDS_COLLECT_BIT & (byte))
-
 typedef struct pmix_gds_globals_t pmix_gds_globals_t;
 
+/* Called once per contributing process with that process's blob, and
+ * then once per involved nspace with a NULL buffer to signal "done".
+ *
+ * "kind" is the per-server flag byte the contribution carried - a
+ * pmix_collect_t value, typed here as the byte it actually is because
+ * that enum lives in pmix_globals.h, which includes this framework's
+ * header rather than the other way round. PMIX_COLLECT_YES means a
+ * process's whole published set; PMIX_MODEX_DELTA means only what it
+ * published since it last took part in a collecting fence. A datastore
+ * that retires what an earlier modex left behind has to know the
+ * difference, because a delta does not stand on its own. The value is
+ * uniform across one walk: the walker refuses a payload whose servers
+ * disagree about it. */
 typedef pmix_status_t (*pmix_gds_base_store_modex_cb_fn_t)(pmix_proc_t *proc,
-                                                           pmix_buffer_t *pbkt);
+                                                           pmix_buffer_t *pbkt,
+                                                           uint8_t kind);
 
 PMIX_EXPORT extern pmix_gds_globals_t pmix_gds_globals;
 

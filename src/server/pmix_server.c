@@ -99,6 +99,7 @@ pmix_server_globals_t pmix_server_globals = {
     .tmpdir = NULL,
     .system_tmpdir = NULL,
     .fence_localonly_opt = false,
+    .fence_delta_modex = false,
     .get_output = -1,
     .get_verbose = 0,
     .connect_output = -1,

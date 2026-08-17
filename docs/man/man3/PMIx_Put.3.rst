@@ -86,9 +86,22 @@ following values:
   not shared with any other process. Typically used to cache data the process
   obtained by means outside of PMIx.
 
+This implementation supports four additional values |mdash| ``PMIX_DEL_LOCAL``,
+``PMIX_DEL_REMOTE``, ``PMIX_DEL_GLOBAL`` and ``PMIX_DEL_INTERNAL`` |mdash| which
+name the same audiences as the four above but direct that ``key`` be **removed**
+rather than stored. ``val`` is ignored for these and may be ``NULL``. Removing a
+key that was never stored is not an error: the caller asked for it to be absent,
+and it is. As with a store, the removal takes effect on the calling process
+immediately and reaches other processes through the usual
+:ref:`PMIx_Commit(3) <man3-PMIx_Commit>` and exchange path, so a
+``PMIX_DEL_INTERNAL`` |mdash| which was never shared |mdash| is complete on
+return.
+
 A specific implementation may support additional scope values, but all
 implementations support at least ``PMIX_GLOBAL``. If a specified scope value is
-not supported, ``PMIx_Put`` returns ``PMIX_ERR_NOT_SUPPORTED``.
+not supported, ``PMIx_Put`` returns ``PMIX_ERR_NOT_SUPPORTED``. That is what a
+delete scope returns here when the local PMIx server is too old to act on it,
+which is checked up front rather than left to fail silently at the server.
 
 
 RETURN VALUE

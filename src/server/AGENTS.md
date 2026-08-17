@@ -850,6 +850,71 @@ to the client as the status of its *commit*, which would report one
 proc's `PMIx_Commit` as failed because some other proc's parked get could
 not be drained.
 
+### A contribution can be a delta
+
+With `pmix_server_fence_delta_modex` set, a server contributes only what
+its local processes have committed **since they last took part in a
+collecting fence**, rather than each one's whole published set. Three
+things make that sound, and each is easy to undo:
+
+- **The participant set has to match.** A delta is only correct for a
+  fence over the same participants: contributing one to a fence over some
+  *other* set leaves every server holding only that set's procs never
+  learning the keys it left out - two sub-communicators fencing
+  independently is enough to reach it. Each `pmix_rank_info_t` carries a
+  digest of the set it last contributed to (`participant_signature`), and
+  anything but an exact match falls back to the full set. Equality rather
+  than containment is deliberate: it can only cost an unnecessary
+  cumulative contribution, never a short one.
+- **The watermark moves only once the host has the bucket.**
+  `pmix_server_modex_contributed` is called after the `fence_nb` up-call
+  is accepted, never from `pmix_server_collect_data` - that runs earlier,
+  and its caller has three arms that discard the bucket. Draining there
+  loses the deltas for good, because the datastore still holds the values
+  but nothing else remembers which ones this rank had yet to send.
+- **`pmix_server_commit` is not the only writer.** Remote-scope data also
+  reaches our store through `PMIx_server_register_resources`
+  (`pmix_server_setup.c`) and the group collective
+  (`pmix_server_group.c`), neither of which goes through the commit path
+  and so neither of which is on the pending list. Both call
+  `pmix_server_modex_resync` to force that proc's next contribution to be
+  cumulative. **Any new such writer owes the same call.**
+
+The contribution is marked `PMIX_MODEX_DELTA` in the envelope's
+per-server flag byte so the receiving datastore knows it is not
+self-contained. The whole bucket is one kind or the other - that byte
+describes the server's contribution as a whole - so a delta is used only
+when *every* local participant qualifies.
+
+### Telling the clients a key is gone
+
+`pmix_server_notify_deleted()` is how a removal reaches the copies this
+server has already handed out. A client caches what it reads about other
+processes and holds the job-level data it was given at init, so removing
+a key here corrects only our own store.
+
+Four things about it are deliberate:
+
+- **Its own PTL tag** (`PMIX_PTL_TAG_DATA_DELETE`). A peer too old to
+  know the tag never posted a receive for it, so it simply never gets
+  one - the same reasoning IOF flow control uses for its tag. `PMIx_Put`
+  refuses a delete against such a server up front, which is where the
+  caller learns about it.
+- **Every local client except the requester**, which applied the removal
+  to its own store before sending. Not restricted to the affected
+  namespace: a process may have cached data belonging to any namespace it
+  asked about, and one that never held the key removes nothing.
+- **One message per key.** Deletions are rare; this keeps the wire format
+  a single-key statement rather than a list whose length has to be
+  screened on receipt.
+- **`_deregister_resources` calls it too**, through
+  `retract_from_namespaces()`, which is what finally makes that call take
+  information back from a running job. Note what that helper deliberately
+  does *not* cover: the arm that prunes elements out of an entry rather
+  than removing it. There the host asked for part of a value to go, so a
+  deletion would take more than was asked; the right propagation is the
+  pruned value, and there is no update push.
+
 ### Data collection
 
 `pmix_server_collect_data` bundles the modex: for `PMIX_COLLECT_YES` it

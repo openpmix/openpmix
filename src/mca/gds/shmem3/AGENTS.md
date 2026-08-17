@@ -159,7 +159,9 @@ needs to own the *bulk job/modex data* path; individual `put`/`get` traffic
 falls back. `cache_job_info` also returns `PMIX_ERR_NOT_SUPPORTED`: unlike
 `hash`, `shmem3` does not pre-cache — it fetches the fully-assembled
 job data lazily inside `register_job_info` when the first client connects.
-Like `hash`, it is `is_tsafe = false`.
+Unlike `hash`, it is `is_tsafe = true`: a fetch holds a reference on the
+job tracker and reads only data that is never written again, so it may
+run off the progress thread.
 
 ## The shared-segment model
 
@@ -402,12 +404,125 @@ and triggers the framework's **GDS fallback** (`fallback_to_next_gds` in
 to exercise this path in tests without depending on each process's VM
 layout — never set it in production.
 
+**That fallback only exists at init.** It is reached because
+`PMIx_Init` re-requests its job data, and the *server* can re-register
+that data in another module's format. Nothing equivalent is possible for
+a modex: `PMIX_GDS_RECV_MODEX_COMPLETE` resolves a single module, and
+`PMIX_GDS_FALLBACK_CMD` re-sends job data only — a completed modex
+cannot be re-delivered in `hash` format without a new wire command. So
+the two attach failures are genuinely different problems, and the next
+section is about the other one.
+
+### The address-space arena — why a fence-time attach must not need luck
+
+A client attaches the **job** segment during `PMIx_Init`, when its
+address space is nearly empty, and the **modex** segment at a *fence*,
+by which time it has loaded an MPI stack, opened components, grown
+arenas, and registered fabric memory. The server picks both addresses
+from its own `/proc/self/maps`. The first attach therefore almost always
+works and the second is a gamble — openpmix#4156 was that gamble lost,
+about 1 run in 25 on a four-node job, taking every rank on a node at once.
+
+The fix is to stop asking. At `register_job_info` time the server calls
+`arena_reserve()`, which claims **one contiguous range** big enough for
+the job segment plus a slot per modex generation that can be live at
+once, using `pmix_vmem_reserve()` — an
+inaccessible `PROT_NONE` mapping that commits no memory and costs one
+VMA. The range travels to clients on every seg blob
+(`SHMEM3_SEG_ARBS_KEY` / `SHMEM3_SEG_ARSZ_KEY`), and each client claims
+the same range in `unpack_shmem3_seg_blob_and_attach_if_necessary()` —
+inside `PMIx_Init`, the one moment it reliably can. Every later mapping,
+including each modex generation, is then `MAP_FIXED` over ground the
+process already holds (`PMIX_SHMEM_MAP_OVER_RESERVATION`), which cannot
+lose a race for the address.
+
+Four things about it are load-bearing:
+
+- **Carve by the footprint, not the requested size.** A segment maps a
+  page of header ahead of its data, so `pmix_shmem_utils_segment_footprint()`
+  is what says where it ends. Carving to the requested size instead
+  overlapped each segment with the next by one page, and the next
+  `MAP_FIXED` silently replaced it — a prompt, spectacular segfault in
+  the daemon.
+- **Detach restores the reservation.** `pmix_shmem_segment_detach()`
+  re-maps `PROT_NONE` over an in-arena range rather than unmapping it
+  (`pmix_vmem_restore()`), or the first modex generation to be released
+  would punch a hole in the arena for something else to take.
+- **A modex generation holds its slot for as long as it is readable,
+  which is not just until the next one arrives.** This started life as
+  an alternation between two slots, on the assumption that only one
+  generation was live at a time. That assumption died with openpmix#4087:
+  a *delta* contribution repeats nothing, so every generation before it
+  stays mapped and answerable on `job->modex_prior`, and reusing the
+  slot from two generations ago would erase data nothing else holds.
+  `arena_alloc_modex()` therefore reads occupancy off the live segments
+  — the current one plus each retired one — and takes the lowest free
+  slot. Deriving it rather than keeping a tally means no path that
+  releases a generation can leave the accounting stale. A generation
+  arriving when all slots are taken places itself outside the arena.
+- **The session segment is deliberately outside the arena.** A session
+  outlives the job that first described it (`component.sessions` holds a
+  reference), and `job_destruct()` releases the whole arena, so a shared
+  session's segment inside it would be unmapped under a live holder.
+
+If the arena cannot be reserved, or a modex does not fit its slot, every
+segment places itself independently exactly as before — degraded, never
+broken.
+
+### Placement: not the midpoint, and definitely not the edge
+
+`pmix_vmem_find_hole(VMEM_HOLE_BIGGEST)` puts a segment at the
+**midpoint of the biggest hole**, and hwloc and Open MPI — which share
+this routine's ancestry — aim there too. That convergence is what makes
+an address picked in one process likely to be taken in another, which is
+the whole failure mode above. `VMEM_HOLE_BIGGEST_OFFSET` is the
+alternative, selected by the `offset_placement` parameter (on by
+default), and it lands a **quarter** of the way into the hole.
+
+**Deterministic placement has a second edge, and it needs blunting.**
+Being a pure function of the map is what lets a server and its clients
+agree on an address without exchanging one — but it also makes two
+things that have no reason to agree land on top of each other, and
+concurrent jobs on a node are exactly that. So the address is displaced
+within a window around the quarter point by a *scatter* value, which
+`shmem3` derives by hashing the namespace (`nspace_scatter()`, FNV-1a):
+identical for every process of one job, different between jobs. The
+independent-placement path mixes in the segment id and the retry count
+as well, since otherwise a job's three segments would all be aimed at
+one address and a retry would keep naming the address it just lost.
+
+Be careful about what evidence exists for this. Two jobs launched on a
+node land far apart **whether or not anything scatters them**, because
+ASLR has already moved each server's load base and the placement is
+computed relative to it — the concurrent-jobs stage in
+`run-gds-tests.sh` passes with the scatter compiled out, which was
+confirmed by doing it. Where the scatter earns its place is where ASLR
+does not do that job: systems with randomization disabled (not rare in
+HPC, where it is turned off for reproducibility) and non-PIE
+executables. Neither is reachable from the swarm, so the property is
+pinned down in [`test/unit/util/util_vmem.c`](../../../../test/unit/util/util_vmem.c)
+against the placement function directly, where it *is* decidable.
+
+The quarter is not arbitrary, and the obvious alternative is worse:
+placing at the **top** of the hole was tried first and failed
+immediately in the swarm, because the top of that hole is the underside
+of the executable's load address — the region where ASLR moves processes
+around the most and where the heap grows. On aarch64, clients on a
+second node could not reserve the range their own server had chosen. A
+quarter of the way in is far from the crowded midpoint, far from the
+populated region near the binary, and still deep inside tens of
+terabytes of empty space.
+
 ## MCA parameters (registered in `gds_shmem3_component.c`)
 
 | Parameter | Type | Meaning |
 |-----------|------|---------|
 | `gds_shmem3_segment_size_multiplier` | double (default `1.0`) | scales the computed segment sizes; raise it if a job overflows a segment (which aborts). |
-| `gds_shmem3_force_client_attach_failure` | bool (default `false`) | **testing only** — force the client's fixed-address attach to fail so the GDS fallback can be exercised. |
+| `gds_shmem3_arena_slot_size` | size_t (default 1 GiB) | address space reserved per modex slot. `0` disables the arena and restores independent placement. Virtual address space only — nothing is committed. |
+| `gds_shmem3_arena_modex_slots` | size_t (default `4`, capped at 32) | how many modex generations the arena can hold at once. More than one is live only where deltas are in play; past the last slot a generation is placed outside the arena. |
+| `gds_shmem3_offset_placement` | bool (default `true`) | place segments a quarter of the way into the biggest hole instead of at its midpoint. |
+| `gds_shmem3_force_client_attach_failure` | bool (default `false`) | **testing only** — force *every* client attach to fail, so the init-time GDS fallback can be exercised. |
+| `gds_shmem3_force_modex_attach_failure` | bool (default `false`) | **testing only** — force only the *modex* attach to fail. This is the one `force_client_attach_failure` cannot reach: that one fails the init attach too, so the client leaves `PMIx_Init` on `hash` and never reaches a fence on `shmem3`. Drives `examples/modex_attach_fail.c`. |
 
 These are the *only* `gds` MCA parameters in the tree; the framework core
 registers none.
@@ -447,16 +562,77 @@ second modex overran it and **aborted the server** — taking the daemon,
 and the job, with it. `examples/modex_twice.c` reproduces that from four
 nodes up.
 
-**It rests on the modex payload being cumulative,** and that is worth
-knowing before changing `PMIx_Commit` (see openpmix#4087). Today a commit ships the
-process's entire local store (a NULL-key fetch in `_commitfn`) and a
-server contributes each local proc's full set from its own store, so
-generation N+1 is self-contained and N can be dropped. If commit ever
-becomes a true delta — sending only what changed — that stops holding,
-and this code has to carry data forward into the new segment or search
-back through generations. `examples/modex_twice.c` is the canary: its
-`gen1` keys are published before the first fence and never again, and it
-asserts they are still readable after the second.
+**Whether the finished generation can be dropped depends on what is
+arriving**, and the flag byte in the modex envelope is what says so (see
+openpmix#4087 and `docs/how-things-work/modex.rst`).
+
+A **cumulative** contribution repeats everything its processes have
+published, so the generation carrying it stands on its own: the previous
+one is released exactly as before, and every retired one behind it goes
+with it (`drop_modex_priors`). That is still the default, because
+`pmix_server_fence_delta_modex` defaults off.
+
+A **delta** contribution repeats nothing, so the previous generation is
+still the only copy of everything the delta left out. It is *retired*
+onto `job->modex_prior` rather than released (`retire_modex_segment`),
+and `modex_fetch()` in `gds_shmem3_fetch.c` walks that list newest-first.
+A keyed lookup stops at the newest generation holding the key; a
+NULL-key lookup consults every generation and drops a copy of a key a
+newer one already supplied, or the caller sees it twice with the stale
+value second.
+
+`job->modex_prior` is empty unless a delta has been stored, so the
+ordinary case is the single lookup it has always been. The chain grows
+only while deltas keep arriving and collapses on the next cumulative
+contribution - which the participant-set guard on the server side forces
+whenever a fence's membership changes.
+
+The client makes the same keep-or-drop decision, from a
+`SHMEM3_SEG_DELTA_KEY` field in the segment blob. Adding a field there
+was possible because this component has never been in a release; once it
+ships, that blob is a wire format like any other.
+
+`examples/modex_twice.c` is the canary, and
+`contrib/dockerswarm/run-gds-tests.sh` drives it **twice**: once
+cumulatively and once with `pmix_server_fence_delta_modex=1`. Only the
+second actually tests the chain - its `gen1` keys are published before
+the first fence and never again, so under a delta they exist *only* in
+the retired generation.
+
+## Deletion: a tombstone, and why it is not in the segment
+
+This component cannot take a key out. The data is in a segment local
+clients have mapped, and a segment a client can see is never written
+again — so `del_key` records that the key is gone and every read
+consults the record.
+
+**The record is process-local**, on `job->tombstones`. Putting it in
+shared memory would mean a new segment, mapped by every local client,
+for a few bytes per deleted key — and it would not save the step that
+matters, because a client attaching after the removal has to be told
+either way. Each process builds its own from the notification its server
+sends (`pmix_server_notify_deleted`), and `pack_tombstones()` adds the
+list to the cached job-info reply so a later arrival gets it at attach
+time. Note `del_key()` drops `job->conni` for exactly that reason: the
+cached reply still says the key exists.
+
+**A tombstone carries the modex generation it was recorded at.** Job
+data is written once and never re-published, so `job_fetch()` asks with
+`UINT32_MAX` and a tombstone against it always applies. Modex data can
+legitimately come back, so `modex_fetch()` asks with each generation's
+own number as it walks, and a tombstone shadows only generations up to
+the one it was made at — a key deleted and then published again in a
+later fence is alive again.
+
+Two shapes of read, two filters. A keyed lookup that finds only
+tombstoned entries in a generation keeps walking rather than reporting a
+hit; a NULL-key lookup — "everything this process published" — has its
+result filtered per generation, bounded by the `mark` so entries from
+newer generations are judged against theirs and not this one's.
+
+`gds/hash` leaves `del_key` NULL: a delete reaches its store like any
+other scope and it removes the key outright. The macro reads a NULL slot
+as success.
 
 ## Gotchas
 

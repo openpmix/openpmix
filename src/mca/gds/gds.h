@@ -471,6 +471,45 @@ typedef pmix_status_t (*pmix_gds_base_module_del_nspace_fn_t)(const char *nspace
         }                                                                                   \
     } while (0)
 
+/**
+ * Note that a key has been removed, so this module stops answering for
+ * it. Optional: a module whose own store already handled the removal -
+ * gds/hash, which takes a delete through its store slot like any other
+ * scope - leaves this NULL and the macro treats that as success.
+ *
+ * It exists for a module that keeps data somewhere its store cannot
+ * reach. gds/shmem3 publishes into shared segments that are never
+ * written again once a client can see them, so it cannot take the key
+ * out; it records the removal instead and stops answering for it.
+ *
+ * @param proc  the process whose data is affected. PMIX_RANK_WILDCARD
+ *              names the job-level data.
+ * @param key   the key to stop answering for
+ *
+ * @return PMIX_SUCCESS on success.
+ */
+typedef pmix_status_t (*pmix_gds_base_module_del_key_fn_t)(const pmix_proc_t *proc,
+                                                           const char *key);
+
+/* Convenience macro for del_key, resolved against the module serving a
+ * given namespace rather than a peer - the caller is correcting what
+ * that namespace holds, and may have no peer in hand. A NULL slot is
+ * success: the module has nothing of its own to correct. */
+#define PMIX_GDS_DEL_KEY(s, ns, pc, k)                                                      \
+    do {                                                                                    \
+        pmix_gds_base_module_t *_g;                                                         \
+        (s) = PMIX_SUCCESS;                                                                 \
+        if (NULL != (ns) && NULL != (ns)->compat.gds) {                                     \
+            _g = (ns)->compat.gds;                                                          \
+            pmix_output_verbose(1, pmix_gds_base_output,                                    \
+                                "[%s:%d] GDS DEL KEY %s for %s", __FILE__, __LINE__,        \
+                                (NULL == (k)) ? "NULL" : (k), _g->name);                    \
+            if (NULL != _g->del_key) {                                                      \
+                (s) = _g->del_key((pc), (k));                                               \
+            }                                                                               \
+        }                                                                                   \
+    } while (0)
+
 /* define a convenience macro for is_tsafe for fetch operation */
 #define PMIX_GDS_FETCH_IS_TSAFE(s, p)                         \
     do {                                                      \
@@ -521,6 +560,7 @@ typedef struct {
     pmix_gds_base_module_setup_fork_fn_t            setup_fork;
     pmix_gds_base_module_add_nspace_fn_t            add_nspace;
     pmix_gds_base_module_del_nspace_fn_t            del_nspace;
+    pmix_gds_base_module_del_key_fn_t               del_key;
     pmix_gds_base_module_assemb_kvs_req_fn_t        assemb_kvs_req;
     pmix_gds_base_module_accept_kvs_resp_fn_t       accept_kvs_resp;
     pmix_gds_base_module_fetch_array_fn_t           fetch_arrays;

@@ -7,6 +7,103 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A deletion now reaches the data that has already been handed out.
+   Removing a key from a PMIx server's own store was only half of it: a
+   client caches what it reads about other processes and holds the
+   job-level data it was given at initialization, so every local client
+   that had looked the key up still had it. The server now tells its
+   local clients, on a PTL tag of its own so that a peer too old to know
+   about deletion never receives one. It goes to every local client
+   except the one that asked, and is not restricted to the affected
+   namespace, since a process may have cached data belonging to any
+   namespace it asked about.
+   This is also what answers PMIx_server_deregister_resources. The global
+   cache is copied into a namespace's datastore once, when that namespace
+   is first registered, and nothing re-reads it - so a deregistration
+   governed only the namespaces registered afterwards and left every
+   running job with its copy. It now takes the key back from the
+   namespaces that already hold it, and from their clients. A qualified
+   deregistration that prunes elements out of an entry rather than
+   removing it is deliberately not propagated: the host asked for part of
+   a value to go, so a deletion would take more than was asked. A
+   namespace using gds/shmem3 also still keeps its copy, in its shared
+   segment. See openpmix#4087.
+ - PMIx_Put gained four scope values - PMIX_DEL_LOCAL, PMIX_DEL_REMOTE,
+   PMIX_DEL_GLOBAL and PMIX_DEL_INTERNAL - naming the same audiences as
+   their storing counterparts but directing that the key be removed
+   rather than stored. The value is ignored and may be NULL, and removing
+   a key that was never stored is not an error. The removal takes effect
+   on the calling process at once and reaches the local server through
+   the usual commit, so a PMIX_DEL_INTERNAL - which was never shared - is
+   complete on return. This is a permitted extension: PMIx_Put(3) already
+   states that an implementation may support additional scope values and
+   must answer PMIX_ERR_NOT_SUPPORTED for one it does not, which is what
+   a server predating these returns. That check is made up front, in
+   PMIx_Put, because a server that does not recognize a scope would
+   otherwise drop the block and let the delete appear to succeed.
+   Companion projects can detect support through PMIX_CAP_DATA_DELETE.
+   Propagating a removal to the other clients of a namespace, and to
+   gds/shmem3's shared segments, is not yet implemented. See
+   openpmix#4087.
+ - A PMIx server now rejects a commit whose scope it does not recognize
+   rather than silently discarding the data that scope labelled. It also
+   rejects PMIX_INTERNAL, which names data that never leaves the process
+   and so has no business on the wire.
+ - A PMIx server can now contribute only what its processes published
+   since they last took part in a collecting fence, rather than
+   everything they have published, controlled by the new
+   pmix_server_fence_delta_modex MCA parameter. It defaults to false: a
+   server from a release that predates the delta marker rejects the whole
+   collective rather than storing a contribution it cannot interpret -
+   the right failure, but it means a job running mixed releases works
+   today and would stop working if this defaulted on. Enable it once
+   every node understands the marker. A delta is only sent when every
+   local participant has already contributed to a fence over the same
+   participant set; anything else falls back to the full set, which
+   keeps two sub-communicators fencing independently from withholding
+   data from each other. The watermark advances only once the host has
+   taken the bucket, since the request has three arms that discard it.
+ - gds/shmem3 keeps modex generations rather than always dropping the
+   previous one. A cumulative contribution repeats everything, so it
+   still supersedes the generation before it and every one behind that.
+   A delta repeats nothing, so the previous generation is retired instead
+   and a read walks the generations newest-first: a keyed lookup stops at
+   the newest one holding the key, and a whole-process lookup consults
+   all of them while dropping a copy of a key a newer generation already
+   supplied. The chain is empty unless a delta has been stored, so the
+   ordinary case is the single lookup it has always been, and any
+   cumulative fence collapses it again. Segment blobs gained a field
+   telling the client which kind it is looking at, so it makes the same
+   decision its server made.
+ - PMIx_Commit now transmits only what the process has posted since the
+   previous commit. It used to fetch and send that process's entire local
+   and remote store every time, so a single new PMIx_Put caused everything
+   published so far to be sent again and n put/commit cycles moved O(n^2)
+   bytes. PMIx_Put records which keys each scope owes the server and the
+   commit fetches just those; a key posted repeatedly between two commits
+   is still sent once, carrying the value it had when PMIx_Commit was
+   called. The cumulative fetch remains as the fallback for the cases a
+   per-key record cannot express - a PMIX_QUALIFIED_VALUE, which has no
+   key a later fetch could ask for it back by; a tool that has repointed
+   at another server through PMIx_tool_set_server or _attach_to_server,
+   which has seen none of what we sent the previous one; and the first
+   commit after PMIx_Init. Nothing changes for the caller, and nothing
+   changes on the wire, so a client and server of different releases
+   interoperate exactly as before. See openpmix#4087.
+ - The per-server flag byte carried in the modex envelope is now screened
+   before it is used. That byte says what kind of contribution a server
+   made, and the only check on it was that the contributing servers agreed
+   with each other - so a value they all agreed on, and that no datastore
+   knew how to act on, passed straight through and its data was stored as
+   though it were an ordinary full contribution. It is now rejected with
+   PMIX_ERR_BAD_PARAM. A new value, PMIX_MODEX_DELTA, marks a contribution
+   carrying only what the sending processes published since they last took
+   part in a collecting fence, and the value is now handed to the
+   datastore, which decides what it means for its own storage. Since the
+   agreement check is what an older release already performs, a job mixing
+   a release that sends delta data with one that cannot store it fails
+   loudly on both sides instead of silently losing data. See openpmix#4087
+   and the delta-exchange section of docs/how-things-work/modex.rst.
  - An MCA component whose framework interface version does not match the
    framework it is being loaded into is now refused instead of being
    opened. Nothing checked this before: the only version test in the

@@ -65,6 +65,12 @@ client_api_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 client_api_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+client_commit_SOURCES = \
+        client_commit.c
+client_commit_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+client_commit_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 common_api_SOURCES = \
         common_api.c
 common_api_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)

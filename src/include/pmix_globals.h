@@ -264,11 +264,28 @@ const char *pmix_command_string(pmix_cmd_t cmd);
 PMIX_EXPORT extern pmix_status_t pmix_tool_init_info(void);
 
 /* define a set of flags to direct collection
- * of data during operations */
+ * of data during operations.
+ *
+ * The first three are internal: pmix_server_trkr_t.collect_type holds one
+ * of them, and several places test it against PMIX_COLLECT_YES to decide
+ * whether to collect at all.
+ *
+ * PMIX_MODEX_DELTA is different in kind. It is never assigned to
+ * collect_type - it exists solely as a value of the per-server flag byte
+ * carried in the modex envelope (see pmix_gds_base_store_modex), where it
+ * says "this contribution holds only what changed since the contributing
+ * process last took part in a collecting fence" rather than that process's
+ * whole published set. Nothing emits it yet; see openpmix#4087 and
+ * docs/how-things-work/modex.rst.
+ *
+ * Because it travels on the wire it is append-only, exactly like the
+ * command enum above: give a new marker the next free value and never
+ * renumber an existing one. */
 typedef enum {
     PMIX_COLLECT_INVALID = -1,
     PMIX_COLLECT_NO,
     PMIX_COLLECT_YES,
+    PMIX_MODEX_DELTA,
     PMIX_COLLECT_MAX
 } pmix_collect_t;
 
@@ -417,6 +434,33 @@ typedef struct pmix_rank_info_t {
     bool modex_recvd;
     int proc_cnt;        // #clones of this rank we know about
     void *server_object; // pointer to rank-specific object provided by server
+    /* Delta-modex bookkeeping, server side - see pmix_server_collect_data.
+     *
+     * pending_modex holds the PMIX_REMOTE-scope kvals this rank has
+     * committed since it last contributed to a collecting fence, so that
+     * contribution can carry what changed instead of everything the rank
+     * has ever published. It lives here rather than on the peer because a
+     * fork/exec'd clone shares its parent's rank_info, which is the same
+     * identity the collection dedups on.
+     *
+     * modex_sig digests the participant set of the fence this rank last
+     * contributed to, and modex_contributed says whether it means
+     * anything yet. A delta is only sound for a fence over the same set:
+     * contributing one to a fence over some *other* set would leave every
+     * server holding only that set's procs never learning these keys. */
+    pmix_list_t pending_modex;
+    uint64_t modex_sig;
+    bool modex_contributed;
+    /* Keys this rank has deleted that its peers on other nodes have not
+     * been told about yet.
+     *
+     * Removing the key from our store is not enough to reach them: the
+     * modex is additive, so a later contribution simply not carrying the
+     * key removes nothing at the far end. The deletion has to be *said*,
+     * as an entry whose value is PMIX_UNDEF, which the receiving
+     * datastore reads as "this key is gone". Announced once, with the
+     * next contribution, and then dropped. */
+    pmix_list_t pending_deletes;
 } pmix_rank_info_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_rank_info_t);
 
@@ -903,7 +947,6 @@ typedef struct {
     pmix_event_base_t *evauxbase;
     int debug_output;
     pmix_events_t events; // my event handler registrations.
-    bool commits_pending;
     struct timeval event_window;
     pmix_list_t cached_events;         // events waiting in the window prior to processing
     pmix_pointer_array_t iof_requests; // array of pmix_iof_req_t IOF requests

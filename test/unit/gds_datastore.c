@@ -158,9 +158,11 @@ static size_t modex_ndone = 0;    /* callbacks carrying NULL     */
 static pmix_rank_t modex_ranks[8];
 static char modex_nspaces[8][PMIX_MAX_NSLEN + 1];
 static pmix_status_t modex_cb_rc = PMIX_SUCCESS;
+static pmix_collect_t modex_last_kind = PMIX_COLLECT_INVALID;
 
-static pmix_status_t modex_cb(pmix_proc_t *proc, pmix_buffer_t *pbkt)
+static pmix_status_t modex_cb(pmix_proc_t *proc, pmix_buffer_t *pbkt, uint8_t kind)
 {
+    modex_last_kind = (pmix_collect_t) kind;
     if (NULL == pbkt) {
         ++modex_ndone;
         return PMIX_SUCCESS;
@@ -194,13 +196,13 @@ static bool modex_all_from(const char *nspace)
  * object of rank-level data; that inner object holds a collect-flag byte
  * followed by one byte object per contributing proc. */
 static pmix_status_t build_modex(pmix_buffer_t *out, const char *nspace,
-                                 pmix_rank_t *ranks, size_t nranks)
+                                 pmix_rank_t *ranks, size_t nranks,
+                                 uint8_t collect)
 {
     pmix_buffer_t ranklevel, serverlevel, pbkt;
     pmix_byte_object_t bo;
     pmix_status_t rc;
     pmix_proc_t proc;
-    uint8_t collect = 1;
     bool compressed = false;
     size_t n;
 
@@ -389,6 +391,95 @@ static void test_store_modex_nspace_filter(void)
     PMIX_DESTRUCT(&buf);
 }
 
+/* The per-server flag byte says what kind of contribution follows. Until
+ * August 2026 the walker only asked whether the servers agreed with each
+ * other, so a value they all agreed on and none of us could act on went
+ * straight through and its blobs were stored as though they were an
+ * ordinary full contribution.
+ *
+ * That matters because of what a PMIX_MODEX_DELTA contribution is: only
+ * what the sender published since it last took part in a collecting
+ * fence. Storing one as a full set drops every key the sender left out,
+ * and for gds/shmem3 - which retires the previous modex generation on
+ * the strength of the new one standing alone - drops that generation
+ * too. Nothing emits it yet (openpmix#4087); what is pinned here is that
+ * a peer which does emit one is refused rather than half-believed.
+ *
+ * Note each case asserts the *status*, not the blob count: a walk that
+ * stops has usually delivered some blobs already, and how many is not
+ * the contract. */
+static void test_store_modex_blob_info(void)
+{
+    pmix_buffer_t buf;
+    pmix_server_trkr_t trk;
+    pmix_rank_t ranks[1] = {0};
+    pmix_status_t rc;
+
+    fprintf(stdout, "\n-- modex walker: the per-server flag byte --\n");
+
+    memset(&trk, 0, sizeof(trk));
+    trk.collect_type = PMIX_COLLECT_YES;
+
+    /* the ordinary value still works - so the screens below are being
+     * compared against something known to pass through them */
+    modex_nblobs = modex_ndone = 0;
+    modex_cb_rc = PMIX_SUCCESS;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex(&buf, "gds-modex-ns", ranks, 1, PMIX_COLLECT_YES);
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
+        report("PMIX_COLLECT_YES is still stored",
+               PMIX_SUCCESS == rc && 1 == modex_nblobs);
+        report("the callback is told it was cumulative",
+               PMIX_COLLECT_YES == modex_last_kind);
+    }
+    PMIX_DESTRUCT(&buf);
+
+    /* a delta contribution is stored, and the kind reaches the callback
+     * so a datastore that retires what an earlier modex left behind can
+     * tell the difference */
+    modex_nblobs = modex_ndone = 0;
+    modex_last_kind = PMIX_COLLECT_INVALID;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex(&buf, "gds-modex-ns", ranks, 1, PMIX_MODEX_DELTA);
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
+        report("a delta contribution is stored",
+               PMIX_SUCCESS == rc && 1 == modex_nblobs);
+        report("the callback is told it was a delta",
+               PMIX_MODEX_DELTA == modex_last_kind);
+    }
+    PMIX_DESTRUCT(&buf);
+
+    /* a value no release ever defined */
+    modex_nblobs = modex_ndone = 0;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex(&buf, "gds-modex-ns", ranks, 1, 99);
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
+        report("an undefined flag byte is refused", PMIX_ERR_BAD_PARAM == rc);
+    }
+    PMIX_DESTRUCT(&buf);
+
+    /* Two servers disagreeing. This is the arm that makes a mixed-version
+     * job fail loudly rather than silently: it is already implemented, so
+     * an *older* receiver rejects a delta from a newer peer with no
+     * change to its own code. Appending two single-server envelopes to
+     * one buffer is exactly what the host's all-gather produces. */
+    modex_nblobs = modex_ndone = 0;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex(&buf, "gds-modex-ns", ranks, 1, PMIX_COLLECT_YES);
+    if (PMIX_SUCCESS == rc) {
+        rc = build_modex(&buf, "gds-modex-ns", ranks, 1, PMIX_COLLECT_NO);
+    }
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
+        report("servers disagreeing about the flag byte is refused",
+               PMIX_ERR_BAD_PARAM == rc);
+    }
+    PMIX_DESTRUCT(&buf);
+}
+
 static void test_store_modex(void)
 {
     pmix_buffer_t buf;
@@ -405,7 +496,7 @@ static void test_store_modex(void)
     modex_nblobs = modex_ndone = 0;
     modex_cb_rc = PMIX_SUCCESS;
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-    rc = build_modex(&buf, "gds-modex-ns", ranks, 3);
+    rc = build_modex(&buf, "gds-modex-ns", ranks, 3, PMIX_COLLECT_YES);
     report("modex envelope builds", PMIX_SUCCESS == rc);
     if (PMIX_SUCCESS == rc) {
         rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
@@ -428,7 +519,7 @@ static void test_store_modex(void)
     modex_nblobs = modex_ndone = 0;
     modex_cb_rc = PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-    rc = build_modex(&buf, "gds-modex-ns", ranks, 3);
+    rc = build_modex(&buf, "gds-modex-ns", ranks, 3, PMIX_COLLECT_YES);
     if (PMIX_SUCCESS == rc) {
         rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
         report("a callback that does not report success truncates the walk",
@@ -1114,6 +1205,7 @@ int main(int argc, char **argv)
     test_assign_module();
     test_store_modex();
     test_store_modex_nspace_filter();
+    test_store_modex_blob_info();
     test_map_forms();
     test_derived_proc_info();
     test_malformed_job_info();

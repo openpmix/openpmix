@@ -296,7 +296,7 @@ state the framework's interface version — the numbers
 comment that **the GDS is not guaranteed to be thread-safe** — see
 Threading.
 
-### `base/base.h` — globals, active-module wrapper, modex key formats
+### `base/base.h` — globals and the active-module wrapper
 
 - **`pmix_gds_globals`** (`pmix_gds_globals_t`) — the framework state:
   `actives` (the priority-ordered module list), `initialized`, `selected`,
@@ -304,10 +304,11 @@ Threading.
 - **`pmix_gds_base_active_module_t`** `{ super, pri, module, component }` —
   one entry on `actives`, pairing a module with the priority it was
   inserted at and its component.
-- **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`) and the
-  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags — used when
-  (de)serializing modex blobs so a reader knows the key encoding and
-  whether data was collected.
+`pmix_gds_modex_key_fmt_t` and the `PMIX_GDS_COLLECT_BIT` /
+`PMIX_GDS_KEYMAP_BIT` blob-info flags used to be declared here too. They
+were deleted in August 2026, having been dead since the modex keymap was
+removed in 2024. See "The modex keymap, and why it is not coming back"
+in [`base/AGENTS.md`](base/AGENTS.md) before reviving the idea.
 
 ## Directory layout
 
@@ -315,7 +316,7 @@ Threading.
 src/mca/gds/
 ├── gds.h                   Framework API: module struct, PMIX_GDS_* macros, version
 ├── base/                   Framework infrastructure (see above)
-│   ├── base.h              Internal base API: globals, active-module wrapper, modex flags
+│   ├── base.h              Internal base API: globals, active-module wrapper
 │   ├── gds_base_frame.c    open/close, framework decl (no MCA params), class instance
 │   ├── gds_base_select.c   query components → build priority-ordered actives list
 │   └── gds_base_fns.c      available-modules, assign/fallback module, setup_fork, store_modex

@@ -60,7 +60,7 @@ C Syntax
    #define PMIX_DATA_ARRAY                 39
    #define PMIX_PROC_RANK                  40
    #define PMIX_QUERY                      41
-   #define PMIX_COMPRESSED_STRING          42  // string compressed with zlib
+   // Hole left by deprecation of PMIX_COMPRESSED_STRING
    #define PMIX_ALLOC_DIRECTIVE            43
    // Hole left by deprecation/removal of PMIX_INFO_ARRAY
    #define PMIX_IOF_CHANNEL                45
@@ -126,9 +126,12 @@ header. The values fall into the following broad categories:
   ``PMIX_INT``/``PMIX_UINT``, ``PMIX_FLOAT``, ``PMIX_DOUBLE``,
   ``PMIX_TIMEVAL``, ``PMIX_TIME``, and ``PMIX_POINTER``.
 
-* **Strings** |mdash| ``PMIX_STRING`` for a NULL-terminated character string,
-  and its compressed form ``PMIX_COMPRESSED_STRING`` (a string that has been
-  compressed with zlib for transmission).
+* **Strings** |mdash| ``PMIX_STRING`` for a NULL-terminated character string.
+  A compressed form, ``PMIX_COMPRESSED_STRING``, is **deprecated**: nothing
+  in PMIx produces one, and a value that arrives carrying that type is
+  expanded and delivered as a ``PMIX_STRING``. Do not tag a value with it.
+  Compression of a collective payload is applied to the whole payload by
+  the operation that ships it, not to individual values.
 
 * **Enumerated / directive types** |mdash| the typed PMIx enumerations and
   bit-mask directive types, such as ``PMIX_STATUS``, ``PMIX_PERSIST``,

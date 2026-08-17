@@ -224,6 +224,13 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_unpack_query, pmix_bfrops_base_copy_query,
                        pmix_bfrops_base_print_query, &pmix_mca_bfrops_v61_component.types);
 
+    /* PMIX_COMPRESSED_STRING is deprecated and nothing in this release
+     * produces one - but it stays registered here, and in every other
+     * component, because peers do. A PMIx built before the deprecation
+     * negotiates v61 with us and compresses its large string values on
+     * the way out, so dropping this entry would make those values
+     * unreadable rather than merely unfashionable. The base unpacker
+     * expands one into a PMIX_STRING; see pmix_bfrops_base_unpack_val(). */
     PMIX_REGISTER_TYPE("PMIX_COMPRESSED_STRING", PMIX_COMPRESSED_STRING, pmix_bfrops_base_pack_bo,
                        pmix_bfrops_base_unpack_bo, pmix_bfrops_base_copy_bo,
                        pmix_bfrops_base_print_bo, &pmix_mca_bfrops_v61_component.types);

@@ -146,6 +146,50 @@ every unpacker. Add to it rather than to a scratch program. Note that
 both defects above were found by that fuzz stage, not by reading -
 which is the argument for keeping it.
 
+## The one place unpack does not hand back the type it was given
+
+`pmix_bfrops_base_unpack_val()` expands a `PMIX_COMPRESSED_STRING` and
+returns a `PMIX_STRING`. That is deliberate and is the only such
+transformation in the framework, so it is worth knowing before you read
+the switch and assume a typo.
+
+The reason is that PMIx publishes no way to expand one: there is no
+`PMIx_Value_decompress`, so a compressed string that survives
+deserialization reaches the application through `PMIx_Get` as bytes it
+cannot read, and reaches the datastore in a form nothing can match
+against. `unpack_val` is the single point every value arriving from
+anywhere passes through exactly once, which makes it the only place the
+expansion can be done once rather than at each of the many consumers —
+the same argument as putting the NULL screen inside
+`PMIx_Value_get_number()` rather than at its thirty-odd callers.
+
+Three things follow:
+
+- **This is live compatibility code, not legacy cleanup.** Every
+  released PMIx compresses large string values on the way out, so peers
+  will keep sending them regardless of what this release chooses to
+  send. The arm must stay.
+- **It is not a wire-format change.** The bytes are identical; only the
+  in-memory result differs, and `PMIX_COMPRESSED_STRING` remains
+  registered in every component.
+- **Only scalar values are affected.** An *array* of
+  `PMIX_COMPRESSED_STRING` goes through `unpack_darray` to the per-type
+  unpacker (`unpack_bo`) and never reaches `unpack_val`, so array
+  elements keep their declared type. If that ever needs to change, it is
+  a separate decision — `data_array_construct()` sizes the block as
+  `pmix_byte_object_t`.
+
+A failure to expand is `PMIX_ERR_UNPACK_FAILURE`, not a fallback to
+handing back the compressed bytes under a `PMIX_STRING` tag. Same
+reasoning as the compressed-bucket path in
+[`gds_base_fns.c`](../../gds/base/gds_base_fns.c): if the sender says
+these bytes are compressed and we cannot expand them, we have no string
+— not the original one.
+
+Coverage: `test/unit/compress_block.c` packs a hand-built
+`PMIX_COMPRESSED_STRING` value and asserts the unpack yields a matching
+`PMIX_STRING`. It fails against a library without the arm.
+
 ## Defects found in the August 2026 review
 
 Recorded because each is a shape that will recur, not for history's

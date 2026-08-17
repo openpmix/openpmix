@@ -136,7 +136,7 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
     pmix_proc_t proc;
     pmix_buffer_t pbkt;
     bool compressed, decompressed, found;
-    pmix_collect_t last_blob_info_byte;
+    pmix_collect_t last_blob_info_byte, blob_info;
     /* PMIX_BYTE writes exactly one byte through this pointer, and
      * pmix_collect_t is an enum carrying a negative member - so the
      * compiler makes it int-sized and an unpack into it leaves three
@@ -225,9 +225,29 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
                 PMIX_DESTRUCT(&bkt3);
                 goto exit;
             }
+            blob_info = (pmix_collect_t) blob_info_byte;
+            /* Screen the value before comparing it. The check below only
+             * asks whether the servers agree with each other, so a marker
+             * they all agree on and none of us can act on would otherwise
+             * pass straight through. Two cases, and they fail differently:
+             *
+             * PMIX_MODEX_DELTA is honored - the kind is handed to the
+             * component's callback, which decides what it means for its
+             * own storage (gds/hash accumulates, so nothing; gds/shmem3
+             * keeps the generations a delta does not repeat).
+             *
+             * Anything else is a value no release ever defined, so the
+             * sender is not something this code can reason about. */
+            if (PMIX_COLLECT_NO != blob_info && PMIX_COLLECT_YES != blob_info
+                && PMIX_MODEX_DELTA != blob_info) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                rc = PMIX_ERR_BAD_PARAM;
+                PMIX_DESTRUCT(&bkt3);
+                goto exit;
+            }
             if (PMIX_COLLECT_INVALID == last_blob_info_byte) {
-                last_blob_info_byte = (pmix_collect_t) blob_info_byte;
-            } else if (last_blob_info_byte != (pmix_collect_t) blob_info_byte) {
+                last_blob_info_byte = blob_info;
+            } else if (last_blob_info_byte != blob_info) {
                 // we have a mismatch - report the error
                 pmix_show_help("help-pmix-server.txt", "collection-mismatch", true);
                 rc = PMIX_ERR_BAD_PARAM;
@@ -287,7 +307,7 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
                 }
 
                 // call the specific GDS component-provided function to store it
-                rc = cb_fn(&proc, &pbkt);
+                rc = cb_fn(&proc, &pbkt, blob_info_byte);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&pbkt);
@@ -328,7 +348,7 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
     // indicate that we are done processing the modex - need to alert
     // for each nspace involved
     PMIX_LIST_FOREACH(plist, &nspaces, pmix_proclist_t) {
-        rc = cb_fn(&plist->proc, NULL);
+        rc = cb_fn(&plist->proc, NULL, (uint8_t) last_blob_info_byte);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             break;

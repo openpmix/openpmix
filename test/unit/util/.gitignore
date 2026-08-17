@@ -18,4 +18,5 @@ util_net
 util_if
 util_parse_options
 util_os_path
+util_vmem
 hash_perf

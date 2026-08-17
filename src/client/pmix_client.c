@@ -197,6 +197,130 @@ error:
     pmix_invoke_local_event_hdlr(chain);
 }
 
+/* Is this scope a request to remove the key rather than store it? */
+static inline bool is_delete_scope(pmix_scope_t scope)
+{
+    return (PMIX_DEL_LOCAL == scope || PMIX_DEL_REMOTE == scope
+            || PMIX_DEL_GLOBAL == scope || PMIX_DEL_INTERNAL == scope);
+}
+
+/* Tell the namespace's own datastore to stop answering for a key.
+ *
+ * Storing the removal into pmix_globals.mypeer corrects the "hash" store
+ * every client keeps, and that is only half of it. A namespace served by
+ * another module - gds/shmem3, reading a shared segment it is not
+ * allowed to rewrite - holds its own copy and answers out of it, so it
+ * has to be told separately or it keeps handing back the deleted key.
+ *
+ * Both halves are needed on both paths that remove a key: the one where
+ * a server tells us about somebody's deletion, and the one where we are
+ * the process doing the deleting. The second is easy to overlook,
+ * because a rank deleting its OWN key has already applied it to its own
+ * store - but its own committed data is also in the modex, which is a
+ * different module's segment, and that copy answers first. */
+static void del_key_in_nspace_module(const pmix_proc_t *proc, const char *key)
+{
+    pmix_namespace_t *nptr;
+    pmix_status_t rc;
+
+    if (NULL == proc || NULL == key) {
+        return;
+    }
+    /* The module that answers a get for server-provided data is reached
+     * through the SERVER peer's namespace object, not through
+     * pmix_globals.nspaces. On a client those are different objects -
+     * our own carries "hash", which the caller has already corrected,
+     * and only the server peer's carries the module holding the modex.
+     * Walking pmix_globals.nspaces alone therefore told nobody anything,
+     * which is why a rank went on reading a key it had just deleted.
+     *
+     * The module screens the namespace itself - it has no tracker for
+     * one it never served - so this needs no matching test here. */
+    if (NULL != pmix_client_globals.myserver
+        && NULL != pmix_client_globals.myserver->nptr) {
+        PMIX_GDS_DEL_KEY(rc, pmix_client_globals.myserver->nptr, proc, key);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+    /* Any other namespace we hold cached data for. */
+    PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strncmp(nptr->nspace, proc->nspace, PMIX_MAX_NSLEN)) {
+            PMIX_GDS_DEL_KEY(rc, nptr, proc, key);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            return;
+        }
+    }
+}
+
+/* A server telling us that a key has been deleted, so our own copy of it
+ * goes too. See pmix_server_notify_deleted().
+ *
+ * We may never have had the key - a client caches only what it asked
+ * about - and removing something absent is not an error, so nothing here
+ * reports one. */
+static void client_data_delete_handler(struct pmix_peer_t *pr,
+                                       pmix_ptl_hdr_t *hdr,
+                                       pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_proc_t proc;
+    pmix_scope_t scope;
+    char *key = NULL;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    int32_t cnt;
+
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, cbdata);
+
+    /* a zero-byte buffer means the connection was lost */
+    if (NULL == buf || PMIX_BUFFER_IS_EMPTY(buf)) {
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &proc, &cnt, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &scope, &cnt, PMIX_SCOPE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &key, &cnt, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    /* the scope arrived off the wire, so it is the sender's word rather
+     * than ours - act only on one that really asks for a removal */
+    if (NULL == key || !is_delete_scope(scope)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        if (NULL != key) {
+            free(key);
+        }
+        return;
+    }
+    kv = PMIX_NEW(pmix_kval_t);
+    if (PMIX_UNLIKELY(NULL == kv)) {
+        free(key);
+        return;
+    }
+    kv->key = key; // the kval owns it now
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, scope, kv);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    /* our own peer is pinned to "hash", which is what the store above
+     * corrected - the namespace's own module has to be told separately */
+    del_key_in_nspace_module(&proc, kv->key);
+    PMIX_RELEASE(kv);
+}
+
 pmix_client_globals_t pmix_client_globals = {
     .myserver = NULL,
     .singleton = false,
@@ -225,8 +349,124 @@ pmix_client_globals_t pmix_client_globals = {
     .group_output = -1,
     .group_verbose = 0,
     .iof_stdout = PMIX_IOF_SINK_STATIC_INIT,
-    .iof_stderr = PMIX_IOF_SINK_STATIC_INIT
+    .iof_stderr = PMIX_IOF_SINK_STATIC_INIT,
+    .dirty_local = NULL,
+    .dirty_remote = NULL,
+    .del_local = NULL,
+    .del_remote = NULL,
+    /* start cumulative: on a second init in the same process the
+     * datastore may still hold what the first one published, and the
+     * server we are about to talk to has not seen any of it */
+    .commit_resync = true
 };
+
+void pmix_client_commit_resync(void)
+{
+    if (NULL != pmix_client_globals.dirty_local) {
+        PMIx_Argv_free(pmix_client_globals.dirty_local);
+        pmix_client_globals.dirty_local = NULL;
+    }
+    if (NULL != pmix_client_globals.dirty_remote) {
+        PMIx_Argv_free(pmix_client_globals.dirty_remote);
+        pmix_client_globals.dirty_remote = NULL;
+    }
+    /* The pending deletions go too, and that is correct rather than
+     * lossy: the reasons to resync are that the server we are about to
+     * talk to has never seen anything we published (a tool repointing at
+     * another one, a second PMIx_Init), so there is nothing there to
+     * delete. */
+    if (NULL != pmix_client_globals.del_local) {
+        PMIx_Argv_free(pmix_client_globals.del_local);
+        pmix_client_globals.del_local = NULL;
+    }
+    if (NULL != pmix_client_globals.del_remote) {
+        PMIx_Argv_free(pmix_client_globals.del_remote);
+        pmix_client_globals.del_remote = NULL;
+    }
+    pmix_client_globals.commit_resync = true;
+}
+
+/* Note that this key has been deleted, so the commit can say so.
+ *
+ * Also forces the commit to be cumulative. A delete and a re-publish of
+ * the same key in one interval would otherwise have to be ordered
+ * against each other in the per-key record, and there is nothing in that
+ * record to order them by; sending the whole set after the deletions
+ * gets the same answer without needing one. */
+static void mark_deleted(pmix_scope_t scope, const char *key)
+{
+    pmix_status_t rc;
+
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+        return;
+    }
+    /* internal data never left the process, so nobody else has a copy */
+    if (PMIX_DEL_INTERNAL == scope) {
+        return;
+    }
+    pmix_client_globals.commit_resync = true;
+    if (PMIX_DEL_LOCAL == scope || PMIX_DEL_GLOBAL == scope) {
+        rc = PMIx_Argv_append_unique_nosize(&pmix_client_globals.del_local, key);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+    if (PMIX_DEL_REMOTE == scope || PMIX_DEL_GLOBAL == scope) {
+        rc = PMIx_Argv_append_unique_nosize(&pmix_client_globals.del_remote, key);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+}
+
+/* Note that this key now has data the server has not been told about.
+ *
+ * Runs on the progress thread, from _putfn, and only once the store has
+ * succeeded - a key whose store failed has nothing to fetch back. */
+static void mark_dirty(pmix_scope_t scope, pmix_kval_t *kv)
+{
+    pmix_status_t rc;
+
+    /* a server that is not also a tool never commits (see PMIx_Commit),
+     * so recording anything for it only grows */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+        return;
+    }
+
+    /* internal data never leaves the process */
+    if (PMIX_INTERNAL == scope) {
+        return;
+    }
+
+    /* A qualified value cannot be recorded by key. Every one of them is
+     * stored under the single PMIX_QUALIFIED_VALUE key, with the real
+     * key and its qualifiers inside the array - and lookup_keyval() in
+     * src/util/pmix_hash.c deliberately will not match a qualified entry
+     * against an unqualified fetch, so there is no key we could ask for
+     * it back by. The cumulative fetch returns them correctly, so use
+     * that. */
+    if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
+        pmix_client_globals.commit_resync = true;
+        return;
+    }
+
+    /* append_unique is what keeps a key that is published repeatedly
+     * between two commits from being sent more than once */
+    if (PMIX_LOCAL == scope || PMIX_GLOBAL == scope) {
+        rc = PMIx_Argv_append_unique_nosize(&pmix_client_globals.dirty_local, kv->key);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            pmix_client_globals.commit_resync = true;
+        }
+    }
+    if (PMIX_REMOTE == scope || PMIX_GLOBAL == scope) {
+        rc = PMIx_Argv_append_unique_nosize(&pmix_client_globals.dirty_remote, kv->key);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            pmix_client_globals.commit_resync = true;
+        }
+    }
+}
 
 /* Unpack the status the server acked a simple command with. Returns
  * PMIX_ERR_UNREACH for the NULL/zero-byte buffer that marks a recv being
@@ -778,6 +1018,11 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
     rcv->tag = PMIX_PTL_TAG_IOF_CONTROL;
     rcv->cbfunc = pmix_iof_flow_control_handler;
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+    /* and the "a key you may have cached has been deleted" recv */
+    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+    rcv->tag = PMIX_PTL_TAG_DATA_DELETE;
+    rcv->cbfunc = client_data_delete_handler;
     pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
     /* create the default iof handler */
     iofreq = PMIX_NEW(pmix_iof_req_t);
@@ -1398,6 +1643,10 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
+    /* drop the delta-commit record, and leave the flag set so a second
+     * PMIx_Init in this process starts cumulative rather than trusting
+     * what a previous cycle told a previous server */
+    pmix_client_commit_resync();
     for (i = 0; i < pmix_client_globals.peers.size; i++) {
         peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_client_globals.peers, i);
         if (NULL != peer) {
@@ -1542,13 +1791,40 @@ static void _putfn(int sd, short args, void *cbdata)
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
     pmix_kval_t *kv = NULL;
-    uint8_t *tmp;
-    size_t len;
 
     /* need to acquire the cb object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cb);
 
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    /* A delete carries no value, so it has to be handled before anything
+     * below reads one. It is applied to our own store at once, the same
+     * way a put is, and recorded so the commit can tell the server. */
+    if (is_delete_scope(cb->scope)) {
+        kv = PMIX_NEW(pmix_kval_t);
+        if (PMIX_UNLIKELY(NULL == kv)) {
+            rc = PMIX_ERR_NOMEM;
+            goto done;
+        }
+        kv->key = strdup(cb->key); // the input belongs to the user
+        if (PMIX_UNLIKELY(NULL == kv->key)) {
+            rc = PMIX_ERR_NOMEM;
+            goto done;
+        }
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, cb->scope, kv);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            goto done;
+        }
+        /* The store above is against our own peer, which is pinned to
+         * "hash". Our own committed data is ALSO in the modex, which
+         * belongs to whichever module serves this namespace and answers
+         * ahead of the hash - so deleting our own key without telling
+         * that module leaves us still reading it. */
+        del_key_in_nspace_module(&pmix_globals.myid, kv->key);
+        mark_deleted(cb->scope, kv->key);
+        goto done;
+    }
 
     if (PMIX_CHECK_KEY(cb, PMIX_QUALIFIED_VALUE)) {
         /* type must be a data array */
@@ -1572,25 +1848,16 @@ static void _putfn(int sd, short args, void *cbdata)
         rc = PMIX_ERR_NOMEM;
         goto done;
     }
-    if (PMIX_STRING_SIZE_CHECK(cb->value)) {
-        /* compress large strings */
-        if (pmix_compress.compress_string(cb->value->data.string, &tmp, &len)) {
-            if (PMIX_UNLIKELY(NULL == tmp)) {
-                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                rc = PMIX_ERR_NOMEM;
-                PMIX_ERROR_LOG(rc);
-                goto done;
-            }
-            kv->value->type = PMIX_COMPRESSED_STRING;
-            kv->value->data.bo.bytes = (char *) tmp;
-            kv->value->data.bo.size = len;
-            rc = PMIX_SUCCESS;
-        } else {
-            PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, kv->value, cb->value);
-        }
-    } else {
-        PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, kv->value, cb->value);
-    }
+    /* Store the value as the caller gave it to us. A large string used to
+     * be converted to a PMIX_COMPRESSED_STRING here, which compressed the
+     * copy we hand the datastore as well as the one we later put on the
+     * wire - so a PMIx_Get of our own put came back as bytes the caller
+     * has no way to expand, and the modex carried a pre-compressed blob
+     * that the bucket-level compression could no longer find any
+     * redundancy in. Compression of the fence payload belongs to the
+     * fence, which compresses the whole bucket; see
+     * src/mca/pcompress/AGENTS.md for the measurements. */
+    PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, kv->value, cb->value);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto done;
@@ -1600,11 +1867,12 @@ static void _putfn(int sd, short args, void *cbdata)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, cb->scope, kv);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
+        goto done;
     }
 
-    /* mark that fresh values have been stored so we know
-     * to commit them later */
-    pmix_globals.commits_pending = true;
+    /* record that this key now has data the server has not been told
+     * about, so the next commit knows to fetch and send it */
+    mark_dirty(cb->scope, kv);
 
 done:
     if (NULL != kv) {
@@ -1633,13 +1901,32 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
      * only once someone raised the verbosity - ahead of the check that was
      * meant to catch it, and precisely while being debugged. _putfn() then
      * dereferences the value again. */
-    if (PMIX_UNLIKELY(NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key) || NULL == val)) {
+    if (PMIX_UNLIKELY(NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key))) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* A delete names a key to remove and carries no value; anything else
+     * must have one, since _putfn dereferences it. */
+    if (is_delete_scope(scope)) {
+        /* A server that predates these scopes drops the block silently -
+         * pmix_server_commit matches on the scope it recognizes - so the
+         * delete would appear to succeed and do nothing. Refuse it here,
+         * where the caller can still be told, rather than at the point
+         * where nothing is listening. PMIx_Put(3) documents
+         * PMIX_ERR_NOT_SUPPORTED as the answer for a scope an
+         * implementation does not support. */
+        if (pmix_atomic_check_bool(&pmix_globals.connected)
+            && NULL != pmix_client_globals.myserver
+            && PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 7, 0, 0)) {
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+    } else if (PMIX_UNLIKELY(NULL == val)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
     pmix_output_verbose(2, pmix_client_globals.base_output,
-                          "pmix: executing put for key %s type %s",
-                          key, PMIx_Data_type_string(val->type));
+                          "pmix: executing put for key %s type %s scope %s",
+                          key, (NULL == val) ? "NONE" : PMIx_Data_type_string(val->type),
+                          PMIx_Scope_string(scope));
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
@@ -1668,14 +1955,149 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
     return rc;
 }
 
+/* Fetch this process's contribution at one scope and add it to the commit
+ * message as a PMIX_SCOPE marker followed by a buffer of kvals. Adds
+ * nothing, successfully, when there is nothing to send for this scope.
+ *
+ * There are two ways of deciding what to send, and the cumulative one is
+ * not a legacy path waiting to be deleted - it is the fallback the delta
+ * rests on. "dirty" names the keys published since the last commit;
+ * "resync" asks for everything this process has published at this scope,
+ * which is what every commit used to do. */
+static pmix_status_t pack_commit_scope(pmix_buffer_t *msgout, pmix_cb_t *cb,
+                                       pmix_scope_t scope, bool resync,
+                                       char **dirty)
+{
+    pmix_status_t rc;
+    pmix_buffer_t bkt;
+    pmix_kval_t *kv;
+    int n;
+
+    /* one caddy serves both scopes, so start from an empty result list */
+    PMIX_LIST_DESTRUCT(&cb->kvs);
+    PMIX_CONSTRUCT(&cb->kvs, pmix_list_t);
+    cb->proc = &pmix_globals.myid;
+    cb->scope = scope;
+    /* local-scope data only ever reaches another process on this node, so
+     * the datastore may hand it back as a connection to its own storage;
+     * remote-scope data leaves the node and needs a real copy */
+    cb->copy = (PMIX_LOCAL != scope);
+    cb->key = NULL;
+
+    if (!resync && NULL != dirty) {
+        for (n = 0; NULL != dirty[n]; n++) {
+            cb->key = dirty[n];
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+            if (PMIX_SUCCESS != rc) {
+                /* We stored this key ourselves, so a miss means our record
+                 * and the datastore disagree. Rather than send a commit
+                 * that is quietly short, take everything. */
+                resync = true;
+                break;
+            }
+        }
+        cb->key = NULL;
+    }
+
+    if (resync) {
+        PMIX_LIST_DESTRUCT(&cb->kvs);
+        PMIX_CONSTRUCT(&cb->kvs, pmix_list_t);
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+        if (PMIX_SUCCESS != rc) {
+            /* nothing is stored at this scope */
+            return PMIX_SUCCESS;
+        }
+    }
+
+    if (0 == pmix_list_get_size(&cb->kvs)) {
+        return PMIX_SUCCESS;
+    }
+
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &scope, 1, PMIX_SCOPE);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
+    PMIX_LIST_FOREACH (kv, &cb->kvs, pmix_kval_t) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, &bkt, kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&bkt);
+            return rc;
+        }
+    }
+    /* now pack the result */
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &bkt, 1, PMIX_BUFFER);
+    PMIX_DESTRUCT(&bkt);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
+}
+
+/* Add a PMIX_DEL_* block naming the keys deleted since the last commit.
+ *
+ * These cannot be expressed through pack_commit_scope(): that fetches
+ * each key back out of the datastore, and a deleted key is exactly the
+ * one it will not find. The keys are stated directly instead, each as a
+ * kval carrying a PMIX_UNDEF value - the server's delete path ignores
+ * the value, and an empty one packs where a NULL would not.
+ *
+ * Emitted ahead of the data blocks by the caller, so that a key deleted
+ * and then published again in the same interval ends up present: the
+ * server applies the blocks in the order they appear. */
+static pmix_status_t pack_delete_scope(pmix_buffer_t *msgout,
+                                       pmix_scope_t scope, char **keys)
+{
+    pmix_status_t rc;
+    pmix_buffer_t bkt;
+    pmix_kval_t kv;
+    int n;
+
+    if (NULL == keys) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &scope, 1, PMIX_SCOPE);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
+    for (n = 0; NULL != keys[n]; n++) {
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = keys[n]; // borrowed - cleared below so the destructor leaves it
+        PMIX_VALUE_CREATE(kv.value, 1);
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            kv.key = NULL;
+            PMIX_DESTRUCT(&kv);
+            PMIX_DESTRUCT(&bkt);
+            return PMIX_ERR_NOMEM;
+        }
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, &bkt, &kv, 1, PMIX_KVAL);
+        kv.key = NULL; // the argv owns it
+        PMIX_DESTRUCT(&kv);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&bkt);
+            return rc;
+        }
+    }
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &bkt, 1, PMIX_BUFFER);
+    PMIX_DESTRUCT(&bkt);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
+}
+
 static void _commitfn(int sd, short args, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
-    pmix_scope_t scope;
-    pmix_buffer_t *msgout, bkt;
+    pmix_buffer_t *msgout;
     pmix_cmd_t cmd = PMIX_COMMIT_CMD;
-    pmix_kval_t *kv;
+    bool resync;
 
     /* need to acquire the cb object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cb);
@@ -1683,6 +2105,10 @@ static void _commitfn(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     msgout = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msgout)) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &cmd, 1, PMIX_COMMAND);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -1691,90 +2117,64 @@ static void _commitfn(int sd, short args, void *cbdata)
         goto error;
     }
 
-    /* if we haven't already done it, ensure we have committed our values */
-    if (pmix_globals.commits_pending) {
-        /* fetch and pack the local values */
-        scope = PMIX_LOCAL;
-        /* allow the GDS module to pass us this info
-         * as a local connection as this data would
-         * only go to another local client */
-        cb->proc = &pmix_globals.myid;
-        cb->scope = scope;
-        cb->copy = false;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
-        if (PMIX_SUCCESS == rc) {
-            PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &scope, 1, PMIX_SCOPE);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msgout);
-                goto error;
-            }
-            PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
-            PMIX_LIST_FOREACH(kv, &cb->kvs, pmix_kval_t) {
-                PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, &bkt, kv, 1, PMIX_KVAL);
-                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_DESTRUCT(&bkt);
-                    PMIX_RELEASE(msgout);
-                    goto error;
-                }
-            }
-            /* now pack the result */
-            PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &bkt, 1, PMIX_BUFFER);
-            PMIX_DESTRUCT(&bkt);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msgout);
-                goto error;
-            }
-        }
+    /* Read the mode once, so both scopes are gathered the same way even
+     * if something below sets the flag again. */
+    resync = pmix_client_globals.commit_resync;
 
-        /* fetch and pack the remote values */
-        scope = PMIX_REMOTE;
-        /* we need real copies here as this data will
-         * go to remote procs - so a connection will
-         * not suffice */
-        cb->proc = &pmix_globals.myid;
-        cb->scope = scope;
-        cb->copy = true;
-        PMIX_LIST_DESTRUCT(&cb->kvs);
-        PMIX_CONSTRUCT(&cb->kvs, pmix_list_t);
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
-        if (PMIX_SUCCESS == rc) {
-            PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &scope, 1, PMIX_SCOPE);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msgout);
-                goto error;
-            }
-            PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
-            PMIX_LIST_FOREACH(kv, &cb->kvs, pmix_kval_t) {
-                PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, &bkt, kv, 1, PMIX_KVAL);
-                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_DESTRUCT(&bkt);
-                    PMIX_RELEASE(msgout);
-                    goto error;
-                }
-            }
-            /* now pack the result */
-            PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &bkt, 1, PMIX_BUFFER);
-            PMIX_DESTRUCT(&bkt);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msgout);
-                goto error;
-            }
-        }
+    /* deletions first - see pack_delete_scope() */
+    rc = pack_delete_scope(msgout, PMIX_DEL_LOCAL, pmix_client_globals.del_local);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_RELEASE(msgout);
+        goto error;
+    }
+    rc = pack_delete_scope(msgout, PMIX_DEL_REMOTE, pmix_client_globals.del_remote);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_RELEASE(msgout);
+        goto error;
+    }
 
-        /* record that all committed data to-date has been sent */
-        pmix_globals.commits_pending = false;
+    rc = pack_commit_scope(msgout, cb, PMIX_LOCAL, resync,
+                           pmix_client_globals.dirty_local);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_RELEASE(msgout);
+        goto error;
+    }
+    rc = pack_commit_scope(msgout, cb, PMIX_REMOTE, resync,
+                           pmix_client_globals.dirty_remote);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_RELEASE(msgout);
+        goto error;
     }
 
     /* always send, even if we have nothing to contribute, so the server knows
      * that we contributed whatever we had */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msgout, commit_cbfunc, (void *) cb);
     if (PMIX_SUCCESS == rc) {
+        /* The transport has taken the message, so what it carries is no
+         * longer outstanding. _putfn runs on this same thread, so nothing
+         * can have been recorded between the packing above and here, and
+         * anything put from now on is new.
+         *
+         * Note the record is deliberately NOT cleared on the failure paths
+         * above: nothing was sent, so it still describes exactly what the
+         * next commit owes the server. */
+        if (NULL != pmix_client_globals.dirty_local) {
+            PMIx_Argv_free(pmix_client_globals.dirty_local);
+            pmix_client_globals.dirty_local = NULL;
+        }
+        if (NULL != pmix_client_globals.dirty_remote) {
+            PMIx_Argv_free(pmix_client_globals.dirty_remote);
+            pmix_client_globals.dirty_remote = NULL;
+        }
+        if (NULL != pmix_client_globals.del_local) {
+            PMIx_Argv_free(pmix_client_globals.del_local);
+            pmix_client_globals.del_local = NULL;
+        }
+        if (NULL != pmix_client_globals.del_remote) {
+            PMIx_Argv_free(pmix_client_globals.del_remote);
+            pmix_client_globals.del_remote = NULL;
+        }
+        pmix_client_globals.commit_resync = false;
         /* wait for the reply - commit_cbfunc sets pstatus from the status
          * the server returns and wakes the caller, so do not pre-declare
          * success here */

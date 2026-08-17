@@ -90,7 +90,8 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   group_destruct_die group_invite group_invite_timeout group_invite_decline \
                   group_invite_abort group_invite_others group_invite_suppress group_invite_nb \
                   group_invite_endpts topology \
-                  spawn_reuse spawn_iof iof_watcher group_badinfo datatypes toolswitch
+                  spawn_reuse spawn_iof iof_watcher group_badinfo datatypes toolswitch \
+                  modex_twice delete_key modex_attach_fail
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -332,6 +333,18 @@ datatypes_SOURCES = datatypes.c examples.h
 datatypes_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 datatypes_LDADD = $(top_builddir)/src/libpmix.la
 
+modex_twice_SOURCES = modex_twice.c examples.h
+modex_twice_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+modex_twice_LDADD = $(top_builddir)/src/libpmix.la
+
+delete_key_SOURCES = delete_key.c examples.h
+delete_key_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+delete_key_LDADD = $(top_builddir)/src/libpmix.la
+
+modex_attach_fail_SOURCES = modex_attach_fail.c examples.h
+modex_attach_fail_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+modex_attach_fail_LDADD = $(top_builddir)/src/libpmix.la
+
 abort_SOURCES = abort.c examples.h
 abort_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 abort_LDADD = $(top_builddir)/src/libpmix.la
@@ -346,4 +359,5 @@ distclean-local:
         group_invite_abort group_invite_suppress group_invite_nb group_invite_endpts \
         spawn_group resolve multi_nspace_group pub2 toolqry \
         simple_resolve pubstress monitor monitor_remote \
-        simple simple_server abort datatypes toolswitch
+        simple simple_server abort datatypes toolswitch \
+        modex_twice delete_key modex_attach_fail

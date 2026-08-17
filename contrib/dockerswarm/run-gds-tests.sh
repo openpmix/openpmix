@@ -109,7 +109,7 @@ PMIX_PREFIX=/opt/prte/pmix
 GDS_PROGRAMS="gds_datastore gds_fallback proc_array_id"
 
 # Geometries: one slot per host so every get crosses a server boundary.
-GEOMETRIES="node1:1,node2:1|2 node1:1,node2:1,node3:1,node4:1|4 node1:1,node2:1,node3:1,node4:1,node5:1,node6:1,node7:1,node8:1|8"
+GEOMETRIES="${GEOMETRIES:-node1:1,node2:1|2 node1:1,node2:1,node3:1,node4:1|4 node1:1,node2:1,node3:1,node4:1,node5:1,node6:1,node7:1,node8:1|8}"
 
 # The build stages below copy the source into the container and build it
 # there, rather than configuring a VPATH tree against the read-only mount
@@ -140,9 +140,10 @@ GEOMETRIES="node1:1,node2:1|2 node1:1,node2:1,node3:1,node4:1|4 node1:1,node2:1,
 #   over its checks, so the only usable signal is the absence of its
 #   failure lines together with rank 0's finalize line. Grade it that way
 #   rather than on the exit status, which proves nothing here.
+
 run_across_nodes() {
     local prog="$1" hosts="$2" np="$3" envs="${4:-}" label="${5:-}"
-    local out rc nok xargs exports v
+    local out rc nok xargs exports v trace
 
     xargs=""; exports=""
     for v in $envs; do
@@ -150,9 +151,24 @@ run_across_nodes() {
         exports="$exports export $v;"
     done
 
+    # SWARM_TRACE=1 makes the PMIx *servers* audible.
+    #
+    # They live inside the prted on each node, and PRRTE daemonizes every
+    # daemon but the HNP - so their stderr goes nowhere. Without this flag
+    # a run shows node1 and nothing else, which reads as "that code path
+    # never ran" when the truth is it ran somewhere the output was thrown
+    # away. Each line is tagged [host:pid]; confirm all $np nodes appear
+    # before concluding anything from a trace:
+    #
+    #   grep -oE '^\[[a-z0-9]+:[0-9]+\]' out | sort | uniq -c
+    #
+    # Off by default: it keeps the daemons in the foreground and is noisy.
+    trace=""
+    [ "${SWARM_TRACE:-0}" = 1 ] && trace="--leave-session-attached"
+
     cleanup_swarm
     out="$(RUN "$exports prterun --host $hosts -np $np --map-by node $xargs \
-                --timeout 120 /opt/prte/tests-gds/$prog 2>&1")"
+                $trace --timeout 120 /opt/prte/tests-gds/$prog 2>&1")"
     rc=$?
 
     if echo "$out" | grep -qiE 'time limit for job|timed out|DVM timeout'; then
@@ -175,6 +191,20 @@ run_across_nodes() {
             bad "$prog $label, $np servers: every rank passed but exit was $rc"
             return 1
         fi
+    elif [ "$prog" = delete_key ]; then
+        # every rank exits non-zero if the deleted key was still readable
+        # after the notification's grace period, or if any other rank's
+        # keys went with it
+        if [ "$rc" != 0 ]; then
+            bad "$prog $label, $np servers: a rank still saw the deleted key, or lost one it should have kept"
+            echo "$out" | grep -iE 'STILL readable|cannot read|failed' | head -3 | sed 's/^/       /'
+            return 1
+        fi
+        nok=$(echo "$out" | grep -c 'deleted key gone, others kept' || true)
+        if [ "$nok" -lt "$np" ]; then
+            bad "$prog $label, $np servers: only $nok/$np ranks confirmed the deletion"
+            return 1
+        fi
     elif [ "$prog" = modex_twice ]; then
         # rank 0 prints one line per fence, and every rank exits non-zero
         # if any peer's value was missing or wrong. Both lines are needed:
@@ -192,6 +222,24 @@ run_across_nodes() {
         fi
         if [ "$rc" != 0 ]; then
             bad "$prog $label, $np servers: both fences reported ok but exit was $rc"
+            return 1
+        fi
+    elif [ "$prog" = modex_attach_fail ]; then
+        # Every rank has to say OK: the fence succeeded, its own
+        # namespace's job data was still reachable, and it still got a
+        # peer's value - by whatever route. Counting the OK lines rather
+        # than trusting the exit status matters here, because the failure
+        # this covers is one a caller that ignores a return code does not
+        # see (openpmix#4156 reached production through exactly that).
+        nok=$(echo "$out" | grep -c 'MODEX-ATTACH-FAIL OK')
+        if [ "$nok" != "$np" ]; then
+            bad "$prog $label, $np servers: only $nok/$np ranks degraded cleanly"
+            echo "$out" | grep -iE 'FAILED|TAKE_NEXT_OPTION|INVALID_NAMESPACE' \
+                | head -3 | sed 's/^/       /'
+            return 1
+        fi
+        if [ "$rc" != 0 ]; then
+            bad "$prog $label, $np servers: every rank was OK but exit was $rc"
             return 1
         fi
     elif [ "$prog" = client ]; then
@@ -213,6 +261,78 @@ run_across_nodes() {
             bad "$prog $label, $np servers: no rank reached finalize"
             return 1
         fi
+    fi
+    return 0
+}
+
+# Two jobs at once over the same nodes.
+#
+# Concurrent jobs on a node are ordinary, and each one's server reserves
+# its own address-space arena. This checks the obvious things: both jobs
+# get the right answers, no arena reservation fails, and the two jobs are
+# not sitting on the same base.
+#
+# BE CLEAR ABOUT WHAT THIS DOES NOT SHOW. gds/shmem3 spreads jobs by
+# hashing the namespace into the placement, and this test does NOT
+# demonstrate that it works - it passes just as happily with the scatter
+# compiled out, which was confirmed by doing exactly that. The reason is
+# that ASLR has already moved each server's load base, the placement is
+# computed relative to it, and so two servers diverge anyway here. Where
+# the scatter earns its place is where ASLR does not do that job -
+# systems with randomization disabled, and non-PIE executables - neither
+# of which this swarm can produce. That property is pinned down in
+# test/unit/util/util_vmem.c instead, against the placement function
+# directly, where it is decidable.
+#
+# So read a pass here as "two jobs coexist", not as "the spreading
+# works".
+run_concurrent_jobs() {
+    local hosts="$1" np="$2"
+    local out apass bpass abase bbase missed cmd
+
+    cleanup_swarm
+
+    cmd='export PMIX_MCA_gds_base_verbose=2;
+         rm -rf /tmp/gdsjobA.log /tmp/gdsjobB.log /tmp/gdsjobA /tmp/gdsjobB;
+         mkdir -p /tmp/gdsjobA /tmp/gdsjobB;
+         ( TMPDIR=/tmp/gdsjobA prterun --host '"$hosts"' -np '"$np"' \
+             --map-by node --timeout 180 /opt/prte/tests-gds/datatypes \
+             > /tmp/gdsjobA.log 2>&1 ) &
+         ( TMPDIR=/tmp/gdsjobB prterun --host '"$hosts"' -np '"$np"' \
+             --map-by node --timeout 180 /opt/prte/tests-gds/datatypes \
+             > /tmp/gdsjobB.log 2>&1 ) &
+         wait;
+         echo "APASS=$(grep -c "datatypes: rank .*: PASS" /tmp/gdsjobA.log)";
+         echo "BPASS=$(grep -c "datatypes: rank .*: PASS" /tmp/gdsjobB.log)";
+         echo "ABASE=$(grep -ho "reserved arena \[0x[0-9a-f]*" /tmp/gdsjobA.log | head -1)";
+         echo "BBASE=$(grep -ho "reserved arena \[0x[0-9a-f]*" /tmp/gdsjobB.log | head -1)";
+         echo "MISSED=$(cat /tmp/gdsjobA.log /tmp/gdsjobB.log | grep -c "could not reserve arena")"'
+
+    out="$(RUN "$cmd")"
+
+    apass=$(echo "$out" | sed -n 's/^APASS=//p')
+    bpass=$(echo "$out" | sed -n 's/^BPASS=//p')
+    abase=$(echo "$out" | sed -n 's/^ABASE=//p')
+    bbase=$(echo "$out" | sed -n 's/^BBASE=//p')
+    missed=$(echo "$out" | sed -n 's/^MISSED=//p')
+
+    if [ "$apass" != "$np" ] || [ "$bpass" != "$np" ]; then
+        bad "concurrent jobs, $np servers: ranks passing A=$apass B=$bpass (want $np each)"
+        return 1
+    fi
+    if [ "${missed:-0}" != 0 ]; then
+        bad "concurrent jobs, $np servers: $missed arena reservation(s) failed"
+        return 1
+    fi
+    # No arena at all (shmem3 not selected, or reserving unavailable) is
+    # not a failure of this test, but it does mean it proved nothing.
+    if [ -z "$abase" ] || [ -z "$bbase" ]; then
+        skp "concurrent jobs, $np servers: no arena was reserved - nothing to compare"
+        return 1
+    fi
+    if [ "$abase" = "$bbase" ]; then
+        bad "concurrent jobs, $np servers: both jobs took the same arena base ($abase)"
+        return 1
     fi
     return 0
 }
@@ -356,7 +476,8 @@ test_linux() {
         -e PFX="$PMIX_PREFIX" \
         "$IMAGE" bash -euo pipefail -c '
             mkdir -p /opt/prte/tests-gds
-            for p in datatypes dmodex client modex_twice get_timing fence_timing; do
+            for p in datatypes dmodex client modex_twice delete_key \
+                     modex_attach_fail get_timing fence_timing; do
                 gcc -O0 -g -o /opt/prte/tests-gds/$p /pmix-src/examples/$p.c \
                     -I"$PFX/include" -I/pmix-src/examples \
                     -L"$PFX/lib" -lpmix -Wl,-rpath,"$PFX/lib"
@@ -367,7 +488,7 @@ test_linux() {
         bad "could not build the cross-node clients (rc=$rc)"
         return
     fi
-    ok "built examples/datatypes, examples/dmodex, examples/client and examples/modex_twice"
+    ok "built examples/datatypes, examples/dmodex, examples/client, examples/modex_twice and examples/delete_key"
     # get_timing and fence_timing are measurement tools, not tests - they
     # are built here so they are to hand, but nothing below runs them.
     # Timings do not belong in a pass/fail suite. Run get_timing directly,
@@ -398,6 +519,44 @@ test_linux() {
         hosts="${geom%|*}"; np="${geom#*|}"
         run_across_nodes modex_twice "$hosts" "$np" "" "(default)" \
             && ok "$np servers: second fence visible, first fence kept"
+    done
+
+    banner "a second collecting fence carrying only what changed"
+    # The case the segment chain exists for. With
+    # pmix_server_fence_delta_modex on, each server contributes only what
+    # its procs published since the previous collecting fence - so
+    # modex_twice's gen1 keys, published before the first fence and never
+    # again, are NOT in the second fence's payload. They survive only if
+    # gds/shmem3 kept the generation that carried them and reads back
+    # through it. A chain that does not work fails this and passes the
+    # cumulative cases above, which is exactly why this case is here.
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes modex_twice "$hosts" "$np" \
+            "PMIX_MCA_pmix_server_fence_delta_modex=1" "(delta modex)" \
+            && ok "$np servers with delta modex: second fence visible, first kept"
+    done
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes client "$hosts" "$np" \
+            "PMIX_MCA_pmix_server_fence_delta_modex=1" "(delta modex)" \
+            && ok "$np servers with delta modex: put/commit/fence/get across servers"
+    done
+
+    banner "deleting a published key"
+    # The key is published, circulated by a fence and read by every rank -
+    # so by the time rank 0 deletes it, it is in every peer's cache and,
+    # under shmem3, in a shared segment that is never rewritten. Every
+    # rank must stop being able to read it while keeping the others.
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes delete_key "$hosts" "$np" "" "(default)" \
+            && ok "$np servers: deleted key gone everywhere, others kept"
+    done
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes delete_key "$hosts" "$np" "PMIX_MCA_gds=hash" "(hash)" \
+            && ok "$np servers on hash: deleted key gone everywhere, others kept"
     done
 
     banner "every get through the progress thread (fast path disabled)"
@@ -453,6 +612,44 @@ test_linux() {
         run_across_nodes datatypes "$hosts" "$np" \
             "PMIX_MCA_gds_shmem3_force_client_attach_failure=1" "(fallback)" \
             && ok "$np servers: clients fell back and still read every peer"
+    done
+
+    banner "a modex the client cannot map (openpmix#4156)"
+    # The OTHER attach failure, and the one with no fallback available.
+    # force_client_attach_failure above cannot reach it: that fails every
+    # attach, so the client leaves PMIx_Init on gds/hash and never gets to
+    # a fence on shmem3. This one fails only the modex segment, which is
+    # attached at fence time - and used to take the client's job and
+    # session segments down with it while handing PMIx_Fence's caller
+    # PMIX_ERR_TAKE_NEXT_OPTION.
+    #
+    # Two nodes minimum is not a convention here, it is the whole test: a
+    # single-node job exchanges no remote data, so no modex segment is
+    # ever sent to the client and there is nothing to fail.
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes modex_attach_fail "$hosts" "$np" \
+            "PMIX_MCA_gds_shmem3_force_modex_attach_failure=1" "(no modex map)" \
+            && ok "$np servers: fence succeeded and job data survived"
+    done
+
+    banner "two jobs at once over the same nodes"
+    # Only the larger geometries: the point is contention between two
+    # servers on a node, which two nodes show as well as eight, and each
+    # of these stands up two DVMs.
+    for geom in node1:1,node2:1\|2 node1:1,node2:1,node3:1,node4:1\|4; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_concurrent_jobs "$hosts" "$np" \
+            && ok "$np servers x2: both jobs coexisted on separate arenas"
+    done
+
+    banner "the same program with the modex mapping normally"
+    # The control. If this fails, the program is broken rather than the
+    # degradation path it is meant to be checking.
+    for geom in $GEOMETRIES; do
+        hosts="${geom%|*}"; np="${geom#*|}"
+        run_across_nodes modex_attach_fail "$hosts" "$np" "" "(modex mapped)" \
+            && ok "$np servers: baseline with the modex segment mapped"
     done
 }
 

@@ -119,9 +119,20 @@ pmix_compress_base_t pmix_compress_base = {
 static int pmix_compress_base_register(pmix_mca_base_register_flag_t flags)
 {
     (void) flags;
-    pmix_compress_base.compress_limit = 4096;
+    /* Inputs below this size are never offered to the compressor. The
+     * floor exists to keep us from spending CPU where there is nothing
+     * to gain - it is not a correctness guard, because every component
+     * declines any result that is not strictly smaller than its input.
+     * Measured on modex-shaped payloads the compressor declines outright
+     * below about 256 bytes and starts returning real gains just above
+     * it, for under 10us, so this is where the floor stops costing us
+     * opportunity and starts saving pointless work. 4096 - the value
+     * this carried until August 2026 - left every small-node job
+     * shipping its whole modex raw. See "Choosing compress_limit" in
+     * AGENTS.md before changing it. */
+    pmix_compress_base.compress_limit = 256;
     (void) pmix_mca_base_var_register("pmix", "pcompress", "base", "limit",
-                                      "Threshold beyond which data will be compressed",
+                                      "Size in bytes below which data is left uncompressed",
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_compress_base.compress_limit);
 

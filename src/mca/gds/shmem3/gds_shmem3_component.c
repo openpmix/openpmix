@@ -79,6 +79,23 @@ double pmix_gds_shmem3_segment_size_multiplier = 1.0;
 
 bool pmix_gds_shmem3_force_client_attach_failure = false;
 
+bool pmix_gds_shmem3_force_modex_attach_failure = false;
+
+/* One gibibyte per slot. Nothing is committed, so the cost of being
+ * generous is a virtual address range and a VMA; the cost of being
+ * stingy is a modex that does not fit and has to be placed the old
+ * way. */
+size_t pmix_gds_shmem3_arena_slot_size = 1024UL * 1024UL * 1024UL;
+
+/* Four generations live at once. One is the steady state; more than one
+ * only arises where a fence contributed just what changed, and each such
+ * fence adds one until a cumulative contribution collapses them. Four
+ * covers the shapes seen in practice and costs nothing but address
+ * space; past it, a generation is placed outside the arena. */
+size_t pmix_gds_shmem3_arena_modex_slots = 4;
+
+bool pmix_gds_shmem3_offset_placement = true;
+
 static int
 gds_shmem3_component_register(void)
 {
@@ -106,6 +123,66 @@ gds_shmem3_component_register(void)
         "exercised. Do not set this in production.",
         PMIX_MCA_BASE_VAR_TYPE_BOOL,
         &pmix_gds_shmem3_force_client_attach_failure
+    );
+    if (varidx < 0) {
+        return PMIX_ERROR;
+    }
+
+    varidx = pmix_mca_base_component_var_register(
+        &pmix_mca_gds_shmem3_component.super,
+        "force_modex_attach_failure",
+        "(Testing only) Force a client's attach of the MODEX segment to "
+        "fail, leaving its job and session attaches alone. Unlike "
+        "force_client_attach_failure, this reaches the fence-time attach, "
+        "because the client still completes PMIx_Init on shmem3. Do not "
+        "set this in production.",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_gds_shmem3_force_modex_attach_failure
+    );
+    if (varidx < 0) {
+        return PMIX_ERROR;
+    }
+
+    varidx = pmix_mca_base_component_var_register(
+        &pmix_mca_gds_shmem3_component.super,
+        "arena_slot_size",
+        "Bytes of address space reserved for each modex slot in a job's "
+        "arena. The reservation holds the addresses a client will later "
+        "need to map at; nothing is committed, so this costs virtual "
+        "address space only. Set to 0 to disable the arena and place "
+        "every segment independently.",
+        PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+        &pmix_gds_shmem3_arena_slot_size
+    );
+    if (varidx < 0) {
+        return PMIX_ERROR;
+    }
+
+    varidx = pmix_mca_base_component_var_register(
+        &pmix_mca_gds_shmem3_component.super,
+        "arena_modex_slots",
+        "How many modex generations a job's arena can hold at once. More "
+        "than one is live whenever a fence contributed only what changed, "
+        "since the generations before such a one are still the only copy "
+        "of what it did not repeat. A generation that arrives with every "
+        "slot taken is placed outside the arena. Capped at 32.",
+        PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+        &pmix_gds_shmem3_arena_modex_slots
+    );
+    if (varidx < 0) {
+        return PMIX_ERROR;
+    }
+
+    varidx = pmix_mca_base_component_var_register(
+        &pmix_mca_gds_shmem3_component.super,
+        "offset_placement",
+        "Place shared-memory segments a quarter of the way into the biggest "
+        "hole in the address space rather than at its midpoint. The midpoint "
+        "is where hwloc, Open MPI and this component's own former default "
+        "all aim, so it is the address most likely to be taken already in "
+        "some other process that has to map here too.",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_gds_shmem3_offset_placement
     );
     if (varidx < 0) {
         return PMIX_ERROR;

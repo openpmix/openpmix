@@ -540,6 +540,243 @@ fetch_sessioninfo(
 }
 
 // TODO(skg) This needs plenty of work.
+/* Has this job been told to stop answering for this key?
+ *
+ * "generation" is the modex generation the answer would come from, or
+ * UINT32_MAX for the job segment - which is written once and never
+ * re-published, so a tombstone against it always applies. Modex data can
+ * legitimately come back, so a tombstone only shadows generations up to
+ * the one at which it was recorded.
+ *
+ * The list is empty for every job nobody has deleted from, which is the
+ * ordinary case, so this costs a NULL test on the usual path. */
+static bool tombstoned(
+    pmix_gds_shmem3_job_t *job,
+    pmix_rank_t rank,
+    const char *key,
+    uint32_t generation
+) {
+    pmix_gds_shmem3_tombstone_t *t;
+
+    if (NULL == key || 0 == pmix_list_get_size(&job->tombstones)) {
+        return false;
+    }
+    PMIX_LIST_FOREACH (t, &job->tombstones, pmix_gds_shmem3_tombstone_t) {
+        if (t->rank != rank || NULL == t->key || 0 != strcmp(t->key, key)) {
+            continue;
+        }
+        if (UINT32_MAX == generation || generation <= t->generation) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Drop from a fetch result anything this job has stopped answering for.
+ * The NULL-key form of a fetch asks for everything a process published,
+ * so the filtering has to happen on the way out rather than on the way
+ * in. */
+static void drop_tombstoned(
+    pmix_gds_shmem3_job_t *job,
+    pmix_rank_t rank,
+    pmix_list_t *kvs,
+    uint32_t generation,
+    size_t mark
+) {
+    pmix_kval_t *kv, *nxt;
+    size_t n = 0;
+
+    if (0 == pmix_list_get_size(&job->tombstones)) {
+        return;
+    }
+    /* Only what this generation contributed - entries before "mark"
+     * came from newer generations and must be judged against theirs,
+     * which the walk already did. */
+    PMIX_LIST_FOREACH_SAFE (kv, nxt, kvs, pmix_kval_t) {
+        if (n++ < mark) {
+            continue;
+        }
+        if (tombstoned(job, rank, kv->key, generation)) {
+            pmix_list_remove_item(kvs, &kv->super);
+            PMIX_RELEASE(kv);
+        }
+    }
+}
+
+/* Drop entries added at or after "mark" whose key an earlier entry
+ * already supplied. The list is filled newest generation first, so the
+ * earlier copy is the current one and the later copy is stale. */
+static void
+drop_shadowed(
+    pmix_list_t *kvs,
+    size_t mark
+) {
+    pmix_kval_t *later, *nxt, *earlier;
+    size_t n, m;
+
+    n = 0;
+    PMIX_LIST_FOREACH_SAFE (later, nxt, kvs, pmix_kval_t) {
+        if (n++ < mark) {
+            continue;
+        }
+        m = 0;
+        PMIX_LIST_FOREACH (earlier, kvs, pmix_kval_t) {
+            if (m++ >= mark) {
+                break;
+            }
+            if (NULL != earlier->key && NULL != later->key
+                && 0 == strcmp(earlier->key, later->key)) {
+                pmix_list_remove_item(kvs, &later->super);
+                PMIX_RELEASE(later);
+                break;
+            }
+        }
+    }
+}
+
+/* Read the job segment, honoring anything this job has been told to stop
+ * answering for. Job data is written once and never re-published, so a
+ * tombstone against it always applies - hence UINT32_MAX. */
+static pmix_status_t job_fetch(
+    pmix_gds_shmem3_job_t *job,
+    pmix_hash_table_t *ht,
+    pmix_rank_t rank,
+    const char *key,
+    pmix_info_t *qualifiers,
+    size_t nqual,
+    pmix_list_t *kvs,
+    pmix_keyindex_t *kidx
+) {
+    pmix_status_t rc;
+    size_t mark = pmix_list_get_size(kvs);
+
+    rc = pmix_hash_fetch(ht, rank, key, qualifiers, nqual, kvs, kidx);
+    if (PMIX_SUCCESS == rc) {
+        drop_tombstoned(job, rank, kvs, UINT32_MAX, mark);
+        if (NULL != key && mark == pmix_list_get_size(kvs)) {
+            rc = PMIX_ERR_NOT_FOUND;
+        }
+    }
+    return rc;
+}
+
+/* Remove entries added at or after "mark" whose value is PMIX_UNDEF, and
+ * say whether there were any.
+ *
+ * Such an entry is not data: it is the contributing process saying the
+ * key is gone, carried in the modex because a contribution that merely
+ * stops naming a key removes nothing at the far end. gds/hash acts on it
+ * by taking the key out; this component cannot, because its copy is in a
+ * segment that is never rewritten - so the entry stays and every read
+ * steps over it. */
+static bool strip_undef(
+    pmix_list_t *kvs,
+    size_t mark
+) {
+    pmix_kval_t *kv, *nxt;
+    size_t n = 0;
+    bool found = false;
+
+    PMIX_LIST_FOREACH_SAFE (kv, nxt, kvs, pmix_kval_t) {
+        if (n++ < mark) {
+            continue;
+        }
+        if (NULL != kv->value && PMIX_UNDEF == kv->value->type) {
+            pmix_list_remove_item(kvs, &kv->super);
+            PMIX_RELEASE(kv);
+            found = true;
+        }
+    }
+    return found;
+}
+
+/* Read the modex, newest generation first.
+ *
+ * A generation built from a delta contribution holds only what changed,
+ * so a key may live only in an older one. For a keyed lookup the newest
+ * generation that has it wins and the walk stops there. For a NULL-key
+ * lookup - "everything this proc published" - every generation has to be
+ * consulted, and a copy of a key a newer one already supplied has to be
+ * dropped, or the caller gets that key twice with the stale value
+ * second.
+ *
+ * job->modex_prior is empty unless a delta has been stored, so in the
+ * ordinary case this is the single lookup it has always been. */
+static pmix_status_t
+modex_fetch(
+    pmix_gds_shmem3_job_t *job,
+    pmix_rank_t rank,
+    const char *key,
+    pmix_info_t *qualifiers,
+    size_t nqual,
+    pmix_list_t *kvs
+) {
+    pmix_gds_shmem3_modex_seg_t *seg;
+    pmix_status_t rc = PMIX_ERR_NOT_FOUND;
+    pmix_status_t r2;
+    size_t mark;
+
+    if (pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_MODEX_ID,
+                                   PMIX_GDS_SHMEM3_READY_FOR_USE)
+        && NULL != job->smmodex) {
+        mark = pmix_list_get_size(kvs);
+        rc = pmix_hash_fetch(job->smmodex->hashtab, rank, key, qualifiers,
+                             nqual, kvs, job->smmodex->keyindex);
+        if (PMIX_ERR_NOMEM == rc) {
+            return rc;
+        }
+        if (PMIX_SUCCESS == rc) {
+            drop_tombstoned(job, rank, kvs, job->modex_generation, mark);
+            if (NULL != key) {
+                /* A deletion carried in this generation is the last word
+                 * on the key: an older generation holding it describes a
+                 * value that has since been taken back. */
+                if (strip_undef(kvs, mark)) {
+                    return PMIX_ERR_NOT_FOUND;
+                }
+                /* everything this generation had may have just been
+                 * dropped - keep walking rather than reporting a hit */
+                if (pmix_list_get_size(kvs) > mark) {
+                    return rc;
+                }
+            }
+            rc = PMIX_ERR_NOT_FOUND;
+        }
+    }
+    PMIX_LIST_FOREACH (seg, &job->modex_prior, pmix_gds_shmem3_modex_seg_t) {
+        if (NULL == seg->smmodex) {
+            continue;
+        }
+        mark = pmix_list_get_size(kvs);
+        r2 = pmix_hash_fetch(seg->smmodex->hashtab, rank, key, qualifiers,
+                             nqual, kvs, seg->smmodex->keyindex);
+        if (PMIX_ERR_NOMEM == r2) {
+            return r2;
+        }
+        if (PMIX_SUCCESS == r2) {
+            drop_tombstoned(job, rank, kvs, seg->generation, mark);
+            if (NULL != key) {
+                if (strip_undef(kvs, mark)) {
+                    return PMIX_ERR_NOT_FOUND;
+                }
+                if (pmix_list_get_size(kvs) > mark) {
+                    return r2;
+                }
+                continue;
+            }
+            /* the deletions stay in place for now: drop_shadowed() is
+             * what makes them shadow the older values they take back,
+             * and they are stripped once the walk is done */
+            drop_shadowed(kvs, mark);
+            rc = PMIX_SUCCESS;
+        }
+    }
+    if (NULL == key) {
+        strip_undef(kvs, 0);
+    }
+    return rc;
+}
+
 static pmix_status_t
 shmem3_fetch_from_job(
     pmix_gds_shmem3_job_t *job,
@@ -593,18 +830,28 @@ shmem3_fetch_from_job(
     // global one, so a read has to translate through that same table.
     // See the comment on pmix_gds_shmem3_shared_modex_data_t.keyindex.
     //
-    // Both segments carry their own. Nothing on this path consults
-    // pmix_globals.keyindex, which is what lets a read of shared data be
-    // independent of a structure the progress thread rewrites.
-    pmix_keyindex_t *const remote_kidx = mdrfu ? job->smmodex->keyindex : NULL;
+    // Every segment carries its own, which is what lets a read of shared
+    // data be independent of pmix_globals.keyindex - a structure the
+    // progress thread rewrites. The modex side of that lives in
+    // modex_fetch(), which has to pair each generation's table with that
+    // generation's index; only the job segment's is needed here.
+    /* There is modex data to read if the current generation is ready OR
+     * any retired one survives - the two differ during the window in
+     * which a delta is being stored, when the current generation has
+     * been set aside and its replacement is not yet published. */
+    const bool have_modex = mdrfu || 0 < pmix_list_get_size(&job->modex_prior);
+    /* Which store the lookup below is against. This cannot be inferred
+     * from ht any more: the modex is a chain of generations rather than
+     * one table, and its newest may be absent while older ones are not. */
+    bool useremote = false;
     pmix_keyindex_t *const local_kidx = job->smdata->keyindex;
 
     // If the rank is wildcard and key is NULL, then the caller is asking for a
     // complete copy of the job-level info for this nspace, so retrieve it.
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
         // Fetch all values from the hash table tied to rank=wildcard.
-        rc = pmix_hash_fetch(
-            local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, local_kidx
+        rc = job_fetch(
+            job, local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, local_kidx
         );
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
@@ -645,8 +892,8 @@ shmem3_fetch_from_job(
         for (pmix_rank_t rank = 0; rank < job->nspace->nprocs; rank++) {
             pmix_list_t rkvs;
             PMIX_CONSTRUCT(&rkvs, pmix_list_t);
-            rc = pmix_hash_fetch(
-                local_ht, rank, NULL, NULL, 0, &rkvs, local_kidx
+            rc = job_fetch(
+                job, local_ht, rank, NULL, NULL, 0, &rkvs, local_kidx
             );
             if (PMIX_UNLIKELY(PMIX_ERR_NOMEM == rc)) {
                 PMIX_LIST_DESTRUCT(&rkvs);
@@ -751,10 +998,12 @@ shmem3_fetch_from_job(
         PMIX_SCOPE_UNDEF == scope ||
         PMIX_RANK_WILDCARD == proc->rank) {
         ht = local_ht;
+        useremote = false;
     }
     else if (PMIX_REMOTE == scope) {
         // Note that this ht can be NULL.
         ht = remote_ht;
+        useremote = true;
     }
     else {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -765,10 +1014,12 @@ doover:
     // If rank=PMIX_RANK_UNDEF, then we need to search all
     // known ranks for this nspace as any one of them could
     // be the source.
-    if (PMIX_RANK_UNDEF == proc->rank && ht) {
+    if (PMIX_RANK_UNDEF == proc->rank && (useremote ? have_modex : (NULL != ht))) {
         for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
-            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs,
-                                 (ht == remote_ht) ? remote_kidx : local_kidx);
+            rc = useremote
+                     ? modex_fetch(job, rnk, key, qualifiers, nqual, kvs)
+                     : job_fetch(job, ht, rnk, key, qualifiers, nqual, kvs,
+                                 local_kidx);
             if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
@@ -797,8 +1048,8 @@ doover:
         if (NULL == key) {
             // And need to add all job info just in case
             // that was passed via a different GDS component.
-            rc = pmix_hash_fetch(
-                local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, local_kidx
+            rc = job_fetch(
+                job, local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, local_kidx
             );
         }
         else {
@@ -806,11 +1057,11 @@ doover:
         }
     }
     else {
-        if (ht) {
-            rc = pmix_hash_fetch(
-                ht, proc->rank, key, qualifiers, nqual, kvs,
-                (ht == remote_ht) ? remote_kidx : local_kidx
-            );
+        if (useremote ? have_modex : (NULL != ht)) {
+            rc = useremote
+                     ? modex_fetch(job, proc->rank, key, qualifiers, nqual, kvs)
+                     : job_fetch(job, ht, proc->rank, key, qualifiers, nqual,
+                                 kvs, local_kidx);
         }
         else {
             rc = PMIX_ERR_NOT_FOUND;
@@ -823,18 +1074,38 @@ doover:
             return PMIX_SUCCESS;
         }
         if (PMIX_GLOBAL == scope) {
-            if (ht == local_ht) {
+            if (!useremote) {
                 // We need to do this again for the remote data.
                 ht = remote_ht;
+                useremote = true;
                 goto doover;
             }
         }
     }
     else {
         if (PMIX_GLOBAL == scope || PMIX_SCOPE_UNDEF == scope) {
-            if (ht == local_ht) {
+            if (!useremote) {
                 // We need to also try the remote data.
                 ht = remote_ht;
+                /* Say which store the retry is against, exactly as the
+                 * success path above does. Everything past "doover"
+                 * dispatches on this flag rather than on ht, because the
+                 * modex is a chain of generations rather than one table;
+                 * arriving there with it still false ran the JOB fetch
+                 * over the MODEX table, paired with the job segment's key
+                 * index. The indices are minted per segment, so that
+                 * pairing does not resolve the key and the lookup misses
+                 * whatever is there.
+                 *
+                 * It missed on the ordinary path, not a corner: an
+                 * unqualified PMIx_Get arrives as PMIX_SCOPE_UNDEF, finds
+                 * nothing local, and reaches the modex only through here.
+                 * Every remote key therefore went up to the server, and a
+                 * request for a rank that had already finished never came
+                 * back - a dmdx tracker is created with no timeout - so
+                 * the caller blocked forever. That is an 8-rank job over
+                 * 8 nodes hanging better than half the time. */
+                useremote = true;
                 goto doover;
             }
         }
@@ -849,10 +1120,9 @@ doover:
         if (PMIX_RANK_IS_VALID(proc->rank)) {
             pmix_kval_t *kv;
             if (PMIX_LOCAL == scope) {
-                if (NULL != remote_ht) {
+                if (have_modex) {
                     /* check the remote scope */
-                    rc = pmix_hash_fetch(remote_ht, proc->rank, key, qualifiers, nqual, kvs,
-                                         remote_kidx);
+                    rc = modex_fetch(job, proc->rank, key, qualifiers, nqual, kvs);
                     if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
                         while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
                             PMIX_RELEASE(kv);
@@ -866,8 +1136,8 @@ doover:
                 }
             } else if (PMIX_REMOTE == scope) {
                 /* check the local scope */
-                rc = pmix_hash_fetch(local_ht, proc->rank, key, qualifiers, nqual, kvs,
-                                     local_kidx);
+                rc = job_fetch(job, local_ht, proc->rank, key, qualifiers, nqual, kvs,
+                               local_kidx);
                 if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
                     while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
                         PMIX_RELEASE(kv);

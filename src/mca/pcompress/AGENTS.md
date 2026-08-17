@@ -53,7 +53,7 @@ The selected module is reached through the exported global
 | Caller | Uses |
 |--------|------|
 | `PMIx_Data_compress` / `PMIx_Data_decompress` ([`src/common/pmix_data.c`](../../common/pmix_data.c)) | the public block API |
-| `src/client/pmix_client.c` | `compress_string` on large modex string values |
+| `src/mca/bfrops/base/bfrop_base_unpack.c` | `decompress_string` when expanding a `PMIX_COMPRESSED_STRING` value off the wire |
 | `src/server/pmix_server_fence.c` | `compress` the collected fence blob |
 | `src/mca/gds/base/gds_base_fns.c` | `decompress` a stored blob |
 | `src/mca/preg/compress/` | `compress_string`/`decompress_string` behind the `blob:` regex encoding (see [`../preg/AGENTS.md`](../preg/AGENTS.md)) |
@@ -178,8 +178,93 @@ Two MCA parameters are registered in `pcompress_base_frame.c`
 
 | Parameter | Type / default | Meaning |
 |-----------|----------------|---------|
-| `pcompress_base_limit` | size_t, **4096** | value written into `compress_limit`; the byte threshold below which data is left uncompressed |
+| `pcompress_base_limit` | size_t, **1024** | value written into `compress_limit`; the byte threshold below which data is left uncompressed |
 | `pcompress_base_silence_warning` | bool, **false** | value written into `silent`; suppresses the base default's "unavailable" warning |
+
+### Choosing `compress_limit`
+
+The floor is an economy measure, not a safety one: every component
+already declines a result that is not strictly smaller than its input, so
+lowering it cannot make a payload grow. What it buys or wastes is CPU.
+
+It was **4096** until August 2026, and that turned out to be far above
+where compression stops paying. Measured on modex-shaped payloads — the
+per-node fence bucket, whose values are endpoint blobs and therefore
+close to incompressible, so the compressor has only the repeated key
+strings to work with. `zstd` is what actually runs wherever it was
+built (priority 90); `zlib` at level 1 is shown beside it because it is
+the fallback and because its cost is easy to attribute:
+
+| bytes offered | `zstd` result | `zlib`-1 result | `zlib`-1 deflate |
+|---|---|---|---|
+| 64 – 192 | declined | declined | — |
+| 256 | 255 | — | — |
+| 384 | 318 | — | — |
+| 512 | 374 | — | — |
+| 1088 (4 procs) | 601 (0.55) | 0.58 | 13.2 us |
+| 2176 (8 procs) | 1028 (0.47) | 0.52 | 17.3 us |
+| 4352 (16 procs) | 1866 (0.43) | 0.48 | 24.1 us |
+| 17408 (64 procs) | 6881 (0.40) | 0.44 | 60.9 us |
+
+There is no crossover: the ratio improves monotonically with size, the
+cost stays in the tens of microseconds, and it is paid once per node per
+fence. Below roughly 256 bytes the compressor **declines on its own** —
+the result is not smaller — so a floor there costs no opportunity at all
+and only saves the pointless attempt, which is exactly what a floor is
+for. That is why the value is **256** rather than something larger: every
+byte of headroom above it was a payload we could have shrunk and did not.
+The old 4096 meant a node running fewer than about sixteen processes
+shipped its whole modex raw, which is most of the GPU-dense machines now
+in service.
+
+This parameter used to govern a second, unrelated decision — the length
+above which `PMIx_Put` converted a string value into a
+`PMIX_COMPRESSED_STRING` — which is what kept it from being lowered.
+That coupling is gone; see the next section.
+
+### Strings are not compressed individually, and never arrive compressed
+
+`PMIx_Put` used to convert a string value longer than `compress_limit`
+into a `PMIX_COMPRESSED_STRING` before storing it. That is no longer
+done, for two independent reasons.
+
+**It leaked an unreadable type to the application.** PMIx publishes no
+way to expand a `PMIX_COMPRESSED_STRING` — there is no
+`PMIx_Value_decompress` — so a caller who got one back from `PMIx_Get`
+held bytes they could not read, and the datastore held a value nothing
+could match against. The macro meant to undo it at the far end,
+`PMIX_VALUE_COMPRESSED_STRING_UNPACK`, had its last two call sites
+removed by `d5ec82c11` in the client get path and sat unused thereafter.
+Both macros are gone now, and the expansion happens instead in
+`pmix_bfrops_base_unpack_val()`, which is the one point every value
+arriving from anywhere passes through exactly once. **A peer may still
+send one and always will** — every released PMIx compresses large string
+values on the way out — so that arm is live compatibility code, not
+legacy cleanup.
+
+**And it made the fence bucket bigger, not smaller.** Compressing a
+string on its own destroys the cross-rank redundancy that the
+bucket-level pass would otherwise exploit, and large string values are
+precisely the ones every rank on a node emits a near-identical copy of
+(a locality string, a topology rendering). Measured as a 64-rank bucket
+carrying one large string per rank, shipped size after the fence's own
+compression:
+
+| string size | ranks emit similar strings | ranks emit unrelated strings |
+|---|---|---|
+| 1 KB | no change | no change |
+| 2 KB | **+53%** worse | −1% |
+| 4 KB | **+21%** worse | no change |
+| 8 KB | −21% better | +1% |
+| 16 KB | −49% better | +0.5% |
+
+For unrelated strings it is a wash at every size. For similar ones —
+the realistic case — pre-compression is a substantial *loss* below about
+8 KB and only starts paying above it. If that upper range ever matters
+enough to reclaim, give it a **separate** threshold rather than reviving
+this one, compress at pack time rather than at `PMIx_Put` time so the
+datastore still holds the natural string, and keep the unpack-side
+expansion.
 
 Each component additionally registers its own compression level, and every
 one of them is a parameter rather than a constant for the same reason: the
@@ -207,16 +292,12 @@ behaviour, not in digit — see [`zlibng/AGENTS.md`](zlibng/AGENTS.md).
 Per the top-level guidance, prefer a new MCA parameter over a hard-coded
 constant if you introduce a tunable here.
 
-`base/base.h` also exports two convenience macros used by callers (not by
-the components):
-
-- **`PMIX_STRING_SIZE_CHECK(s)`** — true when a `pmix_value_t` holds a
-  `PMIX_STRING` longer than `pmix_compress_base.compress_limit`, i.e. "is
-  this string worth compressing?"
-- **`PMIX_VALUE_COMPRESSED_STRING_UNPACK(s)`** — if a value's type is
-  `PMIX_COMPRESSED_STRING`, inflate it in place via
-  `pmix_compress.decompress_string` and retype it back to `PMIX_STRING`.
-  (Used in `src/client/pmix_client.c`.)
+`base/base.h` used to export two convenience macros for callers —
+`PMIX_STRING_SIZE_CHECK`, which asked whether a string value was long
+enough to be worth compressing, and
+`PMIX_VALUE_COMPRESSED_STRING_UNPACK`, which inflated one back into a
+`PMIX_STRING`. Both are gone; see "Strings are not compressed
+individually" above. Do not reintroduce either without reading it.
 
 ## The shared compressed-blob format
 

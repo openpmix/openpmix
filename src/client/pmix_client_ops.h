@@ -76,11 +76,48 @@ typedef struct {
     // verbosity for client group operations
     int group_output;
     int group_verbose;
+    /* Delta-commit bookkeeping. PMIx_Commit used to fetch and ship this
+     * process's entire local and remote store on every call, so n
+     * put/commit cycles moved O(n^2) bytes. Instead we record which keys
+     * have data the server has not been told about, and commit fetches
+     * only those.
+     *
+     * These are the keys dirty at each scope; a PMIX_GLOBAL put lands in
+     * both, mirroring the datastore, and a PMIX_INTERNAL put in neither
+     * because it never leaves the process. They are recorded whether or
+     * not we are currently connected - a singleton that later connects
+     * (see the re-entrant branch of PMIx_Init) must still ship what it
+     * published beforehand.
+     *
+     * commit_resync forces the next commit back to the cumulative fetch.
+     * It is the escape hatch for everything the per-key record cannot
+     * express, and it is set at each such point rather than being
+     * inferred here; see pmix_client_commit_resync(). */
+    char **dirty_local;
+    char **dirty_remote;
+    bool commit_resync;
+    /* Keys deleted since the last commit, per scope a delete targets.
+     *
+     * A deletion cannot ride the dirty-key record: that names keys for
+     * the commit to fetch back, and a deleted key is precisely the one
+     * the fetch will not find. It has to be stated explicitly, so the
+     * commit emits it as its own PMIX_DEL_* scope block - before the
+     * data blocks, so a key deleted and then published again in the same
+     * interval ends up present rather than absent. */
+    char **del_local;
+    char **del_remote;
 } pmix_client_globals_t;
 
 PMIX_EXPORT extern pmix_client_globals_t pmix_client_globals;
 
 PMIX_EXPORT void pmix_parse_localquery(int sd, short args, void *cbdata);
+
+/* Force the next PMIx_Commit to send this process's whole store rather
+ * than what has changed since the last one, and drop the per-key record
+ * that is about to be meaningless. Call this wherever the server we are
+ * committing to may not have seen what we already sent - the tool role
+ * repointing pmix_client_globals.myserver is the case that matters. */
+PMIX_EXPORT void pmix_client_commit_resync(void);
 
 PMIX_EXPORT pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t insize,
                                                           pmix_proc_t **outprocs, size_t *outsize);

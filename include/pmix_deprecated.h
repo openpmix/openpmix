@@ -65,6 +65,26 @@
 extern "C" {
 #endif
 
+/***** v7 DEPRECATIONS/REMOVALS *****/
+/* DATATYPES */
+/* PMIX_COMPRESSED_STRING is deprecated - use PMIX_STRING.  Nothing in
+ * PMIx produces one any more: PMIx_Put used to convert a large string
+ * value into this type, which compressed the copy handed to the
+ * datastore as well as the one put on the wire, so a PMIx_Get of that
+ * value returned bytes the caller had no API to expand.  It also made
+ * the fence payload *larger*, because pre-compressing one value
+ * destroys the cross-rank redundancy that the bucket-level compression
+ * exploits.  Compression of collective payloads belongs to the fence,
+ * which compresses the whole bucket.
+ *
+ * The numeric value is preserved, every bfrops component still
+ * registers the type, and pmix_bfrops_base_unpack_val() still expands
+ * one into a PMIX_STRING - because every released PMIx produces these
+ * and will keep sending them to us for as long as those releases run.
+ * Deprecated means "do not tag a value with this", not "we stopped
+ * reading it". */
+#define PMIX_COMPRESSED_STRING          42
+
 /***** v5 DEPRECATIONS/REMOVALS *****/
 /* APIs */
 

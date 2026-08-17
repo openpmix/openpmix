@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021-2022 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -37,6 +37,18 @@
 
 #define PMIX_VMEM_ALIGN2MB  (2  * 1024 * 1024UL)
 #define PMIX_VMEM_ALIGN64MB (64 * 1024 * 1024UL)
+
+/* MAP_FIXED_NOREPLACE (Linux 4.17+) may be unavailable; fall back to a
+ * plain address hint and verify what we got, exactly as pmix_shmem.c
+ * does. MAP_NORESERVE is likewise not universal - where it is missing
+ * the reservation simply is not marked as uncommitted, which costs
+ * nothing on a PROT_NONE mapping. */
+#ifndef MAP_FIXED_NOREPLACE
+#define MAP_FIXED_NOREPLACE 0
+#endif
+#ifndef MAP_NORESERVE
+#define MAP_NORESERVE 0
+#endif
 
 typedef enum {
     VMEM_MAP_FILE = 0,
@@ -143,11 +155,113 @@ use_hole(
     return PMIX_SUCCESS;
 }
 
-pmix_status_t
-pmix_vmem_find_hole(
+/**
+ * Place a quarter of the way into the hole rather than halfway.
+ *
+ * use_hole() above aims for the middle, and so does every other
+ * implementation of this idea in the HPC stack - the routine it is
+ * derived from is shared, in spirit and largely in code, with hwloc and
+ * Open MPI. That convergence is the problem. Two processes with quite
+ * different address spaces still compute a similar "middle of the biggest
+ * hole", because on a 64-bit process the biggest hole is the enormous span
+ * below the executable and its midpoint moves only with the load base. So
+ * a server picks an address by that rule, and the client it hands the
+ * address to has often already had something else placed there by the same
+ * rule.
+ *
+ * The fix is to be somewhere else, deterministically. Which "somewhere
+ * else" is not arbitrary, and the obvious answer is wrong: aiming at the
+ * TOP of the hole was tried and is worse than the midpoint, because the
+ * top of that hole is the underside of the executable's load address.
+ * That is the one part of the range where processes differ most - ASLR
+ * moves a PIE base over tens of gigabytes, and the heap grows there - so
+ * a range placed just below one process's binary routinely lands on
+ * another's. It was measurable immediately: on aarch64, where PIE bases
+ * cluster around 0xaaaa..., clients on a second node could not reserve
+ * the range their own server had picked.
+ *
+ * A quarter of the way in has the property both of those lack. It is far
+ * from the midpoint every other implementation converges on, far from the
+ * populated region near the executable, and still deep inside a span that
+ * is empty in every process - on x86-64 it lands around 0x1555_xxxx_xxxx,
+ * on aarch64 around 0x2aaa_xxxx_xxxx. The hole is measured in tens of
+ * terabytes, so a quarter of it is nowhere near either end.
+ *
+ * Being deterministic is what lets two processes agree on an address
+ * without exchanging one, so it cannot simply be given up - but it also
+ * means two things that have no reason to agree land on top of each
+ * other. Concurrent jobs on a node are exactly that: each server picks
+ * from its own map, the maps look alike, and they pick alike. "scatter"
+ * therefore displaces the result deterministically within a window
+ * around the quarter point, so callers that differ (different
+ * namespaces) spread out while callers that must agree (the server and
+ * clients of one namespace, which are handed the same value) still do.
+ * The window spans an eighth to three eighths of the hole, which for the
+ * spans involved here is tens of terabytes and hundreds of thousands of
+ * distinct 64MB-aligned positions.
+ */
+static pmix_status_t
+use_hole_offset(
+    unsigned long holebegin,
+    unsigned long holesize,
+    unsigned long *addrp,
+    unsigned long size,
+    uint64_t scatter,
+    bool scattered
+) {
+    unsigned long aligned;
+
+    if (holesize < size) {
+        return PMIX_ERROR;
+    }
+
+    if (!scattered) {
+        const unsigned long quarter = holebegin + (holesize / 4);
+        /* Same 64MB alignment as the midpoint placement, for the same
+         * reason (POWER's 64k-page PMD). */
+        aligned = (quarter + PMIX_VMEM_ALIGN64MB) & ~(PMIX_VMEM_ALIGN64MB - 1);
+        if (aligned >= holebegin && size <= (holebegin + holesize) - aligned) {
+            *addrp = aligned;
+            return PMIX_SUCCESS;
+        }
+        /* The request is a large fraction of the hole, so there is no
+         * room to be choosy. Take the ordinary placement rather than
+         * nothing. */
+        return use_hole(holebegin, holesize, addrp, size);
+    }
+
+    /* Window centered on the quarter point: [1/8, 3/8) of the hole. */
+    const unsigned long winbegin = holebegin + (holesize / 8);
+    const unsigned long winsize = holesize / 4;
+
+    aligned = (winbegin + PMIX_VMEM_ALIGN64MB) & ~(PMIX_VMEM_ALIGN64MB - 1);
+    if (aligned < holebegin || winsize <= size ||
+        aligned - winbegin > winsize - size) {
+        /* No room to spread within the window. */
+        return use_hole_offset(holebegin, holesize, addrp, size, 0, false);
+    }
+
+    /* How many 64MB-aligned positions fit between here and the end of
+     * the window, once the request itself is accounted for. */
+    const unsigned long room = (winsize - size) - (aligned - winbegin);
+    const unsigned long slots = (room / PMIX_VMEM_ALIGN64MB) + 1;
+
+    aligned += (unsigned long)(scatter % (uint64_t)slots) * PMIX_VMEM_ALIGN64MB;
+    if (aligned < holebegin || size > (holebegin + holesize) - aligned) {
+        return use_hole_offset(holebegin, holesize, addrp, size, 0, false);
+    }
+
+    *addrp = aligned;
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t
+find_hole(
     pmix_vmem_hole_kind_t hkind,
     size_t *addrp,
-    size_t size
+    size_t size,
+    uint64_t scatter,
+    bool scattered
 ) {
     unsigned long biggestbegin = 0;
     unsigned long biggestsize = 0;
@@ -205,6 +319,7 @@ pmix_vmem_find_hole(
                     /* fallthrough */
 
                 case VMEM_HOLE_BIGGEST:
+                case VMEM_HOLE_BIGGEST_OFFSET:
                     if (begin - prevend > biggestsize) {
                         biggestbegin = prevend;
                         biggestsize = begin - prevend;
@@ -235,9 +350,147 @@ pmix_vmem_find_hole(
 
 done:
     fclose(file);
+    if (hkind == VMEM_HOLE_BIGGEST_OFFSET) {
+        return use_hole_offset(
+            biggestbegin, biggestsize, addrp, size, scatter, scattered
+        );
+    }
     if (hkind == VMEM_HOLE_IN_LIBS || hkind == VMEM_HOLE_BIGGEST) {
         return use_hole(biggestbegin, biggestsize, addrp, size);
     }
 
     return PMIX_ERROR;
+}
+
+pmix_status_t
+pmix_vmem_find_hole(
+    pmix_vmem_hole_kind_t hkind,
+    size_t *addrp,
+    size_t size
+) {
+    return find_hole(hkind, addrp, size, 0, false);
+}
+
+pmix_status_t
+pmix_vmem_find_hole_scattered(
+    pmix_vmem_hole_kind_t hkind,
+    uint64_t scatter,
+    size_t *addrp,
+    size_t size
+) {
+    return find_hole(hkind, addrp, size, scatter, true);
+}
+
+/**
+ * Claim "size" bytes at "base", or report that we could not.
+ *
+ * The mapping is PROT_NONE: it exists to occupy the range, and touching
+ * it is a bug we would rather see as a fault than as silent corruption.
+ */
+static pmix_status_t
+reserve_at(
+    uintptr_t base,
+    size_t size
+) {
+    void *got;
+
+    got = mmap(
+        (void *)base, size, PROT_NONE,
+        MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE,
+        -1, 0
+    );
+    if (MAP_FAILED == got) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+    /* Where MAP_FIXED_NOREPLACE is unavailable the address was only a
+     * hint and the kernel may have honored it elsewhere. A reservation
+     * somewhere else is no reservation at all to our caller. */
+    if ((uintptr_t)got != base) {
+        (void)munmap(got, size);
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t
+pmix_vmem_reserve(
+    pmix_vmem_hole_kind_t hkind,
+    uint64_t scatter,
+    size_t size,
+    uintptr_t *base
+) {
+    /* The scan of /proc/self/maps and the mmap that acts on it are not
+     * one operation, so the hole can be taken in between - by another
+     * thread, the dynamic loader, or the allocator growing an arena.
+     *
+     * Perturbing the scatter on each pass is what makes retrying mean
+     * anything. The placement rule is a function of the map and the
+     * scatter, and a rescan after a loss to something that is NOT in our
+     * map - a range we already hold for another job, most obviously -
+     * returns the same answer as before, so a retry that changed neither
+     * input would simply fail the same way eight times. */
+    enum { MAX_RESERVE_ATTEMPTS = 8 };
+
+    *base = 0;
+    for (uint64_t attempt = 0; attempt < MAX_RESERVE_ATTEMPTS; ++attempt) {
+        size_t addr = 0;
+        pmix_status_t rc = pmix_vmem_find_hole_scattered(
+            hkind, scatter + attempt, &addr, size
+        );
+        if (PMIX_SUCCESS != rc) {
+            return PMIX_ERR_NOT_AVAILABLE;
+        }
+        if (PMIX_SUCCESS == reserve_at((uintptr_t)addr, size)) {
+            *base = (uintptr_t)addr;
+            return PMIX_SUCCESS;
+        }
+    }
+    return PMIX_ERR_NOT_AVAILABLE;
+}
+
+pmix_status_t
+pmix_vmem_reserve_at(
+    uintptr_t base,
+    size_t size
+) {
+    if (0 == base || 0 == size) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    return reserve_at(base, size);
+}
+
+pmix_status_t
+pmix_vmem_restore(
+    uintptr_t base,
+    size_t size
+) {
+    void *got;
+
+    if (0 == base || 0 == size) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* MAP_FIXED, not MAP_FIXED_NOREPLACE: the range is ours and is
+     * expected to be occupied - by whatever we mapped over the
+     * reservation - and replacing it in one call is what leaves no
+     * window in which the address is unclaimed. */
+    got = mmap(
+        (void *)base, size, PROT_NONE,
+        MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED,
+        -1, 0
+    );
+    if (MAP_FAILED == got) {
+        return PMIX_ERROR;
+    }
+    return PMIX_SUCCESS;
+}
+
+void
+pmix_vmem_release(
+    uintptr_t base,
+    size_t size
+) {
+    if (0 == base || 0 == size) {
+        return;
+    }
+    (void)munmap((void *)base, size);
 }

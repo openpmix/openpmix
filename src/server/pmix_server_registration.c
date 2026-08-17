@@ -959,6 +959,11 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
         trk->host_called = true;
         rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info, trk->ninfo, data, sz,
                                        trk->modexcbfunc, trk);
+        if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+            /* the host has taken the bucket - see pmix_server_fence. Do
+             * this before any completion below, which releases trk. */
+            pmix_server_modex_contributed(trk);
+        }
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             fail_collective(trk, rc);
         } else if (PMIX_OPERATION_SUCCEEDED == rc) {

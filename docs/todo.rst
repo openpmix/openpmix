@@ -171,30 +171,55 @@ Lower priority, with current guides and modest churn: ``src/mca/base``
 Open decisions
 --------------
 
-A deregistration cannot retract what a namespace already holds
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+A pruned deregistration is not propagated
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+This entry used to say that
 :ref:`PMIx_server_deregister_resources(3) <man3-PMIx_server_deregister_resources>`
-removes entries from the server's global cache, and the qualified form of
-it now removes exactly what the request named.  What it cannot do is take
-the information back from a namespace that already has it: the cache is
-copied into a namespace's data store once, when that namespace is first
-registered — ``hash_cache_job_info``, guarded by the per-namespace
-``gdata_added`` — and nothing re-reads it afterwards.  So a deregistration
-governs the namespaces registered *after* it, while a running job keeps
-its copy.  The rationale the call is documented with — that a host may
-decide client processes should no longer have access to the information —
-is therefore only half served.
+could not take information back from a namespace that already held it —
+the server's global cache is copied into a namespace's data store once,
+when that namespace is first registered, and nothing re-reads it — so a
+deregistration governed only the namespaces registered *after* it while a
+running job kept its copy.  **That is closed.**  ``PMIx_Put`` gained
+delete scopes, ``gds`` gained a ``del_key`` slot, a deregistration takes
+the key back from every namespace that already holds it, and the server
+tells its local clients so their cached copies go too.
 
-Closing it needs a delete-a-key entry point that the ``gds`` module struct
-does not have.  Adding one is not symmetric across the components.  For
-``hash``, the server could remove the key from each namespace's tables and
-message its local clients to do the same in theirs.  For ``shmem3`` that
-does not help: a client reads the shared segment directly, and removing
-data from it means putting a lock on a read path that is lock-free by
-design and is the reason that component exists.  Any real fix has to
-answer the ``shmem3`` case first; the messaging half is not worth building
-on its own.
+Two things about how it closed are worth keeping, because both contradict
+what this entry predicted.
+
+``gds/shmem3`` did **not** need a new segment generation.  The obstacle
+was always that a client reads the shared segment directly, so removing
+data from one would mean putting a lock on a read path that is lock-free
+by design — and the assumed answer was to publish a new generation
+carrying a ``PMIX_UNDEF`` tombstone, which there is no way to advertise
+outside a fence reply.  The record does not have to be *in* the segment.
+Each process keeps its own list on ``job->tombstones``, built from the
+notification its server sends, and every read consults it;
+``pack_tombstones()`` adds the list to the cached job-info reply so a
+client attaching later gets it too.
+
+And the deletion had to be made to cross a node boundary, which is a
+separate problem from the one this entry describes.  ``deregister_resources``
+does not need it — the host calls that API on every daemon — but a
+``PMIx_Put`` deletion happens in one process, and the modex is additive,
+so a contribution that merely stops naming a key removes nothing at the
+far end.  A removal is therefore *stated* in the next collecting fence, as
+an entry whose value is ``PMIX_UNDEF``, and both datastores act on one
+that arrives.  ``examples/delete_key.c`` is the case that proves it, and
+it only proves anything with one rank per node.
+
+What remains is the *qualified* form, and it is deliberate rather than
+missing.  A deregistration that prunes elements out of an entry instead of
+removing it is not propagated: the host asked for part of a value to go,
+so the right answer is the pruned value rather than a deletion, and that
+needs an update push which does not exist.  Building one means deciding
+what a partial update looks like on the wire and in a shared segment
+neither datastore can rewrite in place.
+
+See :ref:`Delta Exchange and Data Deletion <modex-delta>` in
+:doc:`how-things-work/modex`, tracked as `openpmix#4087
+<https://github.com/openpmix/openpmix/issues/4087>`_.
 
 Deferred work
 -------------

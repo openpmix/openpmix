@@ -69,7 +69,8 @@ static pmix_status_t hash_store_modex(pmix_buffer_t *buff,
                                       void *cbdata);
 
 static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
-                                       pmix_buffer_t *pbkt);
+                                       pmix_buffer_t *pbkt,
+                                       uint8_t kind);
 
 static pmix_status_t setup_fork(const pmix_proc_t *peer, char ***env);
 
@@ -1272,7 +1273,10 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
                         "%s gds:hash:hash_store for proc %s key %s type %s scope %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(proc),
                         PMIx_Get_attribute_name(kv->key),
-                        PMIx_Data_type_string(kv->value->type), PMIx_Scope_string(scope));
+                        /* a delete carries no value */
+                        (NULL == kv->value) ? "NONE"
+                                            : PMIx_Data_type_string(kv->value->type),
+                        PMIx_Scope_string(scope));
 
     if (NULL == kv->key) {
         return PMIX_ERR_BAD_PARAM;
@@ -1282,6 +1286,50 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
     trk = pmix_gds_hash_get_tracker(proc->nspace, true);
     if (NULL == trk) {
         return PMIX_ERR_NOMEM;
+    }
+
+    /* A delete names the same audiences as its storing counterpart but
+     * removes the key instead of adding it. It carries no value, so none
+     * of the array expansion below applies and none of it may run.
+     *
+     * pmix_hash_remove_data() translates the key through the
+     * non-registering lookup, so deleting a key that was never stored
+     * neither fails nor grows the keyindex with a name nobody stored.
+     * That is also why "not found" is not an error here: asking for a
+     * key to be gone when it already is has got what it asked for. */
+    if (PMIX_DEL_INTERNAL == scope || PMIX_DEL_LOCAL == scope
+        || PMIX_DEL_REMOTE == scope || PMIX_DEL_GLOBAL == scope) {
+        if (PMIX_DEL_INTERNAL == scope) {
+            rc = pmix_hash_remove_data(&trk->internal, proc->rank, kv->key, NULL);
+        } else {
+            if (PMIX_DEL_LOCAL == scope || PMIX_DEL_GLOBAL == scope) {
+                rc = pmix_hash_remove_data(&trk->local, proc->rank, kv->key, NULL);
+                if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+                    return rc;
+                }
+            }
+            if (PMIX_DEL_REMOTE == scope || PMIX_DEL_GLOBAL == scope) {
+                rc = pmix_hash_remove_data(&trk->remote, proc->rank, kv->key, NULL);
+                if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+                    return rc;
+                }
+            }
+            /* And the internal table, unconditionally rather than only
+             * for our own rank. It holds two things that look alike from
+             * here: the copy of our own data kept to simplify retrieval,
+             * and - on a client - whatever we have *read* about another
+             * process, which accept_kvs_resp() stores at PMIX_INTERNAL
+             * under that process's rank. The second is the whole reason a
+             * server tells its clients about a removal at all, so
+             * skipping it when the rank is not ours left the cached copy
+             * of a peer's deleted key in place and the delete looked
+             * like it had done nothing. */
+            rc = pmix_hash_remove_data(&trk->internal, proc->rank, kv->key, NULL);
+        }
+        if (PMIX_ERR_NOT_FOUND == rc) {
+            rc = PMIX_SUCCESS;
+        }
+        return rc;
     }
 
     /* if this is node/app data, then process it accordingly */
@@ -1440,12 +1488,19 @@ static pmix_status_t hash_store_modex(pmix_buffer_t *buf,
 }
 
 static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
-                                       pmix_buffer_t *pbkt)
+                                       pmix_buffer_t *pbkt,
+                                       uint8_t kind)
 {
     pmix_job_t *trk;
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_kval_t kv;
     int32_t cnt;
+
+    /* This store accumulates - a value replaces the one it matches and
+     * everything else stays - so a delta contribution needs no different
+     * handling here. It matters to a datastore that retires what an
+     * earlier modex left behind; see gds/shmem3. */
+    PMIX_HIDE_UNUSED_PARAMS(kind);
 
     if (NULL == pbkt) {
         return PMIX_SUCCESS;
@@ -1474,6 +1529,37 @@ static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, pbkt, &kv, &cnt, PMIX_KVAL);
 
     while (PMIX_SUCCESS == rc) {
+        /* An entry whose value is PMIX_UNDEF is not data - it is the
+         * contributing process saying the key is gone. The modex is
+         * additive, so a contribution that merely stops carrying a key
+         * removes nothing here; the removal has to be stated, and this
+         * is where it is acted on. We can take the key straight out,
+         * unlike a datastore whose copy is in a segment it cannot
+         * rewrite. */
+        if (NULL != kv.value && PMIX_UNDEF == kv.value->type) {
+            pmix_rank_t drank = (PMIX_RANK_UNDEF == proc->rank) ? 0 : proc->rank;
+            rc = pmix_hash_remove_data(&trk->remote, drank, kv.key, NULL);
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kv);
+                return rc;
+            }
+            /* Our own store is corrected, but our local clients cached
+             * this key when they read it - the modex answers a get from
+             * the reader's own copy once it has one. Pass the removal on
+             * to them, which is what finally closes the loop from the
+             * process that deleted the key to a reader on another node. */
+            if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+                pmix_proc_t dproc;
+                PMIX_LOAD_PROCID(&dproc, proc->nspace, drank);
+                pmix_server_notify_deleted(&dproc, PMIX_DEL_REMOTE, kv.key, NULL);
+            }
+            PMIX_DESTRUCT(&kv);
+            PMIX_CONSTRUCT(&kv, pmix_kval_t);
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, pbkt, &kv, &cnt, PMIX_KVAL);
+            continue;
+        }
         if (PMIX_RANK_UNDEF == proc->rank) {
             /* if the rank is undefined, then we store it on the
              * remote table of rank=0 as we know that rank must

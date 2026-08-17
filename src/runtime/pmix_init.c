@@ -104,7 +104,6 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .evauxbase = NULL,
     .debug_output = -1,
     .events = PMIX_EVENTS_STATIC_INIT,
-    .commits_pending = false,
     .event_window = {0, 0},
     .cached_events = PMIX_LIST_STATIC_INIT,
     .iof_requests = PMIX_POINTER_ARRAY_STATIC_INIT,

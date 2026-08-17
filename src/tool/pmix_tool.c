@@ -1740,6 +1740,10 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
+    /* drop the delta-commit record, and leave the flag set so a second
+     * PMIx_tool_init in this process starts cumulative (matches the
+     * client finalize) */
+    pmix_client_commit_resync();
     for (n = 0; n < pmix_client_globals.peers.size; n++) {
         peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_client_globals.peers, n);
         if (NULL != peer) {
@@ -1892,6 +1896,9 @@ void pmix_tool_retry_attach(int sd, short args, void *cbdata)
              * entry (see PMIx_tool_init and PMIx_tool_finalize), so drop
              * the outgoing server's myserver reference and take one on the
              * new primary */
+            /* the incoming server has seen nothing we published, so the
+             * next commit owes it everything rather than a delta */
+            pmix_client_commit_resync();
             if (NULL != pmix_client_globals.myserver) {
                 PMIX_RELEASE(pmix_client_globals.myserver);
             }
@@ -2054,6 +2061,8 @@ static void disc(int sd, short args, void *cbdata)
      * ourselves - effectively the same as when we init without connecting */
     if (peer == pmix_client_globals.myserver) {
         pmix_peer_t *departing = peer;
+        /* whatever we next connect to has seen nothing we published */
+        pmix_client_commit_resync();
         PMIX_RETAIN(pmix_globals.mypeer);
         /* switch servers - we are in an event, so it is
          * safe to do so */
@@ -2234,6 +2243,8 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
         && PMIX_CHECK_RANK(cb->proc->rank, pmix_globals.myid.rank)) {
         /* drop the outgoing server's myserver reference and take one on
          * ourselves (see PMIx_tool_init and PMIx_tool_finalize) */
+        /* whatever we next connect to has seen nothing we published */
+        pmix_client_commit_resync();
         if (NULL != pmix_client_globals.myserver) {
             PMIX_RELEASE(pmix_client_globals.myserver);
         }
@@ -2299,6 +2310,9 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
     /* switch the active server - we are in an event, so it is safe to do
      * so. Drop the outgoing server's myserver reference and take one on
      * the new primary */
+    /* the incoming server has seen nothing we published, so the next
+     * commit owes it everything rather than a delta */
+    pmix_client_commit_resync();
     if (NULL != pmix_client_globals.myserver) {
         PMIX_RELEASE(pmix_client_globals.myserver);
     }

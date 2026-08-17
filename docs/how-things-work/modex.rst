@@ -66,12 +66,12 @@ Publication: ``PMIx_Put``
 
 ``PMIx_Put`` (``src/client/pmix_client.c``) validates its arguments and
 thread-shifts to ``_putfn``, which builds a ``pmix_kval_t`` holding a
-copy of the key string and the value — compressing large strings into a
-``PMIX_COMPRESSED_STRING`` — and hands it to the datastore::
+copy of the key string and the value exactly as the caller supplied it,
+and hands it to the datastore::
 
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, cb->scope, kv);
     ...
-    pmix_globals.commits_pending = true;
+    mark_dirty(cb->scope, kv);
 
 Two things about the destination are fixed and worth knowing:
 
@@ -88,8 +88,9 @@ scope into one of three hash tables on the namespace's tracker:
 ``internal`` (for ``PMIX_INTERNAL``), ``local``, and ``remote``, with
 ``PMIX_GLOBAL`` stored into both ``local`` and ``remote``.
 
-The value is *not* sent anywhere yet. ``PMIx_Put`` is purely local; only
-the ``commits_pending`` flag records that something is outstanding.
+The value is *not* sent anywhere yet. ``PMIx_Put`` is purely local; all
+that happens beyond the store is that the key is recorded as owed to the
+server, for the commit below to pick up.
 
 Transmission: ``PMIx_Commit``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -104,6 +105,31 @@ datastore — once for ``PMIX_LOCAL`` scope and once for ``PMIX_REMOTE``
 
 The message is sent even when the process contributed nothing, so the
 server always learns that this client has finished contributing.
+
+**Only what has changed is sent.** ``PMIx_Put`` records each key it
+stores against the scopes it stored it at, and the commit fetches just
+those keys. A key published several times before one commit is recorded
+once, because the datastore replaces such a value in place — so the
+commit owes the server one copy of it, not one per ``PMIx_Put``.
+
+That record is not the only way a commit is built. Both fetches can also
+be made with a ``NULL`` key, which returns everything the process has
+published at that scope; that is what every commit did until this
+release, and it remains the fallback for the cases a per-key record
+cannot express — a qualified value (which has no key a later fetch could
+ask for it back by), a tool that has repointed at a different server, or
+the first commit after ``PMIx_Init``. The two paths are selected by
+``pmix_client_globals.commit_resync``.
+
+**The record is kept whether or not there is a server to send to**, which
+matters for the process that initializes as a singleton and connects
+later: the puts it made beforehand are still owed to whatever server it
+eventually reaches.
+
+The remaining cumulative site is one level up, in
+``pmix_server_collect_data`` below — the server still contributes each
+local process's whole published set to a collecting fence. See
+:ref:`the delta design <modex-delta>` for what that needs.
 
 **The wire carries key strings, not indices.**
 ``pmix_bfrops_base_pack_kval`` packs ``kval->key`` as a ``PMIX_STRING``
@@ -184,7 +210,7 @@ nothing but thread-shift onto the progress thread, landing in
 and then replies to each waiting participant::
 
     PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &xfer, scd->data, scd->ndata);
-    PMIX_GDS_STORE_MODEX(rc, &xfer, tracker);
+    PMIX_GDS_STORE_MODEX(rc, nspeer, nptr->ns->nspace, &xfer, tracker);
 
 Both datastore components delegate the unwrapping to
 ``pmix_gds_base_store_modex`` (``src/mca/gds/base/gds_base_fns.c``), so
@@ -451,6 +477,299 @@ packed exactly as it always was — the requester never learns which
 module produced it.
 
 
+.. _modex-delta:
+
+Delta Exchange and Data Deletion
+--------------------------------
+
+This section covers work tracked as
+`openpmix#4087 <https://github.com/openpmix/openpmix/issues/4087>`_. It is
+one section because the two halves are one problem: **the mechanism that
+lets a modex carry only what changed is the same mechanism that lets a key
+be deleted**, and neither can be built without the other.
+
+The exchange half is implemented — the commit delta, the server's fence
+delta behind ``pmix_server_fence_delta_modex``, and the ``shmem3``
+generation chain that makes a non-self-contained modex readable. The
+deletion half, described at the end, is not.
+
+Why deletion needs this
+^^^^^^^^^^^^^^^^^^^^^^^
+
+:ref:`PMIx_server_deregister_resources(3) <man3-PMIx_server_deregister_resources>`
+removes entries from the server's global cache, but that cache is copied
+into a namespace's datastore exactly once — in ``hash_cache_job_info``,
+guarded by the per-namespace ``gdata_added`` flag — and nothing re-reads
+it. A deregistration therefore governs namespaces registered *afterwards*
+while a running job keeps its copy.
+
+Closing that needs a delete-a-key path, and the components do not admit
+one symmetrically. For ``hash`` the server can remove the key and message
+its local clients. For ``shmem3`` it cannot: a client reads the shared
+segment directly, so removing data from it would mean putting a lock on a
+read path that is lock-free by design and is the whole reason the
+component exists.
+
+The way out is the discipline ``shmem3`` already follows for the modex:
+**never write a segment a client can see — write a new one and search
+back.** A deletion becomes a *tombstone* in a newer segment rather than an
+erasure in an older one, and the search that finds it is the same search
+that finds delta data.
+
+Delta with a full resync
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+The essential design point is that neither half is "delta only":
+
+.. important::
+
+   Both the client's commit and the server's fence contribution keep the
+   cumulative fetch described above as a **full-resync fallback**, selected
+   by a flag. Every case a delta cannot express — a tool that switched
+   servers, a commit whose send failed, a singleton that later connected, a
+   fence whose participant set is not covered by the previous one, data
+   written by a path other than a commit — sets that flag and takes the old
+   path. The delta is the fast path, not the only path.
+
+Two watermarks, at two levels:
+
+* **The client** sends what has been put since its last successful commit.
+  It cannot use the fence as its boundary even if that were desirable,
+  because a client never sees ``PMIX_COLLECT_DATA`` — the directive is
+  packed verbatim into the fence message and interpreted only by the
+  server. **This half is implemented**; see *Transmission* above.
+* **The server** contributes what has arrived since this process last
+  contributed to a collecting fence. A barrier-only fence exchanges
+  nothing and so does not move the watermark. **Implemented**, behind the
+  ``pmix_server_fence_delta_modex`` MCA parameter — see below for why it
+  defaults off. The watermark moves only once the host has *taken* the
+  bucket: the request has three arms that discard it, and draining
+  earlier would lose those deltas for good.
+
+**The server's watermark is qualified by the participant set.** A per-process
+watermark alone is not sound: a process that contributed to a fence over one
+set of peers would contribute nothing to a later fence over a different set,
+and the servers holding only the second set's processes would never learn its
+keys — two sub-communicators fencing independently is enough to reach it.
+Each process is therefore stamped with the participant set of the fence it
+last contributed to, and a delta is sent only when the current fence's set is
+contained in that stamp. Otherwise the contribution is cumulative and the
+stamp is replaced.
+
+Telling a delta from a full contribution
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A receiving server must know which kind of contribution it is storing,
+because ``gds/shmem3`` may drop the previous modex generation for a
+cumulative one and must not for a delta. That is carried by the per-server
+flag byte already in the envelope — the one that today distinguishes
+``PMIX_COLLECT_YES`` from ``PMIX_COLLECT_NO``.
+
+Reusing that byte is what makes the change safe across versions, and the
+guard costs nothing because the *existing* code already implements it.
+``pmix_gds_base_store_modex`` compares the byte pairwise across the
+contributing servers and raises the ``collection-mismatch`` help message
+when they disagree. In a job mixing releases, the older servers emit the
+old value and the newer ones the new value, so the comparison fails and the
+fence returns an error — loud, on both old and new receivers, rather than
+silently storing a partial modex.
+
+.. note::
+
+   The byte must be a distinct constant, not an overloading of the
+   tracker's ``collect_type``: that field is compared against
+   ``PMIX_COLLECT_YES`` in several places that decide whether to collect at
+   all.
+
+**Why the parameter defaults off.** A server from a release that predates
+the marker rejects the whole collective rather than storing a contribution
+it cannot interpret. That is the right failure — the alternative is
+silently losing data — but it means a job whose nodes run mixed releases
+works today and would stop working if this defaulted on. Turn it on once
+every node understands the marker.
+
+The kind is handed to the datastore, because what it means differs by
+component. ``gds/hash`` accumulates — a value replaces the one it matches
+and everything else stays — so a delta needs nothing special there. It
+matters to a datastore that retires what an earlier modex left behind.
+
+**This much is implemented.** ``PMIX_MODEX_DELTA`` is defined, and
+``pmix_gds_base_store_modex`` now screens the flag byte before comparing
+it across servers — refusing a delta contribution with
+``PMIX_ERR_NOT_SUPPORTED`` and the ``delta-modex-unsupported`` help
+message, and an undefined value with ``PMIX_ERR_BAD_PARAM``. Nothing emits
+the marker yet, so no behavior changes for a job whose nodes all run this
+release. What it buys is that the refusal is in place *before* anything can
+send one, which is why it landed first and on its own. Regression coverage
+is ``test_store_modex_blob_info()`` in ``test/unit/gds_datastore.c``.
+
+Screening the value matters independently of the delta work: the
+cross-server comparison only asks whether the senders agree with each
+other, so before this a byte they all agreed on and no datastore could act
+on passed straight through and its blobs were stored as though they were an
+ordinary full contribution.
+
+Generations in shared memory
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``shmem3`` already gives each modex its own segment and hands the previous
+one off, which is correct only while every generation is self-contained.
+Once a contribution can be a delta, generation N+1 no longer stands alone,
+so the segments become a **newest-to-oldest chain** and a lookup walks it
+until it finds the key. This is implemented.
+
+What the arriving contribution is decides which happens. A cumulative one
+repeats everything its processes have published, so it supersedes the
+generation before it *and every one behind that* — the chain collapses to
+a single segment, exactly as before. A delta repeats nothing, so the
+previous generation is retired rather than released and stays readable.
+The chain therefore only grows while deltas are arriving, and any
+cumulative fence collapses it again — which is also what bounds it, since
+the participant-set guard forces a cumulative contribution whenever the
+fence's membership changes.
+
+The walk has two shapes. A keyed lookup stops at the newest generation
+that has the key. A ``NULL``-key lookup — "everything this process
+published" — has to consult every generation and drop a copy of a key a
+newer one already supplied, or the caller gets that key twice with the
+stale value second.
+
+Three properties make that work without disturbing the read path:
+
+* The backing file is reference counted, so releasing the server's handle
+  leaves a client that still has the segment mapped with a valid mapping.
+* Clients already tell generations apart by backing path, which the segment
+  blob carries. The blob gained one field — whether this generation stands
+  on its own — so a client makes the same keep-or-drop decision its server
+  made. (``shmem3`` has never been in a release, so its segment format is
+  still free to change; once it ships, this is locked down like any other
+  wire format.)
+* Each segment carries its own key index, so a generation is self-describing
+  and no two generations need to agree about numbering.
+
+Because the flag byte says which kind of contribution arrived, a cumulative
+modex keeps today's behavior — drop the previous generation, one segment
+live — and only a delta grows the chain. The interim state, after the chain
+exists but before contributions are deltas, therefore costs nothing.
+
+Deleting a key
+^^^^^^^^^^^^^^
+
+Deletion is expressed through ``PMIx_Put`` rather than a new API, using four
+additional ``pmix_scope_t`` values — ``PMIX_DEL_LOCAL``, ``PMIX_DEL_REMOTE``,
+``PMIX_DEL_GLOBAL`` and ``PMIX_DEL_INTERNAL`` — that name the same audiences
+as their storing counterparts but direct that the key be removed. The value
+is ``NULL``. This is a sanctioned extension rather than a deviation:
+:ref:`PMIx_Put(3) <man3-PMIx_Put>` already states that an implementation may
+support additional scope values and must answer ``PMIX_ERR_NOT_SUPPORTED``
+for one it does not.
+
+``PMIX_DEL_INTERNAL`` takes effect immediately, since nothing leaves the
+process. The other three are applied locally and then travel in the commit
+stream — the commit message is already a sequence of ``{scope, buffer}``
+blocks, so a deletion block needs no format change at all, only the new
+scope value.
+
+**A deletion cannot ride the delta record.** That record names keys for
+the commit to *fetch back*, and a deleted key is precisely the one the
+fetch will not find. Deletions are therefore stated directly, as their
+own ``PMIX_DEL_*`` block, and they are emitted **before** the data
+blocks: the server applies blocks in order, so a key deleted and then
+published again in the same interval ends up present, and one published
+and then deleted ends up absent. A delete also forces that commit to be
+cumulative, which is what removes any need to order the per-key record
+against the deletions.
+
+The server screens the scope of every block it receives now. Previously
+an unrecognized one silently discarded the data it labelled and carried
+on; that is the wrong answer for a peer saying something we cannot act
+on, and it is also what makes ``PMIX_ERR_NOT_SUPPORTED`` from
+``PMIx_Put`` — checked against the server's version before the request is
+ever made — the only way a caller can learn that its server is too old.
+
+Propagation
+^^^^^^^^^^^
+
+Removing the key from the server's own store is only half of it. A client
+caches what it reads about other processes and holds the job-level data it
+was given at initialization, so every local client that ever looked the
+key up still has it. The server therefore tells its local clients, on a
+PTL tag of its own — a peer too old to know that tag never posted a
+receive for it, which is the same reasoning IOF flow control uses. It goes
+to every local client except the one that asked for the deletion, and is
+deliberately not restricted to the affected namespace: a process may have
+cached data belonging to any namespace it asked about, and one that never
+held the key removes nothing.
+
+That is also what finally answers
+:ref:`PMIx_server_deregister_resources(3) <man3-PMIx_server_deregister_resources>`.
+The global cache is copied into a namespace's datastore once, when that
+namespace is first registered, and nothing re-reads it — so a
+deregistration used to govern the namespaces registered *afterwards* and
+leave every running job with its copy. It now takes the key back from the
+namespaces that already hold it, and from their clients.
+
+One case is deliberately excluded. A *qualified* deregistration that
+prunes elements out of an entry rather than removing it has asked for
+part of a value to go, so the correct propagation is the pruned value —
+not a deletion, which would take from a namespace more than the host
+asked to remove. That needs an update push, which does not exist.
+
+``gds/shmem3`` needs a different answer, because it cannot take the key
+out: a client reads the shared segment directly, and a segment a client
+can see is never written again. It records a **tombstone** instead — the
+key stays where it is and the module stops answering for it.
+
+The tombstone is deliberately *not* in shared memory. Putting it there
+would mean a whole new segment, mapped by every local client, for a few
+bytes per deleted key — and it would still not save the step that
+actually matters, since a client attaching after the removal has to be
+told either way. Each process keeps its own record instead, built from
+the notification its server already sends, and the list is added to the
+cached job-info reply so a later arrival is told at attach time.
+
+Reads consult it. Job-segment data is written once and never
+re-published, so a tombstone against it always applies. Modex data can
+legitimately come back, so a tombstone records the modex generation
+current when it was made and shadows only generations up to that one —
+a key deleted and then published again in a later fence is alive again.
+
+The module interface gained one optional entry point for this,
+``del_key``. ``gds/hash`` leaves it ``NULL``, because a delete reaches
+its store like any other scope and it simply removes the key; the macro
+reads a ``NULL`` slot as success. It exists for a module that keeps data
+somewhere its store cannot reach.
+
+**One property to know**: the notification is a one-way push with no
+acknowledgement, so a removal reaches the other processes on the node
+*promptly* rather than *synchronously*. A reader that raced it can see
+the old value once more.
+
+The two datastores then diverge, exactly as the deletion problem always
+predicted:
+
+* ``hash`` removes the key outright and the server messages each local
+  client to do the same in its own tables.
+* ``shmem3`` writes a **tombstone** — the key with a ``PMIX_UNDEF`` value —
+  into a new segment in the chain. A lookup walking newest to oldest that
+  reaches a tombstone stops and reports the key as not found, without any
+  published segment ever being written.
+
+.. warning::
+
+   The tombstone walk has to be consulted by the **job-data** lookup, not
+   only the modex one. ``deregister_resources`` targets job-level
+   information, which lives in the job segment rather than the modex
+   segment — so a chain that covers only the modex closes none of the
+   problem this work exists to solve.
+
+An older server silently discards a scope it does not recognize rather than
+reporting an error, so a delete issued against one would appear to succeed
+and do nothing. ``PMIx_Put`` therefore checks the server's version and
+refuses with ``PMIX_ERR_NOT_SUPPORTED`` up front, and a ``PMIX_CAP_``
+capability flag lets companion projects detect support at build time.
+
+
 Summary
 -------
 
@@ -469,3 +788,12 @@ Summary
   its numbering once at initialization, and for modex data by giving each
   modex segment its own key index, written by the one process that owns
   the segment.
+* Both the commit and the fence contribution are **cumulative today**. The
+  planned delta exchange keeps the cumulative path as a resync fallback,
+  marks a delta in the envelope's existing flag byte so a mixed-version job
+  fails loudly, and turns ``shmem3``'s modex generations into a chain that
+  is searched newest to oldest.
+* **Deleting a key is the same mechanism seen from the other side**: a
+  tombstone in a newer segment, found by that same search — which is what
+  finally lets a deregistration retract information a running job already
+  holds.

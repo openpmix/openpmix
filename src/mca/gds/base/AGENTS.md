@@ -11,7 +11,7 @@ depends on.
 
 | File | Contents |
 |------|----------|
-| [`base.h`](base.h) | the internal base API — `pmix_gds_globals`, the active-module wrapper class, the modex blob-info flags, and the exported helpers below |
+| [`base.h`](base.h) | the internal base API — `pmix_gds_globals`, the active-module wrapper class, and the exported helpers below |
 | [`gds_base_frame.c`](gds_base_frame.c) | `PMIX_MCA_BASE_FRAMEWORK_DECLARE`, the globals, `pmix_gds_open`/`pmix_gds_close`, and the `pmix_gds_base_active_module_t` class instance |
 | [`gds_base_select.c`](gds_base_select.c) | `pmix_gds_base_select()` — query every component, init each returned module, build the priority-ordered `actives` list |
 | [`gds_base_fns.c`](gds_base_fns.c) | the five exported helpers: available-modules, assign-module, fallback-module, setup-fork, store-modex, plus `pmix_gds_base_proc_array_id()` |
@@ -67,6 +67,7 @@ pmix_gds_base_module_t *pmix_gds_base_assign_module(pmix_info_t *info, size_t ni
 pmix_gds_base_module_t *pmix_gds_base_get_fallback_module(pmix_gds_base_module_t *failing);
 pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc, char ***env);
 pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
+                                        const char *nspace,
                                         pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                         void *cbdata);
 pmix_status_t pmix_gds_base_proc_array_id(const pmix_info_t *array, size_t size,
@@ -120,8 +121,39 @@ buff
 The walker decompresses where flagged, checks the collect flag is the same
 across servers (otherwise the `collection-mismatch` topic in
 `help-pmix-server.txt` fires and it returns `PMIX_ERR_BAD_PARAM`), calls
-`cb_fn(&proc, &pbkt)` once per proc blob, and finally calls
-`cb_fn(&proc, NULL)` once per **nspace** that appeared, to signal "done".
+`cb_fn(&proc, &pbkt, kind)` once per proc blob, and finally calls
+`cb_fn(&proc, NULL, kind)` once per **nspace** that appeared, to signal
+"done".
+
+### The flag byte is screened before it is compared
+
+**Agreeing with each other is not the same as being a value we can act
+on.** The cross-server comparison is only an equality test, so before
+August 2026 a byte every sender agreed on and no datastore understood
+passed straight through and its blobs were stored as an ordinary full
+contribution. The walker now screens the value first:
+
+- `PMIX_COLLECT_NO`, `PMIX_COLLECT_YES`, `PMIX_MODEX_DELTA` — accepted.
+- anything else — a value no release ever defined, so `PMIX_ERR_BAD_PARAM`.
+
+**The kind is handed to `cb_fn`**, because what a delta means differs by
+component. `gds/hash` accumulates — a value replaces the one it matches
+and everything else stays — so it needs nothing. It matters to a
+datastore that retires what an earlier modex left behind: `gds/shmem3`
+drops the previous generation for a cumulative contribution and keeps it
+for a delta, because a delta is not self-contained. See openpmix#4087 and
+[`docs/how-things-work/modex.rst`](../../../../docs/how-things-work/modex.rst).
+
+The parameter is typed `uint8_t` rather than `pmix_collect_t` on purpose:
+that enum lives in `pmix_globals.h`, which includes this framework's
+header rather than the other way round.
+
+Note the cross-version property this rests on: the equality check is what
+an **older** release already performs, so a peer that starts sending a new
+marker is rejected by old and new receivers alike with no change to the old
+code. That is why the marker landed before anything that emits it.
+Regression coverage is `test_store_modex_blob_info()` in
+`test/unit/gds_datastore.c`.
 
 ### The callback contract, which is not obvious and has been broken
 
@@ -160,10 +192,100 @@ Two other things to keep in mind if you touch it:
 - **`pmix_gds_globals`** — `actives`, `initialized`, `selected`, `all_mods`.
 - **`pmix_gds_base_active_module_t`** — one entry on `actives`, pairing a
   module with the priority it was inserted at and its component.
+There is nothing else. `pmix_gds_modex_key_fmt_t`, the
+`PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags, the
+`PMIX_GDS_*_IS_SET` accessors and `pmix_gds_modex_blob_info_t` were all
+deleted in August 2026: they were the residue of the modex keymap
+(below) and nothing had read or written any of them since 2024. The
+flag byte the walker reads is a plain `pmix_collect_t` value, not a
+bitmask — do not reintroduce the bit accessors on the theory that it is
+one. If a second thing ever does need saying about a contribution,
+decide then whether to make the byte a bitmask, converting both ends, or
+to add another value, as `PMIX_MODEX_DELTA` did.
+
+## The modex keymap, and why it is not coming back
+
+The envelope above writes each `pmix_kval_t`'s key as a string, once per
+proc that published it. Every process on a node normally publishes the
+*same* handful of keys, so a 64-process node repeats each key string 64
+times, and key text is around 40% of the raw bucket. That is an obvious
+thing to fix and it has been fixed once already, so before anyone fixes
+it again:
+
+**2019** (`8cfbac9ea`) added a keymap: the bucket carried a string table
+in its header and each kval carried a `uint32` index into it, selected
+per fence against the native format by the `pmix_gds_modex_key_fmt_t`
+above. **October 2024** (`184ca966e`) removed it *and, in the same
+commit, compressed the bucket instead* — which is the part that matters.
+It was not removed and left unreplaced; it was replaced by something
+that measures better.
+
+Measured on a modex-shaped payload whose values are distinct per rank,
+so the only thing either scheme has to work with is the repeated key
+text (64 procs, 8 keys, `pcompress_zlib_level` 1):
+
+| | bytes | vs. raw |
+|---|---|---|
+| raw, keys as strings | 17408 | — |
+| keymap, no compression | 10756 | −38% |
+| compression, keys as strings | 7681 | −56% |
+| keymap **and** compression | 7394 | −58% |
+
+A keymap on top of what the tree already does is worth **3.7%**. LZ77
+back-references encode a repeated key string in two or three bytes; the
+one-byte index is the entire remaining margin, and it costs a string
+table, an index space, a second wire format to keep interoperable
+forever, and a decode path that has to bound an index that arrived off
+the wire.
+
+Two further things worth knowing before reviving it:
+
+- **A job-wide keymap is worth less, not more.** The dominant repetition
+  is procs-per-node × keys-per-proc, and a per-node map already captures
+  all of it; the measured keymap header is 132 bytes, so deduplicating
+  it across N nodes saves about 1.8% of the aggregate. The host would
+  also have to decode a blob it currently treats as opaque — PRRTE hands
+  the bucket straight to `prte_grpcomm.fence` as a byte object — which
+  would mean publishing this envelope as API surface and owning it
+  forever.
+- **The 2019 implementation had defects that are easy to reintroduce.**
+  Its format-selection pre-pass ran a full `PMIX_GDS_FETCH_KV` with
+  `cb.copy = true` over every local proc purely to count keys, then threw
+  the result away and fetched again to pack — a deep copy of the whole
+  node's modex, discarded. The sizing loop that consumed those counts
+  assigned rather than accumulated (`=`, not `+=`), so the native-vs-keymap
+  decision was made on the last key alone. And `modex_unpack_kval()`
+  indexed the map with a `uint32` taken straight off the wire and no
+  bound against the map's length — a remote out-of-bounds read whose NULL
+  check was performed on the already-out-of-bounds element.
+
+The small-payload corner that a keymap *did* still win — a node whose
+bucket fell under `pmix_compress_base.compress_limit` and was therefore
+shipped raw — was closed in August 2026 by lowering that limit from 4096
+to 256, which is where the compressor starts declining on its own. See
+"Choosing `compress_limit`" in
+[`../../pcompress/AGENTS.md`](../../pcompress/AGENTS.md) for the curve
+that number came from, and the section after it for why large string
+values are no longer compressed individually before they reach the
+bucket — the same cross-rank redundancy argument, pointing the other
+way.
+||||||| parent of 442f2f2aa (Screen the modex contribution's flag byte, and name the delta marker)
 - **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`) and the
   `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags, with the
   `PMIX_GDS_*_IS_SET` accessors — the encoding a modex reader uses to
   learn how keys were written and whether data was collected.
+=======
+- **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`) and the
+  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags with their
+  `PMIX_GDS_*_IS_SET` accessors. **These describe an encoding the tree does
+  not use.** Nothing outside this header references any of them — the flag
+  byte a contribution actually carries is a plain `pmix_collect_t` value,
+  packed as a `uint8_t` by `pmix_server_collect_data` and read back as one
+  here, not a bitmask. Do not reach for the bit macros on the assumption
+  that they describe the wire; if a second thing ever does need saying
+  about a contribution, decide then whether to make the byte a bitmask (and
+  convert both ends) or to add another value, as `PMIX_MODEX_DELTA` did.
+>>>>>>> 442f2f2aa (Screen the modex contribution's flag byte, and name the delta marker)
 
 ## When working here
 
@@ -171,8 +293,29 @@ Two other things to keep in mind if you touch it:
   caddy pattern anywhere in `gds`; the thread-shift happens above it, in
   the caller. See the Threading section of the framework doc.
 - **A change to the envelope layout in `store_modex` is a wire-format
-  change.** Peers built from different releases exchange these blobs.
-  Treat the layout as append-only per the top-level interoperability rules.
+  change** — but not a *cross-version* one, and the distinction is worth
+  getting right before you either panic about it or take liberties with
+  it.
+
+  This envelope is exchanged **server to server**, and those two servers
+  never connect to each other: each packs and unpacks with
+  `pmix_globals.mypeer`, its own native bfrops, because the host carries
+  the blob between them as an opaque byte object. So there is no
+  handshake on this path and **nothing to version-negotiate against**.
+
+  That is survivable only because the Standard requires every server in
+  a DVM to be running the same PMIx version; cross-version support is
+  promised between a server and its *clients*, not between servers. It
+  is why the October 2024 commit could insert a `bool compressed` ahead
+  of the payload without a version gate — a change that would otherwise
+  have made every pre-2024 server misread the collect flag.
+
+  Two rules follow. **Do not "fix" the absence of a version gate here**
+  by adding one; there is no negotiated peer version on this path to
+  gate on. And **do not treat that freedom as general**: it belongs to
+  the server-to-server envelope specifically. Anything a *client* reads
+  is genuinely cross-version and stays append-only per the top-level
+  interoperability rules.
 - **The helpers here are `PMIX_EXPORT`ed and the components' are not.**
   That is why `test/unit/gds_datastore` and `test/unit/gds_fallback` can
   test this directory directly but have to reach the components through

@@ -85,8 +85,11 @@ examples/client4
 examples/debugger
 examples/debuggerd
 examples/datatypes
+examples/delete_key
+examples/modex_attach_fail
 examples/dmodex
 examples/dynamic
+examples/modex_twice
 examples/fault
 examples/jctrl
 examples/pmix1client
@@ -263,6 +266,7 @@ test/simple/refresh
 
 
 test/unit/client_api
+test/unit/client_commit
 test/unit/common_api
 test/unit/compress
 test/unit/compress_block
