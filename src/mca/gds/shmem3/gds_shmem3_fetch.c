@@ -660,6 +660,36 @@ static pmix_status_t job_fetch(
     return rc;
 }
 
+/* Remove entries added at or after "mark" whose value is PMIX_UNDEF, and
+ * say whether there were any.
+ *
+ * Such an entry is not data: it is the contributing process saying the
+ * key is gone, carried in the modex because a contribution that merely
+ * stops naming a key removes nothing at the far end. gds/hash acts on it
+ * by taking the key out; this component cannot, because its copy is in a
+ * segment that is never rewritten - so the entry stays and every read
+ * steps over it. */
+static bool strip_undef(
+    pmix_list_t *kvs,
+    size_t mark
+) {
+    pmix_kval_t *kv, *nxt;
+    size_t n = 0;
+    bool found = false;
+
+    PMIX_LIST_FOREACH_SAFE (kv, nxt, kvs, pmix_kval_t) {
+        if (n++ < mark) {
+            continue;
+        }
+        if (NULL != kv->value && PMIX_UNDEF == kv->value->type) {
+            pmix_list_remove_item(kvs, &kv->super);
+            PMIX_RELEASE(kv);
+            found = true;
+        }
+    }
+    return found;
+}
+
 /* Read the modex, newest generation first.
  *
  * A generation built from a delta contribution holds only what changed,
@@ -697,10 +727,18 @@ modex_fetch(
         }
         if (PMIX_SUCCESS == rc) {
             drop_tombstoned(job, rank, kvs, job->modex_generation, mark);
-            /* everything this generation had for the key may have just
-             * been dropped - keep walking rather than reporting a hit */
-            if (NULL != key && pmix_list_get_size(kvs) > mark) {
-                return rc;
+            if (NULL != key) {
+                /* A deletion carried in this generation is the last word
+                 * on the key: an older generation holding it describes a
+                 * value that has since been taken back. */
+                if (strip_undef(kvs, mark)) {
+                    return PMIX_ERR_NOT_FOUND;
+                }
+                /* everything this generation had may have just been
+                 * dropped - keep walking rather than reporting a hit */
+                if (pmix_list_get_size(kvs) > mark) {
+                    return rc;
+                }
             }
             rc = PMIX_ERR_NOT_FOUND;
         }
@@ -718,14 +756,23 @@ modex_fetch(
         if (PMIX_SUCCESS == r2) {
             drop_tombstoned(job, rank, kvs, seg->generation, mark);
             if (NULL != key) {
+                if (strip_undef(kvs, mark)) {
+                    return PMIX_ERR_NOT_FOUND;
+                }
                 if (pmix_list_get_size(kvs) > mark) {
                     return r2;
                 }
                 continue;
             }
+            /* the deletions stay in place for now: drop_shadowed() is
+             * what makes them shadow the older values they take back,
+             * and they are stripped once the walk is done */
             drop_shadowed(kvs, mark);
             rc = PMIX_SUCCESS;
         }
+    }
+    if (NULL == key) {
+        strip_undef(kvs, 0);
     }
     return rc;
 }
