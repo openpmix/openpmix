@@ -186,39 +186,82 @@ use_hole(
  * is empty in every process - on x86-64 it lands around 0x1555_xxxx_xxxx,
  * on aarch64 around 0x2aaa_xxxx_xxxx. The hole is measured in tens of
  * terabytes, so a quarter of it is nowhere near either end.
+ *
+ * Being deterministic is what lets two processes agree on an address
+ * without exchanging one, so it cannot simply be given up - but it also
+ * means two things that have no reason to agree land on top of each
+ * other. Concurrent jobs on a node are exactly that: each server picks
+ * from its own map, the maps look alike, and they pick alike. "scatter"
+ * therefore displaces the result deterministically within a window
+ * around the quarter point, so callers that differ (different
+ * namespaces) spread out while callers that must agree (the server and
+ * clients of one namespace, which are handed the same value) still do.
+ * The window spans an eighth to three eighths of the hole, which for the
+ * spans involved here is tens of terabytes and hundreds of thousands of
+ * distinct 64MB-aligned positions.
  */
 static pmix_status_t
 use_hole_offset(
     unsigned long holebegin,
     unsigned long holesize,
     unsigned long *addrp,
-    unsigned long size
+    unsigned long size,
+    uint64_t scatter,
+    bool scattered
 ) {
-    unsigned long quarter, aligned;
+    unsigned long aligned;
 
     if (holesize < size) {
         return PMIX_ERROR;
     }
 
-    quarter = holebegin + (holesize / 4);
-    /* Same 64MB alignment as the midpoint placement, for the same reason
-     * (POWER's 64k-page PMD). */
-    aligned = (quarter + PMIX_VMEM_ALIGN64MB) & ~(PMIX_VMEM_ALIGN64MB - 1);
-    if (aligned >= holebegin && size <= (holebegin + holesize) - aligned) {
-        *addrp = aligned;
-        return PMIX_SUCCESS;
+    if (!scattered) {
+        const unsigned long quarter = holebegin + (holesize / 4);
+        /* Same 64MB alignment as the midpoint placement, for the same
+         * reason (POWER's 64k-page PMD). */
+        aligned = (quarter + PMIX_VMEM_ALIGN64MB) & ~(PMIX_VMEM_ALIGN64MB - 1);
+        if (aligned >= holebegin && size <= (holebegin + holesize) - aligned) {
+            *addrp = aligned;
+            return PMIX_SUCCESS;
+        }
+        /* The request is a large fraction of the hole, so there is no
+         * room to be choosy. Take the ordinary placement rather than
+         * nothing. */
+        return use_hole(holebegin, holesize, addrp, size);
     }
 
-    /* The request is a large fraction of the hole, so there is no room to
-     * be choosy. Take the ordinary placement rather than nothing. */
-    return use_hole(holebegin, holesize, addrp, size);
+    /* Window centered on the quarter point: [1/8, 3/8) of the hole. */
+    const unsigned long winbegin = holebegin + (holesize / 8);
+    const unsigned long winsize = holesize / 4;
+
+    aligned = (winbegin + PMIX_VMEM_ALIGN64MB) & ~(PMIX_VMEM_ALIGN64MB - 1);
+    if (aligned < holebegin || winsize <= size ||
+        aligned - winbegin > winsize - size) {
+        /* No room to spread within the window. */
+        return use_hole_offset(holebegin, holesize, addrp, size, 0, false);
+    }
+
+    /* How many 64MB-aligned positions fit between here and the end of
+     * the window, once the request itself is accounted for. */
+    const unsigned long room = (winsize - size) - (aligned - winbegin);
+    const unsigned long slots = (room / PMIX_VMEM_ALIGN64MB) + 1;
+
+    aligned += (unsigned long)(scatter % (uint64_t)slots) * PMIX_VMEM_ALIGN64MB;
+    if (aligned < holebegin || size > (holebegin + holesize) - aligned) {
+        return use_hole_offset(holebegin, holesize, addrp, size, 0, false);
+    }
+
+    *addrp = aligned;
+    return PMIX_SUCCESS;
 }
 
-pmix_status_t
-pmix_vmem_find_hole(
+static pmix_status_t
+find_hole(
     pmix_vmem_hole_kind_t hkind,
     size_t *addrp,
-    size_t size
+    size_t size,
+    uint64_t scatter,
+    bool scattered
 ) {
     unsigned long biggestbegin = 0;
     unsigned long biggestsize = 0;
@@ -308,13 +351,34 @@ pmix_vmem_find_hole(
 done:
     fclose(file);
     if (hkind == VMEM_HOLE_BIGGEST_OFFSET) {
-        return use_hole_offset(biggestbegin, biggestsize, addrp, size);
+        return use_hole_offset(
+            biggestbegin, biggestsize, addrp, size, scatter, scattered
+        );
     }
     if (hkind == VMEM_HOLE_IN_LIBS || hkind == VMEM_HOLE_BIGGEST) {
         return use_hole(biggestbegin, biggestsize, addrp, size);
     }
 
     return PMIX_ERROR;
+}
+
+pmix_status_t
+pmix_vmem_find_hole(
+    pmix_vmem_hole_kind_t hkind,
+    size_t *addrp,
+    size_t size
+) {
+    return find_hole(hkind, addrp, size, 0, false);
+}
+
+pmix_status_t
+pmix_vmem_find_hole_scattered(
+    pmix_vmem_hole_kind_t hkind,
+    uint64_t scatter,
+    size_t *addrp,
+    size_t size
+) {
+    return find_hole(hkind, addrp, size, scatter, true);
 }
 
 /**
@@ -351,21 +415,28 @@ reserve_at(
 pmix_status_t
 pmix_vmem_reserve(
     pmix_vmem_hole_kind_t hkind,
+    uint64_t scatter,
     size_t size,
     uintptr_t *base
 ) {
     /* The scan of /proc/self/maps and the mmap that acts on it are not
      * one operation, so the hole can be taken in between - by another
      * thread, the dynamic loader, or the allocator growing an arena.
-     * Rescanning after a loss finds the now-occupied range and moves on,
-     * so a small number of attempts is enough; a persistent failure
-     * means we are out of usable holes, not that we are unlucky. */
+     *
+     * Perturbing the scatter on each pass is what makes retrying mean
+     * anything. The placement rule is a function of the map and the
+     * scatter, and a rescan after a loss to something that is NOT in our
+     * map - a range we already hold for another job, most obviously -
+     * returns the same answer as before, so a retry that changed neither
+     * input would simply fail the same way eight times. */
     enum { MAX_RESERVE_ATTEMPTS = 8 };
 
     *base = 0;
-    for (int attempt = 1; attempt <= MAX_RESERVE_ATTEMPTS; ++attempt) {
+    for (uint64_t attempt = 0; attempt < MAX_RESERVE_ATTEMPTS; ++attempt) {
         size_t addr = 0;
-        pmix_status_t rc = pmix_vmem_find_hole(hkind, &addr, size);
+        pmix_status_t rc = pmix_vmem_find_hole_scattered(
+            hkind, scatter + attempt, &addr, size
+        );
         if (PMIX_SUCCESS != rc) {
             return PMIX_ERR_NOT_AVAILABLE;
         }

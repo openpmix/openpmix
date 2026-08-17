@@ -45,6 +45,37 @@ pmix_vmem_find_hole(
 );
 
 /**
+ * As pmix_vmem_find_hole(), but spread over the hole by "scatter".
+ *
+ * Picking the same rule in two processes is what lets them agree on an
+ * address without talking. The cost is that it also makes two UNRELATED
+ * things agree, and then collide: concurrent jobs on one node each have
+ * a server computing an address from its own map, and those maps look
+ * alike, so they arrive at the same answer and only the first can have
+ * it. A process that has to hold ranges from both - a client that was
+ * spawned by, or connected to, another namespace - is the one that then
+ * cannot.
+ *
+ * "scatter" moves the result deterministically within a window around
+ * the placement "hkind" would otherwise choose. Callers should derive it
+ * from something that differs between the things that must not collide
+ * and is identical everywhere within one of them - for a PMIx job, its
+ * namespace. Two processes given the same scatter still agree; two jobs
+ * do not have to.
+ *
+ * Only VMEM_HOLE_BIGGEST_OFFSET spreads. The other kinds name one
+ * position each, so there is nothing to spread over and scatter is
+ * ignored.
+ */
+PMIX_EXPORT pmix_status_t
+pmix_vmem_find_hole_scattered(
+    pmix_vmem_hole_kind_t hkind,
+    uint64_t scatter,
+    size_t *addrp,
+    size_t size
+);
+
+/**
  * Reserve a range of this process's address space.
  *
  * Finds a hole of the requested size using "hkind" and claims it with an
@@ -60,12 +91,19 @@ pmix_vmem_find_hole(
  * thereafter maps into its own reservation, which cannot fail for want of
  * the address.
  *
+ * "scatter" spreads the choice as described on
+ * pmix_vmem_find_hole_scattered(), so that two callers whose address
+ * spaces look alike do not both settle on the same range. It is also
+ * perturbed between retries, because a deterministic rule that has just
+ * lost the address it named will otherwise name it again.
+ *
  * Returns PMIX_ERR_NOT_AVAILABLE if no hole of that size could be found
  * or claimed.
  */
 PMIX_EXPORT pmix_status_t
 pmix_vmem_reserve(
     pmix_vmem_hole_kind_t hkind,
+    uint64_t scatter,
     size_t size,
     uintptr_t *base
 );

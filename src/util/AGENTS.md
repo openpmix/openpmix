@@ -204,6 +204,16 @@ which exists because the midpoint that `use_hole()` picks is the same
 midpoint hwloc and Open MPI pick — see the comment on `use_hole_offset()`
 for why the top of the hole is a worse answer than either.
 
+The `_scattered` variants exist because determinism cuts both ways:
+computing the same answer from the same map is what lets two processes
+agree without talking, and is also what makes two *unrelated* callers
+collide. A scatter value derived from something that differs between
+them (for `shmem3`, the namespace) displaces the result within a window
+around the chosen placement, without giving up the agreement. Tested in
+[`test/unit/util/util_vmem.c`](../../test/unit/util/util_vmem.c) — which
+is where it has to be tested, since ASLR separates real processes well
+enough to hide whether the scatter works at all.
+
 ### `keyval/` — the flex lexer
 
 `keyval_lex.l` is the flex source; `keyval_lex.c` is a **generated build
