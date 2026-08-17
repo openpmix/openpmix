@@ -51,6 +51,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
                               pmix_list_t *ilist);
 static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
                                  pmix_info_t info[], size_t ninfo);
+static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory);
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
@@ -60,6 +61,7 @@ pmix_pgpu_module_t pmix_pgpu_nvd_module = {
     .name = "nvd",
     .allocate = allocate,
     .setup_local = setup_local,
+    .setup_fork = setup_fork,
     .collect_inventory = collect_inventory,
     .deliver_inventory = deliver_inventory
 };
@@ -222,6 +224,31 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
     }
 
     return rc;
+}
+
+/* Name this process's NVIDIA GPUs in CUDA_VISIBLE_DEVICES.
+ *
+ * CUDA_VISIBLE_DEVICES accepts the vendor's own device identifier, and
+ * that is the only form used here.  The alternative it also accepts is an
+ * index into the runtime's own device ordering, which PMIx has no way to
+ * reproduce - and a value naming a device that is not there does not
+ * error, it silently shrinks the visible set - so an index is never
+ * guessed.  Nothing here touches the runtime's device-ordering variable
+ * either: the identifier does not depend on it, which is the whole reason
+ * for preferring it, and overriding an ordering the user may have chosen
+ * deliberately would renumber devices for the rest of their program.
+ *
+ * The variable is overwritten if already set.  A process asking to be
+ * mapped against a device has made the more specific request, and where a
+ * resource manager has already narrowed the visible set, the identifiers
+ * named here are drawn from the topology as seen through that same
+ * narrowing - so they are a subset of what is visible, and naming a subset
+ * composes correctly.  An index-based value would not.
+ */
+static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
+{
+    return pmix_pgpu_base_set_visible_devices(proc, "NVIDIA",
+                                              "CUDA_VISIBLE_DEVICES", env);
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,

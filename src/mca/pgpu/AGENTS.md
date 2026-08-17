@@ -42,27 +42,34 @@ Before you invest in this framework, understand what is and is not live:
    an in-tree caller** — the envar harvest → ship → inject pipeline is
    wired exactly as `pnet`'s is.
 
-2. **No vendor component is built by default.** The three vendor
-   components (`amd`, `intel`, `nvd`) ship a `configure.m4` whose gate is
-   literally `AS_IF([test "yes" = "no"], [build], [do not build])` — a
-   condition that is always false — so they are compiled out, the
-   generated [`base/static-components.h`](base/static-components.h)
-   contains no vendor component, and `pmix_pgpu_globals.actives` is empty
-   on a stock build. They now *compile and link* cleanly when their gate
-   is enabled, but shipping them on by default still needs real
-   vendor-runtime detection. To exercise the framework end-to-end today,
-   build the `test` component with `--with-pgpu-test` (see
-   [Building](#building)).
+2. **The vendor components build everywhere now.** `amd`, `intel` and
+   `nvd` used to gate themselves off unless `--enable-test-build` was
+   passed, on the grounds that no vendor-runtime detection existed. That
+   was the wrong place to ask the question: none of them links anything
+   or needs a vendor SDK — they read info attributes hwloc already
+   recorded and set environment variables — and the machine that builds
+   PMIx is routinely not the machine that runs it, so a cluster with GPUs
+   got no support unless somebody had thought to configure a test build.
+   Detection happens at **run** time instead, in each component's
+   `component_open`, which asks the local topology whether that vendor's
+   hardware is present (`pmix_hwloc_check_vendor`) and declines if not.
 
-3. **The vendor GPU logic is still stubbed.** The envar-harvesting
-   `allocate`/`setup_local` are fully implemented, but `collect_inventory`
-   and `deliver_inventory` are empty stubs that just `return
-   PMIX_SUCCESS`.
+3. **`nvd` and `amd` set the vendor's visible-devices variable.**
+   `setup_fork` names the GPUs a process was mapped against in
+   `CUDA_VISIBLE_DEVICES` / `ROCR_VISIBLE_DEVICES`, using the vendor's own
+   device identifier. `intel` deliberately does not: `ZE_AFFINITY_MASK`
+   takes indices, PMIx cannot reproduce the runtime's device ordering, and
+   a wrong value in these variables silently narrows the visible set
+   rather than failing.
 
-So the framework *is* wired into launch, but no vendor component runs in a
-stock build — enable `--with-pgpu-test` (or a vendor gate) to see it work.
-Document and extend it faithfully, and do not describe the stubs as doing
-work the code does not yet do.
+4. **The inventory hooks are still stubs.** `collect_inventory` and
+   `deliver_inventory` return `PMIX_SUCCESS` having done nothing in every
+   component.
+
+So the framework is wired into launch and the vendor components run in a
+stock build, on any host whose topology shows that vendor's hardware.
+Document and extend it faithfully, and do not describe the remaining
+stubs as doing work the code does not yet do.
 
 ## What PGPU is for
 
@@ -213,11 +220,31 @@ function pointer. Specifics that matter:
   `module->setup_local(ns, ...)` with the same tolerated-return contract.
   "Can only be called by a server from within an event."
 - **`pmix_pgpu_base_setup_fork(const pmix_proc_t *proc, char ***env)`** —
-  does **not** call any component. It looks up the proc's nspace in the
-  envar cache and, for each cached `pmix_envar_list_item_t`, calls
-  `PMIx_Setenv(...)` to inject it into `*env`. This is why the component
-  module has no `setup_fork`: the fork step just replays what
-  `setup_local` cached.
+  first looks up the proc's nspace in the envar cache and, for each
+  cached `pmix_envar_list_item_t`, calls `PMIx_Setenv(...)` to inject it
+  into `*env`; **then** calls each active module's `setup_fork`. The
+  split is the point: the cache is per *namespace*, so it can only carry
+  what every rank of the job shares, and a GPU assignment is per *rank*.
+  A module return of `PMIX_ERR_NOT_AVAILABLE` or
+  `PMIX_ERR_TAKE_NEXT_OPTION` means "nothing to say about this process",
+  which is the ordinary case; any other error aborts the fork rather than
+  launching a process that would use the wrong hardware.
+
+  Two things about this hook are worth knowing before touching it. It was
+  **unreachable until recently** — `PMIx_server_setup_fork` called
+  `pmix_pnet.setup_fork` and `pmix_pmdl.setup_fork` but never
+  `pmix_pgpu.setup_fork`, so `allocate` harvested envars, `setup_local`
+  cached them, and nothing ever replayed them into a child. And it is the
+  only pgpu hook that runs on the **daemon that will fork the process**,
+  which is why per-node truth belongs here: a device's vendor identity
+  differs from node to node, and the head node's copy of a topology may
+  belong to whichever node reported it first.
+
+  `pmix_pgpu_base_set_visible_devices()` is the shared implementation the
+  vendor modules call — it reads the proc's `PMIX_DEVICE_ID` out of the
+  local datastore, resolves each device against the local topology, keeps
+  the ones belonging to the caller's vendor, and joins their vendor
+  identities into the named variable.
 - **`pmix_pgpu_base_child_finalized` / `_local_app_finalized`** — loop and
   forward to any module implementing the hook (all current modules leave
   these `NULL`).
@@ -337,11 +364,11 @@ The framework **base** is always compiled into `libpmix` (via
 `libmca_pgpu.la` with `sources =` empty apart from the base. Each
 component ships a `configure.m4` and a `Makefile.am`:
 
-- The three **vendor** components (`amd`, `intel`, `nvd`) hard-disable
-  themselves (`AS_IF([test "yes" = "no"], ...)`), so they are not compiled
-  and `static-components.h` carries no vendor component. To enable one,
-  replace the placeholder gate with real vendor-runtime detection, then
-  regenerate: `./autogen.pl && ./configure ... && make`.
+- The three **vendor** components (`amd`, `intel`, `nvd`) build
+  unconditionally. Their `configure.m4` looks for nothing because there is
+  nothing to look for: no library, no SDK, no header. Keep it that way —
+  whether a component does any work is a property of the machine the
+  daemon runs on, and only `component_open` is in a position to know it.
 - The **`test`** component builds only when `--with-pgpu-test` is passed
   to `configure`, and never ships in a normal build. It is the way to
   exercise the launch path on a host with no GPU (select it at runtime
@@ -371,11 +398,15 @@ regenerate-the-help-content golden rule does not apply here.
   `pmix_util_harvest_envars`, pack as `PMIX_ENVAR`, compress via
   `pmix_compress`, and stash under a unique per-component blob key so
   `setup_local` can find and unpack it.
-- Give the component a real `configure.m4` gate (detect the vendor
-  runtime/library) instead of the placeholder `test "yes" = "no"`, and add
-  the `PMIX_SUMMARY_ADD` line so the configure summary reports it. The
-  `test` component's `configure.m4` (an `--with-pgpu-test` `AC_ARG_WITH`)
-  is the template for a real opt-in gate.
+- Do **not** invent a `configure.m4` gate unless the component genuinely
+  needs something at build time (a header, a library to link). A component
+  that only reads the topology and sets envars should build everywhere and
+  decline at run time in `component_open` — the build host is not the run
+  host, so a build-time gate answers the wrong question. Add the
+  `PMIX_SUMMARY_ADD` line either way so the configure summary reports it.
+  The `test` component's `--with-pgpu-test` `AC_ARG_WITH` is the template
+  for a deliberate opt-in, which is a different thing: it exists so a
+  component meant only for testing does not load on a real system.
 - The launch API calls (`pmix_pgpu.allocate` / `.setup_local` /
   `.setup_fork`) are already wired into the server the way `pnet` is; a
   new component inherits them for free. The `test` component is the

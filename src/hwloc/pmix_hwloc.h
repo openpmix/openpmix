@@ -109,6 +109,16 @@ typedef struct {
      * an absent attribute changes the topology's shape.  Its VALUE is
      * per-node and must be read from that node's own topology. */
     char *vendor_id;
+    /* Which vendor's grammar vendor_id is written in - "NVIDIA", "AMD",
+     * "INTEL" - or NULL whenever vendor_id is.
+     *
+     * Needed because vendor_id alone does not say who will accept it, and
+     * a node may carry cards from more than one vendor.  Each vendor wants
+     * its own environment variable and its own value syntax, so whoever
+     * acts on an assignment has to be able to pick out the devices that
+     * are theirs.  Deriving it from the identity's spelling would be a
+     * guess; this is the key hwloc actually recorded it under. */
+    char *vendor;
     /* Nearest ancestor carrying a cpuset - the set of PUs local to this
      * device.  Borrowed from the topology, so it is valid only as long as
      * the topology is, and must not be freed. */

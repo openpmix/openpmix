@@ -224,6 +224,20 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
     return rc;
 }
 
+/* No setup_fork here, and that is a decision rather than an omission.
+ *
+ * Intel's visible-devices variable, ZE_AFFINITY_MASK, takes device
+ * indices - there is no identifier form of the kind CUDA_VISIBLE_DEVICES
+ * and ROCR_VISIBLE_DEVICES accept.  PMIx cannot reproduce the runtime's
+ * device ordering, so any index it wrote would be a guess, and a wrong
+ * value in these variables does not fail - it silently narrows the set of
+ * devices the process can see.  Setting nothing leaves the process able to
+ * use every device it was given; setting a guess can quietly take devices
+ * away.  Until there is a way to name a Level Zero device that does not
+ * depend on an ordering we do not control, this module contributes no
+ * environment.
+ */
+
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory)
 {

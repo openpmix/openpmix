@@ -1464,7 +1464,15 @@ static bool osdev_is_render_node(hwloc_obj_t osdev)
  * Deliberately not BXIUUID, which hwloc also writes: that is a network
  * interconnect, and this is about naming a device to the vendor runtime
  * that will compute on it. */
-static const char *vendor_id_keys[] = {"NVIDIAUUID", "AMDUUID", "LevelZeroUUID", NULL};
+static const struct {
+    const char *key;
+    const char *vendor;
+} vendor_id_keys[] = {
+    {"NVIDIAUUID", "NVIDIA"},
+    {"AMDUUID", "AMD"},
+    {"LevelZeroUUID", "INTEL"},
+    {NULL, NULL}
+};
 
 /* The vendor's identifier for the device this OS device belongs to, or NULL.
  *
@@ -1475,33 +1483,44 @@ static const char *vendor_id_keys[] = {"NVIDIAUUID", "AMDUUID", "LevelZeroUUID",
  * node it meets - "cuda0" - and the uuid is on "nvml0".  Reading only the
  * named device would report "no identity" on precisely the machines that
  * have one. */
-static char *vendor_id_of(hwloc_obj_t osdev, hwloc_obj_t pci)
+static bool vendor_id_read(hwloc_obj_t osdev, char **id, char **vendor)
 {
-    hwloc_obj_t child;
     const char *val;
     unsigned k;
 
-    for (k = 0; NULL != vendor_id_keys[k]; k++) {
-        val = hwloc_obj_get_info_by_name(osdev, vendor_id_keys[k]);
+    for (k = 0; NULL != vendor_id_keys[k].key; k++) {
+        val = hwloc_obj_get_info_by_name(osdev, vendor_id_keys[k].key);
         if (NULL != val) {
-            return strdup(val);
+            *id = strdup(val);
+            *vendor = strdup(vendor_id_keys[k].vendor);
+            return true;
         }
     }
+    return false;
+}
+
+static void vendor_id_of(hwloc_obj_t osdev, hwloc_obj_t pci,
+                         char **id, char **vendor)
+{
+    hwloc_obj_t child;
+
+    *id = NULL;
+    *vendor = NULL;
+
+    if (vendor_id_read(osdev, id, vendor)) {
+        return;
+    }
     if (NULL == pci) {
-        return NULL;
+        return;
     }
     for (child = pci->io_first_child; NULL != child; child = child->next_sibling) {
         if (HWLOC_OBJ_OS_DEVICE != child->type) {
             continue;
         }
-        for (k = 0; NULL != vendor_id_keys[k]; k++) {
-            val = hwloc_obj_get_info_by_name(child, vendor_id_keys[k]);
-            if (NULL != val) {
-                return strdup(val);
-            }
+        if (vendor_id_read(child, id, vendor)) {
+            return;
         }
     }
-    return NULL;
 }
 
 /* The PCI function an OS device hangs off, or NULL if it has none. */
@@ -1869,7 +1888,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         }
         array[n].dev.osname = strdup(c->osdev->name);
         array[n].dev.type = c->type;
-        array[n].vendor_id = vendor_id_of(c->osdev, c->pci);
+        vendor_id_of(c->osdev, c->pci, &array[n].vendor_id, &array[n].vendor);
         if (NULL != c->pci) {
             pmix_asprintf(&array[n].busid, "%04x:%02x:%02x.%01x",
                           c->pci->attr->pcidev.domain, c->pci->attr->pcidev.bus,
@@ -1916,6 +1935,9 @@ void pmix_hwloc_release_devices(pmix_hwloc_device_t *devs, size_t ndevs)
         }
         if (NULL != devs[n].vendor_id) {
             free(devs[n].vendor_id);
+        }
+        if (NULL != devs[n].vendor) {
+            free(devs[n].vendor);
         }
         /* locality is borrowed from the topology */
     }
