@@ -451,6 +451,16 @@ typedef struct pmix_rank_info_t {
     pmix_list_t pending_modex;
     uint64_t modex_sig;
     bool modex_contributed;
+    /* Keys this rank has deleted that its peers on other nodes have not
+     * been told about yet.
+     *
+     * Removing the key from our store is not enough to reach them: the
+     * modex is additive, so a later contribution simply not carrying the
+     * key removes nothing at the far end. The deletion has to be *said*,
+     * as an entry whose value is PMIX_UNDEF, which the receiving
+     * datastore reads as "this key is gone". Announced once, with the
+     * next contribution, and then dropped. */
+    pmix_list_t pending_deletes;
 } pmix_rank_info_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_rank_info_t);
 

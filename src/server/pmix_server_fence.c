@@ -217,6 +217,24 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                  * its own store before sending, so skip it. */
                 pmix_server_notify_deleted(&proc, scope, kp->key, peer);
             }
+            if (PMIX_DEL_REMOTE == scope || PMIX_DEL_GLOBAL == scope) {
+                /* Servers on other nodes have to be told too, and
+                 * removing the key here cannot tell them: the modex is
+                 * additive, so a contribution that simply no longer
+                 * carries the key removes nothing at the far end. The
+                 * deletion has to be said out loud, which is what this
+                 * records for the next contribution to carry. */
+                pmix_kval_t *dk = PMIX_NEW(pmix_kval_t);
+                if (NULL != dk) {
+                    dk->key = strdup(kp->key);
+                    PMIX_VALUE_CREATE(dk->value, 1); // PMIX_UNDEF: "gone"
+                    if (NULL == dk->key || NULL == dk->value) {
+                        PMIX_RELEASE(dk);
+                    } else {
+                        pmix_list_append(&info->pending_deletes, &dk->super);
+                    }
+                }
+            }
             if (pmix_server_globals.fence_delta_modex
                 && (PMIX_REMOTE == scope || PMIX_GLOBAL == scope)) {
                 /* Keep this for the next collecting fence, which may be
@@ -948,6 +966,35 @@ void pmix_server_notify_deleted(const pmix_proc_t *proc,
     }
 }
 
+/* Append this rank's unannounced deletions to its contribution.
+ *
+ * Each goes out as an entry whose value is PMIX_UNDEF, which every
+ * receiving datastore reads as "this key is gone" - see
+ * _hash_store_modex(). It has to be said rather than implied: the modex
+ * is additive, so a contribution that merely stops carrying a key
+ * removes nothing at the far end.
+ *
+ * Announced once. After that every server that took part has applied it,
+ * and this rank's own store no longer has the key, so nothing will
+ * re-introduce it. */
+static pmix_status_t pack_pending_deletes(pmix_rank_info_t *info,
+                                          pmix_buffer_t *pbkt)
+{
+    pmix_kval_t *kv;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    if (NULL == info) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_LIST_FOREACH (kv, &info->pending_deletes, pmix_kval_t) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, kv, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 /* Digest a fence's participant set.
  *
  * A delta contribution is only sound for a fence over the same
@@ -1032,6 +1079,9 @@ void pmix_server_modex_contributed(pmix_server_trkr_t *trk)
         }
         PMIX_LIST_DESTRUCT(&info->pending_modex);
         PMIX_CONSTRUCT(&info->pending_modex, pmix_list_t);
+        /* the deletions have now been announced */
+        PMIX_LIST_DESTRUCT(&info->pending_deletes);
+        PMIX_CONSTRUCT(&info->pending_deletes, pmix_list_t);
         info->modex_sig = sig;
         info->modex_contributed = true;
     }
@@ -1179,6 +1229,14 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                         goto cleanup;
                     }
                 }
+                if (PMIX_SUCCESS != pack_pending_deletes(scd->peer->info, pbkt)) {
+                    PMIX_ERROR_LOG(PMIX_ERR_PACK_FAILURE);
+                    PMIX_LIST_DESTRUCT(&pnames);
+                    PMIX_LIST_DESTRUCT(&rank_blobs);
+                    PMIX_RELEASE(pbkt);
+                    rc = PMIX_ERR_PACK_FAILURE;
+                    goto cleanup;
+                }
                 blob = PMIX_NEW(rank_blob_t);
                 blob->buf = pbkt;
                 pmix_list_append(&rank_blobs, &blob->super);
@@ -1202,6 +1260,15 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                         PMIX_RELEASE(pbkt);
                         goto cleanup;
                     }
+                }
+                if (PMIX_SUCCESS != pack_pending_deletes(scd->peer->info, pbkt)) {
+                    PMIX_ERROR_LOG(PMIX_ERR_PACK_FAILURE);
+                    PMIX_DESTRUCT(&cb);
+                    PMIX_LIST_DESTRUCT(&pnames);
+                    PMIX_LIST_DESTRUCT(&rank_blobs);
+                    PMIX_RELEASE(pbkt);
+                    rc = PMIX_ERR_PACK_FAILURE;
+                    goto cleanup;
                 }
                 /* add the blob to the list */
                 blob = PMIX_NEW(rank_blob_t);
