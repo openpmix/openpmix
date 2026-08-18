@@ -99,6 +99,40 @@ locally available to each participant at the end of the operation. Collected dat
 is cached at the server to reduce memory footprint and is retrieved as needed via
 :ref:`PMIx_Get(3) <man3-PMIx_Get>`.
 
+**What a collecting fence carries.** Each PMIx server contributes, on behalf
+of each of its local participants, the data that process staged with
+:ref:`PMIx_Put(3) <man3-PMIx_Put>` and committed with
+:ref:`PMIx_Commit(3) <man3-PMIx_Commit>`. That contribution is *cumulative* by
+default: everything the process has published so far is sent on every
+collecting fence, so a job that fences repeatedly re-sends the same data each
+time. Setting the ``pmix_server_fence_delta_modex`` MCA parameter (see
+`MCA PARAMETERS`_) instead has each server send only what its processes have
+committed since they last took part in a collecting fence.
+
+The delta changes only what is put on the wire, not what a participant can
+retrieve afterwards: the servers keep what earlier fences delivered, and a
+contribution reverts to the full published set whenever a delta could not
+express it |mdash| in particular when the participants of this fence are not
+exactly the set the process last contributed to (two sub-communicators fencing
+independently, for example), when a local participant has not yet taken part in
+a collecting fence, or when data was published on that process's behalf by some
+path other than a commit, such as
+:ref:`PMIx_server_register_resources(3) <man3-PMIx_server_register_resources>`
+or a group collective.
+
+A fence that does not collect data exchanges nothing, and therefore does not
+move that boundary: whatever is owed is still carried by the next collecting
+fence.
+
+**Deletions travel with a collecting fence.** A key removed with one of the
+``PMIX_DEL_*`` scopes of :ref:`PMIx_Put(3) <man3-PMIx_Put>` cannot be retracted
+from a remote node by simply omitting it |mdash| the exchange is additive, so a
+contribution that stops naming a key removes nothing at the far end. The
+removal is therefore stated explicitly in the next collecting fence, and
+processes on other nodes stop seeing the key once that fence completes.
+Processes on the deleting process's own node are corrected when the deletion is
+committed and do not wait for a fence.
+
 ``PMIx_Fence`` and ``PMIx_Fence_nb`` are *collective* operations. The PMIx server
 library aggregates the participation of its local clients, passing a single request
 to the host environment once all local participants have called the API; the host
@@ -135,6 +169,31 @@ depend on the implementation and host environment.
    and should not be used in new code.
 
 
+MCA PARAMETERS
+--------------
+
+The following MCA parameter influences the behavior of a collecting
+``PMIx_Fence``. It is read by the PMIx **server** library, so it must be set in
+the environment of the servers (e.g.,
+``PMIX_MCA_pmix_server_fence_delta_modex=1``) and not in that of the
+application processes. The complete, authoritative list of parameters (with
+current values) can be displayed with ``pmix_info``.
+
+* ``pmix_server_fence_delta_modex=<true|false>`` (default: ``false``). When
+  ``true``, a server contributes only the data its processes have committed
+  since they last took part in a collecting fence, rather than everything they
+  have published. See the description above for the cases that fall back to the
+  full set regardless.
+
+.. caution::
+   Every node in the job must be running a PMIx release that understands a
+   delta contribution before this is enabled. A server that does not understand
+   one rejects the entire collective rather than storing a contribution it
+   cannot interpret, so a job whose nodes run mixed releases fails the fence
+   with ``PMIX_ERR_BAD_PARAM`` |mdash| loudly, on both sides, rather than
+   silently losing keys. That is why the parameter defaults to ``false``.
+
+
 RETURN VALUE
 ------------
 
@@ -150,7 +209,9 @@ accepted for processing and the final status will be delivered to ``cbfunc``.
 * ``PMIX_ERR_NOT_A_MEMBER`` |mdash| the calling process is not among the named
   participants.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied (e.g., a ``NULL``
-  ``procs`` array with a non-zero ``nprocs``).
+  ``procs`` array with a non-zero ``nprocs``), or the servers contributing to a
+  collecting fence did not agree on the kind of contribution they sent |mdash|
+  see `MCA PARAMETERS`_.
 * ``PMIX_ERR_UNREACH`` |mdash| the local PMIx server could not be reached.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because the
   library's progress engine has been stopped.
@@ -186,4 +247,5 @@ constants are defined in ``pmix_common.h``.
    :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
-   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`
+   :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`,
+   :doc:`Modex: Exchanging Process Data </how-things-work/modex>`

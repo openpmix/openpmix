@@ -41,14 +41,33 @@ A PMIx implementation may locally cache non-reserved keys in the client library
 until they are committed. ``PMIx_Commit`` initiates the operation of making those
 staged key-value pairs available; depending on the implementation, this may
 involve transmitting the entire collection of data posted by the process to the
-local PMIx server. ``PMIx_Commit`` is an asynchronous operation: it returns to the
-caller immediately while the data is staged to the server in the background.
+local PMIx server. In this implementation the call returns once the local server
+has received and acknowledged the data |mdash| which is not the same as the data
+being available to peers, as the note below explains.
 
-This implementation ordinarily transmits only what has been posted since the
-previous ``PMIx_Commit``, falling back to the entire collection where that is
-not sufficient. Either way the effect on the caller is the same, and a key
-posted more than once between two commits is transmitted once, carrying the
-value it had when ``PMIx_Commit`` was called.
+**Only what changed is sent.** This implementation ordinarily transmits just
+what has been posted since the previous ``PMIx_Commit``, falling back to the
+entire collection where that is not sufficient |mdash| for instance when a
+qualified value is involved (it is stored under the reserved
+``PMIX_QUALIFIED_VALUE`` key, so there is no key to ask for it back by), or on
+the first commit made to a server that has not seen anything this process
+published, such as after a tool repoints at another server. Either way the effect on the caller is the
+same, and a key posted more than once between two commits is transmitted once,
+carrying the value it had when ``PMIx_Commit`` was called. The saving matters
+because the older behavior re-sent everything published so far on every call,
+so *n* put/commit cycles moved O(*n*\ :sup:`2`) bytes.
+
+**Deletions are carried too.** A key removed by one of the ``PMIX_DEL_*``
+scopes of :ref:`PMIx_Put(3) <man3-PMIx_Put>` cannot simply be left out of the
+next transmission |mdash| the server accumulates what it is sent, so omitting a
+key removes nothing. The removals requested since the previous commit are
+therefore stated explicitly, and are applied by the server ahead of the values
+sent with them; see the discussion of ordering in
+:ref:`PMIx_Put(3) <man3-PMIx_Put>`. A commit that carries a removal sends the
+full collection rather than a delta, since the record a delta is built from
+names keys to be fetched back and a deleted key is precisely the one that will
+not be found. Passing the removal on to the *other nodes* is the collecting
+:ref:`PMIx_Fence(3) <man3-PMIx_Fence>`'s business, not the commit's.
 
 .. note::
    Users are advised to always include the call to ``PMIx_Commit`` in case the
@@ -95,4 +114,5 @@ the peers issue :ref:`PMIx_Get(3) <man3-PMIx_Get>`.
    :ref:`PMIx_Put(3) <man3-PMIx_Put>`,
    :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`,
-   :ref:`pmix_status_t(5) <man5-pmix_status_t>`
+   :ref:`pmix_status_t(5) <man5-pmix_status_t>`,
+   :doc:`Modex: Exchanging Process Data </how-things-work/modex>`

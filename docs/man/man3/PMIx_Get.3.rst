@@ -313,7 +313,9 @@ returned in the manner requested. For the non-blocking form, a return of
 final status and value are delivered to ``cbfunc``.
 
 * ``PMIX_SUCCESS`` |mdash| the requested data has been returned.
-* ``PMIX_ERR_NOT_FOUND`` |mdash| the requested data was not available.
+* ``PMIX_ERR_NOT_FOUND`` |mdash| the requested data was not available. This
+  includes a key that *was* available earlier and has since been deleted
+  |mdash| see `NOTES`_.
 * ``PMIX_ERR_EXISTS_OUTSIDE_SCOPE`` |mdash| the requested key exists, but was
   posted in a scope that does not include the requester.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied |mdash| for
@@ -343,6 +345,27 @@ typically via a :ref:`PMIx_Fence(3) <man3-PMIx_Fence>` |mdash| unless the
 desired qualifiers in the ``info`` array to select among the values stored under
 that key. ``PMIx_Get`` returns the primary value of the matching entry; the
 qualifiers themselves are used only for matching and are not returned.
+
+**A key that was there can go away.** Published data used only to
+accumulate, so a key that was once retrievable stayed retrievable. That is no
+longer true: a process can retract one of its own keys with the ``PMIX_DEL_*``
+scopes of :ref:`PMIx_Put(3) <man3-PMIx_Put>`, and a host environment can
+retract job-level information it registered with
+:ref:`PMIx_server_deregister_resources(3) <man3-PMIx_server_deregister_resources>`.
+A call that succeeded for a key can therefore return ``PMIX_ERR_NOT_FOUND``
+later in the same job, and callers that cannot tolerate that must be prepared
+for it.
+
+The removal reaches this process as a notification from its local PMIx server,
+which drops the cached copy the caller was given. For a key belonging to a
+process on another node it arrives with the collecting
+:ref:`PMIx_Fence(3) <man3-PMIx_Fence>` that carries the removal. The
+notification is one-way and unacknowledged, so it arrives promptly rather than
+synchronously: a ``PMIx_Get`` that races it can return the old value once more.
+Once it has landed, a request for the key behaves exactly like one for a key
+that was never published |mdash| for a non-reserved key that means the call
+blocks until someone publishes it, unless ``PMIX_OPTIONAL`` or
+``PMIX_IMMEDIATE`` bounds the search.
 
 **Values from another process are cached, and a later exchange does not
 refresh them.** Once a process's data has been retrieved, subsequent calls for
@@ -374,6 +397,7 @@ updates the caller's whole view of that process.
    :ref:`PMIx_Put(3) <man3-PMIx_Put>`,
    :ref:`PMIx_Commit(3) <man3-PMIx_Commit>`,
    :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`,
+   :ref:`PMIx_server_deregister_resources(3) <man3-PMIx_server_deregister_resources>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
    :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`,

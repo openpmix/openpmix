@@ -156,13 +156,30 @@ its normal finalize operations. Deregistration is needed only when the host
 environment determines that client processes should no longer have access to the
 information.
 
-.. important:: Deregistration takes effect for namespaces registered
-               **after** the call. Non-namespace resource information is copied
-               into a namespace's data store when that namespace is registered,
-               so a namespace already registered |mdash| and any client already
-               running under it |mdash| retains the information. A host that
-               needs the data withheld from a running job cannot achieve that
-               with this call alone.
+.. important:: Deregistration reaches the namespaces this server has
+               **already** registered, not only those registered after the
+               call. Non-namespace resource information is copied into a
+               namespace's data store when that namespace is registered, so
+               removing an entry from the server's cache also takes the key
+               back from every namespace holding a copy of it, and the server
+               tells its local clients to drop the copies they were handed. A
+               subsequent :ref:`PMIx_Get(3) <man3-PMIx_Get>` for that key
+               therefore returns ``PMIX_ERR_NOT_FOUND`` where it previously
+               returned the value. The notification to the clients carries no
+               acknowledgement, so it reaches them promptly rather than
+               synchronously: a client that races it can read the old value
+               once more.
+
+               This governs the information held by **this** server and its
+               clients. A host that wants the data withdrawn across the job
+               makes the call on every server holding it.
+
+One case is deliberately excluded from that retraction: a *qualified* request
+that prunes elements out of an entry rather than removing the entry outright.
+There the host has asked for part of a value to go, so the correct propagation
+is the pruned value, not a deletion |mdash| pushing a removal would take more
+away from a running namespace than was asked for. A pruning therefore still
+governs only the namespaces registered **after** the call.
 
 
 .. include:: /man/no-blocking-in-progress-thread.rst
@@ -172,5 +189,6 @@ information.
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`PMIx_server_register_resources(3) <man3-PMIx_server_register_resources>`,
    :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`,
+   :ref:`PMIx_Get(3) <man3-PMIx_Get>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,
    :ref:`pmix_status_t(5) <man5-pmix_status_t>`
