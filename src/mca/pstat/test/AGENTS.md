@@ -96,9 +96,12 @@ The four readers have the same signatures and emit the same attributes as
   RSS / PSS. Tagged with a real `PMIX_PROC_SAMPLE_TIME`.
 - **`node_stat`** — fixed load averages and memory/swap figures.
 - **`disk_stat`** — fabricates **two** disks (`sd00`, `sd01`) with fixed
-  counters; ignores the `disks` filter.
+  counters, and honors `op->disks`: a caller naming `sd01` gets `sd01`
+  and nothing else, exactly as the real readers behave. (It used to
+  ignore the filter and report both, which left the `disks` argv the
+  base parse helper builds with no consumer on this path.)
 - **`net_stat`** — fabricates **three** interfaces (`net000`..`net002`)
-  with fixed counters; ignores the `nets` filter.
+  with fixed counters, and honors `op->nets` the same way.
 
 Because the values are constants, a test can assert on them exactly.
 
