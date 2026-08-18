@@ -214,6 +214,10 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
         return rc;
     }
     rc = PMIx_Info_list_add(answer, PMIX_PROC_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+    /* the add deep-copies the array into the list, so this one is still
+     * ours - keeping it leaks a full sample for every process on every
+     * tick of a periodic monitor */
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
 
     return rc;
 }
@@ -349,6 +353,7 @@ static pmix_status_t disk_stat(void *answer,
             return rc;
         }
         rc = PMIx_Info_list_add(answer, PMIX_DISK_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
@@ -448,6 +453,7 @@ static pmix_status_t net_stat(void *answer, char**nets,
         }
 
         rc = PMIx_Info_list_add(answer, PMIX_NETWORK_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
@@ -595,87 +601,108 @@ static void update(int sd, short args, void *cbdata)
     nettaken = false;
     dktaken = false;
 
+    // start with general directives
+
+    if (op->active) {
+        /* Avoid the default event. Both of these have to make it into the
+         * answer: without them the sample is delivered as a default event
+         * with no range restriction - to every handler in the job rather
+         * than to the one process that asked for it - so a failure here
+         * is not something to shrug off. */
+        PMIX_INFO_LIST_ADD(rc, answer, PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
+
+        /* target this notification solely to the requestor */
+        PMIX_INFO_LIST_ADD(rc, answer, PMIX_EVENT_CUSTOM_RANGE, &op->requestor, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
+    }
+
+    // check for pstat request
     if (0 != memcmp(&op->pstats, &zproc, sizeof(pmix_procstats_t))) {
         PMIX_LIST_FOREACH(plist, &op->peers, pmix_peerlist_t) {
             rc = proc_stat(answer, plist->peer, &op->pstats);
+            if (PMIX_ERR_NOT_FOUND == rc) {
+                /* the process is gone between our being handed the peer
+                 * and our reading it.
+                 * That is ordinary, and the remaining peers still have
+                 * data to report, so skip it rather than abandoning the
+                 * whole sample */
+                continue;
+            }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
-                PMIx_Info_list_release(answer);
-                goto reset;
+                goto error;
             }
         }
     }
 
+    // check for node stats
     if (0 != memcmp(&op->ndstats, &znd, sizeof(pmix_ndstats_t))) {
         ilist = PMIx_Info_list_start();
         // start with hostname
         rc = PMIx_Info_list_add(ilist, PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
         if (PMIX_SUCCESS != rc) {
             PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
         // add our nodeID
         rc = PMIx_Info_list_add(ilist, PMIX_NODEID, &pmix_globals.nodeid, PMIX_UINT32);
         if (PMIX_SUCCESS != rc) {
             PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
         // collect the stats
         rc = node_stat(ilist, &op->ndstats);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
         if (0 != memcmp(&op->netstats, &znet, sizeof(pmix_netstats_t))) {
             nettaken = true;
             rc = net_stat(ilist, op->nets, &op->netstats);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
                 PMIx_Info_list_release(ilist);
-                PMIx_Info_list_release(answer);
-                goto reset;
+                goto error;
             }
         }
         if (0 != memcmp(&op->dkstats, &zdk, sizeof(pmix_dkstats_t))) {
             dktaken = true;
             rc = disk_stat(ilist, op->disks, &op->dkstats);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
                 PMIx_Info_list_release(ilist);
-                PMIx_Info_list_release(answer);
-                goto reset;
+                goto error;
             }
         }
         // add this to the final answer
         rc = PMIx_Info_list_convert(ilist, &darray);
-        if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
-        }
         PMIx_Info_list_release(ilist);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
         rc = PMIx_Info_list_add(answer, PMIX_NODE_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
         PMIX_DATA_ARRAY_DESTRUCT(&darray);
         if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
     }
 
+    // check for net stats
     if (!nettaken && 0 != memcmp(&op->netstats, &znet, sizeof(pmix_netstats_t))) {
         rc = net_stat(answer, op->nets, &op->netstats);
-        if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(answer);
-            goto reset;
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+            goto error;
         }
     }
 
+    // check for disk stats
     if (!dktaken && 0 != memcmp(&op->dkstats, &zdk, sizeof(pmix_dkstats_t))) {
         rc = disk_stat(answer, op->disks, &op->dkstats);
-        if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(answer);
-            goto reset;
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+            goto error;
         }
     }
 
@@ -684,7 +711,12 @@ static void update(int sd, short args, void *cbdata)
         rc = PMIx_Info_list_convert(answer, &darray);
         PMIx_Info_list_release(answer);
         if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
+            /* nothing was collected this time around - that is an empty
+             * sample, not a failure, and logging it would put a line in
+             * the output on every tick of the timer */
+            if (PMIX_ERR_EMPTY != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
             goto reset;
         }
         // setup the event
@@ -693,11 +725,28 @@ static void update(int sd, short args, void *cbdata)
         cb->ninfo = darray.size;
         cb->infocopy = true;
         rc = PMIx_Notify_event(op->eventcode, &pmix_globals.myid,
-                               PMIX_RANGE_LOCAL, cb->info, cb->ninfo,
+                               PMIX_RANGE_CUSTOM, cb->info, cb->ninfo,
                                evrelease, (void*)cb);
         if (PMIX_SUCCESS != rc) {
+            /* evrelease only runs once the notification has been
+             * delivered, so a rejected notification leaves the caddy -
+             * and the sample it carries - ours to release */
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(cb);
         }
+    }
+    goto reset;
+
+error:
+    /* On the timer path the answer list is ours and has to go. On the
+     * synchronous path it belongs to query(), which reads it as soon as
+     * we return - releasing it here left query() converting and
+     * releasing freed memory. Hand the failure back through the caddy
+     * instead and leave the list alone. */
+    if (noreset) {
+        op->cb->status = rc;
+    } else {
+        PMIx_Info_list_release(answer);
     }
 
 reset:
@@ -707,9 +756,32 @@ reset:
     }
 }
 
-/* if we are being called, then we already know that the request involves
- * this node - otherwise, we wouldn't have been called, except where noted
- */
+/* The monitor's value carries the list of fields being requested as a
+ * data array. For a client request that value came off the wire, and
+ * nothing between the unpack in pmix_server_monitor() and here looks at
+ * it - so check the declared type before reading data.darray, or a value
+ * the sender typed as, say, an integer hands us those bytes as a
+ * pointer. An absent value (PMIX_UNDEF) is not malformed: it is how a
+ * caller asks for every field in the category, which is what the base
+ * parse helpers do when handed a NULL array. */
+static pmix_status_t monitor_fields(const pmix_info_t *monitor,
+                                    pmix_info_t **iptr, size_t *sz)
+{
+    *iptr = NULL;
+    *sz = 0;
+
+    if (PMIX_UNDEF == monitor->value.type) {
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_DATA_ARRAY != monitor->value.type ||
+        NULL == monitor->value.data.darray) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *iptr = (pmix_info_t*)monitor->value.data.darray->array;
+    *sz = monitor->value.data.darray->size;
+    return PMIX_SUCCESS;
+}
+
 static pmix_status_t query(pmix_proc_t *requestor,
                            const pmix_info_t *monitor, pmix_status_t eventcode,
                            const pmix_info_t directives[], size_t ndirs,
@@ -730,8 +802,7 @@ static pmix_status_t query(pmix_proc_t *requestor,
     pmix_dkstats_t zdk;
     pmix_info_t *xfer;
     pmix_cb_t cb;
-    PMIX_HIDE_UNUSED_PARAMS(requestor);
-    
+
     *results = NULL;
     *nresults = 0;
     PMIX_NETSTATS_INIT(&znet);
@@ -739,7 +810,8 @@ static pmix_status_t query(pmix_proc_t *requestor,
 
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_CANCEL)) {
         // cancel an existing monitor operation - ID must be the provided value
-        if (monitor->value.type != PMIX_STRING) {
+        if (PMIX_STRING != monitor->value.type ||
+            NULL == monitor->value.data.string) {
             return PMIX_ERR_BAD_PARAM;
         }
         // cycle through our list of ops operations
@@ -748,7 +820,11 @@ static pmix_status_t query(pmix_proc_t *requestor,
             return PMIX_SUCCESS;
         }
         PMIX_LIST_FOREACH(op, &pmix_pstat_base.ops, pmix_pstat_op_t) {
-            if (0 == strcmp(monitor->value.data.string, op->id)) {
+            /* an op only carries an id if the request that created it
+             * supplied one - a rate with no PMIX_MONITOR_ID is legal and
+             * leaves it NULL, so it can never match a cancel */
+            if (NULL != op->id &&
+                0 == strcmp(monitor->value.data.string, op->id)) {
                 // terminate this operation
                 pmix_list_remove_item(&pmix_pstat_base.ops, &op->super);
                 PMIX_RELEASE(op);
@@ -760,12 +836,23 @@ static pmix_status_t query(pmix_proc_t *requestor,
     }
 
     op = PMIX_NEW(pmix_pstat_op_t);
+    memcpy(&op->requestor, requestor, sizeof(pmix_proc_t));
     op->eventcode = eventcode;
 
     for (n=0; n < ndirs; n++) {
         // did they give us an ID for this request?
         if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_ID)) {
-            op->id = strdup(directives[n].value.data.string);
+            if (PMIX_STRING != directives[n].value.type ||
+                NULL == directives[n].value.data.string) {
+                PMIX_RELEASE(op);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            if (NULL == op->id) {
+                /* nothing stops a caller from naming the monitor twice;
+                 * the first name wins, and overwriting would lose the
+                 * string we already took */
+                op->id = strdup(directives[n].value.data.string);
+            }
 
         } else if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_RESOURCE_RATE)) {
             // they are asking us to update it at regular intervals
@@ -785,8 +872,11 @@ static pmix_status_t query(pmix_proc_t *requestor,
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_PROC_RESOURCE_USAGE)) {
         tgtprocsgiven = false;
         // see which values are to be returned
-        iptr = (pmix_info_t*)monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         pmix_pstat_parse_procstats(&op->pstats, iptr, sz);
 
         // we already know this request involves us since it was checked
@@ -880,13 +970,29 @@ processprocs:
         cb.cbdata = PMIx_Info_list_start();
         op->cb = &cb;
         update(0, 0, (void*)op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // convert to info array
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         PMIx_Info_list_release(cb.cbdata);
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
         if (PMIX_SUCCESS != rc) {
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIX_RELEASE(op);
+            if (PMIX_ERR_EMPTY == rc) {
+                // this is not an error
+                rc = PMIX_SUCCESS;
+            }
             return rc;
         }
         *results = (pmix_info_t*)darray.array;
@@ -907,8 +1013,11 @@ processprocs:
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_NODE_RESOURCE_USAGE)) {
         // we already know we are a target node since we are
         // being called
-        iptr = (pmix_info_t*)monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // determine what stats to return - might include net and disk values
         pmix_pstat_parse_ndstats(&op->ndstats, iptr, sz);
         pmix_pstat_parse_netstats(&op->nets, &op->netstats, iptr, sz);
@@ -937,6 +1046,17 @@ processprocs:
         }
         // collect the stats
         update(0, 0, (void*)op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // add this to the final answer
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         if (PMIX_SUCCESS != rc) {
@@ -949,6 +1069,14 @@ processprocs:
         PMIx_Info_list_release(cb.cbdata);
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
+        // if the array has only two items in it, then those are the hostname
+        // and nodeID we provided and not any data - this is equivalent to
+        // "empty" as no data was found
+        if (3 > darray.size) {
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
+            PMIX_RELEASE(op);
+            return PMIX_SUCCESS;
+        }
         PMIX_INFO_CREATE(xfer, 1);
         PMIX_INFO_LOAD(xfer, PMIX_NODE_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
         PMIX_DATA_ARRAY_DESTRUCT(&darray);
@@ -970,8 +1098,11 @@ processprocs:
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_DISK_RESOURCE_USAGE)) {
         // we already know we are a target node since we are
         // being called
-        iptr = (pmix_info_t*)monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // assemble any provided disk IDs and/or stat specifications
         pmix_pstat_parse_dkstats(&op->disks, &op->dkstats, iptr, sz);
         // collect the stats
@@ -979,13 +1110,29 @@ processprocs:
         cb.cbdata = PMIx_Info_list_start();
         op->cb = &cb;
         update(0, 0, (void*)op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // convert to info array
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         PMIx_Info_list_release(cb.cbdata);
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
         if (PMIX_SUCCESS != rc) {
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIX_RELEASE(op);
+            if (PMIX_ERR_EMPTY == rc) {
+                // empty = nothing found, not an error
+                rc = PMIX_SUCCESS;
+            }
             return rc;
         }
         *results = (pmix_info_t*)darray.array;
@@ -1006,8 +1153,11 @@ processprocs:
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_NET_RESOURCE_USAGE)) {
         // we already know we are a target node since we are
         // being called
-        iptr = (pmix_info_t*)monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // assemble any provided network IDs and/or stat specifications
         pmix_pstat_parse_netstats(&op->nets, &op->netstats, iptr, sz);
         // collect the stats
@@ -1015,6 +1165,17 @@ processprocs:
         cb.cbdata = PMIx_Info_list_start();
         op->cb = &cb;
         update(0, 0, (void*)op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // convert to info array
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         PMIx_Info_list_release(cb.cbdata);
@@ -1022,6 +1183,10 @@ processprocs:
         op->cb = NULL;
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(op);
+            if (PMIX_ERR_EMPTY == rc) {
+                // empty = nothing found, not an error
+                rc = PMIX_SUCCESS;
+            }
             return rc;
         }
         *results = (pmix_info_t*)darray.array;
