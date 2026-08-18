@@ -159,9 +159,32 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pstat_op_t);
 // p - pmix_pstat_op_t*
 // s - time in seconds
 // cb - callback function that will execute the collection
+/* The timer is PERSISTENT, and that is a correctness requirement rather
+ * than a convenience. A repeating timer can be built either way - the
+ * sampler re-arming a one-shot on its way out, or libevent re-arming a
+ * persistent one - and the two are not equivalent to the thread that
+ * wants to tear the op down.
+ *
+ * opdes() ends an op with pmix_event_del(). Called from a thread that is
+ * not the event base's own - which is exactly what a PMIX_MONITOR_CANCEL
+ * is when pstat_base_use_separate_thread is set - that waits for a
+ * callback already running on the event before it returns, so the op is
+ * safe to free afterwards. It waits, but it only removes the event once,
+ * up front. With a one-shot timer the sampler's re-arm runs *after* that
+ * removal and outside the base's lock, so event_del returned to a freshly
+ * armed timer and the op was freed with a live timer pointing at it.
+ * With EV_PERSIST the re-arm is event_persist_closure()'s, made while it
+ * still holds the base lock and before the callback is entered, so a
+ * concurrent event_del either takes the lock first and removes the
+ * pending timeout, or takes it afterwards and removes the re-armed one.
+ * Every interleaving returns disarmed.
+ *
+ * So: do not re-arm from a sampler, and do not "simplify" this back to
+ * pmix_event_evtimer_set(), which asks for flags 0. */
 #define PMIX_PSTAT_OP_START(p, s, cb)                                           \
     do {                                                                        \
-        pmix_event_evtimer_set(pmix_pstat_base.evbase, &(p)->ev, (cb), (p));    \
+        pmix_event_assign(&(p)->ev, pmix_pstat_base.evbase, -1,                 \
+                          PMIX_EV_PERSIST, (event_callback_fn) (cb), (p));      \
         (p)->tv.tv_sec = (s);                                                   \
         (p)->tv.tv_usec = 0;                                                    \
         PMIX_OUTPUT_VERBOSE((1, pmix_pstat_base_framework.framework_output,     \
@@ -169,7 +192,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pstat_op_t);
                              (long) (p)->tv.tv_sec, __FILE__, __LINE__));       \
         PMIX_POST_OBJECT(p);                                                    \
         (p)->active = true;                                                     \
-        pmix_event_evtimer_add(&(p)->ev, &(p)->tv);                             \
+        pmix_event_add(&(p)->ev, &(p)->tv);                                     \
     } while (0)
 
 /* An op outlives the request that built it: a periodic monitor holds its
