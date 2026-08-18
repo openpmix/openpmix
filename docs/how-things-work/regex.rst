@@ -251,6 +251,20 @@ outrank ``native``, the *legacy* generate path is claimed by ``compress``
 shadowed in a default build. ``native`` still serves as the **parser** of
 the ``pmix[...]`` format, which external launchers produce.
 
+In other words, ``native`` only *generates* anything if the higher-priority
+components are kept out of the running, which in practice means asking for
+it explicitly with the framework's component-selection parameter::
+
+    PMIX_MCA_preg=native            # open only native
+    PMIX_MCA_preg=^compress         # open everything except compress
+
+Be aware of what the first form costs: with ``native`` the only active
+component, ``PMIx_generate_regex2`` has no implementer at all
+(``native.generate_regex`` is ``NULL``), so the smallest-wins stub finds no
+candidate and the call fails with ``PMIX_ERR_NOT_SUPPORTED``. Restricting
+the framework to ``native`` is therefore a debugging aid for the
+``pmix[...]`` encoding, not a supported production configuration.
+
 
 ``preg`` Components
 -------------------
