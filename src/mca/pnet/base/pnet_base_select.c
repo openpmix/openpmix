@@ -32,14 +32,15 @@
 
 /* Function for selecting a prioritized list of components
  * from all those that are available. */
-int pmix_pnet_base_select(void)
+pmix_status_t pmix_pnet_base_select(void)
 {
     pmix_mca_base_component_list_item_t *cli = NULL;
     pmix_mca_base_component_t *component = NULL;
     pmix_mca_base_module_t *module = NULL;
     pmix_pnet_module_t *nmodule;
     pmix_pnet_base_active_module_t *newmodule, *mod;
-    int rc, priority;
+    pmix_status_t rc;
+    int priority;
     bool inserted;
 
     if (pmix_pnet_globals.selected) {
@@ -83,12 +84,19 @@ int pmix_pnet_base_select(void)
 
         /* If we got a module, keep it */
         nmodule = (pmix_pnet_module_t *) module;
-        /* let it initialize */
-        if (NULL != nmodule->init && PMIX_SUCCESS != nmodule->init()) {
+        /* let it initialize - a module may veto its own selection here,
+         * and every other reason we skip a component says so out loud */
+        if (NULL != nmodule->init && PMIX_SUCCESS != (rc = nmodule->init())) {
+            pmix_output_verbose(5, pmix_pnet_base_framework.framework_output,
+                                "mca:pnet:select: Skipping component [%s]. Its init returned %s",
+                                component->pmix_mca_component_name, PMIx_Error_string(rc));
             continue;
         }
         /* add to the list of selected modules */
         newmodule = PMIX_NEW(pmix_pnet_base_active_module_t);
+        if (NULL == newmodule) {
+            return PMIX_ERR_NOMEM;
+        }
         newmodule->pri = priority;
         newmodule->module = nmodule;
         newmodule->component = (pmix_pnet_base_component_t *) cli->cli_component;
@@ -119,5 +127,4 @@ int pmix_pnet_base_select(void)
     }
 
     return PMIX_SUCCESS;
-    ;
 }

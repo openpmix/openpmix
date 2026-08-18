@@ -47,7 +47,11 @@
 /* Instantiate the global vars */
 pmix_pnet_globals_t pmix_pnet_globals = {
     .actives = PMIX_LIST_STATIC_INIT,
-    .fabrics = PMIX_LIST_STATIC_INIT
+    .fabrics = PMIX_LIST_STATIC_INIT,
+    /* not optional: a zero-filled pmix_list_t has a NULL sentinel, so a
+     * list left out of this initializer cannot be walked before
+     * pmix_pnet_open constructs it - and setup_fork walks nspaces */
+    .nspaces = PMIX_LIST_STATIC_INIT
 };
 pmix_pnet_API_module_t pmix_pnet = {
     .allocate = pmix_pnet_base_allocate,
