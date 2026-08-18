@@ -137,6 +137,18 @@ static int pmix_pstat_base_open(pmix_mca_base_open_flag_t flags)
         if (NULL == pmix_pstat_base.evbase) {
             return PMIX_ERROR;
         }
+        /* and start it. init() builds the base and the thread object but
+         * leaves the engine parked - pmix_init.c starts the library's own
+         * thread in a separate step for the same reason. Without this the
+         * base exists and ops arm their timers on it quite happily, and
+         * nothing ever runs them: the whole point of the parameter, which
+         * is to sample off the main thread, silently does not happen. */
+        rc = pmix_progress_thread_start("PSTAT");
+        if (PMIX_SUCCESS != rc) {
+            (void) pmix_progress_thread_stop("PSTAT");
+            pmix_pstat_base.evbase = NULL;
+            return rc;
+        }
 
     } else {
         pmix_pstat_base.evbase = pmix_globals.evbase;
