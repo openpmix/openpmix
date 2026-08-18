@@ -6,7 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,6 +20,8 @@
 #include "src/include/pmix_globals.h"
 
 #include "src/class/pmix_list.h"
+#include "src/hwloc/pmix_hwloc.h"
+#include "src/mca/gds/gds.h"
 #include "src/mca/preg/preg.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
@@ -155,6 +157,8 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     pmix_nspace_env_cache_t *ns, *ns2;
     pmix_envar_list_item_t *ev;
+    pmix_pnet_base_active_module_t *active;
+    pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet: setup_fork called");
 
@@ -177,6 +181,168 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
         }
     }
 
+    /* Then let each module contribute anything specific to THIS process.
+     * The cache above is per namespace, so it can carry only what every
+     * rank of the job shares; a device assignment is per rank and has
+     * nowhere else to be set.
+     *
+     * A module declining is the normal case - most processes are not
+     * mapped against a device at all - so only a genuine failure is
+     * propagated, and it aborts the fork rather than launching a process
+     * that would silently use the wrong hardware. */
+    PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+        if (NULL == active->module->setup_fork) {
+            continue;
+        }
+        rc = active->module->setup_fork(proc, env);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc
+            && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            return rc;
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+/* Does this device belong to one of the PCI families the caller named? */
+static bool device_matches(const pmix_hwloc_device_t *dev,
+                           const pmix_pnet_pcimatch_t *match, size_t nmatch)
+{
+    size_t m;
+
+    for (m = 0; m < nmatch; m++) {
+        if (dev->pci_vendor != match[m].vendor) {
+            continue;
+        }
+        if (0 == match[m].devclass || dev->pci_class == match[m].devclass) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Build the value of a device-selection variable for one process from the
+ * network devices it was mapped against.
+ *
+ * Every fabric library spells this the same way at bottom - a variable
+ * naming the devices the process may use - so the loop belongs here and the
+ * components differ only in which devices are theirs and what the variable
+ * is called.  What goes in it is the device's "selector", which for a NIC
+ * is the OS device name; that is what UCX_NET_DEVICES, NCCL_IB_HCA and
+ * PSM3_NIC all accept, and unlike a GPU's vendor identity it is never
+ * missing.
+ *
+ * Two things it deliberately does not do.  It does not invent a selector
+ * the topology did not supply - in particular it never derives a unit
+ * ordinal from a device name for the variables that take one, because an
+ * ordinal is meaningful only against an enumeration PMIx did not perform.
+ * And it does not consult the mapper's decision - it reads what the process
+ * was told, so a process that was not mapped against a device is left
+ * alone.
+ *
+ * The selector is read from THIS node's topology, which is why this runs at
+ * fork time on the daemon rather than anywhere on the head node: the head
+ * node's copy of a topology may belong to whichever node reported it first.
+ */
+pmix_status_t pmix_pnet_base_get_assigned_devices(const pmix_proc_t *proc,
+                                                  const pmix_pnet_pcimatch_t *match,
+                                                  size_t nmatch,
+                                                  char **value)
+{
+    pmix_cb_t cb;
+    pmix_kval_t *kv;
+    pmix_data_array_t *darray;
+    pmix_device_t *dev;
+    pmix_hwloc_device_t *devs;
+    size_t ndevs, n, d;
+    char **ids = NULL;
+    pmix_status_t rc;
+
+    if (NULL == proc || NULL == match || 0 == nmatch || NULL == value) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *value = NULL;
+
+    /* what device(s) was this process given?  Absent is the common case -
+     * the job was not mapped by device - and is not an error */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = (pmix_proc_t *) proc;
+    cb.copy = true;
+    cb.key = PMIX_DEVICE_ID;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    cb.key = NULL;
+    if (PMIX_SUCCESS != rc || 1 != pmix_list_get_size(&cb.kvs)) {
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+    if (NULL == kv->value || PMIX_DATA_ARRAY != kv->value->type
+        || NULL == kv->value->data.darray) {
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    darray = kv->value->data.darray;
+    dev = (pmix_device_t *) darray->array;
+
+    for (n = 0; n < darray->size; n++) {
+        if (NULL == dev[n].osname) {
+            continue;
+        }
+        /* resolve the assignment against the local topology.  The name is
+         * the handle: it is what the enumerator called this device on this
+         * node, and it is what the mapper recorded */
+        devs = NULL;
+        ndevs = 0;
+        rc = pmix_hwloc_get_devices(&pmix_globals.topology, pmix_globals.hostname,
+                                    PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS,
+                                    dev[n].osname, &devs, &ndevs);
+        if (PMIX_SUCCESS != rc) {
+            continue;
+        }
+        for (d = 0; d < ndevs; d++) {
+            /* a node may carry more than one fabric, and each wants its own
+             * variable, so take only our own */
+            if (NULL == devs[d].selector || !device_matches(&devs[d], match, nmatch)) {
+                continue;
+            }
+            PMIx_Argv_append_nosize(&ids, devs[d].selector);
+        }
+        pmix_hwloc_release_devices(devs, ndevs);
+    }
+    PMIX_DESTRUCT(&cb);
+
+    if (NULL == ids) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    *value = PMIx_Argv_join(ids, ',');
+    PMIx_Argv_free(ids);
+    if (NULL == *value) {
+        return PMIX_ERR_NOMEM;
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_pnet_base_set_assigned_devices(const pmix_proc_t *proc,
+                                                  const pmix_pnet_pcimatch_t *match,
+                                                  size_t nmatch,
+                                                  const char *envar,
+                                                  char ***env)
+{
+    pmix_status_t rc;
+    char *val = NULL;
+
+    if (NULL == envar || NULL == env) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    rc = pmix_pnet_base_get_assigned_devices(proc, match, nmatch, &val);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: %s=%s for %s", envar, val, PMIX_NAME_PRINT(proc));
+    PMIx_Setenv(envar, val, true, env);
+    free(val);
     return PMIX_SUCCESS;
 }
 
