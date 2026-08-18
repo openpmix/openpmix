@@ -190,7 +190,7 @@ cancelled). Both paths are driven by the same per-request state object,
 | `active` | true once the periodic timer is armed |
 | `rate` | seconds between samples (0 ⇒ one-shot) |
 | `eventcode` | the status code to raise on each periodic update |
-| `peers` | `pmix_peerlist_t` list of the local processes to sample |
+| `peers` | `pmix_peerlist_t` list of the local processes to sample — **each entry holds a reference on its peer** |
 | `disks` / `nets` | argv of specific disk / network IDs to report (NULL ⇒ all) |
 | `pstats` / `dkstats` / `netstats` / `ndstats` | which individual fields to collect |
 | `cb` | non-NULL during a **synchronous** collection pass (see below) |
@@ -199,6 +199,57 @@ The op's constructor/destructor live in `pstat_base_frame.c`
 (`PMIX_CLASS_INSTANCE(pmix_pstat_op_t, ...)`); the destructor deletes an
 armed timer and frees the id/disks/nets/peers, so releasing an op is the
 clean way to tear a monitor down.
+
+**The peer list owns references.** An op outlives the request that built
+it — a periodic monitor lives until it is cancelled or the framework
+closes — while the `pmix_peer_t` objects it points at are released the
+moment their client disconnects or its namespace is deregistered
+(`pmix_server_globals.clients` holds the only other reference). A
+borrowed pointer would therefore be dangling by the next timer fire, and
+`update()` reads `peer->info->pid` on every sample. So
+`PMIX_PSTAT_APPEND_PEER_UNIQUE` takes a `PMIX_RETAIN` on the peer and
+`opdes()` releases it. `pmix_peerlist_t` has no destructor of its own —
+it is used nowhere but here — so those two are the whole pairing and
+have to move together. Keeping the peer alive also keeps `peer->info`
+alive, which the peer's own destructor releases.
+
+A retained peer whose process is gone is not a problem: its `/proc` (or
+`libproc`) entry has disappeared, the component's per-process reader
+reports `PMIX_ERR_NOT_FOUND`, and `update()` skips it.
+
+### Who owns the answer list (get this wrong and it is a double free)
+
+`update()` appends into an info-list handle called `answer`, and **which
+side owns it depends on the mode**:
+
+- **Timer fire (`op->cb == NULL`)** — `update()` created the list itself.
+  It owns it, converts it, and releases it.
+- **Synchronous pass (`op->cb != NULL`)** — the list is
+  `op->cb->cbdata`, created by `query()` on its own stack caddy.
+  `query()` reads it the instant `update()` returns. `update()` must
+  **not** release it on any path.
+
+So an error inside `update()` cannot simply release `answer` and bail:
+on the synchronous path that leaves `query()` converting and releasing
+freed memory. Report the failure through `op->cb->status` instead and
+leave the list alone; `query()` checks that status after every
+synchronous `update()` call and tears the list down itself.
+
+The same asymmetry governs the converted arrays. `PMIx_Info_list_add()`
+with `PMIX_DATA_ARRAY` **deep-copies** the array into the list (it goes
+through `PMIx_Info_load` → `pmix_bfrops_base_copy_darray`), so the
+`pmix_data_array_t` a reader just built with `PMIx_Info_list_convert()`
+is still the reader's to `PMIX_DATA_ARRAY_DESTRUCT`. Forgetting that
+leaks a whole sample on every tick of a periodic monitor.
+
+### "Not found" is not a failure
+
+The category readers return `PMIX_ERR_NOT_FOUND` when the thing they
+read is simply absent — no `/proc/diskstats`, no `/proc/net/dev`, a
+process that exited between being selected and being sampled. That is
+ordinary on a live node, and `update()` treats it as "no data in this
+category" rather than aborting the whole sample. Reserve real error
+codes for real failures.
 
 ### The `op->cb` duality (read this before touching a component)
 
@@ -232,6 +283,14 @@ A `PMIX_MONITOR_CANCEL` request carries the `PMIX_MONITOR_ID` string in
 its value. `query` walks `pmix_pstat_base.ops`, matches the id, removes
 the op from the list and `PMIX_RELEASE`s it (which deletes the timer).
 Cancelling an unknown id is deliberately **not** an error.
+
+Two things about the id are worth knowing before you compare against it.
+The cancel value arrives off the wire, so its declared type has to be
+checked and its string can be `NULL`. And an op's own `id` can be `NULL`
+too: `PMIX_MONITOR_RESOURCE_RATE` is accepted without a
+`PMIX_MONITOR_ID`, so a periodic op with no id can sit on the list. Such
+an op simply has no cancel handle — it runs until the framework closes —
+and a cancel must skip it rather than handing `strcmp` a `NULL`.
 
 ## The shared stat-spec structs and parse helpers (`base/`)
 
@@ -322,7 +381,8 @@ this array directly must do the same.
   event engine.
 - **`PMIX_PSTAT_APPEND_PEER_UNIQUE(pl, pr)`** — append a `pmix_peer_t` to
   an op's `peers` list only if it is not already present (dedup), wrapping
-  it in a `pmix_peerlist_t`.
+  it in a `pmix_peerlist_t` and taking a reference on the peer. The
+  matching release is in `opdes()`.
 
 ## Base infrastructure in detail
 

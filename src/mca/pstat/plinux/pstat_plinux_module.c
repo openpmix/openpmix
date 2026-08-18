@@ -95,15 +95,18 @@ static char *next_field(char *ptr, int barrier)
     int i = 0;
 
     /* we are probably pointing to the last char
-     * of the current field, so look for whitespace
+     * of the current field, so look for whitespace.
+     * Stop at the end of the string as well as at the barrier: the
+     * caller walks a fixed sequence of fields, and a short or truncated
+     * line runs out of them before we run out of calls.
      */
-    while (!isspace(*ptr) && i < barrier) {
+    while ('\0' != *ptr && !isspace((unsigned char) *ptr) && i < barrier) {
         ptr++; /* step over the current char */
         i++;
     }
 
     /* now look for the next field */
-    while (isspace(*ptr) && i < barrier) {
+    while ('\0' != *ptr && isspace((unsigned char) *ptr) && i < barrier) {
         ptr++;
         i++;
     }
@@ -162,7 +165,8 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     int32_t i32;
     size_t numchars;
     char *ptr, *eptr;
-    int len, itime;
+    int len;
+    unsigned long long itime;
     float fval;
     double dtime;
     uint16_t u16;
@@ -206,10 +210,13 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     if (0 > (fd = open(data, O_RDONLY))) {
         /* can't access this file - most likely, this means we
          * aren't really on a supported system, or the proc no
-         * longer exists. Just return an error
+         * longer exists. Report it as "not found" rather than a
+         * hard error: a client that exits while a monitor is running
+         * is routine, and our caller skips such a peer instead of
+         * abandoning the entire sample.
          */
         PMIx_Info_list_release(cache);
-        return PMIX_ERROR;
+        return PMIX_ERR_NOT_FOUND;
     }
 
     /* absorb all of the file's contents in one gulp - we'll process
@@ -288,12 +295,19 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     ptr = next_field(ptr, len); /* cmajflt */
 
     /* grab the process time usage fields */
-    itime = strtoul(ptr, &ptr, 10);  /* utime */
-    itime += strtoul(ptr, &ptr, 10); /* add the stime */
+    /* the kernel prints utime and stime as unsigned long long, and a
+     * many-threaded process on a large node accumulates far more than
+     * 2^31 jiffies of CPU time - parse and accumulate them at that width
+     * so the reported time does not wrap around into nonsense */
+    itime = strtoull(ptr, &ptr, 10);  /* utime */
+    itime += strtoull(ptr, &ptr, 10); /* add the stime */
     /* convert to time in seconds */
     dtime = (double) itime / (double) HZ;
-    evtime.tv_sec = (int) dtime;
-    evtime.tv_usec = (int) (1000000.0 * (dtime - evtime.tv_sec));
+    /* tv_sec is a time_t - narrowing it through int would put a ceiling
+     * of 68 CPU-years on the answer, which the 64-bit jiffie count above
+     * can now exceed on a large many-threaded process */
+    evtime.tv_sec = (time_t) dtime;
+    evtime.tv_usec = (suseconds_t) (1000000.0 * (dtime - (double) evtime.tv_sec));
     if (pst->time) {
         rc = PMIx_Info_list_add(cache, PMIX_PROC_TIME, (void*)&evtime, PMIX_TIMEVAL);
         if (PMIX_SUCCESS != rc) {
@@ -469,6 +483,9 @@ complete:
         return rc;
     }
     rc = PMIx_Info_list_add(answer, PMIX_PROC_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+    /* the add deep-copies the array into the list, so the one we just
+     * built is still ours to release */
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
 
     return rc;
 }
@@ -542,7 +559,7 @@ static pmix_status_t disk_stat(void *answer,
             return rc;
         }
         if (dkst->rdcompleted) {
-            u64 = strtoul(fields[3], NULL, 10);
+            u64 = strtoull(fields[3], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_READ_COMPLETED, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -552,7 +569,7 @@ static pmix_status_t disk_stat(void *answer,
             }
         }
         if (dkst->rdmerged) {
-            u64 = strtoul(fields[4], NULL, 10);
+            u64 = strtoull(fields[4], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_READ_MERGED, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -562,7 +579,7 @@ static pmix_status_t disk_stat(void *answer,
             }
         }
         if (dkst->rdsectors) {
-            u64 = strtoul(fields[5], NULL, 10);
+            u64 = strtoull(fields[5], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_READ_SECTORS, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -572,7 +589,7 @@ static pmix_status_t disk_stat(void *answer,
             }
         }
         if (dkst->rdms) {
-            u64 = strtoul(fields[6], NULL, 10);
+            u64 = strtoull(fields[6], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_READ_MILLISEC, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -583,7 +600,7 @@ static pmix_status_t disk_stat(void *answer,
         }
 
         if (dkst->wrtcompleted) {
-            u64 = strtoul(fields[7], NULL, 10);
+            u64 = strtoull(fields[7], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_WRITE_COMPLETED, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -593,7 +610,7 @@ static pmix_status_t disk_stat(void *answer,
             }
         }
         if (dkst->wrtmerged) {
-            u64 = strtoul(fields[8], NULL, 10);
+            u64 = strtoull(fields[8], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_WRITE_MERGED, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -603,7 +620,7 @@ static pmix_status_t disk_stat(void *answer,
             }
         }
         if (dkst->wrtsectors) {
-            u64 = strtoul(fields[9], NULL, 10);
+            u64 = strtoull(fields[9], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_WRITE_SECTORS, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -613,7 +630,7 @@ static pmix_status_t disk_stat(void *answer,
             }
         }
         if (dkst->wrtms) {
-            u64 = strtoul(fields[10], NULL, 10);
+            u64 = strtoull(fields[10], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_WRITE_MILLISEC, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -624,7 +641,7 @@ static pmix_status_t disk_stat(void *answer,
         }
 
         if (dkst->ioprog) {
-            u64 = strtoul(fields[11], NULL, 10);
+            u64 = strtoull(fields[11], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_IO_IN_PROGRESS, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -634,7 +651,7 @@ static pmix_status_t disk_stat(void *answer,
             }
         }
         if (dkst->ioms) {
-            u64 = strtoul(fields[12], NULL, 10);
+            u64 = strtoull(fields[12], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_IO_MILLISEC, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -644,7 +661,7 @@ static pmix_status_t disk_stat(void *answer,
             }
         }
         if (dkst->ioweight) {
-            u64 = strtoul(fields[13], NULL, 10);
+            u64 = strtoull(fields[13], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_DISK_IO_WEIGHTED, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -672,6 +689,8 @@ static pmix_status_t disk_stat(void *answer,
             return rc;
         }
         rc = PMIx_Info_list_add(answer, PMIX_DISK_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+        /* the add deep-copies the array - release our copy */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
         if (PMIX_SUCCESS != rc) {
             fclose(fp);
             return rc;
@@ -758,7 +777,7 @@ static pmix_status_t net_stat(void *answer, char**nets,
         }
 
         if (netst->rcvdb) {
-            u64 = strtoul(fields[0], NULL, 10);
+            u64 = strtoull(fields[0], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_NET_RECVD_BYTES, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -768,7 +787,7 @@ static pmix_status_t net_stat(void *answer, char**nets,
             }
         }
         if (netst->rcvdp) {
-            u64 = strtoul(fields[1], NULL, 10);
+            u64 = strtoull(fields[1], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_NET_RECVD_PCKTS, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -778,7 +797,7 @@ static pmix_status_t net_stat(void *answer, char**nets,
             }
         }
         if (netst->rcvde) {
-            u64 = strtoul(fields[2], NULL, 10);
+            u64 = strtoull(fields[2], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_NET_RECVD_ERRS, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -789,7 +808,7 @@ static pmix_status_t net_stat(void *answer, char**nets,
         }
 
         if (netst->sntb) {
-            u64 = strtoul(fields[8], NULL, 10);
+            u64 = strtoull(fields[8], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_NET_SENT_BYTES, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -799,7 +818,7 @@ static pmix_status_t net_stat(void *answer, char**nets,
             }
         }
         if (netst->sntp) {
-            u64 = strtoul(fields[9], NULL, 10);
+            u64 = strtoull(fields[9], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_NET_SENT_PCKTS, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -809,7 +828,7 @@ static pmix_status_t net_stat(void *answer, char**nets,
             }
         }
         if (netst->snte) {
-            u64 = strtoul(fields[10], NULL, 10);
+            u64 = strtoull(fields[10], NULL, 10);
             rc = PMIx_Info_list_add(cache, PMIX_NET_SENT_ERRS, &u64, PMIX_UINT64);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -837,6 +856,8 @@ static pmix_status_t net_stat(void *answer, char**nets,
         }
 
         rc = PMIx_Info_list_add(answer, PMIX_NETWORK_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+        /* the add deep-copies the array - release our copy */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
         if (PMIX_SUCCESS != rc) {
             fclose(fp);
             return rc;
@@ -1041,21 +1062,38 @@ static void update(int sd, short args, void *cbdata)
     // start with general directives
 
     if (op->active) {
-        // avoid the default event
+        /* Avoid the default event. Both of these have to make it into the
+         * answer: without them the sample is delivered as a default event
+         * with no range restriction - to every handler in the job rather
+         * than to the one process that asked for it - so a failure here
+         * is not something to shrug off. */
         PMIX_INFO_LIST_ADD(rc, answer, PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
 
         /* target this notification solely to the requestor */
         PMIX_INFO_LIST_ADD(rc, answer, PMIX_EVENT_CUSTOM_RANGE, &op->requestor, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
     }
 
     // check for pstat request
     if (0 != memcmp(&op->pstats, &zproc, sizeof(pmix_procstats_t))) {
         PMIX_LIST_FOREACH(plist, &op->peers, pmix_peerlist_t) {
             rc = proc_stat(answer, plist->peer, &op->pstats);
+            if (PMIX_ERR_NOT_FOUND == rc) {
+                /* the process is gone - its /proc entry disappeared
+                 * between our being handed the peer and our reading it.
+                 * That is ordinary, and the remaining peers still have
+                 * data to report, so skip it rather than abandoning the
+                 * whole sample */
+                continue;
+            }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
-                PMIx_Info_list_release(answer);
-                goto reset;
+                goto error;
             }
         }
     }
@@ -1067,72 +1105,62 @@ static void update(int sd, short args, void *cbdata)
         rc = PMIx_Info_list_add(ilist, PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
         if (PMIX_SUCCESS != rc) {
             PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
         // add our nodeID
         rc = PMIx_Info_list_add(ilist, PMIX_NODEID, &pmix_globals.nodeid, PMIX_UINT32);
         if (PMIX_SUCCESS != rc) {
             PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
         // collect the stats
         rc = node_stat(ilist, &op->ndstats);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
         if (0 != memcmp(&op->netstats, &znet, sizeof(pmix_netstats_t))) {
             nettaken = true;
             rc = net_stat(ilist, op->nets, &op->netstats);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
                 PMIx_Info_list_release(ilist);
-                PMIx_Info_list_release(answer);
-                goto reset;
+                goto error;
             }
         }
         if (0 != memcmp(&op->dkstats, &zdk, sizeof(pmix_dkstats_t))) {
             dktaken = true;
             rc = disk_stat(ilist, op->disks, &op->dkstats);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
                 PMIx_Info_list_release(ilist);
-                PMIx_Info_list_release(answer);
-                goto reset;
+                goto error;
             }
         }
         // add this to the final answer
         rc = PMIx_Info_list_convert(ilist, &darray);
-        if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
-        }
         PMIx_Info_list_release(ilist);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
         rc = PMIx_Info_list_add(answer, PMIX_NODE_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
         PMIX_DATA_ARRAY_DESTRUCT(&darray);
         if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
     }
 
     // check for net stats
     if (!nettaken && 0 != memcmp(&op->netstats, &znet, sizeof(pmix_netstats_t))) {
         rc = net_stat(answer, op->nets, &op->netstats);
-        if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(answer);
-            goto reset;
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+            goto error;
         }
     }
 
     // check for disk stats
     if (!dktaken && 0 != memcmp(&op->dkstats, &zdk, sizeof(pmix_dkstats_t))) {
         rc = disk_stat(answer, op->disks, &op->dkstats);
-        if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(answer);
-            goto reset;
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+            goto error;
         }
     }
 
@@ -1141,7 +1169,12 @@ static void update(int sd, short args, void *cbdata)
         rc = PMIx_Info_list_convert(answer, &darray);
         PMIx_Info_list_release(answer);
         if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
+            /* nothing was collected this time around - that is an empty
+             * sample, not a failure, and logging it would put a line in
+             * the output on every tick of the timer */
+            if (PMIX_ERR_EMPTY != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
             goto reset;
         }
         // setup the event
@@ -1153,8 +1186,25 @@ static void update(int sd, short args, void *cbdata)
                                PMIX_RANGE_CUSTOM, cb->info, cb->ninfo,
                                evrelease, (void*)cb);
         if (PMIX_SUCCESS != rc) {
+            /* evrelease only runs once the notification has been
+             * delivered, so a rejected notification leaves the caddy -
+             * and the sample it carries - ours to release */
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(cb);
         }
+    }
+    goto reset;
+
+error:
+    /* On the timer path the answer list is ours and has to go. On the
+     * synchronous path it belongs to query(), which reads it as soon as
+     * we return - releasing it here left query() converting and
+     * releasing freed memory. Hand the failure back through the caddy
+     * instead and leave the list alone. */
+    if (noreset) {
+        op->cb->status = rc;
+    } else {
+        PMIx_Info_list_release(answer);
     }
 
 reset:
@@ -1162,6 +1212,32 @@ reset:
         // reset the timer
         pmix_event_evtimer_add(&op->ev, &op->tv);
     }
+}
+
+/* The monitor's value carries the list of fields being requested as a
+ * data array. For a client request that value came off the wire, and
+ * nothing between the unpack in pmix_server_monitor() and here looks at
+ * it - so check the declared type before reading data.darray, or a value
+ * the sender typed as, say, an integer hands us those bytes as a
+ * pointer. An absent value (PMIX_UNDEF) is not malformed: it is how a
+ * caller asks for every field in the category, which is what the base
+ * parse helpers do when handed a NULL array. */
+static pmix_status_t monitor_fields(const pmix_info_t *monitor,
+                                    pmix_info_t **iptr, size_t *sz)
+{
+    *iptr = NULL;
+    *sz = 0;
+
+    if (PMIX_UNDEF == monitor->value.type) {
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_DATA_ARRAY != monitor->value.type ||
+        NULL == monitor->value.data.darray) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *iptr = (pmix_info_t*)monitor->value.data.darray->array;
+    *sz = monitor->value.data.darray->size;
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t query(pmix_proc_t *requestor,
@@ -1192,7 +1268,8 @@ static pmix_status_t query(pmix_proc_t *requestor,
 
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_CANCEL)) {
         // cancel an existing monitor operation - ID must be the provided value
-        if (monitor->value.type != PMIX_STRING) {
+        if (PMIX_STRING != monitor->value.type ||
+            NULL == monitor->value.data.string) {
             return PMIX_ERR_BAD_PARAM;
         }
         // cycle through our list of ops operations
@@ -1201,7 +1278,11 @@ static pmix_status_t query(pmix_proc_t *requestor,
             return PMIX_SUCCESS;
         }
         PMIX_LIST_FOREACH(op, &pmix_pstat_base.ops, pmix_pstat_op_t) {
-            if (0 == strcmp(monitor->value.data.string, op->id)) {
+            /* an op only carries an id if the request that created it
+             * supplied one - a rate with no PMIX_MONITOR_ID is legal and
+             * leaves it NULL, so it can never match a cancel */
+            if (NULL != op->id &&
+                0 == strcmp(monitor->value.data.string, op->id)) {
                 // terminate this operation
                 pmix_list_remove_item(&pmix_pstat_base.ops, &op->super);
                 PMIX_RELEASE(op);
@@ -1219,7 +1300,17 @@ static pmix_status_t query(pmix_proc_t *requestor,
     for (n=0; n < ndirs; n++) {
         // did they give us an ID for this request?
         if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_ID)) {
-            op->id = strdup(directives[n].value.data.string);
+            if (PMIX_STRING != directives[n].value.type ||
+                NULL == directives[n].value.data.string) {
+                PMIX_RELEASE(op);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            if (NULL == op->id) {
+                /* nothing stops a caller from naming the monitor twice;
+                 * the first name wins, and overwriting would lose the
+                 * string we already took */
+                op->id = strdup(directives[n].value.data.string);
+            }
 
         } else if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_RESOURCE_RATE)) {
             // they are asking us to update it at regular intervals
@@ -1239,8 +1330,11 @@ static pmix_status_t query(pmix_proc_t *requestor,
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_PROC_RESOURCE_USAGE)) {
         tgtprocsgiven = false;
         // see which values are to be returned
-        iptr = (pmix_info_t*)monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         pmix_pstat_parse_procstats(&op->pstats, iptr, sz);
 
         // we already know this request involves us since it was checked
@@ -1334,6 +1428,17 @@ processprocs:
         cb.cbdata = PMIx_Info_list_start();
         op->cb = &cb;
         update(0, 0, (void*)op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // convert to info array
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         PMIx_Info_list_release(cb.cbdata);
@@ -1366,8 +1471,11 @@ processprocs:
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_NODE_RESOURCE_USAGE)) {
         // we already know we are a target node since we are
         // being called
-        iptr = (pmix_info_t*)monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // determine what stats to return - might include net and disk values
         pmix_pstat_parse_ndstats(&op->ndstats, iptr, sz);
         pmix_pstat_parse_netstats(&op->nets, &op->netstats, iptr, sz);
@@ -1396,6 +1504,17 @@ processprocs:
         }
         // collect the stats
         update(0, 0, (void*)op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // add this to the final answer
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         if (PMIX_SUCCESS != rc) {
@@ -1440,8 +1559,11 @@ processprocs:
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_DISK_RESOURCE_USAGE)) {
         // we already know we are a target node since we are
         // being called
-        iptr = (pmix_info_t*)monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // assemble any provided disk IDs and/or stat specifications
         pmix_pstat_parse_dkstats(&op->disks, &op->dkstats, iptr, sz);
         // collect the stats
@@ -1449,6 +1571,17 @@ processprocs:
         cb.cbdata = PMIx_Info_list_start();
         op->cb = &cb;
         update(0, 0, (void*)op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // convert to info array
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         PMIx_Info_list_release(cb.cbdata);
@@ -1481,8 +1614,11 @@ processprocs:
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_NET_RESOURCE_USAGE)) {
         // we already know we are a target node since we are
         // being called
-        iptr = (pmix_info_t*)monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // assemble any provided network IDs and/or stat specifications
         pmix_pstat_parse_netstats(&op->nets, &op->netstats, iptr, sz);
         // collect the stats
@@ -1490,6 +1626,17 @@ processprocs:
         cb.cbdata = PMIx_Info_list_start();
         op->cb = &cb;
         update(0, 0, (void*)op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // convert to info array
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         PMIx_Info_list_release(cb.cbdata);
@@ -1527,43 +1674,56 @@ processprocs:
 
 static char *local_getline(FILE *fp)
 {
-    char *ret, *ptr;
+    char *ptr;
+    size_t len;
 
-    ret = fgets(input, PMIX_STAT_MAX_LENGTH, fp);
-    if (NULL != ret) {
-        input[strlen(input) - 1] = '\0'; /* remove newline */
-        /* strip leading white space */
-        ptr = input;
-        while (!isalnum(*ptr)) {
-            ptr++;
-        }
-        return ptr;
+    if (NULL == fgets(input, PMIX_STAT_MAX_LENGTH, fp)) {
+        return NULL;
     }
 
-    return NULL;
+    /* remove the newline - but only if there is one. A line longer than
+     * our buffer comes back without it, and chopping the last character
+     * unconditionally would eat a character of real data (and step in
+     * front of the buffer for a zero-length result) */
+    len = strlen(input);
+    if (0 < len && '\n' == input[len - 1]) {
+        input[len - 1] = '\0';
+    }
+
+    /* strip leading white space, stopping at the end of the line: a line
+     * holding no alphanumeric at all would otherwise walk off the end of
+     * the buffer looking for one */
+    ptr = input;
+    while ('\0' != *ptr && !isalnum((unsigned char) *ptr)) {
+        ptr++;
+    }
+
+    return ptr;
 }
 
 static char *local_stripper(char *data)
 {
-    char *ptr, *end, *enddata;
-    int len = strlen(data);
+    char *ptr, *end;
 
-    /* find the colon */
+    /* find the colon that separates the key from its value */
     if (NULL == (end = strchr(data, ':'))) {
         return NULL;
     }
-    ptr = end;
-    --end;
-    /* working backwards, look for first non-whitespace */
-    while (end != data && !isalnum(*end)) {
+    ptr = end + 1;
+
+    /* working backwards from the colon, terminate the key just after its
+     * last alphanumeric. Test the character in front of "end" rather than
+     * stepping onto it first, so a line that opens with the colon stops
+     * at the start of the string instead of reading in front of it */
+    while (end != data && !isalnum((unsigned char) end[-1])) {
         --end;
     }
-    ++end;
     *end = '\0';
-    /* now look for value */
-    ptr++;
-    enddata = &(data[len - 1]);
-    while (ptr != enddata && !isalnum(*ptr)) {
+
+    /* now skip forward to the start of the value, stopping at the end of
+     * the line: a key with an empty value would otherwise run past the
+     * terminator looking for one */
+    while ('\0' != *ptr && !isalnum((unsigned char) *ptr)) {
         ++ptr;
     }
     return ptr;
@@ -1578,7 +1738,7 @@ static void local_getfields(char *dptr, char ***fields)
 
     /* find the beginning */
     ptr = dptr;
-    while ('\0' != *ptr && !isalnum(*ptr)) {
+    while ('\0' != *ptr && !isalnum((unsigned char) *ptr)) {
         ptr++;
     }
     if ('\0' == *ptr) {
@@ -1594,7 +1754,7 @@ static void local_getfields(char *dptr, char ***fields)
     end++;     /* look at next character */
     while ('\0' != *end) {
         /* find the end of this alpha string */
-        while ('\0' != *end && isalnum(*end)) {
+        while ('\0' != *end && isalnum((unsigned char) *end)) {
             end++;
         }
         /* terminate it */
@@ -1603,7 +1763,7 @@ static void local_getfields(char *dptr, char ***fields)
         PMIx_Argv_append_nosize(fields, ptr);
         /* step across any white space */
         end++;
-        while ('\0' != *end && !isalnum(*end)) {
+        while ('\0' != *end && !isalnum((unsigned char) *end)) {
             end++;
         }
         if ('\0' == *end) {

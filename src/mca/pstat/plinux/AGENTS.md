@@ -97,6 +97,23 @@ with no results.
 `PMIX_SUCCESS` in the proc/disk/net blocks — an empty sample is not an
 error.
 
+**Everything `query` reads out of `monitor` and `directives` is
+untrusted.** For a client request both arrays came off the wire and
+nothing between `pmix_server_monitor()`'s unpack and here inspects them.
+`PMIx_Check_key` compares only the key, so the *type* has to be checked
+before the union is read: `monitor_fields()` is the one place that
+unwraps `monitor->value` into the field array (`PMIX_UNDEF` means "every
+field in this category", `PMIX_DATA_ARRAY` is the real list, anything
+else is `PMIX_ERR_BAD_PARAM`), and `PMIX_MONITOR_ID` is checked for both
+type and a `NULL` string before it is `strdup`ed. The framework guide's
+"The info array is untrusted" note is the same rule applied one level
+down.
+
+After each synchronous `update()` call, `query` checks `cb.status`
+before touching the list — see "Who owns the answer list" in the
+framework guide. Collection failures arrive that way rather than as a
+return value, because `update()`'s signature is libevent's.
+
 ### `update` — the collection engine
 
 `update()` is both the synchronous collector (called directly by `query`
@@ -106,15 +123,31 @@ Linux specifics:
 
 - It uses a zeroed spec struct + `memcmp` to decide whether each category
   was requested before doing any file I/O.
+- A reader that returns `PMIX_ERR_NOT_FOUND` is reporting an absence, not
+  a failure — no `/proc/diskstats` on this kernel, no `/proc/net/dev`
+  inside this container, a client that exited between being selected and
+  being sampled. `update()` skips that category (or, for a process, that
+  peer) and keeps the rest of the sample. Only a genuine error abandons
+  it.
 - The node path collects node stats into a sub-list and, when net/disk
   were *also* requested as part of a node request, folds them into that
   same sub-list (tracked by `nettaken` / `dktaken` so the standalone
   net/disk blocks below don't double-collect).
+- Each reader converts its own sub-list with `PMIx_Info_list_convert()`
+  and then `PMIx_Info_list_add()`s the result as a `PMIX_DATA_ARRAY`.
+  That add **copies**, so every one of them destructs its array
+  afterwards; skipping it leaks a full sample per proc/disk/interface on
+  every tick.
 - On the timer path it wraps the result as an event: it adds
   `PMIX_EVENT_NON_DEFAULT` and a `PMIX_EVENT_CUSTOM_RANGE` targeting
   `op->requestor`, converts the list, and calls `PMIx_Notify_event` with
   `PMIX_RANGE_CUSTOM`; a `pmix_cb_t` carries the info and is released by
-  the `evrelease` completion callback.
+  the `evrelease` completion callback. `PMIx_Notify_event` can refuse the
+  request outright — it returns `PMIX_ERR_INIT`,
+  `PMIX_ERR_NOT_AVAILABLE` (the progress thread has stopped, which is
+  exactly what a monitor still ticking during finalize sees) or
+  `PMIX_ERR_NOMEM` *without* ever invoking the callback — so a failed
+  notify has to release the caddy itself.
 
 ### The four `/proc` readers
 
@@ -188,6 +221,35 @@ standalone commit — do not paper over them):
   `local_stripper`) is a single shared static buffer, so the readers are
   **not** reentrant. That is fine today because everything runs on one
   progress thread, but do not call these from a second thread.
+- **The parsers scan for an alphanumeric, so every loop needs its own
+  terminator.** `local_getline` skipping leading whitespace,
+  `local_stripper` walking back from the colon and forward to the value,
+  `local_getfields` tokenizing, `next_field` stepping the
+  `/proc/<pid>/stat` columns — each of these searches for a character
+  class rather than for the end of the string, and each therefore has to
+  test for `'\0'` (and, for the backwards walk, for the start of the
+  buffer) explicitly. A line with no alphanumeric in it, a key with an
+  empty value, or a `stat` line shorter than the column the caller is
+  asking for will otherwise walk straight off the end of a 1 KB static
+  buffer. Real `/proc` content does not currently produce any of those
+  shapes, which is why this was never seen — the bounds are there so a
+  future kernel format, a container's synthesized `/proc`, or a new
+  caller cannot turn a parsing surprise into an out-of-bounds read.
+  `isalnum`/`isspace` take their argument as an `unsigned char` for the
+  same reason: a plain `char` is signed here.
 - The `PMIX_PROC_PERCENT_CPU` (`pctcpu`) flag is parsed by the base helper
   but `proc_stat` does not currently compute a %CPU value — computing it
   would require two samples over an interval.
+- **`/proc` counters are 64-bit.** `utime`/`stime` are jiffies printed as
+  `unsigned long long` — a many-threaded process on a large node passes
+  2^31 of them — and the `diskstats` / `net/dev` columns are byte counts
+  that pass 4 GB routinely. They are parsed with `strtoull` and
+  accumulated at that width; `strtoul` into an `int` (or into a
+  `uint64_t` on a 32-bit build) silently wrapped them.
+- **A rate without an id gives an un-cancellable monitor.**
+  `PMIX_MONITOR_RESOURCE_RATE` is accepted with no `PMIX_MONITOR_ID`, and
+  the resulting op goes onto `pmix_pstat_base.ops` with `id == NULL`.
+  Nothing can name it in a `PMIX_MONITOR_CANCEL`, so it samples until the
+  framework closes. Cancel skips such ops rather than dereferencing the
+  NULL, but whether the request should be rejected up front is an open
+  question rather than a settled one.
