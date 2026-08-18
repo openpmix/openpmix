@@ -94,9 +94,10 @@ Reviewed and current
 ``src/class``, ``src/common``, ``src/event``, ``src/include``,
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
-``src/mca/ptl``, and ``bindings/python``.  ``src/client``, ``src/server``,
-``src/hwloc``, ``src/util`` and ``src/mca/gds/shmem3`` were reviewed too,
-but have moved since — see below.
+``src/mca/pstat``, ``src/mca/ptl``, and ``bindings/python``.
+``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
+``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
+below.
 
 Not yet reviewed
 ^^^^^^^^^^^^^^^^
@@ -105,8 +106,6 @@ Each of these has an orientation guide and nothing else: no findings were
 ever recorded in it, and only drive-by fixes have landed.  Ordered by
 size, which is a rough proxy for how much there is to find.
 
-* ``src/mca/pstat`` (with ``plinux``, ``pmacos``, ``test``) — 4988
-  lines.  Four bug fixes on 2026-07-04, never a sweep.
 * ``src/mca/pnet`` (with ``base``, ``tcp``, ``opa``, ``nvd``,
   ``simptest``) — 4064 lines.  Revived on 2026-07-15 and not looked at
   since.
