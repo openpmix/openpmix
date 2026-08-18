@@ -5,7 +5,7 @@
  * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -119,10 +119,19 @@ typedef struct {
      * are theirs.  Deriving it from the identity's spelling would be a
      * guess; this is the key hwloc actually recorded it under. */
     char *vendor;
-    /* What to write in the vendor's device-selection variable to name this
-     * device to a process - CUDA_VISIBLE_DEVICES, ROCR_VISIBLE_DEVICES,
-     * ZE_AFFINITY_MASK - or NULL when the topology does not support saying
-     * it.  Several devices are named by joining their selectors with ','.
+    /* What to write in the device-selection variable of the software that
+     * will use this device, to name it to a process - CUDA_VISIBLE_DEVICES,
+     * ROCR_VISIBLE_DEVICES, ZE_AFFINITY_MASK for a GPU; UCX_NET_DEVICES,
+     * NCCL_IB_HCA, PSM3_NIC for a NIC - or NULL when the topology does not
+     * support saying it.  Several devices are named by joining their
+     * selectors with ','.
+     *
+     * For a network or OpenFabrics device it is the OS device name, which
+     * is what every one of those variables accepts and what the enumerator
+     * already chose to name the PCI function by (see the note on
+     * pmix_hwloc_get_devices() about which of a function's OS devices
+     * wins).  There is nothing to be missing here and no vendor backend
+     * involved, so unlike a GPU's it is never NULL.
      *
      * Separate from vendor_id because the two coincide only for the vendors
      * whose variable accepts an identity.  NVIDIA's and AMD's do, so their
@@ -141,6 +150,23 @@ typedef struct {
      * variables does not error, it silently narrows what the process can
      * see. */
     char *selector;
+    /* The PCI vendor and class ids of the function this device hangs off,
+     * or zero for a device with no PCI ancestor.  Read straight from the
+     * topology, not derived.
+     *
+     * They are here because for a NIC they are the only discriminator
+     * there is.  A GPU carries its vendor in the identity hwloc recorded,
+     * so a component acting on a GPU assignment can pick out its own by
+     * the "vendor" field above; a NIC carries no such attribute, and its
+     * OS device name says nothing about who made it.  The (vendor, class)
+     * pair is the same one a component passes to
+     * pmix_hwloc_check_vendor() to decide whether to run at all, so a
+     * component that opened on 0x15b3/0x207 can select exactly the
+     * devices it opened for - which matters on a node carrying more than
+     * one fabric, where naming another vendor's NIC in your variable is
+     * worse than naming none. */
+    uint16_t pci_vendor;
+    uint16_t pci_class;
     /* Nearest ancestor carrying a cpuset - the set of PUs local to this
      * device.  Borrowed from the topology, so it is valid only as long as
      * the topology is, and must not be freed. */
@@ -151,7 +177,17 @@ typedef struct {
  *
  * The unit is the PCI *function*, not the OS device: a GPU commonly exposes
  * several OS devices (a DRM card node, a render node, and a vendor compute
- * node such as "cuda0" or "rsmi0") and they are one device, not three.
+ * node such as "cuda0" or "rsmi0") and they are one device, not three.  So
+ * does an HCA, which shows up as both an OpenFabrics device ("mlx5_0") and
+ * a network interface ("ib0").
+ *
+ * Where a function has several, the one that names it is the one an
+ * application is most likely to recognize and be able to act on: a vendor
+ * compute node over a render node over a card node for a GPU, and the
+ * OpenFabrics device over the network interface for an HCA - the fabric
+ * libraries' device-selection variables take the former and none of them
+ * takes the latter.  A caller that asked for only one of the two types
+ * naturally gets that one, since the other was never a candidate.
  *
  * Devices come back ordered by PCI bus id ascending, with any device having
  * no PCI ancestor last, ordered by name.  That ordering is deterministic,

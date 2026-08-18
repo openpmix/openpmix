@@ -310,6 +310,22 @@ a normal build does exercise it.
   info count, which `hwloc_topology_diff_build()` calls "too complex" —
   while the *values* are per-node and must be read from that node's own
   topology.
+- **A NIC's identity is its name, and it is never missing.** For a
+  network or OpenFabrics device `pmix_hwloc_device_t.selector` is the OS
+  device name, because that is what every fabric library's
+  device-selection variable accepts — `UCX_NET_DEVICES`, `NCCL_IB_HCA`,
+  `PSM3_NIC`. There is no vendor backend to be absent and nothing to
+  translate, so unlike a GPU's it is always set. What *is* a decision is
+  which of a function's OS devices supplies that name: one HCA presents
+  both an OpenFabrics device (`mlx5_0`) and a network interface (`ib0`)
+  on one PCI function, and `osdev_preferred()` takes the OpenFabrics one
+  because the interface name is accepted by none of those variables.
+  Left to hwloc's iteration order it was a coin flip.
+  `pci_vendor` / `pci_class` come back alongside for the same reason: a
+  NIC carries no vendor attribute and its name says nothing about who
+  made it, so the PCI pair — the same one a component hands
+  `pmix_hwloc_check_vendor()` — is the only way for a `pnet` component to
+  pick its own hardware out of a process's assignment.
 - **`selector` is not `vendor_id`, and the difference is Intel.**
   `pmix_hwloc_device_t.selector` is what to write in the vendor's
   device-selection variable, which for NVIDIA and AMD is the identity
