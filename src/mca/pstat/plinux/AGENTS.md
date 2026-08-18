@@ -184,7 +184,8 @@ Values that `/proc` reports in kB are normalized to MB by
 small parsers, all operating on a single static line buffer `input`:
 
 - **`local_getline`** — `fgets` one line into `input`, strip the trailing
-  newline, skip leading non-alphanumerics.
+  newline *if there is one* (a line longer than the buffer comes back
+  without it), skip leading non-alphanumerics.
 - **`local_stripper`** — split a `key: value` line at the colon, trimming
   whitespace, returning the value (and NUL-terminating the key in place).
 - **`local_getfields`** — tokenize a line into a `PMIx_Argv` of
