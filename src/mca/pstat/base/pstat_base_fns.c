@@ -73,7 +73,7 @@ void pmix_pstat_parse_procstats(pmix_procstats_t *pst,
         PMIX_PROCSTATS_ALL(pst);
     } else {
         PMIX_PROCSTATS_INIT(pst);
-        for (n=0; n < sz; n++) {
+        for (n = 0; n < sz; n++) {
             if (PMIx_Check_key(info[n].key, PMIX_CMD_LINE)) {
                 pst->cmdline = true;
             } else if (PMIx_Check_key(info[n].key, PMIX_PROC_OS_STATE)) {
@@ -111,7 +111,7 @@ void pmix_pstat_parse_dkstats(char ***disks, pmix_dkstats_t *dkst,
         PMIX_DKSTATS_ALL(dkst);
     } else {
         PMIX_DKSTATS_INIT(dkst);
-        for (n=0; n < sz; n++) {
+        for (n = 0; n < sz; n++) {
             if (PMIx_Check_key(info[n].key, PMIX_DISK_ID)) {
                 collect_id(disks, &info[n], &logged);
 
@@ -162,7 +162,7 @@ void pmix_pstat_parse_netstats(char ***nets, pmix_netstats_t *netst,
         PMIX_NETSTATS_ALL(netst);
     } else {
         PMIX_NETSTATS_INIT(netst);
-        for (n=0; n < sz; n++) {
+        for (n = 0; n < sz; n++) {
             if (PMIx_Check_key(info[n].key, PMIX_NETWORK_ID)) {
                 collect_id(nets, &info[n], &logged);
 
@@ -197,7 +197,7 @@ void pmix_pstat_parse_ndstats(pmix_ndstats_t *ndst,
         PMIX_NDSTATS_ALL(ndst);
     } else {
         PMIX_NDSTATS_INIT(ndst);
-        for (n=0; n < sz; n++) {
+        for (n = 0; n < sz; n++) {
             if (PMIx_Check_key(info[n].key, PMIX_NODE_LOAD_AVG)) {
                 ndst->la = true;
 

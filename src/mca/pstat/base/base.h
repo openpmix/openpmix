@@ -58,8 +58,8 @@ PMIX_EXPORT int pmix_pstat_base_select(void);
 PMIX_EXPORT extern pmix_pstat_base_component_t *pmix_pstat_base_component;
 
 typedef struct {
-	pmix_event_base_t *evbase;
-	pmix_list_t ops;
+    pmix_event_base_t *evbase;
+    pmix_list_t ops;
 } pmix_pstat_base_t;
 
 PMIX_EXPORT extern pmix_pstat_base_t pmix_pstat_base;
@@ -137,21 +137,21 @@ typedef struct {
 
 
 typedef struct {
-	pmix_list_item_t super;
+    pmix_list_item_t super;
     pmix_proc_t requestor;
-	char *id;
-	pmix_event_t ev;
-	struct timeval tv;
-	bool active;
-	uint32_t rate;
-	pmix_status_t eventcode;
-	pmix_list_t peers;
-	char **disks;
-	char **nets;
-	pmix_procstats_t pstats;
-	pmix_dkstats_t dkstats;
-	pmix_netstats_t netstats;
-	pmix_ndstats_t ndstats;
+    char *id;
+    pmix_event_t ev;
+    struct timeval tv;
+    bool active;
+    uint32_t rate;
+    pmix_status_t eventcode;
+    pmix_list_t peers;
+    char **disks;
+    char **nets;
+    pmix_procstats_t pstats;
+    pmix_dkstats_t dkstats;
+    pmix_netstats_t netstats;
+    pmix_ndstats_t ndstats;
     pmix_cb_t *cb;
 } pmix_pstat_op_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pstat_op_t);
@@ -170,36 +170,36 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pstat_op_t);
         PMIX_POST_OBJECT(p);                                                    \
         (p)->active = true;                                                     \
         pmix_event_evtimer_add(&(p)->ev, &(p)->tv);                             \
-    } while (0);
+    } while (0)
 
-#define PMIX_PSTAT_APPEND_PEER_UNIQUE(pl, pr) 					\
-    do {														\
-		bool f = false;											\
-		pmix_peerlist_t *_p;									\
-		PMIX_LIST_FOREACH(_p, pl, pmix_peerlist_t) {			\
-			if (_p->peer == (pr)) {								\
-				f = true;  										\
-				break;  										\
-			}  													\
-		}  														\
-		if (!f) { 												\
-			_p = PMIX_NEW(pmix_peerlist_t);  					\
-			_p->peer = (pr);									\
-			pmix_list_append(pl, &(_p->super));  				\
-		} 														\
-	} while(0)
+#define PMIX_PSTAT_APPEND_PEER_UNIQUE(pl, pr)                                   \
+    do {                                                                        \
+        bool f = false;                                                         \
+        pmix_peerlist_t *_p;                                                    \
+        PMIX_LIST_FOREACH(_p, pl, pmix_peerlist_t) {                            \
+            if (_p->peer == (pr)) {                                             \
+                f = true;                                                       \
+                break;                                                          \
+            }                                                                   \
+        }                                                                       \
+        if (!f) {                                                               \
+            _p = PMIX_NEW(pmix_peerlist_t);                                     \
+            _p->peer = (pr);                                                    \
+            pmix_list_append(pl, &(_p->super));                                 \
+        }                                                                       \
+    } while (0)
 
 PMIX_EXPORT void pmix_pstat_parse_procstats(pmix_procstats_t *pst,
-                                			pmix_info_t *info, size_t sz);
+                                            pmix_info_t *info, size_t sz);
 
 PMIX_EXPORT void pmix_pstat_parse_dkstats(char ***disks, pmix_dkstats_t *dkst,
-                              			  pmix_info_t *info, size_t sz);
+                                          pmix_info_t *info, size_t sz);
 
 PMIX_EXPORT void pmix_pstat_parse_netstats(char ***nets, pmix_netstats_t *netst,
-                               			   pmix_info_t *info, size_t sz);
+                                           pmix_info_t *info, size_t sz);
 
 PMIX_EXPORT void pmix_pstat_parse_ndstats(pmix_ndstats_t *ndst,
-                              			  pmix_info_t *info, size_t sz);
+                                          pmix_info_t *info, size_t sz);
 
 END_C_DECLS
 
