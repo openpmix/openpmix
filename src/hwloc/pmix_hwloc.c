@@ -1944,9 +1944,13 @@ void pmix_hwloc_release_devices(pmix_hwloc_device_t *devs, size_t ndevs)
     free(devs);
 }
 
-pmix_status_t pmix_hwloc_check_vendor(pmix_topology_t *topo,
-                                      unsigned short vendorID,
-                                      uint16_t class)
+/* Is there a PCI device from this vendor whose class matches under the
+ * given mask?  The mask is what separates the two public entries below:
+ * 0xffff asks about one exact class/subclass pair, 0xff00 about a whole
+ * base class. */
+static pmix_status_t check_vendor(pmix_topology_t *topo,
+                                  unsigned short vendorID,
+                                  uint16_t class, uint16_t mask)
 {
     hwloc_obj_t device;
 
@@ -1959,13 +1963,27 @@ pmix_status_t pmix_hwloc_check_vendor(pmix_topology_t *topo,
 
     device = hwloc_get_next_pcidev(topo->topology, NULL);
     while (NULL != device) {
-        if (class == device->attr->pcidev.class_id &&
+        if ((class & mask) == (device->attr->pcidev.class_id & mask) &&
             device->attr->pcidev.vendor_id == vendorID) {
             return PMIX_SUCCESS;
         }
         device = hwloc_get_next_pcidev(topo->topology, device);
     }
     return PMIX_ERR_NOT_AVAILABLE;
+}
+
+pmix_status_t pmix_hwloc_check_vendor(pmix_topology_t *topo,
+                                      unsigned short vendorID,
+                                      uint16_t class)
+{
+    return check_vendor(topo, vendorID, class, 0xffff);
+}
+
+pmix_status_t pmix_hwloc_check_vendor_baseclass(pmix_topology_t *topo,
+                                                unsigned short vendorID,
+                                                uint8_t baseclass)
+{
+    return check_vendor(topo, vendorID, (uint16_t) baseclass << 8, 0xff00);
 }
 
 

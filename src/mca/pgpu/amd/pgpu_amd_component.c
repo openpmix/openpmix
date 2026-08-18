@@ -96,13 +96,19 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x1022, 0x302);
+    /* AMD's GPUs carry PCI vendor id 0x1002 - the one ATI brought with it
+     * - and not 0x1022, which is the id on this vendor's CPU and chipset
+     * functions.  The subclass is deliberately not part of the question:
+     * an Instinct part reports 0x0380 while a Radeon reports 0x0300, and
+     * both are this vendor's GPUs. */
+    rc = pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x1002, 0x03);
     return rc;
 }
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
-    /* check our topology to see if we have any AMD devices */
+    /* whether this node has any AMD GPUs was settled in component_open;
+     * a component that declines there is never queried */
     *priority = 20;
     *module = (pmix_mca_base_module_t *) &pmix_pgpu_amd_module;
     return PMIX_SUCCESS;

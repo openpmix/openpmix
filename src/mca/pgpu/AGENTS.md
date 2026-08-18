@@ -52,7 +52,7 @@ Before you invest in this framework, understand what is and is not live:
    got no support unless somebody had thought to configure a test build.
    Detection happens at **run** time instead, in each component's
    `component_open`, which asks the local topology whether that vendor's
-   hardware is present (`pmix_hwloc_check_vendor`) and declines if not.
+   hardware is present and declines if not.
 
 3. **`nvd` and `amd` set the vendor's visible-devices variable.**
    `setup_fork` names the GPUs a process was mapped against in
@@ -291,14 +291,20 @@ Default component priorities (from each `component_query`):
 
 | Component | Priority | `component_open` gate (only if built) |
 |-----------|----------|----------------------------------------|
-| `amd`   | 20 | `pmix_hwloc_check_vendor(topo, 0x1022, 0x302)` |
+| `amd`   | 20 | `pmix_hwloc_check_vendor_baseclass(topo, 0x1002, 0x03)` |
 | `intel` | 20 | `pmix_hwloc_check_vendor(topo, 0x8086, 0x0380)` |
-| `nvd`   | 10 | `pmix_hwloc_check_vendor(topo, 0x10de, 0x302)` |
+| `nvd`   | 10 | `pmix_hwloc_check_vendor_baseclass(topo, 0x10de, 0x03)` |
 | `test`  | 10 | server role **and** `pgpu=test` named in the MCA selection string |
 
-`pmix_hwloc_check_vendor` (in `src/hwloc/pmix_hwloc.c`) walks the PCI
-devices in the node topology and returns `PMIX_SUCCESS` only if a device
-matches the given (vendor-ID, PCI-class) pair; it returns
+`pmix_hwloc_check_vendor_baseclass` (in `src/hwloc/pmix_hwloc.c`) walks
+the PCI devices in the node topology and returns `PMIX_SUCCESS` only if
+one of them is from the given vendor and in the given PCI **base** class
+— `0x03`, display controller, for every GPU. The subclass is deliberately
+not part of the question: one vendor's GPUs report `0x0300`, `0x0302` and
+`0x0380` depending on the part, so matching one exactly means declining
+on hardware that is plainly there. (`intel` still uses the exact-class
+`pmix_hwloc_check_vendor` because Intel's *integrated* graphics are
+`0x0300` and are not what this component is for.) Either form returns
 `PMIX_ERR_NOT_AVAILABLE` when no such device is present and
 `PMIX_ERR_TAKE_NEXT_OPTION` when the topology is not hwloc-sourced. A
 non-success `component_open` prevents the component from being queried, so
@@ -396,7 +402,15 @@ regenerate-the-help-content golden rule does not apply here.
   reference an undefined symbol (this was the `nvd` bug, since fixed).
 - Provide a `component_query` that hands back your `pmix_pgpu_module_t` and
   a priority, and a `component_open` that declines (returns non-success)
-  when the vendor hardware is absent — reuse `pmix_hwloc_check_vendor`.
+  when the vendor hardware is absent — reuse
+  `pmix_hwloc_check_vendor_baseclass`, not the exact-class
+  `pmix_hwloc_check_vendor`, unless a subclass really is the question.
+- **Put the run-time check in `component_open`, not `component_query`.**
+  The topology is loaded (`pmix_hwloc_setup_topology`) before the server
+  opens this framework, so `component_open` can see it; and a component
+  that declines to open is never queried, so the same check in
+  `component_query` would be dead code. `component_query` should only hand
+  back the module and a priority.
 - Fill only the module slots you implement; leave the rest `NULL` — the
   base checks each pointer before calling.
 - If you harvest envars, mirror the existing components: gate on

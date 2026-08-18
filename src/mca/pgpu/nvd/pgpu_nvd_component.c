@@ -96,8 +96,11 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    // under NVIDIA
-    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x10de, 0x302);
+    /* The subclass is deliberately not part of the question: a datacenter
+     * part reports 0x0302 ("3D controller") while a card with a display
+     * wired to it reports 0x0300 ("VGA compatible"), and both are NVIDIA
+     * GPUs. */
+    rc = pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x10de, 0x03);
 
     return rc;
 }

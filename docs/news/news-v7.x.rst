@@ -7,6 +7,17 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - The pgpu/amd and pgpu/nvd components now activate on the nodes that
+   have their vendor's GPUs. Both asked the topology for one exact PCI
+   class/subclass, and one vendor's GPUs do not agree on a subclass: a
+   card reports 0x0300 (VGA compatible), 0x0302 (3D controller) or 0x0380
+   (other) depending on the part and on whether a display is wired to it.
+   They now match the display base class 0x03 and ignore the subclass.
+   pgpu/amd was additionally asking for PCI vendor id 0x1022, which is
+   this vendor's id on its CPU and chipset functions rather than the
+   0x1002 its GPUs carry, so it declined to open everywhere. Nothing said
+   so in either case - a component that believes the hardware is absent
+   is indistinguishable from one that is correct about it.
  - A deletion now reaches the data that has already been handed out.
    Removing a key from a PMIx server's own store was only half of it: a
    client caches what it reads about other processes and holds the

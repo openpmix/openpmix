@@ -37,13 +37,21 @@ previously carried one whose whole body was `AS_IF([test "yes" = "no"],
 ...)` — it never built at all.
 
 The question is settled at **run** time. `component_open` returns
-   `pmix_hwloc_check_vendor(&pmix_globals.topology, 0x10de, 0x302)`, which
-   succeeds only if the node topology contains a PCI device with NVIDIA's
-   vendor ID `0x10de` and class `0x302`. Absent matching hardware (or a
-   non-hwloc topology) the component declines to open.
+`pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x10de, 0x03)`,
+which succeeds only if the node topology contains a PCI device with
+NVIDIA's vendor ID `0x10de` in the display base class `0x03`. Absent
+matching hardware (or a non-hwloc topology) the component declines to
+open and is never queried.
+
+The **base** class is deliberate. A datacenter part reports subclass
+`0x0302` ("3D controller") while a card with a display wired to it
+reports `0x0300` ("VGA compatible"), and both are NVIDIA GPUs; matching
+`0x0302` exactly left the component silent on the second kind, which is
+indistinguishable from being correct that no GPU is there.
 
 `component_query` sets priority **10** — the lowest of the three vendor
-components — and hands back `pmix_pgpu_nvd_module`.
+components — and hands back `pmix_pgpu_nvd_module`; it does no checking
+of its own, because a component that declined to open is never queried.
 
 ## Component-name requirement
 
