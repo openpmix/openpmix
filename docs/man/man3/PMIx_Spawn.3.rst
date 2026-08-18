@@ -336,6 +336,23 @@ Completion and termination notification:
   :ref:`PMIx_Notify_event(3) <man3-PMIx_Notify_event>` for the notification-side
   description of this attribute.
 
+A spawned job outlives the job that spawned it, so a tool watching a job it
+launched cannot tell from that job's ``PMIX_EVENT_JOB_END`` whether anything it
+spawned is still running |mdash| nor, when some later job ends, whether that job
+was one of its descendants or somebody else's work sharing the same session.
+Host environments are therefore encouraged to describe the *spawn tree* in each
+``PMIX_EVENT_JOB_END`` notification:
+
+* ``PMIX_SPAWN_TREE_ROOT`` (char*) |mdash| namespace of the process or tool from
+  which the terminating job descends by one or more spawns. A job nobody spawned
+  is the root of its own tree and so names itself. Two jobs carrying the same
+  value belong to the same tree.
+* ``PMIX_SPAWN_TREE_ACTIVE`` (uint32_t) |mdash| number of jobs in that tree which
+  have yet to terminate, not counting the one being reported. Because a job can
+  only be spawned by a process that is still running, a value of zero means the
+  reported job is the last of its tree and no further job can join it |mdash|
+  which is what lets a launcher know it has seen everything it started.
+
 Output forwarding:
 
 These attributes control which of the spawned job's streams are forwarded and how
