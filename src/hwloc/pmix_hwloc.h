@@ -162,9 +162,32 @@ PMIX_EXPORT pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
 
 PMIX_EXPORT void pmix_hwloc_release_devices(pmix_hwloc_device_t *devs, size_t ndevs);
 
+/* Does this topology carry a PCI device from this vendor, of exactly this
+ * class/subclass?  PMIX_ERR_NOT_AVAILABLE when it does not, and
+ * PMIX_ERR_TAKE_NEXT_OPTION when the topology is not hwloc-sourced and so
+ * cannot answer.
+ *
+ * Use this only where the subclass is itself the question - a fabric
+ * component distinguishing an InfiniBand controller (0x0207) from a
+ * fabric one (0x0208) does. Asking "is this vendor's GPU here?" is not
+ * that question: see below. */
 PMIX_EXPORT pmix_status_t pmix_hwloc_check_vendor(pmix_topology_t *topo,
                                                   unsigned short vendorID,
                                                   uint16_t class);
+
+/* The same, matching the PCI *base* class and ignoring the subclass.
+ *
+ * This is the right form for "does this node have this vendor's GPU?",
+ * because one vendor's GPUs do not agree on a subclass: within the
+ * display base class 0x03, a card may report 0x0300 (VGA compatible),
+ * 0x0302 (3D controller) or 0x0380 (other) depending on the part and on
+ * whether a display is wired to it. Matching one of those exactly means
+ * declining on hardware that is plainly present - and a component that
+ * believes the hardware is absent looks exactly like one that is right
+ * about it, so the failure is silent. */
+PMIX_EXPORT pmix_status_t pmix_hwloc_check_vendor_baseclass(pmix_topology_t *topo,
+                                                            unsigned short vendorID,
+                                                            uint8_t baseclass);
 
 /* cpuset pack/unpack/copy/print functions */
 PMIX_EXPORT pmix_status_t pmix_hwloc_pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src,

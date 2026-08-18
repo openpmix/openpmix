@@ -240,9 +240,14 @@ and `PMIX_TOPO` (`pmix_topology_t`); see
 - **`src/tool/pmix_tool.c`** — setup at tool init.
 - **`src/mca/bfrops/base`** — the datatype handlers, via the registered
   type table and the `data_array` free path (`bfrop_base_tma.h`).
-- **`src/mca/pgpu/{amd,intel,nvd}` and `pnet/{nvd,opa}`** — call
-  `pmix_hwloc_check_vendor(topo, vendorID, class)` to detect vendor PCI
-  devices in the topology.
+- **`src/mca/pgpu/{amd,intel,nvd}` and `pnet/{nvd,opa}`** — detect vendor
+  PCI devices in the topology at component-open time, through
+  `pmix_hwloc_check_vendor_baseclass(topo, vendorID, baseclass)` where a
+  whole class family is meant (any GPU of a vendor: base class `0x03`) and
+  `pmix_hwloc_check_vendor(topo, vendorID, class)` where the subclass is
+  itself the question (`pnet` telling `0x0207` from `0x0208`). Reaching
+  for the exact form by default is how `pgpu/amd` came to check for a
+  subclass its GPUs do not report.
 
 ## Threading
 

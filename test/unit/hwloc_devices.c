@@ -550,6 +550,85 @@ static void test_vendor_identity(const char *dir)
     }
 }
 
+/* The open-time question every GPU component asks: does this node carry
+ * this vendor's GPU?
+ *
+ * The point of the base-class form is that one vendor's GPUs do not agree
+ * on a PCI subclass, so the exact-class form answers "no" on hardware
+ * that is plainly there. The shipped fixtures happen to carry three
+ * different subclasses within display class 0x03, which is the whole
+ * argument in one table:
+ *
+ *   test-topo2   AMD Instinct   0x1002  0x0380
+ *                a BMC's VGA    0x1a03  0x0300
+ *   nvml-4gpu    NVIDIA H200    0x10de  0x0302
+ */
+static void test_vendor_check(const char *dir)
+{
+    struct {
+        const char *file;
+        unsigned short vendor;
+        uint16_t class;        /* the exact-class question */
+        bool exact;            /* ...and its right answer */
+    } cases[] = {
+        /* the case that motivated the base-class form: an AMD GPU that a
+         * check for "3D controller" would have missed */
+        {"test-topo2.xml", 0x1002, 0x0302, false},
+        {"nvml-4gpu.xml", 0x10de, 0x0302, true},
+        /* NVIDIA's id against a machine that has no NVIDIA card: both
+         * forms must say no, or the broader one is just always true */
+        {"test-topo2.xml", 0x10de, 0x0302, false},
+    };
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    char path[1024];
+    pmix_status_t rc;
+    size_t c;
+    bool nvidia_absent;
+
+    for (c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        snprintf(path, sizeof(path), "%s/%s", dir, cases[c].file);
+        if (0 != load_topo_file(path, &topo)) {
+            fprintf(stderr, "FAIL: could not load %s\n", path);
+            ++failures;
+            continue;
+        }
+        nvidia_absent = (0x10de == cases[c].vendor
+                         && 0 == strcmp(cases[c].file, "test-topo2.xml"));
+
+        rc = pmix_hwloc_check_vendor(&topo, cases[c].vendor, cases[c].class);
+        ok((PMIX_SUCCESS == rc) == cases[c].exact,
+           "vendor check: the exact class/subclass answer");
+
+        rc = pmix_hwloc_check_vendor_baseclass(&topo, cases[c].vendor, 0x03);
+        if (nvidia_absent) {
+            ok(PMIX_ERR_NOT_AVAILABLE == rc,
+               "vendor check: a vendor that is not here is still not here");
+        } else {
+            ok(PMIX_SUCCESS == rc,
+               "vendor check: the vendor's GPU is found whatever its subclass");
+        }
+        free_topo(&topo);
+    }
+
+    /* Two non-answers the callers rely on being distinct from "no". A
+     * component that cannot tell must decline rather than report absent
+     * hardware, since "absent" is a claim about the node. */
+    snprintf(path, sizeof(path), "%s/nvml-4gpu.xml", dir);
+    if (0 == load_topo_file(path, &topo)) {
+        free(topo.source);
+        topo.source = strdup("not-hwloc");
+        rc = pmix_hwloc_check_vendor_baseclass(&topo, 0x10de, 0x03);
+        ok(PMIX_ERR_TAKE_NEXT_OPTION == rc,
+           "vendor check: a topology PMIx did not get from hwloc cannot answer");
+        free_topo(&topo);
+    } else {
+        fprintf(stderr, "FAIL: could not load %s\n", path);
+        ++failures;
+    }
+    rc = pmix_hwloc_check_vendor_baseclass(NULL, 0x10de, 0x03);
+    ok(PMIX_ERR_BAD_PARAM == rc, "vendor check: no topology at all is a bad param");
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -575,6 +654,7 @@ int main(int argc, char **argv)
     test_distances_agree(dir);
     test_uuid_names_the_node(dir);
     test_vendor_identity(dir);
+    test_vendor_check(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);

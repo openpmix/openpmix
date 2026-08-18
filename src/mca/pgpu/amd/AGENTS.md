@@ -35,13 +35,24 @@ previously carried one whose whole body was `AS_IF([test "yes" = "no"],
 ...)` — it never built at all.
 
 The question is settled at **run** time. `component_open` returns
-   `pmix_hwloc_check_vendor(&pmix_globals.topology, 0x1022, 0x302)`, which
-   succeeds only if the node topology contains a PCI device with AMD's
-   vendor ID `0x1022` and class `0x302`. Absent matching hardware (or a
-   non-hwloc topology) the component declines to open.
+`pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x1002, 0x03)`,
+which succeeds only if the node topology contains a PCI device with AMD's
+GPU vendor ID `0x1002` in the display base class `0x03`. Absent matching
+hardware (or a non-hwloc topology) the component declines to open and is
+never queried.
+
+Two details of that call each cost the component every node it should
+have opened on:
+
+- **`0x1002`, not `0x1022`.** The latter is this vendor's id on its CPU
+  and chipset functions; the GPUs carry the id ATI brought with it.
+- **The base class, not an exact subclass.** An Instinct part reports
+  `0x0380` and a Radeon `0x0300`, and both are this vendor's GPUs, so
+  there is no one subclass to match.
 
 `component_query` sets priority **20** and hands back
-`pmix_pgpu_amd_module`.
+`pmix_pgpu_amd_module`; it does no checking of its own, because a
+component that declined to open is never queried.
 
 ## Component struct and MCA params
 
