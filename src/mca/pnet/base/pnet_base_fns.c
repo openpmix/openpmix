@@ -43,8 +43,12 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace, pmix_info_t info[], size_t n
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet:allocate called");
 
-    /* protect against bozo inputs */
-    if (NULL == nspace || NULL == ilist) {
+    /* protect against bozo inputs.  An *empty* nspace has to be caught here
+     * too, and not just a NULL one: PMIX_CHECK_NSPACE calls one a wildcard
+     * and matches it against anything, so letting one through would have
+     * these lookups answer with whatever namespace happened to be first on
+     * the list */
+    if (PMIX_NSPACE_INVALID(nspace) || NULL == ilist) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -67,6 +71,12 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace, pmix_info_t info[], size_t n
             return PMIX_ERR_NOMEM;
         }
         nptr->nspace = strdup(nspace);
+        if (NULL == nptr->nspace) {
+            /* every lookup of this list compares that string, so an object
+             * carrying a NULL one must never be published */
+            PMIX_RELEASE(nptr);
+            return PMIX_ERR_NOMEM;
+        }
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
 
@@ -98,8 +108,9 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace, pmix_info_t info[
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: setup_local_network called");
 
-    /* protect against bozo inputs */
-    if (NULL == nspace) {
+    /* protect against bozo inputs - see pmix_pnet_base_allocate on why an
+     * empty nspace is as dangerous as a NULL one */
+    if (PMIX_NSPACE_INVALID(nspace)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -131,9 +142,18 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace, pmix_info_t info[
                 return PMIX_ERR_NOMEM;
             }
             nsp->nspace = strdup(nspace);
+            if (NULL == nsp->nspace) {
+                PMIX_RELEASE(nsp);
+                return PMIX_ERR_NOMEM;
+            }
             pmix_list_append(&pmix_globals.nspaces, &nsp->super);
         }
         ns = PMIX_NEW(pmix_nspace_env_cache_t);
+        if (NULL == ns) {
+            return PMIX_ERR_NOMEM;
+        }
+        /* the cache owns this reference for as long as it lives; the class
+         * destructor is what gives it back */
         PMIX_RETAIN(nsp);
         ns->ns = nsp;
         pmix_list_append(&pmix_pnet_globals.nspaces, &ns->super);
@@ -162,8 +182,12 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet: setup_fork called");
 
-    /* protect against bozo inputs */
-    if (NULL == proc || NULL == env) {
+    /* protect against bozo inputs.  The nspace check is not pedantry: the
+     * cache lookup below matches with PMIX_CHECK_NSPACE, which calls an
+     * empty nspace a wildcard, so a proc that carried one would be forked
+     * with the first job on the list's envars - its transport key
+     * included */
+    if (NULL == proc || NULL == env || PMIX_NSPACE_INVALID(proc->nspace)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -177,7 +201,16 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
     }
     if (NULL != ns) {
         PMIX_LIST_FOREACH (ev, &ns->envars, pmix_envar_list_item_t) {
-            PMIx_Setenv(ev->envar.envar, ev->envar.value, true, env);
+            /* overwrite is true, so the only ways this fails are a bad env
+             * pointer and out-of-memory - both genuine.  Swallowing them
+             * would fork a process missing a job-wide setting while
+             * reporting success, which is the very thing the module loop
+             * below refuses to do */
+            rc = PMIx_Setenv(ev->envar.envar, ev->envar.value, true, env);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         }
     }
 
@@ -282,6 +315,16 @@ pmix_status_t pmix_pnet_base_get_assigned_devices(const pmix_proc_t *proc,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     darray = kv->value->data.darray;
+    /* and it must really be an array of devices.  PMIX_DEVICE_ID is
+     * documented as a string, and the library reads it that way elsewhere,
+     * so a host with more than one device to report can just as reasonably
+     * hand us an array of names - reading that as pmix_device_t would walk
+     * off the end of the allocation.  We do not know how to use such an
+     * array, so we decline it rather than trust it */
+    if (PMIX_DEVICE != darray->type || NULL == darray->array) {
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
     dev = (pmix_device_t *) darray->array;
 
     for (n = 0; n < darray->size; n++) {
@@ -341,9 +384,14 @@ pmix_status_t pmix_pnet_base_set_assigned_devices(const pmix_proc_t *proc,
     }
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: %s=%s for %s", envar, val, PMIX_NAME_PRINT(proc));
-    PMIx_Setenv(envar, val, true, env);
+    /* setting it is the whole job: reporting success without having done
+     * so launches the process pointed at nothing in particular */
+    rc = PMIx_Setenv(envar, val, true, env);
     free(val);
-    return PMIX_SUCCESS;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 void pmix_pnet_base_child_finalized(pmix_proc_t *peer)
@@ -401,16 +449,18 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
 {
     pmix_pnet_base_active_module_t *active;
     pmix_nspace_env_cache_t *ns, *ns2;
+    pmix_namespace_t *nptr, *nsp;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: deregister_nspace called");
 
-    /* protect against bozo inputs */
-    if (NULL == nspace) {
+    /* protect against bozo inputs - an empty nspace would match, and so
+     * release, whichever job's cache happens to be first on the list */
+    if (PMIX_NSPACE_INVALID(nspace)) {
         return;
     }
 
-    /* find this nspace object */
+    /* remove this nspace's envar cache, if it has one */
     ns = NULL;
     PMIX_LIST_FOREACH (ns2, &pmix_pnet_globals.nspaces, pmix_nspace_env_cache_t) {
         if (PMIX_CHECK_NSPACE(ns2->ns->nspace, nspace)) {
@@ -419,16 +469,37 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
             break;
         }
     }
-    if (NULL == ns) {
+
+    /* Only setup_local_network creates that cache, and a process that never
+     * runs it - a scheduler, or a daemon this job put no procs on - still
+     * has to tell the modules to release whatever allocate took for this
+     * job, or a component holding static ports never gets them back.  So
+     * fall back to the namespace object itself. */
+    if (NULL != ns) {
+        nptr = ns->ns;
+    } else {
+        nptr = NULL;
+        PMIX_LIST_FOREACH (nsp, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (PMIX_CHECK_NSPACE(nsp->nspace, nspace)) {
+                nptr = nsp;
+                break;
+            }
+        }
+    }
+    if (NULL == nptr) {
         return;
     }
 
     PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->deregister_nspace) {
-            active->module->deregister_nspace(ns->ns);
+            active->module->deregister_nspace(nptr);
         }
     }
-    PMIX_RELEASE(ns);
+    /* after the fan-out, not before: the cache holds the only reference
+     * that keeps nptr alive once the server has dropped its own */
+    if (NULL != ns) {
+        PMIX_RELEASE(ns);
+    }
 }
 
 pmix_status_t pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
@@ -443,6 +514,10 @@ pmix_status_t pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t 
                                 active->module->name);
             rc = active->module->collect_inventory(directives, ndirs, inventory);
             if (PMIX_SUCCESS != rc) {
+                /* unlike allocate/setup_fork, this fan-out has no decline
+                 * convention - any error is unexpected, and it aborts the
+                 * collection, so say which module ended it */
+                PMIX_ERROR_LOG(rc);
                 return rc;
             }
         }
@@ -462,6 +537,7 @@ pmix_status_t pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
                                 active->module->name);
             rc = active->module->deliver_inventory(info, ninfo, directives, ndirs);
             if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 return rc;
             }
         }
@@ -492,9 +568,16 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric, const pmix_i
             if (PMIX_OPERATION_SUCCEEDED == rc) {
                 /* track this fabric so we can respond to remote requests */
                 ft = PMIX_NEW(pmix_pnet_fabric_t);
+                if (NULL == ft) {
+                    return PMIX_ERR_NOMEM;
+                }
                 ft->index = fabric->index;
                 if (NULL != fabric->name) {
                     ft->name = strdup(fabric->name);
+                    if (NULL == ft->name) {
+                        PMIX_RELEASE(ft);
+                        return PMIX_ERR_NOMEM;
+                    }
                 }
                 ft->module = active->module;
                 pmix_list_append(&pmix_pnet_globals.fabrics, &ft->super);
@@ -509,32 +592,49 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric, const pmix_i
     return PMIX_ERR_NOT_FOUND;
 }
 
+/* Which locally-registered plane is this request about?
+ *
+ * A request relayed from a remote peer arrives with nothing but the index
+ * and/or name the fabric was registered under, so this tracker list is the
+ * only route back to the module that owns it.  First match wins: scanning
+ * on and letting the last one win made two planes that happen to share an
+ * index resolve differently here than in the caller that registered them.
+ */
+static pmix_pnet_fabric_t *find_fabric(const pmix_fabric_t *fabric)
+{
+    pmix_pnet_fabric_t *ft;
+
+    PMIX_LIST_FOREACH (ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
+        if (fabric->index == ft->index) {
+            return ft;
+        }
+        if (NULL != fabric->name && NULL != ft->name
+            && 0 == strcmp(ft->name, fabric->name)) {
+            return ft;
+        }
+    }
+    return NULL;
+}
+
 pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric)
 {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_pnet_fabric_t *active;
     pmix_pnet_module_t *module = NULL;
     pmix_pnet_fabric_t *ft;
 
     /* protect against bozo input */
     if (NULL == fabric) {
         return PMIX_ERR_BAD_PARAM;
-    } else if (NULL == fabric->module) {
-        /* this might be a remote request, so look at the
-         * list of fabrics we have registered locally and
-         * see if we have one with the matching index */
-        PMIX_LIST_FOREACH (ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
-            if (fabric->index == ft->index) {
-                module = ft->module;
-            } else if (NULL != fabric->name && NULL != ft->name
-                       && 0 == strcmp(ft->name, fabric->name)) {
-                module = ft->module;
-            }
-        }
-    } else {
-        active = (pmix_pnet_fabric_t *) fabric->module;
-        module = (pmix_pnet_module_t *) active->module;
     }
+    if (NULL == fabric->module) {
+        ft = find_fabric(fabric);
+    } else {
+        ft = (pmix_pnet_fabric_t *) fabric->module;
+    }
+    if (NULL == ft) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    module = ft->module;
     if (NULL == module) {
         return PMIX_ERR_BAD_PARAM;
     }
@@ -548,29 +648,22 @@ pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric)
 pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric)
 {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_pnet_fabric_t *active;
     pmix_pnet_module_t *module = NULL;
     pmix_pnet_fabric_t *ft;
 
     /* protect against bozo input */
     if (NULL == fabric) {
         return PMIX_ERR_BAD_PARAM;
-    } else if (NULL == fabric->module) {
-        /* this might be a remote request, so look at the
-         * list of fabrics we have registered locally and
-         * see if we have one with the matching index */
-        PMIX_LIST_FOREACH (ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
-            if (fabric->index == ft->index) {
-                module = ft->module;
-            } else if (NULL != fabric->name && NULL != ft->name
-                       && 0 == strcmp(ft->name, fabric->name)) {
-                module = ft->module;
-            }
-        }
-    } else {
-        active = (pmix_pnet_fabric_t *) fabric->module;
-        module = (pmix_pnet_module_t *) active->module;
     }
+    if (NULL == fabric->module) {
+        ft = find_fabric(fabric);
+    } else {
+        ft = (pmix_pnet_fabric_t *) fabric->module;
+    }
+    if (NULL == ft) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    module = ft->module;
     if (NULL == module) {
         return PMIX_ERR_BAD_PARAM;
     }
@@ -578,5 +671,14 @@ pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric)
     if (NULL != module->deregister_fabric) {
         rc = module->deregister_fabric(fabric);
     }
+
+    /* Drop the tracker whatever the module made of the request.  Keeping it
+     * grew the list without bound across register/deregister cycles, and -
+     * the part that bites - a later update or deregister carrying the same
+     * index or name still resolved to this module and handed it a plane it
+     * had already torn down. */
+    pmix_list_remove_item(&pmix_pnet_globals.fabrics, &ft->super);
+    PMIX_RELEASE(ft);
+
     return rc;
 }

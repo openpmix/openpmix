@@ -44,6 +44,8 @@
 #include <string.h>
 
 #define NPROCS 2
+/* the rank whose assignment is reported in a shape we cannot read */
+#define BADRANK (NPROCS + 1)
 #define TESTNS "pnet-assigned"
 
 /* rank 0 gets the HCA, rank 1 the ethernet controller.  Both are named the
@@ -70,7 +72,10 @@ static void ok(bool cond, const char *what)
 
 /* Register a namespace whose ranks were mapped against devices.  Rank
  * NPROCS is registered but not mapped, which is what every ordinary job
- * looks like. */
+ * looks like.  Rank NPROCS+1 carries a PMIX_DEVICE_ID that is an array of
+ * *names* rather than of pmix_device_t - the shape a host reading the
+ * attribute's documented "(char*)" type would naturally produce for a
+ * process with more than one device. */
 static pmix_status_t register_nspace(void)
 {
     pmix_info_t *info, *pdata;
@@ -79,7 +84,7 @@ static pmix_status_t register_nspace(void)
     pmix_status_t rc;
     pmix_proc_t p;
     size_t ninfo, n = 0;
-    uint32_t nprocs = NPROCS + 1;
+    uint32_t nprocs = NPROCS + 2;
     uint32_t m;
     uint16_t lrank;
     pmix_nspace_t ns;
@@ -98,7 +103,7 @@ static pmix_status_t register_nspace(void)
 
         pmix_strncpy(info[n].key, PMIX_PROC_INFO_ARRAY, PMIX_MAX_KEYLEN);
         info[n].value.type = PMIX_DATA_ARRAY;
-        PMIX_DATA_ARRAY_CREATE(array, mapped ? 3 : 2, PMIX_INFO);
+        PMIX_DATA_ARRAY_CREATE(array, (mapped || BADRANK == m) ? 3 : 2, PMIX_INFO);
         info[n].value.data.darray = array;
         pdata = (pmix_info_t *) array->array;
 
@@ -120,6 +125,16 @@ static pmix_status_t register_nspace(void)
             dev[0].type = (0 == m) ? PMIX_DEVTYPE_OPENFABRICS : PMIX_DEVTYPE_NETWORK;
             /* hand the array over rather than PMIX_INFO_LOAD-ing it: the
              * info now owns it */
+            pmix_strncpy(pdata[k].key, PMIX_DEVICE_ID, PMIX_MAX_KEYLEN);
+            pdata[k].value.type = PMIX_DATA_ARRAY;
+            pdata[k].value.data.darray = darray;
+        } else if (BADRANK == m) {
+            char **names = (char **) NULL;
+
+            PMIX_DATA_ARRAY_CREATE(darray, 2, PMIX_STRING);
+            names = (char **) darray->array;
+            names[0] = strdup(osnames[0]);
+            names[1] = strdup(osnames[1]);
             pmix_strncpy(pdata[k].key, PMIX_DEVICE_ID, PMIX_MAX_KEYLEN);
             pdata[k].value.type = PMIX_DATA_ARRAY;
             pdata[k].value.data.darray = darray;
@@ -234,6 +249,36 @@ int main(int argc, char **argv)
     rc = pmix_pnet_base_get_assigned_devices(&proc, ib_match, 2, &val);
     ok(PMIX_ERR_TAKE_NEXT_OPTION == rc && NULL == val,
        "an unmapped rank yields nothing, and is not an error");
+
+    /* An assignment we cannot read is declined, not guessed at.  This rank's
+     * PMIX_DEVICE_ID is an array of *names* - the shape a host reading the
+     * attribute's documented "(char*)" type would produce for a process with
+     * several devices - and reading it as an array of pmix_device_t both
+     * runs off the end of the allocation and misreads what is inside it.
+     *
+     * eth_match is what makes the check bite rather than merely assert.  A
+     * pmix_device_t's osname sits where a char*[] holds its *second*
+     * element, so the misreading resolves this rank to "enp67s0" and hands
+     * back an ethernet controller that was never assigned - a wrong answer,
+     * not a crash, which is the harder kind to notice. */
+    PMIX_LOAD_PROCID(&proc, TESTNS, (pmix_rank_t) BADRANK);
+    rc = pmix_pnet_base_get_assigned_devices(&proc, eth_match, 1, &val);
+    ok(PMIX_ERR_TAKE_NEXT_OPTION == rc && NULL == val,
+       "an assignment that is not an array of devices is declined");
+    if (NULL != val) {
+        free(val);
+        val = NULL;
+    }
+
+    /* an nspace of "" is a wildcard to PMIX_CHECK_NSPACE, so letting one
+     * reach the cache lookup would fork a process with the first job on the
+     * list's environment - its transport key included */
+    PMIX_LOAD_PROCID(&proc, "", 0);
+    env = NULL;
+    rc = pmix_pnet_base_setup_fork(&proc, &env);
+    ok(PMIX_ERR_BAD_PARAM == rc, "an empty nspace is rejected, not matched");
+    PMIx_Argv_free(env);
+    env = NULL;
 
     /* --- the whole fork path, through whichever components selected --- */
 

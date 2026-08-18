@@ -197,22 +197,66 @@ the framework — the components are leaf handlers.
 | `pmix_pnet_base_allocate` | resolves `nspace` → `pmix_namespace_t` (creating it if new), and **only if the local peer is a server** calls each active `module->allocate`, tolerating `NOT_AVAILABLE`/`TAKE_NEXT_OPTION` |
 | `pmix_pnet_base_setup_local_network` | resolves `nspace` → a `pmix_nspace_env_cache_t` on `pmix_pnet_globals.nspaces` (creating it), then calls each active `module->setup_local_network(ns, …)` |
 | `pmix_pnet_base_setup_fork` | looks up the namespace's envar cache and `PMIx_Setenv`s every cached `pmix_envar_list_item_t` into the child's `env`, **then** calls each active `module->setup_fork(proc, env)`, tolerating `NOT_AVAILABLE`/`TAKE_NEXT_OPTION` (the ordinary case: most processes are not mapped against a device). Any other error aborts the fork rather than launching a process that would use the wrong hardware. |
-| `pmix_pnet_base_get_assigned_devices` | reads the proc's `PMIX_DEVICE_ID` out of the local datastore, resolves each device against the **local** topology, keeps the ones whose PCI `(vendor, class)` matches one of the caller's `pmix_pnet_pcimatch_t` entries, and joins their **selectors** with commas. Returns `PMIX_ERR_TAKE_NEXT_OPTION` when the process was given none of yours |
+| `pmix_pnet_base_get_assigned_devices` | reads the proc's `PMIX_DEVICE_ID` out of the local datastore, resolves each device against the **local** topology, keeps the ones whose PCI `(vendor, class)` matches one of the caller's `pmix_pnet_pcimatch_t` entries, and joins their **selectors** with commas. Returns `PMIX_ERR_TAKE_NEXT_OPTION` when the process was given none of yours — and equally when the assignment is not an array of `pmix_device_t`, which it checks rather than assumes (see below) |
 | `pmix_pnet_base_set_assigned_devices` | the one-line wrapper that writes that value into a named environment variable; this is all most components need |
 | `pmix_pnet_base_child_finalized` | fans out to each `module->child_finalized` |
 | `pmix_pnet_base_local_app_finalized` | fans out to each `module->local_app_finalized` |
-| `pmix_pnet_base_deregister_nspace` | removes & releases the namespace's envar cache, then fans out to each `module->deregister_nspace(ns->ns)` |
+| `pmix_pnet_base_deregister_nspace` | removes the namespace's envar cache **if it has one**, fans out to each `module->deregister_nspace(nptr)`, and only then releases the cache. A process that never ran `setup_local_network` — a scheduler, or a daemon this job put no procs on — has no cache, and the namespace object itself is used instead: a module that took resources in `allocate` still has to be told to give them back |
 | `pmix_pnet_base_collect_inventory` | fans out to each `module->collect_inventory`; aborts on any error |
 | `pmix_pnet_base_deliver_inventory` | fans out to each `module->deliver_inventory`; aborts on any error |
 | `pmix_pnet_base_register_fabric` | initializes the `pmix_fabric_t`, walks actives until one returns `PMIX_OPERATION_SUCCEEDED`, and on success records a `pmix_pnet_fabric_t` on `pmix_pnet_globals.fabrics` |
 | `pmix_pnet_base_update_fabric` | resolves the owning module (directly from `fabric->module`, or by matching `index`/`name` on the fabrics list for a remote request) and calls `module->update_fabric` |
 | `pmix_pnet_base_deregister_fabric` | same resolution as update, then calls `module->deregister_fabric` |
 
-**A dead declaration to be aware of:** `base.h` declares
-`pmix_pnet_base_harvest_envars`, but **no definition exists** anywhere in
-the tree. Components that harvest envars call the utility
-`pmix_util_harvest_envars` directly, not this base symbol. Do not build on
-the base declaration; either implement it or ignore it.
+Components that harvest envars call the utility
+`pmix_util_harvest_envars` directly. (`base.h` used to declare a
+`pmix_pnet_base_harvest_envars` that was never defined anywhere in the
+tree; it has been removed, since a header promising a symbol no
+translation unit provides can only mislead.)
+
+### Two traps in these lookups
+
+**`PMIX_CHECK_NSPACE` treats an empty nspace as a wildcard.** It returns
+`true` if *either* argument is NULL or zero-length, so a `""` reaching
+any of the list scans above matches whichever entry happens to be first.
+That is why the entry points reject `PMIX_NSPACE_INVALID(nspace)` rather
+than merely `NULL == nspace`: without it, a proc carrying an empty
+nspace would be forked with another job's cached envars — its transport
+security key included — and a `deregister_nspace("")` would release some
+other job's ports. Note that `allocate`/`setup_local_network` scan
+`pmix_globals.nspaces` with plain `strcmp`, which has no such wildcard;
+closing the door on an invalid nspace is what keeps the two styles
+agreeing.
+
+**`PMIX_DEVICE_ID` is documented as a string**, and the library reads it
+that way elsewhere (`pmix_hwloc.c` takes `info->value.data.string`). A
+host with several devices to report can therefore quite reasonably hand
+over a `PMIX_DATA_ARRAY` of `PMIX_STRING` rather than of `PMIX_DEVICE`.
+`get_assigned_devices` checks `darray->type` for exactly that reason:
+reading a `char *[]` as `pmix_device_t[]` both runs off the end of the
+allocation and — because `osname` sits where the array holds its *second*
+element — resolves the process to a device it was never given. Declining
+an assignment we cannot read is the only safe answer.
+
+### The envar cache owns a namespace reference
+
+`setup_local_network` does `PMIX_RETAIN(nsp)` before parking the
+namespace in a `pmix_nspace_env_cache_t`, and the class destructor
+(`nsenvdes`, in `src/include/pmix_globals.c`) is what gives it back — the
+release does **not** belong at the pnet call site, because
+`pmix_pnet_close` also destructs the whole list. Two consequences worth
+holding on to:
+
+- `pmix_pnet_base_deregister_nspace` must release the cache **after** the
+  module fan-out, not before: once the server drops its own reference,
+  the cache's is the only thing keeping the `pmix_namespace_t` the
+  modules are being handed alive.
+- `nsenvcon` sets `ns` to NULL explicitly. `PMIX_NEW` mallocs rather than
+  callocs, so without that the destructor would release a garbage
+  pointer.
+
+`pgpu` uses the same class in the same way; a change to either half of
+this contract has to account for both frameworks.
 
 ## Selection and lifecycle
 
@@ -280,7 +324,7 @@ src/mca/pnet/
 │   ├── pnet_base_frame.c   open/close, framework decl, API-module instance, class instances
 │   ├── pnet_base_select.c  multi-select: build the priority-ordered actives list
 │   └── pnet_base_fns.c     the pmix_pnet_base_* fan-out functions
-├── nvd/                    Mellanox/NVIDIA example (current interface, disabled in build)
+├── nvd/                    Mellanox/NVIDIA example (default-built; hwloc-gated at runtime)
 ├── opa/                    Omni-Path example (default-built; hwloc-gated at runtime)
 ├── simptest/               static-endpoint test example (working; --with-simptest / --enable-test-build)
 └── tcp/                    static TCP/UDP port example (--with-tcp; no hardware gate)
@@ -288,18 +332,81 @@ src/mca/pnet/
 
 ## Threading
 
-`pnet` has **no caddy/thread-shift machinery of its own**. Its entry
-points are called by the server from within progress-thread events (the
-server code that invokes `pmix_pnet.*` has already thread-shifted), and
-the base functions are synchronous transforms over the actives list and
-the namespace/fabric lists. The module interface *does* allow an
-asynchronous path — `collect_inventory` / `deliver_inventory` /
-`register_fabric` are documented to return `PMIX_OPERATION_IN_PROGRESS`
-and run a callback later if a component must query a fabric manager on its
-own thread — but no shipped component exercises that path today. If you
-add one, follow the top-level thread-safety rules: shift to your own
-thread, return `PMIX_OPERATION_IN_PROGRESS`, and fire the callback when
-done.
+`pnet` has **no caddy/thread-shift machinery of its own**, and the base
+functions are synchronous transforms over the actives list and the
+namespace/fabric lists. Most entry points do arrive on the progress
+thread — `allocate`, `setup_local_network`, `child_finalized`,
+`local_app_finalized` and `deregister_nspace` are all reached from server
+code that has already thread-shifted (`_setup_app`,
+`_setup_local_support`, `_deregister_nspace`).
+
+**Two do not, and it is not safe to assume otherwise.**
+
+- **`setup_fork` runs on the host's thread.** `PMIx_server_setup_fork`
+  does no thread-shift at all — it cannot, since it has to fill in the
+  caller's `env` array before the caller forks — so
+  `pmix_pnet_base_setup_fork` walks `pmix_pnet_globals.nspaces` and
+  issues a `PMIX_GDS_FETCH_KV` from whatever thread the RM called it on.
+  What makes that work today is the host's own sequencing: a job's
+  `PMIx_server_setup_local_support` (which *is* shifted, and whose
+  blocking form waits on a lock) completes before that job's processes
+  are forked, and `deregister_nspace` comes after they exit. Nothing in
+  the library enforces it. An RM that forks job A's children while job
+  B's `setup_local_support` is still in flight has one thread appending
+  to that list while another traverses it. The same is true of
+  `pmix_ptl_base_setup_fork` and `pmix_pgpu.setup_fork` next door, so
+  this is a property of the whole `PMIx_server_setup_fork` path rather
+  than of `pnet` — do not "fix" it here alone.
+- **The three fabric entry points run on the caller's thread.**
+  `PMIx_Fabric_register_nb` / `_update_nb` / `_deregister_nb` call
+  straight into `pmix_pnet.*` when the local peer is a server or
+  scheduler, with no shift — the blocking wrapper even *rejects* being
+  called from the progress thread. Meanwhile `pmix_server_fabric.c`
+  services relayed `PMIX_FABRIC_REGISTER_CMD` / `UPDATE_CMD` requests
+  from the switchyard, which is on the progress thread, and both reach
+  `pmix_pnet_globals.fabrics`. A scheduler that registers a plane from
+  its main thread while a remote update is in flight is racing on that
+  list, and `deregister_fabric` now removes items from it. The fix
+  belongs in `src/client/pmix_client_fabric.c`, which is where the
+  missing shift is.
+
+The module interface *does* allow an asynchronous path —
+`collect_inventory` / `deliver_inventory` / `register_fabric` are
+documented to return `PMIX_OPERATION_IN_PROGRESS` and run a callback
+later if a component must query a fabric manager on its own thread — but
+no shipped component exercises that path today. If you add one, follow
+the top-level thread-safety rules: shift to your own thread, return
+`PMIX_OPERATION_IN_PROGRESS`, and fire the callback when done.
+
+## The fabric path is scaffolding
+
+`register_fabric`, `update_fabric` and `deregister_fabric` are wired all
+the way through the base, but **no shipped component implements any of
+them** — grep the four component directories and you will find the slots
+unset. So `pmix_pnet_globals.fabrics` is never populated in a stock
+build, every base fabric call ends in `PMIX_ERR_NOT_SUPPORTED` /
+`PMIX_ERR_NOT_FOUND` / `PMIX_ERR_BAD_PARAM`, and there is no automated
+coverage of any of it. Three things to know before you build on it:
+
+- **`fabric->module` is never set.** The public `pmix_fabric_t` reserves
+  that slot for the library, and `update_fabric`/`deregister_fabric` each
+  carry a branch that casts it back to a `pmix_pnet_fabric_t *` — but
+  `register_fabric` only ever writes NULL there, so that branch is dead
+  and every lookup goes through the index/name scan. It was left
+  deliberately unwired: a tracker pointer parked in a caller's object
+  would dangle the moment the fabric was deregistered, and a host that
+  copied the struct would keep the dangling copy.
+- **Only `PMIX_OPERATION_SUCCEEDED` records a tracker.** A module that
+  claims a plane by returning plain `PMIX_SUCCESS` (the async shape) is
+  *not* recorded, yet both callers — `pmix_server_fabric.c` and
+  `PMIx_Fabric_register_nb` — read `PMIX_SUCCESS` as "claimed, wait for
+  the callback". A later update or deregister on that plane then answers
+  `PMIX_ERR_BAD_PARAM`. Settle the async contract before relying on it.
+- **`deregister_fabric` removes the tracker.** It did not use to, which
+  grew the list without bound across register/deregister cycles and left
+  a stale entry that still resolved a later request to a module that had
+  already torn the plane down. The scan is now first-match-wins for the
+  same reason.
 
 ## Building
 
@@ -339,8 +446,12 @@ no `show_help` text.
 Per the top-level build rules: editing a `Makefile.am` needs only a plain
 `make`; **adding or removing a component directory, or changing a
 `configure.m4`, changes the build wiring and requires
-`./autogen.pl && ./configure … && make`** (this is exactly the mechanism
-that keeps `nvd` out of the library today).
+`./autogen.pl && ./configure … && make`**. This one bites in practice:
+`nvd`'s `configure.m4` was deleted so the component would build by
+default, and every tree configured before that kept on omitting it —
+`static-components.h` still listed only `opa`, so `nvd` was silently
+absent and `test/unit/pnet_assigned_devices` had nothing to exercise.
+A plain `make` will not tell you; check `base/static-components.h`.
 
 ## When working in this framework
 
