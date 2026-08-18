@@ -31,63 +31,29 @@
 #include "src/mca/bfrops/bfrops_types.h"
 #include "src/mca/mca.h"
 
-#include "src/mca/preg/preg_types.h"
-
 BEGIN_C_DECLS
 
 /******    MODULE DEFINITION    ******/
 
-#define PMIX_MAX_NODE_PREFIX 8192
-
-/* given a semicolon-separated list of input values, generate
- * a regex that can be passed down to a client for parsing.
- * The caller is responsible for free'ing the resulting
- * string
- *
- * If values have leading zero's, then that is preserved.
- * Example:
- *
- * Input: odin009;odin010;odin011;odin012;odin017;odin018;thor176
- *
- * Output:
- *     "foo:odin[009-012,017-018],thor176"
- *
- * Note that the "foo" at the beginning of the regex indicates
- * that the "foo" regex component is to be used to parse the
- * provided regex.
+/* The encoded form of a node or process map is fundamentally
+ * "bytes + length + a type tag", which is what pmix_regex2_t carries. A
+ * component therefore implements exactly two operations: encode a
+ * delimited list of values into a pmix_regex2_t, and expand one back.
+ * The deprecated char* API (PMIx_generate_regex / PMIx_generate_ppn and
+ * the parse side that goes with it) is a serialization of that same
+ * struct, and is handled entirely in the framework base - see
+ * preg_base_legacy.c. Components know nothing about it.
  */
-typedef pmix_status_t (*pmix_preg_base_module_generate_node_regex_fn_t)(const char *input,
-                                                                        char **regex);
 
-/* The input is expected to consist of a comma-separated list
- * of ranges. Thus, an input of:
- *     "1-4;2-5;8,10,11,12;6,7,9"
- * would generate a regex of
- *     "[pmix:2x(3);8,10-12;6-7,9]"
+/* Encode the delimited input list into a pmix_regex2_t. The module sets
+ * regex->type to its own name, stores the encoded bytes in regex->bytes,
+ * and sets regex->len accordingly. The encoding is opaque to the caller
+ * and need not be a NULL-terminated string.
  *
- * Note that the "pmix" at the beginning of each regex indicates
- * that the PMIx native parser is to be used by the client for
- * parsing the provided regex. Other parsers may be supported - see
- * the pmix_client.h header for a list.
- */
-typedef pmix_status_t (*pmix_preg_base_module_generate_ppn_fn_t)(const char *input, char **ppn);
-
-typedef pmix_status_t (*pmix_preg_base_module_parse_nodes_fn_t)(const char *regexp, char ***names);
-
-typedef pmix_status_t (*pmix_preg_base_module_parse_procs_fn_t)(const char *regexp, char ***procs);
-
-typedef pmix_status_t (*pmix_preg_base_module_copy_fn_t)(char **dest, size_t *len,
-                                                         const char *input);
-
-typedef pmix_status_t (*pmix_preg_base_module_pack_fn_t)(pmix_buffer_t *buffer, const char *regex);
-
-typedef pmix_status_t (*pmix_preg_base_module_unpack_fn_t)(pmix_buffer_t *buffer, char **regex);
-
-typedef pmix_status_t (*pmix_preg_base_module_release_fn_t)(char *regexp);
-
-/* Compress the input node-name list directly into a pmix_regex2_t.
- * The module sets regex->type to its name, stores the encoded bytes
- * in regex->bytes, and sets regex->len accordingly.
+ * Note that this operation is indifferent to what the values mean: the
+ * same call encodes a comma-delimited node list and a semicolon-delimited
+ * process map.
+ *
  * Returns PMIX_ERR_TAKE_NEXT_OPTION if the module cannot handle the input.
  */
 typedef pmix_status_t (*pmix_preg_base_module_generate_regex_fn_t)(const char *input,
@@ -95,8 +61,8 @@ typedef pmix_status_t (*pmix_preg_base_module_generate_regex_fn_t)(const char *i
                                                                     size_t ninfo,
                                                                     pmix_regex2_t *regex);
 
-/* Expand a pmix_regex2_t (as produced by generate_regex) back into a
- * NULL-terminated argv array of node names in output.
+/* Expand a pmix_regex2_t (as produced by generate_regex) back into the
+ * delimited string that was originally encoded. The caller splits it.
  * Returns PMIX_ERR_TAKE_NEXT_OPTION if the module does not recognize
  * the regex->type value.
  */
@@ -109,21 +75,35 @@ typedef pmix_status_t (*pmix_preg_base_module_parse_regex_fn_t)(const pmix_regex
  */
 typedef struct {
     char *name;
-    pmix_preg_base_module_generate_node_regex_fn_t generate_node_regex;
-    pmix_preg_base_module_generate_ppn_fn_t generate_ppn;
-    pmix_preg_base_module_parse_nodes_fn_t parse_nodes;
-    pmix_preg_base_module_parse_procs_fn_t parse_procs;
-    pmix_preg_base_module_copy_fn_t copy;
-    pmix_preg_base_module_pack_fn_t pack;
-    pmix_preg_base_module_unpack_fn_t unpack;
-    pmix_preg_base_module_release_fn_t release;
     pmix_preg_base_module_generate_regex_fn_t generate_regex;
     pmix_preg_base_module_parse_regex_fn_t parse_regex;
 } pmix_preg_module_t;
 
+/**
+ * The framework-level API, instantiated once as the global pmix_preg.
+ * Every entry points at a pmix_preg_base_* function; there is no
+ * component dispatch table here. The first four entries are the
+ * deprecated char* interface, which the base implements on top of the
+ * pmix_regex2_t operations above.
+ */
+typedef struct {
+    pmix_status_t (*generate_node_regex)(const char *input, char **regex);
+    pmix_status_t (*generate_ppn)(const char *input, char **ppn);
+    pmix_status_t (*parse_nodes)(const char *regexp, char ***names);
+    pmix_status_t (*parse_procs)(const char *regexp, char ***procs);
+    pmix_status_t (*copy)(char **dest, size_t *len, const char *input);
+    pmix_status_t (*pack)(pmix_buffer_t *buffer, const char *regex);
+    pmix_status_t (*unpack)(pmix_buffer_t *buffer, char **regex);
+    pmix_status_t (*release)(char *regexp);
+    pmix_status_t (*generate_regex)(const char *input, pmix_info_t info[],
+                                    size_t ninfo, pmix_regex2_t *regex);
+    pmix_status_t (*parse_regex)(const pmix_regex2_t *regex, pmix_info_t info[],
+                                 size_t ninfo, char **output);
+} pmix_preg_api_t;
+
 /* we just use the standard component definition */
 
-PMIX_EXPORT extern pmix_preg_module_t pmix_preg;
+PMIX_EXPORT extern pmix_preg_api_t pmix_preg;
 
 /* The preg framework interface version. It is stated here and nowhere
  * else: components stamp it into their struct with
@@ -131,7 +111,7 @@ PMIX_EXPORT extern pmix_preg_module_t pmix_preg;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_preg_MAJOR_VERSION   1
+#define PMIX_MCA_preg_MAJOR_VERSION   2
 #define PMIX_MCA_preg_MINOR_VERSION   0
 #define PMIX_MCA_preg_RELEASE_VERSION 0
 

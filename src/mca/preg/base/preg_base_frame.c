@@ -52,7 +52,7 @@ pmix_preg_globals_t pmix_preg_globals = {
     .selected = false
 };
 
-pmix_preg_module_t pmix_preg = {
+pmix_preg_api_t pmix_preg = {
     .generate_node_regex = pmix_preg_base_generate_node_regex,
     .generate_ppn = pmix_preg_base_generate_ppn,
     .parse_nodes = pmix_preg_base_parse_nodes,
@@ -94,29 +94,3 @@ PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, preg, "PMIx Regex Operations", N
 
 PMIX_CLASS_INSTANCE(pmix_preg_base_active_module_t, pmix_list_item_t, NULL, NULL);
 
-static void rcon(pmix_regex_range_t *p)
-{
-    p->start = 0;
-    p->cnt = 0;
-}
-PMIX_CLASS_INSTANCE(pmix_regex_range_t, pmix_list_item_t, rcon, NULL);
-
-static void rvcon(pmix_regex_value_t *p)
-{
-    p->prefix = NULL;
-    p->suffix = NULL;
-    p->num_digits = 0;
-    p->skip = false;
-    PMIX_CONSTRUCT(&p->ranges, pmix_list_t);
-}
-static void rvdes(pmix_regex_value_t *p)
-{
-    if (NULL != p->prefix) {
-        free(p->prefix);
-    }
-    if (NULL != p->suffix) {
-        free(p->suffix);
-    }
-    PMIX_LIST_DESTRUCT(&p->ranges);
-}
-PMIX_CLASS_INSTANCE(pmix_regex_value_t, pmix_list_item_t, rvcon, rvdes);
