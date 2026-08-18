@@ -23,9 +23,10 @@ its own `AGENTS.md` with component-specific detail.
 
 There is no `docs/how-things-work/psensor.rst`; the closest companion
 reading is the sibling [`pstat`](../pstat/AGENTS.md) framework, which
-implements the *resource-usage* side of the `PMIx_Process_monitor` family
-and is where the monitor request path lands today (see "Current reality"
-below).
+implements the *resource-usage* side of the `PMIx_Process_monitor` family.
+The two split the job: `psensor` takes the liveness monitors and `pstat`
+takes the statistics, and `src/common/pmix_monitor.c` offers every
+request to `psensor` first.
 
 ## What PSENSOR does
 
@@ -76,34 +77,27 @@ new key without touching the others; the priority ordering is essentially
 vestigial today, much as the `ptl` role gates make its priorities
 vestigial.
 
-## Current reality: the start path is dormant
+## How a request reaches a component
 
-Read this before assuming `psensor` is on the hot monitor path. The
-public monitor API in
-[`src/common/pmix_monitor.c`](../../common/pmix_monitor.c) resolves a
-request's scope and, for local participation, calls **`pmix_pstat.query`**
-— *not* `pmix_psensor.start`. In the current tree there is **no live
-caller of `pmix_psensor.start`** (the framework's own
-`pmix_psensor_base_start` is wired into the `pmix_psensor.start` slot, but
-nothing invokes it). What *is* still called is **`pmix_psensor.stop`**:
+The public monitor API in
+[`src/common/pmix_monitor.c`](../../common/pmix_monitor.c) offers every
+request to **`pmix_psensor.start`** before anything else. A liveness
+monitor watches the *requesting* process itself, so it has no local/remote
+target to resolve; `pmix_monitor_processing` recovers the requestor's
+peer object and calls `start` with it. `PMIX_ERR_NOT_SUPPORTED` coming
+back means no component recognized the key, and the request falls through
+to the resource-usage (`pmix_pstat.query`) path. Anything else — success
+or a hard error — is the answer.
+
+**`pmix_psensor.stop`** is called from two more places, both teardown:
 
 - `src/server/pmix_server_registration.c` calls `pmix_psensor.stop(peer,
   NULL)` when a client departs, and
 - `src/mca/ptl/base/ptl_base_sendrecv.c` calls it from the
   lost-connection teardown.
 
-So the framework is presently in a transitional state: its teardown path
-is live (a defensive "stop any monitors this peer started" on
-disconnect), while its start path is not reached by the shipped monitor
-API. The heartbeat wire mechanism it depends on is, however, fully
-present — `PMIx_Heartbeat()` still sends `PMIX_PTL_TAG_HEARTBEAT` beacons,
-and the `heartbeat` component still knows how to receive and count them —
-so the monitors work end-to-end **if** something calls `start`. Do not
-delete the start machinery on the assumption that it is dead code; treat
-it as an intentionally-retained capability whose driver has moved. If you
-are wiring monitoring, understand that `pstat` and `psensor` split the job
-(statistics vs. liveness) and that the connective tissue on the psensor
-side is what is missing.
+So a monitor a client started is always torn down when that client goes
+away, whether it asked or not.
 
 ## Module interface (`pmix_psensor_base_module_t`)
 
@@ -156,12 +150,51 @@ dispatches.
     `pmix_globals.evbase` — monitors share the library's main progress
     thread.
   - **true:** a dedicated progress thread named `"PSENSOR"` is spun up via
-    `pmix_progress_thread_init`, so file `stat`s and heartbeat bookkeeping
-    cannot perturb the main thread. `close` stops it.
-  It then constructs the `actives` list and opens all components.
-- **`pmix_psensor_base_close`** clears `selected`, destructs `actives`,
-  stops the `"PSENSOR"` thread if one was started, and closes the
-  components.
+    `pmix_progress_thread_init` **and started** with
+    `pmix_progress_thread_start`, so file `stat`s and heartbeat
+    bookkeeping cannot perturb the main thread.
+  It then constructs the `actives` list and opens all components, undoing
+  its own setup if that fails (a framework whose open fails never has its
+  close called).
+- **`pmix_psensor_base_close`** clears `selected`, **pauses** the
+  `"PSENSOR"` thread, destructs `actives`, closes the components, and
+  only then **stops** the thread and clears `evbase`. The order is a
+  correctness requirement — see "Starting and stopping the monitor
+  thread" below.
+
+### Starting and stopping the monitor thread
+
+`pmix_progress_thread_init()` builds an event base and a thread object
+but leaves the engine parked; starting it is a separate call. Omitting
+that call does not fail loudly: the base exists, trackers arm timers on
+it quite happily, and nothing ever runs them. No window is ever checked,
+no file is ever sampled, and not even `add_tracker` runs — so a start
+returns success and the tracker never reaches its component's list. This
+was the state of `psensor` until it was fixed alongside the identical
+defect in `pstat`.
+
+Teardown is the other half of the same change, and it is why `close`
+pauses and stops in two separate places:
+
+- The tracker lists are destructed by the **component** close functions,
+  which run on the finalizing thread rather than on this base's. Every
+  live tracker carries a timer armed on the base, so tearing the trackers
+  down while the monitor thread still runs can free one out from under
+  the sampler executing on it. `pmix_progress_thread_pause` joins the
+  thread, so nothing is in flight once it returns.
+- The base cannot be freed before that, either: a tracker destructor
+  deletes its timer, and `pmix_event_del` reads the base out of the
+  event. So the stop — which drops the last reference to the `"PSENSOR"`
+  tracker, whose destructor frees the base — has to come *after* the
+  components have closed.
+
+`close` clears `pmix_psensor_base.evbase` either way, because
+`pmix_psensor.stop` stays callable after the framework closes (the server
+calls it from client teardown) and must not post a caddy to a freed base.
+
+In the default configuration there is no separate thread to pause:
+`evbase` is the library's shared base, which `PMIx_server_finalize` has
+already stopped before it closes any framework.
 
 ### `base/psensor_base_select.c` — priority-ordered activation
 
@@ -182,12 +215,13 @@ These are the two functions the `pmix_psensor` global points at:
 - **`pmix_psensor_base_start`** walks `actives` in priority order and
   calls each module's `start`. A module that returns neither
   `PMIX_SUCCESS` nor `PMIX_ERR_TAKE_NEXT_OPTION` aborts the walk and that
-  error is returned. Any module that *has* a `start` pointer sets an
-  internal `didit` flag; if **no** module has one, the function returns
-  `PMIX_ERR_NOT_SUPPORTED` so the server knows to ask the host RM instead.
-  Note the consequence of offering the request to *every* module: the
-  matching component claims it and the others cheaply decline with
-  `TAKE_NEXT_OPTION`.
+  error is returned. A module that returns `PMIX_SUCCESS` has *serviced*
+  the request; if none did — every module declined, or none has a `start`
+  pointer at all — the function returns `PMIX_ERR_NOT_SUPPORTED`, which
+  is what tells `pmix_monitor.c` to try the resource-usage path and, past
+  that, the host RM. Note the consequence of offering the request to
+  *every* module: the matching component claims it and the others cheaply
+  decline with `TAKE_NEXT_OPTION`.
 - **`pmix_psensor_base_stop`** walks `actives` and calls every module's
   `stop`, **continuing past errors** (it remembers the first non-success
   and keeps going) so that a stop reliably tears down monitors in *all*
@@ -210,7 +244,7 @@ follow the same shape, and understanding it once covers both:
    (`ft->cdev`) and firing it with `pmix_event_active(..., EV_WRITE, 1)`,
    preceded by `PMIX_POST_OBJECT`. The handler (`add_tracker`) runs on the
    monitor thread, appends the tracker to the component's `trackers` list,
-   and arms an `evtimer` (`file_sample` / `check_heartbeat`) at the
+   and arms a persistent timer (`file_sample` / `check_heartbeat`) at the
    sample interval.
 3. **`stop`** allocates a small caddy (`file_caddy_t` /
    `heartbeat_caddy_t` — each a `pmix_object_t` with its own `ev`,
@@ -227,6 +261,45 @@ cancel a monitor.
 All tracker-list access, timer fires, and (for heartbeat) beat counting
 happen **on `evbase`** — so the components touch shared state only on the
 monitor thread, exactly as the top-level thread-safety rules require.
+
+### The tracker timer is persistent
+
+Both components arm their sampler with `pmix_event_assign(...,
+PMIX_EV_PERSIST, ...)` plus `pmix_event_add`, and **neither sampler
+re-arms its own timer**. That is a correctness requirement rather than a
+style choice, and it is the same argument written out at greater length
+under "Releasing an op from another thread" in
+[`../pstat/AGENTS.md`](../pstat/AGENTS.md).
+
+A repeating timer can be built either way — a one-shot the sampler
+re-arms on its way out, or a persistent one libevent re-arms. They are
+not equivalent to a thread that wants to free the tracker. A tracker
+destructor ends with `pmix_event_del()`, and that can run on a thread
+that is *not* this base's: `check_heartbeat` retains the tracker across
+an asynchronous `PMIx_Notify_event`, and the completion callback that
+releases it runs on the library's own progress thread. `event_del`
+(with libevent threading on, which `pmix_init.c` enables) waits for a
+callback already running on the event — but it removes the event once,
+up front. A one-shot's re-arm happens *after* that removal and outside
+the base's lock, so `event_del` can return to a freshly armed timer and
+the tracker is freed with a live timer pointing into it.
+
+`EV_PERSIST` moves the re-arm into libevent's `event_persist_closure()`,
+made while it still holds the base lock and before the callback is
+entered, so a concurrent `event_del` either takes the lock first and
+removes the pending timeout or takes it afterwards and removes the
+re-armed one. Every interleaving returns disarmed.
+
+Two consequences to keep in mind when editing a sampler:
+
+- **Do not add a `pmix_event_evtimer_add` at the end of one**, and do not
+  "simplify" the arming back to `pmix_event_evtimer_set`, which asks for
+  flags 0.
+- **A sampler that is done monitoring must disarm explicitly.**
+  `file_sample` deletes its own timer before handing the tracker to the
+  notification, because a persistent timer is still armed while its
+  callback runs. That delete is safe precisely because it is made on the
+  base's own thread.
 
 ## Monitor directives the components honor
 
@@ -280,7 +353,10 @@ src/mca/psensor/
 
 Everything in `psensor` runs on a PMIx progress thread — either the main
 one or the dedicated `"PSENSOR"` thread, per
-`pmix_psensor_base_use_separate_thread`. The `start`/`stop` entry points
+`pmix_psensor_base_use_separate_thread`. Both configurations are
+exercised by `make check`: `test/unit/run_monitor.pl` runs its
+heartbeat-and-file scenario twice, once with the parameter set. The
+`start`/`stop` entry points
 may be entered from another thread, which is exactly why both components
 thread-shift onto `evbase` before touching their `trackers` list. The
 heartbeat receive callback (`pmix_psensor_heartbeat_recv_beats`) fires on
@@ -333,8 +409,13 @@ removing a *component directory* changes the build wiring resolved by
   a component with nothing to stop must simply do nothing and return
   success. This matters because `pmix_psensor.stop` runs on every client
   disconnect and lost connection.
-- **Don't assume `start` is on the hot path today** (see "Current
-  reality"). If you are re-connecting the monitor API to `psensor`, do it
-  in `src/common/pmix_monitor.c` alongside the existing `pmix_pstat.query`
-  call, and add a `make check` test that drives a real
-  `PMIx_Process_monitor` heartbeat/file request end-to-end.
+- **Never re-arm a sampler's own timer, and never start the monitor
+  thread without fixing the teardown to match.** See "The tracker timer
+  is persistent" and "Starting and stopping the monitor thread" above;
+  the two are a pair.
+- **Cover a new monitor end to end.** A `start` returns success whether
+  or not a sensor was actually armed, so only the arrival of the alert
+  proves anything. `test/simple/simpmonitor.c` and
+  `test/unit/run_monitor.pl` are the pattern: one rank asks to be
+  monitored and then does nothing, another waits for the alert and checks
+  its source.

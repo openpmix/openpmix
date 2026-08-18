@@ -159,16 +159,24 @@ static void add_tracker(int sd, short flags, void *cbdata)
 {
     file_tracker_t *ft = (file_tracker_t *) cbdata;
 
-    PMIX_ACQUIRE_OBJECT(fd);
+    PMIX_ACQUIRE_OBJECT(ft);
 
     PMIX_HIDE_UNUSED_PARAMS(sd, flags);
 
     /* add the tracker to our list */
     pmix_list_append(&pmix_mca_psensor_file_component.trackers, &ft->super);
 
-    /* setup the timer event */
-    pmix_event_evtimer_set(pmix_psensor_base.evbase, &ft->ev, file_sample, ft);
-    pmix_event_evtimer_add(&ft->ev, &ft->tv);
+    /* Setup the timer event. The timer is PERSISTENT, and that is a
+     * correctness requirement rather than a convenience: the tracker can
+     * be released from a thread that is not this base's, so a one-shot
+     * that file_sample re-arms on its way out can be re-armed after the
+     * destructor's pmix_event_del has already removed it - leaving a live
+     * timer pointing at freed memory. See "The tracker timer is
+     * persistent" in ../AGENTS.md; do not simplify this back to
+     * pmix_event_evtimer_set(), which asks for flags 0. */
+    pmix_event_assign(&ft->ev, pmix_psensor_base.evbase, -1, PMIX_EV_PERSIST,
+                      file_sample, ft);
+    pmix_event_add(&ft->ev, &ft->tv);
     ft->event_active = true;
 }
 
@@ -309,8 +317,8 @@ static void file_sample(int sd, short args, void *cbdata)
         pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                              "[%s:%d] could not stat %s", pmix_globals.myid.nspace,
                              pmix_globals.myid.rank, ft->file);
-        /* re-add the timer, in case this file shows up */
-        pmix_event_evtimer_add(&ft->ev, &ft->tv);
+        /* the timer re-arms itself, so we simply come back and look
+         * again in case this file shows up */
         return;
     }
 
@@ -351,7 +359,17 @@ static void file_sample(int sd, short args, void *cbdata)
             pmix_show_help("help-pmix-psensor-file.txt", "file-stalled", true, ft->file,
                            ft->last_size, ctime(&ft->last_access), ctime(&ft->last_mod));
         }
-        /* stop monitoring this client */
+        /* stop monitoring this client. Disarm before we let go of the
+         * tracker: the timer is persistent, so it is still armed even
+         * though we are inside its callback, and the tracker is about to
+         * belong to the notification below. Deleting it here is safe
+         * because we are on the base's own thread - libevent re-armed
+         * the timeout under the base lock before entering us, so this
+         * removes that re-armed one. */
+        if (ft->event_active) {
+            pmix_event_del(&ft->ev);
+            ft->event_active = false;
+        }
         pmix_list_remove_item(&pmix_mca_psensor_file_component.trackers, &ft->super);
         /* generate an event - the source proc lives in the tracker (not
          * on the stack) because PMIx_Notify_event borrows the pointer and
@@ -366,6 +384,6 @@ static void file_sample(int sd, short args, void *cbdata)
         return;
     }
 
-    /* re-add the timer */
-    pmix_event_evtimer_add(&ft->ev, &ft->tv);
+    /* nothing to do - the timer re-arms itself. See the comment in
+     * add_tracker for why the sampler must not do it. */
 }

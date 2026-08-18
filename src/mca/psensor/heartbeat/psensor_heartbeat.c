@@ -155,9 +155,17 @@ static void add_tracker(int sd, short flags, void *cbdata)
     /* add the tracker to our list */
     pmix_list_append(&pmix_mca_psensor_heartbeat_component.trackers, &ft->super);
 
-    /* setup the timer event */
-    pmix_event_evtimer_set(pmix_psensor_base.evbase, &ft->ev, check_heartbeat, ft);
-    pmix_event_evtimer_add(&ft->ev, &ft->tv);
+    /* Setup the timer event. The timer is PERSISTENT, and that is a
+     * correctness requirement rather than a convenience: the tracker can
+     * be released from a thread that is not this base's, so a one-shot
+     * that check_heartbeat re-arms on its way out can be re-armed after
+     * the destructor's pmix_event_del has already removed it - leaving a
+     * live timer pointing at freed memory. See "The tracker timer is
+     * persistent" in ../AGENTS.md; do not simplify this back to
+     * pmix_event_evtimer_set(), which asks for flags 0. */
+    pmix_event_assign(&ft->ev, pmix_psensor_base.evbase, -1, PMIX_EV_PERSIST,
+                      check_heartbeat, ft);
+    pmix_event_add(&ft->ev, &ft->tv);
     ft->event_active = true;
 }
 
@@ -315,11 +323,9 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
                              pmix_globals.myid.nspace, pmix_globals.myid.rank, ft->nbeats,
                              ft->requestor->info->pname.nspace, ft->requestor->info->pname.rank);
     }
-    /* reset for next period */
+    /* reset for next period. The timer re-arms itself - see the comment
+     * in add_tracker for why the sampler must not do it. */
     ft->nbeats = 0;
-
-    /* reset the timer */
-    pmix_event_evtimer_add(&ft->ev, &ft->tv);
 }
 
 static void add_beat(int sd, short args, void *cbdata)
