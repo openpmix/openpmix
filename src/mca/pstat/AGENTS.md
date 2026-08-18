@@ -282,48 +282,64 @@ is `PMIX_RELEASE`d immediately after the synchronous pass.
 This matters only when `pstat_base_use_separate_thread` is set. In the
 default configuration the framework's base *is* `pmix_globals.evbase`,
 so `query` and `update` run on the same thread and are serialized by the
-event loop; nothing below can happen. With the parameter on, `query`
-still runs on the main progress thread (the monitor API thread-shifts
-there) while `update` fires on the `"PSTAT"` thread, and the two run
-concurrently.
+event loop. With the parameter on, `query` still runs on the main
+progress thread (the monitor API thread-shifts there) while `update`
+fires on the `"PSTAT"` thread, and the two run concurrently —
+`PMIX_MONITOR_CANCEL` removes an op from `pmix_pstat_base.ops` and
+`PMIX_RELEASE`s it while a sample may be running on it.
 
-The obvious hazard — freeing an op while its `update()` is executing —
-is **not** the one to worry about. `pmix_init.c` calls
-`pmix_event_use_threads()`, and libevent's `event_del()` defaults to
-`EVENT_DEL_AUTOBLOCK`: called from a thread that is not the base's own,
-it waits on `current_event_cond` until the callback that is running on
-the event being deleted returns. So `opdes()`'s `pmix_event_del` does
-block until the in-flight sample finishes.
+That is safe, but only because of how the timer is armed, and the
+reasoning is worth having written down before someone simplifies it.
 
-The hazard is what the sample does on its way out. `update()`'s last act
-on the timer path is to **re-arm** the timer, and it does that after the
-delete has already run: the deleting thread removes the event, then
-waits; the callback takes the base lock the waiter released and adds the
-event back; the waiter returns to an op whose timer is armed again and
-frees it. The next tick then runs on freed memory.
+`opdes()` ends an op with `pmix_event_del()`. `pmix_init.c` calls
+`pmix_event_use_threads()` before it creates any event base, and
+libevent's `event_del()` defaults to `EVENT_DEL_AUTOBLOCK`: called from a
+thread that is not the base's own, it waits on `current_event_cond`
+until the callback running on that event returns. So the delete does
+block for a sample in flight.
 
-`PMIX_MONITOR_CANCEL` reaches exactly that path — it removes the op from
-`pmix_pstat_base.ops` and `PMIX_RELEASE`s it directly from the main
-progress thread. **A cancel racing a sample is therefore a
-use-after-free whenever the framework owns its own thread.** It is not
-reachable today: the parameter is off by default, nothing in PMIx or
-PRRTE turns it on, and the one thing that does — `test/unit/pstat_frame`
-— never cancels a monitor. It is a landmine for whoever turns the
-parameter on.
+**Blocking is not sufficient on its own.** `event_del` removes the event
+once, up front, and then waits. A repeating timer built the obvious way
+— a one-shot that the sampler re-arms on its way out — does that re-arm
+*after* the removal and *outside* the base's lock, so `event_del`
+returned to a freshly armed timer and the op was freed with a live timer
+pointing into it. The next tick ran on freed memory. That was a real
+use-after-free, and `test/unit/pstat_frame`'s `op_timer_lifetime`
+reproduces it deterministically: restore the one-shot arming and the
+test does not fail, it dies.
 
-The fix is not a patch to the cancel path; it is to stop touching op
-lifetime from the calling thread at all. `psensor` is the framework to
-copy: `heartbeat_start`/`heartbeat_stop` never mutate a tracker
-themselves — each builds a caddy, `pmix_event_assign`s it to
-`pmix_psensor_base.evbase`, and `pmix_event_active`s it, so every
-append, removal and release happens on the framework's own thread and is
-serialized against the samplers by construction. Doing the same here
-means a base helper (the op lifetime rules belong to the base, not to
-three copies in the components) and one call-site change in each of
-`plinux`, `pmacos` and `test`. Note that the *arming* side has no such
-problem: `pmix_event_add` from another thread is safe with libevent
-threading enabled, which is why `PMIX_PSTAT_OP_START` can stay where it
-is.
+`PMIX_PSTAT_OP_START` therefore arms an **`EV_PERSIST`** timer, which
+moves the re-arm into `event_persist_closure()` — made while it still
+holds the base lock, before the callback is entered. A concurrent
+`event_del` either takes the lock first and removes the pending timeout,
+or takes it afterwards and removes the re-armed one; every interleaving
+returns disarmed. The rule that falls out of this is short: **a sampler
+must never re-arm its own op's timer.** See the comment on the macro in
+[`base/base.h`](base/base.h).
+
+It also fixes the cadence, which is a visible if minor change.
+`event_persist_closure()` schedules the next fire relative to the time
+this one was *due*, and falls back to "now" only when that has already
+passed — so a monitor asked for a sample every N seconds gets one every
+N seconds. Re-arming from the end of the sampler meant N *plus* however
+long the sample took, every time, so the interval a caller asked for was
+always the floor and never the period.
+
+Two dependencies of that argument are invisible at this level and load
+bearing. The first is `pmix_event_use_threads()` — without libevent
+locking, `event_del` does not wait at all. The second is
+`pmix_event_del_checked()` (in `src/include/pmix_globals.c`), which is
+what `pmix_event_del` actually resolves to: it declines to delete
+anything while `pmix_globals.evbase` is `NULL`. The library always has
+one by the time an op can exist, and `pmix_rte_finalize` does not clear
+it until well after the frameworks have closed — but a unit test that
+stops at `pmix_init_util()` has no such base, and there `opdes()`'s
+delete is a silent no-op. `op_timer_lifetime` stands up a real progress
+thread for exactly that reason.
+
+Note that the *arming* side needs none of this: `pmix_event_add` from
+another thread is safe with libevent threading enabled, and an op is not
+reachable by anything else until its timer is armed.
 
 ### Cancellation
 
@@ -473,12 +489,12 @@ memory-safety bug rather than a leak. The sequence is **pause → destruct
 ops → finalize → stop**:
 
 - The ops must not be destructed while the sampling thread is running.
-  Each live op owns a timer armed on the framework's base, and deleting
-  that timer from another thread is not enough to make the op safe to
-  free — see "Releasing an op from another thread" below.
+  Each live op owns a timer armed on the framework's base.
   `pmix_progress_thread_pause()` joins the thread, so nothing is in
   flight once it returns, and that is what makes the destructs that
-  follow safe.
+  follow safe. A cancel cannot pause the thread the way close can, which
+  is why the arming discipline described under "Releasing an op from
+  another thread" above is what carries that path.
 - The base must still exist while the ops are destructed, because
   `opdes` deletes each op's timer and `pmix_event_del` reads the base out
   of the event.

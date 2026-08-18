@@ -249,27 +249,6 @@ cover the whole of what the entry described.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
-Releasing a ``pstat`` op from another thread
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``PMIX_MONITOR_CANCEL`` removes a periodic monitor from
-``pmix_pstat_base.ops`` and releases it directly on the main progress
-thread.  When the framework MCA parameter
-``pstat_base_use_separate_thread`` is set, the sampling ``update()`` runs
-on the framework's own ``"PSTAT"`` thread instead, and a cancel racing a
-sample is a use-after-free: ``pmix_event_del()`` does block until the
-running callback returns, but that callback re-arms the timer on its way
-out, so the op is freed with a live timer still pointing at it.
-
-Not reachable today — the parameter is off by default, nothing in PMIx or
-PRRTE turns it on, and ``test/unit/pstat_frame``, which does, never
-cancels a monitor.  The fix is to stop touching op lifetime from the
-calling thread, the way ``psensor`` does: a base helper that pushes the
-append/remove/release onto ``pmix_pstat_base.evbase``, plus one call-site
-change in each of ``plinux``, ``pmacos`` and ``test``.  The arming side
-is already safe.  See "Releasing an op from another thread" in
-``src/mca/pstat/AGENTS.md``.
-
 Coverage gaps
 -------------
 

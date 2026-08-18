@@ -798,16 +798,16 @@ static void update(int sd, short args, void *cbdata)
     pmix_ndstats_t znd;
     pmix_netstats_t znet;
     pmix_dkstats_t zdk;
-    bool nettaken, dktaken, noreset;
+    bool nettaken, dktaken, syncpass;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     cb = op->cb;
     if (NULL == cb) {
         answer = PMIx_Info_list_start();
-        noreset = false;
+        syncpass = false;
     } else {
         answer = cb->cbdata;
-        noreset = true;
+        syncpass = true;
     }
     PMIX_PROCSTATS_INIT(&zproc);
     PMIX_NDSTATS_INIT(&znd);
@@ -932,7 +932,7 @@ static void update(int sd, short args, void *cbdata)
             if (PMIX_ERR_EMPTY != rc) {
                 PMIX_ERROR_LOG(rc);
             }
-            goto reset;
+            return;
         }
         // setup the event
         cb = PMIX_NEW(pmix_cb_t);
@@ -950,7 +950,7 @@ static void update(int sd, short args, void *cbdata)
             PMIX_RELEASE(cb);
         }
     }
-    goto reset;
+    return;
 
 error:
     /* On the timer path the answer list is ours and has to go. On the
@@ -958,16 +958,10 @@ error:
      * we return - releasing it here left query() converting and
      * releasing freed memory. Hand the failure back through the caddy
      * instead and leave the list alone. */
-    if (noreset) {
+    if (syncpass) {
         op->cb->status = rc;
     } else {
         PMIx_Info_list_release(answer);
-    }
-
-reset:
-    if (!noreset) {
-        // reset the timer
-        pmix_event_evtimer_add(&op->ev, &op->tv);
     }
 }
 
