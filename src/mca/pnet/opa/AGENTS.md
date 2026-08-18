@@ -25,7 +25,12 @@ hardware is present, so on most machines it is built but never selected.
 | `pnet_opa.h` | Component struct type + blob/inventory key `#define`s. |
 | `pnet_opa_component.c` | Component struct, `component_register`, `component_open` (hwloc gate), `component_query` (priority **10**). |
 | `pnet_opa.c` | The module: `allocate` / `setup_local_network` / `collect_inventory` / `deliver_inventory`. |
-| `configure.m4` | Hardwired **on** (`test "yes" = "yes"`); adds the `OmniPath` summary line. |
+
+There is deliberately **no `configure.m4`**: it used to hold
+`AS_IF([test "yes" = "yes"], …)` — always succeed, and add an `OmniPath`
+summary line — which is worth less than the file it lived in. The
+component links nothing and always builds; whether it has work to do is
+settled at run time by `component_open`.
 
 ## When it is selected
 

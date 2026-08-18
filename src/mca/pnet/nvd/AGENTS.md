@@ -13,10 +13,10 @@
 `nvd` is the `pnet` component for **Mellanox / NVIDIA** fabric and
 networking support. Read the framework [`AGENTS.md`](../AGENTS.md) first;
 this file covers only what is specific to `nvd`. It is a near-copy of
-[`opa`](../opa/AGENTS.md) retargeted at NVIDIA/Mellanox NICs, and it does
-compile against the current `pmix_pnet_module_t` interface — but it is
-**hardwired off in the build** (see [Building](#building)), so it is
-current-but-dormant rather than a live code path.
+[`opa`](../opa/AGENTS.md) retargeted at NVIDIA/Mellanox NICs. It builds
+in a stock configure and runs on any host whose topology shows a Mellanox
+or NVIDIA InfiniBand controller; it was hardwired **off** in its
+`configure.m4` until recently (see [Building](#building)).
 
 ## Files
 
@@ -25,11 +25,12 @@ current-but-dormant rather than a live code path.
 | `pnet_nvd.h` | Component struct type + `PMIX_PNET_NVD_BLOB` / inventory key `#define`s. |
 | `pnet_nvd_component.c` | Component struct, `component_register`, `component_open` (hwloc gate), `component_query` (priority **10**). |
 | `pnet_nvd.c` | The module: `allocate` / `setup_local_network` / `collect_inventory` / `deliver_inventory`. |
-| `configure.m4` | Hardwired **off** (`test "yes" = "no"`); adds the `NVIDIA` summary line. |
 
-## When it would be selected
+There is deliberately **no `configure.m4`** — see [Building](#building).
 
-If it were built, selection would be a two-step gate mirroring `opa`:
+## When it is selected
+
+Selection is a two-step gate mirroring `opa`:
 
 1. **`component_open`** probes hwloc twice via `pmix_hwloc_check_vendor` —
    first for Mellanox vendor `0x15b3`, then (on failure) for NVIDIA vendor
@@ -75,19 +76,20 @@ The signatures match the current framework interface (unlike `tcp` and
 
 ## Building
 
-`nvd`'s `configure.m4` uses `AS_IF([test "yes" = "no"], …)`, so the
-can-compile branch is never taken and the source is **not compiled into
-`libpmix`** (the `NVIDIA` line in configure's summary reads `no`). Only
-its `Makefile` is generated. To actually build it you would have to change
-the `configure.m4` condition and re-run `./autogen.pl && ./configure … &&
-make` — do not attempt that as a drive-by; the disablement is intentional
-until the component is finished.
+`nvd` ships **no `configure.m4`** and builds unconditionally; the MCA
+machinery configures a component with no `configure.m4` by itself. Keep it
+that way. It links nothing and needs no SDK — it reads info attributes
+hwloc already recorded and sets environment variables — and whether it has
+work to do is a property of the machine the *daemon* runs on, which only
+`component_open` can know. It previously carried an
+`AS_IF([test "yes" = "no"], …)` gate justified by "no real
+NVIDIA-transport detection exists yet", which asked that question at build
+time on a host that is routinely not the run host; the one visible
+consequence of dropping the file is that configure's summary no longer
+prints a `Transports / NVIDIA` line.
 
 ## Gotchas
 
-- **It is dormant by design.** Because it is not built, changes here are
-  not exercised by CI. If you edit it, verify it still matches the current
-  `pmix_pnet_module_t` and only enable it deliberately.
 - **`collect_inventory` reports presence but not contents.** It confirms a
   matching NIC exists but does not populate inventory; treat inventory
   support as unfinished.
