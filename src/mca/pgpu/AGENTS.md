@@ -361,21 +361,27 @@ implement it, follow the top-level thread-shifting rules.
 
 The framework **base** is always compiled into `libpmix` (via
 `base/Makefile.include`); the top-level `Makefile.am` builds
-`libmca_pgpu.la` with `sources =` empty apart from the base. Each
-component ships a `configure.m4` and a `Makefile.am`:
+`libmca_pgpu.la` with `sources =` empty apart from the base:
 
-- The three **vendor** components (`amd`, `intel`, `nvd`) build
-  unconditionally. Their `configure.m4` looks for nothing because there is
-  nothing to look for: no library, no SDK, no header. Keep it that way —
-  whether a component does any work is a property of the machine the
-  daemon runs on, and only `component_open` is in a position to know it.
-- The **`test`** component builds only when `--with-pgpu-test` is passed
-  to `configure`, and never ships in a normal build. It is the way to
-  exercise the launch path on a host with no GPU (select it at runtime
-  with `PMIX_MCA_pgpu=test`).
+- The three **vendor** components (`amd`, `intel`, `nvd`) ship a
+  `Makefile.am` and **no `configure.m4`** — they build unconditionally,
+  and the MCA machinery configures a component with no `configure.m4`
+  by itself. Keep it that way: there is nothing to look for (no library,
+  no SDK, no header), and whether a component has work to do is a
+  property of the machine the *daemon* runs on, which only
+  `component_open` is in a position to know. They previously carried a
+  `configure.m4` that did nothing but always succeed; the one visible
+  consequence of dropping it is that the configure summary no longer
+  prints a `GPUs / AMD|Intel|NVIDIA: yes` line for a component that
+  always builds.
+- The **`test`** component does ship a `configure.m4`, and that one
+  earns its place: it adds the `--with-pgpu-test` `AC_ARG_WITH` that
+  keeps the component out of a normal build. It is the way to exercise
+  the launch path on a host with no GPU (select it at runtime with
+  `PMIX_MCA_pgpu=test`).
 
-Merely editing a `Makefile.am` needs only `make`, but changing a
-`configure.m4` or adding/removing a component directory changes the wiring
+Merely editing a `Makefile.am` needs only `make`, but adding or removing
+a `configure.m4` — or a component directory — changes the wiring
 `configure` resolves, so the full `./autogen.pl && ./configure && make`
 regen is required. `pgpu` ships **no `show_help` text**, so the
 regenerate-the-help-content golden rule does not apply here.
@@ -398,15 +404,16 @@ regenerate-the-help-content golden rule does not apply here.
   `pmix_util_harvest_envars`, pack as `PMIX_ENVAR`, compress via
   `pmix_compress`, and stash under a unique per-component blob key so
   `setup_local` can find and unpack it.
-- Do **not** invent a `configure.m4` gate unless the component genuinely
-  needs something at build time (a header, a library to link). A component
-  that only reads the topology and sets envars should build everywhere and
-  decline at run time in `component_open` — the build host is not the run
-  host, so a build-time gate answers the wrong question. Add the
-  `PMIX_SUMMARY_ADD` line either way so the configure summary reports it.
-  The `test` component's `--with-pgpu-test` `AC_ARG_WITH` is the template
-  for a deliberate opt-in, which is a different thing: it exists so a
-  component meant only for testing does not load on a real system.
+- **Ship no `configure.m4` at all** unless the component genuinely needs
+  something at build time (a header, a library to link, or a deliberate
+  opt-in). A component that only reads the topology and sets envars should
+  build everywhere and decline at run time in `component_open` — the build
+  host is not the run host, so a build-time gate answers the wrong
+  question — and a `configure.m4` whose whole body is "succeed, and add a
+  summary line saying so" is worth less than the file it lives in. The
+  `test` component's `--with-pgpu-test` `AC_ARG_WITH` is the template for
+  the case that does earn one: it exists so a component meant only for
+  testing does not load on a real system.
 - The launch API calls (`pmix_pgpu.allocate` / `.setup_local` /
   `.setup_fork`) are already wired into the server the way `pnet` is; a
   new component inherits them for free. The `test` component is the

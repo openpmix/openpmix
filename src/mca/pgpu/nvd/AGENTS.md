@@ -27,18 +27,16 @@ include list (`CUDA_*,NCCL_*`).
 | `pgpu_nvd.h` | Component struct `pmix_pgpu_nvd_component_t`, module extern, and the blob/inventory key `#define`s. |
 | `pgpu_nvd_component.c` | Component struct + open/close/register/query. Priority **10**. |
 | `pgpu_nvd.c` | The module: `allocate`, `setup_local`, and the two inventory stubs. |
-| `configure.m4` | Build gate — **hard-disabled** (`test "yes" = "no"`). |
 
-## Availability (why it never activates)
+## Availability
 
-Two independent gates keep `nvd` inactive:
+There is **no `configure.m4` and no build gate**: the component links
+nothing and needs no vendor SDK, so it builds everywhere and the MCA
+machinery configures a component with no `configure.m4` by itself. It
+previously carried one whose whole body was `AS_IF([test "yes" = "no"],
+...)` — it never built at all.
 
-1. **Build gate.** `configure.m4` runs
-   `AS_IF([test "yes" = "no"], [build], [do not build])`, always taking
-   the not-built branch, so the component is compiled out and never
-   appears in `base/static-components.h`. The configure summary reports
-   `GPUs / NVIDIA` as not-happy.
-2. **Runtime gate (only relevant if built).** `component_open` returns
+The question is settled at **run** time. `component_open` returns
    `pmix_hwloc_check_vendor(&pmix_globals.topology, 0x10de, 0x302)`, which
    succeeds only if the node topology contains a PCI device with NVIDIA's
    vendor ID `0x10de` and class `0x302`. Absent matching hardware (or a
@@ -92,13 +90,10 @@ The bodies match the other vendor components:
 
 ## Gotchas
 
-- Do not describe `nvd` as functional: it is not built in a default
-  configuration and its inventory functions are no-ops. Its
-  envar-harvesting `allocate`/`setup_local` do compile and work when the
-  component is enabled.
+- Its inventory functions are no-ops. Do not describe those as working.
 - Keep `PMIX_PGPU_NVD_BLOB` / `PMIX_PGPU_NVD_INVENTORY_KEY` unique across
   components; `setup_local` claims its data by matching the blob key.
-- Bringing it to life means replacing the `configure.m4` placeholder with
-  real CUDA-runtime detection and implementing the inventory functions.
-  `configure.m4` changes require the full `./autogen.pl && ./configure &&
-  make` regen.
+- What is left to do here is the inventory functions. Do **not** answer
+  that with a `configure.m4` gate detecting a CUDA runtime: whether this
+  component has work to do is a property of the node the daemon runs on,
+  and the build host is routinely not that node.
