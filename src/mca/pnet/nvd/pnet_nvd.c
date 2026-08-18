@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -41,6 +41,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_environ.h"
 
 #include "pnet_nvd.h"
@@ -51,6 +52,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
                               pmix_list_t *ilist);
 static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
                                          pmix_info_t info[], size_t ninfo);
+static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory);
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
@@ -59,8 +61,18 @@ pmix_pnet_module_t pmix_pnet_nvd_module = {
     .name = "nvd",
     .allocate = allocate,
     .setup_local_network = setup_local_network,
+    .setup_fork = setup_fork,
     .collect_inventory = collect_inventory,
     .deliver_inventory = deliver_inventory
+};
+
+/* The PCI families this component opened for - see component_open.  A
+ * process's assignment is filtered by the same pair, because a node can
+ * carry more than one fabric and naming somebody else's NIC in these
+ * variables is worse than naming none. */
+static const pmix_pnet_pcimatch_t mymatch[] = {
+    {0x15b3, 0x207},        /* Mellanox InfiniBand controller */
+    {0x10de, 0x207}         /* the same under NVIDIA's vendor id */
 };
 
 /* NOTE: if there is any binary data to be transferred, then
@@ -211,6 +223,70 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     }
 
     return rc;
+}
+
+/* Name this process's Mellanox NICs to the libraries that will use them.
+ *
+ * Both variables are overwritten if already set.  A process mapped against
+ * a device has made the more specific request, and the names written here
+ * come from the topology as this daemon sees it - so where a resource
+ * manager has already narrowed what the node presents, they are a subset of
+ * what is visible and naming a subset composes correctly.
+ *
+ * NCCL matches an HCA by name, so the selector - the OS device name - goes
+ * in as it stands.
+ *
+ * UCX names a device *port*, "mlx5_0:1", and matches each entry of
+ * UCX_NET_DEVICES as a glob, so "mlx5_0:*" is this card whatever ports it
+ * turns out to have and without PMIx having to choose one.  The ":" is what
+ * makes that safe: "mlx5_0*" would also match "mlx5_01" and "mlx5_10" on a
+ * node with enough cards, which is precisely the silent over-selection
+ * these variables exist to prevent.
+ */
+static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
+{
+    pmix_status_t rc;
+    char *val = NULL, *ucx = NULL, *port = NULL;
+    char **devs = NULL, **globs = NULL;
+    int n;
+
+    rc = pmix_pnet_base_get_assigned_devices(proc, mymatch,
+                                             sizeof(mymatch) / sizeof(mymatch[0]),
+                                             &val);
+    if (PMIX_SUCCESS != rc) {
+        /* this process was not mapped against a NIC of ours - the ordinary
+         * case, and not something to report */
+        return rc;
+    }
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:nvd: assigning %s to %s", val, PMIX_NAME_PRINT(proc));
+
+    PMIx_Setenv("NCCL_IB_HCA", val, true, env);
+
+    devs = PMIx_Argv_split(val, ',');
+    for (n = 0; NULL != devs && NULL != devs[n]; n++) {
+        pmix_asprintf(&port, "%s:*", devs[n]);
+        if (NULL == port) {
+            PMIx_Argv_free(devs);
+            PMIx_Argv_free(globs);
+            free(val);
+            return PMIX_ERR_NOMEM;
+        }
+        PMIx_Argv_append_nosize(&globs, port);
+        free(port);
+    }
+    PMIx_Argv_free(devs);
+    if (NULL != globs) {
+        ucx = PMIx_Argv_join(globs, ',');
+        PMIx_Argv_free(globs);
+        if (NULL != ucx) {
+            PMIx_Setenv("UCX_NET_DEVICES", ucx, true, env);
+            free(ucx);
+        }
+    }
+    free(val);
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,

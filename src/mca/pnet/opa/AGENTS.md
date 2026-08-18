@@ -24,7 +24,7 @@ hardware is present, so on most machines it is built but never selected.
 |------|----------|
 | `pnet_opa.h` | Component struct type + blob/inventory key `#define`s. |
 | `pnet_opa_component.c` | Component struct, `component_register`, `component_open` (hwloc gate), `component_query` (priority **10**). |
-| `pnet_opa.c` | The module: `allocate` / `setup_local_network` / `collect_inventory` / `deliver_inventory`. |
+| `pnet_opa.c` | The module: `allocate` / `setup_local_network` / `setup_fork` / `collect_inventory` / `deliver_inventory`. |
 
 There is deliberately **no `configure.m4`**: it used to hold
 `AS_IF([test "yes" = "yes"], …)` — always succeed, and add an `OmniPath`
@@ -54,12 +54,13 @@ pmix_pnet_module_t pmix_opa_module = {
     .name = "opa",
     .allocate = allocate,
     .setup_local_network = setup_local_network,
+    .setup_fork = setup_fork,
     .collect_inventory = collect_inventory,
     .deliver_inventory = deliver_inventory
 };
 ```
 
-`init`, `finalize`, `setup_fork`-family, and the fabric slots are `NULL`.
+`init`, `finalize`, the cleanup hooks, and the fabric slots are `NULL`.
 The signatures match the current `pmix_pnet_module_t`
 (`setup_local_network` takes a `pmix_nspace_env_cache_t *`; the inventory
 functions take a list / plain args, not callbacks).
@@ -100,6 +101,25 @@ into every child). As a special case, when it sees the
 `OMPI_MCA_orte_precondition_transports` envar it also stores the value as
 a `PMIX_CREDENTIAL` job-level key (`PMIX_GDS_STORE_KV` on the wildcard
 rank) so it is queryable as job info, not just an envar.
+
+### `setup_fork`
+
+Names this process's HFIs to the fabric software that will use them. It
+asks `pmix_pnet_base_set_assigned_devices()` for the process's devices
+filtered by the same PCI `(vendor, class)` pair `component_open` probed
+for — `0x8086` / `0x208`, which matters because Intel also makes ethernet
+controllers and those report class `0x200` — and writes the result to
+**`PSM3_NIC`**, which selects by NIC name.
+
+PSM2's `HFI_UNIT` and OPX's `FI_OPX_HFI_SELECT` are deliberately **not**
+set. Both take a unit *ordinal*, and an ordinal means something only
+against the enumeration it came from, which is the driver's rather than
+one PMIx performed. The trailing digit of `hfi1_0` looks like that
+ordinal and usually is, but "usually" is the wrong standard: a wrong
+value in these variables does not fail, it quietly puts the process on
+somebody else's HFI. If hwloc ever records the unit the driver reported —
+as it does for Level Zero devices, see `pgpu/intel` — this is where it
+would be used.
 
 ### `collect_inventory` / `deliver_inventory`
 

@@ -53,6 +53,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                               pmix_list_t *ilist);
 static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
                                          pmix_info_t info[], size_t ninfo);
+static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory);
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
@@ -61,8 +62,17 @@ pmix_pnet_module_t pmix_opa_module = {
     .name = "opa",
     .allocate = allocate,
     .setup_local_network = setup_local_network,
+    .setup_fork = setup_fork,
     .collect_inventory = collect_inventory,
     .deliver_inventory = deliver_inventory
+};
+
+/* The PCI family this component opened for - see component_open.  Intel
+ * also makes ethernet controllers, which report class 0x200 and are not
+ * what this component is for, so the class is part of the question and not
+ * just the vendor. */
+static const pmix_pnet_pcimatch_t mymatch[] = {
+    {0x8086, 0x208}         /* Intel fabric controller (Omni-Path HFI) */
 };
 
 /* some network transports require a little bit of information to
@@ -383,6 +393,28 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     }
 
     return rc;
+}
+
+/* Name this process's HFIs to the fabric software that will use them.
+ *
+ * PSM3 selects by NIC name, which is the selector the topology already
+ * supplies, so that variable can be set from the assignment as it stands.
+ *
+ * PSM2's HFI_UNIT and OPX's FI_OPX_HFI_SELECT are deliberately NOT set.
+ * Both take a unit *ordinal* rather than a name, and an ordinal is
+ * meaningful only against the enumeration it came from - which is the
+ * driver's, not one PMIx performed.  The trailing digit of "hfi1_0" looks
+ * like that ordinal and usually is, but "usually" is the wrong standard
+ * here: a wrong value in these variables does not fail, it quietly puts the
+ * process on somebody else's HFI.  If hwloc ever records the unit the
+ * driver reported, as it does for Level Zero devices, this is where it
+ * would be used.
+ */
+static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
+{
+    return pmix_pnet_base_set_assigned_devices(proc, mymatch,
+                                               sizeof(mymatch) / sizeof(mymatch[0]),
+                                               "PSM3_NIC", env);
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,

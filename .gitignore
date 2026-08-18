@@ -326,6 +326,7 @@ test/unit/tool_api
 test/unit/tool_evcache
 test/unit/event_forward
 test/unit/pgpu_visible_devices
+test/unit/pnet_assigned_devices
 test/unit/pgpu_affinity_mask
 test/unit/tool_relay
 test/unit/run_gds_fallback.pl
