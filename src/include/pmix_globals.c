@@ -69,11 +69,22 @@ static bool dirpath_is_empty(const char *path);
 
 static void nsenvcon(pmix_nspace_env_cache_t *p)
 {
+    /* PMIX_NEW mallocs rather than callocs, so this is not redundant: the
+     * destructor below releases this reference, and it has to be able to
+     * tell "never assigned" from "assigned" */
+    p->ns = NULL;
     PMIX_CONSTRUCT(&p->envars, pmix_list_t);
 }
 static void nsenvdes(pmix_nspace_env_cache_t *p)
 {
     PMIX_LIST_DESTRUCT(&p->envars);
+    /* whoever hands this object a namespace retains it for us (pnet and
+     * pgpu both do), so the reference is ours to give back - without this
+     * the namespace object outlived the server's own release of it, and
+     * every job leaked one */
+    if (NULL != p->ns) {
+        PMIX_RELEASE(p->ns);
+    }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_nspace_env_cache_t,
                                 pmix_list_item_t,
