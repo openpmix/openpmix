@@ -65,6 +65,11 @@ unchanged checks), plus `range` and `info`/`ninfo` for the event.
 4. Thread-shift to `add_tracker`, which appends the tracker and arms an
    `evtimer` (`file_sample`) at `tv`.
 
+The path itself is validated before the tracker is built: it arrives off
+the wire in `monitor->value`, so a value that is not a `PMIX_STRING`, or
+a `NULL` string, is rejected with `PMIX_ERR_BAD_PARAM` rather than handed
+to `strdup`.
+
 ## `file_sample` — the staleness check
 
 Fires every `tv` seconds:

@@ -193,6 +193,14 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pm
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
+    /* the request names the file in the monitor's value, and it arrives
+     * off the wire from a client - so the type has to be checked and the
+     * string can be NULL. We claim the request (the key was ours) and
+     * reject it rather than handing strdup a NULL. */
+    if (PMIX_STRING != monitor->value.type || NULL == monitor->value.data.string) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* setup to track this monitoring operation */
     ft = PMIX_NEW(file_tracker_t);
     PMIX_RETAIN(requestor);
