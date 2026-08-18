@@ -46,9 +46,10 @@
 #include <mach/mach_host.h>
 #include <mach/vm_statistics.h>
 
-#include <ifaddrs.h>
 #include <net/if.h>
 #include <net/if_dl.h>
+#include <net/route.h>
+#include <stddef.h>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOBSD.h>
@@ -134,10 +135,24 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     uint16_t u16;
     int32_t i32;
     struct timeval evtime;
-    double dtime;
+    uint64_t nsec;
     void *cache;
     time_t sample_time;
     pmix_data_array_t darray;
+
+    /* Establish that the process is still there before building an
+     * entry for it. libproc stops answering for a pid the moment it
+     * exits, and a periodic monitor samples processes that come and go,
+     * so a vanished process is an absence to report rather than a
+     * failure: update() skips it and keeps the rest of the sample.
+     * Without this the peer still produced a record - a process ID, a
+     * pid and a sample time with no statistics behind them - which a
+     * caller cannot tell apart from a process that simply had no
+     * fields requested. */
+    nb = proc_pidinfo(peer->info->pid, PROC_PIDTBSDINFO, 0, &bsd, sizeof(bsd));
+    if (nb != (int) sizeof(bsd)) {
+        return PMIX_ERR_NOT_FOUND;
+    }
 
     time(&sample_time);
     cache = PMIx_Info_list_start();
@@ -167,10 +182,15 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     nb = proc_pidinfo(peer->info->pid, PROC_PIDTASKINFO, 0, &pti, sizeof(pti));
     if (nb == (int) sizeof(pti)) {
         if (pst->time) {
-            /* pti reports CPU time in nanoseconds */
-            dtime = (double) (pti.pti_total_user + pti.pti_total_system) / 1.0e9;
-            evtime.tv_sec = (int) dtime;
-            evtime.tv_usec = (int) (1000000.0 * (dtime - evtime.tv_sec));
+            /* pti reports CPU time in nanoseconds. Split it with integer
+             * arithmetic and carry the seconds at the width of a time_t:
+             * routing it through a double loses low-order nanoseconds
+             * once the count is large, and narrowing to an int caps the
+             * result at 68 CPU-years - which a long-lived, many-threaded
+             * process on a large node does reach. */
+            nsec = (uint64_t) pti.pti_total_user + (uint64_t) pti.pti_total_system;
+            evtime.tv_sec = (time_t) (nsec / 1000000000ULL);
+            evtime.tv_usec = (suseconds_t) ((nsec % 1000000000ULL) / 1000);
             rc = PMIx_Info_list_add(cache, PMIX_PROC_TIME, (void *) &evtime, PMIX_TIMEVAL);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -212,16 +232,13 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
         }
     }
 
-    /* pull the BSD-level info for the process state */
+    /* the process state, from the BSD-level info fetched above */
     if (pst->state) {
-        nb = proc_pidinfo(peer->info->pid, PROC_PIDTBSDINFO, 0, &bsd, sizeof(bsd));
-        if (nb == (int) sizeof(bsd)) {
-            rc = PMIx_Info_list_add(cache, PMIX_PROC_OS_STATE,
-                                    (char *) proc_state_string(bsd.pbi_status), PMIX_STRING);
-            if (PMIX_SUCCESS != rc) {
-                PMIx_Info_list_release(cache);
-                return rc;
-            }
+        rc = PMIx_Info_list_add(cache, PMIX_PROC_OS_STATE,
+                                (char *) proc_state_string(bsd.pbi_status), PMIX_STRING);
+        if (PMIX_SUCCESS != rc) {
+            PMIx_Info_list_release(cache);
+            return rc;
         }
     }
 
@@ -254,6 +271,10 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
         return rc;
     }
     rc = PMIx_Info_list_add(answer, PMIX_PROC_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+    /* the add deep-copies the array into the list, so this one is still
+     * ours - keeping it leaks a full sample for every process on every
+     * tick of a periodic monitor */
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
 
     return rc;
 }
@@ -298,7 +319,10 @@ static bool disk_bsd_name(io_registry_entry_t drive, char *name, size_t namelen)
                                                                kCFAllocatorDefault,
                                                                kIORegistryIterateRecursively);
         if (NULL != cfname) {
-            if (CFStringGetCString(cfname, name, namelen, kCFStringEncodingUTF8)) {
+            /* the registry hands back whatever type the property holds,
+             * and only a string may be passed to CFStringGetCString */
+            if (CFGetTypeID(cfname) == CFStringGetTypeID() &&
+                CFStringGetCString(cfname, name, namelen, kCFStringEncodingUTF8)) {
                 found = true;
             }
             CFRelease(cfname);
@@ -443,6 +467,7 @@ static pmix_status_t disk_stat(void *answer,
             return rc;
         }
         rc = PMIx_Info_list_add(answer, PMIX_DISK_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
         if (PMIX_SUCCESS != rc) {
             IOObjectRelease(drives);
             return rc;
@@ -460,11 +485,23 @@ static pmix_status_t disk_stat(void *answer,
     return PMIX_SUCCESS;
 }
 
+/* The interface counters have to come off the routing socket rather than
+ * out of getifaddrs(). getifaddrs() hands back a struct if_data, whose
+ * byte and packet counts are u_int32_t: a busy interface passes 4 GiB in
+ * minutes and the counter silently wraps, so successive samples of a
+ * monitor go backwards. NET_RT_IFLIST2 returns the same per-interface
+ * data as a struct if_data64, which is what the numbers actually need to
+ * be reported at. The message walk is the same one netstat(1) does. */
 static pmix_status_t net_stat(void *answer, char **nets,
                               pmix_netstats_t *netst)
 {
-    struct ifaddrs *ifap, *ifa;
-    struct if_data *ifd;
+    int mib[6] = {CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0};
+    char *buf, *next, *lim;
+    size_t buflen, hdrlen, namelen;
+    struct if_msghdr2 *ifm;
+    struct sockaddr_dl *sdl;
+    struct if_data64 *ifd;
+    char ifname[IFNAMSIZ];
     void *cache;
     size_t n;
     bool takeit;
@@ -473,24 +510,60 @@ static pmix_status_t net_stat(void *answer, char **nets,
     time_t sample_time;
     pmix_status_t rc;
 
-    if (0 != getifaddrs(&ifap)) {
+    /* the name follows the fixed part of the link-level address, so that
+     * is the least a message can carry and still name an interface */
+    hdrlen = offsetof(struct sockaddr_dl, sdl_data);
+
+    if (0 != sysctl(mib, 6, NULL, &buflen, NULL, 0) || 0 == buflen) {
         /* not an error if we cannot read this as it isn't critical */
         return PMIX_ERR_NOT_FOUND;
     }
+    buf = (char *) malloc(buflen);
+    if (NULL == buf) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (0 != sysctl(mib, 6, buf, &buflen, NULL, 0)) {
+        free(buf);
+        return PMIX_ERR_NOT_FOUND;
+    }
+    lim = buf + buflen;
 
-    for (ifa = ifap; NULL != ifa; ifa = ifa->ifa_next) {
-        /* the per-interface counters live on the AF_LINK entry */
-        if (NULL == ifa->ifa_addr || AF_LINK != ifa->ifa_addr->sa_family ||
-            NULL == ifa->ifa_data) {
+    for (next = buf; next < lim; next += ifm->ifm_msglen) {
+        ifm = (struct if_msghdr2 *) next;
+        /* every routing message opens with its own length; a zero one
+         * would spin here and an overlong one would step past the end of
+         * the buffer, so neither is walked past */
+        if (ifm->ifm_msglen < sizeof(u_short) + 2 * sizeof(u_char) ||
+            (size_t) (lim - next) < (size_t) ifm->ifm_msglen) {
+            break;
+        }
+        /* NET_RT_IFLIST2 also returns per-address messages, which are a
+         * different and shorter struct - take only the interface ones,
+         * and only when the message is long enough to hold what we are
+         * about to read out of it */
+        if (RTM_IFINFO2 != ifm->ifm_type ||
+            (size_t) ifm->ifm_msglen < sizeof(struct if_msghdr2) + hdrlen) {
             continue;
         }
+        sdl = (struct sockaddr_dl *) (ifm + 1);
+        namelen = sdl->sdl_nlen;
+        if (AF_LINK != sdl->sdl_family || 0 == namelen ||
+            sizeof(ifname) <= namelen ||
+            (size_t) ifm->ifm_msglen < sizeof(struct if_msghdr2) + hdrlen + namelen) {
+            continue;
+        }
+        /* sdl_data is not NUL-terminated - it is nlen name bytes
+         * followed by the link-layer address */
+        memcpy(ifname, sdl->sdl_data, namelen);
+        ifname[namelen] = '\0';
+
         // see if this is a network they want
         if (NULL == nets) {
             takeit = true;
         } else {
             takeit = false;
             for (n = 0; NULL != nets[n]; n++) {
-                if (0 == strcmp(ifa->ifa_name, nets[n])) {
+                if (0 == strcmp(ifname, nets[n])) {
                     takeit = true;
                     break;
                 }
@@ -499,13 +572,13 @@ static pmix_status_t net_stat(void *answer, char **nets,
         if (!takeit) {
             continue;
         }
-        ifd = (struct if_data *) ifa->ifa_data;
+        ifd = &ifm->ifm_data;
         time(&sample_time);
 
         /* take the fields of interest */
         cache = PMIx_Info_list_start();
         // start with the network ID
-        rc = PMIx_Info_list_add(cache, PMIX_NETWORK_ID, ifa->ifa_name, PMIX_STRING);
+        rc = PMIx_Info_list_add(cache, PMIX_NETWORK_ID, ifname, PMIX_STRING);
         if (PMIX_SUCCESS != rc) {
             goto neterr;
         }
@@ -563,22 +636,23 @@ static pmix_status_t net_stat(void *answer, char **nets,
         rc = PMIx_Info_list_convert(cache, &darray);
         PMIx_Info_list_release(cache);
         if (PMIX_SUCCESS != rc) {
-            freeifaddrs(ifap);
+            free(buf);
             return rc;
         }
         rc = PMIx_Info_list_add(answer, PMIX_NETWORK_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
         if (PMIX_SUCCESS != rc) {
-            freeifaddrs(ifap);
+            free(buf);
             return rc;
         }
         continue;
 
     neterr:
         PMIx_Info_list_release(cache);
-        freeifaddrs(ifap);
+        free(buf);
         return rc;
     }
-    freeifaddrs(ifap);
+    free(buf);
     return PMIX_SUCCESS;
 }
 
@@ -591,6 +665,8 @@ static pmix_status_t node_stat(void *ilist, pmix_ndstats_t *ndst)
     vm_statistics64_data_t vm;
     vm_size_t pagesize = 0;
     mach_msg_type_number_t cnt;
+    mach_port_t host;
+    bool gotvm = false;
     size_t len;
     float fval;
     pmix_status_t rc;
@@ -636,27 +712,38 @@ static pmix_status_t node_stat(void *ilist, pmix_ndstats_t *ndst)
 
     /* free and cached memory from the mach VM statistics */
     if (ndst->mfree || ndst->mcached) {
-        if (KERN_SUCCESS == host_page_size(mach_host_self(), &pagesize)) {
-            cnt = HOST_VM_INFO64_COUNT;
-            if (KERN_SUCCESS == host_statistics64(mach_host_self(), HOST_VM_INFO64,
-                                                  (host_info64_t) &vm, &cnt)) {
-                if (ndst->mfree) {
-                    fval = (float) ((uint64_t) vm.free_count * (uint64_t) pagesize)
-                           / (1024.0 * 1024.0);
-                    rc = PMIx_Info_list_add(ilist, PMIX_NODE_MEM_FREE, &fval, PMIX_FLOAT);
-                    if (PMIX_SUCCESS != rc) {
-                        return rc;
-                    }
+        /* mach_host_self() hands back a send right, adding a user
+         * reference to the host port every time it is called, so the
+         * reference has to be given back before we leave. A periodic
+         * monitor calls this on every tick, and the port name would
+         * otherwise accumulate references for the life of the server.
+         * Read the numbers out first and release the port before any
+         * path that can return early. */
+        host = mach_host_self();
+        cnt = HOST_VM_INFO64_COUNT;
+        if (KERN_SUCCESS == host_page_size(host, &pagesize) &&
+            KERN_SUCCESS == host_statistics64(host, HOST_VM_INFO64,
+                                              (host_info64_t) &vm, &cnt)) {
+            gotvm = true;
+        }
+        mach_port_deallocate(mach_task_self(), host);
+        if (gotvm) {
+            if (ndst->mfree) {
+                fval = (float) ((uint64_t) vm.free_count * (uint64_t) pagesize)
+                       / (1024.0 * 1024.0);
+                rc = PMIx_Info_list_add(ilist, PMIX_NODE_MEM_FREE, &fval, PMIX_FLOAT);
+                if (PMIX_SUCCESS != rc) {
+                    return rc;
                 }
-                if (ndst->mcached) {
-                    /* externally-backed (file-cache) pages are the closest
-                     * analog to Linux "cached" memory */
-                    fval = (float) ((uint64_t) vm.external_page_count * (uint64_t) pagesize)
-                           / (1024.0 * 1024.0);
-                    rc = PMIx_Info_list_add(ilist, PMIX_NODE_MEM_CACHED, &fval, PMIX_FLOAT);
-                    if (PMIX_SUCCESS != rc) {
-                        return rc;
-                    }
+            }
+            if (ndst->mcached) {
+                /* externally-backed (file-cache) pages are the closest
+                 * analog to Linux "cached" memory */
+                fval = (float) ((uint64_t) vm.external_page_count * (uint64_t) pagesize)
+                       / (1024.0 * 1024.0);
+                rc = PMIx_Info_list_add(ilist, PMIX_NODE_MEM_CACHED, &fval, PMIX_FLOAT);
+                if (PMIX_SUCCESS != rc) {
+                    return rc;
                 }
             }
         }
@@ -730,21 +817,38 @@ static void update(int sd, short args, void *cbdata)
     // start with general directives
 
     if (op->active) {
-        // avoid the default event
+        /* Avoid the default event. Both of these have to make it into the
+         * answer: without them the sample is delivered as a default event
+         * with no range restriction - to every handler in the job rather
+         * than to the one process that asked for it - so a failure here
+         * is not something to shrug off. */
         PMIX_INFO_LIST_ADD(rc, answer, PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
 
         /* target this notification solely to the requestor */
         PMIX_INFO_LIST_ADD(rc, answer, PMIX_EVENT_CUSTOM_RANGE, &op->requestor, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
     }
 
     // check for pstat request
     if (0 != memcmp(&op->pstats, &zproc, sizeof(pmix_procstats_t))) {
         PMIX_LIST_FOREACH(plist, &op->peers, pmix_peerlist_t) {
             rc = proc_stat(answer, plist->peer, &op->pstats);
+            if (PMIX_ERR_NOT_FOUND == rc) {
+                /* the process is gone - libproc stopped answering for it
+                 * between our being handed the peer and our reading it.
+                 * That is ordinary, and the remaining peers still have
+                 * data to report, so skip it rather than abandoning the
+                 * whole sample */
+                continue;
+            }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
-                PMIx_Info_list_release(answer);
-                goto reset;
+                goto error;
             }
         }
     }
@@ -756,72 +860,62 @@ static void update(int sd, short args, void *cbdata)
         rc = PMIx_Info_list_add(ilist, PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
         if (PMIX_SUCCESS != rc) {
             PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
         // add our nodeID
         rc = PMIx_Info_list_add(ilist, PMIX_NODEID, &pmix_globals.nodeid, PMIX_UINT32);
         if (PMIX_SUCCESS != rc) {
             PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
         // collect the stats
         rc = node_stat(ilist, &op->ndstats);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
         if (0 != memcmp(&op->netstats, &znet, sizeof(pmix_netstats_t))) {
             nettaken = true;
             rc = net_stat(ilist, op->nets, &op->netstats);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
                 PMIx_Info_list_release(ilist);
-                PMIx_Info_list_release(answer);
-                goto reset;
+                goto error;
             }
         }
         if (0 != memcmp(&op->dkstats, &zdk, sizeof(pmix_dkstats_t))) {
             dktaken = true;
             rc = disk_stat(ilist, op->disks, &op->dkstats);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
                 PMIx_Info_list_release(ilist);
-                PMIx_Info_list_release(answer);
-                goto reset;
+                goto error;
             }
         }
         // add this to the final answer
         rc = PMIx_Info_list_convert(ilist, &darray);
-        if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(ilist);
-            PMIx_Info_list_release(answer);
-            goto reset;
-        }
         PMIx_Info_list_release(ilist);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
         rc = PMIx_Info_list_add(answer, PMIX_NODE_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
         PMIX_DATA_ARRAY_DESTRUCT(&darray);
         if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(answer);
-            goto reset;
+            goto error;
         }
     }
 
     // check for net stats
     if (!nettaken && 0 != memcmp(&op->netstats, &znet, sizeof(pmix_netstats_t))) {
         rc = net_stat(answer, op->nets, &op->netstats);
-        if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(answer);
-            goto reset;
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+            goto error;
         }
     }
 
     // check for disk stats
     if (!dktaken && 0 != memcmp(&op->dkstats, &zdk, sizeof(pmix_dkstats_t))) {
         rc = disk_stat(answer, op->disks, &op->dkstats);
-        if (PMIX_SUCCESS != rc) {
-            PMIx_Info_list_release(answer);
-            goto reset;
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+            goto error;
         }
     }
 
@@ -830,7 +924,12 @@ static void update(int sd, short args, void *cbdata)
         rc = PMIx_Info_list_convert(answer, &darray);
         PMIx_Info_list_release(answer);
         if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
+            /* nothing was collected this time around - that is an empty
+             * sample, not a failure, and logging it would put a line in
+             * the output on every tick of the timer */
+            if (PMIX_ERR_EMPTY != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
             goto reset;
         }
         // setup the event
@@ -842,8 +941,25 @@ static void update(int sd, short args, void *cbdata)
                                PMIX_RANGE_CUSTOM, cb->info, cb->ninfo,
                                evrelease, (void *) cb);
         if (PMIX_SUCCESS != rc) {
+            /* evrelease only runs once the notification has been
+             * delivered, so a rejected notification leaves the caddy -
+             * and the sample it carries - ours to release */
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(cb);
         }
+    }
+    goto reset;
+
+error:
+    /* On the timer path the answer list is ours and has to go. On the
+     * synchronous path it belongs to query(), which reads it as soon as
+     * we return - releasing it here left query() converting and
+     * releasing freed memory. Hand the failure back through the caddy
+     * instead and leave the list alone. */
+    if (noreset) {
+        op->cb->status = rc;
+    } else {
+        PMIx_Info_list_release(answer);
     }
 
 reset:
@@ -851,6 +967,32 @@ reset:
         // reset the timer
         pmix_event_evtimer_add(&op->ev, &op->tv);
     }
+}
+
+/* The monitor's value carries the list of fields being requested as a
+ * data array. For a client request that value came off the wire, and
+ * nothing between the unpack in pmix_server_monitor() and here looks at
+ * it - so check the declared type before reading data.darray, or a value
+ * the sender typed as, say, an integer hands us those bytes as a
+ * pointer. An absent value (PMIX_UNDEF) is not malformed: it is how a
+ * caller asks for every field in the category, which is what the base
+ * parse helpers do when handed a NULL array. */
+static pmix_status_t monitor_fields(const pmix_info_t *monitor,
+                                    pmix_info_t **iptr, size_t *sz)
+{
+    *iptr = NULL;
+    *sz = 0;
+
+    if (PMIX_UNDEF == monitor->value.type) {
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_DATA_ARRAY != monitor->value.type ||
+        NULL == monitor->value.data.darray) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *iptr = (pmix_info_t *) monitor->value.data.darray->array;
+    *sz = monitor->value.data.darray->size;
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t query(pmix_proc_t *requestor,
@@ -881,7 +1023,8 @@ static pmix_status_t query(pmix_proc_t *requestor,
 
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_CANCEL)) {
         // cancel an existing monitor operation - ID must be the provided value
-        if (monitor->value.type != PMIX_STRING) {
+        if (PMIX_STRING != monitor->value.type ||
+            NULL == monitor->value.data.string) {
             return PMIX_ERR_BAD_PARAM;
         }
         // cycle through our list of ops operations
@@ -890,7 +1033,11 @@ static pmix_status_t query(pmix_proc_t *requestor,
             return PMIX_SUCCESS;
         }
         PMIX_LIST_FOREACH(op, &pmix_pstat_base.ops, pmix_pstat_op_t) {
-            if (0 == strcmp(monitor->value.data.string, op->id)) {
+            /* an op only carries an id if the request that created it
+             * supplied one - a rate with no PMIX_MONITOR_ID is legal and
+             * leaves it NULL, so it can never match a cancel */
+            if (NULL != op->id &&
+                0 == strcmp(monitor->value.data.string, op->id)) {
                 // terminate this operation
                 pmix_list_remove_item(&pmix_pstat_base.ops, &op->super);
                 PMIX_RELEASE(op);
@@ -908,7 +1055,17 @@ static pmix_status_t query(pmix_proc_t *requestor,
     for (n = 0; n < ndirs; n++) {
         // did they give us an ID for this request?
         if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_ID)) {
-            op->id = strdup(directives[n].value.data.string);
+            if (PMIX_STRING != directives[n].value.type ||
+                NULL == directives[n].value.data.string) {
+                PMIX_RELEASE(op);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            if (NULL == op->id) {
+                /* nothing stops a caller from naming the monitor twice;
+                 * the first name wins, and overwriting would lose the
+                 * string we already took */
+                op->id = strdup(directives[n].value.data.string);
+            }
 
         } else if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_RESOURCE_RATE)) {
             // they are asking us to update it at regular intervals
@@ -928,8 +1085,11 @@ static pmix_status_t query(pmix_proc_t *requestor,
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_PROC_RESOURCE_USAGE)) {
         tgtprocsgiven = false;
         // see which values are to be returned
-        iptr = (pmix_info_t *) monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         pmix_pstat_parse_procstats(&op->pstats, iptr, sz);
 
         // we already know this request involves us since it was checked
@@ -1023,6 +1183,17 @@ processprocs:
         cb.cbdata = PMIx_Info_list_start();
         op->cb = &cb;
         update(0, 0, (void *) op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // convert to info array
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         PMIx_Info_list_release(cb.cbdata);
@@ -1055,8 +1226,11 @@ processprocs:
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_NODE_RESOURCE_USAGE)) {
         // we already know we are a target node since we are
         // being called
-        iptr = (pmix_info_t *) monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // determine what stats to return - might include net and disk values
         pmix_pstat_parse_ndstats(&op->ndstats, iptr, sz);
         pmix_pstat_parse_netstats(&op->nets, &op->netstats, iptr, sz);
@@ -1085,6 +1259,17 @@ processprocs:
         }
         // collect the stats
         update(0, 0, (void *) op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // add this to the final answer
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         if (PMIX_SUCCESS != rc) {
@@ -1126,8 +1311,11 @@ processprocs:
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_DISK_RESOURCE_USAGE)) {
         // we already know we are a target node since we are
         // being called
-        iptr = (pmix_info_t *) monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // assemble any provided disk IDs and/or stat specifications
         pmix_pstat_parse_dkstats(&op->disks, &op->dkstats, iptr, sz);
         // collect the stats
@@ -1135,6 +1323,17 @@ processprocs:
         cb.cbdata = PMIx_Info_list_start();
         op->cb = &cb;
         update(0, 0, (void *) op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // convert to info array
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         PMIx_Info_list_release(cb.cbdata);
@@ -1167,8 +1366,11 @@ processprocs:
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_NET_RESOURCE_USAGE)) {
         // we already know we are a target node since we are
         // being called
-        iptr = (pmix_info_t *) monitor->value.data.darray->array;
-        sz = monitor->value.data.darray->size;
+        rc = monitor_fields(monitor, &iptr, &sz);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // assemble any provided network IDs and/or stat specifications
         pmix_pstat_parse_netstats(&op->nets, &op->netstats, iptr, sz);
         // collect the stats
@@ -1176,6 +1378,17 @@ processprocs:
         cb.cbdata = PMIx_Info_list_start();
         op->cb = &cb;
         update(0, 0, (void *) op);
+        /* update() reports a collection failure through the caddy - the
+         * list it filled is ours, so tear it down here rather than
+         * handing the caller a half-built answer under a success */
+        if (PMIX_SUCCESS != cb.status) {
+            rc = cb.status;
+            PMIx_Info_list_release(cb.cbdata);
+            PMIX_DESTRUCT(&cb);
+            op->cb = NULL;
+            PMIX_RELEASE(op);
+            return rc;
+        }
         // convert to info array
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         PMIx_Info_list_release(cb.cbdata);
