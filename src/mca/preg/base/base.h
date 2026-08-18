@@ -96,6 +96,18 @@ PMIX_EXPORT pmix_status_t pmix_preg_base_parse_regex(const pmix_regex2_t *regex,
                                                       pmix_info_t info[], size_t ninfo,
                                                       char **output);
 
+/* Serialization of a pmix_regex2_t into the deprecated char* form and
+ * back - see preg_base_legacy.c. The decode is done in place: the
+ * returned pmix_regex2_t points into the caller's buffer and must not be
+ * destructed, and "avail" bounds the read (SIZE_MAX for a string the
+ * caller owns, the bytes remaining when reading off the wire). "total"
+ * receives the length of the serialized form, including its framing. */
+PMIX_EXPORT pmix_status_t pmix_preg_base_legacy_encode(const pmix_regex2_t *regex,
+                                                        char **output, size_t *outlen);
+
+PMIX_EXPORT pmix_status_t pmix_preg_base_legacy_decode(const char *input, size_t avail,
+                                                        pmix_regex2_t *regex, size_t *total);
+
 END_C_DECLS
 
 #endif

@@ -11,7 +11,7 @@ the ``gds/hash`` datastore when a namespace is registered.
 For a code-oriented orientation aimed at contributors working *inside*
 the framework, each ``preg`` directory also carries an ``AGENTS.md`` (with
 a ``CLAUDE.md`` symlink): ``src/mca/preg/AGENTS.md`` for the framework as a
-whole, plus one each in ``native/``, ``raw/``, and ``compress/``. This
+whole, plus one each in ``raw/`` and ``compress/``. This
 document explains how regex support is integrated into the wider library;
 those explain each component's internals in detail.
 
@@ -103,16 +103,16 @@ one — the encoding is agnostic to what the values represent, so passing
 the process-map string (``"0,1,2;3,4,5"``: nodes delimited by ``;``, the
 ranks on each node by ``,``) to ``PMIx_generate_regex2`` produces a
 ``pmix_regex2_t`` that is loaded as the ``PMIX_PROC_MAP`` value exactly as
-the node list is loaded as ``PMIX_NODE_MAP``. The two paths do not
-necessarily pick the same scheme — the legacy generators are
-first-success in descending priority, while the regex2 path is
-smallest-wins among the components that implement it (``native`` does not)
-— but that is invisible to the consumer, because every encoding tags
-itself with the scheme that produced it.
+the node list is loaded as ``PMIX_NODE_MAP``.
+
+Both generations pick the encoding the same way, because there is only
+one generator: the deprecated calls produce a ``pmix_regex2_t`` and then
+serialize it, as described under :ref:`the deprecated char* form
+<regex-deprecated-form>` below.
 
 All four entry points are thin wrappers in ``src/server/pmix_server_setup.c``
 that check ``pmix_globals.initialized`` and forward to the corresponding
-``pmix_preg`` module function::
+``pmix_preg`` function::
 
     PMIx_generate_regex   -> pmix_preg.generate_node_regex
     PMIx_generate_ppn     -> pmix_preg.generate_ppn
@@ -206,12 +206,9 @@ returns ``PMIX_ERR_SILENT`` — at least one component is required.
      - Active when
    * - ``compress``
      - 100
-     - a ``pcompress`` (zlib) module supplies ``compress_string``
+     - a ``pcompress`` module supplies ``compress_string``
    * - ``raw``
      - 50
-     - always
-   * - ``native``
-     - 30
      - always
 
 Dispatch (``preg_base_stubs.c``)
@@ -245,76 +242,89 @@ selects the most compact encoding without the caller choosing a component.
 ``parse_regex`` returns to first-success, matching on the ``type`` tag,
 and returns ``PMIX_ERR_NOT_SUPPORTED`` if no active scheme recognizes it.
 
-A practical consequence: because ``raw``'s generators always succeed and
-outrank ``native``, the *legacy* generate path is claimed by ``compress``
-(if present) or ``raw``, and ``native``'s generator is effectively
-shadowed in a default build. ``native`` still serves as the **parser** of
-the ``pmix[...]`` format, which external launchers produce.
+A practical consequence: ``generate_regex`` has **no** built-in fallback,
+unlike the deprecated generators. ``raw`` is what keeps that from
+mattering — its ``generate_regex`` always succeeds, so smallest-wins
+always has a candidate to return. Excluding it with the framework's
+component-selection parameter on a build with no compression library::
 
-In other words, ``native`` only *generates* anything if the higher-priority
-components are kept out of the running, which in practice means asking for
-it explicitly with the framework's component-selection parameter::
+    PMIX_MCA_preg=^raw              # open everything except raw
 
-    PMIX_MCA_preg=native            # open only native
-    PMIX_MCA_preg=^compress         # open everything except compress
+leaves ``preg`` with no generator at all, and ``PMIx_generate_regex2``
+returns ``PMIX_ERR_NOT_SUPPORTED``.
 
-Be aware of what the first form costs: with ``native`` the only active
-component, ``PMIx_generate_regex2`` has no implementer at all
-(``native.generate_regex`` is ``NULL``), so the smallest-wins stub finds no
-candidate and the call fails with ``PMIX_ERR_NOT_SUPPORTED``. Restricting
-the framework to ``native`` is therefore a debugging aid for the
-``pmix[...]`` encoding, not a supported production configuration.
+The parse side has a sharper edge. ``parse_nodes``/``parse_procs`` split
+the input directly when it carries no recognizable framing — that is how
+a plain comma-separated list handed over by a host still works. But when
+the framing *is* recognized and no active component owns the encoding,
+they return ``PMIX_ERR_NOT_SUPPORTED`` rather than splitting the payload.
+That distinction is deliberate: splitting an encoded blob on commas does
+not fail, it yields plausible-looking garbage node names, which is far
+worse than an error.
 
 
 ``preg`` Components
 -------------------
 
-native (src/mca/preg/native/)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Implements PMIx's own range-compressing format, tagged ``pmix``::
-
-    Input:   odin009,odin010,odin011,odin012,odin017,odin018,thor176
-    Output:  pmix[odin[3:9-12,17-18],thor176]
-
-It groups names sharing a prefix, a numeric-field width, and a suffix, and
-coalesces consecutive integers into ``start-end`` ranges. The width
-(``3`` above) preserves leading zeros on expansion. A ``skip`` flag on
-each candidate value enforces order preservation when names of different
-shapes are interleaved. ``native`` implements only the legacy string API
-(``generate_regex`` is ``NULL``); it is the parser of record for
-``pmix[...]`` data whether produced locally or by an external launcher.
-
 raw (src/mca/preg/raw/)
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-The pass-through, tagged ``raw:``. Its generators simply prepend the tag
-and *always succeed*; its parsers strip the tag and ``PMIx_Argv_split``.
-``raw`` implements the **complete** module — every legacy function and
-both regex2 functions — making it the framework's guaranteed encoder of
-last resort and the baseline candidate in the smallest-wins ``generate_regex``
-contest. For input too small or too random to compress, ``raw`` wins.
+The pass-through, ``type = "raw"``. ``generate_regex`` hands back the
+input as the payload and *always succeeds*; ``parse_regex`` hands it back
+again. That makes ``raw`` the framework's guaranteed encoder of last
+resort and the baseline candidate in the smallest-wins contest. For input
+too small or too random to compress, ``raw`` wins outright.
 
 compress (src/mca/preg/compress/)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Runs the list through the ``pcompress`` (zlib) framework. It disables
+Runs the list through the ``pcompress`` framework: ``type = "compress"``,
+``bytes`` = the compressed output, ``len`` = its length. It disables
 itself (its ``component_query`` returns an error, so no module is
 selected) when no compression back end is present, so its encoding must
-never be assumed available. Two tags are involved, one per API generation:
+never be assumed available. At priority 100 it almost always wins the
+smallest-wins contest — but it is also the component most likely to be
+absent, so both configurations must be tested.
 
-* Legacy string form — framed as
-  ``"blob:\0component=zlib:\0size=<N>:\0<N bytes>"``. This contains
-  embedded NUL bytes, which is why ``compress`` implements its own
-  ``copy``/``pack``/``unpack``/``release`` rather than relying on the
-  string fallbacks.
-* regex2 form — ``type = "compress"``, ``bytes`` = raw zlib output,
-  ``len`` = its length (no framing needed, since the struct carries the
-  length explicitly).
+Note that ``compress`` is indifferent to which ``pcompress`` component
+answers (``zlib``, ``zlibng``, ``zstd``, ``lz4``); ``pcompress``
+identifies its own payloads.
 
-At priority 100 it is tried first on every legacy generate and almost
-always wins the smallest-wins regex2 contest — but it is also the
-component most likely to be absent, so both configurations must be tested.
+
+.. _regex-deprecated-form:
+
+The Deprecated ``char *`` Form
+------------------------------
+
+``PMIx_generate_regex`` and ``PMIx_generate_ppn`` hand back a ``char *``
+rather than a ``pmix_regex2_t``, but the two have always been the same
+thing underneath — a type, a length, and a payload. The deprecated form is
+therefore a *serialization* of the current one, and it lives entirely in
+``src/mca/preg/base/preg_base_legacy.c``. Components implement only
+``generate_regex``/``parse_regex`` and never see it.
+
+The layouts are frozen, since they are what a PMIx of any vintage puts on
+the wire for a ``PMIX_REGEX`` value::
+
+    compress:  "blob:\0" "component=zlib:\0" "size=<N>:\0" <N bytes>
+    raw:       "raw:" <NUL-terminated string>
+
+The base builds the deprecated entry points out of that codec:
+``generate_node_regex``/``generate_ppn`` generate a ``pmix_regex2_t`` and
+encode it (falling back to shipping the list uncompressed if the winning
+encoding has no deprecated form); ``parse_nodes``/``parse_procs`` decode,
+call ``parse_regex``, and split on ``,`` or ``;``; ``copy``/``pack``/
+``unpack`` need only the decoder's report of how long the serialized form
+is.
+
+One label in that layout invites misreading. ``component=zlib:`` is a
+fixed constant, **not** a statement about which compressor ran. It was
+emitted unconditionally back when zlib was the only compressor PMIx had,
+and by the time ``zlibng``, ``zstd``, and ``lz4`` arrived it was on the
+wire and could not be changed. Nothing selects a decompressor from it —
+``pcompress`` identifies its own payloads — and it means no more than "a
+preg component wrote this". Do not read it as an abstraction boundary, and
+do not correct it to name the real component: that would break every peer.
 
 
 Wire Format
@@ -328,10 +338,13 @@ this. Per the PMIx interoperability rules this field order is frozen —
 fields may only be appended, never reordered or removed — so that a server
 and client built against different PMIx versions remain compatible.
 
-The legacy string form is serialized either by a component's own
-``pack``/``unpack`` (which ``memcpy`` the exact byte length into the
-buffer, embedded NULs included) or, in the base fallback, as a plain
-``PMIX_STRING``.
+The deprecated ``char *`` form is serialized by
+``pmix_preg_base_pack``/``_unpack``, which ``memcpy`` the exact byte
+length into the buffer, embedded NULs included — it carries its own
+length, so it gets no bfrops framing — or, when the value has no
+recognizable framing, as a plain ``PMIX_STRING``. The unpack side reads
+peer-supplied bytes, so it bounds every read against what remains in the
+buffer.
 
 
 Thread Safety
@@ -366,18 +379,16 @@ Key Source Files
      - public API wrappers into ``pmix_preg``
    * - ``src/mca/preg/preg.h``
      - ``preg`` MCA module interface
-   * - ``src/mca/preg/preg_types.h``
-     - ``pmix_regex_range_t`` / ``pmix_regex_value_t`` helper classes
+   * - ``src/mca/preg/base/preg_base_legacy.c``
+     - serialization of a ``pmix_regex2_t`` to/from the deprecated ``char *``
    * - ``src/mca/preg/base/preg_base_select.c``
      - component selection / priority ordering
    * - ``src/mca/preg/base/preg_base_stubs.c``
      - the ``pmix_preg_base_*`` dispatch functions
-   * - ``src/mca/preg/native/preg_native.c``
-     - the ``pmix[...]`` range compressor and parser
    * - ``src/mca/preg/raw/preg_raw.c``
-     - the ``raw:`` pass-through
+     - the ``raw`` pass-through
    * - ``src/mca/preg/compress/preg_compress.c``
-     - the ``blob:`` / ``compress`` zlib encoder
+     - the ``compress`` encoder over ``pcompress``
    * - ``src/mca/gds/hash/gds_hash.c``
      - node/proc map consumer (``store_map``)
    * - ``src/mca/bfrops/base/bfrop_base_pack.c``

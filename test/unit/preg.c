@@ -6,11 +6,16 @@
  *
  * $HEADER$
  *
- * Unit tests for PMIx_generate_regex2 and PMIx_parse_regex2.
+ * Unit tests for the preg framework: PMIx_generate_regex2 /
+ * PMIx_parse_regex2, and the deprecated PMIx_generate_regex /
+ * PMIx_generate_ppn that the framework base synthesizes from them.
  *
- * Each test calls PMIx_generate_regex2 on a known input, checks that the
- * returned pmix_regex2_t is non-empty, then round-trips through
+ * Each regex2 test calls PMIx_generate_regex2 on a known input, checks
+ * that the returned pmix_regex2_t is non-empty, then round-trips through
  * PMIx_parse_regex2 and verifies the decoded string matches the original.
+ * The deprecated-form tests round-trip through the char* serialization in
+ * preg_base_legacy.c, including the copy and pack/unpack paths that carry
+ * it between peers.
  *
  * A simple PASS/FAIL summary is printed for each case.  The program exits
  * with 0 if all tests pass, 1 otherwise.
@@ -19,6 +24,9 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/bfrops/bfrops.h"
+#include "src/mca/preg/base/base.h"
+#include "src/mca/preg/preg.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_printf.h"
 
@@ -261,6 +269,244 @@ static void test_type_field_set(void)
     if (NULL != regex.bytes) free(regex.bytes);
 }
 
+/* ---- the deprecated char* form -------------------------------------- */
+
+/* Round-trip a list through the deprecated generate/parse pair. The
+ * delimiter picks which of the two the caller would use: ',' is
+ * PMIx_generate_regex + parse_nodes, ';' is PMIx_generate_ppn +
+ * parse_procs. Both are the same encoding underneath, which is the point
+ * of the test. */
+static int legacy_roundtrip(const char *input, int delimiter)
+{
+    char *regex = NULL, *rebuilt = NULL;
+    char **split = NULL;
+    pmix_status_t rc;
+    int ok = 0;
+
+    if (',' == delimiter) {
+        rc = PMIx_generate_regex(input, &regex);
+    } else {
+        rc = PMIx_generate_ppn(input, &regex);
+    }
+    if (PMIX_SUCCESS != rc || NULL == regex) {
+        fprintf(stdout, "    generate failed: %s\n", PMIx_Error_string(rc));
+        return 0;
+    }
+
+    if (',' == delimiter) {
+        rc = pmix_preg.parse_nodes(regex, &split);
+    } else {
+        rc = pmix_preg.parse_procs(regex, &split);
+    }
+    if (PMIX_SUCCESS != rc || NULL == split) {
+        fprintf(stdout, "    parse failed: %s\n", PMIx_Error_string(rc));
+        free(regex);
+        return 0;
+    }
+
+    rebuilt = PMIx_Argv_join(split, delimiter);
+    ok = (NULL != rebuilt && 0 == strcmp(rebuilt, input));
+    if (!ok) {
+        fprintf(stdout, "    expected \"%s\", got \"%s\"\n", input,
+                (NULL == rebuilt) ? "(null)" : rebuilt);
+    }
+
+    PMIx_Argv_free(split);
+    free(rebuilt);
+    free(regex);
+    return ok;
+}
+
+static void test_legacy_nodes(void)
+{
+    report("deprecated node map round-trip",
+           legacy_roundtrip("node01,node02,node03,node17", ','));
+}
+
+static void test_legacy_procs(void)
+{
+    /* the process map: nodes delimited by ';', ranks on each by ',' */
+    report("deprecated process map round-trip",
+           legacy_roundtrip("0,1,2;3,4,5;6", ';'));
+}
+
+/* A plain, unencoded list carries no framing at all - a host is entitled
+ * to hand one straight to PMIX_NODE_MAP, and the parse side has to split
+ * it rather than reject it. */
+static void test_legacy_untagged(void)
+{
+    char **nodes = NULL;
+    pmix_status_t rc;
+    int ok = 0;
+
+    rc = pmix_preg.parse_nodes("nodeA,nodeB,nodeC", &nodes);
+    if (PMIX_SUCCESS == rc && NULL != nodes) {
+        ok = (3 == PMIx_Argv_count(nodes) && 0 == strcmp(nodes[1], "nodeB"));
+        PMIx_Argv_free(nodes);
+    }
+    report("untagged list is split, not rejected", ok);
+}
+
+/* copy() has to reproduce the whole serialized form, which for a
+ * compressed encoding contains embedded NULs - a strdup would truncate
+ * it. Verify by parsing the copy, not by comparing pointers. */
+static void test_legacy_copy(void)
+{
+    char *regex = NULL, *dup = NULL, *rebuilt = NULL;
+    char **nodes = NULL;
+    const char *input = "node01,node02,node03";
+    size_t len = 0;
+    pmix_status_t rc;
+    int ok = 0;
+
+    rc = PMIx_generate_regex(input, &regex);
+    if (PMIX_SUCCESS != rc) {
+        report("deprecated form survives copy", 0);
+        return;
+    }
+
+    rc = pmix_preg.copy(&dup, &len, regex);
+    if (PMIX_SUCCESS == rc && NULL != dup && 0 < len &&
+        PMIX_SUCCESS == pmix_preg.parse_nodes(dup, &nodes)) {
+        rebuilt = PMIx_Argv_join(nodes, ',');
+        ok = (NULL != rebuilt && 0 == strcmp(rebuilt, input));
+        PMIx_Argv_free(nodes);
+        free(rebuilt);
+    }
+    report("deprecated form survives copy", ok);
+
+    free(dup);
+    free(regex);
+}
+
+/* pack/unpack carry the serialized form between peers verbatim - it
+ * supplies its own length, so it gets no bfrops framing. */
+static void test_legacy_pack_unpack(void)
+{
+    pmix_buffer_t buf;
+    char *regex = NULL, *unpacked = NULL, *rebuilt = NULL;
+    char **nodes = NULL;
+    const char *input = "node01,node02,node03";
+    pmix_status_t rc;
+    int ok = 0;
+
+    rc = PMIx_generate_regex(input, &regex);
+    if (PMIX_SUCCESS != rc) {
+        report("deprecated form survives pack/unpack", 0);
+        return;
+    }
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = pmix_preg.pack(&buf, regex);
+    if (PMIX_SUCCESS == rc &&
+        PMIX_SUCCESS == pmix_preg.unpack(&buf, &unpacked) &&
+        NULL != unpacked &&
+        PMIX_SUCCESS == pmix_preg.parse_nodes(unpacked, &nodes)) {
+        rebuilt = PMIx_Argv_join(nodes, ',');
+        ok = (NULL != rebuilt && 0 == strcmp(rebuilt, input));
+        PMIx_Argv_free(nodes);
+        free(rebuilt);
+    }
+    report("deprecated form survives pack/unpack", ok);
+
+    free(unpacked);
+    free(regex);
+    PMIX_DESTRUCT(&buf);
+}
+
+/* Truncated wire data must be declined, not walked off the end of the
+ * buffer. Only the decoder's bounded mode can defend against this - a
+ * deprecated char* carries no length, so the local-string callers can
+ * only trust that what they hold is well-formed. Exercise the mode that
+ * does have a bound, which is the one that reads from a peer. */
+static void test_legacy_truncated(void)
+{
+    /* a blob header cut off at every interesting point */
+    static const char t1[] = "blob:";
+    static const char t2[] = "blob:\0component=zli";
+    static const char t3[] = "blob:\0component=zlib:\0size=";
+    static const char t4[] = "blob:\0component=zlib:\0size=64:\0abc";
+    static const struct {
+        const char *bytes;
+        size_t len;
+    } cases[] = {
+        {t1, sizeof(t1)},   // nothing after the tag
+        {t2, sizeof(t2)},   // label cut in half
+        {t3, sizeof(t3)},   // no digits where the length belongs
+        {t4, sizeof(t4)},   // length claims more payload than is present
+    };
+    pmix_regex2_t r2 = PMIX_REGEX2_STATIC_INIT;
+    size_t total, n;
+    int ok = 1;
+
+    for (n = 0; n < sizeof(cases) / sizeof(cases[0]); n++) {
+        if (PMIX_SUCCESS == pmix_preg_base_legacy_decode(cases[n].bytes, cases[n].len,
+                                                         &r2, &total)) {
+            fprintf(stdout, "    case %lu was accepted\n", (unsigned long) n);
+            ok = 0;
+        }
+    }
+    report("truncated blob is declined, not read past", ok);
+}
+
+/* The bounded decoder must still accept a well-formed value that ends
+ * exactly at the end of the buffer - the bounds checks are there to
+ * reject short reads, not to demand slack. */
+static void test_legacy_decode_exact(void)
+{
+    static const char blob[] = "blob:\0component=zlib:\0size=3:\0xyz";
+    pmix_regex2_t r2 = PMIX_REGEX2_STATIC_INIT;
+    size_t total = 0;
+    int ok = 0;
+
+    /* sizeof() includes the trailing NUL the compiler adds, which is not
+     * part of the encoding - hand over exactly the encoded bytes */
+    if (PMIX_SUCCESS == pmix_preg_base_legacy_decode(blob, sizeof(blob) - 1, &r2, &total)) {
+        ok = (3 == r2.len && sizeof(blob) - 1 == total &&
+              0 == memcmp(r2.bytes, "xyz", 3) && 0 == strcmp(r2.type, "compress"));
+    }
+    report("blob ending flush with the buffer is accepted", ok);
+}
+
+/* A large, highly-compressible list takes the compressed encoding, and so
+ * exercises the blob serialization rather than the raw one - which is the
+ * half of preg_base_legacy.c with real framing in it. Say out loud which
+ * encoding was actually used, so that a build without a compression
+ * library reports thin coverage instead of quietly passing. */
+static void test_legacy_large(void)
+{
+    char **nodes = NULL;
+    char *input, *regex = NULL;
+    int n;
+
+    for (n = 0; n < 5000; n++) {
+        char tmp[32];
+        snprintf(tmp, sizeof(tmp), "node%05d", n);
+        PMIx_Argv_append_nosize(&nodes, tmp);
+    }
+    input = PMIx_Argv_join(nodes, ',');
+    PMIx_Argv_free(nodes);
+
+#if PMIX_TESTBUILD
+    /* see test_large_list() - the pcompress shims make this unreachable */
+    skipped("deprecated form, large list (5000 nodes)",
+            "compression stubbed in --enable-test-build");
+#else
+    if (PMIX_SUCCESS == PMIx_generate_regex(input, &regex) && NULL != regex) {
+        if (0 == strncmp(regex, "blob", 4)) {
+            fprintf(stdout, "    (encoded as a compressed blob)\n");
+        } else {
+            fprintf(stdout, "    NOTE: encoded as \"%.4s\" - no compression"
+                            " library, so the blob framing is untested here\n", regex);
+        }
+        free(regex);
+    }
+    report("deprecated form, large list (5000 nodes)",
+           legacy_roundtrip(input, ','));
+#endif
+    free(input);
+}
+
 /* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
@@ -292,6 +538,17 @@ int main(int argc, char **argv)
 
     /* Structural checks */
     test_type_field_set();
+
+    /* The deprecated char* form, which the base synthesizes from the
+     * regex2 operations above */
+    test_legacy_nodes();
+    test_legacy_procs();
+    test_legacy_untagged();
+    test_legacy_copy();
+    test_legacy_pack_unpack();
+    test_legacy_truncated();
+    test_legacy_decode_exact();
+    test_legacy_large();
 
     fprintf(stdout, "\nResults: %d passed, %d failed, %d skipped\n\n", npass, nfail, nskip);
 

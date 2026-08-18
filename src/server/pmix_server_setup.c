@@ -1042,10 +1042,10 @@ pmix_status_t PMIx_server_setup_local_support(const pmix_nspace_t nspace, pmix_i
     return PMIX_SUCCESS;
 }
 
-/* The preg components take these arguments at face value - the raw one
- * hands "input" straight to strncmp/strdup and writes through "regexp"
- * without looking - so the public entry points screen them here, the same
- * way the regex2 pair below always has. */
+/* The preg framework takes these arguments at face value - the base
+ * hands "input" straight to the active components and writes through
+ * "regexp" without looking - so the public entry points screen them
+ * here, the same way the regex2 pair below always has. */
 PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
 {
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {

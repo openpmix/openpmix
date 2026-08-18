@@ -28,5 +28,6 @@ headers += \
 
 sources += \
         base/preg_base_frame.c \
+        base/preg_base_legacy.c \
         base/preg_base_select.c \
         base/preg_base_stubs.c
