@@ -13,7 +13,7 @@
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -212,11 +212,20 @@ static void opcon(pmix_pstat_op_t *p)
 }
 static void opdes(pmix_pstat_op_t *p)
 {
+    pmix_peerlist_t *pl, *plnext;
+
     if (p->active) {
         pmix_event_del(&p->ev);
     }
     if (NULL != p->id) {
         free(p->id);
+    }
+    /* the list holds a reference on every peer it records - see
+     * PMIX_PSTAT_APPEND_PEER_UNIQUE in base.h, which takes it */
+    PMIX_LIST_FOREACH_SAFE(pl, plnext, &p->peers, pmix_peerlist_t) {
+        pmix_list_remove_item(&p->peers, &pl->super);
+        PMIX_RELEASE(pl->peer);
+        PMIX_RELEASE(pl);
     }
     PMIX_LIST_DESTRUCT(&p->peers);
     if (NULL != p->disks) {

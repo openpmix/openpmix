@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2020 Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -172,6 +172,14 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pstat_op_t);
         pmix_event_evtimer_add(&(p)->ev, &(p)->tv);                             \
     } while (0)
 
+/* An op outlives the request that built it: a periodic monitor holds its
+ * peer list until it is cancelled or the framework closes, while the
+ * peers themselves are released the moment their client disconnects or
+ * its namespace is deregistered. A borrowed pointer would therefore be
+ * dangling by the next timer fire, so the list takes a reference on each
+ * peer it records. pmix_peerlist_t itself has no destructor, so the
+ * matching release is in opdes() in pstat_base_frame.c - the two have to
+ * move together. */
 #define PMIX_PSTAT_APPEND_PEER_UNIQUE(pl, pr)                                   \
     do {                                                                        \
         bool f = false;                                                         \
@@ -184,6 +192,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pstat_op_t);
         }                                                                       \
         if (!f) {                                                               \
             _p = PMIX_NEW(pmix_peerlist_t);                                     \
+            PMIX_RETAIN(pr);                                                    \
             _p->peer = (pr);                                                    \
             pmix_list_append(pl, &(_p->super));                                 \
         }                                                                       \

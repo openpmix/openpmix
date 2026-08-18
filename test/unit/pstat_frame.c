@@ -30,6 +30,10 @@
  * framework or its globals in a bad state only shows up on the way back
  * up.
  *
+ * The op-object test at the end needs neither a framework nor a server:
+ * it exercises the peer-reference discipline of pmix_pstat_op_t, which is
+ * pure class construction and destruction.
+ *
  * This needs the MCA up but no server: pmix_init_util() establishes the
  * install dirs, the variable system and the component repository, which
  * is all that opening a framework requires.
@@ -104,6 +108,52 @@ static void cycle(const char *which)
     free(label);
 }
 
+/* An op's peer list has to OWN the peers it records. A periodic monitor
+ * outlives the client it is sampling: the server releases that client's
+ * pmix_peer_t the moment the connection drops, and nothing else holds
+ * it. With a borrowed pointer the next timer fire read peer->info->pid
+ * out of freed memory - so PMIX_PSTAT_APPEND_PEER_UNIQUE takes a
+ * reference and opdes() gives it back. Both halves are checked here,
+ * because either one alone is a bug: without the retain it is a
+ * use-after-free, without the release it is a leak. */
+static void op_peer_refs(void)
+{
+    pmix_pstat_op_t *op;
+    pmix_peer_t *peer;
+
+    op = PMIX_NEW(pmix_pstat_op_t);
+    peer = PMIX_NEW(pmix_peer_t);
+    report("op: a fresh peer starts with one reference",
+           1 == peer->super.obj_reference_count);
+
+    PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, peer);
+    report("op: appending a peer takes a reference on it",
+           2 == peer->super.obj_reference_count &&
+           1 == pmix_list_get_size(&op->peers));
+
+    /* the macro dedups, and must not take a second reference when it
+     * declines to add a second entry */
+    PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, peer);
+    report("op: re-appending the same peer changes nothing",
+           2 == peer->super.obj_reference_count &&
+           1 == pmix_list_get_size(&op->peers));
+
+    /* the client disconnects - the server drops the only other
+     * reference, and the op's is what keeps the object alive for the
+     * next sample */
+    PMIX_RELEASE(peer);
+    report("op: the peer outlives its client disconnecting",
+           1 == peer->super.obj_reference_count);
+
+    /* hold a probe reference so we can watch the op give its own back
+     * rather than merely not crashing */
+    PMIX_RETAIN(peer);
+    PMIX_RELEASE(op);
+    report("op: releasing the op releases its peers",
+           1 == peer->super.obj_reference_count);
+    PMIX_RELEASE(peer);
+}
+
 int main(int argc, char **argv)
 {
     int rc;
@@ -125,6 +175,7 @@ int main(int argc, char **argv)
 
     cycle("first cycle");
     cycle("second cycle");
+    op_peer_refs();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
