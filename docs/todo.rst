@@ -249,6 +249,28 @@ cover the whole of what the entry described.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
+``psensor`` never starts its own progress thread
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``pmix_psensor_base_open`` creates the ``"PSENSOR"`` event base with
+``pmix_progress_thread_init()`` and never calls
+``pmix_progress_thread_start()``, so with
+``psensor_base_use_separate_thread`` set the base exists and nothing
+drives it: trackers arm their timers and no heartbeat or monitor ever
+fires.  This is the same defect that was fixed for ``pstat`` in
+``pmix_pstat_base_open``, found while fixing it there.
+
+It is deliberately **not** a one-line copy of that fix.
+``pmix_psensor_base_close`` destructs ``pmix_psensor_base.actives`` and
+then calls ``pmix_progress_thread_stop("PSENSOR")``, with no
+``pmix_progress_thread_pause()`` in between -- which is safe only for as
+long as the thread does not actually run.  Starting the thread without
+also correcting the teardown would introduce a destruct racing a live
+timer callback, which is precisely the class of bug the ``pstat`` change
+closed.  ``psensor`` needs the pair looked at together, and the arming
+discipline described under "Releasing an op from another thread" in
+``src/mca/pstat/AGENTS.md`` applies to its trackers as well.
+
 Coverage gaps
 -------------
 
