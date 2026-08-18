@@ -401,11 +401,27 @@ It is opened and selected during **server** startup in
 
 `pmix_pstat_base_select()` is a textbook single-select: call
 `pmix_mca_base_select("pstat", ...)` to pick the highest-priority runnable
-component, cache it in `pmix_pstat`/`pmix_pstat_base_component`, and call
-its `init`. Finding no component is **not** fatal — it simply leaves the
-`unsupported` stubs in place, so `pmix_pstat.query` returns
-`PMIX_ERR_NOT_SUPPORTED` and the monitor API reports the capability as
-absent.
+component, call its `init`, and — only if that succeeds — cache it in
+`pmix_pstat`/`pmix_pstat_base_component`. The order matters: installing
+the module first would leave a module whose `init` failed sitting there
+as the active one, and the framework would keep dispatching queries to it
+rather than falling back. Nothing is lost by initializing first, since no
+component's `init` reads these globals.
+
+Two failure modes, and they are **not** treated alike:
+
+- **No component is runnable** — benign. `select` returns `PMIX_SUCCESS`
+  with the `unsupported` stubs still in place, so `pmix_pstat.query`
+  returns `PMIX_ERR_NOT_SUPPORTED` and the monitor API reports the
+  capability as absent.
+- **A component was found but its `init` failed** — `select` returns that
+  error, and `pmix_server.c` propagates it, so **`PMIx_server_init`
+  fails and the server does not come up**. That is a heavier consequence
+  than the framework's own "degrade to unsupported" design suggests, and
+  it is worth deciding deliberately rather than inheriting it: the
+  alternative is to log and fall back to the stubs, as the no-component
+  case does. All three current components' `init` is an unconditional
+  `return PMIX_SUCCESS`, so nothing reaches it today.
 
 ## Threading
 

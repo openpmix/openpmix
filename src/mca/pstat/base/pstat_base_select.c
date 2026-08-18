@@ -54,15 +54,20 @@ int pmix_pstat_base_select(void)
         goto cleanup;
     }
 
-    /* Save the winner */
-    pmix_pstat_base_component = best_component;
-    pmix_pstat = *best_module;
-
-    /* Initialize the winner */
-    if (PMIX_SUCCESS != (ret = pmix_pstat.init())) {
+    /* Initialize the winner before installing it. Publishing the module
+     * first and initializing afterwards leaves a module whose init failed
+     * sitting in pmix_pstat as the active one, so the framework would go
+     * on dispatching queries to it instead of falling back to the
+     * unsupported stubs. No component's init depends on these globals
+     * being set - all three simply report that they are ready. */
+    if (PMIX_SUCCESS != (ret = best_module->init())) {
         exit_status = ret;
         goto cleanup;
     }
+
+    /* Save the winner */
+    pmix_pstat_base_component = best_component;
+    pmix_pstat = *best_module;
 
 cleanup:
     return exit_status;
