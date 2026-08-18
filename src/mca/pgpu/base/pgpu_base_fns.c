@@ -204,32 +204,34 @@ pmix_status_t pmix_pgpu_base_setup_fork(const pmix_proc_t *proc, char ***env)
     return PMIX_SUCCESS;
 }
 
-/* Set a vendor's "visible devices" variable for one process from the
- * devices it was mapped against.
+/* Build the value of a vendor's "visible devices" variable for one process
+ * from the devices it was mapped against.
  *
  * Every GPU vendor spells this the same way at bottom - a variable naming
  * the subset of devices the process may use - so the loop belongs here and
- * the components differ only in which vendor's devices are theirs and what
- * the variable is called.
+ * the components differ only in which vendor's devices are theirs, what
+ * the variable is called, and what its grammar accepts. That last is the
+ * device's "selector", which the topology layer produces: an identity for
+ * the vendors whose variable takes one, an ordinal for Intel's, which
+ * takes nothing else.
  *
- * Two things it deliberately does not do. It does not fall back to an
- * index when the vendor identity is missing: the runtimes number devices
- * in an order PMIx does not know (CUDA's default is fastest-first, not bus
- * order), so an index would name a device other than the one that was
- * assigned, and a wrong value in these variables truncates the visible set
- * silently rather than failing. And it does not consult the mapper's
- * decision - it reads what the process was told, so a process that was not
- * mapped against a device is simply left alone.
+ * Two things it deliberately does not do. It does not invent a selector
+ * the topology did not supply - notably it never falls back to guessing an
+ * index for a vendor whose variable would accept one, because the runtimes
+ * number devices in an order PMIx does not know (CUDA's default is
+ * fastest-first, not bus order), and a wrong value in these variables
+ * truncates the visible set silently rather than failing. And it does not
+ * consult the mapper's decision - it reads what the process was told, so a
+ * process that was not mapped against a device is simply left alone.
  *
- * The identity is read from THIS node's topology, which is the reason this
+ * The selector is read from THIS node's topology, which is the reason this
  * runs at fork time on the daemon rather than anywhere on the head node: a
  * device's vendor identity differs between nodes, and the head node's copy
  * of a topology may belong to whichever node reported it first.
  */
-pmix_status_t pmix_pgpu_base_set_visible_devices(const pmix_proc_t *proc,
+pmix_status_t pmix_pgpu_base_get_visible_devices(const pmix_proc_t *proc,
                                                  const char *vendor,
-                                                 const char *envar,
-                                                 char ***env)
+                                                 char **value)
 {
     pmix_cb_t cb;
     pmix_kval_t *kv;
@@ -237,12 +239,13 @@ pmix_status_t pmix_pgpu_base_set_visible_devices(const pmix_proc_t *proc,
     pmix_device_t *dev;
     pmix_hwloc_device_t *devs;
     size_t ndevs, n, d;
-    char **ids = NULL, *val;
+    char **ids = NULL;
     pmix_status_t rc;
 
-    if (NULL == proc || NULL == vendor || NULL == envar || NULL == env) {
+    if (NULL == proc || NULL == vendor || NULL == value) {
         return PMIX_ERR_BAD_PARAM;
     }
+    *value = NULL;
 
     /* what device(s) was this process given?  Absent is the common case -
      * the job was not mapped by device - and is not an error */
@@ -283,11 +286,11 @@ pmix_status_t pmix_pgpu_base_set_visible_devices(const pmix_proc_t *proc,
         for (d = 0; d < ndevs; d++) {
             /* a node may carry cards from more than one vendor, and each
              * wants its own variable, so take only our own */
-            if (NULL == devs[d].vendor_id || NULL == devs[d].vendor
+            if (NULL == devs[d].selector || NULL == devs[d].vendor
                 || 0 != strcasecmp(devs[d].vendor, vendor)) {
                 continue;
             }
-            PMIx_Argv_append_nosize(&ids, devs[d].vendor_id);
+            PMIx_Argv_append_nosize(&ids, devs[d].selector);
         }
         pmix_hwloc_release_devices(devs, ndevs);
     }
@@ -296,10 +299,29 @@ pmix_status_t pmix_pgpu_base_set_visible_devices(const pmix_proc_t *proc,
     if (NULL == ids) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
-    val = PMIx_Argv_join(ids, ',');
+    *value = PMIx_Argv_join(ids, ',');
     PMIx_Argv_free(ids);
-    if (NULL == val) {
+    if (NULL == *value) {
         return PMIX_ERR_NOMEM;
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_pgpu_base_set_visible_devices(const pmix_proc_t *proc,
+                                                 const char *vendor,
+                                                 const char *envar,
+                                                 char ***env)
+{
+    pmix_status_t rc;
+    char *val = NULL;
+
+    if (NULL == envar || NULL == env) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    rc = pmix_pgpu_base_get_visible_devices(proc, vendor, &val);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
     pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
                         "pgpu: %s=%s for %s", envar, val, PMIX_NAME_PRINT(proc));

@@ -24,15 +24,13 @@ the shared launch wiring when the component is enabled.
 |------|----------|
 | `pgpu_amd.h` | Component struct `pmix_pgpu_amd_component_t`, module extern, and the blob/inventory key `#define`s. |
 | `pgpu_amd_component.c` | Component struct + open/close/register/query. Priority **20**. |
-| `pgpu_amd.c` | The module: `allocate`, `setup_local`, and the two inventory stubs. |
+| `pgpu_amd.c` | The module: `allocate`, `setup_local`, `setup_fork`, and the two inventory stubs. |
 
 ## Availability
 
 There is **no `configure.m4` and no build gate**: the component links
-nothing and needs no vendor SDK, so it builds everywhere and the MCA
-machinery configures a component with no `configure.m4` by itself. It
-previously carried one whose whole body was `AS_IF([test "yes" = "no"],
-...)` — it never built at all.
+nothing and needs no vendor SDK, so it builds everywhere and there is
+nothing for `configure` to look for.
 
 The question is settled at **run** time. `component_open` returns
 `pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x1002, 0x03)`,
@@ -97,7 +95,8 @@ With the default `NULL` include list, `allocate` harvests nothing —
 
 ## Gotchas
 
-- Its default include list is empty and its inventory functions do
+- Its device assignment (`setup_fork` → `ROCR_VISIBLE_DEVICES`) is live,
+  but its default include list is empty and its inventory functions do
   nothing. Do not describe those as working.
 - The blob key `PMIX_PGPU_AMD_BLOB` and inventory key
   `PMIX_PGPU_AMD_INVENTORY_KEY` (`pgpu_amd.h`) must stay unique across
@@ -105,6 +104,5 @@ With the default `NULL` include list, `allocate` harvests nothing —
   its own data.
 - What is left to do here is a sensible default include list and the
   inventory functions. Do **not** answer either with a `configure.m4`
-  gate detecting an AMD/ROCm runtime: whether this component has work to
-  do is a property of the node the daemon runs on, and the build host is
-  routinely not that node.
+  gate: whether this component has work to do is a property of the node
+  the daemon runs on, and the build host is routinely not that node.

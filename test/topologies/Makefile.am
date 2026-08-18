@@ -28,5 +28,18 @@
 # still found and still placed, they simply cannot be named - and it
 # also carries a fifth card node (a BMC display adapter) that must NOT
 # be counted as a GPU.
+#
+# intel-4gpu.xml and intel-flat-4gpu.xml are an Aurora node (Intel Data
+# Center GPU Max 1550, two tiles to a card) cut down to four GPUs and
+# eight PUs, read by an hwloc with the OpenCL and Level Zero backends.
+# They are the SAME machine seen under the two Level Zero device
+# hierarchy models, which is the distinction ZE_AFFINITY_MASK ordinals
+# are relative to: under COMPOSITE (intel-4gpu) each card is one root
+# device carrying its tiles as sub-devices, while under FLAT
+# (intel-flat-4gpu) each tile is itself a root device, so one card is
+# two ordinals rather than one. A mask computed under one model and
+# read under the other silently hands the process half the hardware it
+# was given, so both shapes have to be covered.
 
-EXTRA_DIST = test-topo.xml test-topo2.xml nvml-4gpu.xml drm-4gpu.xml
+EXTRA_DIST = test-topo.xml test-topo2.xml nvml-4gpu.xml drm-4gpu.xml \
+        intel-4gpu.xml intel-flat-4gpu.xml

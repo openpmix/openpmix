@@ -18,6 +18,24 @@ Detailed changes since v6.1.0:
    0x1002 its GPUs carry, so it declined to open everywhere. Nothing said
    so in either case - a component that believes the hardware is absent
    is indistinguishable from one that is correct about it.
+ - A process mapped against Intel GPUs is now told which ones it may use.
+   The pgpu/intel component sets ZE_AFFINITY_MASK at fork time, naming
+   each assigned card by the Level Zero device ordinal that node's own
+   driver reported for it. The component previously set nothing, on the
+   grounds that the variable takes ordinals rather than an identity of
+   the kind CUDA_VISIBLE_DEVICES and ROCR_VISIBLE_DEVICES accept, and
+   that PMIx could not reproduce the runtime's device ordering. It does
+   not have to: hwloc's Level Zero backend records the ordering the
+   driver itself reported, so the ordinals are read rather than guessed,
+   and they are read on the node that will run the process.
+   Because ZE_AFFINITY_MASK is interpreted against whichever devices
+   ZE_FLAT_DEVICE_HIERARCHY exposes - whole cards under COMPOSITE,
+   individual tiles under FLAT - an ordinal alone is not a complete
+   statement, and PMIx now writes the model alongside it. A process that
+   has already been given a model that contradicts the one this node
+   enumerated under keeps every device it could see and is told, in
+   place of a mask that would silently have handed it half the hardware
+   it was assigned.
  - A deletion now reaches the data that has already been handed out.
    Removing a key from a PMIx server's own store was only half of it: a
    client caches what it reads about other processes and holds the

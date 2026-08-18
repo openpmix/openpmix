@@ -550,6 +550,117 @@ static void test_vendor_identity(const char *dir)
     }
 }
 
+/* What to write in the vendor's device-selection variable to name a
+ * device to a process.
+ *
+ * For NVIDIA and AMD this is the identity again, because their variables
+ * accept one.  Intel's does not - ZE_AFFINITY_MASK takes Level Zero
+ * ordinals - so the interesting cases are the two Intel fixtures, which
+ * are the SAME four cards enumerated under the two device hierarchy
+ * models:
+ *
+ *   - under COMPOSITE each card is one root device, so a card is one
+ *     ordinal and the process gets it with its tiles as sub-devices.
+ *   - under FLAT the card's two tiles are themselves root devices sharing
+ *     the one PCI function, so the card is TWO ordinals.  Reporting only
+ *     one of them would hand the process half the card it was assigned,
+ *     which is the failure this fixture pair exists to catch: it does not
+ *     error, it just quietly takes hardware away.
+ *
+ * In both files the four cards enumerate in bus order, so the ordinals
+ * are also predictable - which is a property of these fixtures, not a
+ * promise about Level Zero.
+ */
+static void test_device_selector(const char *dir)
+{
+    struct {
+        const char *file;
+        size_t ndevs;
+        const char *sel[4];   /* NULL means "must have none" */
+        const char *mode;     /* hierarchy, or NULL for "cannot tell" */
+    } cases[] = {
+        {"intel-4gpu.xml", 4, {"0", "1", "2", "3"}, "COMPOSITE"},
+        {"intel-flat-4gpu.xml", 4, {"0,1", "2,3", "4,5", "6,7"}, "FLAT"},
+        /* the identity vendors: selector and identity are one string */
+        {"nvml-4gpu.xml", 4, {NULL, NULL, NULL, NULL}, NULL},
+        /* no vendor backend at all: nothing to say, which is not a failure */
+        {"drm-4gpu.xml", 4, {NULL, NULL, NULL, NULL}, NULL},
+    };
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, i, c;
+    char path[1024];
+    char *mode = NULL;
+    pmix_status_t rc;
+    bool intel;
+
+    for (c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        snprintf(path, sizeof(path), "%s/%s", dir, cases[c].file);
+        if (0 != load_topo_file(path, &topo)) {
+            fprintf(stderr, "FAIL: could not load %s\n", path);
+            ++failures;
+            continue;
+        }
+        intel = (NULL != cases[c].sel[0]);
+        rc = pmix_hwloc_get_devices(&topo, TESTHOST,
+                                    PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_COPROC,
+                                    NULL, &devs, &ndevs);
+        ok(PMIX_SUCCESS == rc, "selector: enumeration succeeds");
+        ok(cases[c].ndevs == ndevs, "selector: the expected number of GPUs");
+        ok(ordered_by_busid(devs, ndevs), "selector: still in bus order");
+
+        for (i = 0; i < ndevs && i < 4; i++) {
+            if (intel) {
+                ok(NULL != devs[i].selector
+                       && 0 == strcmp(devs[i].selector, cases[c].sel[i]),
+                   "selector: the card's own Level Zero ordinals");
+                if (NULL != devs[i].selector
+                    && 0 != strcmp(devs[i].selector, cases[c].sel[i])) {
+                    fprintf(stderr, "      %s device %d: got %s, wanted %s\n",
+                            cases[c].file, (int) i, devs[i].selector,
+                            cases[c].sel[i]);
+                }
+                /* and it is NOT the identity: an ordinal says where the
+                 * device sat in one enumeration, not which device it is */
+                ok(NULL != devs[i].vendor_id
+                       && 0 != strcmp(devs[i].vendor_id, devs[i].selector),
+                   "selector: an ordinal is not an identity");
+            } else if (NULL == devs[i].vendor_id) {
+                ok(NULL == devs[i].selector,
+                   "selector: nothing to say when there is no identity");
+            } else {
+                ok(NULL != devs[i].selector
+                       && 0 == strcmp(devs[i].selector, devs[i].vendor_id),
+                   "selector: the identity, where the variable takes one");
+            }
+        }
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+        ndevs = 0;
+
+        /* the model those ordinals are relative to */
+        rc = pmix_hwloc_levelzero_hierarchy(&topo, &mode);
+        if (NULL == cases[c].mode) {
+            ok(PMIX_ERR_TAKE_NEXT_OPTION == rc && NULL == mode,
+               "hierarchy: no Level Zero devices, nothing to state");
+        } else {
+            ok(PMIX_SUCCESS == rc && NULL != mode
+                   && 0 == strcmp(mode, cases[c].mode),
+               "hierarchy: the model the ordinals were numbered under");
+            if (PMIX_SUCCESS == rc && NULL != mode
+                && 0 != strcmp(mode, cases[c].mode)) {
+                fprintf(stderr, "      %s: got %s, wanted %s\n",
+                        cases[c].file, mode, cases[c].mode);
+            }
+        }
+        if (NULL != mode) {
+            free(mode);
+            mode = NULL;
+        }
+        free_topo(&topo);
+    }
+}
+
 /* The open-time question every GPU component asks: does this node carry
  * this vendor's GPU?
  *
@@ -562,6 +673,7 @@ static void test_vendor_identity(const char *dir)
  *   test-topo2   AMD Instinct   0x1002  0x0380
  *                a BMC's VGA    0x1a03  0x0300
  *   nvml-4gpu    NVIDIA H200    0x10de  0x0302
+ *   intel-4gpu   Intel Max      0x8086  0x0380
  */
 static void test_vendor_check(const char *dir)
 {
@@ -575,6 +687,7 @@ static void test_vendor_check(const char *dir)
          * check for "3D controller" would have missed */
         {"test-topo2.xml", 0x1002, 0x0302, false},
         {"nvml-4gpu.xml", 0x10de, 0x0302, true},
+        {"intel-4gpu.xml", 0x8086, 0x0380, true},
         /* NVIDIA's id against a machine that has no NVIDIA card: both
          * forms must say no, or the broader one is just always true */
         {"test-topo2.xml", 0x10de, 0x0302, false},
@@ -654,6 +767,7 @@ int main(int argc, char **argv)
     test_distances_agree(dir);
     test_uuid_names_the_node(dir);
     test_vendor_identity(dir);
+    test_device_selector(dir);
     test_vendor_check(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",

@@ -119,6 +119,28 @@ typedef struct {
      * are theirs.  Deriving it from the identity's spelling would be a
      * guess; this is the key hwloc actually recorded it under. */
     char *vendor;
+    /* What to write in the vendor's device-selection variable to name this
+     * device to a process - CUDA_VISIBLE_DEVICES, ROCR_VISIBLE_DEVICES,
+     * ZE_AFFINITY_MASK - or NULL when the topology does not support saying
+     * it.  Several devices are named by joining their selectors with ','.
+     *
+     * Separate from vendor_id because the two coincide only for the vendors
+     * whose variable accepts an identity.  NVIDIA's and AMD's do, so their
+     * selector IS the identity.  Intel's does not: ZE_AFFINITY_MASK takes
+     * Level Zero device ordinals, so the selector is the ordinal the driver
+     * itself reported for this device - a different string, in a grammar
+     * that says nothing about which device it is, only where it sat in one
+     * enumeration.
+     *
+     * That last point is the reason a caller must not treat this as an
+     * identity: an ordinal is meaningful only against the enumeration it
+     * came from, and for Level Zero that enumeration depends on the device
+     * hierarchy model in force (see pmix_hwloc_levelzero_hierarchy()).
+     * NULL where an identity exists but cannot be turned into a selector,
+     * which is honest rather than a failure: a wrong value in these
+     * variables does not error, it silently narrows what the process can
+     * see. */
+    char *selector;
     /* Nearest ancestor carrying a cpuset - the set of PUs local to this
      * device.  Borrowed from the topology, so it is valid only as long as
      * the topology is, and must not be freed. */
@@ -161,6 +183,28 @@ PMIX_EXPORT pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
                                                  size_t *ndevs);
 
 PMIX_EXPORT void pmix_hwloc_release_devices(pmix_hwloc_device_t *devs, size_t ndevs);
+
+/* Which Level Zero device hierarchy model this topology's GPUs were
+ * enumerated under: "COMPOSITE" if the driver reported each card as one
+ * device carrying its tiles as sub-devices, or "FLAT" if it reported the
+ * tiles themselves as devices.  The strings are the values
+ * ZE_FLAT_DEVICE_HIERARCHY takes, because the only use for the answer is
+ * to state the model an ordinal was computed under.
+ *
+ * Returns PMIX_ERR_TAKE_NEXT_OPTION with *mode NULL when the topology
+ * cannot tell them apart, which happens exactly when they do not differ -
+ * no Level Zero device in it has more than one tile, so every model
+ * enumerates the same devices in the same order.  Callers must therefore
+ * treat "cannot tell" as "does not matter" rather than as an error.
+ *
+ * Note this reports the model in force where and when the topology was
+ * gathered.  Since it is read to accompany ordinals drawn from that same
+ * topology, that is the model those ordinals mean something in.
+ *
+ * The caller frees *mode.
+ */
+PMIX_EXPORT pmix_status_t pmix_hwloc_levelzero_hierarchy(pmix_topology_t *topo,
+                                                         char **mode);
 
 /* Does this topology carry a PCI device from this vendor, of exactly this
  * class/subclass?  PMIX_ERR_NOT_AVAILABLE when it does not, and

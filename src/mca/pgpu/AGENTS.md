@@ -54,13 +54,17 @@ Before you invest in this framework, understand what is and is not live:
    `component_open`, which asks the local topology whether that vendor's
    hardware is present and declines if not.
 
-3. **`nvd` and `amd` set the vendor's visible-devices variable.**
+3. **All three vendor components set their visible-devices variable.**
    `setup_fork` names the GPUs a process was mapped against in
-   `CUDA_VISIBLE_DEVICES` / `ROCR_VISIBLE_DEVICES`, using the vendor's own
-   device identifier. `intel` deliberately does not: `ZE_AFFINITY_MASK`
-   takes indices, PMIx cannot reproduce the runtime's device ordering, and
-   a wrong value in these variables silently narrows the visible set
-   rather than failing.
+   `CUDA_VISIBLE_DEVICES` / `ROCR_VISIBLE_DEVICES` / `ZE_AFFINITY_MASK`.
+   What goes in the variable is the device's **selector**, which the
+   topology layer produces: for NVIDIA and AMD that is the vendor's own
+   device identifier, because their variables accept one; for Intel it is
+   the Level Zero device ordinal the driver reported, because
+   `ZE_AFFINITY_MASK` accepts nothing else. `intel` additionally states
+   `ZE_FLAT_DEVICE_HIERARCHY`, since an ordinal only means something
+   against a device hierarchy model - see
+   [`intel/AGENTS.md`](intel/AGENTS.md).
 
 4. **The inventory hooks are still stubs.** `collect_inventory` and
    `deliver_inventory` return `PMIX_SUCCESS` having done nothing in every
@@ -123,13 +127,17 @@ This is the per-component module. Its function-pointer fields:
 | `deregister_nspace` | `..._dregister_nspace_fn_t` — `(pmix_namespace_t *nptr)` | release per-nspace resources |
 | `collect_inventory` | `..._collect_inventory_fn_t` — `(pmix_info_t directives[], size_t ndirs, pmix_list_t *inventory)` | add local GPU inventory as `pmix_kval_t`s |
 | `deliver_inventory` | `..._deliver_inventory_fn_t` — `(pmix_info_t info[], size_t ninfo, pmix_info_t directives[], size_t ndirs)` | archive inventory from remote peers |
+| `setup_fork` | `..._setup_fork_fn_t` — `(const pmix_proc_t *proc, char ***env)` | contribute this one process's GPU environment |
 
-Note there is **no `setup_fork` in the component module** — components do
-not touch the fork directly; the base does (see below). The three vendor
-components fill in only `name`, `allocate`, `setup_local`,
-`collect_inventory`, and `deliver_inventory`; the `test` component fills
-`name`, `allocate`, and `setup_local`. All other slots are left `NULL` and
-the base skips them.
+`setup_fork` is the per-*process* hook and is called by the base's own
+`setup_fork` after it has replayed the namespace-wide envar cache — the
+split is the point, since a GPU assignment differs per rank and the cache
+can only carry what every rank shares.
+
+The three vendor components fill in `name`, `allocate`, `setup_local`,
+`setup_fork`, `collect_inventory`, and `deliver_inventory`; the `test`
+component fills `name`, `allocate`, and `setup_local`. All other slots are
+left `NULL` and the base skips them.
 
 ### `pmix_pgpu_API_module_t` and the global `pmix_pgpu`
 
@@ -240,11 +248,16 @@ function pointer. Specifics that matter:
   differs from node to node, and the head node's copy of a topology may
   belong to whichever node reported it first.
 
-  `pmix_pgpu_base_set_visible_devices()` is the shared implementation the
-  vendor modules call — it reads the proc's `PMIX_DEVICE_ID` out of the
-  local datastore, resolves each device against the local topology, keeps
-  the ones belonging to the caller's vendor, and joins their vendor
-  identities into the named variable.
+  `pmix_pgpu_base_get_visible_devices()` is the shared implementation the
+  vendor modules build on — it reads the proc's `PMIX_DEVICE_ID` out of
+  the local datastore, resolves each device against the local topology,
+  keeps the ones belonging to the caller's vendor, and joins their
+  **selectors** (`pmix_hwloc_device_t.selector`) with commas.
+  `pmix_pgpu_base_set_visible_devices()` is the one-line wrapper that
+  writes that value into the named variable; `nvd` and `amd` call it
+  directly. A component that has to inspect the environment *before*
+  writing - `intel` does - calls the getter instead, because a check that
+  runs after the variable is set is no check at all.
 - **`pmix_pgpu_base_child_finalized` / `_local_app_finalized`** — loop and
   forward to any module implementing the hook (all current modules leave
   these `NULL`).
@@ -389,8 +402,10 @@ The framework **base** is always compiled into `libpmix` (via
 Merely editing a `Makefile.am` needs only `make`, but adding or removing
 a `configure.m4` — or a component directory — changes the wiring
 `configure` resolves, so the full `./autogen.pl && ./configure && make`
-regen is required. `pgpu` ships **no `show_help` text**, so the
-regenerate-the-help-content golden rule does not apply here.
+regen is required. The `intel` component ships `help-pgpu-intel.txt`, so
+the regenerate-the-help-content golden rule **does** apply when you touch
+it: `rm src/util/pmix_show_help_content.*` and rebuild, or the library
+keeps emitting the old text. No other component here has help text.
 
 ## When adding or modifying a component
 
@@ -405,12 +420,6 @@ regenerate-the-help-content golden rule does not apply here.
   when the vendor hardware is absent — reuse
   `pmix_hwloc_check_vendor_baseclass`, not the exact-class
   `pmix_hwloc_check_vendor`, unless a subclass really is the question.
-- **Put the run-time check in `component_open`, not `component_query`.**
-  The topology is loaded (`pmix_hwloc_setup_topology`) before the server
-  opens this framework, so `component_open` can see it; and a component
-  that declines to open is never queried, so the same check in
-  `component_query` would be dead code. `component_query` should only hand
-  back the module and a priority.
 - Fill only the module slots you implement; leave the rest `NULL` — the
   base checks each pointer before calling.
 - If you harvest envars, mirror the existing components: gate on
@@ -428,6 +437,12 @@ regenerate-the-help-content golden rule does not apply here.
   `test` component's `--with-pgpu-test` `AC_ARG_WITH` is the template for
   the case that does earn one: it exists so a component meant only for
   testing does not load on a real system.
+- **Put the run-time check in `component_open`, not `component_query`.**
+  The topology is loaded (`pmix_hwloc_setup_topology`) before the server
+  opens this framework, so `component_open` can see it; and a component
+  that declines to open is never queried, so the same check in
+  `component_query` would be dead code. `component_query` should only hand
+  back the module and a priority.
 - The launch API calls (`pmix_pgpu.allocate` / `.setup_local` /
   `.setup_fork`) are already wired into the server the way `pnet` is; a
   new component inherits them for free. The `test` component is the

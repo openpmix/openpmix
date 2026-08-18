@@ -22,6 +22,8 @@
 # $HEADER$
 #
 
+EXTRA_DIST = help-pgpu-intel.txt
+
 headers = pgpu_intel.h
 sources = \
         pgpu_intel_component.c \
