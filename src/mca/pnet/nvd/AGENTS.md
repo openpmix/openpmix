@@ -35,9 +35,19 @@ Selection is a two-step gate mirroring `opa`:
 1. **`component_open`** probes hwloc twice via `pmix_hwloc_check_vendor` —
    first for Mellanox vendor `0x15b3`, then (on failure) for NVIDIA vendor
    `0x10de` — both against PCI class `0x207`. It opens only if a matching
-   device is found.
+   device is found. The `mymatch[]` table in `pnet_nvd.c` holds the same
+   two pairs, and `setup_fork` and `collect_inventory` both work from it,
+   so what the component opens for and what it claims cannot drift apart.
 2. **`component_query`** returns `pmix_pnet_nvd_module` at priority
    **10**.
+
+`component_open` returns whatever `pmix_hwloc_check_vendor` gave it, and
+only `PMIX_ERR_NOT_AVAILABLE` is the MCA's "silently ignore me" cue — the
+helper's other two failures (`PMIX_ERR_BAD_PARAM` for no topology,
+`PMIX_ERR_TAKE_NEXT_OPTION` for one that did not come from hwloc) would be
+reported as a component that failed to open. Neither is reachable as the
+server stands: `PMIx_server_init` runs `pmix_hwloc_setup_topology`, and
+fails outright if it cannot, before it opens this framework.
 
 ## The module
 
@@ -70,11 +80,11 @@ The signatures match the current framework interface (unlike `tcp` and
   special-case any transport key.) Two things about it are easy to get
   wrong and are covered by `test/unit/pnet_envar_blob.c`; see
   [Gotchas](#gotchas).
-- **`collect_inventory`** — actually walks the hwloc PCI device list for a
-  Mellanox (`0x15b3`) or NVIDIA (`0x10de`) device of class `0x207`; on the
-  first match it returns `PMIX_SUCCESS`. It does not yet add anything to
-  the inventory list — the "add this to the inventory" step is a comment.
-  Returns `PMIX_ERR_NOT_SUPPORTED` if the topology is not hwloc-sourced.
+- **`collect_inventory`** — asks `pmix_hwloc_check_vendor` for each
+  `mymatch[]` pair whether the node carries one of our NICs. It does not
+  yet add anything to the inventory list — the "add this to the inventory"
+  step is a comment — and it answers `PMIX_SUCCESS` either way; see
+  [Gotchas](#gotchas) for why it must.
 - **`setup_fork`** — names the NICs this one process was mapped against
   to the libraries that will use them. It asks
   `pmix_pnet_base_get_assigned_devices()` for the process's devices

@@ -13,36 +13,19 @@
 #include "src/include/pmix_config.h"
 
 #include <string.h>
-#ifdef HAVE_UNISTD_H
-#    include <unistd.h>
-#endif
-#ifdef HAVE_SYS_TYPES_H
-#    include <sys/types.h>
-#endif
-#ifdef HAVE_SYS_STAT_H
-#    include <sys/stat.h>
-#endif
-#ifdef HAVE_FCNTL_H
-#    include <fcntl.h>
-#endif
-#include <time.h>
 
 #include "pmix_common.h"
 
 #include "src/class/pmix_list.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
-#include "src/include/pmix_socket_errno.h"
-#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/pcompress/pcompress.h"
-#include "src/mca/preg/preg.h"
-#include "src/util/pmix_alfg.h"
 #include "src/util/pmix_argv.h"
+#include "src/util/pmix_environ.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
-#include "src/util/pmix_environ.h"
 
 #include "pnet_nvd.h"
 #include "src/mca/pnet/base/base.h"
@@ -74,6 +57,7 @@ static const pmix_pnet_pcimatch_t mymatch[] = {
     {0x15b3, 0x207},        /* Mellanox InfiniBand controller */
     {0x10de, 0x207}         /* the same under NVIDIA's vendor id */
 };
+#define NMYMATCH (sizeof(mymatch) / sizeof(mymatch[0]))
 
 /* NOTE: if there is any binary data to be transferred, then
  * this function MUST pack it for transport as the host will
@@ -278,9 +262,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
     char **devs = NULL, **globs = NULL;
     int n;
 
-    rc = pmix_pnet_base_get_assigned_devices(proc, mymatch,
-                                             sizeof(mymatch) / sizeof(mymatch[0]),
-                                             &val);
+    rc = pmix_pnet_base_get_assigned_devices(proc, mymatch, NMYMATCH, &val);
     if (PMIX_SUCCESS != rc) {
         /* this process was not mapped against a NIC of ours - the ordinary
          * case, and not something to report */
@@ -333,30 +315,27 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory)
 {
-    pmix_status_t rc = PMIX_SUCCESS;
+    size_t n;
 
-    PMIX_HIDE_UNUSED_PARAMS(directives,ndirs, inventory);
+    PMIX_HIDE_UNUSED_PARAMS(directives, ndirs, inventory);
 
-    /* search the topology for Mellanox/NVIDIA NICs */
-    hwloc_obj_t device;
-
-    if (NULL == pmix_globals.topology.source ||
-        0 != strncasecmp(pmix_globals.topology.source, "hwloc", 5) ||
-        NULL == pmix_globals.topology.topology) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
-    device = hwloc_get_next_pcidev(pmix_globals.topology.topology, NULL);
-    while (NULL != device) {
-        if (0x207 == device->attr->pcidev.class_id &&
-            (device->attr->pcidev.vendor_id == 0x15b3 ||
-             device->attr->pcidev.vendor_id == 0x10de)) {
+    /* Search the topology for one of our NICs, asking the same question
+     * component_open asked of the same helper so the two cannot drift.
+     * Nothing is added to the inventory list yet.
+     *
+     * "None here" is reported as PMIX_SUCCESS on purpose: unlike allocate
+     * and setup_fork, this call has no decline convention - the base logs
+     * any error and abandons the fan-out - so a component with nothing to
+     * say has to say it quietly. */
+    for (n = 0; n < NMYMATCH; n++) {
+        if (PMIX_SUCCESS == pmix_hwloc_check_vendor(&pmix_globals.topology,
+                                                    mymatch[n].vendor,
+                                                    mymatch[n].devclass)) {
             /* add this to the inventory */
-            return PMIX_SUCCESS;
+            break;
         }
-        device = hwloc_get_next_pcidev(pmix_globals.topology.topology, device);
     }
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
