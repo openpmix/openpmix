@@ -16,7 +16,7 @@
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -37,7 +37,7 @@
 #include "src/mca/pstat/pstat.h"
 
 /*
- * Public string showing the pstat ompi_test component version number
+ * Public string showing the pstat test component version number
  */
 const char *pmix_pstat_test_component_version_string
     = "PMIX test pstat MCA component version " PMIX_VERSION;
@@ -53,9 +53,6 @@ static int pstat_test_component_query(pmix_mca_base_module_t **module, int *prio
  */
 
 const pmix_pstat_base_component_t pmix_mca_pstat_test_component = {
-    /* Indicate that we are a pstat v1.1.0 component (which also
-       implies a specific MCA version) */
-
     PMIX_MCA_BASE_VERSION(pstat),
 
     /* Component name and version */
