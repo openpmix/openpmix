@@ -51,7 +51,7 @@ static pmix_status_t query(pmix_proc_t *requestor,
 static pmix_status_t module_fini(void);
 
 /*
- * Plinux pstat module
+ * The canned-data pstat module
  */
 const pmix_pstat_base_module_t pmix_pstat_test_module = {
     /* Initialization function */
@@ -229,19 +229,39 @@ static pmix_status_t disk_stat(void *answer,
     char *dptr;
     void *cache;
     int n;
+    size_t d;
+    bool takeit;
     uint64_t u64;
     pmix_data_array_t darray;
     time_t sample_time;
     pmix_status_t rc;
-    PMIX_HIDE_UNUSED_PARAMS(disks);
 
     time(&sample_time);
 
     for (n=0; n < 2; n++) {
+        pmix_asprintf(&dptr, "sd%02d", n);
+        /* a NULL list means every device; otherwise report only the
+         * ones named, the same way the real readers do - a caller that
+         * forces this component must get the answer it asked for and
+         * not one device more */
+        if (NULL == disks) {
+            takeit = true;
+        } else {
+            takeit = false;
+            for (d=0; NULL != disks[d]; d++) {
+                if (0 == strcmp(dptr, disks[d])) {
+                    takeit = true;
+                    break;
+                }
+            }
+        }
+        if (!takeit) {
+            free(dptr);
+            continue;
+        }
         /* take the fields of interest */
         cache = PMIx_Info_list_start();
         // start with the diskID
-        pmix_asprintf(&dptr, "sd%02d", n);
         rc = PMIx_Info_list_add(cache, PMIX_DISK_ID, dptr, PMIX_STRING);
         free(dptr);
         if (PMIX_SUCCESS != rc) {
@@ -368,20 +388,36 @@ static pmix_status_t net_stat(void *answer, char**nets,
     char *dptr;
     void *cache;
     int n;
+    size_t i;
+    bool takeit;
     uint64_t u64;
     pmix_data_array_t darray;
     time_t sample_time;
     pmix_status_t rc;
-    PMIX_HIDE_UNUSED_PARAMS(nets);
 
-    /* read the file one line at a time */
     for (n=0; n < 3; n++) {
         time(&sample_time);
-
+        pmix_asprintf(&dptr, "net%03d", n);
+        /* a NULL list means every interface; otherwise report only the
+         * ones named, the same way the real readers do */
+        if (NULL == nets) {
+            takeit = true;
+        } else {
+            takeit = false;
+            for (i=0; NULL != nets[i]; i++) {
+                if (0 == strcmp(dptr, nets[i])) {
+                    takeit = true;
+                    break;
+                }
+            }
+        }
+        if (!takeit) {
+            free(dptr);
+            continue;
+        }
         /* take the fields of interest */
         cache = PMIx_Info_list_start();
         // start with the network ID
-        pmix_asprintf(&dptr, "net%03d", n);
         rc = PMIx_Info_list_add(cache, PMIX_NETWORK_ID, dptr, PMIX_STRING);
         free(dptr);
         if (PMIX_SUCCESS != rc) {

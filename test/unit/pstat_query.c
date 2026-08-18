@@ -62,11 +62,45 @@ static void report(const char *name, int passed)
  * reads it as a pointer dies here rather than returning a status */
 #define BOGUS_POINTER_BITS 42
 
+/* true when every PMIX_DISK_RESOURCE_USAGE entry in the answer carries
+ * the disk id that was asked for - vacuously true for an empty answer,
+ * which is what a host that has no such device correctly returns */
+static bool only_named_disk(const pmix_info_t *results, size_t nresults,
+                            const char *wanted)
+{
+    const pmix_info_t *entry;
+    size_t n, m, nentries;
+
+    for (n = 0; n < nresults; n++) {
+        if (!PMIx_Check_key(results[n].key, PMIX_DISK_RESOURCE_USAGE)) {
+            continue;
+        }
+        if (PMIX_DATA_ARRAY != results[n].value.type ||
+            NULL == results[n].value.data.darray) {
+            return false;
+        }
+        entry = (const pmix_info_t *) results[n].value.data.darray->array;
+        nentries = results[n].value.data.darray->size;
+        for (m = 0; m < nentries; m++) {
+            if (!PMIx_Check_key(entry[m].key, PMIX_DISK_ID)) {
+                continue;
+            }
+            if (PMIX_STRING != entry[m].value.type ||
+                NULL == entry[m].value.data.string ||
+                0 != strcmp(entry[m].value.data.string, wanted)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     pmix_proc_t requestor;
     pmix_info_t monitor, directive;
-    pmix_info_t *results;
+    pmix_info_t *results, *fptr;
+    pmix_data_array_t fields;
     size_t nresults;
     pmix_status_t rc;
     int ret;
@@ -182,6 +216,33 @@ int main(int argc, char **argv)
     rc = pmix_pstat.query(&requestor, &monitor, PMIX_SUCCESS, &directive, 1, &results, &nresults);
     report("directives: a non-string monitor id is rejected", PMIX_ERR_BAD_PARAM == rc);
     PMIX_INFO_DESTRUCT(&directive);
+    PMIX_INFO_DESTRUCT(&monitor);
+
+    /* ------------------------------------------------------------------
+     * Naming a device restricts the answer to that device. Which
+     * devices a host actually has is not knowable here, so the
+     * assertion is the one that holds everywhere: nothing that was not
+     * asked for comes back. On a host with no "sd01" that is an empty
+     * answer, which is still the right answer - and it is not what the
+     * canned component used to give, because it ignored the filter and
+     * reported both of its fabricated disks.
+     */
+    PMIX_DATA_ARRAY_CONSTRUCT(&fields, 2, PMIX_INFO);
+    fptr = (pmix_info_t *) fields.array;
+    PMIX_INFO_LOAD(&fptr[0], PMIX_DISK_ID, "sd01", PMIX_STRING);
+    PMIX_INFO_LOAD(&fptr[1], PMIX_DISK_READ_COMPLETED, NULL, PMIX_BOOL);
+    PMIX_INFO_CONSTRUCT(&monitor);
+    PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_DISK_RESOURCE_USAGE, &fields, PMIX_DATA_ARRAY);
+    PMIX_DATA_ARRAY_DESTRUCT(&fields);
+    results = NULL;
+    nresults = 0;
+    rc = pmix_pstat.query(&requestor, &monitor, PMIX_SUCCESS, NULL, 0, &results, &nresults);
+    report("filter: a disk request naming a device is accepted", PMIX_SUCCESS == rc);
+    report("filter: no device other than the one named is reported",
+           PMIX_SUCCESS != rc || only_named_disk(results, nresults, "sd01"));
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+    }
     PMIX_INFO_DESTRUCT(&monitor);
 
     /* ------------------------------------------------------------------
