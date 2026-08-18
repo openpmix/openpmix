@@ -40,13 +40,23 @@
  * observer is a *different* rank. rank 1 receives the alert and checks
  * that its source is really rank 0, then prints "MONITOR TEST PASSED".
  *
- * This guards two things at once:
+ * rank 0 also asks for a *file* monitor on a file it creates and then
+ * never touches, so the other psensor component gets the same end-to-end
+ * treatment: the server's file monitor must notice the stale mtime and
+ * raise PMIX_MONITOR_FILE_ALERT. rank 1 waits for that too and prints
+ * "FILE MONITOR TEST PASSED".
+ *
+ * This guards three things at once:
  *   1. that the monitor API is wired to psensor at all - otherwise no
- *      alert is ever generated and rank 1 times out; and
+ *      alert is ever generated and rank 1 times out;
  *   2. that the alert carries the correct source - the source proc is
  *      passed to an asynchronous notify, so it must outlive the call that
  *      raised it. A stack-allocated source produces a garbage rank/nspace
- *      here.
+ *      here; and
+ *   3. that both monitors keep sampling on their own timer. Each tracker
+ *      arms a persistent timer, and the sampler must not re-arm it - so
+ *      an alert that never comes can mean the timer stopped after its
+ *      first fire, not just that the framework was never driven.
  */
 
 #include <errno.h>
@@ -66,7 +76,10 @@
 
 static pmix_proc_t myproc;
 static mylock_t alertlock;
+static mylock_t filelock;
 static volatile int alert_source_ok = 0;
+static volatile int file_alert_source_ok = 0;
+static char watchfile[1024] = {0};
 
 static void hide_unused_params(int x, ...)
 {
@@ -99,6 +112,31 @@ static void alert_handler(size_t evhdlr_registration_id, pmix_status_t status,
     }
     alertlock.status = status;
     DEBUG_WAKEUP_THREAD(&alertlock);
+}
+
+/* observer handler for PMIX_MONITOR_FILE_ALERT */
+static void file_alert_handler(size_t evhdlr_registration_id, pmix_status_t status,
+                               const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                               pmix_info_t results[], size_t nresults,
+                               pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    int rc = 0;
+    hide_unused_params(rc, evhdlr_registration_id, info, ninfo, results, nresults);
+
+    if (NULL != source && PMIX_CHECK_NSPACE(source->nspace, myproc.nspace)
+        && MONITORED_RANK == (int) source->rank) {
+        file_alert_source_ok = 1;
+    }
+    fprintf(stderr, "Observer %s:%d FILE ALERT RECEIVED (%s) source=%s:%d source_ok=%d\n",
+            myproc.nspace, myproc.rank, PMIx_Error_string(status),
+            (NULL == source) ? "NULL" : source->nspace,
+            (NULL == source) ? -1 : (int) source->rank, file_alert_source_ok);
+
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
+    }
+    filelock.status = status;
+    DEBUG_WAKEUP_THREAD(&filelock);
 }
 
 static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
@@ -188,6 +226,66 @@ static int run_monitored(void)
     return 0;
 }
 
+/* rank 0: create a file, ask the server to watch it for modification,
+ * and then never touch it again. The file monitor must notice that the
+ * mtime has stopped moving and alert. Note the drop count: the first
+ * sample only records the current mtime, so it takes ndrops+1 samples to
+ * trip - which is exactly what proves the tracker's timer kept firing. */
+static int run_file_monitored(void)
+{
+    int rc;
+    pmix_info_t *monitor, *info;
+    mylock_t mylock;
+    uint32_t n;
+    FILE *fp;
+    bool flag = true;
+
+    if (NULL == getcwd(watchfile, sizeof(watchfile) - 32)) {
+        fprintf(stderr, "Monitored %s:%d: getcwd failed\n", myproc.nspace, myproc.rank);
+        return 1;
+    }
+    snprintf(watchfile + strlen(watchfile), 32, "/simpmon-%lu.watch",
+             (unsigned long) getpid());
+    fp = fopen(watchfile, "w");
+    if (NULL == fp) {
+        fprintf(stderr, "Monitored %s:%d: cannot create %s\n", myproc.nspace, myproc.rank,
+                watchfile);
+        return 1;
+    }
+    fprintf(fp, "watch me\n");
+    fclose(fp);
+
+    PMIX_INFO_CREATE(monitor, 1);
+    PMIX_INFO_LOAD(&monitor[0], PMIX_MONITOR_FILE, watchfile, PMIX_STRING);
+
+    PMIX_INFO_CREATE(info, 4);
+    PMIX_INFO_LOAD(&info[0], PMIX_MONITOR_ID, "SIMPMONITOR-FILE", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_MONITOR_FILE_MODIFY, &flag, PMIX_BOOL);
+    n = 1; /* stat it every second */
+    PMIX_INFO_LOAD(&info[2], PMIX_MONITOR_FILE_CHECK_TIME, &n, PMIX_UINT32);
+    n = 1; /* tolerate one unchanged check */
+    PMIX_INFO_LOAD(&info[3], PMIX_MONITOR_FILE_DROPS, &n, PMIX_UINT32);
+
+    DEBUG_CONSTRUCT_LOCK(&mylock);
+    rc = PMIx_Process_monitor_nb(monitor, PMIX_MONITOR_FILE_ALERT, info, 4, infocbfunc,
+                                 (void *) &mylock);
+    if (PMIX_SUCCESS == rc) {
+        DEBUG_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+    }
+    DEBUG_DESTRUCT_LOCK(&mylock);
+    PMIX_INFO_FREE(monitor, 1);
+    PMIX_INFO_FREE(info, 4);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        fprintf(stderr, "Monitored %s:%d: file monitor request rejected: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        return 1;
+    }
+    fprintf(stderr, "Monitored %s:%d: file monitoring started on %s\n", myproc.nspace,
+            myproc.rank, watchfile);
+    return 0;
+}
+
 /* The blocking form of PMIx_Process_monitor with PMIX_SEND_HEARTBEAT
  * used to hang forever: the _nb entry point fired the beat and returned
  * success without ever invoking the callback, so the blocking wrapper
@@ -218,7 +316,7 @@ static int send_one_heartbeat(void)
     return 0;
 }
 
-/* rank 1: watch for the alert the server raises about rank 0 */
+/* rank 1: watch for the alerts the server raises about rank 0 */
 static int run_observer(void)
 {
     pmix_status_t code = PMIX_MONITOR_HEARTBEAT_ALERT;
@@ -235,6 +333,19 @@ static int run_observer(void)
         return 1;
     }
     DEBUG_DESTRUCT_LOCK(&mylock);
+
+    code = PMIX_MONITOR_FILE_ALERT;
+    DEBUG_CONSTRUCT_LOCK(&mylock);
+    PMIx_Register_event_handler(&code, 1, NULL, 0, file_alert_handler, evhandler_reg_callbk,
+                                (void *) &mylock);
+    DEBUG_WAIT_THREAD(&mylock);
+    if (PMIX_SUCCESS != mylock.status) {
+        fprintf(stderr, "Observer %s:%d: file alert handler registration failed: %s\n",
+                myproc.nspace, myproc.rank, PMIx_Error_string(mylock.status));
+        DEBUG_DESTRUCT_LOCK(&mylock);
+        return 1;
+    }
+    DEBUG_DESTRUCT_LOCK(&mylock);
     return 0;
 }
 
@@ -247,6 +358,7 @@ int main(int argc, char **argv)
     hide_unused_params(rc, argc, argv);
 
     DEBUG_CONSTRUCT_LOCK(&alertlock);
+    DEBUG_CONSTRUCT_LOCK(&filelock);
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
@@ -273,6 +385,9 @@ int main(int argc, char **argv)
 
     if (MONITORED_RANK == (int) myproc.rank) {
         result = run_monitored();
+        if (0 == result) {
+            result = run_file_monitored();
+        }
     } else if (OBSERVER_RANK == (int) myproc.rank) {
         /* the blocking heartbeat call must return before we go on to
          * wait for the alert - if it hangs, this whole test hangs and
@@ -282,9 +397,16 @@ int main(int argc, char **argv)
         }
         if (0 == wait_for_alert(&alertlock, 30) && alert_source_ok) {
             fprintf(stderr, "Observer %s:%d: MONITOR TEST PASSED\n", myproc.nspace, myproc.rank);
-            result = 0;
         } else {
             fprintf(stderr, "Observer %s:%d: MONITOR TEST FAILED - no valid heartbeat alert\n",
+                    myproc.nspace, myproc.rank);
+            result = 1;
+        }
+        if (0 == wait_for_alert(&filelock, 30) && file_alert_source_ok) {
+            fprintf(stderr, "Observer %s:%d: FILE MONITOR TEST PASSED\n", myproc.nspace,
+                    myproc.rank);
+        } else {
+            fprintf(stderr, "Observer %s:%d: FILE MONITOR TEST FAILED - no valid file alert\n",
                     myproc.nspace, myproc.rank);
             result = 1;
         }
@@ -300,7 +422,11 @@ int main(int argc, char **argv)
     }
 
 done:
+    if (MONITORED_RANK == (int) myproc.rank && '\0' != watchfile[0]) {
+        unlink(watchfile);
+    }
     DEBUG_DESTRUCT_LOCK(&alertlock);
+    DEBUG_DESTRUCT_LOCK(&filelock);
     if (PMIX_SUCCESS != PMIx_Finalize(NULL, 0)) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Finalize failed\n", myproc.nspace, myproc.rank);
     }

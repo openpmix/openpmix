@@ -19,6 +19,15 @@
 # was actually armed, so only the arrival of the alert proves the monitor
 # is live. If the monitor path is not wired to psensor, no alert is ever
 # generated and the client times out waiting - failing this test.
+#
+# The whole run is repeated with psensor_base_use_separate_thread set,
+# which moves every monitor timer off the library's progress thread and
+# onto a dedicated "PSENSOR" one. That configuration is otherwise never
+# exercised, and it was silently dead: the framework created the event
+# base but never started the thread, so trackers armed timers that
+# nothing ever ran and no alert was ever raised. It also runs the
+# framework's teardown against a live sampling thread, so a crash or hang
+# here is as meaningful as a missing alert.
 
 use strict;
 
@@ -62,78 +71,115 @@ foreach my $p (@paths) {
 
 # Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise
 # arm a Perl alarm so a wedged run can never hang "make check" forever.
-my @cmd = ("./simptest", "-n", "2", "-e", "./simpmonitor");
+my @basecmd = ("./simptest", "-n", "2", "-e", "./simpmonitor");
 my $use_alarm = 0;
 if ("" ne $timeout_cmd) {
-    unshift(@cmd, split(' ', $timeout_cmd));
+    unshift(@basecmd, split(' ', $timeout_cmd));
 } else {
     $use_alarm = 1;
 }
-print "@cmd\n";
 
-# Run the server in a child we control, merging stderr into stdout, and
-# slurp the output. The alarm (when armed) bounds the wait.
-my $pid = open(my $fh, "-|");
-defined($pid) or die "cannot fork: $!";
-if (0 == $pid) {
-    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
-    exec(@cmd) or die "cannot exec simptest: $!";
-}
-my $output = "";
-my $timed_out = 0;
-eval {
-    local $SIG{ALRM} = sub { die "alarm\n"; };
-    alarm(600) if $use_alarm;
-    local $/;            # slurp the whole stream
-    $output = <$fh>;
-    alarm(0);
-};
-if ($@) {
-    $timed_out = 1;
-    kill('KILL', $pid);
-}
-close($fh);
-$output = "" unless defined($output);
-my $status = $timed_out ? 1 : ($? >> 8);
-if ($timed_out) {
-    $output .= "\nFAIL: simptest exceeded the 600s time limit\n";
-}
-print $output . "\n";
-print "CODE $status\n";
+# Run one scenario and check it. Returns 0 on success, non-zero on
+# failure, having printed the reason.
+sub run_scenario {
+    my ($label, $separate_thread) = @_;
 
-# The server must exit 0: a crash anywhere in the monitor/psensor path
-# drives a non-zero exit.
-if (0 != $status) {
-    print "FAIL: simptest did not complete (exit $status)\n";
-    exit($status == 0 ? 1 : $status);
+    print "\n=== $label ===\n";
+    if ($separate_thread) {
+        $ENV{'PMIX_MCA_psensor_base_use_separate_thread'} = "1";
+    } else {
+        delete $ENV{'PMIX_MCA_psensor_base_use_separate_thread'};
+    }
+
+    my @cmd = @basecmd;
+    print "@cmd\n";
+
+    # Run the server in a child we control, merging stderr into stdout, and
+    # slurp the output. The alarm (when armed) bounds the wait.
+    my $pid = open(my $fh, "-|");
+    defined($pid) or die "cannot fork: $!";
+    if (0 == $pid) {
+        open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+        exec(@cmd) or die "cannot exec simptest: $!";
+    }
+    my $output = "";
+    my $timed_out = 0;
+    eval {
+        local $SIG{ALRM} = sub { die "alarm\n"; };
+        alarm(600) if $use_alarm;
+        local $/;            # slurp the whole stream
+        $output = <$fh>;
+        alarm(0);
+    };
+    if ($@) {
+        $timed_out = 1;
+        kill('KILL', $pid);
+    }
+    close($fh);
+    $output = "" unless defined($output);
+    my $status = $timed_out ? 1 : ($? >> 8);
+    if ($timed_out) {
+        $output .= "\nFAIL: simptest exceeded the 600s time limit\n";
+    }
+    print $output . "\n";
+    print "CODE $status\n";
+
+    # The server must exit 0: a crash anywhere in the monitor/psensor path
+    # drives a non-zero exit.
+    if (0 != $status) {
+        print "FAIL[$label]: simptest did not complete (exit $status)\n";
+        return ($status == 0 ? 1 : $status);
+    }
+
+    # The client explicitly reports failure if it never received the alert.
+    if ($output =~ /MONITOR TEST FAILED/) {
+        print "FAIL[$label]: client did not receive the heartbeat alert\n";
+        return 1;
+    }
+
+    # Confirm the alert actually fired rather than passing vacuously: the
+    # client prints this line only from inside its heartbeat-alert handler.
+    if ($output !~ /MONITOR TEST PASSED/) {
+        print "FAIL[$label]: client did not confirm heartbeat monitoring\n";
+        return 1;
+    }
+
+    # The observer also makes one blocking PMIx_Process_monitor call with
+    # PMIX_SEND_HEARTBEAT. That form used to return from the _nb layer
+    # without ever invoking the callback the blocking wrapper was waiting
+    # on, so it hung forever - which here shows up as the whole run hitting
+    # the time limit above. This line proves it came back.
+    if ($output =~ /HEARTBEAT TEST FAILED/) {
+        print "FAIL[$label]: blocking PMIx_Process_monitor(SEND_HEARTBEAT) reported an error\n";
+        return 1;
+    }
+    if ($output !~ /HEARTBEAT TEST PASSED/) {
+        print "FAIL[$label]: blocking PMIx_Process_monitor(SEND_HEARTBEAT) never completed\n";
+        return 1;
+    }
+    # The file monitor is the other psensor component, watching a file
+    # rank 0 creates and never touches. It has to survive its own first
+    # sample: the tracker's timer is persistent and the sampler must not
+    # re-arm it, so a timer that stops after one fire never trips.
+    if ($output =~ /FILE MONITOR TEST FAILED/) {
+        print "FAIL[$label]: client did not receive the file alert\n";
+        return 1;
+    }
+    if ($output !~ /FILE MONITOR TEST PASSED/) {
+        print "FAIL[$label]: client did not confirm file monitoring\n";
+        return 1;
+    }
+    print "PASS[$label]: heartbeat monitor raised the expected alert\n";
+    print "PASS[$label]: file monitor raised the expected alert\n";
+    print "PASS[$label]: blocking PMIx_Process_monitor(SEND_HEARTBEAT) returned\n";
+    return 0;
 }
 
-# The client explicitly reports failure if it never received the alert.
-if ($output =~ /MONITOR TEST FAILED/) {
-    print "FAIL: client did not receive the heartbeat alert\n";
-    exit(1);
-}
+my $rc = run_scenario("shared progress thread", 0);
+exit($rc) if (0 != $rc);
 
-# Confirm the alert actually fired rather than passing vacuously: the
-# client prints this line only from inside its heartbeat-alert handler.
-if ($output !~ /MONITOR TEST PASSED/) {
-    print "FAIL: client did not confirm heartbeat monitoring\n";
-    exit(1);
-}
+# Same test, with the monitors on their own progress thread.
+$rc = run_scenario("dedicated PSENSOR thread", 1);
+exit($rc) if (0 != $rc);
 
-# The observer also makes one blocking PMIx_Process_monitor call with
-# PMIX_SEND_HEARTBEAT. That form used to return from the _nb layer
-# without ever invoking the callback the blocking wrapper was waiting
-# on, so it hung forever - which here shows up as the whole run hitting
-# the time limit above. This line proves it came back.
-if ($output =~ /HEARTBEAT TEST FAILED/) {
-    print "FAIL: blocking PMIx_Process_monitor(SEND_HEARTBEAT) reported an error\n";
-    exit(1);
-}
-if ($output !~ /HEARTBEAT TEST PASSED/) {
-    print "FAIL: blocking PMIx_Process_monitor(SEND_HEARTBEAT) never completed\n";
-    exit(1);
-}
-print "PASS: heartbeat monitor raised the expected alert\n";
-print "PASS: blocking PMIx_Process_monitor(SEND_HEARTBEAT) returned\n";
 exit(0);
