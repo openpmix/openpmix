@@ -122,15 +122,6 @@ interfaces were found after applying any include or exclude directives:
 Please adjust your include or exclude to allow selection of an
 available interface.
 #
-[unexpected-message]
-The PMIx messaging system has received an unexpected message:
-
-  Peer: %s
-  Tag:  %u
-
-The message cannot be processed and will be ignored. Please
-report this error to the PMIx developers.
-#
 [rndz-file-in-use]
 A PMIx server was unable to create the rendezvous file by which its
 peers locate it because that file already exists and belongs to a

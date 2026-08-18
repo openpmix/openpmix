@@ -89,6 +89,14 @@ each time somebody asks.
           ``psensor_base_use_separate_thread`` set, so the configuration
           that was silently dead is exercised by ``make check``.
 
+          The entry that replaced it below was **corrected the same day**.
+          It first recorded the unexpected-message ``show_help`` as a
+          beat arriving at a server with no posted recv; tracing the tag
+          showed the opposite -- the server matches it on its wildcard
+          recv and answers with an error the *client* cannot place.  The
+          diagnostic is fixed; the mis-delivery behind it is what stays
+          open.
+
 Review coverage
 ---------------
 
@@ -263,30 +271,36 @@ cover the whole of what the entry described.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
-A heartbeat with no monitor armed looks like a protocol error
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+An early heartbeat is delivered to the command switchyard
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``psensor/heartbeat`` posts the ``PMIX_PTL_TAG_HEARTBEAT`` receive
-lazily -- on the first ``start`` that claims a heartbeat monitor -- so a
-beat that arrives before any monitor has been armed finds no posted recv.
-The ``ptl`` base then prints its unexpected-message ``show_help``, which
-names the peer and the tag and asks the user to *report this error to
-the PMIx developers*.
+lazily -- on the first ``start`` that claims a heartbeat monitor.  A beat
+that arrives before that therefore finds no posted recv of its own, and
+on a *server* that does not mean it is dropped: the server holds a
+wildcard (``UINT_MAX``) recv for the command switchyard, which matches
+anything, so the beat is handed to ``server_switchyard`` as though it
+were a client command.  The switchyard cannot read a command out of a
+zero-byte buffer, fails, and queues its error status back to the client
+on tag 1 -- where nothing is waiting, because ``PMIx_Heartbeat()`` is
+one-way by construction and no client ever posts for that tag.
 
-Nothing is wrong.  ``PMIx_Heartbeat()`` is a client-side call that a
-process may legitimately make before -- or after -- its server holds a
-monitor for it, and the beat is correctly ignored either way; only the
-diagnostic is wrong.  ``test/unit/run_monitor.pl`` reproduces it on every
-run, because the observer rank sends its one test beat before the
-monitored rank has asked to be watched.
+Nothing is corrupted, and ``test/unit/run_monitor.pl`` reproduces it on
+every run: its observer rank sends its one test beat before the
+monitored rank has asked to be watched.  What used to make it look
+alarming -- the ``ptl`` base reporting the discarded reply with a
+``show_help`` that asked the user to report a bug to the PMIx
+developers -- is gone; that path is now a framework trace at verbosity
+2.
 
-The fix is a judgement call rather than a repair, which is why it is
-recorded rather than made.  Either the heartbeat tag stops being a
-lazily-posted recv (post it when the framework opens, and drop a beat
-that matches no tracker), or the ``ptl`` base learns that this one tag is
-allowed to arrive unclaimed.  The first spends a posted recv in every
-server that never monitors anything; the second puts component knowledge
-in the transport.
+The remaining defect is the mis-delivery itself, and the fix for it is a
+judgement call rather than a repair, which is why it is recorded here.
+Either the heartbeat tag stops being a lazily-posted recv -- post it when
+the framework opens, and drop a beat that matches no tracker -- or the
+switchyard learns to recognize the reserved tags that are not commands.
+The first spends a posted recv in every server that never monitors
+anything; the second puts component knowledge in the server's command
+dispatch.
 
 Coverage gaps
 -------------
