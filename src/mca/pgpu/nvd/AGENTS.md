@@ -26,15 +26,13 @@ include list (`CUDA_*,NCCL_*`).
 |------|----------|
 | `pgpu_nvd.h` | Component struct `pmix_pgpu_nvd_component_t`, module extern, and the blob/inventory key `#define`s. |
 | `pgpu_nvd_component.c` | Component struct + open/close/register/query. Priority **10**. |
-| `pgpu_nvd.c` | The module: `allocate`, `setup_local`, and the two inventory stubs. |
+| `pgpu_nvd.c` | The module: `allocate`, `setup_local`, `setup_fork`, and the two inventory stubs. |
 
 ## Availability
 
 There is **no `configure.m4` and no build gate**: the component links
-nothing and needs no vendor SDK, so it builds everywhere and the MCA
-machinery configures a component with no `configure.m4` by itself. It
-previously carried one whose whole body was `AS_IF([test "yes" = "no"],
-...)` — it never built at all.
+nothing and needs no vendor SDK, so it builds everywhere and there is
+nothing for `configure` to look for.
 
 The question is settled at **run** time. `component_open` returns
 `pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x10de, 0x03)`,
@@ -50,8 +48,8 @@ reports `0x0300` ("VGA compatible"), and both are NVIDIA GPUs; matching
 indistinguishable from being correct that no GPU is there.
 
 `component_query` sets priority **10** — the lowest of the three vendor
-components — and hands back `pmix_pgpu_nvd_module`; it does no checking
-of its own, because a component that declined to open is never queried.
+components — and hands back `pmix_pgpu_nvd_module`; it does no checking of
+its own, because a component that declined to open is never queried.
 
 ## Component-name requirement
 
@@ -98,7 +96,9 @@ The bodies match the other vendor components:
 
 ## Gotchas
 
-- Its inventory functions are no-ops. Do not describe those as working.
+- Its device assignment (`setup_fork` → `CUDA_VISIBLE_DEVICES`) and its
+  envar harvest are live; its inventory functions are no-ops. Do not
+  describe those as working.
 - Keep `PMIX_PGPU_NVD_BLOB` / `PMIX_PGPU_NVD_INVENTORY_KEY` unique across
   components; `setup_local` claims its data by matching the blob key.
 - What is left to do here is the inventory functions. Do **not** answer

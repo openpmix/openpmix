@@ -84,15 +84,27 @@ PMIX_EXPORT pmix_status_t pmix_pgpu_base_setup_local(char *nspace,
                                                      pmix_info_t info[], size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_pgpu_base_setup_fork(const pmix_proc_t *peer, char ***env);
 
-/* Set "vendor"'s visible-devices variable "envar" in *env from the devices
- * this process was mapped against, naming them by the vendor's own
- * identifier.  Shared by the components because every vendor spells this
- * the same way at bottom; they differ only in whose devices are theirs and
- * what the variable is called.
+/* The value "vendor"'s visible-devices variable should carry for this
+ * process: its devices, each named by whatever that vendor's variable
+ * accepts, joined with ','.  Shared by the components because every vendor
+ * spells this the same way at bottom; they differ only in whose devices
+ * are theirs, what the variable is called, and what its grammar takes.
  *
  * Returns PMIX_ERR_TAKE_NEXT_OPTION when there is nothing to say - the
- * process was not mapped against a device, or none of the devices it got
- * belong to this vendor - which is the ordinary case and not an error. */
+ * process was not mapped against a device, none of the devices it got
+ * belong to this vendor, or the topology cannot name them in the vendor's
+ * grammar - which is the ordinary case and not an error.  The caller frees
+ * *value.
+ *
+ * Separate from the setter below because a component may have to check
+ * something about the environment BEFORE writing, and a check that runs
+ * after the variable is already set is no check at all. */
+PMIX_EXPORT pmix_status_t pmix_pgpu_base_get_visible_devices(const pmix_proc_t *proc,
+                                                             const char *vendor,
+                                                             char **value);
+
+/* Set "vendor"'s visible-devices variable "envar" in *env to that value,
+ * overwriting any value it already has.  Same return contract. */
 PMIX_EXPORT pmix_status_t pmix_pgpu_base_set_visible_devices(const pmix_proc_t *proc,
                                                              const char *vendor,
                                                              const char *envar,

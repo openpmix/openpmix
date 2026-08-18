@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topology SYSTEM "hwloc2.dtd">
+<topology version="2.0">
+  <object type="Machine" os_index="0" cpuset="0x000000ff" complete_cpuset="0x000000ff" allowed_cpuset="0x000000ff" nodeset="0x00000003" complete_nodeset="0x00000003" allowed_nodeset="0x00000003" gp_index="1001">
+    <info name="Backend" value="Linux"/>
+    <info name="Backend" value="OpenCL"/>
+    <info name="Backend" value="LevelZero"/>
+    <info name="HostName" value="intel-node-01"/>
+    <object type="Package" os_index="0" cpuset="0x0000000f" complete_cpuset="0x0000000f" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1002">
+      <object type="NUMANode" os_index="0" cpuset="0x0000000f" complete_cpuset="0x0000000f" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1003" local_memory="34359738368"/>
+      <object type="Core" os_index="0" cpuset="0x00000001" complete_cpuset="0x00000001" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1004">
+        <object type="PU" os_index="0" cpuset="0x00000001" complete_cpuset="0x00000001" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1005"/>
+      </object>
+      <object type="Core" os_index="1" cpuset="0x00000002" complete_cpuset="0x00000002" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1006">
+        <object type="PU" os_index="1" cpuset="0x00000002" complete_cpuset="0x00000002" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1007"/>
+      </object>
+      <object type="Core" os_index="2" cpuset="0x00000004" complete_cpuset="0x00000004" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1008">
+        <object type="PU" os_index="2" cpuset="0x00000004" complete_cpuset="0x00000004" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1009"/>
+      </object>
+      <object type="Core" os_index="3" cpuset="0x00000008" complete_cpuset="0x00000008" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1010">
+        <object type="PU" os_index="3" cpuset="0x00000008" complete_cpuset="0x00000008" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1011"/>
+      </object>
+      <object type="Bridge" gp_index="1012" bridge_type="0-1" depth="0" bridge_pci="0000:[18-18]">
+        <object type="PCIDev" gp_index="1013" pci_busid="0000:18:00.0" pci_type="0380 [8086:0bd6] [8086:0000] 2f" pci_link_speed="63.015396">
+          <info name="PCIVendor" value="Intel Corporation"/>
+          <info name="PCIDevice" value="Ponte Vecchio XT"/>
+          <object type="OSDev" gp_index="1014" name="opencl0d0" subtype="OpenCL" osdev_type="5">
+            <info name="Backend" value="OpenCL"/>
+            <info name="OpenCLDeviceType" value="GPU"/>
+            <info name="GPUVendor" value="Intel(R) Corporation"/>
+            <info name="GPUModel" value="Intel(R) Data Center GPU Max 1550"/>
+            <info name="OpenCLPlatformIndex" value="0"/>
+            <info name="OpenCLPlatformDeviceIndex" value="0"/>
+          </object>
+          <object type="OSDev" gp_index="1015" name="ze0" subtype="LevelZero" osdev_type="5">
+            <info name="Backend" value="LevelZero"/>
+            <info name="LevelZeroDriverIndex" value="0"/>
+            <info name="LevelZeroDriverDeviceIndex" value="0"/>
+            <info name="LevelZeroDeviceType" value="GPU"/>
+            <info name="LevelZeroUUID" value="27a77ad2b8419be80000000000000001"/>
+            <info name="LevelZeroVendor" value="Intel(R) Corporation"/>
+            <info name="LevelZeroModel" value="Intel(R) Data Center GPU Max 1550"/>
+          </object>
+          <object type="OSDev" gp_index="1016" name="ze1" subtype="LevelZero" osdev_type="5">
+            <info name="Backend" value="LevelZero"/>
+            <info name="LevelZeroDriverIndex" value="0"/>
+            <info name="LevelZeroDriverDeviceIndex" value="1"/>
+            <info name="LevelZeroDeviceType" value="GPU"/>
+            <info name="LevelZeroUUID" value="27a77ad2b8419be80000000000000002"/>
+            <info name="LevelZeroVendor" value="Intel(R) Corporation"/>
+            <info name="LevelZeroModel" value="Intel(R) Data Center GPU Max 1550"/>
+          </object>
+        </object>
+      </object>
+      <object type="Bridge" gp_index="1017" bridge_type="0-1" depth="0" bridge_pci="0000:[42-42]">
+        <object type="PCIDev" gp_index="1018" pci_busid="0000:42:00.0" pci_type="0380 [8086:0bd6] [8086:0000] 2f" pci_link_speed="63.015396">
+          <info name="PCIVendor" value="Intel Corporation"/>
+          <info name="PCIDevice" value="Ponte Vecchio XT"/>
+          <object type="OSDev" gp_index="1019" name="opencl0d1" subtype="OpenCL" osdev_type="5">
+            <info name="Backend" value="OpenCL"/>
+            <info name="OpenCLDeviceType" value="GPU"/>
+            <info name="GPUVendor" value="Intel(R) Corporation"/>
+            <info name="GPUModel" value="Intel(R) Data Center GPU Max 1550"/>
+            <info name="OpenCLPlatformIndex" value="0"/>
+            <info name="OpenCLPlatformDeviceIndex" value="1"/>
+          </object>
+          <object type="OSDev" gp_index="1020" name="ze2" subtype="LevelZero" osdev_type="5">
+            <info name="Backend" value="LevelZero"/>
+            <info name="LevelZeroDriverIndex" value="0"/>
+            <info name="LevelZeroDriverDeviceIndex" value="2"/>
+            <info name="LevelZeroDeviceType" value="GPU"/>
+            <info name="LevelZeroUUID" value="74576f71a61385ef0000000000000001"/>
+            <info name="LevelZeroVendor" value="Intel(R) Corporation"/>
+            <info name="LevelZeroModel" value="Intel(R) Data Center GPU Max 1550"/>
+          </object>
+          <object type="OSDev" gp_index="1021" name="ze3" subtype="LevelZero" osdev_type="5">
+            <info name="Backend" value="LevelZero"/>
+            <info name="LevelZeroDriverIndex" value="0"/>
+            <info name="LevelZeroDriverDeviceIndex" value="3"/>
+            <info name="LevelZeroDeviceType" value="GPU"/>
+            <info name="LevelZeroUUID" value="74576f71a61385ef0000000000000002"/>
+            <info name="LevelZeroVendor" value="Intel(R) Corporation"/>
+            <info name="LevelZeroModel" value="Intel(R) Data Center GPU Max 1550"/>
+          </object>
+        </object>
+      </object>
+    </object>
+    <object type="Package" os_index="1" cpuset="0x000000f0" complete_cpuset="0x000000f0" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1022">
+      <object type="NUMANode" os_index="1" cpuset="0x000000f0" complete_cpuset="0x000000f0" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1023" local_memory="34359738368"/>
+      <object type="Core" os_index="4" cpuset="0x00000010" complete_cpuset="0x00000010" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1024">
+        <object type="PU" os_index="4" cpuset="0x00000010" complete_cpuset="0x00000010" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1025"/>
+      </object>
+      <object type="Core" os_index="5" cpuset="0x00000020" complete_cpuset="0x00000020" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1026">
+        <object type="PU" os_index="5" cpuset="0x00000020" complete_cpuset="0x00000020" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1027"/>
+      </object>
+      <object type="Core" os_index="6" cpuset="0x00000040" complete_cpuset="0x00000040" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1028">
+        <object type="PU" os_index="6" cpuset="0x00000040" complete_cpuset="0x00000040" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1029"/>
+      </object>
+      <object type="Core" os_index="7" cpuset="0x00000080" complete_cpuset="0x00000080" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1030">
+        <object type="PU" os_index="7" cpuset="0x00000080" complete_cpuset="0x00000080" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1031"/>
+      </object>
+      <object type="Bridge" gp_index="1032" bridge_type="0-1" depth="0" bridge_pci="0000:[6c-6c]">
+        <object type="PCIDev" gp_index="1033" pci_busid="0000:6c:00.0" pci_type="0380 [8086:0bd6] [8086:0000] 2f" pci_link_speed="63.015396">
+          <info name="PCIVendor" value="Intel Corporation"/>
+          <info name="PCIDevice" value="Ponte Vecchio XT"/>
+          <object type="OSDev" gp_index="1034" name="opencl0d2" subtype="OpenCL" osdev_type="5">
+            <info name="Backend" value="OpenCL"/>
+            <info name="OpenCLDeviceType" value="GPU"/>
+            <info name="GPUVendor" value="Intel(R) Corporation"/>
+            <info name="GPUModel" value="Intel(R) Data Center GPU Max 1550"/>
+            <info name="OpenCLPlatformIndex" value="0"/>
+            <info name="OpenCLPlatformDeviceIndex" value="2"/>
+          </object>
+          <object type="OSDev" gp_index="1035" name="ze4" subtype="LevelZero" osdev_type="5">
+            <info name="Backend" value="LevelZero"/>
+            <info name="LevelZeroDriverIndex" value="0"/>
+            <info name="LevelZeroDriverDeviceIndex" value="4"/>
+            <info name="LevelZeroDeviceType" value="GPU"/>
+            <info name="LevelZeroUUID" value="8a9f3fe593723abb0000000000000001"/>
+            <info name="LevelZeroVendor" value="Intel(R) Corporation"/>
+            <info name="LevelZeroModel" value="Intel(R) Data Center GPU Max 1550"/>
+          </object>
+          <object type="OSDev" gp_index="1036" name="ze5" subtype="LevelZero" osdev_type="5">
+            <info name="Backend" value="LevelZero"/>
+            <info name="LevelZeroDriverIndex" value="0"/>
+            <info name="LevelZeroDriverDeviceIndex" value="5"/>
+            <info name="LevelZeroDeviceType" value="GPU"/>
+            <info name="LevelZeroUUID" value="8a9f3fe593723abb0000000000000002"/>
+            <info name="LevelZeroVendor" value="Intel(R) Corporation"/>
+            <info name="LevelZeroModel" value="Intel(R) Data Center GPU Max 1550"/>
+          </object>
+        </object>
+      </object>
+      <object type="Bridge" gp_index="1037" bridge_type="0-1" depth="0" bridge_pci="0000:[96-96]">
+        <object type="PCIDev" gp_index="1038" pci_busid="0000:96:00.0" pci_type="0380 [8086:0bd6] [8086:0000] 2f" pci_link_speed="63.015396">
+          <info name="PCIVendor" value="Intel Corporation"/>
+          <info name="PCIDevice" value="Ponte Vecchio XT"/>
+          <object type="OSDev" gp_index="1039" name="opencl0d3" subtype="OpenCL" osdev_type="5">
+            <info name="Backend" value="OpenCL"/>
+            <info name="OpenCLDeviceType" value="GPU"/>
+            <info name="GPUVendor" value="Intel(R) Corporation"/>
+            <info name="GPUModel" value="Intel(R) Data Center GPU Max 1550"/>
+            <info name="OpenCLPlatformIndex" value="0"/>
+            <info name="OpenCLPlatformDeviceIndex" value="3"/>
+          </object>
+          <object type="OSDev" gp_index="1040" name="ze6" subtype="LevelZero" osdev_type="5">
+            <info name="Backend" value="LevelZero"/>
+            <info name="LevelZeroDriverIndex" value="0"/>
+            <info name="LevelZeroDriverDeviceIndex" value="6"/>
+            <info name="LevelZeroDeviceType" value="GPU"/>
+            <info name="LevelZeroUUID" value="b1c4d80e57216f3a0000000000000001"/>
+            <info name="LevelZeroVendor" value="Intel(R) Corporation"/>
+            <info name="LevelZeroModel" value="Intel(R) Data Center GPU Max 1550"/>
+          </object>
+          <object type="OSDev" gp_index="1041" name="ze7" subtype="LevelZero" osdev_type="5">
+            <info name="Backend" value="LevelZero"/>
+            <info name="LevelZeroDriverIndex" value="0"/>
+            <info name="LevelZeroDriverDeviceIndex" value="7"/>
+            <info name="LevelZeroDeviceType" value="GPU"/>
+            <info name="LevelZeroUUID" value="b1c4d80e57216f3a0000000000000002"/>
+            <info name="LevelZeroVendor" value="Intel(R) Corporation"/>
+            <info name="LevelZeroModel" value="Intel(R) Data Center GPU Max 1550"/>
+          </object>
+        </object>
+      </object>
+    </object>
+  </object>
+</topology>

@@ -1523,6 +1523,124 @@ static void vendor_id_of(hwloc_obj_t osdev, hwloc_obj_t pci,
     }
 }
 
+/* Is this OS device a Level Zero *root* device - one of the devices
+ * zeDeviceGet would report - as opposed to a tile hanging off one?  hwloc
+ * records the driver's own two-part numbering on a root device only; a
+ * sub-device carries its tile number instead. */
+static const char *levelzero_ordinal(hwloc_obj_t osdev)
+{
+    if (HWLOC_OBJ_OS_DEVICE != osdev->type) {
+        return NULL;
+    }
+    return hwloc_obj_get_info_by_name(osdev, "LevelZeroDriverDeviceIndex");
+}
+
+/* Does this Level Zero root device report tiles? */
+static bool levelzero_has_tiles(hwloc_obj_t osdev)
+{
+    hwloc_obj_t child;
+    const char *nsub;
+
+    nsub = hwloc_obj_get_info_by_name(osdev, "LevelZeroSubdevices");
+    if (NULL != nsub && 0 != strcmp(nsub, "0")) {
+        return true;
+    }
+    for (child = osdev->io_first_child; NULL != child; child = child->next_sibling) {
+        if (HWLOC_OBJ_OS_DEVICE == child->type
+            && NULL != hwloc_obj_get_info_by_name(child, "LevelZeroSubdeviceID")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Add the ordinal of one Level Zero root device to a growing mask.
+ *
+ * Returns false if the device is behind a driver other than the first,
+ * which cannot be expressed at all: an ordinal in ZE_AFFINITY_MASK is
+ * relative to a driver the variable has no way to name, so a value written
+ * for a second driver's device would select the first driver's device of
+ * that number.  Naming the wrong GPU is worse than naming none. */
+static bool levelzero_add_ordinal(hwloc_obj_t osdev, char ***ords)
+{
+    const char *idx, *drv;
+
+    idx = levelzero_ordinal(osdev);
+    if (NULL == idx) {
+        return true;
+    }
+    drv = hwloc_obj_get_info_by_name(osdev, "LevelZeroDriverIndex");
+    if (NULL == drv || 0 != strcmp(drv, "0")) {
+        return false;
+    }
+    PMIx_Argv_append_nosize(ords, idx);
+    return true;
+}
+
+/* What to write in ZE_AFFINITY_MASK to name the Intel GPU on this PCI
+ * function, or NULL if it cannot be said.
+ *
+ * Every Level Zero root device on the function is named, not just one, and
+ * that is what makes the result mean "this card" under either device
+ * hierarchy model rather than under whichever one PMIx assumed.  Under
+ * COMPOSITE a card is one root device, so the mask is one ordinal and the
+ * process gets the card with its tiles as sub-devices.  Under FLAT the
+ * card's tiles are themselves root devices sharing the one PCI function,
+ * so the mask is their two ordinals - which is the same hardware, said the
+ * way that model requires.
+ *
+ * The ordinals are the driver's own, recorded by hwloc when it called
+ * zeDeviceGet, so this is reading an enumeration rather than predicting
+ * one.  What it cannot read is the model that enumeration ran under; see
+ * pmix_hwloc_levelzero_hierarchy(). */
+static char *levelzero_selector(hwloc_obj_t osdev, hwloc_obj_t pci)
+{
+    hwloc_obj_t child;
+    char **ords = NULL;
+    char *val;
+
+    if (NULL == pci) {
+        if (!levelzero_add_ordinal(osdev, &ords)) {
+            PMIx_Argv_free(ords);
+            return NULL;
+        }
+    } else {
+        for (child = pci->io_first_child; NULL != child; child = child->next_sibling) {
+            if (!levelzero_add_ordinal(child, &ords)) {
+                PMIx_Argv_free(ords);
+                return NULL;
+            }
+        }
+    }
+    if (NULL == ords) {
+        return NULL;
+    }
+    val = PMIx_Argv_join(ords, ',');
+    PMIx_Argv_free(ords);
+    return val;
+}
+
+/* The string that names this device to its vendor's device-selection
+ * variable.  See the note on pmix_hwloc_device_t.selector. */
+static char *device_selector(hwloc_obj_t osdev, hwloc_obj_t pci,
+                             const char *vendor, const char *vendor_id)
+{
+    if (NULL == vendor) {
+        return NULL;
+    }
+    if (0 == strcasecmp(vendor, "INTEL")) {
+        return levelzero_selector(osdev, pci);
+    }
+    /* CUDA_VISIBLE_DEVICES and ROCR_VISIBLE_DEVICES both accept the
+     * vendor's own identity, which is why it is preferred over the index
+     * form they also take: an identity does not depend on an ordering PMIx
+     * would have to reproduce */
+    if (NULL == vendor_id) {
+        return NULL;
+    }
+    return strdup(vendor_id);
+}
+
 /* The PCI function an OS device hangs off, or NULL if it has none. */
 static hwloc_obj_t pci_ancestor(hwloc_obj_t osdev)
 {
@@ -1889,6 +2007,8 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         array[n].dev.osname = strdup(c->osdev->name);
         array[n].dev.type = c->type;
         vendor_id_of(c->osdev, c->pci, &array[n].vendor_id, &array[n].vendor);
+        array[n].selector = device_selector(c->osdev, c->pci, array[n].vendor,
+                                            array[n].vendor_id);
         if (NULL != c->pci) {
             pmix_asprintf(&array[n].busid, "%04x:%02x:%02x.%01x",
                           c->pci->attr->pcidev.domain, c->pci->attr->pcidev.bus,
@@ -1939,9 +2059,60 @@ void pmix_hwloc_release_devices(pmix_hwloc_device_t *devs, size_t ndevs)
         if (NULL != devs[n].vendor) {
             free(devs[n].vendor);
         }
+        if (NULL != devs[n].selector) {
+            free(devs[n].selector);
+        }
         /* locality is borrowed from the topology */
     }
     free(devs);
+}
+
+pmix_status_t pmix_hwloc_levelzero_hierarchy(pmix_topology_t *topo, char **mode)
+{
+    hwloc_obj_t osdev, pci, child;
+    unsigned nroots;
+
+    if (NULL == topo || NULL == topo->topology || NULL == mode) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *mode = NULL;
+
+    osdev = hwloc_get_next_osdev(topo->topology, NULL);
+    while (NULL != osdev) {
+        if (NULL == levelzero_ordinal(osdev)) {
+            goto next;
+        }
+        /* a root device that reports tiles of its own is the composite
+         * model: zeDeviceGet handed back the card, not its tiles */
+        if (levelzero_has_tiles(osdev)) {
+            *mode = strdup("COMPOSITE");
+            return (NULL == *mode) ? PMIX_ERR_NOMEM : PMIX_SUCCESS;
+        }
+        /* and two root devices on one PCI function is the flat model: the
+         * only way one card yields two devices is if its tiles were the
+         * devices */
+        pci = pci_ancestor(osdev);
+        if (NULL != pci) {
+            nroots = 0;
+            for (child = pci->io_first_child; NULL != child; child = child->next_sibling) {
+                if (NULL != levelzero_ordinal(child)) {
+                    ++nroots;
+                }
+            }
+            if (1 < nroots) {
+                *mode = strdup("FLAT");
+                return (NULL == *mode) ? PMIX_ERR_NOMEM : PMIX_SUCCESS;
+            }
+        }
+
+    next:
+        osdev = hwloc_get_next_osdev(topo->topology, osdev);
+    }
+
+    /* Either there are no Level Zero devices here, or every card is a
+     * single tile - in which case the models do not differ and there is
+     * nothing to state */
+    return PMIX_ERR_TAKE_NEXT_OPTION;
 }
 
 /* Is there a PCI device from this vendor whose class matches under the

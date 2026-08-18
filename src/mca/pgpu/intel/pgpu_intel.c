@@ -41,6 +41,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_show_help.h"
 #include "src/util/pmix_environ.h"
 
 #include "pgpu_intel.h"
@@ -51,6 +52,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
                               pmix_list_t *ilist);
 static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
                                  pmix_info_t info[], size_t ninfo);
+static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory);
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
@@ -60,6 +62,7 @@ pmix_pgpu_module_t pmix_pgpu_intel_module = {
     .name = "intel",
     .allocate = allocate,
     .setup_local = setup_local,
+    .setup_fork = setup_fork,
     .collect_inventory = collect_inventory,
     .deliver_inventory = deliver_inventory
 };
@@ -224,19 +227,96 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
     return rc;
 }
 
-/* No setup_fork here, and that is a decision rather than an omission.
+/* Does the child's hierarchy setting enumerate devices the same way the
+ * topology's ordinals were numbered under?
  *
- * Intel's visible-devices variable, ZE_AFFINITY_MASK, takes device
- * indices - there is no identifier form of the kind CUDA_VISIBLE_DEVICES
- * and ROCR_VISIBLE_DEVICES accept.  PMIx cannot reproduce the runtime's
- * device ordering, so any index it wrote would be a guess, and a wrong
- * value in these variables does not fail - it silently narrows the set of
- * devices the process can see.  Setting nothing leaves the process able to
- * use every device it was given; setting a guess can quietly take devices
- * away.  Until there is a way to name a Level Zero device that does not
- * depend on an ordering we do not control, this module contributes no
- * environment.
+ * COMBINED differs from FLAT only in whether the tiles can be navigated
+ * back to their card; zeDeviceGet reports the same devices in the same
+ * order under both, which is all an ordinal depends on.  So the question
+ * is only ever COMPOSITE or not.
  */
+static bool hierarchy_agrees(const char *set, const char *ours)
+{
+    bool set_composite = (0 == strcasecmp(set, "COMPOSITE"));
+    bool our_composite = (0 == strcasecmp(ours, "COMPOSITE"));
+
+    return (set_composite == our_composite);
+}
+
+/* Name this process's Intel GPUs in ZE_AFFINITY_MASK.
+ *
+ * This module used to contribute no environment at all, on the grounds
+ * that ZE_AFFINITY_MASK takes Level Zero device ordinals - there is no
+ * identifier form of the kind CUDA_VISIBLE_DEVICES and ROCR_VISIBLE_DEVICES
+ * accept - and that PMIx could not reproduce the runtime's device
+ * ordering.  The premise was wrong in one specific way: PMIx does not have
+ * to reproduce that ordering, because hwloc's Level Zero backend recorded
+ * it.  Each root device carries the driver and device index zeDeviceGet
+ * handed back for it, so an ordinal here is read from the enumeration
+ * rather than predicted, and it is read from THIS node's topology at the
+ * moment of forking on the node that will run the process.
+ *
+ * What the topology cannot record is the model that enumeration ran under.
+ * The spec is explicit that a driver reads ZE_FLAT_DEVICE_HIERARCHY first
+ * and then interprets ZE_AFFINITY_MASK against the devices that model
+ * exposes, so the same ordinals mean a card under COMPOSITE and a tile
+ * under FLAT.  An ordinal is therefore not a complete statement on its
+ * own, and this writes the model along with it:
+ *
+ *   - if the child's environment does not name a model, name the one the
+ *     ordinals were numbered under.  Without this the process would take
+ *     whatever its own Level Zero runtime defaults to, which need not be
+ *     the default the daemon's did - the two are routinely different
+ *     builds, and in a container they are certainly different installs.
+ *   - if it does name one, and it disagrees, write nothing and say so.
+ *     Overriding an explicit choice would change how many devices the
+ *     program sees; writing a mask the process will read under a different
+ *     model would silently hand it half the hardware it was assigned.
+ *     Neither is ours to do quietly, so the assignment is dropped and the
+ *     process keeps every device it can see - which is the same outcome as
+ *     before any of this existed.
+ *
+ * The mask itself is overwritten if already set, for the same reason the
+ * other vendor components overwrite theirs: a process asking to be mapped
+ * against a device has made the more specific request, and the ordinals
+ * come from the topology as seen through any narrowing already in force.
+ */
+static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
+{
+    pmix_status_t rc;
+    char *mask = NULL, *mode = NULL, *set;
+
+    rc = pmix_pgpu_base_get_visible_devices(proc, "INTEL", &mask);
+    if (PMIX_SUCCESS != rc) {
+        /* nothing to say about this process - the ordinary case */
+        return rc;
+    }
+
+    rc = pmix_hwloc_levelzero_hierarchy(&pmix_globals.topology, &mode);
+    if (PMIX_SUCCESS == rc && NULL != mode) {
+        set = pmix_getenv("ZE_FLAT_DEVICE_HIERARCHY", *env);
+        if (NULL == set) {
+            PMIx_Setenv("ZE_FLAT_DEVICE_HIERARCHY", mode, false, env);
+        } else if (!hierarchy_agrees(set, mode)) {
+            pmix_show_help("help-pgpu-intel.txt", "hierarchy-mismatch", true,
+                           PMIX_NAME_PRINT(proc), pmix_globals.hostname,
+                           set, mode, mask);
+            free(mask);
+            free(mode);
+            return PMIX_ERR_TAKE_NEXT_OPTION;
+        }
+    }
+    if (NULL != mode) {
+        free(mode);
+    }
+
+    pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
+                        "pgpu:intel: ZE_AFFINITY_MASK=%s for %s",
+                        mask, PMIX_NAME_PRINT(proc));
+    PMIx_Setenv("ZE_AFFINITY_MASK", mask, true, env);
+    free(mask);
+    return PMIX_SUCCESS;
+}
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory)

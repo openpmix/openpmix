@@ -1,0 +1,36 @@
+# -*- text -*-
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+#
+# $HEADER$
+#
+# This is the US/English help file for the PMIx pgpu/intel component
+#
+[hierarchy-mismatch]
+A process was assigned specific Intel GPUs, but PMIx cannot state the
+assignment in terms this process will read the way it was meant.
+
+  Process:                   %s
+  Node:                      %s
+  ZE_FLAT_DEVICE_HIERARCHY:  %s (set for the process)
+  Enumerated by this node:   %s
+  Assignment that was dropped (ZE_AFFINITY_MASK): %s
+
+ZE_AFFINITY_MASK names devices by the ordinal the Level Zero driver gave
+them, and which devices those ordinals refer to depends on the device
+hierarchy model: under COMPOSITE they are whole cards, under FLAT they are
+individual tiles. The ordinals above were read from this node's topology,
+which was enumerated under a different model than the one this process is
+set to use, so writing them would give the process hardware other than
+what it was assigned.
+
+PMIx has therefore left ZE_AFFINITY_MASK alone. The process will see every
+Intel GPU available to it rather than only the ones it was given, so it
+will run - but the device assignment is not being enforced.
+
+To get the assignment applied, run the daemons and the application under
+the same value of ZE_FLAT_DEVICE_HIERARCHY, or leave that variable unset
+and let PMIx state the model along with the assignment.

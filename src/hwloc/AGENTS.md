@@ -295,12 +295,12 @@ a normal build does exercise it.
   `pmix_globals.hostname`, because it measures against a cpuset of *this*
   machine's PUs and so can only ever be reading the local topology.
 - **A device's vendor identity is usually absent, and that is not a
-  failure.** `pmix_hwloc_device_t.vendor_id` carries the handle a GPU
-  runtime will actually accept — NVIDIA's `GPU-<uuid>` and its AMD and
-  Level Zero equivalents — and hwloc records it only from the matching
-  vendor backend (`NVIDIAUUID`, `AMDUUID`, `LevelZeroUUID`). An hwloc
-  built without them describes the same GPUs with no way to name any of
-  them, so `NULL` is the common answer and callers decide what it means.
+  failure.** `pmix_hwloc_device_t.vendor_id` carries the vendor's own name
+  for the device — NVIDIA's `GPU-<uuid>` and its AMD and Level Zero
+  equivalents — and hwloc records it only from the matching vendor backend
+  (`NVIDIAUUID`, `AMDUUID`, `LevelZeroUUID`). An hwloc built without them
+  describes the same GPUs with no way to name any of them, so `NULL` is
+  the common answer and callers decide what it means.
   Two properties worth knowing: the identity is harvested across the
   whole PCI **function**, not read off the OS device that names it (with
   CUDA and NVML both loaded the function is named `cuda0` while the uuid
@@ -310,6 +310,22 @@ a normal build does exercise it.
   info count, which `hwloc_topology_diff_build()` calls "too complex" —
   while the *values* are per-node and must be read from that node's own
   topology.
+- **`selector` is not `vendor_id`, and the difference is Intel.**
+  `pmix_hwloc_device_t.selector` is what to write in the vendor's
+  device-selection variable, which for NVIDIA and AMD is the identity
+  again (their variables accept one) but for Intel is not: the mask
+  variable takes Level Zero device *ordinals*, so the selector is the
+  ordinal the driver itself reported (`LevelZeroDriverDeviceIndex`).
+  Three consequences. An ordinal says where a device sat in one
+  enumeration, not which device it is, so it must never leak into
+  anything that reports device *identity*. It is only meaningful
+  alongside the hierarchy model that enumeration ran under — hence
+  `pmix_hwloc_levelzero_hierarchy()`, whose "cannot tell" answer means
+  "the models do not differ here" rather than a failure. And Intel's
+  selector names **every** Level Zero root device on the card's PCI
+  function, not one: under `FLAT` the card's tiles *are* the root
+  devices, so one card is two ordinals, and reporting one of them would
+  quietly hand a process half a GPU.
 - **Always check `source` first, and match it with `strncasecmp(...,
   "hwloc", 5)`.** Returning `PMIX_ERR_TAKE_NEXT_OPTION` (not an error) for
   a non-hwloc object is the contract. A `NULL` source is legal on *input*
