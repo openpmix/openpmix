@@ -352,6 +352,8 @@ that keeps `nvd` out of the library today).
   `--enable-test-build`) and drives the endpoint/coordinate assignment
   path without real hardware. Read `opa` or `tcp` first if you need a
   template, or `simptest` for the static assign → cache → `Get` flow.
+  `nvd` and `opa` are the reference for the per-rank `setup_fork` path,
+  which `test/unit/pnet_assigned_devices.c` covers end to end.
 - **`simptest` shows the per-proc vs. per-node split.** Fabric endpoints
   (`PMIX_FABRIC_ENDPT`) are per-process data, fetched by rank, so they go
   in a `PMIX_PROC_INFO_ARRAY` array; fabric coordinates

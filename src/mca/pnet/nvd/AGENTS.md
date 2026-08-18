@@ -24,7 +24,7 @@ or NVIDIA InfiniBand controller; it was hardwired **off** in its
 |------|----------|
 | `pnet_nvd.h` | Component struct type + `PMIX_PNET_NVD_BLOB` / inventory key `#define`s. |
 | `pnet_nvd_component.c` | Component struct, `component_register`, `component_open` (hwloc gate), `component_query` (priority **10**). |
-| `pnet_nvd.c` | The module: `allocate` / `setup_local_network` / `collect_inventory` / `deliver_inventory`. |
+| `pnet_nvd.c` | The module: `allocate` / `setup_local_network` / `setup_fork` / `collect_inventory` / `deliver_inventory`. |
 
 There is deliberately **no `configure.m4`** — see [Building](#building).
 
@@ -46,6 +46,7 @@ pmix_pnet_module_t pmix_pnet_nvd_module = {
     .name = "nvd",
     .allocate = allocate,
     .setup_local_network = setup_local_network,
+    .setup_fork = setup_fork,
     .collect_inventory = collect_inventory,
     .deliver_inventory = deliver_inventory
 };
@@ -72,6 +73,23 @@ The signatures match the current framework interface (unlike `tcp` and
   first match it returns `PMIX_SUCCESS`. It does not yet add anything to
   the inventory list — the "add this to the inventory" step is a comment.
   Returns `PMIX_ERR_NOT_SUPPORTED` if the topology is not hwloc-sourced.
+- **`setup_fork`** — names the NICs this one process was mapped against
+  to the libraries that will use them. It asks
+  `pmix_pnet_base_get_assigned_devices()` for the process's devices
+  filtered by the same PCI `(vendor, class)` pairs `component_open`
+  probed for, then writes:
+
+  | Variable | Value | Why that form |
+  |----------|-------|---------------|
+  | `NCCL_IB_HCA` | `mlx5_0` | NCCL matches an HCA by name, so the selector goes in as it stands |
+  | `UCX_NET_DEVICES` | `mlx5_0:*` | UCX names a device *port* and matches each entry as a glob, so this is "this card, whatever ports it has" without PMIx having to pick one. The `:` is load-bearing: `mlx5_1*` would also match `mlx5_10` on a node with enough cards |
+
+  Both are overwritten if already set: a process mapped against a device
+  made the more specific request, and the names come from the topology as
+  this daemon sees it, so where an RM has already narrowed what the node
+  presents they are a subset of what is visible. A process that was not
+  mapped against one of our NICs is left alone (the helper returns
+  `PMIX_ERR_TAKE_NEXT_OPTION`, which the base treats as "nothing to say").
 - **`deliver_inventory`** — a stub returning `PMIX_SUCCESS`.
 
 ## Building
