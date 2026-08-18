@@ -258,6 +258,16 @@ Because these are plain `bool` structs, a component tests "did the caller
 ask for *anything* in this category?" cheaply with a single `memcmp`
 against a zeroed instance — that idiom appears throughout `update()`.
 
+**Keep these structs all-`bool`, and keep them flat.** Three separate
+things depend on it and none of them will complain if you break it:
+`PMIX_*_ALL` is a `memset` to `1`, which only produces a valid `true` in
+every member if every member is a one-byte `bool`; the `memcmp`-against-
+zero idiom only gives the right answer if the struct has no padding for
+the memcmp to trip over; and neither would fail loudly — you would just
+get fields silently collected, or silently not. Adding an `int` or a
+pointer member breaks all three at once. If a category ever needs a
+non-boolean qualifier, put it beside the spec struct rather than in it.
+
 ### The four parse helpers (`pstat_base_fns.c`)
 
 These translate the caller's requested-fields info array into the spec
@@ -275,11 +285,33 @@ they select *everything* (`PMIX_*_ALL`); otherwise they start from
 The disk/net helpers do double duty: an ID key (`PMIX_DISK_ID` /
 `PMIX_NETWORK_ID`) names a *specific device to report*, while every other
 key turns on a *field to report for the chosen devices*. An empty
-`disks`/`nets` argv (`NULL`) means "all devices."
+`disks`/`nets` argv (`NULL`) means "all devices." The ID list is a **set**
+— it is built with `PMIx_Argv_append_unique_nosize`, so a caller that
+names the same device twice gets it reported once, the same way
+`PMIX_PSTAT_APPEND_PEER_UNIQUE` dedups the op's peer filter.
 
-Field-key matching uses `PMIx_Check_key`, which does the
-standard/registered-key comparison rather than a raw `strcmp`, so both the
-canonical `PMIX_*` string and any registered alias match.
+Note the asymmetry between the two "nothing was specified" cases, which
+is deliberate but easy to get backwards: a **NULL** `info` pointer means
+*collect everything*, while a **non-NULL but zero-length** array means
+*collect nothing* (the loop simply never flips a flag on). A component
+that hands these helpers `darray->array` / `darray->size` therefore turns
+an empty data array into an empty result, not a full one.
+
+Field-key matching uses `PMIx_Check_key`. Despite the name, that is not
+an alias-aware lookup — it is a `strncmp` bounded at `PMIX_MAX_KEYLEN`
+that returns false if either side is `NULL`. So a field is recognized
+only under its canonical `PMIX_*` string; there is no registered-alias
+resolution anywhere on this path.
+
+**The info array is untrusted.** For a request that came from a client it
+is the data array unpacked off the wire, and nothing between the unpack
+and these helpers validates it. `PMIx_Check_key` only compares the key —
+it says nothing about `value.type`. Any helper that *reads* a value (as
+the disk/net helpers do for the ID keys) must check the declared type
+first: reading `value.data.string` out of a value the sender typed as an
+integer hands a wild pointer to `strdup`. The ID collection in
+`pstat_base_fns.c` does this check; a component that reads a value out of
+this array directly must do the same.
 
 ### The op macros (`base.h`)
 
