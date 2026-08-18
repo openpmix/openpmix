@@ -126,7 +126,17 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             }
             /* pack anything that was found */
             PMIX_LIST_FOREACH (kv, &cache, pmix_kval_t) {
-                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &kv->value->data.envar, 1, PMIX_ENVAR);
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata,
+                                 &kv->value->data.envar, 1, PMIX_ENVAR);
+                if (PMIX_SUCCESS != rc) {
+                    /* a short blob is worse than no blob: the compute node
+                     * would set the envars that made it into the buffer and
+                     * never learn that the rest were dropped */
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_LIST_DESTRUCT(&cache);
+                    PMIX_DESTRUCT(&mydata);
+                    return rc;
+                }
             }
             PMIX_LIST_DESTRUCT(&cache);
         }
@@ -144,6 +154,9 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     if (pmix_compress.compress((uint8_t *) bo.bytes, bo.size,
                                (uint8_t **) &kv->value->data.bo.bytes, &kv->value->data.bo.size)) {
         kv->value->type = PMIX_COMPRESSED_BYTE_OBJECT;
+        /* the compressed copy now holds the payload - release the
+         * uncompressed buffer we unloaded above */
+        free(bo.bytes);
     } else {
         kv->value->data.bo.bytes = bo.bytes;
         kv->value->data.bo.size = bo.size;
@@ -171,8 +184,8 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     pmix_buffer_t bkt;
     int32_t cnt;
     pmix_status_t rc = PMIX_SUCCESS;
-    uint8_t *data;
-    size_t size;
+    uint8_t *data = NULL;
+    size_t size = 0;
     bool release = false;
     pmix_envar_list_item_t *ev;
 
@@ -190,8 +203,16 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
 
             /* if this is a compressed byte object, decompress it */
             if (PMIX_COMPRESSED_BYTE_OBJECT == info[n].value.type) {
-                pmix_compress.decompress(&data, &size, (uint8_t *) info[n].value.data.bo.bytes,
-                                         info[n].value.data.bo.size);
+                /* this fails on a node that built no compression component
+                 * as well as on a damaged blob, and it leaves the output
+                 * pointer untouched - so we must not go on to read, or
+                 * free, whatever it did not write */
+                if (!pmix_compress.decompress(&data, &size,
+                                              (uint8_t *) info[n].value.data.bo.bytes,
+                                              info[n].value.data.bo.size)) {
+                    PMIX_ERROR_LOG(PMIX_ERR_UNPACK_FAILURE);
+                    return PMIX_ERR_UNPACK_FAILURE;
+                }
                 release = true;
             } else {
                 data = (uint8_t *) info[n].value.data.bo.bytes;
@@ -209,6 +230,13 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
                 ev = PMIX_NEW(pmix_envar_list_item_t);
                 cnt = 1;
                 PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &ev->envar, &cnt, PMIX_ENVAR);
+            }
+            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+                /* the loop can only end by running out of envars, so this
+                 * is what success looks like.  Returning it would tell the
+                 * base that local setup failed, which stops every pnet
+                 * component behind us from being called at all */
+                rc = PMIX_SUCCESS;
             }
             // we will have created one more envar than we want
             PMIX_RELEASE(ev);
@@ -262,10 +290,21 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:nvd: assigning %s to %s", val, PMIX_NAME_PRINT(proc));
 
-    PMIx_Setenv("NCCL_IB_HCA", val, true, env);
+    /* setting these is the whole job: reporting success without having
+     * done so launches the process pointed at nothing in particular */
+    rc = PMIx_Setenv("NCCL_IB_HCA", val, true, env);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        free(val);
+        return rc;
+    }
 
     devs = PMIx_Argv_split(val, ',');
-    for (n = 0; NULL != devs && NULL != devs[n]; n++) {
+    if (NULL == devs) {
+        free(val);
+        return PMIX_ERR_NOMEM;
+    }
+    for (n = 0; NULL != devs[n]; n++) {
         pmix_asprintf(&port, "%s:*", devs[n]);
         if (NULL == port) {
             PMIx_Argv_free(devs);
@@ -277,16 +316,18 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
         free(port);
     }
     PMIx_Argv_free(devs);
-    if (NULL != globs) {
-        ucx = PMIx_Argv_join(globs, ',');
-        PMIx_Argv_free(globs);
-        if (NULL != ucx) {
-            PMIx_Setenv("UCX_NET_DEVICES", ucx, true, env);
-            free(ucx);
-        }
-    }
+    ucx = PMIx_Argv_join(globs, ',');
+    PMIx_Argv_free(globs);
     free(val);
-    return PMIX_SUCCESS;
+    if (NULL == ucx) {
+        return PMIX_ERR_NOMEM;
+    }
+    rc = PMIx_Setenv("UCX_NET_DEVICES", ucx, true, env);
+    free(ucx);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
