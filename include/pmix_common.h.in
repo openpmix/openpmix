@@ -362,6 +362,15 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_PARENT_ID                      "pmix.parent"           // (pmix_proc_t*) identifier of the process that called PMIx_Spawn
                                                                     //                to launch this proc's application
 #define PMIX_EXIT_CODE                      "pmix.exit.code"        // (int) exit code returned when proc terminated
+#define PMIX_SPAWN_TREE_ROOT                "pmix.spwn.root"        // (char*) namespace of the process or tool from which the specified
+                                                                    //         job descends by one or more calls to PMIx_Spawn - i.e., the
+                                                                    //         root of the spawn tree it belongs to. A job nobody spawned
+                                                                    //         is the root of its own tree, and so names itself.
+#define PMIX_SPAWN_TREE_ACTIVE              "pmix.spwn.actv"        // (uint32_t) number of jobs in the spawn tree named by
+                                                                    //            PMIX_SPAWN_TREE_ROOT that have yet to terminate, not
+                                                                    //            counting the job whose termination is being reported.
+                                                                    //            Zero means the reported job is the last of that tree,
+                                                                    //            and therefore that no further job can be spawned into it.
 
 /* size info */
 #define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #slots in this session
