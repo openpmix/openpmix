@@ -272,12 +272,17 @@ Do not read the matching loop as "we only ever receive what we asked
 for". A server posts a **wildcard** (`UINT_MAX`) recv for the command
 switchyard, so on a server almost nothing is unmatched — a message on a
 tag nobody posted for is handed to `server_switchyard` as if it were a
-command. `PMIX_PTL_TAG_HEARTBEAT` is the live example: `psensor/heartbeat`
-posts its recv only when a heartbeat monitor is first armed, so a beat
-that arrives before that goes to the switchyard, which cannot read a
-command out of a zero-byte buffer and queues an error reply back on tag
-1 — and *that* reply is what ends up unmatched, on the client, since a
-heartbeat is one-way and no client posts for it.
+command. That is why `pmix_server_message_handler` screens
+`PMIX_PTL_TAG_HEARTBEAT` before dispatching: `psensor/heartbeat` posts
+its recv only when a heartbeat monitor is first armed, and a beat that
+arrives before that would otherwise be read as a command, fail, and draw
+an error reply on tag 1 that no client can place — `PMIx_Heartbeat` is
+one-way and nobody posts for it. Heartbeat is the only reserved tag that
+can reach the switchyard today: `PMIX_PTL_TAG_IOF` and
+`PMIX_PTL_TAG_IOF_CONTROL` are posted at server init,
+`PMIX_PTL_TAG_DATA_DELETE` only ever travels server→client, and
+`PMIX_PTL_TAG_NOTIFY` is unused. **Any new reserved tag a client may send
+up needs either an eagerly-posted recv or a screen of its own.**
 
 **Loopback.** A send whose peer is `pmix_globals.mypeer` skips the socket
 entirely: the buffer is handed straight to `PMIX_ACTIVATE_POST_MSG` and
