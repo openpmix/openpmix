@@ -263,9 +263,21 @@ region, reads the payload (resuming across `EAGAIN`), then
 **Matching.** `process_msg` walks `pmix_ptl_base.posted_recvs` looking for
 a recv whose `(peer, tag)` matches (with `UINT_MAX` as wildcard), loads
 the payload into a `pmix_buffer_t`, and fires the recv's `cbfunc`. A
-dynamic-tag recv is then removed and released. An unmatched message is an
-error (`unexpected-message` `show_help`) — by design this subsystem never
-receives anything it did not previously ask for.
+dynamic-tag recv is then removed and released. An unmatched message is
+**discarded with a framework trace** (verbosity 2) and a `PMIX_ERROR`
+event, not a `show_help`: it is unusual, but it is not necessarily a
+defect and it is never something a user can act on.
+
+Do not read the matching loop as "we only ever receive what we asked
+for". A server posts a **wildcard** (`UINT_MAX`) recv for the command
+switchyard, so on a server almost nothing is unmatched — a message on a
+tag nobody posted for is handed to `server_switchyard` as if it were a
+command. `PMIX_PTL_TAG_HEARTBEAT` is the live example: `psensor/heartbeat`
+posts its recv only when a heartbeat monitor is first armed, so a beat
+that arrives before that goes to the switchyard, which cannot read a
+command out of a zero-byte buffer and queues an error reply back on tag
+1 — and *that* reply is what ends up unmatched, on the client, since a
+heartbeat is one-way and no client posts for it.
 
 **Loopback.** A send whose peer is `pmix_globals.mypeer` skips the socket
 entirely: the buffer is handed straight to `PMIX_ACTIVATE_POST_MSG` and
