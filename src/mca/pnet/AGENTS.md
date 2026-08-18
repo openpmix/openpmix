@@ -62,22 +62,23 @@ server code (e.g. `pmix_pnet.allocate`, `pmix_pnet.setup_fork`).
 
 ### Read this before trusting the component code
 
-Only **one** component, [`opa`](opa/AGENTS.md), is compiled in a default
-build, and it selects at runtime **only** when hwloc reports matching
-fabric hardware. [`tcp`](tcp/AGENTS.md) also compiles against the current
-interface but is **opt-in** — its `configure.m4` is guarded by
-`--with-tcp`, so it is off by default; when built it has no hardware gate
-and is selected on **every** server (its entry points then self-gate on
-role / blob key). [`nvd`](nvd/AGENTS.md) is hardwired **off** in its
-`configure.m4` (see [Building](#building)), and
+Two components, [`opa`](opa/AGENTS.md) and [`nvd`](nvd/AGENTS.md), are
+compiled in a default build, and each selects at runtime **only** when
+hwloc reports its fabric hardware. (`nvd` was hardwired off in its
+`configure.m4` until recently — see [Building](#building) — which meant a
+cluster with Mellanox NICs got no support unless somebody had thought to
+ask for a test build. Neither component links anything, so the build host
+was answering a question only the run host can answer.)
+[`tcp`](tcp/AGENTS.md) also compiles against the current interface but is
+**opt-in** — its `configure.m4` is guarded by `--with-tcp`, so it is off
+by default; when built it has no hardware gate and is selected on
+**every** server (its entry points then self-gate on role / blob key).
 [`simptest`](simptest/AGENTS.md) is a working test fabric that builds with
 `--with-simptest` or `--enable-test-build`; it compiles against the
 current interface and drives the assign → cache → `PMIx_Get` path
-end-to-end (exercised by `test/simple/simpcoord.c`). Treat the shipped
-components as three current examples (`opa` built by default, `tcp` and
-`simptest` opt-in) and one current-but-disabled example (`nvd`). See each
-component's `AGENTS.md` for specifics, and
-do not assume any of them reflects a supported, exercised code path.
+end-to-end (exercised by `test/simple/simpcoord.c`). See each component's
+`AGENTS.md` for specifics, and do not assume any of them reflects a
+supported, exercised code path.
 
 ## Single-select vs. multi-select
 
@@ -240,7 +241,7 @@ Default priorities and runtime gates (from each component's
 
 | Component | Priority | Built by default? | Becomes active when… |
 |-----------|----------|-------------------|----------------------|
-| `nvd` | 10 | **No** (hardwired off) | hwloc reports a Mellanox `0x15b3` / NVIDIA `0x10de` device of class `0x207` |
+| `nvd` | 10 | **Yes** | hwloc reports a Mellanox `0x15b3` / NVIDIA `0x10de` device of class `0x207` |
 | `opa` | 10 | **Yes** | hwloc reports an Intel `0x8086` device of class `0x208` |
 | `simptest` | 0 | Only with `--with-simptest` | server role **and** `pnet=simptest` MCA selection **and** a config file given |
 | `tcp` | 5 | **No** (`--with-tcp`) | always returns a module (no hardware gate); its entry points self-gate on `PMIX_PEER_IS_GATEWAY` / their own blob key, but `collect_inventory` runs on every server |
@@ -306,22 +307,29 @@ The framework core (`base/`) is always built into `libpmix`. The
 components are **conditionally compiled**, and their `configure.m4` files
 are unusually blunt about it:
 
-- **`opa`** — `AS_IF([test "yes" = "yes"], …)`, i.e. **always builds**.
-  It is the only component listed in the generated
-  `base/static-components.h` in a default configure. (Whether it then
-  *selects* still depends on the hwloc probe at runtime.)
+- **`opa` and `nvd`** ship **no `configure.m4` at all** and therefore
+  build unconditionally; the MCA machinery configures a component with no
+  `configure.m4` by itself. Keep it that way. Neither links anything or
+  needs an SDK — they read info attributes hwloc already recorded and set
+  environment variables — and whether a component has work to do is a
+  property of the machine the *daemon* runs on, which only
+  `component_open` is in a position to know. `nvd` used to be hardwired
+  off (`AS_IF([test "yes" = "no"], …)`) on the grounds that "no real
+  NVIDIA-transport detection exists yet"; that asked the question in the
+  wrong place, so a cluster with Mellanox NICs got no support at all.
+  `opa`'s said `AS_IF([test "yes" = "yes"], …)` — always succeed — which
+  was worth less than the file it lived in. The one visible consequence
+  of dropping both is that `configure`'s summary no longer prints
+  `Transports / NVIDIA|OmniPath` lines for components that always build.
 - **`tcp`** — guarded by `--with-tcp` (same `AC_ARG_WITH` pattern as
   `simptest`): **not built by default**. When the flag is given it
   compiles and, having no runtime hardware gate, also always selects.
-- **`nvd`** — `AS_IF([test "yes" = "no"], …)`, i.e. the "can-compile"
-  branch is never taken: **never built**. Its `Makefile` is still
-  generated, but the source is not compiled into the library.
 - **`simptest`** — built when `--with-simptest` is passed to `configure`,
   or force-built for compile coverage by `--enable-test-build`.
 
-Each component reports its state through `PMIX_SUMMARY_ADD([Transports],
-…)`, so `configure`'s summary shows `NVIDIA`, `OmniPath`, `Simptest`,
-`TCP` as yes/no.
+`tcp` and `simptest` still report their state through
+`PMIX_SUMMARY_ADD([Transports], …)`, so `configure`'s summary shows
+`Simptest` and `TCP` as yes/no.
 
 `simptest` ships a `show_help` file, `help-pnet-simptest.txt`; per the
 top-level golden rule, after any add/delete/modify of that text you must
@@ -336,15 +344,14 @@ that keeps `nvd` out of the library today).
 
 ## When working in this framework
 
-- **`opa`, `tcp`, and `simptest` are the current references.** All compile
-  against today's interface. `opa` is built by default but only *runs* on
-  Omni-Path hardware; `tcp` is opt-in (`--with-tcp`) and, once built, has
-  no hardware gate so it always selects; `simptest` is opt-in
-  (`--with-simptest` / `--enable-test-build`) and drives the
-  endpoint/coordinate assignment path without real hardware. `nvd` matches
-  the current interface but is not built. Read `opa` or `tcp` first if you
-  need a template, or `simptest` for the static assign → cache → `Get`
-  flow.
+- **`opa`, `nvd`, `tcp`, and `simptest` are the current references.** All
+  compile against today's interface. `opa` and `nvd` are built by default
+  but only *run* on Omni-Path and Mellanox hardware respectively; `tcp` is
+  opt-in (`--with-tcp`) and, once built, has no hardware gate so it always
+  selects; `simptest` is opt-in (`--with-simptest` /
+  `--enable-test-build`) and drives the endpoint/coordinate assignment
+  path without real hardware. Read `opa` or `tcp` first if you need a
+  template, or `simptest` for the static assign → cache → `Get` flow.
 - **`simptest` shows the per-proc vs. per-node split.** Fabric endpoints
   (`PMIX_FABRIC_ENDPT`) are per-process data, fetched by rank, so they go
   in a `PMIX_PROC_INFO_ARRAY` array; fabric coordinates
