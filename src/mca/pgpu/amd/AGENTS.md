@@ -25,18 +25,16 @@ the shared launch wiring when the component is enabled.
 | `pgpu_amd.h` | Component struct `pmix_pgpu_amd_component_t`, module extern, and the blob/inventory key `#define`s. |
 | `pgpu_amd_component.c` | Component struct + open/close/register/query. Priority **20**. |
 | `pgpu_amd.c` | The module: `allocate`, `setup_local`, and the two inventory stubs. |
-| `configure.m4` | Build gate — **hard-disabled** (`test "yes" = "no"`). |
 
-## Availability (why it never activates)
+## Availability
 
-Two independent gates keep `amd` inactive:
+There is **no `configure.m4` and no build gate**: the component links
+nothing and needs no vendor SDK, so it builds everywhere and the MCA
+machinery configures a component with no `configure.m4` by itself. It
+previously carried one whose whole body was `AS_IF([test "yes" = "no"],
+...)` — it never built at all.
 
-1. **Build gate.** `configure.m4` runs
-   `AS_IF([test "yes" = "no"], [build], [do not build])`, always taking
-   the not-built branch, so the component is compiled out and never
-   appears in `base/static-components.h`. The configure summary reports
-   `GPUs / AMD` as not-happy.
-2. **Runtime gate (only relevant if built).** `component_open` returns
+The question is settled at **run** time. `component_open` returns
    `pmix_hwloc_check_vendor(&pmix_globals.topology, 0x1022, 0x302)`, which
    succeeds only if the node topology contains a PCI device with AMD's
    vendor ID `0x1022` and class `0x302`. Absent matching hardware (or a
@@ -88,15 +86,14 @@ With the default `NULL` include list, `allocate` harvests nothing —
 
 ## Gotchas
 
-- Do not describe `amd` as functional: it is not built in a default
-  configuration, its default include list is empty, and its inventory
-  functions do nothing. Its envar-harvesting `allocate`/`setup_local` do
-  compile and work when the component is enabled.
+- Its default include list is empty and its inventory functions do
+  nothing. Do not describe those as working.
 - The blob key `PMIX_PGPU_AMD_BLOB` and inventory key
   `PMIX_PGPU_AMD_INVENTORY_KEY` (`pgpu_amd.h`) must stay unique across
   components — the `setup_local` search keys on the blob string to claim
   its own data.
-- To bring the component to life you must fix the `configure.m4` gate to
-  detect a real AMD/ROCm runtime, likely set a sensible default include
-  list, and implement the inventory functions. Changing `configure.m4`
-  requires the full `./autogen.pl && ./configure && make` regen.
+- What is left to do here is a sensible default include list and the
+  inventory functions. Do **not** answer either with a `configure.m4`
+  gate detecting an AMD/ROCm runtime: whether this component has work to
+  do is a property of the node the daemon runs on, and the build host is
+  routinely not that node.
