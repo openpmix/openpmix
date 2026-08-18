@@ -126,6 +126,14 @@ more, re-alerted. This "latch then revive" behavior is deliberate.
   place (`recv_active` never resets, and `stop` does not un-post it). If
   you rework teardown, remember the recv outlives individual trackers by
   design.
+- **Being posted lazily leaves a window, and the server screens for it.**
+  A client may call `PMIx_Heartbeat()` before any monitor has been armed.
+  Until the recv exists, the server's *wildcard* recv matches the beat
+  and hands it to the command switchyard — so
+  `pmix_server_message_handler` drops `PMIX_PTL_TAG_HEARTBEAT` explicitly
+  rather than trying to read a command out of it and replying with the
+  error. If you ever make this recv eager, that screen becomes dead code
+  rather than wrong code, but say so when you remove it.
 - **This component depends on `ptl` internals** (`pmix_ptl_base.posted_recvs`,
   `PMIX_PTL_TAG_HEARTBEAT`, `pmix_ptl_posted_recv_t`). Beat delivery only
   works because `PMIx_Heartbeat()` sends on that reserved tag; the two

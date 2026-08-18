@@ -76,8 +76,19 @@ anything here. Inbound messages land in `pmix_server_message_handler`
 (a registered PTL receive callback,
 `pmix_server_switchyard.c:727`), which calls `server_switchyard`
 (`pmix_server_switchyard.c:258`). The switchyard unpacks the
-`pmix_cmd_t` and dispatches on it. **The return value of every command
-handler encodes who owns the reply and the caddy:**
+`pmix_cmd_t` and dispatches on it.
+
+The receive callback it is registered under is a **wildcard** one, so it
+sees every message that no more specific recv claimed — including
+messages that are not commands at all. `pmix_server_message_handler`
+therefore drops `PMIX_PTL_TAG_HEARTBEAT` before dispatching; see "An
+unmatched message" in [`../mca/ptl/AGENTS.md`](../mca/ptl/AGENTS.md) for
+why a beat can arrive with no recv of its own, and why letting it reach
+`server_switchyard` sent a bogus error reply to a client that was not
+listening for one.
+
+**The return value of every command handler encodes who owns the reply
+and the caddy:**
 
 - **Return `PMIX_SUCCESS`** ⇒ "I have taken ownership. I will (via my
   async callback) queue the client's reply and release the caddy."

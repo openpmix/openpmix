@@ -824,15 +824,12 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
      * act on - so it is a framework trace rather than a show_help that
      * asks them to report a bug to the PMIx developers.
      *
-     * A reply to a one-way message is the ordinary way to get here, and
-     * it lands on the client rather than the server. psensor/heartbeat
-     * posts its PMIX_PTL_TAG_HEARTBEAT recv only when a heartbeat
-     * monitor is first armed; a beat arriving before that is matched
-     * instead by the server's wildcard recv, handed to the command
-     * switchyard, and answered with the error the switchyard gets for
-     * trying to read a command out of a zero-byte buffer. PMIx_Heartbeat
-     * is one-way, so no client ever posts for that tag and the reply has
-     * nowhere to go. Raise the framework verbosity to see these. */
+     * Note that on a server this is nearly unreachable: the command
+     * switchyard posts a wildcard (UINT_MAX) recv, which matches
+     * anything. So an unmatched message is almost always a *reply* that
+     * arrived after the recv expecting it was removed, or one sent on a
+     * reserved tag by a peer whose partner never posted for it. Raise
+     * the framework verbosity to see these. */
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "%s discarding unexpected message from %s on tag %u",
                         PMIX_NAME_PRINT(&pmix_globals.myid),

@@ -759,9 +759,28 @@ void pmix_server_message_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     pmix_buffer_t *reply;
     pmix_status_t rc, ret;
 
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
+
+    /* A heartbeat is not a command, and it is the one reserved tag that
+     * can reach this handler. psensor/heartbeat posts a recv of its own
+     * for the tag, but only once the first heartbeat monitor is armed -
+     * so a beat sent before that is matched instead by the wildcard recv
+     * this handler serves. Passing it down would hand server_switchyard
+     * a zero-byte buffer it cannot read a command out of, and the error
+     * that comes back would be queued to the client on tag 1, where
+     * nothing is listening: PMIx_Heartbeat is one-way and no client ever
+     * posts for it. Drop it instead. Nothing is lost - there is no
+     * monitor to credit the beat to yet, which is precisely why the recv
+     * it belongs to has not been posted. */
+    if (PMIX_PTL_TAG_HEARTBEAT == hdr->tag) {
+        pmix_output_verbose(2, pmix_server_globals.base_output,
+                            "SWITCHYARD ignoring heartbeat from %s:%u with no monitor armed",
+                            peer->info->pname.nspace, peer->info->pname.rank);
+        return;
+    }
+
     pmix_output_verbose(2, pmix_server_globals.base_output, "SWITCHYARD for %s:%u:%d",
                         peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
-    PMIX_HIDE_UNUSED_PARAMS(cbdata);
 
     ret = server_switchyard(peer, hdr->tag, buf);
     /* send the return, if there was an error returned */
