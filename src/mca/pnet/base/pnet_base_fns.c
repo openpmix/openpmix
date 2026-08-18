@@ -30,10 +30,9 @@
 
 #include "src/mca/pnet/base/base.h"
 
-/* NOTE: a tool (e.g., prun) may call this function to
- * harvest local envars for inclusion in a call to
- * PMIx_Spawn, or it might be called in response to
- * a call to PMIx_Allocate_resources */
+/* Reached from _setup_app, on behalf of PMIx_server_setup_application.
+ * The module fan-out is gated on being a server; the namespace lookup
+ * above it is not, because the object is what the fan-out is given. */
 pmix_status_t pmix_pnet_base_allocate(char *nspace, pmix_info_t info[], size_t ninfo,
                                       pmix_list_t *ilist)
 {
@@ -59,7 +58,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace, pmix_info_t info[], size_t n
     /* find this proc's nspace object */
     nptr = NULL;
     PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(ns->nspace, nspace)) {
+        if (PMIX_CHECK_NSPACE(ns->nspace, nspace)) {
             nptr = ns;
             break;
         }
@@ -130,7 +129,7 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace, pmix_info_t info[
         /* find the namespace object for this nspace */
         nsp = NULL;
         PMIX_LIST_FOREACH (nsp2, &pmix_globals.nspaces, pmix_namespace_t) {
-            if (0 == strcmp(nsp2->nspace, nspace)) {
+            if (PMIX_CHECK_NSPACE(nsp2->nspace, nspace)) {
                 nsp = nsp2;
                 break;
             }
@@ -551,6 +550,11 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric, const pmix_i
     pmix_pnet_base_active_module_t *active;
     pmix_status_t rc;
     pmix_pnet_fabric_t *ft;
+
+    /* protect against bozo input, as update and deregister both do */
+    if (NULL == fabric) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     /* ensure our fields of the fabric object are initialized */
     fabric->info = NULL;
