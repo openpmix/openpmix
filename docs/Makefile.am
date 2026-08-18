@@ -363,6 +363,7 @@ PMIX_MAN3 = \
 	PMIx_server_deliver_inventory.3 \
 	PMIx_server_collect_job_info.3 \
 	PMIx_server_IOF_deliver.3 \
+	PMIx_server_IOF_flow_control.3 \
 	PMIx_server_generate_cpuset.3 \
 	PMIx_server_generate_cpuset_string.3 \
 	PMIx_server_generate_locality_string.3 \

@@ -79,6 +79,17 @@ encoding is implementation specific; the leading colon-delimited ``type``
 string (e.g., ``"pmix"``, ``"raw"``, or ``"blob"``) identifies the method
 used so that a decoder can select the correct expansion algorithm.
 
+``PMIx_generate_regex2`` also replaces the deprecated
+``PMIx_generate_ppn``, which encoded the per-node process map |mdash| a
+semicolon-delimited list of nodes, each holding a comma-delimited list of
+the ranks on that node (e.g., ``"0,1,2;3,4,5"``). No separate API is
+required for that case: the encoding is agnostic to what the values
+represent, so the same call is used for both maps. Pass the process-map
+string as ``input`` and hand the resulting ``pmix_regex2_t`` to
+:ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`
+as the ``PMIX_PROC_MAP`` value with type ``PMIX_REGEX2``, just as the node
+list is passed as ``PMIX_NODE_MAP``.
+
 The operation is performed synchronously in the caller's thread; it does
 not thread-shift into the PMIx progress engine and does not invoke a
 callback.
