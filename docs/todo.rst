@@ -110,9 +110,11 @@ size, which is a rough proxy for how much there is to find.
 * ``src/mca/pnet`` (with ``base``, ``tcp``, ``opa``, ``nvd``,
   ``simptest``) — 4064 lines.  Revived on 2026-07-15 and not looked at
   since.
-* ``src/mca/preg`` (with ``native``, ``raw``, ``compress``) — 2641
-  lines.  It parses regular expressions arriving off the wire, which
-  makes it the highest-risk member of this list.
+* ``src/mca/preg`` (with ``raw``, ``compress``) — 1324 lines.  It parses
+  regular expressions arriving off the wire, which makes it the
+  highest-risk member of this list.  Halved on 2026-08-17 by dropping the
+  ``native`` component and moving the deprecated ``char*`` API into the
+  base, but that was a restructure, not a review.
 * ``src/mca/pgpu`` (with ``amd``, ``intel``, ``nvd``, ``test``) — 2467
   lines.  The 2026-07-15 "repair the stale components" work was not a
   review.
