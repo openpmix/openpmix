@@ -497,7 +497,7 @@ static pmix_status_t net_stat(void *answer, char **nets,
 {
     int mib[6] = {CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0};
     char *buf, *next, *lim;
-    size_t buflen, hdrlen, namelen;
+    size_t buflen, hdrlen, hdrmin, namelen;
     struct if_msghdr2 *ifm;
     struct sockaddr_dl *sdl;
     struct if_data64 *ifd;
@@ -513,6 +513,9 @@ static pmix_status_t net_stat(void *answer, char **nets,
     /* the name follows the fixed part of the link-level address, so that
      * is the least a message can carry and still name an interface */
     hdrlen = offsetof(struct sockaddr_dl, sdl_data);
+    /* every routing message opens with a length, a version and a type;
+     * that much has to be there before the length can be read */
+    hdrmin = sizeof(u_short) + 2 * sizeof(u_char);
 
     if (0 != sysctl(mib, 6, NULL, &buflen, NULL, 0) || 0 == buflen) {
         /* not an error if we cannot read this as it isn't critical */
@@ -528,12 +531,11 @@ static pmix_status_t net_stat(void *answer, char **nets,
     }
     lim = buf + buflen;
 
-    for (next = buf; next < lim; next += ifm->ifm_msglen) {
+    for (next = buf; (size_t) (lim - next) >= hdrmin; next += ifm->ifm_msglen) {
         ifm = (struct if_msghdr2 *) next;
-        /* every routing message opens with its own length; a zero one
-         * would spin here and an overlong one would step past the end of
-         * the buffer, so neither is walked past */
-        if (ifm->ifm_msglen < sizeof(u_short) + 2 * sizeof(u_char) ||
+        /* a zero length would spin here and an overlong one would step
+         * past the end of the buffer, so neither is walked past */
+        if (ifm->ifm_msglen < hdrmin ||
             (size_t) (lim - next) < (size_t) ifm->ifm_msglen) {
             break;
         }
