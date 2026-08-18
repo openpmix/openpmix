@@ -125,7 +125,7 @@ static void test_topo2(const char *dir)
 {
     pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
     pmix_hwloc_device_t *devs = NULL;
-    size_t ndevs = 0;
+    size_t ndevs = 0, i;
     char path[1024];
     pmix_status_t rc;
 
@@ -213,6 +213,43 @@ static void test_topo2(const char *dir)
                                 NULL, &devs, &ndevs);
     ok(PMIX_SUCCESS == rc && 2 == ndevs,
        "topo2: network+openfabrics dedup to one device per PCI function");
+    if (2 == ndevs) {
+        /* Which of the two OS devices names the shared function is not a
+         * detail: "mlx5_0" is what UCX_NET_DEVICES, NCCL_IB_HCA and
+         * PSM3_NIC accept and "ib0" is what none of them accepts, so an
+         * assignment named the other way cannot be acted on.  hwloc lists
+         * ib0 first on this function, so the answer here is the preference
+         * rule doing its job rather than iteration order agreeing with it. */
+        for (i = 0; i < ndevs; i++) {
+            if (NULL != devs[i].busid && 0 == strcmp(devs[i].busid, "0000:64:00.0")) {
+                break;
+            }
+        }
+        ok(i < ndevs, "topo2: the HCA function is in the deduped result");
+        if (i < ndevs) {
+            ok(NULL != devs[i].dev.osname && 0 == strcmp(devs[i].dev.osname, "mlx5_0"),
+               "topo2: the openfabrics name wins over the network one");
+            ok(NULL != devs[i].selector && 0 == strcmp(devs[i].selector, "mlx5_0"),
+               "topo2: and a NIC's selector is that name");
+            ok(0x15b3 == devs[i].pci_vendor && 0x207 == devs[i].pci_class,
+               "topo2: the PCI ids come back with it");
+        }
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+    ndevs = 0;
+
+    /* A plain ethernet controller is a network device too, and it must not
+     * answer to the InfiniBand class - that pair is how a pnet component
+     * tells its own hardware from somebody else's. */
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_NETWORK, "enp67s0", &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs, "topo2: the ethernet controller is found by name");
+    if (1 == ndevs) {
+        ok(NULL != devs[0].selector && 0 == strcmp(devs[0].selector, "enp67s0"),
+           "topo2: its selector is its own name");
+        ok(0x8086 == devs[0].pci_vendor && 0x200 == devs[0].pci_class,
+           "topo2: and its PCI class is ethernet, not InfiniBand");
+    }
     pmix_hwloc_release_devices(devs, ndevs);
     devs = NULL;
     ndevs = 0;
