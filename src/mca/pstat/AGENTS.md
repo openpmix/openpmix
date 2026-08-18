@@ -449,9 +449,18 @@ The framework-level MCA parameter **`pstat_base_use_separate_thread`**
 
 - **false (default):** `evbase` is aliased to `pmix_globals.evbase` — the
   library's main progress thread. Periodic sampling shares that thread.
-- **true:** a dedicated progress thread named `"PSTAT"` is spun up
-  (`pmix_progress_thread_init`) so sampling cannot perturb the main
-  thread. `close` takes it back down.
+- **true:** a dedicated progress thread named `"PSTAT"` is spun up so
+  sampling cannot perturb the main thread. `close` takes it back down.
+  Standing one up takes **two** calls, not one:
+  `pmix_progress_thread_init("PSTAT")` builds the event base and the
+  thread object and hands the base back, but leaves the engine parked;
+  `pmix_progress_thread_start("PSTAT")` is what actually spins it. The
+  library does the same two-step for its own thread, several hundred
+  lines apart in `pmix_init.c`. Miss the second call and everything
+  still *looks* right — the base is non-NULL, ops arm their timers on it
+  without complaint — and no sample ever fires, because nothing is
+  running the loop. That is the failure this configuration had, and it
+  is silent in both directions: no error, and no data.
 
 Then it constructs `pmix_pstat_base.ops` and opens all components. If
 opening the components fails, `open` undoes all of that itself: when a
