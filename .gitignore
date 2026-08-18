@@ -345,6 +345,7 @@ test/unit/run_grpcabort.pl
 test/unit/run_grpctimeout.pl
 test/unit/run_monitor.pl
 test/unit/run_tools.pl
+test/unit/pstat_frame
 test/unit/pstat_parse
 test/unit/util_argv
 test/unit/util_basename

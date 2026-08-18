@@ -343,13 +343,50 @@ The framework-level MCA parameter **`pstat_base_use_separate_thread`**
   library's main progress thread. Periodic sampling shares that thread.
 - **true:** a dedicated progress thread named `"PSTAT"` is spun up
   (`pmix_progress_thread_init`) so sampling cannot perturb the main
-  thread. `close` stops and frees it.
+  thread. `close` takes it back down.
 
-Then it constructs `pmix_pstat_base.ops` and opens all components.
+Then it constructs `pmix_pstat_base.ops` and opens all components. If
+opening the components fails, `open` undoes all of that itself: when a
+framework's open fails the base never sets the OPEN flag, and so never
+calls the framework's close function.
 
-**Close (`pmix_pstat_base_close`)** destructs the ops list (tearing down
-any live monitors), calls the selected module's `finalize`, stops the
-separate thread if one was created, and closes the components.
+**Close (`pmix_pstat_base_close`)** is ordered the way it is for two
+reasons that pull against each other, and getting either wrong is a
+memory-safety bug rather than a leak. The sequence is **pause → destruct
+ops → finalize → stop**:
+
+- The ops must not be destructed while the sampling thread is running.
+  Each live op owns a timer armed on the framework's base, and
+  `pmix_event_del` does **not** wait for a callback that is already
+  executing — so a destruct racing a timer fire frees the op out from
+  under the `update()` running on it. `pmix_progress_thread_pause()`
+  joins the thread, so nothing is in flight once it returns.
+- The base must still exist while the ops are destructed, because
+  `opdes` deletes each op's timer and `pmix_event_del` reads the base out
+  of the event.
+
+That is why the teardown is a `pause` before and a `stop` after, rather
+than one call. **`pmix_progress_thread_stop()` frees the event base** —
+it drops the last reference to the progress tracker, whose destructor
+calls `pmix_event_base_free`. Do not call `pmix_event_base_free` on it as
+well; that was a double free. `pmix_psensor_base_close` is the correct
+sibling to compare against.
+
+In the **default** configuration none of this applies: `evbase` is the
+library's shared base, and `PMIx_server_finalize` calls
+`PMIx_Progress_thread_stop(NULL, 0)` near the top — well before it closes
+any framework — so the shared thread is already quiesced by the time
+this runs, and the base belongs to the runtime rather than to `pstat`.
+
+Close also puts the `unsupported` stubs back into `pmix_pstat` and clears
+`pmix_pstat_base_component`. The module it was holding belongs to a
+component `components_close` is about to release, which under
+`--enable-mca-dso` means an unloaded plugin; `select` only overwrites
+`pmix_pstat` when it *finds* a component, so a second init cycle that
+found none would otherwise still be pointing into that plugin.
+
+`test/unit/pstat_frame` drives this whole path with the parameter turned
+on, since nothing else in the suite does.
 
 **Register (`pmix_pstat_register`)** registers the single
 `pstat_base_use_separate_thread` MCA parameter.

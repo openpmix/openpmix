@@ -76,22 +76,61 @@ static int pmix_pstat_register(pmix_mca_base_register_flag_t flags)
 /* Use default register/open/close functions */
 static int pmix_pstat_base_close(void)
 {
+    /* Quiesce the sampling thread before touching the ops, but keep its
+     * event base alive across the teardown. Both halves matter:
+     *
+     * - every live op carries a timer armed on this base, and
+     *   pmix_event_del does not wait for a callback that is already
+     *   running - so destructing the ops while the thread still runs can
+     *   free an op out from under the update() executing on it. Pausing
+     *   joins the thread, so nothing is in flight once it returns.
+     * - the base cannot be freed yet either, because opdes deletes each
+     *   op's timer and pmix_event_del reads the base out of the event.
+     *
+     * That is why this is a pause here and a stop further down, rather
+     * than one call. In the default configuration there is no separate
+     * thread to pause: evbase is the library's shared base, which
+     * PMIx_server_finalize has already stopped before it closes any
+     * framework. */
+    if (use_separate_thread && NULL != pmix_pstat_base.evbase) {
+        (void) pmix_progress_thread_pause("PSTAT");
+    }
+
     PMIX_LIST_DESTRUCT(&pmix_pstat_base.ops);
     /* let the selected module finalize */
     if (NULL != pmix_pstat.finalize) {
         pmix_pstat.finalize();
     }
 
+    /* Now the base can go. Do NOT free it here as well: this drops the
+     * last reference to the "PSTAT" tracker, and the tracker's destructor
+     * is what calls pmix_event_base_free. Freeing it again here was a
+     * double free - compare pmix_psensor_base_close, which stops its own
+     * thread the same way and correctly leaves the base alone. */
     if (use_separate_thread && NULL != pmix_pstat_base.evbase) {
         (void) pmix_progress_thread_stop("PSTAT");
-        pmix_event_base_free(pmix_pstat_base.evbase);
     }
+    pmix_pstat_base.evbase = NULL;
+
+    /* Put the unsupported stubs back. The module we are holding belongs to
+     * a component that components_close is about to let go of - and under
+     * --enable-mca-dso that means its plugin is unloaded. A server that
+     * finalizes and initializes again re-runs select, but select only
+     * overwrites pmix_pstat when it finds a component; if the second cycle
+     * finds none, every one of these pointers would still name the last
+     * cycle's unloaded plugin instead of falling back to unsupported. */
+    pmix_pstat.init = pmix_pstat_base_unsupported_init;
+    pmix_pstat.query = pmix_pstat_base_unsupported_query;
+    pmix_pstat.finalize = pmix_pstat_base_unsupported_finalize;
+    pmix_pstat_base_component = NULL;
 
     return pmix_mca_base_framework_components_close(&pmix_pstat_base_framework, NULL);
 }
 
 static int pmix_pstat_base_open(pmix_mca_base_open_flag_t flags)
 {
+    int rc;
+
     if (use_separate_thread) {
         /* create an event base and progress thread for us */
         pmix_pstat_base.evbase = pmix_progress_thread_init("PSTAT");
@@ -105,7 +144,20 @@ static int pmix_pstat_base_open(pmix_mca_base_open_flag_t flags)
     PMIX_CONSTRUCT(&pmix_pstat_base.ops, pmix_list_t);
 
     /* Open up all available components */
-    return pmix_mca_base_framework_components_open(&pmix_pstat_base_framework, flags);
+    rc = pmix_mca_base_framework_components_open(&pmix_pstat_base_framework, flags);
+    if (PMIX_SUCCESS != rc) {
+        /* Undo our own setup. When a framework's open fails, the base
+         * never sets the OPEN flag, and so never calls the framework's
+         * close function - leaving the progress thread, its event base
+         * and the ops list to leak. No component has run yet, so there
+         * are no ops to race with here. */
+        PMIX_LIST_DESTRUCT(&pmix_pstat_base.ops);
+        if (use_separate_thread) {
+            (void) pmix_progress_thread_stop("PSTAT");
+        }
+        pmix_pstat_base.evbase = NULL;
+    }
+    return rc;
 }
 
 PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, pstat, "process statistics",
@@ -134,6 +186,18 @@ static pmix_status_t pmix_pstat_base_unsupported_finalize(void)
 
 static void opcon(pmix_pstat_op_t *p)
 {
+    /* PMIX_NEW does not zero the object, so every member a consumer might
+     * read has to be set here. requestor and eventcode are the two that
+     * matter: a periodic op notifies with PMIx_Notify_event(eventcode)
+     * scoped to requestor, so leaving them holding heap garbage means
+     * raising an arbitrary status at an arbitrary process. Both real
+     * components assign them immediately after PMIX_NEW, which is what
+     * keeps this latent rather than live - but nothing enforces that.
+     * ev and tv are deliberately not initialized: tv is set by
+     * PMIX_PSTAT_OP_START before the timer is armed, and ev is only ever
+     * touched under the active flag, which starts false. */
+    PMIX_PROC_CONSTRUCT(&p->requestor);
+    p->eventcode = PMIX_SUCCESS;
     p->id = NULL;
     p->active = false;
     p->rate = 0;
