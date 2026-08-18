@@ -54,19 +54,35 @@ component genuinely exercises the same request-dispatch, op-lifecycle,
 and `update()` duality that `plinux` uses — only the leaf `*_stat`
 readers differ. Concretely:
 
-- **`query`** is line-for-line the same dispatch as `plinux`'s: same
-  cancel fast-path, same op construction, same `PMIX_MONITOR_ID` /
-  `PMIX_MONITOR_RESOURCE_RATE` parsing, same four monitor-key branches,
-  same peer selection against `pmix_server_globals.clients`, same
-  synchronous-`op->cb` collection plus optional periodic timer arming.
-  (One small divergence: `test`'s `query` does not `memcpy` the requestor
-  into the op, since it targets its periodic events at
-  `PMIX_RANGE_LOCAL`.)
-- **`update`** is the same synchronous-vs-timer engine, with the same
-  `nettaken`/`dktaken` node-nesting logic. The only behavioral difference
-  from `plinux` is the notification **range**: on the timer path `test`
-  calls `PMIx_Notify_event(..., PMIX_RANGE_LOCAL, ...)` rather than a
-  custom range to the requestor.
+- **`query`**, **`monitor_fields`** and **`update`** are the *same code*
+  as `plinux`'s — not merely the same shape. Same cancel fast-path, same
+  op construction, same `PMIX_MONITOR_ID` / `PMIX_MONITOR_RESOURCE_RATE`
+  parsing and validation, same four monitor-key branches, same peer
+  selection against `pmix_server_globals.clients`, same
+  synchronous-`op->cb` collection and error reporting, same periodic
+  timer arming, and the same `PMIX_RANGE_CUSTOM` notification targeted at
+  the requestor.
+
+  A `diff` of the two, ignoring whitespace, should come back empty; that
+  is the check to run after touching either. They used to differ, and
+  every difference turned out to be a defect rather than a deliberate
+  choice — including the one that looked most like a choice. `test` did
+  not record the requestor in the op and notified at `PMIX_RANGE_LOCAL`
+  without the `PMIX_EVENT_NON_DEFAULT` and `PMIX_EVENT_CUSTOM_RANGE`
+  directives, so a periodic monitor's samples went to every event handler
+  on the node instead of to the one process that asked for them. A test
+  double that answers a different set of processes than the component it
+  stands in for is not testing the thing it is standing in for.
+
+  The rules this shared code encodes — the untrusted monitor value, who
+  owns the answer list on the synchronous path, why a reader's
+  `PMIX_ERR_NOT_FOUND` is skipped rather than fatal, why every
+  `PMIx_Info_list_convert()` result is destructed after it is added, and
+  why a refused `PMIx_Notify_event` releases its own caddy — are written
+  up in the [framework guide](../AGENTS.md) and
+  [`plinux/AGENTS.md`](../plinux/AGENTS.md). The canned readers never
+  return `PMIX_ERR_NOT_FOUND`, so that branch is unreachable here; it
+  stays because divergence is the thing being guarded against.
 
 ### The canned readers
 
@@ -104,10 +120,16 @@ on a developer laptop.
 
 ## When modifying `test`
 
-- **Keep it in structural sync with `plinux`.** Its value as a test
-  double comes from executing the *same* control flow. If you add a
-  monitor key, a directive, or change the op lifecycle in `plinux`, mirror
-  it here so CI keeps covering the new path.
+- **Keep it in sync with `plinux`.** Its value as a test double comes
+  from executing the *same* control flow, and `query`/`update` are
+  currently identical text. If you add a monitor key, a directive, or
+  change the op lifecycle in `plinux`, mirror it here — and in `pmacos`,
+  which is the third copy — so CI keeps covering the new path. All three
+  drifting apart is how the same bug came to be fixed three times.
+- **`test/unit/pstat_query` asserts the query contract against whichever
+  component the host selects.** Run it under each one
+  (`PMIX_MCA_pstat=test ./pstat_query`) after changing any of them; a
+  rule that only one component honors is not a rule.
 - Keep the emitted values fixed and documented — downstream tests may
   assert on them. If you must change a canned value, grep the test suite
   for callers first.
