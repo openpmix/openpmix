@@ -150,7 +150,7 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
      * caller cannot tell apart from a process that simply had no
      * fields requested. */
     nb = proc_pidinfo(peer->info->pid, PROC_PIDTBSDINFO, 0, &bsd, sizeof(bsd));
-    if (nb != (int) sizeof(bsd)) {
+    if ((int) sizeof(bsd) != nb) {
         return PMIX_ERR_NOT_FOUND;
     }
 
@@ -180,7 +180,7 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     /* pull the task-level info: CPU time, thread count, priority, and
      * virtual/resident sizes */
     nb = proc_pidinfo(peer->info->pid, PROC_PIDTASKINFO, 0, &pti, sizeof(pti));
-    if (nb == (int) sizeof(pti)) {
+    if ((int) sizeof(pti) == nb) {
         if (pst->time) {
             /* pti reports CPU time in nanoseconds. Split it with integer
              * arithmetic and carry the seconds at the width of a time_t:
