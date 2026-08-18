@@ -67,7 +67,9 @@ The signatures match the current framework interface (unlike `tcp` and
 - **`setup_local_network`** — finds `PMIX_PNET_NVD_BLOB`, decompresses if
   needed, unpacks the `PMIX_ENVAR` stream, and appends each to
   `ns->envars` for fork-time injection. (Unlike `opa` it does **not**
-  special-case any transport key.)
+  special-case any transport key.) Two things about it are easy to get
+  wrong and are covered by `test/unit/pnet_envar_blob.c`; see
+  [Gotchas](#gotchas).
 - **`collect_inventory`** — actually walks the hwloc PCI device list for a
   Mellanox (`0x15b3`) or NVIDIA (`0x10de`) device of class `0x207`; on the
   first match it returns `PMIX_SUCCESS`. It does not yet add anything to
@@ -108,9 +110,44 @@ prints a `Transports / NVIDIA` line.
 
 ## Gotchas
 
+- **The unpack loop's terminating status is not a failure.** The envar
+  stream carries no count, so `setup_local_network` unpacks until the
+  buffer runs out and the loop can only end on
+  `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER`. That has to be turned back
+  into `PMIX_SUCCESS` before returning: the base treats anything other
+  than `SUCCESS` / `NOT_AVAILABLE` / `TAKE_NEXT_OPTION` as a hard error,
+  which stops the fan-out to every pnet component behind us **and** fails
+  `PMIx_server_setup_local_support` for the whole job. `opa` has always
+  done this; `nvd` did not, so the only job it let launch was one whose
+  blob it never found.
+- **`pmix_compress.decompress()` writes nothing when it fails, and the
+  failure is not exotic.** A node that built no compression component
+  still receives compressed blobs from a lead server that did, and the
+  base's stub decompressor simply returns `false` — as does a real one
+  fed a damaged blob. It leaves the output pointer untouched, so its
+  return value must be checked before the result is read *or freed*.
+  Decline the blob rather than continuing.
+- **`bkt` must never be destructed.** `PMIX_LOAD_BUFFER_NON_DESTRUCT`
+  parks a *borrowed* pointer in the buffer — either the info's own byte
+  object or the block the decompressor allocated, which this function
+  frees itself. Destructing the buffer would free it a second time.
+- **`allocate` hands the payload over exactly once.** `PMIX_UNLOAD_BUFFER`
+  transfers the packed bytes to a `pmix_byte_object_t` without freeing
+  anything, so when compression succeeds — and the `pmix_kval_t` therefore
+  owns the *compressed* copy — the uncompressed block has to be freed by
+  hand. `pgpu/{nvd,intel}` are the reference; `pnet/opa` still leaks it.
 - **`collect_inventory` reports presence but not contents.** It confirms a
   matching NIC exists but does not populate inventory; treat inventory
   support as unfinished.
+- **Any error out of `collect_inventory` aborts the whole fan-out.**
+  Unlike `allocate` / `setup_fork`, the base has no decline convention
+  there: it `PMIX_ERROR_LOG`s a non-`SUCCESS` return and stops, so the
+  other components' inventory never gets collected. This is why "no
+  matching NIC" answers `PMIX_SUCCESS` here rather than
+  `TAKE_NEXT_OPTION`. The `PMIX_ERR_NOT_SUPPORTED` guard on a
+  non-hwloc topology is defensive only — `component_open` already ran
+  `pmix_hwloc_check_vendor`, which applies the same source check and must
+  have passed for this module to be active at all.
 - **The envar-glob defaults are the interface to the comms stacks.**
   `UCX_*,HCOLL_*,UCC_*,SHARP_*,NCCL_*` are what get forwarded to compute
   nodes; changing them changes which runtime settings propagate.
