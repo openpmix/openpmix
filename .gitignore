@@ -240,6 +240,9 @@ test/simple/simpjctrl
 test/simple/simpmonitor
 test/simple/simpio
 test/simple/data-*
+# left behind only if simpmonitor is killed before it unlinks its
+# file-monitor target
+test/simple/simpmon-*.watch
 test/simple/simpcoord
 test/python/run_bindings.sh
 test/python/run_sched.sh
