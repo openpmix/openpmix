@@ -261,7 +261,7 @@ this contract has to account for both frameworks.
 ## Selection and lifecycle
 
 - **`base/pnet_base_frame.c`** declares the framework
-  (`PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pnet, "PMIx Network
+  (`PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, pnet, "PMIx Network
   Operations", …)`), instantiates `pmix_pnet_globals` and the global
   `pmix_pnet` API module (every slot wired to a `pmix_pnet_base_*`
   function), and defines the `PMIX_CLASS_INSTANCE`s for
@@ -273,9 +273,15 @@ this contract has to account for both frameworks.
 - **`base/pnet_base_select.c`** (`pmix_pnet_base_select`) is the
   multi-select builder described above: query each component, run its
   `init` (skip it if `init` fails), and insert its module into `actives`
-  in descending priority order. It always returns `PMIX_SUCCESS` — an
-  empty active list is **not** an error for `pnet`, unlike single-select
-  frameworks. At verbosity >4 it prints the resolved priority list.
+  in descending priority order. It returns `PMIX_SUCCESS` unless it runs
+  out of memory — an empty active list is **not** an error for `pnet`,
+  unlike single-select frameworks. At verbosity >4 it prints the resolved
+  priority list.
+
+  All three lists in `pmix_pnet_globals` carry a `PMIX_LIST_STATIC_INIT`
+  in their instantiation, and that is load-bearing rather than tidy: a
+  zero-filled `pmix_list_t` has a NULL sentinel, so a list that omitted
+  it could not be walked at all until `pmix_pnet_open` constructed it.
 
 Selection is driven from server startup: `src/server/pmix_server.c` opens
 `pmix_pnet_base_framework` and calls `pmix_pnet_base_select()`.
@@ -407,6 +413,10 @@ coverage of any of it. Three things to know before you build on it:
   a stale entry that still resolved a later request to a module that had
   already torn the plane down. The scan is now first-match-wins for the
   same reason.
+- **Nobody frees `pmix_pnet_fabric_t.payload`.** `ftdes` releases only
+  `name`, and the component is never told its tracker died. A component
+  that parks an allocation there must free it from its own
+  `deregister_fabric`, which the base calls first.
 
 ## Building
 
