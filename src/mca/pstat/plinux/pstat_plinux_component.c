@@ -37,7 +37,7 @@
 #include "src/mca/pstat/pstat.h"
 
 /*
- * Public string showing the pstat ompi_plinux component version number
+ * Public string showing the pstat plinux component version number
  */
 const char *pmix_pstat_plinux_component_version_string
     = "PMIX plinux pstat MCA component version " PMIX_VERSION;

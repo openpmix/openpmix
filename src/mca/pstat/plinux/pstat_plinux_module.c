@@ -26,7 +26,7 @@
 #include "pmix_config.h"
 #include "pmix_common.h"
 
-/* This component will only be compiled on Plinux, where we are
+/* This component will only be compiled on Linux, where we are
    guaranteed to have <unistd.h> and friends */
 #include <ctype.h>
 #include <errno.h>
@@ -232,7 +232,7 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     }
     close(fd);
 
-    /* remove newline at end */
+    /* terminate what we read */
     data[len] = '\0';
 
     /* the stat file consists of a single line in a carefully formatted
@@ -459,7 +459,7 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
             fval += convert_value(value);
         }
     }
-    if (0.0 < fval && pst->pss) {
+    if (pst->pss && 0.0 < fval) {
         rc = PMIx_Info_list_add(cache, PMIX_PROC_PSS, &fval, PMIX_FLOAT);
         if (PMIX_SUCCESS != rc) {
             PMIx_Info_list_release(cache);
@@ -897,7 +897,7 @@ static pmix_status_t node_stat(void *ilist, pmix_ndstats_t *ndst)
         return PMIX_ERR_FILE_READ_FAILURE;
     }
 
-    /* remove newline at end */
+    /* terminate what we read */
     data[len] = '\0';
 
     /* we only care about the first three numbers */
@@ -1524,9 +1524,6 @@ processprocs:
             PMIX_RELEASE(op);
             return rc;
         }
-        // if the array has only two items in it, then those are the hostname
-        // and nodeID we provided and not any data - this is equivalent to
-        // "empty" as no data was found
         PMIx_Info_list_release(cb.cbdata);
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
@@ -1759,7 +1756,7 @@ static void local_getfields(char *dptr, char ***fields)
         }
         /* terminate it */
         *end = '\0';
-        /* store it on the stack */
+        /* store it in the field list */
         PMIx_Argv_append_nosize(fields, ptr);
         /* step across any white space */
         end++;
