@@ -5,7 +5,7 @@
  * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -157,6 +157,27 @@ typedef pmix_status_t (*pmix_pnet_base_module_update_fabric_fn_t)(pmix_fabric_t 
 typedef pmix_status_t (*pmix_pnet_base_module_deregister_fabric_fn_t)(pmix_fabric_t *fabric);
 
 /**
+ * Contribute this one process's network environment just before it is
+ * forked.
+ *
+ * The per-*process* counterpart of setup_local_network, and the reason the
+ * two both exist: the namespace envar cache the base replays before calling
+ * this can only carry what every rank of the job shares, and a device
+ * assignment differs per rank.  This is also the only pnet hook that runs
+ * on the daemon that will fork the process, so it is where per-node truth
+ * belongs - the head node's copy of a topology may belong to whichever node
+ * reported it first.
+ *
+ * Return PMIX_ERR_NOT_AVAILABLE or PMIX_ERR_TAKE_NEXT_OPTION to say
+ * "nothing to contribute for this process", which is the ordinary case:
+ * most processes are not mapped against a device at all.  Any other error
+ * aborts the fork rather than launching a process that would use the wrong
+ * hardware.
+ */
+typedef pmix_status_t (*pmix_pnet_base_module_setup_fork_fn_t)(const pmix_proc_t *proc,
+                                                               char ***env);
+
+/**
  * Base structure for a PNET module. Each component should malloc a
  * copy of the module structure for each fabric plane they support.
  */
@@ -169,6 +190,7 @@ typedef struct {
     pmix_pnet_base_module_fini_fn_t finalize;
     pmix_pnet_base_module_allocate_fn_t allocate;
     pmix_pnet_base_module_setup_local_net_fn_t setup_local_network;
+    pmix_pnet_base_module_setup_fork_fn_t setup_fork;
     pmix_pnet_base_module_child_finalized_fn_t child_finalized;
     pmix_pnet_base_module_local_app_finalized_fn_t local_app_finalized;
     pmix_pnet_base_module_dregister_nspace_fn_t deregister_nspace;
@@ -219,6 +241,24 @@ typedef struct {
 /* declare the global APIs */
 PMIX_EXPORT extern pmix_pnet_API_module_t pmix_pnet;
 
+/* One family of PCI devices, named the way a component already names the
+ * hardware it exists for: the (vendor, class) pair it hands
+ * pmix_hwloc_check_vendor() in its component_open.  A class of zero means
+ * "any class from this vendor".
+ *
+ * This is how a component picks its own devices out of a process's
+ * assignment.  A GPU carries the vendor's own identity, so pgpu's
+ * equivalent filters on that; a NIC carries no such attribute and its OS
+ * device name says nothing about who made it, so the PCI ids are the only
+ * discriminator there is.  Getting it wrong on a node with two fabrics
+ * means writing another vendor's device into your variable, which is worse
+ * than writing nothing.
+ */
+typedef struct {
+    uint16_t vendor;
+    uint16_t devclass;
+} pmix_pnet_pcimatch_t;
+
 /*
  * the standard component data structure
  */
@@ -230,7 +270,7 @@ typedef pmix_mca_base_component_t pmix_pnet_base_component_t;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_pnet_MAJOR_VERSION   1
+#define PMIX_MCA_pnet_MAJOR_VERSION   2
 #define PMIX_MCA_pnet_MINOR_VERSION   0
 #define PMIX_MCA_pnet_RELEASE_VERSION 0
 

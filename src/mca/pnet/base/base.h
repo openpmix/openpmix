@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -106,6 +106,23 @@ PMIX_EXPORT pmix_status_t pmix_pnet_base_deliver_inventory(pmix_info_t info[], s
                                                            pmix_info_t directives[], size_t ndirs);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_harvest_envars(char **incvars, char **excvars,
                                                         pmix_list_t *ilist);
+
+/* Build the value of a device-selection variable for one process from the
+ * network devices it was mapped against, keeping only those matching one of
+ * the given PCI (vendor, class) pairs.  Returns PMIX_ERR_TAKE_NEXT_OPTION
+ * when the process was given no device of yours, which is the ordinary
+ * case.  The caller frees *value. */
+PMIX_EXPORT pmix_status_t pmix_pnet_base_get_assigned_devices(const pmix_proc_t *proc,
+                                                              const pmix_pnet_pcimatch_t *match,
+                                                              size_t nmatch,
+                                                              char **value);
+/* The same, written straight into the named variable of the child's
+ * environment.  This is all most components need. */
+PMIX_EXPORT pmix_status_t pmix_pnet_base_set_assigned_devices(const pmix_proc_t *proc,
+                                                              const pmix_pnet_pcimatch_t *match,
+                                                              size_t nmatch,
+                                                              const char *envar,
+                                                              char ***env);
 
 PMIX_EXPORT pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
                                                          const pmix_info_t directives[],

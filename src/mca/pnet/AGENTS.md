@@ -42,7 +42,10 @@ opportunity to:
   is registered — unpack whatever blob `allocate` produced and cache it
   as job-level info / envars (`setup_local_network`, driven by
   `PMIx_server_setup_local_support`).
-- **Inject envars into a child** just before fork/exec (`setup_fork`).
+- **Inject envars into a child** just before fork/exec (`setup_fork`) —
+  the namespace-wide ones the base replays from its cache, and the
+  per-rank ones each module contributes, notably naming the NIC a process
+  was mapped against to the software that will use it.
 - **Clean up** as clients and jobs terminate (`child_finalized`,
   `local_app_finalized`, `deregister_nspace`).
 - **Collect and deliver fabric inventory** for the RM/scheduler
@@ -123,6 +126,7 @@ base skips a `NULL` slot):
 | `init` / `finalize` | `(void)` | per-module lifecycle; `init` may veto selection by returning non-success |
 | `allocate` | `(pmix_namespace_t *nptr, info, ninfo, pmix_list_t *ilist)` | build the launch blob (seckeys/envars/endpoints) appended as `pmix_kval_t`s to `ilist` |
 | `setup_local_network` | `(pmix_nspace_env_cache_t *nptr, info, ninfo)` | on the compute node, unpack that blob and cache it |
+| `setup_fork` | `(const pmix_proc_t *proc, char ***env)` | contribute **this one process's** network environment, after the base has replayed the namespace-wide envar cache |
 | `child_finalized` | `(pmix_proc_t *peer)` | one client exited |
 | `local_app_finalized` | `(pmix_namespace_t *nptr)` | all local clients of a job exited |
 | `deregister_nspace` | `(pmix_namespace_t *nptr)` | release per-job resources (e.g. static ports) |
@@ -132,8 +136,13 @@ base skips a `NULL` slot):
 | `update_fabric` | `(pmix_fabric_t *fabric)` | refresh fabric data |
 | `deregister_fabric` | `(pmix_fabric_t *fabric)` | release a fabric plane |
 
-Note there is **no `setup_fork` in the component module** — envar
-injection at fork time is handled entirely by the base (see below).
+`setup_fork` is the per-*process* hook, and the split from the base's own
+replay of the envar cache is the point: the cache is per *namespace*, so
+it can only carry what every rank of the job shares, and a device
+assignment is per *rank*. It is also the only pnet hook that runs on the
+daemon that will fork the process, which is why per-node truth belongs
+there — the head node's copy of a topology may belong to whichever node
+reported it first.
 
 ### `pmix_pnet_API_module_t` — the exported global `pmix_pnet`
 
@@ -148,8 +157,10 @@ mirrors the component module with two differences, both deliberate:
    optimization so every caller doesn't have to look up the namespace
    pointer — the base does that lookup once and passes the resolved
    object down to the components.
-2. **The API module adds `setup_fork`** (`pmix_pnet_base_setup_fork`),
-   which has no component-module counterpart.
+2. **The API module's `setup_fork`** (`pmix_pnet_base_setup_fork`) does
+   more than fan out: it replays the namespace envar cache into the
+   child's environment first, and only then calls each active module's
+   own `setup_fork`.
 
 All server back-end code calls through `pmix_pnet.<fn>(...)`; components
 never call each other.
@@ -184,7 +195,9 @@ the framework — the components are leaf handlers.
 |---------------|--------------|
 | `pmix_pnet_base_allocate` | resolves `nspace` → `pmix_namespace_t` (creating it if new), and **only if the local peer is a server** calls each active `module->allocate`, tolerating `NOT_AVAILABLE`/`TAKE_NEXT_OPTION` |
 | `pmix_pnet_base_setup_local_network` | resolves `nspace` → a `pmix_nspace_env_cache_t` on `pmix_pnet_globals.nspaces` (creating it), then calls each active `module->setup_local_network(ns, …)` |
-| `pmix_pnet_base_setup_fork` | looks up the namespace's envar cache and `PMIx_Setenv`s every cached `pmix_envar_list_item_t` into the child's `env`. **This is the whole of `setup_fork` — it is a base operation, not a per-module call.** |
+| `pmix_pnet_base_setup_fork` | looks up the namespace's envar cache and `PMIx_Setenv`s every cached `pmix_envar_list_item_t` into the child's `env`, **then** calls each active `module->setup_fork(proc, env)`, tolerating `NOT_AVAILABLE`/`TAKE_NEXT_OPTION` (the ordinary case: most processes are not mapped against a device). Any other error aborts the fork rather than launching a process that would use the wrong hardware. |
+| `pmix_pnet_base_get_assigned_devices` | reads the proc's `PMIX_DEVICE_ID` out of the local datastore, resolves each device against the **local** topology, keeps the ones whose PCI `(vendor, class)` matches one of the caller's `pmix_pnet_pcimatch_t` entries, and joins their **selectors** with commas. Returns `PMIX_ERR_TAKE_NEXT_OPTION` when the process was given none of yours |
+| `pmix_pnet_base_set_assigned_devices` | the one-line wrapper that writes that value into a named environment variable; this is all most components need |
 | `pmix_pnet_base_child_finalized` | fans out to each `module->child_finalized` |
 | `pmix_pnet_base_local_app_finalized` | fans out to each `module->local_app_finalized` |
 | `pmix_pnet_base_deregister_nspace` | removes & releases the namespace's envar cache, then fans out to each `module->deregister_nspace(ns->ns)` |
@@ -340,11 +353,23 @@ that keeps `nvd` out of the library today).
   `PMIX_NODE_INFO_ARRAY` rather than proc data or the client's `PMIx_Get`
   will not find them. This mirrors how a real fabric component must split
   the two.
-- **`setup_fork` is base-only.** If a component needs an envar in the
-  child's environment, it must add it to the namespace's envar cache
-  during `setup_local_network` (append a `pmix_envar_list_item_t` to
-  `ns->envars`); the base's `setup_fork` will inject it. There is no
-  component `setup_fork` hook to override.
+- **Put per-job envars in the cache and per-rank envars in `setup_fork`.**
+  An envar every rank of the job shares belongs in the namespace's envar
+  cache, appended as a `pmix_envar_list_item_t` to `ns->envars` during
+  `setup_local_network`; the base replays the cache into every child. An
+  envar whose value differs per rank — a device assignment — has nowhere
+  to be set but the component's own `setup_fork`, which the base calls
+  afterwards. Do not reach for the topology there yourself: use
+  `pmix_pnet_base_set_assigned_devices()` with the same PCI
+  `(vendor, class)` pairs your `component_open` probed for, so a node
+  carrying two fabrics does not have you naming somebody else's NIC.
+- **Never invent a selector the topology did not supply.** A NIC's
+  selector is the OS device name, which is always there. Where a
+  variable takes a *unit ordinal* instead — PSM2's `HFI_UNIT`, OPX's
+  `FI_OPX_HFI_SELECT` — leave it alone unless hwloc actually recorded
+  that ordinal: an ordinal means something only against the enumeration
+  it came from, and a wrong value in these variables does not fail, it
+  quietly puts the process on somebody else's hardware.
 - **Respect the decline convention.** A module that does not recognize a
   request must return `PMIX_ERR_TAKE_NEXT_OPTION` (or
   `PMIX_ERR_NOT_AVAILABLE`) so the base continues the fan-out — never a
