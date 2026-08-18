@@ -1091,10 +1091,20 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *p
     pmix_infolist_t *iptr;
     pmix_info_t *array;
 
-    if (NULL == p || NULL == par) {
+    if (NULL == par) {
         return PMIX_ERR_BAD_PARAM;
     }
+    /* Initialize the caller's array before anything can fail. Callers
+     * hand us an uninitialized stack pmix_data_array_t and destruct it
+     * on the way out of an error - which is right for every other
+     * failure here, because those all happen after this point. A NULL
+     * list, which is what a caller holds when PMIx_Info_list_start()
+     * failed, used to return in front of it and leave them destructing
+     * stack garbage. */
     PMIX_DATA_ARRAY_INIT(par, PMIX_INFO);
+    if (NULL == p) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     n = pmix_list_get_size(p);
     if (0 == n) {
