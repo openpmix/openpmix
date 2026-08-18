@@ -74,6 +74,21 @@ each time somebody asks.
           has no answer at that moment, when the question that does have
           one is "does this output have to be formatted yet".
 
+.. note:: **2026-08-18.**  The ``psensor`` progress-thread entry that
+          stood under "Deferred work" is closed.  Both halves it called
+          for were made together: ``pmix_psensor_base_open`` now starts
+          the ``"PSENSOR"`` thread it creates, and
+          ``pmix_psensor_base_close`` pauses that thread before anything
+          is torn down and stops it only after the components -- which
+          own the trackers, and therefore the timers armed on the base --
+          have closed.  Both components' samplers were moved to
+          ``EV_PERSIST`` timers they no longer re-arm, for the reason
+          spelled out in ``src/mca/pstat/AGENTS.md``.
+          ``test/unit/run_monitor.pl`` now runs its heartbeat *and* file
+          scenario twice, once with
+          ``psensor_base_use_separate_thread`` set, so the configuration
+          that was silently dead is exercised by ``make check``.
+
 Review coverage
 ---------------
 
@@ -248,27 +263,30 @@ cover the whole of what the entry described.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
-``psensor`` never starts its own progress thread
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+A heartbeat with no monitor armed looks like a protocol error
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``pmix_psensor_base_open`` creates the ``"PSENSOR"`` event base with
-``pmix_progress_thread_init()`` and never calls
-``pmix_progress_thread_start()``, so with
-``psensor_base_use_separate_thread`` set the base exists and nothing
-drives it: trackers arm their timers and no heartbeat or monitor ever
-fires.  This is the same defect that was fixed for ``pstat`` in
-``pmix_pstat_base_open``, found while fixing it there.
+``psensor/heartbeat`` posts the ``PMIX_PTL_TAG_HEARTBEAT`` receive
+lazily -- on the first ``start`` that claims a heartbeat monitor -- so a
+beat that arrives before any monitor has been armed finds no posted recv.
+The ``ptl`` base then prints its unexpected-message ``show_help``, which
+names the peer and the tag and asks the user to *report this error to
+the PMIx developers*.
 
-It is deliberately **not** a one-line copy of that fix.
-``pmix_psensor_base_close`` destructs ``pmix_psensor_base.actives`` and
-then calls ``pmix_progress_thread_stop("PSENSOR")``, with no
-``pmix_progress_thread_pause()`` in between -- which is safe only for as
-long as the thread does not actually run.  Starting the thread without
-also correcting the teardown would introduce a destruct racing a live
-timer callback, which is precisely the class of bug the ``pstat`` change
-closed.  ``psensor`` needs the pair looked at together, and the arming
-discipline described under "Releasing an op from another thread" in
-``src/mca/pstat/AGENTS.md`` applies to its trackers as well.
+Nothing is wrong.  ``PMIx_Heartbeat()`` is a client-side call that a
+process may legitimately make before -- or after -- its server holds a
+monitor for it, and the beat is correctly ignored either way; only the
+diagnostic is wrong.  ``test/unit/run_monitor.pl`` reproduces it on every
+run, because the observer rank sends its one test beat before the
+monitored rank has asked to be watched.
+
+The fix is a judgement call rather than a repair, which is why it is
+recorded rather than made.  Either the heartbeat tag stops being a
+lazily-posted recv (post it when the framework opens, and drop a beat
+that matches no tracker), or the ``ptl`` base learns that this one tag is
+allowed to arrive unclaimed.  The first spends a posted recv in every
+server that never monitors anything; the second puts component knowledge
+in the transport.
 
 Coverage gaps
 -------------
