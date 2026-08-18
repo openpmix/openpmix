@@ -91,10 +91,24 @@ Declared in ``include/pmix_deprecated.h``::
     pmix_status_t PMIx_generate_ppn(const char *input, char **ppn);
 
 These return the encoded form as a plain ``char *`` and use the
-deprecated ``PMIX_REGEX`` data type (value ``49``). They remain because
-production launchers built against older releases still call them, and
-because the per-node process map is still carried internally in the string
-form. New code should prefer ``PMIx_generate_regex2``.
+deprecated ``PMIX_REGEX`` data type (value ``49``). They remain purely for
+backward compatibility: production launchers built against older releases
+still call them, and still register namespaces with ``PMIX_REGEX``-typed
+node and process maps, so both the symbols and the parsing path have to
+stay.
+
+New code should use ``PMIx_generate_regex2`` for **both** maps.
+``PMIx_generate_ppn`` has no successor of its own because it never needed
+one — the encoding is agnostic to what the values represent, so passing
+the process-map string (``"0,1,2;3,4,5"``: nodes delimited by ``;``, the
+ranks on each node by ``,``) to ``PMIx_generate_regex2`` produces a
+``pmix_regex2_t`` that is loaded as the ``PMIX_PROC_MAP`` value exactly as
+the node list is loaded as ``PMIX_NODE_MAP``. The two paths do not
+necessarily pick the same scheme — the legacy generators are
+first-success in descending priority, while the regex2 path is
+smallest-wins among the components that implement it (``native`` does not)
+— but that is invisible to the consumer, because every encoding tags
+itself with the scheme that produced it.
 
 All four entry points are thin wrappers in ``src/server/pmix_server_setup.c``
 that check ``pmix_globals.initialized`` and forward to the corresponding
