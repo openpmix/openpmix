@@ -27,6 +27,42 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/pstat/base/base.h"
 #include "src/mca/pstat/pstat.h"
+#include "src/util/pmix_error.h"
+
+/* Collect a device identifier into the caller's argv.
+ *
+ * The info array these helpers walk is the data array carried inside the
+ * caller's monitor value, and for a request that arrived from a client
+ * that array came straight off the wire - nothing between the unpack and
+ * here validates it. So the declared type has to be checked before the
+ * value is read: PMIX_DISK_ID and PMIX_NETWORK_ID are published as char*,
+ * and reading data.string out of a value the sender typed as, say,
+ * PMIX_SIZE reinterprets an integer as a pointer and hands it to strdup.
+ */
+static void collect_id(char ***argv, const pmix_info_t *info, bool *logged)
+{
+    pmix_status_t rc;
+
+    if (PMIX_STRING != info->value.type || NULL == info->value.data.string) {
+        rc = PMIX_ERR_BAD_PARAM;
+    } else {
+        /* the device list is a filter - dropping an entry silently would
+         * widen the request to every device instead of the named one.
+         * Append uniquely: it names a set of devices to report, so a
+         * repeated ID must not make the device appear twice in the
+         * results. This matches PMIX_PSTAT_APPEND_PEER_UNIQUE, which
+         * dedups the op's other target filter the same way */
+        rc = PMIx_Argv_append_unique_nosize(argv, info->value.data.string);
+    }
+    /* at most one diagnostic per request. PMIX_ERROR_LOG writes to stream 0,
+     * which is never off, and the array being walked is caller-supplied -
+     * reporting every bad entry would let one malformed request write an
+     * arbitrary number of lines to the server's stderr */
+    if (PMIX_SUCCESS != rc && !*logged) {
+        *logged = true;
+        PMIX_ERROR_LOG(rc);
+    }
+}
 
 void pmix_pstat_parse_procstats(pmix_procstats_t *pst,
                                 pmix_info_t *info, size_t sz)
@@ -38,7 +74,9 @@ void pmix_pstat_parse_procstats(pmix_procstats_t *pst,
     } else {
         PMIX_PROCSTATS_INIT(pst);
         for (n=0; n < sz; n++) {
-            if (PMIx_Check_key(info[n].key, PMIX_PROC_OS_STATE)) {
+            if (PMIx_Check_key(info[n].key, PMIX_CMD_LINE)) {
+                pst->cmdline = true;
+            } else if (PMIx_Check_key(info[n].key, PMIX_PROC_OS_STATE)) {
                 pst->state = true;
             } else if (PMIx_Check_key(info[n].key, PMIX_PROC_TIME)) {
                 pst->time = true;
@@ -67,6 +105,7 @@ void pmix_pstat_parse_dkstats(char ***disks, pmix_dkstats_t *dkst,
                               pmix_info_t *info, size_t sz)
 {
     size_t n;
+    bool logged = false;
 
     if (NULL == info) {
         PMIX_DKSTATS_ALL(dkst);
@@ -74,7 +113,7 @@ void pmix_pstat_parse_dkstats(char ***disks, pmix_dkstats_t *dkst,
         PMIX_DKSTATS_INIT(dkst);
         for (n=0; n < sz; n++) {
             if (PMIx_Check_key(info[n].key, PMIX_DISK_ID)) {
-                PMIx_Argv_append_nosize(disks, info[n].value.data.string);
+                collect_id(disks, &info[n], &logged);
 
             } else if (PMIx_Check_key(info[n].key, PMIX_DISK_READ_COMPLETED)) {
                 dkst->rdcompleted = true;
@@ -117,6 +156,7 @@ void pmix_pstat_parse_netstats(char ***nets, pmix_netstats_t *netst,
                                pmix_info_t *info, size_t sz)
 {
     size_t n;
+    bool logged = false;
 
     if (NULL == info) {
         PMIX_NETSTATS_ALL(netst);
@@ -124,7 +164,7 @@ void pmix_pstat_parse_netstats(char ***nets, pmix_netstats_t *netst,
         PMIX_NETSTATS_INIT(netst);
         for (n=0; n < sz; n++) {
             if (PMIx_Check_key(info[n].key, PMIX_NETWORK_ID)) {
-                PMIx_Argv_append_nosize(nets, info[n].value.data.string);
+                collect_id(nets, &info[n], &logged);
 
             } else if (PMIx_Check_key(info[n].key, PMIX_NET_RECVD_BYTES)) {
                 netst->rcvdb = true;
