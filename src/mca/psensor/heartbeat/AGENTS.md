@@ -71,8 +71,10 @@ peer, frees `id`/`info`, and deletes the timer if `event_active`.
    `pmix_ptl_base.posted_recvs`, and set `recv_active = true`. This is the
    one place `psensor` reaches directly into `ptl` internals — the recv is
    shared by *all* heartbeat trackers, not one per requestor.
-5. Thread-shift to `add_tracker`, which appends the tracker and arms an
-   `evtimer` (`check_heartbeat`) at `tv`.
+5. Thread-shift to `add_tracker`, which appends the tracker and arms a
+   **persistent** timer (`check_heartbeat`) at `tv`. It is persistent for
+   a reason — see "The tracker timer is persistent" in the framework
+   [`AGENTS.md`](../AGENTS.md); `check_heartbeat` must never re-arm it.
 
 ## Heartbeat reception: `recv_beats` → `add_beat`
 
@@ -96,7 +98,9 @@ Fires every `tv` seconds:
   `range`. The completion callback (`opcbfunc`) releases the retained
   tracker.
 - Otherwise it just logs the beat count.
-- Either way it resets `nbeats = 0` and re-arms the timer.
+- Either way it resets `nbeats = 0`. It does **not** re-arm the timer:
+  the timer is persistent and libevent re-armed it before this callback
+  was entered.
 
 Note the tracker is **not removed** on alert (unlike `file`): heartbeat
 monitoring persists, and a later beat via `add_beat` clears `stopped` so
@@ -110,6 +114,13 @@ more, re-alerted. This "latch then revive" behavior is deliberate.
   until a beat revives it. Do not "simplify" by removing the latch or by
   deleting the tracker on alert — you would either spam events every
   window or lose the ability to notice the process recovering.
+- **The sampler must not re-arm its own timer.** `check_heartbeat` hands
+  a *retained* tracker to an asynchronous `PMIx_Notify_event`, and the
+  completion callback that releases it runs on the library's progress
+  thread, not this one — so the tracker's `pmix_event_del` can race a
+  sample in flight. A one-shot re-armed from the end of the sampler
+  survives that delete; a persistent one does not. The full argument is
+  in the framework [`AGENTS.md`](../AGENTS.md).
 - **The PTL recv is shared and posted lazily.** It is prepended to
   `pmix_ptl_base.posted_recvs` on the first heartbeat `start` and left in
   place (`recv_active` never resets, and `stop` does not un-post it). If
