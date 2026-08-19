@@ -330,6 +330,7 @@ test/unit/pnet_assigned_devices
 test/unit/pnet_envar_blob
 test/unit/pnet_opa_seckey
 test/unit/pnet_tcp_ports
+test/unit/pnet_simptest_map
 test/unit/pgpu_affinity_mask
 test/unit/tool_relay
 test/unit/run_gds_fallback.pl
