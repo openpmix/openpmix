@@ -112,9 +112,10 @@ each time somebody asks.
 Review coverage
 ---------------
 
-Assessed on **2026-08-15** from the commit history.  Move an entry out of
-"Not yet reviewed" as its review lands, and refresh the churn figures in
-"Reviewed, but changed materially since" when a re-review closes one.
+Assessed on **2026-08-15** from the commit history, and refreshed on
+**2026-08-19** when the ``src/mca/pnet`` review landed.  Move an entry out
+of "Not yet reviewed" as its review lands, and refresh the churn figures
+in "Reviewed, but changed materially since" when a re-review closes one.
 
 .. note:: **An** ``AGENTS.md`` **is not evidence of a review.**  Every
           directory under ``src/`` has one; most were written in the July
@@ -129,7 +130,8 @@ Reviewed and current
 ``src/class``, ``src/common``, ``src/event``, ``src/include``,
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
-``src/mca/pstat``, ``src/mca/ptl``, and ``bindings/python``.
+``src/mca/pnet``, ``src/mca/pstat``, ``src/mca/ptl``, and
+``bindings/python``.
 ``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
 ``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
 below.
@@ -141,9 +143,6 @@ Each of these has an orientation guide and nothing else: no findings were
 ever recorded in it, and only drive-by fixes have landed.  Ordered by
 size, which is a rough proxy for how much there is to find.
 
-* ``src/mca/pnet`` (with ``base``, ``tcp``, ``opa``, ``nvd``,
-  ``simptest``) — 4064 lines.  Revived on 2026-07-15 and not looked at
-  since.
 * ``src/mca/preg`` (with ``raw``, ``compress``) — 1324 lines.  It parses
   regular expressions arriving off the wire, which makes it the
   highest-risk member of this list.  Halved on 2026-08-17 by dropping the
@@ -257,6 +256,36 @@ See :ref:`Delta Exchange and Data Deletion <modex-delta>` in
 :doc:`how-things-work/modex`, tracked as `openpmix#4087
 <https://github.com/openpmix/openpmix/issues/4087>`_.
 
+A fabric plane claimed asynchronously is not recorded
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/pnet`` review (2026-08-19).
+``pmix_pnet_base_register_fabric`` records a tracker for a plane only when
+a module answers ``PMIX_OPERATION_SUCCEEDED`` — the "already done, inline"
+status.  A module that claims the plane the *asynchronous* way, returning
+plain ``PMIX_SUCCESS`` and calling back later, is never recorded, yet both
+callers — ``src/server/pmix_server_fabric.c`` and
+``PMIx_Fabric_register_nb`` — read ``PMIX_SUCCESS`` as "claimed, wait for
+the callback".  A later update or deregister on that plane then answers
+``PMIX_ERR_BAD_PARAM``, because the scan finds nothing.
+
+Which half is wrong is the decision, and it cannot be settled by reading
+the tree: **no shipped component implements** ``register_fabric`` **at
+all** — grep the four component directories and the slots are unset — so
+there is nothing to test a change against, and choosing the async
+contract now pins down the interface a real fabric component would have
+to meet.  Two loose ends belong to the same decision.  ``fabric->module``
+is deliberately never set, so the branches in ``update_fabric`` and
+``deregister_fabric`` that cast it back to a ``pmix_pnet_fabric_t *`` are
+dead and every lookup goes through the index/name scan — a tracker
+pointer parked in a caller's object would dangle the moment the fabric
+was deregistered.  And nothing frees ``pmix_pnet_fabric_t.payload``:
+``ftdes`` releases only ``name``, and the base never tells a component
+its tracker died, so a component that parks an allocation there must free
+it from its own ``deregister_fabric``.
+
+See "The fabric path is scaffolding" in ``src/mca/pnet/AGENTS.md``.
+
 Deferred work
 -------------
 
@@ -282,6 +311,27 @@ cover the whole of what the entry described.
   ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
+
+Fabric inventory collection is a stub
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/pnet`` review (2026-08-19).  No pnet component
+collects inventory.  ``opa``'s ``collect_inventory`` carries a comment
+about searching the topology for OPA NICs and then returns
+``PMIX_SUCCESS`` having added nothing; ``deliver_inventory`` returns
+``PMIX_SUCCESS``.  ``nvd``'s goes one step further — it confirms that a
+matching NIC exists on the node — but still reports no contents.  The
+plumbing is real, so a host that asks for fabric inventory gets a
+successful, empty answer rather than an error; treat the capability as
+unfinished rather than working.
+
+Finishing it needs a decision the review was not entitled to make: what a
+fabric inventory record contains, and how a component that has nothing to
+report says so.  The base has **no decline convention** on this path —
+unlike ``allocate`` and ``setup_fork``, it ``PMIX_ERROR_LOG``\ s any
+non-``PMIX_SUCCESS`` return and abandons the fan-out to every component
+behind it — so today "nothing here" and "collected everything" are the
+same answer.
 
 Coverage gaps
 -------------
@@ -324,6 +374,23 @@ Coverage gaps
 * **``pps`` has never been validated against a live process-table
   server.**  Its no-connect paths are covered by the tools smoke test;
   the proc-table rendering is not.
+* **Nothing exercises the pnet fabric calls.**  ``register_fabric``,
+  ``update_fabric`` and ``deregister_fabric`` are wired all the way
+  through ``src/mca/pnet/base``, but no shipped component implements any
+  of them, so ``pmix_pnet_globals.fabrics`` is never populated in a stock
+  build and every base fabric call ends in ``PMIX_ERR_NOT_SUPPORTED`` /
+  ``PMIX_ERR_NOT_FOUND`` / ``PMIX_ERR_BAD_PARAM``.  Covering it means
+  writing a component that claims a plane, which is the decision recorded
+  above.  (``test/unit/server_fabric`` covers the server-side
+  ``PMIx_Compute_distances`` handler, not this path.)
+* **``pnet/simptest``'s end-to-end launch path is not in** ``make check``.
+  ``test/unit/pnet_simptest_map`` drives ``allocate`` through
+  ``PMIx_server_setup_application`` against a topology file it writes, but
+  the other half — a client fetching ``PMIX_FABRIC_ENDPT`` by rank and
+  ``PMIX_FABRIC_COORDINATES`` at the node level — still has to be run by
+  hand, because ``test/simple/simptest`` generates its node map from the
+  local host and so needs a topology file naming that host.  See
+  "Running it" in ``src/mca/pnet/simptest/AGENTS.md``.
 
 Not defects — by design
 -----------------------
@@ -385,6 +452,35 @@ not "fixed" by a later reader.
   is intentional.**  A job-control request may name a job this server has
   not been told about yet, and the epilog directives need somewhere to
   hang; the entry is reused when registration arrives.
+* **``pnet/opa`` and ``pnet/nvd`` ship no ``configure.m4``, on purpose.**
+  A component with no ``configure.m4`` is configured by the MCA machinery
+  itself and therefore builds unconditionally, which is what these two
+  want: neither links anything nor needs an SDK — they read info
+  attributes hwloc already recorded and set environment variables — and
+  whether there is work to do is a property of the machine the *daemon*
+  runs on, which only ``component_open`` is in a position to know.  The
+  files they used to have asked that question at build time and got it
+  wrong in both directions (``nvd``'s was hardwired off, ``opa``'s always
+  succeeded).  The one visible consequence is that ``configure``'s summary
+  no longer prints ``Transports / NVIDIA|OmniPath`` lines.  Do not restore
+  them.
+* **``transports_print`` in ``pnet/opa`` type-puns a ``uint64_t`` through
+  ``unsigned int *``.**  That is undefined behavior in general and is not
+  a live defect here: the whole tree is built ``-fno-strict-aliasing``
+  (``config/pmix_setup_cc.m4`` adds it wherever the compiler takes it).
+  The surrounding arithmetic is deliberately width-independent, and the
+  byte-order dependence of the result does not matter because the key is
+  generated once on the lead server and shipped as a string.  Do not copy
+  the idiom into new code, and do not "fix" it as a bug.
+* **A node in ``pnet/simptest``'s topology file that the job's node map
+  does not name is silently skipped.**  ``allocate`` matches each config
+  line against the ``PMIX_NODE_MAP`` by exact name, which is intrinsic to
+  a file that describes the real nodes the RM placed the job on.  The
+  converse is *not* silent: a node the job was placed on that the file
+  fails to describe draws a ``node-not-found`` ``show_help`` naming it and
+  the request is then declined — declined, rather than failed, because a
+  hard error out of ``allocate`` aborts the base's fan-out for every other
+  component too.
 * **The bare ``atomic_bool`` fields in ``pmix_globals_t``** are correct,
   merely inconsistent with the typedefs used elsewhere, and the
   ``PMIX_C_HAVE_*`` defines in the installed ``pmix_config.h`` are now
