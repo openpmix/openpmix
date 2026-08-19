@@ -68,6 +68,15 @@ static pmix_status_t parse_regex(const pmix_regex2_t *regex, pmix_info_t info[],
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
+    /* a peer is free to declare a length of zero, in which case bfrops
+     * unpacked no bytes and left the pointer NULL. Screen that here: what
+     * is on the other side of this call is a decompressor that reads the
+     * blob's length prefix out of the first four bytes, and not all of
+     * them check first */
+    if (NULL == regex->bytes || 0 == regex->len) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     if (!pmix_compress.decompress_string(&tmp, regex->bytes, regex->len)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }

@@ -368,6 +368,12 @@ help-content golden rule does not usually bite here.
   form.
 - Your encoding may contain embedded NUL bytes; that is what `len` is
   for. Never `strlen` a `regex->bytes`.
+- **Validate the `pmix_regex2_t` you are handed before you use it.** It
+  is a peer's claim about a peer's bytes: `bfrops` copies exactly `len`
+  bytes off the buffer, appends no terminator, and leaves `bytes` NULL
+  when `len` is zero. Whatever your encoding needs to be true of a
+  payload — a minimum length, a terminator, a magic number — check it in
+  `parse_regex` rather than in whatever you hand the bytes to.
 - Preserve value ordering across generate→parse, and remember the
   encoding must be indifferent to the delimiter: the same code path
   encodes a node list and a process map. Test round-trips with both.

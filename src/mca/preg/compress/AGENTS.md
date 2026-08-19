@@ -53,7 +53,8 @@ active list — everything downstream is written to degrade to `raw` when
   or fails. Because it produces the smallest encoding for any non-trivial
   list, it almost always wins the framework's **smallest-wins** contest.
 - **`parse_regex`** — gates on `regex->type == "compress"` (returning
-  `PMIX_ERR_TAKE_NEXT_OPTION` otherwise), then
+  `PMIX_ERR_TAKE_NEXT_OPTION` otherwise), **screens out a NULL or
+  zero-length payload**, then
   `decompress_string(&tmp, regex->bytes, regex->len)` and returns the
   decompressed list. The caller splits it on whichever delimiter it
   supplied.
@@ -96,6 +97,14 @@ see it in packet dumps:
   `PMIX_ERR_TAKE_NEXT_OPTION`; keep that "decline, don't hard-error"
   behavior so a corrupt or foreign blob can still be retried by another
   scheme.
+- **What is on the other side of `decompress_string` reads the blob's
+  length prefix out of the first four bytes.** A peer may legitimately
+  declare a length of zero, in which case `bfrops` unpacked nothing and
+  left `bytes` NULL, or a length shorter than that prefix. `zstd` and
+  `lz4` screen for both; `zlib` and `zlibng` did not until recently, and
+  the payload-sizing subtraction underflows for anything shorter than
+  four bytes. Screening here means this component does not depend on
+  which `pcompress` component answered.
 - The module name `"compress"` is the on-the-wire type tag, and
   `preg_base_legacy.c` keys its `blob:` serialization on that exact
   string. Renaming the component breaks both.
