@@ -134,6 +134,14 @@ keep it aligned with `pmix_pnet_module_t`:
   whole `allocations` list rather than stopping at the first match, or
   the pool drains a little further with every job.
 
+- **Declining is `PMIX_ERR_TAKE_NEXT_OPTION`, not `PMIX_SUCCESS`.** The
+  base's `allocate` fan-out treats the two identically — it calls every
+  active module regardless — so this costs nothing at run time and is
+  purely about saying what happened. `allocate` returns it when we are
+  not the gateway, when there is no fabric request in the directives,
+  and when there is nothing in the pool to satisfy one. `opa` and `nvd`
+  decline the same way.
+
 - **A request may name a fabric type and ask for zero endpoints.** The
   header comment above `allocate` says callers "are allowed to simply
   request a network security key without asking for endpts", so that
