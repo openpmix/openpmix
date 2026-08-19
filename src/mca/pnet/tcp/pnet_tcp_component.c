@@ -18,7 +18,11 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
+#include <string.h>
+
 #include "pnet_tcp.h"
+#include "src/include/pmix_globals.h"
+#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/pnet/pnet.h"
 #include "src/util/pmix_argv.h"
 
@@ -102,7 +106,50 @@ static pmix_status_t component_register(void)
 
 static pmix_status_t component_open(void)
 {
-    return PMIX_SUCCESS;
+    int index;
+    const pmix_mca_base_var_storage_t *value = NULL;
+    bool found = false;
+
+    /* This component is experimental, which is why it is built only on
+     * request.  Building it is not the same as asking for it, though: it
+     * carries no hardware gate, so left ungated it would join the active
+     * list on every server the library comes up in and answer the
+     * inventory fan-out there.  So we only allow ourselves to be
+     * considered IF the user specifically requested so - the same rule
+     * simptest applies, and for the same reason.
+     *
+     * Note that being selected is still not enough to allocate anything:
+     * the port pool comes from the static_ports parameter, and without it
+     * tcp_init has nothing to parse. */
+    if (0 > (index = pmix_mca_base_var_find("pmix", "pnet", NULL, NULL))) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+    pmix_mca_base_var_get_value(index, &value, NULL, NULL);
+    if (NULL != value && NULL != value->stringval && '\0' != value->stringval[0]) {
+        /* the value is the framework's component list.  Match an entry of
+         * it rather than searching the string: a substring test would take
+         * "tcp" out of the name of any component that merely contains it,
+         * and would read an exclusion ("^tcp") as a request */
+        char **tmp = PMIx_Argv_split(value->stringval, ',');
+        int n;
+
+        for (n = 0; NULL != tmp && NULL != tmp[n]; n++) {
+            char *nm = ('^' == tmp[n][0]) ? &tmp[n][1] : tmp[n];
+            if (0 == strcasecmp(nm, "tcp")) {
+                found = ('^' != tmp[n][0]);
+                break;
+            }
+        }
+        PMIx_Argv_free(tmp);
+    }
+    if (found) {
+        return PMIX_SUCCESS;
+    }
+
+    /* PMIX_ERR_NOT_AVAILABLE is the MCA's "silently ignore me" cue.  Any
+     * other status is reported as a component that failed to open, which
+     * is not what declining an invitation looks like. */
+    return PMIX_ERR_NOT_AVAILABLE;
 }
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
