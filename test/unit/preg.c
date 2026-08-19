@@ -449,6 +449,71 @@ static void test_legacy_truncated(void)
     report("truncated blob is declined, not read past", ok);
 }
 
+/* Framing that is not truncated but is wrong. Every one of these arrives
+ * as bytes from a peer, so "declined" is the only acceptable answer -
+ * an accepted value hands its declared length straight to a decompressor.
+ * The SIZE_MAX case is the one that matters most: the declared length is
+ * added to the offset of the payload, so a length near SIZE_MAX wraps the
+ * sum back to a small number and sails through a bounds check written as
+ * an addition. */
+static void test_legacy_malformed(void)
+{
+    static const char m1[] = "blob:\0component=zlib:\0size=18446744073709551615:\0abc";
+    static const char m2[] = "blob:\0component=zlib:\0size=3xyz\0abc";
+    static const char m3[] = "blob:\0component=zlib:\0size=3\0abc";
+    static const struct {
+        const char *bytes;
+        size_t len;
+    } cases[] = {
+        {m1, sizeof(m1) - 1},  // length wraps the bounds arithmetic
+        {m2, sizeof(m2) - 1},  // digits not followed by the colon
+        {m3, sizeof(m3) - 1},  // colon missing entirely
+    };
+    pmix_regex2_t r2 = PMIX_REGEX2_STATIC_INIT;
+    size_t total, n;
+    int ok = 1;
+
+    for (n = 0; n < sizeof(cases) / sizeof(cases[0]); n++) {
+        r2 = (pmix_regex2_t) PMIX_REGEX2_STATIC_INIT;
+        total = 0;
+        if (PMIX_SUCCESS == pmix_preg_base_legacy_decode(cases[n].bytes, cases[n].len,
+                                                         &r2, &total)) {
+            fprintf(stdout, "    case %lu was accepted, len=%lu total=%lu\n",
+                    (unsigned long) n, (unsigned long) r2.len, (unsigned long) total);
+            ok = 0;
+        }
+    }
+    report("malformed blob framing is declined", ok);
+}
+
+/* A plain list whose first node happens to begin with "blob" is not a
+ * blob. The tag test has to be exact for that to be true: a prefix test
+ * accepts it, and everything after the tag is then read looking for a
+ * label that is not there - past the end of a string the caller owns and
+ * whose length this entry point has no way to learn. Run this one under
+ * valgrind; without it, the test only proves the value was declined. */
+static void test_legacy_blob_prefixed_list(void)
+{
+    char *list = strdup("blobfish,node02");
+    pmix_regex2_t r2 = PMIX_REGEX2_STATIC_INIT;
+    size_t total = 0;
+    char **names = NULL;
+    int ok;
+
+    ok = (PMIX_SUCCESS != pmix_preg_base_legacy_decode(list, SIZE_MAX, &r2, &total));
+
+    /* and the whole point of declining it: the list still splits */
+    if (PMIX_SUCCESS == pmix_preg.parse_nodes(list, &names)) {
+        ok = ok && (NULL != names && NULL != names[0] &&
+                    0 == strcmp(names[0], "blobfish"));
+        PMIx_Argv_free(names);
+    } else {
+        ok = 0;
+    }
+    free(list);
+    report("a plain list beginning with \"blob\" is not a blob", ok);
+}
+
 /* The bounded decoder must still accept a well-formed value that ends
  * exactly at the end of the buffer - the bounds checks are there to
  * reject short reads, not to demand slack. */
@@ -547,6 +612,8 @@ int main(int argc, char **argv)
     test_legacy_copy();
     test_legacy_pack_unpack();
     test_legacy_truncated();
+    test_legacy_malformed();
+    test_legacy_blob_prefixed_list();
     test_legacy_decode_exact();
     test_legacy_large();
 

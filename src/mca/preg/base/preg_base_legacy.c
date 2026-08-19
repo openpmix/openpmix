@@ -123,7 +123,16 @@ pmix_status_t pmix_preg_base_legacy_encode(const pmix_regex2_t *regex, char **ou
 /* Decode in place: the returned pmix_regex2_t points into the caller's
  * buffer and must not be destructed. avail bounds the read - pass
  * SIZE_MAX for a NULL-terminated string the caller owns, or the number
- * of bytes remaining when reading off the wire. */
+ * of bytes remaining when reading off the wire.
+ *
+ * Two failures, and callers must tell them apart. PMIX_ERR_TAKE_NEXT_OPTION
+ * means "this is not a serialized regex at all" - the ordinary answer for
+ * the plain delimited list a host hands us, which the caller should go on
+ * to use as-is. PMIX_ERR_BAD_PARAM means "this carries our tag and is
+ * malformed behind it", which a caller must not fall back on: treating a
+ * corrupt blob as a plain list splits framing bytes into node names that
+ * look plausible and are not. The tag is what separates the two, which is
+ * the other reason it is matched exactly. */
 pmix_status_t pmix_preg_base_legacy_decode(const char *input, size_t avail,
                                            pmix_regex2_t *regex, size_t *total)
 {
@@ -149,7 +158,14 @@ pmix_status_t pmix_preg_base_legacy_decode(const char *input, size_t avail,
         return PMIX_SUCCESS;
     }
 
-    if (0 != strncmp(input, PREG_LEGACY_BLOB_TAG, strlen(PREG_LEGACY_BLOB_TAG))) {
+    /* the tag stands alone in its own NULL-terminated field, so this test
+     * has to be exact. A prefix test also claims a plain list whose first
+     * node happens to begin with "blob", and everything below then reads
+     * on looking for framing that is not there - past the end of the
+     * string, in the SIZE_MAX case where the caller had no bound to give
+     * us. A genuine blob always carries the tag verbatim; see encode. */
+    if (taglen != strlen(PREG_LEGACY_BLOB_TAG ":") ||
+        0 != memcmp(input, PREG_LEGACY_BLOB_TAG ":", taglen)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     idx = taglen + 1; // step over the NULL terminator
@@ -158,30 +174,53 @@ pmix_status_t pmix_preg_base_legacy_decode(const char *input, size_t avail,
      * wrote the blob - see the note at the top of this file */
     if (idx + strlen(PREG_LEGACY_BLOB_LABEL) >= avail ||
         0 != strncmp(&input[idx], PREG_LEGACY_BLOB_LABEL, strlen(PREG_LEGACY_BLOB_LABEL))) {
-        return PMIX_ERR_TAKE_NEXT_OPTION;
+        return PMIX_ERR_BAD_PARAM;
     }
     idx += strlen(PREG_LEGACY_BLOB_LABEL) + 1; // step over the NULL terminator
 
+    /* the size field is "size=" then decimal digits then ":" and a NULL.
+     * Confirm the label instead of stepping blindly over five bytes, and
+     * confirm a NULL lies ahead so strtoul cannot run off the end of a
+     * truncated buffer */
+    if (idx + strlen("size=") >= avail ||
+        0 != strncmp(&input[idx], "size=", strlen("size="))) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     idx += strlen("size=");
-    /* the length is decimal digits followed by a colon and a NULL, so
-     * refuse to run strtoul off the end of a truncated buffer */
-    if (idx >= avail || strnlen(&input[idx], avail - idx) == avail - idx) {
-        return PMIX_ERR_TAKE_NEXT_OPTION;
+    if (strnlen(&input[idx], avail - idx) == avail - idx) {
+        return PMIX_ERR_BAD_PARAM;
     }
     len = strtoul(&input[idx], &ptr, 10);
     if (ptr == &input[idx]) {
         /* no digits where the length belongs */
-        return PMIX_ERR_TAKE_NEXT_OPTION;
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* the digits are followed by a colon and a NULL. Verify that rather
+     * than assume it: stepping over two bytes that are something else
+     * leaves the payload pointer inside the framing, and the value is
+     * then accepted with a payload nobody wrote. Reading ptr[1] is safe
+     * only once ptr[0] is known not to be the NULL the check above
+     * guarantees is there. */
+    if (':' != ptr[0] || '\0' != ptr[1]) {
+        return PMIX_ERR_BAD_PARAM;
     }
     ptr += 2; // step over the colon and its NULL terminator
+    idx = (size_t) (ptr - input);
 
-    if ((size_t) (ptr - input) + len > avail) {
-        return PMIX_ERR_TAKE_NEXT_OPTION;
+    /* the payload has to fit in what is left. This must be a subtraction:
+     * written as "idx + len > avail" it is the length the *peer* declared
+     * that overflows the sum - a declared length near SIZE_MAX wraps it
+     * back to a small number, the value is accepted, and SIZE_MAX then
+     * reaches pmix_compress.decompress_string as the byte count of a
+     * buffer that is a few dozen bytes long. idx <= avail here because
+     * the NULL it steps over was found within the bound. */
+    if (len > avail - idx) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     regex->type = (char *) PREG_LEGACY_BLOB_TYPE;
     regex->bytes = (uint8_t *) ptr;
     regex->len = len;
-    *total = (size_t) (ptr - input) + len;
+    *total = idx + len;
     return PMIX_SUCCESS;
 }
