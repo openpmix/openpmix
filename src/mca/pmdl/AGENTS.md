@@ -194,6 +194,28 @@ and two are shared helpers components call back into.
 - The remaining stubs (`parse_file_envars`, `setup_nspace`,
   `setup_nspace_kv`, `register_nspace`, `setup_client`) are straight fans.
 
+`parse_file_envars` is the one stub with **no `initialized` gate**, and it
+does not need one: `actives` is `PMIX_LIST_STATIC_INIT` before the
+framework opens, and `pmix_list_t`'s destructor is a *re-construct*
+(see `pmix_list_destruct`), so the list is a valid empty list before the
+first open and after the last close. Iterating it in either state is a
+no-op rather than a hazard.
+
+### A param-file value can be `NULL`
+
+`pmix_mca_base_var_file_value_t.mbvfv_value` is `NULL` — not `""` — when
+a param file line names a variable and gives it nothing (`foo =`, or
+`foo` at end of file); `parse_line()` in
+[`src/util/pmix_keyval_parse.c`](../../util/pmix_keyval_parse.c) calls
+its callback with a NULL value for exactly that case. That matters here
+because `PMIX_ENVAR_LOAD` **writes only the fields it is handed** while
+the `pmix_value_t` behind `PMIX_KVAL_NEW` is plain `malloc`'d: passing
+the NULL straight through leaves `data.envar.value` holding uninitialized
+heap, which whoever owns the list then `strdup`s and `free`s. Anything
+that turns a file value into an envar directive has to spell the empty
+value itself — `add_file_value()` here and `add_envar()` in `ompi` are
+the two places that do.
+
 ### Two shared classification helpers
 
 `pmdl_base_stubs.c` also exports two predicates that components use to
@@ -201,8 +223,15 @@ decide how to re-prefix a variable read from an MCA param file:
 
 | Helper | Returns true when the param name… |
 |--------|-----------------------------------|
-| `pmix_pmdl_base_check_pmix_param(param)` | starts with `pmix` or names a PMIx framework (from the built-in `pmix_framework_names`) |
-| `pmix_pmdl_base_check_prte_param(param)` | starts with `prte` or names a PRRTE framework |
+| `pmix_pmdl_base_check_pmix_param(param)` | …**begins with the segment** `pmix`, or a segment naming a PMIx framework (from the built-in `pmix_framework_names`) |
+| `pmix_pmdl_base_check_prte_param(param)` | …begins with the segment `prte`, or one naming a PRRTE framework |
+
+"Segment" means everything ahead of the first `_` — an MCA variable is
+`<framework>_<component>_<name>` — and the comparison is on the **whole**
+segment. A `strncmp` limited to the segment's own length also accepts any
+segment that is merely a *prefix* of the word, which made `pm_foo` a PMIx
+param and `pr_foo` a PRRTE one, so an Open MPI value went out under the
+wrong library's prefix. `segment_is()` is the one place that rule lives.
 
 The PRRTE framework list is a hard-coded `prte_frameworks_static_3_0_1[]`
 table that can be **overridden at runtime** by the `PRTE_MCA_PREFIXES`

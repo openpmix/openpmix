@@ -89,6 +89,9 @@ int pmix_pmdl_base_select(void)
         }
         /* add to the list of selected modules */
         newmodule = PMIX_NEW(pmix_pmdl_base_active_module_t);
+        if (NULL == newmodule) {
+            return PMIX_ERR_NOMEM;
+        }
         newmodule->pri = priority;
         newmodule->module = nmodule;
         newmodule->component = (pmix_pmdl_base_component_t *) cli->cli_component;
