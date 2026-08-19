@@ -30,19 +30,14 @@
 #include "pmix_common.h"
 
 #include "src/class/pmix_list.h"
-#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
-#include "src/include/pmix_socket_errno.h"
-#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/pcompress/pcompress.h"
-#include "src/mca/preg/preg.h"
 #include "src/util/pmix_alfg.h"
 #include "src/util/pmix_argv.h"
+#include "src/util/pmix_environ.h"
 #include "src/util/pmix_error.h"
-#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
-#include "src/util/pmix_environ.h"
 
 #include "pnet_opa.h"
 #include "src/mca/pnet/base/base.h"
@@ -171,7 +166,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     uint64_t unique_key[2];
     char *string_key;
     int fd_rand;
-    size_t bytes_read, n, m, p;
+    ssize_t bytes_read;
+    size_t n, m, p;
     pmix_buffer_t mydata; // Buffer used to store information to be transmitted (scratch storage)
     pmix_kval_t *kv;
     pmix_envar_t envar;
@@ -242,7 +238,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             transports_use_rand(unique_key);
         } else {
             bytes_read = read(fd_rand, (char *) unique_key, 16);
-            if (bytes_read != 16) {
+            if (16 != bytes_read) {
                 transports_use_rand(unique_key);
             }
             close(fd_rand);
@@ -470,7 +466,6 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     /* search the topology for OPA NICs */
     PMIX_HIDE_UNUSED_PARAMS(directives, ndirs, inventory);
 
-
     return PMIX_SUCCESS;
 }
 
@@ -479,7 +474,6 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
 {
     /* look for our inventory blob */
     PMIX_HIDE_UNUSED_PARAMS(info, ninfo, directives, ndirs);
-
 
     return PMIX_SUCCESS;
 }
