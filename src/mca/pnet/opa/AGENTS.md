@@ -44,7 +44,7 @@ Selection is a two-step gate:
    (`0x8086`) PCI device of class `0x208` (an Omni-Path HFI). On any host
    without that device, `open` fails and the component is never queried.
 2. **`component_query`** (reached only if open succeeded) unconditionally
-   hands back `pmix_opa_module` at priority **10**.
+   hands back `pmix_pnet_opa_module` at priority **10**.
 
 Because `pnet` is multi-select, priority 10 only determines `opa`'s
 position in the fan-out order relative to any other active component; it
@@ -53,7 +53,7 @@ does not exclude anyone.
 ## The module
 
 ```c
-pmix_pnet_module_t pmix_opa_module = {
+pmix_pnet_module_t pmix_pnet_opa_module = {
     .name = "opa",
     .allocate = allocate,
     .setup_local_network = setup_local_network,
