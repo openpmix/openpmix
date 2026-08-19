@@ -639,15 +639,23 @@ static void test_legacy_release(void)
 /* A value that carries our tag and is malformed behind it must not be
  * split as though it were a plain list: the caller would get framing
  * bytes dressed as node names, which is worse than an error because
- * nothing downstream can tell they are wrong. */
+ * nothing downstream can tell they are wrong.
+ *
+ * The value has to carry bytes behind the tag. parse_nodes takes a char*
+ * and so decodes unbounded, which - see the contract on
+ * pmix_preg_base_legacy_decode - warrants that a tagged value owns its
+ * whole framing. A bare "blob:" would violate that, and no decoder can
+ * catch it: a genuine blob is "blob:" up to its first NULL too, so the
+ * two are the same string. */
 static void test_legacy_malformed_not_split(void)
 {
+    static const char malformed[] = "blob:\0component=zip:\0size=3:\0abc";
     char **names = NULL;
     pmix_status_t rc;
     int ok;
 
-    /* the tag is exact and complete; everything behind it is missing */
-    rc = pmix_preg.parse_nodes("blob:", &names);
+    /* the tag is exact; the label behind it is not ours */
+    rc = pmix_preg.parse_nodes(malformed, &names);
     ok = (PMIX_SUCCESS != rc);
     if (!ok) {
         fprintf(stdout, "    accepted, first name is \"%s\"\n",

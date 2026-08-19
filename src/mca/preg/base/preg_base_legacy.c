@@ -124,6 +124,16 @@ pmix_status_t pmix_preg_base_legacy_encode(const pmix_regex2_t *regex, char **ou
  * SIZE_MAX for a NULL-terminated string the caller owns, or the number
  * of bytes remaining when reading off the wire.
  *
+ * SIZE_MAX warrants that a value carrying the blob tag owns its whole
+ * framing, and the deprecated char* entry points have no way to warrant
+ * anything narrower: the blob layout puts a NULL after the tag, so a
+ * blob and the plain string "blob:" are the same five characters up to
+ * their first NULL. Nothing readable through a char* tells them apart,
+ * which is why the exact tag test below is the last line of defense
+ * rather than a complete one - it rules out every plain list except that
+ * one string. Bytes off the wire always arrive with a real bound, so
+ * this gap is confined to the deprecated interface.
+ *
  * Two failures, and callers must tell them apart. PMIX_ERR_TAKE_NEXT_OPTION
  * means "this is not a serialized regex at all" - the ordinary answer for
  * the plain delimited list a host hands us, which the caller should go on
