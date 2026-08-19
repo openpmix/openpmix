@@ -53,7 +53,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory);
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                        pmix_info_t directives[], size_t ndirs);
-pmix_pnet_module_t pmix_opa_module = {
+pmix_pnet_module_t pmix_pnet_opa_module = {
     .name = "opa",
     .allocate = allocate,
     .setup_local_network = setup_local_network,

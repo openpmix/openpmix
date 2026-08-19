@@ -28,7 +28,7 @@ typedef struct {
 
 /* the component must be visible data for the linker to find it */
 PMIX_EXPORT extern pmix_pnet_opa_component_t pmix_mca_pnet_opa_component;
-extern pmix_pnet_module_t pmix_opa_module;
+extern pmix_pnet_module_t pmix_pnet_opa_module;
 
 /* define a key for any blob we need to send in a launch msg */
 #define PMIX_PNET_OPA_BLOB "pmix.pnet.opa.blob"
