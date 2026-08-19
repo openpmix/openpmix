@@ -23,16 +23,6 @@
 #ifdef HAVE_SYS_TYPES_H
 #    include <sys/types.h>
 #endif
-#ifdef HAVE_SYS_STAT_H
-#    include <sys/stat.h>
-#endif
-#ifdef HAVE_FCNTL_H
-#    include <fcntl.h>
-#endif
-#ifdef HAVE_SYS_UTSNAME_H
-#    include <sys/utsname.h>
-#endif
-#include <time.h>
 
 #include "pmix_common.h"
 #include "src/include/pmix_globals.h"
@@ -40,7 +30,6 @@
 
 #include "src/class/pmix_list.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
-#include "src/mca/preg/preg.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
