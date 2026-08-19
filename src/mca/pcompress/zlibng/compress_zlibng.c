@@ -219,6 +219,16 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
     bool rc;
     uint8_t *input;
 
+    /* the caller's length is a claim about bytes that generally came off
+     * a peer's wire, and the four-byte prefix read below is the first
+     * thing that trusts it - as is the subtraction that sizes the
+     * payload, which underflows for anything shorter. zstd and lz4 screen
+     * this the same way; so does get_decompressed_size, just below. */
+    if (NULL == inbytes || len < sizeof(uint32_t)) {
+        *outstring = NULL;
+        return false;
+    }
+
     /* the first 4 bytes contains the uncompressed size */
     memcpy(&len2, inbytes, sizeof(uint32_t));
     if (len2 == UINT32_MAX) {
