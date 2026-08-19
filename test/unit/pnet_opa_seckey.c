@@ -151,6 +151,18 @@ static pmix_status_t make_blob(char *nspace, pmix_info_t *directives, size_t ndi
     return PMIX_SUCCESS;
 }
 
+static bool has_key(pmix_info_t *info, size_t ninfo, const char *key)
+{
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Ask allocate for a seckey, deliver the blob, and report the key the
  * child would be forked with.  The caller frees the returned string. */
 static char *seckey_round_trip(char *nspace, pmix_info_t *directives, size_t ndirs)
@@ -291,7 +303,7 @@ int main(int argc, char **argv)
         PMIx_server_finalize();
         return 77;
     }
-    ok(PMIX_CHECK_KEY(&blob[0], PMIX_PNET_OPA_BLOB),
+    ok(has_key(blob, nblob, PMIX_PNET_OPA_BLOB),
        "the component that opened for this fabric contributed its blob");
     rc = pmix_pnet.setup_local_network(TESTNS, blob, nblob);
     ok(PMIX_SUCCESS == rc, "the blob sets up cleanly on the compute node");
