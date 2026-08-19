@@ -98,14 +98,75 @@ keep it aligned with `pmix_pnet_module_t`:
   destructor `ttdes` **returns those ports to the pool** when the job is
   deregistered — the core of the reuse scheme.
 - **`setup_local_network`** unpacks `PMIX_TCP_SETUP_APP_KEY`, rebuilds the
-  kvals, and caches them as job info via `PMIX_GDS_CACHE_JOB_INFO`.
-- **`deregister_nspace`** (gateway only) finds and releases the job's
-  `tcp_port_tracker_t`, which frees the allocation and recycles its ports.
+  kvals, and caches them as job info via `PMIX_GDS_CACHE_JOB_INFO`, keyed
+  by the fabric ID the allocation was made under.
+- **`deregister_nspace`** (gateway only) finds and releases **every**
+  `tcp_port_tracker_t` the job holds, which frees the allocation and
+  recycles its ports.
 - **`collect_inventory`** enumerates non-loopback, non-virtual IPv4/IPv6
   interfaces via the `pmix_if*` API and packs `(device, tcp[46]://addr)`
   pairs into an inventory blob keyed `PMIX_TCP_INVENTORY_KEY`;
   **`deliver_inventory`** unpacks such blobs into the component-local
   `nodes` tree (see the interface notes above).
+
+## Invariants worth knowing before you edit
+
+- **An `info` array handed to a module is on loan, and the framework
+  hands the *same* array to every other active module after you.** Both
+  `setup_local_network` and `deliver_inventory` receive a blob inside
+  that array, and both must read it with `PMIX_LOAD_BUFFER_NON_DESTRUCT`.
+  The plain `PMIX_LOAD_BUFFER` NULLs and zeroes the source byte object,
+  and the buffer is deliberately never destructed (we do not own the
+  bytes) — so a destructive load orphans the payload *and* leaves every
+  module behind you in `pmix_pnet_globals.actives`, plus `pgpu` after the
+  whole framework, looking at an empty blob. `opa` and `nvd` use the
+  non-destructive form for the same reason.
+
+- **`pmix_list_get_first()` returns the list's own sentinel, not `NULL`,
+  when the list is empty.** The default-allocation paths reach for the
+  first entry of `available`, which is empty on any server that has the
+  component selected but no `static_ports` configured — the common case.
+  Test `pmix_list_is_empty()`; a `NULL` check does nothing.
+
+- **One `allocate` call can build more than one tracker.** The
+  `default_network_allocation` path creates a `tcp_port_tracker_t` per
+  `;`-separated group. `deregister_nspace` therefore has to walk the
+  whole `allocations` list rather than stopping at the first match, or
+  the pool drains a little further with every job.
+
+- **A request may name a fabric type and ask for zero endpoints.** The
+  header comment above `allocate` says callers "are allowed to simply
+  request a network security key without asking for endpts", so that
+  case must not reach `process_request` — it declines a zero count with
+  `PMIX_ERR_NOT_SUPPORTED`, and the base's `allocate` fan-out aborts on
+  any status other than `PMIX_SUCCESS` / `PMIX_ERR_NOT_AVAILABLE` /
+  `PMIX_ERR_TAKE_NEXT_OPTION`, so one bad decline stops every other
+  component from running.
+
+- **A module whose `init` fails is never added to `actives`, so its
+  `finalize` never runs.** `pmix_pnet_base_select` skips it (that is the
+  documented way for a module to veto its own selection). `tcp_init`
+  must therefore give back the lists and trackers it built before
+  returning an error; nothing else will.
+
+- **Every entry point runs on the progress thread**, so the static
+  `allocations` / `available` / `nodes` lists need no locking. That
+  includes the two inventory hooks: `PMIx_server_collect_inventory` and
+  `PMIx_server_deliver_inventory` both `PMIX_THREADSHIFT` before calling
+  into `pmix_pnet`. `tcp` has no `setup_fork` slot and no fabric entry
+  points, which are the two places the framework `AGENTS.md` warns
+  arrive on someone else's thread.
+
+- **The gateway test is stable across the component's lifetime.** The
+  role is fixed from `PMIX_SERVER_GATEWAY` in `PMIx_server_init` before
+  the framework opens, and the framework closes in
+  `PMIx_server_finalize` before `pmix_globals.mypeer` is released — so
+  the `PMIX_PEER_IS_GATEWAY` guards in `tcp_init` and `tcp_finalize`
+  cannot disagree about which lists exist.
+
+- **`generate_key` seeds once and keeps drawing from that stream.** It
+  used to re-seed from `time(NULL)` on every call, which handed two jobs
+  allocated in the same second the identical "unique" key.
 
 ## Gotchas
 
@@ -123,3 +184,18 @@ keep it aligned with `pmix_pnet_module_t`:
   open — registration happens before open, which is what keeps the
   parameters discoverable. Without `--with-tcp`, the component is absent
   entirely.
+
+## Tests
+
+[`test/unit/pnet_tcp_ports.c`](../../../../test/unit/pnet_tcp_ports.c)
+drives the allocator through `PMIx_server_setup_application` /
+`PMIx_server_deregister_nspace` with a deliberately tiny pool, so an
+exhaustion boundary proves that a deregistered job's ports came back. It
+also unpacks the `PMIX_TCP_SETUP_APP_KEY` blob and checks it against what
+`setup_local_network` expects to find there.
+
+Because the component is opt-in at configure time, the test asks
+`pmix_mca_base_var_find("pmix", "pnet", "tcp", "static_ports")` whether it
+was built and exits **77** (automake's "skip") when it was not. That probe
+answers "built", not "selected" — parameter registration happens for any
+built component whether or not the selection gate lets it open.
