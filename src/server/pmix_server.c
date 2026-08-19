@@ -1228,25 +1228,26 @@ void pmix_server_lock_opcbfunc(pmix_status_t status, void *cbdata)
 }
 
 /* setup the envars for a child process */
-PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env)
+/* The body of PMIx_server_setup_fork, which runs on the progress thread.
+ *
+ * Nearly everything it reads is state the progress thread writes. The pnet
+ * and pgpu per-namespace envar caches are appended to by
+ * _setup_local_support and are removed and released by _deregister_nspace,
+ * both of which are caddy handlers; pgpu's device lookup fetches from the
+ * local datastore; and pmix_server_globals.genvars is set from the
+ * registration path. Those framework entry points say so themselves -
+ * "can only be called by a server from within an event" - but until now
+ * nothing arranged it: this API thread-shifts nothing, and the host is
+ * under no obligation to call it from any particular thread. A namespace
+ * being torn down while another job's first client is being forked was
+ * therefore a list traversal racing a list removal, on freed memory. */
+static pmix_status_t setup_fork_body(const pmix_proc_t *proc, char ***env)
 {
     char rankstr[128];
     pmix_listener_t *lt;
     pmix_status_t rc;
     char **varnames;
     int n;
-
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
-        return PMIX_ERR_INIT;
-    }
-
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
-        return PMIX_ERR_NOT_AVAILABLE;
-    }
-
-    pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "pmix:server setup_fork for nspace %s rank %u",
-                        proc->nspace, proc->rank);
 
     /* pass the nspace */
     PMIx_Setenv("PMIX_NAMESPACE", proc->nspace, true, env);
@@ -1325,4 +1326,66 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     }
 
     return PMIX_SUCCESS;
+}
+
+static void _setup_fork(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    /* the caddy carries the caller's own env pointer in cbdata - there is
+     * no dedicated field for one, and the caller is blocked on our lock,
+     * so both it and the proc stay valid for the duration */
+    cd->status = setup_fork_body(cd->proc, (char ***) cd->cbdata);
+
+    /* the waiter owns the caddy and reads cd->status once we wake it, so
+     * do NOT release it here */
+    PMIX_WAKEUP_THREAD(&cd->lock);
+}
+
+PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env)
+{
+    pmix_shift_caddy_t *cd;
+    pmix_status_t rc;
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server setup_fork for nspace %s rank %u",
+                        proc->nspace, proc->rank);
+
+    /* Already on the progress thread - a host that called us from inside a
+     * PMIx callback - so we are serialized against the rest of the
+     * library's work already and there is nothing to shift. Posting an
+     * event and waiting on it here would be waiting for ourselves. Unlike
+     * the other blocking server APIs there is no non-blocking form to
+     * defer to, and no env to hand back later, so run it inline rather
+     * than refusing with PMIX_ERR_WOULD_BLOCK. */
+    if (pmix_progress_thread_is_current()) {
+        return setup_fork_body(proc, env);
+    }
+
+    cd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    /* the caller blocks below until the handler is done, so the caddy
+     * borrows its parameters rather than copying them */
+    cd->proc = (pmix_proc_t *) proc;
+    cd->cbdata = env;
+
+    PMIX_THREADSHIFT(cd, _setup_fork);
+    PMIX_WAIT_THREAD(&cd->lock);
+    rc = cd->status;
+    PMIX_RELEASE(cd);
+
+    return rc;
 }
