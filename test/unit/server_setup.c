@@ -69,6 +69,7 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
+#include "src/util/pmix_argv.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -622,6 +623,73 @@ static void test_group_arrays(void)
     PMIX_INFO_DESTRUCT(&info[0]);
 }
 
+/* PMIx_server_setup_fork is blocking, has no callback, and reads library
+ * state the progress thread writes - the pnet and pgpu per-namespace envar
+ * caches, the local datastore, pmix_server_globals.genvars. It therefore
+ * runs its body on that thread. The wrinkle is a host that calls it from
+ * inside a PMIx callback: such a host is *already* on the progress thread,
+ * and posting an event to wait for there would be waiting for itself.
+ *
+ * Both entries have to work, and a regression in either shows up as a
+ * hang rather than a wrong answer, so the whole case is fenced with an
+ * alarm - dying beats blocking a CI run forever. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_status_t status;
+    int nvars;
+} fork_probe_t;
+
+static void probe_setup_fork(int sd, short args, void *cbdata)
+{
+    fork_probe_t *pb = (fork_probe_t *) cbdata;
+    pmix_proc_t proc;
+    char **env = NULL;
+
+    (void) sd;
+    (void) args;
+
+    PMIX_LOAD_PROCID(&proc, SUT_NSPACE, 0);
+    pb->status = PMIx_server_setup_fork(&proc, &env);
+    pb->nvars = PMIx_Argv_count(env);
+    PMIx_Argv_free(env);
+
+    PMIX_WAKEUP_THREAD(&pb->lock);
+}
+
+static void test_setup_fork_reentry(void)
+{
+    fork_probe_t pb;
+    pmix_proc_t proc;
+    char **env = NULL;
+    pmix_status_t rc;
+    int direct;
+
+    alarm(60);
+
+    /* the ordinary entry: from the host's own thread, which shifts */
+    PMIX_LOAD_PROCID(&proc, SUT_NSPACE, 0);
+    rc = PMIx_server_setup_fork(&proc, &env);
+    direct = PMIx_Argv_count(env);
+    PMIx_Argv_free(env);
+    report("setup_fork from the host's thread", ok(rc) && 0 < direct);
+
+    /* and from the progress thread, where it must run inline */
+    pb.status = PMIX_ERR_NOT_SUPPORTED;
+    pb.nvars = 0;
+    PMIX_CONSTRUCT_LOCK(&pb.lock);
+    PMIX_THREADSHIFT(&pb, probe_setup_fork);
+    PMIX_WAIT_THREAD(&pb.lock);
+    PMIX_DESTRUCT_LOCK(&pb.lock);
+    report("setup_fork from the progress thread does not wait on itself",
+           ok(pb.status));
+
+    /* and says the same thing from either side */
+    report("both entries produce the same environment", direct == pb.nvars);
+
+    alarm(0);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -651,6 +719,7 @@ int main(int argc, char **argv)
     test_retraction();
     test_job_info();
     test_group_arrays();
+    test_setup_fork_reentry();
 
     PMIx_server_finalize();
 

@@ -425,7 +425,35 @@ component module functions are **synchronous** and are reached only on the
 server's progress thread — `setup_local`/`setup_fork` are explicitly
 documented "server, from within an event," and `collect_inventory` /
 `deliver_inventory` are called from already-thread-shifted server-op caddy
-handlers. The `pgpu.h` header does describe an *optional* asynchronous
+handlers.
+
+**That comment on `setup_fork` is a requirement, not a description, and
+for a long time nothing met it.** `PMIx_server_setup_fork` thread-shifted
+nothing: it ran its whole body — `pnet`'s `setup_fork`, `pgpu`'s, `gds`'s,
+`pmdl`'s — on whatever thread the host happened to call it from, and the
+API places no requirement on the host about which thread that is. Meanwhile
+`pmix_pgpu_globals.nspaces` is appended to by `_setup_local_support` and
+removed from (and released by) `_deregister_nspace`, both caddy handlers on
+the progress thread, and `pmix_pgpu_base_get_visible_devices` fetches from
+the local datastore. A namespace being torn down while another job's first
+local client was being forked was a list traversal racing a list removal,
+on freed memory.
+
+`PMIx_server_setup_fork` now uses the blocking caddy pattern — post to the
+progress thread, wait on the caddy's lock — with one twist worth knowing
+before you touch it: a host that calls it from *inside* a PMIx callback is
+already on the progress thread, and waiting for an event it would post
+there is waiting for itself. Unlike the other blocking server APIs there is
+no non-blocking form to defer to and no environment to hand back later, so
+that case runs the body inline rather than returning `PMIX_ERR_WOULD_BLOCK`.
+`test/unit/server_setup.c` exercises both entries and fences them with an
+`alarm()`, because a regression in either shows up as a hang rather than a
+wrong answer.
+
+The practical rule for this framework: **anything you add to a `pgpu` base
+routine may assume it is on the progress thread, and must not assume the
+caller arranged that** — the public API is what arranges it, and it is the
+only thing that can. The `pgpu.h` header does describe an *optional* asynchronous
 contract for the inventory hooks (shift to an internal thread and return
 `PMIX_OPERATION_IN_PROGRESS`), but no current component uses it. If you
 implement it, follow the top-level thread-shifting rules.
