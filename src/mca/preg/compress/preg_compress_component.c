@@ -57,12 +57,12 @@ pmix_mca_base_component_t pmix_mca_preg_compress_component = {
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, preg, compress)
 
-static int component_open(void)
+static pmix_status_t component_open(void)
 {
     return PMIX_SUCCESS;
 }
 
-static int component_query(pmix_mca_base_module_t **module, int *priority)
+static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     if (NULL == pmix_compress.compress_string) {
         return PMIX_ERROR;
@@ -73,7 +73,7 @@ static int component_query(pmix_mca_base_module_t **module, int *priority)
     return PMIX_SUCCESS;
 }
 
-static int component_close(void)
+static pmix_status_t component_close(void)
 {
     return PMIX_SUCCESS;
 }

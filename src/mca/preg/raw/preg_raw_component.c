@@ -56,19 +56,19 @@ pmix_mca_base_component_t pmix_mca_preg_raw_component = {
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, preg, raw)
 
-static int component_open(void)
+static pmix_status_t component_open(void)
 {
     return PMIX_SUCCESS;
 }
 
-static int component_query(pmix_mca_base_module_t **module, int *priority)
+static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 50;
     *module = (pmix_mca_base_module_t *) &pmix_preg_raw_module;
     return PMIX_SUCCESS;
 }
 
-static int component_close(void)
+static pmix_status_t component_close(void)
 {
     return PMIX_SUCCESS;
 }

@@ -17,22 +17,10 @@
 #ifdef HAVE_STRING_H
 #    include <string.h>
 #endif
-#include <fcntl.h>
-#ifdef HAVE_UNISTD_H
-#    include <unistd.h>
-#endif
-#ifdef HAVE_SYS_TYPES_H
-#    include <sys/types.h>
-#endif
-#include <ctype.h>
 
-#include "include/pmix.h"
 #include "pmix_common.h"
 
-#include "src/mca/bfrops/base/base.h"
-#include "src/util/pmix_argv.h"
-#include "src/util/pmix_error.h"
-#include "src/util/pmix_printf.h"
+#include "src/include/pmix_globals.h"
 
 #include "preg_raw.h"
 #include "src/mca/preg/base/base.h"
