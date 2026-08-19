@@ -440,15 +440,28 @@ local client was being forked was a list traversal racing a list removal,
 on freed memory.
 
 `PMIx_server_setup_fork` now uses the blocking caddy pattern — post to the
-progress thread, wait on the caddy's lock — with one twist worth knowing
-before you touch it: a host that calls it from *inside* a PMIx callback is
-already on the progress thread, and waiting for an event it would post
-there is waiting for itself. Unlike the other blocking server APIs there is
-no non-blocking form to defer to and no environment to hand back later, so
-that case runs the body inline rather than returning `PMIX_ERR_WOULD_BLOCK`.
-`test/unit/server_setup.c` exercises both entries and fences them with an
-`alarm()`, because a regression in either shows up as a hang rather than a
-wrong answer.
+progress thread, wait on the caddy's lock — with **two** cases that must
+run the body inline instead, both of which deadlock if you remove them:
+
+- The caller is already on the progress thread, having been called from
+  inside a PMIx callback. Waiting for an event it posts there is waiting
+  for itself.
+- The host asked to drive our event base itself with
+  `PMIX_EXTERNAL_PROGRESS` and steps it through `PMIx_Progress()`. No
+  engine exists in that mode, and `progress_thread_stopped` is
+  deliberately left *clear* because the library is open for business — so
+  the usual "is the progress thread running" guard does not catch it, and
+  blocking would stop the one thread that would ever call `PMIx_Progress()`
+  again.
+
+Every other blocking server API can shrug this off, because a host in
+either situation can call its non-blocking form instead. `setup_fork` has
+neither a callback nor an environment it could hand back later, so it has
+no such alternative and must not be the API that wedges the host.
+`test/unit/server_setup.c` covers the first case and
+`test/unit/server_extprogress.c` the second; both fence themselves with an
+`alarm()`, because a regression shows up as a hang rather than a wrong
+answer.
 
 The practical rule for this framework: **anything you add to a `pgpu` base
 routine may assume it is on the progress thread, and must not assume the
