@@ -138,15 +138,22 @@ as seen through any narrowing already in force.
 
 ## The other module functions
 
-- **`allocate`** — returns `PMIX_ERR_TAKE_NEXT_OPTION` if `info == NULL`;
-  otherwise, when `PMIX_SETUP_APP_ENVARS` / `PMIX_SETUP_APP_ALL` is set,
-  harvests envars via `pmix_util_harvest_envars`, packs them as
-  `PMIX_ENVAR`, compresses, and appends the result to `ilist` under
-  `PMIX_PGPU_INTEL_BLOB` (`"pmix.pgpu.intel.blob"`) as a
+- **`allocate`** — returns `PMIX_ERR_TAKE_NEXT_OPTION` if `info == NULL`,
+  if neither `PMIX_SETUP_APP_ENVARS` nor `PMIX_SETUP_APP_ALL` was
+  requested, or if the include list is empty — which, given this
+  component's `NULL` default, is the usual outcome unless someone set
+  `pgpu_intel_include_envars`. Declining is deliberate: appending an
+  empty blob would ship one to every daemon in the job to say the same
+  thing. Otherwise it harvests envars via `pmix_util_harvest_envars`,
+  packs them as `PMIX_ENVAR`, compresses, and appends the result to
+  `ilist` under `PMIX_PGPU_INTEL_BLOB` (`"pmix.pgpu.intel.blob"`) as a
   `PMIX_COMPRESSED_BYTE_OBJECT` (or `PMIX_BYTE_OBJECT` if uncompressible).
 - **`setup_local`** — finds `PMIX_PGPU_INTEL_BLOB` in `info`, decompresses
-  if needed, and unpacks the `PMIX_ENVAR`s into `ns->envars` for later
-  replay into local children by the base `setup_fork`.
+  if needed — checking the **bool** `pmix_compress.decompress` returned
+  before touching its output, see the framework
+  [`AGENTS.md`](../AGENTS.md#the-decompress-return-is-not-optional) — and
+  unpacks the `PMIX_ENVAR`s into `ns->envars` for later replay into local
+  children by the base `setup_fork`.
 - **`collect_inventory` / `deliver_inventory`** — **stubs** that
   `PMIX_HIDE_UNUSED_PARAMS(...)` and `return PMIX_SUCCESS`.
 

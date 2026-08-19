@@ -101,7 +101,14 @@ static pmix_status_t component_open(void)
      * wired to it reports 0x0300 ("VGA compatible"), and both are NVIDIA
      * GPUs. */
     rc = pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x10de, 0x03);
-
+    /* PMIX_ERR_NOT_AVAILABLE is the MCA's "silently ignore me" cue.  Any
+     * other status - and the vendor check also answers
+     * PMIX_ERR_TAKE_NEXT_OPTION when the topology did not come from hwloc
+     * and so cannot be asked - is reported as a component that failed to
+     * open, which is not what declining an invitation looks like. */
+    if (PMIX_SUCCESS != rc) {
+        rc = PMIX_ERR_NOT_AVAILABLE;
+    }
     return rc;
 }
 

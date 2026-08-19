@@ -73,8 +73,12 @@ With the default `NULL` include list, `allocate` harvests nothing —
 
 - **`allocate`** — called (via `pmix_pgpu_base_allocate`) at
   `PMIx_server_setup_application`. Returns `PMIX_ERR_TAKE_NEXT_OPTION` if
-  `info == NULL`. Otherwise, if the caller passed `PMIX_SETUP_APP_ENVARS`
-  or `PMIX_SETUP_APP_ALL` (true), it harvests envars matching
+  `info == NULL`, if neither `PMIX_SETUP_APP_ENVARS` nor
+  `PMIX_SETUP_APP_ALL` was requested, or if `component.include` is empty
+  — which, given this component's `NULL` default include list, is the
+  usual outcome unless someone set `pgpu_amd_include_envars`. Declining
+  is deliberate: appending an empty blob would ship one to every daemon
+  in the job to say the same thing. Otherwise it harvests envars matching
   `component.include` (minus `component.exclude`) via
   `pmix_util_harvest_envars`, packs each as `PMIX_ENVAR` into a scratch
   `pmix_buffer_t`, compresses the buffer with `pmix_compress.compress`,
@@ -83,7 +87,10 @@ With the default `NULL` include list, `allocate` harvests nothing —
   compression succeeded, else `PMIX_BYTE_OBJECT`.
 - **`setup_local`** — called at `PMIx_server_setup_local_support` on the
   backend. Scans `info` for `PMIX_PGPU_AMD_BLOB`, decompresses it if it is
-  a compressed byte object, loads it into a buffer, and unpacks
+  a compressed byte object — checking the **bool**
+  `pmix_compress.decompress` returned before touching its output, see the
+  framework [`AGENTS.md`](../AGENTS.md#the-decompress-return-is-not-optional)
+  — loads it into a buffer, and unpacks
   `PMIX_ENVAR`s in a loop, appending each to `ns->envars`. Those cached
   envars are later injected into each local child by the base
   `setup_fork`. (Note the loop allocates one extra `pmix_envar_list_item_t`

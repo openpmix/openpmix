@@ -102,6 +102,14 @@ static pmix_status_t component_open(void)
      * an Instinct part reports 0x0380 while a Radeon reports 0x0300, and
      * both are this vendor's GPUs. */
     rc = pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x1002, 0x03);
+    /* PMIX_ERR_NOT_AVAILABLE is the MCA's "silently ignore me" cue.  Any
+     * other status - and the vendor check also answers
+     * PMIX_ERR_TAKE_NEXT_OPTION when the topology did not come from hwloc
+     * and so cannot be asked - is reported as a component that failed to
+     * open, which is not what declining an invitation looks like. */
+    if (PMIX_SUCCESS != rc) {
+        rc = PMIX_ERR_NOT_AVAILABLE;
+    }
     return rc;
 }
 

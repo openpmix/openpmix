@@ -37,10 +37,21 @@ Before you invest in this framework, understand what is and is not live:
    `PMIx_server_setup_local_support` calls `pmix_pgpu.setup_local` (in
    `src/server/pmix_server.c`), immediately alongside the corresponding
    `pnet` calls, and `pmix_pgpu.setup_fork` runs from the fork path.
-   Together with the long-standing `pmix_pgpu.collect_inventory` /
-   `pmix_pgpu.deliver_inventory` calls, **every `pgpu` API entry now has
-   an in-tree caller** — the envar harvest → ship → inject pipeline is
-   wired exactly as `pnet`'s is.
+   `pmix_pgpu.child_finalized`, `.local_app_finalized` and
+   `.deregister_nspace` run from `pmix_server_registration.c`, each
+   immediately beside its `pnet` twin. Together with the long-standing
+   `pmix_pgpu.collect_inventory` / `pmix_pgpu.deliver_inventory` calls,
+   **every `pgpu` API entry now has an in-tree caller** — the envar
+   harvest → ship → inject pipeline is wired exactly as `pnet`'s is.
+
+   The teardown three were the last to be wired, and their absence was
+   not cosmetic: `setup_local` caches one `pmix_nspace_env_cache_t` per
+   namespace and *retains the namespace object* while it does, and
+   `deregister_nspace` is the only thing that gives either back. Until
+   the call existed a persistent server accumulated one of each per job
+   it had ever run. If you add a hook to this framework, wire its caller
+   in the same commit — an entry point nothing calls looks identical to
+   one that works.
 
 2. **The vendor components build everywhere now.** `amd`, `intel` and
    `nvd` used to gate themselves off unless `--enable-test-build` was
@@ -181,9 +192,9 @@ src/mca/pgpu/
 │   ├── pgpu_base_frame.c   open/close, framework decl, global pmix_pgpu, active-module class
 │   ├── pgpu_base_select.c  hand-rolled multi-select (query + priority insert)
 │   └── pgpu_base_fns.c     the pmix_pgpu_base_* routing functions
-├── amd/                    AMD vendor component  (compiles; build-gated off by default)
-├── intel/                  Intel vendor component (compiles; build-gated off by default)
-├── nvd/                    NVIDIA vendor component (compiles; build-gated off by default)
+├── amd/                    AMD vendor component  (always built; declines at run time)
+├── intel/                  Intel vendor component (always built; declines at run time)
+├── nvd/                    NVIDIA vendor component (always built; declines at run time)
 └── test/                   Build-on-request test component (--with-pgpu-test)
 ```
 
@@ -252,7 +263,12 @@ function pointer. Specifics that matter:
   vendor modules build on — it reads the proc's `PMIX_DEVICE_ID` out of
   the local datastore, resolves each device against the local topology,
   keeps the ones belonging to the caller's vendor, and joins their
-  **selectors** (`pmix_hwloc_device_t.selector`) with commas.
+  **selectors** (`pmix_hwloc_device_t.selector`) with commas. It checks
+  the data array's **element type**, not just that the value is one:
+  `PMIX_DEVICE_ID` is a `char*` everywhere except in a process's own proc
+  info, where it is an array of `pmix_device_t`, and the host stored it —
+  so taking an array of anything else as `pmix_device_t` would read
+  `osname` out of whatever happened to sit at that offset.
   `pmix_pgpu_base_set_visible_devices()` is the one-line wrapper that
   writes that value into the named variable; `nvd` and `amd` call it
   directly. A component that has to inspect the environment *before*
@@ -269,6 +285,35 @@ function pointer. Specifics that matter:
   (stricter than the allocate/setup path). These run from the server's
   inventory-collection paths, as `allocate`/`setup_local`/`setup_fork` run
   from the launch paths.
+
+### The decompress return is not optional
+
+`setup_local` in every component reads a blob that may arrive as a
+`PMIX_COMPRESSED_BYTE_OBJECT`, and `pmix_compress.decompress` returns a
+**bool**, not a status. When it returns false it leaves `*outbytes`
+**untouched** — the `pcompress` base's own default implementation writes
+neither output, and `zlib`'s writes `*outlen = 0` and returns without
+writing the pointer. So a caller that ignores the return goes on to load
+a buffer from an indeterminate stack pointer and then `free()` it.
+
+This is not a corrupted-input-only path. Compression is an optional
+component, the blob's wire type is chosen by whichever node ran
+`allocate`, and the two need not have been built alike — a node with no
+`pcompress` component receiving a compressed blob from one that had it is
+an ordinary mixed-installation outcome, and it aborts on the `free`.
+Check the return and decline the blob; `test/unit/pgpu_envar_blob.c`
+pins the behavior, and `pnet/nvd` carries the same guard.
+
+### Setting an envar is the whole job
+
+`pmix_pgpu_base_setup_fork`, `pmix_pgpu_base_set_visible_devices` and
+`intel`'s `setup_fork` all check what `PMIx_Setenv` returned. Returning
+`PMIX_SUCCESS` when the variable was not written launches a process that
+sees every device on the node instead of the ones it was assigned — a
+silently wrong job rather than a failed one, which is the worse of the
+two outcomes and the harder to diagnose. The same reasoning applies to
+the argv the device list is accumulated in: a dropped entry reads as a
+smaller assignment, not as an error.
 
 ### A dead declaration to be aware of
 
@@ -295,9 +340,10 @@ with a `pmix_mca_query_component`:
    iteration order).
 
 Finding zero components is **not** an error — the function returns
-`PMIX_SUCCESS` with an empty `actives` list, which is the case in a
-default build (no vendor component compiled, `test` compiled only with
-`--with-pgpu-test`). At verbosity >4 it prints the resolved priority list.
+`PMIX_SUCCESS` with an empty `actives` list, which is the case on any
+host whose topology shows none of the three vendors' hardware (`test` is
+compiled only with `--with-pgpu-test`). At verbosity >4 it prints the
+resolved priority list.
 `selected` guards against a second pass.
 
 Default component priorities (from each `component_query`):
@@ -321,8 +367,15 @@ on hardware that is plainly there. (`intel` still uses the exact-class
 `PMIX_ERR_NOT_AVAILABLE` when no such device is present and
 `PMIX_ERR_TAKE_NEXT_OPTION` when the topology is not hwloc-sourced. A
 non-success `component_open` prevents the component from being queried, so
-even if the components were built, each would activate **only on a host
-that actually has that vendor's GPU**.
+each activates **only on a host that actually has that vendor's GPU**.
+
+**Return `PMIX_ERR_NOT_AVAILABLE`, and nothing else, to decline.** That
+is the MCA's "silently ignore me" cue (see
+[`src/mca/AGENTS.md`](../AGENTS.md)); every other status is reported as a
+component that *failed to open*. The vendor check's own
+`PMIX_ERR_TAKE_NEXT_OPTION` is therefore normalized rather than passed
+through — these components open on every server now, so handing that
+status back would announce a failure on every host without a GPU.
 
 ## Lifecycle (`pgpu_base_frame.c`)
 

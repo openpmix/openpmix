@@ -102,23 +102,45 @@ static pmix_status_t component_register(void)
  * the GPU setup path deterministically exercisable on any machine. */
 static pmix_status_t component_open(void)
 {
-    int index;
+    int index, n;
     const pmix_mca_base_var_storage_t *value = NULL;
+    char **tmp, *nm;
+    bool found = false;
 
     if (!PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
-        return PMIX_ERROR;
+        goto decline;
     }
 
     if (0 > (index = pmix_mca_base_var_find("pmix", "pgpu", NULL, NULL))) {
-        return PMIX_ERROR;
+        goto decline;
     }
     pmix_mca_base_var_get_value(index, &value, NULL, NULL);
     if (NULL != value && NULL != value->stringval && '\0' != value->stringval[0]) {
-        if (NULL != strcasestr(value->stringval, "test")) {
-            return PMIX_SUCCESS;
+        /* the value is the framework's component list. Match an entry of
+         * that list rather than searching the string, which is the exact
+         * way to answer "was I named" and avoids strcasestr, which is
+         * neither POSIX nor C11 */
+        tmp = PMIx_Argv_split(value->stringval, ',');
+        for (n = 0; NULL != tmp && NULL != tmp[n]; n++) {
+            nm = ('^' == tmp[n][0]) ? &tmp[n][1] : tmp[n];
+            if (0 == strcasecmp(nm, "test")) {
+                found = ('^' != tmp[n][0]);
+                break;
+            }
         }
+        PMIx_Argv_free(tmp);
     }
-    return PMIX_ERROR;
+    if (found) {
+        return PMIX_SUCCESS;
+    }
+
+decline:
+    /* PMIX_ERR_NOT_AVAILABLE is the MCA's "silently ignore me" cue.  Any
+     * other status is reported as a component that failed to open, and a
+     * test component that was simply not asked for has not failed at
+     * anything - it would say so on every ordinary run of a build that
+     * included it. */
+    return PMIX_ERR_NOT_AVAILABLE;
 }
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
