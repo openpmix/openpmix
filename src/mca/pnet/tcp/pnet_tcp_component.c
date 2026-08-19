@@ -127,10 +127,16 @@ static pmix_status_t component_open(void)
     }
     pmix_mca_base_var_get_value(index, &value, NULL, NULL);
     if (NULL != value && NULL != value->stringval && '\0' != value->stringval[0]) {
-        /* the value is the framework's component list.  Match an entry of
-         * it rather than searching the string: a substring test would take
-         * "tcp" out of the name of any component that merely contains it,
-         * and would read an exclusion ("^tcp") as a request */
+        /* the value is the framework's component list. The MCA base has
+         * already filtered on it - pmix_mca_base_component_find's
+         * use_component() honors both include and exclude forms - so we
+         * are only opened when we were named, or when nothing was named
+         * at all. That second case is what this gate is really for: with
+         * no pnet setting the base opens every component, and being
+         * built is not the same as being asked for. Match an entry of
+         * the list rather than searching the string, which is the exact
+         * way to answer "was I named" and avoids strcasestr, which is
+         * neither POSIX nor C11 */
         char **tmp = PMIx_Argv_split(value->stringval, ',');
         int n;
 

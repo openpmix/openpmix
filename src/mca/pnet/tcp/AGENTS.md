@@ -30,11 +30,19 @@ matter:
    configured the tree with `--with-tcp`. Building a component is not the
    same as asking for it. `simptest` applies the same rule.
 
-The match is against an *entry* of that list, not a substring of it, so a
-component whose name merely contains "tcp" does not select this one and an
-exclusion (`^tcp`) is not read as a request. Declining is reported as
-`PMIX_ERR_NOT_AVAILABLE`, the MCA's "silently ignore me" cue; any other
-status would be shown to the user as a component that failed to open.
+Note what this gate is and is not for. The MCA base has **already**
+filtered on that list before any component is opened —
+`pmix_mca_base_component_find`'s `use_component()` honors both the
+include and the exclude (`^tcp`) forms — so `component_open` only runs
+when this component was named, or when **nothing** was named at all.
+That second case is the one the gate exists for: with no `pnet` setting
+the base opens every component it built. The check matches an *entry* of
+the list rather than a substring of it because that is the exact way to
+answer "was I named", and because it avoids `strcasestr`, which is
+neither POSIX nor C11 — not because an exclusion could otherwise reach
+here. Declining is reported as `PMIX_ERR_NOT_AVAILABLE`, the MCA's
+"silently ignore me" cue; any other status would be shown to the user as
+a component that failed to open.
 
 Being selected is still not enough to allocate anything: the port pool
 comes from `static_ports`, and without it `tcp_init` has nothing to parse.

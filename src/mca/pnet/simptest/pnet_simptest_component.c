@@ -30,7 +30,11 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
+#include <string.h>
+
 #include "pnet_simptest.h"
+#include "src/include/pmix_globals.h"
+#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/pnet/pnet.h"
 #include "src/util/pmix_argv.h"
 
@@ -79,26 +83,56 @@ static pmix_status_t component_open(void)
 {
     int index;
     const pmix_mca_base_var_storage_t *value = NULL;
+    bool found = false;
 
+    /* Every path out of here that is not "yes, select me" returns
+     * PMIX_ERR_NOT_AVAILABLE - the MCA's "silently ignore me" cue. Any
+     * other status is reported to the user as a component that failed to
+     * open, which is not what declining an invitation looks like, and
+     * declining is the normal case for this component. */
     if (NULL == pmix_mca_pnet_simptest_component.configfile
         || !PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
         /* nothing we can do without a description
          * of the fabric topology */
-        return PMIX_ERROR;
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* we only allow ourselves to be considered IF the user
-     * specifically requested so */
+     * specifically requested so - simptest carries no hardware gate, so
+     * left ungated it would join the active list on every server the
+     * library comes up in. tcp applies the same rule for the same
+     * reason */
     if (0 > (index = pmix_mca_base_var_find("pmix", "pnet", NULL, NULL))) {
-        return PMIX_ERROR;
+        return PMIX_ERR_NOT_AVAILABLE;
     }
     pmix_mca_base_var_get_value(index, &value, NULL, NULL);
     if (NULL != value && NULL != value->stringval && '\0' != value->stringval[0]) {
-        if (NULL != strcasestr(value->stringval, "simptest")) {
-            return PMIX_SUCCESS;
+        /* the value is the framework's component list. The MCA base has
+         * already filtered on it - pmix_mca_base_component_find's
+         * use_component() honors both include and exclude forms - so we
+         * are only opened when we were named, or when nothing was named
+         * at all. That second case is what this gate is really for: with
+         * no pnet setting the base opens every component, and being
+         * built is not the same as being asked for. Match an entry of
+         * the list rather than searching the string, which is the exact
+         * way to answer "was I named" and avoids strcasestr, which is
+         * neither POSIX nor C11 */
+        char **tmp = PMIx_Argv_split(value->stringval, ',');
+        int n;
+
+        for (n = 0; NULL != tmp && NULL != tmp[n]; n++) {
+            char *nm = ('^' == tmp[n][0]) ? &tmp[n][1] : tmp[n];
+            if (0 == strcasecmp(nm, "simptest")) {
+                found = ('^' != tmp[n][0]);
+                break;
+            }
         }
+        PMIx_Argv_free(tmp);
     }
-    return PMIX_ERROR;
+    if (found) {
+        return PMIX_SUCCESS;
+    }
+    return PMIX_ERR_NOT_AVAILABLE;
 }
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)

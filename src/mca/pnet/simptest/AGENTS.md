@@ -41,13 +41,28 @@ field mismatch) and has been ported back to the live interface.
 Selection is deliberately opt-in and gated in `component_open`:
 
 - The `config_file` MCA parameter (`pmix_pnet_simptest_config_file`) must
-  be set **and** the local peer must be a server, otherwise `open` returns
-  an error.
+  be set **and** the local peer must be a server.
 - The user must have explicitly named this component in the `pnet` MCA
   selection string — `component_open` looks up the `pmix`/`pnet` MCA var
-  and requires `"simptest"` to appear in it (via `strcasestr`).
+  and requires `"simptest"` to be an *entry* of it.
 - `component_query` then returns `pmix_simptest_module` at priority **0**
   (the lowest, so it never shadows a real component).
+
+Every one of those declines returns `PMIX_ERR_NOT_AVAILABLE`, the MCA's
+"silently ignore me" cue; any other status is reported to the user as a
+component that *failed to open*, which is not what declining an
+invitation looks like — and for this component declining is the normal
+case.
+
+The selection check is narrower than it looks, and it is worth knowing
+why it is there. The MCA base has **already** filtered on that list
+before any component is opened — `pmix_mca_base_component_find`'s
+`use_component()` honors both the include and the exclude (`^simptest`)
+forms — so `component_open` only runs when this component was named, or
+when **nothing** was named at all. That second case is the one the gate
+exists for: with no `pnet` setting the base opens every component it
+built, and building a component is not the same as asking for it. `tcp`
+applies the same rule for the same reason.
 
 ## The module
 
