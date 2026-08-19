@@ -18,3 +18,27 @@ The specified configuration file was not found:
   File: %s
 
 Please fix and try again.
+#
+[node-not-found]
+The fabric topology file does not describe a node this job was
+placed on:
+
+  File: %s
+  Node: %s
+
+Every node in the job's node map must have a line in the topology
+file. No fabric endpoints or coordinates have been assigned for this
+job; add the missing node and try again.
+
+Note that the name must match the one the launcher's node map uses,
+which may be the short host name rather than the fully-qualified one.
+#
+[bad-coordinate]
+The fabric topology file contains a coordinate that is not a number:
+
+  File:  %s
+  Node:  %s
+  Value: %s
+
+Each line of the file is a node name followed by that node's integer
+fabric coordinates, separated by spaces. Please fix and try again.
