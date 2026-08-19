@@ -199,6 +199,17 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_NONENVARS)) {
             seckeys = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_NETWORK)) {
+            /* This one is deprecated, which is precisely why its shape has
+             * to be checked rather than assumed: nothing else in the
+             * library reads it, so a host that gets the type wrong is told
+             * so by nobody, and reading a string's bytes as a
+             * pmix_data_array_t walks a wild pointer for a garbage count. */
+            if (PMIX_DATA_ARRAY != info[n].value.type
+                || NULL == info[n].value.data.darray
+                || PMIX_INFO != info[n].value.data.darray->type
+                || NULL == info[n].value.data.darray->array) {
+                continue;
+            }
             iptr = (pmix_info_t *) info[n].value.data.darray->array;
             m = info[n].value.data.darray->size;
             for (p = 0; p < m; p++) {
@@ -247,6 +258,14 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &envar, 1, PMIX_ENVAR);
         free(string_key);
         PMIX_ENVAR_DESTRUCT(&envar);
+        if (PMIX_SUCCESS != rc) {
+            /* every process in the job has to agree on this key, so a job
+             * that launches without it is not a job that runs slower - it
+             * is one whose transports were never pre-conditioned */
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&mydata);
+            return rc;
+        }
     }
 
     if (envars) {
@@ -272,6 +291,15 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             PMIX_LIST_FOREACH (kv, &cache, pmix_kval_t) {
                 PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata,
                                  &kv->value->data.envar, 1, PMIX_ENVAR);
+                if (PMIX_SUCCESS != rc) {
+                    /* a short blob is worse than no blob: the compute node
+                     * would set the envars that made it into the buffer and
+                     * never learn that the rest were dropped */
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_LIST_DESTRUCT(&cache);
+                    PMIX_DESTRUCT(&mydata);
+                    return rc;
+                }
             }
             PMIX_LIST_DESTRUCT(&cache);
         }
@@ -281,6 +309,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     PMIX_UNLOAD_BUFFER(&mydata, bo.bytes, bo.size);
     // if nothing was packed, then we have nothing to send
     if (0 == bo.size) {
+        free(bo.bytes);
         PMIX_DESTRUCT(&mydata);
         return PMIX_SUCCESS;
     }
@@ -288,6 +317,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     /* load all our results into a buffer for xmission to the backend */
     PMIX_KVAL_NEW(kv, PMIX_PNET_OPA_BLOB);
     if (NULL == kv || NULL == kv->value) {
+        free(bo.bytes);
         PMIX_DESTRUCT(&mydata);
         return PMIX_ERR_NOMEM;
     }
@@ -296,6 +326,9 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     if (pmix_compress.compress((uint8_t *) bo.bytes, bo.size,
                                (uint8_t **) &kv->value->data.bo.bytes, &kv->value->data.bo.size)) {
         kv->value->type = PMIX_COMPRESSED_BYTE_OBJECT;
+        /* the compressed copy now holds the payload - release the
+         * uncompressed buffer we unloaded above */
+        free(bo.bytes);
     } else {
         kv->value->data.bo.bytes = bo.bytes;
         kv->value->data.bo.size = bo.size;
@@ -323,8 +356,8 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     pmix_buffer_t bkt;
     int32_t cnt;
     pmix_status_t rc = PMIX_SUCCESS;
-    uint8_t *data;
-    size_t size;
+    uint8_t *data = NULL;
+    size_t size = 0;
     bool release = false;
     pmix_envar_list_item_t *ev;
     pmix_proc_t proc;
@@ -344,8 +377,16 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
 
             /* if this is a compressed byte object, decompress it */
             if (PMIX_COMPRESSED_BYTE_OBJECT == info[n].value.type) {
-                pmix_compress.decompress(&data, &size, (uint8_t *) info[n].value.data.bo.bytes,
-                                         info[n].value.data.bo.size);
+                /* this fails on a node that built no compression component
+                 * as well as on a damaged blob, and it leaves the output
+                 * pointer untouched - so we must not go on to read, or
+                 * free, whatever it did not write */
+                if (!pmix_compress.decompress(&data, &size,
+                                              (uint8_t *) info[n].value.data.bo.bytes,
+                                              info[n].value.data.bo.size)) {
+                    PMIX_ERROR_LOG(PMIX_ERR_UNPACK_FAILURE);
+                    return PMIX_ERR_UNPACK_FAILURE;
+                }
                 release = true;
             } else {
                 data = (uint8_t *) info[n].value.data.bo.bytes;
@@ -359,17 +400,23 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
             PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &ev->envar, &cnt, PMIX_ENVAR);
             while (PMIX_SUCCESS == rc) {
                 pmix_list_append(&ns->envars, &ev->super);
-                /* if this is the transport key, save it */
-                if (0 == strncmp(ev->envar.envar, "OMPI_MCA_orte_precondition_transports", PMIX_MAX_KEYLEN)) {
+                /* if this is the transport key, save it.  An envar packs
+                 * its name and value independently, so either can arrive
+                 * NULL from a blob we did not build ourselves */
+                if (NULL != ev->envar.envar && NULL != ev->envar.value
+                    && 0 == strcmp(ev->envar.envar,
+                                   "OMPI_MCA_orte_precondition_transports")) {
                     /* add it to the job-level info */
                     PMIX_LOAD_PROCID(&proc, ns->ns->nspace, PMIX_RANK_WILDCARD);
                     PMIX_KVAL_NEW(kv, PMIX_CREDENTIAL);
-                    kv->value->type = PMIX_STRING;
-                    kv->value->data.string = strdup(ev->envar.value);
-                    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_INTERNAL, kv);
-                    PMIX_RELEASE(kv); // maintain refcount
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
+                    if (NULL != kv && NULL != kv->value) {
+                        kv->value->type = PMIX_STRING;
+                        kv->value->data.string = strdup(ev->envar.value);
+                        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_INTERNAL, kv);
+                        PMIX_RELEASE(kv); // maintain refcount
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
+                        }
                     }
                 }
                 /* get the next envar */

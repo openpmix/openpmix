@@ -42,4 +42,4 @@
 # was given, so both shapes have to be covered.
 
 EXTRA_DIST = test-topo.xml test-topo2.xml nvml-4gpu.xml drm-4gpu.xml \
-        intel-4gpu.xml intel-flat-4gpu.xml
+        intel-4gpu.xml intel-flat-4gpu.xml opa-hfi.xml

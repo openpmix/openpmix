@@ -10,13 +10,16 @@
 
 # AGENTS.md: The PNET `opa` Component
 
-`opa` is the `pnet` component for Intel **Omni-Path** fabric support, and
-it is the **only `pnet` component compiled into a default build**. Read
-the framework [`AGENTS.md`](../AGENTS.md) first; this file covers only
-what is specific to `opa`. Compared with the other components it is the
-closest thing to a live reference — it compiles against the current
-module interface — but note it only becomes *active* when Omni-Path
-hardware is present, so on most machines it is built but never selected.
+`opa` is the `pnet` component for Intel **Omni-Path** fabric support. It
+and [`nvd`](../nvd/AGENTS.md) are the two `pnet` components compiled into
+a default build; check `base/static-components.h` rather than trusting
+any prose about it. Read the framework [`AGENTS.md`](../AGENTS.md) first;
+this file covers only what is specific to `opa`. Compared with the other
+components it is the closest thing to a live reference — it compiles
+against the current module interface — but note it only becomes *active*
+when Omni-Path hardware is present, so on most machines it is built but
+never selected. `nvd` is a near-copy of it, so a defect found in one is
+worth looking for in the other.
 
 ## Files
 
@@ -129,12 +132,64 @@ carries a comment about searching the topology for OPA NICs but returns
 `PMIX_SUCCESS`. Do not describe `opa` as providing real inventory — it
 does not yet.
 
+Note that `PMIX_SUCCESS` is also the right answer for "no OPA NIC here"
+if these ever do real work. Unlike `allocate` and `setup_fork`, the base
+has no decline convention for the inventory calls: it `PMIX_ERROR_LOG`s
+any non-`SUCCESS` return and abandons the fan-out, so a component with
+nothing to say has to say it quietly.
+
+## Testing it
+
+`test/unit/pnet_opa_seckey.c` drives the seckey path end to end —
+`allocate` → `setup_local_network` → `setup_fork` — plus the PCI filter
+in `setup_fork` and the malformed-directive cases below. It gets `opa`
+selected on a machine with no HFI by handing the server
+`test/topologies/opa-hfi.xml` through the documented
+`pmix_hwloc_topo_file` hook. That fixture exists because `opa` had no
+coverage at all otherwise: the two general-purpose fixtures present no
+Omni-Path device, and they cannot simply be given one — `hwloc_devices`
+asserts exact device counts against both. It deliberately carries an
+Intel *ethernet* controller (class `0200`) beside the HFI (class
+`0208`), because "same vendor, wrong class" is the mistake the PCI
+filter exists to prevent.
+
 ## Gotchas
 
+- **`PMIX_ALLOC_NETWORK` is deprecated, and that is exactly why its shape
+  must be checked.** `opa`'s `allocate` is the only reader of it left in
+  the library, so a host that gets the type wrong is corrected by nobody.
+  It is documented `(pmix_data_array_t*)`; reading a `PMIX_STRING`'s bytes
+  as one yields a wild `array` pointer and a garbage `size`, and the walk
+  segfaults. The nested scan therefore checks the value type, the array
+  pointer, the array's *element* type and its contents before touching
+  them — the same discipline `pmix_pnet_base_get_assigned_devices` applies
+  to `PMIX_DEVICE_ID`, and for the same reason.
+- **`pmix_compress.decompress()` writes nothing when it fails, and the
+  failure is not exotic.** A node that built no compression component
+  still receives compressed blobs from a lead server that did, and the
+  base's stub decompressor simply returns `false` — as does a real one fed
+  a damaged blob. Its return value must be checked before the result is
+  read *or freed*: it leaves the output pointer untouched.
+- **`allocate` hands the payload over exactly once.** `PMIX_UNLOAD_BUFFER`
+  transfers the packed bytes to a `pmix_byte_object_t` without freeing
+  anything, so when compression succeeds — and the `pmix_kval_t` therefore
+  owns the *compressed* copy — the uncompressed block has to be freed by
+  hand.
+- **`transports_print` type-puns a `uint64_t` through `unsigned int *`,
+  and that is safe here only because the whole tree is built
+  `-fno-strict-aliasing`** (`config/pmix_setup_cc.m4` adds it wherever the
+  compiler takes it). Do not copy the idiom into new code, and do not
+  "fix" it as a live defect — it is not one in this build. The arithmetic
+  around it is deliberately width-independent, so it survives an
+  `unsigned int` of any size; the resulting string is byte-order
+  dependent, which does not matter because the key is generated once on
+  the lead server and shipped as a string.
 - **Built ≠ active.** `opa` links into `libpmix` on every build, but the
   `component_open` hwloc probe means it only participates on hosts with an
-  Intel Omni-Path HFI. Testing an `opa` change generally requires that
-  hardware (or stubbing the vendor check).
+  Intel Omni-Path HFI — so on a developer's machine every entry point here
+  is dead code unless something puts an HFI in the topology. That is what
+  the fixture under [Testing it](#testing-it) is for; reach for it rather
+  than for the hardware.
 - **The seckey/envar names are Open MPI / ORTE-specific.**
   `OMPI_MCA_orte_precondition_transports` is the historical key the
   consumers expect; it is not a generic PMIx attribute. Keep it verbatim
