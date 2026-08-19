@@ -49,6 +49,43 @@
 
 #include "src/mca/pmdl/base/base.h"
 
+/* Stage one value read from an MCA param file as a PMIX_SET_ENVAR
+ * directive named PMIX_MCA_<var>.
+ *
+ * A param file line that names a variable but gives it no value ("foo ="
+ * or "foo" alone at EOF) parses to a NULL mbvfv_value, and PMIX_ENVAR_LOAD
+ * only writes the fields it is handed - so passing that NULL straight
+ * through left kv->value->data.envar.value holding whatever the malloc
+ * behind PMIX_KVAL_NEW returned.  The list this kval lands on is copied
+ * (strdup) and then destructed (free) by its owner, so an indeterminate
+ * pointer there is a wild read and a wild free, not a cosmetic defect.
+ * An absent value is an empty one. */
+static pmix_status_t add_file_value(pmix_list_t *ilist,
+                                    pmix_mca_base_var_file_value_t *fv)
+{
+    pmix_kval_t *kv;
+    char *tmp;
+
+    PMIX_KVAL_NEW(kv, PMIX_SET_ENVAR);
+    if (NULL == kv) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (NULL == kv->value) {
+        PMIX_RELEASE(kv);
+        return PMIX_ERR_NOMEM;
+    }
+    if (0 > pmix_asprintf(&tmp, "PMIX_MCA_%s", fv->mbvfv_var)) {
+        PMIX_RELEASE(kv);
+        return PMIX_ERR_NOMEM;
+    }
+    kv->value->type = PMIX_ENVAR;
+    PMIX_ENVAR_LOAD(&kv->value->data.envar, tmp,
+                    (NULL == fv->mbvfv_value) ? "" : fv->mbvfv_value, ':');
+    free(tmp);
+    pmix_list_append(ilist, &kv->super);
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info[], size_t ninfo,
                                             pmix_list_t *ilist)
 {
@@ -56,7 +93,7 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info
     pmix_status_t rc;
     pmix_namespace_t *nptr = NULL, *ns;
     char *params[2] = {"PMIX_MCA_", NULL};
-    char **priors = NULL, *tmp;
+    char **priors = NULL;
     pmix_kval_t *kv;
     pmix_mca_base_var_file_value_t *fv;
 
@@ -76,34 +113,16 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info
      * files, if any - this will allow the model-specific
      * components to override those values, if necessary */
     PMIX_LIST_FOREACH(fv, &pmix_mca_base_var_file_values, pmix_mca_base_var_file_value_t) {
-        PMIX_KVAL_NEW(kv, PMIX_SET_ENVAR);
-        if (NULL == kv) {
-            return PMIX_ERR_NOMEM;
+        rc = add_file_value(ilist, fv);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
         }
-        if (NULL == kv->value) {
-            PMIX_RELEASE(kv);
-            return PMIX_ERR_NOMEM;
-        }
-        kv->value->type = PMIX_ENVAR;
-        pmix_asprintf(&tmp, "PMIX_MCA_%s", fv->mbvfv_var);
-        PMIX_ENVAR_LOAD(&kv->value->data.envar, tmp, fv->mbvfv_value, ':');
-        free(tmp);
-        pmix_list_append(ilist, &kv->super);
     }
     PMIX_LIST_FOREACH(fv, &pmix_mca_base_var_override_values, pmix_mca_base_var_file_value_t) {
-        PMIX_KVAL_NEW(kv, PMIX_SET_ENVAR);
-        if (NULL == kv) {
-            return PMIX_ERR_NOMEM;
+        rc = add_file_value(ilist, fv);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
         }
-        if (NULL == kv->value) {
-            PMIX_RELEASE(kv);
-            return PMIX_ERR_NOMEM;
-        }
-        kv->value->type = PMIX_ENVAR;
-        pmix_asprintf(&tmp, "PMIX_MCA_%s", fv->mbvfv_var);
-        PMIX_ENVAR_LOAD(&kv->value->data.envar, tmp, fv->mbvfv_value, ':');
-        free(tmp);
-        pmix_list_append(ilist, &kv->super);
     }
 
     if (NULL != nspace && 0 < strlen(nspace)) {
@@ -122,6 +141,10 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info
                 return PMIX_ERR_NOMEM;
             }
             nptr->nspace = strdup(nspace);
+            if (NULL == nptr->nspace) {
+                PMIX_RELEASE(nptr);
+                return PMIX_ERR_NOMEM;
+            }
             pmix_list_append(&pmix_globals.nspaces, &nptr->super);
         }
     }
@@ -141,6 +164,11 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info
 
     /* add any local PMIx MCA params */
     rc = pmix_util_harvest_envars(params, NULL, ilist);
+    if (PMIX_SUCCESS != rc) {
+        /* the child would come up missing the very params this call
+         * exists to forward, so say so rather than reporting success */
+        return rc;
+    }
     // mark that we are passing the PMIx envars
     PMIX_KVAL_NEW(kv, PMIX_SET_ENVAR);
     if (NULL == kv) {
@@ -207,30 +235,38 @@ static void setup_prte_frameworks(void)
     }
 }
 
+/* Does the first segment of "param" - everything ahead of the first '_' -
+ * name "word" exactly?  strncmp alone answers yes for any segment that is
+ * merely a *prefix* of the word, which is why the framework loops below
+ * test the lengths first: without that, "pm_foo" reads as a pmix param and
+ * "pr_foo" as a PRRTE one, and an Open MPI value gets forwarded to the
+ * wrong library under the wrong prefix. */
+static bool segment_is(const char *param, size_t len, const char *word)
+{
+    return (len == strlen(word) && 0 == strncmp(param, word, len));
+}
+
+/* length of the param name ahead of its first '_' */
+static size_t segment_len(const char *param)
+{
+    const char *p = strchr(param, '_');
+
+    return (NULL == p) ? strlen(param) : (size_t)(p - param);
+}
+
 bool pmix_pmdl_base_check_prte_param(char *param)
 {
-    char *p;
-    size_t n;
-    int len, len2;
+    size_t n, len;
 
     setup_prte_frameworks();
 
-    p = strchr(param, '_');
-    if (NULL == p) {
-        len = strlen(param);
-    } else {
-        len = (int)(p - param);
-    }
+    len = segment_len(param);
 
-    if (0 == strncmp(param, "prte", len)) {
+    if (segment_is(param, len, "prte")) {
         return true;
     }
     for (n=0; NULL != prte_frameworks[n]; n++) {
-        len2 = strlen(prte_frameworks[n]);
-        if (len != len2) {
-            continue;
-        }
-        if (0 == strncmp(param, prte_frameworks[n], len)) {
+        if (segment_is(param, len, prte_frameworks[n])) {
             return true;
         }
     }
@@ -240,26 +276,15 @@ bool pmix_pmdl_base_check_prte_param(char *param)
 
 bool pmix_pmdl_base_check_pmix_param(char *param)
 {
-    char *p;
-    size_t n;
-    int len, len2;
+    size_t n, len;
 
-    p = strchr(param, '_');
-    if (NULL == p) {
-        len = strlen(param);
-    } else {
-        len = (int)(p - param);
-    }
+    len = segment_len(param);
 
-    if (0 == strncmp(param, "pmix", len)) {
+    if (segment_is(param, len, "pmix")) {
         return true;
     }
     for (n=0; NULL != pmix_framework_names[n]; n++) {
-        len2 = strlen(pmix_framework_names[n]);
-        if (len != len2) {
-            continue;
-        }
-        if (0 == strncmp(param, pmix_framework_names[n], len)) {
+        if (segment_is(param, len, pmix_framework_names[n])) {
             return true;
         }
     }
