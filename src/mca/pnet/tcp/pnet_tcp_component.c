@@ -72,6 +72,7 @@ static pmix_status_t component_register(void)
         PMIX_MCA_BASE_VAR_TYPE_STRING,
         &pmix_mca_pnet_tcp_component.static_ports);
 
+    pmix_mca_pnet_tcp_component.default_request = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "default_network_allocation",
         "Semi-colon delimited list of (optional)type:(optional)plane:Comma-delimited list of "
@@ -155,7 +156,7 @@ static pmix_status_t component_open(void)
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 5;
-    *module = (pmix_mca_base_module_t *) &pmix_tcp_module;
+    *module = (pmix_mca_base_module_t *) &pmix_pnet_tcp_module;
     return PMIX_SUCCESS;
 }
 

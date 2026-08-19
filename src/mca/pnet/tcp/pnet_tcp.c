@@ -63,7 +63,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_info_t directives[],
                                        size_t ndirs);
 
-pmix_pnet_module_t pmix_tcp_module = {.name = "tcp",
+pmix_pnet_module_t pmix_pnet_tcp_module = {.name = "tcp",
                                       .init = tcp_init,
                                       .finalize = tcp_finalize,
                                       .allocate = allocate,
