@@ -21,28 +21,17 @@
 #ifdef HAVE_SYS_TYPES_H
 #    include <sys/types.h>
 #endif
-#ifdef HAVE_SYS_STAT_H
-#    include <sys/stat.h>
-#endif
-#ifdef HAVE_FCNTL_H
-#    include <fcntl.h>
-#endif
 #ifdef HAVE_SYS_UTSNAME_H
 #    include <sys/utsname.h>
 #endif
-#include <time.h>
 
 #include "include/pmix.h"
 
 #include "src/class/pmix_list.h"
-#include "src/class/pmix_pointer_array.h"
 #include "src/include/pmix_globals.h"
-#include "src/include/pmix_socket_errno.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
-#include "src/mca/preg/preg.h"
-#include "src/util/pmix_alfg.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
@@ -66,7 +55,6 @@ static pmix_status_t setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info);
 static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv);
 static pmix_status_t register_nspace(pmix_namespace_t *nptr);
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***priors);
-static void deregister_nspace(pmix_namespace_t *nptr);
 static void deregister_nspace(pmix_namespace_t *nptr);
 pmix_pmdl_module_t pmix_pmdl_ompi_module = {
     .name = "ompi",
