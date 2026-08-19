@@ -116,8 +116,6 @@ PMIX_EXPORT pmix_status_t pmix_pgpu_base_collect_inventory(pmix_info_t directive
                                                            pmix_list_t *inventory);
 PMIX_EXPORT pmix_status_t pmix_pgpu_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
                                                            pmix_info_t directives[], size_t ndirs);
-PMIX_EXPORT pmix_status_t pmix_pgpu_base_harvest_envars(char **incvars, char **excvars,
-                                                        pmix_list_t *ilist);
 
 END_C_DECLS
 
