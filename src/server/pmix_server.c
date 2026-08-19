@@ -1362,14 +1362,26 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
                         "pmix:server setup_fork for nspace %s rank %u",
                         proc->nspace, proc->rank);
 
-    /* Already on the progress thread - a host that called us from inside a
-     * PMIx callback - so we are serialized against the rest of the
-     * library's work already and there is nothing to shift. Posting an
-     * event and waiting on it here would be waiting for ourselves. Unlike
-     * the other blocking server APIs there is no non-blocking form to
-     * defer to, and no env to hand back later, so run it inline rather
-     * than refusing with PMIX_ERR_WOULD_BLOCK. */
-    if (pmix_progress_thread_is_current()) {
+    /* Two cases run the body inline rather than posting it.
+     *
+     * The caller may already be ON the progress thread - a host that
+     * called us from inside a PMIx callback. It is serialized against the
+     * rest of the library's work already, and waiting for an event it
+     * posts there is waiting for itself.
+     *
+     * Or the host may have asked to drive our event base itself with
+     * PMIX_EXTERNAL_PROGRESS, stepping it through PMIx_Progress(). There
+     * is no engine to run a posted event in that mode - the progress-
+     * thread-stopped flag is deliberately left clear, because the library
+     * is open for business - so blocking here would stop the one thread
+     * that would ever have called PMIx_Progress() again. Every other
+     * blocking server API has a non-blocking form such a host can use
+     * instead; this one has neither a callback nor an environment it
+     * could hand back later, so it must not be the API that wedges it.
+     *
+     * Both cases are as serialized as they were before this API shifted
+     * anything, which is what makes running inline safe. */
+    if (pmix_globals.external_progress || pmix_progress_thread_is_current()) {
         return setup_fork_body(proc, env);
     }
 
