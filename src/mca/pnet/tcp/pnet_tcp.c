@@ -374,17 +374,16 @@ static inline void generate_key(uint64_t *unique_key)
     unique_key[1] = ((uint64_t) hi << 32) | (uint64_t) lo;
 }
 
-/* when allocate is called, we look at our table of available static addresses
- * and assign an address to each process on a node based on its node rank.
- * This will prevent collisions as the host RM is responsible for correctly
- * setting the node rank. Note that node ranks will "rollover" when they
- * hit whatever maximum value the host RM supports, and that they will
- * increase monotonically as new jobs are launched until hitting that
- * max value. So we need to take into account the number of static
- * ports we were given and check to ensure we have enough to hand out
+/* when allocate is called, we look at our table of available static
+ * ports and carve out the number the request asked for, tracking the
+ * assignment against the namespace so the ports come back when the job
+ * is deregistered. Every job therefore draws from the same pool and
+ * cannot collide with a job that is still running.
  *
  * NOTE: this implementation is offered as an example that can
- * undoubtedly be vastly improved/optimized */
+ * undoubtedly be vastly improved/optimized. A real one would want to
+ * take the number of processes per node into account rather than
+ * requiring the caller to name a count */
 
 static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist)
@@ -509,7 +508,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         return PMIX_ERR_NOMEM;
     }
     kv->key = strdup(PMIX_ALLOC_FABRIC_ID);
-    kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+    kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
@@ -763,7 +762,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             return PMIX_ERR_NOMEM;
         }
         kv->key = strdup(PMIX_ALLOC_FABRIC_SEC_KEY);
-        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             PMIX_LIST_DESTRUCT(&mylist);
@@ -811,7 +810,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             return PMIX_ERR_NOMEM;
         }
         kv->key = strdup(PMIX_TCP_SETUP_APP_KEY);
-        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             PMIX_DESTRUCT(&buf);
@@ -1022,7 +1021,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     /* look at all available interfaces */
     for (i = pmix_ifbegin(); i >= 0; i = pmix_ifnext(i)) {
         if (PMIX_SUCCESS != pmix_ifindextoaddr(i, (struct sockaddr *) &my_ss, sizeof(my_ss))) {
-            pmix_output(0, "ptl_tcp: problems getting address for index %i (kernel index %i)\n", i,
+            pmix_output(0, "pnet_tcp: problems getting address for index %i (kernel index %i)\n", i,
                         pmix_ifindextokindex(i));
             continue;
         }
@@ -1157,7 +1156,7 @@ static pmix_status_t process_request(pmix_namespace_t *nptr, char *idkey, int po
         return PMIX_ERR_NOMEM;
     }
     kv->key = strdup(idkey);
-    kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+    kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
@@ -1203,7 +1202,7 @@ static pmix_status_t process_request(pmix_namespace_t *nptr, char *idkey, int po
         return PMIX_ERR_NOMEM;
     }
     kv->key = strdup(idkey);
-    kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+    kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
@@ -1217,7 +1216,7 @@ static pmix_status_t process_request(pmix_namespace_t *nptr, char *idkey, int po
             return PMIX_ERR_NOMEM;
         }
         kv->key = strdup(idkey);
-        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             return PMIX_ERR_NOMEM;
