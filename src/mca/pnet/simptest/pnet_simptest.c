@@ -25,28 +25,20 @@
 #ifdef HAVE_FCNTL_H
 #    include <fcntl.h>
 #endif
-#include <time.h>
 
 #include "pmix_common.h"
 
 #include "src/class/pmix_list.h"
-#include "src/class/pmix_pointer_array.h"
 #include "src/include/pmix_globals.h"
-#include "src/include/pmix_socket_errno.h"
-#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/preg/preg.h"
-#include "src/util/pmix_alfg.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
-#include "src/util/pmix_environ.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 #include "pnet_simptest.h"
 #include "src/mca/pnet/base/base.h"
-#include "src/mca/pnet/pnet.h"
 
 static pmix_status_t simptest_init(void);
 static void simptest_finalize(void);
@@ -55,7 +47,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
 static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr, pmix_info_t info[],
                                          size_t ninfo);
 
-pmix_pnet_module_t pmix_simptest_module = {
+pmix_pnet_module_t pmix_pnet_simptest_module = {
     .name = "simptest",
     .init = simptest_init,
     .finalize = simptest_finalize,
@@ -400,7 +392,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             goto cleanup;
         }
         kv->key = strdup(PMIX_ALLOC_FABRIC_ENDPTS);
-        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             rc = PMIX_ERR_NOMEM;
@@ -470,7 +462,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             goto cleanup;
         }
         kvc->key = strdup(PMIX_NODE_INFO_ARRAY);
-        kvc->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        kvc->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
         if (NULL == kvc->value) {
             PMIX_RELEASE(kvc);
             rc = PMIX_ERR_NOMEM;

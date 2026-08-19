@@ -138,7 +138,7 @@ static pmix_status_t component_open(void)
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 0;
-    *module = (pmix_mca_base_module_t *) &pmix_simptest_module;
+    *module = (pmix_mca_base_module_t *) &pmix_pnet_simptest_module;
     return PMIX_SUCCESS;
 }
 

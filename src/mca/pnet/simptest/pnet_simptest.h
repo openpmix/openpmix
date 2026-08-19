@@ -25,7 +25,7 @@ typedef struct {
 
 /* the component must be visible data for the linker to find it */
 PMIX_EXPORT extern pmix_pnet_simptest_component_t pmix_mca_pnet_simptest_component;
-extern pmix_pnet_module_t pmix_simptest_module;
+extern pmix_pnet_module_t pmix_pnet_simptest_module;
 
 /* The key for the blob we send in a launch msg. Both ends of that
  * exchange live in pnet_simptest.c and both must name it from here:
