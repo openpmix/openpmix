@@ -49,7 +49,7 @@ reports the local TCP interfaces.
 
 | File | Contents |
 |------|----------|
-| `pnet_tcp.h` | Component struct type (`static_ports`, `default_request`, `costmatrix`, …). |
+| `pnet_tcp.h` | Component struct type (`static_ports`, `default_request`, the envar globs). |
 | `pnet_tcp_component.c` | Component struct, `component_register` (MCA params), `component_open` (selection gate), `component_query` (priority **5**). |
 | `pnet_tcp.c` | The module: init/finalize, allocate, setup_local_network, finalize hooks, collect/deliver inventory, and the `process_request` port assigner. |
 | `configure.m4` | Guarded by `--with-tcp` (off by default); adds the `TCP` summary line. |
@@ -79,7 +79,7 @@ keep it aligned with `pmix_pnet_module_t`:
 
 - **`component_open`** declines unless the `pnet` parameter names this
   component (see [Status](#agentsmd-the-pnet-tcp-component) above);
-  **`component_query`** then returns `pmix_tcp_module` at priority **5**.
+  **`component_query`** then returns `pmix_pnet_tcp_module` at priority **5**.
   Beyond that the gating is inside the module, on `PMIX_PEER_IS_GATEWAY`.
 - **`tcp_init`** (gateway only) parses the `static_ports` MCA parameter —
   a `;`-delimited list of `type:plane:port-ranges` groups (e.g.

@@ -26,13 +26,11 @@ typedef struct {
     char *excparms;
     char **include;
     char **exclude;
-    int nverts;
-    uint16_t **costmatrix;
 } pmix_pnet_tcp_component_t;
 
 /* the component must be visible data for the linker to find it */
 PMIX_EXPORT extern pmix_pnet_tcp_component_t pmix_mca_pnet_tcp_component;
-extern pmix_pnet_module_t pmix_tcp_module;
+extern pmix_pnet_module_t pmix_pnet_tcp_module;
 
 END_C_DECLS
 
