@@ -59,7 +59,22 @@ static pmix_status_t parse_regex(const pmix_regex2_t *regex, pmix_info_t info[],
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
+    /* the bytes came off a peer's wire, where a pmix_regex2_t is a length
+     * and that many bytes - nothing puts a NULL at the end of them. Our
+     * generate counts the terminator into len, so a well-formed raw value
+     * carries one; confirm it rather than let strdup go looking, which on
+     * a value that does not is a read past the end of the unpacked
+     * allocation. A zero length is the same question with no bytes at
+     * all: bfrops leaves the pointer NULL when the peer declared none. */
+    if (NULL == regex->bytes || 0 == regex->len ||
+        '\0' != (char) regex->bytes[regex->len - 1]) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     *output = strdup((const char *) regex->bytes);
+    if (NULL == *output) {
+        return PMIX_ERR_NOMEM;
+    }
     return PMIX_SUCCESS;
 }
 

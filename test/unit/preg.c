@@ -533,6 +533,72 @@ static void test_legacy_decode_exact(void)
     report("blob ending flush with the buffer is accepted", ok);
 }
 
+/* A pmix_regex2_t that arrived from a peer is a type, a length, and that
+ * many bytes - bfrops puts no NULL after them and leaves the pointer NULL
+ * when the peer declared a length of zero. A component must therefore
+ * treat what it was handed as a claim rather than a fact. Build the
+ * values a peer can legitimately send and hand them to the public
+ * parser. Each allocation is exact so that valgrind sees a read past its
+ * end; without valgrind these cases still prove nothing was accepted. */
+static void test_regex2_from_the_wire(void)
+{
+    pmix_regex2_t r2 = PMIX_REGEX2_STATIC_INIT;
+    char *out = NULL;
+    int ok = 1;
+
+    /* "raw" bytes with no terminator anywhere in them - strdup would run
+     * off the end of the allocation looking for one */
+    r2.type = strdup("raw");
+    r2.len = 3;
+    r2.bytes = (uint8_t *) malloc(3);
+    memcpy(r2.bytes, "abc", 3);
+    if (PMIX_SUCCESS == PMIx_parse_regex2(&r2, NULL, 0, &out)) {
+        fprintf(stdout, "    unterminated raw bytes were accepted\n");
+        ok = 0;
+        free(out);
+        out = NULL;
+    }
+    PMIx_Regex2_destruct(&r2);
+
+    /* a declared length of zero, which leaves bfrops with nothing to
+     * unpack and the pointer NULL - for either component */
+    r2 = (pmix_regex2_t) PMIX_REGEX2_STATIC_INIT;
+    r2.type = strdup("raw");
+    if (PMIX_SUCCESS == PMIx_parse_regex2(&r2, NULL, 0, &out)) {
+        fprintf(stdout, "    an empty raw value was accepted\n");
+        ok = 0;
+        free(out);
+        out = NULL;
+    }
+    PMIx_Regex2_destruct(&r2);
+
+    r2 = (pmix_regex2_t) PMIX_REGEX2_STATIC_INIT;
+    r2.type = strdup("compress");
+    if (PMIX_SUCCESS == PMIx_parse_regex2(&r2, NULL, 0, &out)) {
+        fprintf(stdout, "    an empty compressed value was accepted\n");
+        ok = 0;
+        free(out);
+        out = NULL;
+    }
+    PMIx_Regex2_destruct(&r2);
+
+    /* a compressed blob shorter than the four-byte length prefix its
+     * decompressor reads out of the front of it */
+    r2 = (pmix_regex2_t) PMIX_REGEX2_STATIC_INIT;
+    r2.type = strdup("compress");
+    r2.len = 2;
+    r2.bytes = (uint8_t *) malloc(2);
+    memcpy(r2.bytes, "\x01\x02", 2);
+    if (PMIX_SUCCESS == PMIx_parse_regex2(&r2, NULL, 0, &out)) {
+        fprintf(stdout, "    a two-byte compressed value was accepted\n");
+        ok = 0;
+        free(out);
+    }
+    PMIx_Regex2_destruct(&r2);
+
+    report("a regex2 from the wire is checked, not trusted", ok);
+}
+
 /* release() is the destructor the bfrops value and darray teardown call
  * on every PMIX_REGEX value, so it has to free whatever a PMIX_REGEX
  * value is allowed to hold - and an unframed plain string is allowed:
@@ -661,6 +727,7 @@ int main(int argc, char **argv)
 
     /* Structural checks */
     test_type_field_set();
+    test_regex2_from_the_wire();
 
     /* The deprecated char* form, which the base synthesizes from the
      * regex2 operations above */

@@ -33,9 +33,11 @@ guaranteed fallback encoder.
   must beat. For inputs too small or too random for `compress` to shrink,
   `raw` legitimately wins.
 - **`parse_regex`** — gates on `regex->type == "raw"`, returning
-  `PMIX_ERR_TAKE_NEXT_OPTION` otherwise, and returns
-  `strdup(regex->bytes)`. Because `raw`'s bytes are just the original
-  NUL-terminated list, no expansion is needed.
+  `PMIX_ERR_TAKE_NEXT_OPTION` otherwise, then **confirms the bytes end in
+  a NUL** before returning `strdup(regex->bytes)`. Because `raw`'s bytes
+  are just the original NUL-terminated list, no expansion is needed — but
+  see the gotcha below for why the terminator has to be checked rather
+  than assumed.
 
 Both ignore their `info`/`ninfo` attribute arrays
 (`PMIX_HIDE_UNUSED_PARAMS`); the parameters exist only to satisfy the
@@ -61,6 +63,16 @@ regex2 as `raw:<string>` when a caller comes in through
 
 ## Gotchas
 
+- **A `pmix_regex2_t` reaching `parse_regex` is a claim, not a fact.**
+  Off the wire it is a type, a length, and that many bytes: `bfrops`
+  copies exactly `len` bytes out of the buffer, appends no NUL, and
+  leaves `bytes` NULL when the peer declared `len` of zero. `raw`'s own
+  `generate_regex` counts the terminator into `len`, so a well-formed
+  value carries one — but a peer's need not, and `strdup` on bytes that
+  do not is a read off the end of the unpacked allocation. It segfaults
+  in practice, not in theory: `test/unit/preg.c`'s
+  `test_regex2_from_the_wire` crashed the library outright before the
+  check existed. The same reasoning applies to any component added here.
 - Do not add "cleverness" to `raw`. Its whole value is that it is a
   transparent, always-available identity transform. If you want smarter
   encoding, add a new component with a new tag.
