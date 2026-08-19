@@ -206,6 +206,48 @@ two. Their failure behavior is worth knowing:
   pointer carries no recognizable framing. Nothing in the tree currently
   calls it.
 
+### The decoder validates the framing byte for byte, and must
+
+`pmix_preg_base_legacy_decode` reads bytes a peer supplied, so it treats
+every field of the layout as something to *confirm* rather than to step
+over: the tag must be the literal `"blob:"` and nothing longer, the label
+must be there, `"size="` must be there, and the digits must be followed by
+`":"` and a NUL. Each of those checks earns its place — none is
+defensive decoration:
+
+- **The tag test is exact, not a prefix test.** A prefix test also claims
+  a plain node list whose first node happens to begin with `blob`, and
+  everything after the tag is then read looking for a label that is not
+  there — off the end of a string the caller owns, in the `SIZE_MAX` case
+  where there is no bound to stop it. A genuine blob always carries the
+  tag verbatim, so exactness costs nothing.
+- **The bound on the payload is a subtraction.** Written the natural way,
+  `payload_offset + len > avail`, it is the *peer's* declared length that
+  overflows the sum: a `size=` near `SIZE_MAX` wraps it back to a small
+  number, the value is accepted, and `SIZE_MAX` reaches
+  `pmix_compress.decompress_string` as the byte count of a buffer a few
+  dozen bytes long. `len > avail - offset` cannot wrap, and the offset is
+  known to be within `avail` because it was reached by stepping over a NUL
+  the code had already found inside the bound.
+- **The colon and NUL after the digits are checked before being stepped
+  over.** Skipping two bytes that are something else leaves the payload
+  pointer inside the framing, and the value is then accepted with a
+  payload nobody wrote.
+
+`test/unit/preg.c` holds the vectors for all of these
+(`test_legacy_malformed`, `test_legacy_blob_prefixed_list`,
+`test_legacy_truncated`). Keep the encoder and the decoder exact mirrors
+of each other: anything the encoder writes as a literal, the decoder
+should insist on.
+
+`legacy_encode` reads `regex->bytes` as a C string on the `raw` path,
+which is the one place the framework's "never `strlen` a `regex->bytes`"
+rule is broken on purpose. The deprecated `raw` layout is *defined* as a
+NUL-terminated string, and the only producer of a `raw` regex2 is the
+`raw` module, whose `generate_regex` is a `strdup`. A component that
+emits embedded NULs simply has no deprecated form, which is the
+documented fallback.
+
 ### The one wart the deprecated form cannot shed
 
 `pmix_preg_base_legacy_decode` takes an `avail` bound and honors it, but
@@ -216,14 +258,15 @@ the buffer. Every other caller holds a bare `char *` and passes
 a signature that predates the current API. `gds/hash` has the length
 right there in `val->data.bo.size` and still cannot hand it over.
 
-The practical consequence is that a caller-owned string claiming to be a
-`blob` but truncated before its framing completes can be read a few bytes
-past its end. This is not new — it is what the per-component parsers did
-before — and it is bounded in the direction that matters, since values
-arriving from a peer come through `unpack`, which *is* bounded. Do not
-"fix" it by removing the bound from `unpack`; if you want it fixed
-properly, the length has to be plumbed through the deprecated signatures,
-and at that point you are better off moving the caller to `pmix_regex2_t`.
+What is left of that, now that the tag test is exact, is narrow: a string
+that really does carry the `"blob:"` tag but was truncated before its
+framing completes can be read a few bytes past its end. It takes a
+caller-owned value that claims to be a blob and is not one — not an
+ordinary list, and not anything that arrived from a peer, since those come
+through `unpack`, which *is* bounded. Do not "fix" it by removing the
+bound from `unpack`; if you want it fixed properly, the length has to be
+plumbed through the deprecated signatures, and at that point you are
+better off moving the caller to `pmix_regex2_t`.
 
 ## Selection and lifecycle
 

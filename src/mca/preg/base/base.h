@@ -101,7 +101,14 @@ PMIX_EXPORT pmix_status_t pmix_preg_base_parse_regex(const pmix_regex2_t *regex,
  * returned pmix_regex2_t points into the caller's buffer and must not be
  * destructed, and "avail" bounds the read (SIZE_MAX for a string the
  * caller owns, the bytes remaining when reading off the wire). "total"
- * receives the length of the serialized form, including its framing. */
+ * receives the length of the serialized form, including its framing.
+ *
+ * The decode fails in two ways that callers must tell apart:
+ * PMIX_ERR_TAKE_NEXT_OPTION says the input carries no serialized regex at
+ * all, which is the ordinary answer for the plain delimited list a host
+ * supplies and which the caller should then use as-is;
+ * PMIX_ERR_BAD_PARAM says it carries our tag and is malformed behind it,
+ * and must not be fallen back on as a plain list. */
 PMIX_EXPORT pmix_status_t pmix_preg_base_legacy_encode(const pmix_regex2_t *regex,
                                                         char **output, size_t *outlen);
 
