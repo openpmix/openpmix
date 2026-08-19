@@ -45,7 +45,7 @@ Selection is deliberately opt-in and gated in `component_open`:
 - The user must have explicitly named this component in the `pnet` MCA
   selection string — `component_open` looks up the `pmix`/`pnet` MCA var
   and requires `"simptest"` to be an *entry* of it.
-- `component_query` then returns `pmix_simptest_module` at priority **0**
+- `component_query` then returns `pmix_pnet_simptest_module` at priority **0**
   (the lowest, so it never shadows a real component).
 
 Every one of those declines returns `PMIX_ERR_NOT_AVAILABLE`, the MCA's
@@ -67,7 +67,7 @@ applies the same rule for the same reason.
 ## The module
 
 ```c
-pmix_pnet_module_t pmix_simptest_module = {
+pmix_pnet_module_t pmix_pnet_simptest_module = {
     .name = "simptest",
     .init = simptest_init,
     .finalize = simptest_finalize,
