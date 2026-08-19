@@ -9,8 +9,8 @@
  * $HEADER$
  */
 
-#ifndef PMIX_PNET_OPA_H
-#define PMIX_PNET_OPA_H
+#ifndef PMIX_PNET_TCP_H
+#define PMIX_PNET_TCP_H
 
 #include "src/include/pmix_config.h"
 
