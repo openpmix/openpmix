@@ -406,9 +406,11 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
                         "pnet:tcp:allocate for nspace %s", nptr->nspace);
 
     /* if I am not the gateway, then ignore this call - should never
-     * happen, but check to be safe */
+     * happen, but check to be safe. Decline rather than report success:
+     * the base treats the two the same, but only one of them says we
+     * did nothing, which is what the next reader needs to know */
     if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
-        return PMIX_SUCCESS;
+        return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
     if (NULL == info) {
