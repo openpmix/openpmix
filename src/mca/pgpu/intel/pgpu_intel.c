@@ -215,7 +215,7 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
                 size = info[n].value.data.bo.size;
             }
             PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &bkt, data, size);
-            
+
             /* all we packed was envars, so just cycle thru */
             ev = PMIX_NEW(pmix_envar_list_item_t);
             cnt = 1;

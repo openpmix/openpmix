@@ -315,13 +315,14 @@ two outcomes and the harder to diagnose. The same reasoning applies to
 the argv the device list is accumulated in: a dropped entry reads as a
 smaller assignment, not as an error.
 
-### A dead declaration to be aware of
+### Where the harvesting actually happens
 
-`base.h` declares `pmix_pgpu_base_harvest_envars(char **incvars, char
-**excvars, pmix_list_t *ilist)`, but **no definition exists anywhere in
-the tree**. Components do their own harvesting by calling the util routine
-`pmix_util_harvest_envars` (in `src/util/pmix_environ.c`) directly. Do not
-assume the base helper works; if you need it, you must implement it.
+There is no base helper for it. Components harvest by calling the util
+routine `pmix_util_harvest_envars` (in `src/util/pmix_environ.c`)
+directly, and each passes its own `include`/`exclude` argvs. `base.h`
+used to declare a `pmix_pgpu_base_harvest_envars()` that had no
+definition anywhere in the tree; it has been removed, so do not
+reintroduce a declaration for a helper you have not written.
 
 ## Selection (`pgpu_base_select.c`)
 
