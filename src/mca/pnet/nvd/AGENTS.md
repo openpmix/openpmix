@@ -145,7 +145,7 @@ prints a `Transports / NVIDIA` line.
   transfers the packed bytes to a `pmix_byte_object_t` without freeing
   anything, so when compression succeeds — and the `pmix_kval_t` therefore
   owns the *compressed* copy — the uncompressed block has to be freed by
-  hand. `pgpu/{nvd,intel}` are the reference; `pnet/opa` still leaks it.
+  hand. `pgpu/{nvd,intel}` and `pnet/opa` all do this.
 - **`collect_inventory` reports presence but not contents.** It confirms a
   matching NIC exists but does not populate inventory; treat inventory
   support as unfinished.
