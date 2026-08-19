@@ -333,6 +333,7 @@ test/unit/pnet_tcp_ports
 test/unit/pnet_simptest_map
 test/unit/pgpu_affinity_mask
 test/unit/pgpu_envar_blob
+test/unit/pmdl_envars
 test/unit/server_extprogress
 test/unit/tool_relay
 test/unit/run_gds_fallback.pl

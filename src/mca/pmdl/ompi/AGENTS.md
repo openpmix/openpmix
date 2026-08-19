@@ -67,6 +67,18 @@ returns true only if some `pmix_info_t` in the array carries
 component represents the Open MPI v5 framework layout). A request that is
 not ours yields `PMIX_ERR_TAKE_NEXT_OPTION`.
 
+**Screen the value before reading it as a string.** These keys reach this
+component two ways it does not control: from the `pmix_info_t` array a
+host handed `PMIx_server_register_nspace`, and from job-level data
+`gds/hash` unpacked from a peer (`process_arrays.c` and `gds_hash.c` both
+call `setup_nspace`/`setup_nspace_kv` the moment they see one of these
+keys). Neither validates the type first, so `data.string` on a value that
+is not `PMIX_STRING` is whatever bit pattern the union happened to hold —
+`model_string()` is the one place that check lives, and every read of one
+of these values goes through it. Remember too that `PMIx_Argv_split()`
+answers **NULL** for a string with no tokens, so an empty personality has
+no `tmp[0]` to look at.
+
 ## Per-nspace tracking
 
 The module keeps a private `mynspaces` list of `pmdl_nspace_t`
@@ -108,18 +120,42 @@ re-prefix it before forwarding, using the framework's shared classifiers:
 `pmix_pmdl_base_check_pmix_param` → `PMIX_MCA_<var>`,
 `pmix_pmdl_base_check_prte_param` → `PRTE_MCA_<var>`, otherwise assume it
 is an Open MPI param → `OMPI_MCA_<var>`. Each becomes a `PMIX_SET_ENVAR`
-kval on the harvest `ilist`.
+kval on the harvest `ilist`, through `add_envar()`/`add_prefixed_envar()`
+— the one place that knows a file value may be `NULL` (see the framework
+guide's "A param-file value can be `NULL`").
+
+The precedence is deliberate and the first test wins, which decides the
+one name the two framework tables share: `mca_base_*` in an
+`openmpi-mca-params.conf` goes out as `PMIX_MCA_mca_base_*`, because
+`"mca"` is in `pmix_framework_names`. That is arguably the wrong owner for
+a file Open MPI wrote, but changing it would silently move a live setting
+between libraries; it is left as-is and recorded here rather than
+"fixed" in passing.
 
 ### `parse_file_envars`
 
 Called once at server/tool startup over the already-parsed MCA file
-values. It moves every entry whose name begins with a known **Open MPI
-framework** prefix out of the shared list and into the module's private
-`myenvars`, renaming it to `OMPI_MCA_<var>`. The framework list is the
-hard-coded `ompi_frameworks_static_5_0_0[]` table (btl, coll, pml, osc,
-… plus `mca`/`opal`/`ompi` and the OSHMEM frameworks), overridable at
-runtime by the `OMPI_MCA_PREFIXES` environment variable. Those stashed
-vars are re-emitted later by `harvest_envars` and `setup_fork`.
+values. It moves every entry naming a known **Open MPI framework** out of
+the shared list and into the module's private `myenvars`, renaming it to
+`OMPI_MCA_<var>`. The framework list is the hard-coded
+`ompi_frameworks_static_5_0_0[]` table (btl, coll, pml, osc, … plus
+`mca`/`opal`/`ompi` and the OSHMEM frameworks), overridable at runtime by
+the `OMPI_MCA_PREFIXES` environment variable. Those stashed vars are
+re-emitted later by `harvest_envars` and `setup_fork`.
+
+Two things about the match are load-bearing, and both were wrong:
+
+- It matches on the **framework-name boundary** (`in_framework()`): the
+  name must be the framework itself (`btl = self,tcp` is a real param
+  file line) or be followed by `_`. A bare prefix comparison also claims
+  `iface_name` for `if` and `opal_x` for `op`.
+- A parameter **PMIx claims is left alone.** The list this is handed is
+  what PMIx read from *its own* param files, and two names appear in both
+  framework tables — `mca`, and `pmix` (OPAL carried a `pmix` framework).
+  Taking those meant a value the user set for PMIx, such as
+  `pmix_hwloc_topo_file`, was renamed `OMPI_MCA_*` and so reached neither
+  library: it was gone from the list `harvest_envars` prefixes, and Open
+  MPI has no such parameter.
 
 ### `register_nspace`
 
@@ -148,8 +184,29 @@ drawing sizes from the tracker and per-rank facts from GDS:
   `OMPI_COMM_WORLD_NODE_RANK` (`PMIX_NODE_RANK`);
 - multi-app only: `OMPI_APP_CTX_NUM_PROCS` (per-app sizes),
   `OMPI_FIRST_RANKS` (per-app leaders);
-- `OMPI_MCA_num_restarts` (`PMIX_REINCARNATION`);
+- `OMPI_MCA_num_restarts` (`PMIX_REINCARNATION`), **if the host provided
+  one** — nothing in PMIx sets that key, and a host that has never
+  restarted the proc has nothing to say. Its absence is not a failure;
+  returning the fetch error from here fails `PMIx_server_setup_fork` and
+  with it the child's launch;
 - finally, every `myenvars` value collected by `parse_file_envars`.
+
+Three rules govern the whole function:
+
+- **The per-app values belong to the child's app, not to ours.**
+  `PMIX_WDIR` and `PMIX_APP_ARGV` are app-level, so they are fetched with
+  the appnum of `proc` — read from the datastore, defaulting to 0 the way
+  `gds/hash` does when a host names none. `pmix_globals.appnum` is *my*
+  appnum, which in a server is the server's; using it handed every rank in
+  an MPMD job the first app's command line and working directory.
+- **Only the per-app breakdown is multi-app-only.** Everything after it —
+  the restart count and the `myenvars` values — applies to any job. Both
+  used to sit behind an early `return` taken whenever `num_apps == 1`,
+  which is nearly every job.
+- **`UINT32_MAX` means "the host never told us"**, which is the state the
+  tracker starts in and the state `PMIX_LOCAL_SIZE` legitimately stays in.
+  A size in that state is not emitted, rather than telling the child its
+  universe holds four billion procs.
 
 ### `deregister_nspace`
 
