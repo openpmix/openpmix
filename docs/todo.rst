@@ -113,7 +113,8 @@ Review coverage
 ---------------
 
 Assessed on **2026-08-15** from the commit history, and refreshed on
-**2026-08-19** when the ``src/mca/pnet`` review landed.  Move an entry out
+**2026-08-19** when the ``src/mca/pnet`` and ``src/mca/preg`` reviews
+landed.  Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
 
@@ -130,8 +131,8 @@ Reviewed and current
 ``src/class``, ``src/common``, ``src/event``, ``src/include``,
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
-``src/mca/pnet``, ``src/mca/pstat``, ``src/mca/ptl``, and
-``bindings/python``.
+``src/mca/pnet``, ``src/mca/preg``, ``src/mca/pstat``, ``src/mca/ptl``,
+and ``bindings/python``.
 ``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
 ``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
 below.
@@ -143,11 +144,6 @@ Each of these has an orientation guide and nothing else: no findings were
 ever recorded in it, and only drive-by fixes have landed.  Ordered by
 size, which is a rough proxy for how much there is to find.
 
-* ``src/mca/preg`` (with ``raw``, ``compress``) — 1324 lines.  It parses
-  regular expressions arriving off the wire, which makes it the
-  highest-risk member of this list.  Halved on 2026-08-17 by dropping the
-  ``native`` component and moving the deprecated ``char*`` API into the
-  base, but that was a restructure, not a review.
 * ``src/mca/pgpu`` (with ``amd``, ``intel``, ``nvd``, ``test``) — 2467
   lines.  The 2026-07-15 "repair the stale components" work was not a
   review.
@@ -333,6 +329,27 @@ non-``PMIX_SUCCESS`` return and abandons the fan-out to every component
 behind it — so today "nothing here" and "collected everything" are the
 same answer.
 
+The deprecated regex API cannot carry a length
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/preg`` review (2026-08-19), and narrowed rather
+than closed by it.  ``pmix_preg_base_legacy_decode`` bounds every read
+against an ``avail`` argument, but only ``unpack`` can supply a real one:
+it knows how many bytes are left in the buffer.  Every other caller holds
+a bare ``char *`` and passes ``SIZE_MAX``, because
+``pmix_preg.parse_nodes(regexp, &names)`` has nowhere to put a length
+without changing a signature that predates the current API.  ``gds/hash``
+has the length in ``val->data.bo.size`` and still cannot hand it over.
+
+The review made the tag test exact, which removed the case that a host
+could trigger with ordinary data — a plain node list whose first node
+begins with ``blob`` is no longer taken for a blob and walked past its
+end.  What is left needs a caller-owned string that really does carry the
+``"blob:"`` tag and is truncated behind it, which is not something a peer
+can produce (those arrive through the bounded ``unpack``).  Closing it
+properly means plumbing a length through the deprecated signatures, and a
+caller that can do that is better off moving to ``pmix_regex2_t``.
+
 Coverage gaps
 -------------
 
@@ -374,6 +391,18 @@ Coverage gaps
 * **``pps`` has never been validated against a live process-table
   server.**  Its no-connect paths are covered by the tools smoke test;
   the proc-table rendering is not.
+* **The compressed half of ``preg`` is invisible to a build with no
+  compression library.**  ``preg/compress`` disables itself when
+  ``pcompress`` has no module, so on such a build — a stock macOS
+  developer tree among them — ``raw`` wins every encode, and neither the
+  ``blob:`` framing in ``preg_base_legacy.c`` nor the ``compress``
+  component is ever reached by a round trip.  ``test/unit/preg`` covers
+  the framing with hand-built vectors, which is what a bounded decoder
+  can be tested with, but the encode-decode pair only meet on a build
+  that can compress: ``test_legacy_large`` says which encoding it got, so
+  a thin run reports itself rather than passing quietly.  The real round
+  trip was run under ``contrib/dockerswarm`` (Linux, all four
+  compressors), where the 5000-node case does take the blob path.
 * **Nothing exercises the pnet fabric calls.**  ``register_fabric``,
   ``update_fabric`` and ``deregister_fabric`` are wired all the way
   through ``src/mca/pnet/base``, but no shipped component implements any
