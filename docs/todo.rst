@@ -113,8 +113,8 @@ Review coverage
 ---------------
 
 Assessed on **2026-08-15** from the commit history, and refreshed on
-**2026-08-19** when the ``src/mca/pnet`` and ``src/mca/preg`` reviews
-landed.  Move an entry out
+**2026-08-19** when the ``src/mca/pnet``, ``src/mca/preg`` and
+``src/mca/pgpu`` reviews landed.  Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
 
@@ -131,8 +131,8 @@ Reviewed and current
 ``src/class``, ``src/common``, ``src/event``, ``src/include``,
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
-``src/mca/pnet``, ``src/mca/preg``, ``src/mca/pstat``, ``src/mca/ptl``,
-and ``bindings/python``.
+``src/mca/pgpu``, ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/pstat``,
+``src/mca/ptl``, and ``bindings/python``.
 ``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
 ``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
 below.
@@ -144,9 +144,6 @@ Each of these has an orientation guide and nothing else: no findings were
 ever recorded in it, and only drive-by fixes have landed.  Ordered by
 size, which is a rough proxy for how much there is to find.
 
-* ``src/mca/pgpu`` (with ``amd``, ``intel``, ``nvd``, ``test``) — 2467
-  lines.  The 2026-07-15 "repair the stale components" work was not a
-  review.
 * ``src/mca/pmdl`` (with ``ompi``) — 2422 lines.
 * ``src/util/keyval`` — 2397 lines of lexer and parser, and the only
   directory in ``src/`` with **no** ``AGENTS.md`` at all.
