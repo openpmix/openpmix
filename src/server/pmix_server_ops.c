@@ -234,7 +234,7 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
     int32_t cnt;
     size_t ninfo;
     pmix_proc_t proc;
-    uint32_t uid;
+    uint32_t uid, gid;
 
     pmix_output_verbose(2, pmix_server_globals.pub_output, "recvd PUBLISH");
 
@@ -249,6 +249,16 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    /* ...and the effective group id, which access permissions are
+     * expressed in terms of just as much as the user id.  It does not come
+     * off the wire: the connection handshake already carried it, and the
+     * peer was refused at that point if it claimed a uid or gid other than
+     * the one it was registered with - so what the host told us is both
+     * available and more trustworthy than a per-command claim.  Adding a
+     * field to this message would also be unversionable, there being no
+     * version number that distinguishes a peer built before the field from
+     * one built after. */
+    gid = peer->info->gid;
     /* unpack the number of info objects */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
@@ -268,14 +278,14 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* we will be adding one for the user id */
+    /* we will be adding two: the user id and the group id */
     cd = PMIX_NEW(pmix_setup_caddy_t);
     if (NULL == cd) {
         return PMIX_ERR_NOMEM;
     }
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
-    cd->ninfo = ninfo + 1;
+    cd->ninfo = ninfo + 2;
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
     if (NULL == cd->info) {
         rc = PMIX_ERR_NOMEM;
@@ -293,9 +303,12 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
             goto cleanup;
         }
     }
-    pmix_strncpy(cd->info[cd->ninfo - 1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    pmix_strncpy(cd->info[cd->ninfo - 2].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    cd->info[cd->ninfo - 2].value.type = PMIX_UINT32;
+    cd->info[cd->ninfo - 2].value.data.uint32 = uid;
+    pmix_strncpy(cd->info[cd->ninfo - 1].key, PMIX_GRPID, PMIX_MAX_KEYLEN);
     cd->info[cd->ninfo - 1].value.type = PMIX_UINT32;
-    cd->info[cd->ninfo - 1].value.data.uint32 = uid;
+    cd->info[cd->ninfo - 1].value.data.uint32 = gid;
 
     /* call the local server */
     pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
@@ -342,7 +355,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
     char *sptr;
     size_t ninfo;
     pmix_proc_t proc;
-    uint32_t uid;
+    uint32_t uid, gid;
 
     pmix_output_verbose(2, pmix_server_globals.pub_output, "recvd LOOKUP");
 
@@ -357,6 +370,16 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    /* ...and the effective group id, which access permissions are
+     * expressed in terms of just as much as the user id.  It does not come
+     * off the wire: the connection handshake already carried it, and the
+     * peer was refused at that point if it claimed a uid or gid other than
+     * the one it was registered with - so what the host told us is both
+     * available and more trustworthy than a per-command claim.  Adding a
+     * field to this message would also be unversionable, there being no
+     * version number that distinguishes a peer built before the field from
+     * one built after. */
+    gid = peer->info->gid;
     /* unpack the number of keys */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &nkeys, &cnt, PMIX_SIZE);
@@ -401,8 +424,8 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    /* we will be adding one for the user id */
-    cd->ninfo = ninfo + 1;
+    /* we will be adding two: the user id and the group id */
+    cd->ninfo = ninfo + 2;
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
     if (NULL == cd->info) {
         rc = PMIX_ERR_NOMEM;
@@ -417,9 +440,12 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
             goto cleanup;
         }
     }
-    pmix_strncpy(cd->info[cd->ninfo - 1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    pmix_strncpy(cd->info[cd->ninfo - 2].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    cd->info[cd->ninfo - 2].value.type = PMIX_UINT32;
+    cd->info[cd->ninfo - 2].value.data.uint32 = uid;
+    pmix_strncpy(cd->info[cd->ninfo - 1].key, PMIX_GRPID, PMIX_MAX_KEYLEN);
     cd->info[cd->ninfo - 1].value.type = PMIX_UINT32;
-    cd->info[cd->ninfo - 1].value.data.uint32 = uid;
+    cd->info[cd->ninfo - 1].value.data.uint32 = gid;
 
     /* call the local server */
     pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
@@ -449,7 +475,7 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
     size_t i, nkeys, ninfo;
     char *sptr;
     pmix_proc_t proc;
-    uint32_t uid;
+    uint32_t uid, gid;
 
     pmix_output_verbose(2, pmix_server_globals.pub_output, "recvd UNPUBLISH");
 
@@ -464,6 +490,16 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    /* ...and the effective group id, which access permissions are
+     * expressed in terms of just as much as the user id.  It does not come
+     * off the wire: the connection handshake already carried it, and the
+     * peer was refused at that point if it claimed a uid or gid other than
+     * the one it was registered with - so what the host told us is both
+     * available and more trustworthy than a per-command claim.  Adding a
+     * field to this message would also be unversionable, there being no
+     * version number that distinguishes a peer built before the field from
+     * one built after. */
+    gid = peer->info->gid;
     /* unpack the number of keys */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &nkeys, &cnt, PMIX_SIZE);
@@ -508,8 +544,8 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    /* we will be adding one for the user id */
-    cd->ninfo = ninfo + 1;
+    /* we will be adding two: the user id and the group id */
+    cd->ninfo = ninfo + 2;
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
     if (NULL == cd->info) {
         rc = PMIX_ERR_NOMEM;
@@ -524,9 +560,12 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
             goto cleanup;
         }
     }
-    pmix_strncpy(cd->info[cd->ninfo - 1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    pmix_strncpy(cd->info[cd->ninfo - 2].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    cd->info[cd->ninfo - 2].value.type = PMIX_UINT32;
+    cd->info[cd->ninfo - 2].value.data.uint32 = uid;
+    pmix_strncpy(cd->info[cd->ninfo - 1].key, PMIX_GRPID, PMIX_MAX_KEYLEN);
     cd->info[cd->ninfo - 1].value.type = PMIX_UINT32;
-    cd->info[cd->ninfo - 1].value.data.uint32 = uid;
+    cd->info[cd->ninfo - 1].value.data.uint32 = gid;
 
     /* call the local server */
     pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
