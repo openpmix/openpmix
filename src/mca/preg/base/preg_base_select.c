@@ -87,6 +87,9 @@ int pmix_preg_base_select(void)
         nmodule = (pmix_preg_module_t *) module;
         /* add to the list of selected modules */
         newmodule = PMIX_NEW(pmix_preg_base_active_module_t);
+        if (NULL == newmodule) {
+            return PMIX_ERR_NOMEM;
+        }
         newmodule->pri = priority;
         newmodule->module = nmodule;
         newmodule->component = (pmix_mca_base_component_t *) cli->cli_component;

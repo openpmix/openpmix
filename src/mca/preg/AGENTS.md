@@ -200,11 +200,25 @@ two. Their failure behavior is worth knowing:
   rather than splitting the payload. Do not "restore" a fallback there:
   splitting an encoded blob on commas yields plausible-looking garbage
   node names instead of an error, which is far worse than failing.
-- `copy` / `pack` / `unpack` treat an unrecognized value as a plain
-  string (`strdup`, or bfrops `PMIX_STRING`).
-- `release` has no fallback — it returns `PMIX_ERR_BAD_PARAM` if the
-  pointer carries no recognizable framing. Nothing in the tree currently
-  calls it.
+- **"Unrecognized" and "malformed" are different answers, and every
+  fallback here turns on the difference.** `parse_nodes`/`parse_procs`,
+  `copy`, `pack` and `unpack` all fall back to treating the value as a
+  plain string — but only on `PMIX_ERR_TAKE_NEXT_OPTION`, which the
+  decoder returns when the input carries no tag of ours at all. A
+  `PMIX_ERR_BAD_PARAM` means the value *does* carry our tag and is
+  malformed behind it, and each of them returns it: splitting such a
+  value hands back framing bytes dressed as node names, copying it stops
+  at the first embedded NUL and silently shortens it, and reading it as a
+  bfrops string takes a length prefix out of the middle of the framing.
+- `release` frees what it is given, whatever shape it is in. It is the
+  destructor for a `PMIX_REGEX` value — the bfrops value and darray
+  teardown (`bfrop_base_tma.h`) call it on every one of them — so it is
+  emphatically *not* uncalled, and it must not screen its argument. It
+  used to decode the framing first and refuse anything that carried none,
+  which leaked exactly the values that are allowed to carry none: `unpack`
+  hands back a plain string whenever a peer sent one, and
+  `generate_node_regex` does the same whenever no component could encode
+  the list.
 
 ### The decoder validates the framing byte for byte, and must
 
