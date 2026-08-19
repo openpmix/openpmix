@@ -82,6 +82,11 @@ static pmix_status_t parse_legacy(const char *regexp, char ***result, int delimi
          * encoding - splitting the payload would yield nonsense */
         return PMIX_ERR_NOT_SUPPORTED;
     }
+    if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+        /* it carries our tag and is malformed behind it. Splitting that
+         * hands back framing bytes dressed as node names */
+        return rc;
+    }
 
     /* not an encoded regex at all, so it must be the plain list */
     *result = PMIx_Argv_split(regexp, delimiter);
@@ -111,9 +116,16 @@ pmix_status_t pmix_preg_base_parse_procs(const char *regexp, char ***procs)
 pmix_status_t pmix_preg_base_copy(char **dest, size_t *len, const char *input)
 {
     pmix_regex2_t r2 = PMIX_REGEX2_STATIC_INIT;
+    pmix_status_t rc;
     size_t total;
 
-    if (PMIX_SUCCESS != pmix_preg_base_legacy_decode(input, SIZE_MAX, &r2, &total)) {
+    rc = pmix_preg_base_legacy_decode(input, SIZE_MAX, &r2, &total);
+    if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            /* ours and malformed - copying it as a string would stop at
+             * the first embedded NULL and silently shorten it */
+            return rc;
+        }
         /* it must just be a string */
         *dest = strdup(input);
         if (NULL == *dest) {
@@ -139,7 +151,13 @@ pmix_status_t pmix_preg_base_pack(pmix_buffer_t *buffer, const char *input)
     size_t total;
     char *ptr;
 
-    if (PMIX_SUCCESS != pmix_preg_base_legacy_decode(input, SIZE_MAX, &r2, &total)) {
+    rc = pmix_preg_base_legacy_decode(input, SIZE_MAX, &r2, &total);
+    if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            /* ours and malformed - refuse it rather than put a truncated
+             * copy of it on the wire for a peer to puzzle over */
+            return rc;
+        }
         /* just pack it as a string */
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buffer, input, 1, PMIX_STRING);
         return rc;
@@ -171,8 +189,20 @@ pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex)
     }
     avail = (size_t) (buffer->pack_ptr - buffer->unpack_ptr);
 
-    if (0 == avail ||
-        PMIX_SUCCESS != pmix_preg_base_legacy_decode(buffer->unpack_ptr, avail, &r2, &total)) {
+    /* an empty buffer is left to the string unpack, whose
+     * PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER is what a caller reading
+     * until the buffer runs dry is waiting for */
+    rc = (0 == avail) ? PMIX_ERR_TAKE_NEXT_OPTION
+                      : pmix_preg_base_legacy_decode(buffer->unpack_ptr, avail, &r2, &total);
+    if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            /* these are a peer's bytes and they carry our tag with
+             * something malformed behind it. Reading them as a string
+             * would take the bfrops length prefix out of the middle of
+             * the framing */
+            *regex = NULL;
+            return rc;
+        }
         /* must just be a string */
         PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buffer, regex, &cnt, PMIX_STRING);
         return rc;
@@ -191,15 +221,18 @@ pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex)
 
 pmix_status_t pmix_preg_base_release(char *regexp)
 {
-    pmix_regex2_t r2 = PMIX_REGEX2_STATIC_INIT;
-    size_t total;
-
     if (NULL == regexp) {
         return PMIX_SUCCESS;
     }
-    if (PMIX_SUCCESS != pmix_preg_base_legacy_decode(regexp, SIZE_MAX, &r2, &total)) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    /* This is the destructor for a PMIX_REGEX value - the bfrops value
+     * and darray teardown call it on every one of them - so it frees
+     * what it is given without asking what shape it is in. It used to
+     * decode the framing first and refuse anything that carried none,
+     * which leaked precisely the values that are allowed to carry none:
+     * pmix_preg_base_unpack hands back a plain string whenever a peer
+     * sent one, and generate_node_regex does the same whenever no
+     * component could encode the list. Either way the value is one
+     * allocation, and its owner is done with it. */
     free(regexp);
     return PMIX_SUCCESS;
 }
@@ -233,6 +266,12 @@ pmix_status_t pmix_preg_base_generate_regex(const char *input,
             continue;
         }
         if (PMIX_SUCCESS != active->module->generate_regex(input, info, ninfo, &candidate)) {
+            /* the interface says nothing about what a module leaves in
+             * the struct when it declines, so take back anything it put
+             * there rather than carry it into the next call - which
+             * would overwrite the pointers and lose them */
+            PMIx_Regex2_destruct(&candidate);
+            candidate = (pmix_regex2_t) PMIX_REGEX2_STATIC_INIT;
             continue;
         }
         /* keep this result if it is the first or smaller than the current best */

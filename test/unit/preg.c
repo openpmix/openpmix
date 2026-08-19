@@ -533,6 +533,64 @@ static void test_legacy_decode_exact(void)
     report("blob ending flush with the buffer is accepted", ok);
 }
 
+/* release() is the destructor the bfrops value and darray teardown call
+ * on every PMIX_REGEX value, so it has to free whatever a PMIX_REGEX
+ * value is allowed to hold - and an unframed plain string is allowed:
+ * unpack hands one back whenever a peer sent one, and generate_node_regex
+ * does the same whenever no component could encode the list. It used to
+ * decode the framing first and return PMIX_ERR_BAD_PARAM without freeing
+ * anything, which is a leak per value on exactly those two paths. The
+ * status is what this can assert in-process; run it under valgrind for
+ * the half that matters. */
+static void test_legacy_release(void)
+{
+    char *plain = strdup("nodeA,nodeB,nodeC");
+    char *encoded = NULL;
+    int ok = 1;
+
+    if (PMIX_SUCCESS != pmix_preg.release(NULL)) {
+        fprintf(stdout, "    NULL was not accepted\n");
+        ok = 0;
+    }
+    if (PMIX_SUCCESS != pmix_preg.release(plain)) {
+        fprintf(stdout, "    an unframed value was refused, and so leaked\n");
+        ok = 0;
+        free(plain);
+    }
+    if (PMIX_SUCCESS == PMIx_generate_regex("nodeA,nodeB,nodeC", &encoded) &&
+        NULL != encoded) {
+        if (PMIX_SUCCESS != pmix_preg.release(encoded)) {
+            fprintf(stdout, "    an encoded value was refused\n");
+            ok = 0;
+            free(encoded);
+        }
+    } else {
+        ok = 0;
+    }
+    report("release frees a value of either shape", ok);
+}
+
+/* A value that carries our tag and is malformed behind it must not be
+ * split as though it were a plain list: the caller would get framing
+ * bytes dressed as node names, which is worse than an error because
+ * nothing downstream can tell they are wrong. */
+static void test_legacy_malformed_not_split(void)
+{
+    char **names = NULL;
+    pmix_status_t rc;
+    int ok;
+
+    /* the tag is exact and complete; everything behind it is missing */
+    rc = pmix_preg.parse_nodes("blob:", &names);
+    ok = (PMIX_SUCCESS != rc);
+    if (!ok) {
+        fprintf(stdout, "    accepted, first name is \"%s\"\n",
+                (NULL != names && NULL != names[0]) ? names[0] : "(none)");
+        PMIx_Argv_free(names);
+    }
+    report("a malformed blob is not split into node names", ok);
+}
+
 /* A large, highly-compressible list takes the compressed encoding, and so
  * exercises the blob serialization rather than the raw one - which is the
  * half of preg_base_legacy.c with real framing in it. Say out loud which
@@ -615,6 +673,8 @@ int main(int argc, char **argv)
     test_legacy_malformed();
     test_legacy_blob_prefixed_list();
     test_legacy_decode_exact();
+    test_legacy_release();
+    test_legacy_malformed_not_split();
     test_legacy_large();
 
     fprintf(stdout, "\nResults: %d passed, %d failed, %d skipped\n\n", npass, nfail, nskip);
