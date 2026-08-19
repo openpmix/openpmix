@@ -14,10 +14,10 @@
 harvesting NVIDIA-relevant environment variables (CUDA/NCCL) for a job and
 (eventually) reporting NVIDIA GPU inventory. Read the framework
 [`AGENTS.md`](../AGENTS.md) first; this file covers only what is specific
-to `nvd`. **It is not built in a default configuration** (see
-Availability) and its inventory logic is stubbed, but its envar-harvesting
-path compiles cleanly and runs through the shared launch wiring when the
-component is enabled. It is the one component with a non-empty default
+to `nvd`. It is **built everywhere** and declines at run time on a host
+with no NVIDIA GPU (see Availability); its inventory logic is stubbed, but
+its envar-harvesting and device-assignment paths are live and run through
+the shared launch wiring. It is the one component with a non-empty default
 include list (`CUDA_*,NCCL_*`).
 
 ## Files
@@ -73,24 +73,32 @@ you ever rename the component.
 | `pgpu_nvd_exclude_envars` | `NULL` | comma-delimited glob list of envars to exclude |
 
 Unlike `amd` and `intel`, `nvd`'s include default is **non-empty**
-(`CUDA_*,NCCL_*`), so — if it were built and selected — its `allocate`
-would harvest CUDA and NCCL envars by default.
+(`CUDA_*,NCCL_*`), so on a host with NVIDIA GPUs its `allocate`
+harvests CUDA and NCCL envars by default.
 
 ## The module functions
 
-`pmix_pgpu_nvd_module` fills only `name`, `allocate`, `setup_local`,
-`collect_inventory`, and `deliver_inventory`; all other slots are `NULL`.
-The bodies match the other vendor components:
+`pmix_pgpu_nvd_module` fills `name`, `allocate`, `setup_local`,
+`setup_fork`, `collect_inventory`, and `deliver_inventory`; all other
+slots are `NULL`. The bodies match the other vendor components:
 
-- **`allocate`** — returns `PMIX_ERR_TAKE_NEXT_OPTION` if `info == NULL`;
-  otherwise, when `PMIX_SETUP_APP_ENVARS` / `PMIX_SETUP_APP_ALL` is set,
-  harvests envars via `pmix_util_harvest_envars` (default `CUDA_*,NCCL_*`),
-  packs them as `PMIX_ENVAR`, compresses, and appends the result to
-  `ilist` under `PMIX_PGPU_NVD_BLOB` (`"pmix.pgpu.nvd.blob"`) as a
-  `PMIX_COMPRESSED_BYTE_OBJECT` (or `PMIX_BYTE_OBJECT` if uncompressible).
+- **`allocate`** — returns `PMIX_ERR_TAKE_NEXT_OPTION` if `info == NULL`,
+  if neither `PMIX_SETUP_APP_ENVARS` nor `PMIX_SETUP_APP_ALL` was
+  requested, or if the include list is empty. Otherwise it harvests
+  envars via `pmix_util_harvest_envars` (default `CUDA_*,NCCL_*`), packs
+  them as `PMIX_ENVAR`, compresses, and appends the result to `ilist`
+  under `PMIX_PGPU_NVD_BLOB` (`"pmix.pgpu.nvd.blob"`) as a
+  `PMIX_COMPRESSED_BYTE_OBJECT` (or `PMIX_BYTE_OBJECT` if
+  uncompressible). It declines rather than appending an empty blob for
+  every daemon in the job to carry.
 - **`setup_local`** — finds `PMIX_PGPU_NVD_BLOB` in `info`, decompresses
-  if needed, and unpacks the `PMIX_ENVAR`s into `ns->envars` for later
-  replay into local children by the base `setup_fork`.
+  if needed — checking the **bool** `pmix_compress.decompress` returned
+  before touching its output, see the framework
+  [`AGENTS.md`](../AGENTS.md#the-decompress-return-is-not-optional) —
+  and unpacks the `PMIX_ENVAR`s into `ns->envars` for later replay into
+  local children by the base `setup_fork`.
+- **`setup_fork`** — one line: `pmix_pgpu_base_set_visible_devices(proc,
+  "NVIDIA", "CUDA_VISIBLE_DEVICES", env)`.
 - **`collect_inventory` / `deliver_inventory`** — **stubs** that
   `PMIX_HIDE_UNUSED_PARAMS(...)` and `return PMIX_SUCCESS`.
 

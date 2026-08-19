@@ -41,6 +41,7 @@
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pmdl/base/base.h"
+#include "src/mca/pgpu/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/psensor/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
@@ -642,6 +643,7 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                 /* even if they never connected, resources were allocated
                  * to them, so we need to ensure they are properly released */
                 pmix_pnet.child_finalized(&proc);
+                pmix_pgpu.child_finalized(&proc);
             } else {
                 if (!peer->finalized) {
                     /* this peer connected to us, but is being deregistered
@@ -660,6 +662,7 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                  * for tools, so don't clean them up */
                 if (!PMIX_PEER_IS_TOOL(peer)) {
                     pmix_pnet.child_finalized(&proc);
+                    pmix_pgpu.child_finalized(&proc);
                     pmix_psensor.stop(peer, NULL);
                 }
                 /* honor any registered epilogs */
@@ -682,6 +685,7 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                 nptr->nlocalprocs == nptr->nfinalized) {
                 nptr->local_app_fini_fired = true;
                 pmix_pnet.local_app_finalized(nptr);
+                pmix_pgpu.local_app_finalized(nptr);
             }
             pmix_list_remove_item(&nptr->ranks, &info->super);
             PMIX_RELEASE(info);
@@ -713,6 +717,13 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
 
     /* release any job-level network resources */
     pmix_pnet.deregister_nspace(cd->proc.nspace);
+
+    /* and any job-level GPU resources.  pgpu caches one envar list per
+     * namespace, holding a reference on the namespace object while it
+     * does, and this is the only thing that releases it - without this
+     * call a persistent server accumulates one of each per job it ever
+     * ran */
+    pmix_pgpu.deregister_nspace(cd->proc.nspace);
 
     /* release any programming model info */
     pmix_pmdl.deregister_nspace(cd->proc.nspace);

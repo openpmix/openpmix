@@ -134,6 +134,9 @@ pmix_status_t pmix_pgpu_base_setup_local(char *nspace, pmix_info_t info[], size_
             pmix_list_append(&pmix_globals.nspaces, &nsp->super);
         }
         ns = PMIX_NEW(pmix_nspace_env_cache_t);
+        if (NULL == ns) {
+            return PMIX_ERR_NOMEM;
+        }
         PMIX_RETAIN(nsp);
         ns->ns = nsp;
         pmix_list_append(&pmix_pgpu_globals.nspaces, &ns->super);
@@ -177,7 +180,13 @@ pmix_status_t pmix_pgpu_base_setup_fork(const pmix_proc_t *proc, char ***env)
     }
     if (NULL != ns) {
         PMIX_LIST_FOREACH (ev, &ns->envars, pmix_envar_list_item_t) {
-            PMIx_Setenv(ev->envar.envar, ev->envar.value, true, env);
+            /* these are the envars the job was told it would run with;
+             * launching without them is not a lesser success */
+            rc = PMIx_Setenv(ev->envar.envar, ev->envar.value, true, env);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         }
     }
 
@@ -260,8 +269,15 @@ pmix_status_t pmix_pgpu_base_get_visible_devices(const pmix_proc_t *proc,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+    /* PMIX_DEVICE_ID is a string everywhere except in a process's own proc
+     * info, where it is an array of pmix_device_t.  The host stored this,
+     * so the element type is its word and not ours to assume: taking an
+     * array of anything else as pmix_device_t would read osname out of
+     * whatever happened to sit at that offset. */
     if (NULL == kv->value || PMIX_DATA_ARRAY != kv->value->type
-        || NULL == kv->value->data.darray) {
+        || NULL == kv->value->data.darray
+        || PMIX_DEVICE != kv->value->data.darray->type
+        || NULL == kv->value->data.darray->array) {
         PMIX_DESTRUCT(&cb);
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
@@ -290,7 +306,15 @@ pmix_status_t pmix_pgpu_base_get_visible_devices(const pmix_proc_t *proc,
                 || 0 != strcasecmp(devs[d].vendor, vendor)) {
                 continue;
             }
-            PMIx_Argv_append_nosize(&ids, devs[d].selector);
+            /* dropping one silently would hand the process a short list,
+             * which reads as a smaller assignment rather than as a failure */
+            rc = PMIx_Argv_append_nosize(&ids, devs[d].selector);
+            if (PMIX_SUCCESS != rc) {
+                pmix_hwloc_release_devices(devs, ndevs);
+                PMIx_Argv_free(ids);
+                PMIX_DESTRUCT(&cb);
+                return rc;
+            }
         }
         pmix_hwloc_release_devices(devs, ndevs);
     }
@@ -325,9 +349,15 @@ pmix_status_t pmix_pgpu_base_set_visible_devices(const pmix_proc_t *proc,
     }
     pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
                         "pgpu: %s=%s for %s", envar, val, PMIX_NAME_PRINT(proc));
-    PMIx_Setenv(envar, val, true, env);
+    /* setting this is the whole job: reporting success without having done
+     * so launches a process that sees every device on the node instead of
+     * the ones it was assigned */
+    rc = PMIx_Setenv(envar, val, true, env);
     free(val);
-    return PMIX_SUCCESS;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 void pmix_pgpu_base_child_finalized(pmix_proc_t *peer)

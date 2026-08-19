@@ -48,9 +48,18 @@ normal deployment:
    ./configure --with-pgpu-test && make` regen.
 2. **Runtime selection.** Even when built, `component_open` returns
    success **only** if the local peer is a server **and** the `pgpu` MCA
-   selection string names `test` (e.g. `PMIX_MCA_pgpu=test`). It looks up
-   the `pmix`/`pgpu` MCA var and requires `"test"` to appear in it (via
-   `strcasestr`), mirroring the opt-in gate `pnet/simptest` uses.
+   selection string names `test` (e.g. `PMIX_MCA_pgpu=test`). It splits
+   the `pmix`/`pgpu` MCA var on commas and matches an entry of that list
+   exactly, mirroring the opt-in gate `pnet/tcp` uses. Match the list
+   rather than searching the string: `strcasestr` is neither POSIX nor
+   C11, and a substring hit answers a different question than "was I
+   named".
+
+   When it declines it returns `PMIX_ERR_NOT_AVAILABLE`, which is the
+   MCA's "silently ignore me" cue. Any other status is reported as a
+   component that *failed to open* — and a test component nobody asked
+   for has not failed at anything, so it would say so on every ordinary
+   run of a build that included it.
 
 `component_query` sets priority **10** and hands back
 `pmix_pgpu_test_module`.
@@ -75,23 +84,27 @@ environment.
 
 `pmix_pgpu_test_module` fills only `name`, `allocate`, and `setup_local`
 (it implements neither inventory hook — those are irrelevant to the launch
-path it tests). It mirrors the current `nvd` module, and deliberately
-fixes two mistakes present in the vendor bodies:
+path it tests). Its bodies are line-for-line the vendor components':
 
-- **`allocate`** — returns `PMIX_ERR_TAKE_NEXT_OPTION` if `info == NULL`
-  or if neither `PMIX_SETUP_APP_ENVARS` nor `PMIX_SETUP_APP_ALL` was
-  requested. Otherwise it harvests the `include` envars via
-  `pmix_util_harvest_envars`, packs each as `PMIX_ENVAR`, compresses the
-  buffer, and appends it to `ilist` under `PMIX_PGPU_TEST_BLOB`
-  (`"pmix.pgpu.test.blob"`) as a `PMIX_COMPRESSED_BYTE_OBJECT` (or
-  `PMIX_BYTE_OBJECT` if `pmix_compress` declined). **On the compression
-  path it frees the uncompressed buffer** it unloaded — the vendor
-  components leak it there.
+- **`allocate`** — returns `PMIX_ERR_TAKE_NEXT_OPTION` if `info == NULL`,
+  if neither `PMIX_SETUP_APP_ENVARS` nor `PMIX_SETUP_APP_ALL` was
+  requested, or if the `include` list is empty. Otherwise it harvests the
+  `include` envars via `pmix_util_harvest_envars`, packs each as
+  `PMIX_ENVAR`, compresses the buffer, and appends it to `ilist` under
+  `PMIX_PGPU_TEST_BLOB` (`"pmix.pgpu.test.blob"`) as a
+  `PMIX_COMPRESSED_BYTE_OBJECT` (or `PMIX_BYTE_OBJECT` if
+  `pmix_compress` declined). On the compression path it frees the
+  uncompressed buffer it unloaded. Declining when there is nothing to
+  harvest is the point of the up-front gate: an empty blob costs every
+  daemon in the job a wire entry to say the same thing.
 - **`setup_local`** — finds `PMIX_PGPU_TEST_BLOB` in `info`, decompresses
   if needed, loads it into a scratch buffer with
   `PMIX_LOAD_BUFFER_NON_DESTRUCT`, and unpacks the `PMIX_ENVAR`s into
-  `ns->envars` for the base `setup_fork` to inject. Two correctness
-  points: it resets the expected `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER`
+  `ns->envars` for the base `setup_fork` to inject. Three correctness
+  points: it checks `pmix_compress.decompress`'s **bool** return before
+  touching the output (see the framework
+  [`AGENTS.md`](../AGENTS.md#the-decompress-return-is-not-optional)), it
+  resets the expected `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER`
   terminator to `PMIX_SUCCESS` (so the base does not see a spurious hard
   error), and it does **not** `PMIX_DESTRUCT` the `NON_DESTRUCT` buffer —
   that buffer only borrows the caller's blob bytes, and freeing it would

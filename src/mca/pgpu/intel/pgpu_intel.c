@@ -96,34 +96,47 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             envars = PMIX_INFO_TRUE(&info[n]);
         }
     }
+    if (!envars || NULL == pmix_mca_pgpu_intel_component.include) {
+        /* nothing for us to harvest.  Declining says so; appending an
+         * empty blob would ship one to every daemon in the job to say
+         * the same thing */
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
     /* setup a buffer - we will pack the info into it for transmission to
      * the backend compute node daemons */
     PMIX_CONSTRUCT(&mydata, pmix_buffer_t);
 
-    if (envars) {
-        pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
-                            "pgpu: intel harvesting envars %s excluding %s",
-                            (NULL == pmix_mca_pgpu_intel_component.incparms)
-                                ? "NONE" : pmix_mca_pgpu_intel_component.incparms,
-                            (NULL == pmix_mca_pgpu_intel_component.excparms)
-                                ? "NONE" : pmix_mca_pgpu_intel_component.excparms);
-        /* harvest envars to pass along */
-        PMIX_CONSTRUCT(&cache, pmix_list_t);
-        if (NULL != pmix_mca_pgpu_intel_component.include) {
-            rc = pmix_util_harvest_envars(pmix_mca_pgpu_intel_component.include,
-                                          pmix_mca_pgpu_intel_component.exclude, &cache);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_LIST_DESTRUCT(&cache);
-                PMIX_DESTRUCT(&mydata);
-                return rc;
-            }
-            /* pack anything that was found */
-            PMIX_LIST_FOREACH (kv, &cache, pmix_kval_t) {
-                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &kv->value->data.envar, 1, PMIX_ENVAR);
-            }
+    pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
+                        "pgpu: intel harvesting envars %s excluding %s",
+                        (NULL == pmix_mca_pgpu_intel_component.incparms)
+                            ? "NONE" : pmix_mca_pgpu_intel_component.incparms,
+                        (NULL == pmix_mca_pgpu_intel_component.excparms)
+                            ? "NONE" : pmix_mca_pgpu_intel_component.excparms);
+
+    /* harvest envars to pass along */
+    PMIX_CONSTRUCT(&cache, pmix_list_t);
+    rc = pmix_util_harvest_envars(pmix_mca_pgpu_intel_component.include,
+                                  pmix_mca_pgpu_intel_component.exclude, &cache);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_LIST_DESTRUCT(&cache);
+        PMIX_DESTRUCT(&mydata);
+        return rc;
+    }
+    /* pack anything that was found */
+    PMIX_LIST_FOREACH (kv, &cache, pmix_kval_t) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &kv->value->data.envar, 1, PMIX_ENVAR);
+        if (PMIX_SUCCESS != rc) {
+            /* a short blob is not a smaller job - the compute nodes would
+             * replay part of the environment and never know the rest was
+             * dropped */
+            PMIX_ERROR_LOG(rc);
             PMIX_LIST_DESTRUCT(&cache);
+            PMIX_DESTRUCT(&mydata);
+            return rc;
         }
     }
+    PMIX_LIST_DESTRUCT(&cache);
 
     /* load all our results into a buffer for xmission to the backend */
     PMIX_KVAL_NEW(kv, PMIX_PGPU_INTEL_BLOB);
@@ -186,8 +199,16 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
 
             /* if this is a compressed byte object, decompress it */
             if (PMIX_COMPRESSED_BYTE_OBJECT == info[n].value.type) {
-                pmix_compress.decompress(&data, &size, (uint8_t *) info[n].value.data.bo.bytes,
-                                         info[n].value.data.bo.size);
+                /* this fails on a node that built no compression component
+                 * as well as on a damaged blob, and it leaves the output
+                 * pointer untouched - so we must not go on to read, or
+                 * free, whatever it did not write */
+                if (!pmix_compress.decompress(&data, &size,
+                                              (uint8_t *) info[n].value.data.bo.bytes,
+                                              info[n].value.data.bo.size)) {
+                    PMIX_ERROR_LOG(PMIX_ERR_UNPACK_FAILURE);
+                    return PMIX_ERR_UNPACK_FAILURE;
+                }
                 release = true;
             } else {
                 data = (uint8_t *) info[n].value.data.bo.bytes;
@@ -296,7 +317,16 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
     if (PMIX_SUCCESS == rc && NULL != mode) {
         set = pmix_getenv("ZE_FLAT_DEVICE_HIERARCHY", *env);
         if (NULL == set) {
-            PMIx_Setenv("ZE_FLAT_DEVICE_HIERARCHY", mode, false, env);
+            rc = PMIx_Setenv("ZE_FLAT_DEVICE_HIERARCHY", mode, false, env);
+            if (PMIX_SUCCESS != rc) {
+                /* the mask below means a card under one model and a tile
+                 * under the other, so writing it without the model it was
+                 * numbered against is worse than writing neither */
+                PMIX_ERROR_LOG(rc);
+                free(mask);
+                free(mode);
+                return rc;
+            }
         } else if (!hierarchy_agrees(set, mode)) {
             pmix_show_help("help-pgpu-intel.txt", "hierarchy-mismatch", true,
                            PMIX_NAME_PRINT(proc), pmix_globals.hostname,
@@ -313,9 +343,15 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
     pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
                         "pgpu:intel: ZE_AFFINITY_MASK=%s for %s",
                         mask, PMIX_NAME_PRINT(proc));
-    PMIx_Setenv("ZE_AFFINITY_MASK", mask, true, env);
+    /* setting this is the whole job: reporting success without having done
+     * so launches a process that sees every device on the node instead of
+     * the ones it was assigned */
+    rc = PMIx_Setenv("ZE_AFFINITY_MASK", mask, true, env);
     free(mask);
-    return PMIX_SUCCESS;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
