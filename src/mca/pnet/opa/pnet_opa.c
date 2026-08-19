@@ -78,18 +78,44 @@ static const pmix_pnet_pcimatch_t mymatch[] = {
  * into the environment of every MPI process when launched.
  */
 
+/* the fallback for when /dev/urandom cannot be read - a chroot or a
+ * container with a restricted /dev, or a process out of descriptors.
+ * It cannot be as good as the real thing, but it has to be good enough
+ * that two jobs do not end up pre-conditioning their transports with
+ * the same key, because nothing downstream would ever say so */
 static inline void transports_use_rand(uint64_t *unique_key)
 {
-    pmix_rng_buff_t rng;
-    /* pmix_srand() wants a 32-bit seed, so fold the full width of the
-     * time_t into 32 bits rather than silently truncating it - this
-     * lets every bit of the clock contribute to the seed and remains
-     * well-defined whether time_t is 32 or 64 bits wide */
-    uint64_t now = (uint64_t) time(NULL);
-    uint32_t seed = (uint32_t) now ^ (uint32_t) (now >> 32);
-    pmix_srand(&rng, seed);
-    unique_key[0] = pmix_rand(&rng);
-    unique_key[1] = pmix_rand(&rng);
+    static pmix_rng_buff_t rng;
+    static bool seeded = false;
+    uint32_t hi, lo;
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: opa falling back to a generated transport key");
+
+    if (!seeded) {
+        /* seed once and keep drawing from that stream. Re-seeding from
+         * the clock on every call would hand two jobs allocated within
+         * the same second the identical key.
+         *
+         * pmix_srand() wants a 32-bit seed, so fold the full width of
+         * the time_t into 32 bits rather than silently truncating it -
+         * that lets every bit of the clock contribute and remains
+         * well-defined whether time_t is 32 or 64 bits wide. Mixing in
+         * our pid separates two servers started in the same second */
+        uint64_t now = (uint64_t) time(NULL);
+        uint32_t seed = (uint32_t) now ^ (uint32_t) (now >> 32) ^ (uint32_t) getpid();
+        pmix_srand(&rng, seed);
+        seeded = true;
+    }
+    /* pmix_rand returns 32 bits at a time, and the caller is asking for
+     * a 128-bit key - so fill each half of each word rather than
+     * leaving the top half of both of them zero */
+    hi = pmix_rand(&rng);
+    lo = pmix_rand(&rng);
+    unique_key[0] = ((uint64_t) hi << 32) | (uint64_t) lo;
+    hi = pmix_rand(&rng);
+    lo = pmix_rand(&rng);
+    unique_key[1] = ((uint64_t) hi << 32) | (uint64_t) lo;
 }
 
 static char *transports_print(uint64_t *unique_key)

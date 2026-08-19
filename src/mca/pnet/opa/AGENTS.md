@@ -83,6 +83,17 @@ decide two booleans: **seckeys** and **envars**. Then:
   `NNNN-NNNN` string via `transports_print`, and pack it as the envar
   `OMPI_MCA_orte_precondition_transports`. This is the shared transport
   "pre-conditioning" key every process in the job must agree on.
+
+  The fallback path is reached whenever `/dev/urandom` cannot be opened
+  or short-reads — a chroot or container with a restricted `/dev`, or a
+  process out of descriptors — and nothing downstream ever reports that
+  the key it is using is the weaker kind. So `transports_use_rand`
+  **seeds once and keeps drawing from that stream**: it used to re-seed
+  from `time(NULL)` on every call, which handed two jobs allocated
+  inside the same second the identical "unique" key. It also fills both
+  halves of each 64-bit word, because `pmix_rand` returns 32 bits at a
+  time and the caller is asking for 128. `pnet/tcp`'s `generate_key` is
+  the same code and carries the same fix.
 - **envars** → `pmix_util_harvest_envars` using the component's
   `include`/`exclude` globs (default include `"HFI_*,PSM2_*"`), packing
   each matched `PMIX_ENVAR` into the buffer.
