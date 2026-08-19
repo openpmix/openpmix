@@ -17,28 +17,10 @@
 #ifdef HAVE_STRING_H
 #    include <string.h>
 #endif
-#include <fcntl.h>
-#ifdef HAVE_UNISTD_H
-#    include <unistd.h>
-#endif
-#ifdef HAVE_SYS_TYPES_H
-#    include <sys/types.h>
-#endif
-#include <ctype.h>
 
-#include "include/pmix.h"
 #include "pmix_common.h"
 
-#include "src/class/pmix_list.h"
-#include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
-#include "src/include/pmix_socket_errno.h"
-#include "src/mca/bfrops/base/base.h"
-#include "src/mca/gds/gds.h"
-#include "src/util/pmix_argv.h"
-#include "src/util/pmix_error.h"
-#include "src/util/pmix_output.h"
-#include "src/util/pmix_printf.h"
 
 #include "preg_compress.h"
 #include "src/mca/pcompress/pcompress.h"

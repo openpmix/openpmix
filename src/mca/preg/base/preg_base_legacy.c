@@ -67,8 +67,7 @@ pmix_status_t pmix_preg_base_legacy_encode(const pmix_regex2_t *regex, char **ou
                                            size_t *outlen)
 {
     char *result, *slen;
-    size_t total;
-    int idx;
+    size_t total, idx;
 
     if (NULL == regex || NULL == regex->type || NULL == regex->bytes) {
         return PMIX_ERR_BAD_PARAM;

@@ -285,7 +285,8 @@ better off moving the caller to `pmix_regex2_t`.
 ## Selection and lifecycle
 
 - **`preg_base_frame.c`** declares the framework
-  (`PMIX_MCA_BASE_FRAMEWORK_DECLARE`), instantiates the global `pmix_preg`
+  (`PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE`), instantiates the global
+  `pmix_preg`
   API (pointing every slot at the base functions), and defines the
   `PMIX_CLASS_INSTANCE` for the active-module wrapper. `pmix_preg_open`
   constructs the `actives` list and opens all components;
