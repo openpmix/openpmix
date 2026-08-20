@@ -149,6 +149,10 @@ typedef struct {
     pmix_status_t towake;
 } waker_t;
 
+/* a file-scope lock, to check the static initializer agrees with what
+ * PMIX_CONSTRUCT_LOCK produces */
+static pmix_lock_t static_lock = PMIX_LOCK_STATIC_INIT;
+
 static void *waker_body(pmix_object_t *obj)
 {
     pmix_thread_t *t = (pmix_thread_t *) obj;
@@ -171,6 +175,18 @@ static void lock_handshake(void)
     PMIX_CONSTRUCT_LOCK(&w.lock);
     w.towake = PMIX_ERR_TIMEOUT;
 
+    /* A constructed lock's status is PMIX_ERR_INIT until a handler
+     * assigns it. That default is deliberately an *error*: a waiter reads
+     * status only after being woken, so the value standing there when
+     * nobody assigned one is a handler that forgot, and reporting that as
+     * PMIX_SUCCESS would turn the omission into a silent wrong answer.
+     * The lock usually lives in a PMIX_NEW'd caddy, so before this was
+     * initialized at all the alternative was heap garbage. */
+    report("construct leaves status at PMIX_ERR_INIT", PMIX_ERR_INIT == w.lock.status);
+    report("construct arms the lock", w.lock.active);
+    report("the static initializer agrees", PMIX_ERR_INIT == static_lock.status);
+    report("a statically initialized lock starts disarmed", !static_lock.active);
+
     PMIX_CONSTRUCT(&t, pmix_thread_t);
     t.t_run = waker_body;
     t.t_arg = &w;
@@ -185,6 +201,8 @@ static void lock_handshake(void)
     PMIX_WAIT_THREAD(&w.lock);
     report("wait returns once woken", !w.lock.active);
     report("waker's status crossed the handshake", PMIX_ERR_TIMEOUT == w.lock.status);
+    report("the handshake overwrote the PMIX_ERR_INIT default",
+           PMIX_ERR_INIT != w.lock.status);
 
     pmix_thread_join(&t, NULL);
     PMIX_DESTRUCT(&t);

@@ -144,17 +144,24 @@ mutex** — that, not the naming, is what makes them non-interchangeable:
 All four blocking/waking macros loop on `while ((lck)->active)` to absorb
 spurious condition-variable wakeups — do not "simplify" that to an `if`.
 
-**`status` is not initialized by `PMIX_CONSTRUCT_LOCK`,** while
-`PMIX_LOCK_STATIC_INIT` sets it to `PMIX_SUCCESS`. That asymmetry is
-survivable only because of an invariant nothing enforces: every waiter
-that reads a lock's `status` is woken by a handler that assigns it
-first. It holds today — a sweep of the tree found no `lock.status` read
-whose wake path leaves it unset, and most waiters read a `status` field
-on their own caddy rather than the lock's. If you add a reader, make
-sure **every** path that can wake that lock assigns `status`, including
-the error paths; the lock frequently lives in a `PMIX_NEW`'d caddy, and
-`PMIX_NEW` does not zero, so the alternative to a real value is heap
-garbage rather than zero.
+**Both initializers set `status` to `PMIX_ERR_INIT`,** and the choice of
+an *error* rather than `PMIX_SUCCESS` is the point. A waiter reads
+`status` only after a handler has woken it, so every handler on a path
+whose waiter reads it is required to assign it. That requirement is not
+enforced by anything, and the default is what decides how a violation
+presents: `PMIX_SUCCESS` would turn a forgotten assignment into a
+confident wrong answer, while `PMIX_ERR_INIT` makes it a loud and
+greppable one. Before this, `PMIX_CONSTRUCT_LOCK` assigned nothing at
+all — and the lock frequently lives in a `PMIX_NEW`'d caddy, which is
+`malloc` and not `calloc`, so the alternative was heap garbage rather
+than zero.
+
+So a `PMIX_ERR_INIT` surfacing from a blocking API is very likely a
+missing `status` assignment on some wake path, not a real init failure —
+look at the handler that woke the lock, and check its error paths first.
+
+`test/unit/threads_primitives.c` pins the default down for both
+initializers; do not "simplify" it back to `PMIX_SUCCESS`.
 
 **`WAKEUP_THREAD` signals *before* it unlocks, and that ordering is
 load-bearing.** The lock usually lives in the waiting thread's stack
@@ -166,11 +173,14 @@ torn down. "Optimizing" this into the usual unlock-then-signal form
 turns a normal completion into a use-after-free on the condition
 variable. The same applies to `RELEASE_THREAD`.
 
-`PMIX_LOCK_STATIC_INIT` exists for file-scope locks; note it initializes
-`active = false`, whereas `PMIX_CONSTRUCT_LOCK` sets `active = true` — a
+`PMIX_LOCK_STATIC_INIT` exists for file-scope locks. The two
+initializers agree on `status` but deliberately differ on `active`: the
+static one leaves it `false`, `PMIX_CONSTRUCT_LOCK` sets it `true` — a
 statically-initialized lock is "already released," a constructed one is
 "armed." Pick the initializer that matches how the first
-acquire/wait will read `active`.
+acquire/wait will read `active`. (PRRTE's `prte_init_lock` is the static
+form for exactly this reason: its first `PMIX_ACQUIRE_THREAD` has to pass
+straight through.)
 
 ### Memory barriers and cross-thread object hand-off
 

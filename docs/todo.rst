@@ -347,35 +347,6 @@ one setting or two.
 
 The ``ompi`` component's guide records the precedence as it stands.
 
-``PMIX_CONSTRUCT_LOCK`` does not initialize ``status``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``PMIX_LOCK_STATIC_INIT`` sets ``.status = PMIX_SUCCESS``;
-``PMIX_CONSTRUCT_LOCK`` does not, so a constructed ``pmix_lock_t`` carries
-whatever was in the memory it occupies — and it usually lives in a
-``PMIX_NEW``'d caddy, which is ``malloc``, not ``calloc``.  What makes
-that survivable is an invariant nothing enforces: every waiter that reads
-a lock's ``status`` is woken by a handler that assigns it first.
-
-The invariant does hold today, and the checking is worth recording so it
-is not redone.  A poisoned ``status`` plus a warn-on-poison check in
-``PMIX_WAIT_THREAD`` fires ~86,000 times across ``make check``, which
-looks damning and is not: those callers read ``cb->status``, the *caddy's*
-own field, and never touch the lock's.  Grepping for ``lock.status`` and
-``lock->status`` specifically narrows it to about nine sites inside the
-library, every one of them woken through an ``opcbfunc`` that assigns
-``status`` before waking.  The two spellings are a character apart and
-only instrumentation tells them apart.
-
-Left alone deliberately.  Initializing it to ``PMIX_SUCCESS`` would
-convert undefined behavior into defined behavior, but it would also make
-a genuinely missing assignment report *success* rather than an obviously
-wrong number, and ``src/threads`` is semantics-frozen without a measured
-reason.  Closing it means either making every wake path assign ``status``
-(and saying so in the guide) or accepting the silent-success trade.
-Whoever adds a new reader of ``lock.status`` must check every path that
-can wake that lock, including the error paths.
-
 Deferred work
 -------------
 
@@ -687,6 +658,30 @@ Not defects — by design
 
 These look like bugs and are not.  They are recorded so that they are
 not "fixed" by a later reader.
+
+* **A ``pmix_lock_t`` whose ``status`` reads ``PMIX_ERR_INIT`` is
+  reporting a missing assignment, not an init failure.**  Both
+  ``PMIX_CONSTRUCT_LOCK`` and ``PMIX_LOCK_STATIC_INIT`` seed ``status``
+  with ``PMIX_ERR_INIT``.  A waiter reads it only after a handler has
+  woken it, so every handler on a path whose waiter reads ``status`` must
+  assign it — and nothing enforces that, which makes the default the
+  thing that decides how a violation presents.  ``PMIX_SUCCESS`` would
+  turn a forgotten assignment into a confident wrong answer;
+  ``PMIX_ERR_INIT`` makes it loud.  ``PMIX_CONSTRUCT_LOCK`` previously
+  assigned nothing at all, and since the lock usually lives in a
+  ``PMIX_NEW``'d caddy — ``malloc``, not ``calloc`` — the alternative was
+  heap garbage.  If one of these turns up in a bug report, look at the
+  handler that woke the lock and check its error paths before believing
+  the status.
+
+  The sweep behind this is worth not redoing.  Poisoning ``status`` and
+  warning on it in ``PMIX_WAIT_THREAD`` fires ~86,000 times across
+  ``make check``, which looks damning and is not: those callers read
+  ``cb->status``, the *caddy's* own field, and never touch the lock's.
+  Grepping ``lock.status`` and ``lock->status`` specifically narrows it
+  to about nine sites in the library, every one woken through an
+  ``opcbfunc`` that assigns ``status`` first.  The two spellings are a
+  character apart and only instrumentation separates them.
 
 * **``PMIX_ACQUIRE_THREAD`` / ``PMIX_RELEASE_THREAD`` having no callers
   in** ``libpmix`` **does not make them dead code.**  An in-tree grep
