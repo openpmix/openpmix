@@ -80,8 +80,16 @@ the component exists it can run.)
 
 `init` claims the channel set
 `"lsys,gsys,syslog,local_syslog,global_syslog"` and opens the logger with
-`openlog("PMIx Log Report:", LOG_CONS | LOG_PID, LOG_USER)`. `finalize`
-calls `closelog()` and frees the channels argv. Those channel tokens map
+`openlog("PMIx Log Report:", LOG_PID [| LOG_CONS], component.facility)`.
+Both configured values reach `openlog` here — `LOG_CONS` only when the
+`console` parameter asks for it, and the facility rather than a
+hard-coded `LOG_USER`. `finalize` calls `closelog()` and frees the
+channels argv.
+
+`finalize` is not only called at framework close: a module the user's
+`plog_base_order` did not ask for is finalized as it is discarded during
+selection, so this pair has to be safe to run on a module that never
+logged anything. Those channel tokens map
 to three attribute keys:
 
 - `PMIX_LOG_SYSLOG` (`pmix.log.syslog`) — log to the local syslog
@@ -102,9 +110,17 @@ data items:
   server (`PMIX_PEER_IS_GATEWAY`); otherwise it is skipped (logged at
   verbosity, not delivered). The intent is that a "global" message is
   forwarded up to the gateway node and recorded in *that* node's syslog,
-  so only the gateway actually emits it. Non-gateway peers silently
-  decline. There is currently no separate forwarding transport here — the
-  gateway simply writes locally.
+  so only the gateway actually emits it. There is currently no separate
+  forwarding transport here — the gateway simply writes locally.
+
+Entries already marked `PMIX_INFO_OP_IS_COMPLETE` are skipped, and each
+entry this module delivers is marked with `PMIX_INFO_OP_COMPLETED`. An
+entry whose value is not a `PMIX_STRING` is rejected with a
+`PMIX_ERROR_LOG` and marked complete rather than handed to `syslog()`'s
+`%s` — see the framework `AGENTS.md` on why that type is not trustworthy.
+`PMIX_LOG_SYSLOG_PRI` is read with `PMIx_Value_get_number` for the same
+reason, and `PMIX_LOG_TIMESTAMP` is only taken when it really is a
+`PMIX_TIME`.
 
 ### `write_local`
 
@@ -116,34 +132,49 @@ syslog(severity, "%s %s:%s PROC %s REPORTS: %s",
 ```
 
 `tod` is the human-readable timestamp (`ctime_r`, trailing newline
-trimmed) when a timestamp was supplied, or `"N/A"`. `sev2str` maps the
-numeric severity to a label for the message text. It always returns
-`PMIX_SUCCESS`.
+trimmed) when a timestamp was supplied, or `"N/A"`. `ctime_r` is allowed
+to decline a time it cannot represent, and it leaves the buffer
+untouched when it does, so its return is checked before `tod` is indexed
+into. `sev2str` maps the numeric severity to a label for the message
+text. `write_local` always returns `PMIX_SUCCESS`.
+
+`PMIX_NAME_PRINT(source)` is safe with a `NULL` source —
+`pmix_util_print_name_args` answers `[NO-NAME]` for one — so the router
+handing down a `NULL` source is not a hazard here.
 
 ### Return code
 
-On success `mylog` returns `PMIX_SUCCESS`. If a `write_local` fails it
-returns that error immediately (aborting the router loop, per the
-framework contract). If there is no data it returns
-`PMIX_ERR_NOT_AVAILABLE`. Note that, unlike `stdfd`/`smtp`, this module
-does *not* return `PMIX_ERR_TAKE_NEXT_OPTION` when its keys are simply
-absent — it just falls through the scan and returns `PMIX_SUCCESS`
-because `rc` from the last matched entry (or the initial state) is
-returned. If you extend this module, prefer the explicit
-"none-of-my-keys → `PMIX_ERR_TAKE_NEXT_OPTION`" convention so
-`PMIX_LOG_ONCE` chaining stays correct.
+`mylog` counts the entries it actually wrote: `PMIX_SUCCESS` when that
+count is non-zero, `PMIX_ERR_TAKE_NEXT_OPTION` when it is zero, and the
+error from a failed `write_local` immediately (aborting the router loop,
+per the framework contract). If there is no data it returns
+`PMIX_ERR_NOT_AVAILABLE`.
+
+This module used to return `PMIX_SUCCESS` unconditionally at the bottom
+of the scan, which is the exact defect the framework `AGENTS.md` calls
+the most common one here. The case that made it visible: a
+`pmix.log.gsys` request on a **non-gateway** peer writes nothing by
+design, but reported success — so the router told the caller the message
+had been logged, the client never fell back to anyone who could log it,
+and the message simply vanished.
 
 ## Gotchas
 
 - **Severity vs. facility are different axes.** `level` is per-message
   severity (`LOG_ERR`…`LOG_DEBUG`); `facility` categorizes the source
-  program (`LOG_USER`…). The current `openlog` hard-codes `LOG_USER`
-  regardless of the configured `facility` field — the facility parameter
-  is parsed and stored but not yet applied at `openlog` time. Keep that in
-  mind before assuming the facility parameter changes routing.
+  program (`LOG_USER`…). Both are applied — the facility at `openlog`
+  time, the severity per message — but only the severity can be
+  overridden per call (`PMIX_LOG_SYSLOG_PRI`). Changing the facility
+  after `init` would require a fresh `openlog`.
+- **`console` is a `bool`, not an `int`.** The MCA variable system
+  writes a `PMIX_MCA_BASE_VAR_TYPE_BOOL` through a `bool *`. It was
+  declared `int` here, which left the remaining bytes untouched and made
+  which byte got written an endianness question.
 - The global-syslog path depends entirely on the gateway check; on a
   non-gateway peer a `pmix.log.gsys` request produces no output by
   design. Don't "fix" that into an unconditional local write.
-- `console` maps conceptually to `LOG_CONS`, which `init` already passes
-  to `openlog`; the parameter exists mainly for callers/consumers that
-  inspect it.
+- `console` maps to `LOG_CONS`, and `init` passes it only when the
+  parameter is set. It used to be passed unconditionally, so every
+  message the system logger could not take was written to the system
+  console of every node — on a large machine, whether the operator
+  asked for that or not.

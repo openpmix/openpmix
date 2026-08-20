@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -35,7 +35,11 @@ BEGIN_C_DECLS
 
 typedef struct {
     pmix_plog_base_component_t super;
-    int console;
+    /* the MCA variable system writes a PMIX_MCA_BASE_VAR_TYPE_BOOL
+     * through a bool*, so this must be a bool - an int would leave the
+     * remaining bytes untouched, and which byte gets written is an
+     * endianness question we do not need to have */
+    bool console;
     int level;
     int facility;
 } pmix_plog_syslog_component_t;

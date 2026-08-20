@@ -38,6 +38,7 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_string_copy.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_show_help.h"
 
@@ -65,8 +66,17 @@ static pmix_status_t init(void)
 
     pmix_plog_syslog_module.channels = PMIx_Argv_split(mychannels, ',');
 
-    opts = LOG_CONS | LOG_PID;
-    openlog("PMIx Log Report:", opts, LOG_USER);
+    /* both of these are MCA parameters this component publishes, so
+     * they have to actually reach openlog - LOG_CONS in particular is
+     * what the "console" parameter is asking for, and forcing it on
+     * writes to the system console for every message the logger cannot
+     * take, on every node */
+    opts = LOG_PID;
+    if (pmix_mca_plog_syslog_component.console) {
+        opts |= LOG_CONS;
+    }
+    openlog("PMIx Log Report:", opts,
+            pmix_mca_plog_syslog_component.facility);
 
     return PMIX_SUCCESS;
 }
@@ -84,10 +94,14 @@ static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp,
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
                            const pmix_info_t directives[], size_t ndirs)
 {
-    size_t n;
+    size_t n, nhandled = 0;
     int pri = pmix_mca_plog_syslog_component.level;
     pmix_status_t rc;
     time_t timestamp = 0;
+    /* completion is tracked in the caller's array - see the plog
+     * AGENTS.md on why that state is shared and mutable */
+    pmix_info_t *dt = (pmix_info_t *) data;
+    char *msg;
 
     /* if there is no data, then we don't handle it */
     if (NULL == data || 0 == ndata) {
@@ -102,57 +116,76 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     if (NULL != directives) {
         for (n = 0; n < ndirs; n++) {
             if (0 == strncmp(directives[n].key, PMIX_LOG_SYSLOG_PRI, PMIX_MAX_KEYLEN)) {
-                pri = directives[n].value.data.integer;
+                /* the type is the caller's to choose, so read the union
+                 * member the caller actually filled in */
+                if (PMIX_SUCCESS != PMIx_Value_get_number(&directives[n].value,
+                                                          &pri, PMIX_INT)) {
+                    PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                    pri = pmix_mca_plog_syslog_component.level;
+                }
             } else if (0 == strncmp(directives[n].key, PMIX_LOG_TIMESTAMP, PMIX_MAX_KEYLEN)) {
-                timestamp = directives[n].value.data.time;
+                if (PMIX_TIME == directives[n].value.type) {
+                    timestamp = directives[n].value.data.time;
+                }
             }
         }
     }
 
     /* check to see if there are any syslog entries */
     for (n = 0; n < ndata; n++) {
-        if (PMIX_CHECK_KEY(&data[n], PMIX_LOG_SYSLOG)) {
-            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
-                                "%s: plog:syslog delivering to local syslog",
-                                PMIX_NAME_PRINT(&pmix_globals.myid));
-            /* we default to using the local syslog */
-            rc = write_local(source, timestamp, pri,
-                             data[n].value.data.string);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-        } else if (PMIX_CHECK_KEY(&data[n], PMIX_LOG_LOCAL_SYSLOG)) {
-            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
-                                "%s: plog:syslog delivering to local syslog",
-                                PMIX_NAME_PRINT(&pmix_globals.myid));
-            rc = write_local(source, timestamp, pri,
-                             data[n].value.data.string);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-        } else if (PMIX_CHECK_KEY(&data[n], PMIX_LOG_GLOBAL_SYSLOG)) {
-            /* only do this if we are a gateway server */
-            if (PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
-                pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
-                                    "%s: plog:syslog delivering to global syslog",
-                                    PMIX_NAME_PRINT(&pmix_globals.myid));
-                rc = write_local(source, timestamp, pri,
-                                 data[n].value.data.string);
-                if (PMIX_SUCCESS != rc) {
-                    return rc;
-                }
-            } else {
-                pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
-                                    "%s: plog:syslog global syslog, but not gateway",
-                                    PMIX_NAME_PRINT(&pmix_globals.myid));
-            }
+        /* another module may already have serviced this entry - the
+         * marks are there so we don't log it a second time */
+        if (PMIX_INFO_OP_IS_COMPLETE(&data[n])) {
+            continue;
         }
+        if (!PMIX_CHECK_KEY(&data[n], PMIX_LOG_SYSLOG) &&
+            !PMIX_CHECK_KEY(&data[n], PMIX_LOG_LOCAL_SYSLOG) &&
+            !PMIX_CHECK_KEY(&data[n], PMIX_LOG_GLOBAL_SYSLOG)) {
+            continue;
+        }
+        /* the value's type is the caller's to set, and for a client's
+         * PMIx_Log that caller is on the far end of a socket - confirm
+         * it is a string before syslog() renders it with %s */
+        if (PMIX_STRING != data[n].value.type) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_INFO_OP_COMPLETED(&dt[n]);
+            continue;
+        }
+        msg = data[n].value.data.string;
+
+        if (PMIX_CHECK_KEY(&data[n], PMIX_LOG_GLOBAL_SYSLOG) &&
+            !PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
+            /* only a gateway can reach the global syslog. Leave the
+             * entry unmarked and uncounted so the framework can tell
+             * the caller we did not service it - a client that hears
+             * "success" here would never fall back to anyone who can */
+            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                                "%s: plog:syslog global syslog, but not gateway",
+                                PMIX_NAME_PRINT(&pmix_globals.myid));
+            continue;
+        }
+
+        pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                            "%s: plog:syslog delivering to %s syslog",
+                            PMIX_NAME_PRINT(&pmix_globals.myid),
+                            PMIX_CHECK_KEY(&data[n], PMIX_LOG_GLOBAL_SYSLOG) ? "global" : "local");
+        rc = write_local(source, timestamp, pri, msg);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        PMIX_INFO_OP_COMPLETED(&dt[n]);
+        ++nhandled;
     }
 
+    /* saying "success" for a request we did not actually service would
+     * swallow a PMIX_LOG_ONCE and starve the channel the caller wanted */
+    if (0 == nhandled) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
     return PMIX_SUCCESS;
 }
 
-static char *sev2str(int severity)
+static const char *sev2str(int severity)
 {
     switch (severity) {
     case LOG_EMERG:
@@ -180,17 +213,26 @@ static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp,
                                  int severity, char *msg)
 {
     char tod[48];
+    size_t len;
 
     pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
                         "plog:syslog:mylog function called with severity %d", severity);
 
     if (0 < timestamp) {
-        /* If there was a message, output it */
-        (void) ctime_r(&timestamp, tod);
-        /* trim the newline */
-        tod[strlen(tod)-1] = '\0';
+        /* ctime_r is allowed to decline a time it cannot represent, and
+         * it leaves the buffer untouched when it does - so the result
+         * has to be checked before it is indexed into */
+        if (NULL == ctime_r(&timestamp, tod)) {
+            pmix_strncpy(tod, "unknown", sizeof(tod) - 1);
+        } else {
+            /* trim the newline */
+            len = strlen(tod);
+            if (0 < len && '\n' == tod[len - 1]) {
+                tod[len - 1] = '\0';
+            }
+        }
     } else {
-        strcpy(tod, "N/A");
+        pmix_strncpy(tod, "N/A", sizeof(tod) - 1);
     }
 
     syslog(severity, "%s %s:%s PROC %s REPORTS: %s", tod, PMIX_NAME_PRINT(&pmix_globals.myid),

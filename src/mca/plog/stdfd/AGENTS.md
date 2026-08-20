@@ -72,8 +72,15 @@ For each not-yet-complete data item, `mylog` matches `PMIX_LOG_STDERR` or
 
 For the server path, `mylog` allocates a small
 `pmix_iof_deliver_t` object (defined locally) that carries a copy of the
-source `pmix_proc_t` and a `pmix_byte_object_t` holding the message bytes
-(NUL terminator included). This is passed to the **non-blocking**
+source `pmix_proc_t` and a `pmix_byte_object_t` holding the message
+bytes. The buffer is NUL-terminated but the terminator is **not** part of
+`bo.size`: IOF writes exactly the bytes it is handed, so counting it put
+a stray NUL into the stream — and under `PMIX_LOG_XML_OUTPUT` a literal
+`&#000;`, since the formatter escapes every non-printable byte. For the
+same reason an empty log string is never forwarded at all: a zero-length
+payload is how IOF is told that a source closed its stream, and
+`pmix_iof_write_handler` responds by closing the descriptor. This is
+passed to the **non-blocking**
 `PMIx_server_IOF_deliver`; the completion callback `lkcbfunc` simply
 `PMIX_RELEASE`s the object. This is deliberate:
 
@@ -90,14 +97,34 @@ source `pmix_proc_t` and a `pmix_byte_object_t` holding the message bytes
 
 ### Return code
 
-`mylog` starts `rc = PMIX_ERR_TAKE_NEXT_OPTION` and only sets success via
-the IOF path. If none of the data keys are stdout/stderr it returns
-`PMIX_ERR_TAKE_NEXT_OPTION`, correctly telling the router "not mine, try
-the next module." If there is no data at all it returns
-`PMIX_ERR_NOT_AVAILABLE`. Note it does **not** call
-`PMIX_INFO_OP_COMPLETED` on the client/tool `fprintf` path — worth keeping
-in mind if you extend it to cooperate with other modules on the same
-array.
+`mylog` counts the entries it actually delivered and returns
+`PMIX_SUCCESS` when that count is non-zero, `PMIX_ERR_TAKE_NEXT_OPTION`
+when it is zero — correctly telling the router "not mine, try the next
+module." If there is no data at all it returns `PMIX_ERR_NOT_AVAILABLE`,
+and a failed `PMIx_server_IOF_deliver` is returned as the hard error it
+is.
+
+The counter matters. This used to be a single `rc` initialized to
+`PMIX_ERR_TAKE_NEXT_OPTION` and assigned only on the IOF path, so a
+client or tool — which takes the *other* branch and writes to its own
+stream — reported "not mine" for output it had just printed. The router
+collapsed that to `PMIX_ERR_NOT_AVAILABLE`, which is precisely the status
+`log_cbfunc` in [`src/common/pmix_log.c`](../../../common/pmix_log.c)
+treats as "retry this locally."
+
+Every delivered entry is marked with `PMIX_INFO_OP_COMPLETED`, on both
+the client/tool and the server branch, so a second module walking the
+same array does not log it again. Malformed entries (see below) are
+marked too.
+
+### The value's type is not to be trusted
+
+`PMIX_LOG_STDOUT` / `PMIX_LOG_STDERR` are documented as carrying a
+`char*`, but the `pmix_value_t` a server sees came off a socket from a
+client, so `mylog` confirms `PMIX_STRING == value.type` and a non-NULL
+string before anything calls `strlen()` on it. A malformed entry gets a
+`PMIX_ERROR_LOG`, is marked complete, and is skipped; it does not abort
+delivery of the other entries. See the framework `AGENTS.md`.
 
 ### Output-formatting directives
 
@@ -126,6 +153,10 @@ stamp — unlike the `syslog`/`smtp` components, which do print the supplied
 value. Reconciling that would mean teaching the shared formatter to accept
 a caller-supplied timestamp; it is intentionally left as a central,
 IOF-wide change rather than a `stdfd`-local divergence.
+
+The client/tool path flushes the stream after writing: a log message is
+often the last thing a failing process emits, and an abort discards
+whatever is still sitting in the stdio buffer.
 
 The formatted bytes are written directly on the client/tool path
 (`fwrite`) and handed to IOF on the server path (the `pmix_iof_deliver_t`
