@@ -15,23 +15,14 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
-#include <errno.h>
-#ifdef HAVE_UNISTD_H
-#    include <unistd.h>
-#endif /* HAVE_UNISTD_H */
 #ifdef HAVE_STRING_H
 #    include <string.h>
 #endif /* HAVE_STRING_H */
-#include <pthread.h>
-#include <stdio.h>
-#include <event.h>
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
-#include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
-#include "src/util/pmix_show_help.h"
 
 #include "psensor_heartbeat.h"
 #include "src/mca/psensor/base/base.h"
@@ -339,7 +330,6 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(ft);
     PMIX_HIDE_UNUSED_PARAMS(fd, dummy);
-
 
     pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] sensor:check_heartbeat for proc %s:%d", pmix_globals.myid.nspace,

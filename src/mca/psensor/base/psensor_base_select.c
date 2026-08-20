@@ -110,5 +110,4 @@ int pmix_psensor_base_select(void)
     }
 
     return PMIX_SUCCESS;
-    ;
 }
