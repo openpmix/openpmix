@@ -201,11 +201,12 @@ static const char *message_cb(void **buf, int *len, void *arg)
 static pmix_status_t send_email(char *msg, char *from, char *addrs,
                                 char *subject, time_t timestamp)
 {
-    int i, err = PMIX_SUCCESS;
+    int i;
+    pmix_status_t err = PMIX_SUCCESS;
     char *str = NULL;
     char **myaddrs = NULL;
     char *myfrom;
-    char *errmsg = NULL;
+    const char *errmsg = NULL;
     struct sigaction sig, oldsig;
     bool set_oldsig = false;
     smtp_session_t session = NULL;
@@ -261,7 +262,7 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     session = smtp_create_session();
     if (NULL == session) {
         err = PMIX_ERR_NOT_SUPPORTED;
-        errmsg = "stmp_create_session";
+        errmsg = "smtp_create_session";
         goto error;
     }
 
@@ -269,7 +270,7 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     message = smtp_add_message(session);
     if (NULL == message) {
         err = PMIX_ERROR;
-        errmsg = "stmp_add_message";
+        errmsg = "smtp_add_message";
         goto error;
     }
 
@@ -277,7 +278,7 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     pmix_asprintf(&str, "%s:%d", c->server, c->port);
     if (0 == smtp_set_server(session, str)) {
         err = PMIX_ERROR;
-        errmsg = "stmp_set_server";
+        errmsg = "smtp_set_server";
         goto error;
     }
     free(str);
@@ -286,14 +287,14 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     /* Add the sender */
     if (0 == smtp_set_reverse_path(message, c->from_addr)) {
         err = PMIX_ERROR;
-        errmsg = "stmp_set_reverse_path";
+        errmsg = "smtp_set_reverse_path";
         goto error;
     }
 
     // set the "To" header
     if (0 == smtp_set_header(message, "To", NULL, NULL)) {
         err = PMIX_ERROR;
-        errmsg = "stmp_set_header TO";
+        errmsg = "smtp_set_header TO";
         goto error;
     }
 
@@ -301,7 +302,7 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     for (i = 0; NULL != myaddrs[i]; ++i) {
         if (NULL == smtp_add_recipient(message, myaddrs[i])) {
             err = PMIX_ERR_OUT_OF_RESOURCE;
-            errmsg = "stmp_add_recipient";
+            errmsg = "smtp_add_recipient";
             goto error;
         }
     }

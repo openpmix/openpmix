@@ -61,19 +61,16 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
         for (n = 0; n < ndirs; n++) {
             if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_ONCE)) {
                 logonce = PMIX_INFO_TRUE(&directives[n]);
-            }
-            else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_AGG)) {
-                    agg = PMIX_INFO_TRUE(&directives[n]);
-            }
-            else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_KEY)) {
+            } else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_AGG)) {
+                agg = PMIX_INFO_TRUE(&directives[n]);
+            } else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_KEY)) {
                 /* the type of the value is under the caller's control,
                  * and this one is handed to strcmp - so confirm it is
                  * really a string before reading the union as one */
                 if (PMIX_STRING == directives[n].value.type) {
                     key = directives[n].value.data.string;
                 }
-            }
-            else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_VAL)) {
+            } else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_VAL)) {
                 if (PMIX_STRING == directives[n].value.type) {
                     val = directives[n].value.data.string;
                 }
