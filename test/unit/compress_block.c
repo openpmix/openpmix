@@ -296,6 +296,129 @@ int main(int argc, char **argv)
         str = NULL;
     }
 
+    /* --- a blob too short to carry its own length prefix --------------
+     *
+     * Every entry point that inflates starts by reading the 4-byte raw-length
+     * prefix and then sizing the payload as len - 4.  Both steps trust a
+     * length that generally came off a peer's wire: a byte object out of a
+     * modex, a regex a peer declared the size of, or whatever a caller passed
+     * PMIx_Data_decompress - which screens only for a NULL pointer.  Below
+     * four bytes the read runs off the end and the subtraction underflows,
+     * handing the inflater roughly four billion bytes of "input" to walk.
+     *
+     * zlib and zlibng screened their string entry point for this and not
+     * their block one, which is the asymmetry this covers.  Component
+     * agnostic on purpose: the contract is "refuse, do not read", and all
+     * four must honor it at both entry points. */
+    {
+        uint8_t shortblob[8];
+        size_t k;
+
+        memset(shortblob, 0, sizeof(shortblob));
+
+        for (k = 0; k < sizeof(uint32_t); k++) {
+            back = (uint8_t *) 0x1;
+            backlen = 1;
+            CHECK(!pmix_compress.decompress(&back, &backlen, shortblob, k),
+                  "decompress accepted a %zu-byte blob, which cannot hold the "
+                  "4-byte length prefix it is about to read", k);
+            CHECK(0 == backlen, "decompress refused a %zu-byte blob but still "
+                  "reported %zu bytes of output", k, backlen);
+
+            if (NULL != pmix_compress.decompress_string) {
+                strback = (char *) 0x1;
+                CHECK(!pmix_compress.decompress_string(&strback, shortblob, k),
+                      "decompress_string accepted a %zu-byte blob", k);
+                CHECK(NULL == strback,
+                      "decompress_string refused a %zu-byte blob but left a "
+                      "non-NULL string behind", k);
+            }
+        }
+
+        /* NULL with a length that would otherwise pass the size screen */
+        back = (uint8_t *) 0x1;
+        backlen = 1;
+        CHECK(!pmix_compress.decompress(&back, &backlen, NULL, 64),
+              "decompress accepted a NULL buffer");
+        if (NULL != pmix_compress.decompress_string) {
+            strback = (char *) 0x1;
+            CHECK(!pmix_compress.decompress_string(&strback, NULL, 64),
+                  "decompress_string accepted a NULL buffer");
+        }
+
+        /* A blob long enough to read, whose prefix claims nothing inflates
+         * out of it.  0 is the "I cannot answer" sentinel every one of these
+         * entry points shares with the base default and with bfrops'
+         * decompressed_strlen() fallback, so the strlen variant must not turn
+         * it into 0 + 1 and report a one-byte string. */
+        bo.bytes = (char *) shortblob;
+        bo.size = sizeof(shortblob);
+        if (NULL != pmix_compress.get_decompressed_size) {
+            CHECK(0 == pmix_compress.get_decompressed_size(&bo),
+                  "get_decompressed_size invented %zu bytes for a zero prefix",
+                  pmix_compress.get_decompressed_size(&bo));
+        }
+        if (NULL != pmix_compress.get_decompressed_strlen) {
+            CHECK(0 == pmix_compress.get_decompressed_strlen(&bo),
+                  "get_decompressed_strlen gave %zu for a zero prefix; 0 is the "
+                  "sentinel the other components and the base default return",
+                  pmix_compress.get_decompressed_strlen(&bo));
+        }
+        back = NULL;
+        strback = NULL;
+    }
+
+    /* --- a blob some OTHER component produced ------------------------
+     *
+     * The blob format carries a raw-length prefix and says nothing about
+     * what the payload is, so a blob is not self-describing: `zstd` and
+     * `lz4` emit frames a DEFLATE reader cannot read, and vice versa.  Every
+     * node in a job is therefore required to run the same component (see
+     * ../AGENTS.md) - but when that is violated the result must be a clean
+     * refusal, not a plausible-looking inflation of the wrong bytes into the
+     * modex.
+     *
+     * `zstd` and `lz4` get this by checking their own frame magic.  `zlib`
+     * and `zlibng` get it from the DEFLATE header's own checksum, which
+     * rejects both of those magics - which is worth pinning down precisely
+     * because it is a property of the format rather than a check anyone
+     * wrote.  Each payload below is a valid frame header for one of the
+     * three formats followed by bytes that cannot continue it, so the
+     * correct answer for every component is false. */
+    {
+        static const struct {
+            const char *what;
+            uint8_t magic[4];
+            size_t nmagic;
+        } foreign[] = {
+            {"a zstd frame",   {0x28, 0xB5, 0x2F, 0xFD}, 4},
+            {"an lz4 frame",   {0x04, 0x22, 0x4D, 0x18}, 4},
+            {"a DEFLATE blob", {0x78, 0x9C, 0x00, 0x00}, 2},
+        };
+        uint8_t blob[64];
+        size_t f;
+
+        for (f = 0; f < sizeof(foreign) / sizeof(foreign[0]); f++) {
+            uint32_t claim = 128;
+
+            memset(blob, 0xFF, sizeof(blob));
+            memcpy(blob, &claim, sizeof(uint32_t));
+            memcpy(blob + sizeof(uint32_t), foreign[f].magic, foreign[f].nmagic);
+
+            back = NULL;
+            backlen = 0;
+            if (pmix_compress.decompress(&back, &backlen, blob, sizeof(blob))) {
+                /* Only tolerable if it genuinely reproduced what the prefix
+                 * promised - which these payloads cannot. */
+                CHECK(false, "decompress accepted %s that this component did "
+                      "not write, yielding %zu bytes", foreign[f].what, backlen);
+                free(back);
+                back = NULL;
+            }
+        }
+        backlen = 0;
+    }
+
     if (NULL != str) {
         free(str);
     }

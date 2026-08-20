@@ -15,8 +15,9 @@
 fork of zlib that is a drop-in replacement offering the same DEFLATE
 format at higher speed. Read the framework [`AGENTS.md`](../AGENTS.md)
 first; this file covers only what is specific to `zlibng`. It is the
-**preferred** compressor: when built, it outranks
-[`zlib`](../zlib/AGENTS.md) and is selected.
+**preferred DEFLATE** compressor: when built, it outranks
+[`zlib`](../zlib/AGENTS.md) and is selected in its place — but
+[`zstd`](../zstd/AGENTS.md), at priority 90, outranks them both.
 
 ## Files
 
@@ -38,11 +39,13 @@ If zlib-ng is not found the component is not compiled and never enters
 steer the search; requesting zlib-ng explicitly and not finding it is a
 hard configure error.
 
-Priority **75** is above `zlib`'s **50**, so on any host where zlib-ng was
-found `zlibng` is the module `pmix_mca_base_select` copies into
-`pmix_compress` — `zlib`, if also built, is present but unselected. This
-is how "use the faster library when it's available" is expressed without
-any runtime probing: it falls straight out of the priority ordering.
+Priority **75** sits above `lz4`'s **60** and `zlib`'s **50** and below
+`zstd`'s **90**. So on a host where zlib-ng was found but zstd was not,
+`zlibng` is the module `pmix_mca_base_select` copies into `pmix_compress`
+and `zlib`, if also built, is present but unselected; where zstd was also
+found, `zstd` wins and this component is built but idle. This is how "use
+the faster library when it's available" is expressed without any runtime
+probing: it falls straight out of the priority ordering.
 
 ## The module
 
@@ -59,8 +62,10 @@ pmix_compress_base_module_t pmix_pcompress_zlibng_module = {
 
 `init` and `finalize` are left `NULL`, exactly as in `zlib`.
 `get_decompressed_size` / `get_decompressed_strlen` are provided (reading
-the blob's 4-byte length prefix) because `bfrops` calls them unguarded —
-see the framework doc.
+the blob's 4-byte length prefix). `bfrops` no longer calls them unguarded
+— it substitutes 0 for a module that leaves the slot `NULL`, because a
+run-time-loadable component can be older than the `libpmix` that loads it
+— but a new module should still implement both. See the framework doc.
 
 ## What the functions do
 
@@ -76,11 +81,17 @@ API names carry the `zng_` prefix (`zng_stream`, `zng_deflateInit`,
   declines if the result is not strictly smaller than the input, then
   emits the shared framing: a leading host-order `uint32_t` uncompressed
   length followed by the DEFLATE stream.
-- **`compress_string`** — `strlen` + forward to `zlibng_compress`.
-- **`zlibng_decompress`** / **`decompress_string`** — read the 4-byte
-  length prefix and inflate the remainder via the local `doit`
-  (`zng_inflateInit` + one `Z_FINISH` `zng_inflate`); the string variant
-  treats `UINT32_MAX` as an error sentinel and NUL-terminates.
+- **`compress_string`** — `strlen` into a `size_t` + forward to
+  `zlibng_compress`. Narrowing to `uint32_t` here would compress a prefix
+  of a very long string and label the blob as the whole thing; above
+  `UINT32_MAX` the economy rule inside declines, which is where such an
+  input belongs.
+- **`zlibng_decompress`** / **`decompress_string`** — both screen for a
+  NULL buffer or a length below `sizeof(uint32_t)` (see the framework
+  doc's blob-screening rule), then read the 4-byte length prefix and
+  inflate the remainder via the local `doit` (`zng_inflateInit` + one
+  `Z_FINISH` `zng_inflate`); the string variant treats `UINT32_MAX` as an
+  error sentinel and NUL-terminates.
 
 Because zlib-ng emits the standard DEFLATE format and this component uses
 the **same** 4-byte framing as `zlib`, blobs are interchangeable between
@@ -90,9 +101,18 @@ built with `zlib`, and vice versa.
 ## Gotchas
 
 - **It must stay a mirror of `zlib`.** The two files differ only by the
-  `zng_` API prefix and the include. If you change framing, the level, or
-  the decline rules in one, change the other too, or the interchange
-  guarantee breaks.
+  `zng_` API prefix and the include. If you change framing, the level, the
+  decline rules, or the input screening in one, change the other too, or
+  the interchange guarantee breaks — and ask whether `zstd` and `lz4` need
+  it as well. All four are independent transcriptions of one contract,
+  which is how a guard ends up in three of them and not the fourth.
+- **`zng_stream`'s `avail_in`/`avail_out` are 32-bit, but `zng_deflateBound`
+  returns a `size_t`-width value and the framework's lengths are `size_t`.**
+  `zlibng_compress` refuses a bound above `UINT_MAX` rather than assigning
+  it: a truncated `avail_out` would leave the stream believing it had less
+  room than was allocated while the local `len` still recorded the full
+  amount, and the produced length computed from the two would overrun
+  `tmp`. `doit` screens both of its lengths for the same reason.
 - **The level is `pcompress_zlibng_level`, and it defaults to 2** — where
   `zlib` defaults to 1. Both used to be a hard-coded 9; see
   [`../zlib/AGENTS.md`](../zlib/AGENTS.md) for why that was the wrong end of

@@ -13,9 +13,9 @@
 `zlib` is the `pcompress` component that compresses through the classic
 [zlib](https://zlib.net/) library (`libz`). Read the framework
 [`AGENTS.md`](../AGENTS.md) first; this file covers only what is specific
-to `zlib`. It is the baseline compressor: broadly available, selected
-when built unless the faster [`zlibng`](../zlibng/AGENTS.md) was also
-built (which outranks it).
+to `zlib`. It is the baseline compressor: broadly available, and the lowest-ranked
+of the four, so it is selected only when it is the sole compression
+component in the build.
 
 ## Files
 
@@ -37,10 +37,11 @@ is not found the component is not compiled and never enters
 the search; requesting zlib explicitly and not finding it is a hard
 configure error.
 
-Because priority 50 is below `zlibng`'s 75, on a host where both
-libraries were found `zlib` is built but **not selected** —
-`pmix_mca_base_select` prefers `zlibng`. `zlib` therefore wins only when
-it is the sole compression component in the build.
+Priority 50 is the lowest in the framework — below `zstd` (90),
+`zlibng` (75) and `lz4` (60) — so on a host where any other compression
+library was also found `zlib` is built but **not selected**. `zlib`
+therefore wins only when it is the sole compression component in the
+build.
 
 ## The module
 
@@ -57,8 +58,10 @@ pmix_compress_base_module_t pmix_pcompress_zlib_module = {
 
 `init` and `finalize` are left `NULL`. `get_decompressed_size` /
 `get_decompressed_strlen` **are** provided (they read the blob's 4-byte
-length prefix) because `bfrops` calls them unguarded — see the framework
-doc.
+length prefix). `bfrops` no longer calls them unguarded — it substitutes
+0 for a module that leaves the slot `NULL`, because a run-time-loadable
+component can be older than the `libpmix` that loads it — but a new
+module should still implement both. See the framework doc.
 
 ## What the functions do
 
@@ -74,14 +77,20 @@ doc.
   into the leading 4 bytes (host-order `memcpy`), and copies the DEFLATE
   stream after it. This 4-byte-prefix framing is the shared format
   described in the framework doc.
-- **`compress_string`** — `strlen`s the input and forwards to
-  `zlib_compress`.
-- **`zlib_decompress`** — reads the leading 4-byte length, then calls the
-  local `doit` helper (`inflateInit` + a single `Z_FINISH` inflate into a
-  buffer of exactly that length) on the bytes past the prefix.
-- **`decompress_string`** — same, but treats a stored length of
-  `UINT32_MAX` as an error sentinel, allocates one extra byte, and forces
-  a NUL terminator on the inflated string.
+- **`compress_string`** — `strlen`s the input into a `size_t` and
+  forwards to `zlib_compress`. The width matters: narrowing to `uint32_t`
+  here would hand `zlib_compress` a length modulo 2^32 for a very long
+  string, and it would then compress a prefix and label the blob as the
+  whole string. Above `UINT32_MAX` the economy rule inside declines, which
+  is where such an input belongs.
+- **`zlib_decompress`** — screens for a NULL buffer or a length below
+  `sizeof(uint32_t)` (see the framework doc's blob-screening rule), reads
+  the leading 4-byte length, then calls the local `doit` helper
+  (`inflateInit` + a single `Z_FINISH` inflate into a buffer of exactly
+  that length) on the bytes past the prefix.
+- **`decompress_string`** — same screen, then the same inflate, but treats
+  a stored length of `UINT32_MAX` as an error sentinel, allocates one
+  extra byte, and forces a NUL terminator on the inflated string.
 - **`get_decompressed_size`** / **`get_decompressed_strlen`** — read the
   leading 4-byte length prefix and return the inflated size *without*
   inflating: `_size` returns the raw byte count, `_strlen` returns it +1
@@ -101,13 +110,33 @@ doc.
   **every link of the tree**, so that 1.8% only repays itself where the tree
   is very wide and the link slow; raise the parameter there.
 - **The size prefix is host byte order.** `memcpy` of the `uint32_t`, not
-  `htonl`. Fine on a single node and between the two components; a
-  cross-endian wire path would need a defined byte order (see the
+  `htonl`. Fine on a single node and between this component and `zlibng`;
+  a cross-endian wire path would need a defined byte order (see the
   framework doc).
+- **zlib's `avail_in`/`avail_out` are `uInt`, but `deflateBound` returns a
+  `uLong` and the framework's lengths are `size_t`.** On LP64 those are
+  not the same width. `zlib_compress` refuses a bound above `UINT_MAX`
+  rather than assigning it: a truncated `avail_out` would leave the stream
+  believing it had less room than was allocated while the local `len` still
+  recorded the full amount, and the produced length computed from the two
+  would overrun `tmp` in the memcpy that lifts the payload out. `doit`
+  screens both of its lengths for the same reason. Nothing this framework
+  compresses is anywhere near the ceiling; the screens are there so the
+  narrowing can never happen silently.
+- **A foreign blob is refused, but by accident rather than by a magic
+  check.** Unlike `zstd` and `lz4`, this component does not sniff a frame
+  header — it does not need to, because the DEFLATE header's own checksum
+  rejects both of their magics (`28 B5 ...` fails the FCHECK mod-31 test,
+  `04 22 ...` has an invalid compression method). The outcome is the same
+  clean `false`, and `test/unit/compress_block` pins it down so it stays
+  that way.
 - **Keep it a mirror of `zlibng`.** The two components are intentionally
   line-for-line parallel (only the `zng_`-prefixed API and header differ).
   Any fix here almost certainly belongs in `zlibng` too, or the "either
-  build produces interoperable blobs" guarantee breaks.
+  build produces interoperable blobs" guarantee breaks — and it is worth
+  asking whether `zstd` and `lz4` need it as well. All four are
+  independent transcriptions of one contract, which is how a guard ends up
+  in three of them and not the fourth.
 - The heavy lifting is zlib's; this file only frames the result and
   enforces the decline rules. Bugs in the DEFLATE stream itself belong to
   the system zlib, not here.

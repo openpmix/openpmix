@@ -108,10 +108,10 @@ implements; the rest stay `NULL`.
 | `finalize` | `(void) -> int` | teardown; called by base close only if non-`NULL` |
 | `compress` | `(const uint8_t *in, size_t size, uint8_t **out, size_t *nbytes) -> bool` | compress a byte block; `true` if it did |
 | `decompress` | `(uint8_t **out, size_t *outlen, const uint8_t *in, size_t len) -> bool` | inflate a block produced by `compress` |
-| `get_decompressed_size` | `(const pmix_byte_object_t *) -> size_t` | inflated size of a `PMIX_COMPRESSED_BYTE_OBJECT`, read from the blob's 4-byte length prefix; implemented by all three modules |
+| `get_decompressed_size` | `(const pmix_byte_object_t *) -> size_t` | inflated size of a `PMIX_COMPRESSED_BYTE_OBJECT`, read from the blob's 4-byte length prefix; implemented by every module. Returns **0** to mean "I cannot answer" |
 | `compress_string` | `(char *in, uint8_t **out, size_t *nbytes) -> bool` | compress a NUL-terminated string |
 | `decompress_string` | `(char **out, uint8_t *in, size_t len) -> bool` | inflate a string produced by `compress_string` |
-| `get_decompressed_strlen` | `(const pmix_byte_object_t *) -> size_t` | inflated length (+1 for the NUL) of a `PMIX_COMPRESSED_STRING`, read from the blob's 4-byte length prefix; implemented by all three modules |
+| `get_decompressed_strlen` | `(const pmix_byte_object_t *) -> size_t` | inflated length (+1 for the NUL) of a `PMIX_COMPRESSED_STRING`, read from the blob's 4-byte length prefix; implemented by every module. Returns **0** to mean "I cannot answer" |
 
 The return convention is a plain `bool`: `true` means "I compressed the
 data and `*out`/`*nbytes` are set," `false` means "I did not" (input too
@@ -122,12 +122,13 @@ caller ships the data uncompressed.
 ### The two fields nobody implements (and two that everybody does)
 
 `init` and `finalize` are declared in the struct but set by **neither**
-the base default module **nor** `zlib` **nor** `zlibng` **nor** `zstd` — they are always
+the base default module **nor** any of the four components — they are always
 `NULL` in practice. `finalize` is safely guarded (`pcompress_base_close`
 calls it only when non-`NULL`).
 
 `get_decompressed_size` and `get_decompressed_strlen`, by contrast, **are**
-implemented by every module (the base default, `zlib`, `zlibng`, and `zstd`).
+implemented by every module (the base default, `zlib`, `zlibng`, `zstd`
+and `lz4`).
 Their only call sites are in
 [`src/mca/bfrops/base/bfrop_base_fns.c`](../bfrops/base/bfrop_base_fns.c)
 (the `PMIX_COMPRESSED_STRING` / `PMIX_COMPRESSED_BYTE_OBJECT` cases of the
@@ -178,7 +179,7 @@ Two MCA parameters are registered in `pcompress_base_frame.c`
 
 | Parameter | Type / default | Meaning |
 |-----------|----------------|---------|
-| `pcompress_base_limit` | size_t, **1024** | value written into `compress_limit`; the byte threshold below which data is left uncompressed |
+| `pcompress_base_limit` | size_t, **256** | value written into `compress_limit`; the byte threshold below which data is left uncompressed |
 | `pcompress_base_silence_warning` | bool, **false** | value written into `silent`; suppresses the base default's "unavailable" warning |
 
 ### Choosing `compress_limit`
@@ -301,7 +302,7 @@ individually" above. Do not reintroduce either without reading it.
 
 ## The shared compressed-blob format
 
-Both real components produce and consume the **same** on-blob layout, and
+All four components produce and consume the **same** on-blob layout, and
 this is a contract, not an implementation detail:
 
 ```
@@ -331,6 +332,22 @@ this is a contract, not an implementation detail:
   supported, the fix is to make the blob self-describing across the whole
   framework — a scheme byte, or that sniff generalized into the base — not
   a per-component workaround.
+- **Every entry point that inflates must screen the blob before trusting
+  it.** `decompress` and `decompress_string` both read the 4-byte prefix
+  and then size the payload as `len - 4`, and the length is a claim that
+  generally came off a peer's wire — a byte object out of a modex, a
+  `pmix_regex2_t` carrying whatever length the peer declared, or whatever
+  a caller handed the public `PMIx_Data_decompress`, which screens for a
+  NULL pointer and nothing else. Below four bytes the prefix read runs off
+  the end and the subtraction underflows into roughly four billion bytes
+  of "input" for the inflater to walk. So each of the two entry points
+  begins with `if (NULL == in || len < sizeof(uint32_t)) return false;`
+  and `get_decompressed_size` applies the same test against `bo->size`.
+  This is a contract on the *slot*, not a property of any one component:
+  a caller cannot know which component will answer, so all of them must
+  screen or none of the screening counts. `test/unit/compress_block`
+  drives every entry point with blobs of length 0..3 and with NULL for
+  exactly this reason.
 - `compress` returns `false` (declines) when the input is shorter than
   `compress_limit`, when it is `>= UINT32_MAX` (the length would not fit
   the 4-byte prefix), or when the compressed result is **not** smaller
@@ -338,6 +355,15 @@ this is a contract, not an implementation detail:
   `true` return actually saved space.
 - `decompress_string` treats a stored `raw_length` of `UINT32_MAX` as an
   error sentinel and NUL-terminates the inflated string.
+- **`get_decompressed_size` / `get_decompressed_strlen` return 0 to mean
+  "I cannot answer."** That is what they return for a NULL or too-short
+  blob, and it is the value `bfrops`' `decompressed_size()` /
+  `decompressed_strlen()` substitute for a module that leaves the slot
+  `NULL` altogether. A stored length of zero is therefore also answered
+  as 0 by *both* — `get_decompressed_strlen` must not turn it into
+  `0 + 1` and report a one-byte string, because a zero prefix is not a
+  real blob (`compress` declines everything below `compress_limit`) and
+  the caller has no way to tell an invented 1 from a real one.
 
 Because the length prefix is host-endian, a compressed blob is **not**
 guaranteed portable across a big-endian/little-endian boundary. Today
@@ -354,8 +380,15 @@ rule: a new format means a new scheme, not a silent change to this one).
   instantiates the global `pmix_compress` (initialized to the base
   default stubs) and `pmix_compress_base`, registers the two MCA
   parameters, and opens all built components. `pmix_compress_base_close`
-  clears `selected`, calls the selected module's `finalize` if set, and
-  closes the components.
+  clears `selected`, calls the selected module's `finalize` if set,
+  **restores `pmix_compress` to the base default stubs**, and closes the
+  components. That restore matters: `components_close` `dlclose`s the
+  winning component — under `--enable-mca-dso` that is every component —
+  while `pmix_compress` is still holding six function pointers into it.
+  Clearing `selected` alone only guarantees that a later `select()` will
+  *run*; it does not guarantee it will *find* anything, and a select that
+  picks nothing leaves the stale pointers in place rather than replacing
+  them.
 - **`base/pcompress_base_select.c`** (`pmix_compress_base_select`) runs
   once, short-circuits if already `selected`, calls `pmix_mca_base_select`
   to pick the highest-priority module, runs its `init` if non-`NULL`, and
@@ -367,6 +400,14 @@ The framework is opened and selected during library init in
 [`src/runtime/pmix_init.c`](../../runtime/pmix_init.c) for **all** process
 roles (client, server, tool), and closed in
 [`src/runtime/pmix_finalize.c`](../../runtime/pmix_finalize.c).
+
+**Both writes to `pmix_compress` happen with no progress thread running**,
+which is what makes a plain struct assignment to a global that the progress
+thread later reads safe without any lock. `pmix_init.c` selects at line ~529
+and does not call `pmix_progress_thread_start()` until ~607; `pmix_finalize.c`
+calls `pmix_progress_thread_pause()` before it closes any framework. Do not
+add a path that re-selects or re-closes this framework while the progress
+thread is live without revisiting that.
 
 ## Threading
 
@@ -389,21 +430,35 @@ src/mca/pcompress/
 │   ├── pcompress_base_frame.c  open/close/register, framework decl, base default module
 │   ├── pcompress_base_select.c single-component selection
 │   └── help-pcompress.txt      the "unavailable" show_help topic
-├── zlib/                       zlib compressor (priority 50)
-└── zlibng/                     zlib-ng compressor (priority 75, preferred)
+├── zstd/                       zstd compressor (priority 90, preferred)
+├── zlibng/                     zlib-ng compressor (priority 75)
+├── lz4/                        LZ4 compressor (priority 60)
+└── zlib/                       zlib compressor (priority 50)
 ```
 
 ## Building
 
 The framework core (`base/`) is always built into `libpmix`. Each
 component is a standard MCA component **conditionally compiled** by its
-`configure.m4`: `zlib` builds only if `OAC_CHECK_PACKAGE` finds `zlib.h`
-+ `libz` (`deflate`); `zlibng` builds only if it finds `zlib-ng.h` +
-`libz-ng` (`zng_deflate`). Each honors `--with-zlib[-libdir]` /
-`--with-zlibng[-libdir]`, errors out if support was explicitly requested
-but not found, and adds its library to the `PMIX_EMBEDDED_*` flags and
-the configure summary. A host with neither library builds no component,
-and the framework runs on the base default no-op module.
+`configure.m4`, each probing for one header plus one symbol:
+
+| Component | header | symbol |
+|---|---|---|
+| `zlib` | `zlib.h` | `deflate` in `libz` |
+| `zlibng` | `zlib-ng.h` | `zng_deflate` in `libz-ng` |
+| `zstd` | `zstd.h` | `ZSTD_compress` in `libzstd` |
+| `lz4` | `lz4frame.h` | `LZ4F_compressFrame` in `liblz4` |
+
+Each honors `--with-<name>[-libdir]`, errors out if support was
+explicitly requested but not found, and adds its library to the
+`PMIX_EMBEDDED_*` flags and the configure summary. A host with none of
+the four libraries builds no component, and the framework runs on the
+base default no-op module.
+
+It is the **dev** package that decides this, not the runtime shared
+library — an image carrying `liblz4` without `liblz4-dev` silently drops
+the `lz4` component. `contrib/dockerswarm/Dockerfile` installs the dev
+packages for `zlib`, `zstd` and `lz4` for exactly that reason.
 
 Note the version macro every component opens with is
 **`PMIX_MCA_BASE_VERSION(pcompress)`**, which stamps in the framework's
@@ -429,10 +484,14 @@ Golden rules that bite here:
   The 4-byte length prefix + DEFLATE framing is shared across `zlib` and
   `zlib-ng` and may be read by a differently-built peer. A new format
   means a new component, exactly as with `bfrops` versions.
-- **Keep the two components byte-for-byte compatible.** `zlibng` is a
-  drop-in of `zlib`; any change to framing, the size prefix, or the
-  decline rules must land in *both* or the "either build works" guarantee
-  breaks.
+- **Keep `zlib` and `zlibng` byte-for-byte compatible.** `zlibng` is a
+  drop-in of `zlib` and the two files are line-for-line parallel; any
+  change to framing, the size prefix, the decline rules, or the input
+  screening must land in *both* or the "either build works" guarantee
+  breaks. In practice a fix found in one of them is a fix in the other,
+  and it is worth checking whether `zstd` and `lz4` need it too — the
+  four are independent transcriptions of one contract, which is exactly
+  how a guard ends up in three of them and not the fourth.
 - **Respect the decline contract.** `compress*` returning `false` is
   normal and callers depend on it (they ship uncompressed). Never make it
   return `true` with a result that is not strictly smaller than the input.
