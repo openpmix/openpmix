@@ -351,6 +351,25 @@ the real work on the progress thread:
    the peer's array index, runs the security handshake if the psec module
    asked for one, arms events, and flushes any cached notifications.
 
+**`PMIX_PSEC_VALIDATE_CONNECTION` can return
+`PMIX_ERR_READY_FOR_HANDSHAKE`, and that is a request, not a rejection.**
+A psec module that authenticates with a live exchange rather than with a
+credential leaves `validate_cred` NULL, and the macro reports that by
+handing back `PMIX_ERR_READY_FOR_HANDSHAKE`; the status has to survive
+all the way to `PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`, which runs the
+exchange and overwrites it with the real result. Both call sites here —
+the client path and the tool path — must therefore test
+
+```c
+if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
+```
+
+rather than `PMIX_SUCCESS != reply` alone. They once did the latter, and
+the effect was that no handshake-model module could complete a single
+connection. Nothing caught it because the only such module,
+`psec/dummy_handshake`, is built solely under `--enable-dummy-handshake`.
+See [`psec/AGENTS.md`](../psec/AGENTS.md).
+
 The `PMIX_PTL_PUT_*` (build) and `PMIX_PTL_GET_*` (parse) macro pairs are
 deliberately symmetric so the two ends can be read side by side. **The
 field order in the handshake is a wire-format contract** — per the
