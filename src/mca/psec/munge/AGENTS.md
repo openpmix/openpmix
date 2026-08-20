@@ -99,14 +99,29 @@ screen rather than open-coding the loop — see the framework
 
 ## Gotchas
 
+- **Testing this component needs a live `munged`.** It is not built at
+  all without libmunge, and it de-selects itself when the daemon is not
+  answering, so on an ordinary development machine every case in
+  `test/unit/psec_credentials.c` silently covers `native` only. The
+  PRRTE tree's `contrib/slurmswarm` image is a ready-made environment:
+  it installs `libmunge-dev` ahead of its PMIx build, so the component
+  compiles, and its entrypoint starts `munged`. Build this tree inside
+  that image and run the unit test, and `munge` gets examined on the
+  same terms as `native` — the test walks the *active* module list
+  rather than a fixed one, precisely so that costs nothing to arrange.
 - **`munge_decode()` takes a NUL-terminated C string; the credential
   arrives as counted bytes.** On the connection path the blob is whatever
   the peer sent — `ptl` `malloc`s `len` bytes and `memcpy`s them, with no
   terminator guaranteed — so handing `cred->bytes` straight to
   `munge_decode` lets a peer make it `strlen()` past the end of a heap
-  allocation. `validate_cred` therefore rejects a `NULL`, empty, or
-  unterminated credential with `PMIX_ERR_INVALID_CRED` before decoding.
-  Keep that check ahead of any future decode call.
+  allocation — confirmed under valgrind, which reports the invalid read
+  at `strlen` directly beneath `munge_decode` for an unterminated input.
+  `validate_cred` therefore rejects a `NULL`, empty, or unterminated
+  credential with `PMIX_ERR_INVALID_CRED` before decoding. Keep that
+  check ahead of any future decode call. Note that a *malformed* buffer
+  is not a reproducer: MUNGE refuses anything that does not look like a
+  credential before it measures it, so the overread needs a buffer it
+  keeps parsing.
 - **A failed `munge_encode` must leave `mycred` NULL, not dangling.** The
   refresh path frees the cached credential before asking for a new one;
   if the encode then fails and `mycred` still points at the freed block,

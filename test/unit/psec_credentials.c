@@ -9,7 +9,9 @@
 
 /*
  * Unit tests for the psec framework's credential contract
- * (src/mca/psec/base/psec_base_fns.c and src/mca/psec/native/psec_native.c).
+ * (src/mca/psec/base/psec_base_fns.c, src/mca/psec/native/psec_native.c,
+ * and - wherever libmunge and a live munged are present -
+ * src/mca/psec/munge/psec_munge.c).
  *
  * Three things are checked here, each of which was broken:
  *
@@ -34,12 +36,21 @@
  *    PMIX_USERID and PMIX_GRPID is what catches that: a re-broken module
  *    returns three empty entries.
  *
- * 3. The native credential round trip itself - create_cred on the
- *    connecting side, validate_cred on the accepting side - plus the
- *    rejections it owes its caller: a truncated credential, and a peer
- *    whose ptl protocol was never established (PMIX_PROTOCOL_UNDEF), for
- *    which there is neither a socket to interrogate nor a credential
- *    format to trust.
+ * 3. The credential round trip itself - create_cred on the connecting
+ *    side, validate_cred on the accepting side. This runs twice over
+ *    every *active* credential-model module, not over a fixed list, so
+ *    that a machine which has MUNGE examines `munge` on the same terms
+ *    as `native` without needing a second test. The second pass matters
+ *    for a module that caches: MUNGE credentials are single-use, so
+ *    munge re-encodes on every call after the first, and that refresh
+ *    path is where it used to leave the freed credential pointer
+ *    dangling for the next call to free again.
+ *
+ *    `native` then gets the extra examination its own credential format
+ *    calls for: the rejections it owes its caller for a truncated,
+ *    empty, or NULL credential, and for a peer whose ptl protocol was
+ *    never established (PMIX_PROTOCOL_UNDEF), for which there is
+ *    neither a socket to interrogate nor a credential format to trust.
  *
  * Like the pstat tests, this needs the MCA up but no server:
  * pmix_init_util() establishes the install dirs, the variable system and
@@ -56,6 +67,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/base/pmix_base.h"
+#include "src/class/pmix_list.h"
 #include "src/mca/psec/base/base.h"
 #include "src/runtime/pmix_init_util.h"
 
@@ -153,7 +165,7 @@ static void check_directives(void)
 }
 
 /* ---------------------------------------------------------------- */
-/* the native credential round trip                                  */
+/* credential round trips                                            */
 /* ---------------------------------------------------------------- */
 
 /* find the value of a key in a returned info array, or NULL */
@@ -167,6 +179,172 @@ static pmix_info_t *find_key(pmix_info_t *info, size_t ninfo, const char *key)
         }
     }
     return NULL;
+}
+
+/* Drive one module's create/validate pair twice, whatever module it is.
+ *
+ * Running this over every *active* module rather than over a fixed list
+ * is what gets `munge` covered: it builds only where libmunge is present
+ * and de-selects itself where munged is not answering, so on most
+ * development machines the actives list is just `native` and this is a
+ * second pass over it. In an environment that has MUNGE - the
+ * slurmswarm image in the PRRTE tree is one - `munge` is in the list at
+ * priority 80 and gets the identical examination for free.
+ *
+ * Twice, because the second pass is the interesting one for a module
+ * that caches: MUNGE credentials are single-use, so munge's create_cred
+ * re-encodes on every call after the first, and that refresh path is
+ * where it used to leave the cached credential dangling after a failed
+ * encode - freed once here, again on the next call, and a third time at
+ * finalize.
+ */
+static void module_round_trip(pmix_psec_module_t *mod, pmix_peer_t *peer, int pass)
+{
+    pmix_byte_object_t cred;
+    pmix_info_t *results = NULL, *ptr;
+    size_t nresults = 0;
+    pmix_status_t rc;
+    char label[256];
+    size_t seen_identity = 0;
+
+    snprintf(label, sizeof(label), "%s pass %d: create_cred succeeds", mod->name, pass);
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+    rc = mod->create_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report(label, PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS != rc) {
+        return;
+    }
+
+    snprintf(label, sizeof(label), "%s pass %d: create_cred names itself", mod->name, pass);
+    ptr = find_key(results, nresults, PMIX_CRED_TYPE);
+    report(label,
+           NULL != ptr && PMIX_STRING == ptr->value.type && NULL != ptr->value.data.string
+               && 0 == strcmp(ptr->value.data.string, mod->name));
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+        results = NULL;
+        nresults = 0;
+    }
+
+    snprintf(label, sizeof(label), "%s pass %d: validate_cred accepts it", mod->name, pass);
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report(label, PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+        return;
+    }
+
+    snprintf(label, sizeof(label), "%s pass %d: validate_cred names itself", mod->name, pass);
+    ptr = find_key(results, nresults, PMIX_CRED_TYPE);
+    report(label,
+           NULL != ptr && PMIX_STRING == ptr->value.type && NULL != ptr->value.data.string
+               && 0 == strcmp(ptr->value.data.string, mod->name));
+
+    /* A module that recovered an identity from the credential has to
+     * hand it back. This is the &(*info)[n] regression: written as
+     * info[n], entries 1 and 2 go through a garbage pointer and the
+     * array the caller sees keeps the zeros PMIX_INFO_CREATE left. */
+    seen_identity = nresults;
+    if (1 < nresults) {
+        snprintf(label, sizeof(label), "%s pass %d: validate_cred returns the uid", mod->name,
+                 pass);
+        ptr = find_key(results, nresults, PMIX_USERID);
+        report(label,
+               NULL != ptr && PMIX_UINT32 == ptr->value.type
+                   && (uint32_t) geteuid() == ptr->value.data.uint32);
+        snprintf(label, sizeof(label), "%s pass %d: validate_cred returns the gid", mod->name,
+                 pass);
+        ptr = find_key(results, nresults, PMIX_GRPID);
+        report(label,
+               NULL != ptr && PMIX_UINT32 == ptr->value.type
+                   && (uint32_t) getegid() == ptr->value.data.uint32);
+    }
+
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+        results = NULL;
+        nresults = 0;
+    }
+
+    /* A module that recovered an identity is one that actually reads the
+     * credential, so it owes its caller a rejection for one it did not
+     * issue - and, more to the point, must not read past the end of it.
+     *
+     * Two details make this case mean something, and getting either
+     * wrong turns it into a green line that asserts nothing:
+     *
+     * - The buffer is an *exact-sized* heap block of bytes that are not
+     *   a credential, with no NUL anywhere. That is how a credential
+     *   really arrives: ptl mallocs cred.size bytes and memcpys them
+     *   off the wire, so nothing follows them, and a peer chooses the
+     *   contents. Truncating a *valid* credential instead does not
+     *   reach the same code - MUNGE's parser stops at its own delimiter
+     *   well before the end, so such an input never runs off the block
+     *   and the case passes against a module with no length handling at
+     *   all.
+     * - What this case asserts is the rejection, and that is all it
+     *   asserts. It is deliberately *not* the reproducer for the
+     *   related overread, and should not be described as one: MUNGE
+     *   refuses a buffer that does not look like a credential before it
+     *   ever measures it, so this input is turned away without running
+     *   off the end. The overread needs an input MUNGE keeps parsing -
+     *   munge_decode() takes a NUL-terminated string and calls strlen()
+     *   on it, which valgrind reports as an invalid read directly
+     *   beneath munge_decode for an unterminated one. That is why
+     *   psec_munge.c checks for the terminator itself rather than
+     *   trusting the counted length, and it is a property of the
+     *   library rather than of anything reachable from here. Run this
+     *   program under valgrind anyway when changing how a module
+     *   inspects a credential.
+     */
+    if (1 < seen_identity) {
+        pmix_byte_object_t junk;
+
+        junk.size = cred.size;
+        junk.bytes = (char *) malloc(junk.size);
+        memset(junk.bytes, 0xAA, junk.size);
+
+        snprintf(label, sizeof(label), "%s pass %d: validate_cred rejects a junk credential",
+                 mod->name, pass);
+        rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &junk);
+        report(label, PMIX_SUCCESS != rc);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
+            nresults = 0;
+        }
+        free(junk.bytes);
+    }
+
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+}
+
+static void active_modules_round_trip(void)
+{
+    pmix_psec_base_active_module_t *active;
+    pmix_peer_t *peer;
+
+    /* a peer that looks like a V2 (tcp) connection from ourselves.
+     * native reads the protocol and the recorded uid/gid; munge and none
+     * ignore the protocol and read only the uid/gid */
+    peer = PMIX_NEW(pmix_peer_t);
+    peer->protocol = PMIX_PROTOCOL_V2;
+    peer->info = PMIX_NEW(pmix_rank_info_t);
+    peer->info->uid = geteuid();
+    peer->info->gid = getegid();
+
+    PMIX_LIST_FOREACH (active, &pmix_psec_globals.actives, pmix_psec_base_active_module_t) {
+        if (NULL == active->module->create_cred || NULL == active->module->validate_cred) {
+            /* a handshake-model module - it has no credential to trip */
+            continue;
+        }
+        module_round_trip(active->module, peer, 1);
+        module_round_trip(active->module, peer, 2);
+    }
+
+    PMIX_RELEASE(peer->info);
+    peer->info = NULL;
+    PMIX_RELEASE(peer);
 }
 
 static void native_round_trip(void)
@@ -366,6 +544,7 @@ int main(int argc, char **argv)
 
     check_directives();
     available_modules();
+    active_modules_round_trip();
     native_round_trip();
 
     (void) pmix_mca_base_framework_close(&pmix_psec_base_framework);

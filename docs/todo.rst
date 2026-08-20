@@ -589,16 +589,18 @@ Coverage gaps
   the handshake exchange, the way ``handshake_wait_time`` already bounds
   the connect-ack.  Recorded here so a new mechanism does not inherit it
   silently.
-* **``psec/munge`` still has no functional coverage.**  The 2026-08-20
-  ``src/mca/psec`` review fixed a double free on the credential-refresh
-  path, a heap overread from handing an unterminated wire credential to
-  ``munge_decode``, and the ``info[n]`` out-parameter corruption — all
-  reasoned from the source and compile-checked with
-  ``--enable-test-build``, none of it executed, because no development
-  machine here runs ``munged``.  The ``native`` equivalents of the same
-  three defects are covered by ``test/unit/psec_credentials.c``; the
-  ``munge`` ones are not.  Running them needs a host with a live MUNGE
-  daemon.
+* **``psec/munge``'s failed-encode path is still not executed.**  The
+  rest of the component now is: ``test/unit/psec_credentials.c`` drives
+  every *active* credential module rather than a fixed list, so on a host
+  with libmunge and a live ``munged`` it examines ``munge`` on the same
+  terms as ``native``.  The PRRTE tree's ``contrib/slurmswarm`` image is
+  such a host — it installs ``libmunge-dev`` before it builds PMIx, so
+  the component is compiled, and its entrypoint starts ``munged`` — and
+  the suite passes 62/62 there, valgrind-clean, with the ``info[n]``
+  defect confirmed to segfault it when reinstated.  What no test reaches
+  is the branch where ``munge_encode`` *fails* midway through a refresh,
+  which is where the dangling ``mycred`` lived; provoking it means making
+  ``munged`` fail on demand between two ``PMIx_Get_credential`` calls.
 * **The plog ``smtp`` component has never been run.**  It builds only
   where libesmtp is present, and exercising it needs a reachable SMTP
   server on top of that, so the fixes from the ``src/mca/plog`` review
