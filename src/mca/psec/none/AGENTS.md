@@ -66,8 +66,9 @@ pmix_psec_module_t pmix_none_module = {
   (`PMIX_HIDE_UNUSED_PARAMS`).
 - **`validate_cred`** "always reports valid." It performs no credential
   check at all. Its only real logic is the `PMIX_CRED_TYPE` directive
-  handling shared by all the modules: if the caller named specific
-  mechanisms and `"none"` is not among them, it returns
+  handling shared by all the modules — `pmix_psec_base_check_directives()`,
+  see the framework [`AGENTS.md`](../AGENTS.md): if the caller named
+  specific mechanisms and `"none"` is not among them, it returns
   `PMIX_ERR_NOT_SUPPORTED`; otherwise it fills `*info` with a single
   `PMIX_CRED_TYPE = "none"` entry and returns `PMIX_SUCCESS`.
 

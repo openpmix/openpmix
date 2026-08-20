@@ -73,18 +73,59 @@ test what it exists to test.
   (`"PMIX_PSEC_DUMMY_HANDSHAKE_STRING"`) then the string itself over the
   socket using `pmix_ptl_base_send_blocking`, then reads back a status
   word from the client with `pmix_ptl_base_recv_blocking`.
-- **`client_hndshk(int sd)`** reads the length then the string, verifies
-  the length and bytes match the expected magic string (returning
-  `PMIX_ERR_HANDSHAKE_FAILED` on mismatch), and sends `PMIX_SUCCESS` back
-  to the server.
+- **`client_hndshk(int sd)`** reads the length, checks it against the
+  expected magic string's length *before* allocating anything from it,
+  then reads and compares the bytes (returning `PMIX_ERR_HANDSHAKE_FAILED`
+  on mismatch) and sends `PMIX_SUCCESS` back to the server.
 
 Both call the `ptl` base blocking send/recv helpers directly — this is
 one of the few places outside `ptl` that touches the socket fd, which is
 legitimate here because the handshake owns the connection during setup,
 before steady-state traffic begins.
 
+## Building and running it
+
+`--enable-dummy-handshake` is the only way this component gets any
+coverage at all, and it is worth actually exercising after touching
+either this file or the `psec`/`ptl` handshake plumbing:
+
+```sh
+./configure <your usual options> --enable-dummy-handshake
+make -j && cd test && TMPDIR=$(mktemp -d) make check
+```
+
+Because it queries at priority 100, every connection in the suite then
+runs through the handshake path rather than through `native` — which
+makes an ordinary `make check` a real end-to-end test of that path.
+
+Two things had gone wrong precisely because nobody was running it:
+
+- The component **did not compile** under `--enable-devel-check`:
+  `create_cred` ignores five of its six parameters and had no
+  `PMIX_HIDE_UNUSED_PARAMS`, so `-Wunused-parameter` turned into
+  `-Werror`. Nothing else in the tree builds this file, so CI never saw
+  it.
+- Once it did compile, no connection could complete, because both
+  `PMIX_PSEC_VALIDATE_CONNECTION` call sites in `ptl` treated
+  `PMIX_ERR_READY_FOR_HANDSHAKE` as a failure and aborted before running
+  the handshake. See "Negotiation" in the framework
+  [`AGENTS.md`](../AGENTS.md).
+
+If you enable it and connections fail, suspect the plumbing before
+suspecting this component.
+
 ## Gotchas
 
+- **The size word is read off the socket before it is trusted.**
+  `client_hndshk` compares it to the expected length first and only then
+  `malloc`s, because the value comes from the far end: sizing an
+  allocation from it directly means a bogus length turns into a failed
+  `malloc` and a write through NULL. Keep the check ahead of the
+  allocation.
+- **The length is sent as a raw host-format `size_t`**, as is the status
+  word, so this component only interoperates between peers of identical
+  width and endianness. That is acceptable for a test harness and is not
+  a pattern to copy into a real mechanism.
 - **Never ship this enabled.** It provides no real authentication; it is a
   test harness for the handshake plumbing. It is off by default for that
   reason — keep it that way.

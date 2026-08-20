@@ -156,7 +156,8 @@ Review coverage
 Assessed on **2026-08-15** from the commit history, and refreshed on
 **2026-08-20** when the ``src/mca/pnet``, ``src/mca/preg``,
 ``src/mca/pgpu``, ``src/mca/pmdl``, ``src/mca/pcompress``,
-``src/mca/plog`` and ``src/mca/psensor`` reviews landed.  Move an entry out
+``src/mca/plog``, ``src/mca/psensor`` and ``src/mca/psec`` reviews landed.
+Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
 
@@ -174,8 +175,9 @@ Reviewed and current
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
 ``src/mca/pcompress``, ``src/mca/pgpu``, ``src/mca/plog``,
-``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/psensor``,
-``src/mca/pstat``, ``src/mca/ptl``, and ``bindings/python``.
+``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/psec``,
+``src/mca/psensor``, ``src/mca/pstat``, ``src/mca/ptl``, and
+``bindings/python``.
 ``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
 ``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
 below.
@@ -189,9 +191,6 @@ size, which is a rough proxy for how much there is to find.
 
 * ``src/util/keyval`` — 2397 lines of lexer and parser, and the only
   directory in ``src/`` with **no** ``AGENTS.md`` at all.
-* ``src/mca/psec`` (with ``native``, ``none``, ``munge``,
-  ``dummy_handshake``) — 1901 lines.  This is the connection-handshake
-  code; two small fixes on 2026-07-14/15 are all it has had.
 * ``src/mca/pdl``, ``src/mca/pinstalldirs``, ``src/mca/pif`` — about
   3200 lines between them, and the lowest risk of the group.
 * ``src/threads`` — 737 lines.  The 2026-07-17 cleanup fixed a TSD key
@@ -577,6 +576,29 @@ Coverage gaps
   covered instead (``run_monitor.pl``'s capped monitor), because a
   request can be given an allowance no run can spend; there is no
   equivalent for "must not alert on the first look".
+* **A handshake-model psec module blocks the progress thread for as long
+  as its peer takes to answer.**  ``PMIX_PSEC_SERVER_HANDSHAKE_IFNEED``
+  runs inside the ``ptl`` connection handler, on the progress thread,
+  with the socket deliberately still in blocking mode; a peer that
+  connects and then stops writing pins that thread until the socket
+  errors out.  This is intrinsic to the way ``ptl`` sequences the
+  connection handshake rather than anything ``psec`` chooses, and today
+  the only handshake-model module is ``dummy_handshake``, which is
+  test-only.  It becomes a real availability question the moment a
+  genuine one is written, and the fix belongs in ``ptl`` — a timeout on
+  the handshake exchange, the way ``handshake_wait_time`` already bounds
+  the connect-ack.  Recorded here so a new mechanism does not inherit it
+  silently.
+* **``psec/munge`` still has no functional coverage.**  The 2026-08-20
+  ``src/mca/psec`` review fixed a double free on the credential-refresh
+  path, a heap overread from handing an unterminated wire credential to
+  ``munge_decode``, and the ``info[n]`` out-parameter corruption — all
+  reasoned from the source and compile-checked with
+  ``--enable-test-build``, none of it executed, because no development
+  machine here runs ``munged``.  The ``native`` equivalents of the same
+  three defects are covered by ``test/unit/psec_credentials.c``; the
+  ``munge`` ones are not.  Running them needs a host with a live MUNGE
+  daemon.
 * **The plog ``smtp`` component has never been run.**  It builds only
   where libesmtp is present, and exercising it needs a reachable SMTP
   server on top of that, so the fixes from the ``src/mca/plog`` review
@@ -719,6 +741,21 @@ not "fixed" by a later reader.
   the request is then declined — declined, rather than failed, because a
   hard error out of ``allocate`` aborts the base's fan-out for every other
   component too.
+* **``psec/dummy_handshake`` sends its length and status words as raw
+  host-format ``size_t`` / ``pmix_status_t``.**  That means it only
+  interoperates between peers of identical width and endianness, which
+  would be a wire-format defect in a real mechanism.  It is not one here:
+  the component exists solely to exercise the ``ptl``/``psec`` handshake
+  plumbing, is built only under ``--enable-dummy-handshake``, and is
+  documented as not a pattern to copy.  Do not "fix" it by inventing a
+  wire encoding for a test harness.
+* **``pmix_psec_base_select`` sets ``pmix_psec_globals.selected`` before
+  it can fail.**  A select that ends with an empty actives list returns
+  ``PMIX_ERR_SILENT`` with the flag already true, so a second call would
+  return ``PMIX_SUCCESS`` over an unusable framework.  There is no second
+  call: ``pmix_init.c`` invokes it once and treats the failure as fatal
+  to library init.  Left as-is rather than adding a rollback for a path
+  that cannot be re-entered.
 * **The bare ``atomic_bool`` fields in ``pmix_globals_t``** are correct,
   merely inconsistent with the typedefs used elsewhere, and the
   ``PMIX_C_HAVE_*`` defines in the installed ``pmix_config.h`` are now
