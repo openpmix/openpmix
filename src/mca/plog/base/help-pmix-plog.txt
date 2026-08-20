@@ -1,7 +1,7 @@
 # -*- text -*-
 #
 # Copyright (c) 2018      Intel, Inc.  All rights reserved.
-# Copyright (c) 2025      Nanook Consulting  All rights reserved.
+# Copyright (c) 2025-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -28,13 +28,13 @@ parameter strings and their corresponding syslog levels
 recognized by PMIx include:
 
   Parameter       Level
-   err           LOG_ERR  (default)
+   err           LOG_ERR
    alert         LOG_ALERT
    crit          LOG_CRIT
    emerg         LOG_EMERG
    warn          LOG_WARNING
    not           LOG_NOTICE
-   info          LOG_INFO
+   info          LOG_INFO  (default)
    debug         LOG_DEBUG
 
 Please redefine the MCA parameter and try again.

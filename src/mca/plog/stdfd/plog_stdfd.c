@@ -100,7 +100,7 @@ static void lkcbfunc(pmix_status_t status, void *cbdata)
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
                            const pmix_info_t directives[], size_t ndirs)
 {
-    size_t n;
+    size_t n, nhandled = 0;
     pmix_status_t rc;
     pmix_iof_deliver_t *p;
     pmix_iof_flags_t flags = PMIX_IOF_FLAGS_STATIC_INIT;
@@ -109,6 +109,10 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     pmix_byte_object_t *formatted;
     const pmix_proc_t *name;
     FILE *stream;
+    /* completion is tracked in the caller's array - the framework and
+     * the other modules read those marks, so they are shared mutable
+     * state by design (see the plog AGENTS.md) */
+    pmix_info_t *dt = (pmix_info_t *) data;
 
     /* if there is no data, then we don't handle it */
     if (NULL == data || 0 == ndata) {
@@ -145,7 +149,6 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     name = (NULL == source) ? &pmix_globals.myid : source;
 
     /* check to see if there are any stdfd entries */
-    rc = PMIX_ERR_TAKE_NEXT_OPTION;
     for (n = 0; n < ndata; n++) {
         if (PMIX_INFO_OP_IS_COMPLETE(&data[n])) {
             continue;
@@ -157,6 +160,28 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
             channel = PMIX_FWD_STDOUT_CHANNEL;
             stream = stdout;
         } else {
+            continue;
+        }
+
+        /* the value's type is under the caller's control - and for a
+         * client's PMIx_Log that caller is on the other end of a socket
+         * - so confirm it really is a string before we hand the union
+         * to strlen() */
+        if (PMIX_STRING != data[n].value.type ||
+            NULL == data[n].value.data.string) {
+            /* nothing downstream can render this, so mark it done to
+             * keep another module from reading the union the same wrong
+             * way, and move on rather than aborting the whole request */
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_INFO_OP_COMPLETED(&dt[n]);
+            continue;
+        }
+        if ('\0' == data[n].value.data.string[0]) {
+            /* there is nothing to write - and a zero-length payload is
+             * how IOF is told that a stream has closed, so it must not
+             * be handed down as if it were output */
+            PMIX_INFO_OP_COMPLETED(&dt[n]);
+            ++nhandled;
             continue;
         }
 
@@ -178,15 +203,30 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
             PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
             /* we are the endpoint - write directly to our own stream */
             if (NULL != formatted) {
-                fwrite(formatted->bytes, 1, formatted->size, stream);
+                if (0 < formatted->size) {
+                    fwrite(formatted->bytes, 1, formatted->size, stream);
+                }
                 free(formatted->bytes);
                 free(formatted);
             } else {
                 fprintf(stream, "%s", data[n].value.data.string);
             }
+            /* a log message is frequently the last thing a failing
+             * process emits, so don't leave it sitting in a stdio
+             * buffer that an abort would discard */
+            fflush(stream);
+            PMIX_INFO_OP_COMPLETED(&dt[n]);
+            ++nhandled;
         } else {
             /* hand off to IOF for delivery to the source proc's stream */
             p = PMIX_NEW(pmix_iof_deliver_t);
+            if (NULL == p) {
+                if (NULL != formatted) {
+                    free(formatted->bytes);
+                    free(formatted);
+                }
+                return PMIX_ERR_NOMEM;
+            }
             PMIX_XFER_PROCID(&p->source, name);
             if (NULL != formatted) {
                 /* take ownership of the formatted bytes */
@@ -194,16 +234,36 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
                 p->bo.size = formatted->size;
                 free(formatted);
             } else {
-                p->bo.size = strlen(data[n].value.data.string) + 1; // include NULL terminator
-                p->bo.bytes = (char *) malloc(p->bo.size);
-                memcpy(p->bo.bytes, data[n].value.data.string, p->bo.size);
+                /* the terminating NULL is not part of the output - IOF
+                 * writes exactly the bytes it is given, so including it
+                 * would put a stray NUL in the stream (and, under xml
+                 * output, a literal "&#000;") */
+                p->bo.size = strlen(data[n].value.data.string);
+                p->bo.bytes = (char *) malloc(p->bo.size + 1);
+                if (NULL == p->bo.bytes) {
+                    PMIX_RELEASE(p);
+                    return PMIX_ERR_NOMEM;
+                }
+                memcpy(p->bo.bytes, data[n].value.data.string, p->bo.size + 1);
             }
             rc = PMIx_server_IOF_deliver(&p->source, channel, &p->bo, NULL, 0, lkcbfunc, (void *) p);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(p);
+                return rc;
             }
+            PMIX_INFO_OP_COMPLETED(&dt[n]);
+            ++nhandled;
         }
     }
-    return rc;
+
+    /* the framework reads this to decide whether the channel serviced
+     * the request: saying "success" for a request we did not actually
+     * handle would swallow a PMIX_LOG_ONCE and starve the channel the
+     * caller really wanted, while saying "take next option" for one we
+     * did handle makes a client log it a second time on its own */
+    if (0 == nhandled) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    return PMIX_SUCCESS;
 }

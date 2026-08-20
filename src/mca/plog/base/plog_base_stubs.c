@@ -35,6 +35,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
     pmix_list_t channels;
     char *key = NULL, *val = NULL;
     bool agg = true;  // default to aggregating show_help messages
+    bool suppressed = false;
     pmix_info_t *dt = (pmix_info_t*)data;
 
     if (!pmix_plog_globals.initialized) {
@@ -65,10 +66,17 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
                     agg = PMIX_INFO_TRUE(&directives[n]);
             }
             else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_KEY)) {
-                key = directives[n].value.data.string;
+                /* the type of the value is under the caller's control,
+                 * and this one is handed to strcmp - so confirm it is
+                 * really a string before reading the union as one */
+                if (PMIX_STRING == directives[n].value.type) {
+                    key = directives[n].value.data.string;
+                }
             }
             else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_VAL)) {
-                val = directives[n].value.data.string;
+                if (PMIX_STRING == directives[n].value.type) {
+                    val = directives[n].value.data.string;
+                }
             }
         }
         if (agg && NULL != key && NULL != val) {
@@ -78,6 +86,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
                     // mark this as complete so we don't log it again.
                     PMIX_INFO_OP_COMPLETED(&dt[k]);
                 }
+                suppressed = true;
             }
         }
     }
@@ -126,6 +135,16 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
          * release the members */
         while (NULL != pmix_list_remove_first(&channels));
         PMIX_DESTRUCT(&channels);
+
+        if (suppressed) {
+            /* every entry was deliberately withheld as a duplicate, so
+             * the request _was_ serviced. Saying otherwise would tell a
+             * client that we could not handle it, and the client would
+             * then log the message all over again against its own
+             * modules - which is precisely what aggregation exists to
+             * prevent */
+            return PMIX_SUCCESS;
+        }
 
         // Cannot process the request as none of the requested
         // channels is available
