@@ -355,6 +355,16 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
     int rc = pmix_thread_start(&trk->engine);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        /* we claimed the tracker was active before creating the thread,
+         * so take that back - there is no engine. The resume path leaves
+         * a failed tracker on the list, and everything that later stops
+         * or finalizes it gates on ev_active: it would post a flush event
+         * to a base nobody is driving and then wait forever for it, and
+         * then ask to join a thread that was never started */
+        trk->ev_active = false;
+        if (0 == strcmp(trk->name, shared_thread_name)) {
+            pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
+        }
         return rc;
     }
 
