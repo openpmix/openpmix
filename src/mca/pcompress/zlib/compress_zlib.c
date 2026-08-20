@@ -20,12 +20,6 @@
 
 #include <limits.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#if HAVE_UNISTD_H
-#    include <unistd.h>
-#endif /* HAVE_UNISTD_H */
 #if PMIX_TESTBUILD
 #    include "testbuild_zlib.h"
 #else
@@ -33,13 +27,9 @@
 #endif
 
 #include "src/include/pmix_stdint.h"
-#include "src/util/pmix_argv.h"
 #include "src/util/pmix_output.h"
-#include "src/util/pmix_environ.h"
-#include "src/util/pmix_printf.h"
 
 #include "pmix_common.h"
-#include "src/util/pmix_basename.h"
 
 #include "src/mca/pcompress/base/base.h"
 
@@ -108,7 +98,7 @@ static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbyt
         (void) deflateEnd(&strm);
         return false;
     }
-    strm.next_in = (uint8_t*)inbytes;
+    strm.next_in = (uint8_t *) inbytes;
     strm.avail_in = inlen;
 
     /* allocating the upper bound guarantees zlib will
@@ -202,7 +192,7 @@ static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t
         return false;
     }
     strm.avail_in = inlen;
-    strm.next_in = (uint8_t*)inbytes;
+    strm.next_in = (uint8_t *) inbytes;
     strm.avail_out = len2;
     strm.next_out = dest;
 
@@ -215,6 +205,7 @@ static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t
     free(dest);
     return false;
 }
+
 static bool zlib_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *inbytes, size_t inlen)
 {
     uint32_t len2;

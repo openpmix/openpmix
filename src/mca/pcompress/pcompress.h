@@ -80,7 +80,7 @@ typedef size_t (*pmix_compress_base_module_get_decompressed_size_fn_t)(const pmi
 /**
  * Structure for COMPRESS components.
  */
-typedef  pmix_mca_base_component_t pmix_compress_base_component_t;
+typedef pmix_mca_base_component_t pmix_compress_base_component_t;
 
 /**
  * Structure for COMPRESS modules
@@ -130,4 +130,4 @@ PMIX_EXPORT extern pmix_compress_base_module_t pmix_compress;
 }
 #endif
 
-#endif /* PMIX_COMPRESS_H */
+#endif /* PMIX_MCA_COMPRESS_H */
