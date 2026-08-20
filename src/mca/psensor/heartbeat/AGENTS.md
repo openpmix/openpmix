@@ -11,8 +11,8 @@
 # AGENTS.md: The PSENSOR `heartbeat` Component
 
 `heartbeat` is the `psensor` component that watches for periodic
-`PMIx_Heartbeat()` beacons from a monitored process and raises
-`PMIX_MONITOR_HEARTBEAT_ALERT` when they stop arriving. Read the framework
+`PMIx_Heartbeat()` beacons from a monitored process and alerts when they
+stop arriving. Read the framework
 [`AGENTS.md`](../AGENTS.md) first; this file covers only what is specific
 to `heartbeat`. It claims a start request whose `monitor->key` is
 `PMIX_MONITOR_HEARTBEAT`.
@@ -33,6 +33,11 @@ to `heartbeat`. It claims a start request whose `monitor->key` is
 `PMIX_ERR_TAKE_NEXT_OPTION` unless `monitor->key == PMIX_MONITOR_HEARTBEAT`,
 so it only ever acts on heartbeat requests.
 
+`PMIX_MONITOR_CANCEL` is handled before that gate — `heartbeat_start`
+passes the id in `monitor->value` to `heartbeat_stop()` and then declines
+anyway, so the cancel goes on to `pstat`. The framework
+[`AGENTS.md`](../AGENTS.md) explains why declining is the right answer.
+
 ## The component and module structs
 
 The component wraps the base struct to hang two pieces of per-component
@@ -51,8 +56,10 @@ The module is the usual `{ .start, .stop }` pair.
 ## The tracker (`pmix_heartbeat_trkr_t`)
 
 One per monitored requestor, held on `component.trackers`. Key fields:
-`requestor` (retained peer), `tv` (window length), `nbeats` (beats seen
-this window), `ndrops`, `error`, `range`, `info`/`ninfo` (payload for the
+`requestor` (retained peer), `id` (the `PMIX_MONITOR_ID` cancel handle),
+`tv` (window length), `nbeats` (beats seen this window), `nmissed`
+(consecutive empty windows), `ndrops` (how many of those are tolerated),
+`error` (the status to raise), `range`, `info`/`ninfo` (payload for the
 event), and **`stopped`** (latch, see below). Its destructor releases the
 peer, frees `id`/`info`, and deletes the timer if `event_active`.
 
@@ -61,7 +68,11 @@ peer, frees `id`/`info`, and deletes the timer if `event_active`.
 1. Decline unless `monitor->key == PMIX_MONITOR_HEARTBEAT`.
 2. Allocate the tracker, retain the requestor, and parse directives:
    `PMIX_MONITOR_HEARTBEAT_TIME` → `tv.tv_sec`,
-   `PMIX_MONITOR_HEARTBEAT_DROPS` → `ndrops`, `PMIX_RANGE` → `range`.
+   `PMIX_MONITOR_HEARTBEAT_DROPS` → `ndrops`, `PMIX_MONITOR_ID` → `id`,
+   `PMIX_RANGE` → `range`. The two numbers go through
+   `PMIx_Value_get_number` and the other two are type-checked, because
+   all four arrive off the wire; a directive that will not convert takes
+   the whole request down with `PMIX_ERR_BAD_PARAM`.
 3. If `tv.tv_sec == 0` (no window given), release and return
    `PMIX_ERR_BAD_PARAM`.
 4. **Post the heartbeat receive once.** If
@@ -83,21 +94,31 @@ peer, frees `id`/`info`, and deletes the timer if `event_active`.
 from a peer. It does the minimum — retain the sending `peer` into a small
 `pmix_psensor_beat_t` caddy and thread-shift onto `pmix_psensor_base.evbase`
 — then `add_beat` (on the monitor thread) finds the tracker whose
-`requestor == peer`, increments `nbeats`, and clears `stopped` (a beat
-proves the process is alive again). The caddy is released.
+`requestor == peer`, increments `nbeats`, and clears both `stopped` and
+`nmissed` (a beat proves the process is alive again, and gives back the
+whole drop allowance). The caddy is released.
+
+Note `add_beat` stops at the **first** tracker matching the peer, so a
+requestor holding two heartbeat monitors credits only one of them per
+beat.
 
 ## The window check: `check_heartbeat`
 
 Fires every `tv` seconds:
 
-- If `nbeats == 0` **and** `!stopped`: no beat arrived in the window →
-  the process appears dead. It builds a `source` proc from the requestor,
+- If `nbeats == 0` **and** `!stopped`: no beat arrived in this window, so
+  `nmissed++`. While `nmissed <= ndrops` the requestor's drop allowance
+  still covers it and the sampler simply returns. Past that the process
+  is declared dead: it builds a `source` proc from the requestor,
   **retains the tracker** (to keep it alive across the async notify), sets
   `stopped = true` so it will **not** re-report every window, and raises
-  `PMIX_MONITOR_HEARTBEAT_ALERT` via `PMIx_Notify_event` scoped to
-  `range`. The completion callback (`opcbfunc`) releases the retained
-  tracker.
-- Otherwise it just logs the beat count.
+  the alert via `PMIx_Notify_event` scoped to `range` — with the status
+  the requestor asked for, or `PMIX_MONITOR_HEARTBEAT_ALERT` if they
+  passed `PMIX_SUCCESS`. The completion callback (`opcbfunc`) releases the
+  retained tracker; if `PMIx_Notify_event` returns an error it never runs,
+  so the sampler gives that reference back itself.
+- Otherwise it just logs the beat count. `add_beat` is what clears
+  `nmissed`, which is what makes the count *consecutive*.
 - Either way it resets `nbeats = 0`. It does **not** re-arm the timer:
   the timer is persistent and libevent re-armed it before this callback
   was entered.
@@ -121,11 +142,16 @@ more, re-alerted. This "latch then revive" behavior is deliberate.
   sample in flight. A one-shot re-armed from the end of the sampler
   survives that delete; a persistent one does not. The full argument is
   in the framework [`AGENTS.md`](../AGENTS.md).
-- **The PTL recv is shared and posted lazily.** It is prepended to
-  `pmix_ptl_base.posted_recvs` on the first heartbeat `start` and left in
-  place (`recv_active` never resets, and `stop` does not un-post it). If
-  you rework teardown, remember the recv outlives individual trackers by
-  design.
+- **The PTL recv is shared, posted lazily, and retired by
+  `heartbeat_close`.** It is prepended to `pmix_ptl_base.posted_recvs` on
+  the first heartbeat `start` and outlives individual trackers by design —
+  `stop` does not un-post it. Component close is the one place that does,
+  and it must, for two separate reasons: the recv names a function in this
+  component while `ptl` closes *after* `psensor` (so a DSO build would
+  leave the ptl list pointing into an unloaded plugin), and `recv_active`
+  lives in a file-scope struct that outlives the library, so a second
+  `PMIx_server_init` in the same process would find the flag set, the
+  recv gone, and never count another beat.
 - **Being posted lazily leaves a window, and the server screens for it.**
   A client may call `PMIx_Heartbeat()` before any monitor has been armed.
   Until the recv exists, the server's *wildcard* recv matches the beat

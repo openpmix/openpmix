@@ -109,13 +109,54 @@ each time somebody asks.
           plausible reading of the code, rather than from watching it
           run, is a lead and not a finding.
 
+.. note:: **2026-08-20.**  The ``src/mca/psensor`` review found one
+          shape repeated five times, and it is worth naming because it
+          passes every test anyone would think to write: a directive
+          parsed out of the request, stored in the tracker, and then
+          never read again.  ``PMIX_MONITOR_HEARTBEAT_DROPS`` set
+          ``ndrops`` and nothing consulted it, so a request asking to
+          tolerate missed beats alerted on the very first empty window.
+          ``PMIX_MONITOR_ID`` was never parsed at all, so the ``id``
+          argument to ``stop()`` — the whole cancel handle — could never
+          match anything.  ``PMIX_MONITOR_CANCEL`` was recognized by
+          neither component, so it fell through to the resource-usage
+          path, which answers ``PMIX_SUCCESS`` for an id it has never
+          held: a client's cancel reported success and the monitor kept
+          firing forever.  The ``error`` argument, which
+          ``PMIx_Process_monitor(3)`` documents as "the code the monitor
+          is to use", was discarded in favour of a hardcoded alert.  And
+          the ``file`` sampler checked only the first of the three
+          attributes a request named.
+
+          Each of those looked like working code, and the framework's
+          own end-to-end test passed throughout — because a test that
+          waits for an alert cannot tell an honored directive from an
+          ignored one.  ``test/unit/run_monitor.pl`` now arms a capped
+          monitor and a cancelled one under a status code of their own
+          and fails if *either* fires, which is the only shape that
+          distinguishes them.  Each of the three fixes was verified by
+          re-breaking it and watching the new check catch it.
+
+          Two lifetime defects came out of the same pass.
+          ``PMIx_Notify_event`` returns ``PMIX_ERR_NOT_AVAILABLE``
+          without reaching its callback once the progress thread has
+          stopped — which ``PMIx_server_finalize`` does well before it
+          closes this framework — so both samplers stranded a tracker
+          and the peer it retained.  And ``psensor/heartbeat`` never
+          un-posted the PTL recv it posts lazily, nor cleared the flag
+          saying it had: ``ptl`` closes after ``psensor``, so a DSO build
+          left the ptl list naming a function in an unloaded plugin, and
+          a second ``PMIx_server_init`` in one process would have found
+          the flag set, the recv gone, and declared every monitored
+          client dead on its first window.
+
 Review coverage
 ---------------
 
 Assessed on **2026-08-15** from the commit history, and refreshed on
 **2026-08-20** when the ``src/mca/pnet``, ``src/mca/preg``,
-``src/mca/pgpu``, ``src/mca/pmdl``, ``src/mca/pcompress`` and
-``src/mca/plog`` reviews landed.  Move an entry out
+``src/mca/pgpu``, ``src/mca/pmdl``, ``src/mca/pcompress``,
+``src/mca/plog`` and ``src/mca/psensor`` reviews landed.  Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
 
@@ -133,8 +174,8 @@ Reviewed and current
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
 ``src/mca/pcompress``, ``src/mca/pgpu``, ``src/mca/plog``,
-``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/pstat``,
-``src/mca/ptl``, and ``bindings/python``.
+``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/psensor``,
+``src/mca/pstat``, ``src/mca/ptl``, and ``bindings/python``.
 ``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
 ``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
 below.
@@ -151,7 +192,6 @@ size, which is a rough proxy for how much there is to find.
 * ``src/mca/psec`` (with ``native``, ``none``, ``munge``,
   ``dummy_handshake``) — 1901 lines.  This is the connection-handshake
   code; two small fixes on 2026-07-14/15 are all it has had.
-* ``src/mca/psensor`` (with ``file``, ``heartbeat``) — 1398 lines.
 * ``src/mca/pdl``, ``src/mca/pinstalldirs``, ``src/mca/pif`` — about
   3200 lines between them, and the lowest risk of the group.
 * ``src/threads`` — 737 lines.  The 2026-07-17 cleanup fixed a TSD key
@@ -526,6 +566,17 @@ Coverage gaps
   a thin run reports itself rather than passing quietly.  The real round
   trip was run under ``contrib/dockerswarm`` (Linux, all four
   compressors), where the 5000-node case does take the blob path.
+* **The ``psensor/file`` drop-count and baseline semantics have no
+  automated check.**  The fix stops a monitor from alerting before it has
+  ever recorded a miss — a request with no ``PMIX_MONITOR_FILE_DROPS``
+  used to trip on the first sample of a perfectly healthy file.
+  Distinguishing the fixed behavior from the broken one takes a monitor
+  with a *zero* drop allowance watching a file that is being kept fresh,
+  and zero tolerance means any scheduling hiccup or coarse filesystem
+  timestamp granularity fails it.  The heartbeat drop allowance is
+  covered instead (``run_monitor.pl``'s capped monitor), because a
+  request can be given an allowance no run can spend; there is no
+  equivalent for "must not alert on the first look".
 * **The plog ``smtp`` component has never been run.**  It builds only
   where libesmtp is present, and exercising it needs a reachable SMTP
   server on top of that, so the fixes from the ``src/mca/plog`` review

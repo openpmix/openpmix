@@ -45,6 +45,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 #include "psensor_file.h"
@@ -72,10 +73,11 @@ typedef struct {
     struct timeval tv;
     int tick;
     char *file;
+    bool sampled;
     bool file_size;
     bool file_access;
     bool file_mod;
-    size_t last_size;
+    off_t last_size;
     time_t last_access;
     time_t last_mod;
     uint32_t ndrops;
@@ -94,6 +96,8 @@ static void ft_constructor(file_tracker_t *ft)
     ft->tv.tv_sec = 0;
     ft->tv.tv_usec = 0;
     ft->tick = 0;
+    ft->file = NULL;
+    ft->sampled = false;
     ft->file_size = false;
     ft->file_access = false;
     ft->file_mod = false;
@@ -188,13 +192,32 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pm
 {
     file_tracker_t *ft;
     size_t n;
-
-    PMIX_HIDE_UNUSED_PARAMS(error);
+    uint32_t u32;
+    pmix_status_t rc;
 
     pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] checking file monitoring for requestor %s:%d",
                          pmix_globals.myid.nspace, pmix_globals.myid.rank,
                          requestor->info->pname.nspace, requestor->info->pname.rank);
+
+    /* A cancel names the monitor by the id its original request carried,
+     * and our stop() already does exactly that matching - so service it
+     * here, but still decline. The id may name a pstat op rather than one
+     * of ours, and pmix_psensor_base_start stops walking the moment a
+     * module claims a request: claiming a cancel we know nothing about
+     * would strand it. Both ends are tolerant of an id they do not hold,
+     * so offering it to everyone is the right shape. PMIX_MONITOR_CANCEL
+     * is a char*, and a NULL one means "cancel everything this requestor
+     * started" - which is what stop() already does with a NULL id. A
+     * value of some other type is a malformed request rather than a
+     * request to cancel everything, so leave it alone and let the pstat
+     * path reject it. */
+    if (0 == strcmp(monitor->key, PMIX_MONITOR_CANCEL)) {
+        if (PMIX_STRING == monitor->value.type) {
+            (void) stop(requestor, monitor->value.data.string);
+        }
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
 
     /* if they didn't ask to monitor a file, then nothing for us to do */
     if (0 != strcmp(monitor->key, PMIX_MONITOR_FILE)) {
@@ -214,8 +237,15 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pm
     PMIX_RETAIN(requestor);
     ft->requestor = requestor;
     ft->file = strdup(monitor->value.data.string);
+    /* the status the requestor wants raised when this trips - see
+     * PMIx_Process_monitor(3). PMIX_SUCCESS means they expressed no
+     * preference, and then the framework's own alert code stands. */
+    ft->error = error;
 
-    /* check the directives to see if what they want monitored */
+    /* Check the directives to see what they want monitored. Every value
+     * here arrives off the wire from a client, so read the numbers
+     * through PMIx_Value_get_number rather than reaching into the union
+     * for a type the sender never promised to have sent. */
     for (n = 0; n < ndirs; n++) {
         if (0 == strcmp(directives[n].key, PMIX_MONITOR_FILE_SIZE)) {
             ft->file_size = PMIX_INFO_TRUE(&directives[n]);
@@ -224,10 +254,36 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pm
         } else if (0 == strcmp(directives[n].key, PMIX_MONITOR_FILE_MODIFY)) {
             ft->file_mod = PMIX_INFO_TRUE(&directives[n]);
         } else if (0 == strcmp(directives[n].key, PMIX_MONITOR_FILE_DROPS)) {
-            ft->ndrops = directives[n].value.data.uint32;
+            rc = PMIx_Value_get_number(&directives[n].value, (void *) &u32, PMIX_UINT32);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(ft);
+                return rc;
+            }
+            ft->ndrops = u32;
         } else if (0 == strcmp(directives[n].key, PMIX_MONITOR_FILE_CHECK_TIME)) {
-            ft->tv.tv_sec = directives[n].value.data.uint32;
+            rc = PMIx_Value_get_number(&directives[n].value, (void *) &u32, PMIX_UINT32);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(ft);
+                return rc;
+            }
+            ft->tv.tv_sec = u32;
+        } else if (0 == strcmp(directives[n].key, PMIX_MONITOR_ID)) {
+            /* the cancel handle. Nothing stops a caller from naming the
+             * monitor twice; the first name wins, as overwriting would
+             * lose the string we already took */
+            if (PMIX_STRING != directives[n].value.type ||
+                NULL == directives[n].value.data.string) {
+                PMIX_RELEASE(ft);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            if (NULL == ft->id) {
+                ft->id = strdup(directives[n].value.data.string);
+            }
         } else if (0 == strcmp(directives[n].key, PMIX_RANGE)) {
+            if (PMIX_DATA_RANGE != directives[n].value.type) {
+                PMIX_RELEASE(ft);
+                return PMIX_ERR_BAD_PARAM;
+            }
             ft->range = directives[n].value.data.range;
         }
     }
@@ -296,11 +352,31 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(ft);
 }
 
+/* Render a time_t the way ctime() would, but into the caller's buffer.
+ * ctime() hands back a process-wide static, so the two calls this file
+ * used to make in one argument list both pointed at the same bytes and
+ * printed the same timestamp twice - and, with the monitors on their own
+ * "PSENSOR" thread, they also scribbled on any ctime/asctime result the
+ * application was holding elsewhere. The trailing newline ctime() emits
+ * is deliberately kept: help-pmix-psensor-file.txt runs the next label
+ * straight up against this conversion and relies on it. */
+static const char *render_time(time_t when, char *buf, size_t sz)
+{
+    if (NULL == ctime_r(&when, buf)) {
+        /* ctime_r is allowed to decline a time it cannot represent */
+        pmix_snprintf(buf, sz, "unknown\n");
+    }
+    return buf;
+}
+
 static void file_sample(int sd, short args, void *cbdata)
 {
     file_tracker_t *ft = (file_tracker_t *) cbdata;
     struct stat buf;
     pmix_status_t rc;
+    time_t atime, mtime;
+    char atod[32], mtod[32];
+    bool changed;
 
     PMIX_ACQUIRE_OBJECT(ft);
 
@@ -322,42 +398,71 @@ static void file_sample(int sd, short args, void *cbdata)
         return;
     }
 
+    atime = buf.st_atime;
+    mtime = buf.st_mtime;
     pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
-                         "[%s:%d] size %lu access %s\tmod %s", pmix_globals.myid.nspace,
-                         pmix_globals.myid.rank, (unsigned long) buf.st_size, ctime(&buf.st_atime),
-                         ctime(&buf.st_mtime));
+                         "[%s:%d] size %llu access %s\tmod %s", pmix_globals.myid.nspace,
+                         pmix_globals.myid.rank, (unsigned long long) buf.st_size,
+                         render_time(atime, atod, sizeof(atod)),
+                         render_time(mtime, mtod, sizeof(mtod)));
 
-    if (ft->file_size) {
-        if (buf.st_size == (int64_t) ft->last_size) {
-            ft->nmisses++;
-        } else {
-            ft->nmisses = 0;
-            ft->last_size = buf.st_size;
-        }
-    } else if (ft->file_access) {
-        if (buf.st_atime == ft->last_access) {
-            ft->nmisses++;
-        } else {
-            ft->nmisses = 0;
-            ft->last_access = buf.st_atime;
-        }
-    } else if (ft->file_mod) {
-        if (buf.st_mtime == ft->last_mod) {
-            ft->nmisses++;
-        } else {
-            ft->nmisses = 0;
-            ft->last_mod = buf.st_mtime;
-        }
+    /* The first sample has nothing to compare against - it establishes
+     * the baseline and nothing more. Without this the constructor's
+     * zeroes stand in for "what the file looked like last time", which is
+     * a value a real file can genuinely have: a monitor watching the size
+     * of a file that is legitimately empty counted a miss on its very
+     * first look. */
+    if (!ft->sampled) {
+        ft->sampled = true;
+        ft->last_size = buf.st_size;
+        ft->last_access = atime;
+        ft->last_mod = mtime;
+        return;
+    }
+
+    /* Every attribute the request named is watched, and any one of them
+     * moving means the application is alive. An if/else-if chain used to
+     * check only the first flag that was set, so a request naming both a
+     * size and a modification time silently got one of them - and would
+     * report a stall in a file whose mtime was moving all along. */
+    changed = false;
+    if (ft->file_size && buf.st_size != ft->last_size) {
+        ft->last_size = buf.st_size;
+        changed = true;
+    }
+    if (ft->file_access && atime != ft->last_access) {
+        ft->last_access = atime;
+        changed = true;
+    }
+    if (ft->file_mod && mtime != ft->last_mod) {
+        ft->last_mod = mtime;
+        changed = true;
+    }
+    if (changed) {
+        ft->nmisses = 0;
+    } else {
+        ft->nmisses++;
     }
 
     pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] sampled file %s misses %d", pmix_globals.myid.nspace,
                          pmix_globals.myid.rank, ft->file, ft->nmisses);
 
-    if (ft->nmisses == ft->ndrops) {
+    /* Alert once the watched attribute has sat still for as many checks
+     * as the requestor said it would tolerate. The miss count has to be
+     * non-zero for this to mean anything: a request that named no
+     * PMIX_MONITOR_FILE_DROPS leaves ndrops at 0, and the first sample of
+     * a perfectly healthy file also leaves nmisses at 0 - so an equality
+     * test alerted immediately on a file that had just been written. */
+    if (0 < ft->nmisses && ft->nmisses >= ft->ndrops) {
         if (4 < pmix_output_get_verbosity(pmix_psensor_base_framework.framework_output)) {
+            /* the topic renders the size with %llu; off_t is 64 bits
+             * wherever large-file support is on, and varargs will not
+             * widen it for us */
             pmix_show_help("help-pmix-psensor-file.txt", "file-stalled", true, ft->file,
-                           ft->last_size, ctime(&ft->last_access), ctime(&ft->last_mod));
+                           (unsigned long long) ft->last_size,
+                           render_time(ft->last_access, atod, sizeof(atod)),
+                           render_time(ft->last_mod, mtod, sizeof(mtod)));
         }
         /* stop monitoring this client. Disarm before we let go of the
          * tracker: the timer is persistent, so it is still armed even
@@ -376,10 +481,18 @@ static void file_sample(int sd, short args, void *cbdata)
          * processes the event asynchronously, after we return */
         pmix_strncpy(ft->source.nspace, ft->requestor->info->pname.nspace, PMIX_MAX_NSLEN);
         ft->source.rank = ft->requestor->info->pname.rank;
-        rc = PMIx_Notify_event(PMIX_MONITOR_FILE_ALERT, &ft->source, ft->range, ft->info, ft->ninfo,
+        rc = PMIx_Notify_event((PMIX_SUCCESS == ft->error) ? PMIX_MONITOR_FILE_ALERT : ft->error,
+                               &ft->source, ft->range, ft->info, ft->ninfo,
                                opcbfunc, ft);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            /* opcbfunc is not going to run - PMIx_Notify_event rejects a
+             * request outright (PMIX_ERR_NOT_AVAILABLE once the progress
+             * thread has stopped, which finalize does while our sampler
+             * may still be firing) without ever reaching the callback.
+             * The tracker has just left the list, so the reference we
+             * handed the notification is its last one. */
+            PMIX_RELEASE(ft);
         }
         return;
     }

@@ -11,8 +11,8 @@
 # AGENTS.md: The PSENSOR `file` Component
 
 `file` is the `psensor` component that watches a file for signs of life —
-changes to its size, access time, or modification time — and raises
-`PMIX_MONITOR_FILE_ALERT` when the file goes stale. Read the framework
+changes to its size, access time, or modification time — and raises an
+alert when the file goes stale. Read the framework
 [`AGENTS.md`](../AGENTS.md) first; this file covers only what is specific
 to `file`. It claims a start request whose `monitor->key` is
 `PMIX_MONITOR_FILE`, with the file path carried in `monitor->value`.
@@ -33,6 +33,11 @@ to `file`. It claims a start request whose `monitor->key` is
 chosen for a request: `start` returns `PMIX_ERR_TAKE_NEXT_OPTION` unless
 `monitor->key == PMIX_MONITOR_FILE`.
 
+`PMIX_MONITOR_CANCEL` is handled before that gate — `start` passes the id
+in `monitor->value` to `stop()` and then declines anyway, so the cancel
+goes on to `pstat`. The framework
+[`AGENTS.md`](../AGENTS.md) explains why declining is the right answer.
+
 ## The component and tracker structs
 
 The component wraps the base struct to hold its tracker list
@@ -46,10 +51,22 @@ typedef struct {
 ```
 
 Each `file_tracker_t` records the retained `requestor`, the `file` path,
-the sample interval `tv`, the three watch flags `file_size` /
-`file_access` / `file_mod`, the last-seen `last_size` / `last_access` /
-`last_mod`, the counters `ndrops` (tolerance) and `nmisses` (consecutive
-unchanged checks), plus `range` and `info`/`ninfo` for the event.
+the caller's `id` (the `PMIX_MONITOR_ID` cancel handle) and `error` (the
+status to raise), the sample interval `tv`, the three watch flags
+`file_size` / `file_access` / `file_mod`, the last-seen `last_size` /
+`last_access` / `last_mod`, the `sampled` baseline latch, the counters
+`ndrops` (tolerance) and `nmisses` (consecutive unchanged checks), plus
+`range` and `info`/`ninfo` for the event.
+
+`last_size` is an `off_t`, not a `size_t`: it holds `st_size`, and the
+two are not the same width wherever large-file support is on and pointers
+are 32 bits. It used to be a `size_t` compared through an `(int64_t)`
+cast, which is the shape a truncating assignment leaves behind.
+
+**The constructor must initialize every pointer field.** `PMIX_NEW`
+mallocs and runs the constructor; it does not zero. `file` was set only
+in `start`, which happens to assign it before any path that could release
+the tracker — a property no one is required to preserve.
 
 ## `start` — validating and arming
 
@@ -57,7 +74,12 @@ unchanged checks), plus `range` and `info`/`ninfo` for the event.
    path from `monitor->value.data.string`.
 2. Parse directives: `PMIX_MONITOR_FILE_SIZE` / `_ACCESS` / `_MODIFY` set
    the corresponding watch flag; `PMIX_MONITOR_FILE_DROPS` → `ndrops`;
-   `PMIX_MONITOR_FILE_CHECK_TIME` → `tv.tv_sec`; `PMIX_RANGE` → `range`.
+   `PMIX_MONITOR_FILE_CHECK_TIME` → `tv.tv_sec`; `PMIX_MONITOR_ID` →
+   `id`; `PMIX_RANGE` → `range`. The two numbers go through
+   `PMIx_Value_get_number` and the other two are type-checked, because
+   all four arrive off the wire; a directive that will not convert takes
+   the whole request down with `PMIX_ERR_BAD_PARAM` rather than leaving a
+   tracker built from whatever the union happened to hold.
 3. **Reject an incomplete request:** if the interval is zero **or** none
    of the three watch flags is set, release the tracker and return
    `PMIX_ERR_BAD_PARAM`. A file monitor needs both *how often* to look and
@@ -78,19 +100,29 @@ Fires every `tv` seconds:
 
 - `stat` the file. **If the `stat` fails** (file not present yet), it
   simply returns — a not-yet-created file is not a fault, and the
-  persistent timer brings us back to look again.
-- Compare the watched attribute to its last-seen value and update
-  `nmisses`: unchanged ⇒ `nmisses++`; changed ⇒ `nmisses = 0` and the
-  last-seen value is refreshed. **Only one attribute is checked per
-  sample**, chosen by an `if / else if / else if` chain in the order
-  size → access → mod. So if `file_size` is set, the access/mod flags are
-  effectively ignored; watch exactly one attribute per monitor to avoid
-  surprise.
-- **Alert when `nmisses == ndrops`:** the file is declared stalled. At
+  persistent timer brings us back to look again. Note the consequence: a
+  file that is *deleted* after being watched also stops the count rather
+  than tripping it. That is deliberate, not an oversight.
+- **The first sample only records a baseline** (`sampled`) and returns.
+  There is nothing to compare against yet, and the constructor's zeroes
+  are values a real file can genuinely have — a monitor watching the size
+  of a legitimately empty file used to score a miss on its very first
+  look.
+- Afterwards, compare **every** watched attribute to its last-seen value.
+  Any one of them moving means the application is alive: `nmisses = 0`.
+  Only if none moved does `nmisses++`. (An `if / else if / else if` chain
+  used to check just the first flag that was set, so a request naming
+  both a size and a modification time silently got one of them.)
+- **Alert when `0 < nmisses` and `nmisses >= ndrops`:** the file is
+  declared stalled. At
   verbosity >4 it emits the `file-stalled` `show_help`; it then **removes
-  the tracker from the list** and raises `PMIX_MONITOR_FILE_ALERT` via
-  `PMIx_Notify_event` (source = requestor, scope = `range`). The
-  completion callback (`opcbfunc`) releases the tracker. Because the timer
+  the tracker from the list** and raises the alert via
+  `PMIx_Notify_event` (source = requestor, scope = `range`, status =
+  the requestor's `error`, or `PMIX_MONITOR_FILE_ALERT` if they asked for
+  `PMIX_SUCCESS`). The completion callback (`opcbfunc`) releases the
+  tracker — **unless `PMIx_Notify_event` returns an error**, in which case
+  it never runs and the sampler has to release the tracker itself; by
+  then that reference is the last one. Because the timer
   is persistent it is **still armed** at that point — libevent re-armed it
   before entering this callback — so `file_sample` **deletes it
   explicitly** before letting go of the tracker. A file monitor is
@@ -99,15 +131,21 @@ Fires every `tv` seconds:
 
 ## Gotchas
 
-- **`ndrops` is an equality threshold, not a "≥".** The alert fires the
-  moment `nmisses` *equals* `ndrops`. With the default `ndrops == 0`, that
-  means the very first sample can alert: `last_size` starts at 0, so a
-  freshly-created non-empty file registers a *change* (`nmisses` reset to
-  0), and `0 == 0` trips immediately. Callers who want N tolerated misses
-  must pass `PMIX_MONITOR_FILE_DROPS` explicitly.
-- **Only the first-listed attribute is watched** (size beats access beats
-  mod, per the `if/else if` chain). This is easy to misread as "watch all
-  three"; it is not.
+- **`ndrops` counts misses, and a miss is not the same as a sample.** The
+  baseline sample scores nothing, and the alert needs `0 < nmisses` as
+  well as `nmisses >= ndrops`. Both halves are load-bearing: an equality
+  test against a default `ndrops` of 0 fired on the first sample of a
+  perfectly healthy file, because a `nmisses` of 0 means "nothing has
+  been missed", not "the tolerance is exhausted". So a request with no
+  `PMIX_MONITOR_FILE_DROPS` alerts on the first check that shows no
+  change — which is what asking to tolerate zero misses means.
+- **Two `ctime()` calls in one argument list return the same buffer.**
+  Both the verbose sample line and the `file-stalled` topic print an
+  access time and a modification time; done with `ctime()` they printed
+  the same timestamp twice, and scribbled on any `ctime`/`asctime` result
+  the application held on another thread. `render_time()` wraps
+  `ctime_r`, and deliberately keeps the trailing newline `ctime` emits —
+  the help topic runs its next label straight up against it.
 - **The monitor is one-shot.** Unlike `heartbeat`, `file` removes and
   releases its tracker on the first alert. If you need ongoing monitoring
   after a stall, the caller must start a new monitor.
