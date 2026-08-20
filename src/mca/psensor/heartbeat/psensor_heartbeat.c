@@ -175,12 +175,33 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
 {
     pmix_heartbeat_trkr_t *ft;
     size_t n;
+    uint32_t u32;
+    pmix_status_t rc;
     pmix_ptl_posted_recv_t *rcv;
 
     pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] checking heartbeat monitoring for requestor %s:%d",
                          pmix_globals.myid.nspace, pmix_globals.myid.rank,
                          requestor->info->pname.nspace, requestor->info->pname.rank);
+
+    /* A cancel names the monitor by the id its original request carried,
+     * and our stop() already does exactly that matching - so service it
+     * here, but still decline. The id may name a pstat op rather than one
+     * of ours, and pmix_psensor_base_start stops walking the moment a
+     * module claims a request: claiming a cancel we know nothing about
+     * would strand it. Both ends are tolerant of an id they do not hold,
+     * so offering it to everyone is the right shape. PMIX_MONITOR_CANCEL
+     * is a char*, and a NULL one means "cancel everything this requestor
+     * started" - which is what stop() already does with a NULL id. A
+     * value of some other type is a malformed request rather than a
+     * request to cancel everything, so leave it alone and let the pstat
+     * path reject it. */
+    if (0 == strcmp(monitor->key, PMIX_MONITOR_CANCEL)) {
+        if (PMIX_STRING == monitor->value.type) {
+            (void) heartbeat_stop(requestor, monitor->value.data.string);
+        }
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
 
     /* if they didn't ask for heartbeats, then nothing for us to do */
     if (0 != strcmp(monitor->key, PMIX_MONITOR_HEARTBEAT)) {
@@ -193,13 +214,42 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
     ft->requestor = requestor;
     ft->error = error;
 
-    /* check the directives to see what they want monitored */
+    /* Check the directives to see what they want monitored. Every value
+     * here arrives off the wire from a client, so read the numbers
+     * through PMIx_Value_get_number rather than reaching into the union
+     * for a type the sender never promised to have sent. */
     for (n = 0; n < ndirs; n++) {
         if (0 == strcmp(directives[n].key, PMIX_MONITOR_HEARTBEAT_TIME)) {
-            ft->tv.tv_sec = directives[n].value.data.uint32;
+            rc = PMIx_Value_get_number(&directives[n].value, (void *) &u32, PMIX_UINT32);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(ft);
+                return rc;
+            }
+            ft->tv.tv_sec = u32;
         } else if (0 == strcmp(directives[n].key, PMIX_MONITOR_HEARTBEAT_DROPS)) {
-            ft->ndrops = directives[n].value.data.uint32;
+            rc = PMIx_Value_get_number(&directives[n].value, (void *) &u32, PMIX_UINT32);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(ft);
+                return rc;
+            }
+            ft->ndrops = u32;
+        } else if (0 == strcmp(directives[n].key, PMIX_MONITOR_ID)) {
+            /* the cancel handle. Nothing stops a caller from naming the
+             * monitor twice; the first name wins, as overwriting would
+             * lose the string we already took */
+            if (PMIX_STRING != directives[n].value.type ||
+                NULL == directives[n].value.data.string) {
+                PMIX_RELEASE(ft);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            if (NULL == ft->id) {
+                ft->id = strdup(directives[n].value.data.string);
+            }
         } else if (0 == strcmp(directives[n].key, PMIX_RANGE)) {
+            if (PMIX_DATA_RANGE != directives[n].value.type) {
+                PMIX_RELEASE(ft);
+                return PMIX_ERR_BAD_PARAM;
+            }
             ft->range = directives[n].value.data.range;
         }
     }
@@ -298,10 +348,24 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
 
     if (0 == ft->nbeats && !ft->stopped) {
         /* no heartbeat recvd in last window */
+        ++ft->nmissed;
         pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
-                             "[%s:%d] sensor:check_heartbeat failed for proc %s:%d",
+                             "[%s:%d] sensor:check_heartbeat missed %u of %u allowed for proc %s:%d",
                              pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                             ft->nmissed, ft->ndrops,
                              ft->requestor->info->pname.nspace, ft->requestor->info->pname.rank);
+        /* PMIX_MONITOR_HEARTBEAT_DROPS says how many windows the
+         * requestor is willing to have go by empty before we call the
+         * process dead. It was parsed and then thrown away, so a request
+         * that asked for slack got none: the very first empty window
+         * alerted. Leaving ndrops at its default of 0 keeps that
+         * behavior, which is what a request that never named the
+         * attribute is asking for. add_beat clears the count, so this
+         * counts *consecutive* empty windows. */
+        if (ft->nmissed <= ft->ndrops) {
+            ft->nbeats = 0;
+            return;
+        }
         /* generate an event - the source proc lives in the tracker (not
          * on the stack) because PMIx_Notify_event borrows the pointer and
          * processes the event asynchronously, after we return */
@@ -312,10 +376,19 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
         /* mark that the process appears stopped so we don't
          * continue to report it */
         ft->stopped = true;
-        rc = PMIx_Notify_event(PMIX_MONITOR_HEARTBEAT_ALERT, &ft->source, ft->range, ft->info,
+        rc = PMIx_Notify_event((PMIX_SUCCESS == ft->error) ? PMIX_MONITOR_HEARTBEAT_ALERT
+                                                            : ft->error,
+                               &ft->source, ft->range, ft->info,
                                ft->ninfo, opcbfunc, ft);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            /* opcbfunc is not going to run - PMIx_Notify_event rejects a
+             * request outright (PMIX_ERR_NOT_AVAILABLE once the progress
+             * thread has stopped, which finalize does while our sampler
+             * may still be firing) without ever reaching the callback.
+             * Give back the reference we just took; the list still holds
+             * the tracker's own. */
+            PMIX_RELEASE(ft);
         }
     } else {
         pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
@@ -343,6 +416,9 @@ static void add_beat(int sd, short args, void *cbdata)
             ++ft->nbeats;
             /* ensure we know that the proc is alive */
             ft->stopped = false;
+            /* the drop allowance is spent on *consecutive* empty
+             * windows, so a beat gives it all back */
+            ft->nmissed = 0;
             break;
         }
     }

@@ -56,8 +56,25 @@ int pmix_psensor_base_select(void)
                             "mca:psensor:select: checking available component %s",
                             component->pmix_mca_component_name);
 
-        /* get the module for this component */
-        if (PMIX_SUCCESS != component->pmix_mca_query_component(&mod, &pri)) {
+        /* A component is not obliged to offer a query function, and one
+         * that does may decline by handing back no module - so check both
+         * before calling and before keeping the answer. Neither is
+         * hypothetical bookkeeping: without the first this crashes on any
+         * component built without a query, and without the second a NULL
+         * module lands on the actives list, where pmix_psensor_base_start
+         * dereferences it on the next monitor request. This matches what
+         * preg, the other multi-select framework, does. */
+        if (NULL == component->pmix_mca_query_component) {
+            pmix_output_verbose(5, pmix_psensor_base_framework.framework_output,
+                                "mca:psensor:select: skipping component %s - no query function",
+                                component->pmix_mca_component_name);
+            continue;
+        }
+        mod = NULL;
+        if (PMIX_SUCCESS != component->pmix_mca_query_component(&mod, &pri) || NULL == mod) {
+            pmix_output_verbose(5, pmix_psensor_base_framework.framework_output,
+                                "mca:psensor:select: skipping component %s - returned no module",
+                                component->pmix_mca_component_name);
             continue;
         }
 

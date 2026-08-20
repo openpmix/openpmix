@@ -169,9 +169,25 @@ sub run_scenario {
         print "FAIL[$label]: client did not confirm file monitoring\n";
         return 1;
     }
+    # rank 0 arms two more monitors that must never fire: a heartbeat one
+    # whose drop allowance cannot be spent in this run, and a file one it
+    # cancels by PMIX_MONITOR_ID. Both used to trip -
+    # PMIX_MONITOR_HEARTBEAT_DROPS was parsed and discarded, and a cancel
+    # fell past psensor to the resource-usage path, which reports success
+    # for an id it has never held. Waiting out the two alerts above gives
+    # them well past their one-second windows to have gone off.
+    if ($output =~ /SILENCE TEST FAILED/) {
+        print "FAIL[$label]: a monitor that was capped or cancelled alerted anyway\n";
+        return 1;
+    }
+    if ($output !~ /SILENCE TEST PASSED/) {
+        print "FAIL[$label]: observer never reported on the capped/cancelled monitors\n";
+        return 1;
+    }
     print "PASS[$label]: heartbeat monitor raised the expected alert\n";
     print "PASS[$label]: file monitor raised the expected alert\n";
     print "PASS[$label]: blocking PMIx_Process_monitor(SEND_HEARTBEAT) returned\n";
+    print "PASS[$label]: capped and cancelled monitors stayed silent\n";
     return 0;
 }
 

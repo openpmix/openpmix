@@ -46,17 +46,47 @@
  * raise PMIX_MONITOR_FILE_ALERT. rank 1 waits for that too and prints
  * "FILE MONITOR TEST PASSED".
  *
- * This guards three things at once:
+ * The heartbeat request names its own status code (MONITOR_TEST_CODE)
+ * rather than PMIX_MONITOR_HEARTBEAT_ALERT, and the file request names
+ * none at all (PMIX_SUCCESS). Between them they cover both halves of the
+ * "error" argument PMIx_Process_monitor(3) documents: the code the
+ * requestor asked for is what gets raised, and asking for nothing leaves
+ * the framework's own alert code standing. psensor used to hardcode its
+ * alert either way, so the first request would have produced the wrong
+ * status.
+ *
+ * rank 0 also starts two more monitors that must never fire, and that is
+ * the point of them. They raise a status of their own
+ * (MONITOR_SILENT_CODE) so that the observer can tell them apart from
+ * the two above, which name the same source:
+ *
+ *   - a heartbeat monitor with a drop allowance far larger than the run.
+ *     rank 0 never beats at all, so an implementation that parses
+ *     PMIX_MONITOR_HEARTBEAT_DROPS and then ignores it alerts within a
+ *     second. One that honors it stays silent for the whole test.
+ *   - a file monitor, given a PMIX_MONITOR_ID and then cancelled with
+ *     PMIX_MONITOR_CANCEL before it can trip. The cancel only works if
+ *     the id was recorded when the monitor was started *and* the cancel
+ *     key reaches psensor rather than falling through to the
+ *     resource-usage path, which answers success without stopping
+ *     anything.
+ *
+ * Either failure shows up as a MONITOR_SILENT_CODE event at the
+ * observer, and the run prints "SILENCE TEST FAILED".
+ *
+ * This guards several things at once:
  *   1. that the monitor API is wired to psensor at all - otherwise no
  *      alert is ever generated and rank 1 times out;
  *   2. that the alert carries the correct source - the source proc is
  *      passed to an asynchronous notify, so it must outlive the call that
  *      raised it. A stack-allocated source produces a garbage rank/nspace
- *      here; and
+ *      here;
  *   3. that both monitors keep sampling on their own timer. Each tracker
  *      arms a persistent timer, and the sampler must not re-arm it - so
  *      an alert that never comes can mean the timer stopped after its
- *      first fire, not just that the framework was never driven.
+ *      first fire, not just that the framework was never driven; and
+ *   4. that a monitor honors the status code, the drop allowance and the
+ *      cancel handle it was given, as described above.
  */
 
 #include <errno.h>
@@ -74,12 +104,27 @@
 #define MONITORED_RANK 0
 #define OBSERVER_RANK  1
 
+/* The status the heartbeat monitor is asked to raise. Host-defined codes
+ * are supposed to be built off PMIX_EXTERNAL_ERR_BASE so they cannot
+ * collide with the library's own, and using one here means the alert we
+ * receive can only have come from the code we supplied. */
+#define MONITOR_TEST_CODE (PMIX_EXTERNAL_ERR_BASE - 1)
+
+/* The status raised by the two monitors that are supposed to stay quiet.
+ * They watch the same process as the two above, so the source proc
+ * cannot tell them apart - only the code can. */
+#define MONITOR_SILENT_CODE (PMIX_EXTERNAL_ERR_BASE - 2)
+
 static pmix_proc_t myproc;
 static mylock_t alertlock;
 static mylock_t filelock;
 static volatile int alert_source_ok = 0;
 static volatile int file_alert_source_ok = 0;
+/* set if the observer ever sees a MONITOR_SILENT_CODE event - the two
+ * monitors that raise it are supposed to stay quiet */
+static volatile int silent_alert_seen = 0;
 static char watchfile[1024] = {0};
+static char obs_watchfile[1024] = {0};
 
 static void hide_unused_params(int x, ...)
 {
@@ -137,6 +182,26 @@ static void file_alert_handler(size_t evhdlr_registration_id, pmix_status_t stat
     }
     filelock.status = status;
     DEBUG_WAKEUP_THREAD(&filelock);
+}
+
+/* observer handler for MONITOR_SILENT_CODE - reaching this at all is a
+ * failure, so it records the fact and returns */
+static void silent_alert_handler(size_t evhdlr_registration_id, pmix_status_t status,
+                                 const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                                 pmix_info_t results[], size_t nresults,
+                                 pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    int rc = 0;
+    hide_unused_params(rc, evhdlr_registration_id, info, ninfo, results, nresults);
+
+    silent_alert_seen = 1;
+    fprintf(stderr, "Observer %s:%d UNEXPECTED ALERT (%d) source=%s:%d\n", myproc.nspace,
+            myproc.rank, (int) status, (NULL == source) ? "NULL" : source->nspace,
+            (NULL == source) ? -1 : (int) source->rank);
+
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
+    }
 }
 
 static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
@@ -205,7 +270,7 @@ static int run_monitored(void)
     PMIX_INFO_LOAD(&info[2], PMIX_MONITOR_HEARTBEAT_DROPS, &n, PMIX_UINT32);
 
     DEBUG_CONSTRUCT_LOCK(&mylock);
-    rc = PMIx_Process_monitor_nb(monitor, PMIX_MONITOR_HEARTBEAT_ALERT, info, 3, infocbfunc,
+    rc = PMIx_Process_monitor_nb(monitor, MONITOR_TEST_CODE, info, 3, infocbfunc,
                                  (void *) &mylock);
     if (PMIX_SUCCESS == rc) {
         DEBUG_WAIT_THREAD(&mylock);
@@ -267,7 +332,7 @@ static int run_file_monitored(void)
     PMIX_INFO_LOAD(&info[3], PMIX_MONITOR_FILE_DROPS, &n, PMIX_UINT32);
 
     DEBUG_CONSTRUCT_LOCK(&mylock);
-    rc = PMIx_Process_monitor_nb(monitor, PMIX_MONITOR_FILE_ALERT, info, 4, infocbfunc,
+    rc = PMIx_Process_monitor_nb(monitor, PMIX_SUCCESS, info, 4, infocbfunc,
                                  (void *) &mylock);
     if (PMIX_SUCCESS == rc) {
         DEBUG_WAIT_THREAD(&mylock);
@@ -283,6 +348,120 @@ static int run_file_monitored(void)
     }
     fprintf(stderr, "Monitored %s:%d: file monitoring started on %s\n", myproc.nspace,
             myproc.rank, watchfile);
+    return 0;
+}
+
+/* rank 0: arm two more monitors on itself that must never fire. Both
+ * raise MONITOR_SILENT_CODE, which nothing else in this test uses, so
+ * the observer can tell them from the two that are supposed to alert.
+ *
+ * The heartbeat one is given a drop allowance no run can exhaust. rank 0
+ * never beats at all, so a heartbeat monitor that ignores
+ * PMIX_MONITOR_HEARTBEAT_DROPS alerts within a window.
+ *
+ * The file one is given a PMIX_MONITOR_ID and then cancelled. A cancel
+ * has to reach psensor - the resource-usage path answers success for an
+ * id it has never heard of, so a cancel that falls through looks like it
+ * worked - and psensor has to have recorded the id when the monitor was
+ * started, or nothing matches it. The cancel names only this monitor, so
+ * the real ones armed above must survive it.
+ *
+ * Returns 0 if both requests (and the cancel) were accepted. */
+static int arm_silent_monitors(void)
+{
+    int rc;
+    pmix_info_t *monitor, *info;
+    mylock_t mylock;
+    uint32_t n;
+    FILE *fp;
+    bool flag = true;
+
+    /* --- heartbeat, with a drop allowance we cannot spend --- */
+    PMIX_INFO_CREATE(monitor, 1);
+    PMIX_INFO_LOAD(&monitor[0], PMIX_MONITOR_HEARTBEAT, NULL, PMIX_POINTER);
+    PMIX_INFO_CREATE(info, 3);
+    PMIX_INFO_LOAD(&info[0], PMIX_MONITOR_ID, "SIMPMONITOR-CAPPED", PMIX_STRING);
+    n = 1;
+    PMIX_INFO_LOAD(&info[1], PMIX_MONITOR_HEARTBEAT_TIME, &n, PMIX_UINT32);
+    n = 100000; /* far more empty windows than this test can produce */
+    PMIX_INFO_LOAD(&info[2], PMIX_MONITOR_HEARTBEAT_DROPS, &n, PMIX_UINT32);
+
+    DEBUG_CONSTRUCT_LOCK(&mylock);
+    rc = PMIx_Process_monitor_nb(monitor, MONITOR_SILENT_CODE, info, 3, infocbfunc,
+                                 (void *) &mylock);
+    if (PMIX_SUCCESS == rc) {
+        DEBUG_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+    }
+    DEBUG_DESTRUCT_LOCK(&mylock);
+    PMIX_INFO_FREE(monitor, 1);
+    PMIX_INFO_FREE(info, 3);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        fprintf(stderr, "Monitored %s:%d: drop-allowance monitor rejected: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        return 1;
+    }
+
+    /* --- file, cancelled before it can trip --- */
+    if (NULL == getcwd(obs_watchfile, sizeof(obs_watchfile) - 32)) {
+        fprintf(stderr, "Monitored %s:%d: getcwd failed\n", myproc.nspace, myproc.rank);
+        return 1;
+    }
+    snprintf(obs_watchfile + strlen(obs_watchfile), 32, "/simpmon-obs-%lu.watch",
+             (unsigned long) getpid());
+    fp = fopen(obs_watchfile, "w");
+    if (NULL == fp) {
+        fprintf(stderr, "Monitored %s:%d: cannot create %s\n", myproc.nspace, myproc.rank,
+                obs_watchfile);
+        return 1;
+    }
+    fprintf(fp, "watch me too\n");
+    fclose(fp);
+
+    PMIX_INFO_CREATE(monitor, 1);
+    PMIX_INFO_LOAD(&monitor[0], PMIX_MONITOR_FILE, obs_watchfile, PMIX_STRING);
+    PMIX_INFO_CREATE(info, 4);
+    PMIX_INFO_LOAD(&info[0], PMIX_MONITOR_ID, "SIMPMONITOR-CANCEL", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_MONITOR_FILE_MODIFY, &flag, PMIX_BOOL);
+    n = 1;
+    PMIX_INFO_LOAD(&info[2], PMIX_MONITOR_FILE_CHECK_TIME, &n, PMIX_UINT32);
+    n = 0; /* alert on the first check that shows no change */
+    PMIX_INFO_LOAD(&info[3], PMIX_MONITOR_FILE_DROPS, &n, PMIX_UINT32);
+
+    DEBUG_CONSTRUCT_LOCK(&mylock);
+    rc = PMIx_Process_monitor_nb(monitor, MONITOR_SILENT_CODE, info, 4, infocbfunc,
+                                 (void *) &mylock);
+    if (PMIX_SUCCESS == rc) {
+        DEBUG_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+    }
+    DEBUG_DESTRUCT_LOCK(&mylock);
+    PMIX_INFO_FREE(monitor, 1);
+    PMIX_INFO_FREE(info, 4);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        fprintf(stderr, "Monitored %s:%d: cancellable file monitor rejected: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        return 1;
+    }
+
+    /* now take it back */
+    PMIX_INFO_CREATE(monitor, 1);
+    PMIX_INFO_LOAD(&monitor[0], PMIX_MONITOR_CANCEL, "SIMPMONITOR-CANCEL", PMIX_STRING);
+    DEBUG_CONSTRUCT_LOCK(&mylock);
+    rc = PMIx_Process_monitor_nb(monitor, PMIX_SUCCESS, NULL, 0, infocbfunc, (void *) &mylock);
+    if (PMIX_SUCCESS == rc) {
+        DEBUG_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+    }
+    DEBUG_DESTRUCT_LOCK(&mylock);
+    PMIX_INFO_FREE(monitor, 1);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        fprintf(stderr, "Monitored %s:%d: monitor cancel rejected: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        return 1;
+    }
+    fprintf(stderr, "Monitored %s:%d: silent monitors armed (%s cancelled)\n", myproc.nspace,
+            myproc.rank, obs_watchfile);
     return 0;
 }
 
@@ -319,7 +498,7 @@ static int send_one_heartbeat(void)
 /* rank 1: watch for the alerts the server raises about rank 0 */
 static int run_observer(void)
 {
-    pmix_status_t code = PMIX_MONITOR_HEARTBEAT_ALERT;
+    pmix_status_t code = MONITOR_TEST_CODE;
     mylock_t mylock;
 
     DEBUG_CONSTRUCT_LOCK(&mylock);
@@ -341,6 +520,19 @@ static int run_observer(void)
     DEBUG_WAIT_THREAD(&mylock);
     if (PMIX_SUCCESS != mylock.status) {
         fprintf(stderr, "Observer %s:%d: file alert handler registration failed: %s\n",
+                myproc.nspace, myproc.rank, PMIx_Error_string(mylock.status));
+        DEBUG_DESTRUCT_LOCK(&mylock);
+        return 1;
+    }
+    DEBUG_DESTRUCT_LOCK(&mylock);
+
+    code = MONITOR_SILENT_CODE;
+    DEBUG_CONSTRUCT_LOCK(&mylock);
+    PMIx_Register_event_handler(&code, 1, NULL, 0, silent_alert_handler, evhandler_reg_callbk,
+                                (void *) &mylock);
+    DEBUG_WAIT_THREAD(&mylock);
+    if (PMIX_SUCCESS != mylock.status) {
+        fprintf(stderr, "Observer %s:%d: silent alert handler registration failed: %s\n",
                 myproc.nspace, myproc.rank, PMIx_Error_string(mylock.status));
         DEBUG_DESTRUCT_LOCK(&mylock);
         return 1;
@@ -388,6 +580,9 @@ int main(int argc, char **argv)
         if (0 == result) {
             result = run_file_monitored();
         }
+        if (0 == result) {
+            result = arm_silent_monitors();
+        }
     } else if (OBSERVER_RANK == (int) myproc.rank) {
         /* the blocking heartbeat call must return before we go on to
          * wait for the alert - if it hangs, this whole test hangs and
@@ -410,6 +605,18 @@ int main(int argc, char **argv)
                     myproc.nspace, myproc.rank);
             result = 1;
         }
+        /* Both alerts about rank 0 have now been waited out, which means
+         * the monitors have been running long enough for our own two to
+         * have tripped had they been going to. */
+        if (silent_alert_seen) {
+            fprintf(stderr,
+                    "Observer %s:%d: SILENCE TEST FAILED - alerted on a monitor that should "
+                    "not have fired\n",
+                    myproc.nspace, myproc.rank);
+            result = 1;
+        } else {
+            fprintf(stderr, "Observer %s:%d: SILENCE TEST PASSED\n", myproc.nspace, myproc.rank);
+        }
     }
 
     /* second barrier: keeps the monitored proc connected until the
@@ -424,6 +631,9 @@ int main(int argc, char **argv)
 done:
     if (MONITORED_RANK == (int) myproc.rank && '\0' != watchfile[0]) {
         unlink(watchfile);
+    }
+    if (MONITORED_RANK == (int) myproc.rank && '\0' != obs_watchfile[0]) {
+        unlink(obs_watchfile);
     }
     DEBUG_DESTRUCT_LOCK(&alertlock);
     DEBUG_DESTRUCT_LOCK(&filelock);

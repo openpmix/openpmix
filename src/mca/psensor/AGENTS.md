@@ -38,16 +38,16 @@ and *notifying* someone. It ships two monitors:
 
 - **`heartbeat`** — the requestor promises to send periodic
   `PMIx_Heartbeat()` beacons to its server. `psensor/heartbeat` counts the
-  beats arriving in each time window; if a window passes with **no** beat,
-  it raises `PMIX_MONITOR_HEARTBEAT_ALERT`. This is dropped-heartbeat
-  detection: the process is presumed stalled or dead.
+  beats arriving in each time window; once more consecutive windows have
+  passed with **no** beat than the requestor said it would tolerate, it
+  alerts. This is dropped-heartbeat detection: the process is presumed
+  stalled or dead.
 - **`file`** — the requestor names a file that a healthy application is
   expected to keep touching (growing it, or updating its access or
   modification time). `psensor/file` `stat`s the file on an interval; if
-  the watched attribute has not changed across a configured number of
-  checks, it raises `PMIX_MONITOR_FILE_ALERT`. This is staleness
-  detection for applications that write progress to a file rather than
-  emit heartbeats.
+  none of the watched attributes has changed across a configured number
+  of checks, it alerts. This is staleness detection for applications that
+  write progress to a file rather than emit heartbeats.
 
 Like `pstat`, `psensor` only ever runs **inside a PMIx server** — it is
 opened and selected during server startup in
@@ -68,6 +68,21 @@ and either claims it or declines by returning
 - `heartbeat` claims a request whose `monitor->key` is
   `PMIX_MONITOR_HEARTBEAT`.
 - `file` claims a request whose `monitor->key` is `PMIX_MONITOR_FILE`.
+
+`PMIX_MONITOR_CANCEL` is the exception to the claim/decline shape, and it
+is worth understanding before adding a component. Both components act on
+a cancel — each hands the id in `monitor->value` to its own `stop()`,
+which is already the right matcher — and then **still return
+`PMIX_ERR_TAKE_NEXT_OPTION`**. Claiming it would be wrong: the id may
+name a `pstat` op rather than a `psensor` tracker, and
+`pmix_psensor_base_start` stops walking the moment a module returns
+success, so `pmix_monitor.c` would never offer the cancel to the
+resource-usage path. Every cancel target is tolerant of an id it does not
+hold, so offering the request to everyone costs nothing and strands
+nothing. A `monitor->value` that is a `PMIX_STRING` with a `NULL` string
+means "cancel every monitor this requestor started"; a value of any other
+type is a malformed request, and the components leave it alone rather
+than reading it as a request to cancel everything.
 
 Because the two components gate on **mutually exclusive** keys, their
 priorities (`file` = 20, `heartbeat` = 5 — both commented "irrelevant" in
@@ -107,7 +122,7 @@ supply both):
 
 | Field | Signature | Purpose |
 |-------|-----------|---------|
-| `start` | `(pmix_peer_t *requestor, pmix_status_t error, const pmix_info_t *monitor, const pmix_info_t directives[], size_t ndirs)` | Begin a monitor for `requestor`. Inspect `monitor->key`; if it is not this component's key, return `PMIX_ERR_TAKE_NEXT_OPTION`. Otherwise build a tracker from `directives` and arm a timer. `error` is the status code the caller wants raised if the monitor trips. |
+| `start` | `(pmix_peer_t *requestor, pmix_status_t error, const pmix_info_t *monitor, const pmix_info_t directives[], size_t ndirs)` | Begin a monitor for `requestor`. Inspect `monitor->key`; if it is not this component's key, return `PMIX_ERR_TAKE_NEXT_OPTION`. Otherwise build a tracker from `directives` and arm a timer. `error` is the status code the caller wants raised if the monitor trips — see "Events raised" below. |
 | `stop` | `(pmix_peer_t *requestor, char *id)` | Tear down monitors. A `NULL` `id` means "stop **all** monitors this requestor started"; a non-`NULL` `id` matches the caller-supplied `PMIX_MONITOR_ID` handle. |
 
 The component data structure is just a typedef of the standard
@@ -188,9 +203,27 @@ pauses and stops in two separate places:
   tracker, whose destructor frees the base — has to come *after* the
   components have closed.
 
-`close` clears `pmix_psensor_base.evbase` either way, because
-`pmix_psensor.stop` stays callable after the framework closes (the server
-calls it from client teardown) and must not post a caddy to a freed base.
+`close` clears `pmix_psensor_base.evbase` either way. Note what actually
+makes a post-close `pmix_psensor.stop` harmless, because it is *not* that
+pointer: nothing checks it, and `event_assign()` silently substitutes
+libevent's `current_base` for a `NULL` one, so a caddy posted after close
+would land on a base that is no longer looping and simply leak. What
+saves it is that `close` destructs `actives` first — so
+`pmix_psensor_base_stop` walks an empty list and never reaches a module's
+`stop` at all. The same argument covers `start`. Do not "fix" this by
+adding a `NULL` check without also explaining why the empty-list argument
+stopped holding; and do not reorder `close` so the `actives` destruct
+comes after the components close.
+
+**`heartbeat_close` also un-posts the PTL recv it lazily posted.** That
+recv names a function in the component, and `ptl` closes *after* this
+framework, so between the two the ptl list would otherwise hold a
+callback into a component that has been closed — and, in a DSO build,
+unloaded. Clearing the component's `recv_active` flag alongside it is the
+other half: the flag lives in a file-scope struct that outlives the
+library, so a second `PMIx_server_init` in the same process would find it
+still set, never re-post, count no beats, and declare every monitored
+client dead on its first window.
 
 In the default configuration there is no separate thread to pause:
 `evbase` is the library's shared base, which `PMIx_server_finalize` has
@@ -207,6 +240,15 @@ here — there is no `no-plugins` `show_help` and no error return; an empty
 `actives` list simply means `pmix_psensor_base_start` will later report
 `PMIX_ERR_NOT_SUPPORTED`. At verbosity >4 it prints the resolved priority
 list.
+
+Two skips guard the walk, and both matter for a component that does not
+yet exist: a component need not supply a query function at all, and one
+that does may decline by handing back `PMIX_SUCCESS` and no module. The
+first is called unconditionally without the guard; the second lands a
+`NULL` module on `actives`, where `pmix_psensor_base_start` dereferences
+it on the next monitor request — it checks `mod->module->start` for
+`NULL`, which is one level too late. `preg`, the other multi-select
+framework, screens for both, and this is the pattern to copy.
 
 ### `base/psensor_base_stubs.c` — the dispatch functions
 
@@ -310,16 +352,20 @@ The `monitor` argument's **key** selects the component (above); its
 | Directive | Consumed by | Effect |
 |-----------|-------------|--------|
 | `PMIX_MONITOR_HEARTBEAT_TIME` | heartbeat | uint32 seconds per heartbeat window (**required**; 0 ⇒ `PMIX_ERR_BAD_PARAM`) |
-| `PMIX_MONITOR_HEARTBEAT_DROPS` | heartbeat | (parsed into `ndrops`) |
-| `PMIX_MONITOR_FILE_SIZE` / `PMIX_MONITOR_FILE_ACCESS` / `PMIX_MONITOR_FILE_MODIFY` | file | which `stat` attribute signals life (at least one **required**) |
+| `PMIX_MONITOR_HEARTBEAT_DROPS` | heartbeat | consecutive empty windows tolerated before alerting (`ndrops`; default 0 ⇒ alert on the first) |
+| `PMIX_MONITOR_FILE_SIZE` / `PMIX_MONITOR_FILE_ACCESS` / `PMIX_MONITOR_FILE_MODIFY` | file | which `stat` attributes signal life (at least one **required**; **all** of the ones given are watched, and any one moving counts as alive) |
 | `PMIX_MONITOR_FILE_CHECK_TIME` | file | uint32 seconds between `stat`s (**required**; 0 ⇒ `PMIX_ERR_BAD_PARAM`) |
-| `PMIX_MONITOR_FILE_DROPS` | file | number of unchanged checks tolerated before alerting (`ndrops`) |
+| `PMIX_MONITOR_FILE_DROPS` | file | unchanged checks tolerated before alerting (`ndrops`; default 0 ⇒ alert on the first check that shows no change) |
+| `PMIX_MONITOR_ID` | both | caller-supplied string handle for this monitor; the cancel key. Must be a non-`NULL` `PMIX_STRING` or the request is `PMIX_ERR_BAD_PARAM`. Naming a monitor twice keeps the first name |
 | `PMIX_RANGE` | both | `pmix_data_range_t` scope for the raised event (default `PMIX_RANGE_NAMESPACE`) |
 
-The requestor's `PMIX_MONITOR_ID` string (the cancel handle used by
-`stop`) is part of the tracker contract but is not itself parsed in the
-current component `start` routines — a caller cancels by requestor peer,
-optionally narrowed by `id`, in `stop`.
+**Read numeric directives through `PMIx_Value_get_number`, not out of the
+union.** Every one of these arrives off the wire from a client, which is
+free to send the wrong type; reaching straight for `.data.uint32` reads
+whatever bits happen to be there and turns a malformed request into a
+monitor that quietly never fires. Both components convert, and hand back
+the conversion's error. `PMIX_MONITOR_ID` and `PMIX_RANGE` are
+type-checked outright for the same reason.
 
 ## Events raised
 
@@ -328,12 +374,31 @@ When a monitor trips, the component calls the **public**
 uses — with a `source` of the monitored requestor and the tracker's
 `range`:
 
-| Component | Status code raised |
-|-----------|--------------------|
+**The status raised is the `error` the requestor supplied**, exactly as
+[`PMIx_Process_monitor(3)`](../../../docs/man/man3/PMIx_Process_monitor.3.rst)
+promises ("the code the monitor is to use when generating an event
+notification"). A requestor that passed `PMIX_SUCCESS` expressed no
+preference, and then the component's own code stands:
+
+| Component | Default status code |
+|-----------|---------------------|
 | `heartbeat` | `PMIX_MONITOR_HEARTBEAT_ALERT` (`-109`) |
 | `file` | `PMIX_MONITOR_FILE_ALERT` (`-110`) |
 
 (Both codes live in [`include/pmix_common.h.in`](../../../include/pmix_common.h.in).)
+`pstat` does the same thing with its `op->eventcode`, so the two halves
+of the monitor API agree.
+
+**`PMIx_Notify_event` does not always reach the callback.** It rejects a
+request outright — `PMIX_ERR_INIT`, `PMIX_ERR_NOMEM`, and
+`PMIX_ERR_NOT_AVAILABLE` once `pmix_globals.progress_thread_stopped` is
+set — and returns before the caddy that would fire `opcbfunc` exists. A
+sampler that handed the notification its tracker's last reference must
+therefore release it on the error path, or the tracker and the peer it
+retains are stranded. The `NOT_AVAILABLE` case is not hypothetical:
+`PMIx_server_finalize` stops the progress thread well before it closes
+this framework, and in the separate-thread configuration the samplers go
+on firing across that gap.
 
 ## Directory layout
 
@@ -408,7 +473,14 @@ removing a *component directory* changes the build wiring resolved by
   requestor," and the base deliberately calls `stop` on *every* component;
   a component with nothing to stop must simply do nothing and return
   success. This matters because `pmix_psensor.stop` runs on every client
-  disconnect and lost connection.
+  disconnect and lost connection — and because a `PMIX_MONITOR_CANCEL` is
+  offered to every component too.
+- **Honor what the request asked for, or reject it.** A directive parsed
+  into a tracker field and then never read is the failure mode this
+  framework keeps producing: the drop allowance, the cancel handle and
+  the requestor's own status code were each stored and ignored, and every
+  one of them looked like working code. If a new directive cannot be
+  supported, return `PMIX_ERR_BAD_PARAM` — do not accept it silently.
 - **Never re-arm a sampler's own timer, and never start the monitor
   thread without fixing the teardown to match.** See "The tracker timer
   is persistent" and "Starting and stopping the monitor thread" above;
@@ -418,4 +490,7 @@ removing a *component directory* changes the build wiring resolved by
   proves anything. `test/simple/simpmonitor.c` and
   `test/unit/run_monitor.pl` are the pattern: one rank asks to be
   monitored and then does nothing, another waits for the alert and checks
-  its source.
+  its source. Cover the *negative* direction too — that test also arms a
+  capped monitor and a cancelled one under a status code of their own, so
+  that "this must not alert" is checked rather than assumed. A directive
+  that is silently ignored passes every positive test there is.

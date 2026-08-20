@@ -15,5 +15,5 @@
 A specified file is not changing, indicating a possibly stalled application:
 
 File:              %s
-Last size:         %lu
+Last size:         %llu
 Last access:       %sLast modification: %s
