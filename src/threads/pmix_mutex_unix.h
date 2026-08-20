@@ -15,7 +15,7 @@
  * Copyright (c) 2015-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -42,6 +42,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "src/class/pmix_object.h"
 
@@ -70,7 +71,7 @@ static inline int pmix_mutex_trylock(pmix_mutex_t *m)
 {
 #if PMIX_ENABLE_DEBUG
     int ret = pthread_mutex_trylock(&m->m_lock_pthread);
-    if (ret == EDEADLK) {
+    if (EDEADLK == ret) {
         errno = ret;
         perror("pmix_mutex_trylock()");
         abort();
@@ -85,7 +86,7 @@ static inline void pmix_mutex_lock(pmix_mutex_t *m)
 {
 #if PMIX_ENABLE_DEBUG
     int ret = pthread_mutex_lock(&m->m_lock_pthread);
-    if (ret == EDEADLK) {
+    if (EDEADLK == ret) {
         errno = ret;
         perror("pmix_mutex_lock()");
         abort();
@@ -99,7 +100,7 @@ static inline void pmix_mutex_unlock(pmix_mutex_t *m)
 {
 #if PMIX_ENABLE_DEBUG
     int ret = pthread_mutex_unlock(&m->m_lock_pthread);
-    if (ret == EPERM) {
+    if (EPERM == ret) {
         errno = ret;
         perror("pmix_mutex_unlock");
         abort();
@@ -108,7 +109,6 @@ static inline void pmix_mutex_unlock(pmix_mutex_t *m)
     pthread_mutex_unlock(&m->m_lock_pthread);
 #endif
 }
-
 
 /************************************************************************
  * Standard locking

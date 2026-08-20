@@ -52,7 +52,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_thread_t, pmix_object_t, pmix_thread_constr
  */
 static void pmix_thread_construct(pmix_thread_t *t)
 {
-    t->t_run = 0;
+    t->t_run = NULL;
     /* PMIX_NEW does not zero the object, so every field has to be set
      * here or it carries whatever was in the heap. t_arg is handed to
      * the thread body as its only argument */
@@ -65,7 +65,7 @@ int pmix_thread_start(pmix_thread_t *t)
     int rc;
 
     if (PMIX_ENABLE_DEBUG) {
-        if (NULL == t->t_run || t->t_handle != (pthread_t) -1) {
+        if (NULL == t->t_run || (pthread_t) -1 != t->t_handle) {
             return PMIX_ERR_BAD_PARAM;
         }
     }
@@ -106,7 +106,7 @@ int pmix_thread_join(pmix_thread_t *t, void **thr_return)
 
     rc = pthread_join(t->t_handle, thr_return);
     t->t_handle = (pthread_t) -1;
-    return (rc == 0) ? PMIX_SUCCESS : PMIX_ERROR;
+    return (0 == rc) ? PMIX_SUCCESS : PMIX_ERROR;
 }
 
 int pmix_tsd_key_create(pmix_tsd_key_t *key, pmix_tsd_destructor_t destructor)
