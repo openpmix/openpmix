@@ -114,8 +114,8 @@ Review coverage
 
 Assessed on **2026-08-15** from the commit history, and refreshed on
 **2026-08-20** when the ``src/mca/pnet``, ``src/mca/preg``,
-``src/mca/pgpu``, ``src/mca/pmdl`` and ``src/mca/pcompress`` reviews
-landed.  Move an entry out
+``src/mca/pgpu``, ``src/mca/pmdl``, ``src/mca/pcompress`` and
+``src/mca/plog`` reviews landed.  Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
 
@@ -132,9 +132,9 @@ Reviewed and current
 ``src/class``, ``src/common``, ``src/event``, ``src/include``,
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
-``src/mca/pcompress``, ``src/mca/pgpu``, ``src/mca/pmdl``,
-``src/mca/pnet``, ``src/mca/preg``, ``src/mca/pstat``, ``src/mca/ptl``,
-and ``bindings/python``.
+``src/mca/pcompress``, ``src/mca/pgpu``, ``src/mca/plog``,
+``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/pstat``,
+``src/mca/ptl``, and ``bindings/python``.
 ``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
 ``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
 below.
@@ -148,8 +148,6 @@ size, which is a rough proxy for how much there is to find.
 
 * ``src/util/keyval`` — 2397 lines of lexer and parser, and the only
   directory in ``src/`` with **no** ``AGENTS.md`` at all.
-* ``src/mca/plog`` (with ``smtp``, ``stdfd``, ``syslog``) — 2176 lines.
-  Three fixes on 2026-07-04 only.
 * ``src/mca/psec`` (with ``native``, ``none``, ``munge``,
   ``dummy_handshake``) — 1901 lines.  This is the connection-handshake
   code; two small fixes on 2026-07-14/15 are all it has had.
@@ -337,6 +335,39 @@ cover the whole of what the entry described.
   ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
+
+Nothing forwards a global-syslog request to a gateway
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/plog`` review (2026-08-20).  Half of it was
+fixed; the other half needs a design decision.
+
+``PMIX_LOG_GLOBAL_SYSLOG`` means "record this in the system-wide
+syslog", and only a gateway server is meant to emit it — the message is
+supposed to travel to the gateway node and be written there.  The
+``syslog`` module implements the gateway half: if it is a gateway it
+writes locally, and if it is not it declines.  Nothing implements the
+other half.  There is no transport that moves the request to a gateway,
+so on a peer that is not one the entry has nowhere to go.
+
+Before the review this was invisible, because the module returned
+``PMIX_SUCCESS`` regardless and the caller was told the message had been
+logged.  It now declines the entry, so the framework reports
+``PMIX_ERR_NOT_AVAILABLE`` (or ``PMIX_ERR_PARTIAL_SUCCESS`` alongside
+another channel that did work) and a *client* falls back to its own
+modules — which will decline for the same reason.  The failure is
+honest now, and still a failure.
+
+Closing it means choosing between two designs and is not a bug fix:
+either the request is relayed to the gateway over the existing
+server-to-server path, which needs the routing to exist and raises the
+question of what a client should be told while it is in flight, or
+``PMIX_LOG_GLOBAL_SYSLOG`` is documented as gateway-only and the
+attribute's description in ``include/pmix_common.h.in`` is corrected to
+say so.  Note that ``pmix_log_host_only`` and the host's ``log2`` entry
+point already give a resource manager a way to take the request and do
+the forwarding itself, which may be the answer that needs no new PMIx
+machinery at all.
 
 A compressed blob's length prefix is taken on trust
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -594,6 +625,20 @@ not "fixed" by a later reader.
   is intentional.**  A job-control request may name a job this server has
   not been told about yet, and the epilog directives need somewhere to
   hang; the entry is reused when registration arrives.
+* **The plog router builds its per-request channel list out of the
+  global module wrappers.**  ``pmix_plog_base_log`` appends the
+  ``pmix_plog_base_active_module_t`` objects that live in
+  ``pmix_plog_globals.actives`` onto a local ``pmix_list_t``, so the
+  list links and the ``added`` flag are written into shared state.  It
+  reads as a re-entrancy bug waiting to happen, and it would be one — a
+  module whose ``log`` reached ``pmix_plog_base_log`` synchronously
+  would relink the objects out from under the loop walking them.  No
+  module does: ``stdfd`` hands off to ``PMIx_server_IOF_deliver``, which
+  posts an event and returns, and ``pmix_show_help`` thread-shifts
+  rather than calling down inline.  Copying the wrappers per request
+  would cost an allocation on every log call to defend against a caller
+  that does not exist; the invariant is documented in
+  ``src/mca/plog/AGENTS.md`` instead.  Enforce it there, not here.
 * **``pnet/opa`` and ``pnet/nvd`` ship no ``configure.m4``, on purpose.**
   A component with no ``configure.m4`` is configured by the MCA machinery
   itself and therefore builds unconditionally, which is what these two
