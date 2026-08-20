@@ -70,14 +70,20 @@ It also stashes the libesmtp version string via `smtp_version()`.
 
 ### `component_query` resolves the server
 
-Unlike the other components, `smtp`'s query does real work: it calls
-`gethostbyname(component.server)` and, if the name does not resolve,
+Unlike the other components, `smtp`'s query does real work: it resolves
+`component.server` with `getaddrinfo` and, if the name does not resolve,
 **disables the component** (`*priority = 0; *module = NULL; return
 PMIX_ERR_NOT_FOUND`). This front-loads the failure so the module never
 tries to talk to an unresolvable server later. On success it returns
-priority **10** and the module. (The resolved `hostent` is cached in
-`server_hostent`.) This is the canonical example of a `plog` component
-that opts out at query time based on the runtime environment.
+priority **10** and the module. This is the canonical example of a `plog`
+component that opts out at query time based on the runtime environment.
+
+The addresses themselves are not kept — libesmtp resolves the name again
+when it connects, so this is purely a reachability probe. It used to be
+`gethostbyname`, whose result was cached in a `server_hostent` field
+nothing ever read; that call is obsolescent, is not required to be
+reentrant, and answers only for IPv4, so an IPv6-only mail server looked
+unreachable and silently disabled the component.
 
 ## Module (`plog_smtp.c`)
 
@@ -91,9 +97,13 @@ attribute key it handles is `PMIX_LOG_EMAIL` (`pmix.log.email`).
 `PMIX_LOG_EMAIL`'s value is **not** a string; it is a
 `pmix_data_array_t` of further `pmix_info_t` entries. `mylog`:
 
-1. Scans the top-level `data` for `PMIX_LOG_EMAIL` (rejecting more than
-   one per call with `PMIX_ERR_BAD_PARAM`), and picks up the nested
-   `input[]` array.
+1. Scans the top-level `data` for `PMIX_LOG_EMAIL` (skipping entries
+   already marked complete, rejecting more than one per call with
+   `PMIX_ERR_BAD_PARAM`), and picks up the nested `input[]` array — after
+   confirming the value really is a `PMIX_DATA_ARRAY` of `PMIX_INFO`.
+   That check is not paranoia: the type is whatever the client that sent
+   the `PMIx_Log` said it was (see the framework `AGENTS.md`), and this
+   one is dereferenced twice before it is walked.
 2. Reads `PMIX_LOG_TIMESTAMP` from the directives.
 3. If no email item is present, returns `PMIX_ERR_TAKE_NEXT_OPTION` —
    correctly deferring to other modules.
@@ -103,7 +113,9 @@ attribute key it handles is `PMIX_LOG_EMAIL` (`pmix.log.email`).
    - `PMIX_LOG_EMAIL_SUBJECT` → subject.
    - `PMIX_LOG_MSG` → the body, accepted as either a `PMIX_STRING` or a
      `PMIX_BYTE_OBJECT` (more than one message is rejected with
-     `PMIX_ERR_NOT_SUPPORTED`).
+     `PMIX_ERR_NOT_SUPPORTED`). A byte object carries a length, not a
+     terminator, and everything downstream of here is `strlen`-based, so
+     it is copied into a NUL-terminated scratch buffer first.
 5. If no message body was found, returns `PMIX_ERR_TAKE_NEXT_OPTION`;
    otherwise calls `send_email(...)` and returns its status.
 
@@ -132,6 +144,21 @@ even the defaults are absent.
   `crnl()` converts lone `\n` to `\r\n` as SMTP requires. The
   configurable `body_prefix` / `body_suffix` bracket the caller's message.
 
+  Two things about this callback are easy to get wrong, and both were:
+
+  - **`send_email` must initialize its `message_status_t` before
+    registering it.** The very first call reads `sent_flag`, `free()`s
+    `prev_string`, and renders `msg` — all of which were whatever was on
+    the stack. It is a local, so nothing else will do it.
+  - **Returning `NULL` ends the message**, as far as libesmtp is
+    concerned. A state that has nothing to contribute must therefore fall
+    through to the next one rather than return `NULL`; the prefix state
+    used to stop the message dead when `body_prefix` was unset, sending
+    an empty email.
+
+  The callback returns pointers to its own storage and never uses the
+  `**buf` scratch parameter libesmtp offers, so it does not allocate one.
+
 ### Return code
 
 `mylog` returns `PMIX_ERR_TAKE_NEXT_OPTION` when there is no email request
@@ -150,9 +177,16 @@ return-code contract correctly — a good template to copy.
 - **One email per call, one body per email.** Both are hard limits
   enforced with `PMIX_ERROR_LOG` + error return; don't relax them without
   reworking `send_email`, which assumes a single message.
-- **`asprintf` vs. `pmix_asprintf`.** `send_email` uses the bare
-  `asprintf` in one spot (the `X-Mailer` header) and `pmix_asprintf`
-  elsewhere. Prefer the `pmix_`-prefixed portable wrappers for any new
-  code here.
+- **`str` in `send_email` is sometimes owned and sometimes borrowed.**
+  It holds `pmix_asprintf` results (owned, freed on the `error` path) and,
+  briefly, the subject — which belongs either to the component or to the
+  caller. It is set back to `NULL` the moment the subject header is set,
+  in both the success and the failure direction, so the single cleanup
+  path can free it unconditionally. Keep that discipline if you add
+  another header.
+- **The recipient argv is freed exactly once, on the `error` path**,
+  which every exit after the split flows through. The two `PMIX_ERR_BAD_PARAM`
+  returns above it are the exceptions, and the one that can be reached
+  with a split in hand frees it itself.
 - The component is entirely absent from the build when libesmtp is not
   installed — never assume its symbols exist elsewhere in `libpmix`.

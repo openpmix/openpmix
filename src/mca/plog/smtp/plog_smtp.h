@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009 Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,13 +48,10 @@ typedef struct {
     int port;
 
     /* To, From, Subject */
-    char *to, **to_argv, *from_name, *from_addr, *subject;
+    char *to, *from_name, *from_addr, *subject;
 
     /* Mail body prefix and suffix */
     char *body_prefix, *body_suffix;
-
-    /* struct hostent from resolved SMTP server name */
-    struct hostent *server_hostent;
 
     /* Priority of this component */
     int priority;

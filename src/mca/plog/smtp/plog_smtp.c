@@ -90,24 +90,30 @@ static void finalize(void)
 /*
  * Convert lone \n's to \r\n
  */
-static char *crnl(char *orig)
+static char *crnl(const char *orig)
 {
-    int i, j, max, count;
+    size_t i, j, max, count;
     char *str;
 
     /* Count how much space we need */
     count = max = strlen(orig);
     for (i = 0; i < max; ++i) {
-        if (orig[i] == '\n' && i > 0 && orig[i - 1] != '\r') {
+        if (orig[i] == '\n' && (0 == i || orig[i - 1] != '\r')) {
             ++count;
         }
     }
 
     /* Copy, changing \n to \r\n */
     str = malloc(count + 1);
+    if (NULL == str) {
+        return NULL;
+    }
     for (j = i = 0; i < max; ++i) {
-        if (orig[i] == '\n' && i > 0 && orig[i - 1] != '\r') {
-            str[j++] = '\n';
+        /* SMTP wants the CR ahead of the LF - writing a second '\n'
+         * here just doubles the line break and never produces the CRLF
+         * this function exists to produce */
+        if (orig[i] == '\n' && (0 == i || orig[i - 1] != '\r')) {
+            str[j++] = '\r';
         }
         str[j++] = orig[i];
     }
@@ -121,10 +127,9 @@ static char *crnl(char *orig)
 static const char *message_cb(void **buf, int *len, void *arg)
 {
     message_status_t *ms = (message_status_t *) arg;
+    PMIX_HIDE_UNUSED_PARAMS(buf);
 
-    if (NULL == *buf) {
-        *buf = malloc(8192);
-    }
+    /* libesmtp calls us with a NULL length to tell us to rewind */
     if (NULL == len) {
         ms->sent_flag = SENT_NONE;
         return NULL;
@@ -145,32 +150,41 @@ static const char *message_cb(void **buf, int *len, void *arg)
         return "\r\n";
 
     case SENT_HEADER:
+        ms->sent_flag = SENT_BODY_PREFIX;
         if (NULL != pmix_mca_plog_smtp_component.body_prefix) {
-            ms->sent_flag = SENT_BODY_PREFIX;
             ms->prev_string = crnl(pmix_mca_plog_smtp_component.body_prefix);
-            *len = strlen(ms->prev_string);
-            return ms->prev_string;
-        } else {
-            *len = 0;
-            return NULL;
+            if (NULL != ms->prev_string) {
+                *len = strlen(ms->prev_string);
+                return ms->prev_string;
+            }
         }
+        /* returning NULL ends the message as far as libesmtp is
+         * concerned, so an absent prefix must fall through to the body
+         * rather than stop here - otherwise configuring no prefix sends
+         * an empty email */
+        /* fall through */
 
     case SENT_BODY_PREFIX:
         ms->sent_flag = SENT_BODY;
         ms->prev_string = crnl(ms->msg);
+        if (NULL == ms->prev_string) {
+            *len = 0;
+            return NULL;
+        }
         *len = strlen(ms->prev_string);
         return ms->prev_string;
 
     case SENT_BODY:
+        ms->sent_flag = SENT_BODY_SUFFIX;
         if (NULL != pmix_mca_plog_smtp_component.body_suffix) {
-            ms->sent_flag = SENT_BODY_SUFFIX;
             ms->prev_string = crnl(pmix_mca_plog_smtp_component.body_suffix);
-            *len = strlen(ms->prev_string);
-            return ms->prev_string;
-        } else {
-            *len = 0;
-            return NULL;
+            if (NULL != ms->prev_string) {
+                *len = strlen(ms->prev_string);
+                return ms->prev_string;
+            }
         }
+        *len = 0;
+        return NULL;
 
     case SENT_BODY_SUFFIX:
     case SENT_ALL:
@@ -199,6 +213,13 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     message_status_t ms;
     pmix_plog_smtp_component_t *c = &pmix_mca_plog_smtp_component;
 
+    /* the callback below reads every one of these fields on its first
+     * invocation - leaving them as whatever was on the stack means
+     * free()ing a wild pointer and rendering a garbage message */
+    ms.sent_flag = SENT_NONE;
+    ms.msg = msg;
+    ms.prev_string = NULL;
+
     // check that we have recipients
     if (NULL == addrs) {
         if (NULL == c->to) {
@@ -208,12 +229,16 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
             myaddrs = PMIx_Argv_split(c->to, ',');
         }
     } else {
-            myaddrs = PMIx_Argv_split(addrs, ',');
+        myaddrs = PMIx_Argv_split(addrs, ',');
+    }
+    if (NULL == myaddrs) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     if (NULL == from) {
         if (NULL == c->from_addr) {
             // nope - nobody to send from
+            PMIx_Argv_free(myaddrs);
             return PMIX_ERR_BAD_PARAM;
         } else {
             myfrom = c->from_addr;
@@ -288,11 +313,13 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
         str = subject;
     }
     if (0 == smtp_set_header(message, "Subject", str)) {
+        /* "str" is borrowed here, not owned - the error path frees it */
+        str = NULL;
         err = PMIX_ERROR;
         errmsg = "smtp_set_header SUBJECT";
-        str = NULL;
         goto error;
     }
+    str = NULL;
 
 
     /* set the X-Mailer */
@@ -317,16 +344,25 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
 
     // provide the timestamp
     if (0 < timestamp) {
-        struct tm *local;
-        char *t;
+        struct tm local;
+        char t[32];
+        size_t tlen;
 
-        local = localtime(&timestamp);
-        t = asctime(local);
-        t[strlen(t) - 1] = '\0'; // remove trailing newline
-        if (0 == smtp_set_header(message, "Timestamp", t)) {
-            err = PMIX_ERROR;
-            errmsg = "smtp_set_header TIMESTAMP";
-            goto error;
+        /* localtime/asctime render into process-wide static storage, so
+         * the strip below would corrupt whatever another thread is
+         * holding onto - and either may decline a time it cannot
+         * represent rather than hand back something to index into */
+        if (NULL != localtime_r(&timestamp, &local) &&
+            NULL != asctime_r(&local, t)) {
+            tlen = strlen(t);
+            if (0 < tlen && '\n' == t[tlen - 1]) {
+                t[tlen - 1] = '\0'; // remove trailing newline
+            }
+            if (0 == smtp_set_header(message, "Timestamp", t)) {
+                err = PMIX_ERROR;
+                errmsg = "smtp_set_header TIMESTAMP";
+                goto error;
+            }
         }
     }
 
@@ -347,8 +383,15 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     /* Fall through */
 
 error:
+    PMIx_Argv_free(myaddrs);
     if (NULL != str) {
         free(str);
+    }
+    /* the callback holds the last chunk it handed libesmtp, and nothing
+     * calls it again once the session is over */
+    if (NULL != ms.prev_string) {
+        free(ms.prev_string);
+        ms.prev_string = NULL;
     }
     if (NULL != session) {
         smtp_destroy_session(session);
@@ -373,13 +416,16 @@ error:
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
                            const pmix_info_t directives[], size_t ndirs)
 {
-    char *addrs = NULL, *msg = NULL;
+    char *addrs = NULL, *msg = NULL, *scratch = NULL;
     char *subject = NULL, *from = NULL;
-    size_t n;
+    size_t n, mine = 0;
     time_t timestamp = 0;
     pmix_info_t *input = NULL;
-    size_t ninput;
+    size_t ninput = 0;
     pmix_status_t rc;
+    /* completion is tracked in the caller's array - see the plog
+     * AGENTS.md on why that state is shared and mutable */
+    pmix_info_t *dt = (pmix_info_t *) data;
     PMIX_HIDE_UNUSED_PARAMS(source);
 
     /* if there is no data, then we don't handle it */
@@ -389,21 +435,38 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
 
     /* check to see if there is an email request */
     for (n = 0; n < ndata; n++) {
+        if (PMIX_INFO_OP_IS_COMPLETE(&data[n])) {
+            continue;
+        }
         if (PMIx_Check_key(data[n].key, PMIX_LOG_EMAIL)) {
             if (NULL != input) {
                 // cannot have more than one email per call
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 return PMIX_ERR_BAD_PARAM;
             }
+            /* the type is the caller's to set, and for a client's
+             * PMIx_Log that caller is on the far end of a socket -
+             * confirm this really is an array before walking it */
+            if (PMIX_DATA_ARRAY != data[n].value.type ||
+                NULL == data[n].value.data.darray ||
+                PMIX_INFO != data[n].value.data.darray->type ||
+                NULL == data[n].value.data.darray->array) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                return PMIX_ERR_BAD_PARAM;
+            }
             input = (pmix_info_t*)data[n].value.data.darray->array;
             ninput = data[n].value.data.darray->size;
+            mine = n;
         }
     }
 
     // check for directives
-    for (n = 0; n < ndirs; n++) {
-        if (PMIx_Check_key(directives[n].key, PMIX_LOG_TIMESTAMP)) {
-            timestamp = directives[n].value.data.time;
+    if (NULL != directives) {
+        for (n = 0; n < ndirs; n++) {
+            if (PMIx_Check_key(directives[n].key, PMIX_LOG_TIMESTAMP) &&
+                PMIX_TIME == directives[n].value.type) {
+                timestamp = directives[n].value.data.time;
+            }
         }
     }
 
@@ -415,17 +478,23 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     // check the array for input
     for (n=0; n < ninput; n++) {
         if (PMIx_Check_key(input[n].key, PMIX_LOG_EMAIL_ADDR)) {
-            addrs = input[n].value.data.string;
+            if (PMIX_STRING == input[n].value.type) {
+                addrs = input[n].value.data.string;
+            }
             continue;
         }
 
         if (PMIx_Check_key(input[n].key, PMIX_LOG_EMAIL_SENDER_ADDR)) {
-            from = input[n].value.data.string;
+            if (PMIX_STRING == input[n].value.type) {
+                from = input[n].value.data.string;
+            }
             continue;
         }
 
         if (PMIx_Check_key(input[n].key, PMIX_LOG_EMAIL_SUBJECT)) {
-            subject = input[n].value.data.string;
+            if (PMIX_STRING == input[n].value.type) {
+                subject = input[n].value.data.string;
+            }
             continue;
         }
 
@@ -433,13 +502,30 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
             if (NULL != msg) {
                 // multiple messages are not supported
                 PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+                free(scratch);
                 return PMIX_ERR_NOT_SUPPORTED;
             }
             if (PMIX_STRING == input[n].value.type) {
                 msg = input[n].value.data.string;
             } else if (PMIX_BYTE_OBJECT == input[n].value.type) {
-                msg = input[n].value.data.bo.bytes;
+                /* a byte object carries a length, not a terminator, and
+                 * everything downstream of here is strlen-based - so it
+                 * has to be copied into a string before it is used */
+                if (NULL == input[n].value.data.bo.bytes ||
+                    0 == input[n].value.data.bo.size) {
+                    continue;
+                }
+                scratch = malloc(input[n].value.data.bo.size + 1);
+                if (NULL == scratch) {
+                    return PMIX_ERR_NOMEM;
+                }
+                memcpy(scratch, input[n].value.data.bo.bytes,
+                       input[n].value.data.bo.size);
+                scratch[input[n].value.data.bo.size] = '\0';
+                msg = scratch;
             } else {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                free(scratch);
                 return PMIX_ERR_BAD_PARAM;
             }
             continue;
@@ -449,9 +535,15 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
 
     /* If there wasn't a message, then we are done */
     if (NULL == msg) {
+        free(scratch);
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
     rc = send_email(msg, from, addrs, subject, timestamp);
+    free(scratch);
+    if (PMIX_SUCCESS == rc) {
+        /* nobody else should send this a second time */
+        PMIX_INFO_OP_COMPLETED(&dt[mine]);
+    }
     return rc;
 }

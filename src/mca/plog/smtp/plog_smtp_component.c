@@ -185,20 +185,31 @@ static pmix_status_t smtp_close(void)
 
 static pmix_status_t smtp_component_query(pmix_mca_base_module_t **module, int *priority)
 {
+    struct addrinfo hints, *res = NULL;
+
     *priority = 0;
     *module = NULL;
 
 
-    /* Since we have to open a socket later, try to resolve the IP
-       address of the server now.  Save the result, or abort if we
-       can't resolve it. */
-    pmix_mca_plog_smtp_component.server_hostent = gethostbyname(pmix_mca_plog_smtp_component.server);
-    if (NULL == pmix_mca_plog_smtp_component.server_hostent) {
+    /* Since we have to open a socket later, check now that the server
+       name resolves at all - if it does not, disable ourselves rather
+       than fail every log request. gethostbyname was the obvious call
+       for this and is what we used to use, but it is obsolescent, is
+       not required to be reentrant, and only ever answers for IPv4 -
+       so an IPv6-only mail server looked unreachable. */
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    if (0 != getaddrinfo(pmix_mca_plog_smtp_component.server, NULL,
+                         &hints, &res)) {
         pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
                             "SMTP: unable to resolve server %s; disabled",
                             pmix_mca_plog_smtp_component.server);
         return PMIX_ERR_NOT_FOUND;
     }
+    /* nothing here needs the addresses themselves - libesmtp resolves
+       the name again when it connects */
+    freeaddrinfo(res);
 
     *priority = 10;
     *module = (pmix_mca_base_module_t *) &pmix_plog_smtp_module;
