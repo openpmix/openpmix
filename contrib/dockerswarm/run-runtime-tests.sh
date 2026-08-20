@@ -88,8 +88,19 @@ root="$(cd "$here/../.." && pwd)"
 
 # The programs in test/unit that belong to src/runtime.  Spelled out rather
 # than read from Makefile.am: that file's check_PROGRAMS is the whole unit
-# suite, and only these five are about this directory.
-RUNTIME_PROGS="runtime_init progress_threads info_support client_cycle tool_cycle"
+# suite, and only these are about this directory.
+#
+# threads_primitives is src/threads rather than src/runtime, and it is here
+# because src/threads has no runner of its own and the progress-thread engine
+# is its only in-tree caller -- so this is where those primitives get their
+# Linux and optimized coverage.  Both matter to it.  pmix_thread_join used to
+# hand its own "no thread here" (pthread_t) -1 sentinel to pthread_join, which
+# POSIX leaves undefined: on macOS that returns an error and the test merely
+# fails, while on glibc pthread_t is a pointer into the thread descriptor and
+# the same call is a SIGSEGV.  And pmix_thread_start's parameter validation is
+# inside if (PMIX_ENABLE_DEBUG), so stage 2 is the only place the release
+# shape of that function runs at all.
+RUNTIME_PROGS="runtime_init progress_threads info_support client_cycle tool_cycle threads_primitives"
 
 ########################################################################
 # Stages 1 and 2: build and run the suite in the container, in both

@@ -1103,6 +1103,13 @@ the MCA parameter registry, the progress-thread engine, and the
 `client_cycle` and `tool_cycle` cover it on the developer's own machine.
 Three things they do not.
 
+The suite also carries `threads_primitives`, which belongs to
+`src/threads` rather than to this directory. It is here because
+`src/threads` has no runner of its own and the progress-thread engine is
+its only in-tree caller, and because both of the things this runner adds
+happen to be exactly what that test needs — see "why `threads_primitives`
+rides along" below.
+
 ### Why the swarm buys something here
 
 * **Linux-only code that never compiles at home.** The progress thread's
@@ -1132,10 +1139,32 @@ Three things they do not.
   *and* optimized is where a leak or a stale latch that macOS/debug hides
   shows up.
 
+### Why `threads_primitives` rides along
+
+Both of the reasons above apply to it directly, which is what earns it a
+place in a suite named for another directory.
+
+`pmix_thread_join` used to hand its own `(pthread_t) -1` "no thread here"
+sentinel straight to `pthread_join`, which POSIX leaves undefined. The
+platform difference is the whole point: on macOS `pthread_join` returns
+an error for it, so the regression case merely *fails*; on glibc
+`pthread_t` is a pointer into the thread descriptor and the identical
+call dereferences the sentinel, so the program dies of SIGSEGV with its
+buffered output lost. A developer running `make check` at home sees the
+weaker of the two signals. Verified in this image against glibc 2.39: with
+the guard removed the program exits 139, and a five-line C file calling
+`pthread_join((pthread_t) -1, &ret)` does the same on its own.
+
+And `pmix_thread_start`'s parameter validation sits inside
+`if (PMIX_ENABLE_DEBUG)`, so stage 2 is the only place the release shape
+of that function is ever run. The test compiles that one case out under
+`NDEBUG`, which is why it reports 31 cases in stage 1 and 30 in stage 2 —
+that difference is expected, not a skip.
+
 ### The four stages
 
 1. **`--enable-debug`** — build from a copy of your tree in the
-   container and run all five programs.
+   container and run all six programs.
 2. **`--disable-debug`** — the same, in the configuration users get.
 3. **CPU binding through `PMIx_Init`.** The unit test drives *named*
    progress threads, because those are the ones it can create and destroy
