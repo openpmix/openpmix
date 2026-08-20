@@ -113,8 +113,8 @@ Review coverage
 ---------------
 
 Assessed on **2026-08-15** from the commit history, and refreshed on
-**2026-08-19** when the ``src/mca/pnet``, ``src/mca/preg`` and
-``src/mca/pgpu`` reviews landed.  Move an entry out
+**2026-08-19** when the ``src/mca/pnet``, ``src/mca/preg``,
+``src/mca/pgpu`` and ``src/mca/pmdl`` reviews landed.  Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
 
@@ -131,8 +131,8 @@ Reviewed and current
 ``src/class``, ``src/common``, ``src/event``, ``src/include``,
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
-``src/mca/pgpu``, ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/pstat``,
-``src/mca/ptl``, and ``bindings/python``.
+``src/mca/pgpu``, ``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``,
+``src/mca/pstat``, ``src/mca/ptl``, and ``bindings/python``.
 ``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
 ``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
 below.
@@ -144,7 +144,6 @@ Each of these has an orientation guide and nothing else: no findings were
 ever recorded in it, and only drive-by fixes have landed.  Ordered by
 size, which is a rough proxy for how much there is to find.
 
-* ``src/mca/pmdl`` (with ``ompi``) — 2422 lines.
 * ``src/util/keyval`` — 2397 lines of lexer and parser, and the only
   directory in ``src/`` with **no** ``AGENTS.md`` at all.
 * ``src/mca/pcompress`` (with ``zlib``, ``zlibng``, ``zstd``, ``lz4``) —
@@ -279,6 +278,41 @@ it from its own ``deregister_fabric``.
 
 See "The fabric path is scaffolding" in ``src/mca/pnet/AGENTS.md``.
 
+Who owns an ``mca_base_*`` parameter
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/pmdl`` review (2026-08-19).  ``pmdl`` re-prefixes
+every value it reads out of an MCA param file so it reaches the library
+that will look for it — ``PMIX_MCA_``, ``PRTE_MCA_`` or ``OMPI_MCA_`` —
+and decides which by the parameter's first segment.  Two segments name
+something in more than one library: ``mca`` (all three have an MCA base)
+and ``pmix`` (OPAL carried a ``pmix`` framework of its own).
+
+Half of that overlap is now settled, because one side of it was plainly
+wrong: ``parse_file_envars`` was claiming those names out of the list
+PMIx read from **its own** param files, so a value the user set for PMIx
+— ``pmix_hwloc_topo_file`` is the concrete one — was renamed
+``OMPI_MCA_*`` and reached neither library.  A parameter PMIx claims is
+now left alone there.
+
+The other half is left as it stands.  ``process_param_file`` reads
+``openmpi-mca-params.conf``, tests for a PMIx parameter first, and so
+forwards ``mca_base_component_path`` from **Open MPI's** file as
+``PMIX_MCA_mca_base_component_path``.  Note which name that is: PMIx
+registers the variable as project ``pmix``, framework ``mca``, component
+``base``, and the *full* name a param file and an envar carry leaves the
+project off — so ``mca_base_component_path`` is PMIx's own spelling of
+it, and ``pmix_mca_base_component_path`` is the project-qualified long
+name, which a param file also accepts (see ``var_set_from_file``, which
+matches either).  Open MPI spells its equivalent the same way, which is
+the whole difficulty: the unqualified name is genuinely ambiguous, and
+nothing in the line says which library it was meant for.  Claiming it for
+PMIx has been the behavior for releases and a site may be relying on it.
+Deciding it means deciding whether the two ``mca_base`` namespaces are
+one setting or two.
+
+The ``ompi`` component's guide records the precedence as it stands.
+
 Deferred work
 -------------
 
@@ -304,6 +338,25 @@ cover the whole of what the entry described.
   ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
+
+An absent app-level value fails a child's launch
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/pmdl`` review (2026-08-19), and narrowed rather
+than closed.  ``pmdl/ompi``'s ``setup_fork`` treats a missing
+``PMIX_PROCDIR``, ``PMIX_WDIR`` or ``PMIX_APP_ARGV`` as an error, and a
+``setup_fork`` error fails ``PMIx_server_setup_fork`` and with it the
+child's launch — so a host that registers a namespace without one of them
+cannot start the job at all, however little the resulting envar matters
+(``OMPI_MCA_initial_wdir`` is informational).
+
+The review closed the case that was unambiguously wrong —
+``PMIX_REINCARNATION``, which nothing in PMIx sets and no host is obliged
+to provide, so its absence now means "zero restarts" rather than a failed
+launch.  The three above are ordinary registration data that every host
+in practice provides, so making them optional would be a behavior change
+with nothing to test it against; it needs a decision about which of them
+Open MPI genuinely requires.
 
 Fabric inventory collection is a stub
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
