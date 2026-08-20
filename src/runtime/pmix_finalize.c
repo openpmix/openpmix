@@ -229,11 +229,6 @@ void pmix_rte_finalize(void)
     // release the topology
     pmix_hwloc_finalize();
 
-    pmix_tsd_keys_destruct();
-    /* clear the print-buffer TSD latch now that its key has been deleted,
-     * so a subsequent PMIx_Init recreates it */
-    pmix_name_fns_finalize();
-
     pmix_finalize_util();
     // release the event base
     pmix_progress_thread_stop(NULL);
@@ -244,6 +239,21 @@ void pmix_rte_finalize(void)
      * we only drop our reference, we do not free it here */
     pmix_globals.evbase = NULL;
     pmix_globals.evauxbase = NULL;
+
+    /* Only now, with the progress thread joined, is this thread the only
+     * one left - which is what deleting the TSD keys requires. These used
+     * to run further up, while the engine was still dispatching, and both
+     * halves of that were wrong: the progress thread could reach a key
+     * this thread had already deleted, and anything below here that
+     * printed a process name re-created the print-buffer key into a
+     * registry that had just been emptied, so that key - and its
+     * PTHREAD_KEYS_MAX-limited slot - leaked for the rest of the process.
+     * Leaking the slot is the exact failure pmix_tsd_keys_destruct exists
+     * to prevent. */
+    pmix_tsd_keys_destruct();
+    /* clear the print-buffer TSD latch now that its key has been deleted,
+     * so a subsequent PMIx_Init recreates it */
+    pmix_name_fns_finalize();
 
     /* Put the scalar bootstrap state back to the values pmix_globals was
      * statically initialized with. These are all set from directives the
