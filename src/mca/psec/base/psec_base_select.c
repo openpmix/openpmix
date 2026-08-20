@@ -34,14 +34,15 @@
 
 /* Function for selecting a prioritized list of components
  * from all those that are available. */
-int pmix_psec_base_select(void)
+pmix_status_t pmix_psec_base_select(void)
 {
     pmix_mca_base_component_list_item_t *cli = NULL;
     pmix_mca_base_component_t *component = NULL;
     pmix_mca_base_module_t *module = NULL;
     pmix_psec_module_t *nmodule;
     pmix_psec_base_active_module_t *newmodule, *mod;
-    int rc, priority;
+    pmix_status_t rc;
+    int priority;
     bool inserted;
 
     if (pmix_psec_globals.selected) {
@@ -135,5 +136,4 @@ int pmix_psec_base_select(void)
     }
 
     return PMIX_SUCCESS;
-    ;
 }
