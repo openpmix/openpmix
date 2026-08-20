@@ -48,10 +48,15 @@ PMIX_EXPORT extern pmix_compress_base_t pmix_compress_base;
 /**
  * Select an available component.
  *
- * @retval OPAL_SUCCESS Upon Success
- * @retval OPAL_NOT_FOUND If no component can be selected
- * @retval OPAL_ERROR Upon other failure
+ * Selecting nothing is deliberately NOT an error: the caller keeps the
+ * base default no-op module and ships its data uncompressed. The only
+ * failure this can report is a non-SUCCESS return from the winning
+ * module's init(), which no module implements today.
  *
+ * @retval PMIX_SUCCESS a component was selected, or none was and the
+ *                      base default stubs remain in place
+ * @retval other        the selected module's init() failed; note that
+ *                      pmix_init.c treats this as fatal to library init
  */
 PMIX_EXPORT int pmix_compress_base_select(void);
 

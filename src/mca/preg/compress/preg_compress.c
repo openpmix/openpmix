@@ -53,8 +53,11 @@ static pmix_status_t parse_regex(const pmix_regex2_t *regex, pmix_info_t info[],
     /* a peer is free to declare a length of zero, in which case bfrops
      * unpacked no bytes and left the pointer NULL. Screen that here: what
      * is on the other side of this call is a decompressor that reads the
-     * blob's length prefix out of the first four bytes, and not all of
-     * them check first */
+     * blob's length prefix out of the first four bytes. Every pcompress
+     * component now screens for this itself, but the guard stays: a zero
+     * length is not a blob this component ever wrote, so refusing it here
+     * reports PMIX_ERR_BAD_PARAM rather than falling through to the
+     * "some other preg component might handle it" answer below */
     if (NULL == regex->bytes || 0 == regex->len) {
         return PMIX_ERR_BAD_PARAM;
     }

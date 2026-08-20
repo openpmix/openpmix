@@ -113,8 +113,9 @@ Review coverage
 ---------------
 
 Assessed on **2026-08-15** from the commit history, and refreshed on
-**2026-08-19** when the ``src/mca/pnet``, ``src/mca/preg``,
-``src/mca/pgpu`` and ``src/mca/pmdl`` reviews landed.  Move an entry out
+**2026-08-20** when the ``src/mca/pnet``, ``src/mca/preg``,
+``src/mca/pgpu``, ``src/mca/pmdl`` and ``src/mca/pcompress`` reviews
+landed.  Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
 
@@ -131,8 +132,9 @@ Reviewed and current
 ``src/class``, ``src/common``, ``src/event``, ``src/include``,
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
-``src/mca/pgpu``, ``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``,
-``src/mca/pstat``, ``src/mca/ptl``, and ``bindings/python``.
+``src/mca/pcompress``, ``src/mca/pgpu``, ``src/mca/pmdl``,
+``src/mca/pnet``, ``src/mca/preg``, ``src/mca/pstat``, ``src/mca/ptl``,
+and ``bindings/python``.
 ``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
 ``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
 below.
@@ -146,9 +148,6 @@ size, which is a rough proxy for how much there is to find.
 
 * ``src/util/keyval`` — 2397 lines of lexer and parser, and the only
   directory in ``src/`` with **no** ``AGENTS.md`` at all.
-* ``src/mca/pcompress`` (with ``zlib``, ``zlibng``, ``zstd``, ``lz4``) —
-  2394 lines.  ``zstd`` (2026-08-08) and ``lz4`` (2026-08-15) are new
-  code that has never been read by anyone but its author.
 * ``src/mca/plog`` (with ``smtp``, ``stdfd``, ``syslog``) — 2176 lines.
   Three fixes on 2026-07-04 only.
 * ``src/mca/psec`` (with ``native``, ``none``, ``munge``,
@@ -339,6 +338,49 @@ cover the whole of what the entry described.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
+A compressed blob's length prefix is taken on trust
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/pcompress`` review (2026-08-20) and left alone
+deliberately.
+
+Every component allocates the uncompressed length the blob's 4-byte
+prefix claims, *before* inflating anything.  The prefix generally came
+off a peer's wire, so a five-byte blob whose prefix reads ``0xFFFFFFFE``
+asks for a four-gigabyte allocation, which then fails or succeeds and is
+thrown away when the payload turns out not to decode.  The review closed
+the case that was a memory error — a blob too short to hold the prefix
+at all — but not this one, which is a resource question rather than a
+correctness one.
+
+The obvious guard is a maximum expansion ratio, and that is exactly why
+it was not written: DEFLATE tops out near 1032:1 while zstd's is far
+higher, so any single cap either fails to constrain zstd or rejects
+legitimate zlib output.  A per-component cap is possible; whether it is
+worth the interoperability risk is a policy decision, not a bug fix.
+Note also that the caller has already read the whole blob into memory by
+the time it gets here, so the amplification is bounded by what the PTL
+was willing to accept.
+
+A pcompress module's ``init()`` failure is fatal to library init
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Also from the ``src/mca/pcompress`` review, and dead code today.
+
+The framework's documented stance is that having no compressor is not an
+error: ``pmix_compress_base_select()`` returns ``PMIX_SUCCESS`` when it
+selects nothing, and the base default no-op stubs stay in place.  But if
+the winning module's ``init()`` fails, that error is returned, and
+``pmix_init.c`` treats a non-``SUCCESS`` return from the select as fatal
+to ``PMIx_Init``.  So a compression library that loads but cannot start
+would take the whole library down, where an absent one is shrugged off.
+
+Unreachable: no module in the framework implements ``init``, and every
+one of the five leaves the slot ``NULL``.  It is recorded because the
+first module that does implement it will inherit the inconsistency, and
+the fix — degrade to the base default rather than fail — should be made
+then, with a module to test it against.
+
 An absent app-level value fails a child's launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -476,6 +518,17 @@ Not defects — by design
 
 These look like bugs and are not.  They are recorded so that they are
 not "fixed" by a later reader.
+
+* **A** ``pcompress`` ``compress_string`` **that does not screen its
+  argument for NULL is not a missing guard.**  All five implementations
+  hand the pointer straight to ``strlen``, which reads as an asymmetry
+  now that both *decompress* entry points screen for NULL — but the two
+  directions take different data.  A decompressor is handed a length and
+  a buffer a peer declared; a compressor is handed a string the caller
+  just built and owns.  No caller in the tree can produce a NULL there,
+  and a component answering ``false`` for one would report "I declined
+  to compress" for what is really a caller bug, hiding it.  Add the
+  screen only alongside a caller that can actually pass NULL.
 
 * **The fence modex bucket reported as a libpmix leak belongs to the
   host.**  ``pmix_server_fence`` unloads the assembled bucket with

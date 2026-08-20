@@ -307,10 +307,10 @@ this is a contract, not an implementation detail:
 
 ```
 +-------------------+---------------------------------+
-| uint32 raw_length |   DEFLATE-compressed payload    |
+| uint32 raw_length |       compressed payload        |
 +-------------------+---------------------------------+
-   4 bytes (host       zlib deflate stream
-   byte order)
+   4 bytes (host       DEFLATE stream, zstd frame or
+   byte order)         LZ4 frame - see below
 ```
 
 - The first 4 bytes are the **uncompressed** length, written with a raw
