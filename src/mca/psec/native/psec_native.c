@@ -3,7 +3,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,7 +22,6 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
-#include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 
@@ -60,9 +59,6 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
                                  pmix_byte_object_t *cred)
 {
     pmix_peer_t *pr = (pmix_peer_t *) peer;
-    char **types;
-    size_t n, m;
-    bool takeus;
     uid_t euid;
     gid_t egid;
     char *tmp, *ptr;
@@ -72,31 +68,9 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
 
     /* we may be responding to a local request for a credential, so
      * see if they specified a mechanism */
-    if (NULL != directives && 0 < ndirs) {
-        /* cycle across the provided info and see if they specified
-         * any desired credential types */
-        takeus = true;
-        for (n = 0; n < ndirs; n++) {
-            if (0 == strncmp(directives[n].key, PMIX_CRED_TYPE, PMIX_MAX_KEYLEN)) {
-                /* see if we are included */
-                types = PMIx_Argv_split(directives[n].value.data.string, ',');
-                /* start by assuming they don't want us */
-                takeus = false;
-                for (m = 0; NULL != types[m]; m++) {
-                    if (0 == strcmp(types[m], "native")) {
-                        /* it's us! */
-                        takeus = true;
-                        break;
-                    }
-                }
-                PMIx_Argv_free(types);
-                break;
-            }
-        }
-        if (!takeus) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
+    if (!pmix_psec_base_check_directives("native", directives, ndirs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+        return PMIX_ERR_NOT_SUPPORTED;
     }
 
     if (PMIX_PROTOCOL_V1 == pr->protocol) {
@@ -128,10 +102,13 @@ complete:
         /* mark that this came from us */
         PMIX_INFO_CREATE(*info, 1);
         if (NULL == *info) {
+            /* our caller only reclaims the credential when we report
+             * success, so release it here rather than stranding it */
+            PMIX_BYTE_OBJECT_DESTRUCT(cred);
             return PMIX_ERR_NOMEM;
         }
         *ninfo = 1;
-        PMIX_INFO_LOAD(info[0], PMIX_CRED_TYPE, "native", PMIX_STRING);
+        PMIX_INFO_LOAD(&(*info)[0], PMIX_CRED_TYPE, "native", PMIX_STRING);
     }
     return PMIX_SUCCESS;
 }
@@ -142,7 +119,17 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
 {
     pmix_peer_t *pr = (pmix_peer_t *) peer;
 
-#if defined(SO_PEERCRED)
+/* Declare the peer-credential scratch only on the platforms whose
+ * getsockopt path below is actually compiled in. The use site is guarded
+ * on SO_PEERCRED *and* one of the ucred field macros; declaring on
+ * SO_PEERCRED alone leaves these two variables unused - and therefore a
+ * -Werror build failure - on a platform that has SO_PEERCRED but neither
+ * field. HAVE_STRUCT_SOCKPEERCRED_UID has to be named here rather than
+ * HAVE_STRUCT_UCRED_UID, because it is this block that defines the
+ * latter for that platform. */
+#if defined(SO_PEERCRED)                    \
+    && (defined(HAVE_STRUCT_SOCKPEERCRED_UID) || defined(HAVE_STRUCT_UCRED_UID) \
+        || defined(HAVE_STRUCT_UCRED_CR_UID))
 #    ifdef HAVE_STRUCT_SOCKPEERCRED_UID
 #        define HAVE_STRUCT_UCRED_UID
     struct sockpeercred ucred;
@@ -155,13 +142,18 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     gid_t egid = (gid_t) -1;
     char *ptr;
     size_t ln;
-    bool takeus;
-    char **types;
-    size_t n, m;
     uint32_t u32;
 
     pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
                         "psec: native validate_cred %s", (NULL == cred) ? "NULL" : "NON-NULL");
+
+    /* if we are responding to a local request to validate a credential,
+     * then see if they specified a mechanism. Settle "is this even our
+     * job" before we start interpreting bytes that may not be ours -
+     * the other modules screen in this order too */
+    if (!pmix_psec_base_check_directives("native", directives, ndirs)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
 
     if (PMIX_PROTOCOL_V1 == pr->protocol) {
         /* usock protocol - get the remote side's uid/gid */
@@ -219,32 +211,17 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         } else {
             return PMIX_ERR_INVALID_CRED;
         }
-    } else if (PMIX_PROTOCOL_UNDEF != pr->protocol) {
+    } else if (PMIX_PROTOCOL_UNDEF == pr->protocol) {
+        /* we have neither a socket to interrogate nor a credential
+         * format we can trust, so there is nothing here we can
+         * validate. Say so explicitly rather than relying on the
+         * (uid_t)-1 initializers above to fail the comparison below -
+         * a peer whose recorded uid/gid happened to match those
+         * sentinels would otherwise be accepted */
+        return PMIX_ERR_INVALID_CRED;
+    } else {
         /* don't recognize the protocol */
         return PMIX_ERR_NOT_SUPPORTED;
-    }
-
-    /* if we are responding to a local request to validate a credential,
-     * then see if they specified a mechanism */
-    if (NULL != directives && 0 < ndirs) {
-        for (n = 0; n < ndirs; n++) {
-            if (0 == strncmp(directives[n].key, PMIX_CRED_TYPE, PMIX_MAX_KEYLEN)) {
-                /* split the specified string */
-                types = PMIx_Argv_split(directives[n].value.data.string, ',');
-                takeus = false;
-                for (m = 0; NULL != types[m]; m++) {
-                    if (0 == strcmp(types[m], "native")) {
-                        /* it's us! */
-                        takeus = true;
-                        break;
-                    }
-                }
-                PMIx_Argv_free(types);
-                if (!takeus) {
-                    return PMIX_ERR_NOT_SUPPORTED;
-                }
-            }
-        }
     }
 
     /* check uid */
@@ -271,13 +248,13 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         }
         *ninfo = 3;
         /* mark that this came from us */
-        PMIX_INFO_LOAD(info[0], PMIX_CRED_TYPE, "native", PMIX_STRING);
+        PMIX_INFO_LOAD(&(*info)[0], PMIX_CRED_TYPE, "native", PMIX_STRING);
         /* provide the uid it contained */
         u32 = euid;
-        PMIX_INFO_LOAD(info[1], PMIX_USERID, &u32, PMIX_UINT32);
+        PMIX_INFO_LOAD(&(*info)[1], PMIX_USERID, &u32, PMIX_UINT32);
         /* provide the gid it contained */
         u32 = egid;
-        PMIX_INFO_LOAD(info[2], PMIX_GRPID, &u32, PMIX_UINT32);
+        PMIX_INFO_LOAD(&(*info)[2], PMIX_GRPID, &u32, PMIX_UINT32);
     }
     return PMIX_SUCCESS;
 }

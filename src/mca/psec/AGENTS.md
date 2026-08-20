@@ -191,9 +191,9 @@ it emits the shared `no-plugins` `show_help` topic (from
 at least one usable module. At verbosity >4 it prints the resolved
 priority list.
 
-### `base/psec_base_fns.c` — module lookup
+### `base/psec_base_fns.c` — module lookup and directive screening
 
-Two exported helpers, both in [`base/base.h`](base/base.h):
+Three exported helpers, all declared in [`base/base.h`](base/base.h):
 
 - **`pmix_psec_base_get_available_modules()`** — returns a comma-joined
   string of the active component names (highest priority first). This is
@@ -207,6 +207,39 @@ Two exported helpers, both in [`base/base.h`](base/base.h):
   (each `active->component->assign_module()` simply hands back that
   component's module). Returns `NULL` if nothing matches — which the
   callers treat as a fatal connection/init error.
+- **`pmix_psec_base_check_directives(name, directives, ndirs)`** — the
+  `PMIX_CRED_TYPE` screen every module owes its caller (see "The
+  `PMIX_CRED_TYPE` screen" below).
+
+## The `PMIX_CRED_TYPE` screen
+
+Both credential entry points take a caller `directives` array, and a
+caller may restrict which mechanism services the request by passing one
+or more `PMIX_CRED_TYPE` directives, each a comma-delimited list of
+acceptable module names. Every `create_cred`/`validate_cred` must honor
+that, declining with `PMIX_ERR_NOT_SUPPORTED` when it is not named.
+
+**Call `pmix_psec_base_check_directives()`; do not open-code the loop.**
+This screen used to be five hand-copied loops, one per module entry
+point, and every copy carried the same defect: it fed
+`directives[n].value.data.string` straight to `PMIx_Argv_split()` and
+then walked the result without checking it. `PMIx_Argv_split()` returns
+`NULL` for an empty string, for a string of nothing but separators, and
+for `NULL`, so a caller passing `PMIX_CRED_TYPE=""` — or passing
+`PMIX_CRED_TYPE` with a non-string value, whose union member is then read
+as a `char *` — segfaulted the module. The shared helper checks the
+value's type, rejects a `NULL` split, and returns a plain `bool`:
+
+```c
+if (!pmix_psec_base_check_directives("native", directives, ndirs)) {
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+```
+
+Screen **before** interpreting the credential, as all four modules now
+do. "This request is not mine" is a different answer from "this
+credential is bad," and a module should not be parsing bytes it has
+already been told are not its business.
 
 ## Negotiation: how two peers agree on a module
 
@@ -240,6 +273,24 @@ carried in the `ptl` handshake rather than in the payload:
    `pmix_ptl_base_client_handshake`, which calls
    **`PMIX_PSEC_CLIENT_HANDSHAKE`** on the same signal.
 
+**`PMIX_ERR_READY_FOR_HANDSHAKE` is a signal, not a failure — and every
+caller of `PMIX_PSEC_VALIDATE_CONNECTION` has to treat it that way.**
+This is the single easiest thing to get wrong at the `psec`/`ptl` seam,
+because the status is negative and reads like an error at a glance. Both
+call sites in
+[`ptl_base_connection_hdlr.c`](../ptl/base/ptl_base_connection_hdlr.c)
+once tested the result with a bare `if (PMIX_SUCCESS != reply) goto
+error;`, which aborted the connection between step 3 and step 4 and made
+the entire handshake half of `psec` unreachable — `dummy_handshake` could
+not complete a single connection. The test must be
+
+```c
+if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
+```
+
+so that the signal survives to reach `PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`,
+which is what converts it into a real status.
+
 So `validate_cred == NULL` is not an oversight in `dummy_handshake`: it
 is the switch that tells the framework to take the handshake path. Keep
 that invariant in mind before "filling in" a `NULL` slot.
@@ -260,6 +311,24 @@ these macros, all of which dereference `p->nptr->compat.psec`:
 `PMIX_PSEC_VALIDATE_CONNECTION` and `PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`
 are the two that contain real control flow; the rest are thin call
 wrappers.
+
+### The `*info` output array
+
+`create_cred` and `validate_cred` both take `pmix_info_t **info` — an
+out-parameter the module allocates with `PMIX_INFO_CREATE(*info, n)` and
+the caller frees with `PMIX_INFO_FREE`. Load the entries through
+`&(*info)[n]`, **not** `info[n]`. The two are the same address for `n ==
+0`, which is why the mistake hides: `info[1]` is not the second array
+element, it is whatever lies one pointer past the caller's `info`
+variable in the caller's own stack frame. Every module used to write
+`PMIX_INFO_LOAD(info[1], …)`, so `validate_cred` wrote two `pmix_info_t`
+structures through a garbage pointer and left the entries it was supposed
+to fill zeroed. `test/unit/psec_credentials.c` covers this by checking
+that the returned array actually carries `PMIX_USERID` and `PMIX_GRPID`.
+
+A module that fails *after* filling in the credential must release it
+before returning the error — callers only reclaim the credential when the
+module reports success.
 
 ## Selection and priorities
 
@@ -314,6 +383,19 @@ execution where it belongs. Module functions must therefore be free of
 their own async hops: do the work and return a status. They may allocate
 the `*info` output array (the caller frees it) but must not stash pointers
 into caller-owned `directives`.
+
+**"No thread-shifting" is exactly why module-level state needs its own
+lock.** Because `pmix_security.c` runs `create_cred`/`validate_cred`
+inline on whichever thread called the public API, two application threads
+can be inside the same module function at the same time — there is no
+progress thread serializing them the way there is for most of the
+library. A module that keeps no state (`native`, `none`) is fine as
+written. `munge` caches a credential in a file static and refreshes it on
+every use, so two concurrent `PMIx_Get_credential()` calls would both
+free it; it guards that state with a file-scope `pmix_mutex_t`. Any new
+module that caches anything must do the same. This is not a hot path —
+it runs only while a connection is being set up or a credential
+requested — so a plain mutex is the right instrument.
 
 ## Directory layout
 
@@ -380,6 +462,20 @@ make`.
 - **Do not thread-shift inside a module.** psec functions run where their
   callers place them; keep them synchronous. Allocate only the `*info`
   output (caller-freed); never retain caller `directives`.
+- **Screen the directives with `pmix_psec_base_check_directives()`**,
+  before touching the credential, rather than writing the
+  `PMIX_CRED_TYPE` loop again. The open-coded version is where the
+  `PMIx_Argv_split()` NULL-dereference lived in all five copies.
+- **Fill `*info` through `&(*info)[n]`.** `info[n]` compiles, is correct
+  only for `n == 0`, and corrupts the caller's stack for anything else.
+- **Treat a credential that arrived from a peer as untrusted bytes.** It
+  is a counted `pmix_byte_object_t` that `ptl` `malloc`s and `memcpy`s
+  straight off the wire — nothing guarantees a NUL terminator or a
+  minimum length. `native` checks that the blob is long enough to hold a
+  `uid_t` and a `gid_t` before reading them; `munge` checks that the blob
+  is NUL-terminated before handing it to `munge_decode()`, which would
+  otherwise `strlen()` past the end of the allocation. A new module owes
+  its own equivalent check.
 - **A new mechanism is a new component, not a new API.** Prefer expressing
   optional behavior as a `PMIX_CRED_TYPE`-style directive on the existing
   create/validate calls; add a whole component only for a genuinely new

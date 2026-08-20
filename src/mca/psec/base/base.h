@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -78,6 +78,22 @@ PMIX_EXPORT extern pmix_psec_globals_t pmix_psec_globals;
 
 PMIX_EXPORT char *pmix_psec_base_get_available_modules(void);
 PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options);
+
+/**
+ * Determine whether the caller's directives allow the named module to
+ * service the request.
+ *
+ * The credential APIs let a caller restrict which mechanisms may be used
+ * by passing one or more PMIX_CRED_TYPE directives, each carrying a
+ * comma-delimited list of acceptable mechanism names. Returns true if the
+ * module named by "name" may proceed - either because no PMIX_CRED_TYPE
+ * directive was given, or because every one of them named it. Returns
+ * false if the caller asked for some other mechanism, in which case the
+ * module must decline with PMIX_ERR_NOT_SUPPORTED.
+ */
+PMIX_EXPORT bool pmix_psec_base_check_directives(const char *name,
+                                                 const pmix_info_t directives[],
+                                                 size_t ndirs);
 
 END_C_DECLS
 

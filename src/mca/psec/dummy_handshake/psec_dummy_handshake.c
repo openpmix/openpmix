@@ -3,7 +3,7 @@
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -68,12 +68,17 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
 {
     char mycred[] = "dymmy_cred";
 
+    PMIX_HIDE_UNUSED_PARAMS(peer, directives, ndirs, info, ninfo);
+
     pmix_output_verbose(2, pmix_psec_base_framework.framework_output, "psec: simple create_cred");
 
     /* ensure initialization */
     PMIX_BYTE_OBJECT_CONSTRUCT(cred);
 
     cred->bytes = strdup(mycred);
+    if (NULL == cred->bytes) {
+        return PMIX_ERR_NOMEM;
+    }
     cred->size = strlen(mycred) + 1;
 
     return PMIX_SUCCESS;
@@ -87,7 +92,9 @@ static pmix_status_t server_hndshk(int sd)
 
     pmix_output_verbose(2, pmix_psec_base_framework.framework_output, "psec: simple server_hndshk");
 
-    pmix_asprintf(&hndshk_msg, "%s", PMIX_PSEC_DUMMY_HNDSHK_STR);
+    if (0 > pmix_asprintf(&hndshk_msg, "%s", PMIX_PSEC_DUMMY_HNDSHK_STR) || NULL == hndshk_msg) {
+        return PMIX_ERR_NOMEM;
+    }
     size = strlen(hndshk_msg);
 
     /* send size of handshake message */
@@ -125,17 +132,21 @@ static pmix_status_t client_hndshk(int sd)
     if (PMIX_SUCCESS != (rc = pmix_ptl_base_recv_blocking(sd, (char *) &size, sizeof(size_t)))) {
         return rc;
     }
+    /* the size arrived from the far end, so check it against what we
+     * expect before we allocate anything based on it */
+    if (size != strlen(PMIX_PSEC_DUMMY_HNDSHK_STR)) {
+        return PMIX_ERR_HANDSHAKE_FAILED;
+    }
     hndshk_msg = (char *) malloc(size);
+    if (NULL == hndshk_msg) {
+        return PMIX_ERR_NOMEM;
+    }
     /* recv handshake message */
     if (PMIX_SUCCESS != (rc = pmix_ptl_base_recv_blocking(sd, (char *) hndshk_msg, size))) {
         free(hndshk_msg);
         return rc;
     }
     /* verifying handshake data */
-    if (size != strlen(PMIX_PSEC_DUMMY_HNDSHK_STR)) {
-        rc = PMIX_ERR_HANDSHAKE_FAILED;
-        goto exit;
-    }
     if (0 != strncmp(hndshk_msg, PMIX_PSEC_DUMMY_HNDSHK_STR, size)) {
         rc = PMIX_ERR_HANDSHAKE_FAILED;
         goto exit;

@@ -62,8 +62,18 @@ pmix_psec_module_t pmix_munge_module = {
 `munge_init` caches the first credential in the file-static `mycred`;
 `munge_finalize` frees it at framework close. `pmix_psec_close` invokes
 each active module's `finalize`, so `mycred` is reclaimed at teardown.
-(`munge_finalize` guards on `initialized`/`mycred != NULL` and nulls
-`mycred` after the free, so it is idempotent.)
+`munge_finalize` nulls `mycred` after the free and resets `initialized`
+and `refresh`, so it is idempotent and a re-init of the library starts
+from a clean slate rather than from a credential that no longer exists.
+
+**`mycred`, `initialized` and `refresh` are guarded by the file-scope
+`credlock` mutex, and every access must take it.** `munge` is the only
+psec module that keeps mutable state, and psec does no thread-shifting
+of its own: `PMIx_Get_credential()` calls `create_cred` inline on
+whichever thread invoked it, so two application threads reach the
+refresh path concurrently with nothing serializing them. Without the
+lock they both `free(mycred)`. This is not a hot path, so the mutex
+costs nothing that matters.
 
 ## What the functions do
 
@@ -76,14 +86,37 @@ each active module's `finalize`, so `mycred` is reclaimed at teardown.
   NUL-terminated MUNGE string (`strlen + 1`). It fills `*info` with a
   `PMIX_CRED_TYPE = "munge"` marker.
 - **`validate_cred`** applies the same `PMIX_CRED_TYPE` filtering, then
-  calls `munge_decode` to recover the sender's `uid`/`gid` from the
-  credential (a failed decode → `PMIX_ERR_INVALID_CRED`). It compares them
-  against `pr->info->uid` / `pr->info->gid` and rejects a mismatch. On
-  success it returns `*info` with `PMIX_CRED_TYPE = "munge"`, the
-  validated `PMIX_USERID`, and `PMIX_GRPID`.
+  checks the credential is well-formed (see the gotcha below) before
+  calling `munge_decode` to recover the sender's `uid`/`gid` from it (a
+  failed decode → `PMIX_ERR_INVALID_CRED`). It compares them against
+  `pr->info->uid` / `pr->info->gid` and rejects a mismatch. On success it
+  returns `*info` with `PMIX_CRED_TYPE = "munge"`, the validated
+  `PMIX_USERID`, and `PMIX_GRPID`.
+
+Both use `pmix_psec_base_check_directives()` for the `PMIX_CRED_TYPE`
+screen rather than open-coding the loop — see the framework
+[`AGENTS.md`](../AGENTS.md).
 
 ## Gotchas
 
+- **`munge_decode()` takes a NUL-terminated C string; the credential
+  arrives as counted bytes.** On the connection path the blob is whatever
+  the peer sent — `ptl` `malloc`s `len` bytes and `memcpy`s them, with no
+  terminator guaranteed — so handing `cred->bytes` straight to
+  `munge_decode` lets a peer make it `strlen()` past the end of a heap
+  allocation. `validate_cred` therefore rejects a `NULL`, empty, or
+  unterminated credential with `PMIX_ERR_INVALID_CRED` before decoding.
+  Keep that check ahead of any future decode call.
+- **A failed `munge_encode` must leave `mycred` NULL, not dangling.** The
+  refresh path frees the cached credential before asking for a new one;
+  if the encode then fails and `mycred` still points at the freed block,
+  the next `create_cred` frees it again and `munge_finalize` frees it a
+  third time.
+- **`create_cred` refuses rather than returning an empty credential.** If
+  `initialized` is false there is no `munged` to issue one, and reporting
+  `PMIX_SUCCESS` with a zero-length credential would hand the far end
+  something it cannot validate — the failure would surface later, as an
+  unexplained rejected connection.
 - **Credentials are not reusable.** The `refresh` flag in `create_cred`
   exists so the *second and later* calls re-encode instead of replaying
   the cached credential. Do not "optimize" by caching one credential and

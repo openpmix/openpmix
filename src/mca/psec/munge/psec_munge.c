@@ -3,7 +3,7 @@
  *
  * NOTE: THE MUNGE CLIENT LIBRARY (libmunge) IS LICENSED AS LGPL
  *
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,7 +16,6 @@
 #include "pmix_common.h"
 
 #include "src/include/pmix_globals.h"
-#include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 
@@ -68,7 +67,7 @@ static inline  const char * munge_strerror (munge_err_t e)
 #endif
 
 #include "psec_munge.h"
-#include "src/mca/psec/psec.h"
+#include "src/mca/psec/base/base.h"
 #include "src/threads/pmix_threads.h"
 
 static pmix_status_t munge_init(void);
@@ -89,6 +88,12 @@ pmix_psec_module_t pmix_munge_module = {.name = "munge",
 static char *mycred = NULL;
 static bool initialized = false;
 static bool refresh = false;
+/* PMIx_Get_credential does not thread-shift - it calls create_cred
+ * inline on whichever thread invoked it - so two application threads can
+ * be inside create_cred at the same time, both refreshing the cached
+ * credential. Serialize every access to mycred/refresh. This is not a
+ * hot path: it runs only when a credential is requested. */
+static pmix_mutex_t credlock = PMIX_MUTEX_STATIC_INIT;
 
 static pmix_status_t munge_init(void)
 {
@@ -101,13 +106,16 @@ static pmix_status_t munge_init(void)
      * the munge server is available - cache the credential
      * for later use */
 
+    pmix_mutex_lock(&credlock);
     if (EMUNGE_SUCCESS != (rc = munge_encode(&mycred, NULL, NULL, 0))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "psec: munge failed to create credential: %s", munge_strerror(rc));
+        pmix_mutex_unlock(&credlock);
         return PMIX_ERR_SERVER_NOT_AVAIL;
     }
 
     initialized = true;
+    pmix_mutex_unlock(&credlock);
 
     return PMIX_SUCCESS;
 }
@@ -117,12 +125,17 @@ static void munge_finalize(void)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "psec: munge finalize");
 
-    if (initialized) {
-        if (NULL != mycred) {
-            free(mycred);
-            mycred = NULL;
-        }
+    pmix_mutex_lock(&credlock);
+    if (NULL != mycred) {
+        free(mycred);
+        mycred = NULL;
     }
+    /* reset our state so that a subsequent re-init of the library
+     * starts from a clean slate rather than from a cached credential
+     * that no longer exists */
+    initialized = false;
+    refresh = false;
+    pmix_mutex_unlock(&credlock);
 }
 
 static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
@@ -130,9 +143,6 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
                                  pmix_byte_object_t *cred)
 {
     int rc;
-    bool takeus;
-    char **types;
-    size_t n, m;
     PMIX_HIDE_UNUSED_PARAMS(peer);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -143,56 +153,61 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
 
     /* if we are responding to a local request to create a credential,
      * then see if they specified a mechanism */
-    if (NULL != directives && 0 < ndirs) {
-        for (n = 0; n < ndirs; n++) {
-            if (0 == strncmp(directives[n].key, PMIX_CRED_TYPE, PMIX_MAX_KEYLEN)) {
-                /* split the specified string */
-                types = PMIx_Argv_split(directives[n].value.data.string, ',');
-                takeus = false;
-                for (m = 0; NULL != types[m]; m++) {
-                    if (0 == strcmp(types[m], "munge")) {
-                        /* it's us! */
-                        takeus = true;
-                        break;
-                    }
-                }
-                PMIx_Argv_free(types);
-                if (!takeus) {
-                    return PMIX_ERR_NOT_SUPPORTED;
-                }
-            }
-        }
+    if (!pmix_psec_base_check_directives("munge", directives, ndirs)) {
+        return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    if (initialized) {
-        if (!refresh) {
-            refresh = true;
-            cred->bytes = strdup(mycred);
-            cred->size = strlen(mycred) + 1;
-        } else {
-            /* munge does not allow reuse of a credential, so we have to
-             * refresh it for every use */
-            if (NULL != mycred) {
-                free(mycred);
-            }
-            if (EMUNGE_SUCCESS != (rc = munge_encode(&mycred, NULL, NULL, 0))) {
-                pmix_output_verbose(2, pmix_globals.debug_output,
-                                    "psec: munge failed to create credential: %s",
-                                    munge_strerror(rc));
-                return PMIX_ERR_NOT_SUPPORTED;
-            }
-            cred->bytes = strdup(mycred);
-            cred->size = strlen(mycred) + 1;
+    pmix_mutex_lock(&credlock);
+    if (!initialized) {
+        /* we have no munged daemon to issue a credential, so we cannot
+         * hand back an empty one and call it success */
+        pmix_mutex_unlock(&credlock);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    if (!refresh) {
+        refresh = true;
+    } else {
+        /* munge does not allow reuse of a credential, so we have to
+         * refresh it for every use. Drop our reference before asking
+         * for a new one so a failed encode cannot leave us holding a
+         * pointer to freed memory */
+        if (NULL != mycred) {
+            free(mycred);
+            mycred = NULL;
+        }
+        if (EMUNGE_SUCCESS != (rc = munge_encode(&mycred, NULL, NULL, 0))) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "psec: munge failed to create credential: %s",
+                                munge_strerror(rc));
+            pmix_mutex_unlock(&credlock);
+            return PMIX_ERR_NOT_SUPPORTED;
         }
     }
+    if (NULL == mycred) {
+        pmix_mutex_unlock(&credlock);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    cred->bytes = strdup(mycred);
+    if (NULL != cred->bytes) {
+        cred->size = strlen(mycred) + 1;
+    }
+    pmix_mutex_unlock(&credlock);
+    if (NULL == cred->bytes) {
+        return PMIX_ERR_NOMEM;
+    }
+
     if (NULL != info) {
         /* mark that this came from us */
         PMIX_INFO_CREATE(*info, 1);
         if (NULL == *info) {
+            /* our caller only reclaims the credential when we report
+             * success, so release it here rather than stranding it */
+            PMIX_BYTE_OBJECT_DESTRUCT(cred);
             return PMIX_ERR_NOMEM;
         }
         *ninfo = 1;
-        PMIX_INFO_LOAD(info[0], PMIX_CRED_TYPE, "munge", PMIX_STRING);
+        PMIX_INFO_LOAD(&(*info)[0], PMIX_CRED_TYPE, "munge", PMIX_STRING);
     }
     return PMIX_SUCCESS;
 }
@@ -205,9 +220,6 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     uid_t euid;
     gid_t egid;
     munge_err_t rc;
-    bool takeus;
-    char **types;
-    size_t n, m;
     uint32_t u32;
 
     pmix_output_verbose(2, pmix_globals.debug_output, "psec: munge validate_cred %s",
@@ -215,25 +227,19 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
 
     /* if we are responding to a local request to validate a credential,
      * then see if they specified a mechanism */
-    if (NULL != directives && 0 < ndirs) {
-        for (n = 0; n < ndirs; n++) {
-            if (0 == strncmp(directives[n].key, PMIX_CRED_TYPE, PMIX_MAX_KEYLEN)) {
-                /* split the specified string */
-                types = PMIx_Argv_split(directives[n].value.data.string, ',');
-                takeus = false;
-                for (m = 0; NULL != types[m]; m++) {
-                    if (0 == strcmp(types[m], "munge")) {
-                        /* it's us! */
-                        takeus = true;
-                        break;
-                    }
-                }
-                PMIx_Argv_free(types);
-                if (!takeus) {
-                    return PMIX_ERR_NOT_SUPPORTED;
-                }
-            }
-        }
+    if (!pmix_psec_base_check_directives("munge", directives, ndirs)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* munge_decode takes a NUL-terminated string. The credential reaches
+     * us as a counted byte object that a remote peer supplied, so we
+     * cannot assume it is terminated - hand it on only once we have
+     * confirmed that it is */
+    if (NULL == cred || NULL == cred->bytes || 0 == cred->size
+        || '\0' != cred->bytes[cred->size - 1]) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "psec: munge given a malformed credential");
+        return PMIX_ERR_INVALID_CRED;
     }
 
     /* parse the inbound string */
@@ -261,13 +267,13 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         }
         *ninfo = 3;
         /* mark that this came from us */
-        PMIX_INFO_LOAD(info[0], PMIX_CRED_TYPE, "munge", PMIX_STRING);
+        PMIX_INFO_LOAD(&(*info)[0], PMIX_CRED_TYPE, "munge", PMIX_STRING);
         /* provide the uid it contained */
         u32 = euid;
-        PMIX_INFO_LOAD(info[1], PMIX_USERID, &u32, PMIX_UINT32);
+        PMIX_INFO_LOAD(&(*info)[1], PMIX_USERID, &u32, PMIX_UINT32);
         /* provide the gid it contained */
         u32 = egid;
-        PMIX_INFO_LOAD(info[2], PMIX_GRPID, &u32, PMIX_UINT32);
+        PMIX_INFO_LOAD(&(*info)[2], PMIX_GRPID, &u32, PMIX_UINT32);
     }
     return PMIX_SUCCESS;
 }
