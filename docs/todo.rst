@@ -495,6 +495,16 @@ Coverage gaps
   a thin run reports itself rather than passing quietly.  The real round
   trip was run under ``contrib/dockerswarm`` (Linux, all four
   compressors), where the 5000-node case does take the blob path.
+* **The plog ``smtp`` component has never been run.**  It builds only
+  where libesmtp is present, and exercising it needs a reachable SMTP
+  server on top of that, so the fixes from the ``src/mca/plog`` review
+  (2026-08-20) — an uninitialized ``message_status_t``, a ``crnl()``
+  that emitted LF where it meant CR, a message callback that ended the
+  message before the body when no prefix was configured — were verified
+  by reading and compile-checked with ``--enable-test-build`` against
+  the shim header, not by sending mail.  The shim makes every libesmtp
+  call a stub, so a test-build tree cannot exercise them either.  The
+  first real user of this component should expect to find more.
 * **Nothing exercises the pnet fabric calls.**  ``register_fabric``,
   ``update_fabric`` and ``deregister_fabric`` are wired all the way
   through ``src/mca/pnet/base``, but no shipped component implements any
