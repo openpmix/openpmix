@@ -3,7 +3,7 @@
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -51,6 +51,12 @@ static int pmix_plog_register(pmix_mca_base_register_flag_t flags)
                                "Comma-delimited, prioritized list of logging channels",
                                PMIX_MCA_BASE_VAR_TYPE_STRING,
                                &order);
+    /* a framework can be registered again after having been closed, so
+     * do not strand the split we made the last time through */
+    if (NULL != pmix_plog_globals.channels) {
+        PMIx_Argv_free(pmix_plog_globals.channels);
+        pmix_plog_globals.channels = NULL;
+    }
     if (NULL != order) {
         pmix_plog_globals.channels = PMIx_Argv_split(order, ',');
     }
@@ -82,16 +88,29 @@ static pmix_status_t pmix_plog_close(void)
     }
     PMIX_DESTRUCT(&pmix_plog_globals.actives);
 
+    if (NULL != pmix_plog_globals.channels) {
+        PMIx_Argv_free(pmix_plog_globals.channels);
+        pmix_plog_globals.channels = NULL;
+    }
+
     return pmix_mca_base_framework_components_close(&pmix_plog_base_framework, NULL);
 }
 
 static pmix_status_t pmix_plog_open(pmix_mca_base_open_flag_t flags)
 {
-    /* initialize globals */
+    /* initialize globals - note that the "channels" list was parsed by
+     * our register function, which the MCA base always runs before this
+     * one. Clearing it here would silently discard the ordering the user
+     * asked for with plog_base_order (and leak the split), so it is
+     * deliberately left alone */
     pmix_plog_globals.initialized = true;
-    pmix_plog_globals.channels = NULL;
     PMIX_CONSTRUCT(&pmix_plog_globals.actives, pmix_pointer_array_t);
-    pmix_pointer_array_init(&pmix_plog_globals.actives, 1, INT_MAX, 1);
+    if (PMIX_SUCCESS != pmix_pointer_array_init(&pmix_plog_globals.actives,
+                                                1, INT_MAX, 1)) {
+        PMIX_DESTRUCT(&pmix_plog_globals.actives);
+        pmix_plog_globals.initialized = false;
+        return PMIX_ERR_NOMEM;
+    }
 
     /* Open up all available components */
     return pmix_mca_base_framework_components_open(&pmix_plog_base_framework, flags);

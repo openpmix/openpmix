@@ -66,12 +66,14 @@ compiles against. Read it before anything else. It defines:
 
 - **`pmix_plog_module_t`** — the runtime instance a component hands back.
   Its fields:
-  - `char *name` — the module's short name (e.g., `"syslog"`). The name
-    `"default"` is special (see selection, below).
+  - `char *name` — the module's short name (e.g., `"syslog"`). The
+    selector matches an entry in `plog_base_order` against this *and*
+    against the module's channel tokens (see selection, below).
   - `char **channels` — a NULL-terminated argv array of the channel
     tokens this module services (e.g., `{"stdout","stderr",NULL}`). A
-    `NULL` `channels` pointer is a wildcard meaning "this module handles
-    *every* channel" — used by catch-all/default modules.
+    `NULL` `channels` pointer is a wildcard *to the router*, meaning
+    "this module handles every channel" — used by catch-all modules.
+    (The selector does not treat it as one; see below.)
   - `init` / `finalize` — optional lifecycle hooks
     (`pmix_plog_base_module_init_fn_t` / `_fini_fn_t`).
   - `log` — the workhorse (`pmix_plog_base_module_log_fn_t`); does the
@@ -163,9 +165,17 @@ Its algorithm:
 
 4. **Nothing to route?** If no module matched any data item at all,
    return `PMIX_ERR_NOT_AVAILABLE` — the caller asked for channels that no
-   active module (nor, by extension, this process) can service. The one
-   exception is a call carrying literally no data (`NULL == data`), which
-   is a no-op and returns `PMIX_OPERATION_SUCCEEDED`.
+   active module (nor, by extension, this process) can service. There are
+   two exceptions:
+   - a call carrying literally no data (`NULL == data`) is a no-op and
+     returns `PMIX_OPERATION_SUCCEEDED`;
+   - a call whose every entry was withheld by the aggregation check
+     above returns `PMIX_SUCCESS`. It *was* serviced — deliberately, by
+     being suppressed. Reporting `PMIX_ERR_NOT_AVAILABLE` instead sends
+     the client straight into the fallback described below, where it
+     logs the message a second time against its own modules, against a
+     dup table that has never seen it. That defeats the aggregation
+     entirely, which is the whole point of the directive.
 
    These synchronous return codes are meaningful to callers. The router
    never fires a callback itself — its callers do, using the value it
@@ -199,7 +209,43 @@ A module's `log` must return one of:
 Getting this wrong is the most common plog defect: an over-eager module
 that returns `PMIX_SUCCESS` for a request it did not actually handle will
 swallow a `PMIX_LOG_ONCE` request and starve the channel the caller
-actually wanted.
+actually wanted. The shape that works is a counter — count the entries
+you actually delivered, and return `PMIX_ERR_TAKE_NEXT_OPTION` when that
+count is zero — not a running `rc` that happens to hold whatever the
+last branch assigned.
+
+### Validate the value's type before you read the union
+
+**A module's `data[]` is attacker-controlled in the ordinary case.** A
+client's `PMIx_Log` arguments are packed, sent to its server, and
+unpacked straight into the array the server hands down here — so the
+`pmix_value_t` type is whatever the client said it was, and nothing in
+`src/common/pmix_log.c` or the server dispatch checks that
+`PMIX_LOG_STDOUT` carries a string. Reading `value.data.string` without
+first confirming `PMIX_STRING == value.type` hands `strlen()` an
+integer, and one malformed request kills the server for every process on
+the node. Every module here checks; keep it that way, and mark a
+malformed entry complete so the next module does not read it the same
+wrong way.
+
+### Do not re-enter the router from a module
+
+The list the router builds holds **the global active-module wrappers
+themselves**, not per-request copies — `pmix_list_append` writes the
+next/prev links into the shared `pmix_plog_base_active_module_t`, and
+`added` is a field on it. A module's `log` that synchronously reaches
+`pmix_plog_base_log` again would therefore relink the objects out from
+under the loop that is walking them. Nothing does today, and the two
+paths that look like they might do not: `stdfd` hands work to
+`PMIx_server_IOF_deliver`, which posts an event and returns, and
+`pmix_show_help` thread-shifts (`PMIX_THREADSHIFT(cd,
+pmix_log_local_op)`) rather than calling down inline. If you add a
+module, keep it that way.
+
+`pmix_help_check_dups` is likewise safe to call from here even though it
+walks a list it does not construct: `pmix_show_help_init()` runs early in
+`pmix_init.c`, hundreds of lines before the `plog` framework is opened,
+and the router refuses the call outright when `plog` is not initialized.
 
 ## Base infrastructure in detail
 
@@ -215,11 +261,24 @@ actually wanted.
     or `NULL` if the user gave no explicit ordering.
 - **`pmix_plog_open`** constructs `actives` and opens all components.
 - **`pmix_plog_close`** finalizes each active module (calling its
-  `finalize`), releases the active-module wrappers, and closes components.
+  `finalize`), releases the active-module wrappers, frees the parsed
+  `channels`, and closes components.
 - **`pmix_plog_register`** registers the one framework-level MCA
   parameter, **`pmix_plog_base_order`**: a comma-delimited, prioritized
   list of channel names controlling both *which* channels are used and in
   *what* order. It is split into `pmix_plog_globals.channels` here.
+
+> **The MCA base runs `register` before `open`.** That ordering is fixed
+> in `pmix_mca_base_framework_open()`, which calls
+> `pmix_mca_base_framework_register()` first. So anything `open` writes
+> into `pmix_plog_globals` overwrites what `register` computed — this is
+> how `plog_base_order` came to be silently ignored (and its split
+> leaked) for as long as `pmix_plog_open` was zeroing `channels`. Put
+> per-run state that `register` produces out of `open`'s reach, and
+> leave the struct's static initializer to establish the empty state.
+> `pmix_plog_close` frees the split, and `pmix_plog_register` frees any
+> previous one, because a framework can be registered again after being
+> closed.
 
 ### The active-module wrapper (`base.h`)
 
@@ -244,18 +303,35 @@ bookkeeping the router and selector need:
    no query function or that return no module.
 2. Calls each returned module's `init`; drops the module if `init` fails.
 3. Inserts surviving modules into a temporary list **in descending
-   priority order**, remembering the module named `"default"` if present.
-4. **If the user set `plog_base_order`:** walk the requested channel names
-   in order, moving the matching module from the temp list into the global
-   `actives` array (so user order overrides priority order). A channel
-   name may carry a `:req` (or `:required`) suffix — parsed here — marking
-   it mandatory. If a requested channel has no matching module, the
-   `"default"` module is substituted; if there is no default *and* the
-   channel was required, selection fails with the `reqd-not-found`
-   `show_help` message and `PMIX_ERR_NOT_FOUND`. Unrequested leftover
-   modules are discarded.
+   priority order**.
+4. **If the user set `plog_base_order`:** walk the requested names in
+   order, moving the matching module from the temp list into the global
+   `actives` array (so user order overrides priority order). A name may
+   carry a `:req` (or `:required`) suffix — parsed here — marking it
+   mandatory. If a requested channel was required and nothing services
+   it, selection fails with the `reqd-not-found` `show_help` message and
+   `PMIX_ERR_NOT_FOUND`. Unrequested leftover modules are discarded.
 5. **If the user set no order:** all modules go into `actives` in pure
    priority order.
+
+**A requested name is matched against the module's `name` *and* against
+each of its channel tokens.** The parameter is documented as a list of
+channels, and a module's name is not one of its channels — `stdfd`
+services `stdout` and `stderr`, so matching only the name meant
+`plog_base_order=stdout` resolved to nothing while
+`plog_base_order=stdfd` worked. Both forms resolve now. One module can
+service several requested channels, so a name that finds nothing in the
+temp list is also looked for among the modules already moved into
+`actives` before it is called missing (`plog_base_order=stdout,stderr`
+is one module, not a missing one). A `NULL` `channels` is deliberately
+*not* a wildcard here, unlike in the router: a catch-all module would
+otherwise claim whichever channel the user named first.
+
+**Discarding a module means finalizing it.** By the time the leftovers
+are dropped, their `init()` has already run — `stdfd`/`syslog`/`smtp`
+each allocate their channel argv there, and `syslog` has an open
+`openlog()` connection. They are handed to `finalize()` before the
+wrapper is released.
 
 At high verbosity (>4) it prints the final resolved order — a useful
 debugging hook (`pmix_plog_base_framework.framework_output`).

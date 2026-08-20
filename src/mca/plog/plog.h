@@ -5,7 +5,7 @@
  *
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,9 +16,10 @@
 /**
  * @file
  *
- * This interface is for use by PMIx servers to obtain network-related info
- * such as security keys that need to be shared across applications, and to
- * setup network support for applications prior to launch
+ * This interface routes a PMIx_Log request to whatever logging channel
+ * can service it - stdout/stderr, the local or global syslog, email, and
+ * so on. The channel is chosen by the key of the data item being logged,
+ * not by the caller naming a component.
  *
  * Available plugins may be defined at runtime via the typical MCA parameter
  * syntax.
