@@ -73,7 +73,7 @@ typedef struct {
 
 #define PMIX_LOCK_STATIC_INIT               \
     {                                       \
-        .status = PMIX_SUCCESS,             \
+        .status = PMIX_ERR_INIT,            \
         .mutex = PMIX_MUTEX_STATIC_INIT,    \
         .cond = PMIX_CONDITION_STATIC_INIT, \
         .active = false                     \
@@ -85,6 +85,15 @@ typedef struct {
         /* take the lock */                         \
         pmix_mutex_lock(&(l)->mutex);               \
         pthread_cond_init(&(l)->cond, NULL);        \
+        /* PMIX_ERR_INIT, not PMIX_SUCCESS: a waiter reads this only     \
+         * after a handler has woken it, and every handler that a        \
+         * waiter reads status from is required to assign it. Defaulting \
+         * to an error means a handler that forgets reports a wrong      \
+         * answer loudly instead of a successful one - and the lock      \
+         * usually lives in a PMIX_NEW'd caddy, where the alternative to \
+         * a real value is heap garbage rather than zero                 \
+         */                                                              \
+        (l)->status = PMIX_ERR_INIT;                \
         (l)->active = true;                         \
         pmix_mutex_unlock(&(l)->mutex);             \
     } while (0)
