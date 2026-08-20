@@ -5,7 +5,7 @@
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -76,10 +76,15 @@ static inline int pmix_tsd_getspecific(pmix_tsd_key_t key, void **valuep)
  * @param key[out]       The key for accessing thread-specific data
  * @param destructor[in] Cleanup function to call when a thread exits
  *
- * @retval PMIX_SUCCESS  Success
- * @retval EAGAIN        The system lacked the necessary resource to
- *                       create another thread specific data key
- * @retval ENOMEM        Insufficient memory exists to create the key
+ * Returns a pmix_status_t, not the pthread errno - callers hand the
+ * result to PMIX_ERROR_LOG and return it out of the public API, and a
+ * positive errno arriving there is read as some unrelated status.
+ *
+ * @retval PMIX_SUCCESS            Success
+ * @retval PMIX_ERR_OUT_OF_RESOURCE The system lacked the necessary
+ *                       resource to create another thread specific data
+ *                       key (pthread's EAGAIN)
+ * @retval PMIX_ERR_NOMEM Insufficient memory exists to create the key
  */
 PMIX_EXPORT int pmix_tsd_key_create(pmix_tsd_key_t *key,
                                     pmix_tsd_destructor_t destructor);
@@ -87,12 +92,25 @@ PMIX_EXPORT int pmix_tsd_key_create(pmix_tsd_key_t *key,
 /**
  * Destruct all thread-specific data keys
  *
- * Destruct all thread-specific data keys and invoke the destructor
+ * Invoke each registered key's destructor on the calling thread's value
+ * and then delete the key itself, releasing its slot.
  *
- * This should only be invoked in the main thread.
  * This is made necessary since destructors are not invoked on the
  * keys of the main thread, since there is no such thing as
  * pthread_join(main_thread)
+ *
+ * Two things are required of the caller, and both are about who else is
+ * running. It must be the main thread, because that thread's values are
+ * the ones nothing else will ever destroy. And it must be the *only*
+ * thread left - every other thread joined - because this deletes the
+ * keys outright: a thread that reaches pmix_tsd_getspecific() afterwards
+ * is using a key that no longer exists, and one that re-creates a key
+ * here registers it into a registry nothing will walk again, leaking the
+ * slot this function exists to reclaim. See the call site at the end of
+ * pmix_rte_finalize().
+ *
+ * Only the calling thread's value is destroyed. Values other threads
+ * left behind were already handled by pthread when those threads exited.
  *
  * @retval PMIX_SUCCESS  Success
  */

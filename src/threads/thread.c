@@ -13,7 +13,7 @@
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,6 +22,8 @@
  */
 
 #include "pmix_config.h"
+
+#include <errno.h>
 
 #include "pmix_common.h"
 #include "src/threads/pmix_threads.h"
@@ -51,6 +53,10 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_thread_t, pmix_object_t, pmix_thread_constr
 static void pmix_thread_construct(pmix_thread_t *t)
 {
     t->t_run = 0;
+    /* PMIX_NEW does not zero the object, so every field has to be set
+     * here or it carries whatever was in the heap. t_arg is handed to
+     * the thread body as its only argument */
+    t->t_arg = NULL;
     t->t_handle = (pthread_t) -1;
 }
 
@@ -65,13 +71,40 @@ int pmix_thread_start(pmix_thread_t *t)
     }
 
     rc = pthread_create(&t->t_handle, NULL, (void *(*) (void *) ) t->t_run, t);
+    if (0 != rc) {
+        /* POSIX leaves the contents of the handle unspecified when the
+         * create fails, so put the sentinel back rather than trust that
+         * pthread_create left it alone. Both the restart check above and
+         * the join guard below key off it, and neither can tell a
+         * half-written handle from a real thread */
+        t->t_handle = (pthread_t) -1;
+        return PMIX_ERROR;
+    }
 
-    return (rc == 0) ? PMIX_SUCCESS : PMIX_ERROR;
+    return PMIX_SUCCESS;
 }
 
 int pmix_thread_join(pmix_thread_t *t, void **thr_return)
 {
-    int rc = pthread_join(t->t_handle, thr_return);
+    int rc;
+
+    /* The constructor parks t_handle at the "no thread here" sentinel and
+     * we put it back below, so a thread that never started - or that has
+     * already been joined - arrives here still carrying it. Handing that
+     * to pthread_join is undefined behavior, and on glibc it is a
+     * dereference of the sentinel itself: the caller gets a segfault
+     * where it expected an error return. Callers do reach this state -
+     * see the resume path in src/runtime/pmix_progress_threads.c, which
+     * marks its tracker active before the create and can therefore ask
+     * to join an engine that failed to start */
+    if ((pthread_t) -1 == t->t_handle) {
+        if (NULL != thr_return) {
+            *thr_return = NULL;
+        }
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    rc = pthread_join(t->t_handle, thr_return);
     t->t_handle = (pthread_t) -1;
     return (rc == 0) ? PMIX_SUCCESS : PMIX_ERROR;
 }
@@ -83,7 +116,19 @@ int pmix_tsd_key_create(pmix_tsd_key_t *key, pmix_tsd_destructor_t destructor)
 
     rc = pthread_key_create(key, destructor);
     if (0 != rc) {
-        return rc;
+        /* pthread reports errno here, but every caller of this function
+         * feeds the result into a pmix_status_t channel - PMIX_ERROR_LOG,
+         * and in pmix_net_init's case straight out of PMIx_Init to the
+         * application. A positive errno is not a status: it names some
+         * unrelated PMIx constant or none at all. Convert it here, where
+         * we still know what the number means */
+        if (EAGAIN == rc) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        if (ENOMEM == rc) {
+            return PMIX_ERR_NOMEM;
+        }
+        return PMIX_ERROR;
     }
 
     /* Register the key so its slot can be reclaimed - and its
@@ -101,9 +146,10 @@ int pmix_tsd_key_create(pmix_tsd_key_t *key, pmix_tsd_destructor_t destructor)
                 (pmix_tsd_key_values_count + 1) * sizeof(struct pmix_tsd_key_value));
     if (NULL == tmp) {
         /* leave the existing registry intact; the key is still valid and
-         * usable, it simply will not be auto-cleaned at finalize */
+         * usable, it simply will not be auto-cleaned at finalize - so the
+         * create itself succeeded and is reported as such */
         pthread_mutex_unlock(&pmix_tsd_key_values_lock);
-        return rc;
+        return PMIX_SUCCESS;
     }
     pmix_tsd_key_values = tmp;
     pmix_tsd_key_values[pmix_tsd_key_values_count].key = *key;
@@ -111,7 +157,7 @@ int pmix_tsd_key_create(pmix_tsd_key_t *key, pmix_tsd_destructor_t destructor)
     pmix_tsd_key_values_count++;
     pthread_mutex_unlock(&pmix_tsd_key_values_lock);
 
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 int pmix_tsd_keys_destruct(void)
@@ -121,7 +167,15 @@ int pmix_tsd_keys_destruct(void)
 
     pthread_mutex_lock(&pmix_tsd_key_values_lock);
     for (i = 0; i < pmix_tsd_key_values_count; i++) {
-        if (PMIX_SUCCESS == pmix_tsd_getspecific(pmix_tsd_key_values[i].key, &ptr)) {
+        /* Stand in for the thread-exit destructor run that never happens
+         * for this thread - so honor the same contract pthread does and
+         * only call the destructor when there is a value to destroy.
+         * pthread never invokes a destructor with NULL, so one written to
+         * that contract is entitled to dereference its argument, and this
+         * is the one call site that could have handed it a NULL: the
+         * finalizing thread has no value for a key it never used */
+        if (PMIX_SUCCESS == pmix_tsd_getspecific(pmix_tsd_key_values[i].key, &ptr)
+            && NULL != ptr) {
             if (NULL != pmix_tsd_key_values[i].destructor) {
                 pmix_tsd_key_values[i].destructor(ptr);
                 pmix_tsd_setspecific(pmix_tsd_key_values[i].key, NULL);
