@@ -376,28 +376,6 @@ reason.  Closing it means either making every wake path assign ``status``
 Whoever adds a new reader of ``lock.status`` must check every path that
 can wake that lock, including the error paths.
 
-``PMIX_ACQUIRE_THREAD`` / ``PMIX_RELEASE_THREAD`` have no callers
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Neither macro is used anywhere in ``libpmix``; the only caller in the
-tree is ``test/unit/threads_primitives.c``, which was written during the
-2026-08-20 review.  The live handshake is ``WAIT``/``WAKEUP``, at about
-120 sites each.
-
-Dead API is where documentation rots without anybody noticing, and this
-had: ``src/threads/AGENTS.md`` described ``ACQUIRE_THREAD`` as *not*
-implying that it returns holding the mutex, when that pair is precisely a
-held-mutex critical section — ``ACQUIRE_THREAD`` never unlocks, which is
-why ``RELEASE_THREAD`` only unlocks.  A reader who believed the guide and
-mixed the pairs would get an unlock of a mutex they do not hold.  The
-description is corrected and the macros now have test coverage.
-
-The decision left open is whether to keep them.  They are in an installed
-header (``$(pmixincludedir)/src/threads``), so removing them is a change
-to the consumable internal surface rather than a local cleanup, and they
-are a legitimate primitive for a gate that is entered repeatedly.  Keep
-or retire, but do not leave them undocumented and untested again.
-
 Deferred work
 -------------
 
@@ -709,6 +687,28 @@ Not defects — by design
 
 These look like bugs and are not.  They are recorded so that they are
 not "fixed" by a later reader.
+
+* **``PMIX_ACQUIRE_THREAD`` / ``PMIX_RELEASE_THREAD`` having no callers
+  in** ``libpmix`` **does not make them dead code.**  An in-tree grep
+  finds only ``test/unit/threads_primitives.c``, and the live handshake
+  everywhere in the library is ``WAIT``/``WAKEUP`` at about 120 sites
+  each — which reads as a retirement candidate and is not one.  These
+  headers are installed under ``$(pmixincludedir)/src/threads``, and
+  PRRTE uses the pair: ``src/runtime/prte_locks.h`` includes
+  ``src/threads/pmix_threads.h`` to declare ``prte_init_lock`` as a
+  ``pmix_lock_t``, and ``prte_init()``, ``prte_finalize()`` and
+  ``src/prted/pmix/pmix_server_notify.c`` guard ``prte_initialized`` with
+  it across eleven call sites (checked against openpmix/prrte master,
+  2026-08-20).  Removing them breaks PRRTE's build, and changing their
+  semantics changes PRRTE's behavior.
+
+  This is worth keeping precisely because the in-tree evidence points the
+  wrong way, and because unused-looking API is where documentation rots:
+  ``src/threads/AGENTS.md`` had described ``ACQUIRE_THREAD`` as *not*
+  implying that it returns holding the mutex, when that pair is exactly a
+  held-mutex critical section, so a reader who believed the guide and
+  mixed the pairs would unlock a mutex they do not hold.  That is
+  corrected, and the unit test now covers the pair.
 
 * **The function-pointer cast in ``pmix_thread_start`` is deliberate.**
   It hands a ``void *(*)(pmix_object_t *)`` to ``pthread_create``, which
