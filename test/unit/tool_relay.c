@@ -64,6 +64,12 @@
 #define SPAWNEE "/usr/bin/true"
 #define SPAWNEE_ALT "/bin/true"
 
+/* and something that does NOT exit, so the launcher still has a pfexec
+ * child when it finalizes - see the two-app comment in run_downstream().
+ * "cat" with no argument blocks forever on the stdin pipe pfexec hands
+ * it, and exits on the SIGTERM the kill sequence sends. */
+#define LINGERER "/bin/cat"
+
 static int npass = 0;
 static int nfail = 0;
 
@@ -144,16 +150,36 @@ static int run_downstream(int urifd)
         return D_INITFAIL;
     }
 
-    PMIX_APP_CREATE(app, 1);
+    /* Two apps, deliberately.
+     *
+     * The first exits at once, which is all the relay itself needs. The
+     * second outlives us, so that when the upstream launcher finalizes it
+     * still has a child on pmix_pfexec_globals.children and therefore
+     * actually runs the kill sequence - kill_proc, SIGCONT, SIGTERM,
+     * SIGKILL, kill_finish.
+     *
+     * That path is where a child is taken off the children list while a
+     * completion for it may still be queued behind, and it used to
+     * release the child twice (see child_delist() in pmix_pfexec.c). With
+     * only the fast-exiting app the launcher usually had nothing left to
+     * kill by the time it finalized, so the path ran in roughly one run
+     * in fifteen and the double free surfaced as a rare abort in this
+     * test rather than as a reproducible failure. */
+    PMIX_APP_CREATE(app, 2);
     app[0].cmd = strdup((0 == access(SPAWNEE, X_OK)) ? SPAWNEE : SPAWNEE_ALT);
     app[0].argv = (char **) malloc(2 * sizeof(char *));
     app[0].argv[0] = strdup(app[0].cmd);
     app[0].argv[1] = NULL;
     app[0].maxprocs = 1;
+    app[1].cmd = strdup(LINGERER);
+    app[1].argv = (char **) malloc(2 * sizeof(char *));
+    app[1].argv[0] = strdup(app[1].cmd);
+    app[1].argv[1] = NULL;
+    app[1].maxprocs = 1;
 
     memset(child, 0, sizeof(child));
-    rc = PMIx_Spawn(NULL, 0, app, 1, child);
-    PMIX_APP_FREE(app, 1);
+    rc = PMIx_Spawn(NULL, 0, app, 2, child);
+    PMIX_APP_FREE(app, 2);
 
     if (PMIX_ERR_UNREACH == rc) {
         /* this is the defect: our upstream tool has no server of its own,
