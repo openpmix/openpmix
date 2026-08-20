@@ -589,7 +589,13 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
     PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
-    if (PMIX_SUCCESS != reply) {
+    /* PMIX_ERR_READY_FOR_HANDSHAKE is not a failure - it is how a psec
+     * module that authenticates with a live exchange rather than with a
+     * credential asks us to run that exchange. We carry it in ch->reply
+     * so that _cnct_complete can report it to the client and then drive
+     * the handshake; bailing out here would leave the handshake half of
+     * psec permanently unreachable */
+    if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "validation of client connection failed");
         PMIx_Info_list_release(ilist);
@@ -986,7 +992,9 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
     PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
-    if (PMIX_SUCCESS != reply) {
+    /* as on the client path above, PMIX_ERR_READY_FOR_HANDSHAKE is a
+     * request to run a live exchange, not a rejection */
+    if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "validation of tool credentials failed: %s",
                             PMIx_Error_string(reply));
@@ -995,7 +1003,8 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* communicate the result to the other side */
     u32 = htonl(reply);
     rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
-    if (PMIX_SUCCESS != rc || PMIX_SUCCESS != reply) {
+    if (PMIX_SUCCESS != rc
+        || (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply)) {
         goto error;
     }
 
