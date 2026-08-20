@@ -72,11 +72,17 @@ implementation.
 `pthread_mutex_t`. It is a full class (`PMIX_CONSTRUCT`/`PMIX_NEW`-able)
 and also has a `PMIX_MUTEX_STATIC_INIT` for file-scope statics.
 
-- **Debug builds harden the mutex.** Under `PMIX_ENABLE_DEBUG` the plain
-  mutex is created `ERRORCHECK` (via `PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK`
-  / `..._NP`, whichever `configure` found), so a self-deadlock or a
-  double-unlock aborts loudly with a `perror` instead of hanging
-  silently. The `pmix_mutex_trylock`/`lock`/`unlock` inlines check for
+- **Debug builds harden the mutex - but only the constructed ones.**
+  Under `PMIX_ENABLE_DEBUG` `pmix_mutex_construct` creates the mutex
+  `ERRORCHECK` (via `PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK` / `..._NP`,
+  whichever `configure` found), so a self-deadlock or a double-unlock
+  aborts loudly with a `perror` instead of hanging silently.
+  `PMIX_MUTEX_STATIC_INIT` cannot do that - `PTHREAD_MUTEX_INITIALIZER`
+  is a *normal* mutex and there is no static spelling of an attribute -
+  so a file-scope lock keeps ordinary pthread behavior in every build.
+  Do not read a debug run's clean bill of health on a statically
+  initialized lock as evidence it is deadlock-free.
+  The `pmix_mutex_trylock`/`lock`/`unlock` inlines check for
   `EDEADLK`/`EPERM` and `abort()` in debug; in release they are a thin
   pass-through to the pthread call with zero overhead.
 - **The `atomic_` variants are aliases.** `pmix_mutex_atomic_lock` and
@@ -98,31 +104,57 @@ macros:
 |-------|---------|--------|
 | `PMIX_CONSTRUCT_LOCK(l)` | caller | init mutex+cond, set `active = true` |
 | `PMIX_DESTRUCT_LOCK(l)` | caller | tear down mutex+cond |
-| `PMIX_ACQUIRE_THREAD(l)` | caller | block until `active == false`, **then re-arm** `active = true` |
-| `PMIX_WAIT_THREAD(l)` | caller | block until `active == false`, leave it false |
-| `PMIX_RELEASE_THREAD(l)` | holder | set `active = false`, signal, **unlock** (assumes lock already held) |
+| `PMIX_ACQUIRE_THREAD(l)` | caller | block until `active == false`, re-arm `active = true`, **return with the mutex still held** |
+| `PMIX_WAIT_THREAD(l)` | caller | block until `active == false`, leave it false, **unlock before returning** |
+| `PMIX_RELEASE_THREAD(l)` | holder | set `active = false`, signal, **unlock** (assumes the mutex is already held) |
 | `PMIX_WAKEUP_THREAD(l)` | handler | lock, set `active = false`, signal, unlock |
 
-The two easy-to-confuse pairs:
+They are two pairs, and the pairing is about **who is holding the
+mutex** — that, not the naming, is what makes them non-interchangeable:
 
-- **`ACQUIRE` vs. `WAIT`.** Both block on the condition. `ACQUIRE_THREAD`
-  re-arms `active = true` before returning (it is a *gate* you pass
-  through repeatedly — acquire/release cycles), and returns holding the
-  mutex is *not* implied — read the macro. `WAIT_THREAD` is a one-shot:
-  it waits, then unlocks and returns, leaving `active` false. Blocking
-  public APIs use the `CONSTRUCT_LOCK` … `THREADSHIFT` … `WAIT_THREAD`
-  pattern (see the top-level thread-safety section and
-  `src/server/pmix_server.c`).
-- **`RELEASE` vs. `WAKEUP`.** `RELEASE_THREAD` assumes the caller already
-  holds the mutex (it pairs with `ACQUIRE_THREAD`); it does not lock,
-  only unlocks. `WAKEUP_THREAD` takes the lock itself — it is what a
-  progress-thread handler calls to wake a blocked API caller that is
-  sitting in `WAIT_THREAD`. **Every blocking path needs a matching
-  `WAKEUP` (or `RELEASE`)** or the caller hangs forever — this is the
-  single most common threading bug in the code base.
+- **`WAIT` + `WAKEUP` is the pair the library actually uses**, at ~120
+  sites each. `WAIT_THREAD` unlocks before it returns, so the waiter
+  holds nothing; `WAKEUP_THREAD` takes the mutex itself, so a
+  progress-thread handler can call it with nothing held. This is the
+  `CONSTRUCT_LOCK` … `THREADSHIFT` … `WAIT_THREAD` shape of every
+  blocking public API (see the top-level thread-safety section and
+  `src/server/pmix_server.c`). **Every blocking path needs a matching
+  `WAKEUP`** on every exit including the error ones, or the caller hangs
+  forever — the single most common threading bug in the code base.
+- **`ACQUIRE` + `RELEASE` is a held-mutex critical section**, and it has
+  **no callers anywhere in `libpmix`** (only `test/unit/threads_primitives.c`
+  exercises it). `ACQUIRE_THREAD` locks, waits, re-arms `active = true`
+  and returns **still holding the mutex**; `RELEASE_THREAD` therefore
+  does not lock, it only unlocks. Mixing the pairs is not a style
+  choice: `RELEASE_THREAD` on a lock you did not acquire is an unlock of
+  a mutex you do not hold (which the debug `ERRORCHECK` mutex aborts on),
+  and returning from `ACQUIRE_THREAD` without a matching
+  `RELEASE_THREAD` leaves the mutex held for good.
 
 All four blocking/waking macros loop on `while ((lck)->active)` to absorb
 spurious condition-variable wakeups — do not "simplify" that to an `if`.
+
+**`status` is not initialized by `PMIX_CONSTRUCT_LOCK`,** while
+`PMIX_LOCK_STATIC_INIT` sets it to `PMIX_SUCCESS`. That asymmetry is
+survivable only because of an invariant nothing enforces: every waiter
+that reads a lock's `status` is woken by a handler that assigns it
+first. It holds today — a sweep of the tree found no `lock.status` read
+whose wake path leaves it unset, and most waiters read a `status` field
+on their own caddy rather than the lock's. If you add a reader, make
+sure **every** path that can wake that lock assigns `status`, including
+the error paths; the lock frequently lives in a `PMIX_NEW`'d caddy, and
+`PMIX_NEW` does not zero, so the alternative to a real value is heap
+garbage rather than zero.
+
+**`WAKEUP_THREAD` signals *before* it unlocks, and that ordering is
+load-bearing.** The lock usually lives in the waiting thread's stack
+frame, and that thread destroys it (`PMIX_DESTRUCT_LOCK`) the moment
+`WAIT_THREAD` returns. Because the signal happens under the mutex, the
+waiter cannot re-acquire and return until the waker's unlock has
+completed, so the waker is finished touching the object before it can be
+torn down. "Optimizing" this into the usual unlock-then-signal form
+turns a normal completion into a use-after-free on the condition
+variable. The same applies to `RELEASE_THREAD`.
 
 `PMIX_LOCK_STATIC_INIT` exists for file-scope locks; note it initializes
 `active = false`, whereas `PMIX_CONSTRUCT_LOCK` sets `active = true` — a
@@ -149,11 +181,31 @@ the model may be revamped and the argument made meaningful.
 `pmix_thread_start` / `pmix_thread_join` are the only two entry points,
 and their only live caller is the progress-thread engine in
 `src/runtime/pmix_progress_threads.c`. `PMIX_THREAD_CANCELLED` is the
-sentinel a cancellable thread body returns. The "not started" / "joined"
-state of a `pmix_thread_t` is tracked with a `(pthread_t) -1` sentinel in
-`t_handle`, compared with plain `==`/`!=`; this is a sentinel test, not a
-comparison of two real thread identities (which would use
-`pthread_equal`), and is left as-is deliberately.
+sentinel a cancellable thread body returns.
+
+**The `(pthread_t) -1` sentinel in `t_handle` is the whole state
+machine**, and all three functions have to maintain it: the constructor
+installs it, a failed `pmix_thread_start` puts it back (POSIX leaves the
+handle's contents unspecified when the create fails, so trusting
+`pthread_create` not to have written it is not portable), and
+`pmix_thread_join` restores it after reaping. `pmix_thread_join`
+therefore **refuses** a handle still carrying it, rather than passing it
+down: `pthread_join((pthread_t) -1, …)` is undefined, and on glibc it
+dereferences the sentinel, so the caller gets a segfault where it
+expected an error return. Both a never-started thread and a
+second join land there. It is compared with plain `==`/`!=` — a sentinel
+test, not a comparison of two real thread identities (which would use
+`pthread_equal`) — and is left that way deliberately.
+
+Note that `pmix_thread_start`'s parameter validation is inside
+`if (PMIX_ENABLE_DEBUG)`, so a release build does not screen a NULL
+`t_run`. Callers own that check.
+
+`t_arg` is the only thing the body receives; `pmix_thread_t` has no
+destructor and owns nothing, so whatever `t_arg` points at must outlive
+the thread. Note that `PMIX_NEW` does not zero, which is why the
+constructor sets every field explicitly rather than only the interesting
+ones.
 
 ## Thread-specific data (`pmix_tsd.h`, `thread.c`)
 
@@ -162,26 +214,54 @@ Thin wrappers over `pthread_key_*`, plus a small **key registry** in
 
 - `pmix_tsd_key_create()` creates a pthread key and appends the
   key+destructor to a global registry (`pmix_tsd_key_values`),
-  **regardless of which thread it runs on**. Callers create their keys
-  lazily on first use, which may land on any thread (commonly the
-  progress thread), so the registry mutation is serialized by a private
-  `pmix_tsd_key_values_lock`. The `realloc` return is checked; on OOM the
-  key stays valid and usable, it just is not registered for auto-cleanup.
-- `pmix_tsd_keys_destruct()` (called from `pmix_finalize.c`, on the main
-  thread) walks the registry under the same lock, invokes each destructor
-  on the finalizing thread's value, and **deletes the pthread key** so
-  its slot is reclaimed. This is necessary because pthread destructors
-  never fire for the main thread (there is no `pthread_join(main)`), so
-  without it every key — and its `PTHREAD_KEYS_MAX`-limited slot — would
-  leak across an init/finalize cycle.
+  **regardless of which thread it runs on**. One of its two callers
+  creates its key lazily on first use, which may land on any thread
+  (commonly the progress thread), so the registry mutation is serialized
+  by a private `pmix_tsd_key_values_lock`. The `realloc` return is
+  checked; on OOM the key stays valid and usable and the create still
+  reports success, it just is not registered for auto-cleanup.
+  It returns a `pmix_status_t`, **not** the pthread errno: callers hand
+  the result to `PMIX_ERROR_LOG` and `pmix_net_init` returns it straight
+  out of `PMIx_Init`, and a positive errno arriving in a status channel
+  reads as some unrelated PMIx constant.
+- `pmix_tsd_keys_destruct()` walks the registry under the same lock,
+  invokes each destructor on the finalizing thread's value, and
+  **deletes the pthread key** so its slot is reclaimed. This is necessary
+  because pthread destructors never fire for the main thread (there is no
+  `pthread_join(main)`), so without it every key — and its
+  `PTHREAD_KEYS_MAX`-limited slot — would leak across an init/finalize
+  cycle.
+
+  Two conditions on when it may be called, and neither is optional.
+  It must run **on the main thread**, whose values nothing else will ever
+  destroy; and it must run when **every other thread has been joined**,
+  because it deletes the keys outright. A thread still running can reach
+  a key that no longer exists, and any code below the call that prints a
+  process name re-creates the print-buffer key into a registry nothing
+  will walk again — leaking exactly the slot this function exists to
+  reclaim. That is why the call sits at the very end of
+  `pmix_rte_finalize()`, after `pmix_progress_thread_stop()`, rather than
+  beside the other cleanup.
+
+  It only ever destroys the *calling* thread's value. Values other
+  threads left behind were already handled by pthread when they exited.
+  And it honors pthread's own rule that a destructor is never invoked
+  with a NULL value — a destructor written to that contract may
+  dereference its argument, and this is the one call site that could
+  have handed it NULL, for any key the finalizing thread never used.
+  (`pmix_tsd_getspecific` always returns `PMIX_SUCCESS`, so the status
+  check around it decides nothing; the NULL check is the real one.)
 
 The only live callers of the TSD API are `src/util/pmix_net.c`
 (`hostname_tsd_key`) and `src/util/pmix_name_fns.c`
-(`print_args_tsd_key`); both create their key lazily on first use and
-clear a static `*_init` latch in their `_finalize` so a subsequent
-`PMIx_Init` recreates it. Because registration no longer depends on the
-creating thread, that lazy-first-use pattern is safe — the key is tracked
-and cleaned up no matter which thread touched it first.
+(`print_args_tsd_key`), and they create their keys differently.
+`pmix_net_init()` creates its key eagerly, on the main thread, as its
+last act. `get_print_name_buffer()` creates its key **lazily on first
+use** — which may land on any thread, commonly the progress thread — and
+clears a static `fns_init` latch in `pmix_name_fns_finalize()` so a
+subsequent `PMIx_Init` recreates it. Because registration no longer
+depends on the creating thread, that lazy-first-use pattern is safe: the
+key is tracked and cleaned up no matter which thread touched it first.
 
 ## Design notes worth knowing
 
@@ -195,7 +275,36 @@ and cleaned up no matter which thread touched it first.
 - **`ACQUIRE_THREAD` and `WAIT_THREAD` emit distinct debug strings**
   (`"Acquiring thread"` / `"Thread acquired"` vs. `"Waiting for thread"` /
   `"Thread obtained"`) so the two are distinguishable in a
-  `pmix_debug_threads` log.
+  `pmix_debug_threads` log. **Nothing in the tree ever sets
+  `pmix_debug_threads`** — there is no MCA parameter for it and no
+  assignment outside its definition, so those lines only appear if you
+  set the variable from a debugger. Do not conclude from a silent run
+  that the lock handshake was not exercised.
+- **The cast in `pmix_thread_start`** hands a
+  `void *(*)(pmix_object_t *)` to `pthread_create`, which wants a
+  `void *(*)(void *)`. That is a call through an incompatible function
+  pointer type, and it is deliberate rather than overlooked: GCC's
+  `-Wcast-function-type` (on here through `-Wextra -Werror`) treats any
+  pointer parameter as matching any other, so it is not diagnosed, and
+  every ABI PMIx supports passes a `void *` and a struct pointer
+  identically. Only clang's opt-in `-Wcast-function-type-strict` and
+  UBSan's `-fsanitize=function` object, and neither is used by the build
+  or by CI (the sanitizer job is ASan only). Leave it alone unless one of
+  those is turned on, in which case the fix is a small trampoline rather
+  than a cast.
+
+## Testing
+
+[`test/unit/threads_primitives.c`](../../test/unit/threads_primitives.c)
+is this directory's regression test, wired into `make check`. It covers
+the paths the progress engine never takes: joining a thread that was
+never started and joining one twice, the constructor's field
+initialization, the `WAIT`/`WAKEUP` round trip driven by a real second
+thread, the otherwise-uncalled `ACQUIRE`/`RELEASE` pair, and the TSD
+registry — including the case that asserts a destructor is **not** run
+for a key the finalizing thread never set a value for. That negative
+case is the important one and is easy to make vacuous; read the comment
+above it before touching it.
 
 ## Building
 
