@@ -121,15 +121,25 @@ mutex** — that, not the naming, is what makes them non-interchangeable:
   `src/server/pmix_server.c`). **Every blocking path needs a matching
   `WAKEUP`** on every exit including the error ones, or the caller hangs
   forever — the single most common threading bug in the code base.
-- **`ACQUIRE` + `RELEASE` is a held-mutex critical section**, and it has
-  **no callers anywhere in `libpmix`** (only `test/unit/threads_primitives.c`
-  exercises it). `ACQUIRE_THREAD` locks, waits, re-arms `active = true`
-  and returns **still holding the mutex**; `RELEASE_THREAD` therefore
-  does not lock, it only unlocks. Mixing the pairs is not a style
-  choice: `RELEASE_THREAD` on a lock you did not acquire is an unlock of
-  a mutex you do not hold (which the debug `ERRORCHECK` mutex aborts on),
-  and returning from `ACQUIRE_THREAD` without a matching
-  `RELEASE_THREAD` leaves the mutex held for good.
+- **`ACQUIRE` + `RELEASE` is a held-mutex critical section.**
+  `ACQUIRE_THREAD` locks, waits, re-arms `active = true` and returns
+  **still holding the mutex**; `RELEASE_THREAD` therefore does not lock,
+  it only unlocks. Mixing the pairs is not a style choice:
+  `RELEASE_THREAD` on a lock you did not acquire is an unlock of a mutex
+  you do not hold (which the debug `ERRORCHECK` mutex aborts on), and
+  returning from `ACQUIRE_THREAD` without a matching `RELEASE_THREAD`
+  leaves the mutex held for good.
+
+  **Nothing in `libpmix` uses this pair — PRRTE does.** These headers are
+  installed under `$(pmixincludedir)/src/threads`, and
+  `src/runtime/prte_locks.h` includes `src/threads/pmix_threads.h` to
+  declare `prte_init_lock` as a `pmix_lock_t`; `prte_init()`,
+  `prte_finalize()` and `pmix_server_notify.c` then guard
+  `prte_initialized` with `ACQUIRE`/`RELEASE` across eleven call sites.
+  So this is external API with exactly one known consumer, not dead code:
+  do not retire it on the evidence of an in-tree grep, and treat a change
+  to its semantics as a change to PRRTE. `test/unit/threads_primitives.c`
+  is the in-tree coverage that keeps it honest.
 
 All four blocking/waking macros loop on `while ((lck)->active)` to absorb
 spurious condition-variable wakeups — do not "simplify" that to an `if`.
