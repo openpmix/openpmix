@@ -247,12 +247,19 @@ static size_t get_decompressed_size(const pmix_byte_object_t *bo)
 
 static size_t get_decompressed_strlen(const pmix_byte_object_t *bo)
 {
-    uint32_t len = 0;
+    size_t len;
 
-    if (NULL == bo || NULL == bo->bytes || bo->size < sizeof(uint32_t)) {
+    /* 0 is this entry point's "I cannot answer" sentinel - it is what the
+     * base default returns for a blob it cannot read, and what bfrops'
+     * decompressed_strlen() falls back to for a module that does not
+     * implement the slot at all. A stored length of zero is not a real
+     * compressed string (compress declines anything below compress_limit),
+     * so returning 0 + 1 here would report a one-byte string where the
+     * other components report "unknown". Answer as they do. */
+    len = get_decompressed_size(bo);
+    if (0 == len) {
         return 0;
     }
-    memcpy(&len, bo->bytes, sizeof(uint32_t));
     /* +1 for the NUL terminator, mirroring how a plain PMIX_STRING is sized */
-    return (size_t) len + 1;
+    return len + 1;
 }

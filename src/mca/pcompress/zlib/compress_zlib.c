@@ -18,6 +18,7 @@
 
 #include "pmix_config.h"
 
+#include <limits.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -92,6 +93,17 @@ static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbyt
     len = deflateBound(&strm, inlen);
     // it's okay if this len > inlen because it includes
     // working space for the compression library
+    /* avail_out below is a uInt, but deflateBound returns a uLong and for an
+     * input near the UINT32_MAX ceiling its answer exceeds what a uInt can
+     * hold. Assigning it anyway would leave the stream believing it has less
+     * room than was allocated while `len` still records the full amount, and
+     * the produced length computed from the two - len - avail_out - would
+     * then overrun `tmp` in the memcpy that lifts the payload out. Refuse
+     * instead; nothing this framework compresses is anywhere near it. */
+    if (UINT_MAX < len) {
+        (void) deflateEnd(&strm);
+        return false;
+    }
     if (NULL == (tmp = (uint8_t *) malloc(len))) {
         (void) deflateEnd(&strm);
         return false;
@@ -143,9 +155,16 @@ static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbyt
 
 static bool compress_string(char *instring, uint8_t **outbytes, size_t *nbytes)
 {
-    uint32_t inlen;
+    size_t inlen;
 
-    /* setup the stream */
+    /* the stored length is the string's length WITHOUT its NUL, matching the
+     * other components; decompress_string adds the terminator back.
+     *
+     * size_t rather than uint32_t: narrowing here would hand zlib_compress a
+     * length modulo 2^32 for a string above that size, and it would then
+     * compress a prefix and label the blob as the whole string. The economy
+     * rule inside refuses anything at or above UINT32_MAX, which is where
+     * such an input belongs. */
     inlen = strlen(instring);
 
     /* compress the string */
@@ -160,6 +179,15 @@ static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t
 
     /* set the default error answer */
     *outbytes = NULL;
+
+    /* avail_in and avail_out are uInt. Both lengths reaching here derive from
+     * a peer's declared sizes, so screen rather than narrow: a silent
+     * truncation would point the inflater at a fraction of the payload, or
+     * tell it there is less room than `dest` actually has. len2 cannot exceed
+     * UINT32_MAX - it came out of the 4-byte prefix - but inlen can. */
+    if (UINT_MAX < inlen || UINT_MAX < len2) {
+        return false;
+    }
 
     /* setting destination to the fully decompressed size */
     dest = (uint8_t *) malloc(len2);
@@ -189,12 +217,25 @@ static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t
 }
 static bool zlib_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *inbytes, size_t inlen)
 {
-    uint32_t len2, input_len;
+    uint32_t len2;
+    size_t input_len;
     bool rc;
     uint8_t *input;
 
     /* set the default error answer */
     *outlen = 0;
+
+    /* Same screen decompress_string applies, and for the same reason: the
+     * length is a claim about bytes that generally came off a peer's wire -
+     * a byte object out of a modex, or whatever a caller handed
+     * PMIx_Data_decompress - and the four-byte prefix read below is the
+     * first thing to trust it, as is the subtraction that sizes the payload.
+     * Below four the subtraction underflows into roughly four billion bytes
+     * of "input" for the inflater to walk. zstd and lz4 screen both of their
+     * entry points this way; these two only screened the string one. */
+    if (NULL == inbytes || inlen < sizeof(uint32_t)) {
+        return false;
+    }
 
     /* the first 4 bytes contains the uncompressed size */
     memcpy(&len2, inbytes, sizeof(uint32_t));
@@ -214,7 +255,8 @@ static bool zlib_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *i
 
 static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
 {
-    uint32_t len2, input_len;
+    uint32_t len2;
+    size_t input_len;
     bool rc;
     uint8_t *input;
 
