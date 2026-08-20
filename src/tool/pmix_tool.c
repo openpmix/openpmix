@@ -1611,7 +1611,9 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     struct timeval tv = {5, 0};
     int n, i;
     pmix_peer_t *peer;
-    pmix_pfexec_child_t *child, *nxt;
+    pmix_pfexec_child_t *child;
+    pmix_proc_t *dying = NULL;
+    size_t ndying = 0, nd;
     pmix_dmdx_local_t *dlcd, *dnxt;
     pmix_lock_t lock;
     bool myserver_is_mypeer;
@@ -1708,11 +1710,36 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
             pmix_event_del(pmix_pfexec_globals.handler);
             pmix_pfexec_globals.active = false;
         }
-        PMIX_LIST_FOREACH_SAFE (child, nxt, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+        /* Snapshot the identities before killing anything. Each kill parks
+         * this thread on the lock for the whole SIGCONT/SIGTERM/SIGKILL
+         * sequence - seconds - and the progress thread keeps running
+         * underneath: it can complete and release other children while we
+         * wait, so a pointer into the list cannot be carried across the
+         * wait. That is what the "next" pointer of a list traversal is.
+         * kill_proc looks its target up by identity anyway, so an identity
+         * is all this loop ever needed. */
+        ndying = pmix_list_get_size(&pmix_pfexec_globals.children);
+        if (0 < ndying) {
+            dying = (pmix_proc_t *) malloc(ndying * sizeof(pmix_proc_t));
+        }
+        if (NULL == dying) {
+            ndying = 0;
+        } else {
+            nd = 0;
+            PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+                memcpy(&dying[nd++], &child->proc, sizeof(pmix_proc_t));
+            }
+        }
+        for (nd = 0; nd < ndying; nd++) {
             PMIX_CONSTRUCT_LOCK(&lock);
-            PMIX_PFEXEC_KILL(&child->proc, &lock);
+            /* the caddy holds this pointer until the sequence ends, which
+             * is why the array outlives the loop */
+            PMIX_PFEXEC_KILL(&dying[nd], &lock);
             PMIX_WAIT_THREAD(&lock);
             PMIX_DESTRUCT_LOCK(&lock);
+        }
+        if (NULL != dying) {
+            free(dying);
         }
         pmix_pfexec_base_close();
     }

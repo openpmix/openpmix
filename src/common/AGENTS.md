@@ -507,6 +507,24 @@ execs — and carries hazards the request files do not:
 - **`wait_signal_callback` reaps every child of the process**
   (`waitpid(-1, ...)`), not just pfexec's — keep that in mind if you add
   another `waitpid` consumer.
+- **A `pmix_pfexec_child_t` has more than one owner, and the
+  `children` list is only one of them.** The list holds a reference; so
+  does every caddy that carries the child across an event boundary —
+  `pmix_pfexec_cmpl_caddy_t` (retained by `PMIX_PFEXEC_CHK_COMPLETE`) and
+  `pmix_pfexec_signal_caddy_t` (retained by `kill_proc`, which then holds
+  the child for the *seconds* its SIGCONT/SIGTERM/SIGKILL timers take).
+  Two independent paths take a child off the list — the completion path
+  and the kill sequence — both are posted to the event base, and either
+  can be dispatched first. So **never assume you are the one doing the
+  removal**: go through `child_delist()`, which drops the list's
+  reference exactly once and is a no-op the second time. It keys off the
+  child's `onlist` flag rather than `pmix_list_remove_item`'s return,
+  because that function only reports a missing item under
+  `PMIX_ENABLE_DEBUG` — in a release build it splices the list using the
+  item's stale pointers and decrements the length again, which silently
+  corrupts the list this file's SIGCHLD early-out reads (see below).
+  Getting this wrong is not a leak, it is a double free plus a kill
+  sequence reading `->pid` out of freed memory to decide what to signal.
 
 ## What the August 2026 sweep changed
 
@@ -541,8 +559,8 @@ before the `fork()` that can generate its `SIGCHLD`, so the count cannot be
 stale for a child we care about, and removing the guard would make pfexec
 `waitpid(-1)` on every `SIGCHLD` in a process that currently has no
 children of its own. If you do restructure it, replace the read with a
-counter maintained across all six add/remove sites rather than deleting
-the check.
+counter maintained rather than deleting the check — the removals are all
+funnelled through `child_delist()` now, so there is one place to do it.
 
 ## Building and testing
 

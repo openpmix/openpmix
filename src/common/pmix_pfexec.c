@@ -123,6 +123,26 @@ int pmix_pfexec_base_close(void)
     return PMIX_SUCCESS;
 }
 
+/* Take a child off the children list if it is still on it, and drop the
+ * reference the list was holding.
+ *
+ * Both the completion path and the kill sequence remove children, and
+ * either can reach a given child first: a completion posted by the IOF
+ * read handler or by child_reaped sits queued on the event base, and the
+ * kill sequence the tool's finalize drives can be dispatched in between.
+ * Whoever gets here first does the removal and drops the list reference;
+ * the second call is a no-op. Callers must hold a reference of their own
+ * - this may drop the last one. */
+static void child_delist(pmix_pfexec_child_t *child)
+{
+    if (!child->onlist) {
+        return;
+    }
+    child->onlist = false;
+    pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
+    PMIX_RELEASE(child);
+}
+
 static void _ntfy_done(pmix_status_t status, void *cbdata)
 {
     pmix_pfexec_cmpl_caddy_t *cd = (pmix_pfexec_cmpl_caddy_t*)cbdata;
@@ -141,7 +161,7 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
     pmix_proc_t wildcard;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    pmix_list_remove_item(&pmix_pfexec_globals.children, &cd->child->super);
+    child_delist(cd->child);
     /* see if any more children from this nspace are alive */
     PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
         if (PMIX_CHECK_NSPACE(child->proc.nspace, cd->child->proc.nspace)) {
@@ -401,13 +421,13 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             PMIX_LOAD_PROCID(&child->proc, nspace, rank);
             ++rank;
             pmix_list_append(&pmix_pfexec_globals.children, &child->super);
+            child->onlist = true;
 
             /* setup any IOF */
             child->opts.usepty = PMIX_ENABLE_PTY_SUPPORT;
             if (PMIX_SUCCESS != (rc = setup_prefork(child))) {
                 PMIX_ERROR_LOG(rc);
-                pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
-                PMIX_RELEASE(child);
+                child_delist(child);
                 goto complete;
             }
 
@@ -418,8 +438,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             info = PMIX_NEW(pmix_rank_info_t);
             if (NULL == info) {
                 rc = PMIX_ERR_NOMEM;
-                pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
-                PMIX_RELEASE(child);
+                child_delist(child);
                 goto complete;
             }
             info->pname.nspace = strdup(child->proc.nspace);
@@ -459,8 +478,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             /* get any PTL contribution such as tmpdir settings for session files */
             if (PMIX_SUCCESS != (rc = pmix_ptl.setup_fork(&child->proc, &env))) {
                 PMIX_ERROR_LOG(rc);
-                pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
-                PMIX_RELEASE(child);
+                child_delist(child);
                 goto complete;
             }
 
@@ -475,8 +493,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                 rc = pipe(child->keepalive);
                 if (0 != rc) {
                     PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
-                    pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
-                    PMIX_RELEASE(child);
+                    child_delist(child);
                     goto complete;
                 }
                 pmix_snprintf(sock, 10, "%d", child->keepalive[1]);
@@ -492,8 +509,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             env = NULL;
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
-                pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
-                PMIX_RELEASE(child);
+                child_delist(child);
                 goto complete;
             }
             PMIX_IOF_READ_ACTIVATE(child->stdoutev);
@@ -604,12 +620,15 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
         return;
     }
 
-    /* remove the child from the list so waitpid callback won't
-     * find it as this induces unmanageable race
-     * conditions when we are deliberately killing the process
-     */
-    pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
+    /* Take the child off the list so the waitpid callback won't find it -
+     * that induces unmanageable race conditions when we are deliberately
+     * killing the process - but take a reference of our own first. The
+     * caddy holds this child across two evtimers, and a completion posted
+     * before we got here is still queued behind us with a reference of
+     * its own; whichever of the two runs last is the one that frees it. */
+    PMIX_RETAIN(child);
     scd->child = child;
+    child_delist(child);
 
     /* First send a SIGCONT in case the process is in stopped state.
        If it is in a stopped state and we do not first change it to
@@ -617,7 +636,9 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
        value. */
     pmix_output_verbose(5, pmix_client_globals.spawn_output, "%s SENDING SIGCONT",
                          PMIX_NAME_PRINT(&pmix_globals.myid));
-    sigproc(child->pid, SIGCONT);
+    /* through the caddy, which is the reference that keeps this alive
+     * now that the list's is gone */
+    sigproc(scd->child->pid, SIGCONT);
 
     /* wait a little to give the proc a chance to wakeup, then continue
      * to the SIGTERM stage */
@@ -1337,6 +1358,7 @@ static void chcon(pmix_pfexec_child_t *p)
     PMIX_LOAD_PROCID(&p->proc, NULL, PMIX_RANK_UNDEF);
     p->pid = 0;
     p->completed = false;
+    p->onlist = false;
     /* objects are malloc'd, not calloc'd - a child that completes
      * through a path that never records an exit status must report
      * zero, not whatever was on the heap */

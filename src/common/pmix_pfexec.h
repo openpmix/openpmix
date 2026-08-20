@@ -54,6 +54,15 @@ typedef struct {
     pmix_proc_t proc;
     pid_t pid;
     bool completed;
+    /* whether this child is currently on pmix_pfexec_globals.children,
+     * and therefore whether the list's reference is still outstanding.
+     * Two independent paths take a child off that list - the completion
+     * path and the kill sequence - and either can get there first, so
+     * neither may assume it is the one doing the removal. Not derived
+     * from pmix_list_remove_item's return: that only reports a missing
+     * item under PMIX_ENABLE_DEBUG, and in a release build it splices
+     * the list using the item's stale pointers instead. */
+    bool onlist;
     int exitcode;
     int keepalive[2];
     pmix_pfexec_base_io_conf_t opts;
@@ -148,9 +157,15 @@ typedef struct {
 } pmix_pfexec_cmpl_caddy_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pfexec_cmpl_caddy_t);
 
+/* The caddy carries the child across an event boundary, so it takes its
+ * own reference: between the post and the callback the kill sequence can
+ * take this same child off the list and park it for the length of a
+ * SIGCONT/SIGTERM/SIGKILL sequence. Released again by
+ * pmix_pfexec_check_complete or _ntfy_done. */
 #define PMIX_PFEXEC_CHK_COMPLETE(c)                                        \
     do {                                                                   \
         pmix_pfexec_cmpl_caddy_t *pc = PMIX_NEW(pmix_pfexec_cmpl_caddy_t); \
+        PMIX_RETAIN((c));                                                  \
         pc->child = (c);                                                   \
         pmix_event_assign(&((pc)->ev), pmix_globals.evbase, -1, EV_WRITE,  \
                           pmix_pfexec_check_complete, (pc));               \
