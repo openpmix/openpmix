@@ -176,8 +176,8 @@ Reviewed and current
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
 ``src/mca/pcompress``, ``src/mca/pgpu``, ``src/mca/plog``,
 ``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/psec``,
-``src/mca/psensor``, ``src/mca/pstat``, ``src/mca/ptl``, and
-``bindings/python``.
+``src/mca/psensor``, ``src/mca/pstat``, ``src/mca/ptl``, ``src/threads``,
+and ``bindings/python``.
 ``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
 ``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
 below.
@@ -193,8 +193,6 @@ size, which is a rough proxy for how much there is to find.
   directory in ``src/`` with **no** ``AGENTS.md`` at all.
 * ``src/mca/pdl``, ``src/mca/pinstalldirs``, ``src/mca/pif`` — about
   3200 lines between them, and the lowest risk of the group.
-* ``src/threads`` — 737 lines.  The 2026-07-17 cleanup fixed a TSD key
-  leak and removed dead code, but was not a full pass.
 
 Outside ``src/``, nothing has been reviewed: ``examples/`` (16678 lines,
 leak-swept only), ``test/simple`` (11011), ``test/unit/util`` and
@@ -348,6 +346,57 @@ Deciding it means deciding whether the two ``mca_base`` namespaces are
 one setting or two.
 
 The ``ompi`` component's guide records the precedence as it stands.
+
+``PMIX_CONSTRUCT_LOCK`` does not initialize ``status``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``PMIX_LOCK_STATIC_INIT`` sets ``.status = PMIX_SUCCESS``;
+``PMIX_CONSTRUCT_LOCK`` does not, so a constructed ``pmix_lock_t`` carries
+whatever was in the memory it occupies — and it usually lives in a
+``PMIX_NEW``'d caddy, which is ``malloc``, not ``calloc``.  What makes
+that survivable is an invariant nothing enforces: every waiter that reads
+a lock's ``status`` is woken by a handler that assigns it first.
+
+The invariant does hold today, and the checking is worth recording so it
+is not redone.  A poisoned ``status`` plus a warn-on-poison check in
+``PMIX_WAIT_THREAD`` fires ~86,000 times across ``make check``, which
+looks damning and is not: those callers read ``cb->status``, the *caddy's*
+own field, and never touch the lock's.  Grepping for ``lock.status`` and
+``lock->status`` specifically narrows it to about nine sites inside the
+library, every one of them woken through an ``opcbfunc`` that assigns
+``status`` before waking.  The two spellings are a character apart and
+only instrumentation tells them apart.
+
+Left alone deliberately.  Initializing it to ``PMIX_SUCCESS`` would
+convert undefined behavior into defined behavior, but it would also make
+a genuinely missing assignment report *success* rather than an obviously
+wrong number, and ``src/threads`` is semantics-frozen without a measured
+reason.  Closing it means either making every wake path assign ``status``
+(and saying so in the guide) or accepting the silent-success trade.
+Whoever adds a new reader of ``lock.status`` must check every path that
+can wake that lock, including the error paths.
+
+``PMIX_ACQUIRE_THREAD`` / ``PMIX_RELEASE_THREAD`` have no callers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Neither macro is used anywhere in ``libpmix``; the only caller in the
+tree is ``test/unit/threads_primitives.c``, which was written during the
+2026-08-20 review.  The live handshake is ``WAIT``/``WAKEUP``, at about
+120 sites each.
+
+Dead API is where documentation rots without anybody noticing, and this
+had: ``src/threads/AGENTS.md`` described ``ACQUIRE_THREAD`` as *not*
+implying that it returns holding the mutex, when that pair is precisely a
+held-mutex critical section — ``ACQUIRE_THREAD`` never unlocks, which is
+why ``RELEASE_THREAD`` only unlocks.  A reader who believed the guide and
+mixed the pairs would get an unlock of a mutex they do not hold.  The
+description is corrected and the macros now have test coverage.
+
+The decision left open is whether to keep them.  They are in an installed
+header (``$(pmixincludedir)/src/threads``), so removing them is a change
+to the consumable internal surface rather than a local cleanup, and they
+are a legitimate primitive for a gate that is entered repeatedly.  Keep
+or retire, but do not leave them undocumented and untested again.
 
 Deferred work
 -------------
@@ -512,6 +561,17 @@ can produce (those arrive through the bounded ``unpack``).  Closing it
 properly means plumbing a length through the deprecated signatures, and a
 caller that can do that is better off moving to ``pmix_regex2_t``.
 
+* **``pmix_debug_threads`` cannot be turned on.**  The four lock macros
+  emit distinct debug strings under ``if (pmix_debug_threads)``, but
+  nothing in the tree ever assigns that variable — there is no MCA
+  parameter for it and no other write outside its definition in
+  ``src/threads/thread.c``.  The facility is reachable only by setting
+  the variable from a debugger.  Registering an MCA parameter for it
+  would cost a few lines; it was left alone because ``src/threads`` is
+  semantics-frozen and this is a feature rather than a defect.  Until
+  then, do not read a silent run as evidence the handshake was not
+  exercised.
+
 Coverage gaps
 -------------
 
@@ -629,11 +689,59 @@ Coverage gaps
   local host and so needs a topology file naming that host.  See
   "Running it" in ``src/mca/pnet/simptest/AGENTS.md``.
 
+* **The TSD finalize-ordering fix has no automated test.**
+  ``pmix_tsd_keys_destruct`` deletes the process's pthread keys, so it
+  may only run once every other thread is joined; it used to run six
+  lines above the ``pmix_progress_thread_stop`` in ``pmix_rte_finalize``
+  that joins the progress thread, and has been moved below it.  Neither
+  half of what that fixed is testable from a unit program: reaching a
+  deleted key needs the progress thread to print a process name inside a
+  window a few calls wide, and the key-slot leak needs the same window
+  and then shows up only as a ``PTHREAD_KEYS_MAX`` exhaustion many
+  init/finalize cycles later.  ``test/unit/threads_primitives.c`` covers
+  the registry's own contract — including that a destructor is *not* run
+  for a key the finalizing thread never set a value for — but the
+  ordering itself is held only by the comment at the call site and by
+  ``src/threads/AGENTS.md``.
+
 Not defects — by design
 -----------------------
 
 These look like bugs and are not.  They are recorded so that they are
 not "fixed" by a later reader.
+
+* **The function-pointer cast in ``pmix_thread_start`` is deliberate.**
+  It hands a ``void *(*)(pmix_object_t *)`` to ``pthread_create``, which
+  wants a ``void *(*)(void *)`` — formally a call through an incompatible
+  function pointer type.  GCC's ``-Wcast-function-type``, which is on
+  through ``-Wextra -Werror``, treats any pointer parameter as matching
+  any other and does not diagnose it, and every ABI PMIx supports passes
+  a ``void *`` and a struct pointer identically.  Only clang's opt-in
+  ``-Wcast-function-type-strict`` and UBSan's ``-fsanitize=function``
+  object, and neither is used by the build or by CI — the sanitizer job
+  in ``.github/workflows/builds.yaml`` is ASan only.  If one of those is
+  ever turned on, the fix is a small trampoline that takes ``void *`` and
+  calls ``t_run``, not a change to ``pmix_thread_fn_t``.
+
+* **A statically initialized mutex is not ``ERRORCHECK`` even in a debug
+  build.**  ``pmix_mutex_construct`` sets ``PTHREAD_MUTEX_ERRORCHECK``
+  under ``PMIX_ENABLE_DEBUG`` so self-deadlocks and double-unlocks abort
+  loudly, but ``PMIX_MUTEX_STATIC_INIT`` expands to
+  ``PTHREAD_MUTEX_INITIALIZER`` — an ordinary mutex — because there is no
+  static spelling of a mutex attribute.  This is a property of pthreads,
+  not an oversight, and it cannot be fixed without giving up static
+  initialization.  The consequence to remember is diagnostic: a clean
+  debug run over a file-scope lock says nothing about whether it can
+  deadlock.
+
+* **``pmix_mutex_construct`` ignoring ``pthread_mutex_init``'s return is
+  not an unchecked error.**  The constructor returns ``void``, so there
+  is nothing it could do but abort, and on both glibc and macOS
+  ``pthread_mutex_init`` with a valid attribute allocates nothing and
+  cannot fail.  POSIX permits ``EAGAIN``/``ENOMEM``, so if a platform
+  that can really fail it ever appears, add a debug-only ``perror`` and
+  ``abort`` matching the ``EDEADLK``/``EPERM`` checks in the same file
+  rather than trying to report it upward.
 
 * **A** ``pcompress`` ``compress_string`` **that does not screen its
   argument for NULL is not a missing guard.**  All five implementations
