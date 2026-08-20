@@ -20,21 +20,8 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
-#include <ctype.h>
 #include <stddef.h>
-#include <stdio.h>
-#ifdef HAVE_UNISTD_H
-#    include <unistd.h>
-#endif
-#ifdef HAVE_NETDB_H
-#    include <netdb.h>
-#endif
-#ifdef HAVE_SYS_PARAM_H
-#    include <sys/param.h>
-#endif
-#include <errno.h>
-#include <fcntl.h>
-#include <signal.h>
+#include <string.h>
 #ifdef HAVE_TIME_H
 #    include <time.h>
 #endif
@@ -71,7 +58,6 @@ typedef struct {
     pmix_event_t ev;
     pmix_event_t cdev;
     struct timeval tv;
-    int tick;
     char *file;
     bool sampled;
     bool file_size;
@@ -95,7 +81,6 @@ static void ft_constructor(file_tracker_t *ft)
     ft->event_active = false;
     ft->tv.tv_sec = 0;
     ft->tv.tv_usec = 0;
-    ft->tick = 0;
     ft->file = NULL;
     ft->sampled = false;
     ft->file_size = false;
@@ -445,7 +430,7 @@ static void file_sample(int sd, short args, void *cbdata)
     }
 
     pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
-                         "[%s:%d] sampled file %s misses %d", pmix_globals.myid.nspace,
+                         "[%s:%d] sampled file %s misses %u", pmix_globals.myid.nspace,
                          pmix_globals.myid.rank, ft->file, ft->nmisses);
 
     /* Alert once the watched attribute has sat still for as many checks

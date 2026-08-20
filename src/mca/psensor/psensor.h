@@ -84,4 +84,4 @@ PMIX_EXPORT extern pmix_psensor_base_module_t pmix_psensor; /* holds API functio
 
 END_C_DECLS
 
-#endif /* MCA_SENSOR_H */
+#endif /* PMIX_PSENSOR_H_ */
