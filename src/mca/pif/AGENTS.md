@@ -107,7 +107,19 @@ Two facts here bite repeatedly:
   the lookup helper (`pmix_ifindextomask`) even flags that it returns
   CIDR "NOT the actual netmask itself!". Each component converts the
   OS-supplied netmask to a prefix length (the `prefix()` helper in the
-  IPv4 components) before storing it.
+  IPv4 components) before storing it. The IPv6 components do *not* agree
+  on what to put here: `linux_ipv6` stores the true prefix from `/proc`,
+  `bsdx_ipv6` hard-codes 64. That is not simply an oversight — see
+  [`bsdx_ipv6/AGENTS.md`](bsdx_ipv6/AGENTS.md), and note that the sole
+  consumer, `pmix_net_samenetwork()`, only compares IPv6 addresses at
+  all when the prefix is 64.
+- **`if_kernel_index` is a `uint16_t`, and `pmix_ifnametokindex()`
+  returns an `int16_t`.** Linux kernel interface indices are 32-bit and
+  monotonically increasing, so a long-lived host that churns veth/container
+  interfaces can hand out an index this field cannot hold. Both types are
+  in the installed [`src/util/pmix_if.h`](../../util/pmix_if.h) and are
+  therefore ABI; it is recorded in
+  [`docs/todo.rst`](../../../docs/todo.rst) rather than fixed here.
 
 `PMIX_IF_NAMESIZE` is 256. `DEFAULT_NUMBER_INTERFACES` (10) and
 `MAX_PIFCONF_SIZE` (10 MiB) in [`pif.h`](pif.h) size the `posix_ipv4`
@@ -129,16 +141,48 @@ The base file is small and does four things:
   `if_kernel_index = (uint16_t)-1`, `af_family = PF_UNSPEC`.
 - **`pmix_pif_base_open`** constructs `pmix_if_list` and calls
   `pmix_mca_base_framework_components_open`, which runs each component's
-  open (i.e. its discovery). A `frameopen` guard makes re-open a no-op.
+  open (i.e. its discovery). A `frameopen` guard makes re-open a no-op;
+  it is only raised once the components have opened, because on the
+  failure path the base does *not* call our close (see below).
 - **`pmix_pif_base_close`** drains and `PMIX_RELEASE`s every entry on
   `pmix_if_list`, destructs the list, and closes the components.
 
-The framework is opened once, early, from
-[`src/runtime/pmix_init.c`](../../runtime/pmix_init.c) (in
-`pmix_rte_init`'s util-init phase, right after `pmix_net_init`), for
-**every** PMIx process — client, tool, and server alike — and closed from
+The framework is opened once, early, by **`pmix_init_util()`** in
+[`src/runtime/pmix_init.c`](../../runtime/pmix_init.c) — it is the last
+thing the util-init phase does, right after `pmix_net_init()` — for
+**every** PMIx process, client, tool and server alike, and closed from
 [`src/runtime/pmix_finalize.c`](../../runtime/pmix_finalize.c). It is not
-server-only.
+server-only, and it is **not** opened from `pmix_rte_init` itself: that
+function reaches it only through `pmix_init_util`.
+
+That matters as soon as you write a test. `pmix_mca_base_framework_open`
+is reference-counted, so a program that calls `pmix_init_util()` and then
+opens `pif` again holds *two* references, and its matching close merely
+hands one back — `pmix_pif_base_close` never runs, the interface list is
+never drained, and the symptom is a close that "succeeds" while leaving
+everything in place. Take the framework as `pmix_init_util()` left it.
+
+### A component's open cannot fail the framework
+
+`open_components()` in the MCA base returns `PMIX_SUCCESS`
+unconditionally: a component whose open returns an error is logged
+(subject to `mca_base_component_show_load_errors`), dropped from the
+list, and the walk continues. So a `pif` component's return value only
+picks a log message — it cannot abort discovery, and, importantly,
+**whatever that component already appended to `pmix_if_list` stays
+there.** For `pif` that is the right outcome (partial inventory beats
+none), but do not write code here that relies on an error return
+unwinding anything.
+
+The corollary is the one non-obvious thing in `pif_base_components.c`:
+`pmix_pif_base_open` can still fail *before* any component runs (a
+`component_find` or filter error), and on that path
+`pmix_mca_base_framework_open` never sets the framework's OPEN flag —
+so `pmix_mca_base_framework_close` takes its not-open branch and the
+framework's own close function is never called. Nothing else would give
+`pmix_if_list` back or lower `frameopen`, and a latch left standing
+would make a later successful open skip discovery altogether. Hence the
+explicit drain on that path.
 
 ### Which components exist on a given host
 
@@ -168,14 +212,30 @@ excludes Apple), so macOS never builds `posix_ipv4`.
 Since every component appends to one shared list and `if_index` is
 assigned from the running list size, the components' open order (the
 order in `static-components.h`) determines the index numbering. It also
-creates a real cross-component dependency: on Linux, `posix_ipv4` runs
-first and populates the IPv4 interfaces, and `linux_ipv6` then looks up
-each interface's flags via
-`pmix_ifindextoflags(pmix_ifnametoindex(ifname))` — i.e. it *reuses the
-flags discovered by `posix_ipv4`* for the same-named interface, falling
-back to `IFF_UP` only if the name is not already present. Do not reorder
-the components or assume an IPv6-only build would give an IPv6 interface
-correct flags.
+creates a soft cross-component dependency: `/proc/net/if_inet6` carries
+no flags column, so `linux_ipv6` asks the kernel for them
+(`SIOCGIFFLAGS`) and, if that fails, falls back to the flags
+`posix_ipv4` already recorded for the same-named interface before
+settling for a bare `IFF_UP`. Do not reorder the components.
+
+### Testing a change here
+
+`pif` is the one framework whose components are chosen at *configure*
+time, so **a component you edit may not be compiled on the machine you
+edit it on**: a macOS developer builds `bsdx_ipv4` + `bsdx_ipv6` and
+gets no compiler coverage at all of `posix_ipv4` or `linux_ipv6`, and
+vice versa on Linux. Building both halves means building on both, and a
+Linux container is enough — see
+[`contrib/dockerswarm/AGENTS.md`](../../../contrib/dockerswarm/AGENTS.md).
+
+`test/unit/pif_discovery` (wired into `make check`) is written to make
+that cheap: it asserts only on the *contents* of `pmix_if_list`, never on
+the mechanism that filled it, so the same program is a meaningful test of
+whichever pair of components the build selected. Its load-bearing check
+cross-references every discovered IPv4 prefix against `getifaddrs(3)` —
+an independent view of the same interfaces on both platforms, and the
+only kind of check that catches a netmask that is wrong rather than
+missing.
 
 ## The lookup helpers ([`src/util/pmix_if.c`](../../util/pmix_if.c))
 

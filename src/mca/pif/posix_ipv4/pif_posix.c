@@ -147,10 +147,12 @@ static int if_posix_open(void)
         memset(ifconf.ifc_req, 0, ifconf.ifc_len);
 
         if (ioctl(sd, SIOCGIFCONF, &ifconf) < 0) {
-            /* if we got an einval, we probably don't have enough
-               space.  so we'll fall down and try to expand our
-               space */
-            if (errno != EINVAL && lastlen != 0) {
+            /* EINVAL on a call that has not yet succeeded is how some
+               platforms report "your buffer is too small", so fall down
+               and try again with more space.  Anything else - or an
+               EINVAL after we already had a good answer - is a real
+               failure and must not be retried into a 10MB buffer */
+            if (errno != EINVAL || lastlen != 0) {
                 pmix_output(0, "pmix_ifinit: ioctl(SIOCGIFCONF) \
                             failed with errno=%d",
                             errno);
@@ -185,8 +187,16 @@ static int if_posix_open(void)
      * Setup indexes
      */
     ifr = (struct ifreq *) malloc(ifc_len);
+    if (NULL == ifr) {
+        free(ifconf.ifc_req);
+        close(sd);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     ptr = (char *) ifconf.ifc_req;
-    rem = ifconf.ifc_len;
+    /* some platforms report the space the entries *would* have needed
+     * rather than the space they used, so never walk past the buffer we
+     * actually allocated - both ifc_req and ifr are ifc_len bytes long */
+    rem = (ifconf.ifc_len > ifc_len) ? ifc_len : ifconf.ifc_len;
 
     /* loop through all interfaces */
     while (rem > 0) {
@@ -273,7 +283,7 @@ static int if_posix_open(void)
         if (ioctl(sd, SIOCGIFADDR, ifr) < 0) {
             pmix_output(0, "pmix_ifinit: ioctl(SIOCGIFADDR) failed with errno=%d", errno);
             PMIX_RELEASE(intf);
-            break;
+            continue;
         }
         if (AF_INET != ifr->ifr_addr.sa_family) {
             PMIX_RELEASE(intf);
@@ -293,23 +303,27 @@ static int if_posix_open(void)
         intf->if_mask = prefix(((struct sockaddr_in *) &ifr->ifr_addr)->sin_addr.s_addr);
 
 #if defined(SIOCGIFHWADDR) && defined(HAVE_STRUCT_IFREQ_IFR_HWADDR)
-        /* get the MAC address */
+        /* get the MAC address - purely informational, so an interface
+         * that cannot report one is still perfectly usable and keeps the
+         * zeroed if_mac the constructor gave it */
         if (ioctl(sd, SIOCGIFHWADDR, ifr) < 0) {
-            pmix_output(0, "pmix_ifinit: ioctl(SIOCGIFHWADDR) failed with errno=%d", errno);
-            PMIX_RELEASE(intf);
-            break;
+            pmix_output_verbose(1, pmix_pif_base_framework.framework_output,
+                                "pmix_ifinit: ioctl(SIOCGIFHWADDR) on %s failed with errno=%d",
+                                intf->if_name, errno);
+        } else {
+            memcpy(intf->if_mac, ifr->ifr_hwaddr.sa_data, 6);
         }
-        memcpy(intf->if_mac, ifr->ifr_hwaddr.sa_data, 6);
 #endif
 
 #if defined(SIOCGIFMTU) && defined(HAVE_STRUCT_IFREQ_IFR_MTU)
-        /* get the MTU */
+        /* likewise the MTU */
         if (ioctl(sd, SIOCGIFMTU, ifr) < 0) {
-            pmix_output(0, "pmix_ifinit: ioctl(SIOCGIFMTU) failed with errno=%d", errno);
-            PMIX_RELEASE(intf);
-            break;
+            pmix_output_verbose(1, pmix_pif_base_framework.framework_output,
+                                "pmix_ifinit: ioctl(SIOCGIFMTU) on %s failed with errno=%d",
+                                intf->if_name, errno);
+        } else {
+            intf->ifmtu = ifr->ifr_mtu;
         }
-        intf->ifmtu = ifr->ifr_mtu;
 #endif
         pmix_output_verbose(1, pmix_pif_base_framework.framework_output, "adding interface %s",
                             intf->if_name);

@@ -26,6 +26,7 @@ pmix_list_t pmix_if_list = PMIX_LIST_STATIC_INIT;
 bool pmix_if_do_not_resolve = false;
 
 static int pmix_pif_base_register(pmix_mca_base_register_flag_t flags);
+static void pmix_pif_base_drain(void);
 static int pmix_pif_base_open(pmix_mca_base_open_flag_t flags);
 static int pmix_pif_base_close(void);
 static void pmix_pif_construct(pmix_pif_t *obj);
@@ -51,32 +52,51 @@ static int pmix_pif_base_register(pmix_mca_base_register_flag_t flags)
     return PMIX_SUCCESS;
 }
 
-static int pmix_pif_base_open(pmix_mca_base_open_flag_t flags)
-{
-    if (frameopen) {
-        return PMIX_SUCCESS;
-    }
-    frameopen = true;
-
-    /* setup the global list */
-    PMIX_CONSTRUCT(&pmix_if_list, pmix_list_t);
-
-    return pmix_mca_base_framework_components_open(&pmix_pif_base_framework, flags);
-}
-
-static int pmix_pif_base_close(void)
+/* discard everything discovery appended and give the list back */
+static void pmix_pif_base_drain(void)
 {
     pmix_list_item_t *item;
-
-    if (!frameopen) {
-        return PMIX_SUCCESS;
-    }
-    frameopen = false;
 
     while (NULL != (item = pmix_list_remove_first(&pmix_if_list))) {
         PMIX_RELEASE(item);
     }
     PMIX_DESTRUCT(&pmix_if_list);
+}
+
+static int pmix_pif_base_open(pmix_mca_base_open_flag_t flags)
+{
+    int rc;
+
+    if (frameopen) {
+        return PMIX_SUCCESS;
+    }
+
+    /* setup the global list */
+    PMIX_CONSTRUCT(&pmix_if_list, pmix_list_t);
+
+    rc = pmix_mca_base_framework_components_open(&pmix_pif_base_framework, flags);
+    if (PMIX_SUCCESS != rc) {
+        /* the base will not call our close on this path - it never set
+         * the framework's OPEN flag, so pmix_mca_base_framework_close()
+         * takes its not-open branch - which means nothing else will give
+         * the list back, and a latch left standing here would make a
+         * later successful open skip discovery altogether */
+        pmix_pif_base_drain();
+        return rc;
+    }
+    frameopen = true;
+
+    return PMIX_SUCCESS;
+}
+
+static int pmix_pif_base_close(void)
+{
+    if (!frameopen) {
+        return PMIX_SUCCESS;
+    }
+    frameopen = false;
+
+    pmix_pif_base_drain();
 
     return pmix_mca_base_framework_components_close(&pmix_pif_base_framework, NULL);
 }

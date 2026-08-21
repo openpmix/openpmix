@@ -44,6 +44,12 @@ Same shape as the others: `PMIX_MCA_BASE_VERSION(pif)`, name
    without that proc entry simply yields no IPv6 interfaces, not an error.
 2. `fscanf`s each line: sixteen 2-hex-digit address bytes, then the
    interface's kernel index, prefix length, scope, DAD status, and name.
+   The loop condition is `21 == fscanf(...)`, i.e. **a complete line or
+   stop** — not `!= EOF`. A partial match neither consumes the input that
+   did not convert nor reports EOF, so the `!= EOF` form would spin
+   forever appending interfaces built from whatever `idx`/`pfxlen`/`scope`
+   happened to hold from the previous line (or, on the first line, from
+   nothing at all).
 3. **Scope filter:** accepts only global (`0x00`) and host/loopback
    (`0x10`) scope; skips everything else (link-local `0x20`, site-local
    `0x40`, …). This is the Linux analogue of `bsdx_ipv6`'s `fe80::` skip.
@@ -56,33 +62,38 @@ Same shape as the others: `PMIX_MCA_BASE_VERSION(pif)`, name
    hard-coded 64).
 5. Appends the object to `pmix_if_list`.
 
-### Flags are borrowed from `posix_ipv4`
+### Flags come from the kernel, with `posix_ipv4` as a fallback
 
-`/proc/net/if_inet6` does not carry interface flags, so the component
-looks them up from the *already-discovered* IPv4 interface of the same
-name:
+`/proc/net/if_inet6` has no flags column, so the component asks the
+kernel directly and only falls back to the already-discovered IPv4
+interface of the same name:
 
 ```c
-if (PMIX_SUCCESS == pmix_ifindextoflags(pmix_ifnametoindex(ifname), &flag)) {
+if (if_linux_ipv6_flags(ifname, &flag)) {            /* SIOCGIFFLAGS */
     intf->if_flags = flag;
+} else if (PMIX_SUCCESS == pmix_ifindextoflags(pmix_ifnametoindex(ifname), &flag)) {
+    intf->if_flags = flag;                            /* what posix_ipv4 found */
 } else {
-    intf->if_flags = IFF_UP;   // fallback
+    intf->if_flags = IFF_UP;                          /* last resort */
 }
 ```
 
-This makes `linux_ipv6` **depend on `posix_ipv4` having run first** (which
-it does, per the static-components order on Linux). If the same-named
-interface was not discovered by `posix_ipv4`, the IPv6 entry gets a bare
-`IFF_UP` and, in particular, will *not* be recognized as loopback by
-`pmix_ifisloopback`. Keep the component order intact.
+The `SIOCGIFFLAGS` probe was added because the two fallbacks are both
+unreliable: `pmix_if_list` is the list being built, so a device whose
+IPv4 address has not been discovered yet is simply absent from it, and a
+bare `IFF_UP` loses `IFF_LOOPBACK` — which makes `::1` look like an
+ordinary routable address to everything downstream, including the code
+that picks which address to advertise to other hosts. The middle branch
+still makes the component prefer to run *after* `posix_ipv4`, which is
+the static-components order on Linux; keep it intact.
 
 ## Gotchas
 
 - **Missing `/proc/net/if_inet6` is not an error** — it just means no
   IPv6. Don't change the early return into a failure.
-- **Flag borrowing is load-bearing** (see above): the ordering dependency
-  on `posix_ipv4` is real. A hypothetical IPv6-only Linux build would give
-  every IPv6 interface `IFF_UP` and lose loopback detection.
+- **Flags are not in `/proc`** (see above). The kernel probe is what
+  makes loopback detection work; the `posix_ipv4` fallback below it is
+  why the component still prefers to run second.
 - **Scope, not address-prefix, is the filter here** (0x00/0x10 accepted),
   which is a different mechanism than the BSD component's
   `IN6_IS_ADDR_LINKLOCAL` check even though both aim to drop link-local
@@ -90,4 +101,11 @@ interface was not discovered by `posix_ipv4`, the IPv6 entry gets a bare
   the BSD side.
 - The `fscanf` format string and the 16-byte address loop are brittle;
   changes need testing against a real `/proc/net/if_inet6` with multiple
-  scopes present.
+  scopes present. Whatever you change, keep the loop condition an
+  exact-field-count test rather than an EOF test (see above).
+- **This component is not compiled on macOS**, so nothing a developer
+  builds at home covers it. `test/unit/pif_discovery` asserts on the
+  discovered list rather than on the mechanism, so it runs unchanged on
+  either platform — run it in a Linux container (see
+  [`contrib/dockerswarm/AGENTS.md`](../../../../contrib/dockerswarm/AGENTS.md))
+  after touching this file.
