@@ -58,7 +58,7 @@ typedef struct pmix_pif_t {
     pmix_list_item_t super;
     char if_name[PMIX_IF_NAMESIZE + 1];
     int if_index;
-    uint16_t if_kernel_index;
+    uint32_t if_kernel_index;
     uint16_t af_family;
     int if_flags;
     int if_speed;
@@ -101,14 +101,14 @@ PMIX_EXPORT int pmix_ifnametoindex(const char *if_name);
  *  @param if_name (IN)  Interface name
  *  @return              Interface kernel index
  */
-PMIX_EXPORT int16_t pmix_ifnametokindex(const char *if_name);
+PMIX_EXPORT int pmix_ifnametokindex(const char *if_name);
 
 /*
  *  Attempt to resolve an address (given as either IPv4/IPv6 string
  *  or hostname) and return the kernel index of the interface
  *  that is on the same network as the specified address
  */
-PMIX_EXPORT int16_t pmix_ifaddrtokindex(const char *if_addr);
+PMIX_EXPORT int pmix_ifaddrtokindex(const char *if_addr);
 
 /**
  *  Lookup an interface by pmix_list index and return its kernel index.

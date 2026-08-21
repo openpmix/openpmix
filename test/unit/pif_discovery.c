@@ -135,7 +135,7 @@ static void entries_are_well_formed(void)
         if ('\0' == intf->if_name[0] || '\0' != intf->if_name[PMIX_IF_NAMESIZE]) {
             ++bad_name;
         }
-        if (((uint16_t) -1) == intf->if_kernel_index) {
+        if (UINT32_MAX == intf->if_kernel_index) {
             ++bad_kindex;
         }
     }

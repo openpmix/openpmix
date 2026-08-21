@@ -374,23 +374,6 @@ cover the whole of what the entry described.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
-A kernel interface index does not fit ``if_kernel_index``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found in the ``src/mca/pif`` review (2026-08-20).  ``pmix_pif_t``
-declares ``if_kernel_index`` as a ``uint16_t`` and
-``pmix_ifnametokindex()`` returns an ``int16_t``, but Linux hands out
-32-bit interface indices that only increase — a long-lived host that
-churns veth or container interfaces will eventually issue one that
-truncates, and the ``int16_t`` return turns anything above 32767 into a
-negative number that every caller reads as "not found".
-
-Not fixed because both types are in the installed
-``src/util/pmix_if.h``: the struct layout is ABI, and the return type is
-a published signature.  Widening them is a deprecation exercise
-(``pmix_ifnametokindex2()`` and a new field at the end of the struct),
-not a repair.
-
 Nothing forwards a global-syslog request to a gateway
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
