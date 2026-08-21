@@ -1185,6 +1185,200 @@ static void test_realm_classifiers(void)
                && !pmix_check_session_info(NULL) && !pmix_check_special_key(NULL));
 }
 
+/* ------------------------------------------------------------------ */
+/* the shmem3 module's job segment                                      */
+/* ------------------------------------------------------------------ */
+
+/* Build a peer bound to a specific gds module, packable enough for
+ * register_job_info() to write a reply into.
+ *
+ * The wire format and role are borrowed from the local server's own
+ * peer: nothing here is a real client, but pack_shmem3_connection_info()
+ * does call PMIX_BFROPS_PACK against this peer and reads peer->info, so
+ * both have to be real. */
+static pmix_peer_t *mkgdspeer(const char *nspace, pmix_rank_t nprocs,
+                              pmix_gds_base_module_t *mod)
+{
+    pmix_peer_t *p;
+    pmix_namespace_t *ns;
+
+    p = PMIX_NEW(pmix_peer_t);
+    ns = PMIX_NEW(pmix_namespace_t);
+    ns->nspace = strdup(nspace);
+    ns->nprocs = nprocs;
+    memcpy(&ns->compat, &pmix_globals.mypeer->nptr->compat, sizeof(ns->compat));
+    ns->compat.gds = mod;
+    p->nptr = ns;
+    p->info = PMIX_NEW(pmix_rank_info_t);
+    p->info->pname.nspace = strdup(nspace);
+    p->info->pname.rank = 0;
+    p->info->peerid = 0;
+    memcpy(&p->proc_type, &pmix_globals.mypeer->proc_type, sizeof(p->proc_type));
+    return p;
+}
+
+/* Drive the shmem3 module end to end: register a job, have it build its
+ * shared segments, then read them back through its own fetch.
+ *
+ * shmem3 is not built on macOS at all and disqualifies itself where
+ * /proc/self/maps is absent, so this reports a skip rather than a
+ * failure when it is not the module that answers. That is the whole
+ * reason contrib/dockerswarm/run-gds-tests.sh exists - but the parts
+ * that a single process CAN reach are worth reaching from make check,
+ * because on Linux this is the only place they run without a DVM.
+ *
+ * The job info deliberately carries three shapes a host is entitled to
+ * send and this component used to take on trust:
+ *
+ *   - a job-level PMIX_DATA_ARRAY whose elements are NOT pmix_info_t.
+ *     The segment sizing pass read element zero of every data array as
+ *     one, so PMIX_CHECK_KEY walked up to PMIX_MAX_KEYLEN bytes past an
+ *     eight-byte allocation.
+ *   - PMIX_USERID as a string. add_nspace read the union directly, so
+ *     the low half of a pointer became the job's uid AND set chown,
+ *     which the segment's backing files were then handed to.
+ *   - a session array, so the session segment is built too.
+ */
+static void test_shmem3_job_segment(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t *info, *iptr, dir;
+    pmix_data_array_t *array;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    pmix_peer_t *peer;
+    pmix_buffer_t reply;
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    uint32_t nprocs = 2, sid = 11, univ = 4;
+    /* Bytes, not infos - and chosen so that reading element zero as a
+     * pmix_info_t finds a key that MATCHES. PMIx_Check_key() stops at the
+     * first differing byte, so an array of arbitrary bytes is read one
+     * byte past its start and no further; it takes a leading string that
+     * really is the key to carry the read on into info[0].value, which
+     * sits 512 bytes into a 16-byte allocation. */
+    char impostor[16] = PMIX_SESSION_ID;
+    char *nodemap, *procmap;
+
+    fprintf(stdout, "\n-- shmem3 job segment --\n");
+
+    PMIX_INFO_LOAD(&dir, PMIX_GDS_MODULE, "shmem3", PMIX_STRING);
+    mod = pmix_gds_base_assign_module(&dir, 1);
+    PMIX_INFO_DESTRUCT(&dir);
+    if (NULL == mod || 0 != strcmp(mod->name, "shmem3")) {
+        fprintf(stdout, "    SKIP  shmem3 is not available in this build\n");
+        return;
+    }
+
+    nodemap = strdup(pmix_globals.hostname);
+    procmap = strdup("0-1");
+
+    PMIX_INFO_CREATE(info, 7);
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_NODE_MAP, nodemap, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_PROC_MAP, procmap, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[3], PMIX_UNIV_SIZE, &univ, PMIX_UINT32);
+    /* PMIX_USERID with a value that is not a uid */
+    PMIX_INFO_LOAD(&info[4], PMIX_USERID, "not-a-uid", PMIX_STRING);
+    /* a data array of bytes, not of infos */
+    PMIX_DATA_ARRAY_CREATE(array, sizeof(impostor), PMIX_BYTE);
+    memcpy(array->array, impostor, sizeof(impostor));
+    PMIX_LOAD_KEY(info[5].key, "gds.test.bytes");
+    info[5].value.type = PMIX_DATA_ARRAY;
+    info[5].value.data.darray = array;
+    /* a session array, so the session segment is built as well */
+    PMIX_INFO_CREATE(iptr, 1);
+    PMIX_INFO_LOAD(&iptr[0], PMIX_SESSION_ID, &sid, PMIX_UINT32);
+    PMIX_DATA_ARRAY_CREATE(array, 1, PMIX_INFO);
+    memcpy(array->array, iptr, sizeof(pmix_info_t));
+    free(iptr);
+    PMIX_LOAD_KEY(info[6].key, PMIX_SESSION_INFO_ARRAY);
+    info[6].value.type = PMIX_DATA_ARRAY;
+    info[6].value.data.darray = array;
+
+    PMIX_LOAD_NSPACE(ns, "gds-shmem3-job");
+    rc = PMIx_server_register_nspace(ns, nprocs, info, 7, NULL, NULL);
+    report("a job carrying a non-info data array registers", registered(rc));
+    if (!registered(rc)) {
+        fprintf(stdout, "        (register_nspace: %s)\n", PMIx_Error_string(rc));
+    }
+    PMIX_INFO_FREE(info, 7);
+    free(nodemap);
+    free(procmap);
+    if (!registered(rc)) {
+        return;
+    }
+
+    /* Building the segments happens here, on the first peer to ask. */
+    peer = mkgdspeer("gds-shmem3-job", nprocs, mod);
+    PMIX_CONSTRUCT(&reply, pmix_buffer_t);
+    PMIX_GDS_REGISTER_JOB_INFO(rc, peer, &reply);
+    report("shmem3 registers job info and describes its segments",
+           PMIX_SUCCESS == rc && 0 < reply.bytes_used);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "        (register_job_info: %s)\n",
+                PMIx_Error_string(rc));
+    }
+    PMIX_DESTRUCT(&reply);
+
+    /* Read a plain job-level key back out of the segment we just built,
+     * through shmem3's own fetch. */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-shmem3-job", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    /* PMIX_JOB_SIZE and not, say, PMIX_UNIV_SIZE: the datastore stores
+     * the latter under its replacement's name, so asking for it here
+     * would be testing the deprecation mapping rather than the segment. */
+    cb.key = PMIX_JOB_SIZE;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    report("a job-level key reads back out of the shared segment",
+           PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs));
+    if (PMIX_SUCCESS != rc || 1 != pmix_list_get_size(&cb.kvs)) {
+        fprintf(stdout, "        (fetch: %s, %zu values)\n",
+                PMIx_Error_string(rc), pmix_list_get_size(&cb.kvs));
+    }
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    /* The whole-job form, which walks the node, app and session lists
+     * and rebuilds a proc array per rank. */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-shmem3-job", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = NULL;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    report("the whole-job fetch returns the segment's contents",
+           PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&cb.kvs));
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    /* A key nobody stored is a miss, not a fault. */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-shmem3-job", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = "gds.test.absent";
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    report("an absent key misses rather than faults", PMIX_SUCCESS != rc);
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    /* Deregistering has to give the segments back - the tracker owns
+     * their mappings, and the arena reservation goes with it. */
+    PMIX_GDS_DEL_NSPACE(rc, "gds-shmem3-job");
+    report("deregistering the nspace releases the segments",
+           PMIX_SUCCESS == rc);
+
+    PMIX_RELEASE(peer);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1211,6 +1405,7 @@ int main(int argc, char **argv)
     test_malformed_job_info();
     test_scope_routing();
     test_realm_classifiers();
+    test_shmem3_job_segment();
 
     fprintf(stdout, "\n=== %d passed, %d failed ===\n", npass, nfail);
 

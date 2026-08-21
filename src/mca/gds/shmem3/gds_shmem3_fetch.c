@@ -823,8 +823,16 @@ shmem3_fetch_from_job(
     const bool mdrfu = pmix_gds_shmem3_has_status(
         job, PMIX_GDS_SHMEM3_MODEX_ID, PMIX_GDS_SHMEM3_READY_FOR_USE
     );
-    // Modex data are stored in PMIX_REMOTE.
-    pmix_hash_table_t *const remote_ht = mdrfu ? job->smmodex->hashtab : NULL;
+    /* Modex data are stored in PMIX_REMOTE, but there is no single table
+     * to name here: the modex is a chain of generations, and modex_fetch()
+     * walks it. Everything past "doover" therefore dispatches on the
+     * useremote flag, and "ht" is only ever read on the local side.
+     *
+     * This used to hold job->smmodex->hashtab, computed from mdrfu alone -
+     * which modex_fetch() has never trusted, because the two disagree
+     * whenever the progress thread has just set the current generation
+     * aside (see release_modex_segment()) and a read arrives before its
+     * replacement is published. That read would have dereferenced NULL. */
     // Every index in these tables was minted by the server against the
     // keyindex living in the same segment, never against this process's
     // global one, so a read has to translate through that same table.
@@ -1001,8 +1009,8 @@ shmem3_fetch_from_job(
         useremote = false;
     }
     else if (PMIX_REMOTE == scope) {
-        // Note that this ht can be NULL.
-        ht = remote_ht;
+        // The modex chain is reached through useremote, not through ht.
+        ht = NULL;
         useremote = true;
     }
     else {
@@ -1076,7 +1084,7 @@ doover:
         if (PMIX_GLOBAL == scope) {
             if (!useremote) {
                 // We need to do this again for the remote data.
-                ht = remote_ht;
+                ht = NULL;
                 useremote = true;
                 goto doover;
             }
@@ -1086,7 +1094,7 @@ doover:
         if (PMIX_GLOBAL == scope || PMIX_SCOPE_UNDEF == scope) {
             if (!useremote) {
                 // We need to also try the remote data.
-                ht = remote_ht;
+                ht = NULL;
                 /* Say which store the retry is against, exactly as the
                  * success path above does. Everything past "doover"
                  * dispatches on this flag rather than on ht, because the
@@ -1169,9 +1177,15 @@ doover:
  * means the progress thread can deregister the nspace underneath us and
  * the memory we are walking still stays put until we are done.
  *
- * Everything past this point is a read of immutable data - a segment a
- * client can see is never written again - so no further locking is
- * needed, and none is taken.
+ * What is IN the segments needs no further locking - a segment a client
+ * can see is never written again. What needs it is the process-local
+ * bookkeeping this walks alongside them: which modex generations are
+ * currently mapped, and which keys the job has been told to stop
+ * answering for. Both are rewritten by the progress thread as fences
+ * complete and keys are retracted, and releasing a generation UNMAPS it.
+ * job->datalock is what keeps a read and one of those apart; it is held
+ * across the whole read, so nothing below has to re-establish that a
+ * generation it decided to walk is still there.
  */
 pmix_status_t
 pmix_gds_shmem3_fetch(
@@ -1191,8 +1205,10 @@ pmix_gds_shmem3_fetch(
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         return rc;
     }
+    pmix_mutex_lock(&job->datalock);
     rc = shmem3_fetch_from_job(job, pr, proc, scope, copy, key,
                                qualifiers, nqual, kvs);
+    pmix_mutex_unlock(&job->datalock);
     PMIX_RELEASE(job);
     return rc;
 }
