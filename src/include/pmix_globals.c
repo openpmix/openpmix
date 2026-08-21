@@ -160,6 +160,7 @@ static void nscon(pmix_namespace_t *p)
     PMIX_CONSTRUCT(&p->epilog.cleanup_files, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.ignores, pmix_list_t);
     PMIX_CONSTRUCT(&p->setup_data, pmix_list_t);
+    PMIX_CONSTRUCT(&p->departed, pmix_list_t);
     pmix_iof_init_flags(&p->iof_flags);
     PMIX_CONSTRUCT(&p->sinks, pmix_list_t);
 
@@ -173,6 +174,7 @@ static void nsdes(pmix_namespace_t *p)
         PMIX_RELEASE(p->jobbkt);
     }
     PMIX_LIST_DESTRUCT(&p->ranks);
+    PMIX_LIST_DESTRUCT(&p->departed);
     /* perform any epilog */
     pmix_execute_epilog(&p->epilog);
     /* cleanup the epilog */

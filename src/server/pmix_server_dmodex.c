@@ -133,6 +133,31 @@ static void _dmodex_req(int sd, short args, void *cbdata)
         }
     }
     if (NULL == info) {
+        /* Not a rank we currently host. There are two ways to get here
+         * and they need opposite answers: it may not have been
+         * registered YET, in which case waiting is right and the data
+         * will arrive; or it may have run and been reaped, in which case
+         * nothing is ever coming and waiting means the process that
+         * asked sits in PMIx_Get until the job is killed.
+         *
+         * nptr->departed is what tells them apart - see the note on it
+         * in pmix_globals.h. Answer a departed rank the same way a
+         * request already parked when the proc finalized is answered:
+         * PMIX_ERR_NOT_FOUND, promptly. Reading a peer that has exited
+         * is an application error, and the developer needs to be told
+         * that rather than left with a hang to diagnose. */
+        pmix_proclist_t *dp;
+        PMIX_LIST_FOREACH (dp, &nptr->departed, pmix_proclist_t) {
+            if (PMIX_CHECK_PROCID(&dp->proc, &cd->proc)) {
+                pmix_output_verbose(2, pmix_server_globals.get_output,
+                                    "%s:%d DMODEX FOR TERMINATED PROC %s",
+                                    pmix_globals.myid.nspace,
+                                    pmix_globals.myid.rank,
+                                    PMIX_NAME_PRINT(&cd->proc));
+                rc = PMIX_ERR_NOT_FOUND;
+                goto cleanup;
+            }
+        }
         /* rank isn't known yet - defer
          * the request until we do */
         dcd = PMIX_NEW(pmix_dmdx_remote_t);

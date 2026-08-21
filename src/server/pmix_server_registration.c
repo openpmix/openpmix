@@ -687,6 +687,26 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                 pmix_pnet.local_app_finalized(nptr);
                 pmix_pgpu.local_app_finalized(nptr);
             }
+            /* Remember that this rank existed and is gone.
+             *
+             * The entry below is about to be destroyed, and once it is,
+             * a direct-modex request naming this rank looks exactly like
+             * one that arrived before the rank was ever registered -
+             * which _dmodex_req() answers by waiting. Nothing would ever
+             * end that wait. Record the departure so it can answer "not
+             * found" instead, which is the same thing a request already
+             * parked when the proc finalized is told.
+             *
+             * Only for a named rank: p == NULL is the namespace being
+             * torn down, and this list dies with it. */
+            if (NULL != p) {
+                pmix_proclist_t *dp = PMIX_NEW(pmix_proclist_t);
+                if (NULL != dp) {
+                    PMIX_LOAD_PROCID(&dp->proc, info->pname.nspace,
+                                     info->pname.rank);
+                    pmix_list_append(&nptr->departed, &dp->super);
+                }
+            }
             pmix_list_remove_item(&nptr->ranks, &info->super);
             PMIX_RELEASE(info);
             if (NULL != p) {

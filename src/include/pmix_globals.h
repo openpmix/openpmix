@@ -386,6 +386,18 @@ typedef struct {
                                // fired for this nspace; guards against re-firing it once
                                // per rank while the nspace is torn down
     pmix_list_t ranks;     // list of pmix_rank_info_t for connection support of my clients
+    /* Ranks whose entry above the host has taken back - the proc has
+     * terminated. pmix_proclist_t, one per reaped LOCAL rank, kept until
+     * this namespace is deregistered.
+     *
+     * Without it a direct-modex request naming one of them is
+     * indistinguishable from one that arrived before the rank was
+     * registered, and _dmodex_req() treats "I do not know that rank" as
+     * "not yet" and parks the request forever. The asking process then
+     * sits in PMIx_Get until something else kills the job. Reading a
+     * peer that has exited is an application error, but it has to
+     * SURFACE as one - a hang tells the developer nothing. */
+    pmix_list_t departed;
     /* all members of an nspace are required to have the
      * same personality, but it can differ between nspaces.
      * Since servers may support clients from multiple nspaces,
