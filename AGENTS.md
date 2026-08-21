@@ -160,6 +160,47 @@ No directory under `src/mca/` may break this pattern (except `base/` subdirector
 4. Wire the component into the build system: add a `configure.m4` (to gate whether the component builds, if necessary) and a `Makefile.am` in the component directory.
 5. Regenerate the build system so the new component is actually compiled. Adding a component directory — or editing its `configure.m4` — changes the build wiring, and a plain `make` cannot pick that up: run `./autogen.pl` and then re-run `./configure` (with the same options as the original configure) first. Until you do, the component will not be built. See [Modifying the configure / build system](#modifying-the-configure--build-system) below for the full procedure.
 
+## GOLDEN RULE: a bug you find is a bug you fix — attribution is not the work
+
+**Never answer a defect with who caused it.** Not "that is pre-existing", not
+"that is not my change", not "that came from another project", not "that is
+the harness". Whether a problem is yours, mine, a contributor's from four
+years ago, or an upstream library's, changes exactly one thing — where the
+fix gets written — and nothing else. It never determines *whether* the problem
+gets fixed, and it is never the headline of a report.
+
+This is a rule about how effort is spent. Time spent proving a fault belongs
+to someone else buys the project nothing: the bug is still there afterwards,
+and everyone involved is now poorer by the hours it took. The same hours
+spent on the fault itself end with it gone. So when a test goes red, when a
+run hangs, when something crashes — go at the mechanism, not the ownership.
+
+What this rule requires in practice:
+
+- **Root-cause it, then fix it.** Finding a defect creates the obligation to
+  deal with it. Land the fix in the same effort where you can; where the fix
+  genuinely belongs in another repository (PMIx, hwloc), write it there and
+  say so plainly — that is routing, not attribution.
+- **Report the mechanism, never the blame.** "A proc can be activated RUNNING
+  after its terminate join completed, so the HNP never sees it die" is a
+  report. "This is pre-existing, not from my change" is a deflection wearing
+  a report's clothes. State what breaks, how it breaks, and what fixes it.
+- **Provenance appears only where it does work.** In a commit message
+  explaining what a change restores, in a regression test's comment naming the
+  case that produced it, in a decision about which branch a fix lands on. If
+  the sentence you are writing is arguing about *whose* fault it is, delete
+  it.
+- **Never weigh whether an unrelated defect is worth reporting because of
+  where it came from.** Discovering a real bug in code you did not touch is a
+  good outcome, not an inconvenience, and it does not become someone else's
+  problem by virtue of its age.
+
+There is exactly one legitimate use for the A/B test that separates "before my
+change" from "after": deciding whether your change *introduced* a regression
+you must then repair. That is a debugging technique, and its output is a fix.
+The moment its output becomes an argument about ownership, it has stopped
+being engineering.
+
 ## Golden rules (the things agents most often get wrong)
 
 From [`docs/developers/source-code.rst`](docs/developers/source-code.rst)
