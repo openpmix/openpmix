@@ -91,7 +91,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   group_invite_abort group_invite_others group_invite_suppress group_invite_nb \
                   group_invite_endpts topology \
                   spawn_reuse spawn_iof iof_watcher group_badinfo datatypes toolswitch \
-                  modex_twice delete_key modex_attach_fail
+                  modex_twice delete_key modex_attach_fail dmdx_departed
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -345,6 +345,10 @@ modex_attach_fail_SOURCES = modex_attach_fail.c examples.h
 modex_attach_fail_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 modex_attach_fail_LDADD = $(top_builddir)/src/libpmix.la
 
+dmdx_departed_SOURCES = dmdx_departed.c examples.h
+dmdx_departed_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+dmdx_departed_LDADD = $(top_builddir)/src/libpmix.la
+
 abort_SOURCES = abort.c examples.h
 abort_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 abort_LDADD = $(top_builddir)/src/libpmix.la
@@ -360,4 +364,4 @@ distclean-local:
         spawn_group resolve multi_nspace_group pub2 toolqry \
         simple_resolve pubstress monitor monitor_remote \
         simple simple_server abort datatypes toolswitch \
-        modex_twice delete_key modex_attach_fail
+        modex_twice delete_key modex_attach_fail dmdx_departed

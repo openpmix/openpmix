@@ -90,7 +90,7 @@ root="$(cd "$here/../.." && pwd)"
 
 # The examples this runner drives.  Each one puts the server library on a
 # path a single-node run cannot take; see the header.
-SERVER_EXAMPLES="${SERVER_EXAMPLES:-dmodex modex_twice group_dmodex dynamic multi_nspace_group resolve simple_resolve pub}"
+SERVER_EXAMPLES="${SERVER_EXAMPLES:-dmodex dmdx_departed modex_twice group_dmodex dynamic multi_nspace_group resolve simple_resolve pub}"
 
 # See run-client-tests.sh: these are COMPILED in a throwaway builder
 # container and RUN in the long-lived node containers, so they must link the
@@ -127,6 +127,9 @@ sv_geom() {
         # one actually prints on the way out, or the case passes/fails on
         # the marker rather than on the behavior.
         modex_twice)    WANT='second fence: new values visible, old values kept' ;;
+        # the point is that PMIx ANSWERS - a regression parks the get
+        # forever, and judge() reports that launch timeout as a hang
+        dmdx_departed)  WANT='DMDX-DEPARTED answered' ;;
         group_dmodex)   WANT='COMPLETE' ;;
         resolve)        WANT='Bye\.' ;;
         pub|simple_resolve) WANT='' ;;
@@ -249,6 +252,8 @@ test_linux() {
         launch "$ex"
         case "$ex" in
             dmodex)      judge "$ex" "direct modex: a key fetched from another server" ;;
+            dmdx_departed)
+                         judge "$ex" "direct modex for a terminated proc is answered, not parked" ;;
             modex_twice) judge "$ex" "repeated modex: second request joins an existing tracker" ;;
             group_dmodex) judge "$ex" "modex within a group spanning servers" ;;
             dynamic)     judge "$ex" "spawn + connect: a get across namespaces and servers" ;;
