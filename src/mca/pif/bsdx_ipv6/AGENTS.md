@@ -57,29 +57,34 @@ No module, no priority.
    `if_flags`; and `if_kernel_index` from `if_nametoindex(name)`.
 4. Appends the object to `pmix_if_list`.
 
-### The hard-coded /64 netmask
+### The netmask
 
-`if_mask` is set to a fixed **64** for every IPv6 interface — `getifaddrs`
-does return a netmask, but the component ignores it and assumes the near-
-universal `/64` prefix (the code comment attributes this to "adrian says
-that's ok").
+`if_mask` holds the real prefix length, converted from `ifa_netmask` by
+the local `prefix6()` helper (leading one bits, walked a byte at a time
+so endianness cannot enter into it). A NULL `ifa_netmask` is recorded as
+a host route, `/128` — the safe direction, since it makes
+`pmix_net_samenetwork()` demand an exact match rather than claim a whole
+`/64` we cannot actually see.
 
-Unlike the IPv4 side, **this is not simply a bug to go fix.** The only
-consumer of an IPv6 `if_mask` is `pmix_net_samenetwork()`, and that
-function compares IPv6 addresses *only* when the prefix length is 64 —
-every other value falls through and returns false. So reporting a real
-prefix here would make `pmix_ifaddrtokindex()` start failing for any
-interface that is not on a /64, which is a behavior change, not a
-correction. Note `linux_ipv6` already stores the true prefix from
-`/proc`, so the two platforms genuinely disagree today: on Linux a `::1`
-entry carries 128 and never matches. Fixing this properly means teaching
-`pmix_net_samenetwork()` general IPv6 prefixes first; it is recorded in
-[`docs/todo.rst`](../../../../docs/todo.rst).
+It used to be hard-coded to **64** for every interface, on the grounds
+that SLAAC hands out `/64` and "adrian says that's ok". That could not be
+corrected on its own, which is worth knowing if you are reading old
+history here: the sole consumer of an IPv6 `if_mask` is
+`pmix_net_samenetwork()`, and *that* function compared IPv6 addresses
+only when the prefix was 64 and returned false for every other value. So
+the hard-coded 64 was compensating for a broken comparison, and the two
+bugs concealed each other — `linux_ipv6` has always reported the true
+prefix from `/proc`, which meant a loopback entry carrying `/128` was
+never on the same network as anything, including itself. Both were fixed
+together; `test/unit/util/util_net.c` pins the general comparison and
+`test/unit/pif_discovery` pins the discovered prefixes against
+`getifaddrs(3)`.
 
 ## Gotchas
 
-- **/64 is assumed, not measured**, and cannot be changed in isolation
-  (see above).
+- **The prefix is measured, not assumed** (see above) — and note that it
+  and `pmix_net_samenetwork()` are a matched pair: neither the hard-coded
+  /64 nor the /64-only comparison could have been changed alone.
 - **Verbose discovery logging.** Unlike `bsdx_ipv4`, this component logs
   extensively via `pmix_output_verbose` on
   `pmix_pif_base_framework.framework_output` (each found/skipped

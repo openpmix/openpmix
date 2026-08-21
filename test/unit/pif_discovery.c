@@ -48,6 +48,7 @@
 #include "src/mca/pif/base/base.h"
 #include "src/runtime/pmix_init_util.h"
 #include "src/util/pmix_if.h"
+#include "src/util/pmix_net.h"
 #include "src/util/pmix_printf.h"
 
 #include <stdio.h>
@@ -175,14 +176,39 @@ static void indices_are_a_dense_walk(void)
 }
 
 #ifdef HAVE_IFADDRS_H
-/* The regression test: cross-check each discovered IPv4 prefix against
- * the netmask the OS reports for that same name+address through a path
- * no pif component uses on either platform. */
+/* count the set bits of a mask of n bytes.  For the contiguous masks a
+ * kernel hands out this is the prefix length, and it is a deliberately
+ * different route to the answer than the leading-ones walk the
+ * components use, so a shared mistake in that walk cannot make this
+ * comparison agree with itself. */
+static int popcount_of(const uint8_t *mask, size_t n)
+{
+    int plen = 0;
+    size_t i;
+    int bit;
+
+    for (i = 0; i < n; i++) {
+        for (bit = 0; bit < 8; bit++) {
+            if (0 != (mask[i] & (1 << bit))) {
+                ++plen;
+            }
+        }
+    }
+    return plen;
+}
+
+/* The regression test: cross-check each discovered prefix against the
+ * netmask the OS reports for that same name+address through a path no
+ * pif component uses on either platform.  IPv4 is where the netmask was
+ * being read off the address instead; IPv6 is where the two platforms
+ * used to disagree, bsdx_ipv6 hard-coding /64 while linux_ipv6 reported
+ * what the kernel said. */
 static void masks_match_the_os(void)
 {
     struct ifaddrs *list = NULL, *cur;
     pmix_pif_t *intf;
-    int checked = 0, wrong = 0;
+    int checked4 = 0, wrong4 = 0;
+    int checked6 = 0, wrong6 = 0;
     char *label;
 
     if (getifaddrs(&list) < 0) {
@@ -191,44 +217,81 @@ static void masks_match_the_os(void)
     }
 
     PMIX_LIST_FOREACH (intf, &pmix_if_list, pmix_pif_t) {
-        struct sockaddr_in *mine;
-
-        if (AF_INET != intf->af_family) {
+        if (AF_INET != intf->af_family && AF_INET6 != intf->af_family) {
             continue;
         }
-        mine = (struct sockaddr_in *) &intf->if_addr;
 
         for (cur = list; NULL != cur; cur = cur->ifa_next) {
-            struct sockaddr_in *theirs;
             int expect;
 
-            if (NULL == cur->ifa_addr || AF_INET != cur->ifa_addr->sa_family
-                || NULL == cur->ifa_netmask) {
+            if (NULL == cur->ifa_addr || NULL == cur->ifa_netmask
+                || cur->ifa_addr->sa_family != intf->af_family) {
                 continue;
             }
             if (0 != strcmp(cur->ifa_name, intf->if_name)) {
                 continue;
             }
-            theirs = (struct sockaddr_in *) cur->ifa_addr;
-            if (0 != memcmp(&theirs->sin_addr, &mine->sin_addr, sizeof(struct in_addr))) {
-                continue;
-            }
 
-            ++checked;
-            expect = cidr_of(((struct sockaddr_in *) cur->ifa_netmask)->sin_addr.s_addr);
-            if ((int) intf->if_mask != expect) {
-                ++wrong;
-                fprintf(stdout, "    %s: pif says /%u, the OS says /%d\n", intf->if_name,
-                        (unsigned) intf->if_mask, expect);
+            if (AF_INET == intf->af_family) {
+                if (0 != memcmp(&((struct sockaddr_in *) cur->ifa_addr)->sin_addr,
+                                &((struct sockaddr_in *) &intf->if_addr)->sin_addr,
+                                sizeof(struct in_addr))) {
+                    continue;
+                }
+                ++checked4;
+                expect = cidr_of(((struct sockaddr_in *) cur->ifa_netmask)->sin_addr.s_addr);
+                if ((int) intf->if_mask != expect) {
+                    ++wrong4;
+                    fprintf(stdout, "    %s: pif says /%u, the OS says /%d\n", intf->if_name,
+                            (unsigned) intf->if_mask, expect);
+                }
+            } else {
+                if (0 != memcmp(&((struct sockaddr_in6 *) cur->ifa_addr)->sin6_addr,
+                                &((struct sockaddr_in6 *) &intf->if_addr)->sin6_addr,
+                                sizeof(struct in6_addr))) {
+                    continue;
+                }
+                ++checked6;
+                expect = popcount_of(
+                    (const uint8_t *) &((struct sockaddr_in6 *) cur->ifa_netmask)->sin6_addr, 16);
+                if ((int) intf->if_mask != expect) {
+                    ++wrong6;
+                    fprintf(stdout, "    %s: pif says /%u, the OS says /%d\n", intf->if_name,
+                            (unsigned) intf->if_mask, expect);
+                }
             }
             break;
         }
     }
     freeifaddrs(list);
 
-    pmix_asprintf(&label, "if_mask is the OS netmask, not the address (%d checked)", checked);
-    report(label, 0 == wrong);
+    pmix_asprintf(&label, "IPv4 if_mask is the OS netmask, not the address (%d checked)", checked4);
+    report(label, 0 == wrong4);
     free(label);
+    pmix_asprintf(&label, "IPv6 if_mask is the OS netmask, not a hard-coded /64 (%d checked)",
+                  checked6);
+    report(label, 0 == wrong6);
+    free(label);
+}
+
+/* An interface has to be on its own network.  This is the property the
+ * /64 assumption actually broke: with linux_ipv6 reporting the /128 the
+ * kernel gives ::1, pmix_net_samenetwork() - which answered only /64 -
+ * said loopback was not on the same network as itself, and
+ * pmix_ifaddrtokindex() could never resolve it. */
+static void every_address_matches_itself(void)
+{
+    pmix_pif_t *intf;
+    int bad = 0;
+
+    PMIX_LIST_FOREACH (intf, &pmix_if_list, pmix_pif_t) {
+        if (!pmix_net_samenetwork(&intf->if_addr, &intf->if_addr, intf->if_mask)) {
+            ++bad;
+            fprintf(stdout, "    %s: not on its own network at /%u\n", intf->if_name,
+                    (unsigned) intf->if_mask);
+        }
+    }
+    report("every discovered address is on its own network", 0 == bad);
 }
 #endif /* HAVE_IFADDRS_H */
 
@@ -264,6 +327,7 @@ int main(int argc, char **argv)
 #ifdef HAVE_IFADDRS_H
     masks_match_the_os();
 #endif
+    every_address_matches_itself();
 
     rc = pmix_mca_base_framework_close(&pmix_pif_base_framework);
     report("the framework closes",

@@ -374,27 +374,6 @@ cover the whole of what the entry described.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
-``pmix_net_samenetwork()`` only understands a /64 IPv6 prefix
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found in the ``src/mca/pif`` review (2026-08-20).  Its ``AF_INET6`` arm
-compares the first eight bytes of the two addresses **only when the
-prefix length it is handed is 64**, and returns false for every other
-value.  That single fact is why the two IPv6 discovery components
-disagree about what to store in ``if_mask``: ``bsdx_ipv6`` hard-codes 64
-(so ``pmix_ifaddrtokindex()`` works on macOS/BSD), while ``linux_ipv6``
-stores the true prefix from ``/proc`` — which for ``::1`` is 128, so on
-Linux that entry can never match anything.
-
-Both halves are individually defensible and neither can be changed on
-its own: teaching ``bsdx_ipv6`` the real prefix would start failing every
-interface that is not on a /64, and the honest fix is to give
-``pmix_net_samenetwork()`` a general prefix comparison first and only
-then make the two components agree.  Left alone because the only
-consumer, ``pmix_ifaddrtokindex()``, has no in-tree callers — it is
-exported for companion projects — so there is nothing here to measure a
-behavior change against.
-
 A kernel interface index does not fit ``if_kernel_index``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

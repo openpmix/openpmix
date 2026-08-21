@@ -89,8 +89,11 @@ PMIX_EXPORT bool pmix_net_islocalhost(const struct sockaddr *addr);
 /**
  * Are we on the same network?
  *
- * For IPv6, we only need to check for /64, there are no other
- * local netmasks.
+ * Compares the leading \c prefixlen bits of the two addresses, which
+ * must be of the same family.  A \c prefixlen of 0 means "caller does
+ * not know" and is taken as the family's usual default - /32 for IPv4
+ * (an exact match) and /64 for IPv6 (what SLAAC hands out); an IPv4
+ * prefix is clamped at 32 and an IPv6 one at 128.
  *
  * @param addr1             struct sockaddr of address
  * @param addr2             struct sockaddr of address
