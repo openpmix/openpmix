@@ -77,6 +77,32 @@ pmix_pif_base_component_t pmix_mca_pif_bsdx_ipv6_component = {
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, pif, bsdx_ipv6)
 
+/* convert an IPv6 netmask to a prefix length by counting the leading
+ * one bits.  An address is stored in network byte order, so walking it a
+ * byte at a time from the front is endian-independent. */
+static uint32_t prefix6(const struct sockaddr_in6 *netmask)
+{
+    const uint8_t *m = (const uint8_t *) &netmask->sin6_addr;
+    uint32_t plen = 0;
+    int i, bit;
+
+    for (i = 0; i < 16; i++) {
+        if (0xFF == m[i]) {
+            plen += 8;
+            continue;
+        }
+        for (bit = 7; bit >= 0; --bit) {
+            if (0 == (m[i] & (1 << bit))) {
+                return plen;
+            }
+            plen += 1;
+        }
+        return plen;
+    }
+
+    return plen;
+}
+
 /* configure using getifaddrs(3) */
 static int if_bsdx_ipv6_open(void)
 {
@@ -178,10 +204,19 @@ static int if_bsdx_ipv6_open(void)
         /* since every scope != 0 is ignored, we just set the scope to 0 */
         ((struct sockaddr_in6 *) &intf->if_addr)->sin6_scope_id = 0;
 
-        /*
-         * hardcoded netmask, adrian says that's ok
-         */
-        intf->if_mask = 64;
+        /* Store the real prefix length rather than assuming the /64
+         * that SLAAC happens to hand out: getifaddrs(3) reports the
+         * netmask, ::1 is a /128, and linux_ipv6 has always recorded
+         * what the kernel actually said.  ifa_netmask is NULL when the
+         * address carries no mask, which we treat as a host route - the
+         * safe direction, since it makes pmix_net_samenetwork() demand
+         * an exact match rather than claim a whole /64 we cannot see. */
+        if (NULL == cur_ifaddrs->ifa_netmask) {
+            intf->if_mask = 128;
+        } else {
+            intf->if_mask = prefix6(
+                (const struct sockaddr_in6 *) cur_ifaddrs->ifa_netmask);
+        }
         intf->if_flags = cur_ifaddrs->ifa_flags;
 
         /*

@@ -107,12 +107,12 @@ Two facts here bite repeatedly:
   the lookup helper (`pmix_ifindextomask`) even flags that it returns
   CIDR "NOT the actual netmask itself!". Each component converts the
   OS-supplied netmask to a prefix length (the `prefix()` helper in the
-  IPv4 components) before storing it. The IPv6 components do *not* agree
-  on what to put here: `linux_ipv6` stores the true prefix from `/proc`,
-  `bsdx_ipv6` hard-codes 64. That is not simply an oversight — see
-  [`bsdx_ipv6/AGENTS.md`](bsdx_ipv6/AGENTS.md), and note that the sole
-  consumer, `pmix_net_samenetwork()`, only compares IPv6 addresses at
-  all when the prefix is 64.
+  IPv4 components) before storing it — `prefix()` for IPv4, `prefix6()`
+  in `bsdx_ipv6` for IPv6. All four components now report what the OS
+  says; `bsdx_ipv6` used to hard-code 64, which was masking a
+  `pmix_net_samenetwork()` that only understood /64. See
+  [`bsdx_ipv6/AGENTS.md`](bsdx_ipv6/AGENTS.md) — the two are a matched
+  pair, and neither could have been corrected alone.
 - **`if_kernel_index` is a `uint16_t`, and `pmix_ifnametokindex()`
   returns an `int16_t`.** Linux kernel interface indices are 32-bit and
   monotonically increasing, so a long-lived host that churns veth/container

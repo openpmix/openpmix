@@ -120,6 +120,107 @@ static void test_isaddr(void)
     report("isaddr(not-an-address) == false", !pmix_net_isaddr("not-an-address"));
 }
 
+/* ------------------------------------------------------------------ */
+/* pmix_net_samenetwork                                                */
+/*                                                                     */
+/* The IPv6 arm used to answer only /64: every other prefix returned   */
+/* false regardless of the addresses, so a loopback entry carrying the */
+/* /128 the kernel reports never matched even itself.  That is why the */
+/* two pif IPv6 discovery components could not agree on what to store  */
+/* in if_mask.  The boundary cases below - a prefix that ends inside a */
+/* byte, and the 0/128 ends - are the ones a bit-walk gets wrong.      */
+/* ------------------------------------------------------------------ */
+
+static void check_v4(const char *a, const char *b, uint32_t plen, bool expect)
+{
+    struct sockaddr_storage sa, sb;
+    char label[128];
+
+    memset(&sa, 0, sizeof(sa));
+    memset(&sb, 0, sizeof(sb));
+    ((struct sockaddr *) &sa)->sa_family = AF_INET;
+    ((struct sockaddr *) &sb)->sa_family = AF_INET;
+    if (1 != inet_pton(AF_INET, a, &((struct sockaddr_in *) &sa)->sin_addr)
+        || 1 != inet_pton(AF_INET, b, &((struct sockaddr_in *) &sb)->sin_addr)) {
+        report("inet_pton failed setting up a v4 case", 0);
+        return;
+    }
+    snprintf(label, sizeof(label), "samenetwork(%s, %s, /%u) == %s", a, b, plen,
+             expect ? "true" : "false");
+    report(label, expect == pmix_net_samenetwork(&sa, &sb, plen));
+}
+
+static void check_v6(const char *a, const char *b, uint32_t plen, bool expect)
+{
+    struct sockaddr_storage sa, sb;
+    char label[128];
+
+    memset(&sa, 0, sizeof(sa));
+    memset(&sb, 0, sizeof(sb));
+    ((struct sockaddr *) &sa)->sa_family = AF_INET6;
+    ((struct sockaddr *) &sb)->sa_family = AF_INET6;
+    if (1 != inet_pton(AF_INET6, a, &((struct sockaddr_in6 *) &sa)->sin6_addr)
+        || 1 != inet_pton(AF_INET6, b, &((struct sockaddr_in6 *) &sb)->sin6_addr)) {
+        report("inet_pton failed setting up a v6 case", 0);
+        return;
+    }
+    snprintf(label, sizeof(label), "samenetwork(%s, %s, /%u) == %s", a, b, plen,
+             expect ? "true" : "false");
+    report(label, expect == pmix_net_samenetwork(&sa, &sb, plen));
+}
+
+static void test_samenetwork(void)
+{
+    struct sockaddr_storage v4, v6;
+
+    /* IPv4: the arm that already worked, pinned so the rework below
+     * cannot disturb it */
+    check_v4("192.168.1.10", "192.168.1.200", 24, true);
+    check_v4("192.168.1.10", "192.168.2.10", 24, false);
+    check_v4("192.168.1.10", "192.168.2.10", 16, true);
+    check_v4("10.0.0.1", "10.0.0.1", 32, true);
+    check_v4("10.0.0.1", "10.0.0.2", 32, false);
+    /* a prefix that ends inside a byte, and the two ends */
+    check_v4("10.1.0.0", "10.1.63.255", 18, true);
+    check_v4("10.1.0.0", "10.1.64.0", 18, false);
+    check_v4("1.2.3.4", "250.250.250.250", 0, false); /* 0 means /32 for v4 */
+    check_v4("1.2.3.4", "250.250.250.250", 1, false);
+    check_v4("1.2.3.4", "5.6.7.8", 40, false);        /* clamped to /32 */
+
+    /* IPv6 /64: what the old code did, and all it did.  These must not
+     * change. */
+    check_v6("2001:db8:1:2::1", "2001:db8:1:2::abcd", 64, true);
+    check_v6("2001:db8:1:2::1", "2001:db8:1:3::1", 64, false);
+    check_v6("2001:db8:1:2::1", "2001:db8:1:2::abcd", 0, true); /* 0 => /64 */
+
+    /* IPv6 at every other prefix: each of these returned false before,
+     * whatever the addresses were. */
+    check_v6("::1", "::1", 128, true);   /* the loopback case linux_ipv6 hits */
+    check_v6("::1", "::2", 128, false);
+    check_v6("2001:db8:1:2::1", "2001:db8:1:3::9", 48, true);
+    check_v6("2001:db8:1:2::1", "2001:db8:2:3::9", 48, false);
+    check_v6("2001:db8::1", "2001:db8::2", 127, false);
+    check_v6("2001:db8::2", "2001:db8::3", 127, true);
+    /* prefixes that end inside a byte: 2001:0db8 / 2001:0dba / 2001:0dc8
+     * share three leading bytes and differ in the fourth */
+    check_v6("2001:db8::1", "2001:dba::1", 24, true);  /* byte-aligned, before the difference */
+    check_v6("2001:db8::1", "2001:dc8::1", 24, true);  /* likewise - /24 never reaches it */
+    check_v6("2001:db8::1", "2001:dba::1", 28, true);  /* 0xb8 & 0xf0 == 0xba & 0xf0 */
+    check_v6("2001:db8::1", "2001:dc8::1", 28, false); /* 0xb0 != 0xc0 */
+    check_v6("2001:db8::1", "2001:dba::1", 32, false); /* now the whole byte counts */
+    check_v6("::", "ffff::", 1, false);
+    check_v6("8000::", "ffff::", 1, true);
+    check_v6("2001:db8::1", "fe80::1", 150, false);    /* clamped to /128 */
+
+    /* mismatched families never match, whatever the prefix */
+    memset(&v4, 0, sizeof(v4));
+    memset(&v6, 0, sizeof(v6));
+    ((struct sockaddr *) &v4)->sa_family = AF_INET;
+    ((struct sockaddr *) &v6)->sa_family = AF_INET6;
+    report("samenetwork(v4, v6, /0) == false", !pmix_net_samenetwork(&v4, &v6, 0));
+    report("samenetwork(v4, v6, /64) == false", !pmix_net_samenetwork(&v4, &v6, 64));
+}
+
 #endif /* HAVE_STRUCT_SOCKADDR_IN */
 
 /* ------------------------------------------------------------------ */
@@ -135,6 +236,7 @@ int main(int argc, char **argv)
     test_islocalhost();
     test_get_port();
     test_isaddr();
+    test_samenetwork();
 #else
     fprintf(stdout, "  SKIP: no struct sockaddr_in on this platform\n");
 #endif

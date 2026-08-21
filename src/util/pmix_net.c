@@ -259,30 +259,53 @@ bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
 
     case AF_INET6: {
         struct sockaddr_in6 inaddr1, inaddr2;
+        const uint8_t *a6_1, *a6_2;
+        uint32_t nbytes, nbits;
+
         /* Use temporary variables and memcpy's so that we don't
            run into bus errors on Solaris/SPARC */
         memcpy(&inaddr1, addr1, sizeof(inaddr1));
         memcpy(&inaddr2, addr2, sizeof(inaddr2));
-        struct in6_addr *a6_1 = (struct in6_addr *) &inaddr1.sin6_addr;
-        struct in6_addr *a6_2 = (struct in6_addr *) &inaddr2.sin6_addr;
+        a6_1 = (const uint8_t *) &inaddr1.sin6_addr;
+        a6_2 = (const uint8_t *) &inaddr2.sin6_addr;
 
+        /* A caller that does not know the prefix gets the /64 that
+         * SLAAC gives essentially every autoconfigured interface. */
         if (0 == plen) {
             prefixlen = 64;
+        } else if (128 < plen) {
+            prefixlen = 128;
         } else {
             prefixlen = plen;
         }
-        if (64 == prefixlen) {
-            /* prefixlen is always /64, any other case would be routing.
-               Compare the first eight bytes (64 bits) and hope that
-               endianness is not an issue on any system as long as
-               addresses are always stored in network byte order.
-            */
-            if (((const uint32_t *) (a6_1))[0] == ((const uint32_t *) (a6_2))[0]
-                && ((const uint32_t *) (a6_1))[1] == ((const uint32_t *) (a6_2))[1]) {
-                return true;
+
+        /* Compare the whole bytes the prefix covers, then whatever bits
+         * are left over in the byte it ends inside of.  Doing this a
+         * byte at a time out of the in6_addr is endian-independent:
+         * an IPv6 address is stored in network byte order, so byte 0 is
+         * always the most significant one.
+         *
+         * This used to answer only /64 and return false for every other
+         * prefix, which is why the two pif IPv6 discovery components
+         * could not agree on what to report: linux_ipv6 stores the true
+         * prefix from /proc, so a loopback entry carrying /128 never
+         * matched anything - including itself. */
+        nbytes = prefixlen / 8;
+        nbits = prefixlen % 8;
+
+        if (0 != nbytes && 0 != memcmp(a6_1, a6_2, nbytes)) {
+            return false;
+        }
+        if (0 != nbits) {
+            /* nbits is 1..7 here, so neither shift is undefined, and
+             * nbytes is at most 15 - a prefix that ends mid-byte cannot
+             * be 128 */
+            uint8_t mask = (uint8_t) (0xFFU << (8 - nbits));
+            if ((a6_1[nbytes] & mask) != (a6_2[nbytes] & mask)) {
+                return false;
             }
         }
-        return false;
+        return true;
     }
 
     default:
