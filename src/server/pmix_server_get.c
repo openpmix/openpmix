@@ -94,6 +94,7 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char 
 static pmix_status_t get_job_data(char *nspace, pmix_server_caddy_t *cd,
                                   char *key, pmix_buffer_t *pbkt);
 static void get_timeout(int sd, short args, void *cbdata);
+static pmix_peer_t *local_peer_of_nspace(pmix_namespace_t *nptr);
 
 /* The release function we hand to the reply path along with a payload we
  * unloaded from a buffer: the reply copies the bytes, then calls this to
@@ -621,6 +622,39 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         cb.ninfo = cd->ninfo;
         cb.key = key;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS_OUTSIDE_SCOPE != rc) {
+            /* Not in our own store - but that does not mean it is not
+             * here, and the same reasoning applies as in
+             * _satisfy_request() below. A server assigns ITSELF "hash",
+             * while a modex is stored through the module of the nspace
+             * that contributed it: PMIX_GDS_STORE_MODEX resolves from a
+             * local peer of that nspace (pmix_server_op_replies.c). So
+             * for a job whose clients negotiated gds/shmem3 the fence
+             * data went into a shared-memory segment our module knows
+             * nothing about, and we have just searched the wrong store.
+             * For a "hash" job the two are one module and this changes
+             * nothing.
+             *
+             * Left unasked, every remote get for such a job missed here
+             * and was pushed up to the host as a direct modex - for data
+             * this server already held. Slow when it works, and it does
+             * not always work: the up-call chases the proc that owns the
+             * key, so a straggler asking for a peer that has already
+             * called PMIx_Finalize waits on an answer nobody is left to
+             * give. The remote request below deliberately carries no
+             * timeout - we cannot know how long a host may legitimately
+             * take - so that wait never ends. */
+            pmix_peer_t *nspeer = local_peer_of_nspace(nptr);
+            if (NULL != nspeer &&
+                !PMIX_GDS_CHECK_PEER_COMPONENT(nspeer, pmix_globals.mypeer)) {
+                pmix_kval_t *kvtmp;
+                /* a failed fetch may still have appended something */
+                while (NULL != (kvtmp = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs))) {
+                    PMIX_RELEASE(kvtmp);
+                }
+                PMIX_GDS_FETCH_KV(rc, nspeer, &cb);
+            }
+        }
         /* if the requested key was found, but in a different scope,
          * then we report this back as there is no point in waiting */
         if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
