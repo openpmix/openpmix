@@ -43,7 +43,8 @@ No module, no priority.
 ## What `if_bsdx_ipv6_open` does
 
 1. Calls `getifaddrs(3)`.
-2. For each entry, **skips** it unless it is `AF_INET6`, skips non-`IFF_UP`
+2. For each entry, **skips** it if `ifa_addr` is NULL, skips it unless it
+   is `AF_INET6`, skips non-`IFF_UP`
    interfaces, skips `IFF_POINTOPOINT`, and — importantly — **skips
    link-local addresses** (`IN6_IS_ADDR_LINKLOCAL`, i.e. the `fe80::`
    range). The code comment explains that `sin6_scope_id` from
@@ -61,22 +62,42 @@ No module, no priority.
 `if_mask` is set to a fixed **64** for every IPv6 interface — `getifaddrs`
 does return a netmask, but the component ignores it and assumes the near-
 universal `/64` prefix (the code comment attributes this to "adrian says
-that's ok"). If you ever need the true IPv6 prefix length here, this is
-the line to change — but be aware downstream code has only ever seen 64.
+that's ok").
+
+Unlike the IPv4 side, **this is not simply a bug to go fix.** The only
+consumer of an IPv6 `if_mask` is `pmix_net_samenetwork()`, and that
+function compares IPv6 addresses *only* when the prefix length is 64 —
+every other value falls through and returns false. So reporting a real
+prefix here would make `pmix_ifaddrtokindex()` start failing for any
+interface that is not on a /64, which is a behavior change, not a
+correction. Note `linux_ipv6` already stores the true prefix from
+`/proc`, so the two platforms genuinely disagree today: on Linux a `::1`
+entry carries 128 and never matches. Fixing this properly means teaching
+`pmix_net_samenetwork()` general IPv6 prefixes first; it is recorded in
+[`docs/todo.rst`](../../../../docs/todo.rst).
 
 ## Gotchas
 
-- **/64 is assumed, not measured** (see above).
+- **/64 is assumed, not measured**, and cannot be changed in isolation
+  (see above).
 - **Verbose discovery logging.** Unlike `bsdx_ipv4`, this component logs
   extensively via `pmix_output_verbose` on
   `pmix_pif_base_framework.framework_output` (each found/skipped
   interface, with the address printed). Raise the framework verbosity to
   see IPv6 discovery decisions.
-- **Free both the `getifaddrs` list and the outer pointer.** Each exit
-  path calls `freeifaddrs(*ifadd_list)` (to release the list the kernel
-  allocated) followed by `free(ifadd_list)` (the outer `malloc`ed
-  pointer); the `getifaddrs`-failure path frees only the latter. The list
-  content was historically leaked — keep the `freeifaddrs` in place.
+- **`ifa_addr` may be NULL.** `getifaddrs(3)` on these platforms
+  documents that it references the interface's address only "if one
+  exists, otherwise it is NULL". Discovery runs in `pmix_rte_init()` for
+  every PMIx process, so dereferencing it unchecked is a segfault before
+  the library is up. See the same note in
+  [`bsdx_ipv4`](../bsdx_ipv4/AGENTS.md).
+- **Free the `getifaddrs` list on every exit path.** `getifaddrs`
+  allocates the list and hands it back through the pointer you give it;
+  every exit must `freeifaddrs()` it. (Older revisions `malloc`ed an
+  outer `struct ifaddrs **` first, with a comment claiming the call
+  segfaulted without it. It does not, and that allocation was itself
+  unchecked — a failed `malloc` handed `getifaddrs` a NULL to write
+  through.)
 - `if_kernel_index` derivation is flagged `FIXME` in the source — the
   author was unsure `if_nametoindex` is the right source; it is what is
   used today.

@@ -80,30 +80,31 @@ PMIX_MCA_BASE_COMPONENT_INIT(pmix, pif, bsdx_ipv6)
 /* configure using getifaddrs(3) */
 static int if_bsdx_ipv6_open(void)
 {
-    struct ifaddrs **ifadd_list;
+    struct ifaddrs *ifadd_list = NULL;
     struct ifaddrs *cur_ifaddrs;
     struct sockaddr_in6 *sin_addr;
 
     pmix_output_verbose(1, pmix_pif_base_framework.framework_output,
                         "searching for IPv6 interfaces");
 
-    /*
-     * the manpage claims that getifaddrs() allocates the memory,
-     * and freeifaddrs() is later used to release the allocated memory.
-     * however, without this malloc the call to getifaddrs() segfaults
-     */
-    ifadd_list = (struct ifaddrs **) malloc(sizeof(struct ifaddrs *));
-
-    /* create the linked list of ifaddrs structs */
-    if (getifaddrs(ifadd_list) < 0) {
+    /* getifaddrs(3) allocates the list itself and hands it back through
+     * the pointer we give it; freeifaddrs(3) releases it again. */
+    if (getifaddrs(&ifadd_list) < 0) {
         pmix_output(0, "pmix_ifinit: getifaddrs() failed with error=%d\n", errno);
-        free(ifadd_list);
         return PMIX_ERROR;
     }
 
-    for (cur_ifaddrs = *ifadd_list; NULL != cur_ifaddrs; cur_ifaddrs = cur_ifaddrs->ifa_next) {
+    for (cur_ifaddrs = ifadd_list; NULL != cur_ifaddrs; cur_ifaddrs = cur_ifaddrs->ifa_next) {
         pmix_pif_t *intf;
         struct in6_addr a6;
+
+        /* getifaddrs(3) leaves ifa_addr NULL for an interface that carries
+         * no address at all, so it cannot be dereferenced unchecked */
+        if (NULL == cur_ifaddrs->ifa_addr) {
+            pmix_output_verbose(1, pmix_pif_base_framework.framework_output,
+                                "skipping address-less interface %s.\n", cur_ifaddrs->ifa_name);
+            continue;
+        }
 
         /* skip non-ipv6 interface addresses */
         if (AF_INET6 != cur_ifaddrs->ifa_addr->sa_family) {
@@ -150,11 +151,12 @@ static int if_bsdx_ipv6_open(void)
         }
 
         if (0 < pmix_output_get_verbosity(pmix_pif_base_framework.framework_output)) {
-            char *addr_name = (char *) malloc(48 * sizeof(char));
-            inet_ntop(AF_INET6, &sin_addr->sin6_addr, addr_name, 48 * sizeof(char));
-            pmix_output(0, "ipv6 capable interface %s discovered, address %s.\n",
-                        cur_ifaddrs->ifa_name, addr_name);
-            free(addr_name);
+            char addr_name[INET6_ADDRSTRLEN];
+
+            if (NULL != inet_ntop(AF_INET6, &sin_addr->sin6_addr, addr_name, sizeof(addr_name))) {
+                pmix_output(0, "ipv6 capable interface %s discovered, address %s.\n",
+                            cur_ifaddrs->ifa_name, addr_name);
+            }
         }
 
         /* fill values into the pmix_pif_t */
@@ -162,9 +164,9 @@ static int if_bsdx_ipv6_open(void)
 
         intf = PMIX_NEW(pmix_pif_t);
         if (NULL == intf) {
-            pmix_output(0, "pmix_ifinit: unable to allocate %lu bytes\n", sizeof(pmix_pif_t));
-            freeifaddrs(*ifadd_list);
-            free(ifadd_list);
+            pmix_output(0, "pmix_ifinit: unable to allocate %lu bytes\n",
+                        (unsigned long) sizeof(pmix_pif_t));
+            freeifaddrs(ifadd_list);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         intf->af_family = AF_INET6;
@@ -191,8 +193,7 @@ static int if_bsdx_ipv6_open(void)
         pmix_list_append(&pmix_if_list, &(intf->super));
     } /*  of for loop over ifaddrs list */
 
-    freeifaddrs(*ifadd_list);
-    free(ifadd_list);
+    freeifaddrs(ifadd_list);
 
     return PMIX_SUCCESS;
 }

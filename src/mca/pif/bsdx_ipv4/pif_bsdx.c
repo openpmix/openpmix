@@ -95,27 +95,26 @@ static int prefix(uint32_t netmask)
 /* configure using getifaddrs(3) */
 static int if_bsdx_open(void)
 {
-    struct ifaddrs **ifadd_list;
+    struct ifaddrs *ifadd_list = NULL;
     struct ifaddrs *cur_ifaddrs;
     struct sockaddr_in *sin_addr;
 
-    /*
-     * the manpage claims that getifaddrs() allocates the memory,
-     * and freeifaddrs() is later used to release the allocated memory.
-     * however, without this malloc the call to getifaddrs() segfaults
-     */
-    ifadd_list = (struct ifaddrs **) malloc(sizeof(struct ifaddrs *));
-
-    /* create the linked list of ifaddrs structs */
-    if (getifaddrs(ifadd_list) < 0) {
+    /* getifaddrs(3) allocates the list itself and hands it back through
+     * the pointer we give it; freeifaddrs(3) releases it again. */
+    if (getifaddrs(&ifadd_list) < 0) {
         pmix_output(0, "pmix_ifinit: getifaddrs() failed with error=%d\n", errno);
-        free(ifadd_list);
         return PMIX_ERROR;
     }
 
-    for (cur_ifaddrs = *ifadd_list; NULL != cur_ifaddrs; cur_ifaddrs = cur_ifaddrs->ifa_next) {
+    for (cur_ifaddrs = ifadd_list; NULL != cur_ifaddrs; cur_ifaddrs = cur_ifaddrs->ifa_next) {
         pmix_pif_t *intf;
         struct in_addr a4;
+
+        /* getifaddrs(3) leaves ifa_addr NULL for an interface that carries
+         * no address at all, so it cannot be dereferenced unchecked */
+        if (NULL == cur_ifaddrs->ifa_addr) {
+            continue;
+        }
 
         /* skip non- af_inet interface addresses */
         if (AF_INET != cur_ifaddrs->ifa_addr->sa_family) {
@@ -138,8 +137,7 @@ static int if_bsdx_open(void)
         intf = PMIX_NEW(pmix_pif_t);
         if (NULL == intf) {
             pmix_output(0, "pmix_ifinit: unable to allocate %d bytes\n", (int) sizeof(pmix_pif_t));
-            freeifaddrs(*ifadd_list);
-            free(ifadd_list);
+            freeifaddrs(ifadd_list);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         intf->af_family = AF_INET;
@@ -153,7 +151,14 @@ static int if_bsdx_open(void)
         ((struct sockaddr_in *) &intf->if_addr)->sin_family = AF_INET;
         ((struct sockaddr_in *) &intf->if_addr)->sin_len = cur_ifaddrs->ifa_addr->sa_len;
 
-        intf->if_mask = prefix(sin_addr->sin_addr.s_addr);
+        /* store the netmask as a CIDR prefix length.  ifa_netmask is NULL
+         * when the address carries no mask; treat that as a host route. */
+        if (NULL == cur_ifaddrs->ifa_netmask) {
+            intf->if_mask = 32;
+        } else {
+            intf->if_mask = prefix(
+                ((struct sockaddr_in *) cur_ifaddrs->ifa_netmask)->sin_addr.s_addr);
+        }
         intf->if_flags = cur_ifaddrs->ifa_flags;
 
         intf->if_kernel_index = (uint16_t) if_nametoindex(cur_ifaddrs->ifa_name);
@@ -161,8 +166,7 @@ static int if_bsdx_open(void)
         pmix_list_append(&pmix_if_list, &(intf->super));
     } /*  of for loop over ifaddrs list */
 
-    freeifaddrs(*ifadd_list);
-    free(ifadd_list);
+    freeifaddrs(ifadd_list);
 
     return PMIX_SUCCESS;
 }

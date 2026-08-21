@@ -74,6 +74,14 @@ name `"posix_ipv4"`, single `.pmix_mca_open_component = if_posix_open`.
      `ifr_hwaddr` exist — effectively Linux);
    - `SIOCGIFMTU` → `ifmtu` (only where `SIOCGIFMTU` and `ifr_mtu` exist);
    - appends the object to `pmix_if_list`.
+
+   The last two are **informational and optional**: an interface that
+   cannot report a MAC or an MTU is still perfectly usable, so those two
+   failures log verbosely and keep the interface with the zeroed `if_mac`
+   / `ifmtu` the constructor gave it (which is exactly what the `bsdx_*`
+   components leave behind on every interface anyway). Every *other*
+   per-interface ioctl failure abandons that one interface and moves on.
+
 4. Frees the ioctl buffers and closes the scratch socket.
 
 ## Gotchas
@@ -82,15 +90,27 @@ name `"posix_ipv4"`, single `.pmix_mca_open_component = if_posix_open`.
   `bsdx_*` components leave them zero. Code that needs MAC/MTU therefore
   only gets them on `posix_ipv4` platforms — don't assume they are
   populated elsewhere.
-- **Mixed `continue` vs `break` on ioctl failure.** Most per-interface
-  ioctl failures `continue` to the next interface, but a failed
-  `SIOCGIFADDR`, `SIOCGIFHWADDR`, or `SIOCGIFMTU` does a `break` out of the
-  whole loop — a single unexpected error can truncate discovery of the
-  remaining interfaces. If you are debugging "missing interfaces," this
-  asymmetry is a prime suspect.
+- **Never `break` out of the interface loop on a per-interface error.**
+  A failed `SIOCGIFADDR`, `SIOCGIFHWADDR` or `SIOCGIFMTU` used to do
+  exactly that, so one unexpected errno on one interface silently
+  truncated discovery of every interface after it — and the symptom is
+  "PMIx cannot find a usable interface", nowhere near the ioctl that
+  failed. Per-interface failures belong to that interface: `continue`
+  (or, for the optional MAC/MTU, keep the interface as-is).
 - **The `SIOCGIFCONF` growing-buffer logic is deliberately defensive.**
   The portability comment documents four incompatible kernel behaviors;
-  do not "simplify" the loop without accounting for all of them.
+  do not "simplify" the loop without accounting for all of them. Two
+  details in it are load-bearing:
+  - The retry guard is `errno != EINVAL || lastlen != 0`. Only EINVAL on
+    a call that has *not yet* succeeded means "your buffer is too small";
+    with `&&` there instead, a genuine `ENOTTY`/`EPERM` on the first
+    attempt was swallowed and retried all the way up to the 10 MiB cap
+    before reporting a generic "unable to find network interfaces".
+  - The walk clamps `rem` to the buffer that was actually allocated. The
+    comment itself claims a platform (Linux) that reports the space the
+    entries *would* have needed rather than the space they used; take
+    that at face value and `ifc_len` bytes of `memcpy` become a heap
+    overflow in both directions.
 - **CIDR, not netmask** — `if_mask` is a prefix length via `prefix()`,
   the same helper duplicated in `bsdx_ipv4`. Keep them consistent.
 - The per-address `if_index` is assigned per *address*, so an interface

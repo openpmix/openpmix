@@ -156,7 +156,8 @@ Review coverage
 Assessed on **2026-08-15** from the commit history, and refreshed on
 **2026-08-20** when the ``src/mca/pnet``, ``src/mca/preg``,
 ``src/mca/pgpu``, ``src/mca/pmdl``, ``src/mca/pcompress``,
-``src/mca/plog``, ``src/mca/psensor`` and ``src/mca/psec`` reviews landed.
+``src/mca/plog``, ``src/mca/psensor``, ``src/mca/psec`` and
+``src/mca/pif`` reviews landed.
 Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
@@ -175,9 +176,9 @@ Reviewed and current
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
 ``src/mca/pcompress``, ``src/mca/pgpu``, ``src/mca/plog``,
-``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/psec``,
-``src/mca/psensor``, ``src/mca/pstat``, ``src/mca/ptl``, ``src/threads``,
-and ``bindings/python``.
+``src/mca/pif``, ``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``,
+``src/mca/psec``, ``src/mca/psensor``, ``src/mca/pstat``,
+``src/mca/ptl``, ``src/threads``, and ``bindings/python``.
 ``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
 ``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
 below.
@@ -191,8 +192,8 @@ size, which is a rough proxy for how much there is to find.
 
 * ``src/util/keyval`` — 2397 lines of lexer and parser, and the only
   directory in ``src/`` with **no** ``AGENTS.md`` at all.
-* ``src/mca/pdl``, ``src/mca/pinstalldirs``, ``src/mca/pif`` — about
-  3200 lines between them, and the lowest risk of the group.
+* ``src/mca/pdl``, ``src/mca/pinstalldirs`` — about 2200 lines between
+  them, and the lowest risk of the group.
 
 Outside ``src/``, nothing has been reviewed: ``examples/`` (16678 lines,
 leak-swept only), ``test/simple`` (11011), ``test/unit/util`` and
@@ -372,6 +373,44 @@ cover the whole of what the entry described.
   ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
+
+``pmix_net_samenetwork()`` only understands a /64 IPv6 prefix
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/pif`` review (2026-08-20).  Its ``AF_INET6`` arm
+compares the first eight bytes of the two addresses **only when the
+prefix length it is handed is 64**, and returns false for every other
+value.  That single fact is why the two IPv6 discovery components
+disagree about what to store in ``if_mask``: ``bsdx_ipv6`` hard-codes 64
+(so ``pmix_ifaddrtokindex()`` works on macOS/BSD), while ``linux_ipv6``
+stores the true prefix from ``/proc`` — which for ``::1`` is 128, so on
+Linux that entry can never match anything.
+
+Both halves are individually defensible and neither can be changed on
+its own: teaching ``bsdx_ipv6`` the real prefix would start failing every
+interface that is not on a /64, and the honest fix is to give
+``pmix_net_samenetwork()`` a general prefix comparison first and only
+then make the two components agree.  Left alone because the only
+consumer, ``pmix_ifaddrtokindex()``, has no in-tree callers — it is
+exported for companion projects — so there is nothing here to measure a
+behavior change against.
+
+A kernel interface index does not fit ``if_kernel_index``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/pif`` review (2026-08-20).  ``pmix_pif_t``
+declares ``if_kernel_index`` as a ``uint16_t`` and
+``pmix_ifnametokindex()`` returns an ``int16_t``, but Linux hands out
+32-bit interface indices that only increase — a long-lived host that
+churns veth or container interfaces will eventually issue one that
+truncates, and the ``int16_t`` return turns anything above 32767 into a
+negative number that every caller reads as "not found".
+
+Not fixed because both types are in the installed
+``src/util/pmix_if.h``: the struct layout is ABI, and the return type is
+a published signature.  Widening them is a deprecation exercise
+(``pmix_ifnametokindex2()`` and a new field at the end of the struct),
+not a repair.
 
 Nothing forwards a global-syslog request to a gateway
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

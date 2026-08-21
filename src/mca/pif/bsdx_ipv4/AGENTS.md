@@ -51,16 +51,18 @@ publishes the component pointer into `static-components.h`.
 ## What `if_bsdx_open` does
 
 1. Calls `getifaddrs(3)` to obtain the linked list of `struct ifaddrs`.
-2. Walks the list and, for each entry, **skips** it unless it is `AF_INET`
-   (IPv4 only — IPv6 is `bsdx_ipv6`'s job), skips interfaces that are not
-   `IFF_UP`, and skips `IFF_POINTOPOINT` (p2p) interfaces.
+2. Walks the list and, for each entry, **skips** it if `ifa_addr` is NULL
+   (see below), skips it unless it is `AF_INET` (IPv4 only — IPv6 is
+   `bsdx_ipv6`'s job), skips interfaces that are not `IFF_UP`, and skips
+   `IFF_POINTOPOINT` (p2p) interfaces.
 3. For each surviving entry, `PMIX_NEW`s a `pmix_pif_t` and fills:
    `af_family = AF_INET`; the primary address (`sin_addr`, `sin_family`,
    and the BSD-specific `sin_len`); `if_name`; `if_index` from the running
    list size (`pmix_list_get_size(&pmix_if_list) + 1`); `if_mask` as a
-   **CIDR prefix length** via the local `prefix()` helper (which converts
-   the netmask by counting trailing zero bits); `if_flags`; and
-   `if_kernel_index` from `if_nametoindex(name)`.
+   **CIDR prefix length** obtained by running the local `prefix()` helper
+   over **`ifa_netmask`** (which converts a netmask by counting trailing
+   zero bits); `if_flags`; and `if_kernel_index` from
+   `if_nametoindex(name)`.
 4. Appends the object to `pmix_if_list`.
 
 It does **not** populate `if_mac` or `ifmtu` — `getifaddrs` does not hand
@@ -69,15 +71,31 @@ those back here, so MAC/MTU stay zero for BSD/macOS interfaces. Only
 
 ## Gotchas
 
-- **Clean up the `getifaddrs` results on every path.** The routine
-  `malloc`s the `ifadd_list` pointer and `getifaddrs` allocates the list
-  behind it, so every exit must `freeifaddrs(*ifadd_list); free(ifadd_list);`
-  (and the `getifaddrs`-failure path frees only `ifadd_list`, since no
-  list was allocated). This was historically leaked on all paths; keep the
-  cleanup intact if you edit the function.
-- **The `malloc` before `getifaddrs` is intentional.** The comment notes
-  that omitting the `malloc(sizeof(struct ifaddrs *))` made the call
-  segfault in practice; do not "simplify" it away.
+- **`ifa_addr` and `ifa_netmask` are each documented as possibly NULL.**
+  The `getifaddrs(3)` man page on these very platforms says `ifa_addr`
+  references the interface's address "if one exists, otherwise it is
+  NULL", and likewise `ifa_netmask` "if one is set". Discovery is the
+  first thing that touches the OS in `pmix_rte_init()`, for *every* PMIx
+  process, so an unchecked dereference here is a segfault before the
+  library is up. Both are checked; a NULL netmask is recorded as a host
+  route (`if_mask` 32), which is the safe direction — it makes
+  `pmix_net_samenetwork()` demand an exact address match rather than
+  claim every address is on our network.
+- **`if_mask` comes from `ifa_netmask`, never from the address.** This is
+  worth stating because the component got it wrong for years: it ran
+  `prefix()` over `ifa_addr`, so a /24 interface reported whatever the
+  trailing zero bits of its own address happened to say (32 for any
+  address ending in an odd octet). Nothing crashes on that — it silently
+  turns `pmix_ifaddrtokindex()` into an exact-address match and hands
+  `pmix_ifindextomask()` callers a wrong prefix. `test/unit/pif_discovery`
+  cross-checks every discovered prefix against `getifaddrs(3)` to keep it
+  from coming back.
+- **Clean up the `getifaddrs` results on every path.** `getifaddrs`
+  allocates the list and hands it back through the pointer you give it;
+  every exit must `freeifaddrs()` it. (Older revisions `malloc`ed an
+  outer `struct ifaddrs **` first, with a comment claiming the call
+  segfaulted without it. It does not — `getifaddrs(&local_ptr)` is the
+  documented usage — and the extra allocation was itself unchecked.)
 - **CIDR, not netmask.** `if_mask` holds a prefix length. The `prefix()`
   helper is duplicated verbatim in `posix_ipv4`; keep them consistent if
   you change one.

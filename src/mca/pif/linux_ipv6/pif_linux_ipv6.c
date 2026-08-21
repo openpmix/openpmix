@@ -120,12 +120,16 @@ static int if_linux_ipv6_open(void)
         memset(addrbyte, 0, PMIX_IF_NAMESIZE * sizeof(unsigned int));
         memset(ifname, 0, PMIX_IF_NAMESIZE * sizeof(char));
 
-        while (fscanf(f, "%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x %x %x %x %x %20s\n",
-                      &addrbyte[0], &addrbyte[1], &addrbyte[2], &addrbyte[3], &addrbyte[4],
-                      &addrbyte[5], &addrbyte[6], &addrbyte[7], &addrbyte[8], &addrbyte[9],
-                      &addrbyte[10], &addrbyte[11], &addrbyte[12], &addrbyte[13], &addrbyte[14],
-                      &addrbyte[15], &idx, &pfxlen, &scope, &dadstat, ifname)
-               != EOF) {
+        /* stop on anything that is not a complete line: a partial match
+         * neither consumes the offending input nor reports EOF, so a
+         * "!= EOF" loop would spin forever building interfaces out of
+         * whatever idx/pfxlen/scope happened to hold last */
+        while (21
+               == fscanf(f, "%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x %x %x %x %x %20s\n",
+                         &addrbyte[0], &addrbyte[1], &addrbyte[2], &addrbyte[3], &addrbyte[4],
+                         &addrbyte[5], &addrbyte[6], &addrbyte[7], &addrbyte[8], &addrbyte[9],
+                         &addrbyte[10], &addrbyte[11], &addrbyte[12], &addrbyte[13],
+                         &addrbyte[14], &addrbyte[15], &idx, &pfxlen, &scope, &dadstat, ifname)) {
             pmix_pif_t *intf;
 
             pmix_output_verbose(
