@@ -22,7 +22,7 @@
 #include "src/util/pmix_shmem.h"
 #include "src/mca/gds/base/base.h"
 
-#ifdef HAVE_STDINT_h
+#ifdef HAVE_STDINT_H
 #include <stdint.h>
 #endif
 
@@ -381,7 +381,18 @@ typedef struct {
      * a client can see must never be written again. The counter names
      * the backing file, so successive generations do not collide; the
      * client tells them apart by that path, which is already in the seg
-     * blob, so nothing on the wire changes. Server-side only.
+     * blob, so nothing on the wire changes.
+     *
+     * Only the server's counter names anything - a client is told the
+     * path - but BOTH ends have to advance it, because it is also what
+     * dates a tombstone (see pmix_gds_shmem3_tombstone_t). A client that
+     * left it at zero stamped every tombstone with generation zero, and
+     * "generation <= t->generation" then held for every generation it
+     * ever mapped: a key deleted and re-published in a later fence stayed
+     * invisible to that client for the rest of the run. The two counters
+     * are never compared with each other, so they do not have to agree -
+     * each only has to advance whenever ITS process takes on a new
+     * generation.
      */
     uint32_t modex_generation;
     /** Shared-memory object that maintains backing store for smmodex data. */
@@ -396,6 +407,23 @@ typedef struct {
      * told to each client in the segment blob so it can make the same
      * keep-or-drop decision this server made. */
     bool modex_is_delta;
+    /** Guards the process-local state a read walks: the modex generation
+     *  chain below and the tombstone list.
+     *
+     * This module is is_tsafe, so pmix_gds_shmem3_fetch() runs on the
+     * APPLICATION's thread (see try_local_fetch() in
+     * src/client/pmix_client_get.c, which is on by default). Meanwhile the
+     * progress thread replaces the modex generation as each fence
+     * completes - release_modex_segment() unmaps the segment outright and
+     * retire_modex_segment() clears job->smmodex - and del_key() appends
+     * to the tombstone list. The reference the reader holds on this
+     * tracker keeps the JOB segment mapped, but it says nothing about
+     * either of those, so both need a lock.
+     *
+     * NOT needed for anything in a shared segment: those are written once,
+     * before any client can see them, and never again.
+     */
+    pmix_mutex_t datalock;
     /** Keys this job has been told to stop answering for. Process-local;
      * see pmix_gds_shmem3_tombstone_t. */
     pmix_list_t tombstones;

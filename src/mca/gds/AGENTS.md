@@ -388,7 +388,14 @@ golden rule does not usually bite here.
   exist precisely to keep that working.
 - **Everything runs on the progress thread.** No new path may call a `gds`
   entry point without first thread-shifting, unless the module's `is_tsafe`
-  says otherwise.
+  says otherwise. `shmem3` does say otherwise, and that is not theoretical:
+  `try_local_fetch()` in `src/client/pmix_client_get.c` consults
+  `PMIX_GDS_FETCH_IS_TSAFE` on every keyed `PMIx_Get` and
+  `pmix_client_globals.fast_get` is on by default, so on a client that
+  module's `fetch` runs on the application's own thread. A module that
+  sets `is_tsafe` owns the synchronization for any process-local state its
+  `fetch` walks — see the `is_tsafe` section in
+  [`shmem3/AGENTS.md`](shmem3/AGENTS.md).
 - **Treat every job-level value as untrusted.** The `pmix_info_t` array a
   module is handed comes from a host environment (which is not this
   project) or off the wire from a peer (which may be a different release).
@@ -438,10 +445,16 @@ golden rule does not usually bite here.
 Neither component ever removes a session tracker. A session legitimately
 outlives the jobs in it — that is what a session is — and there is no
 "session has ended" signal for either component to act on, so
-`pmix_mca_gds_hash_component.mysessions` and
-`pmix_mca_gds_shmem3_component.sessions` only shrink when the module
+`pmix_mca_gds_hash_component.mysessions` only shrinks when the module
 finalizes. `del_nspace` drops the *job* and its reference to the session;
 the session itself stays.
+
+`pmix_mca_gds_shmem3_component.sessions` is a different story: nothing
+ever appends to it, so it is permanently empty and a `shmem3` session
+object lives and dies with the one job that created it. The searches
+`pmix_gds_shmem3_get_session_tracker()` runs against that list are
+unreachable. Sharing a session across jobs there is unfinished, not
+merely uncleaned — see [`shmem3/AGENTS.md`](shmem3/AGENTS.md).
 
 Closing that needs a **`deregister_session` entry point** — a host-facing
 call that says a session is over, paired with a `del_session` slot on

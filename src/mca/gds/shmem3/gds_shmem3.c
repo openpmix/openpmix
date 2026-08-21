@@ -591,6 +591,7 @@ job_construct(
     job->modex_is_delta = false;
     PMIX_CONSTRUCT(&job->modex_prior, pmix_list_t);
     PMIX_CONSTRUCT(&job->tombstones, pmix_list_t);
+    PMIX_CONSTRUCT(&job->datalock, pmix_mutex_t);
     // Address-space arena
     job->arena_base = 0;
     job->arena_size = 0;
@@ -709,8 +710,13 @@ job_destruct(
         pmix_shmem_t *shmem3;
         rc = pmix_gds_shmem3_get_job_shmem3_by_id(job, sid, &shmem3);
         if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
+            /* Only one id can fail here - SESSION, on a job whose
+             * construction did not get as far as its session object.
+             * Skip that segment; returning abandoned the rest of the
+             * teardown, which is where the arena reservation and the
+             * session reference are given back. */
             PMIX_ERROR_LOG(rc);
-            return;
+            continue;
         }
         if (pmix_gds_shmem3_has_status(job, sid, PMIX_GDS_SHMEM3_MINE)) {
             // Emit usage status before we potentially destroy the segment.
@@ -741,6 +747,9 @@ job_destruct(
     if (job->session) {
         PMIX_RELEASE(job->session);
     }
+    /* Last: nothing can still be reading this tracker - a reader holds a
+     * reference and we are the destructor. */
+    PMIX_DESTRUCT(&job->datalock);
 }
 
 /**
@@ -844,6 +853,11 @@ retire_modex_segment(
     if (PMIX_UNLIKELY(NULL == seg)) {
         return PMIX_ERR_NOMEM;
     }
+    /* A read may be walking this chain on another thread - see
+     * job->datalock. Nothing is unmapped here, but job->smmodex goes NULL
+     * and the list gains a member, and a reader must not see either
+     * half-done. */
+    pmix_mutex_lock(&job->datalock);
     seg->status = job->modex_shmem3_status;
     seg->shmem3 = job->modex_shmem3;
     seg->smmodex = job->smmodex;
@@ -853,6 +867,7 @@ retire_modex_segment(
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_MODEX_ID);
+    pmix_mutex_unlock(&job->datalock);
     return PMIX_SUCCESS;
 }
 
@@ -869,10 +884,15 @@ drop_modex_priors(
 ) {
     pmix_gds_shmem3_modex_seg_t *seg;
 
+    /* Releasing a retired generation unmaps its segment, so a read that
+     * is walking the chain on another thread has to be finished first -
+     * see job->datalock. */
+    pmix_mutex_lock(&job->datalock);
     while (NULL != (seg = (pmix_gds_shmem3_modex_seg_t *)
                           pmix_list_remove_first(&job->modex_prior))) {
         PMIX_RELEASE(seg);
     }
+    pmix_mutex_unlock(&job->datalock);
 }
 
 static void
@@ -888,10 +908,34 @@ release_modex_segment(
         emit_shmem3_usage_stats(job, PMIX_GDS_SHMEM3_MODEX_ID);
         PMIX_RELEASE(get_tma_by_shmem3_id(job, PMIX_GDS_SHMEM3_MODEX_ID)->data_context);
     }
+    /* This one really does unmap the segment, and a read on another
+     * thread may be part way through the hash table inside it - see
+     * job->datalock. */
+    pmix_mutex_lock(&job->datalock);
     PMIX_RELEASE(job->modex_shmem3);
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_MODEX_ID);
+    pmix_mutex_unlock(&job->datalock);
+}
+
+/**
+ * Note that this job has taken on a new modex generation.
+ *
+ * Both ends do this, and for different reasons: the server needs a
+ * number that names the next backing file, and both need one that dates
+ * a tombstone. See pmix_gds_shmem3_job_t.modex_generation - a client
+ * that never advanced it made every tombstone shadow every generation.
+ *
+ * Under the lock because a read on another thread compares against it.
+ */
+static void
+advance_modex_generation(
+    pmix_gds_shmem3_job_t *job
+) {
+    pmix_mutex_lock(&job->datalock);
+    job->modex_generation++;
+    pmix_mutex_unlock(&job->datalock);
 }
 
 PMIX_CLASS_INSTANCE(
@@ -1885,7 +1929,7 @@ shmem3_segment_create_and_attach(
             );
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
-                goto out;
+                goto out_release;
             }
             PMIX_GDS_SHMEM3_VOUT(
                 "%s: %s found vmhole at address=0x%zx (attempt %d)",
@@ -1909,10 +1953,21 @@ shmem3_segment_create_and_attach(
         }
     }
     pmix_gds_shmem3_set_status(job, shmem3_id, PMIX_GDS_SHMEM3_ATTACHED);
-    // Fix-up backing file permission.
-    rc = shmem3_segment_fix_perms(job, shmem3);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        PMIX_ERROR_LOG(rc);
+    /* Fix up the backing file's permissions. A failure here is reported
+     * and then dropped, deliberately: the segment is created, mapped and
+     * perfectly usable by US, and what a client loses is the ability to
+     * open the backing file - which it reports as a failed attach and
+     * answers by falling back to hash. Propagating it instead failed the
+     * whole of register_job_info(), so no client got job data at all,
+     * while leaving this segment attached and NOT marked MINE - so the
+     * teardown below skipped its allocator context. Degrade, do not
+     * break. */
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != shmem3_segment_fix_perms(job, shmem3))) {
+        PMIX_GDS_SHMEM3_VOUT(
+            "%s: could not set ownership/permissions on %s; a client that "
+            "cannot open it will fall back to another GDS module",
+            __func__, shmem3->backing_path
+        );
     }
 out:
     if (PMIX_SUCCESS == rc) {
@@ -1923,8 +1978,15 @@ out:
     }
     return rc;
 out_release:
-    // Mirror shmem3_attach()'s failure handling: detach and drop the job
-    // tracker entry.
+    /* Mirror shmem3_attach()'s failure handling: detach and drop the job
+     * tracker entry.
+     *
+     * Take the backing file with it. pmix_shmem_segment_create() made it
+     * and shmem_destruct() only unlinks a segment it managed to ATTACH,
+     * so a failure between the two left the file in the session tmpdir
+     * for the life of the node - and the path is built from a pid, which
+     * gets reused. */
+    (void)pmix_shmem_segment_unlink(shmem3);
     (void)pmix_shmem_segment_detach(shmem3);
     pmix_list_remove_item(&pmix_mca_gds_shmem3_component.jobs, &job->super);
     PMIX_RELEASE(job);
@@ -2567,13 +2629,25 @@ get_local_job_data_info(
                 nprocarrays += 1;
                 nkvals += kvi->value->data.darray->size;
             }
-            // See if this is the job's session ID. If so, capture it.
-            pmix_info_t *info = (pmix_info_t *)kvi->value->data.darray->array;
-            if (PMIX_CHECK_KEY(&info[0], PMIX_SESSION_ID)) {
-                rc = PMIx_Value_get_number(&info[0].value, &sid, PMIX_UINT32);
-                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                    PMIX_ERROR_LOG(rc);
-                    goto out;
+            /* See if this is the job's session ID. If so, capture it.
+             *
+             * Only look inside an array whose elements really are
+             * pmix_info_t. A host is free to hand us a PMIX_DATA_ARRAY of
+             * anything - procs, strings, scalars - and reading element
+             * zero of one of those as a pmix_info_t makes PMIX_CHECK_KEY
+             * walk up to PMIX_MAX_KEYLEN bytes off the end of an
+             * allocation that may be eight bytes long. */
+            if (PMIX_INFO == kvi->value->data.darray->type) {
+                pmix_info_t *info;
+                info = (pmix_info_t *)kvi->value->data.darray->array;
+                if (PMIX_CHECK_KEY(&info[0], PMIX_SESSION_ID)) {
+                    rc = PMIx_Value_get_number(
+                        &info[0].value, &sid, PMIX_UINT32
+                    );
+                    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                        PMIX_ERROR_LOG(rc);
+                        goto out;
+                    }
                 }
             }
         }
@@ -2875,6 +2949,31 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
             PMIX_ERROR_LOG(rc);
             break;
         }
+        /* Everything below assumes the blob described a segment this
+         * build knows how to place, and named the job and the file. Only
+         * the sender guarantees that, and the sender may be a different
+         * release: an id outside our enum reaches the default arm of
+         * pmix_gds_shmem3_get_job_shmem3_by_id(), which abort()s, and a
+         * missing nspace reaches strcmp() with NULL.
+         *
+         * Skip such a blob rather than failing - it is the same forward
+         * compatibility the unrecognized-key arm of the unpacker keeps,
+         * one level up. A segment kind we have never heard of is one we
+         * have no use for by construction. */
+        if (PMIX_GDS_SHMEM3_JOB_ID != usb.smid &&
+            PMIX_GDS_SHMEM3_SESSION_ID != usb.smid &&
+            PMIX_GDS_SHMEM3_MODEX_ID != usb.smid) {
+            PMIX_GDS_SHMEM3_VOUT(
+                "%s: ignoring seg blob for unrecognized segment id=%u",
+                __func__, (unsigned)usb.smid
+            );
+            break;
+        }
+        if (NULL == usb.nsid || NULL == usb.seg_path) {
+            rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         // Get the associated job tracker.
         pmix_gds_shmem3_job_t *job;
         rc = pmix_gds_shmem3_get_job_tracker(usb.nsid, true, &job);
@@ -2955,6 +3054,12 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                     release_modex_segment(job);
                     drop_modex_priors(job);
                 }
+                /* We are about to map a generation we have not held
+                 * before, which is the same step the server counts on
+                 * its side. Both have to count it: the number is what
+                 * dates a tombstone, and one that never moves makes
+                 * every tombstone shadow every generation. */
+                advance_modex_generation(job);
             } else {
                 /* Only the modex is republished today. Anything else
                  * changing underneath us is not something this path
@@ -3216,27 +3321,34 @@ del_key(
     if (PMIX_SUCCESS != rc) {
         return PMIX_SUCCESS;
     }
+    /* A read consults this list on another thread, so hold the lock
+     * across both the search and the append - see job->datalock. */
+    pmix_mutex_lock(&job->datalock);
     /* already recorded for this rank? then nothing to do - but refresh
      * the generation, since a later removal shadows more than an
      * earlier one did */
     PMIX_LIST_FOREACH (t, &job->tombstones, pmix_gds_shmem3_tombstone_t) {
         if (t->rank == proc->rank && NULL != t->key && 0 == strcmp(t->key, key)) {
             t->generation = job->modex_generation;
+            pmix_mutex_unlock(&job->datalock);
             return PMIX_SUCCESS;
         }
     }
     t = PMIX_NEW(pmix_gds_shmem3_tombstone_t);
     if (PMIX_UNLIKELY(NULL == t)) {
+        pmix_mutex_unlock(&job->datalock);
         return PMIX_ERR_NOMEM;
     }
     t->rank = proc->rank;
     t->key = strdup(key);
     if (PMIX_UNLIKELY(NULL == t->key)) {
         PMIX_RELEASE(t);
+        pmix_mutex_unlock(&job->datalock);
         return PMIX_ERR_NOMEM;
     }
     t->generation = job->modex_generation;
     pmix_list_append(&job->tombstones, &t->super);
+    pmix_mutex_unlock(&job->datalock);
 
     /* the cached job-info reply still says the key exists, and it is
      * what the next client to attach is handed - build a fresh one */
@@ -3324,7 +3436,7 @@ server_store_modex_cb(pmix_proc_t *proc,
                 release_modex_segment(job);
                 drop_modex_priors(job);
             }
-            job->modex_generation++;
+            advance_modex_generation(job);
         }
         /* what the clients have to be told about this generation */
         job->modex_is_delta = isdelta;
@@ -3496,23 +3608,45 @@ server_add_nspace(
         return rc;
     }
 
+    /* These come from the host environment, which is not this project, so
+     * the key does not guarantee the type. Reading the union directly
+     * turned a PMIX_STRING into the low half of a pointer, and the
+     * resulting garbage id was not merely recorded - it set chown/chgrp,
+     * so shmem3_segment_fix_perms() later handed it to chown() on this
+     * job's backing files. Ask for a number and let the conversion fail. */
     for (size_t i = 0; i < ninfo; ++i) {
         if (PMIX_CHECK_KEY(&info[i], PMIX_USERID)) {
-            const uid_t nuid = (uid_t)info[i].value.data.uint32;
+            uint32_t nuid;
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[i].value, &nuid,
+                                                      PMIX_UINT32)) {
+                PMIX_GDS_SHMEM3_VOUT(
+                    "%s: ignoring nspace=%s " PMIX_USERID " of type %s",
+                    __func__, nspace, PMIx_Data_type_string(info[i].value.type)
+                );
+                continue;
+            }
             PMIX_GDS_SHMEM3_VOUT(
                 "%s: updating nspace=%s UID from %zd to %zd",
                 __func__, nspace, (size_t)job->uid, (size_t)nuid
             );
-            job->uid = nuid;
+            job->uid = (uid_t)nuid;
             job->chown = true;
         }
         else if (PMIX_CHECK_KEY(&info[i], PMIX_GRPID)) {
-            const gid_t ngid = (gid_t)info[i].value.data.uint32;
+            uint32_t ngid;
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[i].value, &ngid,
+                                                      PMIX_UINT32)) {
+                PMIX_GDS_SHMEM3_VOUT(
+                    "%s: ignoring nspace=%s " PMIX_GRPID " of type %s",
+                    __func__, nspace, PMIx_Data_type_string(info[i].value.type)
+                );
+                continue;
+            }
             PMIX_GDS_SHMEM3_VOUT(
                 "%s: updating nspace=%s GID from %zd to %zd",
                 __func__, nspace, (size_t)job->gid, (size_t)ngid
             );
-            job->gid = ngid;
+            job->gid = (gid_t)ngid;
             job->chgrp = true;
         }
     }

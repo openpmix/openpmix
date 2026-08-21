@@ -159,9 +159,54 @@ needs to own the *bulk job/modex data* path; individual `put`/`get` traffic
 falls back. `cache_job_info` also returns `PMIX_ERR_NOT_SUPPORTED`: unlike
 `hash`, `shmem3` does not pre-cache — it fetches the fully-assembled
 job data lazily inside `register_job_info` when the first client connects.
-Unlike `hash`, it is `is_tsafe = true`: a fetch holds a reference on the
-job tracker and reads only data that is never written again, so it may
-run off the progress thread.
+Unlike `hash`, it is `is_tsafe = true`, which is why the next section
+exists.
+
+## `is_tsafe` is real: a fetch runs on the application's thread
+
+`pmix_shmem3_module.is_tsafe` is `true`, and that is not decorative.
+`try_local_fetch()` in [`src/client/pmix_client_get.c`](../../../client/pmix_client_get.c)
+tests it on every keyed `PMIx_Get`, and `pmix_client_globals.fast_get`
+defaults **on** — so on a client, `pmix_gds_shmem3_fetch()` normally runs
+on whatever thread called `PMIx_Get`, while the progress thread carries
+on underneath it.
+
+Two things make that safe, and they are not the same thing:
+
+- **What is in a segment needs nothing.** It is written once, before any
+  client can see it, and never again. No lock, no copy, no barrier.
+- **The process-local bookkeeping alongside it needs a lock**, because
+  the progress thread rewrites it while a read is in flight. That is
+  `job->datalock`, held across the whole of `shmem3_fetch_from_job()`,
+  and taken by every writer of the two things a read walks:
+
+  | written by | what changes |
+  |---|---|
+  | `retire_modex_segment()` | `job->smmodex` goes NULL; the chain gains a member |
+  | `release_modex_segment()` | the current generation is **unmapped** |
+  | `drop_modex_priors()` | every retired generation is **unmapped** |
+  | `del_key()` | the tombstone list gains a member |
+  | `advance_modex_generation()` | the number a tombstone is dated against |
+
+The reference a reader holds on the job tracker is often mistaken for
+covering this. It does not: it keeps the *tracker* alive, and with it the
+job and session segments, which are released only by `job_destruct()`. A
+modex generation is released independently of the tracker's refcount, on
+the progress thread, as each fence completes. Before the lock existed, a
+`PMIx_Fence_nb` concurrent with a `PMIx_Get` of a remote rank's key could
+put an application thread inside `pmix_hash_fetch()` on a table that had
+just been `munmap`ped - and the ordinary single-threaded case was only
+safe by accident, because a blocking `PMIx_Fence` parks the app thread
+until the modex-complete has been processed.
+
+The lock protects nothing in shared memory, so it does not belong to a
+segment and does not appear in `PMIX_GDS_SHMEM3_LAYOUT_ID`:
+`pmix_gds_shmem3_job_t` is an ordinary heap object.
+
+**Do not take it while holding anything else.** `joblock` is released
+before it is acquired (see `pmix_gds_shmem3_acquire_job_tracker()`), and
+no writer holds it across a segment create or attach - those do file I/O
+and would block a reader for the duration.
 
 ## The shared-segment model
 
@@ -460,10 +505,19 @@ Four things about it are load-bearing:
   slot. Deriving it rather than keeping a tally means no path that
   releases a generation can leave the accounting stale. A generation
   arriving when all slots are taken places itself outside the arena.
-- **The session segment is deliberately outside the arena.** A session
-  outlives the job that first described it (`component.sessions` holds a
-  reference), and `job_destruct()` releases the whole arena, so a shared
-  session's segment inside it would be unmapped under a live holder.
+- **The session segment is deliberately outside the arena.** The design
+  is that a session outlives the job that first described it, and
+  `job_destruct()` releases the whole arena, so a shared session's
+  segment inside it would be unmapped under a live holder.
+
+  Be aware that the sharing this guards against **cannot happen today**:
+  nothing ever appends to `pmix_mca_gds_shmem3_component.sessions`, so
+  the list is permanently empty, both searches in
+  `pmix_gds_shmem3_get_session_tracker()` are unreachable, and a job's
+  session object is created by `job_construct()` and dies with it. The
+  placement is still the right one - it is what the code would need the
+  moment a session really were shared - but do not read it as evidence
+  that sharing works.
 
 If the arena cannot be reserved, or a modex does not fit its slot, every
 segment places itself independently exactly as before — degraded, never
@@ -624,6 +678,21 @@ own number as it walks, and a tombstone shadows only generations up to
 the one it was made at — a key deleted and then published again in a
 later fence is alive again.
 
+**Both ends have to advance that counter, and only the server's names
+anything.** `job->modex_generation` was introduced to name the next
+backing file, which is a server-side job — a client is told the path —
+so it was documented and treated as server-only. But it is *also* what
+dates a tombstone, and `del_key()` runs on the client too. A client that
+left it at zero stamped every tombstone with generation zero, and
+`generation <= t->generation` then held for every generation it ever
+mapped: a key deleted and re-published in a later fence stayed invisible
+to that client for the rest of the run. A keyed `PMIx_Get` merely lost
+its fast path and went to the server; a **NULL-key** fetch returned a
+list with the key silently missing and reported success, so nothing
+looked further. `advance_modex_generation()` is called from both sides
+now. The two counters are never compared with each other — each only has
+to advance whenever *its* process takes on a new generation.
+
 Two shapes of read, two filters. A keyed lookup that finds only
 tombstoned entries in a generation keeps walking rather than reporting a
 hit; a NULL-key lookup — "everything this process published" — has its
@@ -711,6 +780,43 @@ as success.
   wholesale. If you find yourself needing to reconcile two dictionaries
   across a process boundary, put the index next to the data instead.
 
+## Things that look like bugs and are not
+
+Recorded so the next review does not re-derive them.
+
+- **`PMIX_RELEASE(x)` sets `x` to `NULL`** when the refcount reaches
+  zero — the assignment is inside the macro, in both the debug and the
+  default definition. So `cache_connection_info_for_job_shmem3()`
+  releasing `job->conni` on its error path does not leave a dangling
+  pointer for the next `register_job_info()` to copy from, and
+  `newkval()`'s `PMIX_RELEASE(kv); return kv;` returns `NULL` rather
+  than the block it just freed. Both read like defects and are not.
+- **`modex_fetch()` reports `PMIX_ERR_NOT_FOUND` after a *successful*
+  NULL-key read of the current generation** — it falls through to
+  `rc = PMIX_ERR_NOT_FOUND` on the way to walking the retired ones, and
+  when `job->modex_prior` is empty (the ordinary case) that is what it
+  returns. Harmless only because `shmem3_fetch_from_job()` ends with
+  `if (0 == pmix_list_get_size(kvs)) ... else rc = PMIX_SUCCESS;`, which
+  overrides it. Fragile, but not currently wrong: if you ever make that
+  final check narrower, fix this first.
+- **`assign_module()` keeps its default bid for a `PMIX_GDS_MODULE` that
+  splits to nothing.** The comment says so and the code agrees, but only
+  because `PMIx_Argv_split()` returns `NULL` — not an empty array — for
+  `""` or `",,,"`, and the `NULL == options` arm breaks out before
+  `specified` is set. Covered by `test/unit/gds_datastore`.
+- **Nothing in `gds` checks `darray->type` before casting an array to
+  `pmix_info_t *`.** Neither component does, for any of the `*_INFO_ARRAY`
+  keys: the key is taken to imply the element type. That is a project-wide
+  convention, not an oversight here. `get_local_job_data_info()` was a
+  genuinely different case and is now guarded — it probed element zero of
+  **every** data array, whatever its key, looking for a session id, so a
+  host-supplied array of some other type was read as a `pmix_info_t`.
+  `PMIx_Check_key()` stops at the first differing byte, so most such
+  arrays are read one byte past their start and no further; it takes an
+  array whose leading bytes actually spell `pmix.session.id` to carry the
+  read on into `info[0].value`, 512 bytes into what may be a 16-byte
+  allocation. `test/unit/gds_datastore` sends exactly that.
+
 ## Testing
 
 `shmem3` gets **no coverage at all on macOS** — `configure.m4` gates it on
@@ -725,3 +831,17 @@ cross-node fetches that reach the modex.
 `test/unit/gds_datastore` covers the *framework* contracts this component
 has to honor — notably the modex callback contract above — but runs against
 whichever module is assigned, which on a developer's Mac is `hash`.
+
+Its last case, `test_shmem3_job_segment()`, is the exception: it asks
+`pmix_gds_base_assign_module()` for `shmem3` by name and, when it gets
+it, drives this component end to end in one process — register an nspace,
+build the job and session segments through `PMIX_GDS_REGISTER_JOB_INFO`
+against a peer bound to this module, read a job-level key and the whole
+job back out of the segment, and deregister. Where the component is not
+available it prints `SKIP` and passes, so the case is honest on macOS
+rather than absent.
+
+That is as far as one process goes: a fence, a second modex generation, a
+client attach at a fixed address, and every cross-node path still belong
+to `run-gds-tests.sh`. But the segment build itself, and the untrusted
+job-level input that reaches it, now run in `make check` on Linux.

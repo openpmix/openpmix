@@ -108,6 +108,10 @@ pmix_gds_shmem3_get_job_tracker(
             }
             inspace->nspace = strdup(nspace);
             if (PMIX_UNLIKELY(!inspace->nspace)) {
+                // Nothing else has seen it: it is not on the global list
+                // and the tracker is not pointing at it yet, so this is
+                // the only chance to give it back.
+                PMIX_RELEASE(inspace);
                 rc = PMIX_ERR_NOMEM;
                 goto out;
             }
