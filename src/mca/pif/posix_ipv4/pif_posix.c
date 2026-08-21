@@ -92,7 +92,7 @@ static int prefix(uint32_t netmask)
     return (32 - plen);
 }
 
-/* configure using getifaddrs(3) */
+/* configure using ioctl(SIOCGIFCONF) and the per-interface SIOCGIF* ioctls */
 static int if_posix_open(void)
 {
     int sd;
@@ -131,7 +131,7 @@ static int if_posix_open(void)
      * Everyone else seems to do one of the four.
      */
     lastlen = 0;
-    ifc_len = sizeof(struct ifreq) * DEFAULT_NUMBER_INTERFACES;
+    ifc_len = sizeof(struct ifreq) * PMIX_PIF_DEFAULT_NUMBER_INTERFACES;
     do {
         ifconf.ifc_len = ifc_len;
         ifconf.ifc_req = (struct ifreq *) malloc(ifc_len);
@@ -175,8 +175,8 @@ static int if_posix_open(void)
         /* Yes, we overflowed (or had an EINVAL on the ioctl).
            Loop back around and try again with a bigger buffer */
         free(ifconf.ifc_req);
-        ifc_len = (ifc_len == 0) ? 1 : ifc_len * 2;
-    } while (ifc_len < MAX_PIFCONF_SIZE);
+        ifc_len *= 2;
+    } while (ifc_len < PMIX_PIF_MAX_PIFCONF_SIZE);
     if (!successful_locate) {
         pmix_output(0, "pmix_ifinit: unable to find network interfaces.");
         close(sd);
@@ -240,7 +240,7 @@ static int if_posix_open(void)
 
         intf = PMIX_NEW(pmix_pif_t);
         if (NULL == intf) {
-            pmix_output(0, "pmix_ifinit: unable to allocated %lu bytes\n",
+            pmix_output(0, "pmix_ifinit: unable to allocate %lu bytes\n",
                         (unsigned long) sizeof(pmix_pif_t));
             free(ifconf.ifc_req);
             close(sd);
@@ -250,7 +250,6 @@ static int if_posix_open(void)
         intf->af_family = AF_INET;
 
         /* copy entry over into our data structure */
-        memset(intf->if_name, 0, sizeof(intf->if_name));
         pmix_strncpy(intf->if_name, ifr->ifr_name, sizeof(intf->if_name) - 1);
         intf->if_flags = ifr->ifr_flags;
 

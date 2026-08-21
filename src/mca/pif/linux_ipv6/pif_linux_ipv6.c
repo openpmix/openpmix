@@ -103,7 +103,7 @@ static bool if_linux_ipv6_flags(const char *ifname, uint32_t *flags)
     return true;
 }
 
-/* configure using getifaddrs(3) */
+/* configure by reading the kernel's /proc/net/if_inet6 table */
 static int if_linux_ipv6_open(void)
 {
     FILE *f;
@@ -115,10 +115,10 @@ static int if_linux_ipv6_open(void)
         struct in6_addr a6;
         int iter;
         uint32_t flag;
-        unsigned int addrbyte[PMIX_IF_NAMESIZE];
+        unsigned int addrbyte[16];
 
-        memset(addrbyte, 0, PMIX_IF_NAMESIZE * sizeof(unsigned int));
-        memset(ifname, 0, PMIX_IF_NAMESIZE * sizeof(char));
+        memset(addrbyte, 0, sizeof(addrbyte));
+        memset(ifname, 0, sizeof(ifname));
 
         /* stop on anything that is not a complete line: a partial match
          * neither consumes the offending input nor reports EOF, so a
