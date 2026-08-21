@@ -34,6 +34,12 @@
  * because the modex is additive - a contribution that merely stops
  * naming a key removes nothing at the far end.
  *
+ * Finally rank 0 publishes the key again and every rank must see it
+ * come back, carrying the new value. A deletion is not permanent, and
+ * under gds/shmem3 the record of it is dated with the modex generation
+ * it was made at precisely so that a later generation is not shadowed by
+ * it.
+ *
  * NOTE ON TIMING. Once a server has the removal, passing it to its own
  * clients is a one-way push with no acknowledgement, so it lands
  * promptly rather than synchronously. A reader that races it can
@@ -58,6 +64,9 @@ static int nerrs = 0;
 
 #define DELKEY  "delete_key.victim"
 #define KEEPKEY "delete_key.keeper"
+/* what rank 0 re-publishes DELKEY as, chosen so it cannot be mistaken
+ * for the rank number the first round put there */
+#define REPUBVAL 4242u
 
 /* how long to allow for the removal to reach us, and how often to look */
 #define WAIT_USEC  5000000
@@ -109,6 +118,68 @@ static bool readable(uint32_t peer, const char *key)
         PMIX_VALUE_RELEASE(val);
     }
     return got;
+}
+
+/* As readable(), but hands back what was read. */
+static bool read_u32(uint32_t peer, const char *key, uint32_t *out)
+{
+    pmix_value_t *val = NULL;
+    pmix_proc_t proc;
+    pmix_info_t tmo;
+    pmix_status_t rc;
+    int secs = GET_TIMEOUT_SEC;
+    bool got = false;
+
+    PMIX_LOAD_PROCID(&proc, myproc.nspace, peer);
+    PMIX_INFO_LOAD(&tmo, PMIX_TIMEOUT, &secs, PMIX_INT);
+    rc = PMIx_Get(&proc, key, &tmo, 1, &val);
+    PMIX_INFO_DESTRUCT(&tmo);
+    if (PMIX_SUCCESS == rc && NULL != val && PMIX_UINT32 == val->type) {
+        *out = val->data.uint32;
+        got = true;
+    }
+    if (NULL != val) {
+        PMIX_VALUE_RELEASE(val);
+    }
+    return got;
+}
+
+/* Wait for the key to become readable again AND carry the given value.
+ *
+ * Both halves matter. A re-published key arriving is one thing; a
+ * re-published key that still reads as the value it had before the
+ * delete would mean a stale generation answered. */
+static void expect_value(uint32_t peer, const char *key, uint32_t want,
+                         const char *what)
+{
+    int waited = 0;
+    uint32_t got = 0;
+
+    for (;;) {
+        if (read_u32(peer, key, &got)) {
+            if (got == want) {
+                return;
+            }
+            fprintf(stderr,
+                    "delete_key: rank %u: %s from rank %u reads %u, wanted "
+                    "%u [%s]\n",
+                    (unsigned) myproc.rank, key, (unsigned) peer,
+                    (unsigned) got, (unsigned) want, what);
+            nerrs++;
+            return;
+        }
+        if (waited >= WAIT_USEC) {
+            fprintf(stderr,
+                    "delete_key: rank %u: %s from rank %u never came back "
+                    "after %d ms [%s]\n",
+                    (unsigned) myproc.rank, key, (unsigned) peer,
+                    WAIT_USEC / 1000, what);
+            nerrs++;
+            return;
+        }
+        usleep(POLL_USEC);
+        waited += POLL_USEC;
+    }
 }
 
 static void expect_readable(uint32_t peer, const char *key, const char *what)
@@ -243,8 +314,53 @@ int main(int argc, char **argv)
         }
     }
 
+    /* And now put it back.
+     *
+     * A deletion is not permanent - nothing in the Standard says a key
+     * may only be published once - so a rank that publishes the same key
+     * again must be readable again. Under gds/shmem3 that is the one
+     * thing a removal record must NOT outlast: the data still sits in a
+     * segment that is never rewritten, so the module answers by
+     * remembering that it stopped answering, and a record that never
+     * expired would bury the new value along with the old one. Each
+     * record is therefore dated with the modex generation it was made
+     * at, and only shadows generations up to that one.
+     *
+     * The value differs from the original so that "it came back" and
+     * "the old copy was never really gone" are distinguishable. */
+    if (0 == myproc.rank) {
+        if (PMIX_SUCCESS != (rc = put_u32(DELKEY, REPUBVAL))) {
+            fprintf(stderr, "delete_key: rank 0: re-publish failed: %s\n",
+                    PMIx_Error_string(rc));
+            exit(1);
+        }
+        if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
+            fprintf(stderr, "delete_key: rank 0: third commit failed: %s\n",
+                    PMIx_Error_string(rc));
+            exit(1);
+        }
+    }
+
+    flag = true;
+    PMIX_INFO_LOAD(&info, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
+    rc = PMIx_Fence(&wildcard, 1, &info, 1);
+    PMIX_INFO_DESTRUCT(&info);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "delete_key: rank %u: third fence failed: %s\n",
+                (unsigned) myproc.rank, PMIx_Error_string(rc));
+        exit(1);
+    }
+
+    expect_value(0, DELKEY, REPUBVAL, "after the re-publish");
+    /* and nothing that survived the delete may be lost to the return */
+    for (n = 0; n < nprocs; n++) {
+        expect_readable(n, KEEPKEY, "after the re-publish");
+    }
+
     if (0 == nerrs) {
         fprintf(stderr, "delete_key: rank %u: deleted key gone, others kept\n",
+                (unsigned) myproc.rank);
+        fprintf(stderr, "delete_key: rank %u: re-published key came back\n",
                 (unsigned) myproc.rank);
     }
 

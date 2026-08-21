@@ -205,6 +205,15 @@ run_across_nodes() {
             bad "$prog $label, $np servers: only $nok/$np ranks confirmed the deletion"
             return 1
         fi
+        # ...and the key comes back when rank 0 publishes it again. Under
+        # shmem3 the removal is a dated record rather than a removal, so
+        # this is what says the date is honored: a record that shadowed
+        # every later generation would bury the new value too.
+        nok=$(echo "$out" | grep -c 're-published key came back' || true)
+        if [ "$nok" -lt "$np" ]; then
+            bad "$prog $label, $np servers: only $nok/$np ranks saw the key return"
+            return 1
+        fi
     elif [ "$prog" = modex_twice ]; then
         # rank 0 prints one line per fence, and every rank exits non-zero
         # if any peer's value was missing or wrong. Both lines are needed:
@@ -551,12 +560,12 @@ test_linux() {
     for geom in $GEOMETRIES; do
         hosts="${geom%|*}"; np="${geom#*|}"
         run_across_nodes delete_key "$hosts" "$np" "" "(default)" \
-            && ok "$np servers: deleted key gone everywhere, others kept"
+            && ok "$np servers: deleted key gone everywhere, others kept, and it came back"
     done
     for geom in $GEOMETRIES; do
         hosts="${geom%|*}"; np="${geom#*|}"
         run_across_nodes delete_key "$hosts" "$np" "PMIX_MCA_gds=hash" "(hash)" \
-            && ok "$np servers on hash: deleted key gone everywhere, others kept"
+            && ok "$np servers on hash: deleted key gone everywhere, others kept, and it came back"
     done
 
     banner "every get through the progress thread (fast path disabled)"
