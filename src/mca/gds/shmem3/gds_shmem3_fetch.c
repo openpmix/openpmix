@@ -275,9 +275,8 @@ fetch_nodeinfo(
             continue;
         }
         PMIX_GDS_SHMEM3_VOUT(
-            "%s:%s: adding key=%s",
-            PMIX_NAME_PRINT(&pmix_globals.myid),
-            __func__, kvi->key
+            "%s:%s: adding key=%s", __func__,
+            PMIX_NAME_PRINT(&pmix_globals.myid), kvi->key
         );
         // Since they only asked for one key, return just that value.
         pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
