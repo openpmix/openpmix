@@ -752,19 +752,6 @@ job_destruct(
     PMIX_DESTRUCT(&job->datalock);
 }
 
-/**
- * Let go of this job's current modex segment.
- *
- * Releasing our handle does not pull the segment out from under anyone:
- * the backing file carries a reference count, so a client that has it
- * mapped keeps a valid mapping and the file survives until the last
- * holder lets go. That is what makes handing one generation off and
- * starting the next safe.
- *
- * Mirrors what job_destruct() does for this segment; keep the two in
- * step. Order matters - the allocator context is reached through
- * job->smmodex, so it has to go before that pointer is cleared.
- */
 static void
 tombstone_construct(
     pmix_gds_shmem3_tombstone_t *t
@@ -895,6 +882,19 @@ drop_modex_priors(
     pmix_mutex_unlock(&job->datalock);
 }
 
+/**
+ * Let go of this job's current modex segment.
+ *
+ * Releasing our handle does not pull the segment out from under anyone:
+ * the backing file carries a reference count, so a client that has it
+ * mapped keeps a valid mapping and the file survives until the last
+ * holder lets go. That is what makes handing one generation off and
+ * starting the next safe.
+ *
+ * Mirrors what job_destruct() does for this segment; keep the two in
+ * step. Order matters - the allocator context is reached through
+ * job->smmodex, so it has to go before that pointer is cleared.
+ */
 static void
 release_modex_segment(
     pmix_gds_shmem3_job_t *job
@@ -1261,8 +1261,8 @@ fetch_base_tmpdir(
     }
     // Didn't find a specific temp basedir, so just use a general one.
     if (!fetched_kv) {
-        static const char *tmpdir = NULL;
-        if (NULL == (tmpdir = getenv("TMPDIR"))) {
+        const char *tmpdir = getenv("TMPDIR");
+        if (NULL == tmpdir) {
             tmpdir = "/tmp";
         }
         return tmpdir;
@@ -2541,7 +2541,7 @@ unpack_shmem3_connection_info(
              * so it does exactly what it did before they existed. */
             PMIX_GDS_SHMEM3_VOUT(
                 "%s: ignoring unrecognized seg blob key=%s",
-                __func__, kv.key
+                __func__, (NULL == kv.key) ? "(null)" : kv.key
             );
         }
         // Done with this one.
@@ -3173,7 +3173,8 @@ client_connect_to_shmem3_from_buffi(
         }
         else {
             PMIX_GDS_SHMEM3_VOUT(
-                "%s:ERROR unexpected key=%s", __func__, kval.key
+                "%s:ERROR unexpected key=%s", __func__,
+                (NULL == kval.key) ? "(null)" : kval.key
             );
             rc = PMIX_ERR_BAD_PARAM;
             PMIX_ERROR_LOG(rc);
@@ -3287,9 +3288,6 @@ get_modex_sizing_data(
     return result;
 }
 
-/**
- * This gets called for each process participating in the modex.
- */
 /**
  * Stop answering for this key.
  *
