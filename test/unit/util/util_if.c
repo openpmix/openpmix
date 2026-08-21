@@ -72,7 +72,7 @@ static void check_err(const char *label, const char *input)
  * that matters is not universally present.  Building the list by hand lets
  * every platform run the same cases.
  */
-static void add_if(const char *name, uint16_t kindex, int family, const char *addr)
+static void add_if(const char *name, uint32_t kindex, int family, const char *addr)
 {
     pmix_pif_t *intf;
 
@@ -117,6 +117,56 @@ static void teardown_if_list(void)
         PMIX_RELEASE(intf);
     }
     PMIX_DESTRUCT(&pmix_if_list);
+}
+
+/* Every route to "the kernel index of this interface" has to give the
+ * same answer.  It did not: the field holds an unsigned index, and
+ * pmix_ifindextokindex() returns it as an int, but pmix_ifnametokindex()
+ * and pmix_ifaddrtokindex() were declared int16_t - so an index above
+ * 32767, which the field stores perfectly well, came back negative from
+ * one helper and correct from the other.  Every caller tests a kernel
+ * index with "if (0 > kindex)", so the same interface was simultaneously
+ * findable by list index and missing by name.
+ *
+ * Linux hands out interface indices from a counter that only increases,
+ * so a long-lived host that churns veth or container interfaces reaches
+ * these values; a test has to build them by hand because no developer's
+ * laptop will.
+ */
+static void test_large_kernel_index(void)
+{
+    char name[PMIX_IF_NAMESIZE + 1];
+    char *nets[2];
+
+    PMIX_CONSTRUCT(&pmix_if_list, pmix_list_t);
+    add_if("veth0", 40000, AF_INET, "10.9.8.7");     /* > INT16_MAX */
+    add_if("veth1", 70000, AF_INET, "10.9.8.8");     /* > UINT16_MAX */
+
+    report("nametokindex survives an index above INT16_MAX",
+           40000 == pmix_ifnametokindex("veth0"));
+    report("indextokindex agrees with nametokindex",
+           pmix_ifnametokindex("veth0") == pmix_ifindextokindex(pmix_ifnametoindex("veth0")));
+    report("nametokindex survives an index above UINT16_MAX",
+           70000 == pmix_ifnametokindex("veth1"));
+
+    /* and the reverse direction has to find it again */
+    name[0] = '\0';
+    report("kindextoname finds a large index",
+           PMIX_SUCCESS == pmix_ifkindextoname(40000, name, sizeof(name))
+               && 0 == strcmp("veth0", name));
+
+    nets[0] = "10.9.8.0/24";
+    nets[1] = NULL;
+    report("ifmatches finds a large index", PMIX_SUCCESS == pmix_ifmatches(40000, nets));
+
+    /* a negative index is not a kernel index.  It must not convert to a
+     * huge unsigned value and collide with the UINT32_MAX an unassigned
+     * entry carries. */
+    report("kindextoname rejects a negative index",
+           PMIX_SUCCESS != pmix_ifkindextoname(-1, name, sizeof(name)));
+    report("ifmatches rejects a negative index", PMIX_SUCCESS != pmix_ifmatches(-1, nets));
+
+    teardown_if_list();
 }
 
 static void check_match(const char *label, int kidx, char *net, int expected)
@@ -211,6 +261,9 @@ int main(int argc, char **argv)
                     " the warning it prints is expected --\n");
 
     test_ifmatches();
+
+    fprintf(stdout, "\n=== kernel index width unit tests ===\n\n");
+    test_large_kernel_index();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

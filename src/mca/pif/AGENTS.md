@@ -86,7 +86,7 @@ discovered interface and appends it to `pmix_if_list`.
 | `super` | `pmix_list_item_t` | lets the object live on `pmix_if_list` |
 | `if_name` | `char[PMIX_IF_NAMESIZE+1]` | OS interface name (e.g. `en0`, `eth0`) |
 | `if_index` | `int` | **PMIx list index** — 1-based position, assigned `pmix_list_get_size(&pmix_if_list) + 1` as each entry is appended |
-| `if_kernel_index` | `uint16_t` | **OS kernel index** (from `if_nametoindex`, `SIOCGIFINDEX`, or `/proc`) |
+| `if_kernel_index` | `uint32_t` | **OS kernel index** (from `if_nametoindex`, `SIOCGIFINDEX`, or `/proc`); `UINT32_MAX` until a component assigns it |
 | `af_family` | `uint16_t` | `AF_INET` or `AF_INET6` |
 | `if_flags` | `int` | interface flags (`IFF_UP`, `IFF_LOOPBACK`, …) |
 | `if_speed` | `int` | link speed — constructed to 0; **not populated** by any current component |
@@ -113,13 +113,16 @@ Two facts here bite repeatedly:
   `pmix_net_samenetwork()` that only understood /64. See
   [`bsdx_ipv6/AGENTS.md`](bsdx_ipv6/AGENTS.md) — the two are a matched
   pair, and neither could have been corrected alone.
-- **`if_kernel_index` is a `uint16_t`, and `pmix_ifnametokindex()`
-  returns an `int16_t`.** Linux kernel interface indices are 32-bit and
-  monotonically increasing, so a long-lived host that churns veth/container
-  interfaces can hand out an index this field cannot hold. Both types are
-  in the installed [`src/util/pmix_if.h`](../../util/pmix_if.h) and are
-  therefore ABI; it is recorded in
-  [`docs/todo.rst`](../../../docs/todo.rst) rather than fixed here.
+- **A kernel index is 32 bits wide everywhere, and unsigned in the
+  object.** `if_kernel_index` is a `uint32_t`; every helper that
+  *returns* one returns `int` (so it can also return -1 / an error code)
+  and every helper that *takes* one takes `int` and rejects a negative
+  value up front. Do not narrow any of these: Linux issues interface
+  indices from a counter that only increases, so a long-lived host that
+  churns veth or container interfaces reaches values a 16-bit type
+  cannot hold — and when two of these helpers disagreed about the width,
+  the same interface was findable by list index and missing by name at
+  the same time.
 
 `PMIX_IF_NAMESIZE` is 256. `PMIX_PIF_DEFAULT_NUMBER_INTERFACES` (10) and
 `PMIX_PIF_MAX_PIFCONF_SIZE` (10 MiB) in [`pif.h`](pif.h) size the
@@ -141,7 +144,7 @@ The base file is small and does four things:
   list, `PMIX_LIST_STATIC_INIT`) and `pmix_if_do_not_resolve` (a bool
   flag), plus the `PMIX_CLASS_INSTANCE(pmix_pif_t, ...)` whose
   constructor zeroes the object and sets `if_index = -1`,
-  `if_kernel_index = (uint16_t)-1`, `af_family = PF_UNSPEC`.
+  `if_kernel_index = UINT32_MAX`, `af_family = PF_UNSPEC`.
 - **`pmix_pif_base_open`** constructs `pmix_if_list` and calls
   `pmix_mca_base_framework_components_open`, which runs each component's
   open (i.e. its discovery). A `frameopen` guard makes re-open a no-op;

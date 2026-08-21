@@ -224,7 +224,7 @@ static int if_bsdx_ipv6_open(void)
          * (or create our own), getifaddrs() does not contain such
          * data
          */
-        intf->if_kernel_index = (uint16_t) if_nametoindex(cur_ifaddrs->ifa_name);
+        intf->if_kernel_index = if_nametoindex(cur_ifaddrs->ifa_name);
         pmix_list_append(&pmix_if_list, &(intf->super));
     } /*  of for loop over ifaddrs list */
 

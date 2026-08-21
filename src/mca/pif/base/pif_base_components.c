@@ -105,7 +105,7 @@ static void pmix_pif_construct(pmix_pif_t *obj)
 {
     memset(obj->if_name, 0, sizeof(obj->if_name));
     obj->if_index = -1;
-    obj->if_kernel_index = (uint16_t) -1;
+    obj->if_kernel_index = UINT32_MAX;
     obj->af_family = PF_UNSPEC;
     obj->if_flags = 0;
     obj->if_speed = 0;

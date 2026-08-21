@@ -169,7 +169,7 @@ static int if_linux_ipv6_open(void)
             /* now construct the pmix_pif_t */
             pmix_strncpy(intf->if_name, ifname, PMIX_IF_NAMESIZE - 1);
             intf->if_index = pmix_list_get_size(&pmix_if_list) + 1;
-            intf->if_kernel_index = (uint16_t) idx;
+            intf->if_kernel_index = idx;
             ((struct sockaddr_in6 *) &intf->if_addr)->sin6_addr = a6;
             ((struct sockaddr_in6 *) &intf->if_addr)->sin6_family = AF_INET6;
             ((struct sockaddr_in6 *) &intf->if_addr)->sin6_scope_id = scope;

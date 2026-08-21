@@ -104,7 +104,7 @@ int pmix_ifnametoindex(const char *if_name)
  *  corresponding kernel index.
  */
 
-int16_t pmix_ifnametokindex(const char *if_name)
+int pmix_ifnametokindex(const char *if_name)
 {
     pmix_pif_t *intf;
 
@@ -211,7 +211,7 @@ int pmix_ifaddrtoname(const char *if_addr, char *if_name, int length)
  *  or hostname) and return the kernel index of the interface
  *  on the same network as the specified address
  */
-int16_t pmix_ifaddrtokindex(const char *if_addr)
+int pmix_ifaddrtokindex(const char *if_addr)
 {
     pmix_pif_t *intf;
     int error;
@@ -348,10 +348,17 @@ int pmix_ifkindextoaddr(int if_kindex, struct sockaddr *if_addr, unsigned int le
 {
     pmix_pif_t *intf;
 
+    /* a kernel index is unsigned; refuse a negative one rather than let
+     * it convert to a huge unsigned value that could collide with the
+     * UINT32_MAX an unassigned entry carries */
+    if (0 > if_kindex) {
+        return PMIX_ERROR;
+    }
+
     for (intf = (pmix_pif_t *) pmix_list_get_first(&pmix_if_list);
          intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
          intf = (pmix_pif_t *) pmix_list_get_next(intf)) {
-        if (intf->if_kernel_index == if_kindex) {
+        if (intf->if_kernel_index == (uint32_t) if_kindex) {
             memcpy(if_addr, &intf->if_addr, MIN(length, sizeof(intf->if_addr)));
             return PMIX_SUCCESS;
         }
@@ -472,11 +479,16 @@ int pmix_ifkindextoname(int if_kindex, char *if_name, int length)
 {
     pmix_pif_t *intf;
 
+    /* see pmix_ifkindextoaddr() */
+    if (0 > if_kindex) {
+        return PMIX_ERROR;
+    }
+
     memset(if_name, 0, length);
     for (intf = (pmix_pif_t *) pmix_list_get_first(&pmix_if_list);
          intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
          intf = (pmix_pif_t *) pmix_list_get_next(intf)) {
-        if (intf->if_kernel_index == if_kindex) {
+        if (intf->if_kernel_index == (uint32_t) if_kindex) {
             pmix_strncpy(if_name, intf->if_name, length - 1);
             return PMIX_SUCCESS;
         }
@@ -641,11 +653,16 @@ int pmix_ifmatches(int kidx, char **nets)
     struct sockaddr_in inaddr;
     uint32_t addr, netaddr, netmask;
 
+    /* see pmix_ifkindextoaddr() */
+    if (0 > kidx) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+
     /* confirm we actually know this interface - the address itself is
      * fetched below, per entry, since an interface can carry more than one */
     PMIX_LIST_FOREACH(intf, &pmix_if_list, pmix_pif_t)
     {
-        if (intf->if_kernel_index == kidx) {
+        if (intf->if_kernel_index == (uint32_t) kidx) {
             known = true;
             break;
         }
@@ -690,7 +707,7 @@ int pmix_ifmatches(int kidx, char **nets)
              * matched itself. */
             PMIX_LIST_FOREACH(intf, &pmix_if_list, pmix_pif_t)
             {
-                if (intf->if_kernel_index != kidx) {
+                if (intf->if_kernel_index != (uint32_t) kidx) {
                     continue;
                 }
                 if (AF_INET != ((struct sockaddr *) &intf->if_addr)->sa_family) {

@@ -273,7 +273,7 @@ static int if_posix_open(void)
 #    elif defined(ifr_index)
         intf->if_kernel_index = ifr->ifr_index;
 #    else
-        intf->if_kernel_index = -1;
+        intf->if_kernel_index = UINT32_MAX;
 #    endif
 #endif /* SIOCGIFINDEX */
 

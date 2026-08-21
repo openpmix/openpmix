@@ -161,7 +161,7 @@ static int if_bsdx_open(void)
         }
         intf->if_flags = cur_ifaddrs->ifa_flags;
 
-        intf->if_kernel_index = (uint16_t) if_nametoindex(cur_ifaddrs->ifa_name);
+        intf->if_kernel_index = if_nametoindex(cur_ifaddrs->ifa_name);
 
         pmix_list_append(&pmix_if_list, &(intf->super));
     } /*  of for loop over ifaddrs list */
