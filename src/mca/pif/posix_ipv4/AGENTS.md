@@ -53,8 +53,9 @@ name `"posix_ipv4"`, single `.pmix_mca_open_component = if_posix_open`.
    "buffer too small" incompatibly — the long comment enumerates Solaris
    (returns -1/EINVAL), macOS (fills only what fit), Linux (reports the
    full required length), and FreeBSD (sets len to 0). The buffer doubles
-   up to `MAX_PIFCONF_SIZE` (10 MiB) until the returned length stops
-   changing, starting from `DEFAULT_NUMBER_INTERFACES` (10) entries.
+   up to `PMIX_PIF_MAX_PIFCONF_SIZE` (10 MiB) until the returned length
+   stops changing, starting from `PMIX_PIF_DEFAULT_NUMBER_INTERFACES` (10)
+   entries.
 3. Walks the returned `struct ifreq` array (advancing by a
    `sa_len`-aware stride where `HAVE_STRUCT_SOCKADDR_SA_LEN` is defined),
    and for each interface:

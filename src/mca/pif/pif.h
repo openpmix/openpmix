@@ -56,26 +56,15 @@
 
 BEGIN_C_DECLS
 
-/*
- * Define INADDR_NONE if we don't have it.  Solaris is the only system
- * where I have found that it does not exist, and the man page for
- * inet_addr() says that it returns -1 upon failure.  On Linux and
- * other systems with INADDR_NONE, it's just a #define to -1 anyway.
- * So just #define it to -1 here if it doesn't already exist.
- */
+/* Size the growing SIOCGIFCONF buffer in posix_ipv4: start at room for
+ * this many interfaces, and double until the kernel stops asking for
+ * more or we hit the cap.  Both carry the framework prefix because this
+ * header is installed. */
+#define PMIX_PIF_DEFAULT_NUMBER_INTERFACES 10
+#define PMIX_PIF_MAX_PIFCONF_SIZE          (10 * 1024 * 1024)
 
-#if !defined(INADDR_NONE)
-#    define INADDR_NONE -1
-#endif
-
-#define DEFAULT_NUMBER_INTERFACES 10
-#define MAX_PIFCONF_SIZE          10 * 1024 * 1024
-
-/* "global" list of available interfaces */
-extern pmix_list_t pmix_if_list;
-
-/* global flags */
-extern bool pmix_if_do_not_resolve;
+/* pmix_if_list and pmix_if_do_not_resolve are declared by
+ * src/util/pmix_if.h, included above. */
 
 /**
  * Structure for if components.

@@ -121,19 +121,22 @@ Two facts here bite repeatedly:
   therefore ABI; it is recorded in
   [`docs/todo.rst`](../../../docs/todo.rst) rather than fixed here.
 
-`PMIX_IF_NAMESIZE` is 256. `DEFAULT_NUMBER_INTERFACES` (10) and
-`MAX_PIFCONF_SIZE` (10 MiB) in [`pif.h`](pif.h) size the `posix_ipv4`
-ioctl buffer growth.
+`PMIX_IF_NAMESIZE` is 256. `PMIX_PIF_DEFAULT_NUMBER_INTERFACES` (10) and
+`PMIX_PIF_MAX_PIFCONF_SIZE` (10 MiB) in [`pif.h`](pif.h) size the
+`posix_ipv4` ioctl buffer growth. `pif.h` is an *installed* header, so
+anything added there needs the prefix.
 
 ## Selection and lifecycle (`base/pif_base_components.c`)
 
 The base file is small and does four things:
 
 - **Declares the framework** with
-  `PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pif, NULL, register, open, close,
-  static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT)`. Note the
-  `NULL` description and the *default* flag — there is no separate select
-  phase.
+  `PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, pif, NULL, register,
+  open, close, static_components,
+  PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT)`. Note the `NULL` description and
+  the *default* flag — there is no separate select phase. The *versioned*
+  form is what lets the base refuse a component built against a different
+  `PMIX_MCA_pif_*_VERSION` (stated in [`pif.h`](pif.h) and nowhere else).
 - **Instantiates the globals**: `pmix_if_list` (the shared interface
   list, `PMIX_LIST_STATIC_INIT`) and `pmix_if_do_not_resolve` (a bool
   flag), plus the `PMIX_CLASS_INSTANCE(pmix_pif_t, ...)` whose
