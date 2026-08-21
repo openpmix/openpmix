@@ -685,12 +685,20 @@ so it was documented and treated as server-only. But it is *also* what
 dates a tombstone, and `del_key()` runs on the client too. A client that
 left it at zero stamped every tombstone with generation zero, and
 `generation <= t->generation` then held for every generation it ever
-mapped: a key deleted and re-published in a later fence stayed invisible
-to that client for the rest of the run. A keyed `PMIx_Get` merely lost
-its fast path and went to the server; a **NULL-key** fetch returned a
-list with the key silently missing and reported success, so nothing
-looked further. `advance_modex_generation()` is called from both sides
-now. The two counters are never compared with each other — each only has
+mapped: on that client the removal never expired.
+
+Be accurate about what that cost, because the fallbacks hide most of it.
+A keyed `PMIx_Get` filters the key out here, misses, and goes to the
+server - which advanced *its* counter and answers correctly - so the
+caller gets the right value and pays a round trip. What is genuinely
+wrong is a NULL-key read that reaches the modex at all: `modex_fetch()`
+drops the re-published key and `shmem3_fetch_from_job()` reports success
+because the list is not empty, so nothing looks further. That needs the
+local table to miss for the rank, or an explicit `PMIX_REMOTE` scope -
+an unqualified NULL-key get of a rank the job data describes is answered
+out of the job segment and never consults the modex. So: a real
+inconsistency with a narrow blast radius, not a common wrong answer.
+`advance_modex_generation()` is called from both sides now. The two counters are never compared with each other — each only has
 to advance whenever *its* process takes on a new generation.
 
 Two shapes of read, two filters. A keyed lookup that finds only
