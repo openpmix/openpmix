@@ -531,6 +531,7 @@ pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
     bool sidgiven = false;
     bool nigiven = false;
     bool apigiven = false;
+    bool found;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "%s pmix:gds:hash fetch %s for proc %s on scope %s on behalf of %s",
@@ -739,6 +740,7 @@ doover:
             }
         }
         /* also need to check any job-level info */
+        found = false;
         PMIX_LIST_FOREACH (kvptr, &trk->jobinfo, pmix_kval_t) {
             if (NULL == key || PMIX_CHECK_KEY(kvptr, key)) {
                 kv = PMIX_NEW(pmix_kval_t);
@@ -751,6 +753,7 @@ doover:
                 }
                 pmix_list_append(kvs, &kv->super);
                 if (NULL != key) {
+                    found = true;
                     break;
                 }
             }
@@ -759,6 +762,19 @@ doover:
             /* and need to add all job info just in case that was
              * passed via a different GDS component */
             rc = pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, NULL);
+        } else if (found) {
+            /* the job-level list is not one of the scopes, so a hit in it
+             * is the whole answer and there is nothing further to search.
+             * Reporting NOT_FOUND here instead sent the caller into the
+             * "try the next scope" doover below, which arrives back at
+             * this same list and appends the value again - once for the
+             * local table and once for the remote - so the fetch returned
+             * three copies of the one key and called it success. The
+             * client's process_values() then read that count as "an
+             * aggregate of everything this proc put" and handed the
+             * application a PMIX_DATA_ARRAY of duplicates where it had
+             * asked for a scalar. */
+            return PMIX_SUCCESS;
         } else {
             rc = PMIX_ERR_NOT_FOUND;
         }
