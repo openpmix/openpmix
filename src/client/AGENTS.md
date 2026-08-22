@@ -2763,6 +2763,129 @@ Two consequences worth keeping straight:
 non-blocking one; that omission is what makes this so easy to get wrong,
 and it is corrected.
 
+## Which rank a `PMIx_Get` actually asks about, and where job-level data lives
+
+Read this before touching `pmix_client_get.c`. Everything here is one
+fact wearing several hats, and the hats do not look related.
+
+**Three rank values reach the datastore, and they select three different
+searches.** `process_request()` maps a NULL `proc` to `PMIX_RANK_UNDEF`
+(the legacy-PMI form: "this key is unique within my nspace, find it"),
+the realm branches in `get_data()` set `PMIX_RANK_UNDEF` deliberately
+("this request is required to ignore the procID"), and an application
+asking for job-level data the documented way passes
+`PMIX_RANK_WILDCARD`. `pmix_gds_hash_fetch()` answers them differently:
+
+- `PMIX_RANK_WILDCARD` reads the job-level table — `trk->internal` under
+  that rank, which is where a key handed to
+  `PMIx_server_register_nspace` at the top level of its info array ends
+  up.
+- `PMIX_RANK_UNDEF` **searches the per-rank tables**, plus the job-info
+  list `trk->jobinfo` — which is a *different* store, filled only by
+  `PMIX_JOB_INFO_ARRAY` processing (`pmix_gds_hash_process_job_array()`).
+- a valid rank reads that rank's tables.
+
+So neither of the two "job-level" rank values sees both job-level
+stores, and `PMIx_Get(NULL, key, …)` — a very common call — landed on
+the one that misses `trk->internal`. `get_data()` now retries a
+`PMIX_RANK_UNDEF` miss at `PMIX_RANK_WILDCARD` before going to the
+server, which is the retry `_getnb_cbfunc()` has always made once the
+reply is in hand. **What is still missing is the mirror image**: a keyed
+fetch at `PMIX_RANK_WILDCARD` does not consult `trk->jobinfo` at all, so
+a key registered inside a `PMIX_JOB_INFO_ARRAY` is unreachable that way.
+That one is recorded in [`docs/todo.rst`](../../docs/todo.rst) rather
+than fixed here, because it is a question about what `trk->jobinfo` is
+for rather than a transcription error. Coverage for both halves is
+`test/unit/get_api.c`.
+
+**`process_values()` decides by counting, so an entry left behind by a
+fetch that failed is a wrong answer.** It returns the single value when
+`cb->key` is non-NULL and the list holds exactly one kval, and otherwise
+builds a `PMIX_DATA_ARRAY` of everything on it. A gds fetch may append
+and *then* fail — `pmix_gds_hash_fetch()` does, and the WILDCARD retry
+above means `get_data()` now fetches into one caddy up to three times
+before the same caddy goes on the pending list for `_getnb_cbfunc()` to
+fetch into again. Every failed fetch therefore empties the list
+(`DRAIN_KVS`), which is the rule the seventh sweep already wrote for
+`try_local_fetch()`: **a short-circuit is never a partial one.** Nothing
+leaks either way, since `cbdes()` destructs the list, so the symptom is
+a data array where the caller asked for a scalar and valgrind says
+nothing.
+
+**A NULL key is legal on every path here, including the one that goes to
+the server.** `_getnb_cbfunc()` used to demand exactly one kval back
+from its post-reply fetch and answer `PMIX_ERR_INVALID_VAL` otherwise,
+with a comment claiming a NULL key never reached it. It does:
+`get_data()` has an explicit `NULL == cb->key` branch above the send and
+`_pack_get()` simply omits the key, which the server reads as "all data
+for this proc" (`keyprovided` in
+[`pmix_server_get.c`](../server/pmix_server_get.c)). It now shapes the
+answer with `process_values()`, the same function `get_data()` uses, so
+the two paths cannot disagree about it again.
+
+**Know why that one is hard to reproduce**, so the next reader does not
+conclude it was imaginary. A NULL-key get of a peer in our *own*
+namespace is normally answered locally and never leaves the process:
+the job data carries per-proc keys (`pmix.grank`, `pmix.lrank`,
+`pmix.nodeid`, `pmix.hname`, `pmix.appnum`, …) for every rank, so the
+local fetch finds those and stops — under `simptest` it returns exactly
+that set and nothing the peer `PMIx_Put`. The request reaches the server
+only when the local store has nothing for the proc at all: a namespace
+we have no job data for (`get_data()`'s "different nspace" branch, which
+switches the request to `PMIX_RANK_WILDCARD` to fetch it), or a
+deployment that does not push the per-proc keys down — PRRTE above
+`prte_hostname_cutoff`. That is a swarm case, not a `make check` one.
+
+**Job-level data is stored against `myserver`'s module, not our own.**
+`job_data()` in [`pmix_client.c`](pmix_client.c) hands the reply to
+`PMIX_GDS_STORE_JOB_INFO(…, pmix_client_globals.myserver, …)`, while
+`PMIX_GDS_ACCEPT_KVS_RESP` and `refcb()` store into
+`pmix_globals.mypeer`. On a client whose server also uses `hash` the two
+are the same tables — `pmix_gds_hash_get_tracker()` reads a
+component-global list — which is why the distinction is invisible in
+almost every test and why the hostname, nodeid and appnum lookups in
+`get_data()` carry an explicit `PMIX_PEER_IS_CLIENT(mypeer) ? myserver :
+mypeer` switch. The session-id lookup beside them did not, and a
+`shmem3` client therefore failed to resolve another proc's session and
+went on to ask with `sessionid` still `UINT32_MAX`. **If you add a
+fourth lookup there, copy the switch.**
+
+### Refuted here, so you need not re-derive it
+
+- **`PMIx_Get` does not default `*val` before its early parameter
+  checks**, which reads as a violation of this directory's "define every
+  OUT parameter before the first thing that can fail" rule. It cannot:
+  under `PMIX_GET_STATIC_VALUES` the argument is IN/OUT — `*val` is the
+  caller's own storage on the way in, and `process_request()`
+  dereferences it to find that storage — so nothing may be written
+  through it until the info array has been parsed. The `PMIX_ERR_INIT`,
+  `PMIX_ERR_NOT_AVAILABLE` and key-length returns therefore leave `*val`
+  alone deliberately.
+- **The `PMIX_OPTIONAL` that `get_data()` appends to a realm-redirected
+  info array rides up the wire**, since that array is what `_pack_get()`
+  sends. It is inert: nothing in `src/mca/gds` or `src/server` reads
+  `PMIX_OPTIONAL` at all — the server's directive scan honors
+  `PMIX_IMMEDIATE` for "do not ask anyone else". So this does not
+  quietly confine a realm request to the server's own store.
+- **The session branch of `get_data()` does not reset the rank to
+  `PMIX_RANK_UNDEF` where its node and app siblings do.** That is not
+  drift: `pmix_gds_hash_fetch()` answers a session-info request and
+  returns *before* it looks at the rank, while the node and app arms sit
+  under `!PMIX_RANK_IS_VALID(proc->rank)` and are unreachable without the
+  reset.
+- **`cb->proc` is left pointing at `_getnb_cbfunc()`'s stack `rproc`**
+  after the caddy is delivered. Nothing reads it afterwards and
+  `cbdes()` does not touch `proc`; the snapshot exists because the caddy
+  the reply was addressed to is itself on the pending list and its `lg`
+  is released partway through the delivery loop.
+- **`PMIX_GET_POINTER_VALUES` is honored only by the three shortcuts
+  `process_request()` answers outright** (`PMIX_PROCID`, `PMIX_RANK`,
+  and — inconsistently — not `PMIX_VERSION_NUMERIC`). Every other path
+  hands back an allocated copy the caller must release. That is a real
+  gap against what the attribute says, but closing it is a change to the
+  ownership rules `PMIx_Get(3)` documents rather than a fix; recorded in
+  `docs/todo.rst`.
+
 ## Coding conventions specific to this directory
 
 - **Mark the exceptional branch.** Error checks, parameter validation,

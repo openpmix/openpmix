@@ -293,13 +293,13 @@ Ordered by how much of the directory the review no longer covers.
    unfixed has an entry of its own below.
 
    Note also a difference in depth, not just currency: only
-   ``pmix_client.c``, ``pmix_client_group.c`` and
-   ``pmix_client_spawn.c`` have had the five-lens per-file treatment.  ``pmix_client_connect.c``,
+   ``pmix_client.c``, ``pmix_client_group.c``, ``pmix_client_spawn.c``
+   and ``pmix_client_get.c`` (2026-08-22) have had the five-lens
+   per-file treatment.  ``pmix_client_connect.c``,
    ``pmix_client_convert.c``, ``pmix_client_fabric.c``,
-   ``pmix_client_fence.c``, ``pmix_client_get.c`` and
-   ``pmix_client_pub.c`` are covered by the July 2026 directory-wide
-   sweep and the targeted passes since, which is one review each rather
-   than five.
+   ``pmix_client_fence.c`` and ``pmix_client_pub.c`` are covered by the
+   July 2026 directory-wide sweep and the targeted passes since, which
+   is one review each rather than five.
 #. **``src/server``** — the 2026-08-09 → 15 commit run *is* the review,
    performed after the source was split into function-oriented files, so
    the body of the directory is covered.  Outside it is the same late
@@ -453,6 +453,70 @@ cover the whole of what the entry described.
   ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
+
+Job-level data lives in two stores and neither rank sees both
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/client/pmix_client_get.c`` (2026-08-22); what is
+left belongs in ``src/mca/gds/hash/gds_fetch.c``.
+
+``gds/hash`` keeps job-level data in two places.  A key handed to
+``PMIx_server_register_nspace`` at the top level of its info array is
+stored in ``trk->internal`` under ``PMIX_RANK_WILDCARD``; a key handed to
+it inside a ``PMIX_JOB_INFO_ARRAY`` goes on ``trk->jobinfo``, a plain
+list, by way of ``pmix_gds_hash_process_job_array()``.  Both are
+job-level, and a host may reasonably use either.
+
+``pmix_gds_hash_fetch()`` reads exactly one of them per rank value:
+
+* ``PMIX_RANK_WILDCARD`` with a key reads ``trk->internal`` and **never
+  consults** ``trk->jobinfo``;
+* ``PMIX_RANK_UNDEF`` with a key searches the per-rank tables and
+  ``trk->jobinfo``, and never the job-level table.
+
+Two of the three resulting holes are closed.  The ``UNDEF`` side now
+retries at ``PMIX_RANK_WILDCARD`` in ``get_data()`` before going to the
+server, and the ``jobinfo`` walk no longer reports ``PMIX_ERR_NOT_FOUND``
+after a hit — it used to, which sent the fetch round the "try the next
+scope" ``doover`` to walk the same list twice more, so a job-level key
+came back three times and the client handed the application a
+``PMIX_DATA_ARRAY`` of duplicates where it had asked for a scalar.
+Regression coverage for both is ``test/unit/get_api.c``.
+
+**What is left is the third**: a keyed fetch at ``PMIX_RANK_WILDCARD``
+still cannot see ``trk->jobinfo``, so
+``PMIx_Get(&{nspace, PMIX_RANK_WILDCARD}, key, …)`` — the documented way
+to ask for job-level data — answers ``PMIX_ERR_NOT_FOUND`` for anything
+the host supplied inside a ``PMIX_JOB_INFO_ARRAY``.  It is recorded
+rather than fixed because the fix is a decision about what
+``trk->jobinfo`` is for: either the wildcard path grows a walk of it, or
+the two stores merge.  The wildcard path is also what the server uses to
+assemble job data for its clients, so a change there wants its own
+review of that side rather than a two-line addition made from the client
+directory.
+
+``PMIX_GET_POINTER_VALUES`` is honored by three shortcuts and nothing else
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/client/pmix_client_get.c`` (2026-08-22).
+
+The attribute asks that "any pointers in the returned value point
+directly to values in the key-value store".  ``process_request()`` obeys
+it for the two requests it answers out of ``pmix_globals`` —
+``PMIX_PROCID`` returns ``&pmix_globals.myidval`` and ``PMIX_RANK``
+returns ``&pmix_globals.myrankval`` — and, inconsistently, not for
+``PMIX_VERSION_NUMERIC``, which allocates.  Every other path, local hit
+or server round trip, hands back an allocated copy the caller must
+release.
+
+Closing it is not a fix but a change to the ownership contract
+``PMIx_Get(3)`` states, and one that has to answer a question the
+shortcuts do not raise: a pointer into the datastore is only safe while
+the datastore holds it, and ``gds/hash`` rewrites its tables on the
+progress thread.  The two shortcuts are safe because they point at
+process-lifetime globals.  Left as recorded behavior; the smaller,
+separable piece is making ``PMIX_VERSION_NUMERIC`` agree with its two
+neighbours.
 
 The server and tool give back mypeer's second reference the long way
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
