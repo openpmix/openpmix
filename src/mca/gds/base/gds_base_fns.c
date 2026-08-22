@@ -28,7 +28,67 @@
 #include "src/util/pmix_show_help.h"
 
 #include "src/mca/gds/base/base.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/server/pmix_server_ops.h"
+
+/* carries a fetch across to the progress thread - see
+ * pmix_gds_base_fetch_kv_tsafe() below */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_peer_t *peer;
+    pmix_cb_t *cb;
+    pmix_status_t status;
+} pmix_gds_fetch_caddy_t;
+
+static void fetch_shift(int sd, short args, void *cbdata)
+{
+    pmix_gds_fetch_caddy_t *fc = (pmix_gds_fetch_caddy_t *) cbdata;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(fc);
+    PMIX_GDS_FETCH_KV(rc, fc->peer, fc->cb);
+    fc->status = rc;
+    PMIX_POST_OBJECT(fc);
+    PMIX_WAKEUP_THREAD(&fc->lock);
+}
+
+pmix_status_t pmix_gds_base_fetch_kv_tsafe(struct pmix_peer_t *peer, pmix_cb_t *cb)
+{
+    /* on the stack because we wait for it: PMIX_WAIT_THREAD holds this
+     * frame until the handler has woken us, which is the one shape in
+     * which a caddy may live there (see PMIx_Load_topology for the
+     * other) */
+    pmix_gds_fetch_caddy_t fc;
+    pmix_status_t rc;
+
+    PMIX_GDS_FETCH_IS_TSAFE(rc, peer);
+    if (PMIX_SUCCESS == rc || pmix_progress_thread_is_current()) {
+        /* the module may be read from anywhere, or we are already the
+         * thread that does every store */
+        PMIX_GDS_FETCH_KV(rc, peer, cb);
+        return rc;
+    }
+    if (NULL == pmix_globals.evbase ||
+        pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        /* there is nobody to hand it to, and nobody to race with either -
+         * before the thread starts and after it stops, this process is
+         * the only one touching the store */
+        PMIX_GDS_FETCH_KV(rc, peer, cb);
+        return rc;
+    }
+
+    PMIX_CONSTRUCT_LOCK(&fc.lock);
+    fc.peer = peer;
+    fc.cb = cb;
+    fc.status = PMIX_ERR_INIT;
+    PMIX_THREADSHIFT(&fc, fetch_shift);
+    PMIX_WAIT_THREAD(&fc.lock);
+    rc = fc.status;
+    PMIX_DESTRUCT_LOCK(&fc.lock);
+    return rc;
+}
 
 char *pmix_gds_base_get_available_modules(void)
 {

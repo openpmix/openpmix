@@ -72,6 +72,7 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
                                         void *cbdata);
 pmix_status_t pmix_gds_base_proc_array_id(const pmix_info_t *array, size_t size,
                                           pmix_rank_t *rank, size_t *idpos);
+pmix_status_t pmix_gds_base_fetch_kv_tsafe(struct pmix_peer_t *peer, pmix_cb_t *cb);
 ```
 
 Each is `PMIX_EXPORT`ed; the components' own symbols are not, which is
@@ -100,6 +101,49 @@ through the macros.
   preferring `PMIX_RANK`, and returns the array index that carried it so
   the caller can skip it when storing the rest. Covered by
   `test/unit/proc_array_id`.
+- **`fetch_kv_tsafe`** is `PMIX_GDS_FETCH_KV` for a caller that is not on
+  the progress thread. See below.
+
+## Reading a datastore from another thread
+
+**A module's `is_tsafe` flag is the whole of the answer, and most of the
+tree ignores it because most of the tree is already on the progress
+thread.** Every store happens there, so a fetch that runs anywhere else
+is walking a structure something else may be rewriting: `gds/hash` sets
+`is_tsafe = false` precisely because `pmix_hash_store()` can grow the
+table a reader is in the middle of. `gds/shmem3` sets it `true`, and
+even that is narrower than it looks — see the `is_tsafe` section of
+[`../shmem3/AGENTS.md`](../shmem3/AGENTS.md) for what it had to add
+before the claim was true.
+
+`PMIX_GDS_FETCH_IS_TSAFE(rc, peer)` reports the flag, and
+`try_local_fetch()` in
+[`src/client/pmix_client_get.c`](../../../client/pmix_client_get.c) is
+the original consumer: `PMIx_Get` answers on the caller's thread when the
+module allows it and thread-shifts when it does not.
+
+`pmix_gds_base_fetch_kv_tsafe()` packages that decision so the other
+callers do not each have to make it. It fetches inline when the module
+permits it, when we are already the progress thread
+(`pmix_progress_thread_is_current()`), or when there is no progress
+thread yet — and otherwise posts the fetch there and waits on a stack
+caddy. Two rules for using it:
+
+- **Use it wherever the calling thread is not known.** The five sites in
+  `src/client` that read the datastore from an application thread —
+  `get_endpts()` and `invite_job_size()` in `pmix_client_group.c`, two in
+  `PMIx_Connect_nb`, and the job-size lookup in
+  `pmix_client_convert_group_procs()` — all go through it. The sites
+  inside a `PMIX_THREADSHIFT` handler (`get_data()`, `respeer()`,
+  `resolve_peers()`, `_findpeer()`, `pmix_parse_localquery()`) do not
+  need it, and should keep using the macro directly.
+- **It waits, so the caller must be able to.** Never call it holding a
+  lock the progress thread may want. `pmix_client_convert_group_procs()`
+  used to hold `pmix_client_globals.grouplock` across its fetch; that
+  became a deadlock the moment the fetch could shift, because the group
+  bookkeeping in `pmix_invoke_local_event_hdlr` takes the same lock on
+  the progress thread. It now snapshots the group memberships under the
+  lock and expands them after releasing it.
 
 ## `pmix_gds_base_store_modex` — the envelope walker
 
