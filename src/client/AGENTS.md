@@ -2649,6 +2649,89 @@ the other two need a peer that can be made to send a malformed message.
 `test/unit/client_commit.c`, which runs as a singleton and so never
 reaches `_commitfn` at all.
 
+## The sixteenth sweep — `pmix_client_spawn.c`'s three dispatch paths
+
+`PMIx_Spawn_nb` fans out three ways and they do not do the same work.
+Most of what this sweep found sits in the gaps between them.
+
+| path | taken when | parses IOF directives | who completes the caddy |
+|---|---|---|---|
+| `_spawn_for_host` | a server that is not a launcher or tool | yes, and `pmix_server_process_iof()` acts on `channels`/`inherit_iof` | `localcbfunc` → `_lclcbfunc` |
+| fork/exec | a launcher with no server | **no** | `pmix_pfexec.c` |
+| PTL send | everyone else | yes, and `wait_cbfunc` copies `flags` onto the namespace | `wait_cbfunc` |
+
+**The completion paths have to agree about a NULL callback, and one did
+not.** `PMIx_Spawn_nb` takes `cbfunc` straight from its caller with no
+screen; `_lclcbfunc()` and `wait_cbfunc()` both guard `NULL !=
+fcd->spcbfunc`, and `pmix_pfexec.c` did not — so a spawn issued with no
+callback took the process down on the one path where it was meant to
+simply tell nobody. Guarded there too. Whether `PMIx_Spawn_nb` ought to
+refuse a NULL callback outright is a live question (the operation can
+report *nothing* without one, not even failure) and is recorded in
+`docs/todo.rst`; until it is answered, the three paths at least behave
+the same way.
+
+**`pmix_iof_spawn_end()` is progress-thread work, and one caller is not
+on that thread.** When it takes the in-flight count to zero it resets
+`pmix_globals.spawn_iof_flags` and calls `release_pending(NULL)`, which
+walks and empties the list the progress thread appends forwarded output
+to. `wait_cbfunc` reaches it from the right thread; `PMIx_Spawn_nb`'s
+send-failure path reaches it from the application's. It now shifts and
+waits when it is not already there, the same shape
+`pmix_gds_base_fetch_kv_tsafe()` uses. If you add a caller, the question
+to ask is only which thread it is on.
+
+**The fork/exec path never parses the request's IOF directives at all.**
+That is not fixed here — see `docs/todo.rst`, since acting on them is a
+`pfexec` change and a small feature rather than a transcription. Know
+that it is a real behavior difference: the same `PMIx_Spawn` with
+`PMIX_IOF_TAG_OUTPUT` tags output from a connected launcher and does not
+from a disconnected one, which is precisely what `PMIx_Spawn(3)`'s
+"single code path" promise says will not happen.
+
+### `PMIx_Spawn_nb` cannot answer `PMIX_OPERATION_SUCCEEDED`
+
+Its entire product is the namespace, and the callback is the only place
+that can be delivered — there is no output argument on the non-blocking
+form. So an atomic completion would report success and say nothing about
+what was started. `PMIx_Spawn` has no arm for it (an earlier one mapped
+it to `PMIX_SUCCESS` with the caller's namespace left empty), and
+`_spawn_for_host()` refuses a host that answers the up-call that way,
+with a `show_help` and `PMIX_ERR_NOT_SUPPORTED`. `PMIx_Spawn(3)`
+documented the opposite in two places — a return value callers "must
+handle distinctly", and a claim that `PMIx_Spawn` "absorbs this case
+internally and simply returns `PMIX_SUCCESS` with the namespace
+populated", which was never true. Corrected.
+
+### Refuted here, so you need not re-derive it
+
+- **`_lclcbfunc()` frees `fcd->nspace` and then releases the caddy**,
+  which looks like a double free waiting for `scaddes()` to catch up. It
+  is not: `scaddes()` does not touch `nspace`, and `_lclcbfunc` is the
+  only thing that sets it free. `pfexec` never sets the field at all.
+- **`wait_cbfunc` memcpy's over `nptr->iof_flags`**, which would leak an
+  already-allocated `file`/`directory` on that namespace. Nothing in the
+  tree ever sets those to a non-NULL value on a namespace object except
+  this one site, which NULLs them immediately after.
+- **The `while (m < SIZE_MAX && !PMIX_INFO_IS_END(...))` walk** looks
+  like it can run off the end of the caller's array. It can, and that is
+  the API: an app that passes `ninfo == 0` with a non-NULL array is
+  required to have marked the last element with `PMIX_INFO_SET_END`.
+  Nothing in PMIx sets that flag for an application — `PMIx_Info_create`
+  deliberately does not — so the bound is decorative either way.
+  (`pmix_query.c` has the same walk with the test and the dereference in
+  the other order; equally decorative, equally contract-dependent.)
+
+*What is and is not tested.* The off-thread stand-down is covered by
+`test/unit/iof_pending.c`, which calls `pmix_iof_spawn_end()` directly
+from `main()` rather than through its thread-shifting helper; the branch
+was confirmed taken by instrumenting it. The outcome is the same either
+way, so what that case holds down is that the shifted path completes
+rather than hanging — the race itself has no deterministic test. Nothing
+here exercises a spawn end to end: `simptest` fakes the up-call, and
+`simpdyn` under it loops on `PMIx_Fence` failures for reasons that
+predate this work.
+
 ## Coding conventions specific to this directory
 
 - **Mark the exceptional branch.** Error checks, parameter validation,
