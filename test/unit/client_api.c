@@ -672,6 +672,109 @@ static void test_topology_bad_params(void)
  * "initialized" gate, yet it reaches PMIX_PEER_IS_SCHEDULER(mypeer) - and
  * mypeer does not exist until PMIx_Init has run. Must be called before
  * init, so it lives outside the block below. */
+/* PMIX_MODEL_DECLARED carries only the keys that were actually given.
+ *
+ * _check_for_notify() keeps one pointer per model key and stores the
+ * last match for each, so a caller that names one of them twice is
+ * declaring one model, not two. The info array it builds has to be
+ * sized and counted from the keys it kept - counting the matches
+ * instead handed every handler a tail of zeroed entries with an empty
+ * key, as though they were real declarations.
+ *
+ * The second PMIx_Init is what drives this: the already-initialized
+ * branch runs the same check, and by then a handler can be registered
+ * to see the result. */
+static volatile int modelcb = 0;
+static int model_ninfo = 0;
+static int model_empty_keys = 0;
+static char model_value[PMIX_MAX_KEYLEN + 1];
+
+static void model_evhdlr(size_t evhdlr_registration_id, pmix_status_t status,
+                         const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                         pmix_info_t results[], size_t nresults,
+                         pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    size_t n;
+
+    (void) evhdlr_registration_id;
+    (void) status;
+    (void) source;
+    (void) results;
+    (void) nresults;
+
+    model_ninfo = (int) ninfo;
+    model_value[0] = '\0';
+    for (n = 0; n < ninfo; n++) {
+        if ('\0' == info[n].key[0]) {
+            ++model_empty_keys;
+            continue;
+        }
+        if (0 == strncmp(info[n].key, PMIX_PROGRAMMING_MODEL, PMIX_MAX_KEYLEN)
+            && PMIX_STRING == info[n].value.type
+            && NULL != info[n].value.data.string) {
+            pmix_strncpy(model_value, info[n].value.data.string, PMIX_MAX_KEYLEN);
+        }
+    }
+    ++modelcb;
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
+    }
+}
+
+static void model_regcb(pmix_status_t status, size_t refid, void *cbdata)
+{
+    (void) status;
+    (void) refid;
+    (void) cbdata;
+    cbcount++;
+}
+
+static void test_model_declared_duplicate_key(void)
+{
+    pmix_status_t code = PMIX_MODEL_DECLARED;
+    pmix_info_t decl[3];
+    pmix_proc_t p;
+    pmix_status_t rc;
+    int spins;
+
+    fprintf(stdout, "\n-- PMIX_MODEL_DECLARED with a repeated key --\n");
+
+    cbcount = 0;
+    PMIx_Register_event_handler(&code, 1, NULL, 0, model_evhdlr, model_regcb, NULL);
+    if (!wait_for_cb(1)) {
+        check(0, "the model handler registered");
+        return;
+    }
+
+    /* name the programming model twice - one declaration, not two */
+    PMIX_INFO_LOAD(&decl[0], PMIX_PROGRAMMING_MODEL, "FIRST", PMIX_STRING);
+    PMIX_INFO_LOAD(&decl[1], PMIX_PROGRAMMING_MODEL, "SECOND", PMIX_STRING);
+    PMIX_INFO_LOAD(&decl[2], PMIX_MODEL_LIBRARY_NAME, "testlib", PMIX_STRING);
+
+    rc = PMIx_Init(&p, decl, 3);
+    check(PMIX_SUCCESS == rc, "a second PMIx_Init carrying model keys succeeds");
+
+    for (spins = 0; spins < 2000 && 0 == modelcb; spins++) {
+        usleep(1000);
+    }
+    PMIX_INFO_DESTRUCT(&decl[0]);
+    PMIX_INFO_DESTRUCT(&decl[1]);
+    PMIX_INFO_DESTRUCT(&decl[2]);
+
+    if (0 == modelcb) {
+        check(0, "the model-declared event was delivered");
+    } else {
+        check(1, "the model-declared event was delivered");
+        check(0 == model_empty_keys, "no entry carries an empty key");
+        check(0 == strcmp(model_value, "SECOND"),
+              "the repeated key resolves to the last value given");
+    }
+
+    /* give back the reference the second init took */
+    rc = PMIx_Finalize(NULL, 0);
+    check(PMIX_SUCCESS == rc, "the extra init reference is released");
+}
+
 static void test_fabric_before_init(void)
 {
     pmix_fabric_t fabric;
@@ -738,6 +841,7 @@ int main(int argc, char **argv)
     test_group_construct_invite_outparams();
     test_get_empty_group();
     test_group_lock_concurrency();
+    test_model_declared_duplicate_key();
 
     rc = PMIx_Finalize(NULL, 0);
     if (PMIX_SUCCESS != rc) {
