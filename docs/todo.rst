@@ -150,14 +150,77 @@ each time somebody asks.
           the flag set, the recv gone, and declared every monitored
           client dead on its first window.
 
+.. note:: **2026-08-21.**  The ``src/mca/gds/shmem3`` re-review — the
+          entry that stood under "Reviewed, but changed materially
+          since" — is done, and three of its findings generalize past
+          the component.
+
+          **``is_tsafe`` is a claim about the reader's thread, not about
+          the data.**  ``shmem3`` sets it, and ``try_local_fetch()`` in
+          ``src/client/pmix_client_get.c`` consults it on every keyed
+          ``PMIx_Get`` with ``pmix_client_globals.fast_get`` defaulting
+          **on** — so the module's ``fetch`` runs on the application's
+          own thread.  The justification recorded in the guide was that a
+          fetch holds a reference on the job tracker and reads only data
+          that is never written again.  That is true of what is *in* a
+          segment, and of the job segment, and says nothing about the
+          process-local bookkeeping a read walks beside it: the modex
+          generation chain, which each completing fence releases and
+          ``munmap``\ s, and the tombstone list, which ``del_key()``
+          appends to.  A ``PMIx_Fence_nb`` concurrent with a
+          ``PMIx_Get`` of a remote rank's key could leave an application
+          thread inside ``pmix_hash_fetch()`` on a table that had just
+          been unmapped; the single-threaded case was safe only by
+          accident, because a blocking fence parks the app thread.  Fixed
+          with a per-job mutex.  When reviewing any ``is_tsafe`` module
+          the question to ask is not "is the data immutable" but "what
+          process-local state does the read touch, and who else writes
+          it".
+
+          **A doc comment saying a field is "X-side only" has to be
+          checked against every** *reader*, **not just the writer.**
+          ``job->modex_generation`` was introduced to name the next
+          backing file, which is a server-side job, and was documented
+          and treated as server-only.  It is also what dates a tombstone,
+          and ``del_key()`` runs on the client — where the counter never
+          advanced, so every tombstone was stamped generation zero and
+          shadowed every generation that client would ever map: a key
+          deleted and re-published in a later fence stayed invisible to
+          it.
+
+          **A modex is stored through the module of the namespace that
+          contributed it, not through the server's own.**  A server
+          assigns *itself* ``hash``, while ``PMIX_GDS_STORE_MODEX``
+          resolves from a local peer of the contributing namespace — so a
+          ``shmem3`` job's fence data went into a shared segment that the
+          lookup at the top of ``pmix_server_get()`` never searched.
+          Every remote get for such a job missed and was pushed up to the
+          host as a direct modex for data the server already held; if the
+          owning process had finalized, nothing answered and the
+          requester waited forever, because a remote request carries no
+          timeout by design.  ``_satisfy_request()`` a few hundred lines
+          below already had the right idiom — grep for
+          ``local_peer_of_nspace`` before writing a second one.  Both
+          halves were closed: the server now asks the namespace's own
+          module, and ``_dmodex_req()`` answers ``PMIX_ERR_NOT_FOUND``
+          for a rank the host has already reaped rather than deferring
+          the request forever.
+
+          One method note, because it decided the diagnosis: **a healthy
+          run's duration is the yardstick**.  The case that exposed this
+          takes about a second against a twenty-second limit, so a
+          timeout there is a wedge and not a slow launch.  Measure the
+          healthy case before calling a timeout flaky.
+
 Review coverage
 ---------------
 
-Assessed on **2026-08-15** from the commit history, and refreshed on
+Assessed on **2026-08-15** from the commit history, refreshed on
 **2026-08-20** when the ``src/mca/pnet``, ``src/mca/preg``,
 ``src/mca/pgpu``, ``src/mca/pmdl``, ``src/mca/pcompress``,
 ``src/mca/plog``, ``src/mca/psensor``, ``src/mca/psec`` and
-``src/mca/pif`` reviews landed.
+``src/mca/pif`` reviews landed, and again on **2026-08-21** when
+``src/mca/gds/shmem3`` was re-reviewed against its redesign.
 Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
@@ -176,12 +239,12 @@ Reviewed and current
 ``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
 ``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
 ``src/mca/pcompress``, ``src/mca/pgpu``, ``src/mca/plog``,
-``src/mca/pif``, ``src/mca/pmdl``, ``src/mca/pnet``, ``src/mca/preg``,
-``src/mca/psec``, ``src/mca/psensor``, ``src/mca/pstat``,
-``src/mca/ptl``, ``src/threads``, and ``bindings/python``.
-``src/client``, ``src/server``, ``src/hwloc``, ``src/util`` and
-``src/mca/gds/shmem3`` were reviewed too, but have moved since — see
-below.
+``src/mca/gds/shmem3``, ``src/mca/pif``, ``src/mca/pmdl``,
+``src/mca/pnet``, ``src/mca/preg``, ``src/mca/psec``, ``src/mca/psensor``,
+``src/mca/pstat``, ``src/mca/ptl``, ``src/threads``, and
+``bindings/python``.
+``src/client``, ``src/server``, ``src/hwloc`` and ``src/util`` were
+reviewed too, but have moved since — see below.
 
 Not yet reviewed
 ^^^^^^^^^^^^^^^^
@@ -212,10 +275,6 @@ Ordered by how much of the directory the review no longer covers.
    added a device enumerator and reworked the distance computation,
    +753 lines in ``pmix_hwloc.c`` alone, against a five-line touch to the
    guide.  Effectively new, unreviewed code.
-#. **``src/mca/gds/shmem3``** — reviewed 2026-08-03, then redesigned
-   between 2026-08-04 and 15 (string key index, per-segment key indexes,
-   tables sized by rank): 16 commits, +833/-916.  The guide was rewritten
-   alongside it, but a redesign is not a review.
 #. **``src/client``** — the per-file review is current through
    2026-08-13.  What sits outside it is the group-invite and context-id
    work of 2026-08-15: +355 lines in ``pmix_client_group.c`` and +245 in
@@ -522,6 +581,30 @@ caller that can do that is better off moving to ``pmix_regex2_t``.
   then, do not read a silent run as evidence the handshake was not
   exercised.
 
+A shared session's segment has nothing that shares it
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/gds/shmem3`` re-review (2026-08-21).  The
+component places a job's session segment deliberately *outside* the
+per-job address arena, because a session is meant to outlive the job that
+first described it — ``pmix_mca_gds_shmem3_component.sessions`` holds a
+reference, and ``job_destruct()`` releases the whole arena, so a shared
+session's segment inside it would be unmapped under a live holder.
+
+The sharing that guards against cannot happen today: **nothing ever
+appends to that list**.  It is permanently empty, both searches in
+``pmix_gds_shmem3_get_session_tracker()`` are unreachable, and a job's
+session object is created by ``job_construct()`` and dies with it — so
+two jobs in the same session each build their own copy of the session
+data rather than mapping one segment.
+
+The placement was left as it is, because it is what the code would need
+the moment a session really were shared, and moving it would have to be
+undone.  What is deferred is the other half: deciding when a session
+tracker is registered on the component, and what its lifetime is once
+more than one job holds it.  Do not read the arena comment as evidence
+that sharing works.
+
 Coverage gaps
 -------------
 
@@ -653,6 +736,29 @@ Coverage gaps
   for a key the finalizing thread never set a value for — but the
   ordering itself is held only by the comment at the call site and by
   ``src/threads/AGENTS.md``.
+
+* **``gds/shmem3`` gets no coverage at all on macOS, of any kind.**  Its
+  ``configure.m4`` gates on a 64-bit non-Apple host with no
+  ``|| test "$pmix_testbuild" = "1"`` escape, so a Mac does not even
+  *compile* it — ``--enable-test-build`` does not help, and a change made
+  there has not been compile-checked until it has been built on Linux.
+  ``test/unit/gds_datastore``'s ``test_shmem3_job_segment()`` asks
+  ``pmix_gds_base_assign_module()`` for the component by name and prints
+  ``SKIP`` where it is absent, so the case is honest rather than missing,
+  and on Linux it drives the segment build end to end in one process.
+  Everything beyond one process — a fence, a second modex generation, a
+  client attaching at a fixed address, and every cross-node fetch — is
+  reachable only through ``contrib/dockerswarm/run-gds-tests.sh``.
+* **The client-side tombstone generation fix is not what**
+  ``examples/delete_key.c`` **discriminates on.**  The example now
+  re-publishes a deleted key and requires every rank to read the new
+  value back, which pins the documented behavior — a deletion is not
+  permanent — but it passes both before and after the fix: on a client
+  the keyed get misses locally and is answered by the server, which never
+  had the bug.  Catching the client-side half needs a NULL-key read that
+  actually reaches the modex, which takes the local table to miss for the
+  rank or an explicit ``PMIX_REMOTE`` scope, and nothing arranges that
+  today.
 
 Not defects — by design
 -----------------------
