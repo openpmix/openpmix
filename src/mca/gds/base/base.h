@@ -39,6 +39,7 @@
 #endif
 
 #include "src/class/pmix_list.h"
+#include "src/include/pmix_globals.h"   /* pmix_cb_t */
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/mca.h"
 
@@ -162,6 +163,35 @@ PMIX_EXPORT pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
  */
 PMIX_EXPORT pmix_status_t pmix_gds_base_proc_array_id(const pmix_info_t *array, size_t size,
                                                       pmix_rank_t *rank, size_t *idpos);
+
+/**
+ * Fetch from a peer's datastore from a thread that may not be the
+ * progress thread.
+ *
+ * ``PMIX_GDS_FETCH_KV`` reads a store that the progress thread writes,
+ * so a module is only safe to call from another thread if it says so -
+ * that is what ``is_tsafe`` on the module means, and what
+ * ``PMIX_GDS_FETCH_IS_TSAFE`` reports.  ``gds/hash``, which is what a
+ * client normally has, says no: ``pmix_hash_store()`` may grow the very
+ * table a reader is walking.
+ *
+ * Use this wherever the calling thread is not known to be the progress
+ * thread.  It runs the fetch inline when that is safe - the module
+ * permits it, we already are the progress thread, or there is no
+ * progress thread to hand the work to - and otherwise posts it there
+ * and waits.
+ *
+ * **The wait is real, so the caller must be able to afford one.**  Do
+ * not call this holding a lock the progress thread may want; copy what
+ * you need and release it first (see the ``grouplock`` rules in
+ * ``src/client/AGENTS.md``).
+ *
+ * @param peer  the peer whose datastore is to be read
+ * @param cb    the request, filled in exactly as for PMIX_GDS_FETCH_KV
+ *
+ * @return whatever the module's fetch returned
+ */
+PMIX_EXPORT pmix_status_t pmix_gds_base_fetch_kv_tsafe(struct pmix_peer_t *peer, pmix_cb_t *cb);
 
 END_C_DECLS
 
