@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -267,16 +267,21 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
             pmix_event_del(&trk->ev);
             trk->event_active = false;
         }
-        if (trk->local) {
-            /* the operation is being atomically completed and the host will
-             * not be calling us back - ensure we notify all participants.
-             * the cbfunc thread-shifts the call prior to processing,
-             * so it is okay to call it directly from here */
-            trk->host_called = false; // the host will not be calling us back
-            cbfunc(PMIX_SUCCESS, trk);
-            /* ensure that the switchyard doesn't release the caddy */
-            rc = PMIX_SUCCESS;
-        } else if (NULL == pmix_host_server.disconnect) {
+        if (NULL == pmix_host_server.disconnect) {
+            if (trk->local) {
+                /* Nobody outside this node is involved and the host offers no
+                 * way to be told, so complete the operation here.  This is the
+                 * ONLY case in which an all-local operation is finished
+                 * without the host: see the connect path below for why
+                 * locality on its own is not a reason to skip it.
+                 * The cbfunc thread-shifts the call prior to processing, so it
+                 * is okay to call it directly from here. */
+                trk->host_called = false; // the host will not be calling us back
+                cbfunc(PMIX_SUCCESS, trk);
+                /* ensure that the switchyard doesn't release the caddy */
+                rc = PMIX_SUCCESS;
+                goto cleanup;
+            }
             /* the host cannot execute this operation. Detach this caddy so
              * the switchyard can send the error to this caller, and drive the
              * op completion function to notify all other participants and tear
@@ -537,17 +542,34 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
             pmix_event_del(&trk->ev);
             trk->event_active = false;
         }
-        /* if all the participants are local, then we don't need the host */
-        if (trk->local) {
-            /* the operation is being atomically completed and the host will
-             * not be calling us back - ensure we notify all participants.
-             * the cbfunc thread-shifts the call prior to processing,
-             * so it is okay to call it directly from here */
-            trk->host_called = false; // the host will not be calling us back
-            cbfunc(PMIX_SUCCESS, trk);
-            /* ensure that the switchyard doesn't release the caddy */
-            rc = PMIX_SUCCESS;
-        } else if (NULL == pmix_host_server.connect) {
+        if (NULL == pmix_host_server.connect) {
+            if (trk->local) {
+                /* Nobody outside this node is involved and the host offers no
+                 * way to be told, so complete the operation here.
+                 *
+                 * Note what is NOT a reason to take this path: that every
+                 * participant happens to be local.  Being "connected" is not
+                 * a property of this server - it is a request that the HOST
+                 * treat the participants as one application for fault
+                 * purposes, and the host is the only thing that sees a member
+                 * terminate and can notify the rest of the assemblage.  A
+                 * host told nothing about an assemblage cannot keep that
+                 * promise for it, and neither can we: the obligation outlives
+                 * this call, and this library does not watch for a member's
+                 * death.  Skipping the host for a single-node assemblage
+                 * therefore did not save work, it silently dropped the only
+                 * thing the operation was for.  The deferred path in
+                 * pmix_server_registration.c has always called the host
+                 * regardless of locality, so the two halves of the same
+                 * operation did not even agree.
+                 * The cbfunc thread-shifts the call prior to processing, so it
+                 * is okay to call it directly from here. */
+                trk->host_called = false; // the host will not be calling us back
+                cbfunc(PMIX_SUCCESS, trk);
+                /* ensure that the switchyard doesn't release the caddy */
+                rc = PMIX_SUCCESS;
+                goto cleanup;
+            }
             /* the host cannot execute this operation. Detach this caddy so
              * the switchyard can send the error to this caller, and drive the
              * op completion function to notify all other participants and tear
