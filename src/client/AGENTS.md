@@ -215,7 +215,12 @@ rather than trying to make the record cover it. The existing ones:
   server. The static initializer starts `true` for the same reason.
 - A per-key fetch that misses, which means the record and the datastore
   disagree; `pack_commit_scope` falls back for that scope rather than
-  sending something quietly short.
+  sending something quietly short. **Judge that miss by how much the
+  result list grew, not by the status the fetch returned.** One caddy
+  serves the whole loop and its `kvs` list is cumulative across the
+  keys, and `pmix_gds_hash_fetch()` reports success whenever that list
+  is non-empty — so from the second key onward a genuine miss came back
+  as success and this fallback could never fire.
 
 Three properties are easy to break:
 
@@ -271,6 +276,21 @@ Three things about it are load-bearing:
   that is correct rather than lossy: every reason to resync is that the
   server about to be talked to has never seen anything we published, so
   there is nothing there to delete.
+
+A delete also has to be applied to the module that actually serves the
+namespace, not only to our own peer's "hash": our committed data is in
+the modex, which belongs to that module and answers ahead of the hash.
+`del_key_in_nspace_module()` does that — **except for
+`PMIX_DEL_INTERNAL` reaching it from `_putfn`.** That scope names data
+this process put internally, which by definition never left it and never
+reached the modex, so the only thing the namespace module could hold
+under that key is job-level data somebody else published — and
+`del_key` takes no scope with which to spare it. `mark_deleted()`
+declines to tell the server for exactly the same reason. The
+`PMIX_DEL_INTERNAL` a *server* announces is the opposite case and must
+reach the module: see `retract_from_namespaces()` in
+[`pmix_server_setup.c`](../server/pmix_server_setup.c), where the thing
+being retracted is job-level data.
 
 `_putfn` handles a delete **above** everything that reads `cb->value` — a
 delete carries none — and `PMIx_Put` relaxes its `NULL == val` check only
@@ -2428,6 +2448,122 @@ there would deadlock rather than fail, so the suite passing is the
 assertion. The race the change closes is not reproducible on demand and
 has no regression test; what the tests hold down is that the new control
 flow is correct in both directions.
+
+## The fifteenth sweep — what `PMIx_Init` does while the progress thread runs
+
+The fourteenth sweep asked "which thread am I on?" of every datastore
+*fetch* in this directory. It did not ask it of `PMIx_Init`, and that is
+where the answer is most uncomfortable.
+
+**`PMIx_Init` does a great deal of datastore work on the application's
+thread, after the server connection is live.** Three
+`PMIX_GDS_STORE_KV`s for the server-ID keys, everything
+`pmix_hwloc_setup_topology()` records — a dozen more stores and fetches —
+and the `PMIX_DEBUG_STOP_IN_INIT` fetch all run there, between the
+job-data reply and the end of the function. None of that can be moved
+without dismantling init, and until v7 none of it needed to be: the
+progress thread had no writer into those tables during that window.
+`job_data` stores, but the application thread is blocked waiting on it.
+
+**The v7 key-deletion feature added the first one.**
+`client_data_delete_handler` runs on the progress thread and stores a
+`PMIX_DEL_*` into `pmix_globals.mypeer`, which reaches
+`pmix_hash_remove_data()` on the *same* per-namespace tracker — the same
+`trk->internal` — that the stores above are inserting into. The server
+sends that message to any registered, non-finalized, ≥7.0.0 client, and
+a client is all three from the moment its handshake completes, which is
+partway through its own `PMIx_Init`. Two threads mutating one hash table
+is corruption, not a stale read.
+
+So the handler **holds** a deletion that arrives before the library is
+initialized, on a file-static list, and `_init_complete()` drains it —
+and only then sets `pmix_globals.initialized`. Both halves run on the
+progress thread, which is what closes the gap: a deletion is either held
+or applied inline, never dropped between the two. `PMIx_Init` reaches
+that by threadshifting to `_init_complete()` and waiting, so its last act
+is on the progress thread rather than the caller's.
+
+**The rule this leaves behind:** anything new that writes a datastore
+from the progress thread must be safe against `PMIx_Init` still running
+on the application's. Today the deletion handler is the only such writer;
+if you add a second, it needs the same treatment, and the place to add it
+is `_init_complete()`'s drain. `PMIx_Finalize` gives the list back after
+`PMIx_Progress_thread_stop()`, because it clears `initialized` early and
+a deletion arriving after that is held with nothing left to apply it to.
+
+### Two return codes from `PMIx_Init` that mean opposite things
+
+`PMIX_ERR_UNREACH` from `PMIx_Init` is **not** a failure. It means no
+server was found, the library is fully initialized as a singleton, and
+`PMIx_Finalize` must still be called —
+[`test/unit/client_cycle.c`](../../test/unit/client_cycle.c) treats it as
+success for exactly that reason. Do not reuse it for a real init
+failure. `job_data` therefore reports a lost connection as
+`PMIX_ERR_LOST_CONNECTION`: reaching a server and then losing it before
+the job data arrives leaves the library *un*initialized, and a caller
+that could not tell the two apart would go on to use a library that is
+not there.
+
+### The wire counts the client's own recv handlers read
+
+`src/server/AGENTS.md` records the round-trip screen — `cnt = n; if (0 >
+cnt || (size_t) cnt != n)` — for any peer-supplied count used before, or
+without, the unpack that would otherwise guard it. The client has the
+same shape twice, and the reasoning transfers unchanged because it is
+`PMIx_Info_create()`'s missing overflow guard that does the damage, not
+anything about roles:
+
+- `pmix_client_notify_recv` sizes `ninfo + 2`, and
+  `pmix_invoke_local_event_hdlr` later writes the handler name and
+  callback object at `info[ninfo]` and `info[ninfo+1]`. A count near
+  `SIZE_MAX` wraps that sum to a one- or zero-element array and those
+  seeds land off the end of it.
+- `client_iof_handler` sizes `ninfo` and separately reads a request id it
+  hands to `pmix_pointer_array_get_item()`, which takes an `int` — an id
+  that does not fit truncates into some *other* request's slot and
+  delivers the package to the wrong callback.
+
+### Refuted here, so you need not re-derive it
+
+- **`PMIx_Finalize` appears to release `pmix_globals.mypeer` twice** —
+  once inside `pmix_rte_finalize()` and once after it. It does not. On a
+  client `mypeer` carries a single reference (unlike the server and tool
+  roles, where `pmix_client_globals.myserver` is the same object and
+  holds a second), so the release inside `rte_finalize` frees it *and*
+  `PMIX_RELEASE` NULLs the pointer, which is what the guarded release
+  below it then skips. The comment in
+  [`pmix_finalize.c`](../runtime/pmix_finalize.c) explains the two-role
+  case and reads like a contradiction of this one; both are correct.
+- **A failed `PMIx_Init` leaves `pmix_globals.init_called` set and the
+  runtime allocated**, so every later attempt answers `PMIX_ERR_INIT` and
+  nothing can be given back. Left alone deliberately: the library is
+  half-built at that point — recvs posted, frameworks open, lists
+  constructed — and a retry that re-entered it would double-post and
+  re-construct over live state. The latch is the safe answer and the
+  residue is a leak on a path the process does not survive. Changing it
+  means an unwind, not a cleared flag.
+- **`_check_for_notify()` allocates `m + 1` infos and sets
+  `ninfo = n + 1`, with `n <= m`.** Not a leak: `PMIX_INFO_CREATE` zeroes
+  the array, so the unused tail holds nothing, and `PMIX_INFO_FREE` frees
+  the array itself regardless of the count.
+- **The debugger-wait registration `PMIX_RETAIN`s its caddy and releases
+  it once**, which looks unbalanced against the event code releasing it
+  too. It is balanced: `_add_hdlr()` takes its own reference before
+  handing the caddy to the deferred path.
+- **`PMIx_Abort`'s server-role branch** was examined again and is
+  unchanged for the reasons the seventh sweep recorded above.
+
+*What is and is not tested.* The `PMIX_RANK` screen is covered by
+`check_rank_screening()` in
+[`test/unit/client_cycle.c`](../../test/unit/client_cycle.c), which forks
+a child per case because the rejection must be a process's first and only
+`PMIx_Init`; it was verified by re-breaking. The held-deletion drain, the
+two wire-count screens, and `PMIx_Finalize`'s always-tear-down path have
+no unit coverage — the first needs a real server racing a real init, and
+the other two need a peer that can be made to send a malformed message.
+`pack_commit_scope()`'s growth check is likewise unreachable from
+`test/unit/client_commit.c`, which runs as a singleton and so never
+reaches `_commitfn` at all.
 
 ## Coding conventions specific to this directory
 
