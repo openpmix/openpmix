@@ -26,6 +26,7 @@
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/gds/base/base.h"
 
 static void append_unique(pmix_list_t *list, const pmix_proc_t *proc)
 {
@@ -49,13 +50,113 @@ static void append_unique(pmix_list_t *list, const pmix_proc_t *proc)
     pmix_list_append(list, &nm->super);
 }
 
+/* A copy of one group we belong to, taken under the lock so the expansion
+ * below can run without it - see snapshot_groups(). */
+typedef struct {
+    char *grpid;
+    pmix_proc_t *members;
+    size_t nmbrs;
+} pmix_grpsnap_t;
+
+static void free_snapshot(pmix_grpsnap_t *snap, size_t nsnap)
+{
+    size_t n;
+
+    if (NULL == snap) {
+        return;
+    }
+    for (n = 0; n < nsnap; n++) {
+        if (NULL != snap[n].grpid) {
+            free(snap[n].grpid);
+        }
+        if (NULL != snap[n].members) {
+            PMIX_PROC_FREE(snap[n].members, snap[n].nmbrs);
+        }
+    }
+    free(snap);
+}
+
+/* Copy the groups we belong to, and their memberships, out from under
+ * pmix_client_globals.grouplock.
+ *
+ * The expansion below cannot be done while holding that lock. It has to
+ * look a group member's job size up in the datastore, and reading the
+ * datastore from this thread means handing the fetch to the progress
+ * thread and waiting for it (pmix_gds_base_fetch_kv_tsafe) - while the
+ * progress thread takes this same lock for the group bookkeeping in
+ * pmix_invoke_local_event_hdlr. That is a deadlock, and the alternative
+ * of reading the store from here anyway is the race the fetch helper
+ * exists to close. So: copy, release, then expand.
+ *
+ * The copy is deep because neither the group nor its membership array is
+ * ours: another application thread may leave a group (removing it from
+ * the list and releasing it) and the progress thread shifts a departed
+ * member out of a live membership. What we expand is therefore a
+ * snapshot, which is the same guarantee the caller had before - the
+ * membership can change the moment we let go either way. */
+static pmix_status_t snapshot_groups(pmix_grpsnap_t **snap, size_t *nsnap)
+{
+    pmix_group_t *grp;
+    pmix_grpsnap_t *sn;
+    size_t n = 0, ngrps;
+
+    *snap = NULL;
+    *nsnap = 0;
+
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+    ngrps = pmix_list_get_size(&pmix_client_globals.groups);
+    if (0 == ngrps) {
+        pmix_mutex_unlock(&pmix_client_globals.grouplock);
+        return PMIX_SUCCESS;
+    }
+    /* allocating under the lock is against this directory's usual advice,
+     * and is what the sizes force: they are the list's to tell us. It is
+     * safe because nothing here re-enters PMIx - the only rule that
+     * matters for this lock is that we do not wait on the progress
+     * thread, and malloc does not. */
+    sn = (pmix_grpsnap_t *) calloc(ngrps, sizeof(pmix_grpsnap_t));
+    if (PMIX_UNLIKELY(NULL == sn)) {
+        pmix_mutex_unlock(&pmix_client_globals.grouplock);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_LIST_FOREACH (grp, &pmix_client_globals.groups, pmix_group_t) {
+        sn[n].grpid = strdup(grp->grpid);
+        if (PMIX_UNLIKELY(NULL == sn[n].grpid)) {
+            pmix_mutex_unlock(&pmix_client_globals.grouplock);
+            free_snapshot(sn, n);
+            return PMIX_ERR_NOMEM;
+        }
+        if (0 < grp->nmbrs) {
+            PMIX_PROC_CREATE(sn[n].members, grp->nmbrs);
+            if (PMIX_UNLIKELY(NULL == sn[n].members)) {
+                pmix_mutex_unlock(&pmix_client_globals.grouplock);
+                free(sn[n].grpid);
+                free_snapshot(sn, n);
+                return PMIX_ERR_NOMEM;
+            }
+            memcpy(sn[n].members, grp->members, grp->nmbrs * sizeof(pmix_proc_t));
+            sn[n].nmbrs = grp->nmbrs;
+        }
+        ++n;
+        if (n == ngrps) {
+            /* the list cannot grow under us - we hold the lock - but say
+             * so rather than trusting it */
+            break;
+        }
+    }
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+    *snap = sn;
+    *nsnap = n;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t insize,
                                               pmix_proc_t **outprocs, size_t *outsize)
 {
     pmix_list_t cache;
     pmix_proclist_t *nm;
-    pmix_group_t *grp;
-    size_t n, i, cnt, sz;
+    pmix_grpsnap_t *snap = NULL, *grp;
+    size_t n, i, g, cnt, sz, nsnap = 0;
     bool match, found;
     uint32_t jsize;
     pmix_status_t rc;
@@ -66,18 +167,24 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
     PMIX_CONSTRUCT(&cache, pmix_list_t);
 
     /* The groups list, and the membership arrays hanging off it, can be
-     * changed by the progress thread while we walk them - a construct
-     * completing appends a group, and a PMIX_GROUP_LEFT event shifts a
-     * departed member out of an existing one. Every exit below goes through
-     * "unlock" so the lock is dropped exactly once. */
-    pmix_mutex_lock(&pmix_client_globals.grouplock);
+     * changed while we walk them - a construct completing appends a group
+     * from the progress thread, a PMIX_GROUP_LEFT event shifts a departed
+     * member out of an existing one, and another application thread may
+     * leave a group outright. Take a copy under the lock and expand that,
+     * because the expansion reads the datastore and so cannot hold it. */
+    rc = snapshot_groups(&snap, &nsnap);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_LIST_DESTRUCT(&cache);
+        return rc;
+    }
 
     /* cycle thru the procs and check to see if any reference
      * a PMIx group */
     for (n = 0; n < insize; n++) {
         match = false;
         found = false;
-        PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
+        for (g = 0; g < nsnap; g++) {
+            grp = &snap[g];
             if (PMIX_CHECK_NSPACE(grp->grpid, inprocs[n].nspace)) {
                 match = true;
                 /* the nspace matches this group ID */
@@ -115,11 +222,14 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                         PMIX_CONSTRUCT(&cb2, pmix_cb_t);
                         cb2.proc = (pmix_proc_t*)&grp->members[i];
                         cb2.key = PMIX_JOB_SIZE;
-                        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                        /* we are on the caller's thread, and no longer
+                         * holding grouplock - both are what let this be a
+                         * fetch the progress thread may have to run */
+                        rc = pmix_gds_base_fetch_kv_tsafe(pmix_globals.mypeer, &cb2);
                         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc)) {
                             /* couldn't get the job size, so have to abort */
                             PMIX_DESTRUCT(&cb2);
-                            goto unlock;
+                            goto done;
                         }
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
@@ -127,13 +237,13 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                             /* couldn't retrieve the size, so we have
                              * to abort */
                             rc = PMIX_ERR_NOT_FOUND;
-                            goto unlock;
+                            goto done;
                         }
                         rc = PMIx_Value_get_number(kv->value, &jsize, PMIX_UINT32);
                         PMIX_RELEASE(kv);
                         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                             rc = PMIX_ERR_BAD_PARAM;
-                            goto unlock;
+                            goto done;
                         }
                         if (cnt + jsize > inprocs[n].rank) {
                             /* the specified rank is within this job */
@@ -177,10 +287,10 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
              * collective that never completes) with nothing pointing back
              * here. */
             rc = PMIX_ERR_NOT_FOUND;
-            goto unlock;
+            goto done;
         }
     }
-    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+    free_snapshot(snap, nsnap);
 
     /* we have to return the cached array because
      * we might have replaced some of the entries */
@@ -196,8 +306,8 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
     *outsize = sz;
     return PMIX_SUCCESS;
 
-unlock:
-    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+done:
+    free_snapshot(snap, nsnap);
     PMIX_LIST_DESTRUCT(&cache);
     return rc;
 }

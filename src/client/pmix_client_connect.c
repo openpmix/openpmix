@@ -261,7 +261,9 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     cb2.proc = &pmix_globals.myid;
     cb2.scope = PMIX_REMOTE;
     cb2.copy = true;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+    /* we are on the caller's thread, and this is the table _putfn writes
+     * on the progress thread */
+    rc = pmix_gds_base_fetch_kv_tsafe(pmix_globals.mypeer, &cb2);
     if (PMIX_SUCCESS == rc) {
         ilist = PMIx_Info_list_start();
         // start with our procID
@@ -344,11 +346,11 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
             cb2.proc = &proc;
             cb2.scope = PMIX_SCOPE_UNDEF;
             cb2.copy = false;
-            PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb2);
+            rc = pmix_gds_base_fetch_kv_tsafe(pmix_client_globals.myserver, &cb2);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 if (!PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash")) {
                     /* check the data in my hash module */
-                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    rc = pmix_gds_base_fetch_kv_tsafe(pmix_globals.mypeer, &cb2);
                     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_DESTRUCT(&cb2);

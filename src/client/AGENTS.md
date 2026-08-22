@@ -1027,11 +1027,13 @@ inspection against the code that consumes them.
   "nothing to refresh" `PMIX_ERR_NOT_FOUND` must not fail gets that
   succeed today. See the matching note in
   [`src/server/AGENTS.md`](../server/AGENTS.md).
-- `pmix_client_convert_group_procs()` holds `grouplock` across a
-  `PMIX_GDS_FETCH_KV` for `PMIX_JOB_SIZE`. That is safe only because
-  the hash module answers locally and never up-calls the server. If a
-  GDS module is ever added that can up-call from `fetch`, this becomes
-  the deadlock the lock's own header comment warns about.
+- **FIXED — `pmix_client_convert_group_procs()` held `grouplock` across a
+  `PMIX_GDS_FETCH_KV` for `PMIX_JOB_SIZE`**, which was safe only because
+  the hash module answers locally and never up-calls the server. It now
+  snapshots the memberships under the lock and expands them after
+  releasing it, which is what the lock's own rules ask for and what let
+  the fetch become one the progress thread may have to run. See the
+  fourteenth sweep.
 
 ## Defects found in the August 2026 review (fourth sweep — `pmix_client_group.c`)
 
@@ -2331,20 +2333,18 @@ whenever this file gains something: `PMIx_Group_construct` and
 
 *Noted, not changed — with the reasoning, so it is not re-derived:*
 
-- **`get_endpts()` fetches this process's own store from the caller's
-  thread**, with no `is_tsafe` screen of the kind `try_local_fetch()` in
-  [`pmix_client_get.c`](pmix_client_get.c) applies. `gds/hash` declares
-  `is_tsafe = false`, and the table it walks is written by `_putfn` on
-  the progress thread — so an application thread in `PMIx_Group_construct`
-  concurrent with one in `PMIx_Put` is a genuine race. It is left alone
-  because it is not this function's to fix: `invite_job_size()` and
-  `pmix_client_convert_group_procs()` do the same thing, the latter with
-  a comment saying so, and the answer is either a screen in the
-  `PMIX_GDS_FETCH_KV` path or the lock this directory already declines to
-  take (see "treat concurrent multithreaded use of these APIs with
-  suspicion"). Note the `PMIx_Group_join_nb` call is *not* exposed: it is
-  documented as being driven from the `PMIX_GROUP_INVITED` handler, which
-  is the progress thread.
+- **FIXED — `get_endpts()` fetched this process's own store from the
+  caller's thread**, with no `is_tsafe` screen of the kind
+  `try_local_fetch()` in [`pmix_client_get.c`](pmix_client_get.c)
+  applies. `gds/hash` declares `is_tsafe = false`, and the table it walks
+  is written by `_putfn` on the progress thread — so an application
+  thread in `PMIx_Group_construct` concurrent with one in `PMIx_Put` was
+  a genuine race. This entry used to leave it on the grounds that it was
+  not this function's to fix, which was half right: the *decision* is not
+  this function's, and it is now `pmix_gds_base_fetch_kv_tsafe()` (see
+  [`src/mca/gds/base/AGENTS.md`](../mca/gds/base/AGENTS.md)) — but
+  choosing where to call that is exactly this directory's business, and
+  four more sites had the same exposure. See the fourteenth sweep below.
 - **A leader that does not name itself among the invitees never registers
   the group**, so a `PMIx_Group_destruct` or `PMIx_Group_leave` from it
   returns `PMIX_ERR_NOT_FOUND`. That follows from the target check in
@@ -2360,6 +2360,74 @@ whenever this file gains something: `PMIx_Group_construct` and
   in the group that never called `PMIx_Group_join`, so it has no construct
   watch to do the storing. A right call resting on a wrong reason is worth
   correcting, because the next reader deletes one or the other.
+
+## The fourteenth sweep — reading the datastore off the progress thread
+
+The thirteenth sweep found `get_endpts()` reading this process's own
+datastore from the caller's thread with no `is_tsafe` screen and recorded
+it rather than fixing it. That was the wrong call: the exposure is not one
+function's, and the reason given for leaving it — that two neighbors do
+the same thing — is a reason to sweep, not a reason to stop.
+
+**The rule.** Every store into a datastore happens on the progress
+thread. A fetch that runs anywhere else is therefore walking a structure
+that may be rewritten underneath it, unless the module says otherwise:
+that is what `is_tsafe` on a `gds` module means, and `gds/hash` — what a
+client normally has — says no, because `pmix_hash_store()` may grow the
+very table a reader is in. `PMIx_Get` has always known this
+(`try_local_fetch()` screens the flag and thread-shifts when it is
+false); nothing else did.
+
+`pmix_gds_base_fetch_kv_tsafe()` now packages the decision — fetch
+inline when the module permits it, when we already *are* the progress
+thread, or when there is no progress thread; otherwise post it there and
+wait. The five sites in this directory that read a store from an
+application thread use it:
+
+| site | what it reads |
+|---|---|
+| `get_endpts()` (`pmix_client_group.c`) | our own puts at `PMIX_REMOTE` — the table `_putfn` writes |
+| `invite_job_size()` (`pmix_client_group.c`) | a wildcard invitee's `PMIX_JOB_SIZE` |
+| `PMIx_Connect_nb` (`pmix_client_connect.c`), twice | our own puts, and our namespace's job-level info |
+| `pmix_client_convert_group_procs()` (`pmix_client_convert.c`) | a group member's `PMIX_JOB_SIZE` |
+
+Note `PMIx_Connect_nb`'s first one is `get_endpts()` written out by hand;
+if you touch either, they should probably become one function.
+
+**Everything reached through a `PMIX_THREADSHIFT` handler keeps using the
+macro directly** — `get_data()`, `respeer()`/`resnode()`,
+`resolve_peers()`/`resolve_nodes()`, `_findpeer()` and
+`pmix_parse_localquery()` are already on the progress thread, and routing
+them through the helper would buy a branch and a thread-identity check
+for nothing. The question to ask of a new call site is only "which thread
+am I on?", and "I don't know" means use the helper.
+
+**The one that could not simply be converted.**
+`pmix_client_convert_group_procs()` held `pmix_client_globals.grouplock`
+across its fetch — which this file already flagged as safe "only because
+the hash module answers locally and never up-calls the server". Making
+the fetch capable of waiting on the progress thread turns that into a
+deadlock, because the group bookkeeping in `pmix_invoke_local_event_hdlr`
+takes the same lock *on* the progress thread. It now takes a deep
+snapshot of the groups and their memberships under the lock, releases it,
+and expands the snapshot — which is rule (1) of the grouplock ("copy out
+what you need and release it first") applied to the one function in this
+directory that was not obeying it. The snapshot is deep because neither
+the group nor its membership array is ours to hold a pointer into: the
+progress thread shifts a departed member out of a live membership, and
+another application thread can leave a group outright.
+
+*How much of this is testable:* the shift path itself is, and is.
+`make check` passes with every one of these five sites going through the
+progress thread — on any build whose client uses `gds/hash`, which is
+every macOS build, they all take the shifted branch — and
+`run_grpinviteendpts.pl` additionally exercises the *inline* branch,
+because ranks 1-3 reach `get_endpts()` from inside their
+`PMIX_GROUP_INVITED` handler, which is the progress thread. A shift from
+there would deadlock rather than fail, so the suite passing is the
+assertion. The race the change closes is not reproducible on demand and
+has no regression test; what the tests hold down is that the new control
+flow is correct in both directions.
 
 ## Coding conventions specific to this directory
 
