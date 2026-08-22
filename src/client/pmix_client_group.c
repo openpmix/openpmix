@@ -248,7 +248,10 @@ static pmix_status_t get_endpts(pmix_info_t *xfer,
     cb2.proc = &pmix_globals.myid;
     cb2.scope = scope;
     cb2.copy = true;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+    /* our own puts, which is the table _putfn writes on the progress
+     * thread - and we are on the caller's thread on two of the three
+     * paths that reach here */
+    rc = pmix_gds_base_fetch_kv_tsafe(pmix_globals.mypeer, &cb2);
     if (PMIX_SUCCESS == rc) {
         ilist = PMIx_Info_list_start();
         // start with our procID
@@ -1057,7 +1060,8 @@ static pmix_status_t invite_job_size(const pmix_proc_t *proc, uint32_t *jsize)
     cb2.key = PMIX_JOB_SIZE;
     cb2.info = &optional;
     cb2.ninfo = 1;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+    /* invite_setup() runs on the caller's thread */
+    rc = pmix_gds_base_fetch_kv_tsafe(pmix_globals.mypeer, &cb2);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc)) {
         PMIX_DESTRUCT(&cb2);
         return PMIX_ERR_BAD_PARAM;
