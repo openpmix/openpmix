@@ -49,9 +49,6 @@
 #    include <sys/types.h>
 #endif
 
-#include <event.h>
-#include <event2/thread.h>
-
 #ifdef PMIX_GIT_REPO_BUILD
 static const char pmix_version_string[] = "OpenPMIx " PMIX_VERSION ", repo rev: " PMIX_REPO_REV
                                           " (PMIx Standard: " PMIX_STD_VERSION ","
@@ -811,7 +808,6 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
 
     if (NULL != info) {
-        lock = NULL;
         for (n = 0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_EVENT_RETURN_OBJECT, PMIX_MAX_KEYLEN)) {
                 lock = (pmix_lock_t *) info[n].value.data.ptr;
@@ -1863,10 +1859,10 @@ teardown:
         pmix_client_globals.local_iof = false;
     }
 
-    if (0 <= pmix_client_globals.myserver->sd) {
-        CLOSE_THE_SOCKET(pmix_client_globals.myserver->sd);
-    }
     if (NULL != pmix_client_globals.myserver) {
+        /* CLOSE_THE_SOCKET screens the descriptor itself, and clears it,
+         * so the peer destructor does not close it a second time */
+        CLOSE_THE_SOCKET(pmix_client_globals.myserver->sd);
         PMIX_RELEASE(pmix_client_globals.myserver);
     }
 
