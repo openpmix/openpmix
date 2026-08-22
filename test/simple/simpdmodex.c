@@ -103,6 +103,12 @@ static void valcbfunc(pmix_status_t status, pmix_value_t *val, void *cbdata)
         ++msgnum;
     }
 done:
+    /* the value is ours once the callback has it - PMIx_Get_nb takes its
+     * description from PMIx_Get, whose returned pmix_value_t the caller
+     * releases when done */
+    if (NULL != val) {
+        PMIX_VALUE_RELEASE(val);
+    }
     free(key);
     getcount++;
 }

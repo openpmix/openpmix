@@ -2732,6 +2732,37 @@ here exercises a spawn end to end: `simptest` fakes the up-call, and
 `simpdyn` under it loops on `PMIx_Fence` failures for reasons that
 predate this work.
 
+## Who owns the value `PMIx_Get_nb` hands to its callback
+
+**The caller does.** This is the single most expensive thing to
+re-derive in this directory, because every piece of local evidence
+points the other way: `gcbfn()` invokes the user's callback and then
+releases the caddy without touching `cb->value`, `cbdes()` does not free
+`value` either, and instrumenting a loop of
+`PMIx_Get_nb(NULL, PMIX_PROCID, ...)` shows RSS climbing by ~357 bytes a
+call. It reads exactly like a per-call leak in the library.
+
+It is not. `PMIx_Get_nb`'s description in the Standard is "See
+`PMIx_Get` for a full description", and `PMIx_Get`'s says: *in the
+absence of any directive, the returned `pmix_value_t` shall be an
+allocated memory object, and the caller is responsible for releasing the
+object when done.* That rule is inherited by the non-blocking form, so
+the library hands the value over and is finished with it. The growth
+that instrumentation shows is the **test's** leak, not the library's.
+
+Two consequences worth keeping straight:
+
+- Do not "fix" `gcbfn()` by releasing `cb->value`. That would free an
+  object the application still owns, and for `PMIX_GET_POINTER_VALUES`
+  it would free `pmix_globals.myidval` or a pointer into the datastore.
+- A callback that drops the value is a leak *in that callback*. The two
+  in-tree ones now release it, and are the examples people copy.
+
+`PMIx_Get(3)` used to document the ownership rules under the heading
+"Return of the value (blocking form)", saying nothing at all about the
+non-blocking one; that omission is what makes this so easy to get wrong,
+and it is corrected.
+
 ## Coding conventions specific to this directory
 
 - **Mark the exceptional branch.** Error checks, parameter validation,

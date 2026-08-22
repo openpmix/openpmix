@@ -87,11 +87,18 @@ static void check(int ok, const char *what)
     }
 }
 
+/* The value handed to a pmix_value_cbfunc_t belongs to the caller.
+ * PMIx_Get_nb takes its description from PMIx_Get, which says the
+ * returned pmix_value_t is an allocated object the caller releases when
+ * done - so a callback that simply drops it leaks one per get. */
 static void valuecb(pmix_status_t status, pmix_value_t *kv, void *cbdata)
 {
     (void) cbdata;
     cbstatus = status;
     cbhadvalue = (NULL != kv);
+    if (NULL != kv) {
+        PMIX_VALUE_RELEASE(kv);
+    }
     cbcount++;
 }
 
