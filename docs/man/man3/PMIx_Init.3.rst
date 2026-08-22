@@ -205,8 +205,23 @@ a PMIx error constant is returned, including:
 
 * ``PMIX_ERR_INIT`` |mdash| the PMIx library could not be initialized (for
   example, a required transport was explicitly disabled, or a tight race between
-  concurrent ``PMIx_Init`` calls left the library in an unusable state).
-* ``PMIX_ERR_UNREACH`` |mdash| the local PMIx server could not be reached.
+  concurrent ``PMIx_Init`` calls left the library in an unusable state). This is
+  also returned by a second ``PMIx_Init`` in a process whose first one failed.
+* ``PMIX_ERR_UNREACH`` |mdash| the local PMIx server could not be reached. Note
+  that this is **not** a failure: the library is fully initialized and running
+  as a singleton, the caller's identity has been assigned, and
+  :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>` must still be called. Operations
+  that require a server return ``PMIX_ERR_UNREACH`` in their turn, while those
+  the library can satisfy on its own behave normally.
+* ``PMIX_ERR_LOST_CONNECTION`` |mdash| a server was reached, but the connection
+  failed before it delivered the caller's job information. Unlike
+  ``PMIX_ERR_UNREACH`` above, the library is **not** initialized.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| the environment describing this process is
+  malformed. In particular, ``PMIX_NAMESPACE`` was present but the accompanying
+  ``PMIX_RANK`` was empty, negative, non-numeric, or not a valid rank value.
+* ``PMIX_ERR_WOULD_BLOCK`` |mdash| returned to a *subsequent* ``PMIx_Init`` made
+  from within a PMIx event handler or callback. Such a call may have to wait on
+  the PMIx progress thread, which is the thread it would be running on.
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| a provided directive requested behavior the
   implementation does not support.
 

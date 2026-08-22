@@ -154,6 +154,25 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
         goto error;
     }
 
+    /* This count came off the wire, and two things downstream trust it
+     * without an unpack in front of them to screen it: the "+ 2" below
+     * is multiplied by sizeof(pmix_info_t) to size an allocation whose
+     * element constructors then walk it, and pmix_invoke_local_event_hdlr
+     * writes the handler name and callback object at info[ninfo] and
+     * info[ninfo+1]. A count near SIZE_MAX wraps that sum down to a
+     * one- or zero-element array, and those two seeds are then written
+     * off the end of it.
+     *
+     * Require the count to survive the round trip through the int32_t
+     * the unpack consumes it as - the same screen the server-side
+     * handlers use; see src/server/AGENTS.md. */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_RELEASE(chain);
+        goto error;
+    }
     /* we always leave space for event hdlr name and a callback object */
     chain->nallocated = ninfo + 2;
     PMIX_INFO_CREATE(chain->info, chain->nallocated);
@@ -255,12 +274,58 @@ static void del_key_in_nspace_module(const pmix_proc_t *proc, const char *key)
     }
 }
 
-/* A server telling us that a key has been deleted, so our own copy of it
- * goes too. See pmix_server_notify_deleted().
+/* Apply one server-announced deletion to our copies. Takes ownership of
+ * the key.
  *
  * We may never have had the key - a client caches only what it asked
  * about - and removing something absent is not an error, so nothing here
  * reports one. */
+static void apply_delete(const pmix_proc_t *proc, pmix_scope_t scope, char *key)
+{
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+
+    kv = PMIX_NEW(pmix_kval_t);
+    if (PMIX_UNLIKELY(NULL == kv)) {
+        free(key);
+        return;
+    }
+    kv->key = key; // the kval owns it now
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, proc, scope, kv);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    /* our own peer is pinned to "hash", which is what the store above
+     * corrected - the namespace's own module has to be told separately */
+    del_key_in_nspace_module(proc, kv->key);
+    PMIX_RELEASE(kv);
+}
+
+/* A deletion that arrived before PMIx_Init finished. See
+ * client_data_delete_handler(). Only ever touched on the progress
+ * thread. */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_proc_t proc;
+    pmix_scope_t scope;
+    char *key;
+} pmix_held_delete_t;
+static void hdcon(pmix_held_delete_t *p)
+{
+    p->key = NULL;
+}
+static void hddes(pmix_held_delete_t *p)
+{
+    if (NULL != p->key) {
+        free(p->key);
+    }
+}
+static PMIX_CLASS_INSTANCE(pmix_held_delete_t, pmix_list_item_t, hdcon, hddes);
+
+static pmix_list_t pmix_client_held_deletes = PMIX_LIST_STATIC_INIT;
+
+/* A server telling us that a key has been deleted, so our own copy of it
+ * goes too. See pmix_server_notify_deleted(). */
 static void client_data_delete_handler(struct pmix_peer_t *pr,
                                        pmix_ptl_hdr_t *hdr,
                                        pmix_buffer_t *buf, void *cbdata)
@@ -268,9 +333,9 @@ static void client_data_delete_handler(struct pmix_peer_t *pr,
     pmix_proc_t proc;
     pmix_scope_t scope;
     char *key = NULL;
-    pmix_kval_t *kv;
     pmix_status_t rc;
     int32_t cnt;
+    pmix_held_delete_t *hd;
 
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr, cbdata);
 
@@ -305,20 +370,56 @@ static void client_data_delete_handler(struct pmix_peer_t *pr,
         }
         return;
     }
-    kv = PMIX_NEW(pmix_kval_t);
-    if (PMIX_UNLIKELY(NULL == kv)) {
-        free(key);
+    /* The connection comes up partway through PMIx_Init, and the rest of
+     * that function stores into - and reads from - these same
+     * per-namespace hash tables on the APPLICATION's thread: the
+     * server-ID keys, everything pmix_hwloc_setup_topology() records,
+     * and the debugger-directive fetch. Applying a deletion here while
+     * that is running has two threads mutating one hash table, which is
+     * corruption rather than a stale read.
+     *
+     * Nothing can read a deleted key before PMIx_Init returns, so hold
+     * it instead. _init_complete() drains this list on this thread and
+     * only then declares us initialized, so a deletion is either held
+     * here or applied inline - there is no gap between the two. */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        hd = PMIX_NEW(pmix_held_delete_t);
+        if (PMIX_UNLIKELY(NULL == hd)) {
+            free(key);
+            return;
+        }
+        PMIX_LOAD_PROCID(&hd->proc, proc.nspace, proc.rank);
+        hd->scope = scope;
+        hd->key = key; // the item owns it now
+        pmix_list_append(&pmix_client_held_deletes, &hd->super);
         return;
     }
-    kv->key = key; // the kval owns it now
-    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, scope, kv);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
+
+    apply_delete(&proc, scope, key);
+}
+
+/* Declare ourselves initialized - on the progress thread, so that the
+ * deletions held while PMIx_Init worked are applied before anything can
+ * read them, and so that no deletion can slip between the drain and the
+ * flag. See client_data_delete_handler(). */
+static void _init_complete(int sd, short args, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    pmix_held_delete_t *hd;
+
+    PMIX_ACQUIRE_OBJECT(cb);
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    while (NULL != (hd = (pmix_held_delete_t *)
+                    pmix_list_remove_first(&pmix_client_held_deletes))) {
+        apply_delete(&hd->proc, hd->scope, hd->key);
+        hd->key = NULL; // apply_delete took it
+        PMIX_RELEASE(hd);
     }
-    /* our own peer is pinned to "hash", which is what the store above
-     * corrected - the namespace's own module has to be told separately */
-    del_key_in_nspace_module(&proc, kv->key);
-    PMIX_RELEASE(kv);
+    pmix_atomic_set_bool(&pmix_globals.initialized);
+
+    PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
 pmix_client_globals_t pmix_client_globals = {
@@ -551,7 +652,16 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
     if (PMIX_BUFFER_IS_EMPTY(buf)) {
-        cb->status = PMIX_ERROR;
+        /* Say which of the two it was: the caller can tell "the server
+         * went away" from "the server sent something we could not use".
+         *
+         * Deliberately not PMIX_ERR_UNREACH. PMIx_Init already returns
+         * that to mean something quite different and rather cheerful -
+         * "no server was found, you are a working singleton" - and the
+         * library really is initialized in that case. Reusing it here,
+         * where init is about to fail outright, would leave the caller
+         * unable to tell a usable library from an unusable one. */
+        cb->status = PMIX_ERR_LOST_CONNECTION;
         PMIX_POST_OBJECT(cb);
         PMIX_WAKEUP_THREAD(&cb->lock);
         return;
@@ -567,7 +677,7 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
             rc = PMIX_ERR_INVALID_VAL;
         }
         PMIX_ERROR_LOG(rc);
-        cb->status = PMIX_ERROR;
+        cb->status = rc;
         PMIX_POST_OBJECT(cb);
         PMIX_WAKEUP_THREAD(&cb->lock);
         return;
@@ -851,6 +961,19 @@ static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         PMIX_ERROR_LOG(rc);
         return;
     }
+    /* both of these came off the wire. The count is about to size an
+     * allocation whose element constructors walk it, so a value large
+     * enough to wrap that product runs off the end of a short block
+     * before the unpack's NULL screen gets a say; and the request id is
+     * consumed below as the int that pmix_pointer_array_get_item takes,
+     * so one that does not fit truncates to some other request's slot
+     * and hands this package to the wrong callback. Require both to
+     * survive the round trip - see src/server/AGENTS.md. */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo || refid > (size_t) INT_MAX) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return;
+    }
     if (0 < ninfo) {
         PMIX_INFO_CREATE(info, ninfo);
         cnt = ninfo;
@@ -867,7 +990,7 @@ static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         goto cleanup;
     }
     /* lookup the handler for this IOF package */
-    req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid);
+    req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, (int) refid);
     if (NULL != req && NULL != req->cbfunc) {
         req->cbfunc(refid, channel, &source, &bo, info, ninfo);
     } else {
@@ -940,14 +1063,26 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
 
     // check if an init has been called
     if (pmix_atomic_test_and_set(&pmix_globals.init_called)) {
-        // track the ref count
-        pmix_atomic_fetch_add(&client_init_cntr, 1);
         // did the prior call get far enough? We might be in a tight
         // race between multiple calls to PMIx_Init - bad programming
         // technique, but all we can do is try to protect against it
         if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
             return PMIX_ERR_INIT;
         }
+        /* Both of the things this path can go on to do wait on the
+         * progress thread: the model-declaration notification threadshifts
+         * and blocks, and a connect attempt round-trips. Driving either
+         * from that thread waits for ourselves - so screen for it here,
+         * as every other blocking entry point in this file does. */
+        if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Init"))) {
+            return PMIX_ERR_WOULD_BLOCK;
+        }
+        /* Track the ref count - and only now, once the call is going to
+         * succeed. Counting it up front left a caller that got an error
+         * back owing a PMIx_Finalize it has no reason to make, and the
+         * real finalize then found a reference still outstanding and
+         * returned without tearing anything down. */
+        pmix_atomic_fetch_add(&client_init_cntr, 1);
         // return our proc name if they requested it
         if (NULL != proc) {
             PMIX_LOAD_PROCID(proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
@@ -1104,7 +1239,22 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             PMIX_ERROR_LOG(PMIX_ERR_DATA_VALUE_NOT_FOUND);
             return PMIX_ERR_DATA_VALUE_NOT_FOUND;
         } else {
-            pmix_globals.myid.rank = strtol(evar, NULL, 10);
+            char *endp;
+            unsigned long rk;
+
+            /* Say so rather than guessing. strtol returns 0 for a string
+             * it cannot read at all, so a PMIX_RANK that is empty, is not
+             * a number, or is negative used to make this process rank 0 -
+             * colliding with the real rank 0 and producing a job that is
+             * quietly wrong instead of one that refuses to start. */
+            errno = 0;
+            rk = strtoul(evar, &endp, 10);
+            if ('\0' == evar[0] || '\0' != *endp || '-' == evar[0]
+                || 0 != errno || !PMIX_RANK_IS_VALID(rk)) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            pmix_globals.myid.rank = (pmix_rank_t) rk;
         }
         if (NULL != proc) {
             proc->rank = pmix_globals.myid.rank;
@@ -1379,7 +1529,24 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                                 "[%s:%d] REGISTERING WAIT FOR DEBUGGER",
                                 pmix_globals.myid.nspace, pmix_globals.myid.rank);
             cd = PMIX_NEW(pmix_rshift_caddy_t);
+            if (PMIX_UNLIKELY(NULL == cd)) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_DESTRUCT_LOCK(&releaselock);
+                PMIX_INFO_DESTRUCT(&evinfo[0]);
+                PMIX_INFO_DESTRUCT(&evinfo[1]);
+                PMIX_INFO_DESTRUCT(&evinfo[2]);
+                return PMIX_ERR_NOMEM;
+            }
             cd->codes = malloc(sizeof(int));
+            if (PMIX_UNLIKELY(NULL == cd->codes)) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_RELEASE(cd);
+                PMIX_DESTRUCT_LOCK(&releaselock);
+                PMIX_INFO_DESTRUCT(&evinfo[0]);
+                PMIX_INFO_DESTRUCT(&evinfo[1]);
+                PMIX_INFO_DESTRUCT(&evinfo[2]);
+                return PMIX_ERR_NOMEM;
+            }
             cd->codes[0] = PMIX_DEBUGGER_RELEASE;
             cd->ncodes = 1;
             cd->info = evinfo;
@@ -1422,6 +1589,19 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             PMIX_INFO_LOAD(&evinfo[2], PMIX_EVENT_DO_NOT_CACHE, NULL, PMIX_BOOL);
             PMIX_INFO_LOAD(&evinfo[3], PMIX_EVENT_CUSTOM_RANGE, &srvr, PMIX_PROC);
             scd = PMIX_NEW(pmix_shift_caddy_t);
+            if (PMIX_UNLIKELY(NULL == scd)) {
+                /* same unwind as a failed notification below: nobody will
+                 * ever release us, and the handler holds a pointer into
+                 * this stack frame */
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                dereg_debugger_wait(evref);
+                PMIX_DESTRUCT_LOCK(&releaselock);
+                PMIX_INFO_DESTRUCT(&evinfo[0]);
+                PMIX_INFO_DESTRUCT(&evinfo[1]);
+                PMIX_INFO_DESTRUCT(&evinfo[2]);
+                PMIX_INFO_DESTRUCT(&evinfo[3]);
+                return PMIX_ERR_NOMEM;
+            }
             scd->status = PMIX_READY_FOR_DEBUG;
             scd->proc = &pmix_globals.myid;
             scd->range = PMIX_RANGE_CUSTOM;
@@ -1473,8 +1653,13 @@ nodebugger:
         return rc;
     }
 
-    // mark ourselves as initialized
-    pmix_atomic_set_bool(&pmix_globals.initialized);
+    /* mark ourselves as initialized - on the progress thread, which is
+     * also where any deletions the server announced while we were
+     * working have been waiting */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_THREADSHIFT(&cb, _init_complete);
+    PMIX_WAIT_THREAD(&cb.lock);
+    PMIX_DESTRUCT(&cb);
 
     if (unreach) {
         return PMIX_ERR_UNREACH;
@@ -1530,7 +1715,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FINALIZE_CMD;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     size_t n;
     pmix_client_timeout_t tev;
     struct timeval tv;
@@ -1590,7 +1775,13 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
-            return rc;
+            /* We have already declared ourselves uninitialized, so the
+             * caller cannot come back and ask again - which makes the
+             * teardown below the only chance this process gets to stop
+             * its progress thread and give back what init allocated.
+             * Failing to tell the server we are leaving is worth
+             * reporting, but it is not a reason to skip all of that. */
+            goto teardown;
         }
 
         pmix_output_verbose(2, pmix_client_globals.base_output,
@@ -1610,12 +1801,13 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, finwait_cbfunc, (void *) &tev);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             /* the recv callback will not fire, so cancel the timer and
-             * tear down the lock before we return - and reclaim the message
-             * the transport declined to take */
+             * tear down the lock - and reclaim the message the transport
+             * declined to take. Then finish finalizing anyway; see the
+             * pack failure above. */
             PMIX_RELEASE(msg);
             pmix_event_del(&tev.ev);
             PMIX_DESTRUCT_LOCK(&tev.lock);
-            return rc;
+            goto teardown;
         }
 
         /* wait for the ack to return */
@@ -1632,6 +1824,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
                             pmix_globals.myid.rank);
     }
 
+teardown:
     /* wait here until all active events have been processed */
     PMIx_Progress_thread_stop(NULL, 0);
 
@@ -1643,6 +1836,11 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
+    /* A deletion that arrived after we cleared the initialized flag above
+     * was held rather than applied, and there is now nothing to apply it
+     * to. The list destructor re-constructs, so a second PMIx_Init in
+     * this process starts from an empty one. */
+    PMIX_LIST_DESTRUCT(&pmix_client_held_deletes);
     /* drop the delta-commit record, and leave the flag set so a second
      * PMIx_Init in this process starts cumulative rather than trusting
      * what a previous cycle told a previous server */
@@ -1680,7 +1878,9 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     /* finalize the class/object system */
     pmix_class_finalize();
 
-    return PMIX_SUCCESS;
+    /* report whatever went wrong talking to the server, now that the
+     * teardown it must not skip has run */
+    return rc;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
@@ -1820,8 +2020,18 @@ static void _putfn(int sd, short args, void *cbdata)
          * "hash". Our own committed data is ALSO in the modex, which
          * belongs to whichever module serves this namespace and answers
          * ahead of the hash - so deleting our own key without telling
-         * that module leaves us still reading it. */
-        del_key_in_nspace_module(&pmix_globals.myid, kv->key);
+         * that module leaves us still reading it.
+         *
+         * Not for PMIX_DEL_INTERNAL, though. That names data this
+         * process put internally, which by definition never left it and
+         * never reached the modex - so the only thing the namespace
+         * module could be holding under that key is job-level data
+         * somebody else published, and the module's del_key takes no
+         * scope with which to spare it. mark_deleted() declines to tell
+         * the server for the same reason. */
+        if (PMIX_DEL_INTERNAL != cb->scope) {
+            del_key_in_nspace_module(&pmix_globals.myid, kv->key);
+        }
         mark_deleted(cb->scope, kv->key);
         goto done;
     }
@@ -1836,7 +2046,15 @@ static void _putfn(int sd, short args, void *cbdata)
 
     /* setup to xfer the data */
     kv = PMIX_NEW(pmix_kval_t);
+    if (PMIX_UNLIKELY(NULL == kv)) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
     kv->key = strdup(cb->key); // need to copy as the input belongs to the user
+    if (PMIX_UNLIKELY(NULL == kv->key)) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
     /* every "goto done" below releases the kval, and the kval destructor
      * reads value->type to decide what to free - so the value has to be in a
      * known-empty state from the moment it exists, not only once a transfer
@@ -1971,6 +2189,7 @@ static pmix_status_t pack_commit_scope(pmix_buffer_t *msgout, pmix_cb_t *cb,
     pmix_status_t rc;
     pmix_buffer_t bkt;
     pmix_kval_t *kv;
+    size_t nkvs;
     int n;
 
     /* one caddy serves both scopes, so start from an empty result list */
@@ -1986,9 +2205,15 @@ static pmix_status_t pack_commit_scope(pmix_buffer_t *msgout, pmix_cb_t *cb,
 
     if (!resync && NULL != dirty) {
         for (n = 0; NULL != dirty[n]; n++) {
+            /* Judge the fetch by what it added, not by what it returned.
+             * The datastore reports success whenever the result list is
+             * non-empty, and this list is cumulative across the loop - so
+             * from the second key onward a miss came back as success, and
+             * the check below never fired for any key but the first. */
+            nkvs = pmix_list_get_size(&cb->kvs);
             cb->key = dirty[n];
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_SUCCESS != rc || pmix_list_get_size(&cb->kvs) == nkvs) {
                 /* We stored this key ourselves, so a miss means our record
                  * and the datastore disagree. Rather than send a commit
                  * that is quietly short, take everything. */
@@ -2004,7 +2229,16 @@ static pmix_status_t pack_commit_scope(pmix_buffer_t *msgout, pmix_cb_t *cb,
         PMIX_CONSTRUCT(&cb->kvs, pmix_list_t);
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
         if (PMIX_SUCCESS != rc) {
-            /* nothing is stored at this scope */
+            /* "not found" and its cousins mean this process has published
+             * nothing at this scope, which is not an error. Anything else
+             * is a datastore that could not answer, and reporting that as
+             * a successful commit tells the caller its data is published
+             * when it is not. */
+            if (PMIX_ERR_NOT_FOUND != rc && PMIX_ERR_EXISTS_OUTSIDE_SCOPE != rc
+                && PMIX_ERR_INVALID_NAMESPACE != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
             return PMIX_SUCCESS;
         }
     }

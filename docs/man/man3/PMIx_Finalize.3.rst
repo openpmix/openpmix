@@ -86,9 +86,17 @@ PMIx error constant is returned, including:
 
 * ``PMIX_ERR_INIT`` |mdash| the PMIx library has not been initialized, so there is
   nothing to finalize.
+* ``PMIX_ERR_WOULD_BLOCK`` |mdash| ``PMIx_Finalize`` was called from within a PMIx
+  event handler or callback. The teardown waits on the PMIx progress thread and
+  then stops it, which from that thread would be the thread ending itself
+  mid-callback. Nothing was finalized, and the call may be repeated from another
+  thread.
 
-Any other negative value indicates an appropriate error condition. PMIx error
-constants are defined in ``pmix_common.h``.
+Any other negative value reports a failure to complete the termination handshake
+with the local server |mdash| the caller's departure may not have been recorded
+there. The local teardown is carried out regardless: the library is finalized
+and must not be used again without a fresh ``PMIx_Init``. PMIx error constants
+are defined in ``pmix_common.h``.
 
 
 NOTES

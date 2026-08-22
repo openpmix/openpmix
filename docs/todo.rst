@@ -279,13 +279,13 @@ Ordered by how much of the directory the review no longer covers.
    2026-08-13, and ``pmix_client_group.c``'s share of what came after it
    was re-reviewed on 2026-08-21 (the context ID and endpoint-exchange
    work of 2026-08-15, +341/-14; see the thirteenth sweep in that
-   directory's ``AGENTS.md``).  What is still outside a review is the
-   rest of that run: +509/-118 in ``pmix_client.c`` — the ``PMIx_Put``
+   directory's ``AGENTS.md``).  ``pmix_client.c`` — the ``PMIx_Put``
    delete scopes, the per-key record behind ``PMIx_Commit`` and the
-   never-hand-back-a-compressed-string change — plus the spawn
-   output-forwarding hold (+56/-12 in ``pmix_client_spawn.c``) and the
-   smaller touches to ``pmix_client_get.c`` and
-   ``pmix_client_resolve.c``.
+   never-hand-back-a-compressed-string change — was reviewed on
+   2026-08-22 (the fifteenth sweep in that ``AGENTS.md``).  What is
+   still outside a review is the spawn output-forwarding hold (+56/-12
+   in ``pmix_client_spawn.c``) and the smaller touches to
+   ``pmix_client_get.c`` and ``pmix_client_resolve.c``.
 #. **``src/server``** — the 2026-08-09 → 15 commit run *is* the review,
    performed after the source was split into function-oriented files, so
    the body of the directory is covered.  Outside it is the same late
@@ -439,6 +439,29 @@ cover the whole of what the entry described.
   ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
+
+A tool is sent key-deletion notices it has no receive posted for
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/client/pmix_client.c`` (2026-08-22); the fix
+belongs in ``src/tool/pmix_tool.c``.
+
+``pmix_server_notify_deleted()`` walks ``pmix_server_globals.clients``
+and sends ``PMIX_PTL_TAG_DATA_DELETE`` to every peer there that is not
+finalized and is not earlier than 7.0.0.  A tool that attached to the
+server is in that array and reports its real version, so it is sent the
+notice — but only ``PMIx_Init`` posts a receive for that tag.
+``PMIx_tool_init`` does not, so the message reaches
+``pmix_ptl_base_process_msg()`` with nothing waiting for it, is
+discarded, and raises a ``PMIX_ERROR`` event on the way out.
+
+Two things are wrong with that, and they want different fixes.  A tool
+that has cached a key another process then deleted goes on answering
+with the stale value, which is the whole reason the notice exists; that
+argues for the tool posting the same receive and using the same handler.
+Separately, a server should not be telling a peer something it cannot
+have arranged to hear; the version test is the wrong screen for a role
+that never posts the receive at all.
 
 Nothing forwards a global-syslog request to a gateway
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

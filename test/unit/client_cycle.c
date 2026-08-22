@@ -29,6 +29,22 @@
  * The cycle count can be overridden with a single command-line argument;
  * the default is chosen to stay quick while still cycling enough times to
  * shake out per-cycle resource leaks.
+ *
+ * A second, unrelated group of cases runs first: what PMIx_Init makes of
+ * the rank the launcher hands it in PMIX_RANK. That variable used to be
+ * read with a bare strtol() whose result was never inspected, and strtol
+ * answers 0 for any string it cannot read at all - so an empty, negative,
+ * or non-numeric PMIX_RANK made the process rank 0, colliding with the
+ * real rank 0 and producing a job that was quietly wrong instead of one
+ * that refused to start.
+ *
+ * Each case runs in a forked child because it must be the process's first
+ * and only PMIx_Init: the rejection happens before the library is marked
+ * initialized, and the "an init has been called" latch is not given back,
+ * so a second attempt in the same process answers PMIX_ERR_INIT no matter
+ * what the environment says. The children run before the parent's own
+ * cycling for the same reason - and while the parent is still
+ * single-threaded, which is what makes fork() safe here.
  */
 
 #include "src/include/pmix_config.h"
@@ -38,8 +54,67 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #define DEFAULT_CYCLES 1200
+
+/* Run one PMIx_Init in a child with PMIX_RANK set to "rank", and report
+ * whether it answered the way "expect_bad" asks for. There is no server,
+ * so a rank the library accepts comes back as PMIX_ERR_UNREACH - the
+ * point of each case is only whether the rank itself was refused. */
+static int rank_case(const char *rank, bool expect_bad, const char *what)
+{
+    pid_t pid;
+    int status = 0;
+
+    pid = fork();
+    if (0 > pid) {
+        fprintf(stderr, "  ERROR: fork failed for %s\n", what);
+        return 1;
+    }
+    if (0 == pid) {
+        pmix_proc_t p;
+        pmix_status_t crc;
+        bool ok;
+
+        setenv("PMIX_NAMESPACE", "rankcheck", 1);
+        setenv("PMIX_RANK", rank, 1);
+        memset(&p, 0, sizeof(p));
+        crc = PMIx_Init(&p, NULL, 0);
+        if (expect_bad) {
+            ok = (PMIX_ERR_BAD_PARAM == crc);
+        } else {
+            /* accepted, and the value we were given is the value we use */
+            ok = (PMIX_ERR_BAD_PARAM != crc && 7 == p.rank);
+        }
+        _exit(ok ? 0 : 1);
+    }
+    if (pid != waitpid(pid, &status, 0)) {
+        fprintf(stderr, "  ERROR: waitpid failed for %s\n", what);
+        return 1;
+    }
+    if (WIFEXITED(status) && 0 == WEXITSTATUS(status)) {
+        fprintf(stdout, "  PASS: %s\n", what);
+        return 0;
+    }
+    fprintf(stdout, "  FAIL: %s\n", what);
+    return 1;
+}
+
+static int check_rank_screening(void)
+{
+    int nbad = 0;
+
+    fprintf(stdout, "\n=== PMIX_RANK screening ===\n\n");
+    nbad += rank_case("7", false, "a well-formed rank is accepted and used");
+    nbad += rank_case("", true, "an empty PMIX_RANK is refused");
+    nbad += rank_case("abc", true, "a non-numeric PMIX_RANK is refused");
+    nbad += rank_case("3x", true, "trailing garbage is refused");
+    nbad += rank_case("-1", true, "a negative PMIX_RANK is refused");
+    nbad += rank_case("4294967295", true, "a reserved rank value is refused");
+    return nbad;
+}
 
 int main(int argc, char **argv)
 {
@@ -50,6 +125,7 @@ int main(int argc, char **argv)
     long ncycles = DEFAULT_CYCLES;
     long i;
     int nfail = 0;
+    int nbadrank;
 
     if (1 < argc) {
         ncycles = strtol(argv[1], NULL, 10);
@@ -69,6 +145,8 @@ int main(int argc, char **argv)
     unsetenv("PMIX_SERVER_URI21");
     unsetenv("PMIX_SERVER_URI41");
     unsetenv("PMIX_SERVER_URI51");
+
+    nbadrank = check_rank_screening();
 
     fprintf(stdout, "\n=== client init/finalize cycling test (%ld cycles) ===\n\n",
             ncycles);
@@ -151,5 +229,5 @@ int main(int argc, char **argv)
         fprintf(stdout, "init/finalize cycling: FAIL\n\n");
     }
 
-    return nfail;
+    return (0 == nfail && 0 == nbadrank) ? 0 : 1;
 }
