@@ -276,9 +276,16 @@ Ordered by how much of the directory the review no longer covers.
    +753 lines in ``pmix_hwloc.c`` alone, against a five-line touch to the
    guide.  Effectively new, unreviewed code.
 #. **``src/client``** — the per-file review is current through
-   2026-08-13.  What sits outside it is the group-invite and context-id
-   work of 2026-08-15: +355 lines in ``pmix_client_group.c`` and +245 in
-   ``pmix_client_spawn.c``.
+   2026-08-13, and ``pmix_client_group.c``'s share of what came after it
+   was re-reviewed on 2026-08-21 (the context ID and endpoint-exchange
+   work of 2026-08-15, +341/-14; see the thirteenth sweep in that
+   directory's ``AGENTS.md``).  What is still outside a review is the
+   rest of that run: +509/-118 in ``pmix_client.c`` — the ``PMIx_Put``
+   delete scopes, the per-key record behind ``PMIx_Commit`` and the
+   never-hand-back-a-compressed-string change — plus the spawn
+   output-forwarding hold (+56/-12 in ``pmix_client_spawn.c``) and the
+   smaller touches to ``pmix_client_get.c`` and
+   ``pmix_client_resolve.c``.
 #. **``src/server``** — the 2026-08-09 → 15 commit run *is* the review,
    performed after the source was split into function-oriented files, so
    the body of the directory is covered.  Outside it is the same late
