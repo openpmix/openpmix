@@ -531,7 +531,6 @@ pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
     bool sidgiven = false;
     bool nigiven = false;
     bool apigiven = false;
-    bool found;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "%s pmix:gds:hash fetch %s for proc %s on scope %s on behalf of %s",
@@ -561,18 +560,10 @@ pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
         }
-        /* also need to add any job-level info */
-        PMIX_LIST_FOREACH (kvptr, &trk->jobinfo, pmix_kval_t) {
-            kv = PMIX_NEW(pmix_kval_t);
-            kv->key = strdup(kvptr->key);
-            kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-            PMIX_VALUE_XFER(rc, kv->value, kvptr->value);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_RELEASE(kv);
-                return rc;
-            }
-            pmix_list_append(kvs, &kv->super);
-        }
+        /* the fetch above is the whole of the job-level data: everything
+         * the host gave us for the job is stored in "internal" under
+         * PMIX_RANK_WILDCARD, whether it arrived at the top level of the
+         * register_nspace info array or inside a PMIX_JOB_INFO_ARRAY */
         /* collect all the relevant session-level info */
         rc = pmix_gds_hash_fetch_sessioninfo(peer, NULL, trk, qualifiers, nqual, kvs);
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
@@ -739,42 +730,29 @@ doover:
                 }
             }
         }
-        /* also need to check any job-level info */
-        found = false;
-        PMIX_LIST_FOREACH (kvptr, &trk->jobinfo, pmix_kval_t) {
-            if (NULL == key || PMIX_CHECK_KEY(kvptr, key)) {
-                kv = PMIX_NEW(pmix_kval_t);
-                kv->key = strdup(kvptr->key);
-                kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-                PMIX_VALUE_XFER(rc, kv->value, kvptr->value);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_RELEASE(kv);
+        /* Job-level data is filed under no rank at all - it lives in
+         * "internal" under PMIX_RANK_WILDCARD - so neither pass above can
+         * see it, and an UNDEF rank means "anything in this nspace" rather
+         * than "any rank in this nspace". Ask for it here.
+         *
+         * Only on the pass that is actually reading that table, though.
+         * The doover below returns here for "local" and then "remote",
+         * and job data is in neither; repeating the fetch each time round
+         * would append the same value three times, and the client's
+         * process_values() reads a count above one as "an aggregate of
+         * everything this proc put" - so the application would be handed
+         * a PMIX_DATA_ARRAY of duplicates where it asked for a scalar. */
+        if (ht == &trk->internal) {
+            if (NULL == key) {
+                rc = pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD, NULL,
+                                     NULL, 0, kvs, NULL);
+            } else {
+                rc = pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD, key,
+                                     qualifiers, nqual, kvs, NULL);
+                if (PMIX_SUCCESS == rc) {
                     return rc;
                 }
-                pmix_list_append(kvs, &kv->super);
-                if (NULL != key) {
-                    found = true;
-                    break;
-                }
             }
-        }
-        if (NULL == key) {
-            /* and need to add all job info just in case that was
-             * passed via a different GDS component */
-            rc = pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, NULL);
-        } else if (found) {
-            /* the job-level list is not one of the scopes, so a hit in it
-             * is the whole answer and there is nothing further to search.
-             * Reporting NOT_FOUND here instead sent the caller into the
-             * "try the next scope" doover below, which arrives back at
-             * this same list and appends the value again - once for the
-             * local table and once for the remote - so the fetch returned
-             * three copies of the one key and called it success. The
-             * client's process_values() then read that count as "an
-             * aggregate of everything this proc put" and handed the
-             * application a PMIX_DATA_ARRAY of duplicates where it had
-             * asked for a scalar. */
-            return PMIX_SUCCESS;
         } else {
             rc = PMIX_ERR_NOT_FOUND;
         }

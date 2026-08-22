@@ -416,7 +416,7 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
 {
     size_t j, size;
     pmix_info_t *iptr;
-    pmix_kval_t *kp2;
+    pmix_kval_t kv;
     pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -480,22 +480,39 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
                    PMIX_CHECK_KEY(&iptr[j], PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace(trk->nptr, &iptr[j]);
-        } else {
-            kp2 = PMIX_NEW(pmix_kval_t);
-            kp2->key = strdup(iptr[j].key);
-            kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-            PMIX_VALUE_XFER(rc, kp2->value, &iptr[j].value);
+        } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_QUALIFIED_VALUE)) {
+            rc = pmix_gds_hash_store_qualified(&trk->internal, PMIX_RANK_WILDCARD,
+                                               &iptr[j].value);
             if (PMIX_SUCCESS != rc) {
-                PMIX_RELEASE(kp2);
+                PMIX_ERROR_LOG(rc);
                 return rc;
             }
-            pmix_list_append(&trk->jobinfo, &kp2->super);
-            /* check for job size */
+        } else {
+            /* just a value relating to the entire job. It goes in the
+             * internal table under PMIX_RANK_WILDCARD, which is where the
+             * same key given at the *top* level of the register_nspace
+             * info array lands - see cache_job_info(), whose else-arm this
+             * mirrors. One store for job-level data means one place to
+             * search for it */
+            kv.key = iptr[j].key;
+            kv.value = &iptr[j].value;
+            rc = pmix_hash_store(&trk->internal, PMIX_RANK_WILDCARD, &kv, NULL, 0, NULL);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+            /* the job-defining keys have to raise their flag here as well,
+             * or store_map() computes its own value for one the host has
+             * already given us and overwrites it */
             if (PMIX_CHECK_KEY(&iptr[j], PMIX_JOB_SIZE)) {
                 if (!(PMIX_HASH_JOB_SIZE & *flags)) {
                     trk->nptr->nprocs = iptr[j].value.data.uint32;
                     *flags |= PMIX_HASH_JOB_SIZE;
                 }
+            } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_NUM_NODES)) {
+                *flags |= PMIX_HASH_NUM_NODES;
+            } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_MAX_PROCS)) {
+                *flags |= PMIX_HASH_MAX_PROCS;
             } else {
                 pmix_iof_check_flags(&iptr[j], &trk->nptr->iof_flags);
             }

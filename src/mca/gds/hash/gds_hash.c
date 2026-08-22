@@ -558,15 +558,6 @@ static pmix_status_t register_info(pmix_peer_t *peer,
     }
     PMIX_LIST_DESTRUCT(&values);
 
-    /* add all values in the jobinfo list */
-    PMIX_LIST_FOREACH (kvptr, &trk->jobinfo, pmix_kval_t) {
-        PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-    }
-
     /* get any session-level info for this job */
     PMIX_CONSTRUCT(&results, pmix_list_t);
     rc = pmix_gds_hash_fetch_sessioninfo(peer, NULL, trk, NULL, 0, &results);

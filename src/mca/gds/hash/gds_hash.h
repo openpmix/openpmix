@@ -61,7 +61,6 @@ typedef struct {
     pmix_hash_table_t remote;
     pmix_hash_table_t local;
     bool gdata_added;
-    pmix_list_t jobinfo;
     pmix_list_t apps;
     pmix_list_t nodeinfo;
     pmix_session_t *session;

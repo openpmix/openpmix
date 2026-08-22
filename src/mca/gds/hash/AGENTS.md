@@ -66,7 +66,7 @@ classes, all in `gds_hash.h`:
 - **`pmix_job_t`** — per nspace. Holds three `pmix_hash_table_t`s that are
   the heart of the store: **`internal`** (job-level data and this proc's
   own data, keyed by `PMIX_RANK_WILDCARD` or rank), **`remote`**, and
-  **`local`**. Also carries `jobinfo`, `apps`, `nodeinfo` lists, a back
+  **`local`**. Also carries `apps` and `nodeinfo` lists, a back
   pointer to its `pmix_namespace_t`, and its `session`.
 - **`pmix_session_t`** — `sessioninfo` + `nodeinfo` for a session id.
 - **`pmix_apptrkr_t`** — per-application `appinfo` + `nodeinfo`.
@@ -123,38 +123,49 @@ below.
 
 ## Gotchas
 
-- **Job-level data is in two stores, and a fetch reads one of them per
-  rank value.** A key handed to `PMIx_server_register_nspace` at the top
-  level of its info array is stored in `internal` under
-  `PMIX_RANK_WILDCARD` (see the `else` at the foot of
-  `cache_job_info`'s loop); one handed to it inside a
-  `PMIX_JOB_INFO_ARRAY` goes on the `jobinfo` *list* instead, through
-  `pmix_gds_hash_process_job_array()`. Both are job-level and a host may
-  use either, but `pmix_gds_hash_fetch()` does not treat them as one
-  thing:
+- **Job-level data has exactly one home: `internal` under
+  `PMIX_RANK_WILDCARD`.** That is true whether the key arrived at the top
+  level of the `PMIx_server_register_nspace` info array
+  (`cache_job_info`'s else-arm) or inside a `PMIX_JOB_INFO_ARRAY`
+  (`pmix_gds_hash_process_job_array`'s else-arm, which mirrors it). The
+  two arms are transcriptions of each other; if you add a case to one,
+  add it to the other.
 
-  - a keyed fetch at `PMIX_RANK_WILDCARD` reads `internal` and never
-    looks at `jobinfo`;
-  - a keyed fetch at `PMIX_RANK_UNDEF` walks the per-rank tables and
-    `jobinfo`, and never the job-level table.
+  There used to be a second home — a `jobinfo` list on the `pmix_job_t`,
+  written only by the job-array arm — and the whole of what follows is
+  why it is gone. Do not reintroduce a side list for "the whole job info"
+  as a shortcut: it is a second copy of data that is rarely asked for
+  whole, and every reader then has to remember to visit both.
 
-  So neither of the two "job-level" rank values sees both stores. The
-  `UNDEF` side is covered from the client — `get_data()` in
-  [`pmix_client_get.c`](../../../client/pmix_client_get.c) retries a miss
-  at `PMIX_RANK_WILDCARD` — and the `WILDCARD` side is still open; see
-  [`docs/todo.rst`](../../../../docs/todo.rst). Do not "simplify" the
-  `jobinfo` walk out of the `UNDEF` branch on the theory that the
-  wildcard path covers it.
+  - It made the answer depend on *how the caller asked*. A keyed fetch
+    at `PMIX_RANK_WILDCARD` read the table and never the list; a keyed
+    fetch at `PMIX_RANK_UNDEF` read the per-rank tables and the list and
+    never the job-level table. Neither of the two rank values that mean
+    "job level" saw both stores, so a key was reachable one way and
+    `PMIX_ERR_NOT_FOUND` the other.
+  - It duplicated the job-defining keys. `process_job_array` raised
+    `PMIX_HASH_JOB_SIZE` but not `PMIX_HASH_NUM_NODES` or
+    `PMIX_HASH_MAX_PROCS`, so `store_map()` computed its own value for a
+    key the host had already supplied and stored it in the table — the
+    host's value on the list, the computed one in the table, and which
+    you got depended on the rank you asked with.
+  - It answered more than once. The list walk sat inside the `doover`
+    loop, so a hit was collected again for the local table and again for
+    the remote one, and `pmix_gds_hash_fetch()` reported success with
+    three copies. The client's `process_values()` reads a count above one
+    as "an aggregate of everything this proc put", so the application got
+    a `PMIX_DATA_ARRAY` of duplicates where it asked for a scalar.
 
-  **The `jobinfo` walk runs inside `doover`, so a hit has to return.**
-  It used to append the match and then set `PMIX_ERR_NOT_FOUND` anyway,
-  which sent the fetch round the "try the next scope" `goto doover` to
-  arrive back at the same list — once for `local` and once for `remote`
-  — appending the same value each time. The fetch then reported success
-  with three copies, and the client's `process_values()` reads a count
-  above one as "an aggregate of everything this proc put", so the
-  application got a `PMIX_DATA_ARRAY` of duplicates where it had asked
-  for a scalar. Regression: `test/unit/get_api.c`.
+  **The `doover` loop is why the job-level fetch is guarded on
+  `ht == &trk->internal`.** The `PMIX_RANK_UNDEF` branch asks the
+  job-level table for the key after the per-rank search misses, and the
+  loop comes back through that branch for `local` and then `remote`.
+  Job data is in neither, and repeating the fetch on each pass is exactly
+  the duplicate-answer bug the list had. Regression coverage for all of
+  it is `test/unit/get_api.c`.
+
+  **`gds/shmem3` has the same field and the same shape**, and its copy is
+  never written at all — see `docs/todo.rst`.
 
 - **`hash` is the fallback terminus.** The framework macros treat a `NULL`
   slot on a `"hash"` module as `PMIX_ERR_NOT_SUPPORTED` rather than
