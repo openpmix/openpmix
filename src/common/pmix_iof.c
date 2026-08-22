@@ -2096,20 +2096,62 @@ void pmix_iof_spawn_begin(void)
     atomic_fetch_add_explicit(&pmix_globals.spawns_in_flight, 1, memory_order_seq_cst);
 }
 
+/* The last spawn has been answered: nothing is coming that can name a
+ * namespace now, so the stand-in has nothing left to stand in for, and
+ * whatever is still held belongs to no spawn of ours - write it with the
+ * process-wide flags, which is what it would have had all along.
+ *
+ * Every line of this belongs to the progress thread. The flags are read
+ * there whenever output is formatted, and release_pending() walks and
+ * empties the very list that thread appends to. */
+static void spawn_stand_down(void)
+{
+    pmix_iof_init_flags(&pmix_globals.spawn_iof_flags);
+    pmix_globals.spawn_iof_flags.set = false;
+    release_pending(NULL);
+}
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+} pmix_iof_standdown_t;
+
+static void standdown_shift(int sd, short args, void *cbdata)
+{
+    pmix_iof_standdown_t *sd2 = (pmix_iof_standdown_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    spawn_stand_down();
+    PMIX_WAKEUP_THREAD(&sd2->lock);
+}
+
 void pmix_iof_spawn_end(void)
 {
+    /* on the stack because we wait for it - the one shape in which a
+     * caddy may live there */
+    pmix_iof_standdown_t sd;
+
     /* fetch_sub returns the value before the subtraction */
     if (1 < atomic_fetch_sub_explicit(&pmix_globals.spawns_in_flight, 1,
                                       memory_order_seq_cst)) {
         return;
     }
-    /* that was the last one. Nothing is coming that can name a namespace
-     * now, so the stand-in has nothing left to stand in for, and whatever
-     * is still held belongs to no spawn of ours - write it with the
-     * process-wide flags, which is what it would have had all along */
-    pmix_iof_init_flags(&pmix_globals.spawn_iof_flags);
-    pmix_globals.spawn_iof_flags.set = false;
-    release_pending(NULL);
+    /* That was the last one, so the stand-down below is ours to run - but
+     * not necessarily here. The reply handler that normally gets here is
+     * on the progress thread; PMIx_Spawn_nb's send-failure path is on the
+     * application's, and running the stand-down from there would walk a
+     * list the progress thread appends to. */
+    if (pmix_progress_thread_is_current() ||
+        NULL == pmix_globals.evbase ||
+        pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        /* we are that thread, or there is nobody to race with */
+        spawn_stand_down();
+        return;
+    }
+    PMIX_CONSTRUCT_LOCK(&sd.lock);
+    PMIX_THREADSHIFT(&sd, standdown_shift);
+    PMIX_WAIT_THREAD(&sd.lock);
+    PMIX_DESTRUCT_LOCK(&sd.lock);
 }
 
 /* The body of pmix_iof_write_output(). "may_hold" is false only when the

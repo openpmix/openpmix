@@ -459,9 +459,6 @@ form, a return of ``PMIX_SUCCESS`` indicates only that the request was accepted 
 processing; the final status and assigned namespace are delivered to ``cbfunc``.
 
 * ``PMIX_SUCCESS`` |mdash| the job was successfully launched.
-* ``PMIX_OPERATION_SUCCEEDED`` |mdash| (non-blocking form) the spawn completed
-  atomically; ``cbfunc`` will **not** be called. In this case ``PMIx_Spawn``
-  returns the assigned namespace in ``nspace``.
 * ``PMIX_ERR_JOB_ALLOC_FAILED`` |mdash| the job could not be executed due to
   failure to obtain the specified allocation.
 * ``PMIX_ERR_JOB_APP_NOT_EXECUTABLE`` |mdash| the specified executable could not be
@@ -500,10 +497,14 @@ fork/exec, allowing tools to maintain a single code path for both the connected
 and disconnected cases. A tool or client that is not so privileged and cannot
 reach a server receives ``PMIX_ERR_UNREACH``.
 
-When ``PMIx_Spawn_nb`` returns ``PMIX_OPERATION_SUCCEEDED``, the spawn was
-satisfied atomically and no callback will be made; callers must handle this status
-distinctly from ``PMIX_SUCCESS``. The blocking ``PMIx_Spawn`` absorbs this case
-internally and simply returns ``PMIX_SUCCESS`` with the namespace populated.
+``PMIx_Spawn_nb`` never returns ``PMIX_OPERATION_SUCCEEDED``, and callers need no
+arm for it. The entire product of the operation is the namespace assigned to the
+new job, and the callback is the only place it can be delivered |mdash| there is no
+output argument on the non-blocking form to put it in. An atomic completion would
+therefore have to report success and say nothing about what was started, which the
+caller could neither use nor detect. A host environment that answers the
+``pmix_server_spawn_fn_t`` up-call with ``PMIX_OPERATION_SUCCEEDED`` is refused for
+the same reason, and its spawn fails with ``PMIX_ERR_NOT_SUPPORTED``.
 
 
 .. include:: /man/no-blocking-in-progress-thread.rst

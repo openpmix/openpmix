@@ -530,8 +530,15 @@ complete:
         PMIX_ERROR_LOG(PMIX_ERROR);
     }
 
-    /* execute the callback */
-    fcd->spcbfunc(rc, nspace, fcd->cbdata);
+    /* execute the callback - screened for NULL, as the other two
+     * completion paths for a spawn are (_lclcbfunc() and wait_cbfunc()
+     * in pmix_client_spawn.c). PMIx_Spawn_nb takes the callback straight
+     * from its caller without a screen, so this was the one place a
+     * spawn with none took the process down rather than simply telling
+     * nobody. */
+    if (NULL != fcd->spcbfunc) {
+        fcd->spcbfunc(rc, nspace, fcd->cbdata);
+    }
     PMIX_RELEASE(fcd);
     return;
 }

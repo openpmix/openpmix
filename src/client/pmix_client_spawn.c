@@ -153,6 +153,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
 
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        return PMIX_ERR_NOMEM;
+    }
 
     /* PMIx_Spawn_nb reports its result only through the callback - the
      * namespace has nowhere else to travel - so it does not answer
@@ -869,7 +872,18 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
             if (PMIX_UNLIKELY(NULL == nptr)) {
                 /* shouldn't happen, but protect us */
                 nptr = PMIX_NEW(pmix_namespace_t);
+                if (PMIX_UNLIKELY(NULL == nptr)) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    ret = PMIX_ERR_NOMEM;
+                    goto report;
+                }
                 nptr->nspace = strdup(nspace);
+                if (PMIX_UNLIKELY(NULL == nptr->nspace)) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    PMIX_RELEASE(nptr);
+                    ret = PMIX_ERR_NOMEM;
+                    goto report;
+                }
                 pmix_list_append(&pmix_globals.nspaces, &nptr->super);
             }
             /* as a client, we only handle a select set of the flags */

@@ -424,6 +424,30 @@ int main(int argc, char **argv)
            9 == got && 0 == strcmp(buf, "stranded\n"));
     report("leaving nothing pending", 0 == pending_count());
 
+    /* ---- the stand-down runs on the progress thread wherever it is
+     * called from ----
+     * Every other step here is thread-shifted, because that is where the
+     * library does this work. PMIx_Spawn_nb has one path that is not: if
+     * the transport refuses the request, it counts the spawn back out
+     * from the application's thread, and the stand-down that follows the
+     * last one walks and empties the very list the progress thread
+     * appends to. pmix_iof_spawn_end() therefore shifts and waits when it
+     * is not already on that thread. This drives that branch - the
+     * outcome is the same either way, so what it holds down is that the
+     * shifted path completes rather than hanging or returning early. */
+    simple_op(OP_BEGIN, NULL);
+    rc = write_out("offthread", 0, "unshifted\n", 10);
+    got = settle(rfd, buf);
+    report("output is held while the off-thread case sets up",
+           PMIX_SUCCESS == rc && 0 == got);
+    /* deliberately NOT through run_op(): this is the caller PMIx_Spawn_nb
+     * makes on its send-failure path */
+    pmix_iof_spawn_end();
+    got = collect(rfd, buf, 10);
+    report("a stand-down called off the progress thread still drains",
+           10 == got && 0 == strcmp(buf, "unshifted\n"));
+    report("and leaves nothing pending", 0 == pending_count());
+
     /* ---- the cache is bounded ----
      * Past the limit output stops being held and falls back to the
      * stand-in, so a job that produces more than we are willing to

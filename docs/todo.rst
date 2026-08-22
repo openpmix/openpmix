@@ -477,6 +477,41 @@ Not done here because it reorders two finalize paths this review did not
 cover, and confirming nothing in the ``rte_finalize`` chain reads
 ``pmix_client_globals.myserver`` wants more than a grep.
 
+A locally fork/exec'd job gets none of its spawn's IOF directives
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/client/pmix_client_spawn.c`` (2026-08-22); the fix
+belongs mostly in ``src/common/pmix_pfexec.c``.
+
+``PMIx_Spawn_nb`` has three dispatch paths.  The server-role one and the
+client/tool one both call ``pmix_server_spawn_parser()`` to read the
+request's output directives into the caddy's ``channels``, ``flags`` and
+``inherit_iof``; the server path then hands them to
+``pmix_server_process_iof()`` and the client path copies ``flags`` onto
+the namespace when the reply names it.  The fork/exec path a
+disconnected launcher takes never calls the parser at all, and
+``pfexec``
+reads none of those fields.  The namespace object it creates keeps the
+zeroed ``iof_flags`` its constructor gave it, and
+``pmix_iof_write_output()`` formats from exactly that.
+
+So ``PMIx_Spawn`` with ``PMIX_IOF_TAG_OUTPUT`` (or any other output
+directive) produces tagged output from a connected launcher and
+untagged output from a disconnected one.  ``PMIx_Spawn(3)`` says the
+fork/exec fallback exists "allowing tools to maintain a single code
+path for both the connected and disconnected cases", which is exactly
+what this breaks.
+
+Two pieces are needed and they are not the same size.  Parsing on that
+path is one line, and belongs where the other two paths do it.  Acting
+on the result is a ``pfexec`` question: it knows the namespace
+immediately, so unlike the client path it could honor an
+output-to-file directive rather than having to drop it — which makes
+this a small feature rather than a transcription.  Left undone here
+because adding the parse alone would produce a value nothing reads, and
+because there is no in-tree way to exercise a disconnected launcher's
+fork/exec output end to end.
+
 A tool is sent key-deletion notices it has no receive posted for
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
