@@ -38,13 +38,16 @@
  * real rank 0 and producing a job that was quietly wrong instead of one
  * that refused to start.
  *
- * Each case runs in a forked child because it must be the process's first
- * and only PMIx_Init: the rejection happens before the library is marked
- * initialized, and the "an init has been called" latch is not given back,
- * so a second attempt in the same process answers PMIX_ERR_INIT no matter
- * what the environment says. The children run before the parent's own
- * cycling for the same reason - and while the parent is still
- * single-threaded, which is what makes fork() safe here.
+ * Each case runs in a forked child, so that the rejection it asks for is
+ * that process's first PMIx_Init and nothing carries between cases. The
+ * children run before the parent's own cycling, while the parent is
+ * still single-threaded, which is what makes fork() safe here.
+ *
+ * The last of them is about the other half of the same behavior: a
+ * PMIx_Init that fails unwinds, so the caller can fix what was wrong and
+ * ask again. It could not always - the "an init has been called" latch
+ * and the half-built runtime behind it used to outlive the failure, and
+ * every later attempt in that process was answered PMIX_ERR_INIT.
  */
 
 #include "src/include/pmix_config.h"
@@ -102,6 +105,58 @@ static int rank_case(const char *rank, bool expect_bad, const char *what)
     return 1;
 }
 
+/* A PMIx_Init that fails has to leave the process able to try again.
+ * The library used to keep the "an init has been called" latch, and the
+ * half-built runtime behind it, for the life of the process - so a
+ * caller that got an error back and wanted to retry with different
+ * directives was answered PMIX_ERR_INIT forever. */
+static int retry_after_failure(void)
+{
+    pid_t pid;
+    int status = 0;
+
+    pid = fork();
+    if (0 > pid) {
+        fprintf(stderr, "  ERROR: fork failed for the retry case\n");
+        return 1;
+    }
+    if (0 == pid) {
+        pmix_proc_t p;
+        pmix_status_t crc;
+
+        setenv("PMIX_NAMESPACE", "rankcheck", 1);
+        setenv("PMIX_RANK", "not-a-rank", 1);
+        memset(&p, 0, sizeof(p));
+        if (PMIX_ERR_BAD_PARAM != PMIx_Init(&p, NULL, 0)) {
+            _exit(1);
+        }
+        /* now fix what was wrong and ask again */
+        setenv("PMIX_RANK", "5", 1);
+        memset(&p, 0, sizeof(p));
+        crc = PMIx_Init(&p, NULL, 0);
+        if (PMIX_ERR_INIT == crc || PMIX_ERR_BAD_PARAM == crc) {
+            _exit(1);
+        }
+        if (!PMIx_Initialized() || 5 != p.rank) {
+            _exit(1);
+        }
+        if (PMIX_SUCCESS != PMIx_Finalize(NULL, 0)) {
+            _exit(1);
+        }
+        _exit(0);
+    }
+    if (pid != waitpid(pid, &status, 0)) {
+        fprintf(stderr, "  ERROR: waitpid failed for the retry case\n");
+        return 1;
+    }
+    if (WIFEXITED(status) && 0 == WEXITSTATUS(status)) {
+        fprintf(stdout, "  PASS: a failed init can be retried\n");
+        return 0;
+    }
+    fprintf(stdout, "  FAIL: a failed init can be retried\n");
+    return 1;
+}
+
 static int check_rank_screening(void)
 {
     int nbad = 0;
@@ -113,6 +168,7 @@ static int check_rank_screening(void)
     nbad += rank_case("3x", true, "trailing garbage is refused");
     nbad += rank_case("-1", true, "a negative PMIX_RANK is refused");
     nbad += rank_case("4294967295", true, "a reserved rank value is refused");
+    nbad += retry_after_failure();
     return nbad;
 }
 

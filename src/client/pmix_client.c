@@ -1034,6 +1034,76 @@ static void dereg_debugger_wait(size_t evref)
     PMIX_DESTRUCT_LOCK(&lock);
 }
 
+/* Give back everything an init built.
+ *
+ * Shared by PMIx_Finalize and by PMIx_Init's own unwind, so the two
+ * cannot drift apart - an init that fails partway has to return the
+ * process to the state it was in beforehand, and "the state it was in
+ * beforehand" is defined by exactly this list.
+ *
+ * Safe to call from any point after the globals block in PMIx_Init.
+ * Everything it touches is either statically initialized (the two IOF
+ * sinks, the lists, the peer array) or screened for NULL, so a failure
+ * before the corresponding setup ran is a no-op rather than a crash. */
+static void client_teardown(void)
+{
+    pmix_peer_t *peer;
+    int i;
+
+    /* wait here until all active events have been processed */
+    PMIx_Progress_thread_stop(NULL, 0);
+
+    /* flush anything that is still trying to be written out */
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
+
+    PMIX_DESTRUCT(&pmix_client_globals.iof_stdout);
+    PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
+
+    PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
+    /* A deletion that arrived while we were not marked initialized was
+     * held rather than applied, and there is now nothing to apply it to.
+     * The list destructor re-constructs, so a second PMIx_Init in this
+     * process starts from an empty one. */
+    PMIX_LIST_DESTRUCT(&pmix_client_held_deletes);
+    /* drop the delta-commit record, and leave the flag set so a second
+     * PMIx_Init in this process starts cumulative rather than trusting
+     * what a previous cycle told a previous server */
+    pmix_client_commit_resync();
+    for (i = 0; i < pmix_client_globals.peers.size; i++) {
+        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_client_globals.peers, i);
+        if (NULL != peer) {
+            PMIX_RELEASE(peer);
+        }
+    }
+    PMIX_DESTRUCT(&pmix_client_globals.peers);
+    /* tear down the server-side IOF lists only if we actually constructed
+     * them during init (no PMIX_NAMESPACE was present). This is tracked by
+     * local_iof rather than the singleton flag: the two are independent
+     * (see PMIx_Init) and keying off singleton either destructs lists that
+     * were never built - a crash - or leaks lists that were. */
+    if (pmix_client_globals.local_iof) {
+        PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
+        PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
+        pmix_client_globals.local_iof = false;
+    }
+
+    if (NULL != pmix_client_globals.myserver) {
+        /* CLOSE_THE_SOCKET screens the descriptor itself, and clears it,
+         * so the peer destructor does not close it a second time */
+        CLOSE_THE_SOCKET(pmix_client_globals.myserver->sd);
+        PMIX_RELEASE(pmix_client_globals.myserver);
+    }
+
+    pmix_rte_finalize();
+    if (NULL != pmix_globals.mypeer) {
+        PMIX_RELEASE(pmix_globals.mypeer);
+    }
+
+    /* finalize the class/object system */
+    pmix_class_finalize();
+}
+
 static int client_init_cntr = 0;
 
 pmix_status_t PMIx_Init(pmix_proc_t *proc,
@@ -1118,7 +1188,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             fprintf(stderr, "We cannot continue - please remove that constraint and try again.\n");
             fprintf(stderr,
                     "-------------------------------------------------------------------\n");
-            return PMIX_ERR_INIT;
+            rc = PMIX_ERR_INIT;
+            goto errout_early;
         }
         /* anything else should just be cleared */
         pmix_unsetenv("PMIX_MCA_ptl", &environ);
@@ -1128,6 +1199,13 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
      * opens and initializes the required frameworks */
     rc = pmix_rte_init(PMIX_PROC_CLIENT, info, ninfo, pmix_client_notify_recv);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        /* Deliberately not unwound, and deliberately still latched.
+         * pmix_rte_init() does not give back what it managed to build
+         * before it failed, so there is nothing here that could call the
+         * counterpart safely, and letting a caller re-enter a runtime
+         * that is open at an unknown depth is worse than telling it the
+         * library is unusable. Every failure below this point does
+         * unwind, because everything below this point is ours. */
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -1183,19 +1261,22 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_client_globals.myserver = PMIX_NEW(pmix_peer_t);
     if (PMIX_UNLIKELY(NULL == pmix_client_globals.myserver)) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        return PMIX_ERR_NOMEM;
+        rc = PMIX_ERR_NOMEM;
+        goto errout;
     }
     pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_namespace_t);
     if (PMIX_UNLIKELY(NULL == pmix_client_globals.myserver->nptr)) {
         PMIX_RELEASE(pmix_client_globals.myserver);
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        return PMIX_ERR_NOMEM;
+        rc = PMIX_ERR_NOMEM;
+        goto errout;
     }
     pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
     if (PMIX_UNLIKELY(NULL == pmix_client_globals.myserver->info)) {
         PMIX_RELEASE(pmix_client_globals.myserver);
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        return PMIX_ERR_NOMEM;
+        rc = PMIX_ERR_NOMEM;
+        goto errout;
     }
 
     pmix_output_verbose(2, pmix_client_globals.base_output,
@@ -1233,7 +1314,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         if (PMIX_UNLIKELY(NULL == (evar = getenv("PMIX_RANK")))) {
             /* let the caller know that the server isn't available yet */
             PMIX_ERROR_LOG(PMIX_ERR_DATA_VALUE_NOT_FOUND);
-            return PMIX_ERR_DATA_VALUE_NOT_FOUND;
+            rc = PMIX_ERR_DATA_VALUE_NOT_FOUND;
+            goto errout;
         } else {
             char *endp;
             unsigned long rk;
@@ -1248,7 +1330,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             if ('\0' == evar[0] || '\0' != *endp || '-' == evar[0]
                 || 0 != errno || !PMIX_RANK_IS_VALID(rk)) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-                return PMIX_ERR_BAD_PARAM;
+                rc = PMIX_ERR_BAD_PARAM;
+                goto errout;
             }
             pmix_globals.myid.rank = (pmix_rank_t) rk;
         }
@@ -1261,7 +1344,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_globals.mypeer->info = PMIX_NEW(pmix_rank_info_t);
     if (PMIX_UNLIKELY(NULL == pmix_globals.mypeer->info)) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        return PMIX_ERR_NOMEM;
+        rc = PMIX_ERR_NOMEM;
+        goto errout;
     }
     pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
     pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
@@ -1280,7 +1364,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_globals.mypeer->nptr->compat.psec = pmix_psec_base_assign_module(evar);
     if (PMIX_UNLIKELY(NULL == pmix_globals.mypeer->nptr->compat.psec)) {
         PMIX_ERROR_LOG(PMIX_ERR_INIT);
-        return PMIX_ERR_INIT;
+        rc = PMIX_ERR_INIT;
+        goto errout;
     }
     /* the server will be using the same */
     pmix_client_globals.myserver->nptr->compat.psec = pmix_globals.mypeer->nptr->compat.psec;
@@ -1314,7 +1399,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     }
     if (PMIX_UNLIKELY(NULL == pmix_client_globals.myserver->nptr->compat.gds)) {
         PMIX_ERROR_LOG(PMIX_ERR_INIT);
-        return PMIX_ERR_INIT;
+        rc = PMIX_ERR_INIT;
+        goto errout;
     }
     /* now select a GDS module for our own internal use - the user may
      * have passed down a directive for this purpose. If they did, then
@@ -1336,7 +1422,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     if (PMIX_UNLIKELY(NULL == pmix_globals.mypeer->nptr->compat.gds)) {
         PMIX_INFO_DESTRUCT(&ginfo);
         PMIX_ERROR_LOG(PMIX_ERR_INIT);
-        return PMIX_ERR_INIT;
+        rc = PMIX_ERR_INIT;
+        goto errout;
     }
     PMIX_INFO_DESTRUCT(&ginfo);
 
@@ -1350,7 +1437,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         rc = pmix_tool_init_info();
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
-            return rc;
+            goto errout;
         }
 
         /* set our server ID to be ourselves */
@@ -1376,7 +1463,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(req);
             free(suri);
-            return rc;
+            goto errout;
         }
         /* send to the server */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
@@ -1388,7 +1475,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             PMIX_RELEASE(req);
             PMIX_DESTRUCT(&cb);
             free(suri);
-            return rc;
+            goto errout;
         }
         /* wait for the data to return */
         PMIX_WAIT_THREAD(&cb.lock);
@@ -1403,7 +1490,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             /* the URI the connect handed us is ours until it is stored
              * below - every other exit from this branch frees it */
             free(suri);
-            return rc;
+            goto errout;
         }
     }
 
@@ -1421,7 +1508,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             free(suri);
-            return rc;
+            goto errout;
         }
         kptr = PMIX_NEW(pmix_kval_t);
         kptr->key = strdup(PMIX_SERVER_RANK);
@@ -1433,7 +1520,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             free(suri);
-            return rc;
+            goto errout;
         }
 
         /* store the URI for subsequent lookups */
@@ -1447,7 +1534,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_RELEASE(kptr); // maintain accounting
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
-            return rc;
+            goto errout;
         }
     }
 
@@ -1460,7 +1547,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         rc = pmix_hwloc_setup_topology(NULL, 0);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
-            return rc;
+            goto errout;
         }
     }
 
@@ -1500,7 +1587,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             pmix_output(0, "DEBUG STOP_IN_INIT FOUND, BUT VALUE UNRECOGNIZED: %s",
                         PMIx_Data_type_string(kv->value->type));
             PMIX_RELEASE(kv);
-            return PMIX_ERR_BAD_PARAM;
+            rc = PMIX_ERR_BAD_PARAM;
+            goto errout;
         }
         pmix_output_verbose(2, pmix_client_globals.base_output,
                             "[%s:%d] RECEIVED %s FOR RANK %s (%s)",
@@ -1531,7 +1619,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                 PMIX_INFO_DESTRUCT(&evinfo[0]);
                 PMIX_INFO_DESTRUCT(&evinfo[1]);
                 PMIX_INFO_DESTRUCT(&evinfo[2]);
-                return PMIX_ERR_NOMEM;
+                rc = PMIX_ERR_NOMEM;
+                goto errout;
             }
             cd->codes = malloc(sizeof(int));
             if (PMIX_UNLIKELY(NULL == cd->codes)) {
@@ -1541,7 +1630,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                 PMIX_INFO_DESTRUCT(&evinfo[0]);
                 PMIX_INFO_DESTRUCT(&evinfo[1]);
                 PMIX_INFO_DESTRUCT(&evinfo[2]);
-                return PMIX_ERR_NOMEM;
+                rc = PMIX_ERR_NOMEM;
+                goto errout;
             }
             cd->codes[0] = PMIX_DEBUGGER_RELEASE;
             cd->ncodes = 1;
@@ -1562,7 +1652,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             if (PMIX_UNLIKELY(0 > rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT_LOCK(&releaselock);
-                return rc;
+                goto errout;
             }
             /* a successful registration reports the handler's index as its
              * status - hold onto it, as rc is about to be reused, and it is
@@ -1596,7 +1686,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                 PMIX_INFO_DESTRUCT(&evinfo[1]);
                 PMIX_INFO_DESTRUCT(&evinfo[2]);
                 PMIX_INFO_DESTRUCT(&evinfo[3]);
-                return PMIX_ERR_NOMEM;
+                rc = PMIX_ERR_NOMEM;
+                goto errout;
             }
             scd->status = PMIX_READY_FOR_DEBUG;
             scd->proc = &pmix_globals.myid;
@@ -1622,7 +1713,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                 PMIX_ERROR_LOG(rc);
                 dereg_debugger_wait(evref);
                 PMIX_DESTRUCT_LOCK(&releaselock);
-                return rc;
+                goto errout;
             }
             /* wait for release to arrive */
             PMIX_WAIT_THREAD(&releaselock);
@@ -1646,7 +1737,7 @@ nodebugger:
     rc = pmix_register_client_attrs();
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
-        return rc;
+        goto errout;
     }
 
     /* mark ourselves as initialized - on the progress thread, which is
@@ -1662,6 +1753,24 @@ nodebugger:
     } else {
         return PMIX_SUCCESS;
     }
+
+errout:
+    /* Put the process back the way we found it. An init that fails has
+     * to leave nothing behind: the caller is told the library is not
+     * available, cannot call PMIx_Finalize to clean up after a call that
+     * never succeeded, and may quite reasonably want to try again with
+     * different directives - a tool pointed at another server, an
+     * application falling back. Leaving the runtime standing half-built
+     * and the latch below set made every such attempt answer
+     * PMIX_ERR_INIT for the life of the process. */
+    client_teardown();
+
+errout_early:
+    pmix_atomic_fetch_add(&client_init_cntr, -1);
+    /* last, so that a concurrent PMIx_Init sees the latch clear only
+     * once there is nothing left of ours for it to trip over */
+    pmix_atomic_clear(&pmix_globals.init_called);
+    return rc;
 }
 
 PMIX_EXPORT int PMIx_Initialized(void)
@@ -1715,7 +1824,6 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     size_t n;
     pmix_client_timeout_t tev;
     struct timeval tv;
-    pmix_peer_t *peer;
     int i;
 
     if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
@@ -1821,58 +1929,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     }
 
 teardown:
-    /* wait here until all active events have been processed */
-    PMIx_Progress_thread_stop(NULL, 0);
-
-    /* flush anything that is still trying to be written out */
-    pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
-    pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
-
-    PMIX_DESTRUCT(&pmix_client_globals.iof_stdout);
-    PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
-
-    PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
-    /* A deletion that arrived after we cleared the initialized flag above
-     * was held rather than applied, and there is now nothing to apply it
-     * to. The list destructor re-constructs, so a second PMIx_Init in
-     * this process starts from an empty one. */
-    PMIX_LIST_DESTRUCT(&pmix_client_held_deletes);
-    /* drop the delta-commit record, and leave the flag set so a second
-     * PMIx_Init in this process starts cumulative rather than trusting
-     * what a previous cycle told a previous server */
-    pmix_client_commit_resync();
-    for (i = 0; i < pmix_client_globals.peers.size; i++) {
-        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_client_globals.peers, i);
-        if (NULL != peer) {
-            PMIX_RELEASE(peer);
-        }
-    }
-    PMIX_DESTRUCT(&pmix_client_globals.peers);
-    /* tear down the server-side IOF lists only if we actually constructed
-     * them during init (no PMIX_NAMESPACE was present). This is tracked by
-     * local_iof rather than the singleton flag: the two are independent
-     * (see PMIx_Init) and keying off singleton either destructs lists that
-     * were never built - a crash - or leaks lists that were. */
-    if (pmix_client_globals.local_iof) {
-        PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
-        PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
-        pmix_client_globals.local_iof = false;
-    }
-
-    if (NULL != pmix_client_globals.myserver) {
-        /* CLOSE_THE_SOCKET screens the descriptor itself, and clears it,
-         * so the peer destructor does not close it a second time */
-        CLOSE_THE_SOCKET(pmix_client_globals.myserver->sd);
-        PMIX_RELEASE(pmix_client_globals.myserver);
-    }
-
-    pmix_rte_finalize();
-    if (NULL != pmix_globals.mypeer) {
-        PMIX_RELEASE(pmix_globals.mypeer);
-    }
-
-    /* finalize the class/object system */
-    pmix_class_finalize();
+    client_teardown();
 
     /* report whatever went wrong talking to the server, now that the
      * teardown it must not skip has run */

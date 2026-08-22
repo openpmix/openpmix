@@ -2504,6 +2504,36 @@ the job data arrives leaves the library *un*initialized, and a caller
 that could not tell the two apart would go on to use a library that is
 not there.
 
+### A failed `PMIx_Init` unwinds
+
+Every failure after `pmix_rte_init()` goes to `errout`, which calls
+`client_teardown()` and then gives back the reference count and the
+"an init has been called" latch. The caller is told the library is not
+available; it cannot call `PMIx_Finalize` to clean up after a call that
+never succeeded, and it may quite reasonably want to try again with
+different directives. So an init that fails has to leave nothing behind.
+
+`client_teardown()` is the same function `PMIx_Finalize` uses, and that
+is the point — the two cannot drift, because "what an init built" and
+"what a finalize gives back" are one list. It is safe from the globals
+block onward: everything it touches is either statically initialized
+(the two IOF sinks, the lists, the peer array) or screened for `NULL`.
+**A new allocation in `PMIx_Init` needs a matching line there**, and a
+new failure point needs `rc = ...; goto errout;` rather than a `return`.
+
+**The one exception is `pmix_rte_init()` itself failing**, which still
+returns with the latch set. That function does not give back what it
+managed to build before it failed, so there is nothing that could call
+the counterpart safely, and letting a caller re-enter a runtime that is
+open at an unknown depth is worse than telling it the library is
+unusable. If `pmix_rte_init()` ever learns to unwind, this becomes a
+`goto errout_early` and the exception goes away.
+
+`retry_after_failure()` in
+[`test/unit/client_cycle.c`](../../test/unit/client_cycle.c) holds the
+line: a child gives `PMIx_Init` a malformed `PMIX_RANK`, is refused,
+fixes it, and must then come up.
+
 ### The wire counts the client's own recv handlers read
 
 `src/server/AGENTS.md` records the round-trip screen — `cnt = n; if (0 >
@@ -2534,14 +2564,6 @@ anything about roles:
   below it then skips. The comment in
   [`pmix_finalize.c`](../runtime/pmix_finalize.c) explains the two-role
   case and reads like a contradiction of this one; both are correct.
-- **A failed `PMIx_Init` leaves `pmix_globals.init_called` set and the
-  runtime allocated**, so every later attempt answers `PMIX_ERR_INIT` and
-  nothing can be given back. Left alone deliberately: the library is
-  half-built at that point — recvs posted, frameworks open, lists
-  constructed — and a retry that re-entered it would double-post and
-  re-construct over live state. The latch is the safe answer and the
-  residue is a leak on a path the process does not survive. Changing it
-  means an unwind, not a cleared flag.
 - **`_check_for_notify()` allocates `m + 1` infos and sets
   `ninfo = n + 1`, with `n <= m`.** Not a leak: `PMIX_INFO_CREATE` zeroes
   the array, so the unused tail holds nothing, and `PMIX_INFO_FREE` frees
@@ -2553,11 +2575,11 @@ anything about roles:
 - **`PMIx_Abort`'s server-role branch** was examined again and is
   unchanged for the reasons the seventh sweep recorded above.
 
-*What is and is not tested.* The `PMIX_RANK` screen is covered by
-`check_rank_screening()` in
+*What is and is not tested.* The `PMIX_RANK` screen and the unwind are
+covered by `check_rank_screening()` in
 [`test/unit/client_cycle.c`](../../test/unit/client_cycle.c), which forks
-a child per case because the rejection must be a process's first and only
-`PMIx_Init`; it was verified by re-breaking. The held-deletion drain, the
+a child per case so that each rejection is that process's first
+`PMIx_Init`; both were verified by re-breaking. The held-deletion drain, the
 two wire-count screens, and `PMIx_Finalize`'s always-tear-down path have
 no unit coverage — the first needs a real server racing a real init, and
 the other two need a peer that can be made to send a malformed message.
