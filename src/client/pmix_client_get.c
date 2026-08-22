@@ -945,10 +945,10 @@ done:
                 val = cb->value;
                 cb->value = NULL;
             }
-            /* release any fetched values we are not going to deliver -
-             * the failed-fetch and multiple-value paths above leave
-             * entries stranded in the cb's kvs list, and the cb is
-             * delivered (and may be reused for a coalesced request)
+            /* release any fetched values we are not going to deliver.
+             * process_values() consumes the list only in the single-value
+             * case - it copies out of it for an aggregate, and a failed
+             * fetch can leave entries behind - and the cb is delivered
              * without that list otherwise being drained */
             while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(&cb->kvs))) {
                 PMIX_RELEASE(kv);
@@ -1304,7 +1304,7 @@ static void get_data(int sd, short args, void *cbdata)
         }
         /* we get here with a valid appnum - if that is what they were
          * asking for, then we are done */
-        if (NULL != cb->key && 0 == strcmp(cb->key, PMIX_APPNUM)) {
+        if (PMIx_Check_key(cb->key, PMIX_APPNUM)) {
             PMIX_VALUE_CREATE(cb->value, 1);
             if (PMIX_UNLIKELY(NULL == cb->value)) {
                 cb->status = PMIX_ERR_NOMEM;
@@ -1408,7 +1408,7 @@ static void get_data(int sd, short args, void *cbdata)
             }
         }
         /* if they were asking for sessionid, then we are done */
-        if (NULL != cb->key && 0 == strcmp(cb->key, PMIX_SESSION_ID)) {
+        if (PMIx_Check_key(cb->key, PMIX_SESSION_ID)) {
             PMIX_VALUE_CREATE(cb->value, 1);
             if (PMIX_UNLIKELY(NULL == cb->value)) {
                 cb->status = PMIX_ERR_NOMEM;
@@ -1650,7 +1650,7 @@ doget:
          * the message is still ours to release */
         PMIX_RELEASE(msg);
         pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
-        cb->status = PMIX_ERROR;
+        cb->status = rc;
         goto done;
     }
     return;
@@ -1773,8 +1773,6 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p)
         PMIX_RELEASE(msg);
         return rc;
     }
-
-
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nspace, 1, PMIX_STRING);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
