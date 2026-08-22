@@ -1653,9 +1653,44 @@ callers pass the whole info array and let the helper pick the
 event from another process, so it screens the shape and skips what it
 cannot parse rather than failing a group that has already formed.
 
+**Whether it skips our own contribution depends on the qualifier, and the
+asymmetry is the point.** Without an ID there is nothing to add — the
+values are already in our store, plain, exactly as `PMIx_Put` left them.
+With one, the qualified copy is a *second* entry that only this function
+can make, and `pmix_server_process_grpinfo()` makes it for every
+contributor on the collective path, our own process included. Skipping
+ourselves unconditionally therefore left a member able to fetch every
+peer's key under the group qualifier but not its own — the same loop over
+the membership worked for a group built by `PMIx_Group_construct` and
+failed on one built by invitation.
+
 Coverage is `test/unit/run_grpinviteendpts.pl`, and the absence of a
 `PMIx_Commit` in its client is the test — see
-[`test/unit/AGENTS.md`](../../test/unit/AGENTS.md).
+[`test/unit/AGENTS.md`](../../test/unit/AGENTS.md). Its read-back loop
+covers the caller's own rank as well as its peers, which is what
+discriminates the case above.
+
+**The leader is the one member that learns none of this from an event, so
+the invite path fills in `results`.** `PMIx_Notify_event` hands a client's
+own notification to its local chain rather than round-tripping it (the
+server does not echo one back), so a leader that named itself among the
+invitees does see its own `PMIX_GROUP_CONSTRUCT_COMPLETE` — that is what
+registers the group in `pmix_client_globals.groups` for it, through the
+bookkeeping at the top of `pmix_invoke_local_event_hdlr`. What it has no
+watch for is `store_endpts()`, which is why `announce_step()` calls that
+one directly. And a leader that did *not* name itself is not a target of
+its own event at all, so the chain drops it at the target check and it
+learns nothing.
+
+Either way the caller of `PMIx_Group_invite` was handed nothing: the
+`results`/`nresults` pair its man page documents came back empty on every
+path, so a leader that had just asked for a context ID had to register a
+handler for the event it broadcast in order to read the answer, while the
+collective `PMIx_Group_construct` simply returns it. `announce_step()` now
+builds `cb->results` — group id, final membership, and the context id when
+there is one — alongside the event's own info, the blocking form hands
+them over the way `PMIx_Group_join` does, and `invite_finish()` passes
+them to the `_nb` callback, which copies what it wants to keep.
 
 [i4068]: https://github.com/openpmix/openpmix/issues/4068
 [i4082]: https://github.com/openpmix/openpmix/issues/4082
@@ -2238,6 +2273,93 @@ that the argv-without-cmd, argv-not-starting-with-cmd and app-carrying-an-
 environment shapes still reach the host up-call, which is what a screen
 written the wrong way round would break. The `PMIX_INFO_XFER` change does
 have a real regression case, and it fails against the unfixed library.
+
+## The thirteenth sweep — the invite path's August 2026 additions
+
+The eighth sweep read `pmix_client_group.c` on 2026-08-10; the context ID
+([openpmix#4068][i4068]) and the members' endpoint data
+([openpmix#4082][i4082]) landed on 2026-08-15, and the paragraphs those
+commits added to the eighth sweep's section above are documentation, not
+review. This pass is the review — five lenses over the new code and the
+paths it changed. The two findings that matter are both **asymmetries
+against the collective path**, which is the comparison worth making
+whenever this file gains something: `PMIx_Group_construct` and
+`PMIx_Group_invite` are supposed to produce the same group.
+
+- **A member could not fetch its own contribution under the group's
+  context ID.** `store_endpts()` skipped any contribution whose
+  `PMIX_PROCID` was ours on the grounds that it is already in our store —
+  true of the plain value, false of the *qualified* copy, which is a
+  separate entry that only this function makes and which
+  `pmix_server_process_grpinfo()` makes for every contributor, ourselves
+  included, on the collective path. So a loop over the membership doing a
+  context-id-qualified `PMIx_Get` worked for a group built by
+  `PMIx_Group_construct` and failed on exactly one rank — the caller's
+  own — for one built by invitation. The skip now applies only when there
+  is no ID to qualify with. See the `store_endpts()` entry above.
+- **`PMIx_Group_invite`'s `results` were never populated.** The pair its
+  man page documents came back empty on every path, so a leader that had
+  just asked for a context ID could only learn it by registering a
+  handler for the event it broadcast itself — and a leader that did not
+  name itself among the invitees is not a target of that event, so it had
+  no route to the ID at all. `announce_step()` now assembles the group id,
+  the final membership and the context id into `cb->results`. See the
+  entry above for what the leader does and does not receive from its own
+  notification.
+
+*Crashes on wire-supplied input — not in this directory:*
+
+- **The group bookkeeping in `pmix_invoke_local_event_hdlr` trusted three
+  unions.** `PMIX_GROUP_MEMBERSHIP`, `PMIX_GROUP_ID` and
+  `PMIX_EVENT_AFFECTED_PROC` were read on the key alone, in the one place
+  in [`src/event`](../event/AGENTS.md) that touches a `pmix_value_t`
+  union — and this is the same event the handlers in this file screen
+  field by field, so half of one delivery path was checked and the other
+  half was not. Also hardened there: the `PMIX_PROC_CREATE` sized from
+  the wire count, which was indexed unchecked.
+
+*Unchecked allocations that are then indexed:*
+
+- `construct_msg()`'s `PMIX_INFO_CREATE(iptr, niarray+1)` and the bare
+  `pmix_malloc()` for the `pmix_data_array_t` beside it — the two the
+  eighth sweep's `icopy` fix left. Same class as the tenth sweep's
+  findings in `pmix_client_spawn.c`.
+- `info_cbfunc()` sized `cb->results` from the reply and indexed it. The
+  count is now assigned only once there is an array, and the scan that
+  feeds `add_group()` runs either way: the group has formed, and
+  recording it matters more than reporting it.
+
+*Noted, not changed — with the reasoning, so it is not re-derived:*
+
+- **`get_endpts()` fetches this process's own store from the caller's
+  thread**, with no `is_tsafe` screen of the kind `try_local_fetch()` in
+  [`pmix_client_get.c`](pmix_client_get.c) applies. `gds/hash` declares
+  `is_tsafe = false`, and the table it walks is written by `_putfn` on
+  the progress thread — so an application thread in `PMIx_Group_construct`
+  concurrent with one in `PMIx_Put` is a genuine race. It is left alone
+  because it is not this function's to fix: `invite_job_size()` and
+  `pmix_client_convert_group_procs()` do the same thing, the latter with
+  a comment saying so, and the answer is either a screen in the
+  `PMIX_GDS_FETCH_KV` path or the lock this directory already declines to
+  take (see "treat concurrent multithreaded use of these APIs with
+  suspicion"). Note the `PMIx_Group_join_nb` call is *not* exposed: it is
+  documented as being driven from the `PMIX_GROUP_INVITED` handler, which
+  is the progress thread.
+- **A leader that does not name itself among the invitees never registers
+  the group**, so a `PMIx_Group_destruct` or `PMIx_Group_leave` from it
+  returns `PMIX_ERR_NOT_FOUND`. That follows from the target check in
+  `pmix_invoke_local_event_hdlr` and is correct as it stands: such a
+  leader is not a member of the group it built, and the destruct is a
+  collective over the membership. Recorded because the symptom points at
+  the group list rather than at the event's range.
+- **The comment claiming the completion event "does not come back to its
+  own source" was wrong** and is corrected. It does — `PMIx_Notify_event`
+  delivers a client's own notification through the local chain rather
+  than the server — and the direct `store_endpts()` call it justified is
+  still needed anyway, for the real reason: the leader is the one process
+  in the group that never called `PMIx_Group_join`, so it has no construct
+  watch to do the storing. A right call resting on a wrong reason is worth
+  correcting, because the next reader deletes one or the other.
 
 ## Coding conventions specific to this directory
 

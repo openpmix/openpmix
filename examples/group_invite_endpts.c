@@ -144,7 +144,8 @@ int main(int argc, char **argv)
     pmix_proc_t proc, *procs;
     uint32_t nprocs, n;
     pmix_info_t *results, dir, quals[2];
-    size_t nresults;
+    size_t nresults, leadcid = SIZE_MAX;
+    bool gotid, gotmbrs;
     int waited;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
@@ -209,14 +210,44 @@ int main(int argc, char **argv)
         rc = PMIx_Group_invite(GROUP_ID, procs, nprocs, &dir, 1, &results, &nresults);
         PMIX_PROC_FREE(procs, nprocs);
         PMIX_INFO_DESTRUCT(&dir);
-        if (NULL != results) {
-            PMIX_INFO_FREE(results, nresults);
-        }
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_invite FAILED: %s\n",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+            if (NULL != results) {
+                PMIX_INFO_FREE(results, nresults);
+            }
             goto done;
         }
+        /* The leader asked for a context ID, so its own results must carry
+         * one - along with the group it just formed. Everybody else learns
+         * these from the completion event; the leader is the one process
+         * that does not receive its own invitation, and returning them here
+         * is the only way this API hands them to the process that asked. */
+        gotid = false;
+        gotmbrs = false;
+        for (n = 0; n < nresults; n++) {
+            if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_CONTEXT_ID)) {
+                if (PMIX_SUCCESS != PMIx_Value_get_number(&results[n].value, &leadcid,
+                                                          PMIX_SIZE)) {
+                    leadcid = SIZE_MAX;
+                }
+                gotid = true;
+            } else if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_MEMBERSHIP)) {
+                gotmbrs = true;
+            }
+        }
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+        }
+        if (!gotid || SIZE_MAX == leadcid || !gotmbrs) {
+            fprintf(stderr, "Client ns %s rank %d: FAILED - PMIx_Group_invite returned no "
+                    "%s\n", myproc.nspace, myproc.rank,
+                    gotid ? "membership" : "context id");
+            rc = PMIX_ERR_NOT_FOUND;
+            goto done;
+        }
+        fprintf(stderr, "%d INVITE results carry the group: PASS (cid %lu)\n", myproc.rank,
+                (unsigned long) leadcid);
     }
 
     /* every member, leader included, learns the outcome from the event */
@@ -247,9 +278,10 @@ int main(int argc, char **argv)
     PMIX_INFO_SET_QUALIFIER(&quals[0]);
     PMIX_INFO_LOAD(&quals[1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
     for (n = 0; n < nprocs; n++) {
-        if (n == myproc.rank) {
-            continue;
-        }
+        /* our own contribution included: a group carrying a context ID stores
+         * every member's values qualified by it, ours no differently from
+         * anybody else's, which is what the collective PMIx_Group_construct
+         * path has always done */
         PMIX_LOAD_PROCID(&proc, myproc.nspace, n);
         rc = PMIx_Get(&proc, ENDPT_KEY, quals, 2, &val);
         if (PMIX_SUCCESS != rc) {
@@ -267,7 +299,7 @@ int main(int argc, char **argv)
         }
         PMIX_VALUE_RELEASE(val);
     }
-    fprintf(stderr, "%d ENDPT data verified for all peers: PASS\n", myproc.rank);
+    fprintf(stderr, "%d ENDPT data verified for every member: PASS\n", myproc.rank);
 
 endpt_done:
     PMIX_INFO_DESTRUCT(&quals[0]);
