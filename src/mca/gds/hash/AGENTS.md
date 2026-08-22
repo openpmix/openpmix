@@ -123,6 +123,39 @@ below.
 
 ## Gotchas
 
+- **Job-level data is in two stores, and a fetch reads one of them per
+  rank value.** A key handed to `PMIx_server_register_nspace` at the top
+  level of its info array is stored in `internal` under
+  `PMIX_RANK_WILDCARD` (see the `else` at the foot of
+  `cache_job_info`'s loop); one handed to it inside a
+  `PMIX_JOB_INFO_ARRAY` goes on the `jobinfo` *list* instead, through
+  `pmix_gds_hash_process_job_array()`. Both are job-level and a host may
+  use either, but `pmix_gds_hash_fetch()` does not treat them as one
+  thing:
+
+  - a keyed fetch at `PMIX_RANK_WILDCARD` reads `internal` and never
+    looks at `jobinfo`;
+  - a keyed fetch at `PMIX_RANK_UNDEF` walks the per-rank tables and
+    `jobinfo`, and never the job-level table.
+
+  So neither of the two "job-level" rank values sees both stores. The
+  `UNDEF` side is covered from the client — `get_data()` in
+  [`pmix_client_get.c`](../../../client/pmix_client_get.c) retries a miss
+  at `PMIX_RANK_WILDCARD` — and the `WILDCARD` side is still open; see
+  [`docs/todo.rst`](../../../../docs/todo.rst). Do not "simplify" the
+  `jobinfo` walk out of the `UNDEF` branch on the theory that the
+  wildcard path covers it.
+
+  **The `jobinfo` walk runs inside `doover`, so a hit has to return.**
+  It used to append the match and then set `PMIX_ERR_NOT_FOUND` anyway,
+  which sent the fetch round the "try the next scope" `goto doover` to
+  arrive back at the same list — once for `local` and once for `remote`
+  — appending the same value each time. The fetch then reported success
+  with three copies, and the client's `process_values()` reads a count
+  above one as "an aggregate of everything this proc put", so the
+  application got a `PMIX_DATA_ARRAY` of duplicates where it had asked
+  for a scalar. Regression: `test/unit/get_api.c`.
+
 - **`hash` is the fallback terminus.** The framework macros treat a `NULL`
   slot on a `"hash"` module as `PMIX_ERR_NOT_SUPPORTED` rather than
   retrying elsewhere. Since `hash` implements every slot this never fires
