@@ -345,8 +345,14 @@ static void store_endpts(const pmix_info_t info[], size_t ninfo, size_t ctxid)
             continue;
         }
         memcpy(&procid, iptr[0].value.data.proc, sizeof(pmix_proc_t));
-        if (PMIX_CHECK_PROCID(&procid, &pmix_globals.myid)) {
-            /* our own contribution, already in our store */
+        if (PMIX_CHECK_PROCID(&procid, &pmix_globals.myid) && SIZE_MAX == ctxid) {
+            /* our own contribution, and with no ID to qualify it there is
+             * nothing to add: it is already in our store, plain, exactly as
+             * PMIx_Put left it. With an ID there is something to add - the
+             * qualified copy - and pmix_server_process_grpinfo() makes it for
+             * every contributor on the collective path, our own process
+             * included. Skipping ourselves here left a member able to fetch
+             * every peer's key under the group qualifier but not its own. */
             continue;
         }
         for (m = 1; m < nel; m++) {
@@ -391,6 +397,7 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
     pmix_status_t rc;
     pmix_cmd_t cmd = PMIX_GROUP_CONSTRUCT_CMD;
     pmix_info_t local_endpts, *icopy, *iarray, *iptr;
+    pmix_data_array_t *darray;
     size_t sz, n, m, niarray;
     bool lclendpts;
 
@@ -463,16 +470,32 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
             if (PMIX_PROC != iarray[0].value.type) {
                 // we need to add our ID to the beginning of the array
                 PMIX_INFO_CREATE(iptr, niarray+1);
+                if (PMIX_UNLIKELY(NULL == iptr)) {
+                    PMIX_INFO_FREE(icopy, sz);
+                    if (lclendpts) {
+                        PMIX_INFO_DESTRUCT(&local_endpts);
+                    }
+                    return PMIX_ERR_NOMEM;
+                }
                 PMIX_INFO_LOAD(&iptr[0], PMIX_PROCID, &pmix_globals.myid, PMIX_PROC);
                 for (m=0; m < niarray; m++) {
                     PMIX_INFO_XFER(&iptr[m+1], &iarray[m]);
                 }
+                darray = (pmix_data_array_t*)pmix_malloc(sizeof(pmix_data_array_t));
+                if (PMIX_UNLIKELY(NULL == darray)) {
+                    PMIX_INFO_FREE(iptr, niarray + 1);
+                    PMIX_INFO_FREE(icopy, sz);
+                    if (lclendpts) {
+                        PMIX_INFO_DESTRUCT(&local_endpts);
+                    }
+                    return PMIX_ERR_NOMEM;
+                }
                 PMIx_Load_key(icopy[n].key, PMIX_GROUP_INFO);
                 icopy[n].value.type = PMIX_DATA_ARRAY;
-                icopy[n].value.data.darray = (pmix_data_array_t*)pmix_malloc(sizeof(pmix_data_array_t));
-                icopy[n].value.data.darray->type = PMIX_INFO;
-                icopy[n].value.data.darray->array = iptr;
-                icopy[n].value.data.darray->size = niarray + 1;
+                icopy[n].value.data.darray = darray;
+                darray->type = PMIX_INFO;
+                darray->array = iptr;
+                darray->size = niarray + 1;
             } else {
                 PMIX_INFO_XFER(&icopy[n], &info[n]);
             }
@@ -1396,8 +1419,12 @@ static void invite_finish(pmix_group_tracker_t *cb)
     /* the non-blocking form: hand the outcome to the caller and then retire
      * the observer and the tracker ourselves - nobody else will. We are on
      * the progress thread, so the deregistration must not be waited out; the
-     * tracker is released when it completes. */
-    cb->cbfunc(cb->status, NULL, 0, cb->cbdata, NULL, NULL);
+     * tracker is released when it completes.
+     *
+     * The results describe the group that formed (see announce_step); they
+     * belong to the tracker, so the callback copies whatever it wants to
+     * keep, as everywhere else in this file. */
+    cb->cbfunc(cb->status, cb->results, cb->nresults, cb->cbdata, NULL, NULL);
     if (cb->timer_active) {
         pmix_event_del(&cb->ev);
         cb->timer_active = false;
@@ -1484,7 +1511,7 @@ static void ctxid_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
 static void announce_step(pmix_group_tracker_t *cb)
 {
     pmix_proc_t *members;
-    size_t i, k, idx, nmembers, nfailed, nainfo;
+    size_t i, k, idx, nmembers, nfailed, nainfo, nres;
     pmix_data_array_t darray;
     pmix_status_t rc;
 
@@ -1646,6 +1673,22 @@ static void announce_step(pmix_group_tracker_t *cb)
             /* this only goes to non-default handlers */
             PMIX_INFO_LOAD(&cb->ainfo[2], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
             PMIX_INFO_LOAD(&cb->ainfo[3], PMIX_GROUP_ID, cb->grpid, PMIX_STRING);
+            /* Hand the same description of the group back to our own caller.
+             * PMIx_Group_invite documents "results" as carrying the values the
+             * operation returned, and its collective sibling returns exactly
+             * these - but this path never filled them, so a leader that asked
+             * for a context ID could learn it only by registering a handler
+             * for the event it had just broadcast itself. */
+            nres = (SIZE_MAX == cb->ctxid) ? 2 : 3;
+            PMIX_INFO_CREATE(cb->results, nres);
+            if (PMIX_LIKELY(NULL != cb->results)) {
+                cb->nresults = nres;
+                PMIX_INFO_LOAD(&cb->results[0], PMIX_GROUP_ID, cb->grpid, PMIX_STRING);
+                PMIX_INFO_LOAD(&cb->results[1], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
+                if (SIZE_MAX != cb->ctxid) {
+                    PMIX_INFO_LOAD(&cb->results[2], PMIX_GROUP_CONTEXT_ID, &cb->ctxid, PMIX_SIZE);
+                }
+            }
             /* the loads above copied the array into the info structs */
             PMIX_PROC_FREE(members, cb->nmembers);
             idx = 4;
@@ -1660,8 +1703,9 @@ static void announce_step(pmix_group_tracker_t *cb)
                 PMIX_INFO_XFER(&cb->ainfo[idx], &cb->endpts[k]);
                 ++idx;
             }
-            /* and store it ourselves - the members do the same on receipt,
-             * but this event does not come back to its own source */
+            /* and store it ourselves - the members do this from their own
+             * construct watch, and the leader has no watch: it is the one
+             * process here that never called PMIx_Group_join */
             store_endpts(cb->endpts, cb->nendpts, cb->ctxid);
             rc = PMIx_Notify_event(PMIX_GROUP_CONSTRUCT_COMPLETE, &pmix_globals.myid,
                                    PMIX_RANGE_CUSTOM, cb->ainfo, cb->nainfo,
@@ -1766,6 +1810,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t 
      * that chain with the outcome on the tracker. */
     PMIX_WAIT_THREAD(&cb->lock);
     rc = cb->status;
+    /* hand over whatever the announcement reported about the group - the
+     * group id, its final membership, and the context id if one was assigned */
+    if (PMIX_SUCCESS == rc && NULL != results && NULL != nresults) {
+        *results = cb->results;
+        *nresults = cb->nresults;
+        cb->results = NULL;
+        cb->nresults = 0;
+    }
 
     /* deregister the invitation observer now that the invite has resolved (so
      * a late response cannot fire it against the released tracker) and release
@@ -2904,9 +2956,18 @@ static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
     /* see if anything was returned - e.g., a context id */
     cb->status = status;
     /* copy/save any returned info */
-    if (NULL != info) {
-        cb->nresults = ninfo;
-        PMIX_INFO_CREATE(cb->results, cb->nresults);
+    if (NULL != info && 0 < ninfo) {
+        /* the count is set only once there is an array to describe, so a
+         * failed allocation leaves the pair agreeing that there is nothing
+         * here rather than sending the destructor at a NULL. The scan below
+         * still runs either way: the group has been formed and recording it
+         * matters more than reporting it. */
+        PMIX_INFO_CREATE(cb->results, ninfo);
+        if (PMIX_UNLIKELY(NULL == cb->results)) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        } else {
+            cb->nresults = ninfo;
+        }
         for (n = 0; n < ninfo; n++) {
             /* On the join path this array is a copy of the leader's
              * PMIX_GROUP_CONSTRUCT_COMPLETE event (see join_complete), so
@@ -2933,7 +2994,9 @@ static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
                     PMIX_ERROR_LOG(rc);
                 }
             }
-            PMIX_INFO_XFER(&cb->results[n], &info[n]);
+            if (NULL != cb->results) {
+                PMIX_INFO_XFER(&cb->results[n], &info[n]);
+            }
         }
     }
     if (NULL != members && NULL != grpid) {

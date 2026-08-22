@@ -15,7 +15,9 @@
 # the whole job asking for a context ID; ranks 1..3 accept from their
 # PMIX_GROUP_INVITED handlers, which is also what contributes their data.
 # Every member must then find the context ID in the completion event and read
-# back every peer's value with an OPTIONAL, context-id-qualified PMIx_Get.
+# back every member's value - its own included - with an OPTIONAL,
+# context-id-qualified PMIx_Get, and the leader must find the context ID and
+# the membership in the results PMIx_Group_invite handed back.
 #
 # Against a library that drops the directive (openpmix#4068) or does not
 # exchange the endpoint data (openpmix#4082) the clients exit non-zero. See
@@ -111,18 +113,28 @@ if (0 != $status) {
     exit($status == 0 ? 1 : $status);
 }
 
-# Confirm the run actually exercised both halves rather than passing
+# Confirm the run actually exercised each half rather than passing
 # vacuously: every one of the four members must report that it received a
-# context ID and that it read back every peer's contribution.
+# context ID and that it read back every member's contribution - its own
+# included, which is the half a member cannot get from the exchange but only
+# from its own store being qualified the same way - and the leader must
+# report that PMIx_Group_invite handed it the group it just formed.
 my $ncid   = () = ($output =~ /CONTEXT_ID received: PASS/g);
-my $nendpt = () = ($output =~ /ENDPT data verified for all peers: PASS/g);
+my $nendpt = () = ($output =~ /ENDPT data verified for every member: PASS/g);
+my $nlead  = () = ($output =~ /INVITE results carry the group: PASS/g);
 my $server_done = ($output =~ /Test finished OK!/);
 if ($ncid < $nprocs) {
     print "FAIL: only $ncid/$nprocs members were given a group context id\n";
     exit(1);
 }
 if ($nendpt < $nprocs) {
-    print "FAIL: only $nendpt/$nprocs members read back their peers' endpoint data\n";
+    print "FAIL: only $nendpt/$nprocs members read back the members' endpoint data\n";
+    exit(1);
+}
+# and the leader, which receives no invitation of its own, must be handed the
+# same description of the group through the results of PMIx_Group_invite
+if (1 != $nlead) {
+    print "FAIL: the leader was not given the group's context id and membership\n";
     exit(1);
 }
 if (!$server_done) {
