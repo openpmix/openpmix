@@ -454,46 +454,40 @@ cover the whole of what the entry described.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
-Job-level data lives in two stores and neither rank sees both
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+gds/shmem3 carries a job-info list nothing ever writes
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Found reviewing ``src/client/pmix_client_get.c`` (2026-08-22); what is
-left belongs in ``src/mca/gds/hash/gds_fetch.c``.
+Found reviewing ``src/client/pmix_client_get.c`` (2026-08-22); belongs in
+``src/mca/gds/shmem3``.
 
-``gds/hash`` keeps job-level data in two places.  A key handed to
-``PMIx_server_register_nspace`` at the top level of its info array is
-stored in ``trk->internal`` under ``PMIX_RANK_WILDCARD``; a key handed to
-it inside a ``PMIX_JOB_INFO_ARRAY`` goes on ``trk->jobinfo``, a plain
-list, by way of ``pmix_gds_hash_process_job_array()``.  Both are
-job-level, and a host may reasonably use either.
+``gds/hash`` kept job-level data in two places — the ``internal`` table
+under ``PMIX_RANK_WILDCARD`` and a ``jobinfo`` list — and the two rank
+values that mean "job level" each saw only one of them.  That is now
+consolidated: the list is gone and everything job-level is in the table.
 
-``pmix_gds_hash_fetch()`` reads exactly one of them per rank value:
+``gds/shmem3`` has the same ``jobinfo`` field on its
+``pmix_gds_shmem3_shared_job_data_t``, and **nothing ever appends to
+it**.  It is allocated in the shared segment, released, printed by the
+debug dumper, and walked by two fetch paths that therefore always find
+it empty.  It costs a pointer in the segment's job metadata and two dead
+loops.
 
-* ``PMIX_RANK_WILDCARD`` with a key reads ``trk->internal`` and **never
-  consults** ``trk->jobinfo``;
-* ``PMIX_RANK_UNDEF`` with a key searches the per-rank tables and
-  ``trk->jobinfo``, and never the job-level table.
+The live half is the same hole ``gds/hash`` had, and shmem3 still has
+it: a keyed fetch at ``PMIX_RANK_UNDEF`` walks ranks ``0..nprocs-1`` and
+then reports ``PMIX_ERR_NOT_FOUND`` without ever asking the local table
+under ``PMIX_RANK_WILDCARD``, so job-level data is unreachable that way.
+``PMIx_Get(NULL, key, ...)`` works against a shmem3 client only because
+``get_data()`` in ``src/client/pmix_client_get.c`` retries at
+``PMIX_RANK_WILDCARD`` itself.  **That retry is what should go once
+shmem3 answers the question directly** — a client compensating for a
+module's rank convention hides exactly this kind of defect, which is how
+the ``gds/hash`` one survived.
 
-Two of the three resulting holes are closed.  The ``UNDEF`` side now
-retries at ``PMIX_RANK_WILDCARD`` in ``get_data()`` before going to the
-server, and the ``jobinfo`` walk no longer reports ``PMIX_ERR_NOT_FOUND``
-after a hit — it used to, which sent the fetch round the "try the next
-scope" ``doover`` to walk the same list twice more, so a job-level key
-came back three times and the client handed the application a
-``PMIX_DATA_ARRAY`` of duplicates where it had asked for a scalar.
-Regression coverage for both is ``test/unit/get_api.c``.
-
-**What is left is the third**: a keyed fetch at ``PMIX_RANK_WILDCARD``
-still cannot see ``trk->jobinfo``, so
-``PMIx_Get(&{nspace, PMIX_RANK_WILDCARD}, key, …)`` — the documented way
-to ask for job-level data — answers ``PMIX_ERR_NOT_FOUND`` for anything
-the host supplied inside a ``PMIX_JOB_INFO_ARRAY``.  It is recorded
-rather than fixed because the fix is a decision about what
-``trk->jobinfo`` is for: either the wildcard path grows a walk of it, or
-the two stores merge.  The wildcard path is also what the server uses to
-assemble job data for its clients, so a change there wants its own
-review of that side rather than a two-line addition made from the client
-directory.
+Removing the field is safe across versions without further ceremony:
+``PMIX_GDS_SHMEM3_LAYOUT_ID`` includes
+``sizeof(pmix_gds_shmem3_shared_job_data_t)``, so a peer built before the
+change computes a different id, declines the segment, and falls back to
+``hash``.
 
 ``PMIX_GET_POINTER_VALUES`` is honored by three shortcuts and nothing else
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

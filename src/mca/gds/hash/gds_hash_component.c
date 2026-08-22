@@ -89,7 +89,6 @@ static void htcon(pmix_job_t *p)
 {
     p->ns = NULL;
     p->nptr = NULL;
-    PMIX_CONSTRUCT(&p->jobinfo, pmix_list_t);
     PMIX_CONSTRUCT(&p->internal, pmix_hash_table_t);
     pmix_hash_table_init(&p->internal, 256);
     p->internal.ht_label = "internal";
@@ -112,7 +111,6 @@ static void htdes(pmix_job_t *p)
     if (NULL != p->nptr) {
         PMIX_RELEASE(p->nptr);
     }
-    PMIX_LIST_DESTRUCT(&p->jobinfo);
     pmix_hash_remove_data(&p->internal, PMIX_RANK_WILDCARD, NULL, NULL);
     PMIX_DESTRUCT(&p->internal);
     pmix_hash_remove_data(&p->remote, PMIX_RANK_WILDCARD, NULL, NULL);

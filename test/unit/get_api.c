@@ -28,17 +28,17 @@
  *      the reply is in hand.
  *
  *   the job-info list
- *      pmix_gds_hash_fetch() walked trk->jobinfo, appended the match, and
- *      then reported PMIX_ERR_NOT_FOUND anyway - which sent it round the
- *      "try the next scope" doover to walk the same list twice more. The
- *      fetch returned three copies of the one key and called it success,
- *      and process_values() reads a count above one as "an aggregate of
- *      everything this proc put", so the application was handed a
- *      PMIX_DATA_ARRAY of duplicates where it had asked for a scalar.
+ *      a key given inside a PMIX_JOB_INFO_ARRAY used to be kept on a
+ *      list of its own, trk->jobinfo, which only the undef-rank search
+ *      consulted - and consulted once per scope, so it came back three
+ *      times and PMIx_Get shaped that into an aggregate. The list is gone;
+ *      such a key is now stored under PMIX_RANK_WILDCARD like any other
+ *      job-level value, so one search finds it and both rank values that
+ *      mean "job level" reach it.
  *
- * Both are pinned below by asking for the *type* of what comes back, not
- * just for success: a data array of duplicates is what the second defect
- * produced, and it is a successful return.
+ * All of them are pinned below by asking for the *type* of what comes
+ * back, not just for success: a data array of duplicates is what the
+ * second defect produced, and it is a successful return.
  *
  * The process comes up as a PMIx server with a stub host module, which is
  * what keeps these on the local path - a server never asks anyone else
@@ -224,7 +224,10 @@ int main(void)
     check_scalar("top-level key at undef rank", PMIX_RANK_UNDEF,
                  GET_UT_TOPLEVEL, GET_UT_TOPVAL);
 
-    /* the job-info list, walked once rather than once per scope */
+    /* a job-array key now lands in the same store as a top-level one, so
+     * both rank values that mean "job level" find it */
+    check_scalar("job-array key at wildcard rank", PMIX_RANK_WILDCARD,
+                 GET_UT_JOBARRAY, GET_UT_ARRVAL);
     check_scalar("job-array key at undef rank", PMIX_RANK_UNDEF,
                  GET_UT_JOBARRAY, GET_UT_ARRVAL);
 
