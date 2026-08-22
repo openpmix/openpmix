@@ -440,6 +440,30 @@ cover the whole of what the entry described.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
+The server and tool give back mypeer's second reference the long way
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/client/pmix_client.c`` (2026-08-22); what is left
+belongs in ``src/server/pmix_server.c`` and ``src/tool/pmix_tool.c``.
+
+``pmix_globals.mypeer`` carries a second reference on those two roles,
+taken when ``pmix_client_globals.myserver`` is pointed at that same
+object.  Both give it back by releasing ``pmix_globals.mypeer`` a second
+time rather than by releasing ``myserver``, which is the pointer that
+took it.  That works, but it costs the tool a ``myserver_is_mypeer``
+flag captured before ``pmix_rte_finalize()`` purely to suppress a
+release that would otherwise be a third one, and it left both roles with
+``pmix_client_globals.myserver`` naming freed memory afterwards.  The
+dangling pointers are fixed; the shape is not.
+
+Releasing ``myserver`` *before* ``pmix_rte_finalize()`` — which is what
+the client already does — would cover both cases with no flag and no
+ordering subtlety: the object stays alive on the ``mypeer`` reference
+throughout the runtime teardown, and ``rte_finalize`` then frees it.
+Not done here because it reorders two finalize paths this review did not
+cover, and confirming nothing in the ``rte_finalize`` chain reads
+``pmix_client_globals.myserver`` wants more than a grep.
+
 A tool is sent key-deletion notices it has no receive posted for
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

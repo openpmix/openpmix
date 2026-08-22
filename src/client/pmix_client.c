@@ -1095,10 +1095,22 @@ static void client_teardown(void)
         PMIX_RELEASE(pmix_client_globals.myserver);
     }
 
+    /* and that is the last of ours. pmix_globals.mypeer is NOT released
+     * here: on a client it carries exactly one reference, the one
+     * pmix_rte_init() created it with, and pmix_rte_finalize() above
+     * gives that one back. The server and tool roles do release it a
+     * second time, because they really do hold a second reference -
+     * they point pmix_client_globals.myserver at that same object. This
+     * role does not; myserver is a peer of its own, released above.
+     *
+     * Releasing it anyway was harmless only by accident. PMIX_RELEASE
+     * NULLs its argument when the count reaches zero, so the guard that
+     * used to stand here was really asking "did rte_finalize already
+     * free it?" - and the answer was always yes. It would stop being
+     * yes the moment anything else held a reference at this point, and
+     * then this would have freed a live object out from under its
+     * owner. */
     pmix_rte_finalize();
-    if (NULL != pmix_globals.mypeer) {
-        PMIX_RELEASE(pmix_globals.mypeer);
-    }
 
     /* finalize the class/object system */
     pmix_class_finalize();

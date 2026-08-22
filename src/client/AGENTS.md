@@ -2534,6 +2534,32 @@ unusable. If `pmix_rte_init()` ever learns to unwind, this becomes a
 line: a child gives `PMIx_Init` a malformed `PMIX_RANK`, is refused,
 fixes it, and must then come up.
 
+### Who owns a reference on `pmix_globals.mypeer`
+
+Two references can exist, and which ones do depends on the role:
+
+- The one the pointer itself is, created by `pmix_rte_init()` and given
+  back by `pmix_rte_finalize()`. Every role has this one.
+- The one `pmix_client_globals.myserver` takes when it is pointed at
+  that *same* object with a `PMIX_RETAIN` — which `pmix_server.c` and
+  `pmix_tool.c` do, and **this directory does not**. A client's
+  `myserver` is a peer of its own, allocated in `PMIx_Init`.
+
+So on a client `mypeer` carries exactly one reference, and
+`client_teardown()` must not release it: `pmix_rte_finalize()` already
+did. It used to anyway, guarded by `if (NULL != pmix_globals.mypeer)` —
+which looks like a defensive check and is really asking "did
+`rte_finalize` already free it?", because `PMIX_RELEASE` NULLs its
+argument when the count reaches zero. The answer was always yes
+(measured: the count is 1 on both a singleton and a connected client),
+so the line never fired. It would have stopped never firing the moment
+anything else held a reference at that point — and would then have
+freed a live object out from under its owner.
+
+The rule to apply to a new one: **give back the reference through the
+pointer that took it.** `pmix_finalize.c` gives back `mypeer`'s; a role
+that aliases `myserver` gives back `myserver`'s.
+
 ### The wire counts the client's own recv handlers read
 
 `src/server/AGENTS.md` records the round-trip screen — `cnt = n; if (0 >
@@ -2555,15 +2581,6 @@ anything about roles:
 
 ### Refuted here, so you need not re-derive it
 
-- **`PMIx_Finalize` appears to release `pmix_globals.mypeer` twice** —
-  once inside `pmix_rte_finalize()` and once after it. It does not. On a
-  client `mypeer` carries a single reference (unlike the server and tool
-  roles, where `pmix_client_globals.myserver` is the same object and
-  holds a second), so the release inside `rte_finalize` frees it *and*
-  `PMIX_RELEASE` NULLs the pointer, which is what the guarded release
-  below it then skips. The comment in
-  [`pmix_finalize.c`](../runtime/pmix_finalize.c) explains the two-role
-  case and reads like a contradiction of this one; both are correct.
 - **`_check_for_notify()` allocates `m + 1` infos and sets
   `ninfo = n + 1`, with `n <= m`.** Not a leak: `PMIX_INFO_CREATE` zeroes
   the array, so the unused tail holds nothing, and `PMIX_INFO_FREE` frees

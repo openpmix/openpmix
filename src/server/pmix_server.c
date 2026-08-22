@@ -1179,9 +1179,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {
+        /* this is the reference myserver took when it was pointed at our
+         * own peer (see PMIx_server_init) - releasing it through mypeer
+         * frees the object, so myserver has to be cleared too or it is
+         * left naming freed memory until the next init reassigns it */
         PMIX_RELEASE(pmix_globals.mypeer);
         pmix_globals.mypeer = NULL;
     }
+    pmix_client_globals.myserver = NULL;
 
     if (NULL != pmix_server_globals.tmpdir) {
         free(pmix_server_globals.tmpdir);

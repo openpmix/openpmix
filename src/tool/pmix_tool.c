@@ -1852,6 +1852,10 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     if (!myserver_is_mypeer && NULL != pmix_client_globals.myserver) {
         PMIX_RELEASE(pmix_client_globals.myserver);
     }
+    /* in the aliased case the release above is skipped and the one
+     * through mypeer is what freed the object, so this pointer would
+     * otherwise be left naming freed memory */
+    pmix_client_globals.myserver = NULL;
 
     /* finalize the class/object system */
     pmix_class_finalize();
