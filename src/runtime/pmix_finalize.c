@@ -160,20 +160,25 @@ void pmix_rte_finalize(void)
 
     /* clean out the globals */
 
-    /* mypeer carries TWO references by the time we get here: the one
-     * pmix_rte_init created it with, and one the role took when it
-     * pointed pmix_client_globals.myserver at the same object
-     * (pmix_server.c, pmix_client.c, pmix_tool.c). This drops the first;
-     * the role drops the second immediately after we return, which is
-     * what actually frees it.
+    /* This drops the reference pmix_globals.mypeer itself is - the one
+     * pmix_rte_init created the peer with - and it is the only one this
+     * file owns.
+     *
+     * How many others exist depends on the role, so do not assume the
+     * peer is freed here. pmix_server.c and pmix_tool.c point
+     * pmix_client_globals.myserver at this same object and PMIX_RETAIN
+     * it, so on those two the count is 2 and their own release, after we
+     * return, is what frees it. A client's myserver is a peer of its
+     * own, so on a client the count is 1 and this release is the one
+     * that frees.
      *
      * So do NOT NULL the pointer here, however much the re-entrancy
-     * rules for this file otherwise want it. Every role guards its
-     * release with "if (NULL != pmix_globals.mypeer)", so clearing it
-     * silently cancels the release that does the freeing and leaks the
-     * peer - and its namespace - on every init/finalize cycle. The
-     * pointer is not dangling at this point; the object is still alive
-     * on the role's reference, and the role NULLs it once it is gone. */
+     * rules for this file otherwise want it. The roles that hold a
+     * second reference guard their release with "if (NULL !=
+     * pmix_globals.mypeer)", so clearing it would silently cancel the
+     * release that does the freeing and leak the peer - and its
+     * namespace - on every init/finalize cycle. Where the peer really
+     * is freed here, PMIX_RELEASE NULLs the pointer for us. */
     PMIX_RELEASE(pmix_globals.mypeer);
     PMIX_DESTRUCT(&pmix_globals.events);
     PMIX_LIST_DESTRUCT(&pmix_globals.cached_events);
