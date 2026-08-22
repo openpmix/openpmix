@@ -318,6 +318,7 @@ test/unit/iof_pending
 test/unit/iof_inherit
 test/unit/proc_array_id
 test/unit/attr_dictionary
+test/unit/get_api
 test/unit/get_perf
 test/unit/ptl_uri
 test/unit/ptl_handshake

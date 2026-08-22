@@ -78,6 +78,22 @@ static pmix_status_t process_values(pmix_cb_t *cb);
 
 static pmix_status_t refresh_cache(const pmix_proc_t *p);
 
+/* Return a caddy's result list to the state a fresh one is in.
+ *
+ * A gds fetch may append entries and then fail, and a caddy here is
+ * fetched into more than once - the retries in get_data(), and
+ * _getnb_cbfunc() fetching into a caddy that get_data() already used.
+ * process_values() distinguishes "the value" from "an aggregate of
+ * everything this proc put" by *counting* that list, so an entry left
+ * behind by a fetch that failed turns a scalar get into a data array.
+ * Nothing leaks either way - cbdes() destructs the list - so the symptom
+ * is a wrong answer, not a leak. */
+#define DRAIN_KVS(c)                                \
+    do {                                            \
+        PMIX_LIST_DESTRUCT(&(c)->kvs);              \
+        PMIX_CONSTRUCT(&(c)->kvs, pmix_list_t);     \
+    } while (0)
+
 /* A PMIX_QUALIFIED_VALUE kval carries the value the caller actually asked for
  * as the first element of a PMIX_INFO data array, with the qualifiers behind
  * it. Three places here unwrap that, and all three used to reach straight
@@ -95,7 +111,8 @@ static pmix_info_t *qualified_value(const pmix_kval_t *kv)
                       PMIX_DATA_ARRAY != kv->value->type ||
                       NULL == kv->value->data.darray ||
                       NULL == kv->value->data.darray->array ||
-                      0 == kv->value->data.darray->size)) {
+                      0 == kv->value->data.darray->size ||
+                      PMIX_INFO != kv->value->data.darray->type)) {
         return NULL;
     }
     return (pmix_info_t *) kv->value->data.darray->array;
@@ -426,8 +443,7 @@ static bool try_local_fetch(pmix_cb_t *cb, pmix_get_logic_t *lg)
     if (PMIX_SUCCESS != rc) {
         /* Nothing found, or something we do not handle here. Drop
          * anything collected and let the ordinary path start clean. */
-        PMIX_LIST_DESTRUCT(&cb->kvs);
-        PMIX_CONSTRUCT(&cb->kvs, pmix_list_t);
+        DRAIN_KVS(cb);
         return false;
     }
     cb->status = process_values(cb);
@@ -443,8 +459,7 @@ static bool try_local_fetch(pmix_cb_t *cb, pmix_get_logic_t *lg)
      * stale entry therefore turns a scalar answer into a data array.
      * Hand the slow path a clean caddy, exactly as the failed-fetch
      * return above does - this is a short-circuit, never a partial one. */
-    PMIX_LIST_DESTRUCT(&cb->kvs);
-    PMIX_CONSTRUCT(&cb->kvs, pmix_list_t);
+    DRAIN_KVS(cb);
     return false;
 }
 
@@ -704,6 +719,10 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata)
         PMIX_BFROPS_COPY(rc, pmix_client_globals.myserver, (void **)&cb->value, kv, PMIX_VALUE);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
+            /* the waiter reads cb->status and cb->value as a pair.
+             * Logging and leaving the success status standing handed it
+             * "the get worked, here is nothing" */
+            cb->status = rc;
         }
     }
     PMIX_POST_OBJECT(cb);
@@ -783,7 +802,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     pmix_kval_t *kv;
     pmix_get_logic_t *lg;
     pmix_proc_t rproc;
-    pmix_info_t *iptr;
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     PMIX_ACQUIRE_OBJECT(cb);
@@ -832,12 +850,21 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
      * it is the shmem component, it will contain just
      * the memory address info */
     PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_globals.mypeer, buf);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        /* what the payload could not be stored as is precisely what every
+         * waiter below is about to be answered from, so the store's
+         * failure is their answer. Dropping it left them with whatever
+         * the fetches then produced - a bare "not found" that names
+         * nothing the caller could act on, for a reply that did arrive */
+        PMIX_ERROR_LOG(rc);
+        ret = rc;
+    }
 
 done:
     /* now search any pending requests (including the one this was in
-     * response to) to see if they can be met. Note that this function
-     * will only be called if the user requested a specific key - we
-     * don't support calls to "get" for a NULL key */
+     * response to) to see if they can be met. A NULL key is legal here -
+     * it means "everything this proc put", and process_values() below
+     * shapes that into the data array such a request expects */
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix: get_nb looking for requested key");
     /* snapshot the reference proc. The cb this recv was in response to is
@@ -905,28 +932,18 @@ done:
                }
             }
             if (PMIX_SUCCESS == rc) {
-                if (1 != pmix_list_get_size(&cb->kvs)) {
-                    rc = PMIX_ERR_INVALID_VAL;
-                    val = NULL;
-                } else {
-                    kv = (pmix_kval_t *) pmix_list_remove_first(&cb->kvs);
-                    if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
-                        // extract the actual value
-                        iptr = qualified_value(kv);
-                        if (PMIX_UNLIKELY(NULL == iptr)) {
-                            rc = PMIX_ERR_INVALID_VAL;
-                            val = NULL;
-                        } else {
-                            PMIX_VALUE_CREATE(val, 1);
-                            PMIx_Value_xfer(val, &iptr[0].value);
-                        }
-                        PMIX_RELEASE(kv);
-                    } else {
-                        val = kv->value;
-                        kv->value = NULL; // protect the value
-                        PMIX_RELEASE(kv);
-                    }
-                }
+                /* shape the answer exactly as get_data() does when it
+                 * satisfies a request locally. This used to demand
+                 * exactly one kval and report PMIX_ERR_INVALID_VAL for
+                 * anything else, which left a NULL key with no answer at
+                 * all: "everything this proc put" is a request the server
+                 * honors and _pack_get() does send (it simply omits the
+                 * key), so a get of a proc whose data was not already
+                 * cached here came back as an error rather than as the
+                 * data array the same call returns when it hits locally */
+                rc = process_values(cb);
+                val = cb->value;
+                cb->value = NULL;
             }
             /* release any fetched values we are not going to deliver -
              * the failed-fetch and multiple-value paths above leave
@@ -958,6 +975,7 @@ static pmix_status_t process_values(pmix_cb_t *cb)
     pmix_kval_t *kv;
     pmix_value_t *val;
     pmix_info_t *info, *iptr;
+    pmix_status_t rc;
     size_t ninfo, n;
 
     if (NULL != cb->key && 1 == pmix_list_get_size(kvs)) {
@@ -975,7 +993,11 @@ static pmix_status_t process_values(pmix_cb_t *cb)
             if (PMIX_UNLIKELY(NULL == cb->value)) {
                 return PMIX_ERR_NOMEM;
             }
-            PMIx_Value_xfer(cb->value, &iptr[0].value);
+            rc = PMIx_Value_xfer(cb->value, &iptr[0].value);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_VALUE_RELEASE(cb->value);
+                return rc;
+            }
         } else {
             // take ownership of the value away from the kv
             cb->value = kv->value;
@@ -1014,10 +1036,18 @@ static pmix_status_t process_values(pmix_cb_t *cb)
         if (NULL != iptr) {
             // extract the actual value
             pmix_strncpy(info[n].key, iptr[0].key, PMIX_MAX_KEYLEN);
-            PMIx_Value_xfer(&info[n].value, &iptr[0].value);
+            rc = PMIx_Value_xfer(&info[n].value, &iptr[0].value);
         } else {
             pmix_strncpy(info[n].key, kv->key, PMIX_MAX_KEYLEN);
-            PMIx_Value_xfer(&info[n].value, kv->value);
+            rc = PMIx_Value_xfer(&info[n].value, kv->value);
+        }
+        /* the transfer sets the destination's type before it can fail, so
+         * an entry it could not carry is not an empty slot the caller can
+         * skip - it is one that names a type and has nothing behind it */
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_INFO_FREE(info, ninfo);
+            PMIX_VALUE_RELEASE(val);
+            return rc;
         }
         ++n;
     }
@@ -1149,8 +1179,12 @@ static void get_data(int sd, short args, void *cbdata)
         /* if they were asking for hostname, then we are done */
         if (PMIx_Check_key(cb->key, PMIX_HOSTNAME)) {
             if (NULL != lg->hostname) {
-                cb->status = PMIX_SUCCESS;
                 PMIX_VALUE_CREATE(cb->value, 1);
+                if (PMIX_UNLIKELY(NULL == cb->value)) {
+                    cb->status = PMIX_ERR_NOMEM;
+                    goto done;
+                }
+                cb->status = PMIX_SUCCESS;
                 PMIX_VALUE_LOAD(cb->value, lg->hostname, PMIX_STRING);
             } else {
                 cb->status = PMIX_ERR_NOT_FOUND;
@@ -1160,8 +1194,12 @@ static void get_data(int sd, short args, void *cbdata)
         /* if they were asking for nodeid, then we are done */
         if (PMIx_Check_key(cb->key, PMIX_NODEID)) {
             if (UINT32_MAX != lg->nodeid) {
-                cb->status = PMIX_SUCCESS;
                 PMIX_VALUE_CREATE(cb->value, 1);
+                if (PMIX_UNLIKELY(NULL == cb->value)) {
+                    cb->status = PMIX_ERR_NOMEM;
+                    goto done;
+                }
+                cb->status = PMIX_SUCCESS;
                 PMIX_VALUE_LOAD(cb->value, &lg->nodeid, PMIX_UINT32);
             } else {
                 cb->status = PMIX_ERR_NOT_FOUND;
@@ -1175,6 +1213,10 @@ static void get_data(int sd, short args, void *cbdata)
             /* just need to add the hostname/nodeid */
             nfo = cb->ninfo + 2;
             PMIX_INFO_CREATE(iptr, nfo);
+            if (PMIX_UNLIKELY(NULL == iptr)) {
+                cb->status = PMIX_ERR_NOMEM;
+                goto done;
+            }
             for (n=0; n < cb->ninfo; n++) {
                 PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
@@ -1189,6 +1231,10 @@ static void get_data(int sd, short args, void *cbdata)
             /* need to add directive and hostname/nodeid */
             nfo = cb->ninfo + 3;
             PMIX_INFO_CREATE(iptr, nfo);
+            if (PMIX_UNLIKELY(NULL == iptr)) {
+                cb->status = PMIX_ERR_NOMEM;
+                goto done;
+            }
             for (n=0; n < cb->ninfo; n++) {
                 PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
@@ -1259,8 +1305,12 @@ static void get_data(int sd, short args, void *cbdata)
         /* we get here with a valid appnum - if that is what they were
          * asking for, then we are done */
         if (NULL != cb->key && 0 == strcmp(cb->key, PMIX_APPNUM)) {
-            cb->status = PMIX_SUCCESS;
             PMIX_VALUE_CREATE(cb->value, 1);
+            if (PMIX_UNLIKELY(NULL == cb->value)) {
+                cb->status = PMIX_ERR_NOMEM;
+                goto done;
+            }
+            cb->status = PMIX_SUCCESS;
             PMIX_VALUE_LOAD(cb->value, &lg->appnum, PMIX_UINT32);
             goto done;
         }
@@ -1269,6 +1319,10 @@ static void get_data(int sd, short args, void *cbdata)
             /* just need to add the appnum */
             nfo = cb->ninfo + 2;
             PMIX_INFO_CREATE(iptr, nfo);
+            if (PMIX_UNLIKELY(NULL == iptr)) {
+                cb->status = PMIX_ERR_NOMEM;
+                goto done;
+            }
             for (n=0; n < cb->ninfo; n++) {
                 PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
@@ -1279,6 +1333,10 @@ static void get_data(int sd, short args, void *cbdata)
             /* need to add directive and appnum */
             nfo = cb->ninfo + 3;
             PMIX_INFO_CREATE(iptr, nfo);
+            if (PMIX_UNLIKELY(NULL == iptr)) {
+                cb->status = PMIX_ERR_NOMEM;
+                goto done;
+            }
             for (n=0; n < cb->ninfo; n++) {
                 PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
@@ -1305,7 +1363,21 @@ static void get_data(int sd, short args, void *cbdata)
                     cb2.key = PMIX_SESSION_ID;
                     cb2.info = &optional;
                     cb2.ninfo = 1;
-                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    /* a client's job-level data - which is where another
+                     * proc's session id lives - is stored against
+                     * myserver's module (see job_data() in
+                     * pmix_client.c), not our own. Both sibling lookups
+                     * above make the same choice; this one asked only our
+                     * own store, which happens to be the same tables when
+                     * the server also uses "hash" and is empty of job
+                     * data when it does not - so a shmem3 client silently
+                     * failed to resolve the session and went on to ask
+                     * with a sessionid of UINT32_MAX */
+                    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+                        PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb2);
+                    } else {
+                        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    }
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
@@ -1337,8 +1409,12 @@ static void get_data(int sd, short args, void *cbdata)
         }
         /* if they were asking for sessionid, then we are done */
         if (NULL != cb->key && 0 == strcmp(cb->key, PMIX_SESSION_ID)) {
-            cb->status = PMIX_SUCCESS;
             PMIX_VALUE_CREATE(cb->value, 1);
+            if (PMIX_UNLIKELY(NULL == cb->value)) {
+                cb->status = PMIX_ERR_NOMEM;
+                goto done;
+            }
+            cb->status = PMIX_SUCCESS;
             PMIX_VALUE_LOAD(cb->value, &lg->sessionid, PMIX_UINT32);
             goto done;
         }
@@ -1347,6 +1423,10 @@ static void get_data(int sd, short args, void *cbdata)
             /* just need to add the sessionid */
             nfo = cb->ninfo + 2;
             PMIX_INFO_CREATE(iptr, nfo);
+            if (PMIX_UNLIKELY(NULL == iptr)) {
+                cb->status = PMIX_ERR_NOMEM;
+                goto done;
+            }
             for (n=0; n < cb->ninfo; n++) {
                 PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
@@ -1357,6 +1437,10 @@ static void get_data(int sd, short args, void *cbdata)
             /* need to add directive and sessionid */
             nfo = cb->ninfo + 3;
             PMIX_INFO_CREATE(iptr, nfo);
+            if (PMIX_UNLIKELY(NULL == iptr)) {
+                cb->status = PMIX_ERR_NOMEM;
+                goto done;
+            }
             for (n=0; n < cb->ninfo; n++) {
                 PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
@@ -1378,6 +1462,16 @@ doget:
         cb->status = process_values(cb);
         goto done;
     }
+    /* a gds fetch can append to cb->kvs and then fail, and this caddy is
+     * fetched into again below - by the retry, and by _getnb_cbfunc() once
+     * the server replies. process_values() tells "the value" from "an
+     * aggregate of everything this proc put" by counting that list, so one
+     * stale entry turns a scalar get into a data array. Hand every later
+     * fetch an empty list, exactly as try_local_fetch() does when it
+     * declines: nothing is leaked either way (cbdes() destructs the list),
+     * which is why this is a wrong-answer bug rather than one valgrind
+     * would show. */
+    DRAIN_KVS(cb);
     pmix_output_verbose(5, pmix_client_globals.get_output,
                         "pmix:client data NOT found in server-provided data");
 
@@ -1393,7 +1487,48 @@ doget:
             cb->status = process_values(cb);
             goto done;
         }
+        DRAIN_KVS(cb);
     }
+
+    /* PMIX_RANK_UNDEF says "any rank in this nspace could be the source",
+     * and the datastore reads that as a search across the per-rank tables.
+     * Job-level data is not in those - it is kept under
+     * PMIX_RANK_WILDCARD - so a job-level key asked for with a NULL proc
+     * (the legacy-PMI form, which process_request() resolves to UNDEF)
+     * misses here even when the value is sitting in our own store. Retry
+     * at WILDCARD before paying for a round trip: _getnb_cbfunc() makes
+     * exactly this retry once the reply is in hand, and a server role or
+     * an unconnected client has no round trip to be rescued by at all.
+     *
+     * For a realm-redirected request the rank is already UNDEF by
+     * construction ("this request is required to ignore the procID"), and
+     * WILDCARD is a superset of UNDEF there - pmix_gds_hash_fetch() sends
+     * both down its !PMIX_RANK_IS_VALID branch and gives only WILDCARD the
+     * additional retry against the job-level table.
+     *
+     * Keep the original status. It is what the "different scope" and
+     * "optional" branches below report, and a miss at WILDCARD says
+     * nothing about the rank the caller actually named. */
+    if (PMIX_RANK_UNDEF == cb->proc->rank) {
+        pmix_status_t rc2;
+
+        cb->proc->rank = PMIX_RANK_WILDCARD;
+        PMIX_GDS_FETCH_KV(rc2, pmix_client_globals.myserver, cb);
+        if (PMIX_SUCCESS != rc2 &&
+            !PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash")) {
+            DRAIN_KVS(cb);
+            PMIX_GDS_FETCH_KV(rc2, pmix_globals.mypeer, cb);
+        }
+        cb->proc->rank = PMIX_RANK_UNDEF;
+        if (PMIX_SUCCESS == rc2) {
+            pmix_output_verbose(5, pmix_client_globals.get_output,
+                                "pmix:client data found at wildcard rank");
+            cb->status = process_values(cb);
+            goto done;
+        }
+        DRAIN_KVS(cb);
+    }
+
     pmix_output_verbose(5, pmix_client_globals.get_output,
                         "pmix:client requested data NOT found");
 
@@ -1403,6 +1538,12 @@ doget:
      * process ID */
     memcpy(&proc, &lg->p, sizeof(pmix_proc_t));
     cb->pname.nspace = strdup(lg->p.nspace);
+    if (PMIX_UNLIKELY(NULL == cb->pname.nspace)) {
+        /* this is what identifies the request on the pending list, and
+         * _getnb_cbfunc() hands it straight to PMIX_CHECK_NSPACE */
+        cb->status = PMIX_ERR_NOMEM;
+        goto done;
+    }
     cb->pname.rank = lg->p.rank;
 
     /* we didn't find the data in either the server or the internal hash
