@@ -205,8 +205,7 @@ a PMIx error constant is returned, including:
 
 * ``PMIX_ERR_INIT`` |mdash| the PMIx library could not be initialized (for
   example, a required transport was explicitly disabled, or a tight race between
-  concurrent ``PMIx_Init`` calls left the library in an unusable state). This is
-  also returned by a second ``PMIx_Init`` in a process whose first one failed.
+  concurrent ``PMIx_Init`` calls left the library in an unusable state).
 * ``PMIX_ERR_UNREACH`` |mdash| the local PMIx server could not be reached. Note
   that this is **not** a failure: the library is fully initialized and running
   as a singleton, the caller's identity has been assigned, and
@@ -227,6 +226,13 @@ a PMIx error constant is returned, including:
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.
+
+A ``PMIx_Init`` that returns an error other than ``PMIX_ERR_UNREACH`` leaves the
+library uninitialized and gives back everything it had allocated, so the caller
+may correct whatever was wrong |mdash| a directive, an environment variable, the
+server it was pointed at |mdash| and call ``PMIx_Init`` again. It must **not**
+call :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>` to clean up after a call that
+did not succeed; there is nothing left to finalize.
 
 
 NOTES
