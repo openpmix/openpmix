@@ -100,7 +100,7 @@ differ for reserved keys (those provided by the host environment, beginning with
 :ref:`PMIx_Put(3) <man3-PMIx_Put>`). Those rules are governed by the directives
 described below.
 
-Return of the value (blocking form) is controlled by the directives:
+Return of the value is controlled by the directives:
 
 * In the absence of any directive, the returned ``pmix_value_t`` is a freshly
   allocated memory object. The caller is responsible for releasing it with
@@ -112,6 +112,15 @@ Return of the value (blocking form) is controlled by the directives:
   storage: the caller must pass a pointer to a ``pmix_value_t`` it owns in ``val``
   and destruct it with ``PMIX_VALUE_DESTRUCT`` when done. If the implementation
   cannot return a static value, ``PMIx_Get`` returns ``PMIX_ERR_NOT_SUPPORTED``.
+
+The same rules govern the value delivered to ``PMIx_Get_nb``'s ``cbfunc``, and in
+particular the first of them: **the value passed to the callback belongs to the
+caller**, and a callback that simply drops it leaks one ``pmix_value_t`` per get.
+The library hands the value over and does not free it. The exception is the same
+one |mdash| with ``PMIX_GET_POINTER_VALUES`` the callback receives a pointer into
+the library's own store and must not release it. ``PMIX_GET_STATIC_VALUES`` cannot
+be used with the non-blocking form, since there is no ``val`` argument through
+which to pass the storage.
 
 As with all non-blocking PMIx APIs, callers of ``PMIx_Get_nb`` **must** keep the
 ``proc`` and ``info`` arrays valid until ``cbfunc`` is invoked.

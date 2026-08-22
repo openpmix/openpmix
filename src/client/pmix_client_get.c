@@ -215,8 +215,18 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             }
             /* must copy - lgdes() frees this field, and the info array
              * belongs to the caller. Every other assignment to
-             * lg->hostname strdup's for the same reason */
+             * lg->hostname strdup's for the same reason.
+             *
+             * Free any earlier one first: nothing stops a caller naming
+             * PMIX_HOSTNAME twice, and the second strdup would otherwise
+             * strand the first. */
+            if (NULL != lg->hostname) {
+                free(lg->hostname);
+            }
             lg->hostname = strdup(info[n].value.data.string);
+            if (PMIX_UNLIKELY(NULL == lg->hostname)) {
+                return PMIX_ERR_NOMEM;
+            }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
             rc = PMIx_Value_get_number(&info[n].value, &lg->nodeid, PMIX_UINT32);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -242,8 +252,14 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
     if (NULL == proc && PMIx_Check_key(key, PMIX_PROCID)) {
         if (lg->stval) {
             ival = *val;
-            ival->type = PMIX_PROC;
             ival->data.proc = (pmix_proc_t *) malloc(sizeof(pmix_proc_t));
+            if (PMIX_UNLIKELY(NULL == ival->data.proc)) {
+                return PMIX_ERR_NOMEM;
+            }
+            /* set the type only once there is something for it to describe -
+             * a PMIX_PROC whose pointer is NULL is what the destructor and
+             * every reader will trust and follow */
+            ival->type = PMIX_PROC;
             PMIX_LOAD_PROCID(ival->data.proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
         } else if (lg->pntrval) {
             (*val) = &pmix_globals.myidval;
@@ -252,8 +268,12 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             if (PMIX_UNLIKELY(NULL == ival)) {
                 return PMIX_ERR_NOMEM;
             }
-            ival->type = PMIX_PROC;
             ival->data.proc = (pmix_proc_t *) malloc(sizeof(pmix_proc_t));
+            if (PMIX_UNLIKELY(NULL == ival->data.proc)) {
+                PMIX_VALUE_RELEASE(ival);
+                return PMIX_ERR_NOMEM;
+            }
+            ival->type = PMIX_PROC;
             PMIX_LOAD_PROCID(ival->data.proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
             *val = ival;
         }
@@ -458,6 +478,9 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
     }
 
     lg = PMIX_NEW(pmix_get_logic_t);
+    if (PMIX_UNLIKELY(NULL == lg)) {
+        return PMIX_ERR_NOMEM;
+    }
     rc = process_request(proc, key, info, ninfo, lg, val);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         /* the value has already been prepped */
@@ -601,6 +624,9 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     }
 
     lg = PMIX_NEW(pmix_get_logic_t);
+    if (PMIX_UNLIKELY(NULL == lg)) {
+        return PMIX_ERR_NOMEM;
+    }
     rc = process_request(proc, key, info, ninfo, lg, &val);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         /* the value has already been prepped - threadshift to return result */
