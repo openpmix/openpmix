@@ -780,10 +780,11 @@ static void mycbfn(pmix_status_t status, size_t refid, void *cbdata)
     PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
-/* wake the caller of a deregistration we had to open-code because the
- * public entry point is not yet available to us - see the debugger-wait
- * teardown in PMIx_Init */
-static void deregopcb(pmix_status_t status, void *cbdata)
+/* Record an operation's status on the caller's lock and wake it. Used
+ * wherever this file hands work to something that answers through a
+ * pmix_op_cbfunc_t and then blocks for the answer - the debugger-wait
+ * teardown in PMIx_Init, and the host's abort up-call. */
+static void opcb_wakeup(pmix_status_t status, void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t *) cbdata;
 
@@ -1037,7 +1038,7 @@ static void dereg_debugger_wait(size_t evref)
     }
     PMIX_CONSTRUCT_LOCK(&lock);
     cd->ref = evref;
-    cd->cbfunc.opcbfn = deregopcb;
+    cd->cbfunc.opcbfn = opcb_wakeup;
     cd->cbdata = &lock;
     /* the handler releases the caddy after invoking our callback */
     PMIX_THREADSHIFT(cd, pmix_internal_dereg_event_hdlr);
@@ -1982,14 +1983,39 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
      * handle this directly */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-        if (NULL != pmix_host_server.abort) {
-            rc = pmix_host_server.abort(&pmix_globals.myid,
-                                        pmix_globals.mypeer->info->server_object,
-                                        flag, msg, procs, nprocs,
-                                        NULL, NULL);
-        } else {
-            rc = PMIX_ERR_NOT_SUPPORTED;
+        pmix_lock_t lock;
+
+        if (NULL == pmix_host_server.abort) {
+            return PMIX_ERR_NOT_SUPPORTED;
         }
+        /* We wait for the host's answer below, so screen for the caller
+         * being the thread that would have to deliver it. */
+        if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Abort"))) {
+            return PMIX_ERR_WOULD_BLOCK;
+        }
+        /* Hand the host a callback and block on it, which is what
+         * pmix_server_abort_fn_t asks of us: the up-call is defined as
+         * completing through that callback, with the requestor held
+         * until it does. Passing NULL got a host that honors the
+         * contract a NULL dereference, and a host that guards it - as
+         * PRRTE does - answered every abort with "queued", so a request
+         * it went on to reject reached the caller as success. */
+        PMIX_CONSTRUCT_LOCK(&lock);
+        rc = pmix_host_server.abort(&pmix_globals.myid,
+                                    pmix_globals.mypeer->info->server_object,
+                                    flag, msg, procs, nprocs,
+                                    opcb_wakeup, &lock);
+        if (PMIX_SUCCESS == rc) {
+            /* the host took it and will answer through the callback */
+            PMIX_WAIT_THREAD(&lock);
+            rc = lock.status;
+        } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+            /* it did the work itself and will not call back. That is a
+             * success to the host and has to read as one to the
+             * application, which knows nothing of the up-call. */
+            rc = PMIX_SUCCESS;
+        }
+        PMIX_DESTRUCT_LOCK(&lock);
         return rc;
     }
 

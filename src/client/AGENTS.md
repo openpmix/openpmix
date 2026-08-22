@@ -1572,18 +1572,15 @@ without new evidence.
   rather than changed: the multi-init refcount path exists precisely for
   those second callers, so altering what it returns is a contract change
   affecting all of them.
-- **`PMIx_Abort`'s server-role branch calls `pmix_host_server.abort()`
-  with `NULL` for both `cbfunc` and `cbdata` and returns the host's
-  status verbatim.** The typedef documents the host as completing
-  through that callback, so a host honoring the contract either
-  dereferences NULL or never completes, and a host answering
-  `PMIX_OPERATION_SUCCEEDED` (-157) has that handed to the application
-  as a failure. Not changed because the library's own abort up-call in
-  [`pmix_server_ops.c`](../server/pmix_server_ops.c) treats
-  `PMIX_OPERATION_SUCCEEDED` as an error too, so this is a tree-wide
-  convention rather than a divergence here, and the in-tree host
-  (`test/simple/simptest.c`) ignores `cbfunc` entirely, so nothing
-  available demonstrates the failure.
+- **`PMIx_Abort`'s server-role branch used to call
+  `pmix_host_server.abort()` with `NULL` for both `cbfunc` and `cbdata`
+  and return the host's status verbatim.** Fixed in the fifteenth sweep
+  — see below. The reasoning recorded here for leaving it alone was
+  wrong on both counts: the library's own abort up-call in
+  [`pmix_server_ops.c`](../server/pmix_server_ops.c) passes a real
+  `op_cbfunc`, so this was a divergence rather than a convention, and
+  "nothing available demonstrates the failure" was a statement about the
+  in-tree host, not about the contract.
 
 ## The eighth sweep — `pmix_client_group.c` and the setup/progress-thread seam
 
@@ -2550,6 +2547,27 @@ does so through the *second* `PMIx_Init` — the already-initialized
 branch runs the same check, and by then a handler can be registered to
 see what it produced.
 
+### A host up-call answers through its callback
+
+`pmix_server_abort_fn_t`, like every `pmix_server_*_fn_t`, is defined as
+completing through the callback it is given — the typedef says the
+requestor is held in a blocked state until the host invokes it. So the
+server-role branch of `PMIx_Abort` supplies one and blocks on it, and
+normalizes the `PMIX_OPERATION_SUCCEEDED` a host returns when it did the
+work inline and will not call back. The application knows nothing of the
+up-call and cannot be handed -157 as its answer.
+
+Passing `NULL` there failed in three different ways depending on the
+host: one honoring the contract dereferences it; PRRTE guards it, so
+every abort answered "queued" and the rejection its `_client_abort` goes
+on to produce never reached the caller; and one completing inline had
+`PMIX_OPERATION_SUCCEEDED` reported to the application as a failure. Only
+the second is what the in-tree host does, which is why five sweeps read
+this branch and left it.
+
+Screen for the progress thread *before* blocking — that branch sits
+above the check the rest of `PMIx_Abort` does, so it needs its own.
+
 ### Who owns a reference on `pmix_globals.mypeer`
 
 Two references can exist, and which ones do depends on the role:
@@ -2599,12 +2617,26 @@ anything about roles:
 
 - **The debugger-wait registration `PMIX_RETAIN`s its caddy and releases
   it once**, which looks unbalanced against the event code releasing it
-  too. It is balanced: `_add_hdlr()` takes its own reference before
-  handing the caddy to the deferred path.
-- **`PMIx_Abort`'s server-role branch** was examined again and is
-  unchanged for the reasons the seventh sweep recorded above.
+  too. Traced through all four exits and it balances. `PMIX_NEW` and our
+  `PMIX_RETAIN` make two; `_add_hdlr()` takes a third for the `cd2` it
+  builds, and gives it back on every path that does not return
+  `PMIX_ERR_WOULD_BLOCK` — where it does, the reply handler
+  (`regevents_cbfunc`/`_regcbfunc`) releases `cd2`, whose destructor
+  releases ours. The handler drops its own reference either at the
+  `WOULD_BLOCK` return or after calling `evregcbfn` at `ack:`, and we
+  drop the last one after `PMIX_WAIT_THREAD`. Note `rsdes()` does not
+  touch `info`, which matters because ours points at `PMIx_Init`'s stack.
+  The `if (NULL != cd->evregcbfn)` guard around that release looks like
+  a leak waiting to happen; it is unreachable — every entry point into
+  `pmix_internal_reg_event_hdlr` substitutes `mycbfn` or `obs_regcb`
+  when the caller passes none.
 
-*What is and is not tested.* The model-declaration count is covered by
+*What is and is not tested.* The abort up-call is covered by
+`test_abort_upcall()` in
+[`test/unit/server_control.c`](../../test/unit/server_control.c), which
+stands up a server whose host answers inline, answers late from another
+thread, and answers `PMIX_OPERATION_SUCCEEDED`; verified by re-breaking
+each arm. The model-declaration count is covered by
 `test_model_declared_duplicate_key()`, verified by re-breaking. The
 `PMIX_RANK` screen and the unwind are covered by `check_rank_screening()` in
 [`test/unit/client_cycle.c`](../../test/unit/client_cycle.c), which forks

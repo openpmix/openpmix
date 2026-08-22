@@ -74,6 +74,7 @@
 #include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -495,6 +496,94 @@ static void drain_epilog_dirs(void)
     }
 }
 
+/* PMIx_Abort's server-role branch, which hands the request to the host
+ * through pmix_server_abort_fn_t.
+ *
+ * It lives here rather than with the other client-API cases because it
+ * needs a server with a host module behind it, which is what this file
+ * already stands up. The typedef defines that up-call as completing
+ * through the callback it is given, with the requestor held until it
+ * does. PMIx_Abort used to pass NULL for it and return whatever the
+ * up-call returned, so a host honoring the contract got a NULL
+ * dereference, one that guards it (as PRRTE does) answered every abort
+ * with "queued" and its later rejection never reached the caller, and a
+ * host completing inline had PMIX_OPERATION_SUCCEEDED handed to the
+ * application as a failure. */
+static int abort_mode = 0;
+static int abort_saw_null_cbfunc = 0;
+static int abort_fired = 0;
+static pmix_op_cbfunc_t abort_saved_cb = NULL;
+static void *abort_saved_cbdata = NULL;
+
+static void *abort_late_thread(void *arg)
+{
+    (void) arg;
+    /* answer well after the up-call returned, so the only way PMIx_Abort
+     * can report this status is by having waited for it */
+    usleep(50000);
+    abort_saved_cb(PMIX_ERR_TIMEOUT, abort_saved_cbdata);
+    return NULL;
+}
+
+static pmix_status_t stub_abort(const pmix_proc_t *proc, void *server_object, int status,
+                                const char msg[], pmix_proc_t procs[], size_t nprocs,
+                                pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pthread_t tid;
+
+    (void) proc;
+    (void) server_object;
+    (void) status;
+    (void) msg;
+    (void) procs;
+    (void) nprocs;
+
+    abort_fired++;
+    if (NULL == cbfunc) {
+        abort_saw_null_cbfunc = 1;
+        return PMIX_SUCCESS;
+    }
+    if (0 == abort_mode) {
+        /* answer immediately, the way a host that has the answer to hand
+         * does - the wakeup lands before the wait */
+        cbfunc(PMIX_ERR_NOT_FOUND, cbdata);
+        return PMIX_SUCCESS;
+    }
+    if (1 == abort_mode) {
+        abort_saved_cb = cbfunc;
+        abort_saved_cbdata = cbdata;
+        if (0 != pthread_create(&tid, NULL, abort_late_thread, NULL)) {
+            return PMIX_ERROR;
+        }
+        pthread_detach(tid);
+        return PMIX_SUCCESS;
+    }
+    /* did the work itself; no callback is coming */
+    return PMIX_OPERATION_SUCCEEDED;
+}
+
+static void test_abort_upcall(void)
+{
+    pmix_status_t rc;
+
+    abort_mode = 0;
+    abort_fired = 0;
+    rc = PMIx_Abort(1, "inline", NULL, 0);
+    report("abort reached the host", 1 == abort_fired);
+    report("abort was given a callback", !abort_saw_null_cbfunc);
+    report("an inline answer reaches the caller", PMIX_ERR_NOT_FOUND == rc);
+
+    abort_mode = 1;
+    abort_fired = 0;
+    rc = PMIx_Abort(1, "deferred", NULL, 0);
+    report("a deferred answer is waited for", PMIX_ERR_TIMEOUT == rc);
+
+    abort_mode = 2;
+    abort_fired = 0;
+    rc = PMIx_Abort(1, "inline-complete", NULL, 0);
+    report("PMIX_OPERATION_SUCCEEDED reads as success", PMIX_SUCCESS == rc);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -512,6 +601,7 @@ int main(int argc, char **argv)
     mymodule.log2 = stub_log2;
     mymodule.job_control = stub_job_control;
     mymodule.get_credential = stub_get_credential;
+    mymodule.abort = stub_abort;
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
@@ -682,6 +772,9 @@ int main(int argc, char **argv)
     PMIX_INFO_DESTRUCT(&jc[0]);
 
     drain_epilog_dirs();
+
+    /* --- the host's abort up-call --------------------------------- */
+    test_abort_upcall();
 
     PMIx_server_finalize();
 
