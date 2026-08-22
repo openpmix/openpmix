@@ -285,15 +285,16 @@ Ordered by how much of the directory the review no longer covers.
    2026-08-22 (the fifteenth sweep in that ``AGENTS.md``).  The touches
    to ``pmix_client_get.c`` (``633b09cce``) and ``pmix_client_resolve.c``
    (``db61debd4``) were listed here as unreviewed and should not have
-   been: both are review *findings*, not feature work.  What is
-   genuinely still outside a review is ``pmix_client_spawn.c``'s share
-   of the spawn output-forwarding hold (``a4d696b8c``, 2026-08-15,
-   +56/-12 there and ~950 lines across the tree), which post-dates the
-   tenth sweep.
+   been: both are review *findings*, not feature work.
+   ``pmix_client_spawn.c`` was reviewed on 2026-08-22 (the sixteenth
+   sweep in that ``AGENTS.md``), which closes the spawn
+   output-forwarding hold (``a4d696b8c``, 2026-08-15).  Nothing in the
+   directory is now outside a review; the one finding that sweep left
+   unfixed has an entry of its own below.
 
    Note also a difference in depth, not just currency: only
-   ``pmix_client.c`` and ``pmix_client_group.c`` have had the five-lens
-   per-file treatment.  ``pmix_client_connect.c``,
+   ``pmix_client.c``, ``pmix_client_group.c`` and
+   ``pmix_client_spawn.c`` have had the five-lens per-file treatment.  ``pmix_client_connect.c``,
    ``pmix_client_convert.c``, ``pmix_client_fabric.c``,
    ``pmix_client_fence.c``, ``pmix_client_get.c`` and
    ``pmix_client_pub.c`` are covered by the July 2026 directory-wide
