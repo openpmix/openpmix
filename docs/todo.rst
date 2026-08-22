@@ -282,10 +282,23 @@ Ordered by how much of the directory the review no longer covers.
    directory's ``AGENTS.md``).  ``pmix_client.c`` — the ``PMIx_Put``
    delete scopes, the per-key record behind ``PMIx_Commit`` and the
    never-hand-back-a-compressed-string change — was reviewed on
-   2026-08-22 (the fifteenth sweep in that ``AGENTS.md``).  What is
-   still outside a review is the spawn output-forwarding hold (+56/-12
-   in ``pmix_client_spawn.c``) and the smaller touches to
-   ``pmix_client_get.c`` and ``pmix_client_resolve.c``.
+   2026-08-22 (the fifteenth sweep in that ``AGENTS.md``).  The touches
+   to ``pmix_client_get.c`` (``633b09cce``) and ``pmix_client_resolve.c``
+   (``db61debd4``) were listed here as unreviewed and should not have
+   been: both are review *findings*, not feature work.  What is
+   genuinely still outside a review is ``pmix_client_spawn.c``'s share
+   of the spawn output-forwarding hold (``a4d696b8c``, 2026-08-15,
+   +56/-12 there and ~950 lines across the tree), which post-dates the
+   tenth sweep.
+
+   Note also a difference in depth, not just currency: only
+   ``pmix_client.c`` and ``pmix_client_group.c`` have had the five-lens
+   per-file treatment.  ``pmix_client_connect.c``,
+   ``pmix_client_convert.c``, ``pmix_client_fabric.c``,
+   ``pmix_client_fence.c``, ``pmix_client_get.c`` and
+   ``pmix_client_pub.c`` are covered by the July 2026 directory-wide
+   sweep and the targeted passes since, which is one review each rather
+   than five.
 #. **``src/server``** — the 2026-08-09 → 15 commit run *is* the review,
    performed after the source was split into function-oriented files, so
    the body of the directory is covered.  Outside it is the same late
