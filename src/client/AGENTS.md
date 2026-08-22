@@ -2534,6 +2534,22 @@ unusable. If `pmix_rte_init()` ever learns to unwind, this becomes a
 line: a child gives `PMIx_Init` a malformed `PMIX_RANK`, is refused,
 fixes it, and must then come up.
 
+### `_check_for_notify()` counts keys, not matches
+
+It keeps one pointer per model key and stores the *last* match for each,
+so a caller naming `PMIX_PROGRAMMING_MODEL` twice is declaring one model,
+not two. Both the allocation and `scd->ninfo` therefore have to come
+from the pointers that ended up set, which is what the four `if (NULL !=
+...)` tests after the loop are for. Sizing from the match count instead
+left a tail of zeroed entries in the array; when `ninfo` came from the
+same count those were handed to every `PMIX_MODEL_DECLARED` handler as
+though they were real declarations, and once `ninfo` was corrected they
+were merely a slot nobody used. `test_model_declared_duplicate_key()` in
+[`test/unit/client_api.c`](../../test/unit/client_api.c) pins it, and
+does so through the *second* `PMIx_Init` — the already-initialized
+branch runs the same check, and by then a handler can be registered to
+see what it produced.
+
 ### Who owns a reference on `pmix_globals.mypeer`
 
 Two references can exist, and which ones do depends on the role:
@@ -2581,10 +2597,6 @@ anything about roles:
 
 ### Refuted here, so you need not re-derive it
 
-- **`_check_for_notify()` allocates `m + 1` infos and sets
-  `ninfo = n + 1`, with `n <= m`.** Not a leak: `PMIX_INFO_CREATE` zeroes
-  the array, so the unused tail holds nothing, and `PMIX_INFO_FREE` frees
-  the array itself regardless of the count.
 - **The debugger-wait registration `PMIX_RETAIN`s its caddy and releases
   it once**, which looks unbalanced against the event code releasing it
   too. It is balanced: `_add_hdlr()` takes its own reference before
@@ -2592,8 +2604,9 @@ anything about roles:
 - **`PMIx_Abort`'s server-role branch** was examined again and is
   unchanged for the reasons the seventh sweep recorded above.
 
-*What is and is not tested.* The `PMIX_RANK` screen and the unwind are
-covered by `check_rank_screening()` in
+*What is and is not tested.* The model-declaration count is covered by
+`test_model_declared_duplicate_key()`, verified by re-breaking. The
+`PMIX_RANK` screen and the unwind are covered by `check_rank_screening()` in
 [`test/unit/client_cycle.c`](../../test/unit/client_cycle.c), which forks
 a child per case so that each rejection is that process's first
 `PMIx_Init`; both were verified by re-breaking. The held-deletion drain, the

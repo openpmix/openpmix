@@ -847,17 +847,29 @@ static void _check_for_notify(pmix_info_t info[], size_t ninfo)
             /* we need to generate an event indicating that
              * a programming model has been declared */
             model = &info[n];
-            ++m;
         } else if (0 == strncmp(info[n].key, PMIX_MODEL_LIBRARY_NAME, PMIX_MAX_KEYLEN)) {
             library = &info[n];
-            ++m;
         } else if (0 == strncmp(info[n].key, PMIX_MODEL_LIBRARY_VERSION, PMIX_MAX_KEYLEN)) {
             vers = &info[n];
-            ++m;
         } else if (0 == strncmp(info[n].key, PMIX_THREADING_MODEL, PMIX_MAX_KEYLEN)) {
             tmod = &info[n];
-            ++m;
         }
+    }
+    /* how many distinct keys we found, which is what we are about to
+     * pass on - counting occurrences instead would over-size the array
+     * whenever a caller named one of them twice, since each of these
+     * holds only the last one seen */
+    if (NULL != model) {
+        ++m;
+    }
+    if (NULL != library) {
+        ++m;
+    }
+    if (NULL != vers) {
+        ++m;
+    }
+    if (NULL != tmod) {
+        ++m;
     }
     if (0 < m) {
         /* notify anyone listening that a model has been declared */
@@ -891,9 +903,8 @@ static void _check_for_notify(pmix_info_t info[], size_t ninfo)
         }
         /* mark that it is not to go to any default handlers */
         PMIX_INFO_LOAD(&scd->info[n], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-        /* count what we actually filled, not what we sized for: m counts
-         * every matching key, so a caller that passed one of them twice
-         * left the tail of the array as zeroed entries with an empty key */
+        /* n has just counted the same four pointers m did, so this is
+         * the whole array and not a prefix of it */
         scd->ninfo = n + 1;
         scd->status = PMIX_MODEL_DECLARED;
         scd->proc = &pmix_globals.myid;
