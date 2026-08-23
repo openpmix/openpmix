@@ -22,6 +22,12 @@
  * value must register the singleton, and every malformed value must come
  * back as PMIX_ERR_BAD_PARAM without a crash.
  *
+ * The same "the key says only what the directive is" rule governs the
+ * string directives PMIX_SERVER_TMPDIR, PMIX_SYSTEM_TMPDIR and
+ * PMIX_SERVER_NSPACE, each of which was read straight out of the value
+ * union: a scalar loaded under one of those keys reached strdup as a
+ * pointer built from that scalar.
+ *
  * PMIX_ALLOC_MAU carries a pmix_data_array_t that belongs to the *caller*.
  * Init stores it in the datastore, which deep-copies it - but it built the
  * kval it stored through by pointing the value straight at the caller's
@@ -31,12 +37,20 @@
  * The test asserts both halves: the array still reads correctly after init
  * returns, and the caller can still free it.
  *
- * Each case runs in a forked child because PMIx_server_init() can only be
- * meaningfully called once per process - a failed init leaves init_called
- * set, so a second attempt returns PMIX_ERR_INIT. The parent inspects the
- * child's exit status, which is also how a fault (death by signal) is
- * detected and reported as a failure rather than being mistaken for a
- * rejection.
+ * A rejected init must also leave the library usable. PMIx_server_init
+ * latches pmix_globals.init_called before it does any work, and an init
+ * that returned an error without giving that latch back wedged the
+ * process: every later attempt answered PMIX_ERR_INIT, and
+ * PMIx_server_finalize declined as well because we were never marked
+ * initialized. Correcting a rejected directive and trying again is the
+ * obvious thing for a caller to do, so the last two cases do exactly
+ * that - once for a rejection that lands before pmix_rte_init and once
+ * for one that lands after it, which is the side that has to unwind.
+ *
+ * Each case runs in a forked child because one PMIx_server_init per
+ * process is all these cases need, and a child's exit status is also how
+ * a fault (death by signal) is detected and reported as a failure rather
+ * than being mistaken for a rejection.
  */
 
 #include "src/include/pmix_config.h"
@@ -58,6 +72,7 @@
 #define CHILD_OTHERERR  2 /* init failed with some other status */
 #define CHILD_NOTFOUND  3 /* init succeeded but the singleton is not registered */
 #define CHILD_ACCEPTED  4 /* init accepted a value it should have rejected */
+#define CHILD_RETRY     5 /* the retry after a rejected init did not succeed */
 
 static int npass = 0;
 static int nfail = 0;
@@ -277,6 +292,154 @@ static void check_mau(const char *name, bool badtype, int expected)
     report(name, expected == WEXITSTATUS(status), detail);
 }
 
+/* Attempt an init carrying a directive whose value is not of the type the
+ * key implies. A key states only what a directive *is*, never what its
+ * value holds, and the string directives here were read straight out of
+ * the union - so a scalar loaded under one of these keys reached strdup
+ * as a pointer built from that scalar. */
+static void badtype_child(const char *key)
+{
+    pmix_info_t info;
+    pmix_status_t rc;
+    uint32_t scalar = 42;
+
+    PMIX_INFO_LOAD(&info, key, &scalar, PMIX_UINT32);
+    rc = PMIx_server_init(&mymodule, &info, 1);
+    PMIX_INFO_DESTRUCT(&info);
+
+    if (PMIX_ERR_BAD_PARAM == rc) {
+        exit(CHILD_BADPARAM);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIx_server_finalize();
+        exit(CHILD_ACCEPTED);
+    }
+    fprintf(stderr, "     init returned %s\n", PMIx_Error_string(rc));
+    exit(CHILD_OTHERERR);
+}
+
+/* fork a child to attempt a mistyped-directive init, then check its status */
+static void check_badtype(const char *name, const char *key, int expected)
+{
+    pid_t pid;
+    int status;
+    char detail[256];
+
+    fflush(stdout);
+    fflush(stderr);
+
+    pid = fork();
+    if (0 > pid) {
+        report(name, 0, "fork failed");
+        return;
+    }
+    if (0 == pid) {
+        badtype_child(key);
+        /* not reached */
+        exit(CHILD_OTHERERR);
+    }
+
+    if (pid != waitpid(pid, &status, 0)) {
+        report(name, 0, "waitpid failed");
+        return;
+    }
+    if (WIFSIGNALED(status)) {
+        /* against an unfixed library the strdup of a scalar-as-pointer
+         * takes the process down here rather than reporting anything */
+        snprintf(detail, sizeof(detail), "server died on signal %d", WTERMSIG(status));
+        report(name, 0, detail);
+        return;
+    }
+    if (!WIFEXITED(status)) {
+        report(name, 0, "child did not exit normally");
+        return;
+    }
+    snprintf(detail, sizeof(detail), "expected exit %d, got %d", expected, WEXITSTATUS(status));
+    report(name, expected == WEXITSTATUS(status), detail);
+}
+
+/* Reject a directive, then correct it and init again.
+ *
+ * "early" chooses which side of pmix_rte_init the first rejection lands
+ * on. A mistyped PMIX_SINGLETON is caught while reading the directives,
+ * before the runtime exists; a malformed singleton *string* is caught by
+ * register_singleton, well after it - and only the second exercises the
+ * unwind that has to give the runtime, the server globals and the latch
+ * back. */
+static void retry_child(bool early)
+{
+    pmix_info_t info;
+    pmix_status_t rc;
+    uint32_t scalar = 42;
+    bool found;
+
+    if (early) {
+        PMIX_INFO_LOAD(&info, PMIX_SINGLETON, &scalar, PMIX_UINT32);
+    } else {
+        PMIX_INFO_LOAD(&info, PMIX_SINGLETON, "no-separator", PMIX_STRING);
+    }
+    rc = PMIx_server_init(&mymodule, &info, 1);
+    PMIX_INFO_DESTRUCT(&info);
+    if (PMIX_ERR_BAD_PARAM != rc) {
+        fprintf(stderr, "     first init returned %s\n", PMIx_Error_string(rc));
+        if (PMIX_SUCCESS == rc) {
+            PMIx_server_finalize();
+            exit(CHILD_ACCEPTED);
+        }
+        exit(CHILD_OTHERERR);
+    }
+
+    /* the caller corrects the directive and tries again */
+    PMIX_INFO_LOAD(&info, PMIX_SINGLETON, "retry.2", PMIX_STRING);
+    rc = PMIx_server_init(&mymodule, &info, 1);
+    PMIX_INFO_DESTRUCT(&info);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "     retry returned %s\n", PMIx_Error_string(rc));
+        exit(CHILD_RETRY);
+    }
+    found = singleton_registered("retry", 2);
+    PMIx_server_finalize();
+    exit(found ? CHILD_OK : CHILD_NOTFOUND);
+}
+
+/* fork a child to attempt the reject-then-retry, then check its status */
+static void check_retry(const char *name, bool early, int expected)
+{
+    pid_t pid;
+    int status;
+    char detail[256];
+
+    fflush(stdout);
+    fflush(stderr);
+
+    pid = fork();
+    if (0 > pid) {
+        report(name, 0, "fork failed");
+        return;
+    }
+    if (0 == pid) {
+        retry_child(early);
+        /* not reached */
+        exit(CHILD_OTHERERR);
+    }
+
+    if (pid != waitpid(pid, &status, 0)) {
+        report(name, 0, "waitpid failed");
+        return;
+    }
+    if (WIFSIGNALED(status)) {
+        snprintf(detail, sizeof(detail), "server died on signal %d", WTERMSIG(status));
+        report(name, 0, detail);
+        return;
+    }
+    if (!WIFEXITED(status)) {
+        report(name, 0, "child did not exit normally");
+        return;
+    }
+    snprintf(detail, sizeof(detail), "expected exit %d, got %d", expected, WEXITSTATUS(status));
+    report(name, expected == WEXITSTATUS(status), detail);
+}
+
 /* a nspace longer than PMIX_MAX_NSLEN cannot name a real nspace */
 static char *overlong(void)
 {
@@ -332,6 +495,19 @@ int main(int argc, char **argv)
     check_mau("array is left to its owner", false, CHILD_OK);
     /* the directive must carry a data array */
     check_mau("wrong data type", true, CHILD_BADPARAM);
+
+    fprintf(stdout, "\nString directives must carry strings\n");
+
+    check_badtype("mistyped PMIX_SERVER_TMPDIR", PMIX_SERVER_TMPDIR, CHILD_BADPARAM);
+    check_badtype("mistyped PMIX_SYSTEM_TMPDIR", PMIX_SYSTEM_TMPDIR, CHILD_BADPARAM);
+    check_badtype("mistyped PMIX_SERVER_NSPACE", PMIX_SERVER_NSPACE, CHILD_BADPARAM);
+
+    fprintf(stdout, "\nA rejected init leaves the library usable\n");
+
+    /* rejected before the runtime is built */
+    check_retry("retry after an early rejection", true, CHILD_OK);
+    /* rejected after it is built, so the unwind has real work to do */
+    check_retry("retry after a late rejection", false, CHILD_OK);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;

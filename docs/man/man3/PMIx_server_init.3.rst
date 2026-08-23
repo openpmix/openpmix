@@ -180,9 +180,23 @@ to a PMIx error constant is returned, including:
   state).
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| a provided directive requested behavior the
   implementation does not support.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| a directive or an environmental value carried
+  something the implementation cannot use |mdash| for example a
+  ``PMIX_SINGLETON`` that is not of the form ``"nspace.rank"``, or a
+  ``PMIX_SERVER_RANK`` environment variable that is not a simple non-negative
+  number.
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.
+
+A failed ``PMIx_server_init`` leaves nothing behind. Anything the call had
+already brought up is torn down before the error is returned, so the caller may
+correct whatever was rejected and call ``PMIx_server_init`` again. It must
+**not** call :ref:`PMIx_server_finalize(3) <man3-PMIx_server_finalize>`, which
+answers ``PMIX_ERR_INIT`` because no initialization completed. The one
+exception is a failure of the underlying runtime itself, which cannot be
+unwound; there the library reports the error and is unusable for the life of
+the process.
 
 
 NOTES

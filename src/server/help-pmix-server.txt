@@ -58,3 +58,34 @@ requesting process to learn the answer.
 A host that has completed the work immediately should invoke the
 callback function - it may do so before returning - and return
 PMIX_SUCCESS. The request has been failed to its requestor.
+#
+[bad-keepalive]
+The PMIx server was given a malformed value for the PMIX_KEEPALIVE_PIPE
+environment variable:
+
+  Value: %s
+
+The value must be the number of an open file descriptor - the read end
+of a pipe held open by the process that started us, so we learn when it
+goes away. The server cannot honor the request and is unable to
+continue.
+#
+[bad-server-rank]
+The PMIx server was given a malformed value for the PMIX_SERVER_RANK
+environment variable:
+
+  Value: %s
+
+The value must be a simple non-negative number naming this server's
+rank within its namespace. The server cannot determine its own
+identity and is unable to continue.
+#
+[bad-directive-type]
+The PMIx server was given a directive of the wrong data type:
+
+  Directive:     %s
+  Required type: %s
+  Given type:    %s
+
+A key states only what the directive is, never what its value holds, so
+the server cannot use this one. It is unable to continue.

@@ -753,6 +753,64 @@ tracker is registered on the component, and what its lifetime is once
 more than one job holds it.  Do not read the arena comment as evidence
 that sharing works.
 
+A server-wide envar hook that nothing fills
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/server/pmix_server.c`` (2026-08-23).
+``pmix_server_globals.genvars`` is declared as "argv array of envars given
+to me for passing to all clients", is statically initialized to NULL, and
+is read in exactly one place — ``setup_fork_body()`` replays it into every
+child's environment.  **Nothing in the tree ever writes it.**  There is no
+directive, no API argument and no environment variable that reaches it, so
+a host has no way to say "add these to every client I fork" and the replay
+loop is dead code.
+
+This is an unbuilt feature rather than a defect, which is why it is here
+rather than fixed: closing it means choosing the interface.  The obvious
+candidate is ``PMIx_server_register_resources`` — it already carries
+host-supplied job-wide information into ``pmix_server_globals.gdata`` —
+with the ``PMIX_SET_ENVAR`` / ``PMIX_ADD_ENVAR`` / ``PMIX_PREPEND_ENVAR``
+family that ``src/common/pmix_pfexec.c`` already parses for a spawn.  That
+also decides the harder half: whether a later registration replaces or
+appends, and whether ``PMIx_server_deregister_resources`` has to take an
+envar back out of children that have already been forked (it cannot).
+The comment above ``setup_fork_body`` used to assert that the registration
+path sets it; that has been corrected, and ``src/server/AGENTS.md`` says
+the read site is not evidence of a writer.
+
+Init's last stretch runs on the caller's thread with the listener up
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/server/pmix_server.c`` (2026-08-23).
+``pmix_rte_init()`` starts the progress thread, and everything
+``PMIx_server_init`` does after it runs on the *caller's* thread.  For most
+of that stretch nothing else can be running, because nobody can reach us —
+but ``pmix_ptl_base_start_listening()`` is called before the end, and what
+follows it is not nothing: the ``PMIX_ALLOC_MAU`` store, the
+``PMIX_LAUNCHER_RNDZ_URI`` block's ``PMIX_PARENT_ID`` store, and
+``pmix_ptl.connect_to_peer()`` plus the ``PMIX_SERVER_URI`` store on the
+``connect_directed`` arm.  A tool that is already polling for our
+rendezvous file can connect the instant the listener binds, and the
+progress thread then services that connection — creating gds trackers and
+touching ``pmix_server_globals`` — while the caller's thread is doing the
+work above.  Two threads appending to one datastore tracker list is
+corruption, not a stale read.
+
+Nothing in the accept path screens ``pmix_globals.initialized``, so there
+is no guard standing today.  The window is small and needs a tool racing
+us, which is why this is recorded rather than papered over: the fixes are
+a design choice.  Moving ``start_listening`` to the foot of init is wrong —
+the debugger-attach wait deliberately sits above it and a debugger may
+connect to *us* — so the real options are to thread-shift the remaining
+stores, or to make the connection handler defer work until init has
+declared itself.  The same question applies to ``PMIx_Init`` and
+``PMIx_tool_init``, and to the topology and server-ID stores the client
+review already recorded against its own datastore-thread work.
+
+Note what is *not* a hazard here: libevent's threading support is enabled
+inside ``pmix_rte_init`` before the engine starts, so posting an event or
+adding one to the base from the caller's thread is safe.
+
 Coverage gaps
 -------------
 
