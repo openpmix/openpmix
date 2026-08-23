@@ -284,6 +284,39 @@ undo by accident:
   weakens, restore the `memset` in `tma_carve()` rather than at the call
   sites.
 
+### Job-level data has one home, and `PMIX_RANK_UNDEF` has to reach it
+
+Everything job-level lives in `job->smdata->local_hashtab` under
+`PMIX_RANK_WILDCARD`. There used to be a `jobinfo` list on
+`pmix_gds_shmem3_shared_job_data_t` beside it, mirrored from `gds/hash`,
+which **nothing in this component ever wrote to** — it cost a pointer in
+the segment's job metadata and two fetch loops that always found it
+empty.
+
+Removing it from that struct is safe across releases without further
+ceremony, and the mechanism is worth knowing before you change any other
+shared type: `PMIX_GDS_SHMEM3_LAYOUT_ID` sums `sizeof()` over every type
+that lives in a segment, so a peer built before the change computes a
+different id, declines the segment, and falls back to `hash`.
+
+**The live half was the fetch.** A keyed request at `PMIX_RANK_UNDEF`
+swept ranks `0..nprocs-1` and then reported `PMIX_ERR_NOT_FOUND` without
+ever asking `local_hashtab` under `PMIX_RANK_WILDCARD` — so job-level
+data was unreachable that way, and `PMIX_RANK_UNDEF` is what
+`PMIx_Get(NULL, key, …)` resolves to. It worked only because
+`get_data()` in [`pmix_client_get.c`](../../../client/pmix_client_get.c)
+retried at `PMIX_RANK_WILDCARD` on the client's behalf; that retry is
+gone, precisely because it hid this. Coverage is the client half of
+`test/unit/get_api.c`, which asks with `PMIX_OPTIONAL` so the request
+cannot leave the process.
+
+The lookup is confined to the pass that reads the local table
+(`!useremote`). The `doover` below returns here for the modex, where job
+data never is, and repeating the fetch would collect the same value
+twice — which the client's `process_values()` reads as an aggregate and
+turns into a `PMIX_DATA_ARRAY` of duplicates. `gds/hash` shipped exactly
+that bug for exactly that reason.
+
 ### These hash tables are keyed by rank, not by key
 
 Both `job->smdata->local_hashtab` and `job->smmodex->hashtab` hold **one

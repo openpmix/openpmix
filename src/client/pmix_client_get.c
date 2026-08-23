@@ -1490,45 +1490,21 @@ doget:
         DRAIN_KVS(cb);
     }
 
-    /* PMIX_RANK_UNDEF says "any rank in this nspace could be the source",
-     * and the datastore reads that as a search across the per-rank tables.
-     * Job-level data is not in those - it is kept under
-     * PMIX_RANK_WILDCARD - so a job-level key asked for with a NULL proc
-     * (the legacy-PMI form, which process_request() resolves to UNDEF)
-     * misses here even when the value is sitting in our own store. Retry
-     * at WILDCARD before paying for a round trip: _getnb_cbfunc() makes
-     * exactly this retry once the reply is in hand, and a server role or
-     * an unconnected client has no round trip to be rescued by at all.
+    /* Note what is deliberately NOT here: a retry of the two fetches
+     * above at PMIX_RANK_WILDCARD.
      *
-     * For a realm-redirected request the rank is already UNDEF by
-     * construction ("this request is required to ignore the procID"), and
-     * WILDCARD is a superset of UNDEF there - pmix_gds_hash_fetch() sends
-     * both down its !PMIX_RANK_IS_VALID branch and gives only WILDCARD the
-     * additional retry against the job-level table.
-     *
-     * Keep the original status. It is what the "different scope" and
-     * "optional" branches below report, and a miss at WILDCARD says
-     * nothing about the rank the caller actually named. */
-    if (PMIX_RANK_UNDEF == cb->proc->rank) {
-        pmix_status_t rc2;
-
-        cb->proc->rank = PMIX_RANK_WILDCARD;
-        PMIX_GDS_FETCH_KV(rc2, pmix_client_globals.myserver, cb);
-        if (PMIX_SUCCESS != rc2 &&
-            !PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash")) {
-            DRAIN_KVS(cb);
-            PMIX_GDS_FETCH_KV(rc2, pmix_globals.mypeer, cb);
-        }
-        cb->proc->rank = PMIX_RANK_UNDEF;
-        if (PMIX_SUCCESS == rc2) {
-            pmix_output_verbose(5, pmix_client_globals.get_output,
-                                "pmix:client data found at wildcard rank");
-            cb->status = process_values(cb);
-            goto done;
-        }
-        DRAIN_KVS(cb);
-    }
-
+     * PMIX_RANK_UNDEF - what process_request() resolves a NULL proc to,
+     * and what the realm branches set - means "anything in this nspace",
+     * and job-level data is part of that even though it is filed under no
+     * rank. Answering it is the datastore's job. Both in-tree modules
+     * used to search only the per-rank tables for it, and a retry here
+     * did make PMIx_Get(NULL, <job-level key>) work - which is precisely
+     * why the defect survived in both of them for as long as it did, and
+     * why it must not come back. A client that compensates for a module's
+     * rank convention is a client that cannot tell you the module is
+     * wrong. test/unit/get_api.c holds the module behavior directly, from
+     * a real client, so a regression fails there instead of being
+     * absorbed here. */
     pmix_output_verbose(5, pmix_client_globals.get_output,
                         "pmix:client requested data NOT found");
 

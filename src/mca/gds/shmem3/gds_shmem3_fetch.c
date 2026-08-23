@@ -863,19 +863,9 @@ shmem3_fetch_from_job(
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
         }
-        // Also need to add any job-level info.
-        // TODO(skg) Pass back the pointer to kv->value.
-        pmix_kval_t *kvi;
-        PMIX_LIST_FOREACH (kvi, job->smdata->jobinfo, pmix_kval_t) {
-            pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
-            kv->key = strdup(kvi->key);
-            PMIX_VALUE_XFER(rc, kv->value, kvi->value);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_RELEASE(kv);
-                return rc;
-            }
-            pmix_list_append(kvs, &kv->super);
-        }
+        // The fetch above is the whole of the job-level data: everything
+        // the host gave us for this job is in the local table under
+        // PMIX_RANK_WILDCARD, whatever shape it arrived in.
         // Collect all the relevant session-level info.
         rc = fetch_sessioninfo(peer, NULL, job, qualifiers, nqual, kvs);
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
@@ -924,6 +914,7 @@ shmem3_fetch_from_job(
             PMIX_INFO_LOAD(&iptr[0], PMIX_RANK, &rank, PMIX_PROC_RANK);
             // Now transfer rest of data across.
             size_t i = 1;
+            pmix_kval_t *kvi;
             PMIX_LIST_FOREACH(kvi, &rkvs, pmix_kval_t) {
                 PMIX_LOAD_KEY(iptr[i].key, kvi->key);
                 PMIx_Value_xfer(&iptr[i].value, kvi->value);
@@ -1034,30 +1025,38 @@ doover:
                 return rc;
             }
         }
-        // Also need to check any job-level info.
-        pmix_kval_t *kvi;
-        PMIX_LIST_FOREACH (kvi, job->smdata->jobinfo, pmix_kval_t) {
-            if (NULL == key || PMIX_CHECK_KEY(kvi, key)) {
-                pmix_kval_t *kv;
-                kv = PMIX_NEW(pmix_kval_t);
-                kv->key = strdup(kvi->key);
-                PMIX_VALUE_XFER(rc, kv->value, kvi->value);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_RELEASE(kv);
+        // Job-level data is filed under no rank at all - it sits in the
+        // local table under PMIX_RANK_WILDCARD - so the per-rank sweep
+        // above cannot reach it, and PMIX_RANK_UNDEF means "anything in
+        // this nspace" rather than "any rank in this nspace". Without
+        // this, PMIx_Get(NULL, key, ...) could not read job-level data
+        // at all; it worked only because get_data() in
+        // src/client/pmix_client_get.c retries at PMIX_RANK_WILDCARD on
+        // the client's behalf.
+        //
+        // Only on the pass that reads that table, though. The doover
+        // below returns here for the modex, where job data never is, and
+        // repeating the fetch would collect the same value twice - the
+        // client's process_values() reads a count above one as "an
+        // aggregate of everything this proc put", so the application
+        // would get a PMIX_DATA_ARRAY of duplicates where it asked for a
+        // scalar. gds/hash had exactly that defect for exactly this
+        // reason.
+        if (!useremote) {
+            if (NULL == key) {
+                rc = job_fetch(
+                    job, local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, local_kidx
+                );
+            }
+            else {
+                rc = job_fetch(
+                    job, local_ht, PMIX_RANK_WILDCARD, key, qualifiers, nqual,
+                    kvs, local_kidx
+                );
+                if (PMIX_SUCCESS == rc) {
                     return rc;
                 }
-                pmix_list_append(kvs, &kv->super);
-                if (NULL != key) {
-                    break;
-                }
             }
-        }
-        if (NULL == key) {
-            // And need to add all job info just in case
-            // that was passed via a different GDS component.
-            rc = job_fetch(
-                job, local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, local_kidx
-            );
         }
         else {
             rc = PMIX_ERR_NOT_FOUND;
