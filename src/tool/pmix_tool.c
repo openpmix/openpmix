@@ -1072,8 +1072,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             return rc;
         }
 
-        /* start listening for connections */
-        rc = pmix_ptl_base_start_listening(info, ninfo);
+        /* Bind our socket and publish how to reach it. We do NOT begin
+         * accepting yet - that happens at the foot of this function, once
+         * there is nothing left for this thread to do to shared state.
+         * See pmix_ptl_base_create_listener for why the two are
+         * separate. */
+        rc = pmix_ptl_base_create_listener(info, ninfo);
         if (PMIX_SUCCESS != rc) {
             if (PMIX_ERR_SILENT != rc) {
                 pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
@@ -1231,6 +1235,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
 
     /* register the tool supported attrs */
     rc = pmix_register_tool_attrs();
+
+    /* Everything this thread was going to do to shared state is done, so
+     * start answering the connections the kernel has been holding in the
+     * backlog since pmix_ptl_base_create_listener bound the socket. This
+     * is a no-op for a tool that never created a listener. */
+    pmix_ptl_base_start_listening();
 
     // mark ourselves as initialized
     pmix_atomic_set_bool(&pmix_globals.initialized);

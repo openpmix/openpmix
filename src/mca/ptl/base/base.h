@@ -133,7 +133,8 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_connection(char *uri,
                                                          struct sockaddr_storage *connection,
                                                          size_t *len);
 
-PMIX_EXPORT pmix_status_t pmix_ptl_base_start_listening(pmix_info_t info[], size_t ninfo);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_create_listener(pmix_info_t info[], size_t ninfo);
+PMIX_EXPORT void pmix_ptl_base_start_listening(void);
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
 
 /* base support functions */

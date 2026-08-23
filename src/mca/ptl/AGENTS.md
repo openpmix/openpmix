@@ -407,8 +407,39 @@ be reached:
   timestamp`. The `created_*` bookkeeping in `pmix_ptl_base` records which
   of these we made so `pmix_ptl_close` can remove exactly those.
 
-`pmix_ptl_base_start_listening` then registers the listen socket's accept
-event on the progress thread.
+**Binding and accepting are two calls, on purpose.**
+`pmix_ptl_base_create_listener` does everything above — bind, publish the
+URI, write the rendezvous files — and `pmix_ptl_base_start_listening`
+registers the accept event on the progress thread. They used to be one
+call, and that put the moment an outside process could schedule work on
+the progress thread in the *middle* of the caller's init.
+
+The reason it matters is that `pmix_rte_init` ends by starting the
+progress thread, so everything `PMIx_server_init` and `PMIx_tool_init` do
+after it runs on the **caller's** thread — while
+`pmix_ptl_base_connection_handler` on the progress thread extends
+`pmix_globals.nspaces`, `pmix_server_globals.clients`,
+`pmix_globals.iof_requests` and (through `PMIX_GDS_CACHE_JOB_INFO`) the
+`gds` tracker lists. `gds/hash` holds no lock at all; it is correct only
+because everything that touches it is meant to be on one thread. Neither
+the accept nor the handshake path screens `pmix_globals.initialized`.
+
+Both roles therefore create the listener where they always did — a
+launcher that attaches to a parent partway through its own init has to
+have a URI of its own to offer it, and that URI comes from the bind — and
+call `pmix_ptl_base_start_listening()` at the foot of init, once the
+caller's thread is done with shared state. A peer that connects in
+between is **not refused**: the socket is bound and listening as far as
+the kernel is concerned, so the connection waits in the `SOMAXCONN`
+backlog until we start accepting. That is the whole reason to split the
+call rather than move it — moving it would have taken the URI with it.
+
+`pmix_ptl_base_start_listening` is a no-op when no listener was created
+(a tool that is not acting as a server never creates one), so the call
+site needs no condition of its own. `test/unit/runtime_init.c` asserts
+the event really is armed once init returns, on both of its cycles: the
+arming is a step an early return added above it would silently skip, and
+a single-process test notices nothing when it is missed.
 
 **Stale rendezvous files are reclaimed, not fatal.** A file is removed
 only by a clean `pmix_ptl_close`, so a server that is killed or that

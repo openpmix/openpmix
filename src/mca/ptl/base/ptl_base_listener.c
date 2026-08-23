@@ -74,10 +74,26 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
 // local value for connection support
 static bool setup_complete = false;
 
-/*
- * start listening event
- */
-pmix_status_t pmix_ptl_base_start_listening(pmix_info_t info[], size_t ninfo)
+/* Bind the socket and publish how to reach it, but do not yet answer.
+ *
+ * This is deliberately separate from arming the accept event below. The
+ * two used to be one call, and that put the moment an outside process
+ * could schedule work on our progress thread in the *middle* of the
+ * caller's init: pmix_rte_init() ends by starting that thread, so
+ * everything an init does afterwards runs on the caller's thread, while
+ * a connection handler on the progress thread extends
+ * pmix_globals.nspaces, pmix_server_globals.clients and the gds tracker
+ * lists. gds/hash takes no lock; it is correct only because everything
+ * that touches it is meant to be on one thread.
+ *
+ * Splitting it here rather than simply moving the whole call to the foot
+ * of init keeps the URI and the rendezvous file where they were - a
+ * launcher that attaches to a parent partway through its own init has to
+ * have a URI of its own to offer it. A peer that connects in the
+ * meantime is not refused: the socket is bound and listening as far as
+ * the kernel is concerned, so its connection waits in the backlog until
+ * we start accepting. */
+pmix_status_t pmix_ptl_base_create_listener(pmix_info_t info[], size_t ninfo)
 {
     pmix_status_t rc;
 
@@ -90,14 +106,29 @@ pmix_status_t pmix_ptl_base_start_listening(pmix_info_t info[], size_t ninfo)
     }
     setup_complete = true;
 
-    pmix_event_set(pmix_globals.evbase, &pmix_ptl_base.listener.ev,
-               pmix_ptl_base.listener.socket,
-               PMIX_EV_READ|PMIX_EV_PERSIST,
-               connection_event_handler, 0);
-    pmix_ptl_base.listener.active = true;
-    pmix_event_add(&pmix_ptl_base.listener.ev, 0);
-
     return PMIX_SUCCESS;
+}
+
+/* Begin answering the connections the kernel has been holding for us.
+ *
+ * Call this at the foot of init, once there is nothing left for the
+ * caller's thread to do to shared state. It is a no-op when no listener
+ * was ever created - a tool that is not acting as a server never calls
+ * pmix_ptl_base_create_listener - so the call site need not be
+ * conditional. */
+void pmix_ptl_base_start_listening(void)
+{
+    pmix_listener_t *lt = &pmix_ptl_base.listener;
+
+    if (lt->active || 0 > lt->socket) {
+        return;
+    }
+
+    pmix_event_set(pmix_globals.evbase, &lt->ev, lt->socket,
+                   PMIX_EV_READ|PMIX_EV_PERSIST,
+                   connection_event_handler, 0);
+    lt->active = true;
+    pmix_event_add(&lt->ev, 0);
 }
 
 void pmix_ptl_base_stop_listening(void)
