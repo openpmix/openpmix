@@ -358,6 +358,77 @@ static void test_group_lock_concurrency(void)
  * construct-then-leave, because a singleton has no server to construct one
  * with. That is fair here: the subject is what the expansion does with an
  * empty membership, not how the membership became empty. */
+/* A namespace that is empty means "my own", everywhere in this API. It
+ * must therefore NOT be read as naming a group.
+ *
+ * pmix_client_convert_group_procs() compared with PMIX_CHECK_NSPACE,
+ * which reports a match whenever either side is NULL or empty - it is
+ * written for "does this proc belong to that job?", where an unset
+ * namespace means "mine". So a caller naming a proc with an empty
+ * namespace was told it had named whichever group happened to sit first
+ * on pmix_client_globals.groups, and the collective went out with that
+ * group's membership in place of the process asked for. Silently: no
+ * error anywhere.
+ *
+ * Both directions are checked. The empty namespace must pass through
+ * untouched, and the group id must still expand - a screen written the
+ * wrong way round breaks the second and this file would not notice. */
+static void test_convert_empty_nspace(void)
+{
+    pmix_group_t *grp;
+    pmix_proc_t ask[1], *out = NULL;
+    size_t nout = 0;
+    pmix_status_t rc;
+
+    fprintf(stdout, "\n-- group expansion of an empty namespace --\n");
+
+    grp = PMIX_NEW(pmix_group_t);
+    if (NULL == grp) {
+        check(0, "allocate the group");
+        return;
+    }
+    grp->grpid = strdup("client.api.convertgroup");
+    PMIX_PROC_CREATE(grp->members, 2);
+    if (NULL == grp->grpid || NULL == grp->members) {
+        check(0, "populate the group");
+        PMIX_RELEASE(grp);
+        return;
+    }
+    PMIX_LOAD_PROCID(&grp->members[0], "client.api.member.a", 0);
+    PMIX_LOAD_PROCID(&grp->members[1], "client.api.member.b", 3);
+    grp->nmbrs = 2;
+
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+    pmix_list_append(&pmix_client_globals.groups, &grp->super);
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+
+    /* the empty namespace must come back as itself */
+    PMIX_LOAD_PROCID(&ask[0], NULL, 7);
+    rc = pmix_client_convert_group_procs(ask, 1, &out, &nout);
+    check(PMIX_SUCCESS == rc && 1 == nout && NULL != out
+              && 0 == strlen(out[0].nspace) && 7 == out[0].rank,
+          "an empty namespace is not expanded as a group");
+    if (NULL != out) {
+        PMIX_PROC_FREE(out, nout);
+        out = NULL;
+        nout = 0;
+    }
+
+    /* and the group id must still expand to its membership */
+    PMIX_LOAD_PROCID(&ask[0], "client.api.convertgroup", PMIX_RANK_WILDCARD);
+    rc = pmix_client_convert_group_procs(ask, 1, &out, &nout);
+    check(PMIX_SUCCESS == rc && 2 == nout && NULL != out,
+          "a group id still expands to its membership");
+    if (NULL != out) {
+        PMIX_PROC_FREE(out, nout);
+    }
+
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+    pmix_list_remove_item(&pmix_client_globals.groups, &grp->super);
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+    PMIX_RELEASE(grp);
+}
+
 static void test_get_empty_group(void)
 {
     pmix_group_t *grp;
@@ -847,6 +918,7 @@ int main(int argc, char **argv)
     test_group_join_outparams();
     test_group_construct_invite_outparams();
     test_get_empty_group();
+    test_convert_empty_nspace();
     test_group_lock_concurrency();
     test_model_declared_duplicate_key();
 
