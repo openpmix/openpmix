@@ -422,6 +422,35 @@ nothing.
   holding it may take it again. Do allocations and anything that can
   fail before acquiring, so error paths do not have to unwind through
   it.
+- **`PMIX_CHECK_NSPACE` answers a different question than "are these
+  the same namespace".** It reports a match whenever *either* side is
+  NULL or empty, because it is written for "does this proc belong to
+  that job?", where an unset namespace is documented shorthand for our
+  own (`process_request()` in [`pmix_client_get.c`](pmix_client_get.c)
+  relies on that reading). Two questions in this directory are the
+  opposite kind — *is this the same proc*, and *does this namespace name
+  a group I belong to* — and for those the macro turns the caller's
+  shorthand into a false positive. `pmix_client_convert.c` asked the
+  second one with it, so a proc named with an empty namespace expanded
+  to whichever group happened to sit first on
+  `pmix_client_globals.groups`, and the collective went out over that
+  group's membership in place of the process the caller asked for, with
+  no error anywhere. Use a plain bounded `strncmp` when byte equality is
+  what you mean; `same_nspace()` in that file is the local spelling.
+- **`PMIX_PROC_CREATE(n)` with `n == 0` yields the same NULL an
+  allocation failure does.** Test the count first wherever zero is a
+  legal answer — a group expansion that matched nothing, or a group
+  whose membership has drained (the `PMIX_GROUP_LEFT` handler decrements
+  `nmbrs` and keeps the group) — or a valid empty result is reported as
+  `PMIX_ERR_NOMEM`.
+- **Nothing half-built may go on the groups list.** Every caller
+  expanding a group reference compares against `grp->grpid` and indexes
+  `grp->members`, both without a NULL check, and they run on the other
+  thread. So `add_group()` has to finish the tracker before it publishes
+  it and unwind completely if it cannot: a failed `strdup` or
+  `PMIX_PROC_CREATE` leaves the list exactly as it found it. The same
+  reason makes the duplicate scan guard `grp->grpid` — it is comparing
+  against entries other paths built.
 - **Realm directives change where data comes from.** In `PMIx_Get`, the
   `PMIX_NODE_INFO` / `PMIX_APP_INFO` / `PMIX_SESSION_INFO` directives and
   the hostname/nodeid/appnum/sessionid qualifiers redirect the lookup to a
@@ -2856,6 +2885,19 @@ mypeer` switch. The session-id lookup beside them did not, and a
 `shmem3` client therefore failed to resolve another proc's session and
 went on to ask with `sessionid` still `UINT32_MAX`. **If you add a
 fourth lookup there, copy the switch.**
+
+**The same switch is owed by every job-level lookup in this directory,
+not just the ones in `get_data()`.** Two more asked `mypeer` alone:
+`job_size()` in [`pmix_client_convert.c`](pmix_client_convert.c), which
+walks a group's member namespaces to find which one holds a given group
+rank, and `invite_job_size()` in
+[`pmix_client_group.c`](pmix_client_group.c), which does the same for a
+wildcard invitee. Measured on a `shmem3` client, both got
+`PMIX_ERR_NOT_FOUND` for their *own* job's `PMIX_JOB_SIZE` through
+`mypeer` and `PMIX_SUCCESS` through `myserver` — so every invitation
+naming a wildcard invitee failed there and nowhere else. Both now ask
+`myserver` and fall back to `mypeer` when the two modules differ, which
+is the shape `PMIx_Connect_nb` already uses for its job-info fetch.
 
 ### Refuted here, so you need not re-derive it
 

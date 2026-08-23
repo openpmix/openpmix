@@ -302,14 +302,19 @@ Ordered by how much of the directory the review no longer covers.
    records both as coming through all five lenses with nothing to fix:
    ``pmix_client_connect.c`` and ``pmix_client_fence.c``.
 
-   **Three have never had a dedicated pass**:
-   ``pmix_client_convert.c``, ``pmix_client_fabric.c`` and
+   ``pmix_client_convert.c`` has had one as well (2026-08-23).  It
+   found a functional defect of the same kind: the file asked "does this
+   namespace name a group?" with ``PMIX_CHECK_NSPACE``, which reports a
+   match on an empty namespace, so a proc named the documented shorthand
+   way expanded to an unrelated group's membership.
+
+   **Two have never had a dedicated pass**: ``pmix_client_fabric.c`` and
    ``pmix_client_pub.c``.  They are inside the July 2026 directory-wide
    sweep, the fifth (union) sweep, the seventh, and the targeted fixes
    since — which is real coverage, and is not the same thing.
    ``pmix_client_get.c`` had all of that too and a dedicated pass still
    turned up a functional defect in it plus two in the ``gds`` modules
-   behind it.  Treat those three as the remaining work in this
+   behind it.  Treat those two as the remaining work in this
    directory.
 
    An earlier version of this paragraph listed ``pmix_client_resolve.c``

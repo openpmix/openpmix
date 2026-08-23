@@ -28,26 +28,117 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/gds/base/base.h"
 
-static void append_unique(pmix_list_t *list, const pmix_proc_t *proc)
+/* Byte-equal namespaces, which is not what PMIX_CHECK_NSPACE answers.
+ *
+ * That macro is written for "does this proc belong to that job?", so it
+ * reports a match whenever *either* side is NULL or empty - an unset
+ * namespace means "mine" there. Both questions in this file are the
+ * opposite kind: is this the same proc, and does this namespace name a
+ * group. An empty namespace is documented shorthand for our own (see
+ * process_request() in pmix_client_get.c), so answering "yes" to it
+ * silently substitutes something else for what the caller asked for. */
+static bool same_nspace(const char *a, const char *b)
+{
+    if (NULL == a || NULL == b) {
+        return false;
+    }
+    return (0 == strncmp(a, b, PMIX_MAX_NSLEN));
+}
+
+/* Returns PMIX_ERR_NOMEM rather than nothing: a participant this silently
+ * failed to record is a short participant list, which is the defect the
+ * July 2026 review already fixed once here - it surfaces much later as
+ * PMIX_ERR_NOT_A_MEMBER or as a collective that never completes, with
+ * nothing pointing back at this function. */
+static pmix_status_t append_unique(pmix_list_t *list, const pmix_proc_t *proc)
 {
     pmix_proclist_t *nm;
 
     // check for pre-existence
     PMIX_LIST_FOREACH(nm, list, pmix_proclist_t) {
         // require exact match
-        if (!PMIX_CHECK_NSPACE(nm->proc.nspace, proc->nspace)) {
+        if (!same_nspace(nm->proc.nspace, proc->nspace)) {
             continue;
         }
         if (nm->proc.rank != proc->rank) {
             continue;
         }
         // already present
-        return;
+        return PMIX_SUCCESS;
     }
     // wasn't found, so add it
     nm = PMIX_NEW(pmix_proclist_t);
+    if (PMIX_UNLIKELY(NULL == nm)) {
+        return PMIX_ERR_NOMEM;
+    }
     memcpy(&nm->proc, proc, sizeof(pmix_proc_t));
     pmix_list_append(list, &nm->super);
+    return PMIX_SUCCESS;
+}
+
+/* Does this namespace name a group we belong to?
+ *
+ * Deliberately not PMIX_CHECK_NSPACE - see same_nspace() above. A caller
+ * naming a proc with an empty namespace (its own, by convention) would
+ * otherwise be told it had named whichever group happens to sit first on
+ * pmix_client_globals.groups, and the collective would go out with that
+ * group's membership in place of the process the caller asked for. */
+static bool names_group(const char *grpid, const char *nspace)
+{
+    if (PMIx_Nspace_invalid(nspace)) {
+        return false;
+    }
+    return same_nspace(grpid, nspace);
+}
+
+/* Look up a namespace's job size.
+ *
+ * The store to ask is myserver's, not our own. A client's job-level data
+ * is put there - job_data() in pmix_client.c hands the reply to
+ * PMIX_GDS_STORE_JOB_INFO(..., pmix_client_globals.myserver, ...) -
+ * while pmix_globals.mypeer holds what _putfn wrote. Asking only mypeer
+ * happens to work when the server also uses "hash", because both then
+ * resolve to the same component-global tables, and fails outright when
+ * it does not: measured, a gds/shmem3 client answers PMIX_ERR_NOT_FOUND
+ * for its own job's PMIX_JOB_SIZE through mypeer and PMIX_SUCCESS
+ * through myserver. Falling back to mypeer when the two modules differ
+ * is what PMIx_Connect_nb does for the same lookup.
+ *
+ * The caller is on its own thread and is no longer holding grouplock -
+ * both are what let this be a fetch the progress thread may have to
+ * run. */
+static pmix_status_t job_size(const pmix_proc_t *proc, uint32_t *jsize)
+{
+    pmix_cb_t cb2;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+
+    PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+    cb2.proc = (pmix_proc_t *) proc;
+    cb2.key = PMIX_JOB_SIZE;
+    rc = pmix_gds_base_fetch_kv_tsafe(pmix_client_globals.myserver, &cb2);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc &&
+        !PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash")) {
+        /* a failed fetch can leave entries behind, and we take the first
+         * one off the list below - start the retry from an empty one */
+        PMIX_DESTRUCT(&cb2);
+        PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+        cb2.proc = (pmix_proc_t *) proc;
+        cb2.key = PMIX_JOB_SIZE;
+        rc = pmix_gds_base_fetch_kv_tsafe(pmix_globals.mypeer, &cb2);
+    }
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc)) {
+        PMIX_DESTRUCT(&cb2);
+        return rc;
+    }
+    kv = (pmix_kval_t *) pmix_list_remove_first(&cb2.kvs);
+    PMIX_DESTRUCT(&cb2);
+    if (PMIX_UNLIKELY(NULL == kv)) { // should never be NULL
+        return PMIX_ERR_NOT_FOUND;
+    }
+    rc = PMIx_Value_get_number(kv->value, jsize, PMIX_UINT32);
+    PMIX_RELEASE(kv);
+    return rc;
 }
 
 /* A copy of one group we belong to, taken under the lock so the expansion
@@ -160,9 +251,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
     bool match, found;
     uint32_t jsize;
     pmix_status_t rc;
-    pmix_kval_t *kv;
     pmix_proc_t *procs, proc;
-    pmix_cb_t cb2;
 
     PMIX_CONSTRUCT(&cache, pmix_list_t);
 
@@ -185,7 +274,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
         found = false;
         for (g = 0; g < nsnap; g++) {
             grp = &snap[g];
-            if (PMIX_CHECK_NSPACE(grp->grpid, inprocs[n].nspace)) {
+            if (names_group(grp->grpid, inprocs[n].nspace)) {
                 match = true;
                 /* the nspace matches this group ID */
 
@@ -199,7 +288,10 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                      * of the membership below, rather than contributing
                      * no participant and calling that success. */
                     for (i=0; i < grp->nmbrs; i++) {
-                        append_unique(&cache, &grp->members[i]);
+                        rc = append_unique(&cache, &grp->members[i]);
+                        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                            goto done;
+                        }
                         found = true;
                     }
                     break;
@@ -219,37 +311,21 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                         /* We must get the number of procs in this nspace so
                          * we can check to see if the specified rank actually
                          * falls within it */
-                        PMIX_CONSTRUCT(&cb2, pmix_cb_t);
-                        cb2.proc = (pmix_proc_t*)&grp->members[i];
-                        cb2.key = PMIX_JOB_SIZE;
-                        /* we are on the caller's thread, and no longer
-                         * holding grouplock - both are what let this be a
-                         * fetch the progress thread may have to run */
-                        rc = pmix_gds_base_fetch_kv_tsafe(pmix_globals.mypeer, &cb2);
-                        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc)) {
-                            /* couldn't get the job size, so have to abort */
-                            PMIX_DESTRUCT(&cb2);
-                            goto done;
-                        }
-                        kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                        PMIX_DESTRUCT(&cb2);
-                        if (PMIX_UNLIKELY(NULL == kv)) { // should never be NULL
-                            /* couldn't retrieve the size, so we have
-                             * to abort */
-                            rc = PMIX_ERR_NOT_FOUND;
-                            goto done;
-                        }
-                        rc = PMIx_Value_get_number(kv->value, &jsize, PMIX_UINT32);
-                        PMIX_RELEASE(kv);
+                        rc = job_size(&grp->members[i], &jsize);
                         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                            rc = PMIX_ERR_BAD_PARAM;
+                            /* couldn't get the job size, so have to abort.
+                             * Report what actually went wrong rather than
+                             * flattening every reason into BAD_PARAM */
                             goto done;
                         }
                         if (cnt + jsize > inprocs[n].rank) {
                             /* the specified rank is within this job */
                             PMIX_LOAD_NSPACE(proc.nspace, grp->members[i].nspace);
                             proc.rank = inprocs[n].rank - cnt;
-                            append_unique(&cache, &proc);
+                            rc = append_unique(&cache, &proc);
+                            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                                goto done;
+                            }
                             found = true;
                             break;
                         } else {
@@ -261,7 +337,10 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                         /* this is a single proc entry, so just see if
                          * it matches the one they asked for */
                         if (cnt == inprocs[n].rank) {
-                            append_unique(&cache, &grp->members[i]);
+                            rc = append_unique(&cache, &grp->members[i]);
+                            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                                goto done;
+                            }
                             found = true;
                             break;
                         } else {
@@ -278,7 +357,10 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
         }
         if (!match) {
             /* xfer the incoming proc across to the cache */
-            append_unique(&cache, &inprocs[n]);
+            rc = append_unique(&cache, &inprocs[n]);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                goto done;
+            }
         } else if (!found) {
             /* the nspace named a group we belong to, but the requested group
              * rank lies beyond its membership. Say so - dropping the entry
@@ -295,11 +377,21 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
     /* we have to return the cached array because
      * we might have replaced some of the entries */
     sz = pmix_list_get_size(&cache);
-    PMIX_PROC_CREATE(procs, sz);
-    n = 0;
-    PMIX_LIST_FOREACH(nm, &cache, pmix_proclist_t) {
-        memcpy(&procs[n], &nm->proc, sizeof(pmix_proc_t));
-        ++n;
+    procs = NULL;
+    if (0 < sz) {
+        /* the count has to be tested first: PMIX_PROC_CREATE(0) returns
+         * the same NULL an allocation failure does, and a zero-length
+         * expansion is the documented empty answer rather than an error */
+        PMIX_PROC_CREATE(procs, sz);
+        if (PMIX_UNLIKELY(NULL == procs)) {
+            PMIX_LIST_DESTRUCT(&cache);
+            return PMIX_ERR_NOMEM;
+        }
+        n = 0;
+        PMIX_LIST_FOREACH(nm, &cache, pmix_proclist_t) {
+            memcpy(&procs[n], &nm->proc, sizeof(pmix_proc_t));
+            ++n;
+        }
     }
     PMIX_LIST_DESTRUCT(&cache);
     *outprocs = procs;

@@ -1060,8 +1060,29 @@ static pmix_status_t invite_job_size(const pmix_proc_t *proc, uint32_t *jsize)
     cb2.key = PMIX_JOB_SIZE;
     cb2.info = &optional;
     cb2.ninfo = 1;
-    /* invite_setup() runs on the caller's thread */
-    rc = pmix_gds_base_fetch_kv_tsafe(pmix_globals.mypeer, &cb2);
+    /* invite_setup() runs on the caller's thread.
+     *
+     * Ask myserver's store, not our own: a client's job-level data is
+     * put there by job_data() in pmix_client.c, while pmix_globals.mypeer
+     * holds what _putfn wrote. The two are the same tables only when the
+     * server also uses "hash" - a gds/shmem3 client answers
+     * PMIX_ERR_NOT_FOUND through mypeer for a size it answers through
+     * myserver, which failed every invitation naming a wildcard invitee.
+     * Same lookup, same reasoning and the same fallback as job_size() in
+     * pmix_client_convert.c; the two want to be one helper. */
+    rc = pmix_gds_base_fetch_kv_tsafe(pmix_client_globals.myserver, &cb2);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc &&
+        !PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash")) {
+        /* a failed fetch can leave entries behind, and the first one off
+         * the list is what we return - retry from an empty one */
+        PMIX_DESTRUCT(&cb2);
+        PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+        cb2.proc = (pmix_proc_t *) proc;
+        cb2.key = PMIX_JOB_SIZE;
+        cb2.info = &optional;
+        cb2.ninfo = 1;
+        rc = pmix_gds_base_fetch_kv_tsafe(pmix_globals.mypeer, &cb2);
+    }
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc)) {
         PMIX_DESTRUCT(&cb2);
         return PMIX_ERR_BAD_PARAM;
@@ -3030,7 +3051,7 @@ static pmix_status_t add_group(const char *grpid,
      * the join path - so tolerate being asked twice for the same group
      * rather than leaving a duplicate on the list */
     PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
-        if (0 == strcmp(grpid, grp->grpid)) {
+        if (NULL != grp->grpid && 0 == strcmp(grpid, grp->grpid)) {
             pmix_mutex_unlock(&pmix_client_globals.grouplock);
             return PMIX_SUCCESS;
         }
@@ -3038,13 +3059,39 @@ static pmix_status_t add_group(const char *grpid,
 
     /* since the group construction has finished, we can add
      * the group to out list of groups. Always sort the
-     * the array to maintain the same view across participants.*/
+     * the array to maintain the same view across participants.
+     *
+     * Nothing here may be left half-built. A group on this list with a
+     * NULL grpid is compared against by every caller expanding a group
+     * reference, and one with a NULL members array is indexed by them -
+     * so a failed allocation has to leave the list as it found it rather
+     * than publish a tracker that cannot be read. */
     grp = PMIX_NEW(pmix_group_t);
-    PMIX_PROC_CREATE(grp->members, nmembers);
-    memcpy(grp->members, members, nmembers * sizeof(pmix_proc_t));
-    qsort(grp->members, nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
-    grp->nmbrs = nmembers;
+    if (PMIX_UNLIKELY(NULL == grp)) {
+        pmix_mutex_unlock(&pmix_client_globals.grouplock);
+        return PMIX_ERR_NOMEM;
+    }
     grp->grpid = strdup(grpid);
+    if (PMIX_UNLIKELY(NULL == grp->grpid)) {
+        pmix_mutex_unlock(&pmix_client_globals.grouplock);
+        PMIX_RELEASE(grp);
+        return PMIX_ERR_NOMEM;
+    }
+    if (0 < nmembers) {
+        /* the count first: PMIX_PROC_CREATE(0) returns the same NULL an
+         * allocation failure does, and a group whose membership has
+         * drained is a state this list holds (see the PMIX_GROUP_LEFT
+         * handler, which decrements nmbrs and does not drop the group) */
+        PMIX_PROC_CREATE(grp->members, nmembers);
+        if (PMIX_UNLIKELY(NULL == grp->members)) {
+            pmix_mutex_unlock(&pmix_client_globals.grouplock);
+            PMIX_RELEASE(grp);
+            return PMIX_ERR_NOMEM;
+        }
+        memcpy(grp->members, members, nmembers * sizeof(pmix_proc_t));
+        qsort(grp->members, nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
+    }
+    grp->nmbrs = nmembers;
     grp->ctxid = ctxid;
     /* remember the construct-time failure policy so the later destruct can
      * re-apply PMIX_GROUP_NOTIFY_TERMINATION on the caller's behalf */
