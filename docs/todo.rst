@@ -292,31 +292,31 @@ Ordered by how much of the directory the review no longer covers.
    directory is now outside a review; the one finding that sweep left
    unfixed has an entry of its own below.
 
-   Note also a difference in depth, not just currency.  Eight files have
-   had a **dedicated** five-lens pass of their own: ``pmix_client.c``
-   (fifteenth sweep), ``pmix_client_group.c`` (eighth, thirteenth),
-   ``pmix_client_spawn.c`` (tenth, twelfth, sixteenth),
-   ``pmix_client_resolve.c`` (ninth), ``pmix_client_topology.c``
-   (eleventh), ``pmix_client_get.c`` (2026-08-22),
-   ``pmix_client_connect.c`` (2026-08-23, which found the off-thread
-   namespace deletion recorded under "Coverage gaps" below) and
-   ``pmix_client_fabric.c`` (2026-08-23).  ``pmix_client_fence.c`` was
-   signed off by the *directory-wide*
-   five-lens seventh sweep, which records it as coming through all five
-   lenses with nothing to fix.
+   Note also a difference in depth, not just currency.  **Every ``.c``
+   file in this directory has now had a dedicated five-lens pass**, with
+   one exception noted below: ``pmix_client.c`` (fifteenth sweep),
+   ``pmix_client_group.c`` (eighth, thirteenth), ``pmix_client_spawn.c``
+   (tenth, twelfth, sixteenth), ``pmix_client_resolve.c`` (ninth),
+   ``pmix_client_topology.c`` (eleventh), ``pmix_client_get.c``
+   (2026-08-22), and ``pmix_client_convert.c``,
+   ``pmix_client_connect.c``, ``pmix_client_fabric.c`` and
+   ``pmix_client_pub.c`` (all 2026-08-23).
 
-   ``pmix_client_convert.c`` has had one as well (2026-08-23).  It
-   found a functional defect of the same kind: the file asked "does this
-   namespace name a group?" with ``PMIX_CHECK_NSPACE``, which reports a
-   match on an empty namespace, so a proc named the documented shorthand
-   way expanded to an unrelated group's membership.
+   The exception is ``pmix_client_fence.c``, which was signed off by the
+   *directory-wide* five-lens seventh sweep — recorded there as coming
+   through all five lenses with nothing to fix — and has not moved
+   since.
 
-   **One has never had a dedicated pass**: ``pmix_client_pub.c``.  It is
-   inside the July 2026 directory-wide sweep, the fifth (union) sweep,
-   the seventh, and the targeted fixes since — which is real coverage, and is not the same thing.
-   ``pmix_client_get.c`` had all of that too and a dedicated pass still
-   turned up a functional defect in it plus two in the ``gds`` modules
-   behind it.  Treat it as the remaining work in this directory.
+   The four passes on 2026-08-23 are worth noting as a group, because
+   each of the last three files had been inside the July 2026
+   directory-wide sweep, the fifth (union) sweep, the seventh, and the
+   targeted fixes since, and a dedicated pass still found something in
+   every one of them: an empty namespace read as naming a group
+   (``convert``), a datastore deletion run from the application's thread
+   (``connect``), a wire count unpacked straight into the caller's
+   out-parameter (``fabric``), and a key array leaked on the one exit
+   that did not free it (``pub``).  Directory-wide coverage is real
+   coverage, and it is not the same thing.
 
    An earlier version of this paragraph listed ``pmix_client_resolve.c``
    and ``pmix_client_topology.c`` among the shallow set.  That was
