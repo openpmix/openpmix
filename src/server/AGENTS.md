@@ -539,18 +539,35 @@ through, and there is no engine to stop.
   block and had the same defect; `test/unit/tool_rndz.c` now holds the
   stored value against the server it actually rendezvoused with.
 
-**Init's tail runs on the caller's thread with the listener up.**
-`pmix_rte_init()` ends by starting the progress thread, so everything
-`PMIx_server_init` does afterwards is on the caller's thread — and
-`pmix_ptl_base_start_listening()` arms its accept event on
-`pmix_globals.evbase` rather than a listener thread of its own, so from
-that point an outside process can schedule handshake work on the progress
-thread while init is still storing into the datastore. `gds/hash` holds no
-lock; it is correct only because everything that touches it is supposed to
-be on one thread. Do not add more shared-state work to that stretch, and
-read `docs/todo.rst` ("When a server starts accepting connections") before
-moving `start_listening` in either direction — the four ways to close it
-are laid out there and they are not equivalent.
+**Init's tail runs on the caller's thread, and two things keep that
+safe.** `pmix_rte_init()` ends by starting the progress thread, so
+everything `PMIx_server_init` does afterwards is on the caller's thread.
+`gds/hash` holds no lock of any kind — it is correct only because
+everything that touches it is meant to be on one thread — so anything
+init writes there is a race with whatever the progress thread is doing.
+
+- **Nobody outside can get onto that thread during the window.** The
+  listener's accept event is armed by `pmix_ptl_base_start_listening()`
+  at the *foot* of init, separately from
+  `pmix_ptl_base_create_listener()`, which binds the socket and publishes
+  the URI where it always did. A peer that connects in between waits in
+  the kernel's backlog rather than being refused. See "The listener" in
+  [`../mca/ptl/AGENTS.md`](../mca/ptl/AGENTS.md) for why the split is
+  shaped that way and why moving the whole call would not do.
+- **The stores init still makes go through `store_internal()`**, which
+  thread-shifts and blocks. The accept split does not cover a server we
+  connected *out* to — the `PMIX_LAUNCHER_RNDZ_URI` and
+  `connect_directed` arms both have a live peer whose receive is posted
+  the moment `connect_to_peer` returns, and a message from it reaches the
+  switchyard and the datastore on the progress thread. That helper runs
+  inline under `PMIX_EXTERNAL_PROGRESS` or on the progress thread itself,
+  the same bargain `PMIx_server_setup_fork` makes.
+
+So: **do not add a bare `PMIX_GDS_STORE_KV` to init**, and do not move
+either listener call. What is left on the caller's thread and not covered
+is `pmix_ptl.connect_to_peer()` on the `connect_directed` arm; it is the
+only connection in existence at that point, and the store that follows it
+is shifted.
 
 **`pmix_server_globals.genvars` is read and never written.**
 `setup_fork_body` replays it into every child's environment, and nothing

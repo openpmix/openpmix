@@ -633,6 +633,70 @@ static void server_teardown(void)
     pmix_class_finalize();
 }
 
+/* Store one of init's own keys in the local datastore, on the progress
+ * thread.
+ *
+ * Everything PMIx_server_init does after pmix_rte_init() runs on the
+ * *caller's* thread, and pmix_rte_init() ends by starting the progress
+ * thread - so these stores are the one place init touches shared state
+ * with something else able to touch it too. Deferring the accept event to
+ * the foot of init (see pmix_ptl_base_create_listener) keeps strangers
+ * out of that window, but not a server we ourselves connected out to: its
+ * receive is posted the moment connect_to_peer returns, and a message
+ * from it reaches the switchyard and the datastore on the progress
+ * thread. gds/hash holds no lock of any kind.
+ *
+ * The caddy *borrows* the kval - the handler clears the member before
+ * waking us, so scdes does not release it and each call site keeps the
+ * ownership handling it already had (PMIX_ALLOC_MAU in particular has to
+ * detach its borrowed array between the store and the release). */
+static void _store_internal(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_GDS_STORE_KV(cd->status, pmix_globals.mypeer, &pmix_globals.myid,
+                      PMIX_INTERNAL, cd->kv);
+    /* borrowed, not owned - must be cleared before the wakeup, since the
+     * waiter releases the caddy as soon as it runs */
+    cd->kv = NULL;
+
+    PMIX_WAKEUP_THREAD(&cd->lock);
+}
+
+static pmix_status_t store_internal(pmix_kval_t *kv)
+{
+    pmix_shift_caddy_t *cd;
+    pmix_status_t rc;
+
+    /* A host driving our event base itself has no engine to run a posted
+     * event, and one that called us from inside a callback is already
+     * serialized against the rest of the library. Both cases are as
+     * ordered as the shift would make them, and blocking in either would
+     * be waiting for ourselves. Same bargain PMIx_server_setup_fork
+     * makes. */
+    if (pmix_globals.external_progress || pmix_progress_thread_is_current()) {
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid,
+                          PMIX_INTERNAL, kv);
+        return rc;
+    }
+
+    cd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->kv = kv;
+
+    PMIX_THREADSHIFT(cd, _store_internal);
+    PMIX_WAIT_THREAD(&cd->lock);
+    rc = cd->status;
+    PMIX_RELEASE(cd);
+
+    return rc;
+}
+
 static int server_init_cntr = 0;
 
 PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
@@ -1161,8 +1225,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         goto errout;
     }
 
-    /* start listening for connections */
-    rc = pmix_ptl_base_start_listening(info, ninfo);
+    /* Bind our socket and publish how to reach it. We do NOT begin
+     * accepting yet - that happens at the foot of this function, once
+     * there is nothing left for this thread to do to shared state. See
+     * pmix_ptl_base_create_listener for why the two are separate. */
+    rc = pmix_ptl_base_create_listener(info, ninfo);
     if (PMIX_SUCCESS != rc) {
         if (PMIX_ERR_SILENT != rc) {
             pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
@@ -1180,7 +1247,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         }
         kptr->value->type = PMIX_DATA_ARRAY;
         kptr->value->data.darray = mau;
-        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
+        rc = store_internal(kptr);
         /* The store deep-copied the array, and this value only *borrowed*
          * our host's. Detach it before releasing: the kval destructor
          * runs value_destruct, which frees a PMIX_DATA_ARRAY payload
@@ -1264,7 +1331,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             goto errout;
         }
         PMIx_Proc_load(kptr->value->data.proc, myparent.nspace, myparent.rank);
-        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
+        rc = store_internal(kptr);
         PMIX_RELEASE(kptr); // maintain accounting
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -1402,7 +1469,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                           pmix_client_globals.myserver->info->pname.rank, suri);
             free(suri);
             suri = NULL;
-            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
+            rc = store_internal(kptr);
             PMIX_RELEASE(kptr); // maintain accounting
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -1410,6 +1477,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             }
         }
     }
+
+    /* Everything this thread was going to do to shared state is done, so
+     * start answering the connections the kernel has been holding in the
+     * backlog since pmix_ptl_base_create_listener bound the socket. */
+    pmix_ptl_base_start_listening();
 
     // mark ourselves as initialized
     pmix_atomic_set_bool(&pmix_globals.initialized);

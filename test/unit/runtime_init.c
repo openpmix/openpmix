@@ -37,6 +37,14 @@
  *   iof flags     the IOF output-file/directory strings the directive
  *                 scan hands to pmix_globals are released with it.
  *
+ *   listener      PMIx_server_init binds its socket where it always did
+ *                 but arms the accept event only at the foot of the
+ *                 function, so that no peer can schedule work on the
+ *                 progress thread while init is still writing shared
+ *                 state from the caller's thread. The arming is a step an
+ *                 early return added above it would skip, and a single
+ *                 process notices nothing when it is missed.
+ *
  * Everything except the help topics is then re-checked over a second
  * init/finalize cycle: this layer's standing requirement is that a
  * second PMIx_Init starts from a clean slate, and per-cycle state that
@@ -56,6 +64,7 @@
 #include "include/pmix_server.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_show_help.h"
@@ -300,6 +309,19 @@ static void test_var_dump_color(void)
  *
  * pmix_client_get_verbose was set in the environment before init, so
  * this channel is genuinely open. */
+/* The accept event is armed at the *foot* of PMIx_server_init, separately
+ * from the bind that publishes our URI, so that nothing can schedule
+ * handshake work on the progress thread while init is still writing to
+ * shared state from the caller's thread. That leaves an arming step which
+ * any early return added above it would silently skip - and a server that
+ * never accepts anything fails in a way no other test here would notice,
+ * because every test in this suite is a single process. Ask directly. */
+static void test_listener_armed(void)
+{
+    report("listener:init leaves the accept event armed",
+           pmix_ptl_base.listener.active && 0 <= pmix_ptl_base.listener.socket);
+}
+
 static void test_output_channel_open(void)
 {
     report("output:a set verbosity opens a channel",
@@ -419,6 +441,7 @@ int main(int argc, char **argv)
     test_output_channel_open();
     test_iof_flags_captured();
     test_nodeid_captured();
+    test_listener_armed();
 
     PMIx_server_finalize();
     test_output_channels_released("first cycle");
@@ -444,6 +467,7 @@ int main(int argc, char **argv)
     test_output_channel_open();
     test_iof_flags_captured();
     test_nodeid_captured();
+    test_listener_armed();
 
     PMIx_server_finalize();
     test_output_channels_released("second cycle");
