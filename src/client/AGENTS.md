@@ -451,6 +451,34 @@ nothing.
   `PMIX_PROC_CREATE` leaves the list exactly as it found it. The same
   reason makes the duplicate scan guard `grp->grpid` — it is comparing
   against entries other paths built.
+- **A datastore *write* from the caller's thread is worse than a read
+  from it, and `PMIX_GDS_DEL_NSPACE` is the one that bites.** The
+  fourteenth sweep's rule is about fetches, but the reason behind it —
+  every store runs on the progress thread and `gds/hash` takes no locks —
+  applies with more force to a deletion, which tears down the trackers a
+  concurrent store or fetch is standing in. `PMIx_Disconnect_nb` used to
+  drop the other participants' cached data inline, so an application
+  calling it while a reply for an outstanding `PMIx_Get` on one of those
+  namespaces came in was a use-after-free. The delete now happens in the
+  reply handler, which is the progress thread by construction. Every
+  other `PMIX_GDS_DEL_NSPACE` in the tree is already inside a
+  thread-shifted handler — `_deregister_nspace()` in
+  [`src/server/pmix_server_registration.c`](../server/pmix_server_registration.c);
+  keep it that way.
+- **Cleanup that a collective's success is supposed to authorize belongs
+  in the reply handler, not in front of the send.** The same disconnect
+  delete also ran before the message was packed, so a pack failure, a
+  dead transport or a server that answered with an error left this
+  process still connected *and* holding no copy of its peers' job data.
+  Whatever a completed operation entitles you to throw away, throw it
+  away once the reply says the operation completed — and not on the
+  `PMIX_ERR_UNREACH` path, which is a lost connection rather than a
+  finished disconnect.
+- **`pmix_cb_t`'s destructor does not free `procs`.** It is a borrowed
+  pointer on every other path, so a caddy that is given ownership of one
+  — as the disconnect caddy is, to carry the participant array over to
+  its reply handler — has to free it explicitly, on the send-failure path
+  as well as in the handler.
 - **Realm directives change where data comes from.** In `PMIx_Get`, the
   `PMIX_NODE_INFO` / `PMIX_APP_INFO` / `PMIX_SESSION_INFO` directives and
   the hostname/nodeid/appnum/sessionid qualifiers redirect the lookup to a
@@ -2934,6 +2962,45 @@ is the shape `PMIx_Connect_nb` already uses for its job-info fetch.
   gap against what the attribute says, but closing it is a change to the
   ownership rules `PMIx_Get(3)` documents rather than a fix; recorded in
   `docs/todo.rst`.
+
+## `PMIx_Connect`'s optional trailing blobs, refuted
+
+Three things about [`pmix_client_connect.c`](pmix_client_connect.c) read
+as defects and are not. They are recorded because each costs a careful
+reader an hour.
+
+- **The two OPTIONAL trailing blobs of a connect message are not
+  positional.** `PMIx_Connect_nb` appends the caller's endpoint data and
+  then its namespace's job-level data, and either may be absent — the
+  endpoint blob when nothing was `PMIx_Put`, the job blob unless we are
+  the lowest participating rank of our namespace. That reads like a
+  framing bug, since the server does two trailing unpacks in order. It is
+  not: `pmix_server_connect()` appends whatever it unpacks to `trk->info`
+  as an ordinary `pmix_info_t`, and everything downstream selects on the
+  key (`PMIX_PROC_INFO_ARRAY` vs `PMIX_JOB_INFO_ARRAY`), never on
+  position. A job blob arriving where the proc blob would have been is
+  therefore read correctly.
+- **The reply's per-namespace byte object is not leaked.**
+  `PMIX_LOAD_BUFFER` takes ownership of the pointer and NULLs the source
+  — `PMIX_LOAD_BUFFER_NON_DESTRUCT` is the variant that does not — so
+  the `PMIX_DESTRUCT(&bkt)` at the bottom of the loop frees it.
+- **The reply's job data is stored against `mypeer`, not `myserver`.**
+  That is the opposite of the rule stated above for job-level *lookups*,
+  and it is still correct, for one reason: the reader has a fallback.
+  `try_local_fetch()` in [`pmix_client_get.c`](pmix_client_get.c) asks
+  `myserver` first and then `mypeer` whenever the two modules differ, so
+  data put in either is found. The lookups that broke were the ones with
+  no fallback at all.
+
+One more, about a macro this directory otherwise gets wrong: the
+multi-namespace test in `PMIx_Connect_nb` compares two *participants*
+with `PMIX_CHECK_NSPACE`, so an empty entry would read as "same job as
+`rgs[0]`" and suppress the job-level exchange. That is left alone
+deliberately. Unlike the group expansion in
+[`pmix_client_convert.c`](pmix_client_convert.c), where an empty
+namespace is the documented shorthand a caller is entitled to use, a
+participant array carrying one is malformed input that the server
+rejects when it fails to find the namespace.
 
 ## Coding conventions specific to this directory
 
