@@ -254,8 +254,6 @@ typedef struct {
     pmix_tma_t tma;
     /** Holds the current address of the shared-memory allocator. */
     void *current_addr;
-    /** List containing job information. */
-    pmix_list_t *jobinfo;
     /** List containing this job's node information. */
     pmix_list_t *nodeinfo;
     /** List of applications in this job. */

@@ -164,8 +164,11 @@ below.
   the duplicate-answer bug the list had. Regression coverage for all of
   it is `test/unit/get_api.c`.
 
-  **`gds/shmem3` has the same field and the same shape**, and its copy is
-  never written at all — see `docs/todo.rst`.
+  **`gds/shmem3` had the same field and the same shape**, and never
+  wrote to it at all — it is gone there too, along with the same
+  missing `PMIX_RANK_WILDCARD` lookup. If a third module ever appears,
+  this is the first thing to check: `src/client/pmix_client_get.c` no
+  longer papers over it.
 
 - **`hash` is the fallback terminus.** The framework macros treat a `NULL`
   slot on a `"hash"` module as `PMIX_ERR_NOT_SUPPORTED` rather than

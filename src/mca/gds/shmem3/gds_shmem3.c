@@ -1083,13 +1083,6 @@ job_smdata_construct(
     // We can now safely get our TMA.
     pmix_tma_t *const tma = &job->smdata->tma;
     // Now that we know the TMA, initialize smdata structures using it.
-    job->smdata->jobinfo = PMIX_NEW(pmix_list_t, tma);
-    if (!job->smdata->jobinfo) {
-        rc = PMIX_ERR_NOMEM;
-        PMIX_ERROR_LOG(rc);
-        goto out;
-    }
-
     job->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
     if (!job->smdata->nodeinfo) {
         rc = PMIX_ERR_NOMEM;
@@ -1125,9 +1118,6 @@ job_smdata_construct(
     pmix_gds_shmem3_vout_smdata(job);
 out:
     if (PMIX_SUCCESS != rc) {
-        if (job->smdata->jobinfo) {
-            PMIX_RELEASE(job->smdata->jobinfo);
-        }
         if (job->smdata->nodeinfo) {
             PMIX_RELEASE(job->smdata->nodeinfo);
         }

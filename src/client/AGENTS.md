@@ -2785,18 +2785,25 @@ asking for job-level data the documented way passes
   `PMIX_JOB_INFO_ARRAY` processing (`pmix_gds_hash_process_job_array()`).
 - a valid rank reads that rank's tables.
 
-So neither of the two "job-level" rank values sees both job-level
-stores, and `PMIx_Get(NULL, key, …)` — a very common call — landed on
-the one that misses `trk->internal`. `get_data()` now retries a
-`PMIX_RANK_UNDEF` miss at `PMIX_RANK_WILDCARD` before going to the
-server, which is the retry `_getnb_cbfunc()` has always made once the
-reply is in hand. **What is still missing is the mirror image**: a keyed
-fetch at `PMIX_RANK_WILDCARD` does not consult `trk->jobinfo` at all, so
-a key registered inside a `PMIX_JOB_INFO_ARRAY` is unreachable that way.
-That one is recorded in [`docs/todo.rst`](../../docs/todo.rst) rather
-than fixed here, because it is a question about what `trk->jobinfo` is
-for rather than a transcription error. Coverage for both halves is
-`test/unit/get_api.c`.
+**That is now the datastore's problem, not this file's**, and knowing
+why matters more than the fix. `gds/hash` kept job-level data in two
+places — the `internal` table under `PMIX_RANK_WILDCARD`, and a separate
+`jobinfo` list for anything that arrived inside a `PMIX_JOB_INFO_ARRAY`
+— and each of the two "job level" rank values saw only one of them.
+`gds/shmem3` had the same field, never wrote it, and never consulted its
+own table under `PMIX_RANK_WILDCARD` for a keyed request either. So
+`PMIx_Get(NULL, key, …)` could not read job-level data from either
+module. Both are fixed: there is one job-level store now, and an
+`PMIX_RANK_UNDEF` search reaches it.
+
+**`get_data()` briefly carried a retry at `PMIX_RANK_WILDCARD` for this
+and it has been removed. Do not put it back.** It worked, and that was
+the trouble: with the client compensating, both modules looked correct
+from every test in the tree, which is how the defect survived in both of
+them. `test/unit/get_api.c` now asks the question from a real client
+with `PMIX_OPTIONAL` — so the request cannot leave the process and a
+module that cannot answer fails immediately — and that is the level a
+regression should be caught at.
 
 **`process_values()` decides by counting, so an entry left behind by a
 fetch that failed is a wrong answer.** It returns the single value when

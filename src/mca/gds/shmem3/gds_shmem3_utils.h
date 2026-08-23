@@ -140,14 +140,12 @@ pmix_gds_shmem3_vout_smdata(
         "shmem3_hdr@%p, "
         "shmem3_data@%p, "
         "smdata tma@%p, "
-        "jobinfo@%p, "
         "appinfo@%p, "
         "nodeinfo@%p, "
         "local_hashtab@%p",
         (void *)job->shmem3->hdr_address,
         (void *)job->shmem3->data_address,
         (void *)&job->smdata->tma,
-        (void *)job->smdata->jobinfo,
         (void *)job->smdata->appinfo,
         (void *)job->smdata->nodeinfo,
         (void *)job->smdata->local_hashtab

@@ -57,6 +57,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+extern char **environ;
 
 #define GET_UT_NSPACE "get-ut-job"
 
@@ -85,16 +90,27 @@ static void report(const char *name, int passed)
     }
 }
 
+static volatile bool regdone = false;
+
+static void regcbfunc(pmix_status_t status, void *cbdata)
+{
+    (void) status;
+    (void) cbdata;
+    regdone = true;
+}
+
 static pmix_status_t register_job(void)
 {
     pmix_info_t info[4];
     pmix_info_t *ja;
     pmix_data_array_t da;
     pmix_nspace_t ns;
+    pmix_proc_t p0;
     pmix_status_t rc;
     char *noderegex = NULL, *ppnregex = NULL;
     uint32_t topval = GET_UT_TOPVAL;
     uint32_t arrval = GET_UT_ARRVAL;
+    int n;
 
     PMIx_generate_regex(pmix_globals.hostname, &noderegex);
     PMIx_generate_ppn("0,1", &ppnregex);
@@ -126,7 +142,88 @@ static pmix_status_t register_job(void)
     PMIX_INFO_DESTRUCT(&info[3]);
     free(noderegex);
     free(ppnregex);
-    return rc;
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    PMIX_LOAD_PROCID(&p0, GET_UT_NSPACE, 0);
+    rc = PMIx_server_register_client(&p0, geteuid(), getegid(), NULL, regcbfunc, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    /* do not fork the client before it is registered */
+    for (n = 0; n < 400 && !regdone; n++) {
+        usleep(50000);
+    }
+    return PMIX_SUCCESS;
+}
+
+/* ------------------------------------------------------------------ */
+/* the client half                                                    */
+/* ------------------------------------------------------------------ */
+
+/* Ask with a NULL proc, which process_request() resolves to
+ * PMIX_RANK_UNDEF - the shape the datastore has to answer out of its
+ * job-level store rather than out of any rank's. This runs in a real
+ * client so it reaches whichever gds module the server offered: "hash"
+ * everywhere, "shmem3" where that is built. Both had the same hole, and
+ * neither is exercised by the server-side cases above, which only ever
+ * reach "hash".
+ *
+ * Do not "simplify" this into the parent by asking with an explicit
+ * PMIX_RANK_UNDEF from the server: the server's own gds is always hash,
+ * so shmem3 would go untested and the case would say so nowhere.
+ *
+ * PMIX_OPTIONAL is load-bearing. The question is whether the module can
+ * answer out of what it already holds, and without the directive a miss
+ * is sent to the server instead - which here is the parent process, with
+ * a stub host module that cannot answer either, so the request parks and
+ * the whole test wedges rather than failing. Confined to the datastore,
+ * a regression is an immediate FAIL line. */
+static int check_client_scalar(const char *name, const char *key, uint32_t expect)
+{
+    pmix_value_t *val = NULL;
+    pmix_status_t rc;
+    pmix_info_t optional;
+    int ok;
+
+    PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+    rc = PMIx_Get(NULL, key, &optional, 1, &val);
+    PMIX_INFO_DESTRUCT(&optional);
+    ok = (PMIX_SUCCESS == rc && NULL != val && PMIX_UINT32 == val->type
+          && expect == val->data.uint32);
+    fprintf(stdout, "  %s: %s (rc=%s type=%d)\n", ok ? "PASS" : "FAIL", name,
+            PMIx_Error_string(rc), (NULL == val) ? -1 : (int) val->type);
+    if (NULL != val) {
+        PMIX_VALUE_RELEASE(val);
+    }
+    return ok ? 0 : 1;
+}
+
+static int run_client(void)
+{
+    pmix_proc_t me;
+    pmix_status_t rc;
+    int bad = 0;
+
+    rc = PMIx_Init(&me, NULL, 0);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "client PMIx_Init failed: %s\n", PMIx_Error_string(rc));
+        return 1;
+    }
+    bad += check_client_scalar("client: top-level key with a NULL proc",
+                               GET_UT_TOPLEVEL, GET_UT_TOPVAL);
+    bad += check_client_scalar("client: job-array key with a NULL proc",
+                               GET_UT_JOBARRAY, GET_UT_ARRVAL);
+    rc = PMIx_Finalize(NULL, 0);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "client PMIx_Finalize failed: %s\n", PMIx_Error_string(rc));
+        return 1;
+    }
+    return bad;
 }
 
 /* Ask for "key" at "rank" and require a scalar uint32 carrying "expect".
@@ -196,9 +293,22 @@ static void check_bad_params(void)
     report("wildcard rank with a NULL key is refused", PMIX_ERR_BAD_PARAM == rc);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     pmix_status_t rc;
+    char **client_env = NULL;
+    char *client_argv[3];
+    pmix_proc_t p0;
+    pid_t child;
+    int status = 0;
+
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
+    /* re-executed as our own client - see the comment on run_client() */
+    if (1 < argc && 0 == strcmp(argv[1], "client")) {
+        return run_client();
+    }
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
@@ -234,6 +344,48 @@ int main(void)
     check_null_key("NULL key for a specific rank", 0);
 
     check_bad_params();
+
+    /* Now the same two job-level shapes from a real client, which is the
+     * only way to reach a gds module other than "hash".
+     *
+     * exec rather than run in the fork: this process has an initialized
+     * PMIx server in it, and PMIx_Init in a forked child finds the
+     * one-time-init latch already set. And seed the child's environment
+     * with our own *before* PMIx_server_setup_fork adds its variables -
+     * handing execve only the PMIx variables strands the child without
+     * the library search path libtool's wrapper script set, so it would
+     * silently run against the installed PMIx rather than this one. */
+    PMIX_LOAD_PROCID(&p0, GET_UT_NSPACE, 0);
+    client_env = PMIx_Argv_copy(environ);
+    rc = PMIx_server_setup_fork(&p0, &client_env);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "PMIx_server_setup_fork failed: %s\n", PMIx_Error_string(rc));
+        report("client: job-level gets", 0);
+    } else {
+        child = fork();
+        if (0 > child) {
+            fprintf(stderr, "fork() failed\n");
+            report("client: job-level gets", 0);
+        } else if (0 == child) {
+            client_argv[0] = argv[0];
+            client_argv[1] = (char *) "client";
+            client_argv[2] = NULL;
+            execve(argv[0], client_argv, client_env);
+            fprintf(stderr, "exec of %s failed\n", argv[0]);
+            _exit(127);
+        } else {
+            waitpid(child, &status, 0);
+            if (WIFEXITED(status)) {
+                status = WEXITSTATUS(status);
+            } else {
+                fprintf(stderr, "the client died on a signal\n");
+                status = 1;
+            }
+            /* the client prints its own PASS/FAIL lines; count the run */
+            report("client: job-level gets with a NULL proc", 0 == status);
+        }
+    }
+    PMIx_Argv_free(client_env);
 
     PMIx_server_finalize();
 

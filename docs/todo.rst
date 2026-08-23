@@ -454,41 +454,6 @@ cover the whole of what the entry described.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
-gds/shmem3 carries a job-info list nothing ever writes
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found reviewing ``src/client/pmix_client_get.c`` (2026-08-22); belongs in
-``src/mca/gds/shmem3``.
-
-``gds/hash`` kept job-level data in two places — the ``internal`` table
-under ``PMIX_RANK_WILDCARD`` and a ``jobinfo`` list — and the two rank
-values that mean "job level" each saw only one of them.  That is now
-consolidated: the list is gone and everything job-level is in the table.
-
-``gds/shmem3`` has the same ``jobinfo`` field on its
-``pmix_gds_shmem3_shared_job_data_t``, and **nothing ever appends to
-it**.  It is allocated in the shared segment, released, printed by the
-debug dumper, and walked by two fetch paths that therefore always find
-it empty.  It costs a pointer in the segment's job metadata and two dead
-loops.
-
-The live half is the same hole ``gds/hash`` had, and shmem3 still has
-it: a keyed fetch at ``PMIX_RANK_UNDEF`` walks ranks ``0..nprocs-1`` and
-then reports ``PMIX_ERR_NOT_FOUND`` without ever asking the local table
-under ``PMIX_RANK_WILDCARD``, so job-level data is unreachable that way.
-``PMIx_Get(NULL, key, ...)`` works against a shmem3 client only because
-``get_data()`` in ``src/client/pmix_client_get.c`` retries at
-``PMIX_RANK_WILDCARD`` itself.  **That retry is what should go once
-shmem3 answers the question directly** — a client compensating for a
-module's rank convention hides exactly this kind of defect, which is how
-the ``gds/hash`` one survived.
-
-Removing the field is safe across versions without further ceremony:
-``PMIX_GDS_SHMEM3_LAYOUT_ID`` includes
-``sizeof(pmix_gds_shmem3_shared_job_data_t)``, so a peer built before the
-change computes a different id, declines the segment, and falls back to
-``hash``.
-
 ``PMIX_GET_POINTER_VALUES`` is honored by three shortcuts and nothing else
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
