@@ -41,7 +41,7 @@ module where it cannot, and queue replies back. The file map:
 
 | File | Owns |
 |------|------|
-| `pmix_server.c` | `PMIx_server_init` / `PMIx_server_finalize` and the machinery they stand up: the `pmix_server_globals` definition, the MCA-parameter registration, the singleton and parent-died plumbing, the server's own event handler, and `PMIx_server_setup_fork` (which passes the modes negotiated at init down to a child). Also `pmix_server_lock_opcbfunc`, the completion callback every blocking public API substitutes when its caller passes no callback. |
+| `pmix_server.c` | `PMIx_server_init` / `PMIx_server_finalize` and the machinery they stand up: the `pmix_server_globals` definition, `pmix_server_initialize()` and its counterpart `server_teardown()`, the singleton and parent-died plumbing, the server's own event handler, and `PMIx_server_setup_fork` (which passes the modes negotiated at init down to a child). Also `pmix_server_lock_opcbfunc`, the completion callback every blocking public API substitutes when its caller passes no callback. The MCA parameters that fill `pmix_server_globals` are **not** registered here — they live with every other one in [`src/runtime/pmix_params.c`](../runtime/pmix_params.c). |
 | `pmix_server_switchyard.c` | **The switchyard** (`server_switchyard`), `pmix_server_message_handler`, and the generic status-only replies that a dozen arms hand out by name — `op_cbfunc`, `op_cbfunc2`, `resop_cbfunc` and their `_`-prefixed handlers. These stay `static` because the switchyard is in the same file. The canonical reference for the reply-ownership contract below. |
 | `pmix_server_op_replies.c` | The host callbacks that complete a specific client operation and carry that operation's own payload: fence modex, direct-modex get, connect, disconnect, spawn, lookup, event registration, IOF register and deregister. |
 | `pmix_server_info_replies.c` | The host callbacks that hand host-supplied results back — alloc, query, session control, job control, monitor, credential get and validate, fabric, device distances, resolve peers and node. All eleven share one shape, so diff a new one against its neighbor here. |
@@ -471,6 +471,96 @@ Do not stack-allocate a caddy that outlives its creating function — the
 one deliberate exception is the blocking process-set define/delete path,
 which uses a stack caddy that is safe *only* because `PMIX_WAIT_THREAD`
 blocks the creator until the handler wakes it.
+
+## Coming up and going down
+
+`PMIx_server_init` and `PMIx_server_finalize` are a matched pair, and the
+thing that keeps them matched is `server_teardown()`: `PMIx_server_finalize`
+is little more than the reference count, the flags, and a call to it.
+
+**Every failure past `pmix_rte_init()` unwinds through that same
+function.** The alternative — returning the status and leaving the process
+as it stands — is not a smaller version of the same thing, it is a wedge.
+`PMIx_server_init` latches `pmix_globals.init_called` with
+`pmix_atomic_test_and_set` before it does anything, and the already-latched
+arm answers `PMIX_ERR_INIT` whenever `pmix_globals.initialized` is clear.
+So a bare `return rc` left the caller unable to retry *and* unable to
+finalize — `PMIx_server_finalize` declines for the same reason, the
+initialized flag was never set — for the life of the process. A host that
+would quite reasonably correct a directive and try again (a different
+`PMIX_SERVER_TMPDIR` after the listener could not bind, a corrected
+`PMIX_SINGLETON`) got one answer forever. Failures land on one of two
+labels: `errout` for everything past the runtime, `errout_early` for the
+directive screens above it, and both give back the reference count and the
+latch, in that order. `test/unit/singleton_register.c` drives a rejection
+on each side of the runtime and then inits again.
+
+The one deliberate exception is `pmix_rte_init()` itself, which does not
+give back what it built before failing; that arm returns latched, and says
+so. The same reasoning governs `PMIx_Init` in
+[`src/client`](../client/AGENTS.md).
+
+**`pmix_server_initialize()` therefore runs immediately after
+`pmix_rte_init()`, before anything else that can fail.** Until it runs,
+every list and pointer array in `pmix_server_globals` is only *statically*
+initialized — and `PMIX_LIST_STATIC_INIT` leaves the sentinel's `next`
+pointer NULL rather than pointing at itself. `PMIX_LIST_DESTRUCT` survives
+that (it is gated on the length), but `PMIX_LIST_FOREACH` does not: it
+starts at NULL, compares unequal to the sentinel's address, and
+dereferences. The teardown walks two such lists (`pmix_iof_flush_residuals`
+and the `local_reqs` drain), so the constructor has to be upstream of every
+`goto errout`. Do not move it back down beside the code it used to sit
+with.
+
+**Finalize must not be called from the progress thread.** The teardown
+waits on that thread and then stops it, so from the thread itself this is
+not a deadlock, it is the thread ending itself mid-callback — a host
+tearing down from inside a PMIx event handler or a server-module
+completion is exactly there. `pmix_progress_thread_check_blocking` screens
+it, and answers `PMIX_ERR_WOULD_BLOCK` after putting the reference back. A
+host driving our event base with `PMIX_EXTERNAL_PROGRESS` is *not* caught
+by this: the owning thread is recorded only for the duration of a
+`PMIx_Progress()` pass, so an ordinary call from the host's main loop gets
+through, and there is no engine to stop.
+
+**Two file-scope statics in `pmix_server.c` are worth knowing about.**
+
+- `pmix_server_globals.module_set` is what decides whether a module handed
+  to `PMIx_server_init` is taken, so `server_teardown()` clears it. Left
+  set across a cycle, the second init silently kept the first cycle's host
+  module and discarded the one it was given.
+- `myparent` is filled from the `pmix_cb_t` that
+  `pmix_tool_retry_attach` hands back, and that is the **only** place the
+  parent's identity ever appears — the caddy carrying it is released on
+  the next line. Nothing assigned it before, so the `PMIX_PARENT_ID` the
+  `PMIX_LAUNCHER_RNDZ_URI` block stores under our own procid was a
+  namespace of `""` at `PMIX_RANK_UNDEF`: a `PMIx_Get` of that key
+  succeeded and answered with nobody. `PMIx_tool_init` carries the same
+  block and had the same defect; `test/unit/tool_rndz.c` now holds the
+  stored value against the server it actually rendezvoused with.
+
+**`pmix_server_globals.genvars` is read and never written.**
+`setup_fork_body` replays it into every child's environment, and nothing
+anywhere in the tree puts anything in it. It is a hook for a "pass these
+envars to all my clients" directive that was never wired up; see
+`docs/todo.rst`. Do not read the read site as evidence that a writer
+exists somewhere.
+
+**What the host hands `PMIx_server_setup_fork` is unscreened.** It is a
+public entry point and both arguments are dereferenced — the `proc` by the
+verbose line, whose arguments are evaluated whether or not the channel is
+open, and the `env` by everything the body sets. Same rule as the helper
+APIs in `pmix_server_setup.c`.
+
+**And what the *environment* hands init is unscreened too.** Both
+`PMIX_SERVER_RANK` and `PMIX_KEEPALIVE_PIPE` were read with a bare
+`strtol` whose result was never inspected, and `strtol` answers 0 for a
+string it cannot read at all. So an empty or non-numeric `PMIX_SERVER_RANK`
+made this server rank 0 — a rank another server in the namespace very
+likely holds — and a malformed `PMIX_KEEPALIVE_PIPE` made us watch
+descriptor 0 for readability, treat stdin becoming readable as our parent
+dying, and `close(0)` at finalize. Both now reject the value with a
+`show_help` message rather than guessing.
 
 ## Blocking vs. non-blocking public APIs
 

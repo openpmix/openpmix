@@ -93,6 +93,7 @@ negative PMIx error constant is returned, including:
   :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`).
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because the
   library's progress engine has been stopped.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| ``proc`` or ``env`` was ``NULL``.
 
 Any other negative value indicates that one of the contributing subsystems
 (transport, network, datastore, or programming model) failed to add its
