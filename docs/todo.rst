@@ -292,15 +292,17 @@ Ordered by how much of the directory the review no longer covers.
    directory is now outside a review; the one finding that sweep left
    unfixed has an entry of its own below.
 
-   Note also a difference in depth, not just currency.  Six files have
+   Note also a difference in depth, not just currency.  Eight files have
    had a **dedicated** five-lens pass of their own: ``pmix_client.c``
    (fifteenth sweep), ``pmix_client_group.c`` (eighth, thirteenth),
    ``pmix_client_spawn.c`` (tenth, twelfth, sixteenth),
    ``pmix_client_resolve.c`` (ninth), ``pmix_client_topology.c``
-   (eleventh) and ``pmix_client_get.c`` (2026-08-22).  Two more were
-   signed off by the *directory-wide* five-lens seventh sweep, which
-   records both as coming through all five lenses with nothing to fix:
-   ``pmix_client_connect.c`` and ``pmix_client_fence.c``.
+   (eleventh), ``pmix_client_get.c`` (2026-08-22) and
+   ``pmix_client_connect.c`` (2026-08-23, which found the off-thread
+   namespace deletion recorded under "Coverage gaps" below).
+   ``pmix_client_fence.c`` was signed off by the *directory-wide*
+   five-lens seventh sweep, which records it as coming through all five
+   lenses with nothing to fix.
 
    ``pmix_client_convert.c`` has had one as well (2026-08-23).  It
    found a functional defect of the same kind: the file asked "does this
@@ -762,6 +764,18 @@ Coverage gaps
   neither is reachable from a unit test without fault injection — a
   failed allocation, or the progress thread stopping while a host
   completion is in flight.
+* **A multi-namespace ``PMIx_Disconnect`` is not reached by ``make
+  check``.**  ``test/test_cd.c`` — what the ``--test-connect`` runs
+  drive — disconnects a process from its *own* namespace, so the loop in
+  ``disconnect_cbfunc()`` that drops the other participants' cached data
+  never executes.  Reaching it needs live processes in two namespaces,
+  and therefore a real launcher, for the reason in the next entry.  The
+  path is verified today by running ``examples/dynamic.c`` under a PRRTE
+  DVM with ``PMIX_MCA_gds_base_verbose=1`` forwarded to the clients, so
+  the ``GDS DEL NSPACE`` lines can be seen coming from a client rather
+  than only from the server's deregistration.  Closing this means a test
+  that stands up a server and two client namespaces in-process, in the
+  white-box style of ``test/unit/server_fence.c``.
 * **``test/simple/simptest`` cannot host a spawn.**  Its ``spawn_fn``
   calls ``PMIx_server_setup_application()``, a thread-shifting API, and
   then waits on the result — but ``spawn_fn`` is the host callback and
