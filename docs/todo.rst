@@ -292,14 +292,30 @@ Ordered by how much of the directory the review no longer covers.
    directory is now outside a review; the one finding that sweep left
    unfixed has an entry of its own below.
 
-   Note also a difference in depth, not just currency: only
-   ``pmix_client.c``, ``pmix_client_group.c``, ``pmix_client_spawn.c``
-   and ``pmix_client_get.c`` (2026-08-22) have had the five-lens
-   per-file treatment.  ``pmix_client_connect.c``,
-   ``pmix_client_convert.c``, ``pmix_client_fabric.c``,
-   ``pmix_client_fence.c`` and ``pmix_client_pub.c`` are covered by the
-   July 2026 directory-wide sweep and the targeted passes since, which
-   is one review each rather than five.
+   Note also a difference in depth, not just currency.  Six files have
+   had a **dedicated** five-lens pass of their own: ``pmix_client.c``
+   (fifteenth sweep), ``pmix_client_group.c`` (eighth, thirteenth),
+   ``pmix_client_spawn.c`` (tenth, twelfth, sixteenth),
+   ``pmix_client_resolve.c`` (ninth), ``pmix_client_topology.c``
+   (eleventh) and ``pmix_client_get.c`` (2026-08-22).  Two more were
+   signed off by the *directory-wide* five-lens seventh sweep, which
+   records both as coming through all five lenses with nothing to fix:
+   ``pmix_client_connect.c`` and ``pmix_client_fence.c``.
+
+   **Three have never had a dedicated pass**:
+   ``pmix_client_convert.c``, ``pmix_client_fabric.c`` and
+   ``pmix_client_pub.c``.  They are inside the July 2026 directory-wide
+   sweep, the fifth (union) sweep, the seventh, and the targeted fixes
+   since — which is real coverage, and is not the same thing.
+   ``pmix_client_get.c`` had all of that too and a dedicated pass still
+   turned up a functional defect in it plus two in the ``gds`` modules
+   behind it.  Treat those three as the remaining work in this
+   directory.
+
+   An earlier version of this paragraph listed ``pmix_client_resolve.c``
+   and ``pmix_client_topology.c`` among the shallow set.  That was
+   wrong: the ninth and eleventh sweeps are both dedicated five-lens
+   passes and say so in their opening lines.
 #. **``src/server``** — the 2026-08-09 → 15 commit run *is* the review,
    performed after the source was split into function-oriented files, so
    the body of the directory is covered.  Outside it is the same late
