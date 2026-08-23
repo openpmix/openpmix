@@ -539,9 +539,26 @@ through, and there is no engine to stop.
   block and had the same defect; `test/unit/tool_rndz.c` now holds the
   stored value against the server it actually rendezvoused with.
 
+**Init's tail runs on the caller's thread with the listener up.**
+`pmix_rte_init()` ends by starting the progress thread, so everything
+`PMIx_server_init` does afterwards is on the caller's thread — and
+`pmix_ptl_base_start_listening()` arms its accept event on
+`pmix_globals.evbase` rather than a listener thread of its own, so from
+that point an outside process can schedule handshake work on the progress
+thread while init is still storing into the datastore. `gds/hash` holds no
+lock; it is correct only because everything that touches it is supposed to
+be on one thread. Do not add more shared-state work to that stretch, and
+read `docs/todo.rst` ("When a server starts accepting connections") before
+moving `start_listening` in either direction — the four ways to close it
+are laid out there and they are not equivalent.
+
 **`pmix_server_globals.genvars` is read and never written.**
 `setup_fork_body` replays it into every child's environment, and nothing
-anywhere in the tree puts anything in it. It is a hook for a "pass these
+anywhere in the tree puts anything in it.
+`pmix_server_globals.tool_connections_allowed` is the same shape: declared
+here, initialized to false, and never read or written. The knob that
+actually decides whether we answer a tool is `pmix_ptl_base.tool_support`,
+set from `PMIX_SERVER_TOOL_SUPPORT` in `ptl_base_listener.c`. It is a hook for a "pass these
 envars to all my clients" directive that was never wired up; see
 `docs/todo.rst`. Do not read the read site as evidence that a writer
 exists somewhere.

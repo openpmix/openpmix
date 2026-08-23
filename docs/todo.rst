@@ -450,6 +450,116 @@ one setting or two.
 
 The ``ompi`` component's guide records the precedence as it stands.
 
+When a server starts accepting connections
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/server/pmix_server.c`` (2026-08-23).
+
+``pmix_rte_init()`` ends by calling ``pmix_progress_thread_start()``, so
+everything ``PMIx_server_init`` does after it runs on the **caller's**
+thread with the progress thread live.  For most of that stretch nothing
+else is running, because nobody can reach us.  ``pmix_ptl_base_start_listening()``
+ends that: it arms an accept event on ``pmix_globals.evbase`` — there is
+no separate listener thread — and from that instant an external process
+can schedule real work on the progress thread.
+
+The two sides of the window:
+
+* **On the progress thread**, ``pmix_ptl_base_connection_handler()``
+  appends to ``pmix_globals.nspaces``, adds to
+  ``pmix_server_globals.clients`` and ``pmix_globals.iof_requests``,
+  assigns a ``gds`` module and calls ``PMIX_GDS_CACHE_JOB_INFO``, which
+  creates a tracker on the hash module's list.
+* **On the caller's thread**, init still has the ``PMIX_ALLOC_MAU`` store
+  to do, and on its two conditional arms the ``PMIX_PARENT_ID`` store,
+  ``pmix_ptl.connect_to_peer()`` and the ``PMIX_SERVER_URI`` store.  Each
+  ``PMIX_GDS_STORE_KV`` walks and can extend the same tracker list.
+
+``gds/hash`` holds no lock of any kind — it is correct only because
+everything that touches it is supposed to be on one thread.  Two threads
+appending to one of its lists is heap corruption, not a stale read.  And
+nothing in the accept or handshake path screens
+``pmix_globals.initialized``.
+
+Who can get in during the window is worth stating exactly, because it
+bounds the risk.  A **client** is rejected unless its namespace and rank
+are already known, and the host has not been able to register anything
+yet — the one exception being a singleton that ``register_singleton()``
+pre-registered, which is precisely a process already running and trying
+to connect.  A **tool** takes ``process_tool_request()``, which is gated
+on nothing the server has done.  (Note in passing that
+``pmix_server_globals.tool_connections_allowed`` is declared, initialized
+to false, and never read or written anywhere; the live knob is
+``pmix_ptl_base.tool_support``.)  The rendezvous file is written by
+``setup_listener()``, inside ``start_listening``, so a tool polling for
+it can connect immediately.
+
+On the ordinary path the window is a few store calls wide.  The
+``PMIX_LAUNCHER_RNDZ_URI`` arm is the one that matters: it blocks in
+``PMIX_WAIT_THREAD`` for a debugger release, which can be seconds or
+minutes, and it is the arm on which a tool is *known* to be actively
+talking to us.  The caller's thread is idle for most of that wait, so the
+concurrent-mutation exposure there is confined to the ``PMIX_PARENT_ID``
+store — but we are serving connections in full while ``initialized`` is
+still false.
+
+The same shape is in ``PMIx_tool_init``, which calls ``start_listening``
+at the same point relative to its own rendezvous block, and the same
+question (init doing datastore work off the progress thread) is what the
+``src/client`` review answered for ``PMIx_Init`` in its own way.  Decide
+it once.
+
+**The options, and what each costs.**
+
+#. *Move ``start_listening`` to the foot of init.*  Cheapest to write.
+   The obstacle is not the debugger wait — the release arrives over the
+   connection *we* made outbound to the parent, so our listener is not
+   needed to receive it — but that ``setup_listener()`` is what builds
+   ``pmix_ptl_base.listener.uri`` and writes the rendezvous file.
+   Attaching to our parent without a URI of our own to offer it is a
+   behavior change, and an earlier note in this file claimed the debugger
+   wait itself was the blocker; that claim was an assumption and was
+   wrong.
+#. *Split the call: bind and publish the URI early, arm the accept event
+   late.*  The socket is bound and the rendezvous file written where they
+   are today, so every URI stays valid and peers can ``connect()``
+   normally — the kernel holds them in the ``SOMAXCONN`` backlog until we
+   accept.  That is the deferral of option 3 without a list of our own to
+   maintain, and no peer sees a refusal.  Costs a two-function split in
+   ``ptl`` and one moved ``pmix_event_add``.  Its risk is the long wait:
+   a peer that connects during a debugger release sits unanswered until
+   init finishes, and a sufficiently long queue overflows the backlog.
+#. *Park pending connections on a list and drain them when init
+   completes.*  The in-tree precedent is the client's held-deletion list
+   and ``_init_complete()``, which drains and sets ``initialized`` on the
+   progress thread so there is no gap between the two.  Equivalent to
+   option 2 in what a peer observes, but we hold a half-accepted socket
+   rather than letting the kernel hold it, and we own the bookkeeping.
+#. *Move init's remaining shared-state work onto the progress thread.*
+   The offenders are few — three ``PMIX_GDS_STORE_KV`` calls and one
+   ``connect_to_peer`` — and ``pmix_tool_retry_attach`` is already the
+   template for doing exactly that kind of work in a caddy with the
+   caller blocked on it.  This changes nothing about who may connect or
+   when; it restores the invariant the tree already states ("never touch
+   shared state outside the progress thread") rather than adding a new
+   admission policy.
+
+Options 1 through 3 answer "who may connect during init".  Option 4
+answers "why is init writing shared state from the wrong thread", which
+is the actual defect, and is the only one of the four with no observable
+behavior change.  It does not close the second exposure — we would still
+serve a tool in full before ``initialized`` is set — but nothing has been
+shown to go wrong there, whereas the unlocked concurrent mutation is a
+demonstrated hazard.
+
+**How anyone would know it worked.**  There is no detector in CI: the
+sanitizer job builds with ``-fsanitize=address``, and ASan does not find
+data races.  Reproducing the interleaving deliberately needs a tool
+connecting inside a window measured in microseconds, which is not a unit
+test.  A ThreadSanitizer build exercised by the tool tests is the
+practical check, and adding one is a prerequisite for treating any of
+these as verified rather than argued.
+
 Deferred work
 -------------
 
@@ -777,39 +887,6 @@ envar back out of children that have already been forked (it cannot).
 The comment above ``setup_fork_body`` used to assert that the registration
 path sets it; that has been corrected, and ``src/server/AGENTS.md`` says
 the read site is not evidence of a writer.
-
-Init's last stretch runs on the caller's thread with the listener up
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found reviewing ``src/server/pmix_server.c`` (2026-08-23).
-``pmix_rte_init()`` starts the progress thread, and everything
-``PMIx_server_init`` does after it runs on the *caller's* thread.  For most
-of that stretch nothing else can be running, because nobody can reach us —
-but ``pmix_ptl_base_start_listening()`` is called before the end, and what
-follows it is not nothing: the ``PMIX_ALLOC_MAU`` store, the
-``PMIX_LAUNCHER_RNDZ_URI`` block's ``PMIX_PARENT_ID`` store, and
-``pmix_ptl.connect_to_peer()`` plus the ``PMIX_SERVER_URI`` store on the
-``connect_directed`` arm.  A tool that is already polling for our
-rendezvous file can connect the instant the listener binds, and the
-progress thread then services that connection — creating gds trackers and
-touching ``pmix_server_globals`` — while the caller's thread is doing the
-work above.  Two threads appending to one datastore tracker list is
-corruption, not a stale read.
-
-Nothing in the accept path screens ``pmix_globals.initialized``, so there
-is no guard standing today.  The window is small and needs a tool racing
-us, which is why this is recorded rather than papered over: the fixes are
-a design choice.  Moving ``start_listening`` to the foot of init is wrong —
-the debugger-attach wait deliberately sits above it and a debugger may
-connect to *us* — so the real options are to thread-shift the remaining
-stores, or to make the connection handler defer work until init has
-declared itself.  The same question applies to ``PMIx_Init`` and
-``PMIx_tool_init``, and to the topology and server-ID stores the client
-review already recorded against its own datastore-thread work.
-
-Note what is *not* a hazard here: libevent's threading support is enabled
-inside ``pmix_rte_init`` before the engine starts, so posting an event or
-adding one to the base from the caller's thread is safe.
 
 Coverage gaps
 -------------
