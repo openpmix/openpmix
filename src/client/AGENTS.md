@@ -479,6 +479,20 @@ nothing.
   — as the disconnect caddy is, to carry the participant array over to
   its reply handler — has to free it explicitly, on the send-failure path
   as well as in the handler.
+- **Never unpack a wire count straight into the caller's
+  out-parameter.** The screen itself is the tree-wide one — require the
+  `size_t` off the wire to survive the round trip through the `int32_t`
+  the unpack consumes it as, `cnt = ninfo; if (0 > cnt || (size_t) cnt !=
+  ninfo)`, and check the allocation it sizes (see
+  [`src/server/AGENTS.md`](../server/AGENTS.md)). What is specific to
+  this directory is *where the count lands*. `frecv()` in
+  [`pmix_client_fabric.c`](pmix_client_fabric.c) unpacked it directly
+  into `cb->fabric->ninfo`, which is a field of the `pmix_fabric_t` the
+  application handed in — so every failure after that point returned an
+  error *and* left the caller holding a count standing in front of a NULL
+  or short array. Unpack into a local, allocate, fill, and assign the
+  pointer and the count to the caller's object together, as the last
+  thing you do.
 - **Realm directives change where data comes from.** In `PMIx_Get`, the
   `PMIX_NODE_INFO` / `PMIX_APP_INFO` / `PMIX_SESSION_INFO` directives and
   the hostname/nodeid/appnum/sessionid qualifiers redirect the lookup to a
@@ -2962,6 +2976,22 @@ is the shape `PMIx_Connect_nb` already uses for its job-info fetch.
   gap against what the attribute says, but closing it is a change to the
   ownership rules `PMIx_Get(3)` documents rather than a fix; recorded in
   `docs/todo.rst`.
+
+## The PTL never hands a recv handler a NULL buffer
+
+Four handlers in this directory test for one — `wait_cbfunc()` and
+`disconnect_cbfunc()` in [`pmix_client_connect.c`](pmix_client_connect.c),
+and both in [`pmix_client_pub.c`](pmix_client_pub.c) — and the others do
+not, which reads as a missing guard in the others. It is not. Both places
+that invoke a posted recv's callback in
+[`src/mca/ptl/base/ptl_base_sendrecv.c`](../mca/ptl/base/ptl_base_sendrecv.c)
+pass the address of a stack `pmix_buffer_t`: the normal delivery path
+loads the message into it, and the lost-connection sweep constructs an
+empty one (setting `buf.type` so an unpack against it fails cleanly
+rather than tripping over an undefined buffer type). **The zero-byte
+buffer is the lost-connection signal, and `PMIX_BUFFER_IS_EMPTY` is what
+tests for it.** The NULL checks are belt-and-braces; do not add more of
+them, and do not read their absence as a defect.
 
 ## `PMIx_Connect`'s optional trailing blobs, refuted
 

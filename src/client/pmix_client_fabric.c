@@ -86,9 +86,17 @@ static void fcb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
             cb->fabric->ninfo = 0;
         }
         PMIX_INFO_CREATE(cb->fabric->info, ninfo);
-        cb->fabric->ninfo = ninfo;
-        for (n = 0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&cb->fabric->info[n], &info[n]);
+        if (PMIX_UNLIKELY(NULL == cb->fabric->info)) {
+            /* the count is assigned only once there is an array to go
+             * with it - the caller indexes info as far as ninfo says,
+             * and a count standing in front of a NULL pointer is worse
+             * than the empty answer it gets instead */
+            cb->status = PMIX_ERR_NOMEM;
+        } else {
+            cb->fabric->ninfo = ninfo;
+            for (n = 0; n < ninfo; n++) {
+                PMIX_INFO_XFER(&cb->fabric->info[n], &info[n]);
+            }
         }
     }
     if (NULL != release_fn) {
@@ -107,7 +115,9 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
-    int cnt;
+    pmix_info_t *info;
+    size_t ninfo;
+    int32_t cnt;
 
     PMIX_HIDE_UNUSED_PARAMS(hdr);
 
@@ -146,11 +156,21 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
 
     /* unpack any returned data. A server with nothing to add ends the
      * message here; that is not an error the caller should be told about,
-     * since the server already reported the operation itself succeeded. */
+     * since the server already reported the operation itself succeeded.
+     *
+     * The count goes into a local, not straight into the caller's fabric
+     * object. It arrives off the wire, and everything below it used to
+     * trust it: it sized the allocation, and it was consumed as the
+     * int32_t the unpack takes - so a count that does not survive that
+     * narrowing asked for a different number of elements than were
+     * allocated. Worse, it was already written where the caller reads it,
+     * so every failure below returned an error *and* left the caller
+     * holding a count in front of a NULL or short array. Require the
+     * round trip, the same screen the handlers in pmix_client.c and
+     * src/server use, and publish nothing until it is filled. */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &cb->fabric->ninfo, &cnt, PMIX_SIZE);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-        cb->fabric->ninfo = 0;
         rc = PMIX_SUCCESS;
         goto complete;
     }
@@ -158,14 +178,27 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
-    if (0 < cb->fabric->ninfo) {
-        PMIX_INFO_CREATE(cb->fabric->info, cb->fabric->ninfo);
-        cnt = cb->fabric->ninfo;
-        PMIX_BFROPS_UNPACK(rc, peer, buf, cb->fabric->info, &cnt, PMIX_INFO);
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
+    if (0 < ninfo) {
+        cnt = (int32_t) ninfo;
+        if (PMIX_UNLIKELY(0 > cnt || (size_t) cnt != ninfo)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            rc = PMIX_ERR_BAD_PARAM;
             goto complete;
         }
+        PMIX_INFO_CREATE(info, ninfo);
+        if (PMIX_UNLIKELY(NULL == info)) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            rc = PMIX_ERR_NOMEM;
+            goto complete;
+        }
+        PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_INFO_FREE(info, ninfo);
+            goto complete;
+        }
+        cb->fabric->info = info;
+        cb->fabric->ninfo = ninfo;
     }
 
 complete:
@@ -293,6 +326,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
 
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msg)) {
+        /* PMIX_BFROPS_PACK reads the buffer's type before it does
+         * anything else, so an unchecked failure here is a segfault */
+        return PMIX_ERR_NOMEM;
+    }
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -322,6 +360,10 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
      * the return message is recvd */
     if (NULL != cbfunc) {
         cb = PMIX_NEW(pmix_cb_t);
+        if (PMIX_UNLIKELY(NULL == cb)) {
+            PMIX_RELEASE(msg);
+            return PMIX_ERR_NOMEM;
+        }
         cb->fabric = fabric;
         cb->cbfunc.opfn = cbfunc;
         cb->cbdata = cbdata;
@@ -442,6 +484,9 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
         }
         if (NULL != cbfunc) {
             cb = PMIX_NEW(pmix_cb_t);
+            if (PMIX_UNLIKELY(NULL == cb)) {
+                return PMIX_ERR_NOMEM;
+            }
             cb->fabric = fabric;
             cb->cbfunc.opfn = cbfunc;
             cb->cbdata = cbdata;
@@ -450,6 +495,14 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
         }
         cb->infocopy = true;
         PMIX_INFO_CREATE(cb->info, 1);
+        if (PMIX_UNLIKELY(NULL == cb->info)) {
+            /* the load below indexes this array, and the count is what
+             * the destructor walks - neither may be set without it */
+            if (NULL != cbfunc) {
+                PMIX_RELEASE(cb);
+            }
+            return PMIX_ERR_NOMEM;
+        }
         cb->ninfo = 1;
         PMIX_INFO_LOAD(&cb->info[0], PMIX_FABRIC_INDEX, &fabric->index, PMIX_SIZE);
         rc = pmix_host_server.fabric(&pmix_globals.myid, PMIX_FABRIC_UPDATE_INFO, cb->info, 1, fcb,
@@ -468,6 +521,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
 
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msg)) {
+        /* PMIX_BFROPS_PACK reads the buffer's type before it does
+         * anything else, so an unchecked failure here is a segfault */
+        return PMIX_ERR_NOMEM;
+    }
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -488,6 +546,10 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
      * the return message is recvd */
     if (NULL != cbfunc) {
         cb = PMIX_NEW(pmix_cb_t);
+        if (PMIX_UNLIKELY(NULL == cb)) {
+            PMIX_RELEASE(msg);
+            return PMIX_ERR_NOMEM;
+        }
         cb->fabric = fabric;
         cb->cbfunc.opfn = cbfunc;
         cb->cbdata = cbdata;
