@@ -115,7 +115,7 @@ static int run_tool(int urifd, int readyfd)
 {
     char uri[2048];
     ssize_t n;
-    pmix_proc_t myproc, before, *servers = NULL;
+    pmix_proc_t myproc, before, rndz, *servers = NULL;
     size_t nservers = 0, i;
     pmix_info_t tinfo[3];
     pmix_value_t *val = NULL;
@@ -196,6 +196,7 @@ static int run_tool(int urifd, int readyfd)
     for (i = 0; i < nservers; i++) {
         if (!PMIX_CHECK_PROCID(&servers[i], &before)) {
             found = true;
+            PMIX_LOAD_PROCID(&rndz, servers[i].nspace, servers[i].rank);
         }
     }
     if (!found) {
@@ -203,11 +204,24 @@ static int run_tool(int urifd, int readyfd)
         goto done;
     }
 
-    /* the rendezvous block stores PMIX_PARENT_ID on the way through */
+    /* the rendezvous block stores PMIX_PARENT_ID on the way through, and
+     * it has to name the process we rendezvoused with. The identity is
+     * reported by the attach and nowhere else; before that was captured,
+     * the key was stored from a static nothing ever assigned, so it read
+     * back as an empty namespace with PMIX_RANK_UNDEF - a successful get
+     * answering with nobody. */
     rc = PMIx_Get(&myproc, PMIX_PARENT_ID, NULL, 0, &val);
     if (PMIX_SUCCESS != rc || NULL == val || PMIX_PROC != val->type) {
         fprintf(stderr, "  tool: PMIX_PARENT_ID was not stored: %s\n",
                 PMIx_Error_string(rc));
+        goto done;
+    }
+    if (NULL == val->data.proc || 0 == strlen(val->data.proc->nspace) ||
+        !PMIX_CHECK_PROCID(val->data.proc, &rndz)) {
+        fprintf(stderr, "  tool: PMIX_PARENT_ID is %s:%u, expected %s:%u\n",
+                (NULL == val->data.proc) ? "(null)" : val->data.proc->nspace,
+                (NULL == val->data.proc) ? 0 : val->data.proc->rank,
+                rndz.nspace, rndz.rank);
         goto done;
     }
 

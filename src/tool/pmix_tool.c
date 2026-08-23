@@ -1119,6 +1119,16 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
 
         PMIX_WAIT_THREAD(&cbptr->lock);
         rc = cbptr->status;
+        if (PMIX_SUCCESS == rc && NULL != cbptr->pname.nspace) {
+            /* The attach is the only place the parent's identity ever
+             * appears - pmix_tool_retry_attach reports it here and
+             * nowhere else, and the caddy carrying it is released on the
+             * next line. Nothing else assigned "myparent", so the
+             * PMIX_PARENT_ID stored just below was a proc with an empty
+             * namespace and PMIX_RANK_UNDEF: every PMIx_Get of that key
+             * on this process answered successfully with nobody. */
+            PMIX_LOAD_PROCID(&myparent, cbptr->pname.nspace, cbptr->pname.rank);
+        }
         PMIX_RELEASE(cbptr);
 
         if (PMIX_SUCCESS != rc) {
