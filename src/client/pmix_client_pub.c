@@ -94,6 +94,9 @@ PMIX_EXPORT pmix_status_t PMIx_Publish(const pmix_info_t info[], size_t ninfo)
 
     /* create a callback object to let us know when it is done */
     cb = PMIX_NEW(pmix_cb_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        return PMIX_ERR_NOMEM;
+    }
 
     if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = PMIx_Publish_nb(info, ninfo, op_cbfunc, cb)))) {
         PMIX_ERROR_LOG(rc);
@@ -142,6 +145,11 @@ PMIX_EXPORT pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo
 
     /* create the publish cmd */
     msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msg)) {
+        /* PMIX_BFROPS_PACK reads the buffer's type before it does
+         * anything else, so an unchecked failure here is a segfault */
+        return PMIX_ERR_NOMEM;
+    }
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -178,6 +186,10 @@ PMIX_EXPORT pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        PMIX_RELEASE(msg);
+        return PMIX_ERR_NOMEM;
+    }
     cb->cbfunc.opfn = cbfunc;
     cb->cbdata = cbdata;
 
@@ -220,23 +232,41 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata, const 
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* what would release us runs on the progress thread, so waiting
+     * for it from that thread waits for ourselves.
+     *
+     * This screen sits above the key array deliberately: it used to come
+     * after it, and its early return is the one exit from this function
+     * that does not free that array - so a caller that reached here on
+     * the progress thread, which is exactly what the screen exists to
+     * catch, leaked one argv per call. Do the checks that can refuse the
+     * call before building anything the refusal would have to clean up. */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Lookup"))) {
+        return PMIX_ERR_WOULD_BLOCK;
+    }
+
     /* transfer the pdata keys to the keys argv array */
     for (i = 0; i < ndata; i++) {
         if ('\0' != pdata[i].key[0]) {
-            PMIx_Argv_append_nosize(&keys, pdata[i].key);
+            /* a key dropped here is one the server is never asked about,
+             * and the caller reads that as "not published" rather than as
+             * the failure it is */
+            rc = PMIx_Argv_append_nosize(&keys, pdata[i].key);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIx_Argv_free(keys);
+                return rc;
+            }
         }
-    }
-
-    /* what would release us runs on the progress thread, so waiting
-     * for it from that thread waits for ourselves */
-    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Lookup"))) {
-        return PMIX_ERR_WOULD_BLOCK;
     }
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        PMIx_Argv_free(keys);
+        return PMIX_ERR_NOMEM;
+    }
     cb->cbdata = (void *) pdata;
     cb->nvals = ndata;
 
@@ -290,6 +320,11 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
 
     /* create the lookup cmd */
     msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msg)) {
+        /* PMIX_BFROPS_PACK reads the buffer's type before it does
+         * anything else, so an unchecked failure here is a segfault */
+        return PMIX_ERR_NOMEM;
+    }
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -344,6 +379,10 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        PMIX_RELEASE(msg);
+        return PMIX_ERR_NOMEM;
+    }
     cb->cbfunc.lookupfn = cbfunc;
     cb->cbdata = cbdata;
 
@@ -388,6 +427,9 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish(char **keys, const pmix_info_t info[], 
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        return PMIX_ERR_NOMEM;
+    }
 
     /* push the message into our event base to send to the server */
     if (PMIX_UNLIKELY(PMIX_SUCCESS != (rc = PMIx_Unpublish_nb(keys, info, ninfo,
@@ -431,6 +473,11 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
 
     /* create the unpublish cmd */
     msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msg)) {
+        /* PMIX_BFROPS_PACK reads the buffer's type before it does
+         * anything else, so an unchecked failure here is a segfault */
+        return PMIX_ERR_NOMEM;
+    }
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -483,6 +530,10 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
 
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        PMIX_RELEASE(msg);
+        return PMIX_ERR_NOMEM;
+    }
     cb->cbfunc.opfn = cbfunc;
     cb->cbdata = cbdata;
 
@@ -610,6 +661,19 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         goto report;
     }
     if (0 < ndata) {
+        /* the count came off the wire and is consumed below as the
+         * int32_t the unpack takes, so require it to survive that round
+         * trip before it sizes anything - the screen the handlers in
+         * pmix_client.c and src/server use. Relying on the allocation to
+         * fail first is an argument about the allocator, not an
+         * invariant. */
+        cnt = (int32_t) ndata;
+        if (PMIX_UNLIKELY(0 > cnt || (size_t) cnt != ndata)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            ret = PMIX_ERR_BAD_PARAM;
+            ndata = 0;
+            goto report;
+        }
         /* create the array storage. The count came off the wire, so the
          * allocation can genuinely fail - and reporting ndata with a NULL
          * pdata would hand a pmix_lookup_cbfunc_t a count it is entitled to

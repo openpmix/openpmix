@@ -493,6 +493,15 @@ nothing.
   or short array. Unpack into a local, allocate, fill, and assign the
   pointer and the count to the caller's object together, as the last
   thing you do.
+- **Put every check that can refuse the call above anything the refusal
+  would have to clean up.** The entry points here open with a run of
+  screens — `initialized`, `connected`, `progress_thread_stopped`,
+  parameter validation, and `pmix_progress_thread_check_blocking()` on
+  the blocking ones — and each is a bare `return`. `PMIx_Lookup` built
+  its key argv *between* two of them, so the one exit that returns
+  without freeing it was `PMIX_ERR_WOULD_BLOCK` — leaking an argv per
+  call in exactly the case the screen exists to catch, a caller on the
+  progress thread. Keep the screens contiguous.
 - **Realm directives change where data comes from.** In `PMIx_Get`, the
   `PMIX_NODE_INFO` / `PMIX_APP_INFO` / `PMIX_SESSION_INFO` directives and
   the hostname/nodeid/appnum/sessionid qualifiers redirect the lookup to a
