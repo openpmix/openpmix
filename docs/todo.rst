@@ -297,10 +297,11 @@ Ordered by how much of the directory the review no longer covers.
    (fifteenth sweep), ``pmix_client_group.c`` (eighth, thirteenth),
    ``pmix_client_spawn.c`` (tenth, twelfth, sixteenth),
    ``pmix_client_resolve.c`` (ninth), ``pmix_client_topology.c``
-   (eleventh), ``pmix_client_get.c`` (2026-08-22) and
+   (eleventh), ``pmix_client_get.c`` (2026-08-22),
    ``pmix_client_connect.c`` (2026-08-23, which found the off-thread
-   namespace deletion recorded under "Coverage gaps" below).
-   ``pmix_client_fence.c`` was signed off by the *directory-wide*
+   namespace deletion recorded under "Coverage gaps" below) and
+   ``pmix_client_fabric.c`` (2026-08-23).  ``pmix_client_fence.c`` was
+   signed off by the *directory-wide*
    five-lens seventh sweep, which records it as coming through all five
    lenses with nothing to fix.
 
@@ -310,14 +311,12 @@ Ordered by how much of the directory the review no longer covers.
    match on an empty namespace, so a proc named the documented shorthand
    way expanded to an unrelated group's membership.
 
-   **Two have never had a dedicated pass**: ``pmix_client_fabric.c`` and
-   ``pmix_client_pub.c``.  They are inside the July 2026 directory-wide
-   sweep, the fifth (union) sweep, the seventh, and the targeted fixes
-   since — which is real coverage, and is not the same thing.
+   **One has never had a dedicated pass**: ``pmix_client_pub.c``.  It is
+   inside the July 2026 directory-wide sweep, the fifth (union) sweep,
+   the seventh, and the targeted fixes since — which is real coverage, and is not the same thing.
    ``pmix_client_get.c`` had all of that too and a dedicated pass still
    turned up a functional defect in it plus two in the ``gds`` modules
-   behind it.  Treat those two as the remaining work in this
-   directory.
+   behind it.  Treat it as the remaining work in this directory.
 
    An earlier version of this paragraph listed ``pmix_client_resolve.c``
    and ``pmix_client_topology.c`` among the shallow set.  That was
