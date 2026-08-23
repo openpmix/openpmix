@@ -396,7 +396,7 @@ pmix_status_t pmix_server_initialize(void)
     if (0 < pmix_server_globals.pub_verbose) {
         /* set default output */
         pmix_server_globals.pub_output = pmix_output_open(NULL);
-        pmix_output_set_verbosity(pmix_server_globals.pub_output, \
+        pmix_output_set_verbosity(pmix_server_globals.pub_output,
                                   pmix_server_globals.pub_verbose);
     }
     if (0 < pmix_server_globals.spawn_verbose) {
