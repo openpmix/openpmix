@@ -536,6 +536,35 @@ unfixed library both cases report "child died on a signal".
 Copy the shape for any public entry point whose misuse is asynchronous;
 `tool_api.c`'s `bad_directive_child` is the older instance of it.
 
+### `server_op_replies` — reading back what the server actually queued
+
+[`server_op_replies.c`](server_op_replies.c) covers the lookup reply, and
+its shape is worth copying for anything in
+[`src/server/pmix_server_op_replies.c`](../../src/server/pmix_server_op_replies.c):
+it drives the *host callback* directly and then reads the reply off
+`pmix_globals.mypeer->send_msg`, per the `server_control.c` idiom, rather
+than inspecting a stub's arguments. What crossed the wire is exactly what
+is under test.
+
+`pmix_lookup_cbfunc_t` carries no release function, so the server has to
+copy the host's array — through the **requesting peer's** bfrops module,
+which is why a failed copy is reachable without an allocation failure.
+The case forces one with a type no module implements, and the two fixes
+behind it were told apart by re-breaking them one at a time: with
+neither, nothing is queued at all and the client hangs in `PMIx_Lookup`
+(the case reports `PMIX_ERR_NOT_FOUND`, i.e. no reply); with only the
+status-only fallback, `PMIX_ERROR` — the client told rather than left
+waiting; with both, `PMIX_ERR_PARTIAL_SUCCESS` and the elements that did
+copy. That status is not arbitrary: `wait_lookup_cbfunc` and
+`lookup_cbfunc` in
+[`src/client/pmix_client_pub.c`](../../src/client/pmix_client_pub.c) both
+treat it as data-carrying, and discard the whole array under any other
+error.
+
+Its barrier is `PMIx_Store_internal`, which blocks onto the same progress
+thread the completion shifts to — the `server_dmodex.c` idiom, and the
+reason there are no sleeps in it.
+
 ### `server_fabric` — and what a SKIP is for
 
 [`server_fabric.c`](server_fabric.c) drives `pmix_server_device_dists()`
@@ -919,10 +948,13 @@ shimmed `pcompress`/`psec` components are non-functional by design, so
 4. Run `make check`. A `Makefile.am` edit needs only a plain `make`; no
    `autogen.pl`/`configure` re-run.
 
-Note that `PMIX_HIDE_UNUSED_PARAMS` and the other
-`__pmix_attribute_*__` wrappers are **not** available to these programs —
-they are gated on `PMIX_BUILDING` in `pmix_config_bottom.h`, which is not
-set here. Use a plain `(void) arg;` cast instead.
+Note which unused-parameter spelling is available here.
+`PMIX_HIDE_UNUSED_PARAMS` **is** — it is defined in
+`src/include/pmix_globals.h`, which these programs include, and 35 of
+them use it. The `__pmix_attribute_*__` wrappers are **not**: those are
+gated on `PMIX_BUILDING` in `pmix_config_bottom.h`, which is not set
+here, so a plain `(void) arg;` cast is the fallback where you would have
+reached for one of them.
 
 A test that needs a server is a different animal: add it to
 `test/simple` with a `run_foo.pl.in` driver (and to `noinst_SCRIPTS`,

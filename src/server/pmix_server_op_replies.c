@@ -466,20 +466,31 @@ static void _cnct(int sd, short args, void *cbdata)
         pmix_event_del(&tracker->ev);
     }
 
-    /* find the unique nspaces that are participating */
+    /* Find the unique nspaces that are participating.
+     *
+     * A dropped append is not a small loss: every participant's reply is
+     * assembled from this list, so a namespace missing from it is missing
+     * from all of them, and each of those clients then has no job-level
+     * data for a namespace it just connected to - a silent wrong answer
+     * rather than a failure. Report it instead: the whole connect is
+     * failed, which answers every participant and tears the tracker down
+     * below. */
     PMIX_LIST_FOREACH (cd, &tracker->local_cbs, pmix_server_caddy_t) {
-        if (NULL == nspaces) {
-            PMIx_Argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
-        } else {
-            found = false;
+        found = false;
+        if (NULL != nspaces) {
             for (i = 0; NULL != nspaces[i]; i++) {
                 if (0 == strcmp(nspaces[i], cd->peer->info->pname.nspace)) {
                     found = true;
                     break;
                 }
             }
-            if (!found) {
-                PMIx_Argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
+        }
+        if (!found) {
+            rc = PMIx_Argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                scd->status = rc;
+                break;
             }
         }
     }
@@ -887,20 +898,45 @@ static void _lkupcbfunc(int sd, short args, void *cbdata)
         PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->ndata, 1, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(reply);
-            goto cleanup;
+            goto payload_failed;
         }
         PMIX_BFROPS_PACK(rc, cd->peer, reply, scd->pdata, scd->ndata, PMIX_PDATA);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(reply);
-            goto cleanup;
+            goto payload_failed;
         }
     }
 
     /* the function that created the server_caddy did a
      * retain on the peer, so we don't have to worry about
      * it still being present - tell the originator the result */
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
+    goto cleanup;
+
+payload_failed:
+    /* Abandon the payload, not the reply. This handler is the only thing
+     * that will ever answer this client: pmix_server_lookup up-called the
+     * host and returned PMIX_SUCCESS, so the switchyard let go of the
+     * request and synthesizes nothing. Dropping the buffer here left the
+     * caller blocked in PMIx_Lookup for good - and it is reachable
+     * without an allocation failure, since a value the requesting peer's
+     * bfrops module cannot pack is exactly what an older peer meets. Send
+     * the status on its own instead. */
+    PMIX_RELEASE(reply);
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        goto cleanup;
+    }
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &rc, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(reply);
+        goto cleanup;
+    }
     PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(reply);
@@ -942,15 +978,51 @@ void pmix_server_lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_
         return;
     }
     scd->status = status;
+    /* pmix_lookup_cbfunc_t carries no release function, so nothing the
+     * host handed us survives the return of this call - the copy is
+     * mandatory. What is not optional either is reporting when it fails:
+     * _lkupcbfunc packs whatever is in the array, so an element whose
+     * value did not transfer is sent to the client as a key carrying
+     * PMIX_UNDEF, and an array that could not be created at all is sent
+     * as a lookup that succeeded and found nothing. Either way the
+     * client's PMIx_Lookup reports success over data it never got. */
     if (NULL != pdata && 0 < ndata) {
         scd->ndata = ndata;
         PMIX_PDATA_CREATE(scd->pdata, scd->ndata);
-        for (n=0; NULL != scd->pdata && n < scd->ndata; n++) {
+        if (NULL == scd->pdata) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            scd->ndata = 0;
+            if (PMIX_SUCCESS == scd->status) {
+                scd->status = PMIX_ERR_NOMEM;
+            }
+        }
+        for (n = 0; NULL != scd->pdata && n < scd->ndata; n++) {
             memcpy(&scd->pdata[n].proc, &pdata[n].proc, sizeof(pmix_proc_t));
             memcpy(scd->pdata[n].key, pdata[n].key, sizeof(pmix_key_t));
             PMIX_BFROPS_VALUE_XFER(rc, cd->peer, &scd->pdata[n].value, &pdata[n].value);
             if (PMIX_SUCCESS != rc) {
+                /* The element keeps the PMIX_UNDEF its constructor gave
+                 * it, and _lkupcbfunc packs the array as it stands - so
+                 * left at PMIX_SUCCESS this reports a key the requestor
+                 * asked for as found and empty. PMIX_ERR_PARTIAL_SUCCESS
+                 * is what the client understands here: lookup_cbfunc in
+                 * src/client/pmix_client_pub.c still transfers what it
+                 * was given under that status, where any other error
+                 * makes it discard the whole array including the elements
+                 * that did copy. Note the xfer runs through the *peer's*
+                 * bfrops module, so this is reachable without an
+                 * allocation failure: an older peer's module need not
+                 * know every type a newer one published. */
                 PMIX_ERROR_LOG(rc);
+                /* value_xfer copies the source type across before it
+                 * discovers it cannot copy the payload, so the element is
+                 * left claiming a type this build cannot pack - which
+                 * would take the whole reply down with it below. Put it
+                 * back to what its constructor gave it. */
+                scd->pdata[n].value.type = PMIX_UNDEF;
+                if (PMIX_SUCCESS == scd->status) {
+                    scd->status = PMIX_ERR_PARTIAL_SUCCESS;
+                }
             }
         }
     }
@@ -1049,6 +1121,25 @@ static void _iofreg(int sd, short args, void *cbdata)
         return;
     }
 
+    /* Take a refused registration back out first, before anything that
+     * can fail. pmix_server_iofreg added the request ahead of the up-call
+     * because the refid has to be in hand to report, and this is the arm
+     * that undoes it when the host refuses asynchronously. Doing it below
+     * the reply meant an allocation failure there left the entry in the
+     * array, where it pinned the requestor's peer with its retain for the
+     * life of the server and went on matching output for a pull that was
+     * never granted - the same defect the synchronous refusal had. Clear
+     * the slot before releasing, so the array never holds a stale
+     * pointer. */
+    if (PMIX_SUCCESS != cd->status) {
+        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests,
+                                                             cd->ncodes);
+        pmix_pointer_array_set_item(&pmix_globals.iof_requests, cd->ncodes, NULL);
+        if (NULL != req) {
+            PMIX_RELEASE(req);
+        }
+    }
+
     /* setup the reply to the requestor */
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
@@ -1063,16 +1154,7 @@ static void _iofreg(int sd, short args, void *cbdata)
         goto cleanup;
     }
 
-    /* was the request a success? */
-    if (PMIX_SUCCESS != cd->status) {
-        /* find and remove the tracker */
-        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests,
-                                                             cd->ncodes);
-        if (NULL != req) {
-            PMIX_RELEASE(req);
-        }
-        pmix_pointer_array_set_item(&pmix_globals.iof_requests, cd->ncodes, NULL);
-    } else {
+    if (PMIX_SUCCESS == cd->status) {
         /* return our reference ID for this handler */
         PMIX_BFROPS_PACK(rc, scd->peer, reply, &cd->ncodes, 1, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
