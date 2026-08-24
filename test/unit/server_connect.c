@@ -79,7 +79,16 @@ typedef struct {
     size_t nprocs_real; /* how many procs actually to pack */
     size_t ninf;        /* the count to put on the wire */
     size_t ninf_real;   /* how many info structs actually to pack */
+    /* append a trailing object that is not a well-formed pmix_info_t, so
+     * the connect handler's optional endpoint/job-info unpacks fail with
+     * something other than "read past end of buffer" */
+    bool bad_trailer;
+    /* drive the handler with the completion the switchyard really passes,
+     * rather than the inert stub - the teardown of a failed collective
+     * runs through that callback, so a stub cannot observe it */
+    bool real_cb;
     pmix_status_t status;
+    size_t ncollectives;  /* trackers left on the list afterwards */
 } cut_req_t;
 
 static void do_op(int sd, short args, void *cbdata)
@@ -116,6 +125,25 @@ static void do_op(int sd, short args, void *cbdata)
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &dir, 1, PMIX_INFO);
         PMIX_INFO_DESTRUCT(&dir);
     }
+    if (PMIX_SUCCESS == rc && r->bad_trailer) {
+        /* A pmix_info_t goes onto the wire as key(string), flags, then a
+         * value that leads with its own data type. Lay down a well-formed
+         * key and flags so the unpack gets that far, then a type nothing
+         * recognizes - which is what makes it fail with a real error
+         * rather than the end-of-buffer the handler reads as "no trailing
+         * info was sent". */
+        char *k = (char *) "junk";
+        pmix_info_directives_t fl = PMIX_INFO_REQD;
+        uint16_t badtype = 0xfffe;
+
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &k, 1, PMIX_STRING);
+        if (PMIX_SUCCESS == rc) {
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &fl, 1, PMIX_INFO_DIRECTIVES);
+        }
+        if (PMIX_SUCCESS == rc) {
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &badtype, 1, PMIX_UINT16);
+        }
+    }
     if (PMIX_SUCCESS != rc) {
         PMIX_DESTRUCT(&buf);
         r->status = rc;
@@ -135,9 +163,11 @@ static void do_op(int sd, short args, void *cbdata)
     cd->hdr.tag = 0;
 
     if (r->disconnect) {
-        rc = pmix_server_disconnect(cd, &buf, op_stub);
+        rc = pmix_server_disconnect(cd, &buf,
+                                    r->real_cb ? pmix_server_discnct_cbfunc : op_stub);
     } else {
-        rc = pmix_server_connect(cd, &buf, op_stub);
+        rc = pmix_server_connect(cd, &buf,
+                                 r->real_cb ? pmix_server_cnct_cbfunc : op_stub);
     }
     if (PMIX_SUCCESS != rc) {
         /* the switchyard owns the caddy on a non-success return */
@@ -145,11 +175,15 @@ static void do_op(int sd, short args, void *cbdata)
     }
     PMIX_DESTRUCT(&buf);
     r->status = rc;
+    r->ncollectives = pmix_list_get_size(&pmix_server_globals.collectives);
     PMIX_WAKEUP_THREAD(&r->lock);
 }
 
-static pmix_status_t drive(bool disconnect, size_t nprocs, size_t nprocs_real,
-                           size_t ninf, size_t ninf_real)
+static size_t last_ncollectives = 0;
+
+static pmix_status_t drive_full(bool disconnect, size_t nprocs, size_t nprocs_real,
+                                size_t ninf, size_t ninf_real, bool bad_trailer,
+                                bool real_cb)
 {
     cut_req_t req;
     pmix_status_t rc;
@@ -161,11 +195,20 @@ static pmix_status_t drive(bool disconnect, size_t nprocs, size_t nprocs_real,
     req.nprocs_real = nprocs_real;
     req.ninf = ninf;
     req.ninf_real = ninf_real;
+    req.bad_trailer = bad_trailer;
+    req.real_cb = real_cb;
     PMIX_THREADSHIFT(&req, do_op);
     PMIX_WAIT_THREAD(&req.lock);
     rc = req.status;
+    last_ncollectives = req.ncollectives;
     PMIX_DESTRUCT_LOCK(&req.lock);
     return rc;
+}
+
+static pmix_status_t drive(bool disconnect, size_t nprocs, size_t nprocs_real,
+                           size_t ninf, size_t ninf_real)
+{
+    return drive_full(disconnect, nprocs, nprocs_real, ninf, ninf_real, false, false);
 }
 
 /* the completions thread-shift, so let anything queued behind us run
@@ -230,6 +273,32 @@ int main(int argc, char **argv)
         report(name, PMIX_ERR_BAD_PARAM != rc);
 
         progress_barrier();
+    }
+
+    /* A connect whose optional trailing info is malformed fails after the
+     * tracker has been created but before this caddy has joined it. The
+     * handler owes the collective a completion on that arm: without one
+     * the tracker sits on pmix_server_globals.collectives for the life of
+     * the server, and any participant that contributed ahead of this one
+     * waits in PMIx_Connect forever. Drive it with the completion the
+     * switchyard really passes - an inert stub cannot tear a tracker
+     * down, so it cannot tell the two behaviors apart - and hold the
+     * collectives list against itself across the call. Against an
+     * unfixed library the list grows by one and stays that way. */
+    {
+        pmix_status_t st;
+        size_t before, after;
+
+        progress_barrier();
+        before = pmix_list_get_size(&pmix_server_globals.collectives);
+        st = drive_full(false, 3, 3, 1, 1, true, true);
+        progress_barrier();
+        after = pmix_list_get_size(&pmix_server_globals.collectives);
+
+        report("a malformed trailing info is rejected",
+               PMIX_SUCCESS != st);
+        report("a connect that fails past tracker creation strands nothing",
+               after == before);
     }
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

@@ -896,6 +896,26 @@ keeps the destructor from handing libevent an event that was never
 assigned, and zeroing the member is what keeps that guard from being the
 only thing standing between us and a garbage `ev_base` pointer.
 
+**A handler that creates a tracker owes the collective a completion on
+every path out.** Returning an error after `pmix_server_new_tracker` has
+run — but before this caddy has been appended to `local_cbs` — answers
+this caller through the switchyard and leaves the tracker parked on
+`pmix_server_globals.collectives` with nothing in the tree that will ever
+complete it. Any participant that contributed ahead of the failure waits
+in its collective forever, and a later call over the same participant set
+finds and reuses the stranded tracker along with whatever half-assembled
+info was left on it. `pmix_server_disconnect` has no such window: it
+appends the caddy on the line after it obtains the tracker.
+`pmix_server_connect` does, because the optional endpoint and job-info
+blocks were threaded in between the two, and its four error arms there
+now drive `cbfunc(rc, trk)` — which replies to every caddy on
+`local_cbs`, unlinks the tracker and releases it. There is no detach to
+do first, precisely because this caddy never joined. Covered by
+`test/unit/server_connect.c`, whose case drives the handler with
+`pmix_server_cnct_cbfunc` rather than an inert stub — a stub cannot tear
+a tracker down, so it cannot tell the two behaviors apart — and holds the
+length of the collectives list against itself across the call.
+
 **Driving a tracker's completion claims it — `trk->completion_fired` says
 so.** `host_called` covers only the handoff to the host. A collective the
 host never sees — a strictly local fence is the *ordinary* case under
