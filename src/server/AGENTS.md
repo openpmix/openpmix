@@ -762,6 +762,16 @@ it in `departed` as well counts the rank twice and lets a collective
 complete without it — which is how a client cycling init/finalize (MPI
 Sessions) desynchronized its fence sequence by whole cycles (#4113).
 
+**`pmix_server_trkr_t::lock` is dead.** `tcon` constructs it and `tdes`
+destructs it, and nothing anywhere in the tree waits on it or wakes it —
+the header comment calling it a "flag for waiting for completion"
+describes an arrangement that does not exist. A collective's participants
+are answered through the caddies on `local_cbs`, never by a lock. It is
+the same shape as `pmix_peer_events_info_t::enviro_events` and
+`pmix_iof_req_t::flags`: written (here, constructed) and never read. Do
+not build anything on it, and do not read its presence as evidence that a
+blocking waiter exists somewhere.
+
 **The tracker lifecycle contract (memorize this — it is the source of
 the trickiest bugs):**
 

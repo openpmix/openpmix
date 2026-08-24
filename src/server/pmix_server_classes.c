@@ -76,8 +76,7 @@ static void tcon(pmix_server_trkr_t *t)
     t->completion_fired = false;
     t->local = true;
     t->id = NULL;
-    memset(t->pname.nspace, 0, PMIX_MAX_NSLEN + 1);
-    t->pname.rank = PMIX_RANK_UNDEF;
+    PMIX_LOAD_PROCID(&t->pname, NULL, PMIX_RANK_UNDEF);
     t->pcs = NULL;
     t->npcs = 0;
     PMIX_CONSTRUCT(&t->nslist, pmix_list_t);
@@ -137,6 +136,7 @@ PMIX_CLASS_INSTANCE(pmix_server_trkr_t,
 static void cdcon(pmix_server_caddy_t *cd)
 {
     memset(&cd->ev, 0, sizeof(pmix_event_t));
+    memset(&cd->hdr, 0, sizeof(pmix_ptl_hdr_t));
     cd->event_active = false;
     cd->trk = NULL;
     cd->peer = NULL;
@@ -172,6 +172,7 @@ PMIX_CLASS_INSTANCE(pmix_server_caddy_t,
 
 static void scadcon(pmix_setup_caddy_t *p)
 {
+    memset(&p->ev, 0, sizeof(pmix_event_t));
     p->peer = NULL;
     memset(&p->proc, 0, sizeof(pmix_proc_t));
     PMIX_CONSTRUCT_LOCK(&p->lock);
@@ -239,6 +240,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_setup_caddy_t,
 
 static void tkcon(pmix_trkr_caddy_t *p)
 {
+    memset(&p->ev, 0, sizeof(pmix_event_t));
     p->trk = NULL;
 }
 static void tkdes(pmix_trkr_caddy_t *p)
@@ -361,6 +363,8 @@ PMIX_CLASS_INSTANCE(pmix_regevents_info_t,
 
 static void iocon(pmix_iof_cache_t *p)
 {
+    PMIX_LOAD_PROCID(&p->source, NULL, PMIX_RANK_UNDEF);
+    p->channel = PMIX_FWD_NO_CHANNELS;
     p->bo = NULL;
     p->info = NULL;
     p->ninfo = 0;
