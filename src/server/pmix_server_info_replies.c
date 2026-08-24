@@ -81,7 +81,7 @@ static void _alloccbfunc(int sd, short args, void *cbdata)
         PMIX_RELEASE(qcd);
         PMIX_RELEASE(scd);
         return;
-     }
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:alloc callback with status %s",
@@ -231,8 +231,6 @@ static void _qrycbfunc(int sd, short args, void *cbdata)
             PMIX_ERROR_LOG(rc);
         }
     }
-
-    /* cache the data for any future requests */
 
 complete:
     // send reply
@@ -1040,7 +1038,7 @@ static void _distcbfunc(int sd, short args, void *cbdata)
     }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "pmix:fabric callback with status %s",
+                        "pmix:device distances callback with status %s",
                         PMIx_Error_string(scd->status));
 
     reply = PMIX_NEW(pmix_buffer_t);
