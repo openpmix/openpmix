@@ -1871,6 +1871,67 @@ the local entry *before* the up-call and does not restore it if the host
 refuses, because the client asked to stop and the refid it would be
 handed back could not be the same one.
 
+**A deregistration has to tell the host *what* to stop.**
+`pmix_server_iof_fn_t` is documented in
+[`include/pmix_server.h`](../../include/pmix_server.h) as removing this
+server from the distribution list "for the specified channel/proc
+combination" when `PMIX_IOF_STOP` is among the directives — and the
+deregistration wire message carries neither a proc array nor a channel
+mask (see the `PMIX_IOF_DEREG_CMD` packer in
+[`../common/pmix_iof.c`](../common/pmix_iof.c): it is `{ndirs,
+directives, remote_id}` and nothing else). `pmix_server_iofdereg` handed
+the host a freshly allocated `pmix_setup_caddy_t` with `procs`, `nprocs`
+and `channels` all still empty, so the host was asked to stop forwarding
+nothing and went on relaying that job's output to a server with no
+registration left to match it — where every chunk fell through the
+delivery walk into `pmix_server_globals.iof` and evicted a real entry.
+The request being torn down is the only place those values exist, so
+copy them off it before it is released (`scaddes` frees `cd->procs`
+unconditionally, and `req` goes on the next line). Covered by
+`test/unit/iof_output.c`, whose host stub records what it was told to
+stop.
+
+**The delivery walk serves every registration, so the status it reports
+must not be the last one's.** `_iofdeliver` loops over
+`pmix_globals.iof_requests` calling `pmix_iof_process_iof`, which answers
+`PMIX_OPERATION_SUCCEEDED` when it forwarded, `PMIX_SUCCESS` when the
+request simply does not cover this source or channel, and an error when
+it could not pack or send. Assigning the loop variable straight into the
+completion status therefore reported whatever the *last array slot*
+happened to return: a pack failure on request N was erased by request
+N+1 declining, and a delivery that reached every subscriber was reported
+failed whenever the last slot was the one that broke. Keep the first real
+failure in a variable of its own and carry on serving — the same shape
+`_register_resources` uses for the job-info walk.
+
+**`max_iof_cache` of zero used to mean "cache without limit".** The
+eviction test was `==` against the list length, so at a bound of zero the
+list was empty, the eviction found nothing to remove, and the append ran
+anyway — after which the two were never equal again. Zero now means what
+it says (the bytes are dropped), and the test is `>=` so a bound of one
+behaves too.
+
+**The cache copy is the one place in this file where an unchecked
+allocation is not covered by the "the unpack screens a NULL destination"
+rule.** What follows each of the three allocations there is a `memcpy` or
+a `PMIX_INFO_XFER`, not an unpack, so out of memory took the progress
+thread down. Dropping the bytes is the honest answer: they were headed
+for a cache nobody has yet asked to read.
+
+**`pmix_pointer_array_add` is what makes an IOF request reachable, and
+its failure has to be checked at all three sites** (`pmix_server_iofreg`,
+`pmix_server_process_iof`, `clone_iof_reqs`). The index it returns *is*
+the refid handed back to the client, so a failed add reported a garbage
+handler id — and left the request orphaned along with the `PMIX_RETAIN`
+it holds on the requestor, since the array was the only thing that would
+ever have found it again.
+
+**`PMIx_server_IOF_deliver`'s `source` and `bo` are not optional the way
+`info` is.** Both are dereferenced on the progress thread, the source by
+a verbose line whose arguments are evaluated whether or not the channel
+is open. Same rule as the process-set entry points above; the entry point
+is the only place they get screened.
+
 **Every count these handlers read off the wire needs the round-trip
 screen**, for the reasons set out under "What *does* need screening"
 below. `pmix_server_iofdereg` is the `+ 1` shape: it sizes its array as
