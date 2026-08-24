@@ -63,6 +63,9 @@
  *   WILDCARD, missing plain key    -> unchanged: success, empty payload
  *   local rank not yet connected   -> parked, and answered PMIX_ERR_UNREACH
  *                                     by PMIx_server_finalize
+ *   empty namespace, with a tracker
+ *      already parked on that rank -> PMIX_ERR_BAD_PARAM, and the parked
+ *                                     tracker is left alone
  *
  * Every case but the last additionally asserts that the request left
  * local_reqs empty,
@@ -338,6 +341,22 @@ static bool nothing_parked(void)
     return (0 == pmix_list_get_size(&pmix_server_globals.local_reqs));
 }
 
+/* How many requesters are parked on the first (and, where this is used,
+ * only) direct-modex tracker. A request that joined a tracker it had no
+ * business joining shows up here and nowhere else - the tracker count is
+ * unchanged by a join. */
+static size_t parked_requesters(void)
+{
+    pmix_dmdx_local_t *lcd;
+
+    lcd = (pmix_dmdx_local_t *) pmix_list_get_first(&pmix_server_globals.local_reqs);
+    if (NULL == lcd ||
+        pmix_list_get_end(&pmix_server_globals.local_reqs) == (pmix_list_item_t *) lcd) {
+        return 0;
+    }
+    return pmix_list_get_size(&lcd->loc_reqs);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -484,6 +503,23 @@ int main(int argc, char **argv)
     report("unconnected local rank defers the request", PMIX_SUCCESS == rc);
     report("deferred request parks a tracker", !nothing_parked());
     report("deferred request is not answered while it waits", !cb_fired);
+
+    /* --- a request naming an empty namespace ------------------------ */
+    /* This is the reason the case sits here, with a tracker already
+     * parked: PMIX_CHECK_NSPACE short-circuits to "true" for an invalid
+     * name, so an empty namespace matches every namespace it is compared
+     * against. Unscreened, this request walks local_reqs, finds the
+     * tracker parked above on {GETUT_NSPACE, 0} - the ranks agree - and
+     * joins it, so the caller is told SUCCESS and will be answered with
+     * another proc's data. The contamination runs the other way too: had
+     * the empty-namespace request come first, every later request for
+     * rank 0 in a real namespace would have joined its tracker instead. */
+    rc = do_get("", 0, "some.local.key", NULL, 0);
+    report("empty namespace is rejected", PMIX_ERR_BAD_PARAM == rc);
+    report("empty namespace parked nothing new",
+           1 == pmix_list_get_size(&pmix_server_globals.local_reqs));
+    report("empty namespace did not join the parked tracker",
+           1 == parked_requesters());
 
     PMIx_server_finalize();
 

@@ -99,6 +99,7 @@ typedef struct {
                           // all local ranks that are interested in this namespace-rank
     pmix_info_t *info;    // array of info structs for this request
     size_t ninfo;         // number of info structs
+    bool requested;       // the host has already been asked for this target
 } pmix_dmdx_local_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 

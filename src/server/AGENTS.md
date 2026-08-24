@@ -1284,6 +1284,34 @@ the enclosing `pmix_namespace_t`, so no sanitizer flags it, and the value
 is usually out of range and accidentally produces the right answer. Track
 a `found` flag and gate on it.
 
+**Exactly one of the two up-call sites gets to ask for any given
+tracker.** `pmix_server_get` up-calls immediately when it cannot place the
+target — the unknown-namespace path and the remote `refresh_cache` path
+both land there — while `pmix_pending_nspace_requests` up-calls the
+trackers that were parked *before* the local picture was complete. Those
+two populations overlap: a request for a namespace we had never heard of
+is up-called at once, and is still sitting on `local_reqs` when that
+namespace finally registers, at which point the registration sweep finds
+its target is not one of the new locals and asks the host a second time.
+The refcounting survives that (each up-call takes its own reference, and
+the second reply finds the tracker retired and simply gives it back), so
+the symptom is only a wasted round trip and a host asked twice for one
+proc — but a host that de-duplicates by target cannot tell the second
+request from the first. `lcd->requested` records that the target is
+already with the host; the sweep skips those.
+
+**An invalid namespace off the wire is not inert — it is a wildcard.**
+`PMIX_CHECK_NSPACE` short-circuits to `true` when *either* name is
+invalid, and an empty string is invalid, so a `PMIx_Get` naming one
+matches every tracker it is compared against. `create_local_tracker`
+would join it to whatever tracker carried the same rank (answering that
+requester with an unrelated proc's data), and — the worse direction —
+every later request for that rank in a real namespace would join the
+bogus tracker in turn. `pmix_server_get` therefore screens the unpacked
+namespace with `PMIx_Nspace_invalid` before anything compares against it.
+The same reasoning applies to any handler that takes a namespace off the
+wire and then uses `PMIX_CHECK_NSPACE` on it.
+
 When data arrives the host calls `dmdx_cbfunc` (off-thread) →
 thread-shift → `_process_dmdx_reply` stores the returned data into GDS
 then calls `pmix_pending_resolve` to drain every parked requester. Two
@@ -1292,6 +1320,31 @@ public re-entry points feed this engine from the registration flow:
 locals are known) and `pmix_pending_resolve` (drains trackers when data
 lands or on commit). `get_timeout` fails a single waiting requester with
 `PMIX_ERR_TIMEOUT`.
+
+**`PMIX_LOAD_BUFFER` consumes the pointer it is handed**, NULLing the
+source and zeroing its length — that is what distinguishes it from
+`PMIX_LOAD_BUFFER_NON_DESTRUCT`. `_process_dmdx_reply` walks the returned
+blob once per *unique requester namespace*, so the destructive form meant
+the first pass consumed `caddy->data` and every later pass saw NULL and
+fell into the neighbouring arm — the one that assumes the data arrived
+through `register_nspace` — quietly transferring job-level data instead
+of storing the modex the host had just handed us. Nothing failed: the
+missing store is masked by `_satisfy_request`'s fall-back to the target
+namespace's own gds module, which finds the copy the first pass did
+write. Use the non-destructive form in any loop that re-reads one
+payload, and disown the buffer (`pbkt.base_ptr = NULL`) before
+destructing it, since it still points at memory the release function
+owns.
+
+**The OOM early-outs in `_process_dmdx_reply` must fail the waiters, not
+just let go.** The reply is the only thing that was ever going to free
+the clients parked on that tracker, so a path that cannot reach
+`pmix_pending_resolve` — failing to create the landing-zone namespace, or
+to name it — has to drain the tracker with `pmix_server_fail_local_reqs`
+first. Releasing our reference and returning leaves the tracker on
+`local_reqs` with every requester still blocked in `PMIx_Get`. The one
+early-out that must *not* do this is the `tracker_is_pending` arm: those
+waiters have already been told.
 
 Note the recurring byte-object idiom: `PMIX_UNLOAD_BUFFER(&buf, bo.bytes,
 bo.size)` transfers the buffer's memory into `bo.bytes`; packing that
