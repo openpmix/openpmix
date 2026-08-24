@@ -765,7 +765,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 }
             }
         }
-        if (cnt == (int) cd->ninfo) {
+        if ((size_t) cnt == cd->ninfo) {
             /* nothing more to do */
             rc = PMIX_OPERATION_SUCCEEDED;
             goto exit;
@@ -1063,8 +1063,10 @@ pmix_status_t pmix_server_session_ctrl(pmix_server_caddy_t *cd,
     if (NULL == scd) {
         return PMIX_ERR_NOMEM;
     }
+    /* the completion pair reads scd->cbdata (the server caddy nested
+     * here) and takes the relfn off a wrapper caddy of its own, never
+     * scd->cbfunc - so do not park the callback here as though it did */
     scd->cbdata = cd;
-    scd->cbfunc.infocbfunc = cbfunc;
 
     /* unpack the sessionID */
     cnt = 1;
