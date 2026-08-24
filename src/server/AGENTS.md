@@ -1043,6 +1043,16 @@ returns. So `PMIX_LIST_DESTRUCT(&cb.kvs)` is always correct and never
 drops a reference the datastore still holds. Do not "optimize" a caller
 on the theory that `copy = false` handed back a borrowed pointer.
 
+**`cb.info` is inert on a fetch too**, and that is what makes
+`check_req` safe: it re-runs `_satisfy_request` against a stack
+`pmix_server_caddy_t` holding nothing but `pmix_globals.mypeer`, so the
+directives the requester sent are not carried into the second fetch.
+Neither `gds/hash` nor `gds/shmem3` reads the member. Sites set it
+because the signature has it, not because anything downstream looks. A
+component that starts honoring a fetch qualifier would have to fix the
+deferred path at the same time — `req->lcd->info` is where those
+directives still live.
+
 **`pmix_pending_resolve` always returns `PMIX_SUCCESS`.** Its callers
 check the status anyway, which is harmless, but do not build error
 handling on it — in particular `pmix_server_commit` returns that status
