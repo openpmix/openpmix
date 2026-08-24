@@ -212,6 +212,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(grp_shifter_t,
 /* DEFINE LOCAL FUNCTIONS */
 static pmix_status_t aggregate_info(grp_block_t *blk);
 static bool grp_notify_termination(grp_block_t *blk);
+static void forward_to_host(grp_block_t *blk);
 
 static void check_definition_complete(grp_block_t *blk)
 {
@@ -456,6 +457,11 @@ pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
     for (m=1; m < npinfo; m++) {
         PMIX_DATA_ARRAY_CONSTRUCT(&darray, 2, PMIX_INFO);
         piptr = (pmix_info_t*)darray.array;
+        if (NULL == piptr) {
+            /* nothing screens this one - we index it on the next line */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return PMIX_ERR_NOMEM;
+        }
         /* the primary value is in the first position */
         PMIX_INFO_XFER(&piptr[0], &pinfo[m]);
         /* add the context ID qualifier */
@@ -582,6 +588,19 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
 
     // preserve the group id - every early return below must free it
     id = strdup(blk->id);
+    if (NULL == id) {
+        /* the reply loop below strcmp's against this, and it is the only
+         * thing that answers the participants and frees the blocks. Losing
+         * it hangs every one of them and leaks the blocks for the life of
+         * the server, so there is nothing better to do than say so. */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_LIST_DESTRUCT(&grpinfo);
+        if (NULL != scd->relfn) {
+            scd->relfn(scd->cbdata);
+        }
+        PMIX_RELEASE(scd);
+        return;
+    }
     op = blk->grpop;
 
     // if group info was provided, then we need to store it
@@ -775,7 +794,14 @@ static void grpcbfunc(pmix_status_t status,
         /* we are shutting down and cannot thread-shift. The block is still
          * on the collectives list (it is removed only in _grpcbfunc), so
          * leave it there for finalize to reclaim via PMIX_LIST_DESTRUCT
-         * rather than releasing the list's reference out from under it. */
+         * rather than releasing the list's reference out from under it.
+         * The host is still owed its release, though: this arm fires
+         * precisely when an in-flight host completion lands during
+         * PMIx_server_finalize, and the host process outlives us, so
+         * whatever is dropped here is stranded for good. */
+        if (NULL != relfn) {
+            relfn(relcbd);
+        }
         return;
     }
 
@@ -806,6 +832,20 @@ static void grpcbfunc(pmix_status_t status,
     scd->blk = blk;
     scd->relfn = relfn;
     scd->cbdata = relcbd;
+    /* Driving the completion claims the block, exactly as handing it to the
+     * host does - _grpcbfunc will remove it from grp_collectives and
+     * release it. Until it runs the block is still on that list looking
+     * complete and unclaimed, and the internal drives (the atomic-success
+     * arms, and the two aggregate_info failures) did not set the flag: a
+     * participant call arriving in that window found the block, appended
+     * its caddy, decided the local phase was complete, and handed the same
+     * block to the host a second time - which then completed on memory
+     * _grpcbfunc had freed. Set it here rather than at the six call sites,
+     * so a new one cannot forget, and only once the shift is certain - the
+     * PMIX_NEW failure above leaves the block unclaimed and rescuable. The
+     * host's own completion arrives with it already true. This is the
+     * group family's spelling of the fence family's completion_fired. */
+    blk->host_called = true;
     PMIX_THREADSHIFT(scd, _grpcbfunc);
 }
 
@@ -947,6 +987,11 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
             }
             if (!found) {
                 nm = PMIX_NEW(pmix_proclist_t);
+                if (NULL == nm) {
+                    rc = PMIX_ERR_NOMEM;
+                    PMIX_ERROR_LOG(rc);
+                    goto bailout;
+                }
                 memcpy(&nm->proc, &trk->pcs[n], sizeof(pmix_proc_t));
                 pmix_list_append(&plist, &nm->super);
             }
@@ -989,6 +1034,12 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
                             }
                             if (!nmfound) {
                                 nm = PMIX_NEW(pmix_proclist_t);
+                                if (NULL == nm) {
+                                    rc = PMIX_ERR_NOMEM;
+                                    PMIX_ERROR_LOG(rc);
+                                    PMIX_LIST_DESTRUCT(&nmlist);
+                                    goto bailout;
+                                }
                                 memcpy(&nm->proc, &trkarray[k], sizeof(pmix_proc_t));
                                 pmix_list_append(&nmlist, &nm->super);
                             }
@@ -997,6 +1048,12 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
                         if (0 < pmix_list_get_size(&nmlist)) {
                             bt = nmsize + pmix_list_get_size(&nmlist);
                             PMIX_PROC_CREATE(tmp, bt);
+                            if (NULL == tmp) {
+                                rc = PMIX_ERR_NOMEM;
+                                PMIX_ERROR_LOG(rc);
+                                PMIX_LIST_DESTRUCT(&nmlist);
+                                goto bailout;
+                            }
                             memcpy(tmp, nmarray, nmsize * sizeof(pmix_proc_t));
                             j = nmsize;
                             PMIX_LIST_FOREACH(nm, &nmlist, pmix_proclist_t) {
@@ -1027,6 +1084,11 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
                                PMIX_CHECK_KEY(&blk->info[m], PMIX_GROUP_INFO)) {
                         // keep the duplicates
                         icd = PMIX_NEW(pmix_info_caddy_t);
+                        if (NULL == icd) {
+                            rc = PMIX_ERR_NOMEM;
+                            PMIX_ERROR_LOG(rc);
+                            goto bailout;
+                        }
                         icd->info = &trk->info[n];
                         icd->ninfo = 1;
                         pmix_list_append(&ilist, &icd->super);
@@ -1038,6 +1100,11 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
             if (!found) {
                 // add this one in
                 icd = PMIX_NEW(pmix_info_caddy_t);
+                if (NULL == icd) {
+                    rc = PMIX_ERR_NOMEM;
+                    PMIX_ERROR_LOG(rc);
+                    goto bailout;
+                }
                 icd->info = &trk->info[n];
                 icd->ninfo = 1;
                 pmix_list_append(&ilist, &icd->super);
@@ -1047,6 +1114,11 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
     if (0 < pmix_list_get_size(&plist)) {
         m = blk->npcs + pmix_list_get_size(&plist);
         PMIX_PROC_CREATE(tmp, m);
+        if (NULL == tmp) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            goto bailout;
+        }
         if (NULL != blk->pcs) {
             memcpy(tmp, blk->pcs, blk->npcs * sizeof(pmix_proc_t));
         }
@@ -1064,6 +1136,11 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
     if (0 < pmix_list_get_size(&ilist)) {
         niptr = blk->ninfo + pmix_list_get_size(&ilist);
         PMIX_INFO_CREATE(iptr, niptr);
+        if (NULL == iptr) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            goto bailout;
+        }
         for (n=0; n < blk->ninfo; n++) {
             PMIX_INFO_XFER(&iptr[n], &blk->info[n]);
         }
@@ -1125,6 +1202,17 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &grpid, &cnt, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    /* A zero-length string unpacks to NULL and reports success - that is
+     * how the string unpacker spells "empty" - and every use of the group
+     * id from here down is a bare strcmp or strdup against it. So a client
+     * calling PMIx_Group_construct("") took the server's progress thread
+     * down, and with it every client on this node. The client library
+     * screens only a NULL pointer, which an empty string is not. */
+    if (NULL == grpid) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto error;
     }
@@ -1258,6 +1346,16 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
          * so we cannot aggregate info from this proc. We therefore pass
          * everything up separately and rely on the host to properly
          * deal with it */
+        /* freeze the local phase before the up-call, exactly as the main
+         * path below does. The ordinary success arm of this branch returns
+         * with the host holding the block and used to leave the flag
+         * clear, so a later non-bootstrap call for the same group id -
+         * get_tracker matches on the id alone - found the block, judged it
+         * locally complete (a bootstrap block has def_complete set and
+         * nlocal zero, so the predicate is trivially true) and handed the
+         * same block to the host a second time. account_departed was
+         * shielded from that only by its separate nlocal test. */
+        blk->host_called = true;
         rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, blk->id, trk->pcs, trk->npcs,
                                     trk->info, trk->ninfo, grpcbfunc, blk);
         if (PMIX_OPERATION_SUCCEEDED == rc) {
@@ -1386,12 +1484,74 @@ error:
  * that completes the local phase the block is forwarded to the host. The block
  * may be released (on error) - callers must iterate with FOREACH_SAFE. See
  * docs/how-things-work/collectives. */
+/* The local phase of this block is complete and no further participant call
+ * is coming, so finish it here: aggregate the contributions, apply the
+ * departed-member policy, cancel the local-phase timer and hand the block
+ * up. Every exit consumes the block - grpcbfunc replies to every caddy on
+ * it and tears it down - so the caller must not touch it afterwards.
+ *
+ * Shared by the two paths that discover completeness without a participant
+ * in hand: a departure that accounted for the last missing rank, and a
+ * namespace registration that finally let the definition be computed. The
+ * participant call in pmix_server_group has its own copy of this tail
+ * because it also has to decide what to return to its caller. */
+static void forward_to_host(grp_block_t *blk)
+{
+    grp_trk_t *trk;
+    pmix_status_t rc;
+
+    /* all non-bootstrap members carry the same membership, so use the
+     * first - and mbrs is never empty, since get_tracker appends a
+     * tracker to every block it creates */
+    trk = (grp_trk_t *) pmix_list_get_first(&blk->mbrs);
+    rc = aggregate_info(blk);
+    if (PMIX_SUCCESS != rc) {
+        /* every contributor's caddy is on this block - tell them */
+        grpcbfunc(rc, NULL, 0, blk, NULL, NULL);
+        return;
+    }
+    /* if a member departed before contributing, the policy applies. For a
+     * construct without PMIX_GROUP_FT_COLLECTIVE (the default), the group
+     * cannot form as requested, so abort it rather than silently reduce the
+     * membership. Otherwise complete on the survivors. A destruct for which
+     * PMIX_GROUP_NOTIFY_TERMINATION was requested completes cleanly (the
+     * survivors are told which member was lost via a synthesized
+     * PMIX_GROUP_MEMBER_FAILED event in _grpcbfunc); every other survive
+     * path records the degraded status in the block's info so the host sees
+     * it, matching the fence/connect/disconnect families. */
+    if (0 < pmix_list_get_size(&blk->departed)) {
+        if (PMIX_GROUP_CONSTRUCT == blk->grpop && !grp_ft_collective(blk)) {
+            abort_construct(blk, PMIX_GROUP_CONSTRUCT_ABORT);
+            return;
+        }
+        if (!(PMIX_GROUP_DESTRUCT == blk->grpop && grp_notify_termination(blk))) {
+            pmix_server_set_collective_status(blk->info, blk->ninfo,
+                                              PMIX_ERR_LOST_CONNECTION);
+        }
+    }
+    /* delete the local-phase timer before handing the block to the host,
+     * so a late internal timeout cannot race the host's completion */
+    if (blk->event_active) {
+        pmix_event_del(&blk->ev);
+        blk->event_active = false;
+    }
+    blk->host_called = true;
+    rc = pmix_host_server.group(blk->grpop, blk->id, trk->pcs, trk->npcs,
+                                blk->info, blk->ninfo, grpcbfunc, blk);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        /* the host will not call back - drive completion ourselves */
+        grpcbfunc(PMIX_SUCCESS, NULL, 0, blk, NULL, NULL);
+    } else if (PMIX_SUCCESS != rc) {
+        /* nothing else will answer these participants */
+        grpcbfunc(rc, NULL, 0, blk, NULL, NULL);
+    }
+}
+
 static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
 {
     grp_trk_t *trk;
     pmix_server_caddy_t *scd;
     pmix_proclist_t *dp;
-    pmix_status_t rc;
     bool ismbr, contributed, known;
     size_t n;
 
@@ -1439,6 +1599,14 @@ static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
     }
     if (!known) {
         dp = PMIX_NEW(pmix_proclist_t);
+        if (NULL == dp) {
+            /* we cannot record the departure, so we must not go on to ask
+             * whether it completed the local phase - the count would be
+             * short and the block would sit there waiting on a rank that
+             * is never coming */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return;
+        }
         PMIX_LOAD_PROCID(&dp->proc, proc->nspace, proc->rank);
         pmix_list_append(&blk->departed, &dp->super);
     }
@@ -1446,46 +1614,39 @@ static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
      * now - no further participant call will arrive to do it for us. All
      * non-bootstrap members carry the same membership, so use the first. */
     if (grp_blk_locally_complete(blk)) {
-        trk = (grp_trk_t *) pmix_list_get_first(&blk->mbrs);
-        rc = aggregate_info(blk);
-        if (PMIX_SUCCESS != rc) {
-            /* every contributor's caddy is on this block - tell them */
-            grpcbfunc(rc, NULL, 0, blk, NULL, NULL);
-            return;
+        forward_to_host(blk);
+    }
+}
+
+/* Re-examine every in-flight group block now that a namespace registration
+ * has changed what this server knows about its participants.
+ *
+ * check_definition_complete() gives up as soon as it meets a participant
+ * namespace this server has not been told about, and until this existed the
+ * ONLY thing that ever called it again was the arrival of another local
+ * participant. So a group naming a namespace that registers late - or that
+ * places no procs here at all, and is therefore registered only after the
+ * job it belongs to is set up - was never marked definition-complete once
+ * its last local participant had already contributed. The block sat on
+ * grp_collectives for the life of the server with every one of those
+ * participants blocked in PMIx_Group_construct.
+ *
+ * This is the group family's counterpart to the collective-tracker walk
+ * that _register_nspace and _register_client already do for the fence
+ * family, and it is called from the same two places. Iterate SAFE: a block
+ * that completes here is answered and freed before we return to it. */
+void pmix_server_grp_check_pending(void)
+{
+    grp_block_t *blk, *bnext;
+
+    PMIX_LIST_FOREACH_SAFE (blk, bnext, &pmix_server_globals.grp_collectives, grp_block_t) {
+        if (blk->host_called) {
+            /* the local phase is frozen - nothing here can change it */
+            continue;
         }
-        /* a member departed before contributing (that is why we are here).
-         * For a construct without PMIX_GROUP_FT_COLLECTIVE (the default), the
-         * group cannot form as requested, so abort it rather than silently
-         * reduce the membership. Otherwise complete on the survivors. A destruct
-         * for which PMIX_GROUP_NOTIFY_TERMINATION was requested completes cleanly
-         * (the survivors are told which member was lost via a synthesized
-         * PMIX_GROUP_MEMBER_FAILED event in _grpcbfunc); every other survive path
-         * records the degraded status in the block's info so the host sees it,
-         * matching the fence/connect/disconnect families. */
-        if (PMIX_GROUP_CONSTRUCT == blk->grpop && !grp_ft_collective(blk)) {
-            abort_construct(blk, PMIX_GROUP_CONSTRUCT_ABORT);
-            return;
-        }
-        if (!(PMIX_GROUP_DESTRUCT == blk->grpop && grp_notify_termination(blk))) {
-            pmix_server_set_collective_status(blk->info, blk->ninfo,
-                                              PMIX_ERR_LOST_CONNECTION);
-        }
-        /* delete the local-phase timer before handing the block to the host,
-         * so a late internal timeout cannot race the host's completion */
-        if (blk->event_active) {
-            pmix_event_del(&blk->ev);
-            blk->event_active = false;
-        }
-        blk->host_called = true;
-        rc = pmix_host_server.group(blk->grpop, blk->id, trk->pcs, trk->npcs,
-                                    blk->info, blk->ninfo, grpcbfunc, blk);
-        if (PMIX_OPERATION_SUCCEEDED == rc) {
-            /* the host will not call back - drive completion ourselves */
-            grpcbfunc(PMIX_SUCCESS, NULL, 0, blk, NULL, NULL);
-        } else if (PMIX_SUCCESS != rc) {
-            /* nothing else will answer these participants - we are here
-             * because no further participant call is coming */
-            grpcbfunc(rc, NULL, 0, blk, NULL, NULL);
+        check_definition_complete(blk);
+        if (grp_blk_locally_complete(blk)) {
+            forward_to_host(blk);
         }
     }
 }

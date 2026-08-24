@@ -469,6 +469,53 @@ Two things about the setup are easy to get wrong and were:
 The multi-node half of this file — the actual remote fetch — is
 [`contrib/dockerswarm/run-server-tests.sh`](../../contrib/dockerswarm/AGENTS.md).
 
+### `server_group` — the server-side group handler regression test
+
+[`server_group.c`](server_group.c) drives `pmix_server_group()` from
+hand-packed wire buffers against a stub host module whose `group` entry
+point **declines** every request. Declining is what makes the file
+composable: the handler's refusal arm hands the whole block to
+`grpcbfunc`, which answers every participant and tears the block down, so
+each case leaves `pmix_server_globals.grp_collectives` empty and the next
+one starts from a known state. Accepting would leave the completion to
+the test, and a host stub cannot drive one without a peer that has a
+socket.
+
+Two of its cases are the reason it exists.
+
+The **empty group id** takes an unfixed library down with SIGSEGV rather
+than failing it (exit 139 with the buffered output lost — the signature
+described under `bfrops_malformed`). A zero-length string unpacks to a
+NULL pointer and reports success, and `get_tracker` `strcmp`s the id
+against every block on the list and then `strdup`s it. So
+`PMIx_Group_construct("")` from any local client killed the server's
+progress thread and every client on the node with it. The client library
+screens a NULL pointer, which an empty string is not.
+
+The **late-registration pair** is the only thing in the suite that
+reaches `pmix_server_grp_check_pending()`. `check_definition_complete`
+gives up the moment it meets a participant namespace this server has not
+been told about, and until that function existed the only thing that
+called it again was the arrival of another local participant — so once
+the last local participant had contributed, nothing was left to complete
+the block. The two cases drive a construct naming an unregistered
+namespace (it parks, and must not reach the host), then register that
+namespace and assert the block goes up. Against an unfixed library the
+first two pass and the last two fail, which is exactly the hang.
+
+Its driver thread-shifts, like `server_fence`'s: the handler touches
+`pmix_server_globals.grp_collectives` and must not be called from
+`main()`. And the namespace it registers has **zero** local procs — that
+is enough for `check_definition_complete`, which needs the namespace
+known and its local count settled, and a count of zero settles it with
+nothing to wait for.
+
+What it cannot reach is anything past the host up-call: a group spanning
+servers, the departed-member accounting, and the two-level block/tracker
+engine under a real host. Those are
+[`contrib/dockerswarm/run-tests.sh`](../../contrib/dockerswarm/AGENTS.md)
+and `run-server-tests.sh`, and the `run_grp*.pl` family here.
+
 ### `server_fabric` — and what a SKIP is for
 
 [`server_fabric.c`](server_fabric.c) drives `pmix_server_device_dists()`
