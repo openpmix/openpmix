@@ -74,7 +74,14 @@ typedef struct {
 } pmix_dmdx_reply_caddy_t;
 static void dcd_con(pmix_dmdx_reply_caddy_t *p)
 {
+    /* PMIX_NEW mallocs rather than callocs, so anything the constructor
+     * skips is whatever was on the heap. PMIX_THREADSHIFT does assign the
+     * event before it is used, and dmdx_cbfunc does fill in data on every
+     * path - but every sibling caddy constructor in this tree initializes
+     * both, and a second producer added later would not know it had to */
+    memset(&p->ev, 0, sizeof(pmix_event_t));
     p->status = PMIX_ERROR;
+    p->data = NULL;
     p->ndata = 0;
     p->lcd = NULL;
     p->relcbfunc = NULL;
@@ -748,6 +755,12 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         }
         /* we did find it, so go ahead and collect the payload */
     } else if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 4, 0, 0)) {
+        /* Reached only when the peer packed a key that unpacked to NULL,
+         * i.e. an empty string: a peer old enough to send no key at all
+         * leaves keyprovided false and is taken by the branch above,
+         * which handles a NULL key by fetching every key for the proc.
+         * Note also that the version tested here is our own upstream
+         * server's, not the requestor's. */
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
         rc = get_job_data(nspace, cd, key, &pbkt);
         if (PMIX_SUCCESS != rc) {
@@ -1567,7 +1580,6 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                     goto complete;
                 }
             }
-            PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             if (NULL == caddy->data) {
                 if (peer != pmix_globals.mypeer) {
                     /* we assume that the data was provided via a call to
@@ -1603,6 +1615,7 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                     PMIX_DESTRUCT(&cb);
                 }
             } else {
+                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 /* NON_DESTRUCT: the ordinary PMIX_LOAD_BUFFER NULLs the
                  * source pointer and zeroes its length, and this loop
                  * visits the blob once per unique requester namespace.
