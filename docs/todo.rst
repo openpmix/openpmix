@@ -364,6 +364,29 @@ it: a ``strdup`` that fails midway through the walk returns
 worth a rollback on its own, but it would come out in the wash of a
 validate-then-apply split.
 
+Who owns a credential the host hands up
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``pmix_credential_cbfunc_t`` is documented in ``include/pmix_common.h.in``
+as transferring ownership of the credential to the receiving function —
+"responsibility for releasing the memory lies outside the PMIx library."
+That text is written for the *client* side, where the receiving function
+is the application's callback.  Read literally it also governs the
+server-side up-call, where the receiving function is
+``pmix_server_cred_cbfunc``: the host's ``pmix_byte_object_t`` would then
+be ours to free.  It does not free it — it makes a copy and leaves the
+original alone — so under that reading every ``PMIx_Get_credential``
+leaks the host's credential, and under the opposite reading freeing it
+would be a double free in the host.
+
+Deciding this needs the Standard's word rather than this file's, and the
+wrong guess is much more expensive in one direction than the other, so
+the copy stays.  If the transfer reading is confirmed, the fix is to take
+the host's object rather than copy it (``psec`` mechanisms allocate a
+fresh one per request), not to add a ``free`` beside the copy.  The same
+question applies to the info array on the same callback, which the same
+paragraph describes as owned by the PMIx library.
+
 A pruned deregistration is not propagated
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

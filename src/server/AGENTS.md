@@ -279,6 +279,35 @@ way one line covers both arms. The same reasoning is why `_mdxcbfunc`
 uses `PMIX_LOAD_BUFFER_NON_DESTRUCT` and carries a comment saying not to
 destruct `xfer`.
 
+**A callback that thread-shifts must reach the shift on every path it can
+still answer from.** Every one of these eleven callbacks is the *only*
+thing that will ever reply to its client: the handler up-called the host
+and returned `PMIX_SUCCESS`, so the switchyard let go of the request and
+will synthesize nothing. `pmix_server_cred_cbfunc` copied the host's
+credential unconditionally — and the copy screens a NULL source and
+reports `PMIX_ERR_BAD_PARAM`, while a host that cannot issue one answers
+with an error status and *no* credential, which is exactly what
+`pmix_credential_cbfunc_t`'s contract says and exactly what
+`_cred_cbfunc` is written for (it packs the credential only under a
+success status). So the ordinary refusal took an error return that
+released the caddies and queued nothing, and the client sat in
+`PMIx_Get_credential` for good. Record the failure in `scd->status` and
+fall through to the shift; `pmix_server_validate_cbfunc`'s two info-copy
+arms had the same shape. Covered by `test/unit/server_control.c`.
+
+**And when it genuinely cannot shift, it still owes the caddies.** The
+`PMIX_NEW(pmix_shift_caddy_t)` failure arm is the twin of the
+`progress_thread_stopped` arm right above it, and nine of the eleven
+released nothing there — stranding a `pmix_server_caddy_t`, the
+`PMIX_RETAIN` it holds on the requesting peer, and (where there is one) a
+`pmix_query_caddy_t` with its queries and info arrays, for the life of
+the server. `pmix_server_fabric_cbfunc` and `pmix_server_dist_cbfunc`
+always had it right; diff a new one against those. Note that the explicit
+`PMIX_QUERY_FREE`/`PMIX_INFO_FREE` some of these arms do before
+`PMIX_RELEASE(qcd)` is belt-and-braces rather than required — `qdes`
+frees both, and the macros NULL what they free, so doing it twice is not
+a double free.
+
 **A callback signature with no release function has to *copy* what it
 parks.** `pmix_credential_cbfunc_t` and `pmix_validation_cbfunc_t` -
 `pmix_server_cred_cbfunc` and `pmix_server_validate_cbfunc` - carry no

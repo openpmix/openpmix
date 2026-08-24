@@ -37,6 +37,12 @@
  *      PMIX_LOG_TIMESTAMP appended as well when the sender supplied a
  *      non-zero timestamp.
  *
+ *   get_credential: a host that refuses must still be answered
+ *      pmix_credential_cbfunc_t's contract is an error status and no
+ *      credential. The copy of that credential screens a NULL source, so
+ *      the ordinary refusal used to take an error return that queued
+ *      nothing and the client's PMIx_Get_credential never came back.
+ *
  *   get_credential: the host's reply info is copied, not borrowed
  *      pmix_credential_cbfunc_t carries no (release_fn, release_cbdata)
  *      pair, so nothing the host passes to it survives the return of the
@@ -241,6 +247,10 @@ static void scribble(void *addr, size_t len)
     }
 }
 
+/* when set, the stub answers the way a host that cannot issue a
+ * credential does: an error status and NO credential */
+static bool cred_refuse = false;
+
 static pmix_status_t stub_get_credential(const pmix_proc_t *proc,
                                          const pmix_info_t directives[], size_t ndirs,
                                          pmix_credential_cbfunc_t cbfunc, void *cbdata)
@@ -254,6 +264,13 @@ static pmix_status_t stub_get_credential(const pmix_proc_t *proc,
     (void) ndirs;
 
     cred_fired = true;
+    if (cred_refuse) {
+        /* pmix_credential_cbfunc_t's contract: PMIX_SUCCESS if a
+         * credential could be assigned, "or else an appropriate error
+         * code indicating the problem" - with nothing to point at */
+        cbfunc(PMIX_ERR_NOT_SUPPORTED, NULL, NULL, 0, cbdata);
+        return PMIX_SUCCESS;
+    }
     cred.bytes = bytes;
     cred.size = sizeof(bytes);
     PMIX_INFO_LOAD(&reply[0], CTLUT_CREDKEY, CTLUT_CREDVAL, PMIX_STRING);
@@ -961,6 +978,44 @@ int main(int argc, char **argv)
                 }
             }
             PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+            PMIX_RELEASE(reply);
+        }
+    }
+
+    /* --- a host that cannot issue a credential must still answer ------ */
+    /* The contract on pmix_credential_cbfunc_t is an error status and no
+     * credential, and _cred_cbfunc packs a credential only under a
+     * success status - so the reply path was written for this. But the
+     * outer callback copied the credential unconditionally, and the copy
+     * screens a NULL source and reports PMIX_ERR_BAD_PARAM, so the
+     * ordinary refusal took an error return that released everything and
+     * queued nothing. The client's PMIx_Get_credential never came back.
+     * Against an unfixed library the first assertion below reports no
+     * reply at all. */
+    {
+        pmix_buffer_t *reply;
+        pmix_status_t ret = PMIX_SUCCESS;
+        int32_t cnt;
+
+        reply = take_queued_reply();
+        if (NULL != reply) {
+            PMIX_RELEASE(reply);
+        }
+
+        cred_refuse = true;
+        rc = do_get_credential();
+        progress_barrier();
+        cred_refuse = false;
+        report("refused credential request accepted", PMIX_SUCCESS == rc);
+        report("refused credential request reached the host", cred_fired);
+
+        reply = take_queued_reply();
+        report("a refused credential request is still answered", NULL != reply);
+        if (NULL != reply) {
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, reply, &ret, &cnt, PMIX_STATUS);
+            report("the refusal reply carries the host's status",
+                   PMIX_SUCCESS == rc && PMIX_ERR_NOT_SUPPORTED == ret);
             PMIX_RELEASE(reply);
         }
     }

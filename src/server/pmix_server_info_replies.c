@@ -167,10 +167,15 @@ void pmix_server_alloc_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ni
         /* nothing we can do beyond honoring the release contract -
          * the host handed us its data along with the function that
          * gives it back, and dropping both here strands it for the
-         * life of the host process */
+         * life of the host process. We cannot answer the requestor, but
+         * we can at least let go of the caddies - and the peer reference
+         * the server caddy holds - exactly as the arm above does. */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         if (NULL != release_fn) {
             release_fn(release_cbdata);
         }
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
         return;
     }
     scd->status = status;
@@ -269,10 +274,14 @@ void pmix_server_query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ni
         /* nothing we can do beyond honoring the release contract -
          * the host handed us its data along with the function that
          * gives it back, and dropping both here strands it for the
-         * life of the host process */
+         * life of the host process. We cannot answer the requestor, but
+         * we can at least let go of the caddies - and the peer reference
+         * the server caddy holds - exactly as the arm above does. */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         if (NULL != release_fn) {
             release_fn(release_cbdata);
         }
+        PMIX_RELEASE(cd);
         return;
     }
     scd->status = status;
@@ -377,10 +386,15 @@ void pmix_server_sessctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t
         /* nothing we can do beyond honoring the release contract -
          * the host handed us its data along with the function that
          * gives it back, and dropping both here strands it for the
-         * life of the host process */
+         * life of the host process. We cannot answer the requestor, but
+         * we can at least let go of the caddies - and the peer reference
+         * the server caddy holds - exactly as the arm above does. */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         if (NULL != release_fn) {
             release_fn(release_cbdata);
         }
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(scd);
         return;
     }
     scdwrapper->status = status;
@@ -488,10 +502,15 @@ void pmix_server_jctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ni
         /* nothing we can do beyond honoring the release contract -
          * the host handed us its data along with the function that
          * gives it back, and dropping both here strands it for the
-         * life of the host process */
+         * life of the host process. We cannot answer the requestor, but
+         * we can at least let go of the caddies - and the peer reference
+         * the server caddy holds - exactly as the arm above does. */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         if (NULL != release_fn) {
             release_fn(release_cbdata);
         }
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
         return;
     }
     scd->status = status;
@@ -587,10 +606,14 @@ void pmix_server_monitor_cbfunc(pmix_status_t status, pmix_info_t *info, size_t 
         /* nothing we can do beyond honoring the release contract -
          * the host handed us its data along with the function that
          * gives it back, and dropping both here strands it for the
-         * life of the host process */
+         * life of the host process. We cannot answer the requestor, but
+         * we can at least let go of the caddies - and the peer reference
+         * the server caddy holds - exactly as the arm above does. */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         if (NULL != release_fn) {
             release_fn(release_cbdata);
         }
+        PMIX_RELEASE(cd);
         return;
     }
     scd->status = status;
@@ -697,44 +720,68 @@ void pmix_server_cred_cbfunc(pmix_status_t status, pmix_byte_object_t *credentia
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* we cannot answer the requestor, but we can at least let go of
+         * the caddies - and the peer reference the server caddy holds */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
         return;
     }
     scd->status = status;
     /* this signature carries no release function, so nothing here is
      * ours past the return - both the credential and the info array
-     * have to be copied before we hand them to another thread */
+     * have to be copied before we hand them to another thread.
+     *
+     * Every failure below records itself in scd->status and falls
+     * through to the thread-shift rather than returning. This callback
+     * is the ONLY thing that will ever answer the client: the handler
+     * up-called the host and returned PMIX_SUCCESS, so the switchyard
+     * has let go of the request and will synthesize nothing. Returning
+     * here left the client blocked in PMIx_Get_credential for good. */
     if (NULL != info && 0 < ninfo) {
         PMIX_INFO_CREATE(scd->info, ninfo);
         if (NULL == scd->info) {
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            PMIX_RELEASE(cd);
-            PMIX_RELEASE(qcd);
-            PMIX_RELEASE(scd);
-            return;
-        }
-        scd->ninfo = ninfo;
-        /* the caddy owns the copy - flagging it here covers the early
-         * returns that never reach _cred_cbfunc's cleanup */
-        scd->infocopy = true;
-        for (n=0; n < scd->ninfo; n++) {
-            rc = PMIx_Info_xfer(&scd->info[n], &info[n]);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(cd);
-                PMIX_RELEASE(qcd);
-                PMIX_RELEASE(scd);
-                return;
+            scd->status = PMIX_ERR_NOMEM;
+        } else {
+            scd->ninfo = ninfo;
+            /* the caddy owns the copy - flagging it here covers the early
+             * returns that never reach _cred_cbfunc's cleanup */
+            scd->infocopy = true;
+            for (n=0; n < scd->ninfo; n++) {
+                rc = PMIx_Info_xfer(&scd->info[n], &info[n]);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    scd->status = rc;
+                    /* discard the half-built array rather than putting
+                     * default-constructed elements on the wire */
+                    PMIX_INFO_FREE(scd->info, scd->ninfo);
+                    scd->ninfo = 0;
+                    scd->infocopy = false;
+                    break;
+                }
             }
         }
     }
-    PMIX_BFROPS_COPY(rc, cd->peer, (void**)&scd->bo, credential, PMIX_BYTE_OBJECT);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(cd);
-        PMIX_RELEASE(qcd);
-        PMIX_RELEASE(scd);
-        return;
+    /* A host that could not issue a credential answers with an error
+     * status and no credential - the contract on
+     * pmix_credential_cbfunc_t says exactly that, and _cred_cbfunc packs
+     * the credential only under a success status. But the copy screens a
+     * NULL source and reports PMIX_ERR_BAD_PARAM, so the ordinary
+     * refusal used to take the error return above and the client was
+     * never told anything at all. Only copy what is there. */
+    if (NULL != credential) {
+        PMIX_BFROPS_COPY(rc, cd->peer, (void**)&scd->bo, credential, PMIX_BYTE_OBJECT);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            scd->status = rc;
+        }
+    } else if (PMIX_SUCCESS == scd->status) {
+        /* the host claimed success and handed us nothing. The client
+         * unpacks a credential after a success status, so answering that
+         * way would leave its unpack reading past the end of the reply */
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        scd->status = PMIX_ERR_BAD_PARAM;
     }
     scd->cbdata = cbdata;
     PMIX_THREADSHIFT(scd, _cred_cbfunc);
@@ -820,32 +867,41 @@ void pmix_server_validate_cbfunc(pmix_status_t status, pmix_info_t info[], size_
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
-        /* nothing we can do */
+        /* we cannot answer the requestor, but we can at least let go of
+         * the caddies - and the peer reference the server caddy holds */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
         return;
     }
     scd->status = status;
-    // need to copy the info as they may not hold it for us
+    /* need to copy the info as they may not hold it for us. As in
+     * pmix_server_cred_cbfunc, a failure records itself in scd->status
+     * and falls through to the thread-shift: this callback is the only
+     * thing that will ever answer the client, so returning here left it
+     * blocked in PMIx_Validate_credential for good. */
     if (NULL != info && 0 < ninfo) {
         PMIX_INFO_CREATE(scd->info, ninfo);
         if (NULL == scd->info) {
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            PMIX_RELEASE(cd);
-            PMIX_RELEASE(qcd);
-            PMIX_RELEASE(scd);
-            return;
-        }
-        scd->ninfo = ninfo;
-        /* the caddy owns the copy - flagging it here covers the early
-         * returns that never reach _valcbfunc's cleanup */
-        scd->infocopy = true;
-        for (n=0; n < scd->ninfo; n++) {
-            rc = PMIx_Info_xfer(&scd->info[n], &info[n]);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(cd);
-                PMIX_RELEASE(qcd);
-                PMIX_RELEASE(scd);
-                return;
+            scd->status = PMIX_ERR_NOMEM;
+        } else {
+            scd->ninfo = ninfo;
+            /* the caddy owns the copy - flagging it here covers the early
+             * returns that never reach _valcbfunc's cleanup */
+            scd->infocopy = true;
+            for (n=0; n < scd->ninfo; n++) {
+                rc = PMIx_Info_xfer(&scd->info[n], &info[n]);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    scd->status = rc;
+                    /* discard the half-built array rather than putting
+                     * default-constructed elements on the wire */
+                    PMIX_INFO_FREE(scd->info, scd->ninfo);
+                    scd->ninfo = 0;
+                    scd->infocopy = false;
+                    break;
+                }
             }
         }
     }
@@ -1188,10 +1244,12 @@ void pmix_server_respeers_cbfunc(pmix_status_t status, pmix_info_t info[], size_
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        /* nothing we can do */
+        /* we cannot answer the requestor, but we can at least let go of
+         * the caddy - and the peer reference it holds */
         if (NULL != release_fn) {
             release_fn(release_cbdata);
         }
+        PMIX_RELEASE(cd);
         return;
     }
     scd->status = status;
@@ -1311,10 +1369,12 @@ void pmix_server_resnodes_cbfunc(pmix_status_t status, pmix_info_t info[], size_
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        /* nothing we can do */
+        /* we cannot answer the requestor, but we can at least let go of
+         * the caddy - and the peer reference it holds */
         if (NULL != release_fn) {
             release_fn(release_cbdata);
         }
+        PMIX_RELEASE(cd);
         return;
     }
     scd->status = status;
