@@ -60,7 +60,10 @@ When called, the PMIx server library records the process set (name and
 membership) so that it can later respond to client queries such as
 ``PMIX_QUERY_NUM_PSETS`` and ``PMIX_QUERY_PSET_NAMES``, and it alerts all
 local clients to the new process set by generating a
-``PMIX_PROCESS_SET_DEFINE`` event. The event carries the ``PMIX_PSET_NAME``
+``PMIX_PROCESS_SET_DEFINE`` event. Naming a process set that is already
+recorded *redefines* it: the previous membership is discarded and
+replaced by the one supplied here, which is the only way a host can
+change a set's membership. The event carries the ``PMIX_PSET_NAME``
 attribute (the set name) and the ``PMIX_PSET_MEMBERS`` attribute (a
 ``pmix_data_array_t`` of the member ``pmix_proc_t`` identifiers).
 
@@ -76,12 +79,17 @@ RETURN VALUE
 
 Returns one of the following:
 
-* ``PMIX_SUCCESS`` |mdash| the process set was defined and the local
-  notification was issued.
+* ``PMIX_SUCCESS`` |mdash| the process set was defined. The local
+  notification is a courtesy to processes that registered for it, so a
+  failure to build or deliver it does not fail the definition.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| ``pset_name`` or ``members`` was
+  ``NULL``, or ``nmembers`` was zero. A process set with no members
+  cannot be described in the notification.
 * ``PMIX_ERR_INIT`` |mdash| the PMIx server library has not been
   initialized.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the library's progress engine has
   been stopped, so the request cannot be serviced.
+* ``PMIX_ERR_NOMEM`` |mdash| the process set could not be recorded.
 
 PMIx error constants are defined in ``pmix_common.h``.
 

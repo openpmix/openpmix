@@ -47,17 +47,20 @@ name previously created with
 the member processes themselves |mdash| it simply removes the label and
 its associated membership record from the local PMIx server.
 
-When called, the PMIx server library alerts all local clients to the
+When called, the PMIx server library removes the corresponding entry from
+its internal list of process sets, then alerts all local clients to the
 deletion by generating a ``PMIX_PROCESS_SET_DELETE`` event carrying the
-``PMIX_PSET_NAME`` attribute (the name of the deleted set), then removes
-the corresponding entry from its internal list of process sets. If no set
-with the given name is currently recorded, the notification is still
-issued and the call completes successfully.
+``PMIX_PSET_NAME`` attribute (the name of the deleted set). The removal
+comes first so that a handler cannot observe a set that has been
+announced as gone but is still being reported by
+``PMIX_QUERY_PSET_NAMES``. If no set with the given name is currently
+recorded, the notification is still issued and the call completes
+successfully.
 
 ``PMIx_server_delete_process_set`` is a blocking call. Internally it
-thread-shifts the request onto the PMIx progress thread, emits the local
-notification, removes the recorded set, and returns once that processing
-is complete.
+thread-shifts the request onto the PMIx progress thread, removes the
+recorded set, emits the local notification, and returns once that
+processing is complete.
 
 
 RETURN VALUE
@@ -65,8 +68,12 @@ RETURN VALUE
 
 Returns one of the following:
 
-* ``PMIX_SUCCESS`` |mdash| the deletion was processed and the local
-  notification was issued.
+* ``PMIX_SUCCESS`` |mdash| the deletion was processed. As with
+  :ref:`PMIx_server_define_process_set(3)
+  <man3-PMIx_server_define_process_set>`, the local notification is a
+  courtesy and a failure to build or deliver it does not fail the
+  deletion.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| ``pset_name`` was ``NULL``.
 * ``PMIX_ERR_INIT`` |mdash| the PMIx server library has not been
   initialized.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the library's progress engine has

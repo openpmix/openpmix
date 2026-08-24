@@ -561,6 +561,10 @@ at the foot of ``PMIx_server_init``, cleared at the top of
 ``test/unit/server_inventory.c`` holds them to it (the refusal cases run
 in a forked child, because against an unfixed library the crash lands
 after the call has already returned).
+``PMIx_server_define_process_set`` and ``_delete_process_set`` were
+closed the same way (2026-08-24), covered by the forked cases in
+``test/unit/progress_threads.c``; a client reaching either one SIGSEGVs
+on the progress thread against an unfixed library.
 
 What is deferred is the sweep over the rest, because the answer is not
 uniform and each entry point needs checking against its real callers
@@ -573,8 +577,7 @@ first:
   ``_deregister_resources``, ``_setup_application``,
   ``_setup_local_support`` (``pmix_server_setup.c``);
   ``PMIx_server_IOF_deliver``, ``_IOF_flow_control``
-  (``pmix_server_iof.c``); ``PMIx_server_define_process_set``,
-  ``_delete_process_set`` (``pmix_server_pset.c``);
+  (``pmix_server_iof.c``);
   ``PMIx_server_dmodex_request`` (``pmix_server_dmodex.c``);
   ``PMIx_server_collect_job_info`` (``pmix_server_fence.c``);
   ``PMIx_server_setup_fork`` (``pmix_server.c``).
