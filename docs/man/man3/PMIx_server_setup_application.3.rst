@@ -174,6 +174,8 @@ be invoked. Possible immediate errors include:
   library's progress engine has been stopped.
 * ``PMIX_ERR_NOMEM`` |mdash| the library was unable to allocate memory for the
   request.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied |mdash| for
+  example, a ``NULL`` *info* array with a non-zero *ninfo*.
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.

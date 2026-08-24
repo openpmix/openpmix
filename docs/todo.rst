@@ -568,16 +568,23 @@ on the progress thread against an unfixed library.  The four
 registration entry points followed (2026-08-24) — ``_register_nspace``
 and ``_register_client`` walk ``pmix_server_globals.collectives`` and
 ``_deregister_nspace`` fans out to ``pnet``, ``pgpu`` and ``pmdl`` —
-covered by the forked cases in ``test/unit/server_registration.c``.
+covered by the forked cases in ``test/unit/server_registration.c``.  The
+four job-preparation entry points in ``pmix_server_setup.c`` followed
+(2026-08-24): ``PMIx_server_register_resources`` and
+``_deregister_resources`` append to and walk ``pmix_server_globals.gdata``
+(a client taking SIGSEGV on the progress thread after being answered
+``PMIX_SUCCESS``), while ``PMIx_server_setup_application`` and
+``_setup_local_support`` fan out to ``pnet``, ``pgpu`` and ``pmdl``, which
+``PMIx_server_init`` alone opens — so outside a server they did nothing
+and reported success.  Covered by the forked cases in
+``test/unit/server_setup.c``.
 
 What is deferred is the sweep over the rest, because the answer is not
 uniform and each entry point needs checking against its real callers
 first:
 
 * **Almost certainly want the screen** — they walk ``pmix_server_globals``
-  or fan out to a server-only framework: ``PMIx_server_register_resources``,
-  ``_deregister_resources``, ``_setup_application``,
-  ``_setup_local_support`` (``pmix_server_setup.c``);
+  or fan out to a server-only framework:
   ``PMIx_server_IOF_deliver``, ``_IOF_flow_control``
   (``pmix_server_iof.c``);
   ``PMIx_server_dmodex_request`` (``pmix_server_dmodex.c``);

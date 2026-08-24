@@ -153,25 +153,33 @@ static void _register_resources(int sd, short args, void *cbdata)
                 goto release;
             }
             kv->key = strdup(cd->info[n].key);
-            kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+            /* calloc, not malloc: the transfer below sets the value's
+             * type before it fills in the union, and every copy helper it
+             * dispatches to returns its out-of-memory status *without*
+             * writing through the destination pointer. So a failed
+             * transfer of, say, a PMIX_PROC_INFO left the type saying
+             * "pointer" over whatever the heap happened to hold, and the
+             * kval destructor then freed that address. Zeroed, the same
+             * failure leaves a NULL the destructor skips. */
+            kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
             if (NULL == kv->key || NULL == kv->value) {
-                /* the value is raw malloc'd memory until the transfer
-                 * below populates it, and the kval destructor would run
-                 * value_destruct over whatever the heap happened to hold
-                 * there - so it has to go back by hand */
-                if (NULL != kv->value) {
-                    free(kv->value);
-                    kv->value = NULL;
-                }
                 PMIX_RELEASE(kv);
                 ret = PMIX_ERR_NOMEM;
                 goto release;
             }
             PMIX_VALUE_XFER(rc, kv->value, &cd->info[n].value);
             if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
-                ret = rc;
-                break;
+                /* one element the library cannot copy - an unsupported
+                 * type, say - is not a reason to drop every element
+                 * behind it on the floor and report a single status for
+                 * the lot. Every other arm here records the first failure
+                 * and keeps walking; so does this one now. */
+                if (PMIX_SUCCESS == ret) {
+                    ret = rc;
+                }
+                continue;
             }
             pmix_list_append(&pmix_server_globals.gdata, &kv->super);
         }
@@ -354,7 +362,16 @@ pmix_status_t PMIx_server_register_resources(pmix_info_t info[], size_t ninfo,
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server register resources");
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* the handler appends to pmix_server_globals.gdata, which is only
+     * *statically* initialized until pmix_server_initialize() constructs
+     * it - and PMIX_LIST_STATIC_INIT leaves the sentinel's prev pointer
+     * NULL, so pmix_list_append writes through NULL rather than finding
+     * an empty list. pmix_globals.initialized does not answer the
+     * question the man page asks: PMIx_Init sets it too, so a client
+     * reaching here was told PMIX_SUCCESS and then took the SIGSEGV on
+     * the progress thread with the call already returned */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -514,6 +531,7 @@ static pmix_status_t prune_entry(pmix_kval_t *kv, pmix_info_t *qual, size_t nqua
 {
     pmix_data_array_t *darray;
     pmix_info_t *stored, *survivors;
+    pmix_status_t rc;
     size_t n, nstored, keep = 0, described = 0, k = 0;
 
     *empty = false;
@@ -540,13 +558,33 @@ static pmix_status_t prune_entry(pmix_kval_t *kv, pmix_info_t *qual, size_t nqua
     }
 
     darray = PMIx_Data_array_create(keep, PMIX_INFO);
+    /* the descriptor and the block it describes are two allocations, and
+     * only the first one is reported: PMIx_Data_array_create hands back a
+     * non-NULL descriptor whose "size" is the count asked for and whose
+     * "array" is NULL when the block could not be had. Testing the
+     * descriptor alone therefore left the walk below writing through
+     * NULL. */
     if (NULL == darray) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (NULL == darray->array) {
+        PMIx_Data_array_free(darray);
         return PMIX_ERR_NOMEM;
     }
     survivors = (pmix_info_t *) darray->array;
     for (n = 0; n < nstored; n++) {
         if (!element_selected(qual, nqual, &stored[n])) {
-            PMIX_INFO_XFER(&survivors[k], &stored[n]);
+            /* PMIX_INFO_XFER discards the status, so the copy is made
+             * through the underlying call: an element that would not
+             * copy leaves a hole in the replacement with nothing to say
+             * which one it was, and the replacement is about to become
+             * the entry. Better to leave the entry as it stands and tell
+             * the host why. */
+            rc = PMIx_Info_xfer(&survivors[k], &stored[n]);
+            if (PMIX_SUCCESS != rc) {
+                PMIx_Data_array_free(darray);
+                return rc;
+            }
             ++k;
         }
     }
@@ -616,32 +654,47 @@ static bool entry_names_node(pmix_kval_t *kv, uint32_t nodeid,
  * A namespace assigned gds/shmem3 keeps the copy in its shared segment:
  * a published segment is never written again, so retracting from one
  * means a new generation carrying a tombstone. See openpmix#4087. */
-static void retract_from_namespaces(const char *key)
+static pmix_status_t retract_from_namespaces(const char *key)
 {
     pmix_namespace_t *nptr;
     pmix_proc_t proc;
     pmix_kval_t *kv;
-    pmix_status_t rc;
+    pmix_status_t rc, ret = PMIX_SUCCESS;
 
     if (NULL == key) {
-        return;
+        return PMIX_SUCCESS;
     }
     PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
         PMIX_LOAD_PROCID(&proc, nptr->nspace, PMIX_RANK_WILDCARD);
         kv = PMIX_NEW(pmix_kval_t);
         if (PMIX_UNLIKELY(NULL == kv)) {
-            return;
-        }
-        kv->key = strdup(key);
-        if (PMIX_UNLIKELY(NULL == kv->key)) {
+            /* this walk used to abandon the sweep here and say nothing.
+             * The cache entry is already gone, so every namespace behind
+             * this one kept a copy the host had asked to be taken back -
+             * and the host was told the deregistration had succeeded.
+             * Record it, and go on trying the rest: the next namespace
+             * may well be reachable, and the second half of the retraction
+             * below needs no allocation at all. */
+            if (PMIX_SUCCESS == ret) {
+                ret = PMIX_ERR_NOMEM;
+            }
+        } else {
+            kv->key = strdup(key);
+            if (PMIX_UNLIKELY(NULL == kv->key)) {
+                if (PMIX_SUCCESS == ret) {
+                    ret = PMIX_ERR_NOMEM;
+                }
+            } else {
+                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_DEL_INTERNAL, kv);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    if (PMIX_SUCCESS == ret) {
+                        ret = rc;
+                    }
+                }
+            }
             PMIX_RELEASE(kv);
-            return;
         }
-        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_DEL_INTERNAL, kv);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-        PMIX_RELEASE(kv);
         /* mypeer's module is "hash", which is where the store above
          * landed. A namespace served by another module keeps its own
          * copy - gds/shmem3 in a shared segment it cannot rewrite - so
@@ -649,9 +702,13 @@ static void retract_from_namespaces(const char *key)
         PMIX_GDS_DEL_KEY(rc, nptr, &proc, key);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            if (PMIX_SUCCESS == ret) {
+                ret = rc;
+            }
         }
         pmix_server_notify_deleted(&proc, PMIX_DEL_INTERNAL, key, NULL);
     }
+    return ret;
 }
 
 static void _deregister_resources(int sd, short args, void *cbdata)
@@ -757,7 +814,10 @@ static void _deregister_resources(int sd, short args, void *cbdata)
             /* the cache no longer has it; take it back from the
              * namespaces that were seeded from the cache, and from the
              * local clients that were given their own copy */
-            retract_from_namespaces(cd->info[n].key);
+            rc = retract_from_namespaces(cd->info[n].key);
+            if (PMIX_SUCCESS != rc && PMIX_SUCCESS == ret) {
+                ret = rc;
+            }
             retracted = false;
         }
     }
@@ -776,7 +836,11 @@ pmix_status_t PMIx_server_deregister_resources(pmix_info_t info[], size_t ninfo,
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server deregister resources");
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* same as its twin: the handler walks pmix_server_globals.gdata, and
+     * a statically initialized list has a NULL sentinel next pointer, so
+     * the walk is a dereference rather than an empty loop */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -929,12 +993,24 @@ pmix_status_t PMIx_server_setup_application(const pmix_nspace_t nspace, pmix_inf
 {
     pmix_setup_caddy_t *cd;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* pnet, pgpu and pmdl are opened by PMIx_server_init and by nothing
+     * else, so in a client this call would quietly do nothing at all and
+     * still report success - and the man page says the API is available
+     * only after PMIx_server_init, with PMIX_ERR_INIT meaning exactly
+     * that the server library is not up */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* the array is handed down to the pnet, pgpu and pmdl components,
+     * which index it "ninfo" times */
+    if (0 < ninfo && NULL == info) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     /* need to threadshift this request */
@@ -944,6 +1020,14 @@ pmix_status_t PMIx_server_setup_application(const pmix_nspace_t nspace, pmix_inf
     }
     if (NULL != nspace) {
         cd->nspace = strdup(nspace);
+        /* an unchecked copy here left the handler passing NULL down to
+         * pnet, which answers a missing namespace with PMIX_ERR_BAD_PARAM
+         * - so an out-of-memory condition was reported to the host as a
+         * malformed request */
+        if (NULL == cd->nspace) {
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_NOMEM;
+        }
     }
     cd->info = info;
     cd->ninfo = ninfo;
@@ -988,12 +1072,22 @@ pmix_status_t PMIx_server_setup_local_support(const pmix_nspace_t nspace, pmix_i
     pmix_status_t rc;
     pmix_lock_t mylock;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* see PMIx_server_setup_application: pnet and pgpu belong to the
+     * server library, so this is a no-op reported as a success anywhere
+     * else */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* the array is handed down to the pnet and pgpu components, which
+     * index it "ninfo" times */
+    if (0 < ninfo && NULL == info) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     /* need to threadshift this request */
@@ -1003,6 +1097,12 @@ pmix_status_t PMIx_server_setup_local_support(const pmix_nspace_t nspace, pmix_i
     }
     if (NULL != nspace) {
         cd->nspace = strdup(nspace);
+        /* as above: without this, an allocation failure reaches the host
+         * as PMIX_ERR_BAD_PARAM out of pnet */
+        if (NULL == cd->nspace) {
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_NOMEM;
+        }
     }
     cd->info = info;
     cd->ninfo = ninfo;
