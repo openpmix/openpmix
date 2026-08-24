@@ -1998,6 +1998,11 @@ typedef uint8_t pmix_alloc_directive_t;
                                     // for some period of time.
 #define PMIX_ALLOC_REAQUIRE     4   // reacquire resources that were previously "lent" back to the scheduler
 #define PMIX_ALLOC_REQ_CANCEL   5   // Cancel the indicated allocation request
+#define PMIX_ALLOC_ACTIVATE     6   // Bring resources the requestor already holds into service - e.g., start
+                                    // a daemon on an allocated node the runtime is not yet spanning. The nodes
+                                    // are named with PMIX_HOST and/or PMIX_HOSTFILE. Nothing is asked of the
+                                    // scheduler and nothing is added to the allocation, so this may be honored
+                                    // where a request for new resources cannot be
 
 /* define a value boundary beyond which implementers are free
  * to define their own directive values */

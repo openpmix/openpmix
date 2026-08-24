@@ -61,6 +61,10 @@ The principal entry points used to interact with the scheduler are:
   ``PMIX_ALLOC_REAQUIRE``       Reacquire resources previously lent to the
                                 scheduler.
   ``PMIX_ALLOC_REQ_CANCEL``     Cancel a pending allocation request.
+  ``PMIX_ALLOC_ACTIVATE``       Bring resources the requestor already holds
+                                into service (named with ``PMIX_HOST`` and/or
+                                ``PMIX_HOSTFILE``). Asks the scheduler for
+                                nothing.
   ============================  ==================================================
 
 * ``PMIx_Session_control`` - request a control action against a session

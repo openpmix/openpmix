@@ -108,6 +108,8 @@ OPTIONS
 
 * ``--do-not-wait``: Submit the allocation request to the scheduler, but do not wait for the allocation to be assigned. Intended for use when submitting a job for batch execution.
 
+* ``--activate <arg0>``: Bring resources this requestor already holds into service - e.g., start a daemon on an allocated node the runtime is not yet spanning. Takes a comma-delimited list of host names. Nothing is asked of the scheduler and nothing is added to the allocation, so this may be honored where a request for new resources cannot be.
+
 
 EXIT STATUS
 -----------
