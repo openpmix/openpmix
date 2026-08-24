@@ -308,6 +308,56 @@ always had it right; diff a new one against those. Note that the explicit
 frees both, and the macros NULL what they free, so doing it twice is not
 a double free.
 
+**A copy that fails is not a copy that did not happen.**
+`pmix_server_lookup_cbfunc` has to copy - see the rule below - and the
+copy runs through the *requesting peer's* `bfrops` module
+(`PMIX_BFROPS_VALUE_XFER` dereferences `(p)->nptr->compat.bfrops`), so it
+can fail without an allocation failure: an older peer's module need not
+know every type a newer one published. Three things went wrong with that,
+each hiding the next:
+
+- The status stayed `PMIX_SUCCESS`, so a key the requestor asked for came
+  back reported as found and empty. The right status is
+  `PMIX_ERR_PARTIAL_SUCCESS`, and not by analogy - it is the one status
+  the client side treats as data-carrying. `wait_lookup_cbfunc` unpacks
+  the payload only under `PMIX_SUCCESS` or `PMIX_ERR_PARTIAL_SUCCESS`,
+  and `lookup_cbfunc` transfers under the same two; any other error makes
+  the client discard the whole array *including the elements that did
+  copy*.
+- `value_xfer` assigns the source type before it discovers it cannot copy
+  the payload, so the failed element was left claiming a type this build
+  cannot pack. Put it back to `PMIX_UNDEF`, or it takes the reply down
+  with it.
+- Which it did: `_lkupcbfunc` released the reply buffer and fell to its
+  cleanup label on a pack failure, and it is the only thing that will
+  ever answer that client - `pmix_server_lookup` up-called the host and
+  returned `PMIX_SUCCESS`, so the switchyard synthesizes nothing. Abandon
+  the payload, not the reply: build a fresh status-only buffer and queue
+  that. The same rule as the fence family's completion loops, applied to
+  a handler that has one reply to make rather than N.
+
+Covered by `test/unit/server_op_replies.c`, which reads the reply back
+off `send_msg` rather than out of a stub's arguments.
+
+**An `argv` append that fails silently is a wrong answer, not a smaller
+one.** `_cnct` builds the list of participating namespaces once and
+assembles *every* participant's reply from it, so a namespace dropped by
+a failed `PMIx_Argv_append_nosize` is missing from all of them - and each
+of those clients then has no job-level data for a namespace it just
+connected to. Fail the collective instead; the reply loop below hands
+every participant the status and the tracker is torn down as usual.
+
+**Taking a refused registration back out must not depend on the reply.**
+`pmix_server_iofreg` adds the `pmix_iof_req_t` *before* the host up-call,
+because the refid has to be in hand to report, and `_iofreg` is the arm
+that undoes it when the host refuses asynchronously. That removal sat
+below the reply construction, so an allocation failure there left the
+entry in `pmix_globals.iof_requests` - pinning the requestor's peer with
+its retain for the life of the server and going on matching output for a
+pull that was never granted, which is the same defect the synchronous
+refusal had. Do the removal first, and clear the array slot before
+releasing the request so the array never holds a stale pointer.
+
 **A callback signature with no release function has to *copy* what it
 parks.** `pmix_credential_cbfunc_t` and `pmix_validation_cbfunc_t` -
 `pmix_server_cred_cbfunc` and `pmix_server_validate_cbfunc` - carry no

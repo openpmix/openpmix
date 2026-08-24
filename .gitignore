@@ -308,6 +308,7 @@ test/unit/server_fence
 test/unit/server_connect
 test/unit/server_dmodex
 test/unit/server_inventory
+test/unit/server_op_replies
 test/unit/server_fabric
 test/unit/server_resolve
 test/unit/server_setup
