@@ -114,18 +114,20 @@ completion will be signaled:
   releases any state it was holding for the request.
 
 .. important:: ``PMIX_OPERATION_SUCCEEDED`` is **not** an allowed return from
-               ``spawn`` or ``direct_modex``, and is treated as an error by the
-               library. Those two operations produce a result |mdash| the
-               namespace of the launched job, and the requested data blob
-               |mdash| that the return code cannot carry, so the only channel
-               for it is ``cbfunc``. The library always supplies a non-``NULL``
-               ``cbfunc`` to both, so a host that has completed the work
-               immediately loses nothing by using it: **invoke the callback,
-               which may be done before returning, and return
-               ``PMIX_SUCCESS``**. A host that returns
-               ``PMIX_OPERATION_SUCCEEDED`` from either receives a diagnostic
-               naming the operation, and the request is failed to its
-               requestor with ``PMIX_ERR_NOT_SUPPORTED`` rather than being
+               ``spawn``, ``lookup``, ``direct_modex``, ``get_credential`` or
+               ``validate_credential``, and is treated as an error by the
+               library. Each of those operations produces a result |mdash| the
+               namespace of the launched job, the published data that was
+               asked for, the requested data blob, and the credential or its
+               validation |mdash| that the return code cannot carry, so the
+               only channel for it is ``cbfunc``. The library always supplies a
+               non-``NULL`` ``cbfunc`` to all of them, so a host that has
+               completed the work immediately loses nothing by using it:
+               **invoke the callback, which may be done before returning, and
+               return ``PMIX_SUCCESS``**. A host that returns
+               ``PMIX_OPERATION_SUCCEEDED`` from any of them receives a
+               diagnostic naming the operation, and the request is failed to
+               its requestor with ``PMIX_ERR_NOT_SUPPORTED`` rather than being
                reported as a success carrying no result.
 
 **Data ownership.** All data passed into a host callback is owned by the PMIx
@@ -265,7 +267,9 @@ lookup
 ``lookup`` (``pmix_server_lookup_fn_t``) |mdash| Services
 :ref:`PMIx_Lookup(3) <man3-PMIx_Lookup>`. Retrieves previously published data
 for a NULL-terminated array of string keys, honoring any wait/timeout directives,
-and returns the results through a ``pmix_lookup_cbfunc_t``.
+and returns the results through a ``pmix_lookup_cbfunc_t``. Like ``spawn``, the
+data this operation retrieves reaches the requestor only through the callback,
+so ``PMIX_OPERATION_SUCCEEDED`` is not an allowed return from it.
 
 unpublish
 ^^^^^^^^^
@@ -427,7 +431,8 @@ get_credential
 ``get_credential`` (``pmix_server_get_cred_fn_t``) |mdash| Services
 :ref:`PMIx_Get_credential(3) <man3-PMIx_Get_credential>`. The host requests a
 security credential from the SMS on behalf of the identified process and returns
-it through a ``pmix_credential_cbfunc_t``.
+it through a ``pmix_credential_cbfunc_t``, which is the only channel for it |mdash|
+so ``PMIX_OPERATION_SUCCEEDED`` is not an allowed return from it.
 
 validate_credential
 ^^^^^^^^^^^^^^^^^^^
@@ -435,7 +440,8 @@ validate_credential
 ``validate_credential`` (``pmix_server_validate_cred_fn_t``) |mdash| Services
 :ref:`PMIx_Validate_credential(3) <man3-PMIx_Validate_credential>`. The host asks
 the SMS to validate the supplied credential and returns the result through a
-``pmix_validation_cbfunc_t``.
+``pmix_validation_cbfunc_t``, which is the only channel for it |mdash| so
+``PMIX_OPERATION_SUCCEEDED`` is not an allowed return from it.
 
 iof_pull
 ^^^^^^^^

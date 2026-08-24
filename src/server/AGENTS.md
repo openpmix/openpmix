@@ -1778,6 +1778,20 @@ parent is being watched. A tool is not a member of a job, so it has no
 parent and keeps its own "forward everything to me" default; `prun`
 depends on that.
 
+**Both of those defaults are what the parser exists to apply, so it has
+to run even when the spawn carried no directives at all.**
+`PMIx_Spawn(NULL, 0, apps, napps, ...)` is a legal request and reaches
+the server with a wire `ninfo` of zero; `pmix_server_spawn` used to skip
+the parse in that case, leaving `cd->channels` and `cd->inherit_iof` at
+the values `scadcon` gave them — forward nothing, inherit nothing — so
+`pmix_server_process_iof()` returned having registered nothing. A client
+spawning that way was rescued by the delivery-time half above; a tool
+spawning that way was not, because ancestry cloning looks for
+subscriptions covering the *parent*, and nobody forwards a tool's own
+output. "Named no channel" and "sent no directives" are the same input
+to this decision, which is why both call sites in `PMIx_Spawn_nb` parse
+unconditionally and the server now does too.
+
 Two things fall out that are easy to get wrong:
 
 - **`drain_cache()` is driven by namespace, not by request.** A job can
@@ -2461,14 +2475,21 @@ misbehave by design).
 
   **The classic commands in `pmix_server_ops.c` were the last group
   without it.** Publish, lookup and unpublish all size their array as
-  `ninfo + 1` so they can seed `PMIX_USERID` in the last slot, and spawn
-  sizes an info array and an app array straight from the wire —
-  `PMIx_App_create` multiplies and constructs exactly as
+  `ninfo + 2` so they can seed `PMIX_USERID` and `PMIX_GRPID` in the last
+  two slots, and spawn sizes an info array and an app array straight from
+  the wire — `PMIx_App_create` multiplies and constructs exactly as
   `PMIx_Info_create` does, and `scaddes` then walks the `size_t` when it
-  frees. All five counts now carry the screen. The key counts in lookup
-  and unpublish deliberately do **not**: each key is unpacked one at a
-  time inside the loop, so an absurd `nkeys` simply runs the buffer dry
-  and fails on the first short read — it never reaches an allocator.
+  frees. `pmix_server_abort` is the sixth and was the last to get it: its
+  proc count sizes a `PMIX_PROC_CREATE`, and `PMIx_Proc_create` has the
+  same unguarded `n * sizeof(pmix_proc_t)` followed by a construct loop
+  over all `n`, with `scaddes` walking the same `size_t` at
+  `PMIX_PROC_FREE`. All six counts now carry the screen. The key counts
+  in lookup and unpublish deliberately do **not**: each key is unpacked
+  one at a time inside the loop, so an absurd `nkeys` simply runs the
+  buffer dry and fails on the first short read — it never reaches an
+  allocator. A key that arrives as a NULL string does not need a screen
+  either: `PMIx_Argv_append_nosize` refuses a `NULL` arg with
+  `PMIX_ERR_BAD_PARAM` rather than reaching `strdup`.
 
   **What none of the three collective families screens is the count the
   unpack came back with**, and that was examined and left alone.
@@ -2526,6 +2547,22 @@ misbehave by design).
   `pmix_server_job_ctrl` destructed its four cleanup lists mid-function
   *and* again at its exit label, under a comment asserting the practice
   was harmless. Destruct each local list exactly once, on the way out.
+- **The identity that decides access to published data comes from
+  `peer->info`, never from the command.** `PMIX_PUBLISHNB_CMD`,
+  `PMIX_LOOKUPNB_CMD` and `PMIX_UNPUBLISHNB_CMD` all carry an effective
+  user id on the wire, and all three handlers seed `PMIX_USERID` and
+  `PMIX_GRPID` into the info array the host will store the data under.
+  The group id was already read from `peer->info` and the user id was
+  not, which left half of an access-control pair as a claim the
+  requestor restates on every command — a peer could publish or look up
+  as any uid it liked, whatever the connection handshake had established.
+  The handshake is what makes `peer->info` the right source: it refuses a
+  peer that claims a uid or gid other than the one the host registered it
+  with (`src/mca/ptl/base/ptl_base_connection_hdlr.c`), so that pair is
+  vouched for by the host rather than asserted per request. The wire
+  field stays and is still unpacked — the message layout is frozen, and
+  there is no version number that would let a reader tell a peer built
+  before its removal from one built after — but its value is discarded.
 - **Screen the shape of anything the host hands you before indexing it.**
   A `pmix_info_t` carrying a `PMIX_DATA_ARRAY` is a host-supplied
   structure, and several sites here read `array[0]` and `array[1]`
@@ -2649,13 +2686,19 @@ misbehave by design).
   turns up, so an empty success degrades to not-found at the requester -
   the same bargain as the `refresh_cache` status above.
 - **`PMIX_OPERATION_SUCCEEDED` is not a permitted return from `spawn`,
-  `direct_modex`, `get_credential` or `validate_credential`, and all
-  four now say so.** The tri-state's third arm means
+  `lookup`, `direct_modex`, `get_credential` or `validate_credential`,
+  and all five now say so.** The tri-state's third arm means
   "done now, no callback — you invoke the completion yourself", which
-  works only where the operation's whole result is a status. These four
+  works only where the operation's whole result is a status. These five
   produce a result the return code cannot carry — the namespace of the
-  job that was launched, the requested data blob, and the credential or
-  its validation — and the callback is its only channel. The two
+  job that was launched, the published data that was asked for, the
+  requested data blob, and the credential or its validation — and the
+  callback is its only channel. `lookup` is the one whose symptom is not
+  a silent empty success: `wait_lookup_cbfunc` in
+  `src/client/pmix_client_pub.c` reads the value count out of the bytes
+  following a successful status, so the synthesized status-only reply
+  reached the client as an unpack error on a lookup its host had just
+  reported as complete. The two
   credential up-calls are the sharpest case of it, because
   `pmix_credential_cbfunc_t` and `pmix_validation_cbfunc_t` carry no
   `(relfn, relcbdata)` pair either, so there is no second channel even in
