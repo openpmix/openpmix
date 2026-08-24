@@ -73,12 +73,14 @@ static void clct(int sd, short args, void *cbdata)
     /* collect the pnet inventory */
     rc = pmix_pnet.collect_inventory(cd->directives, cd->ndirs, &inventory);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         goto report;
     }
 
     /* collect the pgpu inventory */
     rc = pmix_pgpu.collect_inventory(cd->directives, cd->ndirs, &inventory);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         goto report;
     }
 
@@ -89,6 +91,8 @@ static void clct(int sd, short args, void *cbdata)
     } else if (PMIX_SUCCESS == rc) {
         cd->info = (pmix_info_t*)darray.array;
         cd->ninfo = darray.size;
+    } else {
+        PMIX_ERROR_LOG(rc);
     }
 
 report:
@@ -108,7 +112,12 @@ pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndi
 {
     pmix_shift_caddy_t *cd;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* the *server* library has to be up, not merely some PMIx library:
+     * clct fans out to pnet and pgpu, whose active-module lists are only
+     * statically initialized until PMIx_server_init opens those
+     * frameworks - see pmix_server_globals_t::initialized */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -119,6 +128,7 @@ pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndi
     /* need to threadshift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == cd) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return PMIX_ERR_NOMEM;
     }
     cd->directives = directives;
@@ -140,10 +150,14 @@ static void dlinv(int sd, short args, void *cbdata)
 
     rc = pmix_pnet.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         goto report;
     }
 
     rc = pmix_pgpu.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
 
 report:
     if (NULL != cd->cbfunc.opcbfn) {
@@ -161,7 +175,10 @@ pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
     pmix_lock_t mylock;
     pmix_status_t rc;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* same reasoning as PMIx_server_collect_inventory above: dlinv fans
+     * out to pnet and pgpu, which only PMIx_server_init stands up */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -172,6 +189,7 @@ pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
     /* need to threadshift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == cd) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return PMIX_ERR_NOMEM;
     }
     cd->lock.active = false;

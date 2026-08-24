@@ -365,7 +365,7 @@ worth a rollback on its own, but it would come out in the wash of a
 validate-then-apply split.
 
 Who owns a credential the host hands up
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``pmix_credential_cbfunc_t`` is documented in ``include/pmix_common.h.in``
 as transferring ownership of the credential to the receiving function —
@@ -527,6 +527,75 @@ cover the whole of what the entry described.
   ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
+
+Most ``PMIx_server_*`` entry points screen the wrong initialization flag
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/server/pmix_server_inventory.c`` (2026-08-24).
+
+Twenty-seven sites in ``src/server`` open with
+
+.. code-block:: c
+
+   if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+       return PMIX_ERR_INIT;
+   }
+
+and every one of the man pages behind them describes that return as "the
+PMIx **server** library has not been initialized".  The flag does not
+answer that question: ``PMIx_Init`` and ``PMIx_tool_init`` set it too.
+And until ``PMIx_server_init`` has run, every list and pointer array in
+``pmix_server_globals`` is only ``PMIX_LIST_STATIC_INIT`` /
+``PMIX_POINTER_ARRAY_STATIC_INIT``, and the ``pnet``, ``pgpu``, ``pmdl``
+and ``psensor`` frameworks these entry points fan out to have never been
+opened.  ``PMIX_LIST_STATIC_INIT`` leaves the sentinel's ``next`` pointer
+NULL, so a ``PMIX_LIST_FOREACH`` over one of those lists dereferences
+NULL rather than finding it empty.  A tool or client process that calls
+one of these APIs is therefore answered ``PMIX_SUCCESS`` and then takes a
+SIGSEGV, usually on the progress thread after the call has returned.
+
+``pmix_server_globals.initialized`` is the flag that does answer it — set
+at the foot of ``PMIx_server_init``, cleared at the top of
+``server_teardown()``.  ``PMIx_server_collect_inventory`` and
+``PMIx_server_deliver_inventory`` now use it, and
+``test/unit/server_inventory.c`` holds them to it (the refusal cases run
+in a forked child, because against an unfixed library the crash lands
+after the call has already returned).
+
+What is deferred is the sweep over the rest, because the answer is not
+uniform and each entry point needs checking against its real callers
+first:
+
+* **Almost certainly want the screen** — they walk ``pmix_server_globals``
+  or fan out to a server-only framework: ``PMIx_server_register_nspace``,
+  ``_deregister_nspace``, ``_register_client``, ``_deregister_client``
+  (``pmix_server_registration.c``); ``PMIx_server_register_resources``,
+  ``_deregister_resources``, ``_setup_application``,
+  ``_setup_local_support`` (``pmix_server_setup.c``);
+  ``PMIx_server_IOF_deliver``, ``_IOF_flow_control``
+  (``pmix_server_iof.c``); ``PMIx_server_define_process_set``,
+  ``_delete_process_set`` (``pmix_server_pset.c``);
+  ``PMIx_server_dmodex_request`` (``pmix_server_dmodex.c``);
+  ``PMIx_server_collect_job_info`` (``pmix_server_fence.c``);
+  ``PMIx_server_setup_fork`` (``pmix_server.c``).
+* **Almost certainly must not get it** — pure helpers over ``preg`` and
+  hwloc, both of which ``pmix_rte_init`` stands up for every role, so
+  they work correctly in a client today: ``PMIx_generate_regex``,
+  ``_generate_regex2``, ``_parse_regex2``, ``_generate_ppn``,
+  ``PMIx_server_generate_locality_string``, ``_generate_cpuset_string``,
+  ``_generate_cpuset`` (``pmix_server_setup.c``), and
+  ``PMIx_Store_internal`` (``pmix_server_dmodex.c``), which stores through
+  ``pmix_globals.mypeer``'s gds module.
+* **Must be left exactly as they are** — the two lifecycle sites in
+  ``pmix_server.c``.  ``PMIx_server_init``'s check is the already-latched
+  re-entry arm, and ``PMIx_server_finalize``'s guards the reference count;
+  changing either one changes init/finalize semantics rather than closing
+  a crash.
+
+``PMIx_server_setup_fork`` is the one worth care: a launcher comes up
+through ``PMIx_tool_init`` and reads as a server long before
+``PMIx_server_init`` runs, so confirm no in-tree or PRRTE path calls it in
+that window before adding the screen.
 
 ``PMIX_GET_POINTER_VALUES`` is honored by three shortcuts and nothing else
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
