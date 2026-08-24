@@ -246,18 +246,29 @@ typedef struct {
  * The caddy's destructor gives the reference back. Note the reference
  * keeps the object alive; it does NOT keep it on the collectives list, so
  * a handler must still check that it is there before acting on it. */
+/* Both macros tolerate the allocation failing: the caddy pointer is left
+ * NULL and the tracker keeps the reference it had. Writing (c)->trk
+ * unconditionally was a NULL dereference on the progress thread - the
+ * collectives sweep in pmix_server_registration.c is the only user, and
+ * it runs while holding no lock it could release. The collective does
+ * not get driven in that case, which is a hang rather than a crash;
+ * callers that can do better should test (c). */
 #define PMIX_SETUP_COLLECTIVE(c, t)        \
     do {                                   \
         (c) = PMIX_NEW(pmix_trkr_caddy_t); \
-        PMIX_RETAIN((t));                  \
-        (c)->trk = (t);                    \
+        if (NULL != (c)) {                 \
+            PMIX_RETAIN((t));              \
+            (c)->trk = (t);                \
+        }                                  \
     } while (0)
 
-#define PMIX_EXECUTE_COLLECTIVE(c, t, f)                                            \
-    do {                                                                            \
-        PMIX_SETUP_COLLECTIVE(c, t);                                                \
-        pmix_event_assign(&((c)->ev), pmix_globals.evbase, -1, EV_WRITE, (f), (c)); \
-        pmix_event_active(&((c)->ev), EV_WRITE, 1);                                 \
+#define PMIX_EXECUTE_COLLECTIVE(c, t, f)                                                \
+    do {                                                                                \
+        PMIX_SETUP_COLLECTIVE(c, t);                                                    \
+        if (NULL != (c)) {                                                              \
+            pmix_event_assign(&((c)->ev), pmix_globals.evbase, -1, EV_WRITE, (f), (c)); \
+            pmix_event_active(&((c)->ev), EV_WRITE, 1);                                 \
+        }                                                                               \
     } while (0)
 
 PMIX_EXPORT void pmix_pending_nspace_requests(pmix_namespace_t *nptr);

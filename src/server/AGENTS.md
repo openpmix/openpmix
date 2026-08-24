@@ -1645,6 +1645,31 @@ client, so the `pname` read is safe; `server_object` is simply NULL for a
 peer the host never registered as a client, which hosts already handle
 (and is what lets PRRTE tell the two apart).
 
+**`pmix_server_purge_events` walks a list that is not all ours to purge.**
+`pmix_globals.iof_requests` holds two kinds of entry (see the IOF section
+of [`../common/AGENTS.md`](../common/AGENTS.md)): a pull a *peer*
+registered with us, whose `requestor` is that peer, and a pull **this
+process** registered through `PMIx_IOF_pull` and forwarded to its own
+upstream server, whose `requestor` is NULL. Only the first kind belongs
+to a departing peer. The walk here used to treat a NULL requestor as a
+corrupt entry and free it, so a launcher — a process that is a server for
+its own peers *and* a client of a server above it, which is exactly the
+configuration that produces the second kind — lost its own IOF
+registration the first time any local client or tool finalized, and the
+output it had asked for simply stopped. The refid it had already handed
+back to its caller then named an empty slot. Skip such an entry, as
+`pmix_iof_process_iof` does. Nothing here needs to reap one: the request
+holds a `PMIX_RETAIN` on its requestor, so a non-NULL one is never
+dangling, and `pmix_rte_finalize` drains the whole array.
+
+**The notification purge is deliberately asymmetric.** A cached
+notification whose target list still names a departed proc is left alone
+unless that proc was its *only* target, or unless a whole namespace is
+being deregistered and the target is that namespace's wildcard. Removing
+a wildcard target for one departing rank would be wrong — the other ranks
+are still there — and a stale specific-rank target costs nothing: the
+delivery attempt fails harmlessly and the room ages out of the hotel.
+
 ## The event registration store
 
 `pmix_server_globals.events` is a list of `pmix_regevents_info_t`, one
@@ -2648,13 +2673,84 @@ misbehave by design).
   why. It now says so with `PMIX_ERR_DUPLICATE_KEY` instead.
 - **The `nlocalprocs < 0` arm of `_register_nspace` is the *update* path,
   and it has its own rules.** It stores each directive through the gds
-  module by hand rather than going through `PMIX_GDS_ADD_NSPACE`. Two
+  module by hand rather than going through `PMIX_GDS_ADD_NSPACE`. Three
   things there are easy to get wrong: a `PMIX_VALUE_XFER` whose status is
   discarded hands the datastore a value that was never populated (and the
-  store's own status then overwrites the transfer's), and the
+  store's own status then overwrites the transfer's); the
   `job_info_recvd` guard only works if something sets the flag - only the
   full-registration path did, so a second update carrying
-  `PMIX_JOB_INFO_ARRAY` re-cached the whole array.
+  `PMIX_JOB_INFO_ARRAY` re-cached the whole array; and the
+  `PMIX_PROC_INFO_ARRAY` arm has to work out *which* proc the array
+  describes the way the rest of the tree does. It read
+  `iptr[0].value.data.rank` outright, on the strength of a comment saying
+  the rank comes first - but the array may identify its proc with a
+  `PMIX_RANK` **or** a `PMIX_PROCID`, in **any** position, which is what
+  `pmix_gds_base_proc_array_id()` exists to decide and what both
+  `gds/hash` readers of the key use. A host that identified the proc any
+  other way had its data stored against whatever the first element's
+  union happened to hold, and its identifier entry stored as data. The
+  same arm also read `value.data.darray` on the strength of the key
+  alone; check `PMIX_DATA_ARRAY == value.type` first, as the neighbouring
+  `gds/hash` reader's own comment demands of every path taking this key.
+
+  The scope it stores at (`PMIX_REMOTE` for proc data, `PMIX_GLOBAL` for
+  the group context id) looks inconsistent with the full path, which puts
+  proc data in the *internal* table - but `gds/hash`'s fetch cascades
+  internal → local → remote for an unqualified scope, so both a local
+  `PMIx_Get` and a remote server's direct modex find it. Left alone.
+
+  `gds->store` being NULL is likewise unreachable rather than guarded
+  against: `PMIx_server_init` hard-codes `"hash"` for
+  `pmix_globals.mypeer`, and only a server reaches this handler at all.
+- **`PMIX_REGISTER_NODATA` suppresses the *data* half of the call and
+  nothing else.** It pre-registers a namespace whose job data will follow
+  later - but it still carries `nlocalprocs`, and that count is exactly
+  what a pending collective, a parked direct-modex request or a blocked
+  group definition is waiting on. Returning early on the directive
+  skipped the sweep at the foot of `_register_nspace`, and those two
+  sweeps (`pmix_pending_nspace_requests` and
+  `pmix_server_grp_check_pending`) have **no other callers in the tree**
+  than the two registration handlers - so nothing later re-drove them. A
+  host that registered its clients first and then pre-registered the
+  namespace set `all_registered` and told nobody: every tracker naming it
+  stayed incomplete for the life of the server.
+- **A registration the host is told failed must not leave the library
+  behaving as though it succeeded.** `nlocalprocs` is the one thing
+  `_register_nspace` publishes before any of the work below it can fail,
+  and it is what the rest of the directory reads to decide a namespace is
+  fully known. Left set after a failed `PMIX_GDS_ADD_NSPACE`,
+  `PMIX_GDS_CACHE_JOB_INFO` or `pmix_pmdl.register_nspace`, the next
+  `register_client` saw the count satisfied, set `all_registered`, swept
+  the pending collectives and handed them to the host - for a namespace
+  whose job data was never stored. Those three arms exit through
+  `restore:`, which puts the count and the flag derived from it back.
+- **An empty namespace is a wildcard, so the entry points screen it and
+  the handlers compare exactly.** `PMIX_CHECK_NSPACE` answers true
+  whenever *either* name is NULL or empty (see the same trap in
+  `pmix_server_get.c` and `pmix_server_group.c`), and
+  `_deregister_nspace` was the one lookup in this file using it: an empty
+  name matched whichever namespace sat first on `pmix_globals.nspaces`
+  and tore *that* one down, releasing its clients and closing their
+  sockets, while `pmix_server_purge_events` - reached with
+  `proc.rank == PMIX_RANK_WILDCARD` - matched every peer in the process.
+  All four public entry points now refuse a NULL or empty name (and a
+  NULL `proc`, which the verbose line dereferences) with
+  `PMIX_ERR_BAD_PARAM`, and the handler compares with `strcmp` as every
+  other lookup here does. The four man pages say so.
+- **All four registration entry points screen
+  `pmix_server_globals.initialized`, not just `pmix_globals.initialized`.**
+  See the inventory section for why: `_register_nspace` and
+  `_register_client` walk `pmix_server_globals.collectives`, and
+  `_deregister_nspace` fans out to `pnet`, `pgpu` and `pmdl`. In a client
+  or a not-yet-`PMIx_server_init`ed tool none of that exists, and
+  `PMIX_LIST_STATIC_INIT`'s NULL sentinel makes the walk a dereference
+  rather than an empty loop.
+- **`PMIX_SETUP_COLLECTIVE` tolerates a failed allocation.** It used to
+  write `(c)->trk` unconditionally, so an OOM was a NULL dereference on
+  the progress thread at both of its call sites. It now leaves `(c)` NULL
+  and takes no reference; `PMIX_EXECUTE_COLLECTIVE` skips the activation.
+  The collective is then not driven, which is a hang rather than a crash
+  - a caller in a position to do better should test `(c)`.
 - **`pmix_server_globals.system_tmpdir` is read by the directory-removal
   guard, so finalize must not free it early.** Only the string is freed
   here; the directory is removed by `pmix_ptl_close()` (inside

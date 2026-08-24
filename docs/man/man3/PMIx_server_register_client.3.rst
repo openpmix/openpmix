@@ -118,6 +118,19 @@ result directly:
   the library's progress engine has been stopped.
 * ``PMIX_ERR_NOMEM`` |mdash| the library was unable to allocate memory for the
   registration.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| ``proc`` is ``NULL`` or names an empty
+  namespace.
+* ``PMIX_ERR_DUPLICATE_KEY`` |mdash| a client with this namespace and rank has
+  already been registered. The host is required to call this function exactly
+  once per rank; a second call would push the namespace's rank list permanently
+  past its local-process count, after which every collective involving the
+  namespace would hang.
+* ``PMIX_ERR_WOULD_BLOCK`` |mdash| the blocking form was called from the
+  library's own progress thread. See `PROGRESS THREAD RESTRICTION`_.
+
+``PMIX_ERR_INIT``, ``PMIX_ERR_NOT_AVAILABLE``, ``PMIX_ERR_BAD_PARAM`` and
+``PMIX_ERR_NOMEM`` are returned directly by both forms, since they are detected
+before the request is accepted.
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.

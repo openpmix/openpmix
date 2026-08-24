@@ -200,6 +200,16 @@ result directly:
 * ``PMIX_ERR_INIT`` |mdash| the PMIx server library has not been initialized.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because
   the library's progress engine has been stopped.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| ``nspace`` is ``NULL`` or empty.
+* ``PMIX_ERR_WOULD_BLOCK`` |mdash| the blocking form was called from the
+  library's own progress thread (for example, from inside a
+  :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>` upcall), where
+  waiting for the request would be waiting for the caller. Use the
+  non-blocking form from that context.
+
+Both forms return ``PMIX_ERR_INIT``, ``PMIX_ERR_NOT_AVAILABLE`` and
+``PMIX_ERR_BAD_PARAM`` directly, since they are detected before the request is
+accepted.
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.
