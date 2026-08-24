@@ -94,9 +94,9 @@ OPTIONS
 
 * ``-s`` | ``--share``: Allocated resources can be shared with other allocations.
 
-* ``--extend   <arg0>``:Extend the specified existing session ID per the rest of the given request.
+* ``--extend [<arg0>]``: Extend the specified existing session ID per the rest of the given request. The session ID is optional, and is passed as ``PMIX_ALLOC_ID``.
 
-* ``--shrink <arg0>``: Shrink the specified existing session ID per the rest of the given request.
+* ``--shrink [<arg0>]``: Shrink the specified existing session ID per the rest of the given request. The session ID is optional, and is passed as ``PMIX_ALLOC_ID``.
 
 * ``--no-shell``: Immediately exit after allocating resources, without running a command.
 

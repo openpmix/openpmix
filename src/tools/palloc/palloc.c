@@ -84,8 +84,8 @@ static struct option pallocptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_TIME, PMIX_ARG_REQD, 't'),
     PMIX_OPTION_DEFINE(PMIX_CLI_SIGNAL, PMIX_ARG_REQD),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_SHARE, PMIX_ARG_NONE, 's'),
-    PMIX_OPTION_DEFINE(PMIX_CLI_EXTEND, PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE(PMIX_CLI_SHRINK, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_EXTEND, PMIX_ARG_OPTIONAL),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHRINK, PMIX_ARG_OPTIONAL),
     PMIX_OPTION_DEFINE(PMIX_CLI_NO_SHELL, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_BEGIN, PMIX_ARG_REQD),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_IMMEDIATE, PMIX_ARG_OPTIONAL, 'I'),
@@ -96,6 +96,25 @@ static struct option pallocptions[] = {
     PMIX_OPTION_END
 };
 static char *pallocshorts = "h::vVq:N:i:x:w:t:I::d:";
+
+/* --extend and --shrink name the allocation they operate on, which is what
+ * PMIX_ALLOC_ID says.  The value is optional: both options are documented as
+ * taking a session id, but neither used to accept one at all, so a command
+ * line that gave none has to keep working. */
+static pmix_status_t add_alloc_id(void *options, pmix_cli_item_t *opt)
+{
+    pmix_status_t rc;
+
+    if (NULL == opt->values || NULL == opt->values[0]) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_INFO_LIST_ADD(rc, options, PMIX_ALLOC_ID, opt->values[0], PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "PMIx info list add failed: %s\n", PMIx_Error_string(rc));
+        PMIX_INFO_LIST_RELEASE(options);
+    }
+    return rc;
+}
 
 static void cbfunc(pmix_status_t status,
                    pmix_info_t *info, size_t ninfo,
@@ -468,10 +487,18 @@ int main(int argc, char **argv)
 
     if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_EXTEND))) {
         directive = PMIX_ALLOC_EXTEND;
+        rc = add_alloc_id(options, opt);
+        if (PMIX_SUCCESS != rc) {
+            goto done;
+        }
     }
 
     if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_SHRINK))) {
         directive = PMIX_ALLOC_RELEASE;
+        rc = add_alloc_id(options, opt);
+        if (PMIX_SUCCESS != rc) {
+            goto done;
+        }
     }
 
     if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_ACTIVATE))) {
