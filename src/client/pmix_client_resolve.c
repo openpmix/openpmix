@@ -830,6 +830,11 @@ process:
     }
 
 done:
+    /* the peers half of this file constructs and destructs its qualifier
+     * array and says why; do the same here rather than relying on this
+     * one qualifier staying a boolean that allocates nothing */
+    PMIX_INFO_DESTRUCT(&info);
+
     /* pass back the result */
     cd->status = rc;
     // protect the field
