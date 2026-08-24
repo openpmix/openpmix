@@ -54,6 +54,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_show_help.h"
 
 #include "pmix_server_ops.h"
 #include "src/client/pmix_client_ops.h"
@@ -82,6 +83,21 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nqueries, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(cd);
+        return rc;
+    }
+    /* the count arrives off the wire and is carried in a size_t, while the
+     * allocation below multiplies it by sizeof(pmix_query_t) with no
+     * overflow guard and then constructs every one of the elements it
+     * claimed - so a count large enough to wrap that product yields a
+     * short allocation whose constructor loop runs straight off the end,
+     * before the unpack gets a chance to screen anything. Require the
+     * count to survive the round trip through the int32_t the unpack
+     * consumes it as, which bounds it well clear of the wrap */
+    cnt = cd->nqueries;
+    if (0 > cnt || (size_t) cnt != cd->nqueries) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cd);
         return rc;
@@ -316,6 +332,14 @@ pmix_status_t pmix_server_alloc(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    /* screen the count before it reaches the allocator - see the note in
+     * pmix_server_query above */
+    cnt = cd->ninfo;
+    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     /* unpack the info */
     if (0 < cd->ninfo) {
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
@@ -399,6 +423,14 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    /* screen the count before it reaches the allocator - see the note in
+     * pmix_server_query above */
+    cnt = cd->ntargets;
+    if (0 > cnt || (size_t) cnt != cd->ntargets) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     if (0 < cd->ntargets) {
         PMIX_PROC_CREATE(cd->targets, cd->ntargets);
         cnt = cd->ntargets;
@@ -407,11 +439,35 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
+        /* the unpack fills min(packed, provided) and reports success, so
+         * a peer that declares more targets than it sends leaves the tail
+         * of the array default-constructed - an empty nspace at
+         * PMIX_RANK_UNDEF. The walk below creates a pmix_namespace_t for
+         * any target nspace it does not already know, so those phantoms
+         * would each append an entry named "" to pmix_globals.nspaces for
+         * the life of the server - and PMIX_CHECK_NSPACE reports an empty
+         * name as matching *every* namespace, so every later list walk
+         * that stops at the first match could stop there. Trust the count
+         * the unpack came back with, not the one the peer declared; it is
+         * also what the host is entitled to be handed below */
+        if (0 == cnt) {
+            /* nothing actually arrived, so give the storage back with the
+             * count it was allocated with and let the "no targets" arm
+             * below put the epilog on the requestor's own namespace -
+             * which is what a request naming nobody means */
+            PMIX_PROC_FREE(cd->targets, cd->ntargets);
+            cd->targets = NULL;
+        }
+        cd->ntargets = (size_t) cnt;
     }
 
     /* check targets to find proper place to put any epilog requests */
     if (NULL == cd->targets) {
         epicd = PMIX_NEW(pmix_srvr_epi_caddy_t);
+        if (NULL == epicd) {
+            rc = PMIX_ERR_NOMEM;
+            goto exit;
+        }
         epicd->epi = &peer->nptr->epilog;
         pmix_list_append(&epicache, &epicd->super);
     } else {
@@ -431,11 +487,24 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                     goto exit;
                 }
                 nptr->nspace = strdup(cd->targets[n].nspace);
+                if (NULL == nptr->nspace) {
+                    /* every lookup in this directory strcmp's that member,
+                     * so a namespace carrying a NULL name is a permanent
+                     * segfault of the progress thread - do not put a
+                     * half-built one on the global list */
+                    PMIX_RELEASE(nptr);
+                    rc = PMIX_ERR_NOMEM;
+                    goto exit;
+                }
                 pmix_list_append(&pmix_globals.nspaces, &nptr->super);
             }
             /* if the rank is wildcard, then we use the epilog for the nspace */
             if (PMIX_RANK_WILDCARD == cd->targets[n].rank) {
                 epicd = PMIX_NEW(pmix_srvr_epi_caddy_t);
+                if (NULL == epicd) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto exit;
+                }
                 epicd->epi = &nptr->epilog;
                 pmix_list_append(&epicache, &epicd->super);
             } else {
@@ -451,6 +520,10 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                     }
                     if (pr->info->pname.rank == cd->targets[n].rank) {
                         epicd = PMIX_NEW(pmix_srvr_epi_caddy_t);
+                        if (NULL == epicd) {
+                            rc = PMIX_ERR_NOMEM;
+                            goto exit;
+                        }
                         epicd->epi = &pr->epilog;
                         pmix_list_append(&epicache, &epicd->super);
                         break;
@@ -464,6 +537,14 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* screen the count before it reaches the allocator - see the note in
+     * pmix_server_query above */
+    cnt = cd->ninfo;
+    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
@@ -496,6 +577,13 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 goto exit;
             }
             cf->path = strdup(cd->info[n].value.data.string);
+            if (NULL == cf->path) {
+                /* every scan below strcmp's this member - do not put an
+                 * entry carrying a NULL path on any list */
+                PMIX_RELEASE(cf);
+                rc = PMIX_ERR_NOMEM;
+                goto exit;
+            }
             pmix_list_append(&cachefiles, &cf->super);
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_REGISTER_CLEANUP_DIR)) {
             ++cnt;
@@ -511,6 +599,11 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 goto exit;
             }
             cdir->path = strdup(cd->info[n].value.data.string);
+            if (NULL == cdir->path) {
+                PMIX_RELEASE(cdir);
+                rc = PMIX_ERR_NOMEM;
+                goto exit;
+            }
             pmix_list_append(&cachedirs, &cdir->super);
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_CLEANUP_RECURSIVE)) {
             recurse = PMIX_INFO_TRUE(&cd->info[n]);
@@ -528,6 +621,11 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 goto exit;
             }
             cf->path = strdup(cd->info[n].value.data.string);
+            if (NULL == cf->path) {
+                PMIX_RELEASE(cf);
+                rc = PMIX_ERR_NOMEM;
+                goto exit;
+            }
             pmix_list_append(&ignorefiles, &cf->super);
             ++cnt;
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_CLEANUP_LEAVE_TOPDIR)) {
@@ -539,9 +637,21 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
         /* handle any ignore directives first */
         PMIX_LIST_FOREACH (cf, &ignorefiles, pmix_cleanup_file_t) {
             PMIX_LIST_FOREACH (epicd, &epicache, pmix_srvr_epi_caddy_t) {
-                /* scan the existing list of files for any duplicate */
+                /* scan for a duplicate on the list we are about to append
+                 * to. This loop was cloned from the cleanup_files one
+                 * below and kept its scan list, so it asked whether the
+                 * path was already registered for *cleanup* and then
+                 * appended to "ignores" regardless of the answer. Both
+                 * halves of that were wrong: a repeat of the same ignore
+                 * directive was never recognized as a duplicate, so every
+                 * job-control request carrying one appended another copy
+                 * to a list that lives as long as the namespace or peer
+                 * and is walked once per file by dirpath_destroy; and an
+                 * ignore naming a path already registered for cleanup was
+                 * silently dropped, so the epilog deleted a file the
+                 * client had asked it to leave alone */
                 duplicate = false;
-                PMIX_LIST_FOREACH (cf2, &epicd->epi->cleanup_files, pmix_cleanup_file_t) {
+                PMIX_LIST_FOREACH (cf2, &epicd->epi->ignores, pmix_cleanup_file_t) {
                     if (0 == strcmp(cf2->path, cf->path)) {
                         duplicate = true;
                         break;
@@ -553,7 +663,19 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                      * so appending &cf->super would put one item on two lists
                      * and leave a dangling entry when ignorefiles is freed */
                     cfptr = PMIX_NEW(pmix_cleanup_file_t);
+                    if (NULL == cfptr) {
+                        rc = PMIX_ERR_NOMEM;
+                        goto exit;
+                    }
                     cfptr->path = strdup(cf->path);
+                    if (NULL == cfptr->path) {
+                        /* this list outlives the request - a NULL path
+                         * here is strcmp'd by every later job-control
+                         * request and by the epilog itself */
+                        PMIX_RELEASE(cfptr);
+                        rc = PMIX_ERR_NOMEM;
+                        goto exit;
+                    }
                     pmix_list_append(&epicd->epi->ignores, &cfptr->super);
                 }
             }
@@ -592,7 +714,16 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                     }
                     /* append it to the end of the list */
                     cdirptr = PMIX_NEW(pmix_cleanup_dir_t);
+                    if (NULL == cdirptr) {
+                        rc = PMIX_ERR_NOMEM;
+                        goto exit;
+                    }
                     cdirptr->path = strdup(cdir->path);
+                    if (NULL == cdirptr->path) {
+                        PMIX_RELEASE(cdirptr);
+                        rc = PMIX_ERR_NOMEM;
+                        goto exit;
+                    }
                     cdirptr->recurse = recurse;
                     cdirptr->leave_topdir = leave_topdir;
                     pmix_list_append(&epicd->epi->cleanup_dirs, &cdirptr->super);
@@ -620,7 +751,16 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                     }
                     /* append it to the end of the list */
                     cfptr = PMIX_NEW(pmix_cleanup_file_t);
+                    if (NULL == cfptr) {
+                        rc = PMIX_ERR_NOMEM;
+                        goto exit;
+                    }
                     cfptr->path = strdup(cf->path);
+                    if (NULL == cfptr->path) {
+                        PMIX_RELEASE(cfptr);
+                        rc = PMIX_ERR_NOMEM;
+                        goto exit;
+                    }
                     pmix_list_append(&epicd->epi->cleanup_files, &cfptr->super);
                 }
             }
@@ -678,6 +818,10 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
         return PMIX_ERR_NOMEM;
     }
     PMIX_PROC_CREATE(cb->proc, 1);
+    if (NULL == cb->proc) {
+        PMIX_RELEASE(cb);
+        return PMIX_ERR_NOMEM;
+    }
     PMIX_LOAD_PROCID(&cb->proc[0], peer->info->pname.nspace, peer->info->pname.rank);
     cb->nprocs = 1;
     cb->cbdata = cbdata;
@@ -705,6 +849,14 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cb->ndirs, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* screen the count before it reaches the allocator - see the note in
+     * pmix_server_query above */
+    cnt = cb->ndirs;
+    if (0 > cnt || (size_t) cnt != cb->ndirs) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
@@ -763,6 +915,14 @@ pmix_status_t pmix_server_get_credential(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    /* screen the count before it reaches the allocator - see the note in
+     * pmix_server_query above */
+    cnt = cd->ninfo;
+    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     /* unpack the directives */
     if (0 < cd->ninfo) {
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
@@ -779,8 +939,19 @@ pmix_status_t pmix_server_get_credential(pmix_peer_t *peer, pmix_buffer_t *buf,
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
-    if (PMIX_SUCCESS
-        != (rc = pmix_host_server.get_credential(&proc, cd->info, cd->ninfo, cbfunc, cd))) {
+    rc = pmix_host_server.get_credential(&proc, cd->info, cd->ninfo, cbfunc, cd);
+    /* PMIX_OPERATION_SUCCEEDED cannot express this operation's result -
+     * the credential itself, which comes back through the callback the
+     * switchyard always supplies, since pmix_credential_cbfunc_t carries
+     * no other channel. Left alone it falls into the error arm below and
+     * reaches the client as a synthesized status-only reply, which that
+     * client reads as a success carrying no credential */
+    if (PMIX_UNLIKELY(PMIX_OPERATION_SUCCEEDED == rc)) {
+        pmix_show_help("help-pmix-server.txt", "atomic-completion-unsupported",
+                       true, "PMIx_Get_credential");
+        rc = PMIX_ERR_NOT_SUPPORTED;
+    }
+    if (PMIX_SUCCESS != rc) {
         goto exit;
     }
     return PMIX_SUCCESS;
@@ -826,6 +997,14 @@ pmix_status_t pmix_server_validate_credential(pmix_peer_t *peer, pmix_buffer_t *
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    /* screen the count before it reaches the allocator - see the note in
+     * pmix_server_query above */
+    cnt = cd->ninfo;
+    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     /* unpack the directives */
     if (0 < cd->ninfo) {
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
@@ -842,9 +1021,17 @@ pmix_status_t pmix_server_validate_credential(pmix_peer_t *peer, pmix_buffer_t *
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
-    if (PMIX_SUCCESS
-        != (rc = pmix_host_server.validate_credential(&proc, &cd->bo, cd->info, cd->ninfo, cbfunc,
-                                                      cd))) {
+    rc = pmix_host_server.validate_credential(&proc, &cd->bo, cd->info, cd->ninfo, cbfunc, cd);
+    /* as for get_credential above: the validation results are this
+     * operation's product and pmix_validation_cbfunc_t is their only
+     * channel, so there is no way to carry them alongside an atomic
+     * completion */
+    if (PMIX_UNLIKELY(PMIX_OPERATION_SUCCEEDED == rc)) {
+        pmix_show_help("help-pmix-server.txt", "atomic-completion-unsupported",
+                       true, "PMIx_Validate_credential");
+        rc = PMIX_ERR_NOT_SUPPORTED;
+    }
+    if (PMIX_SUCCESS != rc) {
         goto exit;
     }
     return PMIX_SUCCESS;
@@ -891,6 +1078,14 @@ pmix_status_t pmix_server_session_ctrl(pmix_server_caddy_t *cd,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &scd->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* screen the count before it reaches the allocator - see the note in
+     * pmix_server_query above */
+    cnt = scd->ninfo;
+    if (0 > cnt || (size_t) cnt != scd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
@@ -974,6 +1169,14 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    /* screen the count before it reaches the allocator - see the note in
+     * pmix_server_query above */
+    cnt = scd->nunits;
+    if (0 > cnt || (size_t) cnt != scd->nunits) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     /* unpack the resource units */
     if (0 < scd->nunits) {
         PMIX_RESOURCE_UNIT_CREATE(scd->units, scd->nunits);
@@ -989,6 +1192,14 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &scd->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* screen the count before it reaches the allocator - see the note in
+     * pmix_server_query above */
+    cnt = scd->ninfo;
+    if (0 > cnt || (size_t) cnt != scd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
