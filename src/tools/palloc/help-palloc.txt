@@ -78,8 +78,8 @@ PMIx Allocation Request tool
    --signal <arg0>[@arg1]            Send all processes executing within the allocated session the specified signal
                                      when it reaches the (optional) specified seconds of its end time.
 -s|--share                           Allocated resources can be shared with other allocations.
-   --extend   <arg0>                 Extend the specified existing session ID per the rest of the given request.
-   --shrink <arg0>                   Shrink the specified existing session ID per the rest of the given request.
+   --extend [<arg0>]                 Extend the specified existing session ID per the rest of the given request.
+   --shrink [<arg0>]                 Shrink the specified existing session ID per the rest of the given request.
    --no-shell                        Immediately exit after allocating resources, without running a command.
    --begin <arg0>                    Direct the scheduler to defer allocation until the specified time.
 -I|--immediate <arg0>                Exit if resources are not available within the time period specified.
@@ -275,12 +275,20 @@ Allocated resources can be shared with other allocations.
 Extend the specified existing session ID per the rest of the given request.
 For example, an existing session can have additional nodes allocated to
 it, or could have its time limit increased.
+
+The session ID is optional here, and is passed as PMIX_ALLOC_ID. Omit it
+where the rest of the request identifies the allocation - e.g. with
+"--request-id", the requestor's own identifier for it.
 #
 [shrink]
 Shrink the specified existing session ID per the rest of the given request.
 For example, an existing session could have a certain number of nodes
 removed (returning them to the scheduler for reassignment), or its
 time reduced.
+
+The session ID is optional here, and is passed as PMIX_ALLOC_ID. Omit it
+where the rest of the request identifies the allocation - e.g. with
+"--request-id", the requestor's own identifier for it.
 #
 [no-shell]
 Immediately exit after allocating resources, without running a command.
