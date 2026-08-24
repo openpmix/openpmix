@@ -935,7 +935,15 @@ Coverage gaps
   not thread-shift.  Both were fixed to release the caddy they own, but
   neither is reachable from a unit test without fault injection — a
   failed allocation, or the progress thread stopping while a host
-  completion is in flight.
+  completion is in flight.  The same gap now covers the 32 dispatch arms
+  that answer ``PMIX_ERR_NOMEM`` when ``PMIX_GDS_CADDY`` cannot allocate,
+  and the ``PMIX_ERR_NOMEM`` arm of ``PMIX_SERVER_QUEUE_REPLY``
+  (2026-08-24): both replaced a NULL dereference that killed the server,
+  and both need an allocator hook to reach.  An allocation-failure
+  injection facility — a debug-build counter that makes the *n*\ th
+  ``pmix_malloc`` fail — would close a good part of this directory's
+  untestable set at once; it is the single highest-value piece of test
+  infrastructure the review has wanted.
 * **A multi-namespace ``PMIx_Disconnect`` is not reached by ``make
   check``.**  ``test/test_cd.c`` — what the ``--test-connect`` runs
   drive — disconnects a process from its *own* namespace, so the loop in

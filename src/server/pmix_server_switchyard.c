@@ -342,8 +342,18 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
         }
         PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
         if (PMIX_SUCCESS != rc) {
+            /* the same reasoning as the fallback arm below: nothing else
+             * answers this client, so swallowing the failure left its
+             * PMIx_Init blocked on a reply that was never queued. A
+             * finalized peer (PMIX_ERR_UNREACH) has stopped waiting, but
+             * a peer we simply could not allocate a send for has not. */
             PMIX_RELEASE(reply);
+            return rc;
         }
+        /* count the delivery only once it is really queued: gds/hash
+         * drops its cached copy of the packed job data when ndelivered
+         * reaches nlocalprocs, so a delivery counted but not made costs
+         * the next client a re-pack */
         peer->nptr->ndelivered++;
         return PMIX_SUCCESS;
     }
@@ -408,6 +418,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_ABORT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_abort(peer, buf, op_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -428,11 +441,18 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
             }
             PMIX_BFROPS_PACK(rc, peer, reply, &ret, 1, PMIX_STATUS);
             if (PMIX_SUCCESS != rc) {
+                /* an empty buffer is not an answer the client can read,
+                 * and queuing one used it up as *the* reply. Hand the
+                 * failure back instead and let the message handler build
+                 * the status reply it builds for every other error */
                 PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(reply);
+                return rc;
             }
             PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
             if (PMIX_SUCCESS != rc) {
                 PMIX_RELEASE(reply);
+                return rc;
             }
         }
         return PMIX_SUCCESS; // don't reply twice
@@ -440,6 +460,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_FENCENB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_fence(cd, buf, pmix_server_modex_cbfunc))) {
             PMIX_RELEASE(cd);
         }
@@ -448,6 +471,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_GETNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_get(buf, pmix_server_get_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -462,6 +488,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
          * perfectly healthy and telling it otherwise reads as fatal. */
         pmix_server_purge_events(peer, NULL, PMIX_ERR_NOT_FOUND);
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         /* Call the local server, if supported. A tool counts here just as a
          * client does: the host was told when the tool connected, and this
          * is the only notice it will ever get that the tool has gone. The
@@ -511,6 +540,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_PUBLISHNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_publish(peer, buf, op_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -519,6 +551,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_LOOKUPNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_lookup(peer, buf, pmix_server_lookup_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -527,6 +562,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_UNPUBLISHNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_unpublish(peer, buf, op_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -535,6 +573,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_SPAWNNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_spawn(peer, buf, pmix_server_spawn_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -543,6 +584,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_CONNECTNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         rc = pmix_server_connect(cd, buf, pmix_server_cnct_cbfunc);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
@@ -552,6 +596,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_DISCONNECTNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         rc = pmix_server_disconnect(cd, buf, pmix_server_discnct_cbfunc);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
@@ -561,6 +608,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_REGEVENTS_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         rc = pmix_server_register_events(peer, buf, pmix_server_events_cbfunc, cd);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
@@ -575,6 +625,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_NOTIFY_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         rc = pmix_server_event_recvd_from_client(peer, buf, pmix_server_events_cbfunc, cd);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
@@ -584,6 +637,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_QUERY_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         rc = pmix_server_query(peer, buf, pmix_server_query_cbfunc, cd);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
@@ -593,6 +649,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_LOG_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_log(peer, buf, op_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -601,6 +660,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_ALLOC_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_alloc(peer, buf, pmix_server_alloc_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -609,6 +671,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_JOB_CONTROL_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_job_ctrl(peer, buf, pmix_server_jctrl_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -617,6 +682,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_MONITOR_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_monitor(peer, buf, pmix_server_monitor_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -625,6 +693,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_GET_CREDENTIAL_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         rc = pmix_server_get_credential(peer, buf, pmix_server_cred_cbfunc, cd);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
@@ -634,6 +705,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_VALIDATE_CRED_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS
             != (rc = pmix_server_validate_credential(peer, buf, pmix_server_validate_cbfunc, cd))) {
             PMIX_RELEASE(cd);
@@ -643,6 +717,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_IOF_PULL_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_iofreg(peer, buf, pmix_server_iofreg_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -651,6 +728,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_IOF_PUSH_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_iofstdin(peer, buf, op_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
@@ -659,6 +739,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_IOF_DEREG_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         rc = pmix_server_iofdereg(peer, buf, pmix_server_iofdereg_cbfunc, cd);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
@@ -668,6 +751,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_GROUP_CONSTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_group(cd, buf, PMIX_GROUP_CONSTRUCT))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
@@ -677,6 +763,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_GROUP_DESTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_group(cd, buf, PMIX_GROUP_DESTRUCT))) {
             PMIX_RELEASE(cd);
         }
@@ -685,6 +774,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_FABRIC_REGISTER_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         rc = pmix_server_fabric_register(cd, buf, pmix_server_fabric_cbfunc);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
@@ -694,6 +786,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_FABRIC_UPDATE_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_fabric_update(cd, buf, pmix_server_fabric_cbfunc))) {
             PMIX_RELEASE(cd);
         }
@@ -702,6 +797,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_COMPUTE_DEVICE_DISTANCES_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_device_dists(cd, buf, pmix_server_dist_cbfunc))) {
             PMIX_RELEASE(cd);
         }
@@ -710,6 +808,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_REFRESH_CACHE == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_refresh_cache(cd, buf, op_cbfunc))) {
             PMIX_RELEASE(cd);
         }
@@ -718,6 +819,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_RESBLK_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_resblk(cd, buf, resop_cbfunc))) {
             PMIX_RELEASE(cd);
         }
@@ -726,6 +830,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_SESSION_CTRL_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_session_ctrl(cd, buf, pmix_server_sessctrl_cbfunc))) {
             PMIX_RELEASE(cd);
         }
@@ -734,6 +841,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_RESOLVE_PEERS_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         rc = pmix_server_resolve_peers(cd, buf, pmix_server_respeers_cbfunc);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
@@ -743,6 +853,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_RESOLVE_NODE_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != (rc = pmix_server_resolve_node(cd, buf, pmix_server_resnodes_cbfunc))) {
             PMIX_RELEASE(cd);
         }
