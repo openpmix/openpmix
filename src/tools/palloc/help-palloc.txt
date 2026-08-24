@@ -87,6 +87,9 @@ PMIx Allocation Request tool
                                      completed.
    --do-not-wait                     Submit the allocation request to the scheduler, but do not wait for the allocation
                                      to be assigned. Intended for use when submitting a job for batch execution.
+   --activate <arg0>                 Bring resources this requestor already holds into service - e.g., start a
+                                     daemon on an allocated node the runtime is not yet spanning. Takes a
+                                     comma-delimited list of host names.
 
 The command returns the string session ID of the resulting allocation, or if executed with the "do-not-wait" option, the
 string session ID of the allocation request as assigned by the scheduler. Any command line arguments following the provided
@@ -322,3 +325,18 @@ will be scheduled.
 Submit the allocation request to the scheduler, but do not wait for the allocation
 to be assigned. Intended for use when submitting a job for batch execution. Users
 should provide a string request ID to enable subsequent queries of request status.
+#
+[activate]
+Bring resources this requestor already holds into service. The canonical case
+is a node that belongs to the allocation but has no daemon on it, so nothing
+can be launched there: activating it starts the daemon and brings the node into
+the runtime.
+
+The argument is a comma-delimited list of host names. Nothing is asked of the
+scheduler and nothing is added to the allocation - only resources the requestor
+already holds can be named - so this may be honored where a request for new
+resources cannot be, including inside an allocation the scheduler owns.
+
+The host list is interpreted by the host environment, which may accept forms
+beyond bare names (a hostfile, or a relative reference into the allocation).
+See that environment's documentation for what it accepts.

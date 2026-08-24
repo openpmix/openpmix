@@ -1618,3 +1618,10 @@ The ``PMIx_Allocation_request`` API includes a ``directive`` parameter to
 specify the operation being requested. These values were extended to include:
 
 * ``PMIX_ALLOC_REQ_CANCEL`` (value: 5): Cancel the indicated allocation request
+
+* ``PMIX_ALLOC_ACTIVATE`` (value: 6): Bring resources the requestor already
+  holds into service - e.g., start a daemon on an allocated node the runtime
+  is not yet spanning. The resources are named with ``PMIX_HOST`` and/or
+  ``PMIX_HOSTFILE``. Nothing is asked of the scheduler and nothing is added to
+  the allocation, so this can be honored where a request for new resources
+  cannot be.

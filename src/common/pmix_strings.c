@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
  * $COPYRIGHT$
  *
@@ -213,6 +213,8 @@ PMIX_EXPORT const char *PMIx_Alloc_directive_string(pmix_alloc_directive_t direc
         return "REACQUIRE";
     case PMIX_ALLOC_REQ_CANCEL:
         return "CANCEL REQUEST";
+    case PMIX_ALLOC_ACTIVATE:
+        return "ACTIVATE";
     default:
         return "UNSPECIFIED";
     }

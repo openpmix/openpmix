@@ -162,8 +162,8 @@ attribute in the ``pmix_info_t`` array of a ``PMIx_Allocation_request``
 * **Accepting APIs**: ``PMIx_Allocation_request`` and
   ``PMIx_Allocation_request_nb``, on ``PMIX_ALLOC_NEW`` and
   ``PMIX_ALLOC_EXTEND`` requests. It is ignored on
-  ``PMIX_ALLOC_RELEASE``, ``PMIX_ALLOC_REAQUIRE``, and
-  ``PMIX_ALLOC_REQ_CANCEL`` requests.
+  ``PMIX_ALLOC_RELEASE``, ``PMIX_ALLOC_REAQUIRE``,
+  ``PMIX_ALLOC_REQ_CANCEL``, and ``PMIX_ALLOC_ACTIVATE`` requests.
 * **Default**: if the attribute is absent, the host shall behave as if
   ``PMIX_ALLOC_INHERIT_DEFAULT`` had been specified - i.e., on
   termination of the owning namespace the allocation becomes unreserved

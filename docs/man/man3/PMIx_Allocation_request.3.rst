@@ -135,6 +135,11 @@ identifies the requested operation:
 * ``PMIX_ALLOC_REAQUIRE`` |mdash| reacquire resources that were previously
   "lent" back to the scheduler.
 * ``PMIX_ALLOC_REQ_CANCEL`` |mdash| cancel the indicated allocation request.
+* ``PMIX_ALLOC_ACTIVATE`` |mdash| bring resources the requestor already holds
+  into service |mdash| e.g., start a daemon on an allocated node the runtime is
+  not yet spanning so that jobs can be launched there. Nothing is asked of the
+  scheduler and nothing is added to the allocation, so a host environment may
+  honor this request where it must refuse a request for new resources.
 
 Values at or above ``PMIX_ALLOC_EXTERNAL`` are reserved for
 implementer-defined directives.
@@ -269,6 +274,17 @@ Controlling ownership, sharing, and inheritance:
 * ``PMIX_ALLOC_INHERITANCE`` (pmix_alloc_inheritance_t) |mdash| inheritance
   rules to be applied to the allocated resources. If not provided, defaults to
   ``PMIX_ALLOC_INHERIT_DEFAULT``.
+
+Naming the resources to be activated (for the ``PMIX_ALLOC_ACTIVATE``
+directive):
+
+* ``PMIX_HOST`` (char*) |mdash| comma-delimited list of hosts to activate.
+* ``PMIX_HOSTFILE`` (char*) |mdash| hostfile naming the hosts to activate.
+
+At least one of the two must be given. The host environment interprets them
+exactly as it interprets the same attributes elsewhere, and it may accept
+additional forms within them; it is required to refuse any host the requestor
+does not already hold, since granting one would be an allocation.
 
 On successful completion of a request for additional resources, the returned
 data includes ``PMIX_ALLOC_ID`` (char*), a host-provided string identifier for

@@ -203,6 +203,7 @@ typedef struct {
 #define PMIX_CLI_IMMEDIATE              "immediate"                 // optional, short is 'I'
 #define PMIX_CLI_DEPENDENCY             "dependency"                // required, short is 'd'
 #define PMIX_CLI_DO_NOT_WAIT            "do-not-wait"               // none
+#define PMIX_CLI_ACTIVATE               "activate"                  // required
 
 // Job control options
 #define PMIX_CLI_PAUSE                  "pause"                     // none

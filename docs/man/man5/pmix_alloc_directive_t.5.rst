@@ -24,6 +24,7 @@ C Syntax
    #define PMIX_ALLOC_RELEASE      3
    #define PMIX_ALLOC_REAQUIRE     4
    #define PMIX_ALLOC_REQ_CANCEL   5
+   #define PMIX_ALLOC_ACTIVATE     6
 
    /* define a value boundary beyond which implementers are free
     * to define their own directive values */
@@ -56,6 +57,16 @@ allocation request passed to
 
 ``PMIX_ALLOC_REQ_CANCEL`` (5)
    Cancel the indicated allocation request.
+
+``PMIX_ALLOC_ACTIVATE`` (6)
+   Bring resources the requestor already holds into service |mdash| for
+   example, start a daemon on an allocated node the runtime is not yet
+   spanning, so that jobs can be launched there. The resources are named
+   with ``PMIX_HOST`` and/or ``PMIX_HOSTFILE`` in the accompanying
+   :ref:`pmix_info_t(5) <man5-pmix_info_t>` array. Nothing is asked of the
+   scheduler and nothing is added to the allocation, so a host environment
+   may honor this request where it must refuse a request for new resources
+   |mdash| e.g., inside an allocation the scheduler owns.
 
 Values at or above ``PMIX_ALLOC_EXTERNAL`` (128) define a boundary beyond
 which implementers are free to define their own directive values.

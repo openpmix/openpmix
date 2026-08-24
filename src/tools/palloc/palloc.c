@@ -91,6 +91,7 @@ static struct option pallocptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_IMMEDIATE, PMIX_ARG_OPTIONAL, 'I'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_DEPENDENCY, PMIX_ARG_REQD, 'd'),
     PMIX_OPTION_DEFINE(PMIX_CLI_DO_NOT_WAIT, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_ACTIVATE, PMIX_ARG_REQD),
 
     PMIX_OPTION_END
 };
@@ -471,6 +472,20 @@ int main(int argc, char **argv)
 
     if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_SHRINK))) {
         directive = PMIX_ALLOC_RELEASE;
+    }
+
+    if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_ACTIVATE))) {
+        /* Bring resources we already hold into service.  Nothing is asked of
+         * the scheduler, so this carries no allocation request attributes at
+         * all - only the hosts to activate, named the way hosts are named
+         * everywhere else. */
+        directive = PMIX_ALLOC_ACTIVATE;
+        PMIX_INFO_LIST_ADD(rc, options, PMIX_HOST, opt->values[0], PMIX_STRING);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "PMIx info list add failed: %s\n", PMIx_Error_string(rc));
+            PMIX_INFO_LIST_RELEASE(options);
+            goto done;
+        }
     }
 
     if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_NO_SHELL))) {
