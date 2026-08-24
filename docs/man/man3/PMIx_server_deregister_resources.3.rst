@@ -140,6 +140,9 @@ and no callback is invoked. Other returns include:
 * ``PMIX_ERR_INIT`` |mdash| the PMIx server library has not been initialized.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because the
   library's progress engine has been stopped.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied |mdash| for
+  example, a ``NULL`` *info* array with a non-zero *ninfo*, or a qualifier
+  array whose node identifiers are not of the declared type.
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.

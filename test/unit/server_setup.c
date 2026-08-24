@@ -74,6 +74,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #define SUT_NSPACE "server-setup-ut"
@@ -690,6 +692,122 @@ static void test_setup_fork_reentry(void)
     alarm(0);
 }
 
+/* ------------------------------------------------------------------
+ * All four job-preparation entry points must screen the SERVER
+ * library's flag
+ *
+ * Their documented PMIX_ERR_INIT means "the PMIx server library has not
+ * been initialized", and pmix_globals.initialized does not answer that:
+ * PMIx_Init and PMIx_tool_init set it just as readily as
+ * PMIx_server_init does.
+ *
+ * A CLIENT is the case that bites the two resource calls. PMIx_Init
+ * constructs only the two IOF lists in pmix_server_globals, so gdata is
+ * still PMIX_LIST_STATIC_INIT, whose sentinel carries NULL next and prev
+ * pointers: the registration path writes through the NULL prev inside
+ * pmix_list_append and the deregistration path walks off the NULL next.
+ * Both are a SIGSEGV on the progress thread, taken after the entry point
+ * has already answered PMIX_SUCCESS - which is why these cases run in a
+ * forked child. A tool escapes the crash, PMIx_tool_init having called
+ * pmix_server_initialize(), but is owed the same refusal.
+ *
+ * The two setup calls do not crash - the pnet, pgpu and pmdl base
+ * fan-outs short-circuit on an empty actives list - but they are worse
+ * behaved for it: with those frameworks never opened, they did precisely
+ * nothing and reported success.
+ *
+ * The non-blocking form is used deliberately. The blocking form would
+ * have an unfixed library hang the child on a lock the dead progress
+ * thread can no longer wake, and a hang is a worse failure report than a
+ * signal.
+ * ------------------------------------------------------------------ */
+
+/* none of these may fire: the entry point must refuse before it shifts */
+static void must_not_fire_op(pmix_status_t status, void *cbdata)
+{
+    (void) status;
+    (void) cbdata;
+    _exit(2);
+}
+
+static void must_not_fire_setup(pmix_status_t status, pmix_info_t info[], size_t ninfo,
+                                void *provided_cbdata, pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    (void) status;
+    (void) info;
+    (void) ninfo;
+    (void) provided_cbdata;
+    (void) cbfunc;
+    (void) cbdata;
+    _exit(2);
+}
+
+static int setup_client_child(int which)
+{
+    pmix_proc_t myproc;
+    pmix_info_t info;
+    pmix_status_t rc;
+    uint32_t one = 1;
+
+    /* a singleton reports PMIX_ERR_UNREACH from init - it is fully
+     * initialized, it just has no server */
+    rc = PMIx_Init(&myproc, NULL, 0);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_UNREACH != rc) {
+        return 3;
+    }
+
+    PMIX_INFO_LOAD(&info, SUT_KEY, &one, PMIX_UINT32);
+    switch (which) {
+    case 0:
+        rc = PMIx_server_register_resources(&info, 1, must_not_fire_op, NULL);
+        break;
+    case 1:
+        rc = PMIx_server_deregister_resources(&info, 1, must_not_fire_op, NULL);
+        break;
+    case 2:
+        rc = PMIx_server_setup_application(myproc.nspace, &info, 1,
+                                           must_not_fire_setup, NULL);
+        break;
+    default:
+        rc = PMIx_server_setup_local_support(myproc.nspace, &info, 1,
+                                             must_not_fire_op, NULL);
+        break;
+    }
+    PMIX_INFO_DESTRUCT(&info);
+    if (PMIX_ERR_INIT != rc) {
+        PMIx_Finalize(NULL, 0);
+        return 1;
+    }
+    /* give the progress thread a turn: against an unfixed library the
+     * shifted handler is what crashes, and it has not run yet */
+    (void) PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, NULL);
+    PMIx_Finalize(NULL, 0);
+    return 0;
+}
+
+static void check_client_refusal(const char *name, int which)
+{
+    pid_t child;
+    int status = 0;
+
+    fflush(stdout);
+    child = fork();
+    if (0 == child) {
+        _exit(setup_client_child(which));
+    }
+    if (0 > child) {
+        report(name, 0);
+        return;
+    }
+    if (0 > waitpid(child, &status, 0)) {
+        report(name, 0);
+        return;
+    }
+    /* a child that died on a signal is the unfixed library crashing on
+     * the progress thread, which is exactly what the screen prevents */
+    report(name, WIFEXITED(status) && 0 == WEXITSTATUS(status));
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -699,6 +817,12 @@ int main(int argc, char **argv)
     (void) argv;
 
     fprintf(stdout, "server_setup: job-preparation unit tests\n");
+
+    /* these fork, so they run before this process becomes a server */
+    check_client_refusal("register_resources from a client is refused, not fatal", 0);
+    check_client_refusal("deregister_resources from a client is refused, not fatal", 1);
+    check_client_refusal("setup_application from a client is refused", 2);
+    check_client_refusal("setup_local_support from a client is refused", 3);
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {

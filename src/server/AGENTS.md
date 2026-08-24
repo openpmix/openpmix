@@ -821,6 +821,53 @@ delete-a-key entry point the `gds` module struct does not have, and it
 cannot be built the obvious way for `shmem3`, whose lock-free read path
 is the reason it is fast. See `docs/todo.rst`.
 
+**All four job-preparation entry points screen
+`pmix_server_globals.initialized`, not just `pmix_globals.initialized`.**
+The two resource calls are the ones that crash: `_register_resources`
+appends to `pmix_server_globals.gdata` and `_deregister_resources` walks
+it, and that list is only *statically* initialized until
+`pmix_server_initialize()` constructs it — `PMIX_LIST_STATIC_INIT` leaves
+the sentinel's `next` **and** `prev` NULL, so the append writes through
+NULL and the walk dereferences it. A client sets
+`pmix_globals.initialized` from `PMIx_Init` just as readily as a server
+does, so a client reaching either one was answered `PMIX_SUCCESS` and
+then took a SIGSEGV on the progress thread with the call already
+returned. `PMIx_server_setup_application` and `_setup_local_support` do
+not crash — the `pnet`, `pgpu` and `pmdl` base fan-outs all short-circuit
+on an empty `actives` list, which a static one reports correctly — but
+they are worse behaved for it: with those three frameworks opened only by
+`PMIx_server_init`, they did precisely nothing and reported success. All
+four man pages already said the API is available only after
+`PMIx_server_init` and defined `PMIX_ERR_INIT` as "the PMIx server
+library has not been initialized"; the code now agrees with them. A
+*tool* escapes the crash (`PMIx_tool_init` calls
+`pmix_server_initialize()`) but is owed the same refusal, since nothing
+in a tool will ever serve what it just registered. The forked cases in
+[`test/unit/server_setup.c`](../../test/unit/server_setup.c) hold all four
+to it; against an unfixed library the first two children die on signal 11
+and the last two report that the callback fired.
+
+**`PMIx_Data_array_create()` is two allocations and reports only the
+first.** It hands back a non-NULL `pmix_data_array_t` whose `size` is the
+count asked for and whose `array` is **NULL** when the element block
+could not be had — `pmix_bfrops_base_tma_data_array_construct` assigns
+`p->size` before it tries the block and has no way to report the
+failure. `prune_entry` tested the descriptor alone and then wrote through
+`darray->array`, so an allocation failure there was a NULL dereference
+rather than the `PMIX_ERR_NOMEM` it meant to return. Test both.
+
+**A `pmix_value_t` that is about to be filled in by `PMIX_VALUE_XFER`
+must be zeroed first.** The transfer sets `p->type` from the source
+*before* it fills the union, and every copy helper it dispatches to —
+`copy_pinfo`, `copy_coord`, `copy_geometry`, `copy_device`,
+`copy_devdist`, `copy_endpoint` — returns its out-of-memory status
+**without** writing through the destination pointer. (`copy_darray` is
+the exception: it assigns `*dest = NULL` first.) So a raw `malloc`ed
+destination came out of a failed transfer with a pointer-backed type
+sitting over whatever the heap happened to hold, and the value destructor
+then freed that address. `_register_resources` uses `calloc` for exactly
+that reason.
+
 **The helper APIs are pass-throughs, so the public entry point is the
 only place their arguments get screened.** `PMIx_generate_regex` /
 `_ppn` hand `input` and `regexp` straight to a `preg` component, and
@@ -2392,7 +2439,12 @@ Two suites cover the halves:
   screens and both mistyped arrays — take an unfixed library down rather
   than failing it; that was checked by reverting each screen in turn, and
   a regression therefore looks like an empty log and exit 139, not a FAIL
-  line.
+  line. The four entry-point refusals are the exception to the
+  "everything through the blocking form" rule: they run in a forked
+  child, before this process becomes a server, and use the *non-blocking*
+  form deliberately — the blocking one would have an unfixed library hang
+  the child on a lock the dead progress thread can no longer wake, and a
+  hang is a worse failure report than a signal.
 - [`test/unit/server_resolve.c`](../../test/unit/server_resolve.c) drives
   `pmix_server_resolve_peers` / `pmix_server_resolve_node` from
   hand-packed wire buffers against a host module with no `query` entry
