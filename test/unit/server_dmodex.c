@@ -22,6 +22,15 @@
  * been handled by pmix_server_purge_events for some time; this is the
  * same rule applied to the list going the other way.
  *
+ * Finalize is the second way to reach that state, and it looks correct
+ * where the departure case looked wrong. A bare PMIX_LIST_DESTRUCT of
+ * remote_pnd frees everything on it - the entry's destructor releases
+ * the caddy - so it leaks nothing. What it drops is the response
+ * function, which is the only thing that will ever tell the host what
+ * became of its request, and the host process outlives our finalize. So
+ * the last two cases park a request and then finalize, and the answer is
+ * the only observable: the list itself is gone by the time they run.
+ *
  * Ordering here is deterministic rather than timed. PMIx_server_dmodex_request
  * thread-shifts and returns, so the parking happens on the progress
  * thread; PMIx_Store_internal is a blocking call onto that same thread,
@@ -197,7 +206,33 @@ int main(int argc, char **argv)
     report("departure answered with a failure status",
            dm_fired && PMIX_SUCCESS != dm_status);
 
+    /* --- and a request still parked when the server finalizes --------- */
+    /* remote_pnd used to be torn down with a bare PMIX_LIST_DESTRUCT,
+     * which frees the caddies without ever calling the response function
+     * the host supplied - so the host was left holding a request it would
+     * never hear about again, and the host process outlives our finalize.
+     * The local_reqs list beside it had always been drained with a status
+     * for exactly this reason. */
+    rc = register_job();
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "re-register_job failed: %s\n", PMIx_Error_string(rc));
+        PMIx_server_finalize();
+        return 1;
+    }
+    dm_fired = false;
+    dm_status = PMIX_SUCCESS;
+    PMIX_LOAD_PROCID(&target, DMUT_NSPACE, 1);
+    rc = PMIx_server_dmodex_request(&target, dmresponse, NULL);
+    report("second dmodex request accepted", PMIX_SUCCESS == rc);
+    progress_barrier();
+    report("second request is parked", 1 == nparked());
+
     PMIx_server_finalize();
+
+    /* the list is gone by now, so the answer is the only observable */
+    report("finalize answered the parked request", dm_fired);
+    report("finalize answered with a failure status",
+           dm_fired && PMIX_SUCCESS != dm_status);
 
     fprintf(stdout, "server_dmodex: %d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;

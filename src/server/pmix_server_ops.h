@@ -267,6 +267,17 @@ PMIX_EXPORT void pmix_server_fail_remote_pnd(pmix_peer_t *peer,
                                              pmix_proc_t *proc,
                                              pmix_status_t status);
 
+/* Answer one parked request with a status, unlink it and release it. */
+PMIX_EXPORT void pmix_server_fail_remote_req(pmix_dmdx_remote_t *dcd,
+                                             pmix_status_t status);
+
+/* Answer every request still parked on remote_pnd. Both roles that own
+ * the list owe this at teardown for the same reason the local_reqs drain
+ * above is owed: a bare PMIX_LIST_DESTRUCT frees the caddies without ever
+ * calling the pmix_dmodex_response_fn_t the host supplied, so the host is
+ * left holding a request it will never hear about again. */
+PMIX_EXPORT void pmix_server_drain_remote_pnd(pmix_status_t status);
+
 PMIX_EXPORT pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 
