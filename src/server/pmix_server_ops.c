@@ -363,6 +363,7 @@ static void lkcbfunc(pmix_status_t status, pmix_pdata_t data[],
     }
     PMIX_RELEASE(cd);
 }
+
 pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
                                  pmix_lookup_cbfunc_t cbfunc,
                                  void *cbdata)
