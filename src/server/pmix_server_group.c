@@ -52,22 +52,12 @@
 #endif
 #include <event.h>
 
-#include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
-#include "src/common/pmix_attributes.h"
-#include "src/common/pmix_iof.h"
-#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/bfrops/base/base.h"
-#include "src/mca/gds/base/base.h"
-#include "src/mca/plog/plog.h"
-#include "src/mca/pnet/pnet.h"
-#include "src/mca/psensor/psensor.h"
 #include "src/mca/ptl/base/base.h"
-#include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
-#include "src/util/pmix_environ.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "pmix_server_ops.h"
@@ -99,6 +89,11 @@ typedef struct {
 } grp_block_t;
 static void gbcon(grp_block_t *p)
 {
+    /* PMIX_NEW mallocs rather than callocs, so the event has to be zeroed
+     * here: gbdes hands it to pmix_event_del, and the event_active guard is
+     * then the only thing standing between us and a garbage ev_base. Same
+     * reason tcon memsets the fence tracker's. */
+    memset(&p->ev, 0, sizeof(pmix_event_t));
     p->id = NULL;
     p->grpop = PMIX_GROUP_NONE;
     p->event_active = false;
@@ -193,7 +188,14 @@ typedef struct {
 } grp_shifter_t;
 static void scon(grp_shifter_t *p)
 {
+    memset(&p->ev, 0, sizeof(pmix_event_t));
+    /* nothing in the tree ever waits on or wakes this lock - grpcbfunc's
+     * callers are all told the answer through the participants' replies,
+     * never through a lock. It is constructed and destructed only because
+     * pthread_mutex_init may allocate. Do not read its presence as
+     * evidence that a blocking waiter exists somewhere. */
     PMIX_CONSTRUCT_LOCK(&p->lock);
+    p->status = PMIX_SUCCESS;
     p->info = NULL;
     p->ninfo = 0;
     p->blk = NULL;
@@ -252,8 +254,8 @@ static void check_definition_complete(grp_block_t *blk)
             }
             if (0 == nptr->nlocalprocs) {
                 /* the host has informed us that this nspace has no local procs */
-                pmix_output_verbose(5, pmix_server_globals.fence_output,
-                                    "pmix_server_new_tracker: nspace %s has no local procs",
+                pmix_output_verbose(5, pmix_server_globals.group_output,
+                                    "check_definition_complete: nspace %s has no local procs",
                                     trk->pcs[i].nspace);
                 continue;
             }
@@ -276,15 +278,15 @@ static void check_definition_complete(grp_block_t *blk)
             if (!nptr->all_registered) {
                 /* nope, so no point in going further on this one - we'll
                  * process it once all the procs are known */
-                pmix_output_verbose(5, pmix_server_globals.fence_output,
-                                    "pmix_server_new_tracker: all clients not registered nspace %s",
+                pmix_output_verbose(5, pmix_server_globals.group_output,
+                                    "check_definition_complete: all clients not registered nspace %s",
                                     trk->pcs[i].nspace);
                 return;
             }
             /* is this one of my local ranks? */
             PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
                 if (trk->pcs[i].rank == info->pname.rank) {
-                    pmix_output_verbose(5, pmix_server_globals.fence_output,
+                    pmix_output_verbose(5, pmix_server_globals.group_output,
                                         "adding local proc %s.%d to tracker", info->pname.nspace,
                                         info->pname.rank);
                     /* track the count */
