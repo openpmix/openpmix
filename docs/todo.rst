@@ -564,16 +564,18 @@ after the call has already returned).
 ``PMIx_server_define_process_set`` and ``_delete_process_set`` were
 closed the same way (2026-08-24), covered by the forked cases in
 ``test/unit/progress_threads.c``; a client reaching either one SIGSEGVs
-on the progress thread against an unfixed library.
+on the progress thread against an unfixed library.  The four
+registration entry points followed (2026-08-24) — ``_register_nspace``
+and ``_register_client`` walk ``pmix_server_globals.collectives`` and
+``_deregister_nspace`` fans out to ``pnet``, ``pgpu`` and ``pmdl`` —
+covered by the forked cases in ``test/unit/server_registration.c``.
 
 What is deferred is the sweep over the rest, because the answer is not
 uniform and each entry point needs checking against its real callers
 first:
 
 * **Almost certainly want the screen** — they walk ``pmix_server_globals``
-  or fan out to a server-only framework: ``PMIx_server_register_nspace``,
-  ``_deregister_nspace``, ``_register_client``, ``_deregister_client``
-  (``pmix_server_registration.c``); ``PMIx_server_register_resources``,
+  or fan out to a server-only framework: ``PMIx_server_register_resources``,
   ``_deregister_resources``, ``_setup_application``,
   ``_setup_local_support`` (``pmix_server_setup.c``);
   ``PMIx_server_IOF_deliver``, ``_IOF_flow_control``
