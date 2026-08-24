@@ -312,6 +312,7 @@ static void lmcon(pmix_dmdx_local_t *p)
     PMIX_CONSTRUCT(&p->loc_reqs, pmix_list_t);
     p->info = NULL;
     p->ninfo = 0;
+    p->requested = false;
 }
 static void lmdes(pmix_dmdx_local_t *p)
 {

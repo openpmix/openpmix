@@ -250,6 +250,19 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     }
     PMIX_LOAD_NSPACE(nspace, cptr);
     free(cptr);
+    /* An empty namespace is not a harmless nuisance here. PMIX_CHECK_NSPACE
+     * short-circuits to "true" for an invalid name, and both the tracker
+     * lookup in create_local_tracker and the sweep in pmix_pending_resolve
+     * compare with it - so a request naming one joins whatever direct-modex
+     * tracker happens to carry the same rank, and, worse, every later
+     * request for that rank in a real namespace then joins the bogus
+     * tracker in turn and is answered from the wrong proc. Reject it here
+     * rather than letting it into the pending lists. */
+    if (PMIX_UNLIKELY(PMIx_Nspace_invalid(nspace))) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &rank, &cnt, PMIX_PROC_RANK);
     if (PMIX_SUCCESS != rc) {
@@ -365,12 +378,23 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         if (NULL != psets) {
             data = PMIx_Argv_join(psets, ',');
             PMIx_Argv_free(psets);
+            if (NULL == data) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                return PMIX_ERR_NOMEM;
+            }
             // pass it back
             // we have to assemble this data into a form that
             // the client_get function can properly unpack
+            PMIX_KVAL_NEW(kval, PMIX_PSET_NAMES);
+            if (NULL == kval) {
+                /* nothing screens this one - we reach through it on the
+                 * very next line */
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                free(data);
+                return PMIX_ERR_NOMEM;
+            }
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             PMIX_CONSTRUCT(&cb, pmix_cb_t);
-            PMIX_KVAL_NEW(kval, PMIX_PSET_NAMES);
             kval->value->data.string = data;
             kval->value->type = PMIX_STRING;
             pmix_list_append(&cb.kvs, &kval->super);
@@ -833,6 +857,10 @@ request:
          * namespace deregistration for the target retires every tracker
          * naming it - so take a reference for the host to hold */
         PMIX_RETAIN(lcd);
+        /* record that this target is now with the host, so the registration
+         * flow does not ask a second time for the same tracker - see
+         * pmix_pending_nspace_requests */
+        lcd->requested = true;
         rc = pmix_host_server.direct_modex(&lcd->proc, lcd->info, lcd->ninfo, dmdx_cbfunc, lcd);
         /* this up-call's entire product is a data blob delivered through
          * dmdx_cbfunc, so an atomic "success" carrying nothing cannot be
@@ -845,6 +873,7 @@ request:
         if (PMIX_SUCCESS != rc) {
             /* may have a function entry but not support the request - it
              * will not call us back, so give the reference back */
+            lcd->requested = false;
             PMIX_RELEASE(lcd);
             discard_local_tracker(lcd);
         }
@@ -898,8 +927,15 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char 
     }
     PMIX_LOAD_PROCID(&lcd->proc, nspace, rank);
     if (0 < ninfo) {
+        PMIX_INFO_CREATE(lcd->info, ninfo);
+        if (NULL == lcd->info) {
+            /* nothing screens this one - we index the array ourselves.
+             * The tracker is not on the list yet, so a plain release is
+             * enough to take it back */
+            PMIX_RELEASE(lcd);
+            return PMIX_ERR_NOMEM;
+        }
         lcd->ninfo = ninfo;
-        PMIX_INFO_CREATE(lcd->info, lcd->ninfo);
         for (n = 0; n < ninfo; n++) {
             PMIX_INFO_XFER(&lcd->info[n], &info[n]);
         }
@@ -925,6 +961,19 @@ complete:
     }
     if (NULL != key) {
         req->key = strdup(key);
+        if (NULL == req->key) {
+            /* the key is not decoration: check_req hands it back to
+             * _satisfy_request for a PMIX_RANK_UNDEF target, and a NULL
+             * there quietly widens the answer to every non-reserved key
+             * this proc holds - which is not what the caller asked for,
+             * and does not contain a reserved key at all */
+            PMIX_RELEASE(req);
+            if (PMIX_ERR_NOT_FOUND == rc) {
+                pmix_list_remove_item(&pmix_server_globals.local_reqs, &lcd->super);
+                PMIX_RELEASE(lcd);
+            }
+            return PMIX_ERR_NOMEM;
+        }
     }
     PMIX_RETAIN(lcd);
     req->lcd = lcd;
@@ -971,11 +1020,23 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
         /* if not found - this is remote process and we need to send
          * corresponding direct modex request */
         if (!found) {
+            if (cd->requested) {
+                /* pmix_server_get already handed this target to the host -
+                 * it does so for any request naming a namespace we did not
+                 * yet know, which is precisely the kind of request still
+                 * sitting here when that namespace finally registers. The
+                 * host is working on it and will call dmdx_cbfunc; asking
+                 * again buys a second answer we throw away, and the second
+                 * up-call is indistinguishable from a first to a host that
+                 * de-duplicates by target. */
+                continue;
+            }
             rc = PMIX_ERR_NOT_SUPPORTED;
             if (NULL != pmix_host_server.direct_modex) {
                 /* hand the host a reference of its own - see the matching
                  * comment in pmix_server_get */
                 PMIX_RETAIN(cd);
+                cd->requested = true;
                 rc = pmix_host_server.direct_modex(&cd->proc, cd->info, cd->ninfo, dmdx_cbfunc, cd);
                 if (PMIX_UNLIKELY(PMIX_OPERATION_SUCCEEDED == rc)) {
                     /* see the matching note in pmix_server_get */
@@ -984,6 +1045,7 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
                     rc = PMIX_ERR_NOT_SUPPORTED;
                 }
                 if (PMIX_SUCCESS != rc) {
+                    cd->requested = false;
                     PMIX_RELEASE(cd);
                 }
             }
@@ -1306,8 +1368,11 @@ static void check_req(pmix_namespace_t *nptr,
             }
             rc = _satisfy_request(nptr, rank, key, &scd, diffnspace, scope,
                                   req->cbfunc, req->cbdata);
-            if (PMIX_SUCCESS != rc) {
-                /* if we can't satisfy this particular request (missing key?) */
+            if (PMIX_SUCCESS != rc && NULL != req->cbfunc) {
+                /* if we can't satisfy this particular request (missing key?).
+                 * Screen the callback the way the error arm above and
+                 * pmix_server_fail_local_reqs do - dmrqcon nulls it
+                 * precisely so that the test means something */
                 req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);
             }
             pmix_list_remove_item(&ptr->loc_reqs, &req->super);
@@ -1407,11 +1472,27 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
         nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == nptr) {
             /* everything below dereferences this, and pmix_pending_resolve
-             * takes it as its first argument */
+             * takes it as its first argument - so we cannot go through the
+             * ordinary completion. We still have to answer the clients
+             * parked on this tracker: they are blocked in PMIx_Get, this
+             * reply was the only thing that was ever going to free them,
+             * and simply releasing our reference leaves the tracker on
+             * local_reqs with every one of them still waiting. */
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            pmix_server_fail_local_reqs(caddy->lcd, PMIX_ERR_NOMEM);
             goto release;
         }
         nptr->nspace = strdup(caddy->lcd->proc.nspace);
+        if (NULL == nptr->nspace) {
+            /* a nameless namespace on the global list is worse than no
+             * namespace at all: pmix_server_get looks its target up with
+             * a bare strcmp against this field, and PMIX_CHECK_NSPACE
+             * treats a NULL name as a wildcard that matches everything */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            PMIX_RELEASE(nptr);
+            pmix_server_fail_local_reqs(caddy->lcd, PMIX_ERR_NOMEM);
+            goto release;
+        }
         /* add to the list */
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
@@ -1449,6 +1530,11 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
             if (!found) {
                 /* add it */
                 nm = PMIX_NEW(pmix_nspace_caddy_t);
+                if (NULL == nm) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    caddy->status = PMIX_ERR_NOMEM;
+                    goto complete;
+                }
                 PMIX_RETAIN(cd->peer->nptr);
                 nm->ns = cd->peer->nptr;
                 pmix_list_append(&nspaces, &nm->super);
@@ -1517,9 +1603,30 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                     PMIX_DESTRUCT(&cb);
                 }
             } else {
-                PMIX_LOAD_BUFFER(pmix_globals.mypeer, &pbkt, caddy->data, caddy->ndata);
+                /* NON_DESTRUCT: the ordinary PMIX_LOAD_BUFFER NULLs the
+                 * source pointer and zeroes its length, and this loop
+                 * visits the blob once per unique requester namespace.
+                 * So the first pass consumed caddy->data and every later
+                 * one saw NULL and silently took the arm above - the one
+                 * that assumes the data arrived through register_nspace -
+                 * storing a job-level transfer nobody asked for instead of
+                 * the modex the host just handed us. Leave the caddy's
+                 * pointer alone; pbkt is disowned before it is destructed
+                 * on every path below. */
+                PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &pbkt,
+                                              caddy->data, caddy->ndata);
                 /* unpack and store it*/
                 kv = PMIX_NEW(pmix_kval_t);
+                if (NULL == kv) {
+                    /* PMIX_RELEASE dereferences unconditionally, so a NULL
+                     * here would fault at the bottom of the loop rather
+                     * than being screened by the unpack */
+                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    caddy->status = PMIX_ERR_NOMEM;
+                    pbkt.base_ptr = NULL; // do not free the caller's data
+                    PMIX_DESTRUCT(&pbkt);
+                    goto complete;
+                }
                 cnt = 1;
                 PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, kv, &cnt, PMIX_KVAL);
                 while (PMIX_SUCCESS == rc) {
@@ -1538,6 +1645,13 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                     }
                     PMIX_RELEASE(kv);
                     kv = PMIX_NEW(pmix_kval_t);
+                    if (NULL == kv) {
+                        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                        caddy->status = PMIX_ERR_NOMEM;
+                        pbkt.base_ptr = NULL; // do not free the caller's data
+                        PMIX_DESTRUCT(&pbkt);
+                        goto complete;
+                    }
                     cnt = 1;
                     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, kv, &cnt, PMIX_KVAL);
                 }
