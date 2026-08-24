@@ -344,6 +344,9 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * in one of our nspaces, but we didn't know all the local procs
      * and so couldn't determine the proc was remote */
     pmix_pending_nspace_requests(nptr);
+    /* and any group block whose definition was blocked on a participant
+     * namespace we had not been told about */
+    pmix_server_grp_check_pending();
     rc = PMIX_SUCCESS;
 
 release:
@@ -1203,6 +1206,9 @@ static void _register_client(int sd, short args, void *cbdata)
          * in one of our nspaces, but we didn't know all the local procs
          * and so couldn't determine the proc was remote */
         pmix_pending_nspace_requests(nptr);
+        /* and any group block whose definition was blocked on a
+         * participant namespace we had not been told about */
+        pmix_server_grp_check_pending();
     }
     rc = PMIX_SUCCESS;
 

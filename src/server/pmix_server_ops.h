@@ -616,4 +616,9 @@ PMIX_EXPORT void pmix_server_grp_peer_lost(pmix_peer_t *peer);
 
 PMIX_EXPORT void pmix_server_grp_member_left(const char *grpid, const pmix_proc_t *proc);
 
+/* Re-drive any in-flight group block whose definition was waiting on a
+ * namespace that has just been registered - the group-family counterpart
+ * of pmix_pending_nspace_requests, called from the same two sites. */
+PMIX_EXPORT void pmix_server_grp_check_pending(void);
+
 #endif // PMIX_SERVER_OPS_H

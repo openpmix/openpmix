@@ -1409,6 +1409,49 @@ for the participant being served, and they are all directly inside the
 deeper. A bare `break` there escaped only the info loop and fell through
 to `PMIX_SERVER_QUEUE_REPLY` on the buffer it had just released.
 
+**A group id off the wire can be NULL, and everything here treats it as a
+string.** The string unpacker spells "zero length" as a NULL pointer and
+reports success, so `PMIx_Group_construct("")` from any local client
+reached `get_tracker`, which `strcmp`s the id against every block on
+`grp_collectives` and then `strdup`s it into a new one. The client
+library screens a NULL pointer, which an empty string is not — and a
+screen there would not help anyway, since the value arrives from a peer.
+`pmix_server_group` rejects it before anything else looks at it. Same
+class as the invalid-namespace screen in `pmix_server_get.c`.
+
+**Driving a completion claims the block, and `host_called` is what says
+so.** The name is now narrower than the meaning: the flag marks the local
+phase frozen, whether it was frozen by handing the block to the host or
+by driving `grpcbfunc` ourselves. It has to cover both, because
+`_grpcbfunc` runs a thread-shift later — and until it does, the block is
+still on `grp_collectives` looking complete and unclaimed. The internal
+drives (the two `PMIX_OPERATION_SUCCEEDED` arms and the two
+`aggregate_info` failures) did not set it, so a participant call landing
+in that window found the block, appended its caddy, judged the local
+phase complete and handed the *same block* to the host a second time —
+which then completed on memory `_grpcbfunc` had freed. It is set in
+`grpcbfunc` itself, one choke point rather than six call sites, and only
+once the thread-shift is certain: the `PMIX_NEW` failure above it leaves
+the block unclaimed and rescuable. This is the group family's spelling of
+the fence family's `completion_fired`.
+
+**`check_definition_complete` gives up on an unknown namespace, so
+something has to call it again.** It returns the moment it meets a
+participant namespace this server has not been told about, and for a long
+time the *only* thing that ever called it again was the arrival of
+another local participant. So a group naming a namespace that registers
+late — or one that places no procs here at all, and is therefore
+registered only when the job it belongs to is set up — was never marked
+definition-complete once its last local participant had already
+contributed. The block sat on `grp_collectives` for the life of the
+server with every one of those participants blocked in
+`PMIx_Group_construct`. `pmix_server_grp_check_pending()` is the group
+family's counterpart to the collective walk `_register_nspace` and
+`_register_client` already do for the fence family, and it is called from
+the same two places. The completion tail it shares with
+`account_departed` lives in `forward_to_host()`; **a third path that
+discovers a block is locally complete must call that, not copy it.**
+
 Two things here are safe and look as though they should not be. A block
 handed to the host survives the call without any reference of its own —
 unlike the dmodex tracker above — because `host_called` is set before
@@ -1985,6 +2028,18 @@ Two suites cover the halves:
   to rest on `peer->send_msg` and a single process can unpack what the
   server actually packed. Use that idiom rather than a host stub's
   arguments when what you need to pin down is what crossed the wire.
+- [`test/unit/server_group.c`](../../test/unit/server_group.c) drives
+  `pmix_server_group` from hand-packed wire buffers against a host stub
+  that declines every request — declining is what makes each case leave
+  `grp_collectives` empty, since the refusal arm answers every
+  participant and tears the block down. Its empty-group-id case takes an
+  unfixed library down with SIGSEGV rather than failing it, and its
+  late-registration pair is the only thing in the suite that reaches
+  `pmix_server_grp_check_pending`: the block parks, the namespace
+  registers, and the block must then go up to the host. Its driver
+  thread-shifts, because the handler touches
+  `pmix_server_globals.grp_collectives` and must not be called from
+  `main()`.
 - [`test/unit/server_fence.c`](../../test/unit/server_fence.c) drives
   `pmix_server_fence` from hand-packed wire buffers: the two malformed
   counts above, and a well-formed request whose seeded info slots must
