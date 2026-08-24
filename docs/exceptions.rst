@@ -1263,6 +1263,36 @@ Attributes
        form of a comma separated list of
        "MAJOR.MINOR" pairs
 
+   * - ``PMIX_SPAWN_ALLOC`` ``pmix.spwn.alloc``
+     - ``(pmix_data_array_t*)``
+     - An entire allocation request, to be
+       executed before the applications are
+       spawned - the host obtains the
+       allocation, waits for it, and only
+       then spawns into it. The array is of
+       pmix_info_t and begins with the
+       request's directive
+       (PMIX_ALLOC_REQ_DIRECTIVE); the
+       remaining elements are the info array
+       the request would have carried had it
+       been passed to
+       PMIx_Allocation_request. The spawn is
+       not attempted if the allocation is
+       refused (PMIX_ERR_JOB_ALLOC_FAILED is
+       returned instead), and a spawn that
+       then fails releases the allocation it
+       obtained
+
+   * - ``PMIX_ALLOC_REQ_DIRECTIVE`` ``pmix.alloc.dir``
+     - ``(pmix_alloc_directive_t)``
+     - The directive of an allocation request
+       that is being carried as data rather
+       than passed to the allocation API -
+       see PMIX_SPAWN_ALLOC. The API takes
+       its directive as a parameter, so this
+       exists to say the same thing where
+       there is no parameter to say it in
+
 .. note:: The attribute ``PMIX_DEBUG_STOP_IN_APP`` has been modified
           to only support a ``PMIX_BOOL`` value instead of an optional
           array of ranks due to questions over the use-case calling

@@ -190,6 +190,22 @@ operation. Placement, mapping, and resource selection:
 * ``PMIX_SPAWN_TARGET`` (varies) |mdash| specify the allocation(s) to use when
   mapping the applications. The value is a ``char*`` ``PMIX_ALLOC_ID``, or a
   ``pmix_data_array_t`` of such allocation-ID strings.
+* ``PMIX_SPAWN_ALLOC`` (pmix_data_array_t\*) |mdash| an entire allocation
+  request, to be executed *before* the applications are spawned: the host
+  obtains the allocation, waits for it, and only then spawns into it. The array
+  is of :ref:`pmix_info_t(5) <man5-pmix_info_t>` and begins with the request's
+  directive (``PMIX_ALLOC_REQ_DIRECTIVE``, a
+  :ref:`pmix_alloc_directive_t(5) <man5-pmix_alloc_directive_t>`); the
+  remaining elements are the info array the request would have carried had it
+  been passed to
+  :ref:`PMIx_Allocation_request(3) <man3-PMIx_Allocation_request>`. This saves
+  a caller the two-step of asking a scheduler for an allocation and then
+  invoking a launcher inside it |mdash| issuing the allocation request itself,
+  waiting for it, and only then spawning |mdash| and, more importantly, makes
+  the two operations one thing that either happens or does not: the spawn is
+  not attempted if the allocation is refused, and an allocation obtained for a
+  spawn that then fails is released again. See `RETURN VALUE`_ for how the
+  caller tells the two failures apart.
 * ``PMIX_APP_ARGV`` (char\*) |mdash| the consolidated ``argv`` passed to the spawn
   command for the given application.
 * ``PMIX_INDEX_ARGV`` (bool) |mdash| mark each process's ``argv`` with the rank of
@@ -460,7 +476,9 @@ processing; the final status and assigned namespace are delivered to ``cbfunc``.
 
 * ``PMIX_SUCCESS`` |mdash| the job was successfully launched.
 * ``PMIX_ERR_JOB_ALLOC_FAILED`` |mdash| the job could not be executed due to
-  failure to obtain the specified allocation.
+  failure to obtain the specified allocation |mdash| the allocation request
+  carried by ``PMIX_SPAWN_ALLOC`` was refused, or timed out. Nothing was
+  launched, and this is what distinguishes that outcome from a launch failure.
 * ``PMIX_ERR_JOB_APP_NOT_EXECUTABLE`` |mdash| the specified executable could not be
   found or lacks execution privileges.
 * ``PMIX_ERR_JOB_NO_EXE_SPECIFIED`` |mdash| the request did not specify an
