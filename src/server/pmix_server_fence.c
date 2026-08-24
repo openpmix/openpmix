@@ -1649,7 +1649,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
              * will acknowledge successful acceptance of the fence request,
              * but the client still requires a return from the callback in
              * that scenario, so we leave this caddy on the list of local cbs */
-            rc = trk->info[trk->ninfo-1].value.data.status;
+            rc = pmix_server_get_collective_status(trk->info, trk->ninfo);
             trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
             rc = PMIX_SUCCESS;  // ensure the switchyard doesn't release the caddy
             goto cleanup;
@@ -1730,7 +1730,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
              * the modexcbfunc thread-shifts the call prior to processing,
              * so it is okay to call it directly from here */
             trk->host_called = false; // the host will not be calling us back
-            rc = trk->info[trk->ninfo-1].value.data.status;
+            rc = pmix_server_get_collective_status(trk->info, trk->ninfo);
             trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
             /* ensure that the switchyard doesn't release the caddy */
             rc = PMIX_SUCCESS;
@@ -1890,6 +1890,14 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
         }
         if (!flag) {
             dp = PMIX_NEW(pmix_proclist_t);
+            if (NULL == dp) {
+                /* we cannot record the departure, so leave this
+                 * collective's accounting alone rather than reporting a
+                 * health it has not been given - its PMIX_TIMEOUT, if
+                 * one was set, is what will release the survivors */
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                continue;
+            }
             PMIX_LOAD_PROCID(&dp->proc, peer->info->pname.nspace,
                              peer->info->pname.rank);
             pmix_list_append(&trk->departed, &dp->super);
