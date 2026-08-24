@@ -364,38 +364,6 @@ it: a ``strdup`` that fails midway through the walk returns
 worth a rollback on its own, but it would come out in the wash of a
 validate-then-apply split.
 
-A host-completed registration acks the client after replaying its cache
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``pmix_server_register_events`` (``src/server/pmix_server_events.c``)
-deliberately defers its replay of the notification cache so that a client
-receives the acknowledgement of its registration *before* any event that
-replay delivers.  On the two arms that complete locally this holds: the
-handler returns ``PMIX_OPERATION_SUCCEEDED``, the switchyard's caller
-queues the ack inline, and only then does the thread-shifted
-``_check_cached_events`` run.
-
-On the arm where the host takes the registration and completes it
-asynchronously, the ack is the ``scd->opcbfunc`` that
-``_check_cached_events`` invokes at its *end* - and that callback,
-``pmix_server_events_cbfunc``, thread-shifts again before it queues
-anything.  So the replayed notifications reach the wire first and the
-ordering is inverted.  Nothing is lost or misrouted: the client's handler
-is in its local list from the moment ``_add_hdlr`` ran, so the event is
-delivered to a handler that exists - it simply fires before the
-registration's completion callback does, which matters to an application
-that does bookkeeping in that callback.
-
-Restoring the order means queueing the ack ahead of the relays.  Doing
-that by invoking ``opcbfunc`` first and re-shifting the replay would rest
-on libevent's relative ordering of two separately activated events, which
-is a stronger assumption than the "a shifted event runs after we return"
-guarantee that every other ordering argument in this tree uses; doing it
-by queueing the reply directly would mean the handler assuming it knows
-which ``pmix_op_cbfunc_t`` it was given.  Neither is obviously right,
-which is why this is recorded rather than repaired.
-
-
 A pruned deregistration is not propagated
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
