@@ -568,16 +568,27 @@ on the progress thread against an unfixed library.  The four
 registration entry points followed (2026-08-24) — ``_register_nspace``
 and ``_register_client`` walk ``pmix_server_globals.collectives`` and
 ``_deregister_nspace`` fans out to ``pnet``, ``pgpu`` and ``pmdl`` —
-covered by the forked cases in ``test/unit/server_registration.c``.  The
-four job-preparation entry points in ``pmix_server_setup.c`` followed
-(2026-08-24): ``PMIx_server_register_resources`` and
-``_deregister_resources`` append to and walk ``pmix_server_globals.gdata``
-(a client taking SIGSEGV on the progress thread after being answered
-``PMIX_SUCCESS``), while ``PMIx_server_setup_application`` and
-``_setup_local_support`` fan out to ``pnet``, ``pgpu`` and ``pmdl``, which
-``PMIx_server_init`` alone opens — so outside a server they did nothing
-and reported success.  Covered by the forked cases in
-``test/unit/server_setup.c``.
+covered by the forked cases in ``test/unit/server_registration.c``.
+``PMIx_server_register_resources`` and ``_deregister_resources``
+(``pmix_server_setup.c``) followed (2026-08-24): both append to and walk
+``pmix_server_globals.gdata``, so a client took SIGSEGV on the progress
+thread after being answered ``PMIX_SUCCESS``.  Covered by the forked
+cases in ``test/unit/server_setup.c``.
+
+**``PMIx_server_setup_application`` and ``_setup_local_support`` were
+tried and reverted, and the reason is the general warning for the rest of
+this sweep.**  They were screened in the same change and it broke every
+PRRTE ``prun`` launch with ``PMIX_ERR_INIT``.  A launcher comes up
+through ``PMIx_tool_init``, which opens ``pmdl`` unconditionally and
+``pnet`` for a launcher precisely so it can ask a server to launch
+something, and ``prun_common.c`` calls ``PMIx_server_setup_application``
+in that state without ever calling ``PMIx_server_init``.  The frameworks
+already answer per role one level down —
+``pmix_pmdl_base_harvest_envars`` returns ``PMIX_ERR_INIT`` when ``pmdl``
+was never opened — so the entry-point screen added nothing and refused a
+legitimate caller.  **Before screening any remaining entry point, check
+its callers in PRRTE and not only in this tree**, and check specifically
+for a launcher reaching it after ``PMIx_tool_init``.
 
 What is deferred is the sweep over the rest, because the answer is not
 uniform and each entry point needs checking against its real callers
@@ -590,6 +601,9 @@ first:
   ``PMIx_server_dmodex_request`` (``pmix_server_dmodex.c``);
   ``PMIx_server_collect_job_info`` (``pmix_server_fence.c``);
   ``PMIx_server_setup_fork`` (``pmix_server.c``).
+* **Known must not get it** — ``PMIx_server_setup_application`` and
+  ``_setup_local_support`` (``pmix_server_setup.c``), for the reason
+  recorded above: a launcher calls them after ``PMIx_tool_init`` alone.
 * **Almost certainly must not get it** — pure helpers over ``preg`` and
   hwloc, both of which ``pmix_rte_init`` stands up for every role, so
   they work correctly in a client today: ``PMIx_generate_regex``,

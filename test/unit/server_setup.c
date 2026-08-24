@@ -65,6 +65,7 @@
 
 #include "include/pmix.h"
 #include "include/pmix_server.h"
+#include "include/pmix_tool.h"
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
@@ -711,10 +712,18 @@ static void test_setup_fork_reentry(void)
  * forked child. A tool escapes the crash, PMIx_tool_init having called
  * pmix_server_initialize(), but is owed the same refusal.
  *
- * The two setup calls do not crash - the pnet, pgpu and pmdl base
- * fan-outs short-circuit on an empty actives list - but they are worse
- * behaved for it: with those frameworks never opened, they did precisely
- * nothing and reported success.
+ * The two SETUP calls are deliberately NOT screened that way, and the
+ * last two cases here are what keeps anyone from "fixing" that. They fan
+ * out to pnet, pgpu and pmdl, and PMIx_tool_init opens pmdl
+ * unconditionally and pnet for a launcher - saying so at the site, "we
+ * might need them if we are asking a server to launch something for us".
+ * PRRTE's prun is exactly that caller: it reaches
+ * PMIx_server_setup_application through prun_common.c after
+ * PMIx_tool_init and never calls PMIx_server_init at all, so screening
+ * the server library's flag turned every prun launch into
+ * PMIX_ERR_INIT. A plain client stands in for that here, since the API
+ * cannot tell the two apart: the call must be accepted and its callback
+ * must fire.
  *
  * The non-blocking form is used deliberately. The blocking form would
  * have an unfixed library hang the child on a lock the dead progress
@@ -730,16 +739,32 @@ static void must_not_fire_op(pmix_status_t status, void *cbdata)
     _exit(2);
 }
 
-static void must_not_fire_setup(pmix_status_t status, pmix_info_t info[], size_t ninfo,
-                                void *provided_cbdata, pmix_op_cbfunc_t cbfunc, void *cbdata)
+/* the setup pair must reach their callback, so these record that it
+ * happened rather than refusing to be called */
+static int setup_fired = 0;
+static pmix_status_t setup_status = PMIX_ERR_NOT_SUPPORTED;
+
+static void accepted_setup(pmix_status_t status, pmix_info_t info[], size_t ninfo,
+                           void *provided_cbdata, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    (void) status;
     (void) info;
     (void) ninfo;
     (void) provided_cbdata;
-    (void) cbfunc;
+
+    setup_fired = 1;
+    setup_status = status;
+    /* the library owns whatever came back and frees it when we call this */
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
+}
+
+static void accepted_op(pmix_status_t status, void *cbdata)
+{
     (void) cbdata;
-    _exit(2);
+
+    setup_fired = 1;
+    setup_status = status;
 }
 
 static int setup_client_child(int which)
@@ -757,32 +782,101 @@ static int setup_client_child(int which)
     }
 
     PMIX_INFO_LOAD(&info, SUT_KEY, &one, PMIX_UINT32);
-    switch (which) {
-    case 0:
-        rc = PMIx_server_register_resources(&info, 1, must_not_fire_op, NULL);
-        break;
-    case 1:
-        rc = PMIx_server_deregister_resources(&info, 1, must_not_fire_op, NULL);
-        break;
-    case 2:
+    if (0 == which || 1 == which) {
+        /* the two that must be refused */
+        if (0 == which) {
+            rc = PMIx_server_register_resources(&info, 1, must_not_fire_op, NULL);
+        } else {
+            rc = PMIx_server_deregister_resources(&info, 1, must_not_fire_op, NULL);
+        }
+        PMIX_INFO_DESTRUCT(&info);
+        if (PMIX_ERR_INIT != rc) {
+            PMIx_Finalize(NULL, 0);
+            return 1;
+        }
+        /* give the progress thread a turn: against an unfixed library the
+         * shifted handler is what crashes, and it has not run yet */
+        (void) PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, NULL);
+        PMIx_Finalize(NULL, 0);
+        return 0;
+    }
+
+    /* the two that must be ACCEPTED - a launcher reaches these with no
+     * PMIx_server_init behind it */
+    if (2 == which) {
         rc = PMIx_server_setup_application(myproc.nspace, &info, 1,
-                                           must_not_fire_setup, NULL);
-        break;
-    default:
+                                           accepted_setup, NULL);
+    } else {
         rc = PMIx_server_setup_local_support(myproc.nspace, &info, 1,
-                                             must_not_fire_op, NULL);
-        break;
+                                             accepted_op, NULL);
     }
     PMIX_INFO_DESTRUCT(&info);
-    if (PMIX_ERR_INIT != rc) {
+    if (PMIX_SUCCESS != rc) {
         PMIx_Finalize(NULL, 0);
         return 1;
     }
-    /* give the progress thread a turn: against an unfixed library the
-     * shifted handler is what crashes, and it has not run yet */
-    (void) PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, NULL);
+    /* the callback lands on the progress thread; give it turns to run
+     * rather than a sleep, and fail rather than hang if it never does */
+    for (int i = 0; i < 200 && !setup_fired; ++i) {
+        pmix_proc_t self;
+        PMIX_LOAD_PROCID(&self, myproc.nspace, myproc.rank);
+        (void) PMIx_Get(&self, PMIX_UNIV_SIZE, NULL, 0, NULL);
+    }
     PMIx_Finalize(NULL, 0);
+    if (!setup_fired) {
+        return 4;
+    }
+    /* the STATUS the callback carries is deliberately not asserted. What
+     * this case is about is the entry point accepting the request; what
+     * comes back depends on which frameworks the caller's role opened,
+     * and a plain client gets PMIX_ERR_INIT out of
+     * pmix_pmdl_base_harvest_envars, which is the framework answering
+     * honestly for a role that never opened it. A launcher, which is the
+     * caller this protects, has pmdl open and gets a real answer. */
+    (void) setup_status;
     return 0;
+}
+
+/* The launcher case itself, rather than the client standing in for it:
+ * come up through PMIx_tool_init - which is the state prun is in when it
+ * calls PMIx_server_setup_application - and require the call to be
+ * accepted. A tool has pmdl open, so this one gets a real answer and the
+ * status IS asserted. */
+static int setup_tool_child(int which)
+{
+    pmix_proc_t myproc;
+    pmix_info_t tinfo, info;
+    pmix_status_t rc;
+    uint32_t one = 1;
+
+    PMIX_INFO_LOAD(&tinfo, PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
+    rc = PMIx_tool_init(&myproc, &tinfo, 1);
+    PMIX_INFO_DESTRUCT(&tinfo);
+    if (PMIX_SUCCESS != rc) {
+        return 3;
+    }
+
+    PMIX_INFO_LOAD(&info, SUT_KEY, &one, PMIX_UINT32);
+    if (0 == which) {
+        rc = PMIx_server_setup_application(myproc.nspace, &info, 1,
+                                           accepted_setup, NULL);
+    } else {
+        rc = PMIx_server_setup_local_support(myproc.nspace, &info, 1,
+                                             accepted_op, NULL);
+    }
+    PMIX_INFO_DESTRUCT(&info);
+    if (PMIX_SUCCESS != rc) {
+        PMIx_tool_finalize();
+        return 1;
+    }
+    for (int i = 0; i < 200 && !setup_fired; ++i) {
+        (void) PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, NULL);
+    }
+    PMIx_tool_finalize();
+    if (!setup_fired) {
+        return 4;
+    }
+    return (PMIX_SUCCESS == setup_status) ? 0 : 5;
 }
 
 static void check_client_refusal(const char *name, int which)
@@ -793,7 +887,7 @@ static void check_client_refusal(const char *name, int which)
     fflush(stdout);
     child = fork();
     if (0 == child) {
-        _exit(setup_client_child(which));
+        _exit((which < 10) ? setup_client_child(which) : setup_tool_child(which - 10));
     }
     if (0 > child) {
         report(name, 0);
@@ -821,8 +915,11 @@ int main(int argc, char **argv)
     /* these fork, so they run before this process becomes a server */
     check_client_refusal("register_resources from a client is refused, not fatal", 0);
     check_client_refusal("deregister_resources from a client is refused, not fatal", 1);
-    check_client_refusal("setup_application from a client is refused", 2);
-    check_client_refusal("setup_local_support from a client is refused", 3);
+    check_client_refusal("setup_application is accepted without a server library", 2);
+    check_client_refusal("setup_local_support is accepted without a server library", 3);
+    /* and the case that actually regressed: a launcher, as prun is */
+    check_client_refusal("setup_application works for a tool, as prun needs", 10);
+    check_client_refusal("setup_local_support works for a tool", 11);
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {

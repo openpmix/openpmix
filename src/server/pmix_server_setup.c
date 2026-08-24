@@ -998,13 +998,15 @@ pmix_status_t PMIx_server_setup_application(const pmix_nspace_t nspace, pmix_inf
 {
     pmix_setup_caddy_t *cd;
 
-    /* pnet, pgpu and pmdl are opened by PMIx_server_init and by nothing
-     * else, so in a client this call would quietly do nothing at all and
-     * still report success - and the man page says the API is available
-     * only after PMIx_server_init, with PMIX_ERR_INIT meaning exactly
-     * that the server library is not up */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    /* NOT screened on pmix_server_globals.initialized, unlike the two
+     * resource calls above. A launcher that came up through
+     * PMIx_tool_init is a legitimate caller: PMIx_tool_init opens pmdl
+     * unconditionally and pnet for a launcher, saying so at the site -
+     * "we might need them if we are asking a server to launch something
+     * for us" - and PRRTE's prun reaches here that way, before any
+     * PMIx_server_init. Adding the screen turned every prun launch into
+     * PMIX_ERR_INIT. */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -1077,11 +1079,9 @@ pmix_status_t PMIx_server_setup_local_support(const pmix_nspace_t nspace, pmix_i
     pmix_status_t rc;
     pmix_lock_t mylock;
 
-    /* see PMIx_server_setup_application: pnet and pgpu belong to the
-     * server library, so this is a no-op reported as a success anywhere
-     * else */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    /* see PMIx_server_setup_application: a launcher tool is a legitimate
+     * caller of this pair, so neither screens the server library's flag */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 

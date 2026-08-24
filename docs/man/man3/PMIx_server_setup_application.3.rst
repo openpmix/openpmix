@@ -184,8 +184,12 @@ constants are defined in ``pmix_common.h``.
 NOTES
 -----
 
-This is a server-role API, available only after
-:ref:`PMIx_server_init(3) <man3-PMIx_server_init>`. Support for harvesting
+This is a server-role API. It does **not** require
+:ref:`PMIx_server_init(3) <man3-PMIx_server_init>`: a launcher or other
+tool that came up through :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`
+is a supported caller, since that call stands up the programming-model
+and network support this API consults. What a caller gets back depends on
+which of those the calling role initialized. Support for harvesting
 environment variables and providing local configuration information is optional
 per the Standard; a conforming library may return no data.
 
