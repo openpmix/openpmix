@@ -1027,6 +1027,8 @@ Constants
 * ``PMIX_ERR_JOB_EXE_NOT_FOUND``: specified executable not found
 * ``PMIX_ERR_JOB_INSUFFICIENT_RESOURCES``: insufficient resources to
   spawn job
+* ``PMIX_ERR_JOB_KILLED_BY_RELEASE``: a resource release removed nodes
+  this job was running on, killing the processes on them
 * ``PMIX_ERR_JOB_SYS_OP_FAILED``: system library operation failed
 * ``PMIX_ERR_JOB_WDIR_NOT_FOUND``: specified working directory not
   found
@@ -1036,6 +1038,10 @@ Constants
 * ``PMIX_ERR_PROC_REQUESTED_ABORT``: process called ``PMIx_Abort``
 * ``PMIX_ERR_PROC_KILLED_BY_CMD``: process was terminated by RTE
   command
+* ``PMIX_ERR_PROC_KILLED_BY_RELEASE``: the node this process ran on was
+  released, killing it
+* ``PMIX_PROC_STATE_KILLED_BY_RELEASE``: the node this process ran on
+  was released, killing it
 * ``PMIX_ERR_PROC_FAILED_TO_START``: process failed to start
 * ``PMIX_ERR_PROC_ABORTED_BY_SIG``: process aborted by signal (e.g.,
   segmentation fault)
