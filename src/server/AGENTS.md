@@ -2045,6 +2045,19 @@ misbehave by design).
   time inside the loop, so an absurd `nkeys` simply runs the buffer dry
   and fails on the first short read — it never reaches an allocator.
 
+  **What none of the three collective families screens is the count the
+  unpack came back with**, and that was examined and left alone.
+  `PMIX_BFROPS_UNPACK` fills `min(packed, provided)` and reports success,
+  so a client that declares 100 procs and sends 2 gets a tracker whose
+  `pcs` tail is 98 default-constructed entries with an empty namespace.
+  Nothing corrupts: the namespace walk in `pmix_server_new_tracker`
+  compares with `strcmp`, so an empty name matches no registered
+  namespace rather than wildcarding onto every one, and each such entry
+  merely marks the tracker non-local. The collective then never completes
+  and the client hangs itself. Fence, connect and disconnect all behave
+  this way, so a screen added to one would be an asymmetry rather than a
+  fix; if you add one, add all three.
+
   Note also what the unpack itself protects you from, so you screen for
   the right reason. `pmix_bfrops_base_unpack` reads the count the
   *packer* wrote and unpacks `min(packed, provided)`, reporting success
