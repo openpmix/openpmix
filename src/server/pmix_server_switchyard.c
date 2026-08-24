@@ -48,7 +48,6 @@
 #include "src/util/pmix_output.h"
 
 #include "pmix_server_ops.h"
-#include "src/client/pmix_client_ops.h"
 
 /****    THE FOLLOWING CALLBACK FUNCTIONS ARE USED BY THE HOST SERVER    ****
  ****    THEY THEREFORE CAN OCCUR IN EITHER THE HOST SERVER'S THREAD     ****
@@ -755,7 +754,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
             return PMIX_ERR_NOMEM;
         }
         if (PMIX_SUCCESS != (rc = pmix_server_group(cd, buf, PMIX_GROUP_CONSTRUCT))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
