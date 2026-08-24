@@ -103,9 +103,26 @@ pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
         return rc;
     }
 
+    /* Every one of these was dereferenced on the next line. The query
+     * object is also what the *local* handler reads its arguments back
+     * out of, and an empty keys array is what the host walks - so a
+     * failure here cannot be carried past this point in any form. Return
+     * the error instead: the switchyard releases the caddy (and with it
+     * cd->query, which cddes frees) and answers this caller itself. */
     PMIX_QUERY_CREATE(cd->query, 1);
+    if (PMIX_UNLIKELY(NULL == cd->query)) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
     PMIX_ARGV_APPEND(rc, cd->query->keys, PMIX_QUERY_RESOLVE_PEERS);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        goto error;
+    }
     PMIX_INFO_CREATE(iptr, 2);
+    if (PMIX_UNLIKELY(NULL == iptr)) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
     PMIX_INFO_LOAD(&iptr[0], PMIX_NSPACE, str, PMIX_STRING);
     if (NULL != str) {
         free(str);
@@ -137,6 +154,16 @@ pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
     PMIX_THREADSHIFT(cd, pmix_server_locally_resolve_peers);
     // indicate that the switchyard is not to send a response
     return PMIX_SUCCESS;
+
+error:
+    PMIX_ERROR_LOG(rc);
+    if (NULL != str) {
+        free(str);
+    }
+    if (NULL != nodename) {
+        free(nodename);
+    }
+    return rc;
 }
 
 void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
@@ -253,11 +280,24 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
                 PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
                 continue;
             }
-            /* add to our list of results */
-            PMIx_Argv_append_nosize(&tmp, prs);
+            /* add to our list of results. A failed append is not a
+             * smaller answer, it is a wrong one: the peer count was
+             * already accumulated for this namespace, and the caller
+             * would be told SUCCESS for a list silently missing a whole
+             * namespace's procs */
+            rc = PMIx_Argv_append_nosize(&tmp, prs);
+            free(prs);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                ret = rc;
+                np = 0;
+                PMIx_Argv_free(tmp);
+                tmp = NULL;
+                PMIX_DESTRUCT(&cb);
+                goto done;
+            }
             np += npeers;
             /* done with this entry */
-            free(prs);
             // clean up and cycle around to next namespace
             PMIX_LIST_DESTRUCT(&cb.kvs);
             PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
@@ -480,9 +520,21 @@ pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
         return rc;
     }
 
+    /* see the matching comment in pmix_server_resolve_peers */
     PMIX_QUERY_CREATE(cd->query, 1);
+    if (PMIX_UNLIKELY(NULL == cd->query)) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
     PMIX_ARGV_APPEND(rc, cd->query->keys, PMIX_QUERY_RESOLVE_NODE);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        goto error;
+    }
     PMIX_INFO_CREATE(iptr, 1);
+    if (PMIX_UNLIKELY(NULL == iptr)) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
     PMIX_INFO_LOAD(&iptr[0], PMIX_NSPACE, str, PMIX_STRING);
     if (NULL != str) {
         free(str);
@@ -509,6 +561,13 @@ pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
     PMIX_THREADSHIFT(cd, pmix_server_locally_resolve_node);
     // indicate that the switchyard is not to send a response
     return PMIX_SUCCESS;
+
+error:
+    PMIX_ERROR_LOG(rc);
+    if (NULL != str) {
+        free(str);
+    }
+    return rc;
 }
 
 void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
@@ -575,18 +634,37 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
             p = PMIx_Argv_split(val->data.string, ',');
             if (NULL != p) {
                 for (n = 0; NULL != p[n]; n++) {
-                    PMIx_Argv_append_unique_nosize(&tmp, p[n]);
+                    /* a node dropped by a failed append is a wrong answer,
+                     * not a shorter one - the caller would be told SUCCESS
+                     * for a list missing a node it is entitled to see */
+                    rc = PMIx_Argv_append_unique_nosize(&tmp, p[n]);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        ret = rc;
+                        PMIx_Argv_free(p);
+                        PMIx_Argv_free(tmp);
+                        tmp = NULL;
+                        PMIX_DESTRUCT(&cb);
+                        goto done;
+                    }
                 }
                 PMIx_Argv_free(p);
             }
             PMIX_LIST_DESTRUCT(&cb.kvs);
             PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
         }
+        ret = PMIX_SUCCESS;
         if (0 < PMIx_Argv_count(tmp)) {
             nodelist = PMIx_Argv_join(tmp, ',');
             PMIx_Argv_free(tmp);
+            if (NULL == nodelist) {
+                /* nodes were found - answering success with a NULL list
+                 * would report "no nodes assigned", which is a different
+                 * and wrong answer */
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                ret = PMIX_ERR_NOMEM;
+            }
         }
-        ret = PMIX_SUCCESS;
         PMIX_DESTRUCT(&cb);
         goto done;
     }
@@ -613,8 +691,15 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
         goto done;
     }
 
-    /* sanity check */
+    /* sanity check. A fetch that reports success and hands back nothing
+     * is a datastore anomaly, not the documented "no nodes assigned"
+     * answer - that arrives as PMIX_ERR_NOT_FOUND or as a NULL string,
+     * both handled elsewhere. Say so, as the peers twin does for the
+     * identical shape; answering SUCCESS made the two disagree about the
+     * same condition. */
     if (0 == pmix_list_get_size(&cb.kvs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
+        ret = PMIX_ERR_INVALID_VAL;
         PMIX_DESTRUCT(&cb);
         goto done;
     }
@@ -633,6 +718,11 @@ done:
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        /* the node list is ours on every path - the peers twin frees its
+         * proc array on this same arm */
+        if (NULL != nodelist) {
+            free(nodelist);
+        }
         PMIX_RELEASE(cd);
         return;
     }

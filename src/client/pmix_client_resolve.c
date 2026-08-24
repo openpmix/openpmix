@@ -269,11 +269,25 @@ static void resolve_peers(int sd, short args, void *cbdata)
                 PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
                 continue;
             }
-            /* add to our list of results */
-            PMIx_Argv_append_nosize(&tmp, prs);
+            /* add to our list of results. A failed append is not a
+             * smaller answer, it is a wrong one: the peer count was
+             * already accumulated for this namespace, so the caller would
+             * be told SUCCESS for a list silently missing a whole
+             * namespace's procs. The server twin,
+             * pmix_server_locally_resolve_peers(), reads the same way */
+            rc = PMIx_Argv_append_nosize(&tmp, prs);
+            free(prs);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                np = 0;
+                PMIx_Argv_free(tmp);
+                tmp = NULL;
+                PMIX_LIST_DESTRUCT(&cb.kvs);
+                PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
+                goto done;
+            }
             np += npeers;
             /* done with this entry */
-            free(prs);
             // clean up and cycle around to next namespace
             PMIX_LIST_DESTRUCT(&cb.kvs);
             PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
@@ -726,18 +740,36 @@ static void resolve_nodes(int sd, short args, void *cbdata)
             p = PMIx_Argv_split(val->data.string, ',');
             if (NULL != p) {
                 for (n = 0; NULL != p[n]; n++) {
-                    PMIx_Argv_append_unique_nosize(&tmp, p[n]);
+                    /* a node dropped by a failed append is a wrong answer,
+                     * not a shorter one */
+                    rc = PMIx_Argv_append_unique_nosize(&tmp, p[n]);
+                    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIx_Argv_free(p);
+                        PMIx_Argv_free(tmp);
+                        tmp = NULL;
+                        PMIX_LIST_DESTRUCT(&cb.kvs);
+                        PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
+                        goto done;
+                    }
                 }
                 PMIx_Argv_free(p);
             }
             PMIX_LIST_DESTRUCT(&cb.kvs);
             PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
         }
+        rc = PMIX_SUCCESS;
         if (0 < PMIx_Argv_count(tmp)) {
             cd->nodelist = PMIx_Argv_join(tmp, ',');
             PMIx_Argv_free(tmp);
+            if (PMIX_UNLIKELY(NULL == cd->nodelist)) {
+                /* nodes were found - answering success with a NULL list
+                 * would report "no nodes assigned", a different and wrong
+                 * answer */
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                rc = PMIX_ERR_NOMEM;
+            }
         }
-        rc = PMIX_SUCCESS;
         goto done;
     }
 
@@ -765,8 +797,16 @@ static void resolve_nodes(int sd, short args, void *cbdata)
     }
 
 process:
-    /* sanity check */
+    /* sanity check. A fetch that reports success and hands back nothing
+     * is a datastore anomaly, not the documented "no nodes assigned"
+     * answer - that arrives as PMIX_ERR_NOT_FOUND or as a NULL string,
+     * both handled elsewhere. rc is PMIX_SUCCESS on the way in here, so
+     * falling through told the caller the call succeeded with a NULL
+     * nodelist it is entitled to parse. The peers half of this file, and
+     * both halves of the server twin, report it. */
     if (0 == pmix_list_get_size(&cb.kvs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
+        rc = PMIX_ERR_INVALID_VAL;
         goto done;
     }
     kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
