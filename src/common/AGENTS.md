@@ -111,14 +111,42 @@ Four more things about the stdin side that are easy to get wrong:
   ended up with two read events on fd 0 stealing bytes from each other,
   and `pmix_iof_flow_control` — which only knows `stdinev_global` — could
   not suspend a tool's stdin at all.
-- **The SIGCONT event belongs on `evbase`, and it has to be *added*.**
-  Its handler is `pmix_iof_stdin_cb`, which resolves `stdinev_global` and
-  arms or disarms that read event — all state `evbase` owns — so putting
-  the signal on `evauxbase` (which a host may supply as a *different*
-  thread) races the progress thread. And `pmix_event_signal_set` only
-  *assigns* an event; without a matching `pmix_event_add` the handler
-  never runs, which is how a tool started in the background can end up
-  never reading stdin at all after it is foregrounded.
+- **Do not trap a signal to notice the terminal changing hands — poll
+  for it.** PMIx is a library, and the signal dispositions of a process
+  belong to whoever wrote its `main()`. This file used to arm a `SIGCONT`
+  event to learn when a backgrounded process had been foregrounded again
+  and could resume reading its stdin, and that cost the host two things.
+  First, libevent keeps a *single process-wide* record of which event
+  base owns signals (`evsig_base` in its `signal.c`), re-claimed both by
+  adding a signal event and by entering `event_base_loop`; the OS handler
+  writes the signal number into whichever base holds it at that instant,
+  and a base with no event for that signal **drops it**. So our SIGCONT
+  event did not merely draw libevent's "Only one can have signals at a
+  time" warning — it swallowed the host's signals, and only when stdin
+  was a tty, which is what made it so hard to see. In PRRTE the casualty
+  was `SIGCHLD`: `prterun -n 1 head -1` typed at a terminal never
+  returned, because the reap notice for the application arrived at us and
+  we had no use for it (prrte issue #2709). Second, a host that does not
+  use libevent at all has its own disposition for that signal replaced
+  from under it by a library it merely linked. `stdin_resume_arm()` is
+  the replacement — an evtimer on `evbase` — and **the two rules that
+  bound its cost are the price of doing this at all, so do not relax
+  them**: it exists only when a host has asked us to forward its stdin
+  (`pmix_iof_setup_stdin_read()` is the sole thing that can arm it), and
+  only while that stdin is suspended for being in the *background*. A run
+  that forwards no stdin, or that has its terminal, sets no timer at all,
+  and an XOFF suspension is deliberately not polled either — that one ends
+  with an XON that calls `pmix_iof_stdin_cb` back. The delay then doubles
+  from `pmix_iof_stdin_resume_interval` (100 ms) to
+  `pmix_iof_stdin_resume_max_interval` (2 s), so an `fg` a moment later is
+  answered promptly while a process left in the background all day settles
+  to the ceiling instead of holding a fixed rate forever;
+  `stdin_resume_cancel()` puts it back to the floor. Polling gives up
+  nothing — the terminal buffers what is typed while we are not reading,
+  so the interval bounds latency and not data — and it is strictly more
+  reliable than the signal was, because nothing guarantees a SIGCONT
+  accompanies every change of the terminal's foreground process group
+  while `tcgetpgrp()` answers the actual question every time.
 - **`stdinev_global` and `stdinsig_ev` are process-wide, not per
   request**, so nothing in the request machinery ever gives them back.
   `pmix_iof_finalize()` does, and `pmix_rte_finalize` calls it **while
@@ -489,24 +517,50 @@ execs — and carries hazards the request files do not:
   functions before exec. Be very wary of adding `malloc`-backed calls
   (`opendir`/`readdir`, `pmix_show_help`, `pmix_output*`, `fprintf`) into
   that window — they can deadlock on a lock another thread held at fork.
-- **SIGCHLD runs on `evauxbase`; the `children` list belongs to
-  `evbase`.** The SIGCHLD handler is installed on
-  `pmix_globals.evauxbase` (a host may supply this via
-  `PMIX_EXTERNAL_AUX_EVENT_BASE`, in which case it is a *different*
-  thread than `evbase`, where spawn/kill/signal/complete run). Because of
-  that, `wait_signal_callback` must not touch the `children` list
-  directly: it `waitpid`s (process-global, thread-safe) and then
-  `PMIX_THREADSHIFT`s each reaped `(pid, status)` to `child_reaped` on
-  `evbase`, which does the list work. Preserve that split — do not move
-  list access back into the signal handler.
+- **Reaping is a poll of our own pids, not a SIGCHLD handler, and not a
+  `waitpid(-1)` sweep.** Both halves of what this used to be were wrong
+  for a library. The SIGCHLD event took the signal away from the host —
+  libevent keeps one process-wide record of which base owns signals, so a
+  second base carrying signals swallows the first's — and the handler's
+  `waitpid(-1)` took the host's *children*, reaping procs it had forked
+  and discarding their status, because a pid we do not recognize is
+  silently dropped. PRRTE's own SIGCHLD handler does exactly the same
+  sweep, so in one process the two stole from each other and whichever
+  lost never heard that its child had died (prrte issue #2709 reached
+  this way as well as through the stdin SIGCONT above).
+
+  `child_poll()` asks `waitpid(pid, WNOHANG)` about each of our own
+  children instead, and the three answers are complete: `0` alive, the
+  pid dead-with-status, `ECHILD` dead-with-status-lost to whoever reaped
+  first (a host sweeping, or one that set `SIGCHLD` to `SIG_IGN`). Per-pid
+  cannot stop a host from taking our children, but we always learn of the
+  death — which the sweep could not do, since its loser got nothing at
+  all. Say so rather than reporting a zero we did not observe.
+
+  It runs on `evbase`, which is also where the `children` list lives, so
+  there is nothing to thread-shift any more. **The two rules that bound
+  the timer's cost are the same as the stdin poll's, and matter as much:**
+  it exists only while we hold a child the host asked us to fork, and the
+  delay backs off from `pfexec_base_poll_interval` (50 ms) to
+  `pfexec_base_poll_max_interval` (1 s). The common case rarely waits for
+  it at all — `pmix_iof.c`'s read handler calls `pmix_pfexec_reap_check()`
+  when a child's last output pipe hits EOF, which for a child that
+  forwards its output is normally the moment it died.
+
+  One trap when touching `pfexec_poll_arm()`: `pmix_event_evtimer_set` is
+  `event_assign`, which libevent forbids on an event that is still
+  pending. Arming therefore takes the timer down first rather than
+  trusting `poll_active`. Getting that wrong does not fail loudly — it
+  corrupts the base's timer heap, and `make check` hangs.
 - **Do not block the progress thread.** Handlers run as events, so a
   `sleep()` inside one freezes all event processing. The kill sequence
   (SIGCONT → pause → SIGTERM → pause → SIGKILL) is therefore an
   evtimer-driven state machine (`kill_proc` → `kill_stage2` →
   `kill_stage3`), not a pair of `sleep()`s — keep it that way.
-- **`wait_signal_callback` reaps every child of the process**
-  (`waitpid(-1, ...)`), not just pfexec's — keep that in mind if you add
-  another `waitpid` consumer.
+- **`child_poll` waits only on pids we forked** — never `waitpid(-1)`,
+  which is what it used to do and which reaps whatever the host forked
+  too. Keep it that way if you add another `waitpid` consumer: in a
+  process that has more than one, `-1` is theft.
 - **A `pmix_pfexec_child_t` has more than one owner, and the
   `children` list is only one of them.** The list holds a reference; so
   does every caddy that carries the child across an event boundary —
@@ -522,7 +576,7 @@ execs — and carries hazards the request files do not:
   because that function only reports a missing item under
   `PMIX_ENABLE_DEBUG` — in a release build it splices the list using the
   item's stale pointers and decrements the length again, which silently
-  corrupts the list this file's SIGCHLD early-out reads (see below).
+  corrupts the list `child_poll()` walks.
   Getting this wrong is not a leak, it is a double free plus a kill
   sequence reading `->pid` out of freed memory to decide what to signal.
 
@@ -551,16 +605,21 @@ than just hardening it:
 
 ### Known, deliberate, not a defect
 
-`wait_signal_callback` in `pmix_pfexec.c` reads
-`pmix_list_get_size(&pmix_pfexec_globals.children)` as an early-out, and it
-runs on `evauxbase` while that list belongs to `evbase`. That is a formal
-data race. It is left alone on purpose: the child is appended to the list
-before the `fork()` that can generate its `SIGCHLD`, so the count cannot be
-stale for a child we care about, and removing the guard would make pfexec
-`waitpid(-1)` on every `SIGCHLD` in a process that currently has no
-children of its own. If you do restructure it, replace the read with a
-counter maintained rather than deleting the check — the removals are all
-funnelled through `child_delist()` now, so there is one place to do it.
+`plog/smtp` still saves, ignores and restores `SIGPIPE` around its
+`smtp_start_session()` call — the one place in the library that touches a
+process-wide signal disposition. That is libESMTP's requirement, not
+ours: it writes to a socket the remote server may drop at any moment, it
+sets neither `MSG_NOSIGNAL` nor `SO_NOSIGPIPE` on the sockets it owns,
+and it documents that the *application* must ignore `SIGPIPE`. The
+thread-safe form is `pthread_sigmask` — `SIGPIPE` from `write()` is
+raised synchronously to the writing thread, so blocking it there never
+reaches the host — but that needs a drain (`sigtimedwait` with a zero
+timeout) or a `SIGPIPE` raised while blocked stays pending on the thread
+and kills the process the moment the mask is restored, and `sigtimedwait`
+does not exist on macOS. It is left as it is because the component only
+builds with `--with-smtp`, the change is scoped to one call, and it
+restores what it changed. Do it the `pthread_sigmask` way if this ever
+moves onto a path that runs by default.
 
 ## Building and testing
 

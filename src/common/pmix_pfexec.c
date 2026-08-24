@@ -91,12 +91,17 @@
 
 static pmix_status_t setup_prefork(pmix_pfexec_child_t *child);
 static pmix_status_t register_nspace(char *nspace, pmix_setup_caddy_t *fcd);
-static void wait_signal_callback(int fd, short event, void *arg);
+static void child_poll(int sd, short args, void *cbdata);
+static void pfexec_poll_arm(bool reset);
+static void pfexec_poll_disarm(void);
 static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env);
 
 pmix_pfexec_globals_t pmix_pfexec_globals = {
-    .handler = NULL,
-    .active = false,
+    .poll_ev = NULL,
+    .poll_active = false,
+    .poll_delay = 0,
+    .poll_interval = PMIX_PFEXEC_POLL_INTERVAL,
+    .poll_max_interval = PMIX_PFEXEC_POLL_MAX_INTERVAL,
     .children = PMIX_LIST_STATIC_INIT,
     .timeout_before_sigkill = 0,
     .nextid = 0,
@@ -110,13 +115,14 @@ int pmix_pfexec_base_close(void)
     if (!pmix_pfexec_globals.initialized) {
         return PMIX_SUCCESS;
     }
-    if (pmix_pfexec_globals.active) {
-        pmix_event_del(pmix_pfexec_globals.handler);
-        pmix_pfexec_globals.active = false;
+    if (pmix_pfexec_globals.poll_active) {
+        pmix_event_del(pmix_pfexec_globals.poll_ev);
+        pmix_pfexec_globals.poll_active = false;
     }
     PMIX_LIST_DESTRUCT(&pmix_pfexec_globals.children);
-    free(pmix_pfexec_globals.handler);
-    pmix_pfexec_globals.handler = NULL;
+    free(pmix_pfexec_globals.poll_ev);
+    pmix_pfexec_globals.poll_ev = NULL;
+    pmix_pfexec_globals.poll_delay = 0;
     pmix_pfexec_globals.selected = false;
     pmix_pfexec_globals.initialized = false;
 
@@ -128,7 +134,7 @@ int pmix_pfexec_base_close(void)
  *
  * Both the completion path and the kill sequence remove children, and
  * either can reach a given child first: a completion posted by the IOF
- * read handler or by child_reaped sits queued on the event base, and the
+ * read handler or by child_poll sits queued on the event base, and the
  * kill sequence the tool's finalize drives can be dispatched in between.
  * Whoever gets here first does the removal and drops the list reference;
  * the second call is a no-op. Callers must hold a reference of their own
@@ -196,6 +202,24 @@ int pmix_pfexec_register(void)
                                "Time to wait for a process to die after issuing a kill signal to it",
                                PMIX_MCA_BASE_VAR_TYPE_INT,
                                &pmix_pfexec_globals.timeout_before_sigkill);
+    pmix_pfexec_globals.poll_interval = PMIX_PFEXEC_POLL_INTERVAL;
+    pmix_mca_base_var_register("pmix", "pfexec", "base", "poll_interval",
+                               "Milliseconds before the first check of a forked child's exit "
+                               "status [default: 50]",
+                               PMIX_MCA_BASE_VAR_TYPE_INT,
+                               &pmix_pfexec_globals.poll_interval);
+    if (0 >= pmix_pfexec_globals.poll_interval) {
+        pmix_pfexec_globals.poll_interval = PMIX_PFEXEC_POLL_INTERVAL;
+    }
+    pmix_pfexec_globals.poll_max_interval = PMIX_PFEXEC_POLL_MAX_INTERVAL;
+    pmix_mca_base_var_register("pmix", "pfexec", "base", "poll_max_interval",
+                               "Ceiling in milliseconds that the child exit-status check backs "
+                               "off to [default: 1000]",
+                               PMIX_MCA_BASE_VAR_TYPE_INT,
+                               &pmix_pfexec_globals.poll_max_interval);
+    if (pmix_pfexec_globals.poll_max_interval < pmix_pfexec_globals.poll_interval) {
+        pmix_pfexec_globals.poll_max_interval = pmix_pfexec_globals.poll_interval;
+    }
     return PMIX_SUCCESS;
 }
 
@@ -257,31 +281,18 @@ static pmix_status_t setup_path(pmix_app_t *app)
 
 pmix_status_t pmix_pfexec_base_spawn_job(pmix_setup_caddy_t *fcd)
 {
-    sigset_t unblock;
-
     pmix_output_verbose(5, pmix_client_globals.spawn_output,
                         "%s pfexec spawning child job",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-    if (NULL == pmix_pfexec_globals.handler) {
-        /* ensure that SIGCHLD is unblocked as we need to capture it */
-        if (0 != sigemptyset(&unblock)) {
-            return PMIX_ERROR;
+    /* The exit-status poll is armed once we actually have a child - see
+     * the note on poll_ev in pmix_pfexec.h for why this is a poll and
+     * not the SIGCHLD handler it used to be. */
+    if (NULL == pmix_pfexec_globals.poll_ev) {
+        pmix_pfexec_globals.poll_ev = (pmix_event_t *) malloc(sizeof(pmix_event_t));
+        if (NULL == pmix_pfexec_globals.poll_ev) {
+            return PMIX_ERR_NOMEM;
         }
-        if (0 != sigaddset(&unblock, SIGCHLD)) {
-            return PMIX_ERROR;
-        }
-        if (0 != sigprocmask(SIG_UNBLOCK, &unblock, NULL)) {
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-
-        /* set to catch SIGCHLD events */
-        pmix_pfexec_globals.handler = (pmix_event_t *) malloc(sizeof(pmix_event_t));
-        pmix_event_set(pmix_globals.evauxbase, pmix_pfexec_globals.handler, SIGCHLD,
-                       PMIX_EV_SIGNAL | PMIX_EV_PERSIST, wait_signal_callback,
-                       pmix_pfexec_globals.handler);
-        pmix_pfexec_globals.active = true;
-        pmix_event_add(pmix_pfexec_globals.handler, NULL);
     }
 
     PMIX_PFEXEC_SPAWN(fcd);
@@ -422,6 +433,9 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             ++rank;
             pmix_list_append(&pmix_pfexec_globals.children, &child->super);
             child->onlist = true;
+            /* we now have something to watch for; start at the floor of
+             * the backoff so a short-lived child is noticed promptly */
+            pfexec_poll_arm(true);
 
             /* setup any IOF */
             child->opts.usepty = PMIX_ENABLE_PTY_SUPPORT;
@@ -1271,90 +1285,158 @@ static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env)
     return do_parent(app, child, p[0]);
 }
 
-/* Caddy used to hand a reaped child's exit status from the SIGCHLD
- * handler over to the progress thread. The SIGCHLD handler may run on a
- * host-provided auxiliary event base (a different thread than evbase),
- * but all access to the pmix_pfexec_globals.children list must happen on
- * the progress thread, so the handler ships the (pid, status) across. */
-typedef struct {
-    pmix_object_t super;
-    pmix_event_t ev;
-    pid_t pid;
-    int status;
-} pmix_pfexec_reap_caddy_t;
-static PMIX_CLASS_INSTANCE(pmix_pfexec_reap_caddy_t, pmix_object_t, NULL, NULL);
-
-/* Runs on the progress thread: match the reaped pid to its child, record
- * the exit status, and check whether the job has now completed. */
-static void child_reaped(int sd, short args, void *cbdata)
+/* Ask about each of our own children, and only our own.
+ *
+ * Runs on evbase, which is also where the children list lives, so unlike
+ * the SIGCHLD handler this replaced there is nothing to thread-shift.
+ * waitpid(pid, WNOHANG) gives a complete three-way answer:
+ *
+ *   0       still running
+ *   pid     exited, and the status is ours
+ *   ECHILD  gone, but somebody else reaped it first - a host sweeping
+ *           with waitpid(-1), or one that set SIGCHLD to SIG_IGN and let
+ *           the kernel do it. The child is definitively dead; only its
+ *           exit status is lost, and we say so rather than reporting a
+ *           zero we did not observe.
+ *
+ * That last case is why per-pid matters even though it cannot stop a
+ * host from taking our children: we always learn of the death. The old
+ * waitpid(-1) sweep could not even do that - whichever of us and the
+ * host lost the race got no pid, no status and no notification at all.
+ */
+static void child_poll(int sd, short args, void *cbdata)
 {
-    pmix_pfexec_reap_caddy_t *rc = (pmix_pfexec_reap_caddy_t *) cbdata;
-    pmix_pfexec_child_t *child;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
-
-    PMIX_ACQUIRE_OBJECT(rc);
-
-    PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-        if (rc->pid == child->pid) {
-            /* record the exit status */
-            if (WIFEXITED(rc->status)) {
-                child->exitcode = WEXITSTATUS(rc->status);
-            } else if (WIFSIGNALED(rc->status)) {
-                child->exitcode = WTERMSIG(rc->status) + 128;
-            }
-            /* mark the child as complete */
-            child->completed = true;
-            if ((NULL == child->stdoutev || !child->stdoutev->active)
-                && (NULL == child->stderrev || !child->stderrev->active)) {
-                PMIX_PFEXEC_CHK_COMPLETE(child);
-            }
-            break;
-        }
-    }
-    PMIX_RELEASE(rc);
-}
-
-/* callback from the event library whenever a SIGCHLD is received */
-static void wait_signal_callback(int fd, short event, void *arg)
-{
-    (void) fd;
-    (void) event;
-    pmix_event_t *signal = (pmix_event_t *) arg;
+    pmix_pfexec_child_t *child, *next;
+    pid_t r;
     int status;
-    pid_t pid;
-    pmix_pfexec_reap_caddy_t *rc;
+    bool watching = false;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args, cbdata);
 
-    PMIX_ACQUIRE_OBJECT(signal);
+    /* the one-shot timer that brought us here (if any) has fired */
+    pmix_pfexec_globals.poll_active = false;
 
-    if (SIGCHLD != PMIX_EVENT_SIGNAL(signal)) {
-        return;
-    }
-    /* if we haven't spawned anyone, then ignore this */
-    if (0 == pmix_list_get_size(&pmix_pfexec_globals.children)) {
-        return;
-    }
-
-    /* reap all queued waitpids until we
-     * don't get anything valid back */
-    while (1) {
-        pid = waitpid(-1, &status, WNOHANG);
-        if (-1 == pid && EINTR == errno) {
-            /* try it again */
+    PMIX_LIST_FOREACH_SAFE (child, next, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+        if (child->completed || 0 >= child->pid) {
             continue;
         }
-        /* if we got garbage, then nothing we can do */
-        if (pid <= 0) {
-            return;
+        status = 0;
+        r = waitpid(child->pid, &status, WNOHANG);
+        if (0 == r) {
+            /* still running - keep the timer going for it */
+            watching = true;
+            continue;
+        }
+        if (0 > r) {
+            if (EINTR == errno) {
+                watching = true;
+                continue;
+            }
+            if (ECHILD != errno) {
+                /* nothing we can do with this, but do not spin on it */
+                watching = true;
+                continue;
+            }
+            /* reaped by somebody else: dead, status unknown */
+            pmix_output_verbose(5, pmix_client_globals.spawn_output,
+                                "%s pfexec child %s (pid %lu) was reaped elsewhere - "
+                                "exit status unavailable",
+                                PMIX_NAME_PRINT(&pmix_globals.myid),
+                                PMIX_NAME_PRINT(&child->proc), (unsigned long) child->pid);
+            child->exitcode = 0;
+        } else if (WIFEXITED(status)) {
+            child->exitcode = WEXITSTATUS(status);
+        } else if (WIFSIGNALED(status)) {
+            child->exitcode = WTERMSIG(status) + 128;
         }
 
-        /* waitpid is process-global and safe from any thread, but the
-         * children list is not - hand the exit status to the progress
-         * thread rather than touching the list here */
-        rc = PMIX_NEW(pmix_pfexec_reap_caddy_t);
-        rc->pid = pid;
-        rc->status = status;
-        PMIX_THREADSHIFT(rc, child_reaped);
+        child->completed = true;
+        if ((NULL == child->stdoutev || !child->stdoutev->active)
+            && (NULL == child->stderrev || !child->stderrev->active)) {
+            PMIX_PFEXEC_CHK_COMPLETE(child);
+        }
     }
+
+    if (watching) {
+        pfexec_poll_arm(false);
+    } else {
+        /* nothing left to watch: no timer, and the next spawn starts
+         * the backoff over from the floor */
+        pmix_pfexec_globals.poll_delay = 0;
+    }
+}
+
+/* Arm the exit-status poll, backing the delay off unless "reset" says to
+ * start from the floor again. Noticing a child has exited carries no
+ * latency requirement -- and the IOF EOF path kicks us through
+ * pmix_pfexec_reap_check() at the moment a child that forwards its
+ * output usually dies -- so the ceiling is what governs the cost of a
+ * long-running child, and it is one wakeup per second by default. */
+static void pfexec_poll_disarm(void)
+{
+    if (pmix_pfexec_globals.poll_active) {
+        pmix_event_del(pmix_pfexec_globals.poll_ev);
+        pmix_pfexec_globals.poll_active = false;
+    }
+}
+
+static void pfexec_poll_arm(bool reset)
+{
+    struct timeval tv;
+    int delay;
+
+    if (NULL == pmix_pfexec_globals.poll_ev) {
+        return;
+    }
+    /* pmix_event_evtimer_set is event_assign, which must never be applied
+     * to an event that is still pending - so always take it down first
+     * rather than trusting poll_active to say it is not armed */
+    if (pmix_pfexec_globals.poll_active && !reset) {
+        return;
+    }
+    pfexec_poll_disarm();
+    if (reset) {
+        pmix_pfexec_globals.poll_delay = 0;
+    }
+
+    /* a zero floor would give a zero timeout and spin the event loop,
+     * which is what an unregistered parameter would otherwise produce */
+    if (0 >= pmix_pfexec_globals.poll_interval) {
+        pmix_pfexec_globals.poll_interval = PMIX_PFEXEC_POLL_INTERVAL;
+    }
+    if (pmix_pfexec_globals.poll_max_interval < pmix_pfexec_globals.poll_interval) {
+        pmix_pfexec_globals.poll_max_interval = pmix_pfexec_globals.poll_interval;
+    }
+
+    delay = pmix_pfexec_globals.poll_delay;
+    if (0 == delay) {
+        delay = pmix_pfexec_globals.poll_interval;
+    } else if (delay < pmix_pfexec_globals.poll_max_interval) {
+        delay *= 2;
+        if (delay > pmix_pfexec_globals.poll_max_interval) {
+            delay = pmix_pfexec_globals.poll_max_interval;
+        }
+    }
+    pmix_pfexec_globals.poll_delay = delay;
+
+    tv.tv_sec = delay / 1000;
+    tv.tv_usec = (delay % 1000) * 1000;
+    pmix_event_evtimer_set(pmix_globals.evbase, pmix_pfexec_globals.poll_ev,
+                           child_poll, NULL);
+    if (0 == pmix_event_evtimer_add(pmix_pfexec_globals.poll_ev, &tv)) {
+        pmix_pfexec_globals.poll_active = true;
+    }
+}
+
+void pmix_pfexec_reap_check(void)
+{
+    if (!pmix_pfexec_globals.initialized || NULL == pmix_pfexec_globals.poll_ev) {
+        return;
+    }
+    /* We are on evbase here (the IOF read handler), so just look now -
+     * but take the pending timer down first: child_poll re-arms, and
+     * arming assigns the same event. */
+    pfexec_poll_disarm();
+    child_poll(-1, 0, NULL);
 }
 
 /**** FRAMEWORK CLASS INSTANTIATIONS ****/

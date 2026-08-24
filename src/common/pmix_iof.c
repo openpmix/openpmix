@@ -507,9 +507,21 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_deregister(size_t iofhdlr, const pmix_info_t 
     return rc;
 }
 
-static pmix_event_t stdinsig_ev;
-static bool stdinsig_active = false;
+/* The read event on our own stdin, and the timer that re-arms it.
+ *
+ * When our stdin is a terminal we must not read it while we are in the
+ * background: the read would raise SIGTTIN and stop the process. So the
+ * read event is disarmed whenever pmix_iof_stdin_check() says the
+ * terminal's foreground process group is not ours, and something has to
+ * notice when we get it back. That something used to be a SIGCONT
+ * handler; it is now this timer, armed only while we are suspended for
+ * that reason. See stdin_resume_arm() for why. */
+static pmix_event_t stdin_resume_ev;
+static bool stdin_resume_active = false;
+static int stdin_resume_delay = 0;
 static pmix_iof_read_event_t *stdinev_global = NULL;
+static void stdin_resume_arm(void);
+static void stdin_resume_cancel(void);
 
 /* Give back what the stdin machinery here holds process-wide.
  *
@@ -526,10 +538,7 @@ static pmix_iof_read_event_t *stdinev_global = NULL;
  */
 void pmix_iof_finalize(void)
 {
-    if (stdinsig_active) {
-        pmix_event_del(&stdinsig_ev);
-        stdinsig_active = false;
-    }
+    stdin_resume_cancel();
     if (NULL != stdinev_global) {
         PMIX_RELEASE(stdinev_global);
         stdinev_global = NULL;
@@ -546,14 +555,15 @@ void pmix_iof_finalize(void)
     pmix_globals.iof_pending_bytes = 0;
 }
 
-/* Start reading our own stdin into stdinev_global, arming the SIGCONT
- * handler when we are looking at a terminal.
+/* Start reading our own stdin into stdinev_global, arming the
+ * foreground poll when we are looking at a terminal we do not currently
+ * own.
  *
  * Both of the roles that forward their own stdin come through here:
  * PMIx_IOF_push with PMIX_IOF_PUSH_STDIN, and a tool told PMIX_FWD_STDIN
  * at init. They used to keep a copy each and the copies drifted - the
- * tool's never added its SIGCONT event (so a backgrounded tool never
- * resumed reading), never gave its read event back, and kept it in a
+ * tool's never armed the background check at all (so a backgrounded tool
+ * never resumed reading), never gave its read event back, and kept it in a
  * file-scope struct of its own that pmix_iof_flow_control cannot see, so
  * nothing could suspend a tool's stdin. Sharing stdinev_global also
  * enforces the thing that matters in its own right: one read event per
@@ -596,26 +606,12 @@ pmix_status_t pmix_iof_setup_stdin_read(int fd, pmix_proc_t procs[], size_t npro
     }
 
     if (isatty(fd)) {
-        /* We should avoid trying to read from stdin if we
-         * have a terminal, but are backgrounded.  Catch the
-         * signals that are commonly used when we switch
-         * between being backgrounded and not.  If the
-         * filedescriptor is not a tty, don't worry about it
-         * and always stay connected.
+        /* We should avoid trying to read from stdin if we have a
+         * terminal, but are backgrounded - the read would raise SIGTTIN.
+         * If the filedescriptor is not a tty, don't worry about it and
+         * always stay connected.
          *
-         * The handler resolves and manipulates stdinev_global and its
-         * libevent registration, both of which belong to evbase - so the
-         * signal event goes there too rather than on evauxbase, which a
-         * host may have supplied as a separate thread. And it has to be
-         * *added*: setting a signal event only assigns it.
-         */
-        pmix_event_signal_set(pmix_globals.evbase, &stdinsig_ev, SIGCONT,
-                              pmix_iof_stdin_cb, NULL);
-        if (0 == pmix_event_add(&stdinsig_ev, NULL)) {
-            stdinsig_active = true;
-        }
-
-        /* setup a read event to read stdin, but don't activate it yet. The
+         * setup a read event to read stdin, but don't activate it yet. The
          * dst_name indicates who should receive the stdin. If that recipient
          * doesn't do a corresponding pull, however, then the stdin will
          * be dropped upon receipt at the local daemon
@@ -625,10 +621,12 @@ pmix_status_t pmix_iof_setup_stdin_read(int fd, pmix_proc_t procs[], size_t npro
 
         /* check to see if we want the stdin read event to be
          * active - we will always at least define the event,
-         * but may delay its activation
+         * but may delay its activation until we have the terminal
          */
         if (pmix_iof_stdin_check(fd)) {
             PMIX_IOF_READ_ACTIVATE(stdinev_global);
+        } else {
+            stdin_resume_arm();
         }
     } else {
         /* if we are not looking at a tty, just setup a read event
@@ -2560,15 +2558,101 @@ bool pmix_iof_stdin_check(int fd)
     return true;
 }
 
+/* Re-check whether our terminal has come back to us.
+ *
+ * PMIx is a library, and the signal dispositions of a process belong to
+ * whoever wrote its main() - so we do not trap signals to learn this,
+ * even though SIGCONT is what a shell sends. Two things go wrong when a
+ * library does:
+ *
+ *  - it silently takes a signal away from its host. Libevent keeps ONE
+ *    process-wide record of which event base owns signals (evsig_base in
+ *    its signal.c), re-claimed both by adding a signal event and by
+ *    entering event_base_loop, and the OS handler writes the signal
+ *    number into whichever base holds it at that instant. A base with no
+ *    event for that signal drops it. So our SIGCONT event on our own
+ *    progress-thread base did not merely draw libevent's "Only one can
+ *    have signals at a time" warning - it swallowed the host's signals
+ *    too, and did so only when stdin was a terminal, which is what made
+ *    it so hard to see. In PRRTE the casualty was SIGCHLD: "prterun -n 1
+ *    head -1" typed at a terminal never returned, because the reap
+ *    notice for the application went to us and we had no use for it
+ *    (prrte issue #2709).
+ *  - and a host that does not use libevent at all, or installs its own
+ *    handler, has its disposition for that signal replaced from under
+ *    it by a library it merely linked.
+ *
+ * Two rules keep the poll from costing a host anything it would notice,
+ * and they are the price of doing this at all: the timer exists only
+ * when a host has asked us to forward its stdin - pmix_iof_setup_stdin_read
+ * is the sole thing that can arm it - and only while that stdin is
+ * suspended for being in the background. A run that forwards no stdin, or
+ * that has its terminal, never sets a timer; and the delay backs off, so
+ * a process left in the background does not hold a fixed wakeup rate. An
+ * XOFF suspension is deliberately not polled either: that one ends with
+ * an XON that calls us back.
+ *
+ * Polling gives up nothing that matters. The terminal buffers what is
+ * typed while we are not reading, so the interval bounds latency, not
+ * data. It is also strictly more reliable than the signal was: nothing
+ * guarantees a SIGCONT accompanies every change of the terminal's
+ * foreground process group, whereas tcgetpgrp() answers the actual
+ * question every time. */
+static void stdin_resume_cb(int sd, short args, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(sd, args, cbdata);
+
+    stdin_resume_active = false;
+    pmix_iof_stdin_cb(0, 0, NULL);
+}
+
+static void stdin_resume_arm(void)
+{
+    struct timeval tv;
+
+    if (stdin_resume_active) {
+        return;
+    }
+    /* Back off the longer we go without the terminal. An "fg" a moment
+     * after backgrounding is answered in iof_stdin_resume_interval, while
+     * a process left in the background all day settles to one wakeup
+     * every iof_stdin_resume_max_interval rather than holding a fixed
+     * rate forever. stdin_resume_cancel() puts it back to the floor. */
+    if (0 == stdin_resume_delay) {
+        stdin_resume_delay = pmix_globals.iof_stdin_resume_interval;
+    } else if (stdin_resume_delay < pmix_globals.iof_stdin_resume_max_interval) {
+        stdin_resume_delay *= 2;
+        if (stdin_resume_delay > pmix_globals.iof_stdin_resume_max_interval) {
+            stdin_resume_delay = pmix_globals.iof_stdin_resume_max_interval;
+        }
+    }
+    tv.tv_sec = stdin_resume_delay / 1000;
+    tv.tv_usec = (stdin_resume_delay % 1000) * 1000;
+    pmix_event_evtimer_set(pmix_globals.evbase, &stdin_resume_ev,
+                           stdin_resume_cb, NULL);
+    if (0 == pmix_event_evtimer_add(&stdin_resume_ev, &tv)) {
+        stdin_resume_active = true;
+    }
+}
+
+static void stdin_resume_cancel(void)
+{
+    if (stdin_resume_active) {
+        pmix_event_del(&stdin_resume_ev);
+        stdin_resume_active = false;
+    }
+    stdin_resume_delay = 0;
+}
+
 void pmix_iof_stdin_cb(int sd, short args, void *cbdata)
 {
-    bool should_process;
+    bool backgrounded;
     pmix_iof_read_event_t *stdinev = (pmix_iof_read_event_t *) cbdata;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    /* this is also the SIGCONT handler, which is registered with no
-     * cbdata at all - it just means "reconsider the stdin we know
-     * about", so resolve it to the one read event there can be */
+    /* the foreground poll passes no cbdata at all - it just means
+     * "reconsider the stdin we know about", so resolve it to the one
+     * read event there can be */
     if (NULL == stdinev) {
         stdinev = stdinev_global;
         if (NULL == stdinev) {
@@ -2578,17 +2662,26 @@ void pmix_iof_stdin_cb(int sd, short args, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(stdinev);
 
-    /* a suspended stream stays suspended until an XON says otherwise -
-     * being told our terminal is back in the foreground does not
-     * override the fact that the far end cannot take the data */
-    should_process = !stdinev->xoff && pmix_iof_stdin_check(0);
+    backgrounded = !pmix_iof_stdin_check(0);
 
-    if (should_process) {
+    /* a suspended stream stays suspended until an XON says otherwise -
+     * having our terminal back does not override the fact that the far
+     * end cannot take the data */
+    if (!stdinev->xoff && !backgrounded) {
+        stdin_resume_cancel();
         PMIX_IOF_READ_ACTIVATE(stdinev);
-    } else {
-        pmix_event_del(&stdinev->ev);
-        stdinev->active = false;
-        PMIX_POST_OBJECT(stdinev);
+        return;
+    }
+
+    pmix_event_del(&stdinev->ev);
+    stdinev->active = false;
+    PMIX_POST_OBJECT(stdinev);
+
+    /* An XOFF ends with an XON that calls us back, but nobody sends us
+     * anything when the terminal changes hands - so that is the one
+     * suspension we have to keep looking at. */
+    if (backgrounded) {
+        stdin_resume_arm();
     }
 }
 
@@ -2967,10 +3060,19 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
          * is no need to pass it upstream as WE are the ones holding the event
          * and associated file descriptor */
         if (0 == numbytes) {
-            if (NULL != child && child->completed &&
+            if (NULL != child &&
                 (NULL == child->stdoutev || !child->stdoutev->active) &&
                 (NULL == child->stderrev || !child->stderrev->active)) {
-                PMIX_PFEXEC_CHK_COMPLETE(child);
+                if (child->completed) {
+                    PMIX_PFEXEC_CHK_COMPLETE(child);
+                } else {
+                    /* the last pipe just closed, which for a child that
+                     * forwards its output is normally the moment it died.
+                     * pfexec polls for exit status rather than trapping
+                     * SIGCHLD, so ask now instead of waiting for its timer
+                     * - it will complete the child itself if it reaps one. */
+                    pmix_pfexec_reap_check();
+                }
             }
             return;
         }

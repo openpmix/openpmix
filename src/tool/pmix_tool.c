@@ -1706,9 +1706,9 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         /* if we have launched children, then we need to cleanly
          * terminate them - do this before stopping our progress
          * thread as we need it for terminating procs */
-        if (pmix_pfexec_globals.active) {
-            pmix_event_del(pmix_pfexec_globals.handler);
-            pmix_pfexec_globals.active = false;
+        if (pmix_pfexec_globals.poll_active) {
+            pmix_event_del(pmix_pfexec_globals.poll_ev);
+            pmix_pfexec_globals.poll_active = false;
         }
         /* Snapshot the identities before killing anything. Each kill parks
          * this thread on the lock for the whole SIGCONT/SIGTERM/SIGKILL
