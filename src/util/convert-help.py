@@ -103,7 +103,14 @@ def parse_help_files(file_paths, data, citations, verbose=False):
         current_section = None
         with open(file_path) as file:
             for line in file:
-                stripped = line.strip()
+                # rstrip only: a content line's leading whitespace is part of
+                # the message (help text lays its option table out in columns),
+                # and stripping it also made an INDENTED line beginning with
+                # '[' - e.g. a usage line reading "[e.g., host0[1-5]]" - look
+                # like a section header, which silently truncated the section
+                # it appeared in and put the remainder under a bogus topic.
+                # Section headers start in column zero.
+                stripped = line.rstrip()
                 if stripped.startswith("#include"):
                     # if we aren't in a section, then this is an error
                     if current_section is None:
