@@ -101,7 +101,12 @@ static void _register_resources(int sd, short args, void *cbdata)
                 ret = PMIX_ERR_NOMEM;
                 goto release;
             }
+            /* the caddy is a borrowed view of one element of the host's
+             * array, and its "ninfo" is the count of what that element
+             * carries. PMIX_NEW leaves both members uninitialized - the
+             * class has no constructor - so neither may be left unset */
             g->info = &cd->info[n];
+            g->ninfo = cd->info[n].value.data.darray->size;
             pmix_list_append(&grpinfo, &g->super);
 
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GROUP_ENDPT_DATA)) {
@@ -121,7 +126,7 @@ static void _register_resources(int sd, short args, void *cbdata)
                 goto release;
             }
             ept->info = &cd->info[n];
-            ept->ninfo = 1;
+            ept->ninfo = cd->info[n].value.data.darray->size;
             pmix_list_append(&endpts, &ept->super);
 
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GROUP_CONTEXT_ID)) {
@@ -194,7 +199,7 @@ static void _register_resources(int sd, short args, void *cbdata)
             /* the array itself was screened when it was collected above,
              * so it is known to hold at least the two leading elements */
             pinfo = (pmix_info_t*)ept->info->value.data.darray->array;
-            npinfo = ept->info->value.data.darray->size;
+            npinfo = ept->ninfo;
             /* procID is in the first position and the scope in the second,
              * but the position alone does not make the union a proc
              * pointer - a mistyped first element would be dereferenced by
@@ -254,7 +259,7 @@ static void _register_resources(int sd, short args, void *cbdata)
         PMIX_LIST_FOREACH(g, &grpinfo, pmix_info_caddy_t) {
             /* screened when it was collected above */
             iptr = (pmix_info_t*)g->info->value.data.darray->array;
-            ninfo = g->info->value.data.darray->size;
+            ninfo = g->ninfo;
 
             if (PMIX_CHECK_KEY(g->info, PMIX_GROUP_INFO)) {
                 // this is just a single array of group info
