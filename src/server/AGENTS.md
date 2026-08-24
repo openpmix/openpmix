@@ -835,31 +835,41 @@ delete-a-key entry point the `gds` module struct does not have, and it
 cannot be built the obvious way for `shmem3`, whose lock-free read path
 is the reason it is fast. See `docs/todo.rst`.
 
-**All four job-preparation entry points screen
-`pmix_server_globals.initialized`, not just `pmix_globals.initialized`.**
-The two resource calls are the ones that crash: `_register_resources`
-appends to `pmix_server_globals.gdata` and `_deregister_resources` walks
-it, and that list is only *statically* initialized until
-`pmix_server_initialize()` constructs it — `PMIX_LIST_STATIC_INIT` leaves
-the sentinel's `next` **and** `prev` NULL, so the append writes through
-NULL and the walk dereferences it. A client sets
-`pmix_globals.initialized` from `PMIx_Init` just as readily as a server
-does, so a client reaching either one was answered `PMIX_SUCCESS` and
-then took a SIGSEGV on the progress thread with the call already
-returned. `PMIx_server_setup_application` and `_setup_local_support` do
-not crash — the `pnet`, `pgpu` and `pmdl` base fan-outs all short-circuit
-on an empty `actives` list, which a static one reports correctly — but
-they are worse behaved for it: with those three frameworks opened only by
-`PMIx_server_init`, they did precisely nothing and reported success. All
-four man pages already said the API is available only after
-`PMIx_server_init` and defined `PMIX_ERR_INIT` as "the PMIx server
-library has not been initialized"; the code now agrees with them. A
-*tool* escapes the crash (`PMIx_tool_init` calls
-`pmix_server_initialize()`) but is owed the same refusal, since nothing
-in a tool will ever serve what it just registered. The forked cases in
-[`test/unit/server_setup.c`](../../test/unit/server_setup.c) hold all four
-to it; against an unfixed library the first two children die on signal 11
-and the last two report that the callback fired.
+**The two resource calls screen `pmix_server_globals.initialized`. The
+two setup calls must NOT, and that difference is load-bearing.**
+
+`_register_resources` appends to `pmix_server_globals.gdata` and
+`_deregister_resources` walks it, and that list is only *statically*
+initialized until `pmix_server_initialize()` constructs it —
+`PMIX_LIST_STATIC_INIT` leaves the sentinel's `next` **and** `prev` NULL,
+so the append writes through NULL and the walk dereferences it. A client
+sets `pmix_globals.initialized` from `PMIx_Init` just as readily as a
+server does, so a client reaching either one was answered `PMIX_SUCCESS`
+and then took a SIGSEGV on the progress thread with the call already
+returned. A *tool* escapes the crash (`PMIx_tool_init` calls
+`pmix_server_initialize()`) but is refused too: nothing in a tool will
+ever serve what it just registered, and PRRTE calls both only from
+`prted`/`hnp`, after `PMIx_server_init`.
+
+`PMIx_server_setup_application` and `_setup_local_support` look like they
+want the same screen and must not have it. **A launcher that came up
+through `PMIx_tool_init` is a legitimate caller.** `PMIx_tool_init` opens
+`pmdl` unconditionally and `pnet` for a launcher, and says why at the
+site — "we might need them if we are asking a server to launch something
+for us". PRRTE's `prun` reaches `PMIx_server_setup_application` from
+`prun_common.c` that way and never calls `PMIx_server_init` at all, so
+adding the screen turned every `prun` launch into `PMIX_ERR_INIT`. The
+frameworks already answer this correctly one level down and per role:
+`pmix_pmdl_base_harvest_envars` returns `PMIX_ERR_INIT` when `pmdl` was
+never opened, so a plain client gets an honest status *through its
+callback* while a launcher gets a real answer. Do not "unify" these four.
+
+The forked cases in
+[`test/unit/server_setup.c`](../../test/unit/server_setup.c) pin both
+halves: the two resource children die on signal 11 against an unfixed
+library, and the two setup children assert the call is **accepted** and
+its callback fires — deliberately not asserting the status it carries,
+which depends on the caller's role.
 
 **`PMIx_Data_array_create()` is two allocations and reports only the
 first.** It hands back a non-NULL `pmix_data_array_t` whose `size` is the

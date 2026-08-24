@@ -134,8 +134,12 @@ constants are defined in ``pmix_common.h``.
 NOTES
 -----
 
-This is a server-role API, available only after
-:ref:`PMIx_server_init(3) <man3-PMIx_server_init>`. Because the implied
+This is a server-role API. It does **not** require
+:ref:`PMIx_server_init(3) <man3-PMIx_server_init>`: a launcher or other
+tool that came up through :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`
+is a supported caller, since that call stands up the programming-model
+and network support this API consults. What a caller gets back depends on
+which of those the calling role initialized. Because the implied
 operations are executed only for the first local client of a namespace, calling
 this API has no additional effect once
 :ref:`PMIx_server_setup_fork(3) <man3-PMIx_server_setup_fork>` has already fired
