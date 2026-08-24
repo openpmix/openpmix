@@ -315,12 +315,19 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
     pmix_kval_t *kv;
     pmix_proc_t proc;
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* unpack the topology they want us to use */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &topo, &cnt, PMIX_TOPO);
     if (PMIX_SUCCESS != rc) {
+        /* nothing has been built yet - the unpackers leave the topology
+         * untouched on every failure arm - but take the same exit as
+         * every other error here rather than a bare return */
         PMIX_ERROR_LOG(rc);
-        return rc;
+        goto cleanup;
     }
 
     /* unpack the cpuset */
