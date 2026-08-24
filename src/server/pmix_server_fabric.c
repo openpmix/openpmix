@@ -82,16 +82,6 @@ static void _fabric_response(int sd, short args, void *cbdata)
     qcd->cbfunc(PMIX_SUCCESS, qcd->info, qcd->ninfo, qcd, NULL, NULL);
 }
 
-static void frcbfunc(pmix_status_t status, void *cbdata)
-{
-    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
-
-    PMIX_ACQUIRE_OBJECT(qcd);
-    qcd->status = status;
-    PMIX_POST_OBJECT(qcd);
-
-    PMIX_WAKEUP_THREAD(&qcd->lock);
-}
 /* we are being called from the PMIx server's switchyard function,
  * which means we are in an event and can access global data */
 pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
@@ -125,9 +115,30 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    /* Screen the count before it sizes an allocation. PMIx_Info_create
+     * multiplies it by sizeof(pmix_info_t) with no overflow guard and
+     * then constructs every one of the elements it claimed, so a count
+     * that wraps that product gives a short allocation whose constructor
+     * loop runs off the end - the crash happens inside the allocation,
+     * before the unpack gets a chance to screen anything. qdes also
+     * walks this size_t when it frees. Require the count to survive the
+     * round trip through the int32_t the unpack consumes it as; see
+     * src/server/AGENTS.md. */
+    cnt = qcd->ninfo;
+    if (0 > cnt || (size_t) cnt != qcd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     /* unpack the directives */
     if (0 < qcd->ninfo) {
         PMIX_INFO_CREATE(qcd->info, qcd->ninfo);
+        if (NULL == qcd->info) {
+            qcd->ninfo = 0;
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
         cnt = qcd->ninfo;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, qcd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
@@ -136,9 +147,26 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t
         }
     }
 
-    /* see if we support this request ourselves */
+    /* See if we support this request ourselves. NULL is passed for the
+     * completion callback deliberately: this runs on the progress
+     * thread, so the only answer we can act on is one the module has
+     * finished with by the time it returns.
+     *
+     * This used to hand pnet a callback and, on a PMIX_SUCCESS return -
+     * which in this framework means "I will call you back" - block the
+     * progress thread on PMIX_WAIT_THREAD until it did. Nothing in the
+     * tree implements register_fabric, so that arm never ran; had a
+     * module ever been written it would have deadlocked the library the
+     * moment it did its work the way every other component here does,
+     * by posting an event to the progress thread that the blocked
+     * thread would then never reach. It also handed the module the
+     * address of the stack-allocated fabric object below, which dies
+     * when this function returns, and then discarded the status it had
+     * waited for. Refuse the deferral instead of blocking on it: a
+     * module that wants to answer asynchronously needs the fabric
+     * object and the response path to be built for that first. */
     PMIX_FABRIC_CONSTRUCT(&fabric);
-    rc = pmix_pnet.register_fabric(&fabric, qcd->info, qcd->ninfo, frcbfunc, qcd);
+    rc = pmix_pnet.register_fabric(&fabric, qcd->info, qcd->ninfo, NULL, NULL);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         /* we need to respond, but we want to ensure
          * that occurs _after_ the client returns from its API */
@@ -150,16 +178,9 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t
         PMIX_THREADSHIFT(qcd, _fabric_response);
         return PMIX_SUCCESS;
     } else if (PMIX_SUCCESS == rc) {
-        PMIX_WAIT_THREAD(&qcd->lock);
-        /* we need to respond, but we want to ensure
-         * that occurs _after_ the client returns from its API */
-        if (NULL != qcd->info) {
-            PMIX_INFO_FREE(qcd->info, qcd->ninfo);
-        }
-        qcd->info = fabric.info;
-        qcd->ninfo = fabric.ninfo;
-        PMIX_THREADSHIFT(qcd, _fabric_response);
-        return PMIX_SUCCESS;
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto exit;
     }
 
     /* if we don't internally support it, see if
@@ -317,8 +338,23 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
+    /* the same screen, for the same reasons - and this array is parked on
+     * the server caddy, whose destructor walks the size_t when it frees */
+    cnt = cd->ninfo;
+    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        cd->ninfo = 0;
+        goto cleanup;
+    }
     if (0 < cd->ninfo) {
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        if (NULL == cd->info) {
+            cd->ninfo = 0;
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
         cnt = cd->ninfo;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, cd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {

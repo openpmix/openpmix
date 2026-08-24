@@ -946,10 +946,14 @@ void pmix_server_fabric_cbfunc(pmix_status_t status, pmix_info_t *info, size_t n
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        /* nothing we can do */
+        /* we cannot answer the requestor, but we can at least let go of
+         * the caddies - and the peer reference the server caddy holds -
+         * exactly as the progress-thread-stopped arm above does */
         if (NULL != release_fn) {
             release_fn(release_cbdata);
         }
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
         return;
     }
     scd->status = status;
@@ -1043,10 +1047,13 @@ void pmix_server_dist_cbfunc(pmix_status_t status, pmix_device_distance_t *dist,
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        /* nothing we can do */
+        /* we cannot answer the requestor, but we can at least let go of
+         * the caddy - and the peer reference it holds - exactly as the
+         * progress-thread-stopped arm above does */
         if (NULL != release_fn) {
             release_fn(release_cbdata);
         }
+        PMIX_RELEASE(cd);
         return;
     }
     scd->status = status;
