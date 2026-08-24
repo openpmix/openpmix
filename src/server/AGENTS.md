@@ -1616,7 +1616,7 @@ that reaches these local computations.
 
 ## Peer lifecycle, tombstones, and event purging
 
-`pmix_server_peer_finalized` (`pmix_server_registration.c:460`) and its helper
+`pmix_server_peer_finalized` (`pmix_server_registration.c`) and its helper
 `remove_client` implement the **tombstone** model documented in the
 header comment (`pmix_server_ops.h:387`): a cleanly-finalized local
 client whose socket dropped is left in place as an inert finalized peer
