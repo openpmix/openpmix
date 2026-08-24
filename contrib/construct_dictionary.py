@@ -337,6 +337,8 @@ def harvest_constants(options, path, constants):
                             datatype = "PMIX_DOUBLE"
                         elif tokens[3] == "(pmix_alloc_inheritance_t)":
                             datatype = "PMIX_ALLOC_INHERIT"
+                        elif tokens[3] == "(pmix_alloc_directive_t)":
+                            datatype = "PMIX_ALLOC_DIRECTIVE"
                         else:
                             print("UNKNOWN TOKEN: {tok}".format(tok=tokens[3]))
                             return 1

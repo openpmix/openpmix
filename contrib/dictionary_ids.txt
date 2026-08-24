@@ -692,3 +692,5 @@ pmix.jctrl.ckpttime    661   PMIX_JOB_CTRL_CHECKPOINT_TIMEOUT
 pmix.fabdev.coord      662   PMIX_FABRIC_DEVICE_COORDINATES
 pmix.spwn.root         663   PMIX_SPAWN_TREE_ROOT
 pmix.spwn.actv         664   PMIX_SPAWN_TREE_ACTIVE
+pmix.spwn.alloc        665   PMIX_SPAWN_ALLOC
+pmix.alloc.dir         666   PMIX_ALLOC_REQ_DIRECTIVE
