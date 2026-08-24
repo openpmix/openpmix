@@ -388,8 +388,9 @@ pmix_status_t pmix_register_params(void)
     /* max number of IOF messages to cache */
     pmix_server_globals.max_iof_cache = 1024 * 1024;
     (void) pmix_mca_base_var_register("pmix", "pmix", "max", "iof_cache",
-                                      "Maximum number of IOF messages to cache",
-                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      "Maximum number of IOF messages to cache "
+                                      "[0 = do not cache]",
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_server_globals.max_iof_cache);
 
     (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "progress_thread_cpus",
