@@ -83,9 +83,11 @@ When ``cbfunc`` is provided, it has the signature ``pmix_op_cbfunc_t``:
 The library invokes ``cbfunc`` from its progress thread once the client has
 been purged. ``status`` is ``PMIX_SUCCESS`` on success (including the case in
 which the named client or namespace was not found, which is treated as nothing
-to do). If the library was never initialized, the callback (if provided) is
-invoked with ``PMIX_ERR_INIT``; if memory for the request could not be
-allocated, it is invoked with ``PMIX_ERR_NOMEM``. ``cbdata`` is the opaque
+to do). The callback (if provided) is instead invoked with ``PMIX_ERR_INIT`` if
+the PMIx server library was never initialized, with ``PMIX_ERR_NOT_AVAILABLE``
+if its progress engine has already been stopped, with ``PMIX_ERR_BAD_PARAM`` if
+``proc`` is ``NULL`` or names an empty namespace, and with ``PMIX_ERR_NOMEM`` if
+memory for the request could not be allocated. ``cbdata`` is the opaque
 pointer passed to ``PMIx_server_deregister_client``.
 
 
@@ -93,11 +95,23 @@ NOTES
 -----
 
 If the PMIx server library's progress engine has already been stopped (for
-example, during finalize), the request is silently dropped and any provided
-``cbfunc`` is not invoked.
+example, during finalize), the request cannot be serviced; any provided
+``cbfunc`` is invoked with ``PMIX_ERR_NOT_AVAILABLE``. This function reports no
+status of its own, so the callback is the only way a caller can be told, and a
+caller that was given one and never heard back would wait forever.
 
 
 .. include:: /man/no-blocking-in-progress-thread.rst
+
+
+**Exception for this call.** ``PMIx_server_deregister_client`` has no return
+value, so it cannot report ``PMIX_ERR_WOULD_BLOCK``. When it is passed a
+``NULL`` ``cbfunc`` from the progress thread it therefore completes the
+deregistration *asynchronously* on that same loop rather than refusing it.
+Nothing observable is lost: every other PMIx operation is serialized through
+that loop, so each will see the client gone exactly as it would have. Running the
+handler inline is not an option |mdash| it releases peers, and the up-call the
+caller is nested inside may still be holding one.
 
 
 .. seealso::

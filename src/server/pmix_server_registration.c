@@ -68,6 +68,10 @@ static void _register_nspace(int sd, short args, void *cbdata)
     pmix_nspace_caddy_t *nm;
     size_t prev_nlocal;
     bool counted;
+    bool nodata;
+    bool prev_all_reg;
+    pmix_rank_t rank;
+    size_t idpos;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
@@ -118,7 +122,15 @@ static void _register_nspace(int sd, short args, void *cbdata)
             PMIX_LOAD_PROCID(&proc, cd->proc.nspace, PMIX_RANK_WILDCARD);
             for (i=0; i < cd->ninfo; i++) {
                 if (PMIX_CHECK_KEY(&cd->info[i], PMIX_PROC_INFO_ARRAY)) {
-                    if (NULL == cd->info[i].value.data.darray ||
+                    /* the type has to be checked before the darray member
+                     * of the union is read: an entry carrying this key with
+                     * any other type hands us whatever that member happens
+                     * to overlay - a char* for a string - which is then
+                     * dereferenced. Both gds/hash readers of this key check
+                     * it, and one of them says in so many words that every
+                     * path taking the key owes the same check */
+                    if (PMIX_DATA_ARRAY != cd->info[i].value.type ||
+                        NULL == cd->info[i].value.data.darray ||
                         NULL == cd->info[i].value.data.darray->array ||
                         0 == cd->info[i].value.data.darray->size) {
                         /* nothing to describe a rank with */
@@ -127,10 +139,26 @@ static void _register_nspace(int sd, short args, void *cbdata)
                     }
                     iptr = (pmix_info_t*)cd->info[i].value.data.darray->array;
                     ninfo = cd->info[i].value.data.darray->size;
-                    /* the first position is the rank */
-                    PMIX_LOAD_PROCID(&proc, cd->proc.nspace, iptr[0].value.data.rank);
-                    /* the remaining entries are that rank's data */
-                    for (m=1; m < ninfo; m++) {
+                    /* the array has to say which proc it describes, and the
+                     * host may do that with a PMIX_RANK or a PMIX_PROCID,
+                     * in any position - which is what the shared helper
+                     * works out and what every other reader of this key in
+                     * the tree uses. Reading iptr[0].value.data.rank
+                     * outright took the union's rank member of whatever
+                     * entry happened to come first: a host that identified
+                     * the proc any other way had its data stored against a
+                     * garbage rank, and its identifier entry stored as
+                     * though it were data. */
+                    rc = pmix_gds_base_proc_array_id(iptr, ninfo, &rank, &idpos);
+                    if (PMIX_SUCCESS != rc) {
+                        goto release;
+                    }
+                    PMIX_LOAD_PROCID(&proc, cd->proc.nspace, rank);
+                    /* every other entry is that rank's data */
+                    for (m=0; m < ninfo; m++) {
+                        if (m == idpos) {
+                            continue;
+                        }
                         PMIX_KVAL_NEW(kv, iptr[m].key);
                         if (PMIX_UNLIKELY(NULL == kv)) {
                             rc = PMIX_ERR_NOMEM;
@@ -195,6 +223,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * only when the count is known, and every tracker in the list was
      * created before this call */
     prev_nlocal = nptr->nlocalprocs;
+    prev_all_reg = nptr->all_registered;
     nptr->nlocalprocs = cd->nlocalprocs;
 
     /* see if we already have everyone */
@@ -203,35 +232,47 @@ static void _register_nspace(int sd, short args, void *cbdata)
     }
 
     /* check info directives to see if we want to store this info */
+    nodata = false;
     for (i = 0; i < cd->ninfo; i++) {
         if (0 == strcmp(cd->info[i].key, PMIX_REGISTER_NODATA)) {
-            /* nope - so we are done */
-            rc = PMIX_SUCCESS;
-            goto release;
+            nodata = true;
+            break;
         }
     }
 
-    /* register nspace for each activate components */
-    PMIX_GDS_ADD_NSPACE(rc, nptr->nspace, cd->nlocalprocs, cd->info, cd->ninfo);
-    if (PMIX_SUCCESS != rc) {
-        goto release;
-    }
+    /* PMIX_REGISTER_NODATA suppresses the *data* half of this call and
+     * nothing else. It pre-registers a namespace whose job data will
+     * follow later - but it still carries nlocalprocs, and that count is
+     * precisely what a pending collective, a parked direct-modex request,
+     * or a blocked group definition is waiting on. Returning here skipped
+     * the sweep below, so a host that registered its clients first and
+     * then pre-registered the namespace set all_registered and told
+     * nobody: every tracker naming this namespace stayed incomplete, and
+     * the two sweeps live nowhere else (only these two handlers call
+     * them), so nothing later would re-drive them. */
+    if (!nodata) {
+        /* register nspace for each activate components */
+        PMIX_GDS_ADD_NSPACE(rc, nptr->nspace, cd->nlocalprocs, cd->info, cd->ninfo);
+        if (PMIX_SUCCESS != rc) {
+            goto restore;
+        }
 
-    /* store this data in our own GDS module - we will retrieve
-     * it later so it can be passed down to the launched procs
-     * once they connect to us and we know what GDS module they
-     * are using */
-    PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, cd->info, cd->ninfo);
-    if (PMIX_SUCCESS != rc) {
-        goto release;
-    }
-    // record that we recvd the job-level info for this namespace
-    nptr->job_info_recvd = true;
+        /* store this data in our own GDS module - we will retrieve
+         * it later so it can be passed down to the launched procs
+         * once they connect to us and we know what GDS module they
+         * are using */
+        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, cd->info, cd->ninfo);
+        if (PMIX_SUCCESS != rc) {
+            goto restore;
+        }
+        // record that we recvd the job-level info for this namespace
+        nptr->job_info_recvd = true;
 
-    /* give the programming models a chance to add anything they need */
-    rc = pmix_pmdl.register_nspace(nptr);
-    if (PMIX_SUCCESS != rc) {
-        goto release;
+        /* give the programming models a chance to add anything they need */
+        rc = pmix_pmdl.register_nspace(nptr);
+        if (PMIX_SUCCESS != rc) {
+            goto restore;
+        }
     }
 
     /* check any pending trackers to see if they are
@@ -348,6 +389,20 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * namespace we had not been told about */
     pmix_server_grp_check_pending();
     rc = PMIX_SUCCESS;
+    goto release;
+
+restore:
+    /* The host is being told this registration failed, so the library
+     * must not go on behaving as though it had. nlocalprocs is the one
+     * thing this call publishes before any of the work above can fail,
+     * and it is exactly what the rest of the directory reads to decide
+     * that a namespace is fully known: leaving it set meant the next
+     * register_client saw the count satisfied, set all_registered, swept
+     * the pending collectives and handed them to the host - for a
+     * namespace whose job data was never stored. Put the count, and the
+     * flag derived from it above, back where they were. */
+    nptr->nlocalprocs = prev_nlocal;
+    nptr->all_registered = prev_all_reg;
 
 release:
     cd->opcbfunc(rc, cd->cbdata);
@@ -363,12 +418,30 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const pmix_nspace_t nspace
     pmix_status_t rc;
     pmix_lock_t mylock;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* the *server* library has to be up, not merely some PMIx library.
+     * pmix_globals.initialized is set by PMIx_Init and PMIx_tool_init
+     * too, and until PMIx_server_init has run every list in
+     * pmix_server_globals is only PMIX_LIST_STATIC_INIT - whose sentinel
+     * carries a NULL next pointer, so the collectives walk below is a
+     * NULL dereference rather than an empty loop - and the pnet, pgpu and
+     * pmdl frameworks these handlers fan out to have never been opened.
+     * See pmix_server_globals_t::initialized */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* A namespace name is what every lookup in this directory keys on, so
+     * screen it here rather than letting an empty one through: the
+     * library would build a namespace object named "" that no later
+     * registration or query could name, and that a deregistration
+     * carrying the same empty name would find ahead of any real one. */
+    if (0 == pmix_nslen(nspace)) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
@@ -453,10 +526,18 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc,
                                                                      i))) {
             continue;
         }
-        /* protect against errors */
+        /* A request with no requestor peer is one THIS process registered
+         * through PMIx_IOF_pull and forwarded to its own upstream server -
+         * the second kind of entry this array holds (see the IOF section of
+         * ../common/AGENTS.md). It belongs to us, not to the departing peer,
+         * and its refid is a handle we have already handed back to our own
+         * caller. Deleting it here retired a live registration of our own
+         * every time any local client or tool finalized, silently stopping
+         * the output it had asked for. Skip it, exactly as
+         * pmix_iof_process_iof does. A requestor whose info is not yet set
+         * cannot be name-matched either, so it is skipped for the same
+         * reason rather than destroyed. */
         if (NULL == req->requestor || NULL == req->requestor->info) {
-            pmix_pointer_array_set_item(&pmix_globals.iof_requests, i, NULL);
-            PMIX_RELEASE(req);
             continue;
         }
         if (NULL != peer && NULL == peer->info) {
@@ -704,7 +785,12 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
              * torn down, and this list dies with it. */
             if (NULL != p) {
                 pmix_proclist_t *dp = PMIX_NEW(pmix_proclist_t);
-                if (NULL != dp) {
+                if (NULL == dp) {
+                    /* say so - without the record, a direct-modex request
+                     * naming this rank parks forever instead of being told
+                     * "not found", and nothing else would report why */
+                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                } else {
                     PMIX_LOAD_PROCID(&dp->proc, info->pname.nspace,
                                      info->pname.rank);
                     pmix_list_append(&nptr->departed, &dp->super);
@@ -758,10 +844,16 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
      * cached notifications targeting procs from this nspace */
     pmix_server_purge_events(NULL, &cd->proc, PMIX_ERR_NOT_FOUND);
 
-    // find the nspace object
+    /* find the nspace object. Compare exactly, as every other lookup in
+     * this file does: PMIX_CHECK_NSPACE answers true whenever *either*
+     * name is NULL or empty, so an empty namespace reaching here matched
+     * whichever namespace happened to sit first on the list and tore that
+     * one down instead - releasing its clients and closing their sockets.
+     * The registration paths have always used strcmp, so a name this
+     * would match is not a name registration could have created. */
     nptr = NULL;
     PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (PMIX_CHECK_NSPACE(tmp->nspace, cd->proc.nspace)) {
+        if (0 == strcmp(tmp->nspace, cd->proc.nspace)) {
             nptr = tmp;
             break;
         }
@@ -797,7 +889,16 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_
     pmix_setup_caddy_t *cd;
     pmix_lock_t mylock;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* the *server* library has to be up, not merely some PMIx library.
+     * pmix_globals.initialized is set by PMIx_Init and PMIx_tool_init
+     * too, and until PMIx_server_init has run every list in
+     * pmix_server_globals is only PMIX_LIST_STATIC_INIT - whose sentinel
+     * carries a NULL next pointer, so the collectives walk below is a
+     * NULL dereference rather than an empty loop - and the pnet, pgpu and
+     * pmdl frameworks these handlers fan out to have never been opened.
+     * See pmix_server_globals_t::initialized */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         if (NULL != cbfunc) {
             cbfunc(PMIX_ERR_INIT, cbdata);
         }
@@ -811,6 +912,15 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_
          * check above has always done this; this one did not */
         if (NULL != cbfunc) {
             cbfunc(PMIX_ERR_NOT_AVAILABLE, cbdata);
+        }
+        return;
+    }
+
+    /* an empty name is not a namespace this library could have
+     * registered - see the matching comment in the handler below */
+    if (0 == pmix_nslen(nspace)) {
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_BAD_PARAM, cbdata);
         }
         return;
     }
@@ -1226,12 +1336,27 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc, u
     pmix_status_t rc;
     pmix_lock_t mylock;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* the *server* library has to be up, not merely some PMIx library.
+     * pmix_globals.initialized is set by PMIx_Init and PMIx_tool_init
+     * too, and until PMIx_server_init has run every list in
+     * pmix_server_globals is only PMIX_LIST_STATIC_INIT - whose sentinel
+     * carries a NULL next pointer, so the collectives walk below is a
+     * NULL dereference rather than an empty loop - and the pnet, pgpu and
+     * pmdl frameworks these handlers fan out to have never been opened.
+     * See pmix_server_globals_t::initialized */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* see the matching comment in PMIx_server_register_nspace - and the
+     * pointer itself is dereferenced on the next line */
+    if (NULL == proc || 0 == pmix_nslen(proc->nspace)) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
@@ -1323,7 +1448,16 @@ PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc, pmix_op_
     pmix_setup_caddy_t *cd;
     pmix_lock_t mylock;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* the *server* library has to be up, not merely some PMIx library.
+     * pmix_globals.initialized is set by PMIx_Init and PMIx_tool_init
+     * too, and until PMIx_server_init has run every list in
+     * pmix_server_globals is only PMIX_LIST_STATIC_INIT - whose sentinel
+     * carries a NULL next pointer, so the collectives walk below is a
+     * NULL dereference rather than an empty loop - and the pnet, pgpu and
+     * pmdl frameworks these handlers fan out to have never been opened.
+     * See pmix_server_globals_t::initialized */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         if (NULL != cbfunc) {
             cbfunc(PMIX_ERR_INIT, cbdata);
         }
@@ -1334,6 +1468,15 @@ PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc, pmix_op_
         /* see the matching comment in PMIx_server_deregister_nspace */
         if (NULL != cbfunc) {
             cbfunc(PMIX_ERR_NOT_AVAILABLE, cbdata);
+        }
+        return;
+    }
+
+    /* see the matching comment in PMIx_server_deregister_nspace - and the
+     * pointer itself is dereferenced on the next line */
+    if (NULL == proc || 0 == pmix_nslen(proc->nspace)) {
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_BAD_PARAM, cbdata);
         }
         return;
     }
