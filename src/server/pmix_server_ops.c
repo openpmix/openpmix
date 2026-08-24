@@ -149,6 +149,7 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->status, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cd);
         return rc;
     }
@@ -157,6 +158,7 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nspace, &cnt, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cd);
         return rc;
     }
@@ -164,6 +166,20 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nprocs, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    /* screen the count before it sizes an allocation: PMIx_Proc_create
+     * computes "n * sizeof(pmix_proc_t)" with no overflow guard and then
+     * constructs every one of the n elements, so a count large enough to
+     * wrap that product yields a short allocation whose constructor loop
+     * runs straight off the end - and scaddes walks the same size_t again
+     * when it frees. This is the round-trip screen the publish and spawn
+     * handlers below carry for exactly the same reason. */
+    cnt = cd->nprocs;
+    if (0 > cnt || (size_t) cnt != cd->nprocs) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
         goto error;
     }
 
@@ -173,11 +189,13 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_PROC_CREATE(cd->procs, cd->nprocs);
         if (NULL == cd->procs) {
             rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
             goto error;
         }
         cnt = cd->nprocs;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->procs, &cnt, PMIX_PROC);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             goto error;
         }
     }
@@ -242,22 +260,23 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    /* unpack the effective user id */
+    /* consume the effective user id the message carries, and discard what
+     * it says.  Access to published data is decided in terms of this pair,
+     * so neither half may be a claim the requestor restates per command:
+     * the connection handshake already carried both ids and the peer was
+     * refused at that point if it claimed a uid or gid other than the one
+     * it was registered with, which makes peer->info the pair the host
+     * itself vouched for.  The field stays on the wire because the message
+     * format is frozen - there is no version number that distinguishes a
+     * peer built before its removal from one built after - and for that
+     * same reason the group id never joined it there. */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &uid, &cnt, PMIX_UINT32);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* ...and the effective group id, which access permissions are
-     * expressed in terms of just as much as the user id.  It does not come
-     * off the wire: the connection handshake already carried it, and the
-     * peer was refused at that point if it claimed a uid or gid other than
-     * the one it was registered with - so what the host told us is both
-     * available and more trustworthy than a per-command claim.  Adding a
-     * field to this message would also be unversionable, there being no
-     * version number that distinguishes a peer built before the field from
-     * one built after. */
+    uid = peer->info->uid;
     gid = peer->info->gid;
     /* unpack the number of info objects */
     cnt = 1;
@@ -363,22 +382,23 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    /* unpack the effective user id */
+    /* consume the effective user id the message carries, and discard what
+     * it says.  Access to published data is decided in terms of this pair,
+     * so neither half may be a claim the requestor restates per command:
+     * the connection handshake already carried both ids and the peer was
+     * refused at that point if it claimed a uid or gid other than the one
+     * it was registered with, which makes peer->info the pair the host
+     * itself vouched for.  The field stays on the wire because the message
+     * format is frozen - there is no version number that distinguishes a
+     * peer built before its removal from one built after - and for that
+     * same reason the group id never joined it there. */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &uid, &cnt, PMIX_UINT32);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* ...and the effective group id, which access permissions are
-     * expressed in terms of just as much as the user id.  It does not come
-     * off the wire: the connection handshake already carried it, and the
-     * peer was refused at that point if it claimed a uid or gid other than
-     * the one it was registered with - so what the host told us is both
-     * available and more trustworthy than a per-command claim.  Adding a
-     * field to this message would also be unversionable, there being no
-     * version number that distinguishes a peer built before the field from
-     * one built after. */
+    uid = peer->info->uid;
     gid = peer->info->gid;
     /* unpack the number of keys */
     cnt = 1;
@@ -451,6 +471,18 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
     rc = pmix_host_server.lookup(&proc, cd->keys, cd->info, cd->ninfo, lkcbfunc, cd);
+    /* PMIX_OPERATION_SUCCEEDED cannot express this operation's result -
+     * the published data that was asked for, which comes back through the
+     * callback we always supply. Left alone it would reach the requesting
+     * client as a synthesized status-only reply, and the client reads the
+     * value count out of the bytes that follow a successful status, so it
+     * would end up reporting an unpack error for a lookup its host said
+     * had succeeded */
+    if (PMIX_UNLIKELY(PMIX_OPERATION_SUCCEEDED == rc)) {
+        pmix_show_help("help-pmix-server.txt", "atomic-completion-unsupported",
+                       true, "PMIx_Lookup from a client");
+        rc = PMIX_ERR_NOT_SUPPORTED;
+    }
 
 cleanup:
     if (PMIX_SUCCESS != rc) {
@@ -483,22 +515,23 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    /* unpack the effective user id */
+    /* consume the effective user id the message carries, and discard what
+     * it says.  Access to published data is decided in terms of this pair,
+     * so neither half may be a claim the requestor restates per command:
+     * the connection handshake already carried both ids and the peer was
+     * refused at that point if it claimed a uid or gid other than the one
+     * it was registered with, which makes peer->info the pair the host
+     * itself vouched for.  The field stays on the wire because the message
+     * format is frozen - there is no version number that distinguishes a
+     * peer built before its removal from one built after - and for that
+     * same reason the group id never joined it there. */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &uid, &cnt, PMIX_UINT32);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* ...and the effective group id, which access permissions are
-     * expressed in terms of just as much as the user id.  It does not come
-     * off the wire: the connection handshake already carried it, and the
-     * peer was refused at that point if it claimed a uid or gid other than
-     * the one it was registered with - so what the host told us is both
-     * available and more trustworthy than a per-command claim.  Adding a
-     * field to this message would also be unversionable, there being no
-     * version number that distinguishes a peer built before the field from
-     * one built after. */
+    uid = peer->info->uid;
     gid = peer->info->gid;
     /* unpack the number of keys */
     cnt = 1;
@@ -777,13 +810,25 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
-        /* run a quick check of the directives to see if any IOF
-         * requests were included so we can set that up now - helps
-         * to catch any early output - and a request for notification
-         * of job termination so we can setup the event registration */
-        pmix_server_spawn_parser(peer, &cd->channels, &cd->flags,
-                                 &cd->inherit_iof, cd->info, cd->ninfo);
     }
+    /* run a quick check of the directives to see if any IOF
+     * requests were included so we can set that up now - helps
+     * to catch any early output - and a request for notification
+     * of job termination so we can setup the event registration.
+     *
+     * This runs even when the request carried no directives at all,
+     * which is a legal spawn (PMIx_Spawn(NULL, 0, ...)) and NOT the
+     * same thing as a request that asked for no forwarding. Naming no
+     * channel is precisely what decides the two defaults the parser
+     * exists to apply: a client's child inherits its parent's
+     * forwarding, and a tool's child gets every output channel because
+     * a tool has no parent to inherit from. Skipping the parse left
+     * both at the caddy's constructed state - forward nothing, inherit
+     * nothing - so a tool such as prun that spawned without directives
+     * never saw a line of its job's output. Both call sites in
+     * PMIx_Spawn_nb parse unconditionally for the same reason. */
+    pmix_server_spawn_parser(peer, &cd->channels, &cd->flags,
+                             &cd->inherit_iof, cd->info, cd->ninfo);
 
     /* unpack the number of apps */
     cnt = 1;
