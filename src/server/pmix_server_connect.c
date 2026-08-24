@@ -91,8 +91,12 @@ static void collective_timeout(int sd, short args, void *cbdata)
         return;
     }
 
-    /* execute the provided callback function with the error */
+    /* execute the provided callback function with the error. Clear the
+     * flag first: the timer has fired, so it is no longer armed, and the
+     * completion and the tracker destructor both read this to decide
+     * whether they still owe libevent a delete */
     if (NULL != trk->op_cbfunc) {
+        trk->event_active = false;
         trk->op_cbfunc(PMIX_ERR_TIMEOUT, trk);
         return; // the cbfunc will have cleaned up the tracker
     }
@@ -469,7 +473,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &endpt, &cnt, PMIX_INFO);
     if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
-        goto cleanup;
+        goto trkerr;
     }
     if (PMIX_SUCCESS == rc) {
         // add the endpt to the end
@@ -478,7 +482,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         if (NULL == iptr) {
             PMIX_INFO_DESTRUCT(&endpt);
             rc = PMIX_ERR_NOMEM;
-            goto cleanup;
+            goto trkerr;
         }
         for (n=0; n < trk->ninfo; n++) {
             PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
@@ -495,7 +499,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &endpt, &cnt, PMIX_INFO);
     if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
-        goto cleanup;
+        goto trkerr;
     }
     if (PMIX_SUCCESS == rc) {
         // add the info to the end
@@ -504,7 +508,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         if (NULL == iptr) {
             PMIX_INFO_DESTRUCT(&endpt);
             rc = PMIX_ERR_NOMEM;
-            goto cleanup;
+            goto trkerr;
         }
         for (n=0; n < trk->ninfo; n++) {
             PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
@@ -613,6 +617,27 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     } else {
         rc = PMIX_SUCCESS;
     }
+    goto cleanup;
+
+trkerr:
+    /* We have a tracker and this caddy never joined it, so nothing left in
+     * the tree will ever complete it: it would sit on the collectives list
+     * for the life of the server, and any participant that contributed
+     * ahead of us would wait in PMIx_Connect forever. (A later connect
+     * over the same participant set finds and reuses the stranded tracker,
+     * carrying the stale info we half-assembled onto it.)
+     *
+     * Fail the whole collective instead, exactly as the host-refusal arm
+     * above does: cbfunc replies to every caddy on local_cbs, unlinks the
+     * tracker from collectives and releases it. This caddy is not on that
+     * list, so the switchyard still owns it and answers this caller with
+     * rc - which is why there is no detach to do here.
+     *
+     * These arms sit between the tracker lookup and the local_cbs append
+     * only because the endpoint and job-info blocks were threaded in
+     * between the two; pmix_server_disconnect has no such window. */
+    trk->host_called = false;
+    cbfunc(rc, trk);
 
 cleanup:
     if (NULL != procs) {
