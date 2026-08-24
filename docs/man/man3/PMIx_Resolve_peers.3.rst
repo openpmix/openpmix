@@ -99,6 +99,16 @@ constant is returned, including:
   while servicing the request.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| either ``procs`` or ``nprocs`` was ``NULL``,
   or an invalid response was received while servicing the request.
+* ``PMIX_ERR_INVALID_NAMESPACE`` |mdash| the requested namespace is not known
+  to the process answering the request.
+* ``PMIX_ERR_INVALID_VAL`` |mdash| the value recorded against the request was
+  not of the expected form. This reports an inconsistency in the data the host
+  supplied, not an absent answer: "nothing assigned" is reported as
+  ``PMIX_SUCCESS``, per `NOTES`_.
+* ``PMIX_ERR_DATA_VALUE_NOT_FOUND`` |mdash| the node is assigned to the
+  namespace, but no ``PMIX_LOCAL_PEERS`` value was recorded against it. See
+  :doc:`/how-things-work/resolve` for why this is distinct from the node
+  hosting no processes.
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.

@@ -93,6 +93,12 @@ negative value corresponding to a PMIx error constant is returned, including:
   while servicing the request.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| ``nodelist`` was ``NULL``, or an invalid
   response was received while servicing the request.
+* ``PMIX_ERR_INVALID_NAMESPACE`` |mdash| the requested namespace is not known
+  to the process answering the request.
+* ``PMIX_ERR_INVALID_VAL`` |mdash| the value recorded against the request was
+  not of the expected form. This reports an inconsistency in the data the host
+  supplied, not an absent answer: "nothing assigned" is reported as
+  ``PMIX_SUCCESS``, per `NOTES`_.
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.

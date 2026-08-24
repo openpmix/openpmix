@@ -1609,10 +1609,60 @@ depended on the order the namespaces sat in the list. See the ninth-sweep
 entry in the client's `AGENTS.md` for why that was benign against today's
 `hash` module, before deciding the reset is unnecessary.
 
+**The query object the entry point builds is the local handler's only
+source of arguments**, so an allocation failure there cannot be carried
+past the entry point in any form. `pmix_server_resolve_peers` and
+`_resolve_node` dereference `cd->query` on the line after
+`PMIX_QUERY_CREATE`, hand the host a `keys` array that
+`PMIX_ARGV_APPEND` may have left NULL, and index an `iptr` that
+`PMIX_INFO_CREATE` may have failed to produce. All three now fail the
+call instead: the switchyard releases the caddy — and with it
+`cd->query`, which `cddes` frees — and answers the requestor itself.
+
+**An entry dropped by a failed `argv` append is a wrong answer, not a
+shorter one.** Both aggregate walks in each file build a result list one
+namespace at a time and then hand the caller the join of it. The peers
+walk had already accumulated that namespace's *peer count* by the time it
+appended, so a silent failure reported `PMIX_SUCCESS` for a list missing
+a whole namespace's procs; the nodes walk would drop a node the caller is
+entitled to see, and a `PMIx_Argv_join` that returned NULL would report
+"no nodes assigned", which is a different answer rather than a failed
+one. All four sites — two in each twin — now fail the request. Same rule
+as `_cnct` in `pmix_server_op_replies.c`.
+
+**A fetch that reports success and hands back nothing is an anomaly, and
+all four halves now say so.** The documented "nothing assigned" answer
+arrives as `PMIX_ERR_NOT_FOUND` or as a NULL string, and each is handled
+on its own arm. An empty `cb.kvs` under a `PMIX_SUCCESS` fetch is neither.
+Both peers halves always reported it as `PMIX_ERR_INVALID_VAL`; both
+nodes halves fell through with `ret` still `PMIX_SUCCESS`, so the caller
+was told the call succeeded and handed a NULL node list it is entitled to
+parse.
+
+**The two aggregate branches deliberately disagree about "found
+nothing", and that is not an asymmetry to remove.** A peers walk that
+collected no list at all answers `PMIX_ERR_DATA_VALUE_NOT_FOUND`, which
+is the status `docs/how-things-work/resolve.rst` assigns to "the host
+failed to provide `PMIX_LOCAL_PEERS`" — exactly what that outcome means.
+A nodes walk has no equivalent status to report, and the same document
+requires `PMIX_SUCCESS` with a NULL list when no nodes were found, so it
+answers that.
+
+**`strtoul` into a `pmix_rank_t` was examined and left alone.** Both files
+parse each rank out of a comma-delimited `PMIX_LOCAL_PEERS` string with a
+bare `strtoul`, so an unparseable field silently becomes rank 0 and a
+value above `UINT32_MAX` truncates. That string is written by the host
+through `register_nspace` and read back out of our own datastore — it is
+not peer-supplied — and both twins behave identically, so a screen added
+to one would be an asymmetry rather than a fix. Add all four sites or
+none.
+
 Regression coverage for the shared defects lives on the client side, in
 `test/unit/resolve_api.c`; it drives the public APIs in a server process
 whose stub host module has no `query`, which is exactly the configuration
-that reaches these local computations.
+that reaches these local computations. The paths fixed above are all
+out-of-memory or datastore-anomaly arms, which neither that suite nor
+`test/unit/server_resolve.c` can reach without a fault injector.
 
 ## Peer lifecycle, tombstones, and event purging
 
