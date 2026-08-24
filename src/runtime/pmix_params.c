@@ -36,6 +36,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/base/pmix_mca_base_var.h"
+#include "src/common/pmix_pfexec.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
@@ -298,6 +299,14 @@ pmix_status_t pmix_register_params(void)
                                       "reply that says how to format it [default: 1MB]",
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_globals.iof_pending_limit);
+
+    /* pfexec's own knobs. They are registered here, with everything else,
+     * rather than from pmix_pfexec_base_open(): only a launcher opens
+     * pfexec, so registering them there left pmix_pfexec_register() with
+     * no caller at all - which meant the parameter did not exist, and
+     * timeout_before_sigkill never got the 1-second default the kill
+     * sequence documents, running with the static initializer's 0. */
+    pmix_pfexec_register();
 
     pmix_globals.xml_output = false;
     (void) pmix_mca_base_var_register("pmix", "iof", NULL, "xml_output",
