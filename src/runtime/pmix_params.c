@@ -300,13 +300,52 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_globals.iof_pending_limit);
 
+    /* How often to look at whether our terminal has come back to the
+     * foreground, while our own stdin is suspended because it has not. A
+     * library must not trap signals - the process-wide dispositions belong
+     * to whoever runs main() - so this is a poll rather than the SIGCONT
+     * handler it used to be.
+     *
+     * Two rules keep it from costing a host anything it would notice, and
+     * both are enforced in pmix_iof.c rather than here: the timer exists
+     * only when a host has asked us to forward its stdin, and only while
+     * that stdin is suspended for being in the background. A run that never
+     * forwards stdin, or that has the terminal, sets no timer at all.
+     *
+     * The delay then doubles from _interval up to _max_interval, so an "fg"
+     * a moment after backgrounding is answered promptly while a process left
+     * in the background all day settles to one wakeup every couple of
+     * seconds. Nothing is lost by waiting either way: the terminal buffers
+     * what is typed while we are not reading it, so the interval bounds
+     * latency, not data. */
     /* pfexec's own knobs. They are registered here, with everything else,
      * rather than from pmix_pfexec_base_open(): only a launcher opens
      * pfexec, so registering them there left pmix_pfexec_register() with
-     * no caller at all - which meant the parameter did not exist, and
+     * no caller at all - which meant the parameters did not exist, and
      * timeout_before_sigkill never got the 1-second default the kill
      * sequence documents, running with the static initializer's 0. */
     pmix_pfexec_register();
+
+    pmix_globals.iof_stdin_resume_interval = 100;
+    (void) pmix_mca_base_var_register("pmix", "iof", NULL, "stdin_resume_interval",
+                                      "Milliseconds before the first check for our terminal "
+                                      "returning to the foreground while our stdin is suspended "
+                                      "[default: 100]",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_globals.iof_stdin_resume_interval);
+    if (0 >= pmix_globals.iof_stdin_resume_interval) {
+        pmix_globals.iof_stdin_resume_interval = 100;
+    }
+
+    pmix_globals.iof_stdin_resume_max_interval = 2000;
+    (void) pmix_mca_base_var_register("pmix", "iof", NULL, "stdin_resume_max_interval",
+                                      "Ceiling in milliseconds that the suspended-stdin check "
+                                      "backs off to [default: 2000]",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_globals.iof_stdin_resume_max_interval);
+    if (pmix_globals.iof_stdin_resume_max_interval < pmix_globals.iof_stdin_resume_interval) {
+        pmix_globals.iof_stdin_resume_max_interval = pmix_globals.iof_stdin_resume_interval;
+    }
 
     pmix_globals.xml_output = false;
     (void) pmix_mca_base_var_register("pmix", "iof", NULL, "xml_output",

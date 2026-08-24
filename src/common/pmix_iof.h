@@ -280,15 +280,16 @@ static inline bool pmix_iof_fd_always_ready(int fd)
     } while (0);
 
 
-/* Start reading our own stdin and forwarding it, arming the SIGCONT
- * handler if the descriptor is a terminal. Every role that forwards its
+/* Start reading our own stdin and forwarding it, arming the
+ * foreground poll if the descriptor is a terminal we do not currently
+ * own. Every role that forwards its
  * own stdin uses this - PMIx_IOF_push with PMIX_IOF_PUSH_STDIN, and a
  * tool given PMIX_FWD_STDIN at init - so that there is exactly one read
  * event on the descriptor and pmix_iof_flow_control can find it. Calling
  * it again once the stream is running is a no-op. "procs"/"directives"
  * may be NULL; they name who the stdin is destined for.
  *
- * pmix_iof_finalize() releases that read event and the SIGCONT handler.
+ * pmix_iof_finalize() releases that read event and the foreground poll.
  * It must be called while the event base is still up - i.e. from
  * pmix_rte_finalize, not after it. */
 PMIX_EXPORT pmix_status_t pmix_iof_setup_stdin_read(int fd, pmix_proc_t procs[], size_t nprocs,

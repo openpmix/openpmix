@@ -250,7 +250,30 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
 
     /* Temporarily disable SIGPIPE so that if remote servers timeout
        or hang up on us, it doesn't kill this application.  We'll
-       restore the original SIGPIPE handler when we're done. */
+       restore the original SIGPIPE handler when we're done.
+
+       This is libESMTP's requirement, not ours: it writes to a socket
+       the remote SMTP server may drop at any moment (an idle timeout, a
+       421), it does not set MSG_NOSIGNAL or SO_NOSIGPIPE on the sockets
+       it owns, and it documents that the *application* must arrange for
+       SIGPIPE to be ignored.  We are not the application - hence the
+       save/ignore/restore around just the smtp_start_session() call
+       rather than a disposition we set and keep.
+
+       It is still the one place in the library that touches a
+       process-wide signal disposition, which everything else here has
+       been moved off (see the poll notes in src/common/pmix_iof.c and
+       src/common/pmix_pfexec.h).  The thread-safe form is
+       pthread_sigmask: SIGPIPE from write() is raised synchronously to
+       the writing thread, so blocking it *in this thread* is sufficient
+       and never reaches the host.  That needs a drain -
+       sigtimedwait() with a zero timeout - or a SIGPIPE raised while
+       blocked stays pending on the thread and kills the process the
+       moment the mask is restored; and sigtimedwait does not exist on
+       macOS, so it would take a configure test plus a fallback to
+       exactly the code below.  Not worth it for a component that only
+       builds with --with-smtp and restores what it changed - but do it
+       that way if this ever moves onto a path that runs by default. */
     sig.sa_handler = SIG_IGN;
     sigemptyset(&sig.sa_mask);
     sig.sa_flags = 0;

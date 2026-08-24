@@ -1009,6 +1009,18 @@ typedef struct {
     pmix_list_t iof_pending;
     size_t iof_pending_bytes;
     size_t iof_pending_limit;
+    /* How often, in milliseconds, to re-check whether our terminal has come
+     * back to the foreground while our own stdin is suspended for being in
+     * the background. See the note over stdin_resume_arm() in
+     * src/common/pmix_iof.c for why this is a poll and not a SIGCONT
+     * handler. The first check is _interval after we lose the terminal and
+     * the delay doubles up to _max_interval, so a quick "fg" is answered
+     * promptly and a process left in the background all day settles to the
+     * ceiling. The timer exists ONLY while a host has asked us to forward
+     * its stdin AND that stdin is suspended for being in the background:
+     * nothing else ever arms it. */
+    int iof_stdin_resume_interval;
+    int iof_stdin_resume_max_interval;
     pmix_iof_flags_t spawn_iof_flags;
     pmix_keyindex_t keyindex;
 } pmix_globals_t;

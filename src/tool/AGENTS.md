@@ -156,7 +156,7 @@ Three subtleties the current code documents inline and you must keep:
 - The keepalive-pipe teardown is guarded by a file-scope `keepalive_fd`
   rather than re-derived, because `PMIX_KEEPALIVE_PIPE` was a directive
   to *init* and finalize cannot see it. The stdin read event and its
-  SIGCONT handler need no such bookkeeping here — they belong to
+  foreground poll need no such bookkeeping here — they belong to
   `src/common/pmix_iof.c`, and `pmix_iof_finalize()` releases them from
   inside `pmix_rte_finalize`.
 
@@ -306,7 +306,9 @@ unpacking, exactly as the client recv callbacks do.
   This file used to build a read event of its own in a file-scope
   `pmix_iof_read_event_t`, and every way that could drift, it did: its
   SIGCONT event was assigned but never added to a base (so a backgrounded
-  tool never resumed reading once foregrounded), the read event was never
+  tool never resumed reading once foregrounded — the library now polls
+  for that instead of trapping a signal at all, see
+  [`src/common/AGENTS.md`](../common/AGENTS.md)), the read event was never
   released (so it and its libevent registration survived into the next
   `PMIx_tool_init`, naming a base that had been torn down), it was
   invisible to `pmix_iof_flow_control` — which only knows the library's
@@ -354,11 +356,13 @@ unpacking, exactly as the client recv callbacks do.
   only initializes the event; without a following `pmix_event_add` the
   handler is never installed. Both this file's SIGCONT/stdin handler and
   the library's were in that state for a long time and silently did
-  nothing.
+  nothing. Neither exists any more — a library has no business trapping
+  a signal, and the stdin resume is a poll now — but the trap is worth
+  knowing for any other signal event you are tempted to add.
 - **Anything init registers on an event base, finalize has to take
   down**, because `pmix_rte_finalize` destroys the bases underneath them.
   What is left here is the keepalive-pipe event; the stdin read event and
-  its SIGCONT handler moved to `src/common/pmix_iof.c` and are released
+  its foreground poll moved to `src/common/pmix_iof.c` and are released
   by `pmix_iof_finalize()`. Note the trap that teardown carries either
   way: `pmix_iof_read_event_t`'s destructor closes the descriptor it
   holds, and for stdin that is the application's own — which is why the
@@ -446,11 +450,13 @@ named are the ones that fail against the unfixed library.
    nothing added the event. A tool that is backgrounded and then resumed
    never reconsidered its stdin. Not unit-testable — it needs a tty — so
    there is no regression test. The identical defect in
-   `src/common/pmix_iof.c` is fixed too, and this file no longer has a
-   copy of its own to keep in step: see the stdin bullet under
-   *Invariants and gotchas*.
+   `src/common/pmix_iof.c` was fixed too, and that handler has since been
+   replaced outright by a poll, because a library must not trap signals;
+   this file no longer has a copy of its own to keep in step. See the
+   stdin bullet under *Invariants and gotchas*.
 10. **FIXED — init's file-scope events were never taken down.** The stdin
-    read event, the SIGCONT event and the keepalive-pipe event all
+    read event, the SIGCONT event (since retired for a poll) and the
+    keepalive-pipe event all
     survived finalize; the keepalive pipe's descriptor leaked one per
     init/finalize cycle. Only the keepalive pipe is still this file's to
     release. **`test/unit/tool_cycle`** runs a second pass with
