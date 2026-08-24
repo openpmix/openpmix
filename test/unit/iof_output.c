@@ -158,21 +158,43 @@ static void wouldblock_cbfunc(pmix_status_t status, void *cbdata)
     wb_done = true;
 }
 
-/* nothing here reaches a host upcall - the module only has to exist */
-/* iof_pull only has to be non-NULL: the deregistration cases below are
- * all rejected before the handler reaches it */
+/* What the host was asked to stop. pmix_server_iof_fn_t is documented as
+ * removing this server from the distribution list "for the specified
+ * channel/proc combination", and the deregistration wire message carries
+ * neither - the request being torn down is the only place they exist. The
+ * handler used to hand the host a freshly allocated caddy with all three
+ * still empty, so the host kept relaying that job's output to a server
+ * with no registration left to match it. The procs have to be copied
+ * here: the array belongs to the caddy, which is released on the way out
+ * of the handler. */
+static pmix_proc_t stop_procs[8];
+static size_t stop_nprocs = SIZE_MAX;
+static pmix_iof_channel_t stop_channels = PMIX_FWD_NO_CHANNELS;
+static bool stop_directive = false;
+
 static pmix_status_t stub_iof_pull(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t directives[], size_t ndirs,
                                    pmix_iof_channel_t channels,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    (void) procs;
-    (void) nprocs;
-    (void) directives;
-    (void) ndirs;
-    (void) channels;
+    size_t n;
+
     (void) cbfunc;
     (void) cbdata;
+
+    stop_nprocs = nprocs;
+    stop_channels = channels;
+    stop_directive = false;
+    for (n = 0; n < nprocs && n < 8 && NULL != procs; n++) {
+        memcpy(&stop_procs[n], &procs[n], sizeof(pmix_proc_t));
+    }
+    for (n = 0; n < ndirs; n++) {
+        if (PMIX_CHECK_KEY(&directives[n], PMIX_IOF_STOP)) {
+            stop_directive = true;
+        }
+    }
+    /* refusing keeps the handler's cleanup on the path this test drives;
+     * everything worth checking has already been recorded */
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
@@ -193,11 +215,10 @@ static void iof_op_stub(pmix_status_t status, void *cbdata)
  * is written at info[SIZE_MAX]. A count that merely fails to survive the
  * round trip through the int32_t the unpack consumes is the same
  * hazard one step smaller. Both must be refused before any allocation. */
-static pmix_status_t do_iofdereg(size_t claimed_ninfo)
+static pmix_status_t do_iofdereg_refid(size_t claimed_ninfo, size_t refid)
 {
     pmix_buffer_t *buf;
     pmix_status_t rc;
-    size_t refid = 0;
 
     buf = PMIX_NEW(pmix_buffer_t);
     if (NULL == buf) {
@@ -214,6 +235,11 @@ static pmix_status_t do_iofdereg(size_t claimed_ninfo)
     rc = pmix_server_iofdereg(pmix_globals.mypeer, buf, iof_op_stub, NULL);
     PMIX_RELEASE(buf);
     return rc;
+}
+
+static pmix_status_t do_iofdereg(size_t claimed_ninfo)
+{
+    return do_iofdereg_refid(claimed_ninfo, 0);
 }
 
 /* replace "fd" with the write end of a fresh pipe, handing back a
@@ -383,6 +409,40 @@ int main(int argc, char **argv)
      * rejects this one - nothing is registered under that refid */
     report("a well-formed deregister gets past the screen",
            PMIX_ERR_NOT_FOUND == do_iofdereg(0));
+
+    /* ---- what the host is told to stop --------------------------------
+     * Register a handler by hand, exactly as pmix_server_iofreg does, and
+     * then deregister it. The host must be handed the channel/proc
+     * combination the registration named; before this it was handed a
+     * caddy nothing had filled in - no procs, no channels - so it had no
+     * way to take this server off the distribution list. */
+    {
+        pmix_iof_req_t *req;
+        pmix_status_t drc;
+
+        req = PMIX_NEW(pmix_iof_req_t);
+        PMIX_RETAIN(pmix_globals.mypeer);
+        req->requestor = pmix_globals.mypeer;
+        req->nprocs = 1;
+        PMIX_PROC_CREATE(req->procs, 1);
+        PMIX_LOAD_PROCID(&req->procs[0], "iof-dereg-ut", PMIX_RANK_WILDCARD);
+        req->channels = PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL;
+        req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+
+        stop_nprocs = SIZE_MAX;
+        stop_channels = PMIX_FWD_NO_CHANNELS;
+        drc = do_iofdereg_refid(0, req->local_id);
+        report("the deregistration reached the host", PMIX_ERR_NOT_SUPPORTED == drc);
+        report("the stop request carries PMIX_IOF_STOP", stop_directive);
+        report("the stop request names the registered channels",
+               (PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL) == stop_channels);
+        report("the stop request names the registered procs",
+               1 == stop_nprocs
+                   && 0 == strcmp(stop_procs[0].nspace, "iof-dereg-ut")
+                   && PMIX_RANK_WILDCARD == stop_procs[0].rank);
+        report("and the local registration is gone",
+               NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, req->local_id));
+    }
 
     PMIx_server_finalize();
     close(rfd);

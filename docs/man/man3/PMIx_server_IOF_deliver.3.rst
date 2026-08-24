@@ -142,6 +142,9 @@ that the request was immediately processed and completed successfully |mdash|
   processing.
 * ``PMIX_OPERATION_SUCCEEDED`` |mdash| (blocking form) the operation completed
   successfully.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| ``source`` or ``bo`` was ``NULL``. Unlike
+  ``info``, neither is optional: they identify what is being delivered and
+  carry it.
 * ``PMIX_ERR_NOMEM`` |mdash| the library was unable to allocate memory for the
   request.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because

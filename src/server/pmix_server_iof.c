@@ -164,6 +164,14 @@ static void _iofdeliver(int sd, short args, void *cbdata)
     /* the local write used to be unconditional and was what first set this;
      * skipping it must not leave the completion status undefined */
     pmix_status_t rc = PMIX_SUCCESS;
+    /* what the host is told. The delivery walk serves every registration,
+     * so the transient status of the last one it happened to look at is
+     * not the result of the call - a pack failure on request N used to be
+     * erased by request N+1 declining (which is reported as PMIX_SUCCESS),
+     * and a delivery that reached every subscriber was reported failed
+     * whenever the last array slot happened to be the one that broke.
+     * Record the first real failure and keep going */
+    pmix_status_t ret = PMIX_SUCCESS;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -193,6 +201,7 @@ static void _iofdeliver(int sd, short args, void *cbdata)
     if (outputlocal) {
         rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
         if (0 > rc) {
+            ret = rc;
             goto done;
         }
     }
@@ -209,7 +218,8 @@ static void _iofdeliver(int sd, short args, void *cbdata)
             /* flag that we do have at least one registrant for this info,
              * so there is no need to cache it */
             found = true;
-            rc = PMIX_SUCCESS;
+        } else if (PMIX_SUCCESS != rc && PMIX_SUCCESS == ret) {
+            ret = rc;
         }
     }
 
@@ -230,7 +240,8 @@ static void _iofdeliver(int sd, short args, void *cbdata)
             rc = pmix_iof_process_iof(cd->channels, cd->procs, cd->bo, cd->info, cd->ninfo, req);
             if (PMIX_OPERATION_SUCCEEDED == rc) {
                 found = true;
-                rc = PMIX_SUCCESS;
+            } else if (PMIX_SUCCESS != rc && PMIX_SUCCESS == ret) {
+                ret = rc;
             }
         }
     }
@@ -240,39 +251,75 @@ static void _iofdeliver(int sd, short args, void *cbdata)
         pmix_output_verbose(2, pmix_server_globals.iof_output,
                             "PMIx:SERVER caching IOF %d",
                             (int)cd->bo->size);
-        if (pmix_server_globals.max_iof_cache == pmix_list_get_size(&pmix_server_globals.iof)) {
+        /* a bound of zero means "do not cache", and the test below has to
+         * be >= rather than == to honor it: with == the list is 0 and the
+         * bound is 0, so the eviction finds nothing to remove and the
+         * append runs anyway - after which the two are never equal again
+         * and the "cache nothing" setting cached without limit */
+        if (0 == pmix_server_globals.max_iof_cache) {
+            goto done;
+        }
+        while (pmix_server_globals.max_iof_cache <= pmix_list_get_size(&pmix_server_globals.iof)) {
             /* remove the oldest cached message */
             iof = (pmix_iof_cache_t *) pmix_list_remove_first(&pmix_server_globals.iof);
-            if (NULL != iof) {
-                PMIX_RELEASE(iof);
+            if (NULL == iof) {
+                break;
             }
+            PMIX_RELEASE(iof);
         }
         /* add this output to our cache so it is cached until someone
-         * registers to receive it */
+         * registers to receive it. Nothing downstream of these
+         * allocations would screen a NULL - what follows each one is a
+         * memcpy or an info transfer, not an unpack - so an out-of-memory
+         * condition here used to take the progress thread down. Dropping
+         * the bytes is the honest answer: they were headed for a cache
+         * nobody has yet asked to read */
         iof = PMIX_NEW(pmix_iof_cache_t);
+        if (NULL == iof) {
+            ret = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(ret);
+            goto done;
+        }
         memcpy(&iof->source, cd->procs, sizeof(pmix_proc_t));
         iof->channel = cd->channels;
         /* copy the data */
         PMIX_BYTE_OBJECT_CREATE(iof->bo, 1);
+        if (NULL == iof->bo) {
+            PMIX_RELEASE(iof);
+            ret = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(ret);
+            goto done;
+        }
         if (0 < cd->bo->size) {
             iof->bo->bytes = (char *) malloc(cd->bo->size);
+            if (NULL == iof->bo->bytes) {
+                PMIX_RELEASE(iof);
+                ret = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(ret);
+                goto done;
+            }
             memcpy(iof->bo->bytes, cd->bo->bytes, cd->bo->size);
+            iof->bo->size = cd->bo->size;
         }
-        iof->bo->size = cd->bo->size;
         if (0 < cd->ninfo) {
             PMIX_INFO_CREATE(iof->info, cd->ninfo);
+            if (NULL == iof->info) {
+                PMIX_RELEASE(iof);
+                ret = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(ret);
+                goto done;
+            }
             iof->ninfo = cd->ninfo;
             for (n = 0; n < iof->ninfo; n++) {
                 PMIX_INFO_XFER(&iof->info[n], &cd->info[n]);
             }
         }
         pmix_list_append(&pmix_server_globals.iof, &iof->super);
-        rc = PMIX_SUCCESS;
     }
 
 done:
     if (NULL != cd->opcbfunc) {
-        cd->opcbfunc(rc, cd->cbdata);
+        cd->opcbfunc(ret, cd->cbdata);
     }
 
     /* release the caddy */
@@ -298,6 +345,16 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source, pmix_iof_channe
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* This is a public entry point, so the host can hand us anything, and
+     * neither of these two is optional the way "info" is - the man page
+     * describes both as pointers to the thing being delivered. Both are
+     * dereferenced on the progress thread, the source by the verbose line
+     * whose arguments are evaluated whether or not the channel is open.
+     * Same rule as the process-set entry points in pmix_server_pset.c */
+    if (NULL == source || NULL == bo) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     /* need to threadshift this request */
@@ -506,7 +563,7 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
 {
     pmix_iof_req_t *req, *nreq;
     size_t m, ninherited = 0;
-    int i, limit;
+    int i, limit, idx;
 
     /* the array grows as we add to it, so bound the walk to what was
      * there when we started - a clone can never be its own parent */
@@ -544,12 +601,17 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
 
         nreq = PMIX_NEW(pmix_iof_req_t);
         if (NULL == nreq) {
-            return ninherited;
+            /* break rather than return: the clones already made are live
+             * subscriptions, and the cached head of the stream still has
+             * to be handed to them by the drain below */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            break;
         }
         PMIX_PROC_CREATE(nreq->procs, 1);
         if (NULL == nreq->procs) {
             PMIX_RELEASE(nreq);
-            return ninherited;
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            break;
         }
         nreq->nprocs = 1;
         PMIX_LOAD_PROCID(&nreq->procs[0], nspace, PMIX_RANK_WILDCARD);
@@ -562,7 +624,16 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
         nreq->flags = req->flags;
         nreq->flags.file = NULL;
         nreq->flags.directory = NULL;
-        nreq->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, nreq);
+        /* the add is what puts the clone somewhere it can be found and
+         * eventually freed; a table that could not grow leaves it
+         * orphaned, and its retain on the requestor with it */
+        idx = pmix_pointer_array_add(&pmix_globals.iof_requests, nreq);
+        if (0 > idx) {
+            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+            PMIX_RELEASE(nreq);
+            break;
+        }
+        nreq->local_id = (size_t) idx;
         ++ninherited;
 
         pmix_output_verbose(2, pmix_server_globals.iof_output,
@@ -803,6 +874,7 @@ pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
                                       char nspace[])
 {
     pmix_iof_req_t *req;
+    int idx;
 
     /* Nothing in the spawn request said which channels to forward, so
      * the child job takes its parent's - and if the parent has nobody
@@ -851,7 +923,15 @@ pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
     req->flags = cd->flags;
     req->flags.file = NULL;
     req->flags.directory = NULL;
-    req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    idx = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    if (0 > idx) {
+        /* nothing else holds this request, so it would be orphaned along
+         * with its retain on the requestor */
+        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+        PMIX_RELEASE(req);
+        return PMIX_ERR_NOMEM;
+    }
+    req->local_id = (size_t) idx;
     /* process any cached IO */
     drain_cache(nspace);
     return PMIX_SUCCESS;
@@ -866,6 +946,7 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_setup_caddy_t *cd;
     pmix_iof_req_t *req;
     size_t refid;
+    int idx;
 
     pmix_output_verbose(2, pmix_server_globals.iof_output, "recvd IOF PULL request from client");
 
@@ -974,7 +1055,17 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
     req->channels = cd->channels;
     req->remote_id = refid;
-    req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    /* the index this hands back is the refid the client is told to use,
+     * so a failed add must refuse the registration rather than report a
+     * garbage handler id - and the request would be orphaned besides */
+    idx = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    if (0 > idx) {
+        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+        PMIX_RELEASE(req);
+        rc = PMIX_ERR_NOMEM;
+        goto exit;
+    }
+    req->local_id = (size_t) idx;
     cd->ncodes = req->local_id;
 
     /* ask the host to execute the request */
@@ -1095,6 +1186,33 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
         rc = PMIX_ERR_NOT_FOUND;
         goto exit;
     }
+
+    /* Take the channel/proc combination off the request before it goes:
+     * pmix_server_iof_fn_t is documented as "IF the PMIX_IOF_STOP is
+     * included in the directives, then the local PMIx server is
+     * requesting that the host RM remove the server from the distribution
+     * list for the specified channel/proc combination" - and this caddy
+     * was freshly allocated, so procs, nprocs and channels were all still
+     * empty. The host was being asked to stop forwarding nothing, and
+     * went on relaying that job's output to a server with no registration
+     * left to match it, where every chunk fell into the IOF cache and
+     * evicted a real one. The wire message carries no procs or channels
+     * of its own (see the deregistration packer in src/common/pmix_iof.c),
+     * so the request we just looked up is the only place they exist.
+     * Copy rather than borrow: req is released on the next line, and
+     * scaddes frees cd->procs unconditionally. */
+    cd->channels = req->channels;
+    if (0 < req->nprocs && NULL != req->procs) {
+        PMIX_PROC_CREATE(cd->procs, req->nprocs);
+        if (NULL == cd->procs) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+        cd->nprocs = req->nprocs;
+        memcpy(cd->procs, req->procs, req->nprocs * sizeof(pmix_proc_t));
+    }
+
     pmix_pointer_array_set_item(&pmix_globals.iof_requests, refid, NULL);
     PMIX_RELEASE(req);
 
