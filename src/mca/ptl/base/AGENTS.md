@@ -201,6 +201,23 @@ and put *that* on the list. `test/unit/tool_nspace.c` pins the property
 by driving a real tool connection; note that the entry count alone does
 not catch it, which the test says in a comment.
 
+**`_check_cached_events()` in this file is one of three replays of the
+notification hotel, and it is not the one you are likely to be looking
+at.** A newly-connected peer gets whatever it is a target of; so does a
+peer every time it registers another handler
+(`src/server/pmix_server_events.c`); and the live fan-out
+(`_notify_client_event` in `src/event/`) delivers to peers already
+registered. One peer can reach all three for the same event, so every
+one of them must call `pmix_notify_mark_notified()` and neither send nor
+decrement `nleft` when it answers true — otherwise the peer's handler
+fires more than once and the event is evicted before its other targets
+have seen it. The three must also agree on the wire form of a
+`PMIX_NOTIFY_CMD`: command, status, source, info count, info array, and
+**the range last** — a tool recipient defaults a missing range to
+`PMIX_RANGE_LOCAL`, so omitting it silently downgrades the event. See
+the event-registration-store section of
+[`src/server/AGENTS.md`](../../../server/AGENTS.md).
+
 ## Outbound: connect_to_peer to connected peer
 
 `pmix_ptl_base_connect_to_peer` (`ptl_base_connect.c`) is the tool and

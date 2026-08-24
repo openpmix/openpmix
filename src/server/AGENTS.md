@@ -1445,6 +1445,56 @@ it replayed events the registrant had said it did not want; attach it
 *before* the up-call, since the host may complete on another thread the
 moment it has the caddy.
 
+**The replay runs once per registration *message*, not once per peer, so
+delivery has to be idempotent per peer.** The same fact that makes a peer
+hold several entries for one code — the client sends another
+`PMIX_REGEVENTS_CMD` for every handler naming a code new to us or
+carrying a directive — means the same peer walks the whole notification
+hotel several times, and the live dispatch may have delivered an event to
+it before any of that. Nothing recorded what a peer had already been
+sent: each replay re-sent the event, so the client's handler fired again,
+and each replay decremented the event's `nleft` again, so an event
+targeted at several procs was evicted from the cache before the rest of
+them ever saw it. `pmix_notify_caddy_t` now carries a `notified` list and
+`pmix_notify_mark_notified()` (in `src/event/pmix_event_notification.c`)
+both queries and extends it. **Any path that hands a local peer a
+notification on behalf of one caddy must go through it** — there are
+three, and they live in three different subsystems: the live dispatch in
+`_notify_client_event`, this replay, and the one a newly-connected tool
+triggers in `src/mca/ptl/base/ptl_base_connection_hdlr.c`. The `trk`
+namelist in the live dispatch dedups only within a single dispatch and is
+not a substitute. The `nleft` decrement is also guarded on `0 < nleft`
+now: it is a `size_t`, so the unguarded form wrapped to `SIZE_MAX` and
+pinned the event in the hotel rather than evicting it. Covered by
+`test/unit/server_events.c`, whose replay cases fail an unfixed library.
+
+**The range is the last field of a `PMIX_NOTIFY_CMD` and both cache
+replays used to omit it.** The live dispatch has always appended it; the
+two replays stopped after the info array. A client ignores the trailer,
+but a tool reads it to decide whether the event has to go on to its own
+host and **defaults a missing one to `PMIX_RANGE_LOCAL`** — so every
+event a tool picked up from the cache silently lost its range. All three
+producers now agree. Appending a field at the end is the only wire change
+the interop rules allow, and it costs an older reader nothing; see
+[Wire format and interoperability](#wire-format-and-interoperability).
+
+**A registration the host completes asynchronously acks the client
+*after* the replay, inverting the ordering the other two arms
+guarantee.** The two arms that complete locally return
+`PMIX_OPERATION_SUCCEEDED`, and the switchyard's caller queues the ack
+inline before the shifted `_check_cached_events` ever runs — which is the
+documented point of the shift. On the host-async arm the ack is the
+`scd->opcbfunc` that `_check_cached_events` invokes at its end, and that
+callback (`pmix_server_events_cbfunc`) itself thread-shifts before
+queueing anything, so the replayed notifications reach the wire first.
+The client's handler is already in its local list by then, so nothing is
+lost or misrouted — the handler simply fires before the registration's
+completion callback does. Restoring the order needs the ack queued ahead
+of the relays, and doing that by re-shifting the replay would rest on
+libevent's relative ordering of two activated events rather than on the
+"runs after we return" guarantee everything else here uses. Recorded in
+`docs/todo.rst`.
+
 ## IOF forwarding
 
 Standard-I/O forwarding is buffered through `pmix_server_globals.iof`
@@ -2049,6 +2099,17 @@ misbehave by design).
   to a zero-element array — `PMIx_Info_create` answers NULL, which
   nothing checked — and wrote the seed at `info[SIZE_MAX]`. Its proc
   count had the mirror problem. Both now carry the round-trip screen.
+
+  **The two event handlers were another.** `pmix_server_register_events`
+  screened its code count and not its info count, and
+  `pmix_server_event_recvd_from_client` screened neither - and the
+  latter has the `+ 1` shape, sizing its array as `ninfo + 1` so the
+  `PMIX_SERVER_INTERNAL_NOTIFY` marker can be seeded in the last slot.
+  With `sizeof(pmix_info_t) == 552`, the count `2^61` wraps the product
+  to exactly zero; `malloc(0)` hands back a live pointer, so the
+  constructor loop then walks `2^61` elements off the end of it. Both
+  now carry the screen, and `test/unit/server_events.c` crashes an
+  unfixed library on either one.
 
   **The classic commands in `pmix_server_ops.c` were the last group
   without it.** Publish, lookup and unpublish all size their array as

@@ -668,6 +668,8 @@ static void ncon(pmix_notify_caddy_t *p)
     p->targets = NULL;
     p->ntargets = 0;
     p->nleft = SIZE_MAX;
+    p->notified = NULL;
+    p->nnotified = 0;
     p->affected = NULL;
     p->naffected = 0;
     p->nondefault = false;
@@ -683,6 +685,9 @@ static void ndes(pmix_notify_caddy_t *p)
     PMIX_PROC_FREE(p->affected, p->naffected);
     if (NULL != p->targets) {
         free(p->targets);
+    }
+    if (NULL != p->notified) {
+        free(p->notified);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_notify_caddy_t,

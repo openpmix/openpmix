@@ -386,6 +386,22 @@ Do not confuse them:
   `PMIX_RANGE_PROC_LOCAL` one it did not send; and
   `pmix_event_notify_complete` parks a *forwarded* event that the
   receiving process's own handlers all declined.
+
+  **Three places take one *out* on behalf of a local peer, and they do
+  not know about each other, so the caddy has to remember for them.**
+  `_notify_client_event` (the live fan-out here), the registration
+  replay in `src/server/pmix_server_events.c`, and the newly-connected
+  tool replay in `src/mca/ptl/base/ptl_base_connection_hdlr.c`. A peer
+  reaches the second of those *once per registration message* — the
+  client sends another `PMIX_REGEVENTS_CMD` for every handler naming a
+  code new to its server or carrying a directive — so without a record
+  the same peer was sent the same cached event several times and
+  `nleft` was decremented several times for it, evicting the event
+  before the other targets had seen it. `pmix_notify_mark_notified()`
+  is that record; every path that delivers a caddy's event to a local
+  peer must call it, and must neither send nor decrement when it
+  answers true. The `trk` namelist in `_notify_client_event` dedups
+  only within one dispatch and does not cover this.
 - **The `PMIX_REPORT_EVENT` aggregation window**
   (`pmix_globals.cached_events` + the `event_window` timer +
   `pmix_event_timeout_cb`). Purpose: coalesce *internally generated*

@@ -1484,20 +1484,31 @@ static void _check_cached_events(pmix_peer_t *peer)
             for (n = 0; n < cd->ntargets; n++) {
                 if (PMIX_CHECK_PROCID(&proc, &cd->targets[n])) {
                     matched = true;
-                    /* track the number of targets we have left to notify */
-                    --cd->nleft;
-                    /* if this is the last one, then evict this event
-                     * from the cache */
-                    if (0 == cd->nleft) {
-                        pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
-                        found = true; // mark that we should release cd
-                    }
                     break;
                 }
             }
             if (!matched) {
                 /* do not notify this one */
                 continue;
+            }
+        }
+
+        /* a peer can reach a replay of the same cached event more than
+         * once - this one, and again from the registration replay in
+         * pmix_server_events.c every time it registers another handler -
+         * so skip anything it has already been sent rather than
+         * delivering it twice and decrementing "nleft" twice */
+        if (pmix_notify_mark_notified(cd, &proc)) {
+            continue;
+        }
+        if (NULL != cd->targets && 0 < cd->nleft) {
+            /* track the number of targets we have left to notify */
+            --cd->nleft;
+            /* if this is the last one, then evict this event
+             * from the cache */
+            if (0 == cd->nleft) {
+                pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
+                found = true; // mark that we should release cd
             }
         }
 
@@ -1538,6 +1549,11 @@ static void _check_cached_events(pmix_peer_t *peer)
         if (PMIX_SUCCESS != ret) {
             PMIX_RELEASE(relay);
             PMIX_ERROR_LOG(ret);
+            if (found) {
+                /* we already checked this event out of the cache, so
+                 * nothing else will ever release it */
+                PMIX_RELEASE(cd);
+            }
             break;
         }
         PMIX_BFROPS_PACK(ret, peer, relay, &cd->ninfo, 1, PMIX_SIZE);
@@ -1556,8 +1572,26 @@ static void _check_cached_events(pmix_peer_t *peer)
             if (PMIX_SUCCESS != ret) {
                 PMIX_ERROR_LOG(ret);
                 PMIX_RELEASE(relay);
+                if (found) {
+                    /* we already checked this event out of the cache, so
+                     * nothing else will ever release it */
+                    PMIX_RELEASE(cd);
+                }
                 break;
             }
+        }
+        /* the range travels last, as it does on every other path that
+         * sends a PMIX_NOTIFY_CMD - a tool recipient reads it to decide
+         * whether to carry the event onward, and defaults a missing one
+         * to PMIX_RANGE_LOCAL */
+        PMIX_BFROPS_PACK(ret, peer, relay, &cd->range, 1, PMIX_DATA_RANGE);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            PMIX_RELEASE(relay);
+            if (found) {
+                PMIX_RELEASE(cd);
+            }
+            break;
         }
         PMIX_SERVER_QUEUE_REPLY(ret, peer, 0, relay);
         if (PMIX_SUCCESS != ret) {

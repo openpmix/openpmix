@@ -855,6 +855,14 @@ typedef struct {
     pmix_proc_t *targets;
     size_t ntargets;
     size_t nleft; // number of targets left to be notified
+    /* the procs we have already sent this event to. A cached event is
+     * replayed to a peer every time that peer registers another handler
+     * covering the code, and the live dispatch may have sent it to that
+     * peer already - without this record each of those deliveries is a
+     * duplicate for the client and another decrement of "nleft", which
+     * evicts the event before the remaining targets have seen it */
+    pmix_proc_t *notified;
+    size_t nnotified;
     /* When generating a notification, the originator can
      * specify the range of procs affected by this event.
      * For example, when creating a JOB_TERMINATED event,
@@ -1029,6 +1037,19 @@ typedef struct {
 PMIX_EXPORT void pmix_execute_epilog(pmix_epilog_t *ep);
 
 PMIX_EXPORT pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd);
+
+/* Record that a cached/in-flight notification has been sent to a proc,
+ * and report whether it had already been sent there. Returns true if
+ * this proc is already on the caddy's notified list - the caller must
+ * then neither send the event again nor decrement "nleft" - and false
+ * otherwise, having added it. Every path that delivers a notification
+ * to a local peer on behalf of one caddy must go through this, because
+ * more than one of them can pick up the same cached event for the same
+ * peer: the live dispatch, the replay a REGEVENTS_CMD triggers (which
+ * runs once per registration message, not once per peer), and the
+ * replay a newly-connected tool triggers. */
+PMIX_EXPORT bool pmix_notify_mark_notified(pmix_notify_caddy_t *cd,
+                                           const pmix_proc_t *proc);
 
 PMIX_EXPORT extern pmix_globals_t pmix_globals;
 PMIX_EXPORT extern const char* PMIX_PROXY_VERSION;

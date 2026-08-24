@@ -113,30 +113,44 @@ static void _check_cached_events(int sd, short args, void *cbdata)
         /* if we were given specific targets, check if this is one */
         found = false;
         if (NULL != cd->targets) {
+            /* if the source of the event is the same peer just registered, then ignore it
+             * as the event notification system will have already locally
+             * processed it */
+            if (PMIX_CHECK_NAMES(&cd->source, &scd->peer->info->pname)) {
+                continue;
+            }
             matched = false;
             for (n = 0; n < cd->ntargets; n++) {
-                /* if the source of the event is the same peer just registered, then ignore it
-                 * as the event notification system will have already locally
-                 * processed it */
-                if (PMIX_CHECK_NAMES(&cd->source, &scd->peer->info->pname)) {
-                    continue;
-                }
                 if (PMIX_CHECK_NAMES(&scd->peer->info->pname, &cd->targets[n])) {
                     matched = true;
-                    /* track the number of targets we have left to notify */
-                    --cd->nleft;
-                    /* if this is the last one, then evict this event
-                     * from the cache */
-                    if (0 == cd->nleft) {
-                        pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
-                        found = true; // mark that we should release cd
-                    }
                     break;
                 }
             }
             if (!matched) {
                 /* do not notify this one */
                 continue;
+            }
+        }
+
+        /* This replay runs once per registration message, not once per
+         * peer - a client sends another REGEVENTS_CMD for every handler
+         * naming a code that is new to us or carrying a directive - and
+         * the live dispatch may have delivered this event to the peer
+         * already. Without this check each of those runs re-sent the
+         * event, so the client's handler fired again, and decremented
+         * "nleft" again, so an event targeted at several procs could be
+         * evicted from the cache before the rest of them ever saw it. */
+        if (pmix_notify_mark_notified(cd, &proc)) {
+            continue;
+        }
+        if (NULL != cd->targets && 0 < cd->nleft) {
+            /* track the number of targets we have left to notify */
+            --cd->nleft;
+            /* if this is the last one, then evict this event
+             * from the cache */
+            if (0 == cd->nleft) {
+                pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
+                found = true; // mark that we should release cd
             }
         }
 
@@ -165,6 +179,17 @@ static void _check_cached_events(int sd, short args, void *cbdata)
         }
         if (PMIX_SUCCESS == ret && 0 < cd->ninfo) {
             PMIX_BFROPS_PACK(ret, scd->peer, relay, cd->info, cd->ninfo, PMIX_INFO);
+        }
+        if (PMIX_SUCCESS == ret) {
+            /* The range travels last, exactly as the live dispatch in
+             * pmix_event_notification.c sends it. A tool recipient reads
+             * it to decide whether the event needs to go on to its own
+             * host, and defaults a missing one to PMIX_RANGE_LOCAL - so
+             * omitting it here silently downgraded the range of every
+             * event a tool picked up from the cache. Appending it costs
+             * an older reader nothing: a client stops after the info
+             * array and ignores the trailer. */
+            PMIX_BFROPS_PACK(ret, scd->peer, relay, &cd->range, 1, PMIX_DATA_RANGE);
         }
         if (PMIX_SUCCESS != ret) {
             /* release the relay we could not fill, and the event if it was
@@ -252,6 +277,15 @@ static void regevopcbfunc(pmix_status_t status, void *cbdata)
         }
         if (NULL != cd->info) {
             PMIX_INFO_FREE(cd->info, cd->ninfo);
+        }
+        /* still hand the request back to whoever asked for it. The
+         * callback the switchyard left here carries a retained peer in
+         * its cbdata, so dropping it strands that reference for the rest
+         * of the run - and the callback itself makes the same
+         * progress-thread check we just made, so it will decline to
+         * answer the client rather than try to send during teardown */
+        if (NULL != cd->opcbfunc) {
+            cd->opcbfunc(status, cd->cbdata);
         }
         PMIX_RELEASE(cd);
         return;
@@ -504,6 +538,21 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    /* The same round-trip screen this count needs for the same reason the
+     * code count above needs it, and for one more: PMIx_Info_create
+     * computes "ninfo * sizeof(pmix_info_t)" with no overflow guard and
+     * then constructs every one of the ninfo elements, so a count that
+     * wraps that product yields a short allocation whose constructor loop
+     * runs straight off the end. The crash happens inside the allocation,
+     * before the unpack gets a chance to screen anything, and a local
+     * client drives it directly. The directive scan below also walks the
+     * size_t rather than the int32_t the unpack consumed. */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
@@ -1005,9 +1054,28 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
+    /* Screen the count before it sizes an allocation. This handler has
+     * the shape the collective handlers were fixed for: the array is
+     * sized "ninfo + 1" so the internal-notify marker can be seeded in
+     * the last slot, and PMIx_Info_create computes
+     * "n * sizeof(pmix_info_t)" with no overflow guard before
+     * constructing every one of the n elements - so a count that wraps
+     * that product (2^61 wraps it to exactly zero, for which malloc
+     * hands back a live pointer) gives a short allocation whose
+     * constructor loop runs off the end. A local client drives this
+     * straight off the wire. The round trip through the int32_t the
+     * unpack consumes also keeps the two loops below, which walk the
+     * size_t, from reading past what was actually unpacked. */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
     cd->ninfo = ninfo + 1;
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
     if (NULL == cd->info) {
+        cd->ninfo = 0;
         rc = PMIX_ERR_NOMEM;
         goto exit;
     }
