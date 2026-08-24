@@ -2058,6 +2058,22 @@ misbehave by design).
   this way, so a screen added to one would be an asymmetry rather than a
   fix; if you add one, add all three.
 
+  **That decision turns on "nothing corrupts", so do not carry it to a
+  handler where the tail becomes state somebody else reads.**
+  `pmix_server_job_ctrl` walks its declared `ntargets` and *creates* a
+  `pmix_namespace_t` for any target namespace it does not recognize, so
+  each default-constructed entry appended one named `""` to
+  `pmix_globals.nspaces` for the life of the server — and unlike
+  `pmix_server_new_tracker`'s `strcmp`, most of the list walks in this
+  directory use `PMIX_CHECK_NSPACE`, which reports an empty name as
+  matching *every* namespace and would stop at the phantom. It also
+  handed the host that many `pmix_proc_t`s of which most were never
+  sent. It now trusts the count the unpack came back with — and frees
+  the array with the count it was *allocated* with when that count is
+  zero, since `PMIX_PROC_FREE` does nothing for `n == 0`. The test for
+  which rule applies is not "is this a collective" but "does anything
+  outlive the request".
+
   Note also what the unpack itself protects you from, so you screen for
   the right reason. `pmix_bfrops_base_unpack` reads the count the
   *packer* wrote and unpacks `min(packed, provided)`, reporting success
@@ -2105,6 +2121,17 @@ misbehave by design).
   and, for a data array, its *element* type, or a correctly-tagged array
   of some other type walks past its end. This is the client-side twin of
   the `pmix_parse_localquery` screen.
+
+  **The same rule covers a field that is missing rather than mistyped.**
+  `pmix_server_query` hands its unpacked queries to `pmix_parse_localquery`,
+  which walks each one's `keys` array to a NULL terminator — and the
+  `PMIX_QUERY` unpacker leaves `keys` at the NULL its constructor set
+  whenever the peer declared zero of them, reporting success. So a query
+  naming no keys at all was a NULL dereference on the progress thread.
+  `PMIx_Query_info_nb` had always screened it, which buys a server
+  nothing: that check runs in the *requestor's* process. The screen now
+  sits in `pmix_parse_localquery`, beside the qualifier one and for the
+  same reason — put it where every reader passes, not at one entry point.
 - **The registration entry points build global state, so a failed
   allocation must not be left on a global list.** `_register_nspace` and
   `_register_client` both `strdup` the namespace name straight into a
@@ -2155,7 +2182,39 @@ misbehave by design).
   been told about yet, and the epilog directives need somewhere to hang;
   `_register_nspace` looks the namespace up by name and reuses the entry
   when registration eventually arrives. It is not a leak and not a
-  phantom.
+  phantom — for a target the peer actually sent. See the note above on
+  why the walk must use the count the unpack came back with: the same
+  code reached with a declared count larger than the packed array
+  created a namespace named `""`, which is a phantom and does corrupt.
+- **An epilog list's duplicate scan must read the list it appends to.**
+  `pmix_server_job_ctrl` applies three of them per target — ignores,
+  cleanup directories, cleanup files — and they are near-copies of one
+  another. The ignores loop was cloned from the files loop and kept its
+  scan list, so it asked whether the path was already registered for
+  *cleanup* and then appended to `ignores` regardless of the answer.
+  Both halves of that were wrong, and neither is visible from the call
+  site: a repeat of the same `PMIX_CLEANUP_IGNORE` was never recognized,
+  so every job-control request carrying one appended another copy to a
+  list that lives as long as the namespace or peer and that
+  `dirpath_destroy` walks once per file; and an ignore naming a path
+  already registered for cleanup was dropped, so the epilog deleted a
+  file the client had asked it to leave alone. Note that `ignores` is
+  read *only* by `dirpath_destroy` (`src/include/pmix_globals.c`), which
+  consults it for the directory itself and again for each file inside
+  it — so an entry there is meaningful whether or not the same path is
+  also on `cleanup_files`.
+- **A conflicting cleanup request is applied in part before it fails.**
+  The ignores are registered first, and the directory and file loops
+  then error with `PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES` when a path
+  they were asked to clean is on the ignore list — by which point this
+  request's ignores, and any directories accepted ahead of the
+  conflicting one, are already on long-lived epilogs. The client is told
+  the request failed and the server keeps half of it. What survives is
+  the conservative half (a path is ignored rather than deleted), which
+  is why this is recorded rather than repaired: making it atomic means a
+  validate-then-apply split, and the exact semantics of a partially
+  conflicting request is a decision for the Standard rather than for
+  this file. See `docs/todo.rst`.
 - **Two things in `pmix_server_get.c` look like defects and are not.**
   `get_job_data` returns `PMIX_SUCCESS` with an empty buffer when the
   fetch finds nothing, and its callers pass that empty payload to the
@@ -2164,13 +2223,20 @@ misbehave by design).
   to `PMIX_ERR_NOT_FOUND` and only overwrites it if a value actually
   turns up, so an empty success degrades to not-found at the requester -
   the same bargain as the `refresh_cache` status above.
-- **`PMIX_OPERATION_SUCCEEDED` is not a permitted return from `spawn` or
-  `direct_modex`, and both now say so.** The tri-state's third arm means
+- **`PMIX_OPERATION_SUCCEEDED` is not a permitted return from `spawn`,
+  `direct_modex`, `get_credential` or `validate_credential`, and all
+  four now say so.** The tri-state's third arm means
   "done now, no callback — you invoke the completion yourself", which
-  works only where the operation's whole result is a status. These two
+  works only where the operation's whole result is a status. These four
   produce a result the return code cannot carry — the namespace of the
-  job that was launched, and the requested data blob — and the callback
-  is its only channel. Both `direct_modex` sites here already treated
+  job that was launched, the requested data blob, and the credential or
+  its validation — and the callback is its only channel. The two
+  credential up-calls are the sharpest case of it, because
+  `pmix_credential_cbfunc_t` and `pmix_validation_cbfunc_t` carry no
+  `(relfn, relcbdata)` pair either, so there is no second channel even in
+  principle; left alone, the third arm fell into the error return and the
+  client read the synthesized status-only reply as a success carrying no
+  credential. Both `direct_modex` sites here already treated
   the status as a refusal; they now emit the
   `atomic-completion-unsupported` diagnostic naming the operation, as
   `pmix_server_spawn` and `PMIx_Spawn_nb` do, so a host learns why its

@@ -299,6 +299,18 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
     for (n = 0; n < nqueries; n++) {
         rank_given = false;
         PMIX_LOAD_PROCID(&proc, NULL, PMIX_RANK_INVALID);
+        /* The key walk below runs to the array's NULL terminator, so a
+         * query carrying no keys at all is a NULL dereference. The
+         * identical screen in PMIx_Query_info_nb below covers only the
+         * caller in this process; pmix_server_query unpacks queries
+         * straight off the wire, and the PMIX_QUERY unpacker leaves
+         * "keys" at the NULL its constructor set whenever the peer
+         * declared zero of them - and reports success. Screen it here,
+         * where both paths meet */
+        if (NULL == queries[n].keys || NULL == queries[n].keys[0]) {
+            rc = PMIX_ERR_BAD_PARAM;
+            goto badparam;
+        }
         /* Screen each qualifier's type before reading its union. The
          * identical check in PMIx_Query_info_nb below is not enough: it
          * runs in the *requestor's* process, and this function is also

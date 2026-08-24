@@ -51,6 +51,39 @@
  *      Read back from the peer's send queue, which is where a reply to a
  *      socketless peer comes to rest.
  *
+ *   query: the counts and the keys array both arrive off the wire
+ *      The query count sizes PMIX_QUERY_CREATE, which multiplies it by
+ *      sizeof(pmix_query_t) with no overflow guard and then constructs
+ *      every element it claimed, so it has to be refused before it
+ *      reaches the allocator rather than after. And a query declaring no
+ *      keys leaves the array NULL - the unpacker reports success for it -
+ *      where pmix_parse_localquery walks it to a terminator that is not
+ *      there. PMIx_Query_info_nb screens that in the requestor's own
+ *      process, which buys a server nothing. The keyless case takes an
+ *      unfixed library down rather than failing it.
+ *
+ *   job control: the target count the peer declared is not the one to walk
+ *      PMIX_BFROPS_UNPACK fills min(packed, provided) and reports
+ *      success, so declaring more targets than are sent leaves the tail
+ *      of the array default-constructed - an empty nspace at
+ *      PMIX_RANK_UNDEF. The handler creates a pmix_namespace_t for every
+ *      target nspace it does not recognize, so each phantom appended one
+ *      named "" to pmix_globals.nspaces for the life of the server - and
+ *      PMIX_CHECK_NSPACE reports an empty name as matching every
+ *      namespace, so the list walks in src/server that stop at the first
+ *      match could stop there. These cases fail rather than crash.
+ *
+ *   job control: a repeated ignore directive must not accumulate
+ *      The three epilog loops are near-copies of one another, and each
+ *      has to scan the list it appends to. The ignores loop kept the
+ *      files loop's scan list, so it asked whether the path was already
+ *      registered for cleanup and appended to "ignores" either way: a
+ *      repeated PMIX_CLEANUP_IGNORE was never seen as a duplicate and
+ *      grew a list that lives as long as the namespace, and an ignore
+ *      naming an already-registered cleanup path was dropped, so the
+ *      epilog went on deleting a file the client asked it to keep. Both
+ *      halves fail, rather than crash, against an unfixed library.
+ *
  *   job control: a repeated cleanup directory upgrades the registered entry
  *      PMIX_REGISTER_CLEANUP_DIR for a path already on the epilog is a
  *      duplicate, and the RFC precedence rule is that the more permissive
@@ -165,6 +198,7 @@ static void qry_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
  * cases below is supposed to reach it: they are all pure cleanup requests,
  * which the server answers itself */
 static bool jobctrl_fired = false;
+static size_t jobctrl_ntargets = 0;
 static pmix_status_t stub_job_control(const pmix_proc_t *requestor,
                                       const pmix_proc_t targets[], size_t ntargets,
                                       const pmix_info_t directives[], size_t ndirs,
@@ -172,13 +206,13 @@ static pmix_status_t stub_job_control(const pmix_proc_t *requestor,
 {
     (void) requestor;
     (void) targets;
-    (void) ntargets;
     (void) directives;
     (void) ndirs;
     (void) cbfunc;
     (void) cbdata;
 
     jobctrl_fired = true;
+    jobctrl_ntargets = ntargets;
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
@@ -456,6 +490,184 @@ static pmix_status_t do_job_ctrl(pmix_info_t *info, size_t ninfo)
     return rc;
 }
 
+/* Drive a server-side QUERY whose declared query count is whatever the
+ * caller names, with nothing packed behind it. The count sizes
+ * PMIX_QUERY_CREATE, which multiplies it by sizeof(pmix_query_t) with no
+ * overflow guard and then constructs every element it claimed, so a count
+ * that does not survive the round trip through the int32_t the unpack
+ * consumes has to be refused before it reaches the allocator. */
+static pmix_status_t do_query_count(size_t nqueries)
+{
+    pmix_buffer_t *buf;
+    pmix_server_caddy_t *cd;
+    pmix_status_t rc;
+
+    qry_fired = false;
+    qry_status = PMIX_SUCCESS;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &nqueries, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+
+    cd = PMIX_NEW(pmix_server_caddy_t);
+    if (NULL == cd) {
+        PMIX_RELEASE(buf);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(pmix_globals.mypeer);
+    cd->peer = pmix_globals.mypeer;
+    cd->hdr.tag = 0;
+
+    rc = pmix_server_query(pmix_globals.mypeer, buf, qry_cbfunc, cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cd);
+    }
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
+/* Drive a server-side QUERY carrying one query that declares no keys at
+ * all. PMIX_QUERY_CONSTRUCT leaves "keys" NULL and the unpacker leaves it
+ * that way for a zero count, reporting success - and pmix_parse_localquery
+ * walks that array to its NULL terminator. PMIx_Query_info_nb screens this
+ * in the requestor's own process, which buys a server nothing when the
+ * query arrived off the wire. This case takes an unfixed library down
+ * rather than failing it. */
+static pmix_status_t do_query_nokeys(void)
+{
+    pmix_buffer_t *buf;
+    pmix_server_caddy_t *cd;
+    pmix_query_t qry;
+    pmix_status_t rc;
+    size_t nqueries = 1;
+
+    qry_fired = false;
+    qry_status = PMIX_SUCCESS;
+
+    PMIX_QUERY_CONSTRUCT(&qry);  // keys stays NULL, nqual stays 0
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        PMIX_QUERY_DESTRUCT(&qry);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &nqueries, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &qry, 1, PMIX_QUERY);
+    }
+    PMIX_QUERY_DESTRUCT(&qry);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+
+    cd = PMIX_NEW(pmix_server_caddy_t);
+    if (NULL == cd) {
+        PMIX_RELEASE(buf);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(pmix_globals.mypeer);
+    cd->peer = pmix_globals.mypeer;
+    cd->hdr.tag = 0;
+
+    rc = pmix_server_query(pmix_globals.mypeer, buf, qry_cbfunc, cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cd);
+    }
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
+/* Build a JOB_CONTROL request that declares more targets than it packs.
+ * The unpack fills min(packed, provided) and reports success, so the tail
+ * of the array is left default-constructed - an empty nspace at
+ * PMIX_RANK_UNDEF - and the handler's walk creates a pmix_namespace_t for
+ * every target nspace it does not recognize. An empty name is one
+ * PMIX_CHECK_NSPACE reports as matching every namespace, so each phantom
+ * is a permanent trap on a list every lookup in src/server walks. */
+static pmix_status_t do_job_ctrl_targets(size_t declared, size_t packed)
+{
+    pmix_buffer_t *buf;
+    pmix_proc_t *targets = NULL;
+    pmix_status_t rc;
+    size_t ninfo = 0, n;
+
+    jobctrl_fired = false;
+    jobctrl_ntargets = SIZE_MAX;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &declared, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc && 0 < packed) {
+        PMIX_PROC_CREATE(targets, packed);
+        if (NULL == targets) {
+            PMIX_RELEASE(buf);
+            return PMIX_ERR_NOMEM;
+        }
+        for (n = 0; n < packed; n++) {
+            PMIX_LOAD_PROCID(&targets[n], pmix_globals.myid.nspace, PMIX_RANK_WILDCARD);
+        }
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, targets, packed, PMIX_PROC);
+        PMIX_PROC_FREE(targets, packed);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+    rc = pmix_server_job_ctrl(pmix_globals.mypeer, buf, NULL, NULL);
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
+/* How many namespaces on the global list carry an empty name. Nothing
+ * legitimate ever puts one there. */
+static size_t count_empty_nspaces(void)
+{
+    pmix_namespace_t *ns;
+    size_t n = 0;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL == ns->nspace || 0 == strlen(ns->nspace)) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+/* How many entries sit on our own namespace's epilog ignore list. */
+static size_t count_epilog_ignores(void)
+{
+    pmix_epilog_t *epi = &pmix_globals.mypeer->nptr->epilog;
+    pmix_cleanup_file_t *cf;
+    size_t n = 0;
+
+    PMIX_LIST_FOREACH (cf, &epi->ignores, pmix_cleanup_file_t) {
+        ++n;
+    }
+    return n;
+}
+
+static void drain_epilog_ignores(void)
+{
+    pmix_epilog_t *epi = &pmix_globals.mypeer->nptr->epilog;
+    pmix_list_item_t *item;
+
+    while (NULL != (item = pmix_list_remove_first(&epi->ignores))) {
+        PMIX_RELEASE(item);
+    }
+}
+
 /* A blocking round trip through the progress thread. pmix_server_query
  * thread-shifts, so this is what makes its completion observable without
  * a sleep: anything queued ahead of this call has run by the time it
@@ -674,6 +886,19 @@ int main(int argc, char **argv)
         progress_barrier();
         report("mistyped RANK qualifier is rejected",
                PMIX_SUCCESS == rc && qry_fired && PMIX_ERR_BAD_PARAM == qry_status);
+
+        /* the query count sizes an allocation that constructs every
+         * element it claimed, so it has to be refused before it gets
+         * there rather than after */
+        rc = do_query_count((size_t) 0x80000000UL);
+        report("query rejects an unusable query count", PMIX_ERR_BAD_PARAM == rc);
+
+        /* a query naming no keys at all reaches the key walk in
+         * pmix_parse_localquery, which has no terminator to find */
+        rc = do_query_nokeys();
+        progress_barrier();
+        report("keyless query is rejected",
+               PMIX_SUCCESS == rc && qry_fired && PMIX_ERR_BAD_PARAM == qry_status);
     }
 
     /* --- the credential reply must carry a copy of the host's info ---- */
@@ -772,6 +997,71 @@ int main(int argc, char **argv)
     PMIX_INFO_DESTRUCT(&jc[0]);
 
     drain_epilog_dirs();
+
+    /* --- a repeated ignore directive must not accumulate -------------- */
+    {
+        size_t nign;
+
+        drain_epilog_ignores();
+        PMIX_INFO_LOAD(&jc[0], PMIX_CLEANUP_IGNORE, CTLUT_DIR "/keepme", PMIX_STRING);
+        rc = do_job_ctrl(jc, 1);
+        report("ignore directive accepted", PMIX_OPERATION_SUCCEEDED == rc);
+        nign = count_epilog_ignores();
+        report("ignore directive reached the epilog", 1 == nign);
+
+        /* the duplicate scan used to read cleanup_files - the list this
+         * loop does not append to - so the same directive registered
+         * again was never seen as a repeat */
+        rc = do_job_ctrl(jc, 1);
+        report("repeated ignore directive accepted", PMIX_OPERATION_SUCCEEDED == rc);
+        nign = count_epilog_ignores();
+        report("repeated ignore did not duplicate the entry", 1 == nign);
+        PMIX_INFO_DESTRUCT(&jc[0]);
+
+        /* an ignore naming a path already registered for cleanup used to
+         * be dropped on the floor by that same scan, so the epilog went
+         * on deleting a file the client had asked it to leave alone */
+        drain_epilog_ignores();
+        PMIX_INFO_LOAD(&jc[0], PMIX_REGISTER_CLEANUP, CTLUT_DIR "/gone", PMIX_STRING);
+        rc = do_job_ctrl(jc, 1);
+        report("cleanup file registered", PMIX_OPERATION_SUCCEEDED == rc);
+        PMIX_INFO_DESTRUCT(&jc[0]);
+        PMIX_INFO_LOAD(&jc[0], PMIX_CLEANUP_IGNORE, CTLUT_DIR "/gone", PMIX_STRING);
+        rc = do_job_ctrl(jc, 1);
+        report("ignore of a registered cleanup path accepted",
+               PMIX_OPERATION_SUCCEEDED == rc);
+        nign = count_epilog_ignores();
+        report("ignore of a registered cleanup path was recorded", 1 == nign);
+        PMIX_INFO_DESTRUCT(&jc[0]);
+        drain_epilog_ignores();
+    }
+
+    /* --- a target count larger than the packed array ------------------ */
+    {
+        size_t before, after;
+
+        before = count_empty_nspaces();
+        rc = do_job_ctrl_targets(4, 1);
+        /* the host is entitled to the count that actually arrived, not
+         * the one the peer declared - the tail of that array is
+         * default-constructed, not sent */
+        report("over-declared request still reached the host", jobctrl_fired);
+        report("host was handed the count that actually arrived",
+               1 == jobctrl_ntargets);
+        after = count_empty_nspaces();
+        report("over-declared targets created no phantom namespace",
+               before == after);
+
+        /* a count that cannot survive the trip through int32_t must not
+         * reach PMIX_PROC_CREATE at all */
+        rc = do_job_ctrl_targets((size_t) 0x80000000UL, 1);
+        report("job control rejects an unusable target count",
+               PMIX_ERR_BAD_PARAM == rc);
+        report("job control did not hand the host a bogus target count",
+               !jobctrl_fired);
+        report("rejected target count created no phantom namespace",
+               before == count_empty_nspaces());
+    }
 
     /* --- the host's abort up-call --------------------------------- */
     test_abort_upcall();
