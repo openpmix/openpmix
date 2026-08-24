@@ -770,11 +770,12 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* if they asked for enviro events our host isn't already sending
      * us, then call the local server */
     if (enviro_events && 0 < nactive) {
-        /* if they don't support this, then we cannot do it */
-        if (NULL == pmix_host_server.register_events) {
-            rc = PMIX_ERR_NOT_SUPPORTED;
-            goto cleanup;
-        }
+        /* our host is known to support this - the check above returned
+         * PMIX_ERR_NOT_SUPPORTED if it did not, and pmix_host_server is
+         * filled in once at server init. A second test here would be
+         * dead code, and worse than dead: reached, it would leave the
+         * codes marked active without giving the interest back */
+
         /* need to ensure the arrays don't go away until after the
          * host RM is done with them */
         scd = PMIX_NEW(pmix_setup_caddy_t);
@@ -942,6 +943,8 @@ void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t *buf)
                  * server itself, nor any of our local clients - then
                  * remove it and tell our host to stop forwarding it */
                 pmix_server_prune_reginfo(reginfo);
+                /* a code appears at most once in the store */
+                break;
             }
         }
         cnt = 1;
