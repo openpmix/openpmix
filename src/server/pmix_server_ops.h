@@ -231,12 +231,21 @@ typedef struct {
     int group_verbose;
 } pmix_server_globals_t;
 
-#define PMIX_GDS_CADDY(c, p, t)              \
-    do {                                     \
-        (c) = PMIX_NEW(pmix_server_caddy_t); \
-        (c)->hdr.tag = (t);                  \
-        PMIX_RETAIN((p));                    \
-        (c)->peer = (p);                     \
+/* Build the switchyard's per-command caddy. A failed allocation leaves
+ * (c) NULL and takes no reference: this used to write through the NULL
+ * on the very next line, so one allocation failure killed the server and
+ * every client it was hosting. Every dispatch arm tests (c) and answers
+ * the requester PMIX_ERR_NOMEM instead. */
+#define PMIX_GDS_CADDY(c, p, t)                  \
+    do {                                         \
+        (c) = PMIX_NEW(pmix_server_caddy_t);     \
+        if (PMIX_LIKELY(NULL != (c))) {          \
+            (c)->hdr.tag = (t);                  \
+            PMIX_RETAIN((p));                    \
+            (c)->peer = (p);                     \
+        } else {                                 \
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);      \
+        }                                        \
     } while (0)
 
 /* The caddy carries the tracker across an async hop onto the progress

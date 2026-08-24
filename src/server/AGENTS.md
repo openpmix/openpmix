@@ -114,10 +114,16 @@ if (PMIX_SOMETHING_CMD == cmd) {
 }
 ```
 
-`PMIX_GDS_CADDY` (`pmix_server_ops.h:232`) allocates a
+`PMIX_GDS_CADDY` (`pmix_server_ops.h`) allocates a
 `pmix_server_caddy_t`, stashes the reply `tag` in `cd->hdr.tag`, and
 **RETAINs the peer** so the peer object survives until the reply is
-sent. The caddy's destructor (`cddes`, `pmix_server_classes.c:125`) releases
+sent. It used to write through the result of `PMIX_NEW` without checking
+it, so a single failed allocation killed the server and every client it
+was hosting; it now leaves `cd` NULL and takes no reference, and every
+dispatch arm tests `cd` and answers the requester `PMIX_ERR_NOMEM`. That
+is 32 near-identical three-line checks, and they are the point: failing
+one command is what a server does under memory pressure, and taking the
+node's whole job down is not. The caddy's destructor (`cddes`, `pmix_server_classes.c:125`) releases
 that peer retain plus `trk`, `info`, `query`, and `key`. So: **every
 error path in a handler that returns non-SUCCESS must NOT release the
 server caddy itself** (the switchyard does it); **every success path must
@@ -129,25 +135,33 @@ when an error path releases a caddy the switchyard will also release).
 Three things about the switchyard read as defects and are not. Check them
 against this list before "fixing" one:
 
-- **A failed `PMIX_SERVER_QUEUE_REPLY` cannot strand a client.** Several
-  arms release the reply and carry on returning `PMIX_SUCCESS`, which
-  looks like a client left blocked forever. The macro has exactly one
-  failure mode — `peer->finalized`, answered with `PMIX_ERR_UNREACH` —
-  so whenever it fails there is no longer a peer waiting for the answer,
-  and the synthesized reply the message handler would send instead could
-  not be queued either.
+- **`PMIX_SERVER_QUEUE_REPLY` has two failure modes, and only one of them
+  means nobody is waiting.** `peer->finalized` is answered with
+  `PMIX_ERR_UNREACH`, and there really is no client left to strand — the
+  synthesized reply the message handler would send instead could not be
+  queued either, so releasing the buffer and returning `PMIX_SUCCESS` is
+  right. A failed allocation of the `pmix_ptl_send_t` is **not** that: the
+  client is still there, still blocked. The macro used to dereference
+  that NULL, which is why the one-failure-mode reading held; it now
+  answers `PMIX_ERR_NOMEM`, and an arm that swallows it leaves a client
+  waiting forever. `PMIX_REQ_CMD` and `PMIX_COMMIT_CMD` did, and now
+  return the status so the message handler builds the error reply. The
+  terminal `_*cbfunc` reply handlers in the two reply files have nothing
+  to escalate to and still just release the buffer.
 - **`PMIX_DEREGEVENTS_CMD` answers nothing, deliberately.** It is the one
   arm that returns `PMIX_SUCCESS` without queuing a reply and without an
   async owner to queue one later. The client sends that command through
   `PMIX_PTL_SEND_RECV` with a **NULL** callback
   (`pmix_internal_dereg_event_hdlr` in
   `src/event/pmix_event_registration.c`), so nothing is waiting on a tag.
-- **`PMIX_GDS_CADDY` and `PMIX_SERVER_QUEUE_REPLY` both dereference an
-  unchecked `PMIX_NEW`.** Making the macros NULL-safe does not help: the
-  handler on the next line dereferences the caddy it was given, so the
-  crash moves rather than goes away, and covering it properly would mean
-  a check at all thirty-odd dispatch arms for a condition under which the
-  library cannot service the request anyway. Left as is, on purpose.
+- **Four wire commands have no dispatch arm, and none is ever sent.**
+  `PMIX_GROUP_JOIN_CMD`, `PMIX_GROUP_INVITE_CMD`, `PMIX_GROUP_LEAVE_CMD`
+  and `PMIX_REQ_SYSINFO_CMD` are known only to `pmix_command_string()`;
+  nothing in the tree packs one. `PMIx_Group_leave` reaches the server as
+  a `PMIX_GROUP_DESTRUCT_CMD` carrying a leave directive. A command with
+  no arm falls out of the chain as `PMIX_ERR_NOT_SUPPORTED`, which is the
+  right answer to give a peer that sends one. Do not add empty arms for
+  them; do keep the codes, which are wire values and can never be reused.
 
 **The outer host callbacks own the caddy on *every* arm that does not
 thread-shift.** `op_cbfunc`, `op_cbfunc2` and `resop_cbfunc` each have
