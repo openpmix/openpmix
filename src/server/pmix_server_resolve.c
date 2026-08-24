@@ -715,6 +715,11 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
     PMIX_DESTRUCT(&cb);
 
 done:
+    /* the peers twin constructs and destructs its qualifier array and
+     * says why; do the same here rather than relying on this one
+     * qualifier staying a boolean that allocates nothing */
+    PMIX_INFO_DESTRUCT(&info);
+
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
