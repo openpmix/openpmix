@@ -396,14 +396,6 @@ PMIX_EXPORT extern int pmix_ptl_base_output;
         pmix_event_active(&((ms)->ev), EV_WRITE, 1);                      \
     } while (0)
 
-#define PMIX_SND_CADDY(c, h, s)                                 \
-    do {                                                        \
-        (c) = PMIX_NEW(pmix_server_caddy_t);                    \
-        (void) memcpy(&(c)->hdr, &(h), sizeof(pmix_ptl_hdr_t)); \
-        PMIX_RETAIN((s));                                       \
-        (c)->snd = (s);                                         \
-    } while (0)
-
 /* queue a message to be sent to one of our procs - must
  * provide the following params:
  * p - pmix_peer_t of target recipient
