@@ -43,12 +43,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "include/pmix.h"
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_types.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/threads/pmix_threads.h"
+
+#include <sys/wait.h>
+#include <unistd.h>
 
 static int npass = 0;
 static int nfail = 0;
@@ -429,6 +434,7 @@ static void test_pset_params(void)
 {
     pmix_proc_t members[2];
     pmix_status_t rc;
+    size_t nsets;
 
     PMIX_LOAD_PROCID(&members[0], "pset.ut.ns", 0);
     PMIX_LOAD_PROCID(&members[1], "pset.ut.ns", 1);
@@ -449,8 +455,87 @@ static void test_pset_params(void)
      * be indistinguishable from a function that refuses everything */
     rc = PMIx_server_define_process_set(members, 2, "ut-pset");
     report("pset:a well-formed set is defined", PMIX_SUCCESS == rc);
+
+    /* Defining a name that is already recorded is a redefinition. No API
+     * lets a host change a set's membership, so this is the only way to
+     * do it - and the definition used to be appended, leaving the old
+     * entry in front of the new one. Every member of the old set went on
+     * reporting itself a member through PMIX_PSET_NAMES, the key named
+     * the set twice for anyone in both, and the delete below removed
+     * only the stale entry, so the set outlived its own deletion. */
+    nsets = pmix_list_get_size(&pmix_server_globals.psets);
+    rc = PMIx_server_define_process_set(members, 1, "ut-pset");
+    report("pset:a redefinition is accepted", PMIX_SUCCESS == rc);
+    report("pset:a redefinition replaces rather than shadows",
+           nsets == pmix_list_get_size(&pmix_server_globals.psets));
+
     rc = PMIx_server_delete_process_set("ut-pset");
     report("pset:and deleted again", PMIX_SUCCESS == rc);
+    report("pset:the deletion left nothing behind",
+           (nsets - 1) == pmix_list_get_size(&pmix_server_globals.psets));
+}
+
+/* ------------------------------------------------------------------
+ * The process-set entry points must screen the SERVER library's flag
+ *
+ * Their documented PMIX_ERR_INIT means "the PMIx server library has not
+ * been initialized", and pmix_globals.initialized does not answer that -
+ * PMIx_Init and PMIx_tool_init set it too. A CLIENT is the case that
+ * bites: PMIx_Init constructs only the two IOF lists in
+ * pmix_server_globals, so psets is still PMIX_LIST_STATIC_INIT, whose
+ * sentinel carries NULL next and prev pointers. The define path writes
+ * through the NULL prev in pmix_list_append and the delete path walks
+ * off the NULL next; both are a SIGSEGV on the progress thread, taken
+ * after the entry point has already answered PMIX_SUCCESS. So these
+ * cases run in a forked child - against an unfixed library the parent
+ * would die rather than report. (A tool escapes the crash, since
+ * PMIx_tool_init calls pmix_server_initialize, but is owed the same
+ * refusal.)
+ * ------------------------------------------------------------------ */
+
+static int pset_client_child(int which)
+{
+    pmix_proc_t myproc, member;
+    pmix_status_t rc;
+
+    /* a singleton reports PMIX_ERR_UNREACH from init - it is fully
+     * initialized, it just has no server */
+    rc = PMIx_Init(&myproc, NULL, 0);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_UNREACH != rc) {
+        return 3;
+    }
+
+    if (0 == which) {
+        PMIX_LOAD_PROCID(&member, "pset.ut.ns", 0);
+        rc = PMIx_server_define_process_set(&member, 1, "ut-client-pset");
+    } else {
+        rc = PMIx_server_delete_process_set("ut-client-pset");
+    }
+    PMIx_Finalize(NULL, 0);
+    return (PMIX_ERR_INIT == rc) ? 0 : 1;
+}
+
+static void check_pset_client_refusal(const char *name, int which)
+{
+    pid_t child;
+    int status = 0;
+
+    fflush(stdout);
+    child = fork();
+    if (0 == child) {
+        _exit(pset_client_child(which));
+    }
+    if (0 > child) {
+        report(name, 0);
+        return;
+    }
+    if (0 > waitpid(child, &status, 0)) {
+        report(name, 0);
+        return;
+    }
+    /* a child that died on a signal is the unfixed library crashing on
+     * the progress thread, which is exactly what the screen prevents */
+    report(name, WIFEXITED(status) && 0 == WEXITSTATUS(status));
 }
 
 /* ------------------------------------------------------------------
@@ -513,6 +598,10 @@ int main(int argc, char **argv)
     pmix_status_t rc;
     static pmix_server_module_t mymodule = {0};
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+
+    /* these fork, so they run before this process becomes a server */
+    check_pset_client_refusal("pset:define from a client is refused, not fatal", 0);
+    check_pset_client_refusal("pset:delete from a client is refused, not fatal", 1);
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {

@@ -559,6 +559,46 @@ next line read `darray->array`. All three segfaulted the progress
 thread. `test/unit/progress_threads.c` covers them, and its zero-count
 case kills an unfixed library rather than failing it.
 
+**And both screened the wrong initialization flag, which for a client is
+the same crash one level up.** `pmix_globals.initialized` says only that
+*some* PMIx role came up; `PMIx_Init` constructs exactly two lists in
+`pmix_server_globals` (`iof` and `iof_residuals`, for the singleton
+output path) and leaves `psets` at `PMIX_LIST_STATIC_INIT`, whose
+sentinel carries NULL `next` **and** `prev`. So a client reaching the
+define path writes through the NULL `prev` inside `pmix_list_append`,
+and one reaching the delete path walks off the NULL `next` — in both
+cases after the entry point has already answered `PMIX_SUCCESS`, so the
+SIGSEGV lands on the progress thread with the call already returned. A
+*tool* escapes the crash, `PMIx_tool_init` having called
+`pmix_server_initialize()`, but is owed the same refusal: nothing in a
+tool will ever serve a query about the set it just recorded. Both now
+screen `pmix_server_globals.initialized` as the inventory entry points
+do; the refusal cases in `test/unit/progress_threads.c` fork for the
+reason above.
+
+**Defining a name that is already recorded is a redefinition, and
+`psetdef` is the only insertion point that can keep the list unique.**
+No API lets a host change a set's membership, so calling define again is
+the only way to do it — and the definition used to be appended, leaving
+the stale entry in front of the new one. `pmix_server_get.c`'s
+`PMIX_PSET_NAMES` walk then reported every member of the *old* set as
+still belonging, named the set twice for anyone in both, and
+`psetdel` — which stops at the first match — removed the entry nobody
+was using and left the live one, so the set survived its own deletion.
+The replace happens only once the new `pmix_pset_t` is fully built, so a
+redefinition that runs out of memory leaves the existing set standing
+rather than destroying it.
+
+**The notification these two raise is a courtesy, and failing to raise
+it does not fail the call.** `psetdef` says so at the refused-notify arm
+and acts on it at its two allocation arms; `psetdel` reported
+`PMIX_ERR_NOMEM` from the same two, which told the host that a deletion
+it had already performed had failed — so a host acting on the status
+would go on treating a set the library no longer holds as defined. The
+rule is the same on both sides now, and the two man pages say it. What
+*does* fail the call is the set itself not being recorded:
+`psetdef`'s `PMIX_NEW`/`strdup`/`malloc` arms still report `NOMEM`.
+
 Any struct handed to `PMIX_THREADSHIFT` **must** carry a `pmix_event_t ev`
 as its thread-shift member (the caddy contract from the top-level guide).
 Do not stack-allocate a caddy that outlives its creating function — the

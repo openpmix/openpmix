@@ -67,7 +67,7 @@ static void psetdef(int sd, short args, void *cbdata)
     mydata_t *mydat;
     pmix_data_array_t *darray;
     pmix_proc_t *ptr;
-    pmix_pset_t *ps;
+    pmix_pset_t *ps, *old;
     pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_ACQUIRE_OBJECT(cd);
@@ -94,6 +94,26 @@ static void psetdef(int sd, short args, void *cbdata)
     }
     memcpy(ps->members, cd->procs, cd->nprocs * sizeof(pmix_proc_t));
     ps->nmembers = cd->nprocs;
+
+    /* A name already on the list is a redefinition, not a second set.
+     * No API lets a host change a set's membership, so calling this
+     * again is the only way to do it - and appending left the old entry
+     * in front of the new one, so every member of the old set went on
+     * reporting itself a member through PMIX_PSET_NAMES, that key came
+     * back naming the set twice for anyone in both, and
+     * PMIx_server_delete_process_set removed only the stale entry.
+     * Replacing is also what the event raised below says has happened.
+     * The old entry goes only once the new one is built, so a failed
+     * redefinition leaves the existing set standing rather than
+     * destroying it. This is the sole insertion point, so one pass is
+     * enough to keep the list free of duplicates. */
+    PMIX_LIST_FOREACH (old, &pmix_server_globals.psets, pmix_pset_t) {
+        if (NULL != old->name && 0 == strcmp(cd->nspace, old->name)) {
+            pmix_list_remove_item(&pmix_server_globals.psets, &old->super);
+            PMIX_RELEASE(old);
+            break;
+        }
+    }
     pmix_list_append(&pmix_server_globals.psets, &ps->super);
 
     /* now tell any local registrants about it */
@@ -151,7 +171,20 @@ pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members, size_t 
     pmix_setup_caddy_t cd;
     pmix_status_t rc;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* The question the man page's PMIX_ERR_INIT answers is whether the
+     * *server* library is up, and pmix_globals.initialized does not ask
+     * it - PMIx_Init and PMIx_tool_init set that flag too. A client is
+     * the case that bites: PMIx_Init constructs only the two IOF lists
+     * in pmix_server_globals, so psets is still PMIX_LIST_STATIC_INIT,
+     * whose sentinel carries NULL next and prev pointers, and the
+     * pmix_list_append in psetdef writes through the NULL prev. The
+     * caller was told PMIX_SUCCESS and the progress thread then took a
+     * SIGSEGV. (A tool escapes the crash - PMIx_tool_init calls
+     * pmix_server_initialize - but is equally entitled to the documented
+     * refusal, since nothing there will ever serve a query about the set
+     * it just recorded.) */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -223,14 +256,16 @@ static void psetdel(int sd, short args, void *cbdata)
     /* now tell any local registrants about it */
     mydat = (mydata_t *) malloc(sizeof(mydata_t));
     if (NULL == mydat) {
-        rc = PMIX_ERR_NOMEM;
+        /* the set is gone either way, so this is not a deletion that
+         * failed - reporting it as one would tell the host to treat a
+         * set we no longer hold as still defined. Same rule as the
+         * refused-notification arm below, and as psetdef's */
         goto done;
     }
     mydat->ninfo = 2;
     PMIX_INFO_CREATE(mydat->info, mydat->ninfo);
     if (NULL == mydat->info) {
         free(mydat);
-        rc = PMIX_ERR_NOMEM;
         goto done;
     }
     PMIX_INFO_LOAD(&mydat->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
@@ -254,7 +289,11 @@ pmix_status_t PMIx_server_delete_process_set(char *pset_name)
     pmix_setup_caddy_t cd;
     pmix_status_t rc;
 
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+    /* same reasoning as the define entry point above: for a client the
+     * walk of pmix_server_globals.psets below starts at a sentinel whose
+     * next pointer is NULL, and dereferences it */
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
