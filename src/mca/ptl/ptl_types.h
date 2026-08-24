@@ -414,6 +414,16 @@ PMIX_EXPORT extern int pmix_ptl_base_output;
             (r) = PMIX_ERR_UNREACH;                                                             \
         } else {                                                                                \
             snd = PMIX_NEW(pmix_ptl_send_t);                                                    \
+            /* an unchecked allocation here wrote through NULL and took                         \
+             * the whole server down - every local client with it - for                         \
+             * one reply that could not be queued. Every caller already                         \
+             * handles a non-success "r" by releasing the buffer, since                         \
+             * the finalized peer above answers the same way. The break                         \
+             * leaves the enclosing do/while(0), which is the whole macro */                    \
+            if (PMIX_UNLIKELY(NULL == snd)) {                                                   \
+                (r) = PMIX_ERR_NOMEM;                                                           \
+                break;                                                                          \
+            }                                                                                   \
             snd->hdr.pindex = htonl(pmix_globals.pindex);                                       \
             snd->hdr.tag = htonl(t);                                                            \
             nbytes = (b)->bytes_used;                                                           \
