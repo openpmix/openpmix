@@ -1643,6 +1643,7 @@ typedef uint8_t pmix_proc_state_t;
 #define PMIX_PROC_STATE_CANNOT_RESTART          (PMIX_PROC_STATE_ERROR + 11)  /* process failed and cannot be restarted */
 #define PMIX_PROC_STATE_TERM_NON_ZERO           (PMIX_PROC_STATE_ERROR + 12)  /* process exited with a non-zero status, indicating abnormal */
 #define PMIX_PROC_STATE_FAILED_TO_LAUNCH        (PMIX_PROC_STATE_ERROR + 13)  /* unable to launch process */
+#define PMIX_PROC_STATE_KILLED_BY_RELEASE       (PMIX_PROC_STATE_ERROR + 14)  /* the node the process ran on was released */
 
 
 /****    JOB STATE DEFINITIONS    ****/
@@ -1791,6 +1792,8 @@ typedef int pmix_status_t;
 #define PMIX_ERR_JOB_WDIR_NOT_FOUND                 -233
 #define PMIX_ERR_JOB_INSUFFICIENT_RESOURCES         -234
 #define PMIX_ERR_JOB_SYS_OP_FAILED                  -235
+#define PMIX_ERR_JOB_KILLED_BY_RELEASE              -236     // a resource release removed nodes this job was
+                                                             // running on, killing the processes on them
 #define PMIX_ERR_DVM_MOD                            -196     // a requested DVM grow/shrink operation failed (e.g., daemon startup
                                                              // on grow failed) - payload includes the scheduler allocation ID
                                                              // (PMIX_ALLOC_ID) and the user-provided allocation ID
@@ -1812,6 +1815,7 @@ typedef int pmix_status_t;
 #define PMIX_ERR_PROC_REQUESTED_ABORT               -8
 #define PMIX_ERR_PROC_TERM_WO_SYNC                  -200
 #define PMIX_EVENT_PROC_TERMINATED                  -201
+#define PMIX_ERR_PROC_KILLED_BY_RELEASE             -204     // the node this process ran on was released
 #define PMIX_ERR_PROC_KILLED_BY_CMD                 -400
 #define PMIX_ERR_PROC_FAILED_TO_START               -401
 #define PMIX_ERR_PROC_ABORTED_BY_SIG                -402

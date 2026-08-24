@@ -91,6 +91,8 @@ PMIX_EXPORT const char *PMIx_Proc_state_string(pmix_proc_state_t state)
         return "PROC TERMINATED WITH NON-ZERO STATUS";
     case PMIX_PROC_STATE_FAILED_TO_LAUNCH:
         return "PROC FAILED TO LAUNCH";
+    case PMIX_PROC_STATE_KILLED_BY_RELEASE:
+        return "PROC KILLED BY RESOURCE RELEASE";
     default:
         return "UNKNOWN STATE";
     }
