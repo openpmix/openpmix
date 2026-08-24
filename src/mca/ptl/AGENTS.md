@@ -243,6 +243,16 @@ Back-end code never calls `send()`/`recv()`. It uses these macros from
 All three short-circuit to `PMIX_ERR_UNREACH` if the peer is already
 `finalized`. The buffer is consumed (freed) by the transport.
 
+`PMIX_SERVER_QUEUE_REPLY` can also answer `PMIX_ERR_NOMEM`: it allocates
+the `pmix_ptl_send_t` it queues, and used to write through the result
+without checking it, so one failed allocation took the server down along
+with every client it was hosting. Callers already release the buffer on a
+non-success return, since the finalized peer above is answered the same
+way — but note the two are not equivalent to the *caller*: a finalized
+peer has stopped waiting for the reply, and a peer whose send could not
+be allocated has not. See the switchyard section of
+[`../../server/AGENTS.md`](../../server/AGENTS.md).
+
 ## How a message flows (steady state — `base/ptl_base_sendrecv.c`)
 
 **Sending.** `pmix_ptl_base_send` / `_send_recv` build a
