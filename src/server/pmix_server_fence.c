@@ -406,6 +406,16 @@ pmix_server_trkr_t *pmix_server_get_tracker(char *id, pmix_proc_t *procs,
                         if (!found) {
                             // new proc, so we need to add it
                             p = PMIX_NEW(pmix_proclist_t);
+                            if (NULL == p) {
+                                /* hand back the tracker without the new
+                                 * participants, as the allocation failure
+                                 * below does - returning NULL would have
+                                 * the caller create a second tracker for
+                                 * an id that already has one */
+                                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                                PMIX_LIST_DESTRUCT(&cache);
+                                return trk;
+                            }
                             memcpy(&p->proc, &procs[i], sizeof(pmix_proc_t));
                             pmix_list_append(&cache, &p->super);
                         }
@@ -522,6 +532,15 @@ pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *procs,
 
     if (NULL != id) {
         trk->id = strdup(id);
+        if (NULL == trk->id) {
+            /* an id-keyed tracker that cannot remember its id would be
+             * invisible to pmix_server_get_tracker, so every later
+             * contribution to this collective would open a tracker of
+             * its own and none of them would ever complete */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            PMIX_RELEASE(trk);
+            return NULL;
+        }
     }
 
     if (NULL == procs) {
@@ -619,6 +638,16 @@ pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *procs,
         }
         if (!found) {
             nm = PMIX_NEW(pmix_nspace_caddy_t);
+            if (NULL == nm) {
+                /* fail the tracker outright rather than returning one
+                 * that is missing a participating namespace: the caller
+                 * turns a NULL into an error the client is told about,
+                 * where a short nslist would leave the collective quietly
+                 * unable to complete */
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_RELEASE(trk);
+                return NULL;
+            }
             PMIX_RETAIN(nptr);
             nm->ns = nptr;
             pmix_list_append(&trk->nslist, &nm->super);
@@ -1134,6 +1163,7 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
     pmix_namelist_t *pn;
     bool found;
     bool usedelta;
+    bool havedata, hasdeletes;
     uint64_t sig;
 
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
@@ -1238,6 +1268,14 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                     goto cleanup;
                 }
                 blob = PMIX_NEW(rank_blob_t);
+                if (NULL == blob) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    PMIX_LIST_DESTRUCT(&pnames);
+                    PMIX_LIST_DESTRUCT(&rank_blobs);
+                    PMIX_RELEASE(pbkt);
+                    rc = PMIX_ERR_NOMEM;
+                    goto cleanup;
+                }
                 blob->buf = pbkt;
                 pmix_list_append(&rank_blobs, &blob->super);
                 pbkt = NULL;
@@ -1248,7 +1286,8 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
             cb.scope = PMIX_REMOTE;
             cb.copy = true;
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-            if (PMIX_SUCCESS == rc) {
+            havedata = (PMIX_SUCCESS == rc);
+            if (havedata) {
                 /* pack the returned kval's */
                 PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
                     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, kv, 1, PMIX_KVAL);
@@ -1261,9 +1300,24 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                         goto cleanup;
                     }
                 }
+            }
+            PMIX_DESTRUCT(&cb);
+            /* A rank whose remote data is *gone* still has to say so, and
+             * the fetch above cannot tell us that: once the last remote
+             * key a rank published has been deleted it answers
+             * PMIX_ERR_NOT_FOUND, exactly as it does for a rank that
+             * never published anything. Building the blob only when the
+             * fetch succeeded therefore dropped the deletion - and
+             * dropped it for good, because pmix_server_modex_contributed
+             * drains the pending list the moment the bucket reaches the
+             * host, so no later fence re-announces it and every other
+             * server goes on serving the deleted key. Send the blob
+             * whenever there is either data or a deletion to report. */
+            hasdeletes = (NULL != scd->peer->info
+                          && 0 < pmix_list_get_size(&scd->peer->info->pending_deletes));
+            if (havedata || hasdeletes) {
                 if (PMIX_SUCCESS != pack_pending_deletes(scd->peer->info, pbkt)) {
                     PMIX_ERROR_LOG(PMIX_ERR_PACK_FAILURE);
-                    PMIX_DESTRUCT(&cb);
                     PMIX_LIST_DESTRUCT(&pnames);
                     PMIX_LIST_DESTRUCT(&rank_blobs);
                     PMIX_RELEASE(pbkt);
@@ -1272,13 +1326,21 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                 }
                 /* add the blob to the list */
                 blob = PMIX_NEW(rank_blob_t);
+                if (NULL == blob) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    PMIX_LIST_DESTRUCT(&pnames);
+                    PMIX_LIST_DESTRUCT(&rank_blobs);
+                    PMIX_RELEASE(pbkt);
+                    rc = PMIX_ERR_NOMEM;
+                    goto cleanup;
+                }
                 blob->buf = pbkt;
                 pmix_list_append(&rank_blobs, &blob->super);
                 pbkt = NULL;
             }
-            PMIX_DESTRUCT(&cb);
             if (NULL != pbkt) {
                 PMIX_RELEASE(pbkt);
+                pbkt = NULL;
             }
         }
         PMIX_LIST_DESTRUCT(&pnames);

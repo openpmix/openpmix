@@ -102,6 +102,8 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/gds/gds.h"
+#include "src/mca/pcompress/pcompress.h"
 #include "src/mca/ptl/ptl_types.h"
 #include "src/server/pmix_server_ops.h"
 
@@ -477,6 +479,222 @@ static void drop_armed_tracker(int sd, short args, void *cbdata)
     PMIX_WAKEUP_THREAD(&t->lock);
 }
 
+/* --------------------------------------------------------------------
+ * A rank whose remote data is gone still has to announce the deletion.
+ *
+ * The modex is additive, so a contribution that merely stops carrying a
+ * key removes nothing at the far end - the deletion has to be stated, as
+ * an entry whose value is PMIX_UNDEF. pmix_server_collect_data used to
+ * build a rank's blob only when the datastore fetch for that rank
+ * succeeded, and the fetch answers PMIX_ERR_NOT_FOUND once the last
+ * remote key the rank published has been deleted. So exactly the rank
+ * that had a deletion to announce, and nothing else left to say, was
+ * skipped - and skipped permanently, because
+ * pmix_server_modex_contributed drains the pending list as soon as the
+ * bucket reaches the host. Every other server went on serving the key.
+ *
+ * This drives the collection directly, on the progress thread, and takes
+ * the bucket apart far enough to see the rank blob and the PMIX_UNDEF
+ * entry inside it. Against an unfixed library there is no rank blob at
+ * all. */
+#define DELNS "fence-delete-ns"
+#define DELKEY "fence-ut.doomed"
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_status_t status;
+    int nblobs;
+    bool saw_deletion;
+} delchk_t;
+
+/* unpack one rank blob and look for our deleted key in it */
+static bool blob_has_deletion(pmix_byte_object_t *bo)
+{
+    pmix_buffer_t blob;
+    pmix_proc_t p;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    int32_t cnt;
+    bool found = false;
+
+    PMIX_CONSTRUCT(&blob, pmix_buffer_t);
+    PMIX_LOAD_BUFFER(pmix_globals.mypeer, &blob, bo->bytes, bo->size);
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &blob, &p, &cnt, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        blob.base_ptr = NULL;
+        PMIX_DESTRUCT(&blob);
+        return false;
+    }
+    kv = PMIX_NEW(pmix_kval_t);
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &blob, kv, &cnt, PMIX_KVAL);
+    while (PMIX_SUCCESS == rc) {
+        if (NULL != kv->key && 0 == strcmp(kv->key, DELKEY)
+            && NULL != kv->value && PMIX_UNDEF == kv->value->type) {
+            found = true;
+        }
+        PMIX_RELEASE(kv);
+        kv = PMIX_NEW(pmix_kval_t);
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &blob, kv, &cnt, PMIX_KVAL);
+    }
+    PMIX_RELEASE(kv);
+    /* the payload belongs to the caller's byte object */
+    blob.base_ptr = NULL;
+    PMIX_DESTRUCT(&blob);
+    return found;
+}
+
+/* take the bucket apart: one byte object holding [compressed][payload],
+ * whose payload is [flag byte][rank blob]... */
+static void inspect_bucket(pmix_buffer_t *buf, delchk_t *d)
+{
+    pmix_buffer_t outer, inner;
+    pmix_byte_object_t bo, payload;
+    pmix_status_t rc;
+    int32_t cnt;
+    bool compressed;
+    uint8_t flag;
+    uint8_t *plain = NULL;
+    size_t plainlen = 0;
+
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
+    if (PMIX_SUCCESS != rc) {
+        return;
+    }
+    PMIX_CONSTRUCT(&outer, pmix_buffer_t);
+    PMIX_LOAD_BUFFER(pmix_globals.mypeer, &outer, bo.bytes, bo.size);
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &outer, &compressed, &cnt, PMIX_BOOL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_DESTRUCT(&outer);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &outer, &payload, &cnt, PMIX_BYTE_OBJECT);
+    PMIX_DESTRUCT(&outer);
+    if (PMIX_SUCCESS != rc) {
+        return;
+    }
+    if (compressed) {
+        if (!pmix_compress.decompress(&plain, &plainlen,
+                                      (uint8_t *) payload.bytes, payload.size)) {
+            PMIX_BYTE_OBJECT_DESTRUCT(&payload);
+            return;
+        }
+        PMIX_BYTE_OBJECT_DESTRUCT(&payload);
+        payload.bytes = (char *) plain;
+        payload.size = plainlen;
+    }
+    PMIX_CONSTRUCT(&inner, pmix_buffer_t);
+    PMIX_LOAD_BUFFER(pmix_globals.mypeer, &inner, payload.bytes, payload.size);
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &inner, &flag, &cnt, PMIX_BYTE);
+    while (PMIX_SUCCESS == rc) {
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &inner, &bo, &cnt, PMIX_BYTE_OBJECT);
+        if (PMIX_SUCCESS != rc) {
+            break;
+        }
+        ++d->nblobs;
+        if (blob_has_deletion(&bo)) {
+            d->saw_deletion = true;
+        }
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+    }
+    PMIX_DESTRUCT(&inner);
+}
+
+static void check_deletion(int sd, short args, void *cbdata)
+{
+    delchk_t *d = (delchk_t *) cbdata;
+    pmix_namespace_t *nptr, *ns;
+    pmix_rank_info_t *rinfo;
+    pmix_peer_t *peer = NULL;
+    pmix_server_trkr_t *trk = NULL;
+    pmix_server_caddy_t *cd;
+    pmix_kval_t kvs, *dk;
+    pmix_value_t v;
+    pmix_proc_t p;
+    pmix_buffer_t buf;
+    pmix_status_t rc;
+
+    (void) sd;
+    (void) args;
+
+    d->status = PMIX_ERR_NOT_FOUND;
+
+    nptr = NULL;
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(ns->nspace, DELNS)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL == nptr || 0 == pmix_list_get_size(&nptr->ranks)) {
+        goto done;
+    }
+    rinfo = (pmix_rank_info_t *) pmix_list_get_first(&nptr->ranks);
+
+    /* publish a remote key for this rank, then delete it - which is what
+     * pmix_server_commit does for a PMIX_DEL_REMOTE contribution */
+    PMIX_LOAD_PROCID(&p, DELNS, rinfo->pname.rank);
+    PMIX_VALUE_LOAD(&v, "doomed", PMIX_STRING);
+    kvs.key = DELKEY;
+    kvs.value = &v;
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &p, PMIX_REMOTE, &kvs);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_VALUE_DESTRUCT(&v);
+        goto done;
+    }
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &p, PMIX_DEL_REMOTE, &kvs);
+    PMIX_VALUE_DESTRUCT(&v);
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+    /* and record the deletion as owed to the next contribution */
+    dk = PMIX_NEW(pmix_kval_t);
+    dk->key = strdup(DELKEY);
+    PMIX_VALUE_CREATE(dk->value, 1); /* PMIX_UNDEF: "gone" */
+    pmix_list_append(&rinfo->pending_deletes, &dk->super);
+
+    /* a peer for that rank, and a collecting tracker holding it */
+    peer = PMIX_NEW(pmix_peer_t);
+    PMIX_RETAIN(nptr);
+    peer->nptr = nptr;
+    PMIX_RETAIN(rinfo);
+    peer->info = rinfo;
+
+    trk = PMIX_NEW(pmix_server_trkr_t);
+    trk->type = PMIX_FENCENB_CMD;
+    trk->collect_type = PMIX_COLLECT_YES;
+    trk->nlocal = 1;
+    trk->def_complete = true;
+    cd = PMIX_NEW(pmix_server_caddy_t);
+    PMIX_RETAIN(peer);
+    cd->peer = peer;
+    pmix_list_append(&trk->local_cbs, &cd->super);
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    d->status = pmix_server_collect_data(trk, &buf);
+    if (PMIX_SUCCESS == d->status) {
+        inspect_bucket(&buf, d);
+    }
+    PMIX_DESTRUCT(&buf);
+
+done:
+    if (NULL != trk) {
+        PMIX_RELEASE(trk);
+    }
+    if (NULL != peer) {
+        PMIX_RELEASE(peer);
+    }
+    PMIX_WAKEUP_THREAD(&d->lock);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -652,6 +870,32 @@ int main(int argc, char **argv)
         report("a collective timeout is armed on the tracker", t.armed);
         report("releasing the tracker deletes its armed timeout",
                t.armed && t.added_after == t.added_before - 1);
+    }
+
+    /* --- a deletion is announced even when nothing else is left --- */
+    {
+        delchk_t d;
+        pmix_proc_t pr;
+        pmix_nspace_t ns;
+
+        PMIX_LOAD_PROCID(&pr, DELNS, 0);
+        PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
+        PMIX_LOAD_NSPACE(ns, DELNS);
+        PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        progress_barrier();
+
+        memset(&d, 0, sizeof(d));
+        PMIX_CONSTRUCT_LOCK(&d.lock);
+        PMIX_THREADSHIFT(&d, check_deletion);
+        PMIX_WAIT_THREAD(&d.lock);
+        PMIX_DESTRUCT_LOCK(&d.lock);
+
+        report("the collection succeeds with only a deletion to report",
+               PMIX_SUCCESS == d.status);
+        report("a rank with only a deletion still contributes a blob",
+               1 == d.nblobs);
+        report("the blob carries the deletion",
+               d.saw_deletion);
     }
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

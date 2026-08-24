@@ -1086,6 +1086,29 @@ self-contained. The whole bucket is one kind or the other - that byte
 describes the server's contribution as a whole - so a delta is used only
 when *every* local participant qualifies.
 
+### A deletion has to survive the collection, not just reach it
+
+The modex is additive, so a contribution that merely stops carrying a
+key removes nothing at the far end — a deletion has to be *stated*, as
+an entry whose value is `PMIX_UNDEF`. That is what
+`pmix_rank_info_t::pending_deletes` is for, and
+`pack_pending_deletes()` appends it to the rank's blob.
+
+**The trap is that the rank with a deletion to announce is exactly the
+rank the collection is most likely to skip.** `pmix_server_collect_data`
+builds a rank's blob around a `PMIX_REMOTE` fetch from the datastore,
+and that fetch answers `PMIX_ERR_NOT_FOUND` once the last remote key the
+rank published has been deleted — indistinguishable from a rank that
+never published anything. Building the blob only on a successful fetch
+therefore dropped the deletion, and dropped it permanently:
+`pmix_server_modex_contributed` drains `pending_deletes` as soon as the
+bucket reaches the host, so nothing re-announces it and every other
+server goes on serving the key for the life of the job. The blob is now
+built when there is **either** data or a pending deletion. Note this was
+the default path — `fence_delta_modex` is off unless asked for, and the
+delta arm has always packed the deletes unconditionally. Covered by
+`test/unit/server_fence.c`.
+
 ### Telling the clients a key is gone
 
 `pmix_server_notify_deleted()` is how a removal reaches the copies this
