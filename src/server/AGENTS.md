@@ -387,7 +387,7 @@ past one of these.
 | `pmix_shift_caddy_t` | `pmix_globals.h:628` | Generic thread-shift caddy used to bounce host callbacks back onto the progress thread. |
 | `pmix_trkr_caddy_t` | `pmix_server_ops.h:36` | Tiny caddy that carries a tracker into the event base (`PMIX_EXECUTE_COLLECTIVE`). |
 | `pmix_dmdx_local_t` / `pmix_dmdx_request_t` / `pmix_dmdx_remote_t` | `pmix_server_ops.h:113/123/107` | Direct-modex deferral bookkeeping (see get.c). |
-| `pmix_query_caddy_t`, `pmix_cb_t`, `pmix_inventory_rollup_t` | globals / ops.h | Query/fetch and inventory roll-up carriers. |
+| `pmix_query_caddy_t`, `pmix_cb_t` | globals / ops.h | Query/fetch carriers. (There is no inventory roll-up caddy: `pmix_server_inventory.c` carries its request on a plain `pmix_shift_caddy_t`.) |
 
 ### `pmix_setup_caddy_t` does not own its members uniformly
 
@@ -1894,7 +1894,39 @@ before you "fix" one:
   functions, wired up statically in each framework's `*_base_frame.c`),
   and each walks its `actives` list and returns `PMIX_SUCCESS` when that
   list is empty. So the `goto report` arms mean a component really
-  failed.
+  failed. What that reasoning assumes is that the framework was
+  *opened* - see the next entry, which is the one thing here that really
+  was wrong.
+- **"The library is initialized" is not the question these entry points
+  have to ask; "the *server* library is initialized" is.** Both of them
+  fan out to `pmix_pnet` and `pmix_pgpu`, and those frameworks are opened
+  in exactly one place in the tree: `PMIx_server_init`. Until then
+  `pmix_pnet_globals.actives` and its `pgpu` twin are only
+  `PMIX_LIST_STATIC_INIT`, whose sentinel `next` is NULL - so the
+  `PMIX_LIST_FOREACH` in each base fan-out dereferences NULL rather than
+  finding the list empty. `pmix_globals.initialized`, which is what both
+  entry points screened on, is set just as readily by `PMIx_Init` and
+  `PMIx_tool_init`; so a tool that called either API was answered
+  `PMIX_SUCCESS` and then took a SIGSEGV on the progress thread, where
+  the man page's `PMIX_ERR_INIT` ("the PMIx server library has not been
+  initialized") is the documented answer. The screen is
+  `pmix_server_globals.initialized`, set at the foot of `PMIx_server_init`
+  and cleared at the top of `server_teardown()`. **The process type is not
+  a usable stand-in**: `PMIX_PROC_LAUNCHER` is defined as
+  `PMIX_PROC_TOOL | PMIX_PROC_SERVER | PMIX_PROC_LAUNCHER_ACT`, so a
+  launcher that has come up through `PMIx_tool_init` and has not yet
+  called `PMIx_server_init` reads as a server while none of this state
+  exists. Covered by `test/unit/server_inventory.c`, whose refusal
+  cases run in a forked child because against an unfixed library the
+  crash lands after the call has already returned.
+
+  **Every other public `PMIx_server_*` entry point screens the same wrong
+  flag**, and `pmix_server_globals` has the same static-initialization
+  problem its lists do. The remaining entry points are listed in
+  `docs/todo.rst`; each one needs checking against its real callers
+  before the screen is added, because some of them (the `preg` and hwloc
+  helpers in `pmix_server_setup.c`, for instance) work perfectly well in
+  a client and must keep doing so.
 - **`PMIx_Info_list_convert` copies.** It `PMIx_Info_xfer`s every element
   into a freshly created array, so `clct` owns what it hands back *and*
   still owes the list a `PMIX_LIST_DESTRUCT`. Doing both is not a double

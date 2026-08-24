@@ -516,6 +516,26 @@ engine under a real host. Those are
 [`contrib/dockerswarm/run-tests.sh`](../../contrib/dockerswarm/AGENTS.md)
 and `run-server-tests.sh`, and the `run_grp*.pl` family here.
 
+### `server_inventory` — refusing a call the process is not entitled to make
+
+[`server_inventory.c`](server_inventory.c) covers
+`PMIx_server_collect_inventory` / `PMIx_server_deliver_inventory`, and its
+two interesting cases are the ones that run in a **forked child**. Both
+entry points fan out to `pmix_pnet` and `pmix_pgpu`, which only
+`PMIx_server_init` opens; called from a tool they used to be answered
+`PMIX_SUCCESS` and then crash on the progress thread, walking a list that
+is only statically initialized. The child pattern is what makes that
+reportable: the crash lands *after* the API has returned, so a
+same-process case would take the whole suite down instead of printing a
+FAIL. The child brings up a `PMIX_TOOL_DO_NOT_CONNECT` tool, calls one
+entry point, requires `PMIX_ERR_INIT`, then makes a `PMIx_Get` to give
+the progress thread a turn before exiting — without that turn a broken
+library exits 0 and the case passes for the wrong reason. Against an
+unfixed library both cases report "child died on a signal".
+
+Copy the shape for any public entry point whose misuse is asynchronous;
+`tool_api.c`'s `bad_directive_child` is the older instance of it.
+
 ### `server_fabric` — and what a SKIP is for
 
 [`server_fabric.c`](server_fabric.c) drives `pmix_server_device_dists()`

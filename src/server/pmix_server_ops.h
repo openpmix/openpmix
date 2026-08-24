@@ -155,6 +155,24 @@ typedef struct {
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pset_t);
 
 typedef struct {
+    /* PMIx_server_init has completed in this process. This is NOT the same
+     * question as pmix_globals.initialized, which a client or a tool sets
+     * just as readily - and it is the question every public PMIx_server_*
+     * entry point actually has to ask, because everything in this struct,
+     * plus the pnet/pgpu/pstat frameworks those entry points fan out to,
+     * is only *statically* initialized until PMIx_server_init has built
+     * it - pmix_server_initialize() constructs this struct, and the
+     * frameworks open further down.
+     * PMIX_LIST_STATIC_INIT leaves the sentinel's next pointer NULL, so a
+     * PMIX_LIST_FOREACH over one of those lists dereferences NULL rather
+     * than finding it empty. Nor is the process type a usable stand-in:
+     * PMIX_PROC_LAUNCHER carries PMIX_PROC_SERVER, so a launcher that has
+     * called only PMIx_tool_init reads as a server here.
+     *
+     * Atomic for the same reason pmix_globals.initialized is: it is
+     * written by the thread running init or finalize and read by whatever
+     * thread the host calls a public entry point on. */
+    atomic_bool initialized;
     bool module_set;    // pmix_host_server has been set
     pmix_list_t nspaces;          // list of pmix_nspace_t for the nspaces we know about
     pmix_pointer_array_t clients; // array of pmix_peer_t local clients
