@@ -859,12 +859,32 @@ from `collectives` first, then release.**
 **Cancel the timer before the host up-call, at every site that makes
 one.** `pmix_server_fence` does, and says why at the call site: once the
 tracker is in the host's hands our timeout and the host's completion race,
-and the host can return a tracker we already released. Note the tracker
-destructor does **not** delete the event, so the same cancel is owed by
-any path that tears a tracker down itself. `pmix_server_execute_collective`
-now does both; the lost-connection sweep in
-`src/mca/ptl/base/ptl_base_sendrecv.c` still does not, and it is reached
-precisely when a `PMIX_TIMEOUT` timer is most likely to be armed.
+and the host can return a tracker we already released. That cancel is
+about *ordering* and is still owed at every up-call site;
+`pmix_server_execute_collective` does it.
+
+**The destructor is the backstop, not the ordering rule.** `tdes` deletes
+an armed timer before freeing the tracker, so a path that tears one down
+without completing it can no longer strand the event. It has to: the
+teardown path does not complete what it destroys.
+`PMIx_server_finalize` runs `PMIX_LIST_DESTRUCT` over
+`pmix_server_globals.collectives` outright, and the event base outlives
+that by a good distance — `PMIx_Progress_thread_stop` at the top of
+`server_teardown()` only stops the loop, and the base is not freed until
+`pmix_progress_thread_stop()` drops the last reference inside
+`pmix_rte_finalize()`, several stanzas further down. So between those two
+points libevent's timer heap held a pointer into a freed tracker, and
+`event_base_free()` walks that heap calling `event_del()` on every entry
+it finds. A host that finalizes while a `PMIX_TIMEOUT` collective is
+still waiting on a participant reached it directly. The same backstop
+covers the lost-connection sweep in
+`src/mca/ptl/base/ptl_base_sendrecv.c`, which has never cancelled and is
+reached precisely when a timer is most likely to be armed.
+
+This is why `tcon` `memset`s `t->ev`: the guard on `event_active` is what
+keeps the destructor from handing libevent an event that was never
+assigned, and zeroing the member is what keeps that guard from being the
+only thing standing between us and a garbage `ev_base` pointer.
 
 **Driving a tracker's completion claims it — `trk->completion_fired` says
 so.** `host_called` covers only the handoff to the host. A collective the

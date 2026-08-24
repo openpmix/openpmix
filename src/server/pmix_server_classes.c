@@ -70,6 +70,7 @@ PMIX_CLASS_INSTANCE(pmix_grpinfo_t,
 
 static void tcon(pmix_server_trkr_t *t)
 {
+    memset(&t->ev, 0, sizeof(pmix_event_t));
     t->event_active = false;
     t->host_called = false;
     t->completion_fired = false;
@@ -99,6 +100,21 @@ static void tcon(pmix_server_trkr_t *t)
 }
 static void tdes(pmix_server_trkr_t *t)
 {
+    /* A collective timeout may still be armed on this tracker. Every
+     * ordinary completion path deletes it before letting go (see the
+     * connect and fence handlers), but the teardown path does not:
+     * PMIx_server_finalize destructs pmix_server_globals.collectives
+     * outright, without completing what is parked on it, and the event
+     * base is not freed until pmix_rte_finalize() runs further down.
+     * A tracker released with its timer still in libevent's heap
+     * therefore leaves that heap holding a pointer into this
+     * allocation, and event_base_free() walks the heap and calls
+     * event_del() on every entry it finds - reading and writing freed
+     * memory. Delete it here so the object never outlives its event. */
+    if (t->event_active) {
+        pmix_event_del(&t->ev);
+        t->event_active = false;
+    }
     if (NULL != t->id) {
         free(t->id);
     }
@@ -255,6 +271,12 @@ static void dmrqcon(pmix_dmdx_request_t *p)
     p->event_active = false;
     p->lcd = NULL;
     p->key = NULL;
+    /* three sites in the get path ask "NULL != req->cbfunc" before
+     * calling it, so NULL has to mean something here - left
+     * unassigned it is whatever was on the heap, and the test passes
+     * on garbage */
+    p->cbfunc = NULL;
+    p->cbdata = NULL;
 }
 /* Note what this does NOT free: cbdata, which is the switchyard's
  * pmix_server_caddy_t. The single reference on that caddy travels with

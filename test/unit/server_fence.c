@@ -410,6 +410,73 @@ static void drop_reg_trackers(int sd, short args, void *cbdata)
     PMIX_WAKEUP_THREAD(&r->lock);
 }
 
+/* A tracker released with its collective timeout still armed.
+ *
+ * PMIX_TIMEOUT arms a timer on the tracker itself, and every ordinary
+ * completion path deletes it before letting go. The teardown path does
+ * not: PMIx_server_finalize runs PMIX_LIST_DESTRUCT over
+ * pmix_server_globals.collectives without completing what is on it, and
+ * the event base is not freed until pmix_rte_finalize() runs, well
+ * afterwards. So a tracker freed with its timer still in libevent's heap
+ * leaves that heap holding a pointer into freed memory, and
+ * event_base_free() walks the heap calling event_del() on what it finds.
+ * The tracker destructor has to delete the event itself.
+ *
+ * This is observed through libevent's own accounting rather than by
+ * reading the freed object: the count of added events must fall by one
+ * across the release. Against a destructor that does not delete, the
+ * count is unchanged and this fails - deterministically, without needing
+ * a sanitizer to notice the dangling entry. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    int added_before;
+    int added_after;
+    bool armed;
+} timerdrop_t;
+
+static void never_fires(int sd, short args, void *cbdata)
+{
+    (void) sd;
+    (void) args;
+    (void) cbdata;
+}
+
+static void drop_armed_tracker(int sd, short args, void *cbdata)
+{
+    timerdrop_t *t = (timerdrop_t *) cbdata;
+    pmix_server_trkr_t *trk;
+
+    (void) sd;
+    (void) args;
+
+    trk = PMIX_NEW(pmix_server_trkr_t);
+    if (NULL == trk) {
+        PMIX_WAKEUP_THREAD(&t->lock);
+        return;
+    }
+    trk->type = PMIX_FENCENB_CMD;
+    trk->def_complete = true;
+    pmix_list_append(&pmix_server_globals.collectives, &trk->super);
+
+    /* arm a timeout far enough out that it cannot fire under us, exactly
+     * as pmix_server_fence does for PMIX_TIMEOUT */
+    PMIX_THREADSHIFT_DELAY(trk, never_fires, 3600);
+    trk->event_active = true;
+    t->armed = (0 != event_pending(&trk->ev, EV_TIMEOUT, NULL));
+
+    t->added_before = event_base_get_num_events(pmix_globals.evbase,
+                                                EVENT_BASE_COUNT_ADDED);
+    /* the teardown shape: unlink and release, with no completion in
+     * between to cancel the timer */
+    pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+    PMIX_RELEASE(trk);
+    t->added_after = event_base_get_num_events(pmix_globals.evbase,
+                                               EVENT_BASE_COUNT_ADDED);
+
+    PMIX_WAKEUP_THREAD(&t->lock);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -570,6 +637,21 @@ int main(int argc, char **argv)
             PMIX_WAIT_THREAD(&r.lock);
             PMIX_DESTRUCT_LOCK(&r.lock);
         }
+    }
+
+    /* the collective timeout must not outlive its tracker */
+    {
+        timerdrop_t t;
+
+        memset(&t, 0, sizeof(t));
+        PMIX_CONSTRUCT_LOCK(&t.lock);
+        PMIX_THREADSHIFT(&t, drop_armed_tracker);
+        PMIX_WAIT_THREAD(&t.lock);
+        PMIX_DESTRUCT_LOCK(&t.lock);
+
+        report("a collective timeout is armed on the tracker", t.armed);
+        report("releasing the tracker deletes its armed timeout",
+               t.armed && t.added_after == t.added_before - 1);
     }
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
