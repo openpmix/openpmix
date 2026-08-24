@@ -1213,7 +1213,23 @@ again, and the remote server that asked - along with the client blocked
 in `PMIx_Get` behind it - waited forever. `pmix_server_purge_events` now
 calls `pmix_server_fail_remote_pnd`, the mirror of
 `pmix_server_fail_local_reqs`: answer the host with a status, then
-discard. Note the response function's contract while you are there - the
+discard.
+
+**And, exactly as for `local_reqs`, that includes finalize.** The trap
+there is a different one and is easy to miss for that reason: a bare
+`PMIX_LIST_DESTRUCT` of `remote_pnd` really does free everything on it -
+`dmdes` releases the `pmix_setup_caddy_t` each entry carries - so it
+leaks nothing and looks correct. What it drops is the
+`pmix_dmodex_response_fn_t` the host supplied, which is the only thing
+that will ever tell the host what became of its request. So the outcome
+is a hang rather than a leak, on the far side of the machine: the remote
+server that asked for the data, and the client blocked in `PMIx_Get`
+behind it, wait forever - and the host process outlives our finalize, so
+nothing later corrects it. Both roles that own the list drain it with
+`pmix_server_drain_remote_pnd` first, and both do so after
+`PMIx_Progress_thread_stop` has run, which is what makes touching the
+list from the finalizing thread safe. Covered by the last two cases in
+`test/unit/server_dmodex.c`. Note the response function's contract while you are there - the
 public header says **"The PMIx server will free the data blob upon return
 from the response fn"**, which is why `_dmodex_req` frees `data`
 immediately after calling it.

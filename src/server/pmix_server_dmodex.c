@@ -216,6 +216,31 @@ cleanup:
     PMIX_RELEASE(cd);
 }
 
+void pmix_server_fail_remote_req(pmix_dmdx_remote_t *dcd, pmix_status_t status)
+{
+    /* the only thing that ever takes a request off this list in the
+     * ordinary course is the target committing its data, so whenever we
+     * discard one instead we owe the host an answer. A dropped request
+     * leaves the remote server that asked for the data, and the client
+     * blocked in PMIx_Get behind it, waiting on a reply nobody is going
+     * to send - and the host process outlives our finalize, so what is
+     * dropped there is stranded for good */
+    pmix_list_remove_item(&pmix_server_globals.remote_pnd, &dcd->super);
+    if (NULL != dcd->cd->cbfunc) {
+        dcd->cd->cbfunc(status, NULL, 0, dcd->cd->cbdata);
+    }
+    PMIX_RELEASE(dcd);
+}
+
+void pmix_server_drain_remote_pnd(pmix_status_t status)
+{
+    pmix_dmdx_remote_t *dcd, *dnxt;
+
+    PMIX_LIST_FOREACH_SAFE (dcd, dnxt, &pmix_server_globals.remote_pnd, pmix_dmdx_remote_t) {
+        pmix_server_fail_remote_req(dcd, status);
+    }
+}
+
 void pmix_server_fail_remote_pnd(pmix_peer_t *peer, pmix_proc_t *proc,
                                  pmix_status_t status)
 {
@@ -225,17 +250,7 @@ void pmix_server_fail_remote_pnd(pmix_peer_t *peer, pmix_proc_t *proc,
         if ((NULL != peer && NULL != peer->info
              && PMIX_CHECK_NAMES(&peer->info->pname, &dcd->cd->proc))
             || (NULL != proc && PMIX_CHECK_PROCID(proc, &dcd->cd->proc))) {
-            pmix_list_remove_item(&pmix_server_globals.remote_pnd, &dcd->super);
-            /* the only thing that ever takes a request off this list is
-             * the target committing its data, and the target has just
-             * gone away - so answer the host rather than dropping its
-             * request. A dropped one leaves the remote server that asked
-             * for the data, and the client behind it, waiting on a reply
-             * nobody is going to send */
-            if (NULL != dcd->cd->cbfunc) {
-                dcd->cd->cbfunc(status, NULL, 0, dcd->cd->cbdata);
-            }
-            PMIX_RELEASE(dcd);
+            pmix_server_fail_remote_req(dcd, status);
         }
     }
 }
@@ -329,6 +344,11 @@ PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const cha
         cd->pname.nspace = strdup(proc->nspace);
         cd->pname.rank = proc->rank;
     }
+    /* the handler copies this into a pmix_proc_t without looking at it */
+    if (NULL == cd->pname.nspace) {
+        PMIX_RELEASE(cd);
+        return PMIX_ERR_NOMEM;
+    }
 
     cd->kv = PMIX_NEW(pmix_kval_t);
     if (NULL == cd->kv) {
@@ -336,6 +356,11 @@ PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const cha
         return PMIX_ERR_NOMEM;
     }
     cd->kv->key = strdup(key);
+    /* the datastore keys off this string on every path through the store */
+    if (NULL == cd->kv->key) {
+        PMIX_RELEASE(cd);
+        return PMIX_ERR_NOMEM;
+    }
     /* construct the destination rather than handing the transfer raw
      * heap: the transfer assigns the type before it copies the payload,
      * so a copy that fails part way leaves a pointer-backed type sitting

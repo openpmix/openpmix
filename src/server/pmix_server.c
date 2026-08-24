@@ -513,6 +513,14 @@ static void server_teardown(void)
     PMIX_LIST_FOREACH_SAFE (dlcd, dnxt, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
         pmix_server_fail_local_reqs(dlcd, PMIX_ERR_UNREACH);
     }
+    /* and the same for the other deferral list, for the same reason with
+     * the arrow pointing the other way: remote_pnd holds the host's own
+     * PMIx_server_dmodex_request calls, and destructing the list frees
+     * their caddies without ever calling the response function the host
+     * supplied. The host process outlives our finalize, so a request
+     * dropped here strands the remote server that asked for the data and
+     * the client blocked in PMIx_Get behind it */
+    pmix_server_drain_remote_pnd(PMIX_ERR_UNREACH);
 
     for (i = 0; i < pmix_server_globals.clients.size; i++) {
         peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i);

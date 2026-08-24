@@ -1832,6 +1832,10 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_DESTRUCT(&pmix_server_globals.peer_cache);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives);
+    /* answer anything the host parked here before the destruct frees it:
+     * a bare destruct drops the pmix_dmodex_response_fn_t it supplied,
+     * exactly as it would for local_reqs above */
+    pmix_server_drain_remote_pnd(PMIX_ERR_UNREACH);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.remote_pnd);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.local_reqs);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.gdata);
