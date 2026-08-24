@@ -1559,6 +1559,15 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS != rc) {
                         PMIX_RELEASE(bfr);
                     }
+                    /* remember this delivery so a later replay of the
+                     * same cached event - the one a new registration from
+                     * this peer triggers, or the one its reconnection as a
+                     * tool triggers - does not send it a second time and
+                     * decrement "nleft" a second time. The trk list above
+                     * only dedups within this one dispatch. */
+                    PMIX_LOAD_PROCID(&proc, pr->peer->info->pname.nspace,
+                                     pr->peer->info->pname.rank);
+                    (void) pmix_notify_mark_notified(cd, &proc);
                     if (NULL != cd->targets && 0 < cd->nleft) {
                         /* track the number of targets we have left to notify */
                         --cd->nleft;
@@ -1631,6 +1640,10 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status, const pmi
                         PMIx_Error_string(status), PMIx_Data_range_string(range));
 
     cd = PMIX_NEW(pmix_notify_caddy_t);
+    if (NULL == cd) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return PMIX_ERR_NOMEM;
+    }
     cd->status = status;
     if (NULL == source) {
         PMIX_LOAD_PROCID(&cd->source, "UNDEF", PMIX_RANK_UNDEF);
@@ -1642,6 +1655,12 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status, const pmi
     if (0 < ninfo && NULL != info) {
         cd->ninfo = ninfo;
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        if (NULL == cd->info) {
+            cd->ninfo = 0;
+            PMIX_RELEASE(cd);
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return PMIX_ERR_NOMEM;
+        }
         /* need to copy the info */
         for (n = 0; n < cd->ninfo; n++) {
             PMIX_INFO_XFER(&cd->info[n], &info[n]);
@@ -1701,6 +1720,31 @@ bool pmix_notify_check_range(pmix_range_trkr_t *rng, const pmix_proc_t *proc)
     }
 
     /* if it is anything else, then reject it */
+    return false;
+}
+
+bool pmix_notify_mark_notified(pmix_notify_caddy_t *cd, const pmix_proc_t *proc)
+{
+    pmix_proc_t *tmp;
+    size_t n;
+
+    for (n = 0; n < cd->nnotified; n++) {
+        if (PMIX_CHECK_PROCID(&cd->notified[n], proc)) {
+            return true;
+        }
+    }
+    /* the list only ever grows to the number of local procs this event
+     * targets, so a linear array is the right shape here */
+    tmp = (pmix_proc_t *) realloc(cd->notified, (cd->nnotified + 1) * sizeof(pmix_proc_t));
+    if (NULL == tmp) {
+        /* we cannot remember this one - deliver it anyway rather than
+         * dropping an event, which is the worse of the two failures */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return false;
+    }
+    cd->notified = tmp;
+    PMIX_LOAD_PROCID(&cd->notified[cd->nnotified], proc->nspace, proc->rank);
+    ++cd->nnotified;
     return false;
 }
 
