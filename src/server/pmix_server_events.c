@@ -52,7 +52,7 @@
 
 static void undo_activations(pmix_status_t *codes, size_t nactive);
 
-static void _check_cached_events(int sd, short args, void *cbdata)
+static void _replay_cached_events(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *scd = (pmix_setup_caddy_t *) cbdata;
     pmix_notify_caddy_t *cd;
@@ -216,18 +216,49 @@ static void _check_cached_events(int sd, short args, void *cbdata)
     if (NULL != scd->info) {
         PMIX_INFO_FREE(scd->info, scd->ninfo);
     }
-    /* Answer the requestor with the status of its _registration_, not
-     * with whatever the replay above ran into. The only caller that
-     * leaves an opcbfunc on the caddy is the host-completed registration
-     * path, and the host said that succeeded - failing to hand a client a
-     * stale cached event does not undo it. Reporting the replay status
-     * would tell the client its handler was not registered while the
-     * server had in fact registered it, leaving a store entry the client
-     * would never deregister. The replay failure is logged above. */
+    PMIX_RELEASE(scd);
+}
+
+/* A client must have the acknowledgement of its registration in hand
+ * before it is given any event that registration's replay digs out of
+ * the cache - otherwise its handler runs before it has been told the
+ * handler's reference index, which is what an application uses to key
+ * per-handler state or to deregister a one-shot from inside itself.
+ *
+ * The two arms of pmix_server_register_events that complete locally get
+ * that for free: they return PMIX_OPERATION_SUCCEEDED, so the reply is
+ * packed and queued by our caller before the replay this schedules can
+ * run at all. The arm where the host takes the registration and
+ * completes it later does not - there the reply *is* scd->opcbfunc, and
+ * that callback thread-shifts once more before it queues anything. Sent
+ * from inside the replay, it therefore reached the wire behind every
+ * relay the replay had already queued.
+ *
+ * So answer the requestor here and let the replay follow as a separate
+ * event. Both are posted from the progress thread, which is the only
+ * thread that ever drains the event base, and it drains activations in
+ * the order they were made - so the reply is queued first no matter
+ * which arm we came from.
+ *
+ * Answer with the status of the _registration_, not with whatever the
+ * replay goes on to run into. The host said the registration succeeded,
+ * and failing to hand a client a stale cached event does not undo that;
+ * reporting a replay failure would tell the client its handler was not
+ * registered while the server had in fact registered it, leaving a store
+ * entry the client would never deregister. Replay failures are logged
+ * where they happen. */
+static void _check_cached_events(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *scd = (pmix_setup_caddy_t *) cbdata;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     if (NULL != scd->opcbfunc) {
         scd->opcbfunc(scd->status, scd->cbdata);
+        scd->opcbfunc = NULL;
+        scd->cbdata = NULL;
     }
-    PMIX_RELEASE(scd);
+    PMIX_THREADSHIFT(scd, _replay_cached_events);
 }
 
 /* our host refused a registration it had accepted for processing, so it

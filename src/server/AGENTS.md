@@ -1478,22 +1478,34 @@ producers now agree. Appending a field at the end is the only wire change
 the interop rules allow, and it costs an older reader nothing; see
 [Wire format and interoperability](#wire-format-and-interoperability).
 
-**A registration the host completes asynchronously acks the client
-*after* the replay, inverting the ordering the other two arms
-guarantee.** The two arms that complete locally return
-`PMIX_OPERATION_SUCCEEDED`, and the switchyard's caller queues the ack
-inline before the shifted `_check_cached_events` ever runs — which is the
-documented point of the shift. On the host-async arm the ack is the
-`scd->opcbfunc` that `_check_cached_events` invokes at its end, and that
-callback (`pmix_server_events_cbfunc`) itself thread-shifts before
-queueing anything, so the replayed notifications reach the wire first.
-The client's handler is already in its local list by then, so nothing is
-lost or misrouted — the handler simply fires before the registration's
-completion callback does. Restoring the order needs the ack queued ahead
-of the relays, and doing that by re-shifting the replay would rest on
-libevent's relative ordering of two activated events rather than on the
-"runs after we return" guarantee everything else here uses. Recorded in
-`docs/todo.rst`.
+**The acknowledgement is queued before the replay, and it takes two
+events to arrange that.** A client must have its registration's
+completion callback — and with it the handler's reference index, which
+is what an application keys per-handler state on and what it needs to
+deregister a one-shot from inside itself — before any event the replay
+digs out of the cache. The two arms that complete locally get it for
+free: they return `PMIX_OPERATION_SUCCEEDED`, so the switchyard's caller
+packs and queues the reply inline before the shifted
+`_check_cached_events` can run at all. The host-async arm does not: there
+the reply *is* `scd->opcbfunc`, and that callback
+(`pmix_server_events_cbfunc`) thread-shifts once more before it queues
+anything, so sent from inside the replay it landed behind every relay.
+
+So `_check_cached_events` now does nothing but answer the requestor and
+post `_replay_cached_events` as a second event. Both activations happen
+on the progress thread, which is the only thread that drains the event
+base and drains activations in the order they were made — the single
+progress thread is a design invariant of the library, not an incidental
+property of libevent, so this ordering is as solid as the "a shifted
+event runs after we return" argument used everywhere else here.
+
+Two consequences for anyone editing this. **The replay is one event-loop
+turn later than it used to be** on all three arms, which is why
+`test/unit/server_events.c` needs `settle()` (two barriers) rather than
+one wherever it waits for a replay — a single barrier passes or fails on
+timing. And **the reply must stay in `_check_cached_events`, not move
+into the replay**: putting it back at the end of the replay is exactly
+the defect, and the ordering case in that test fails when it does.
 
 ## IOF forwarding
 

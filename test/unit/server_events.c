@@ -50,6 +50,22 @@
  *      silently downgraded the range of every event picked up from the
  *      cache. The live dispatch has always sent it; the two cache
  *      replays did not.
+ *
+ *   the registration is acknowledged before its replay is delivered
+ *      A client's handler must not run before the client has been told
+ *      the handler's reference index - that index is what an
+ *      application keys per-handler state on, and what it needs to
+ *      deregister a one-shot from inside itself. The two arms of
+ *      pmix_server_register_events that complete locally return
+ *      PMIX_OPERATION_SUCCEEDED and the switchyard's caller queues the
+ *      reply before the replay can run. The arm where the host takes
+ *      the registration and completes it later does not: there the
+ *      reply is the caddy's opcbfunc, which thread-shifts once more
+ *      before it queues anything, so sending it from inside the replay
+ *      put it on the wire behind every relay. Reaching that arm needs a
+ *      system event code the host is not already forwarding and a host
+ *      that answers PMIX_SUCCESS rather than completing atomically -
+ *      which is what the stub below does.
  */
 
 #include "src/include/pmix_config.h"
@@ -69,6 +85,8 @@
  * and deliberately not a system event - those take the arm that calls
  * the host, and this file has no host to call */
 #define SEUT_CODE   (PMIX_EXTERNAL_ERR_BASE - 71)
+/* a system event code - only these take the arm that calls the host */
+#define SEUT_SYSCODE PMIX_EVENT_NODE_DOWN
 /* the other proc the cached event names, so the event is not spent by a
  * single delivery */
 #define SEUT_OTHER  "server-events-ut-other"
@@ -80,6 +98,26 @@
 static int npass = 0;
 static int nfail = 0;
 
+/* The host takes the registration and completes it later, which is the
+ * arm the ordering case is about. Park the callback so the test can fire
+ * it when it chooses. */
+static pmix_op_cbfunc_t host_regcb = NULL;
+static void *host_regcbdata = NULL;
+
+static pmix_status_t stub_register_events(pmix_status_t *codes, size_t ncodes,
+                                          const pmix_info_t info[], size_t ninfo,
+                                          pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    (void) codes;
+    (void) ncodes;
+    (void) info;
+    (void) ninfo;
+
+    host_regcb = cbfunc;
+    host_regcbdata = cbdata;
+    return PMIX_SUCCESS;
+}
+
 static void report(const char *what, bool ok)
 {
     fprintf(stdout, "%-58s : %s\n", what, ok ? "PASS" : "FAIL");
@@ -90,10 +128,8 @@ static void report(const char *what, bool ok)
     }
 }
 
-/* A blocking round trip through the progress thread. Both handlers
- * thread-shift the cached-event replay, so this is what makes it
- * observable without a sleep: anything queued ahead of this call has run
- * by the time it returns. */
+/* A blocking round trip through the progress thread: anything queued
+ * ahead of this call has run by the time it returns. */
 static void progress_barrier(void)
 {
     pmix_value_t v;
@@ -101,6 +137,23 @@ static void progress_barrier(void)
     PMIX_VALUE_LOAD(&v, "barrier", PMIX_STRING);
     PMIx_Store_internal(&pmix_globals.myid, "server-events-ut.barrier", &v);
     PMIX_VALUE_DESTRUCT(&v);
+}
+
+/* Wait for a registration's cached-event replay to have run.
+ *
+ * Two barriers, and it takes both. Handling a registration costs two
+ * events, not one: _check_cached_events answers the requestor and then
+ * posts _replay_cached_events as a separate event, so that the
+ * acknowledgement is queued ahead of anything the replay sends. If the
+ * first barrier is posted before _check_cached_events runs, the replay
+ * is posted behind it and has not run when it returns - a single
+ * barrier makes this test pass or fail on timing. The second barrier is
+ * posted after the first has returned, so the replay is ahead of it in
+ * every interleaving. */
+static void settle(void)
+{
+    progress_barrier();
+    progress_barrier();
 }
 
 /* How many messages the server has queued to a peer that has no socket.
@@ -180,6 +233,44 @@ static pmix_status_t do_register(size_t ncodes, pmix_status_t *codes,
     return rc;
 }
 
+/* The same request, but handed the reply callback and caddy the
+ * switchyard would hand it, so the acknowledgement really travels the
+ * path a client's does. */
+static pmix_status_t do_register_acked(size_t ncodes, pmix_status_t *codes)
+{
+    pmix_buffer_t *buf;
+    pmix_server_caddy_t *cd;
+    pmix_status_t rc;
+    size_t ninfo = 0;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ncodes, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, codes, ncodes, PMIX_STATUS);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+
+    cd = PMIX_NEW(pmix_server_caddy_t);
+    PMIX_RETAIN(pmix_globals.mypeer);
+    cd->peer = pmix_globals.mypeer;
+    cd->hdr.tag = 0;
+
+    rc = pmix_server_register_events(pmix_globals.mypeer, buf,
+                                     pmix_server_events_cbfunc, cd);
+    if (PMIX_SUCCESS != rc) {
+        /* the switchyard owns the caddy on a non-success return */
+        PMIX_RELEASE(cd);
+    }
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
 /* Drive one PMIX_NOTIFY_CMD: status, range, directive count, directives. */
 static pmix_status_t do_notify(pmix_status_t status, pmix_data_range_t range,
                                size_t declared_ninfo, size_t ninfo, pmix_info_t *info)
@@ -210,6 +301,8 @@ static pmix_status_t do_notify(pmix_status_t status, pmix_data_range_t range,
 /* Park an event in the notification cache, naming our own peer and one
  * absent proc as its targets, so a single delivery does not spend it.
  * Runs on the progress thread - the hotel belongs to it. */
+static pmix_status_t seed_code = SEUT_CODE;
+
 static void seed_cached_event(int sd, short args, void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t *) cbdata;
@@ -218,7 +311,7 @@ static void seed_cached_event(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     cd = PMIX_NEW(pmix_notify_caddy_t);
-    cd->status = SEUT_CODE;
+    cd->status = seed_code;
     PMIX_LOAD_PROCID(&cd->source, SEUT_SOURCE, 0);
     cd->range = PMIX_RANGE_SESSION;
     cd->ntargets = 2;
@@ -231,6 +324,36 @@ static void seed_cached_event(int sd, short args, void *cbdata)
         PMIX_RELEASE(cd);
     }
     PMIX_WAKEUP_THREAD(lock);
+}
+
+/* Park an event under seed_code and wait for it to land. */
+static bool seed_event(pmix_status_t code)
+{
+    pmix_lock_t lock;
+    pmix_event_t ev;
+    bool ok;
+
+    seed_code = code;
+    PMIX_CONSTRUCT_LOCK(&lock);
+    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, seed_cached_event, &lock);
+    pmix_event_active(&ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&lock);
+    ok = (PMIX_SUCCESS == lock.status);
+    PMIX_DESTRUCT_LOCK(&lock);
+    return ok;
+}
+
+/* Is this queued message a relayed notification, or the bare status
+ * that acknowledges a registration? The unpacker type-checks, so asking
+ * for the command that only a notification carries answers it. */
+static bool buffer_is_notify(pmix_buffer_t *buf)
+{
+    pmix_cmd_t cmd;
+    pmix_status_t rc;
+    int32_t cnt = 1;
+
+    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buf, &cmd, &cnt, PMIX_COMMAND);
+    return (PMIX_SUCCESS == rc && PMIX_NOTIFY_CMD == cmd);
 }
 
 /* is anything still parked in the cache? */
@@ -286,10 +409,8 @@ static bool relay_is_our_event(pmix_buffer_t *buf, pmix_data_range_t *range)
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
-    pmix_status_t rc, codes[1];
+    pmix_status_t rc, codes[1], syscodes[1];
     pmix_info_t dir;
-    pmix_lock_t lock;
-    pmix_event_t ev;
     pmix_buffer_t *relay;
     pmix_data_range_t range = PMIX_RANGE_UNDEF;
     size_t nqueued;
@@ -300,6 +421,8 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "server_events: server-side event registration and notification\n");
 
+    mymodule.register_events = stub_register_events;
+
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
@@ -307,6 +430,7 @@ int main(int argc, char **argv)
     }
 
     codes[0] = SEUT_CODE;
+    syscodes[0] = SEUT_SYSCODE;
     PMIX_INFO_LOAD(&dir, "server-events-ut.dir", "value", PMIX_STRING);
 
     /* --- counts that do not survive the trip through int32_t ---------- */
@@ -320,17 +444,12 @@ int main(int argc, char **argv)
      *
      * Nothing has been notified yet, so the cache holds exactly what is
      * seeded below and the relay counts mean what they say. */
-    PMIX_CONSTRUCT_LOCK(&lock);
-    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, seed_cached_event, &lock);
-    pmix_event_active(&ev, EV_WRITE, 1);
-    PMIX_WAIT_THREAD(&lock);
-    ok = (PMIX_SUCCESS == lock.status);
-    PMIX_DESTRUCT_LOCK(&lock);
-    report("the test event is parked in the notification cache", ok);
+    report("the test event is parked in the notification cache",
+           seed_event(SEUT_CODE));
 
     rc = do_register(1, codes, 0, 0, NULL);
     ok = (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
-    progress_barrier();
+    settle();
     report("first registration is accepted", ok);
     nqueued = queued_count();
     report("first registration replays the cached event", 1 == nqueued);
@@ -339,7 +458,7 @@ int main(int argc, char **argv)
      * time, and must not spend the target the other proc is owed */
     rc = do_register(1, codes, 0, 0, NULL);
     ok = (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
-    progress_barrier();
+    settle();
     report("second registration is accepted", ok);
     nqueued = queued_count();
     report("second registration does not replay it again", 1 == nqueued);
@@ -367,8 +486,32 @@ int main(int argc, char **argv)
     rc = do_notify(SEUT_CODE, PMIX_RANGE_LOCAL, 1, 1, &dir);
     report("notify accepts a well-formed request",
            PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
-    progress_barrier();
+    settle();
     report("the notified event is cached", cache_occupied());
+
+    /* --- a host-completed registration acks before it replays ------- */
+    drain_queued();
+    report("a system-code event is parked in the cache", seed_event(SEUT_SYSCODE));
+
+    host_regcb = NULL;
+    rc = do_register_acked(1, syscodes);
+    report("the host is asked to forward the system code",
+           PMIX_SUCCESS == rc && NULL != host_regcb);
+    report("nothing is sent while the host still holds the request",
+           0 == queued_count());
+
+    /* the host now completes the registration it took */
+    host_regcb(PMIX_SUCCESS, host_regcbdata);
+    settle();
+    report("the host-completed registration is answered and replayed",
+           2 == queued_count());
+
+    relay = take_queued_reply();
+    report("the acknowledgement is sent before the replayed event",
+           NULL != relay && !buffer_is_notify(relay));
+    if (NULL != relay) {
+        PMIX_RELEASE(relay);
+    }
 
     drain_queued();
     PMIX_INFO_DESTRUCT(&dir);
