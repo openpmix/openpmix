@@ -304,11 +304,26 @@ Both were latent only because no in-tree `pnet` component answers a
 fabric request — `pmix_pnet.register_fabric` returns
 `PMIX_ERR_NOT_SUPPORTED` when no active component implements it, so every
 arm of `pmix_server_fabric_register` above the host up-call is unreached
-today. Read the rest of that function with the same caution: its
-`PMIX_SUCCESS` arm answers a component that promised a callback by
-`PMIX_WAIT_THREAD`-ing on the switchyard's own thread, so a component
-that completed from the progress thread would deadlock the server rather
-than merely crash it.
+today. Read the rest of that function with the same caution.
+
+**That same unreachability had hidden a progress-thread block, and it is
+now gone.** `pmix_server_fabric_register`'s `PMIX_SUCCESS` arm — the
+framework's way of saying "I will call you back" — used to answer it by
+`PMIX_WAIT_THREAD`-ing on the switchyard's own thread. Every component in
+this tree does its deferred work by posting an event to the progress
+thread, which is precisely the thread that would have been sitting in
+that wait, so the first `register_fabric` module anyone wrote would have
+hung the whole library rather than merely crashing it. Two more things
+were wrong with the arm besides: it handed the module the address of a
+`pmix_fabric_t` on `pmix_server_fabric_register`'s own stack, which dies
+when the function returns, and it then discarded the status it had
+waited for and answered the client `PMIX_SUCCESS` regardless. So the arm
+now refuses the deferral with `PMIX_ERR_NOT_SUPPORTED` and the up-call
+passes `(NULL, NULL)` for the callback pair. **Making
+`register_fabric` answer asynchronously means designing that path
+first** — a heap-allocated fabric object owned by the caddy, and a
+completion that thread-shifts into `_fabric_response` — not restoring
+the wait.
 
 **A callback that only thread-shifts has not consumed your data.** The
 `(release_fn, release_cbdata)` pair is not decoration for the host path:
@@ -2122,6 +2137,14 @@ misbehave by design).
   constructor loop then walks `2^61` elements off the end of it. Both
   now carry the screen, and `test/unit/server_events.c` crashes an
   unfixed library on either one.
+
+  **The two fabric handlers were another.** `pmix_server_fabric_register`
+  sizes the query caddy's info array from the wire count, and
+  `pmix_server_device_dists` sizes the *server* caddy's - and `qdes` and
+  `cddes` both walk that `size_t` when they free. Neither screened it,
+  and neither checked what `PMIX_INFO_CREATE` handed back. Covered by
+  `test/unit/server_fabric.c`, whose two count cases crash an unfixed
+  library.
 
   **The classic commands in `pmix_server_ops.c` were the last group
   without it.** Publish, lookup and unpublish all size their array as
