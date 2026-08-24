@@ -234,7 +234,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
     /* check info directives to see if we want to store this info */
     nodata = false;
     for (i = 0; i < cd->ninfo; i++) {
-        if (0 == strcmp(cd->info[i].key, PMIX_REGISTER_NODATA)) {
+        if (PMIX_CHECK_KEY(&cd->info[i], PMIX_REGISTER_NODATA)) {
             nodata = true;
             break;
         }
