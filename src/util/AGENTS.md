@@ -250,6 +250,39 @@ public `PMIx_Argv_append_unique_nosize()` plus an index out-parameter,
 and callers are entitled to that: it screens `NULL` inputs the same way
 rather than handing a `NULL` arg to `strcmp`.
 
+### `pmix_context_fns` — moving the process to where an app runs
+
+Two helpers that `pmix_pfexec` calls to place a child: one `chdir()`s to
+the app's working directory, the other resolves its executable to a full
+path. Three things about them are easy to get wrong.
+
+- **Both out-parameters are owned in and owned out.** Each takes a
+  `char **`, frees what it finds there, and writes back a fresh
+  allocation. A caller must own the string it passes and must free what
+  comes back — and neither may be handed a string literal.
+- **`chdir()` moves the process, not a thread, and this runs in the
+  parent.** `pmix_pfexec`'s `setup_path()` calls these *before* the fork,
+  so honoring an app's `cwd` changes the **server's** working directory
+  for everything that follows. `pmix_util_check_context_app()` depends on
+  exactly that: a relative executable is checked with `access()`, which
+  resolves against the process's current directory and not against the
+  `cwd` argument, which is only used as the base for the `PATH` search of
+  a *naked* filename.
+- **Ask `pmix_home_directory()` by `geteuid()`, never by a sentinel.**
+  When the app's directory is unreachable and the user did not choose it,
+  these fall back to `$HOME`. That call used to pass `-1`, and both
+  spellings do take the `getenv("HOME")` shortcut — but they part company
+  the moment `$HOME` is unset, which is when the fallback matters:
+  `pmix_home_directory()` then looks up the passwd entry, and there is no
+  passwd entry for `(uid_t)-1`. The fallback therefore never fired in the
+  one case it exists for, and the caller was handed back the name of a
+  directory the process is not in and cannot reach. `getpwuid()` is also
+  not reentrant, so like `pmix_dirname()` these must not be called on a
+  thread that runs concurrently with the progress thread.
+  `test_check_cwd_home_fallback_no_HOME` in
+  [`test/unit/util/util_context_fns.c`](../../test/unit/util/util_context_fns.c)
+  pins it by unsetting `$HOME`.
+
 ### `pmix_net` / `pmix_if` — network helpers
 
 `pmix_net` is pure address math (CIDR→netmask in *network* order,

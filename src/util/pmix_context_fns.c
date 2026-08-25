@@ -58,7 +58,7 @@ pmix_status_t pmix_util_check_context_cwd(char **incwd,
 {
     bool good = true;
     const char *tmp;
-    char *cwd = NULL;
+    char *cwd = NULL, *newcwd;
 
     if (NULL == incwd) {
         return PMIX_ERR_BAD_PARAM;
@@ -88,8 +88,15 @@ pmix_status_t pmix_util_check_context_cwd(char **incwd,
         /* If the user didn't specifically ask for it, then it
          was a system-supplied default directory, so it's ok
          to not go there.  Try to go to the $HOME directory
-         instead. */
-        tmp = pmix_home_directory(-1);
+         instead.
+         *
+         * Ask by our own effective uid rather than by a sentinel. Both
+         * spellings take the $HOME shortcut, but they part company when
+         * $HOME is unset: pmix_home_directory() then falls back to the
+         * passwd entry, and there is no passwd entry for (uid_t)-1 - so
+         * the fallback this whole arm exists for never happened in the
+         * one case that needs it. */
+        tmp = pmix_home_directory(geteuid());
         if (NULL != tmp) {
             /* Try $HOME.  Same test as above. */
             if (want_chdir && 0 != chdir(tmp)) {
@@ -97,12 +104,16 @@ pmix_status_t pmix_util_check_context_cwd(char **incwd,
                 return PMIX_ERR_JOB_WDIR_NOT_ACCESSIBLE;
             }
 
-            /* Reset the pwd in this local copy of the
-             context */
-            if (NULL != cwd) {
-                free(cwd);
+            /* Reset the pwd in this local copy of the context. Only
+             * once we have the replacement in hand - handing back a
+             * freed pointer, or a NULL one, is worse than reporting
+             * that we could not get there. */
+            newcwd = strdup(tmp);
+            if (NULL == newcwd) {
+                return PMIX_ERR_OUT_OF_RESOURCE;
             }
-            *incwd = strdup(tmp);
+            free(cwd);
+            *incwd = newcwd;
         }
 
         /* If we couldn't find $HOME, then just take whatever
@@ -118,7 +129,15 @@ pmix_status_t pmix_util_check_context_app(char **incmd,
                                           char **env)
 {
     char *tmp;
-    char *cmd = *incmd;
+    char *cmd;
+
+    /* Screen the input the way our sibling above does - this is handed
+     * an app's cmd, and a spawn request that carries none would reach
+     * strlen() with a NULL. */
+    if (NULL == incmd || NULL == *incmd) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    cmd = *incmd;
 
     /* Here's the possibilities:
 
@@ -134,6 +153,9 @@ pmix_status_t pmix_util_check_context_app(char **incmd,
     */
 
     tmp = pmix_basename(cmd);
+    if (NULL == tmp) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     if (strlen(tmp) == strlen(cmd)) {
         /* If this is a naked executable -- no relative or absolute
         pathname -- then search the PATH for it */
