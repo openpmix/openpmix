@@ -24,6 +24,7 @@
 #include "src/include/pmix_config.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <string.h>
 
 #include "pmix_common.h"
@@ -46,13 +47,27 @@ static int parse_line_new(const char *filename, int first_val,
 static void parse_error(int num, const char *filename);
 
 static char *env_str = NULL;
-static int envsize = 1024;
+#define PMIX_KEYVAL_ENV_STR_INIT 1024
+static int envsize = PMIX_KEYVAL_ENV_STR_INIT;
 
 void pmix_util_keyval_parse_finalize(void)
 {
     free(key_buffer);
     key_buffer = NULL;
     key_buffer_len = 0;
+
+    /* env_str accumulates the -x directives of every file parsed, and is
+     * normally handed off - and freed - by
+     * pmix_util_keyval_save_internal_envars().  That hand-off does not
+     * always happen: pmix_mca_base_var_cache_files() returns on the first
+     * file that fails to parse, before it reaches the store.  Leaving the
+     * string standing is worse than a leak, because everything in this
+     * file is process-global and pmix_init_util() runs again after
+     * pmix_finalize_util() - a surviving env_str hands the next run the
+     * previous run's variables. */
+    free(env_str);
+    env_str = NULL;
+    envsize = PMIX_KEYVAL_ENV_STR_INIT;
 
     PMIX_DESTRUCT(&keyval_mutex);
 }
@@ -68,6 +83,7 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
                            void *cbdata)
 {
     int val;
+    int rc;
     int ret = PMIX_SUCCESS;
 
     pmix_mutex_lock(&keyval_mutex);
@@ -75,6 +91,18 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
     /* Open the pmix */
     pmix_util_keyval_yyin = fopen(filename, "r");
     if (NULL == pmix_util_keyval_yyin) {
+        /* Our caller treats PMIX_ERR_NOT_FOUND as "there is no such file,
+         * carry on", which is right for the default parameter files since
+         * most systems have none of them.  It is not right for a file that
+         * is there and could not be read - a permission problem or an
+         * exhausted descriptor table discards every parameter in it and
+         * looks exactly like the file never existing.  Keep the return
+         * code, since failing startup over an unreadable optional dotfile
+         * would be worse, but do not let it pass without a word. */
+        if (ENOENT != errno) {
+            pmix_output(0, "keyval parser: cannot read file %s: %s", filename,
+                        strerror(errno));
+        }
         ret = PMIX_ERR_NOT_FOUND;
         goto cleanup;
     }
@@ -83,6 +111,7 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
     pmix_util_keyval_yynewlines = 1;
     pmix_util_keyval_init_buffer(pmix_util_keyval_yyin);
     while (!pmix_util_keyval_parse_done) {
+        rc = PMIX_SUCCESS;
         val = pmix_util_keyval_yylex();
         switch (val) {
             case PMIX_UTIL_KEYVAL_PARSE_DONE:
@@ -95,19 +124,31 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
                 break;
 
             case PMIX_UTIL_KEYVAL_PARSE_SINGLE_WORD:
-                parse_line(filename, callback, cbdata);
+                rc = parse_line(filename, callback, cbdata);
                 break;
 
             case PMIX_UTIL_KEYVAL_PARSE_MCAVAR:
             case PMIX_UTIL_KEYVAL_PARSE_ENVVAR:
             case PMIX_UTIL_KEYVAL_PARSE_ENVEQL:
-                parse_line_new(filename, val, callback, cbdata);
+                rc = parse_line_new(filename, val, callback, cbdata);
                 break;
 
             default:
                 /* anything else is an error */
                 parse_error(1, filename);
+                rc = PMIX_ERROR;
                 break;
+        }
+        /* A malformed line is reported to the user by parse_error() and the
+         * rest of the file is still read - that is long-standing behavior
+         * and callers depend on a typo not aborting startup.  Running out
+         * of memory is different: the line was dropped without a word to
+         * anyone, nothing after it can succeed, and our caller
+         * (pmix_mca_base_var_cache_files) acts on this return code but was
+         * being told the file parsed cleanly. */
+        if (PMIX_ERR_OUT_OF_RESOURCE == rc) {
+            ret = rc;
+            break;
         }
     }
     fclose(pmix_util_keyval_yyin);
@@ -340,6 +381,9 @@ static int parse_line_new(const char *filename, int first_val,
             if (PMIX_UTIL_KEYVAL_PARSE_VALUE == val) {
                 if (NULL != pmix_util_keyval_yytext) {
                     tmp = strdup(pmix_util_keyval_yytext);
+                    if (NULL == tmp) {
+                        return PMIX_ERR_OUT_OF_RESOURCE;
+                    }
                     if ('\'' == tmp[0] || '\"' == tmp[0]) {
                         trim_name(tmp, "\'", "\'");
                         trim_name(tmp, "\"", "\"");
@@ -357,7 +401,10 @@ static int parse_line_new(const char *filename, int first_val,
 
             val = pmix_util_keyval_yylex();
             if (PMIX_UTIL_KEYVAL_PARSE_VALUE == val) {
-                add_to_env_str(key_buffer, pmix_util_keyval_yytext);
+                rc = add_to_env_str(key_buffer, pmix_util_keyval_yytext);
+                if (PMIX_SUCCESS != rc) {
+                    return rc;
+                }
             } else {
                 parse_error(5, filename);
                 return PMIX_ERROR;
@@ -365,7 +412,10 @@ static int parse_line_new(const char *filename, int first_val,
         } else if (PMIX_UTIL_KEYVAL_PARSE_ENVVAR == val) {
             trim_name(key_buffer, "-x", "=");
             trim_name(key_buffer, "--x", NULL);
-            add_to_env_str(key_buffer, NULL);
+            rc = add_to_env_str(key_buffer, NULL);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
         } else {
             /* we got something unexpected.  Bonk! */
             parse_error(6, filename);
