@@ -69,6 +69,10 @@ NOTES
 :ref:`PMIx_Error_code(3) <man3-PMIx_Error_code>`, which maps a status name string
 back to its numeric ``pmix_status_t`` value.
 
+A deprecation rename leaves two names sharing one value |mdash| for example
+``PMIX_ERR_EXISTS`` and the deprecated ``PMIX_EXISTS``. In that case
+``PMIx_Error_string`` returns the current name, not the deprecated alias.
+
 Because the returned string is owned by the library, callers must never pass it to
 ``free()``.
 
