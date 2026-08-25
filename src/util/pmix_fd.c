@@ -75,11 +75,11 @@ pmix_status_t pmix_fd_read(int fd, int len, void *buffer)
     }
 
     l2 = len;
-    while (l2 > 0) {
+    while (0 < l2) {
         rc = read(fd, b, l2);
-        if (rc < 0 && (EAGAIN == errno || EINTR == errno)) {
+        if (0 > rc && (EAGAIN == errno || EINTR == errno)) {
             continue;
-        } else if (rc > 0) {
+        } else if (0 < rc) {
             l2 -= rc;
             b += rc;
         } else if (0 == rc) {
@@ -107,11 +107,11 @@ pmix_status_t pmix_fd_write(int fd, int len, const void *buffer)
     }
 
     l2 = len;
-    while (l2 > 0) {
+    while (0 < l2) {
         rc = write(fd, b, l2);
-        if (rc < 0 && (EAGAIN == errno || EINTR == errno)) {
+        if (0 > rc && (EAGAIN == errno || EINTR == errno)) {
             continue;
-        } else if (rc > 0) {
+        } else if (0 < rc) {
             l2 -= rc;
             b += rc;
         } else {
@@ -134,7 +134,7 @@ pmix_status_t pmix_fd_set_cloexec(int fd)
         return PMIX_ERR_IN_ERRNO;
     }
 
-    if (fcntl(fd, F_SETFD, FD_CLOEXEC | flags) == -1) {
+    if (-1 == fcntl(fd, F_SETFD, FD_CLOEXEC | flags)) {
         return PMIX_ERR_IN_ERRNO;
     }
 #endif
@@ -198,13 +198,13 @@ const char *pmix_fd_get_peer_name(int fd)
         return ret;
     }
 
-    if (sa.ss_family == AF_INET) {
+    if (AF_INET == sa.ss_family) {
         struct sockaddr_in *si;
         si = (struct sockaddr_in *) &sa;
         ret = inet_ntop(AF_INET, &(si->sin_addr), str, INET_ADDRSTRLEN);
     }
 #if PMIX_ENABLE_IPV6
-    else if (sa.ss_family == AF_INET6) {
+    else if (AF_INET6 == sa.ss_family) {
         struct sockaddr_in6 *si6;
         si6 = (struct sockaddr_in6 *) &sa;
         ret = inet_ntop(AF_INET6, &(si6->sin6_addr), str, INET6_ADDRSTRLEN);
@@ -245,7 +245,7 @@ void pmix_close_open_file_descriptors(int protected_fd)
     /* grab the fd of the opendir above so we don't close in the
      * middle of the scan. */
     dir_scan_fd = dirfd(dir);
-    if (dir_scan_fd < 0) {
+    if (0 > dir_scan_fd) {
         closedir(dir);
         goto slow;
     }
@@ -260,11 +260,11 @@ void pmix_close_open_file_descriptors(int protected_fd)
          * perfectly good scan for the slow path */
         errno = 0;
         int fd = strtol(files->d_name, NULL, 10);
-        if (errno == EINVAL || errno == ERANGE) {
+        if (EINVAL == errno || ERANGE == errno) {
             closedir(dir);
             goto slow;
         }
-        if (fd >= 3 && (-1 == protected_fd || fd != protected_fd) && fd != dir_scan_fd) {
+        if (3 <= fd && fd != protected_fd && fd != dir_scan_fd) {
             close(fd);
         }
     }
