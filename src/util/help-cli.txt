@@ -32,13 +32,6 @@ Help was requested for an unknown option:
 Please use the "%s --help" command to obtain a list of all
 supported options.
 #
-[unrecognized-option]
-The help system for %s does not recognize the following:
-
-  Option: %s
-
-This might require help from the developers.
-#
 [version]
 Print version and exit
 #
