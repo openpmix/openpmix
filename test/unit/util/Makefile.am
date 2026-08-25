@@ -18,7 +18,7 @@ check_PROGRAMS = util_hash util_name_fns \
     util_basename util_string_copy util_argv util_path \
     util_environ util_alfg util_printf util_os_dirpath \
     util_net util_if util_parse_options util_os_path \
-    util_vmem hash_perf
+    util_fd util_vmem hash_perf
 
 TESTS = util_hash util_name_fns \
     util_output util_error util_cmd_line \
@@ -26,7 +26,7 @@ TESTS = util_hash util_name_fns \
     util_basename util_string_copy util_argv util_path \
     util_environ util_alfg util_printf util_os_dirpath \
     util_net util_if util_parse_options util_os_path \
-    util_vmem hash_perf
+    util_fd util_vmem hash_perf
 
 util_hash_SOURCES = util_hash.c
 util_hash_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -135,6 +135,13 @@ util_os_path_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_os_path_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+# Descriptor helpers. Forks a child for the mass-close test, which would
+# otherwise take the harness's own descriptors with it.
+util_fd_SOURCES = util_fd.c
+util_fd_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_fd_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 # Address placement and reservation. Skips itself where there is no
 # /proc/self/maps to scan; see the header comment in util_vmem.c.
 util_vmem_SOURCES = util_vmem.c
@@ -149,4 +156,4 @@ clean-local:
 	    util_basename util_string_copy util_argv util_path \
 	    util_environ util_alfg util_printf util_os_dirpath \
 	    util_net util_if util_parse_options util_os_path \
-	    util_vmem hash_perf
+	    util_fd util_vmem hash_perf

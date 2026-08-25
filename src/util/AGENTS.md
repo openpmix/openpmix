@@ -369,6 +369,56 @@ this file only *consumes* it) and the `a.b.c.d[/mask]` tuple parser
 `pmix_iftupletoaddr`, which returns masks in **host** order. Mind that
 byte-order difference if you ever mix the two.
 
+### `pmix_fd` — descriptor helpers, three of them with no caller
+
+`pmix_fd_read`/`pmix_fd_write`/`pmix_fd_set_cloexec`/`pmix_fd_is_*` are
+used across the tree. `pmix_fd_get_peer_name()`,
+`pmix_fd_dup2()` and `pmix_close_open_file_descriptors()` are **called
+from nowhere in PMIx and nowhere in PRRTE** — but `pmix_fd.h` is an
+installed header, so they are still API. Judge them as API, not as dead
+code; the alternative is to retire them deliberately, which is a
+separate decision.
+
+- **`pmix_fd_read()` and `pmix_fd_write()` must be given a *blocking*
+  fd.** They handle `EAGAIN` by retrying immediately, which on a
+  non-blocking descriptor is a spin loop that burns a core until the
+  peer moves. Every caller today hands them an ordinary pipe
+  (`pmix_pfexec`'s keepalive pipe, the `ptl` listener's `--report-uri`
+  pipe), none of which is `O_NONBLOCK`. Also note `pmix_fd_read()`
+  reports a short read as `PMIX_ERR_TIMEOUT` — that is EOF, not a
+  timeout, and `pmix_pfexec` depends on the distinction to tell "the
+  child reached execve" from "the child sent us a failure record".
+- **`pmix_fd_get_peer_name()` answers out of one file-static buffer.**
+  The result is valid only until the next call and two threads calling
+  at once will overwrite each other. It never returns `NULL`: a peer it
+  cannot name — `getpeername()` failed, or the family is not one it
+  renders — reads as `"Unknown"`, because a caller that is about to
+  print the answer should not have to check it. `inet_ntop()` can fail
+  too, and used to leak that `NULL` straight out.
+- **`pmix_close_open_file_descriptors()` has two routes and only one of
+  them is testable.** Where the OS lists the process's descriptors
+  (`/dev/fd`, `/proc/self/fd`) it closes exactly those; everywhere else
+  it falls back to closing every fd below a bound. Two things about that
+  bound, because getting it wrong fails *silently* — the function
+  reports nothing, and the descriptors simply travel into the exec'd
+  image:
+  - `sysconf(_SC_OPEN_MAX)` returns a `long`, and the comment in the
+    code records that some systems answer with a number in the billions.
+    Clamp it against `pmix_maxfd` **while it is still a long**. Narrowing
+    first can land on a negative `int`, and then the closing loop does
+    not execute at all.
+  - `strtol()` sets `errno` on failure and never clears it on success,
+    so the scan has to zero `errno` before each call. It did not, and a
+    stale `EINVAL`/`ERANGE` from anything earlier in the process
+    abandoned the listing on the first entry.
+
+  [`test/unit/util/util_fd.c`](../../test/unit/util/util_fd.c) runs the
+  mass close in a forked child — in-process it would take the harness's
+  own descriptors down — and checks that the protected fd and
+  stdin/stdout/stderr survive. It reaches only the directory-scan route,
+  since both Linux and macOS have one; the fallback has to be verified
+  by hand by pointing the `opendir()` at a path that does not exist.
+
 ### `pmix_shmem` — a created segment reads as zero
 
 `pmix_shmem_segment_create()` opens its backing file `O_CREAT | O_TRUNC`
@@ -471,7 +521,7 @@ integration-style; only the arithmetic/parsing parts (`pad_to_page`,
 `parse_map_line`, `pmix_alfg` determinism) are unit-friendly.
 
 Current coverage includes: `argv`, `alfg`, `basename`, `cmd_line`,
-`context_fns`, `environ`, `error`, `hash` (incl. a mixed-qualifier
+`context_fns`, `environ`, `error`, `fd`, `hash` (incl. a mixed-qualifier
 regression), `if` (the tuple parser), `name_fns` (incl. special-rank
 compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,

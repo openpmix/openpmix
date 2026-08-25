@@ -4,7 +4,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
@@ -39,6 +39,8 @@
 #endif
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef HAVE_PWD_H
@@ -191,7 +193,7 @@ const char *pmix_fd_get_peer_name(int fd)
 
     rc = getpeername(fd, (struct sockaddr *) &sa, &slt);
     if (0 != rc) {
-        pmix_string_copy(str, "Unknown", sizeof(str) - 1);
+        pmix_string_copy(str, "Unknown", sizeof(str));
         ret = str;
         return ret;
     }
@@ -208,10 +210,14 @@ const char *pmix_fd_get_peer_name(int fd)
         ret = inet_ntop(AF_INET6, &(si6->sin6_addr), str, INET6_ADDRSTRLEN);
     }
 #endif
-    else {
-        // This string is guaranteed to be <= INET_ADDRSTRLEN
+
+    if (NULL == ret) {
+        /* either the family was one we do not render, or inet_ntop
+         * itself failed - and the caller is promised a printable name,
+         * not a pointer it has to check.  This string is guaranteed to
+         * be <= INET_ADDRSTRLEN */
         memset(str, 0, sizeof(str));
-        pmix_string_copy(str, "Unknown", sizeof(str) - 1);
+        pmix_string_copy(str, "Unknown", sizeof(str));
         ret = str;
     }
 
@@ -240,13 +246,19 @@ void pmix_close_open_file_descriptors(int protected_fd)
      * middle of the scan. */
     dir_scan_fd = dirfd(dir);
     if (dir_scan_fd < 0) {
+        closedir(dir);
         goto slow;
     }
 
     while (NULL != (files = readdir(dir))) {
-        if (!isdigit(files->d_name[0])) {
+        if (!isdigit((unsigned char) files->d_name[0])) {
             continue;
         }
+        /* strtol reports failure by setting errno and leaves it alone
+         * otherwise, so it has to start from a known value - reading a
+         * stale EINVAL/ERANGE left by some earlier call would abandon a
+         * perfectly good scan for the slow path */
+        errno = 0;
         int fd = strtol(files->d_name, NULL, 10);
         if (errno == EINVAL || errno == ERANGE) {
             closedir(dir);
@@ -262,7 +274,18 @@ void pmix_close_open_file_descriptors(int protected_fd)
 slow:
     // close *all* file descriptors -- slow
     if (0 > fdmax) {
-        fdmax = sysconf(_SC_OPEN_MAX);
+        long sysmax = sysconf(_SC_OPEN_MAX);
+        /* sysconf answers -1 when the limit is indeterminate, and the
+         * note below records that it can also answer a number no int
+         * can hold.  Clamp while the value is still a long: truncating
+         * such a number into an int can land on a negative, and then
+         * the loop at the bottom closes nothing at all - silently
+         * handing every open descriptor to the exec'd image, which is
+         * the one thing this function exists to prevent */
+        if (0 > sysmax || (long) INT_MAX < sysmax) {
+            sysmax = INT_MAX;
+        }
+        fdmax = (int) sysmax;
     }
     // On some OS's (e.g., macOS), the value returned by
     // sysconf(_SC_OPEN_MAX) can be set by the user via "ulimit -n X",
@@ -277,7 +300,7 @@ slow:
     // there's uncertainty on how the macOS default value works, so we
     // provide the pmix_maxfd MCA var to allow the user to set the max
     // FD value if needed.
-    if (-1 == fdmax || pmix_maxfd < fdmax) {
+    if (pmix_maxfd < fdmax) {
         fdmax = pmix_maxfd;
     }
     for (int fd = 3; fd < fdmax; fd++) {
