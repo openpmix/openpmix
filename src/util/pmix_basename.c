@@ -85,6 +85,9 @@ char *pmix_basename(const char *filename)
 
     /* Remove trailing sep's (note that we already know that strlen > 0) */
     tmp = strdup(filename);
+    if (NULL == tmp) {
+        return NULL;
+    }
     if (1 < strlen(tmp)) {
         for (i = strlen(tmp) - 1; i > 0; --i) {
             if (sep == tmp[i]) {
@@ -120,6 +123,13 @@ char *pmix_dirname(const char *filename)
 
 #if defined(HAVE_DIRNAME) || PMIX_HAVE_DIRNAME
     char *safe_tmp = strdup(filename), *result;
+    /* dirname() is documented to answer "." for a NULL path, so an
+     * unchecked strdup here would turn an allocation failure into a
+     * plausible-looking directory instead of the error the header
+     * promises */
+    if (NULL == safe_tmp) {
+        return NULL;
+    }
     result = strdup(dirname(safe_tmp));
     free(safe_tmp);
     return result;
@@ -128,9 +138,17 @@ char *pmix_dirname(const char *filename)
     const char *end;
     char *ret;
 
-    /* NOTE: p will be NULL if no path separator was in the filename - i.e.,
-     * if filename is just a local file - in which case the dirname is "." */
+    /* NOTE: p will be NULL in two cases. Either no path separator was in
+     * the filename - i.e., filename is just a local file, whose dirname
+     * is "." - or the filename consists of nothing but separators
+     * ("/", "//", ...), whose dirname is the root. pmix_find_last_path_
+     * separator() cannot return NULL for anything else: were there a
+     * non-separator anywhere, its first loop would stop on it and the
+     * second would go on to find the leading separator. */
     if (NULL == p) {
+        if (PMIX_PATH_SEP[0] == filename[0]) {
+            return strdup(PMIX_PATH_SEP);
+        }
         return strdup(".");
     }
 

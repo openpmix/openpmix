@@ -89,13 +89,13 @@ pmix_basename(const char *filename) __pmix_attribute_malloc__ __pmix_attribute_w
  * This function will do the Right Things on POSIX and
  * Windows-based operating systems.  For example:
  *
- * foo.txt returns "foo.txt"
+ * foo.txt returns "."
  *
  * /foo/bar/baz returns "/foo/bar"
  *
  * /yow.c returns "/"
  *
- * / returns ""
+ * / returns "/"
  *
  * C:\foo\bar\baz returns "C:\foo\bar"
  *

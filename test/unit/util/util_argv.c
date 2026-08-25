@@ -351,6 +351,97 @@ static void test_copy_strip_null(void)
     report("copy_strip NULL returns NULL", NULL == dupv);
 }
 
+static void test_copy_strip_readonly_source(void)
+{
+    /* String literals live in read-only storage. pmix_argv_copy_strip()
+     * used to mark the end of the strip by punching a temporary NUL
+     * into the caller's element and putting the quote back afterwards;
+     * that faults on an argv whose elements are literals, which is a
+     * perfectly ordinary thing to hand a function that promises a copy.
+     * Without the fix this test dies on a signal rather than failing. */
+    char *ro[3];
+    char **dupv;
+
+    ro[0] = (char *) "\"quoted\"";
+    ro[1] = (char *) "plain";
+    ro[2] = NULL;
+
+    dupv = pmix_argv_copy_strip(ro);
+    report("copy_strip read-only source: non-NULL result", NULL != dupv);
+    report("copy_strip read-only source: quotes removed",
+           dupv && 0 == strcmp(dupv[0], "quoted"));
+    report("copy_strip read-only source: plain unchanged",
+           dupv && 0 == strcmp(dupv[1], "plain"));
+    report("copy_strip read-only source: NULL terminated",
+           dupv && NULL == dupv[2]);
+    report("copy_strip read-only source: source untouched",
+           0 == strcmp(ro[0], "\"quoted\""));
+    PMIx_Argv_free(dupv);
+}
+
+static void test_copy_strip_lone_quote(void)
+{
+    char **argv = NULL;
+    char **dupv;
+
+    /* a single quote character is both the leading and the trailing
+     * quote - stripping both must not run the length below zero */
+    PMIx_Argv_append_nosize(&argv, "\"");
+    PMIx_Argv_append_nosize(&argv, "\"a");
+    PMIx_Argv_append_nosize(&argv, "a\"");
+
+    dupv = pmix_argv_copy_strip(argv);
+    report("copy_strip lone quote: element 0 == \"\"",
+           dupv && 0 == strcmp(dupv[0], ""));
+    report("copy_strip lone quote: leading-only stripped",
+           dupv && 0 == strcmp(dupv[1], "a"));
+    report("copy_strip lone quote: trailing-only stripped",
+           dupv && 0 == strcmp(dupv[2], "a"));
+    report("copy_strip lone quote: NULL terminated", dupv && NULL == dupv[3]);
+    PMIx_Argv_free(dupv);
+    PMIx_Argv_free(argv);
+}
+
+static void test_append_unique_idx_null_args(void)
+{
+    char **argv = NULL;
+    int idx = -99;
+
+    PMIx_Argv_append_nosize(&argv, "foo");
+
+    /* the public twin (PMIx_Argv_append_unique_nosize) refuses these
+     * with BAD_PARAM; this one used to hand a NULL arg to strcmp */
+    report("append_unique_idx NULL arg is refused",
+           PMIX_ERR_BAD_PARAM == pmix_argv_append_unique_idx(&idx, &argv, NULL));
+    report("append_unique_idx NULL argv is refused",
+           PMIX_ERR_BAD_PARAM == pmix_argv_append_unique_idx(&idx, NULL, "x"));
+    report("append_unique_idx NULL idx is refused",
+           PMIX_ERR_BAD_PARAM == pmix_argv_append_unique_idx(NULL, &argv, "x"));
+    report("append_unique_idx refusal left the array alone",
+           1 == PMIx_Argv_count(argv));
+    PMIx_Argv_free(argv);
+}
+
+static void test_insert_empty_source(void)
+{
+    char **target = NULL;
+    char **source = NULL;
+    int argc = 0;
+
+    pmix_argv_append(&argc, &target, "a");
+    pmix_argv_append(&argc, &target, "b");
+    source = (char **) malloc(sizeof(char *));
+    source[0] = NULL;
+
+    report("insert empty source returns SUCCESS",
+           PMIX_SUCCESS == pmix_argv_insert(&target, 1, source));
+    report("insert empty source: argv[0] == \"a\"", 0 == strcmp(target[0], "a"));
+    report("insert empty source: argv[1] == \"b\"", 0 == strcmp(target[1], "b"));
+    report("insert empty source: NULL terminated", NULL == target[2]);
+    PMIx_Argv_free(target);
+    free(source);
+}
+
 /* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
@@ -384,6 +475,10 @@ int main(int argc, char **argv)
     test_copy_strip_quotes();
     test_copy_strip_empty_element();
     test_copy_strip_null();
+    test_copy_strip_readonly_source();
+    test_copy_strip_lone_quote();
+    test_append_unique_idx_null_args();
+    test_insert_empty_source();
 
     test_append_unique_idx_new();
     test_append_unique_idx_duplicate();

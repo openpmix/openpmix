@@ -147,6 +147,62 @@ qualifiers (`PMIX_INFO_IS_QUALIFIER`) can be smaller than `nquals`: index
 the destination array by the compacted counter, not the loop variable
 (this was the bug fixed in July 2026 — see below).
 
+### `pmix_basename` — two implementations, one of them invisible
+
+`pmix_dirname()` has two bodies behind a configure-time `#if`. Where
+`dirname(3)` exists — which is everywhere PMIx is actually built — it
+strdups the input, hands it to libgen, and strdups the answer back. The
+`#else` is a hand-rolled walk that no ordinary build ever compiles.
+
+Two consequences worth keeping in mind:
+
+- **The branch you can read is not the branch you are running,** and a
+  divergence between them is invisible to a build that only checks that
+  the code compiles. They *did* diverge: the fallback answered `"."` for
+  a path that is nothing but separators (`"/"`, `"//"`) where libgen
+  answers the root. `util_basename.c` now pins the whole answer table for
+  whichever branch is compiled, so a future edit to either one has to
+  keep them agreeing. If you change one body, run the corpus against the
+  other by hand before you believe it.
+- **`dirname(3)` is not reentrant on every platform.** glibc rewrites the
+  buffer you hand it, but macOS and the older BSDs return a pointer into
+  internal static storage, so two threads inside `pmix_dirname()` at once
+  can each strdup the other's answer. Nothing in the tree does that
+  today, and the reason is worth preserving rather than rediscovering:
+  the `ptl` caller (`write_rndz_file`) is reachable only from
+  `pmix_ptl_base_setup_listener`, which runs once while the process is
+  still initializing, and the remaining callers (`pmix_iof`, `pmix_path`)
+  run on the progress thread. **Do not add a `pmix_dirname()` call on a
+  thread that can run concurrently with the progress thread** without
+  first replacing the libgen branch — the `#else` body is already a
+  correct, reentrant implementation of the same function.
+
+### `pmix_argv` — copies must not write through the original
+
+Everything in this file that is named "copy" or "insert" takes its input
+by value, and two of them used to cheat:
+
+- `pmix_argv_copy_strip()` marked the end of a quoted element by punching
+  a temporary NUL into the *caller's* string and putting the quote back
+  afterwards. That faults outright on an argv whose elements are string
+  literals — an entirely ordinary thing to hand a function that promises
+  a copy — and it is not safe against a second thread reading the same
+  array. It now measures the surviving span and copies that out.
+  `test_copy_strip_readonly_source` in `util_argv.c` is the regression:
+  it dies on a signal, not with a failed assertion, if this comes back.
+- `pmix_argv_insert()` and `pmix_argv_insert_element()` grew the target
+  and shifted its suffix *before* strdup'ing the source in. A failed
+  strdup then left a NULL in the middle of the array — which terminates
+  it, so every element past the hole is at once lost to the caller and
+  leaked — and the functions reported `PMIX_SUCCESS` anyway. Both now
+  copy first and only touch the target once the copies are in hand, so
+  the failure is reported with the target untouched. Keep that order.
+
+Note also that `pmix_argv_append_unique_idx()` is documented as the
+public `PMIx_Argv_append_unique_nosize()` plus an index out-parameter,
+and callers are entitled to that: it screens `NULL` inputs the same way
+rather than handing a `NULL` arg to `strcmp`.
+
 ### `pmix_net` / `pmix_if` — network helpers
 
 `pmix_net` is pure address math (CIDR→netmask in *network* order,
