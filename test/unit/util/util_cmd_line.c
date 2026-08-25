@@ -222,6 +222,7 @@ static struct option tblopts[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_URI, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_PMIXMCA, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_INFO_VERSION, PMIX_ARG_OPTIONAL),
+    PMIX_OPTION_DEFINE(PMIX_CLI_PREPEND_ENVAR, PMIX_ARG_REQD),
     PMIX_OPTION_SHORT_DEFINE("np", PMIX_ARG_REQD, 'n'),
     PMIX_OPTION_END
 };
@@ -453,6 +454,50 @@ static parse_case_t cases[] = {
      {"prog", "--show-version", "-v", NULL}, PMIX_SUCCESS,
      PMIX_CLI_INFO_VERSION, "", PMIX_CLI_VERBOSE, "1", NULL, NULL},
 
+    /* ---- tokens the parser claims for itself -----------------------
+     * getopt is told these options take one argument; the second token
+     * is taken from argv[optind] by the parser. Taking it without first
+     * checking that it is there claimed the NULL that terminates argv as
+     * a value and stepped optind PAST the end of the array - which the
+     * loop's "optind == argc" test then failed to catch, so the next
+     * iteration read past the end and dereferenced what it found. Each
+     * of these three dies on a signal, not with a failed assertion, if
+     * that comes back. */
+    {"two-token: --prepend-env with only one token is refused",
+     {"prog", "--prepend-env", "FOO", NULL}, PMIX_ERR_SILENT,
+     NULL, NULL, NULL, NULL, NULL, NULL},
+
+    {"two-token: --prepend-env with both tokens",
+     {"prog", "--prepend-env", "FOO", "bar", NULL}, PMIX_SUCCESS,
+     PMIX_CLI_PREPEND_ENVAR, "FOO|bar", NULL, NULL, NULL, NULL},
+
+    {"two-token: --pmixmca with no value is refused",
+     {"prog", "--pmixmca", "p", NULL}, PMIX_ERR_SILENT,
+     NULL, NULL, NULL, NULL, NULL, NULL},
+
+    {"two-token: -np with no count is refused",
+     {"prog", "-np", NULL}, PMIX_ERR_SILENT,
+     NULL, NULL, NULL, NULL, NULL, NULL},
+
+    /* ---- a bare "-" ------------------------------------------------
+     * "-" names stdin by convention, not an option, and getopt agrees:
+     * it stops there without consuming the token. The loop only asked
+     * whether the token began with a dash, so it called getopt anyway,
+     * got the "no more options" answer, and then reasoned about
+     * argv[optind-1] - the token BEFORE the dash - reporting an option
+     * that had been given its argument as though it were missing one. */
+    {"bare dash: is the tail, not an option",
+     {"prog", "-", NULL}, PMIX_SUCCESS,
+     NULL, NULL, NULL, NULL, NULL, "-"},
+
+    {"bare dash: after a flag",
+     {"prog", "--verbose", "-", NULL}, PMIX_SUCCESS,
+     PMIX_CLI_VERBOSE, "1", NULL, NULL, NULL, "-"},
+
+    {"bare dash: after an option that took an argument",
+     {"prog", "--timeout", "30", "-", "app", NULL}, PMIX_SUCCESS,
+     PMIX_CLI_TIMEOUT, "30", NULL, NULL, NULL, "- app"},
+
     {NULL, {NULL}, 0, NULL, NULL, NULL, NULL, NULL, NULL}
 };
 
@@ -578,6 +623,71 @@ static void run_table(void)
 
     if (0 <= devnull) {
         close(devnull);
+    }
+    if (0 <= saved_err) {
+        close(saved_err);
+    }
+}
+
+/* ================================================================== */
+/* The help option's optional argument                                */
+/* ================================================================== */
+
+/* "--help topic" and "--help=topic" (and "-htopic") are the same request.
+ * getopt reports an optional argument in optarg when it was attached to
+ * the option and leaves it at argv[optind] when it was the next token, and
+ * only the second was ever looked at - so the attached spelling fell
+ * through to an "unrecognized option" complaint naming the topic itself.
+ *
+ * All three answer PMIX_OPERATION_SUCCEEDED: the parse is over, the tool
+ * has said its piece and should exit. The one that used to be wrong
+ * answered PMIX_ERR_SILENT. */
+static void test_help_optional_argument(void)
+{
+    char *spaced[] = {"prog", "--help", "version", NULL};
+    char *attached[] = {"prog", "--help=version", NULL};
+    char *shortform[] = {"prog", "-hversion", NULL};
+    char *bare[] = {"prog", "--help", NULL};
+    struct { const char *desc; char **argv; } t[] = {
+        {"help: \"--help topic\"", spaced},
+        {"help: \"--help=topic\"", attached},
+        {"help: \"-htopic\"", shortform},
+        {"help: no topic at all", bare},
+        {NULL, NULL}
+    };
+    pmix_cli_result_t res;
+    int rc, n, saved_out, saved_err, devnull;
+
+    /* every one of these prints a help block - park both streams */
+    saved_out = dup(fileno(stdout));
+    saved_err = dup(fileno(stderr));
+    devnull = open("/dev/null", O_WRONLY);
+
+    for (n = 0; NULL != t[n].desc; n++) {
+        PMIX_CONSTRUCT(&res, pmix_cli_result_t);
+        if (0 <= devnull) {
+            fflush(stdout);
+            fflush(stderr);
+            dup2(devnull, fileno(stdout));
+            dup2(devnull, fileno(stderr));
+        }
+        rc = pmix_cmd_line_parse(t[n].argv, tblshorts, tblopts,
+                                 NULL, &res, "help-cli.txt");
+        if (0 <= saved_out) {
+            fflush(stdout);
+            fflush(stderr);
+            dup2(saved_out, fileno(stdout));
+            dup2(saved_err, fileno(stderr));
+        }
+        report(t[n].desc, PMIX_OPERATION_SUCCEEDED == rc);
+        PMIX_DESTRUCT(&res);
+    }
+
+    if (0 <= devnull) {
+        close(devnull);
+    }
+    if (0 <= saved_out) {
+        close(saved_out);
     }
     if (0 <= saved_err) {
         close(saved_err);
@@ -807,6 +917,21 @@ static void test_check_cli_option(void)
     /* Case-insensitive */
     report("check_cli: case-insensitive",
            pmix_check_cli_option("VERB", "verbose"));
+    /* A string that is nothing but separators splits to NOTHING, not to a
+     * one-element array - so the segment walk had a NULL array to read.
+     * These die on a signal, not with a failed assertion, if that comes
+     * back. */
+    report("check_cli: an all-dash input has no segments to match",
+           !pmix_check_cli_option("-", "system-server"));
+    report("check_cli: an all-dash target has no segments to match",
+           !pmix_check_cli_option("sys", "-"));
+    report("check_cli: all-dash on both sides",
+           !pmix_check_cli_option("--", "--"));
+    /* strdup() is not handed a NULL either */
+    report("check_cli: a NULL input matches nothing",
+           !pmix_check_cli_option(NULL, "verbose"));
+    report("check_cli: a NULL target matches nothing",
+           !pmix_check_cli_option("verbose", NULL));
 }
 
 /* ------------------------------------------------------------------ */
@@ -830,6 +955,15 @@ static void test_convert_time(void)
     /* zero */
     report("convert_time: \"0\" → 0",
            0 == pmix_convert_string_to_time("0"));
+    /* A string carrying no fields at all splits to NOTHING, so the walk
+     * up from the last field read tmp[-1] off a NULL array. Signal, not
+     * assertion, if this comes back. */
+    report("convert_time: an empty string is no time",
+           0 == pmix_convert_string_to_time(""));
+    report("convert_time: nothing but separators is no time",
+           0 == pmix_convert_string_to_time(":"));
+    report("convert_time: a NULL string is no time",
+           0 == pmix_convert_string_to_time(NULL));
 }
 
 /* ------------------------------------------------------------------ */
@@ -859,6 +993,8 @@ int main(int argc, char **argv)
     fprintf(stdout, "\n--- command-line table ---\n");
     run_table();
     fprintf(stdout, "\n");
+
+    test_help_optional_argument();
 
     test_order_interleaved();
     test_order_reversed();

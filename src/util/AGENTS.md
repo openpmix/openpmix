@@ -114,6 +114,53 @@ quirk that bit `src/tools` is worth remembering: a bare invocation
 through the `done:` copy, which would leave the program name in the
 tail).
 
+**Any arm that claims a token getopt did not consume must first check
+that the token is there.** Several options are declared to getopt as
+taking one argument and then take a second from `argv[optind]` on the
+parser's own account — the MCA pair, `--prepend-env`/`--append-env`, the
+`-np` shortcut, `--show-version`'s trailing tokens. `argv[optind]` at the
+end of the array is the `NULL` that terminates it, and an arm that stored
+that `NULL` as a value and stepped `optind` past it left `optind ==
+argc + 1`, which the loop's end test — an equality against `argc` — did
+not catch. The next iteration then read past the end of the copied array
+and dereferenced what it found. The end test is now `>=`, and each of
+those arms reports `not-enough-arguments` instead; `is_option_token()` is
+what tells a real value from the next option. Regression cases are the
+`two-token:` group in
+[`test/unit/util/util_cmd_line.c`](../../test/unit/util/util_cmd_line.c),
+and they die on a signal rather than failing an assertion.
+
+**A lone `-` is not an option.** It conventionally names stdin, and getopt
+agrees: it stops at a bare `-` without consuming it. The loop asked only
+whether the token began with a dash, so it called getopt anyway, got the
+"no more options" answer, and the arms below then reasoned about
+`argv[optind - 1]` — the token *before* the dash — and reported an option
+that had been given its argument as though it were missing one. A bare
+`-` now ends the option list and goes to the tail, which is what
+`is_option_token()` has always said it should. Regression cases are the
+`bare dash:` group.
+
+**An optional argument arrives two ways.** getopt reports the argument of
+`-h` in `optarg` when it was written attached (`-htopic`,
+`--help=topic`) and leaves it at `argv[optind]` when it was the next
+token (`--help topic`). Only the second was ever looked at, so
+`--help=version` was refused as an unrecognized option while
+`--help version` worked. Both spellings are the same request; answer them
+in one place.
+
+**One parse at a time, on the tool's main thread.** `getopt_long` keeps
+its state in the process-global `optind`/`optarg`/`opterr`/`optopt`, which
+this parser resets on entry — so two concurrent parses corrupt each
+other, no matter which `pmix_cli_result_t` each is filling. Every caller
+today parses once, at startup, before any progress thread exists.
+
+The inline helpers in the header are used by tools outside this tree
+(the header is installed), and two of them have to remember that
+`PMIx_Argv_split()` drops empty fields: a string that is nothing but
+separators splits to **nothing at all**, not to a one-element array. So
+`pmix_convert_string_to_time(":")` and `pmix_check_cli_option("-", ...)`
+both had a `NULL` array to walk. Screen the count before indexing.
+
 **The first token that is not an option ends the option list**, and the
 short-option string is prefixed with `'+'` to make getopt agree with
 that. Without it getopt permutes non-options to the end of argv as it

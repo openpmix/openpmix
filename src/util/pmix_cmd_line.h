@@ -217,8 +217,8 @@ typedef struct {
 #define PMIX_CLI_PSET_NAME              "pset"                      // required
 #define PMIX_CLI_FWD_ENVAR              "x"                         // required
 #define PMIX_CLI_SET_ENVAR              "set-env"                   // required
-#define PMIX_CLI_PREPEND_ENVAR          "prepend-env"               // required
-#define PMIX_CLI_APPEND_ENVAR           "append-env"                // required
+#define PMIX_CLI_PREPEND_ENVAR          "prepend-env"               // requires TWO
+#define PMIX_CLI_APPEND_ENVAR           "append-env"                // requires TWO
 #define PMIX_CLI_UNSET_ENVAR            "unset-env"                 // required
 
 // Info options
@@ -230,7 +230,7 @@ typedef struct {
 #define PMIX_CLI_INFO_PARAM             "param"                     // required
 #define PMIX_CLI_INFO_PARAMS            "params"                    // required
 #define PMIX_CLI_INFO_PATH              "path"                      // required
-#define PMIX_CLI_INFO_VERSION           "show-version"              // required
+#define PMIX_CLI_INFO_VERSION           "show-version"              // optional, up to TWO
 #define PMIX_CLI_INFO_TYPES             "type"                      // required
 #define PMIX_CLI_INFO_COLOR             "color"                     // required
 #define PMIX_CLI_INFO_SHOW_FAILED       "show-failed"               //none
@@ -240,6 +240,26 @@ typedef struct {
 typedef void (*pmix_cmd_line_store_fn_t)(const char *name, const char *option,
                                          pmix_cli_result_t *results);
 
+/* Parse a command line into "results", which the caller has already
+ * constructed (and which may already hold values the caller put there -
+ * those keep a position of -1, see pmix_cli_item_t above).
+ *
+ * "argv" is left untouched; the parser works on a copy, because getopt
+ * reorders the array it is given. "shorts" is the getopt short-option
+ * string, or NULL for a tool that registers none. "storefn" is NULL to
+ * file each occurrence in "results" the ordinary way.
+ *
+ * Returns:
+ *   PMIX_SUCCESS              the command line was parsed; carry on.
+ *   PMIX_OPERATION_SUCCEEDED  the parse is over and the tool has already
+ *                             said its piece (--help, --version): print
+ *                             nothing more and exit successfully.
+ *   PMIX_ERR_SILENT           the command line was refused and the reason
+ *                             has already been printed to stderr: exit
+ *                             without adding a message of your own.
+ *   anything else             a failure with nothing yet reported - say
+ *                             so, e.g. via PMIx_Error_string().
+ */
 PMIX_EXPORT int pmix_cmd_line_parse(char **argv, char *shorts,
                                     struct option myoptions[],
                                     pmix_cmd_line_store_fn_t storefn,
@@ -310,7 +330,8 @@ static inline char* pmix_cmd_line_get_nth_instance(pmix_cli_result_t *results,
         return NULL;
     }
     ninst = PMIx_Argv_count(opt->values);
-    if (ninst < idx) {
+    if (0 > idx || idx >= ninst) {
+        // bound it at both ends, as pmix_cmd_line_get_nth_seq does
         return NULL;
     }
     return opt->values[idx];
@@ -365,9 +386,17 @@ static inline bool pmix_check_cli_option(char *ain, char *bin)
     char **asplit, **bsplit;
     int match, acnt, bcnt;
 
+    if (NULL == ain || NULL == bin) {
+        return false;
+    }
     // protect the input
     a = strdup(ain);
     b = strdup(bin);
+    if (NULL == a || NULL == b) {
+        free(a);
+        free(b);
+        return false;
+    }
 
     /* if there is an '=' in the option, then we only
      * check up to that position in the option as
@@ -396,6 +425,16 @@ static inline bool pmix_check_cli_option(char *ain, char *bin)
         bsplit = PMIx_Argv_split(b, '-');
         acnt = PMIx_Argv_count(asplit);
         bcnt = PMIx_Argv_count(bsplit);
+        /* A string that is nothing but separators - "-", "--" - splits to
+         * nothing at all, and the walk below would read that NULL array.
+         * There are no segments, so nothing can match. */
+        if (NULL == asplit || NULL == bsplit) {
+            PMIx_Argv_free(asplit);
+            PMIx_Argv_free(bsplit);
+            free(a);
+            free(b);
+            return false;
+        }
         if (acnt > bcnt) {
             PMIx_Argv_free(asplit);
             PMIx_Argv_free(bsplit);
@@ -481,11 +520,20 @@ static inline char *pmix_cli_qualifier_value(char *qual)
 #define PMIX_CLI_QUALIFIER_VALUE(q) \
     pmix_cli_qualifier_value(q)
 
+/* Convert a "[[[days:]hours:]minutes:]seconds" string to a count of
+ * seconds. A string carrying no fields at all - empty, or nothing but
+ * colons - is no time, and answers zero; reading tmp[sz-1] on it
+ * dereferenced the NULL array that a field-less split returns. */
 static inline unsigned int pmix_convert_string_to_time(const char *t)
 {
     char **tmp = PMIx_Argv_split(t, ':');
     int sz = PMIx_Argv_count(tmp);
     unsigned int tm;
+
+    if (0 == sz) {
+        PMIx_Argv_free(tmp);
+        return 0;
+    }
 
     /* work upwards from the bottom, where the
      * bottom represents seconds, then minutes,
