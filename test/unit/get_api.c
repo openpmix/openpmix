@@ -203,6 +203,92 @@ static int check_client_scalar(const char *name, const char *key, uint32_t expec
     return ok ? 0 : 1;
 }
 
+/* ------------------------------------------------------------------ */
+/* two outstanding requests, one of which is coalesced onto the other  */
+/* ------------------------------------------------------------------ */
+
+/* pmix_client_globals.pending_requests is both the table get_data()
+ * consults to avoid asking the server twice for one proc's data, and the
+ * table _getnb_cbfunc() walks to deliver a reply. The two asked it
+ * different questions: the coalescing scan matched with PMIX_CHECK_NAMES,
+ * which reports a match whenever *either* rank is PMIX_RANK_WILDCARD,
+ * while delivery compares ranks exactly. So a get for a specific rank
+ * issued while a get at WILDCARD for the same namespace was outstanding
+ * was folded onto it, never sent, and then never matched by the reply -
+ * and nothing else drains that list, so the callback simply never came.
+ *
+ * Both requests carry PMIX_IMMEDIATE, which is what makes this bounded:
+ * without it the server parks a request it cannot satisfy and neither
+ * call would complete, fixed or not. With it, a miss is answered at once,
+ * so an unfixed library shows exactly one arrival and this case fails on
+ * the timeout rather than wedging the suite.
+ *
+ * Issue order matters. The WILDCARD request has to be the one already on
+ * the list when the second arrives. */
+
+#define GET_UT_ABSENT_A "get.ut.absent.a"
+#define GET_UT_ABSENT_B "get.ut.absent.b"
+
+static volatile int narrived = 0;
+static volatile bool a_done = false;
+static volatile bool b_done = false;
+
+static void arrival_cb(pmix_status_t status, pmix_value_t *kv, void *cbdata)
+{
+    volatile bool *flag = (volatile bool *) cbdata;
+
+    (void) status;
+    /* the caller owns the value on this callback - see PMIx_Get(3) */
+    if (NULL != kv) {
+        PMIX_VALUE_RELEASE(kv);
+    }
+    *flag = true;
+    ++narrived;
+}
+
+static int check_coalescing(void)
+{
+    pmix_info_t immediate;
+    pmix_proc_t p;
+    pmix_status_t rc;
+    int n, ok;
+
+    PMIX_INFO_LOAD(&immediate, PMIX_IMMEDIATE, NULL, PMIX_BOOL);
+
+    PMIX_LOAD_PROCID(&p, GET_UT_NSPACE, PMIX_RANK_WILDCARD);
+    rc = PMIx_Get_nb(&p, GET_UT_ABSENT_A, &immediate, 1, arrival_cb, (void *) &a_done);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "  FAIL: client: wildcard request refused (%s)\n",
+                PMIx_Error_string(rc));
+        PMIX_INFO_DESTRUCT(&immediate);
+        return 1;
+    }
+
+    /* rank 1 of this namespace never connects, so the server answers this
+     * out of what it holds rather than from a peer */
+    PMIX_LOAD_PROCID(&p, GET_UT_NSPACE, 1);
+    rc = PMIx_Get_nb(&p, GET_UT_ABSENT_B, &immediate, 1, arrival_cb, (void *) &b_done);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "  FAIL: client: ranked request refused (%s)\n",
+                PMIx_Error_string(rc));
+        PMIX_INFO_DESTRUCT(&immediate);
+        return 1;
+    }
+    PMIX_INFO_DESTRUCT(&immediate);
+
+    /* both are answered in a single round trip apiece; ten seconds is a
+     * timeout, not a settling time */
+    for (n = 0; n < 200 && 2 > narrived; n++) {
+        usleep(50000);
+    }
+    ok = (a_done && b_done);
+    fprintf(stdout, "  %s: client: a ranked get is not swallowed by an "
+                    "outstanding wildcard one (wildcard=%s ranked=%s)\n",
+            ok ? "PASS" : "FAIL", a_done ? "answered" : "NO ANSWER",
+            b_done ? "answered" : "NO ANSWER");
+    return ok ? 0 : 1;
+}
+
 static int run_client(void)
 {
     pmix_proc_t me;
@@ -218,6 +304,7 @@ static int run_client(void)
                                GET_UT_TOPLEVEL, GET_UT_TOPVAL);
     bad += check_client_scalar("client: job-array key with a NULL proc",
                                GET_UT_JOBARRAY, GET_UT_ARRVAL);
+    bad += check_coalescing();
     rc = PMIx_Finalize(NULL, 0);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "client PMIx_Finalize failed: %s\n", PMIx_Error_string(rc));
@@ -382,7 +469,7 @@ int main(int argc, char **argv)
                 status = 1;
             }
             /* the client prints its own PASS/FAIL lines; count the run */
-            report("client: job-level gets with a NULL proc", 0 == status);
+            report("client: job-level gets and request coalescing", 0 == status);
         }
     }
     PMIx_Argv_free(client_env);

@@ -94,6 +94,32 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p);
         PMIX_CONSTRUCT(&(c)->kvs, pmix_list_t);     \
     } while (0)
 
+/* Do these two requests name the same data?
+ *
+ * pmix_client_globals.pending_requests is two tables in one - the
+ * coalescing table get_data() consults before it sends, and the delivery
+ * table _getnb_cbfunc() walks when a reply arrives - and the two have to
+ * ask it the same question. They did not: the coalescing scan used
+ * PMIX_CHECK_NAMES, which reports a match whenever *either* rank is
+ * PMIX_RANK_WILDCARD, while the delivery walk compares ranks exactly. So
+ * a get for a specific rank issued while a get at WILDCARD for the same
+ * namespace was outstanding was folded onto that request and never sent,
+ * and then never matched when the reply came back. Nothing else drains
+ * this list, so a blocking PMIx_Get waited forever and a PMIx_Get_nb was
+ * simply never called back (its caddy is released, silently, by the
+ * PMIX_LIST_DESTRUCT in PMIx_Finalize).
+ *
+ * Exact is the right answer for both. A reply carries the data for the
+ * rank that was asked about, and job-level data - which is what a
+ * WILDCARD request returns - is not any particular proc's data, so
+ * coalescing across the two would answer a request the server was never
+ * asked. */
+static bool same_target(const char *ns1, pmix_rank_t r1,
+                        const char *ns2, pmix_rank_t r2)
+{
+    return (r1 == r2) && PMIX_CHECK_NSPACE(ns1, ns2);
+}
+
 /* A PMIX_QUALIFIED_VALUE kval carries the value the caller actually asked for
  * as the first element of a PMIX_INFO data array, with the qualifiers behind
  * it. Three places here unwrap that, and all three used to reach straight
@@ -537,6 +563,11 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
 
     /* the request is good - let's go get the data */
     cb = PMIX_NEW(pmix_cb_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        PMIX_RELEASE(lg);
+        *val = NULL;
+        return PMIX_ERR_NOMEM;
+    }
     cb->lg = lg;
     cb->key = (char*)key;
     cb->info = (pmix_info_t*)info;
@@ -568,8 +599,15 @@ answered:
         if (lg->stval) {
             /* the caller provided the storage, so copy into it - and then
              * release our own copy, which nothing else owns (the caddy
-             * destructor does not touch "value") */
-            PMIx_Value_xfer(*val, cb->value);
+             * destructor does not touch "value").
+             *
+             * Report a transfer that fails rather than discarding it: the
+             * xfer sets the destination's type before it can fail, so the
+             * caller would otherwise be told the get succeeded and handed
+             * their own storage naming a type with nothing behind it.
+             * *val is not cleared on that path - it is the caller's own
+             * object, not something we allocated. */
+            rc = PMIx_Value_xfer(*val, cb->value);
             PMIX_VALUE_RELEASE(cb->value);   /* nulls cb->value */
         } else {
             *val = cb->value;
@@ -580,6 +618,15 @@ answered:
          * still ours to reclaim */
         if (NULL != cb->value) {
             PMIX_VALUE_RELEASE(cb->value);
+        }
+        if (PMIX_SUCCESS == rc) {
+            /* a success with nothing behind it is the one answer the
+             * caller cannot act on: PMIx_Get(3) entitles them to
+             * dereference *val when we say SUCCESS. Nothing produces it
+             * today - process_values() returns a value or a status - so
+             * this is what keeps that true rather than something the
+             * caller has to defend against. */
+            rc = PMIX_ERR_NOT_FOUND;
         }
         *val = NULL;
     }
@@ -646,6 +693,21 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         /* the value has already been prepped - threadshift to return result */
         cb = PMIX_NEW(pmix_cb_t);
+        if (PMIX_UNLIKELY(NULL == cb)) {
+            /* the value process_request() prepped is ours until the
+             * callback hands it over, so it goes back here - unless it
+             * is one of the two process-lifetime globals a
+             * PMIX_GET_POINTER_VALUES request is answered with. (The
+             * third form, PMIX_GET_STATIC_VALUES, cannot arise on this
+             * entry point: it names storage the caller provides through
+             * "val", and the non-blocking form has no such argument, so
+             * process_request() refuses it.) */
+            if (NULL != val && !lg->pntrval) {
+                PMIX_VALUE_RELEASE(val);
+            }
+            PMIX_RELEASE(lg);
+            return PMIX_ERR_NOMEM;
+        }
         cb->status = PMIX_SUCCESS;
         cb->value = val;
         cb->cbfunc.valuefn = cbfunc;
@@ -683,6 +745,10 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
 
     /* the request is good - let's go get the data */
     cb = PMIX_NEW(pmix_cb_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        PMIX_RELEASE(lg);
+        return PMIX_ERR_NOMEM;
+    }
     cb->lg = lg;
     cb->key = (char*)key;
     cb->info = (pmix_info_t*)info;
@@ -739,6 +805,11 @@ static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
 
     /* nope - see if we can get it */
     msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msg)) {
+        /* every failure arm below releases the message, and
+         * PMIX_RELEASE dereferences what it is given */
+        return NULL;
+    }
     /* pack the get cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -817,10 +888,18 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     lg = cb->lg;
 
     /* a zero-byte buffer indicates that this recv is being
-     * completed due to a lost connection */
+     * completed due to a lost connection. Say that, rather than letting
+     * the PMIX_ERR_NOT_FOUND this status was seeded with stand: every
+     * waiter below is about to be answered with it, and "the key does not
+     * exist" is a different fact from "the server this process was asking
+     * is gone" - the first invites the caller to try another key or give
+     * up on one value, the second means nothing it asks will ever be
+     * answered. refcb() below, the other recv callback in this file,
+     * already reports it that way. */
     if (PMIX_BUFFER_IS_EMPTY(buf)) {
         pmix_output_verbose(2, pmix_client_globals.get_output,
                             "pmix: get_nb server lost connection");
+        ret = PMIX_ERR_LOST_CONNECTION;
         goto done;
     }
 
@@ -873,7 +952,8 @@ done:
      * be released, so we must not dereference lg during the loop */
     PMIX_LOAD_PROCID(&rproc, lg->p.nspace, lg->p.rank);
     PMIX_LIST_FOREACH_SAFE (cb, cb2, &pmix_client_globals.pending_requests, pmix_cb_t) {
-        if (PMIX_CHECK_NSPACE(rproc.nspace, cb->pname.nspace) && cb->pname.rank == rproc.rank) {
+        if (same_target(rproc.nspace, rproc.rank,
+                        cb->pname.nspace, cb->pname.rank)) {
             /* reset per iteration so a failed fetch for this request can
              * never deliver a value already handed to a previous one */
             val = NULL;
@@ -1005,8 +1085,17 @@ static pmix_status_t process_values(pmix_cb_t *cb)
         }
         return PMIX_SUCCESS;
     }
-    /* we will return the data as an array of pmix_info_t
-     * in the kvs pmix_value_t */
+    /* Anything else is handed back as an array of pmix_info_t in a
+     * single pmix_value_t. An empty list has to be caught before that:
+     * PMIx_Info_create() answers a zero count with the same NULL an
+     * allocation failure gives, so a fetch that reported success with
+     * nothing on the list would be reported as PMIX_ERR_NOMEM. Neither
+     * in-tree module does that today - both report success only when
+     * they appended something - which is exactly why the wrong status
+     * would be so hard to place if one ever did. */
+    if (0 == pmix_list_get_size(kvs)) {
+        return PMIX_ERR_NOT_FOUND;
+    }
     PMIX_VALUE_CREATE(val, 1);
     if (PMIX_UNLIKELY(NULL == val)) {
         return PMIX_ERR_NOMEM;
@@ -1057,6 +1146,42 @@ static pmix_status_t process_values(pmix_cb_t *cb)
     return PMIX_SUCCESS;
 }
 
+/* Copy the caller's directives into a fresh array with room for "nextra"
+ * more behind them, which the realm branches in get_data() fill in.
+ *
+ * The caller's info[] is never ours to edit, so a request that has to add
+ * a directive has to copy first - and the copy's status matters. The
+ * transfer sets each destination's type before it can fail, so a
+ * directive that would not copy does not leave an empty slot the server
+ * can skip: it leaves one naming a type with nothing behind it, and this
+ * array is what _pack_get() puts on the wire. PMIX_INFO_XFER discards
+ * that status by definition, which is why this uses the function form.
+ *
+ * Returns NULL with "*status" set, having freed the partial array; on
+ * success it sets "*nfo" to the total length. */
+static pmix_info_t *copy_directives(pmix_cb_t *cb, size_t nextra,
+                                    size_t *nfo, pmix_status_t *status)
+{
+    pmix_info_t *iptr;
+    size_t n, total;
+
+    total = cb->ninfo + nextra;
+    PMIX_INFO_CREATE(iptr, total);
+    if (PMIX_UNLIKELY(NULL == iptr)) {
+        *status = PMIX_ERR_NOMEM;
+        return NULL;
+    }
+    for (n = 0; n < cb->ninfo; n++) {
+        *status = PMIx_Info_xfer(&iptr[n], &cb->info[n]);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != *status)) {
+            PMIX_INFO_FREE(iptr, total);
+            return NULL;
+        }
+    }
+    *nfo = total;
+    return iptr;
+}
+
 static void get_data(int sd, short args, void *cbdata)
 {
     pmix_cb_t *cb, cb2;
@@ -1066,7 +1191,7 @@ static void get_data(int sd, short args, void *cbdata)
     pmix_proc_t proc;
     pmix_get_logic_t *lg;
     pmix_info_t optional, *iptr;
-    size_t nfo, n;
+    size_t nfo;
     pmix_kval_t *kv;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
@@ -1211,14 +1336,9 @@ static void get_data(int sd, short args, void *cbdata)
          * nodename or nodeid */
         if (lg->nodedirective) {
             /* just need to add the hostname/nodeid */
-            nfo = cb->ninfo + 2;
-            PMIX_INFO_CREATE(iptr, nfo);
+            iptr = copy_directives(cb, 2, &nfo, &cb->status);
             if (PMIX_UNLIKELY(NULL == iptr)) {
-                cb->status = PMIX_ERR_NOMEM;
                 goto done;
-            }
-            for (n=0; n < cb->ninfo; n++) {
-                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
             if (NULL != lg->hostname) {
                 PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_HOSTNAME, lg->hostname, PMIX_STRING);
@@ -1229,14 +1349,9 @@ static void get_data(int sd, short args, void *cbdata)
             cb->infocopy = true;
         } else {
             /* need to add directive and hostname/nodeid */
-            nfo = cb->ninfo + 3;
-            PMIX_INFO_CREATE(iptr, nfo);
+            iptr = copy_directives(cb, 3, &nfo, &cb->status);
             if (PMIX_UNLIKELY(NULL == iptr)) {
-                cb->status = PMIX_ERR_NOMEM;
                 goto done;
-            }
-            for (n=0; n < cb->ninfo; n++) {
-                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
             PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
             if (NULL != lg->hostname) {
@@ -1317,28 +1432,18 @@ static void get_data(int sd, short args, void *cbdata)
         /* setup the request */
         if (lg->appdirective) {
             /* just need to add the appnum */
-            nfo = cb->ninfo + 2;
-            PMIX_INFO_CREATE(iptr, nfo);
+            iptr = copy_directives(cb, 2, &nfo, &cb->status);
             if (PMIX_UNLIKELY(NULL == iptr)) {
-                cb->status = PMIX_ERR_NOMEM;
                 goto done;
-            }
-            for (n=0; n < cb->ninfo; n++) {
-                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
             PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_APPNUM, &lg->appnum, PMIX_UINT32);
             PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
             cb->infocopy = true;
         } else {
             /* need to add directive and appnum */
-            nfo = cb->ninfo + 3;
-            PMIX_INFO_CREATE(iptr, nfo);
+            iptr = copy_directives(cb, 3, &nfo, &cb->status);
             if (PMIX_UNLIKELY(NULL == iptr)) {
-                cb->status = PMIX_ERR_NOMEM;
                 goto done;
-            }
-            for (n=0; n < cb->ninfo; n++) {
-                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
             PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
             PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_APPNUM, &lg->appnum, PMIX_UINT32);
@@ -1421,28 +1526,18 @@ static void get_data(int sd, short args, void *cbdata)
         /* setup the request */
         if (lg->sessiondirective) {
             /* just need to add the sessionid */
-            nfo = cb->ninfo + 2;
-            PMIX_INFO_CREATE(iptr, nfo);
+            iptr = copy_directives(cb, 2, &nfo, &cb->status);
             if (PMIX_UNLIKELY(NULL == iptr)) {
-                cb->status = PMIX_ERR_NOMEM;
                 goto done;
-            }
-            for (n=0; n < cb->ninfo; n++) {
-                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
             PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_SESSION_ID, &lg->sessionid, PMIX_UINT32);
             PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
             cb->infocopy = true;
         } else {
             /* need to add directive and sessionid */
-            nfo = cb->ninfo + 3;
-            PMIX_INFO_CREATE(iptr, nfo);
+            iptr = copy_directives(cb, 3, &nfo, &cb->status);
             if (PMIX_UNLIKELY(NULL == iptr)) {
-                cb->status = PMIX_ERR_NOMEM;
                 goto done;
-            }
-            for (n=0; n < cb->ninfo; n++) {
-                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
             }
             PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_SESSION_INFO, NULL, PMIX_BOOL);
             PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_SESSION_ID, &lg->sessionid, PMIX_UINT32);
@@ -1592,7 +1687,12 @@ doget:
      * this nspace:rank. If we do, then no need to ask again as the
      * request will return _all_ data from that proc */
     PMIX_LIST_FOREACH (cbret, &pmix_client_globals.pending_requests, pmix_cb_t) {
-        if (PMIX_CHECK_NAMES(&cbret->pname, &proc)) {
+        /* compare what each request recorded about itself, not the rank
+         * this one is about to ask the server with - the rewrite above
+         * varies that, and cb->pname is what the reply is matched
+         * against. See same_target() for why the two must agree. */
+        if (same_target(cbret->pname.nspace, cbret->pname.rank,
+                        cb->pname.nspace, cb->pname.rank)) {
             pmix_output_verbose(2, pmix_client_globals.get_output,
                                 "%s ADDING REQUEST TO PENDING %s:%s KEY %s",
                                 PMIX_NAME_PRINT(&pmix_globals.myid), cb->proc->nspace,
@@ -1743,6 +1843,9 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p)
     /* pack a quick message to the server asking it
      * to refresh our cache */
     msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msg)) {
+        return PMIX_ERR_NOMEM;
+    }
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -1763,6 +1866,10 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p)
     }
 
     cb = PMIX_NEW(pmix_cb_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        PMIX_RELEASE(msg);
+        return PMIX_ERR_NOMEM;
+    }
     cb->proc = (pmix_proc_t*)p;
 
     /* send to the server */
