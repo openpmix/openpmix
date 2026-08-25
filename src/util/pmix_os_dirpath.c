@@ -204,7 +204,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
 
     len = PMIx_Argv_count(parts);
     for (i = 0; i < len; ++i) {
-        if (i == 0) {
+        if (0 == i) {
             /* If in POSIX-land, ensure that we never end a directory
                name with path_sep */
 
@@ -243,7 +243,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
          * final component is the one the caller is going to use, so
          * it has to really be a directory and carry the mode we were
          * asked for */
-        if (i == (len - 1)) {
+        if ((len - 1) == i) {
             ret = dirpath_ensure_mode(tmp, mode);
             if (PMIX_SUCCESS != ret) {
                 if (PMIX_ERR_NOT_FOUND == ret) {
@@ -466,7 +466,7 @@ bool pmix_os_dirpath_is_empty(const char *path)
         /* fdopendir() takes ownership of fd; closedir() will close it */
         dp = fdopendir(fd);
         if (NULL != dp) {
-            while ((ep = readdir(dp))) {
+            while (NULL != (ep = readdir(dp))) {
                 if ((0 != strcmp(ep->d_name, ".")) && (0 != strcmp(ep->d_name, ".."))) {
                     closedir(dp);
                     return false;
