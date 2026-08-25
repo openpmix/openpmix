@@ -23,7 +23,14 @@
 
 BEGIN_C_DECLS
 
-/* lookup the effective uid and gid of a socket */
+/* Ask the kernel for the credentials of the process on the far end of
+ * the connected socket `sd`, and write them to *uid and *gid.
+ *
+ * Returns PMIX_SUCCESS, in which case both out-parameters have been
+ * written; PMIX_ERR_INVALID_CRED if the descriptor has no credentials
+ * to report, in which case neither has; or PMIX_ERR_NOT_SUPPORTED on a
+ * platform that offers no way to ask. Only a connected AF_UNIX socket
+ * gives a meaningful answer - see src/util/AGENTS.md. */
 PMIX_EXPORT pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid);
 
 END_C_DECLS
