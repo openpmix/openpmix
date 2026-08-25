@@ -12,7 +12,7 @@
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2017      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -164,7 +164,7 @@ PMIX_EXPORT char *pmix_net_get_hostname(const struct sockaddr *addr);
 /**
  * Get port number from struct sockaddr
  *
- * Return the port number (as an integr) from either a struct
+ * Return the port number (as an integer) from either a struct
  * sockaddr_in or a struct sockaddr_in6.
  *
  * @param addr             struct sockaddr containing address
