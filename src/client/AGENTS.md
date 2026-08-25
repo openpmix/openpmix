@@ -2987,16 +2987,68 @@ is the shape `PMIx_Connect_nb` already uses for its job-info fetch.
   `PMIX_ERR_NOT_FOUND` whenever the two disagree. The local paths
   (`get_data()`, `try_local_fetch()`) do honor it, because there the
   scope selects which of this process's own tables to search.
-- **The `PMIX_RANK_WILDCARD` retry in `_getnb_cbfunc()` is the twin of
-  the one deliberately removed from `get_data()`** — the same
-  client-side compensation for a module that will not answer at
-  `PMIX_RANK_UNDEF`, in the path that runs after the server's reply is
-  stored. It is left in place, and left named here rather than quietly
-  removed: with both modules now answering `UNDEF` out of the job-level
-  store it should be dead, but the case that would prove it is a *remote*
-  get — a proc whose data is not already cached, which is a
-  `contrib/dockerswarm` case and not a `make check` one. Retire it with
-  that evidence, not by reasoning from the local path.
+- **The `PMIX_RANK_WILDCARD` retry in `_getnb_cbfunc()` is a
+  cross-version fallback, not compensation for our own datastore. Do not
+  remove it.** It reads like the twin of the retry deliberately removed
+  from `get_data()`, and that reading is wrong in the one way that
+  matters. `get_data()`'s retry ran against *this process's* store, where
+  answering `PMIX_RANK_UNDEF` is the module's job and a client working
+  around a module that will not is a client that cannot tell you the
+  module is broken. This one runs against what a **server** just sent us,
+  and the commit that added it (`7ba403b52`, 2024) says why: "the server
+  may have returned the data under that rank *depending upon version*".
+  Which rank the payload is filed under is the peer's decision and it
+  varies by release — the same class as the `PMIX_PEER_IS_EARLIER`
+  rewrite in `get_data()` forty lines above, which sends a NULL-key
+  request at `WILDCARD` while recording `UNDEF`, and so *creates* the
+  mismatch this retry absorbs. `try_fetch()` in
+  [`pmix_client_resolve.c`](pmix_client_resolve.c) is the third instance,
+  and its comment says the legacy resolve path resolves *because of* it.
+
+  **It has never been observed to fire, and that is not evidence against
+  it.** Instrumented on both of its sites, it was not entered once
+  across: the whole `contrib/dockerswarm` client suite; two purpose-built
+  multi-node probes (a keyed `UNDEF` get of a peer's key, and a NULL key
+  naming another namespace); and a **v3.2.5 server driving a master
+  client** through five `UNDEF`-rank get shapes. v3.2 is the
+  interoperability floor, so that last one is the oldest server that has
+  to work.
+
+  What those runs establish is *why* it is so hard to reach, which is the
+  useful part. The branch needs two things at once: the server answered
+  **successfully**, and the reply is being matched at `PMIX_RANK_UNDEF`.
+  A keyed `UNDEF` get of a peer's key satisfies the second and never the
+  first — a v3.2 server leaves it parked until `PMIX_ERR_TIMEOUT`, and
+  PRRTE answers `PMIX_ERR_NOT_FOUND`, because neither will direct-modex
+  an undefined rank; `_getnb_cbfunc()` then takes its error branch before
+  any fetch happens. The shapes that *do* come back successfully — a NULL
+  key naming another namespace, a job-level key at `UNDEF` — are answered
+  by the primary fetch. So the retry is unreachable in every
+  configuration that can be built here, and the case its author names is
+  one no available server produces.
+
+  Keep it anyway. The cost of carrying it is one extra failed lookup on a
+  path that has already missed; the cost of being wrong about it is a
+  silently stranded job on a mixed-version system, which is the failure
+  this project spends the most to avoid. If you want to retire it, the
+  thing to produce is a server that answers a `PMIX_RANK_UNDEF` request
+  with data filed under `PMIX_RANK_WILDCARD` — not another run in which
+  it stays quiet.
+
+  **Two method notes, both of which cost a full cycle here.** The swarm
+  runner prints verdicts, not client output, so the first "zero hits"
+  came from logs that could not have carried one — `strings` the
+  installed library for your marker and prove a client's stderr reaches
+  you (`prterun … /bin/sh -c 'echo x >&2'`) before believing a silent
+  instrument. And a hand-compiled probe binds to whatever
+  `DYLD_LIBRARY_PATH` the harness hands it, which under an old
+  `pmix_test` is that build's library, not yours: the in-tree clients work
+  because libtool's wrapper script *prepends* their own `.libs`. Copy
+  that, or you will measure the wrong library — and a probe whose every
+  rank publishes the same key measures nothing at all, since the caller's
+  own `PMIx_Put` answers it locally and the request never leaves the
+  process.
+
 - **`PMIX_GET_POINTER_VALUES` is honored only by the three shortcuts
   `process_request()` answers outright** (`PMIX_PROCID`, `PMIX_RANK`,
   and — inconsistently — not `PMIX_VERSION_NUMERIC`). Every other path
