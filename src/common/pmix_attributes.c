@@ -1379,10 +1379,17 @@ static void _get_attrs(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
     char **fns = NULL;
     const pmix_regattr_input_t *dptr;
 
-    /* the value in the info is a comma-delimited list of
-     * functions whose attributes are being requested */
-    if (NULL != info) {
-        fns = PMIx_Argv_split(info->key, ',');
+    /* The comma-delimited list of functions whose attributes are being
+     * requested rides in the info's VALUE - the key is the level
+     * (PMIX_HOST_ATTRIBUTES and friends), which names no function and so
+     * matched nothing here.  Every remote query for a level's attributes
+     * came back empty because of it, which is the only way a caller can
+     * ever see the host's registrations: a tool answers the client,
+     * server and tool levels out of its own library and asks the server
+     * only about the host. */
+    if (NULL != info && PMIX_STRING == info->value.type &&
+        NULL != info->value.data.string) {
+        fns = PMIx_Argv_split(info->value.data.string, ',');
     }
 
     /* search the list for these functions */
