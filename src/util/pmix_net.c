@@ -75,7 +75,7 @@
  * otherwise be modifying a string literal. */
 static char pmix_hostname_unknown[] = "UNKNOWN";
 
-/* this function doesn't depend on sockaddr_h */
+/* this function does not depend on struct sockaddr_in */
 bool pmix_net_isaddr(const char *name)
 {
     struct addrinfo hint, *res = NULL;
@@ -111,8 +111,9 @@ static pmix_tsd_key_t hostname_tsd_key;
 
 static void hostname_cleanup(void *value)
 {
-    if (NULL != value)
+    if (NULL != value) {
         free(value);
+    }
 }
 
 static char *get_hostname_buffer(void)
@@ -146,7 +147,11 @@ static char *get_hostname_buffer(void)
 pmix_status_t pmix_net_setup_private_ipv4(void)
 {
     char **args, *arg;
-    uint32_t a, b, c, d, bits, addr;
+    /* the four octets and the prefix length are read with "%u", which
+     * writes an unsigned int - say so, rather than relying on uint32_t
+     * being spelled that way on the platform being built */
+    unsigned int a, b, c, d, bits;
+    uint32_t addr;
     int i, j, count, found_bad = 0;
 
     /* the value arrives from the MCA parameter system, so this cannot be
@@ -347,7 +352,7 @@ bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
     }
 
     default:
-        pmix_output(0, "unhandled sa_family %d passed to pmix_samenetwork", a1.sa_family);
+        pmix_output(0, "unhandled sa_family %d passed to pmix_net_samenetwork", a1.sa_family);
     }
 
     return false;
@@ -377,7 +382,7 @@ bool pmix_net_addr_isipv6linklocal(const struct sockaddr *addr)
     case AF_INET:
         return false;
     default:
-        pmix_output(0, "unhandled sa_family %d passed to pmix_net_addr_isipv6linklocal\n",
+        pmix_output(0, "unhandled sa_family %d passed to pmix_net_addr_isipv6linklocal",
                     addr->sa_family);
     }
 
@@ -410,7 +415,7 @@ bool pmix_net_addr_isipv4public(const struct sockaddr *addr)
     }
         return true;
     default:
-        pmix_output(0, "unhandled sa_family %d passed to pmix_net_addr_isipv4public\n",
+        pmix_output(0, "unhandled sa_family %d passed to pmix_net_addr_isipv4public",
                     addr->sa_family);
     }
 
@@ -425,7 +430,7 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
     char *p;
 
     if (NULL == name) {
-        pmix_output(0, "pmix_net_get_hostname: malloc() failed\n");
+        pmix_output(0, "pmix_net_get_hostname: malloc() failed");
         return pmix_hostname_unknown;
     }
     memset(name, 0, NI_MAXHOST + 1);
@@ -439,7 +444,7 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
         /* hotfix for netbsd: on my netbsd machine, getnameinfo
            returns an unknown error code. */
         if (NULL == inet_ntop(AF_INET6, &((struct sockaddr_in6 *) addr)->sin6_addr, name, NI_MAXHOST)) {
-            pmix_output(0, "pmix_sockaddr2str failed with error code %d", errno);
+            pmix_output(0, "pmix_net_get_hostname failed with error code %d", errno);
             return pmix_hostname_unknown;
         }
         return name;
@@ -456,7 +461,8 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
     if (error) {
         /* getnameinfo() returns an EAI_* code directly; decode that,
          * not errno (which it does not generally set) */
-        pmix_output(0, "pmix_sockaddr2str failed:%s (return code %i)\n", gai_strerror(error), error);
+        pmix_output(0, "pmix_net_get_hostname failed: %s (return code %d)",
+                    gai_strerror(error), error);
         return pmix_hostname_unknown;
     }
     /* strip any trailing % data as it isn't pertinent */
