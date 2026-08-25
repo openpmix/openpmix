@@ -35,4 +35,4 @@ PMIX_EXPORT pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid);
 
 END_C_DECLS
 
-#endif /* PMIX_PRINTF_H */
+#endif /* PMIX_GETID_H */
