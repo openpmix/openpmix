@@ -212,16 +212,46 @@ each time somebody asks.
           timeout there is a wedge and not a slow launch.  Measure the
           healthy case before calling a timeout flaky.
 
+.. note:: **2026-08-24.**  The per-file pass over ``src/server``
+          finished — twenty files, one at a time, after the
+          directory-wide review of 2026-08-09/15 — and most of what it
+          could not close itself landed here rather than in a commit:
+          the entry-point initialization sweep below, the ownership of a
+          credential the host hands up, the cleanup request that is
+          applied in part before it fails, the server-wide envar hook
+          nothing fills, and the allocation-failure injection the
+          switchyard's out-of-memory arms need before any of them can be
+          tested.  One entry was opened and closed within the same day —
+          the ordering of a registration's acknowledgement against the
+          cached events replayed behind it — because the push-back that
+          had deferred it ("libevent ordering is too strong an
+          assumption") was checkable and wrong: a single progress thread
+          draining activations in order is a design invariant, not an
+          assumption.
+
+          That is the lesson worth carrying, and it is this page's own
+          rule pointed at a different artifact.  **A recorded push-back
+          is a lead, not a finding**, exactly as an entry here is.  The
+          switchyard's unchecked ``PMIX_NEW`` in ``PMIX_GDS_CADDY`` and
+          ``PMIX_SERVER_QUEUE_REPLY`` had been logged in ``AGENTS.md``
+          as deliberate, on the reasoning that a NULL-safe macro "only
+          moves the crash to the handler on the next line".  The dispatch
+          arm returns before the handler is called, so the reasoning was
+          simply false, and one failed allocation was killing the server
+          and every client it hosted.  When a push-back's stated reason
+          can be checked, check it before inheriting it.
+
 Review coverage
 ---------------
 
-Assessed on **2026-08-15** from the commit history, refreshed on
-**2026-08-20** when the ``src/mca/pnet``, ``src/mca/preg``,
+Assessed on **2026-08-15** from the commit history and refreshed as each
+review lands: on **2026-08-20** for the ``src/mca/pnet``, ``src/mca/preg``,
 ``src/mca/pgpu``, ``src/mca/pmdl``, ``src/mca/pcompress``,
 ``src/mca/plog``, ``src/mca/psensor``, ``src/mca/psec`` and
-``src/mca/pif`` reviews landed, and again on **2026-08-21** when
-``src/mca/gds/shmem3`` was re-reviewed against its redesign.
-Move an entry out
+``src/mca/pif`` reviews, on **2026-08-21** when ``src/mca/gds/shmem3``
+was re-reviewed against its redesign, and on **2026-08-24**, when the
+per-file pass over ``src/server`` finished — all twenty ``.c`` files —
+and the last of ``src/client`` came inside a review.  Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
 
@@ -235,16 +265,46 @@ in "Reviewed, but changed materially since" when a re-review closes one.
 Reviewed and current
 ^^^^^^^^^^^^^^^^^^^^
 
-``src/class``, ``src/common``, ``src/event``, ``src/include``,
-``src/runtime``, ``src/tool``, ``src/tools``, ``src/mca/base``,
-``src/mca/bfrops``, ``src/mca/gds/base``, ``src/mca/gds/hash``,
-``src/mca/pcompress``, ``src/mca/pgpu``, ``src/mca/plog``,
-``src/mca/gds/shmem3``, ``src/mca/pif``, ``src/mca/pmdl``,
+``src/class``, ``src/client``, ``src/event``, ``src/include``,
+``src/runtime``, ``src/server``, ``src/tool``, ``src/tools``,
+``src/mca/base``, ``src/mca/bfrops``, ``src/mca/gds/base``,
+``src/mca/gds/hash``, ``src/mca/gds/shmem3``, ``src/mca/pcompress``,
+``src/mca/pgpu``, ``src/mca/pif``, ``src/mca/plog``, ``src/mca/pmdl``,
 ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/psec``, ``src/mca/psensor``,
 ``src/mca/pstat``, ``src/mca/ptl``, ``src/threads``, and
 ``bindings/python``.
-``src/client``, ``src/server``, ``src/hwloc`` and ``src/util`` were
-reviewed too, but have moved since — see below.
+``src/common``, ``src/hwloc`` and ``src/util`` were reviewed too, but
+have moved since — see below.
+
+**``src/client`` and ``src/server`` are the only two directories the
+review has taken file by file**, a dedicated pass per file rather than a
+directory-wide one, and the difference is worth stating rather than
+flattening: a directory-wide sweep is real coverage, and it is not the
+same thing.  The dedicated pass found something in *every* file it
+read, including files that had already been through four or five
+directory-wide sweeps.  ``src/client`` reached that state on 2026-08-23
+and ``src/server`` on 2026-08-24 — eleven files and twenty, five lenses
+each, one file to a pass.  The per-file record is in the 2026-08-23 and
+later rows of ``.git/deep-review/ledger.tsv``; the reasoning is in each
+directory's ``AGENTS.md``.
+
+Two files fall short of that and are named here rather than rounded up,
+both in ``src/client``:
+
+* ``pmix_client_fence.c`` has had **no dedicated pass**.  It was signed
+  off by the *directory-wide* five-lens seventh sweep — recorded there as
+  coming through all five lenses with nothing to fix — and has not moved
+  since.
+* ``pmix_client_get.c``'s dedicated pass is **incomplete**, and the
+  ledger says so: lens 1 (memory) only, over ``process_request``,
+  ``PMIx_Get``, ``PMIx_Get_nb``, ``gcbfn`` and ``try_local_fetch``.
+  ``get_data`` (~500 lines), ``_getnb_cbfunc``, ``process_values`` and
+  ``refresh_cache``/``refcb`` were never read, and lenses 2–5 were never
+  applied.  The work that followed the same day — the realm and
+  job-level-data fixes, the NULL-key answer, the ownership contract now
+  stated in ``PMIx_Get(3)`` — chased specific findings out of that
+  partial pass; it did not finish it.  This is the next piece of
+  per-file work in either directory.
 
 Not yet reviewed
 ^^^^^^^^^^^^^^^^
@@ -266,71 +326,36 @@ Reviewed, but changed materially since
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Ordered by how much of the directory the review no longer covers.
+Figures are against the commit that recorded each review, measured
+2026-08-24.
 
 #. **``src/util``** — reviewed 2026-07-17/18, the oldest review in the
-   tree.  31 commits and +1440/-203 across 16 files since, none of it
-   re-read: the CLI option-parsing rework, the ``dirpath`` conversion to
-   descriptor-based operations, and the ``pmix_hash`` qualifier arrays.
-#. **``src/hwloc``** — reviewed 2026-08-02.  The 2026-08-10 → 15 work
-   added a device enumerator and reworked the distance computation,
-   +753 lines in ``pmix_hwloc.c`` alone, against a five-line touch to the
-   guide.  Effectively new, unreviewed code.
-#. **``src/client``** — the per-file review is current through
-   2026-08-13, and ``pmix_client_group.c``'s share of what came after it
-   was re-reviewed on 2026-08-21 (the context ID and endpoint-exchange
-   work of 2026-08-15, +341/-14; see the thirteenth sweep in that
-   directory's ``AGENTS.md``).  ``pmix_client.c`` — the ``PMIx_Put``
-   delete scopes, the per-key record behind ``PMIx_Commit`` and the
-   never-hand-back-a-compressed-string change — was reviewed on
-   2026-08-22 (the fifteenth sweep in that ``AGENTS.md``).  The touches
-   to ``pmix_client_get.c`` (``633b09cce``) and ``pmix_client_resolve.c``
-   (``db61debd4``) were listed here as unreviewed and should not have
-   been: both are review *findings*, not feature work.
-   ``pmix_client_spawn.c`` was reviewed on 2026-08-22 (the sixteenth
-   sweep in that ``AGENTS.md``), which closes the spawn
-   output-forwarding hold (``a4d696b8c``, 2026-08-15).  Nothing in the
-   directory is now outside a review; the one finding that sweep left
-   unfixed has an entry of its own below.
+   tree, and the gap keeps widening: 38 commits and +2024/-247 across 21
+   files since, none of it re-read.  The largest pieces are the CLI
+   option-parsing rework, the ``dirpath`` conversion to descriptor-based
+   operations, and the ``pmix_hash`` qualifier arrays.
+#. **``src/hwloc``** — reviewed 2026-08-02.  +1129/-205 across three
+   files since — the device enumerator and the reworked distance
+   computation, against a five-line touch to the guide.  Effectively new,
+   unreviewed code.
+#. **``src/common``** — reviewed 2026-08-02, and no longer the modest
+   churn it was listed as.  ``pmix_iof.c`` has 1215 changed lines since:
+   the tool being given the library's stdin forwarding instead of its
+   own, the hold on a spawned job's early output, and the SIGCONT
+   handler that moved here out of ``src/tool``.  ``pmix_pfexec.c`` has
+   335, most recently the removal of the library's signal traps and the
+   per-holder reference on a pfexec child.  The other fifteen files are
+   close to what the review read, so a re-review is really a re-review of
+   those two.
 
-   Note also a difference in depth, not just currency.  **Every ``.c``
-   file in this directory has now had a dedicated five-lens pass**, with
-   one exception noted below: ``pmix_client.c`` (fifteenth sweep),
-   ``pmix_client_group.c`` (eighth, thirteenth), ``pmix_client_spawn.c``
-   (tenth, twelfth, sixteenth), ``pmix_client_resolve.c`` (ninth),
-   ``pmix_client_topology.c`` (eleventh), ``pmix_client_get.c``
-   (2026-08-22), and ``pmix_client_convert.c``,
-   ``pmix_client_connect.c``, ``pmix_client_fabric.c`` and
-   ``pmix_client_pub.c`` (all 2026-08-23).
-
-   The exception is ``pmix_client_fence.c``, which was signed off by the
-   *directory-wide* five-lens seventh sweep — recorded there as coming
-   through all five lenses with nothing to fix — and has not moved
-   since.
-
-   The four passes on 2026-08-23 are worth noting as a group, because
-   each of the last three files had been inside the July 2026
-   directory-wide sweep, the fifth (union) sweep, the seventh, and the
-   targeted fixes since, and a dedicated pass still found something in
-   every one of them: an empty namespace read as naming a group
-   (``convert``), a datastore deletion run from the application's thread
-   (``connect``), a wire count unpacked straight into the caller's
-   out-parameter (``fabric``), and a key array leaked on the one exit
-   that did not free it (``pub``).  Directory-wide coverage is real
-   coverage, and it is not the same thing.
-
-   An earlier version of this paragraph listed ``pmix_client_resolve.c``
-   and ``pmix_client_topology.c`` among the shallow set.  That was
-   wrong: the ninth and eleventh sweeps are both dedicated five-lens
-   passes and say so in their opening lines.
-#. **``src/server``** — the 2026-08-09 → 15 commit run *is* the review,
-   performed after the source was split into function-oriented files, so
-   the body of the directory is covered.  Outside it is the same late
-   feature work: group invite/endpoint exchange (2026-08-15) and the
-   spawn output-forwarding inheritance (2026-08-12/13).
-
-Lower priority, with current guides and modest churn: ``src/mca/base``
-(+162/-79), ``src/common`` (+197/-12), ``src/event`` (+196/-11), and
-``src/mca/ptl`` (mostly deletions).
+Lower priority, with current guides and churn that is mostly the reviews'
+own work coming back through: ``src/event`` (+414/-29 since 2026-08-01,
+nearly all of it the notification fan-out and cached-event replay that
+the ``src/server`` and event-forwarding reviews drove), ``src/mca/ptl``
+(+617/-365 since 2026-08-07, the connection handler plus deletions
+elsewhere), ``src/mca/gds/hash`` (+495/-152 since 2026-08-03, chiefly the
+single job-level store the ``PMIx_Get`` review forced), and
+``src/mca/base`` (+17/-2 since 2026-08-16).
 
 Open decisions
 --------------
@@ -600,7 +625,10 @@ first:
   (``pmix_server_iof.c``);
   ``PMIx_server_dmodex_request`` (``pmix_server_dmodex.c``);
   ``PMIx_server_collect_job_info`` (``pmix_server_fence.c``);
-  ``PMIx_server_setup_fork`` (``pmix_server.c``).
+  ``PMIx_server_setup_fork`` (``pmix_server.c``).  All four of those
+  files have since had their own per-file pass (2026-08-24) and none of
+  them added the screen, so this list is what the completed ``src/server``
+  per-file review left open rather than something it has not reached yet.
 * **Known must not get it** — ``PMIx_server_setup_application`` and
   ``_setup_local_support`` (``pmix_server_setup.c``), for the reason
   recorded above: a launcher calls them after ``PMIx_tool_init`` alone.
