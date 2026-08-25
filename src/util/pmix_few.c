@@ -21,7 +21,6 @@
 #include "src/include/pmix_config.h"
 
 #include <errno.h>
-#include <stdio.h>
 #ifdef HAVE_SYS_WAIT_H
 #    include <sys/wait.h>
 #endif
@@ -32,8 +31,6 @@
 
 #include "pmix_common.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/pmix_argv.h"
-#include "src/util/pmix_basename.h"
 #include "src/util/pmix_few.h"
 
 PMIX_EXPORT pmix_status_t pmix_few(char *argv[], int *status)
@@ -41,7 +38,7 @@ PMIX_EXPORT pmix_status_t pmix_few(char *argv[], int *status)
 #if defined(HAVE_FORK) && defined(HAVE_EXECVE) && defined(HAVE_WAITPID)
     pid_t pid, ret;
 
-    if ((pid = fork()) < 0) {
+    if (0 > (pid = fork())) {
         return PMIX_ERROR;
     }
 
@@ -70,7 +67,7 @@ PMIX_EXPORT pmix_status_t pmix_few(char *argv[], int *status)
 
             /* If waitpid was interrupted, loop around again */
 
-            else if (ret < 0) {
+            else if (0 > ret) {
                 if (EINTR == errno) {
                     continue;
                 }
