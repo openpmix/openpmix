@@ -52,6 +52,309 @@
 
 static const char path_sep[] = PMIX_PATH_SEP;
 
+/* The flag that opens a directory for *traversal* rather than for
+ * reading it.
+ *
+ * The whole point of the walk below is to hold a descriptor on every
+ * component, and a plain O_RDONLY would demand the read bit on each of
+ * them - which would refuse a traverse-only (0711) intermediate
+ * directory that the old path-based code handled without complaint.
+ * POSIX.1-2008 spells the "execute permission is enough" open O_SEARCH;
+ * Linux spells the same idea O_PATH. Both yield a descriptor that
+ * openat()/mkdirat()/fstatat()/unlinkat() accept as their dirfd, which
+ * is all we ask of an intermediate. Where neither exists we fall back
+ * to O_RDONLY and accept the stricter requirement. */
+#if defined(O_SEARCH)
+#    define PMIX_O_TRAVERSE O_SEARCH
+#elif defined(O_PATH)
+#    define PMIX_O_TRAVERSE O_PATH
+#else
+#    define PMIX_O_TRAVERSE O_RDONLY
+#endif
+
+static int openat_and_close(int dirfd, const char *name, int flags, mode_t mode)
+{
+    int fd, save;
+
+    fd = openat(dirfd, name, flags | O_NOFOLLOW, mode);
+    save = errno;
+    close(dirfd);
+    errno = save;
+    return fd;
+}
+
+/**
+ * Open the trusted root a walk starts from.
+ *
+ * The prefix PMIx is handed - $TMPDIR, PMIX_NSDIR, a user-named output
+ * directory - is taken as given: somebody chose it, and this library is
+ * in no position to second-guess it. So it is resolved the ordinary way,
+ * symlinks and all. That is not a concession: on macOS /tmp, /var and
+ * /etc are root-owned symlinks into /private, so the default PMIx
+ * temporary directory reaches its contents through one, and a walk that
+ * declined a link at every component would decline the platform.
+ *
+ * PMIX_O_TRAVERSE asks only for the execute bit, so a traverse-only
+ * (e.g. 0711) root still works where a plain O_RDONLY would be declined.
+ */
+static int open_trusted_root(const char *root)
+{
+    if (NULL == root || '\0' == root[0]) {
+        errno = EINVAL;
+        return -1;
+    }
+    return open(root, PMIX_O_TRAVERSE | O_DIRECTORY);
+}
+
+/**
+ * Walk `tail` beneath the descriptor `fd`, one component at a time,
+ * refusing a symlink at each. Takes ownership of fd.
+ *
+ * `create` decides whether a missing component is an error or is made.
+ * The last component is opened with `last_flags`; the ones above it need
+ * only be traversable.
+ *
+ * This is the half that O_NOFOLLOW cannot do on its own. O_NOFOLLOW
+ * covers the last component of a name and nothing else - every component
+ * before it is resolved in the ordinary way - so a symlink at any of the
+ * directories PMIx is building through sends everything underneath it
+ * somewhere the caller did not name, and the check on the final
+ * component cannot notice, since it is applied on the far side of that.
+ * Each step here is an openat()/mkdirat() against a descriptor already
+ * held, so a link anywhere along the way is declined rather than walked,
+ * and the descriptor returned is bound to a directory that was reached
+ * without traversing one.
+ */
+static int walk_tail(int fd, const char *tail, bool create, mode_t mode,
+                     int last_flags, bool *last_existed)
+{
+    char **parts;
+    int next, i, len, save;
+
+    if (NULL != last_existed) {
+        *last_existed = false;
+    }
+    parts = PMIx_Argv_split(tail, path_sep[0]);
+    if (NULL == parts) {
+        /* nothing but separators: the caller means the root itself */
+        close(fd);
+        errno = EINVAL;
+        return -1;
+    }
+    len = PMIx_Argv_count(parts);
+
+    for (i = 0; i < len; ++i) {
+        if (create) {
+            if (0 != mkdirat(fd, parts[i], mode)) {
+                if (EEXIST != errno) {
+                    save = errno;
+                    close(fd);
+                    PMIx_Argv_free(parts);
+                    errno = save;
+                    return -1;
+                }
+                if (NULL != last_existed && (len - 1) == i) {
+                    *last_existed = true;
+                }
+            }
+        }
+        next = openat(fd, parts[i],
+                      (((len - 1) == i) ? last_flags : PMIX_O_TRAVERSE)
+                          | O_DIRECTORY | O_NOFOLLOW);
+        save = errno;
+        close(fd);
+        if (0 > next) {
+            PMIx_Argv_free(parts);
+            errno = save;
+            return -1;
+        }
+        fd = next;
+    }
+    PMIx_Argv_free(parts);
+    return fd;
+}
+
+int pmix_os_dirpath_create_under(const char *root, const char *tail,
+                                 const mode_t mode)
+{
+    int fd, rc;
+    bool last_existed = false;
+    struct stat buf;
+
+    if (NULL == root || NULL == tail || '\0' == tail[0]) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    fd = open_trusted_root(root);
+    if (0 > fd) {
+        pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
+                       root, strerror(errno));
+        return PMIX_ERR_SILENT;
+    }
+    /* the final component is opened O_RDONLY because its mode may have
+     * to be adjusted through this descriptor; fchmod() is not available
+     * on the traverse-only kind */
+    fd = walk_tail(fd, tail, true, mode, O_RDONLY, &last_existed);
+    if (0 > fd) {
+        pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
+                       tail, strerror(errno));
+        return PMIX_ERR_SILENT;
+    }
+
+    /* The caller is going to use the final directory, so it has to carry
+     * at least the mode asked for. Everything above it needs only to be
+     * traversable, and a traverse-only intermediate is legitimate.
+     *
+     * A failed chmod is tolerated: whether the caller can put files here
+     * is settled by the caller creating one, and the kernel re-runs that
+     * check at open() time regardless. Asking first and acting on the
+     * answer afterwards is the very race this is written to avoid. */
+    if (0 == fstat(fd, &buf) && mode != (mode & buf.st_mode)) {
+        if (0 != fchmod(fd, buf.st_mode | mode)) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "PATH %s/%s ALREADY EXISTS AND CHMOD FAILED: %s",
+                                root, tail, strerror(errno));
+        }
+    }
+    rc = last_existed ? PMIX_ERR_EXISTS : PMIX_SUCCESS;
+    close(fd);
+    return rc;
+}
+
+int pmix_os_dirpath_open_file_under(const char *root, const char *tail,
+                                    int flags, mode_t mode)
+{
+    char *dir;
+    const char *base;
+    int fd, save;
+
+    if (NULL == root || NULL == tail || '\0' == tail[0]) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    fd = open_trusted_root(root);
+    if (0 > fd) {
+        return -1;
+    }
+
+    base = strrchr(tail, path_sep[0]);
+    if (NULL == base) {
+        /* the file sits directly in the root */
+        base = tail;
+    } else {
+        dir = (char *) malloc((size_t) (base - tail) + 1);
+        if (NULL == dir) {
+            close(fd);
+            errno = ENOMEM;
+            return -1;
+        }
+        memcpy(dir, tail, (size_t) (base - tail));
+        dir[base - tail] = '\0';
+        ++base;
+        if ('\0' == base[0]) {
+            free(dir);
+            close(fd);
+            errno = EISDIR;
+            return -1;
+        }
+        fd = walk_tail(fd, dir, false, 0, PMIX_O_TRAVERSE, NULL);
+        save = errno;
+        free(dir);
+        if (0 > fd) {
+            errno = save;
+            return -1;
+        }
+    }
+
+    fd = openat_and_close(fd, base, flags, mode);
+    return fd;
+}
+
+/**
+ * Open a file, declining a symlink at the file itself.
+ *
+ * O_NOFOLLOW protects the LAST component of a path and nothing else -
+ * every component before it is resolved in the ordinary way, symlinks
+ * included. That split is deliberate here rather than a shortcoming:
+ *
+ *   - The *leaf* is a name PMIx composes out of its own naming scheme.
+ *     A symlink at that name is not something this library put there,
+ *     and following it would land the operation on some unrelated file,
+ *     so O_NOFOLLOW declines it. Pass O_EXCL alongside O_CREAT where the
+ *     name is created fresh, which declines anything already there
+ *     rather than only a link.
+ *
+ *   - The *directory* is handed to PMIx by the system or the admin -
+ *     $TMPDIR, PMIX_NSDIR, a user-named output directory - and symlinks
+ *     along it are ordinary and legitimate. On macOS /tmp, /var and /etc
+ *     are all root-owned symlinks into /private, so the default PMIx
+ *     temporary directory reaches its leaf through one. Refusing those
+ *     would refuse the platform.
+ *
+ * The directory half is handled by pmix_os_dirpath_open_file_under(),
+ * where the caller names the prefix it was given and only the part PMIx
+ * composes beneath it is walked. Use that one wherever PMIx composes a
+ * directory name of its own; this one where it composes only the leaf.
+ *
+ * @param path  The file to open.
+ * @param flags open(2) flags. O_NOFOLLOW is added.
+ * @param mode  open(2) mode, used only when creating.
+ * @retval >=0  A descriptor on the file. The caller closes it.
+ * @retval -1   errno says why.
+ */
+int pmix_os_dirpath_open_file(const char *path, int flags, mode_t mode)
+{
+    char *dir;
+    const char *base;
+    int dirfd, save;
+
+    if (NULL == path || '\0' == path[0]) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    base = strrchr(path, path_sep[0]);
+    if (NULL == base) {
+        /* a bare filename in the current directory */
+        return open(path, flags | O_NOFOLLOW, mode);
+    }
+    if (base == path) {
+        dir = strdup(path_sep);
+    } else {
+        dir = (char *) malloc((size_t) (base - path) + 1);
+        if (NULL != dir) {
+            memcpy(dir, path, (size_t) (base - path));
+            dir[base - path] = '\0';
+        }
+    }
+    if (NULL == dir) {
+        errno = ENOMEM;
+        return -1;
+    }
+    ++base;
+    if ('\0' == base[0]) {
+        /* the name ended in a separator, so it names no file */
+        free(dir);
+        errno = EISDIR;
+        return -1;
+    }
+
+    /* The directory is trusted, so it is resolved the ordinary way.
+     * PMIX_O_TRAVERSE asks only for the execute bit, so a traverse-only
+     * (e.g. 0711) directory still works - which a plain O_RDONLY would
+     * refuse. */
+    dirfd = open(dir, PMIX_O_TRAVERSE | O_DIRECTORY);
+    save = errno;
+    free(dir);
+    if (0 > dirfd) {
+        errno = save;
+        return -1;
+    }
+
+    return openat_and_close(dirfd, base, flags, mode);
+}
+
 /**
  * The named path already exists: make sure it really is a directory,
  * and give it (at least) the requested mode bits.

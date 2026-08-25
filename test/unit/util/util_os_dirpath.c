@@ -29,6 +29,8 @@
 #    include <sys/stat.h>
 #endif
 
+#include <fcntl.h>
+
 #include "pmix.h"
 #include "src/util/pmix_os_dirpath.h"
 
@@ -458,6 +460,123 @@ static void test_destroy_callback_veto_in_subdir(void)
 
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* pmix_os_dirpath_create_under / _open_file_under                     */
+/* ------------------------------------------------------------------ */
+
+/* The root is taken as given and must still work when it is reached
+ * through a symlink - which is not an exotic case: /tmp and /var are
+ * themselves symlinks on macOS, so the default PMIx temporary directory
+ * is one. A walk that declined a link at every component would decline
+ * the platform. */
+static void test_under_trusted_root_may_be_a_symlink(void)
+{
+    char real[512], link[512], leaf[600];
+    int rc;
+
+    snprintf(real, sizeof(real), "%s/realroot", tmpbase);
+    snprintf(link, sizeof(link), "%s/linkroot", tmpbase);
+    if (0 != mkdir(real, S_IRWXU)) {
+        report("under: fixture", 0);
+        return;
+    }
+    unlink(link);
+    if (0 != symlink(real, link)) {
+        report("under: fixture", 0);
+        return;
+    }
+
+    rc = pmix_os_dirpath_create_under(link, "ns/rank.0", S_IRWXU);
+    report("under: symlinked root is accepted", PMIX_SUCCESS == rc);
+    snprintf(leaf, sizeof(leaf), "%s/ns/rank.0", real);
+    report("under: tree built through it", dir_exists(leaf));
+
+    rmdir(leaf);
+    snprintf(leaf, sizeof(leaf), "%s/ns", real);
+    rmdir(leaf);
+    unlink(link);
+    rmdir(real);
+}
+
+/* ...but a component of the tail is a name PMIx composes itself, so a
+ * symlink there is not one this code put in place. Building through it
+ * would put the tree - and every output file in it - somewhere the
+ * caller never named. */
+static void test_under_declines_a_tail_symlink(void)
+{
+    char root[512], linkname[600], elsewhere[512], leaf[600];
+    int rc, fd;
+
+    snprintf(root, sizeof(root), "%s/troot", tmpbase);
+    snprintf(elsewhere, sizeof(elsewhere), "%s/elsewhere", tmpbase);
+    if (0 != mkdir(root, S_IRWXU) || 0 != mkdir(elsewhere, S_IRWXU)) {
+        report("under: fixture", 0);
+        return;
+    }
+    /* something else reached the namespace component first */
+    snprintf(linkname, sizeof(linkname), "%s/ns", root);
+    if (0 != symlink(elsewhere, linkname)) {
+        report("under: fixture", 0);
+        return;
+    }
+
+    rc = pmix_os_dirpath_create_under(root, "ns/rank.0", S_IRWXU);
+    report("under: tail symlink declined", PMIX_SUCCESS != rc);
+    snprintf(leaf, sizeof(leaf), "%s/rank.0", elsewhere);
+    report("under: nothing built past the link", !dir_exists(leaf));
+
+    /* and the file open makes the same decision on its own account */
+    fd = pmix_os_dirpath_open_file_under(root, "ns/rank.0/stdout",
+                                         O_CREAT | O_RDWR | O_TRUNC, 0644);
+    report("under: file not opened past the link", 0 > fd);
+    if (0 <= fd) {
+        close(fd);
+    }
+
+    rmdir(leaf);
+    unlink(linkname);
+    rmdir(elsewhere);
+    rmdir(root);
+}
+
+/* More than one composed level below the root - which is what an IOF
+ * pattern like "%h/%n/rank-%R" produces - has to be built a component at
+ * a time all the way down, not just at the last one. A symlink at the
+ * FIRST composed level is the case a single O_NOFOLLOW never sees: it
+ * applies to the end of the name, and by then the resolution has already
+ * gone elsewhere. */
+static void test_under_declines_a_midway_symlink(void)
+{
+    char root[512], linkname[600], elsewhere[512], leaf[600];
+    int rc;
+
+    snprintf(root, sizeof(root), "%s/mroot", tmpbase);
+    snprintf(elsewhere, sizeof(elsewhere), "%s/melsewhere", tmpbase);
+    if (0 != mkdir(root, S_IRWXU) || 0 != mkdir(elsewhere, S_IRWXU)) {
+        report("midway: fixture", 0);
+        return;
+    }
+    /* the first of three composed levels is already a link */
+    snprintf(linkname, sizeof(linkname), "%s/host", root);
+    if (0 != symlink(elsewhere, linkname)) {
+        report("midway: fixture", 0);
+        return;
+    }
+
+    rc = pmix_os_dirpath_create_under(root, "host/ns/rank.0", S_IRWXU);
+    report("midway: symlink at the first level declined", PMIX_SUCCESS != rc);
+    snprintf(leaf, sizeof(leaf), "%s/ns", elsewhere);
+    report("midway: nothing built past it", !dir_exists(leaf));
+
+    snprintf(leaf, sizeof(leaf), "%s/ns/rank.0", elsewhere);
+    rmdir(leaf);
+    snprintf(leaf, sizeof(leaf), "%s/ns", elsewhere);
+    rmdir(leaf);
+    unlink(linkname);
+    rmdir(elsewhere);
+    rmdir(root);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -472,6 +591,9 @@ int main(int argc, char **argv)
 
     test_create_null();
     test_create_empty();
+    test_under_trusted_root_may_be_a_symlink();
+    test_under_declines_a_tail_symlink();
+    test_under_declines_a_midway_symlink();
     test_create_new();
     test_create_existing();
     test_create_nested();

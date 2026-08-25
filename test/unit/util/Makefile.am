@@ -19,7 +19,7 @@ check_PROGRAMS = util_hash util_name_fns \
     util_environ util_alfg util_printf util_os_dirpath \
     util_net util_if util_parse_options util_os_path \
     util_fd util_few util_vmem util_getcwd util_getid util_keyval util_pty \
-    hash_perf
+    util_shmem hash_perf
 
 TESTS = util_hash util_name_fns \
     util_output util_error util_cmd_line \
@@ -28,7 +28,7 @@ TESTS = util_hash util_name_fns \
     util_environ util_alfg util_printf util_os_dirpath \
     util_net util_if util_parse_options util_os_path \
     util_fd util_few util_vmem util_getcwd util_getid util_keyval util_pty \
-    hash_perf
+    util_shmem hash_perf
 
 util_keyval_SOURCES = util_keyval.c
 util_keyval_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -163,6 +163,11 @@ util_few_LDADD = \
 
 # Address placement and reservation. Skips itself where there is no
 # /proc/self/maps to scan; see the header comment in util_vmem.c.
+util_shmem_SOURCES = util_shmem.c
+util_shmem_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_shmem_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 util_vmem_SOURCES = util_vmem.c
 util_vmem_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_vmem_LDADD = \
@@ -186,4 +191,4 @@ clean-local:
 	    util_environ util_alfg util_printf util_os_dirpath \
 	    util_net util_if util_parse_options util_os_path \
 	    util_fd util_few util_vmem util_getcwd util_getid util_keyval util_pty \
-    hash_perf
+	    util_shmem hash_perf

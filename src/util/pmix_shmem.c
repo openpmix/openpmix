@@ -15,6 +15,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/gds/base/base.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_string_copy.h"
 #include "src/util/pmix_vmem.h"
@@ -82,7 +83,10 @@ segment_attach(
     pmix_status_t rc = PMIX_SUCCESS;
     void *mmap_addr = MAP_FAILED;
 
-    const int fd = open(shmem->backing_path, O_RDWR);
+    /* opened relative to its directory rather than by name - see
+     * pmix_os_dirpath_open_file() - so a symlink at the backing path
+     * does not send the attach at some unrelated file */
+    const int fd = pmix_os_dirpath_open_file(shmem->backing_path, O_RDWR, 0);
     if (fd == -1) {
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         if (0 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output)) {
@@ -210,12 +214,38 @@ pmix_shmem_segment_create(
      * past the old end reads as zero. gds/shmem3's allocator relies on the
      * whole region being zero so it does not have to memset what it hands out;
      * see tma_carve() there. */
-    const int fd = open(backing_path, O_CREAT | O_TRUNC | O_RDWR, 0600);
+    /* O_EXCL, and opened relative to its directory rather than by name.
+     *
+     * This process composes the whole of backing_path out of its own
+     * naming scheme, so anything already sitting there is either a file
+     * left over from an earlier run - the name carries a pid, and pids
+     * get reused - or something this code did not put there. O_EXCL
+     * declines both, and with O_CREAT it declines a symlink in
+     * particular, which a bare O_CREAT | O_TRUNC would instead follow,
+     * truncating and overwriting some unrelated file.
+     *
+     * Two passes at most, matching write_rndz_file(): a leftover file is
+     * reclaimed once and the create retried. unlink() removes the name
+     * it is given and never follows it onward. */
+    int fd = -1;
+    for (int pass = 0; pass < 2; pass++) {
+        fd = pmix_os_dirpath_open_file(backing_path,
+                                       O_CREAT | O_EXCL | O_RDWR, 0600);
+        if (0 <= fd || EEXIST != errno) {
+            break;
+        }
+        if (0 != unlink(backing_path) && ENOENT != errno) {
+            break;
+        }
+    }
     if (fd == -1) {
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         goto out;
     }
-    // Size backing file.
+    /* A freshly created file is empty, so this only extends it - and an
+     * extension reads as zero, which is the guarantee gds/shmem3's
+     * allocator relies on (see tma_carve() there) so that it need not
+     * memset what it hands out. */
     if (0 != ftruncate(fd, real_size)) {
         rc = PMIX_ERROR;
         goto out;
@@ -345,10 +375,23 @@ pmix_shmem_segment_chmod(
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
-    if (chmod(shmem->backing_path, mode) != 0) {
+    /* Through a descriptor rather than by name. chmod() follows a
+     * symlink at the final component, so where its neighbour lchown()
+     * above deliberately acts on the link itself, this acted on whatever
+     * the link named, and the two disagreed about which object they were
+     * changing. A descriptor is bound to its inode at open() time, so
+     * the object inspected is the object modified. */
+    const int fd = pmix_os_dirpath_open_file(shmem->backing_path, O_RDONLY, 0);
+    if (0 > fd) {
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    if (fchmod(fd, mode) != 0) {
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
     }
+    close(fd);
     return rc;
 }
 
