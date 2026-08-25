@@ -30,6 +30,7 @@
 
 #include "pmix_common.h"
 
+#include <limits.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -216,14 +217,16 @@ pmix_status_t pmix_unsetenv(const char *name, char ***env)
        the array. */
 
     found = false;
-    for (i = 0; (*env)[i] != NULL; ++i) {
-        if (0 != strncmp((*env)[i], compare, len))
+    for (i = 0; NULL != (*env)[i]; ++i) {
+        if (0 != strncmp((*env)[i], compare, len)) {
             continue;
+        }
         if (environ != *env) {
             free((*env)[i]);
         }
-        for (; (*env)[i] != NULL; ++i)
+        for (; NULL != (*env)[i]; ++i) {
             (*env)[i] = (*env)[i + 1];
+        }
         found = true;
         break;
     }
@@ -238,10 +241,16 @@ const char *pmix_tmp_directory(void)
 {
     const char *str;
 
-    if (NULL == (str = getenv("TMPDIR")))
-        if (NULL == (str = getenv("TEMP")))
-            if (NULL == (str = getenv("TMP")))
-                str = PMIX_DEFAULT_TMPDIR;
+    str = getenv("TMPDIR");
+    if (NULL == str) {
+        str = getenv("TEMP");
+    }
+    if (NULL == str) {
+        str = getenv("TMP");
+    }
+    if (NULL == str) {
+        str = PMIX_DEFAULT_TMPDIR;
+    }
     return str;
 }
 
