@@ -90,19 +90,13 @@ char *pmix_os_path(int relative, ...)
     if (NULL == path) {
         return (NULL);
     }
-    path[0] = 0;
+    path[0] = '\0';
 
     if (relative) {
         strcpy(path, ".");
     }
 
     va_start(ap, relative);
-    if (NULL != (element = va_arg(ap, char *))) {
-        if (path_sep[0] != element[0]) {
-            strcat(path, path_sep);
-        }
-        strcat(path, element);
-    }
     while (NULL != (element = va_arg(ap, char *))) {
         if (path_sep[0] != element[0]) {
             strcat(path, path_sep);
