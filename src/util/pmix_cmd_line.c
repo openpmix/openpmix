@@ -378,8 +378,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     ++optind;
                     break;
                 }
-                // if this is a "-env" option, then there can be three entries
-                // that describe what to do
+                // these "-env" options are given as two entries: the
+                // envar and the value to prepend or append to it
                 if (0 == strcmp(myoptions[option_index].name, PMIX_CLI_PREPEND_ENVAR) ||
                     0 == strcmp(myoptions[option_index].name, PMIX_CLI_APPEND_ENVAR)) {
                     /* Like the MCA options above, these take TWO tokens and
@@ -713,7 +713,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         break;
                     }
                     if (0 == strcmp(&argv[optind-1][2], myoptions[n].name)) {
-                        /* the option is recognized - probably misssing
+                        /* the option is recognized - probably missing
                          * an argument */
                         str = pmix_show_help_string("help-cli.txt", "missing-argument", true,
                                                     pmix_tool_basename, argv[optind-1],
