@@ -345,6 +345,45 @@ caller is close — the only one in the tree uses `PMIX_PATH_MAX` — but
 do not widen the documented range on the strength of the bozo check
 alone.
 
+### `pmix_getid` — installed API with no caller
+
+`pmix_util_getid()` is called from nowhere in PMIx and nowhere in PRRTE,
+but `pmix_getid.h` is in the installed `headers` list and the symbol is
+`PMIX_EXPORT`ed, so it is API — the same situation as the three unused
+`pmix_fd` entry points above, and it takes the same treatment: judge it
+as API, do not retire it on your own authority.
+
+**Every route through it is conditionally compiled, and this platform
+selects exactly one.** There are four: `getsockopt(SO_PEERCRED)` filling
+`struct sockpeercred` (OpenBSD) or `struct ucred` with either `uid`/`gid`
+or `cr_uid`/`cr_gid` members, and `getpeereid()`. Which one you can read
+is not which one your users compile. Pick the shape in a single `#if`
+chain at the top of the file and let the body test one macro — when the
+declarations sat behind a bare `defined(SO_PEERCRED)` and the code
+reading them behind the full condition, a platform that defines
+`SO_PEERCRED` but whose `AC_CHECK_MEMBERS` probe did not fire got no
+fallback at all: it failed to build, on an incomplete `struct ucred` and
+on two variables nothing used. Compile-check every arm before believing
+it — forcing the guards by hand for one `make pmix_getid.lo` is enough,
+and a stand-in `struct ucred` in the same prologue covers the shapes this
+platform has no header for.
+
+Two things a caller must know, neither of which this function can fix:
+
+- **Only a connected AF_UNIX socket gives a meaningful answer.** A pipe
+  or a closed descriptor is `ENOTSOCK` and comes back as
+  `PMIX_ERR_INVALID_CRED`, which is what you want. A *TCP* socket is
+  worse than that: Linux answers `SO_PEERCRED` on one with success and an
+  overflow uid, so the function reports `PMIX_SUCCESS` over credentials
+  that identify nobody. Do not use this to authenticate a peer you did
+  not reach over a Unix socket.
+- **The out-parameters are written only on `PMIX_SUCCESS`.** Every error
+  return leaves them exactly as the caller had them.
+
+[`test/unit/util/util_getid.c`](../../test/unit/util/util_getid.c) covers
+it over a `socketpair()`, and skips (77) on a platform that answers
+`PMIX_ERR_NOT_SUPPORTED`.
+
 ### `pmix_error` — two lookups over a table you do not write
 
 `PMIx_Error_string()` and `PMIx_Error_code()` are a linear scan each over
@@ -596,7 +635,7 @@ Current coverage includes: `argv`, `alfg`, `basename`, `cmd_line`,
 regression), `if` (the tuple parser), `name_fns` (incl. special-rank
 compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,
-`string_copy`, `timings`, `getcwd`.
+`string_copy`, `timings`, `getcwd`, `getid`.
 
 ## Fixed defects (July 2026 review)
 

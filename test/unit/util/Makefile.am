@@ -18,7 +18,7 @@ check_PROGRAMS = util_hash util_name_fns \
     util_basename util_string_copy util_argv util_path \
     util_environ util_alfg util_printf util_os_dirpath \
     util_net util_if util_parse_options util_os_path \
-    util_fd util_few util_vmem util_getcwd hash_perf
+    util_fd util_few util_vmem util_getcwd util_getid hash_perf
 
 TESTS = util_hash util_name_fns \
     util_output util_error util_cmd_line \
@@ -26,7 +26,7 @@ TESTS = util_hash util_name_fns \
     util_basename util_string_copy util_argv util_path \
     util_environ util_alfg util_printf util_os_dirpath \
     util_net util_if util_parse_options util_os_path \
-    util_fd util_few util_vmem util_getcwd hash_perf
+    util_fd util_few util_vmem util_getcwd util_getid hash_perf
 
 util_hash_SOURCES = util_hash.c
 util_hash_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -161,6 +161,11 @@ util_getcwd_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_getcwd_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+util_getid_SOURCES = util_getid.c
+util_getid_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_getid_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 clean-local:
 	rm -f util_hash util_name_fns \
 	    util_output util_error util_cmd_line \
@@ -168,4 +173,4 @@ clean-local:
 	    util_basename util_string_copy util_argv util_path \
 	    util_environ util_alfg util_printf util_os_dirpath \
 	    util_net util_if util_parse_options util_os_path \
-	    util_fd util_few util_vmem util_getcwd hash_perf
+	    util_fd util_few util_vmem util_getcwd util_getid hash_perf
