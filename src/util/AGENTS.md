@@ -659,6 +659,81 @@ good — and note that `-UHAVE_STRUCT_SOCKADDR_IN` on the command line does
 **not** do it, because `pmix_config.h` defines the macro again from
 inside the file. Edit the `#ifdef` to `#if 0` for the one compile.
 
+### `pmix_os_dirpath` — the session directories, and who may swap them
+
+Creates and recursively destroys directory trees. Its callers are the
+`ptl` rendezvous/session directories and the `pmix_iof` per-rank output
+directories, which means the paths that reach it have **fully predictable
+names under a world-writable root** (`/tmp` by default). That is the
+threat model the whole file is written against, and it is why the code
+looks more roundabout than "stat then chmod" or "readdir then unlink".
+
+- **Act through a descriptor, never through a re-resolved path.**
+  `dirpath_ensure_mode()` opens the final component
+  (`O_DIRECTORY | O_NOFOLLOW`) and does its `fstat`/`fchmod` on that
+  descriptor, so the object inspected is the object modified.
+  `dirpath_destroy_at()` walks with `fstatat`/`openat`/`unlinkat`
+  relative to a descriptor it already holds, so an entry cannot be
+  swapped between being classified and being removed. `O_NOFOLLOW` and
+  `AT_SYMLINK_NOFOLLOW` keep a symlink an entry to be unlinked rather
+  than a path to be followed. If you add an operation here, add it in
+  that style.
+- **Permission is not tested, deliberately.** Asking whether a directory
+  is writable and then acting on the answer is itself a check/use race
+  that no spelling of `access()`/`faccessat()` can close. Whether the
+  caller can put a file there is settled by the caller creating one.
+  `pmix_os_dirpath_access()` is the fossil of that decision: it is a
+  no-op that always answers `PMIX_SUCCESS`, kept because it is installed
+  API that PRRTE may still link against. Do not give it a body.
+- **Only the *final* component is protected against a planted symlink.**
+  `mkdir(2)` does not follow a symlink at the last component but does
+  follow one at every component before it, and the tree-building loop
+  accepts `EEXIST` on an intermediate component without asking what it
+  is - by design, since an intermediate need only be traversable. So a
+  symlink pre-planted at an intermediate component of a predictable
+  session path still redirects the leaf that gets created. Closing that
+  needs an `openat` walk from the root with `O_NOFOLLOW` at every step,
+  and `mkdirat` for each component; it is a deliberate design change, not
+  a tidy-up. **Do not "fix" it halfway** - a partial walk that still ends
+  in a path-based `mkdir` buys nothing.
+
+Three contracts the callers depend on:
+
+- **`PMIX_ERR_EXISTS` is a success.** `pmix_os_dirpath_create()` answers
+  it when the final directory was already there carrying at least the
+  requested mode. Every in-tree caller tests for it alongside
+  `PMIX_SUCCESS`; what the distinction buys them is knowing whether
+  *they* are the ones who must remove it afterwards. A caller that tests
+  only `PMIX_SUCCESS != rc` treats an ordinary rerun as a failure.
+  `PMIX_ERR_SILENT` means the user has already been shown a message and
+  must not be shown another.
+- **The `tmp` buffer in `pmix_os_dirpath_create()` is sized exactly, not
+  generously.** It is `strlen(path) + 1`, and the `strcat` chain fits
+  only because every separator it writes was a separator in the input:
+  `PMIx_Argv_split()` drops empty fields, so repeated separators
+  collapse and no component is empty. Those same two facts are what make
+  the `tmp[strlen(tmp) - 1]` read safe from the second iteration on. An
+  edit that stops splitting on `path_sep[0]`, or that starts keeping
+  empty fields, overruns the buffer and reads before it.
+- **An empty path is not a path.** `mkdir("")` answers `ENOENT`, which
+  is the same errno that means "the parents are missing, go build the
+  tree" - and an empty path splits to no components at all, so the
+  build loop never runs and the function used to report that it had
+  created a tree while doing nothing. The screen for it sits next to the
+  `NULL` screen; a `NULL` from `PMIx_Argv_split()` now therefore means
+  out of memory, and is reported as such rather than walked past.
+
+**This file reaches into two other subsystems, and that is a wart, not a
+pattern to copy.** `pmix_os_dirpath_destroy()` includes
+`src/mca/ptl/base/base.h` and `src/server/pmix_server_ops.h` so it can
+decline to remove the system tmpdir unless PMIx created it - a policy
+decision living in a leaf utility. It used to go further and `free()`
+`pmix_ptl_base.system_tmpdir` on its way out, which aliased its own
+`path` argument (the one caller that reaches that arm passes exactly that
+string) and survived only because nothing read `path` again afterwards.
+`pmix_ptl_base_close()` frees it on the line after the call. Keep the
+release with the owner.
+
 ### `pmix_fd` — descriptor helpers, three of them with no caller
 
 `pmix_fd_read`/`pmix_fd_write`/`pmix_fd_set_cloexec`/`pmix_fd_is_*` are

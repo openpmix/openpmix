@@ -131,6 +131,14 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
     if (NULL == path) { /* protect ourselves from errors */
         return (PMIX_ERR_BAD_PARAM);
     }
+    /* an empty path names nothing, and mkdir("") answers ENOENT - which
+     * is the "build the tree" signal below, where an empty path splits
+     * to no components at all and the whole loop is skipped. Left to
+     * itself this function therefore reported that it had created a
+     * directory tree while doing nothing whatsoever */
+    if ('\0' == path[0]) {
+        return (PMIX_ERR_BAD_PARAM);
+    }
 
     /* try to make directory */
     if (0 == mkdir(path, mode)) {
@@ -164,9 +172,24 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
     /* Split the requested path up into its individual parts */
 
     parts = PMIx_Argv_split(path, path_sep[0]);
+    if (NULL == parts) {
+        /* the path is neither empty nor made only of separators - the
+         * first is screened above and the second would have answered
+         * EEXIST at the mkdir - so the split is what ran out of memory.
+         * Saying so matters: a zero-component walk skips the loop
+         * entirely and would otherwise report success */
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
 
     /* Ensure to allocate enough space for tmp: the strlen of the
-       incoming path + 1 (for \0) */
+       incoming path + 1 (for \0).
+       That bound is exact rather than generous: the assembled name has
+       one separator between consecutive components, and every one of
+       those was a separator in the input, so it can only ever be
+       shorter than the input - repeated separators collapse, since
+       PMIx_Argv_split() drops the empty fields between them. That also
+       means no component is empty, which is what lets the tmp[strlen-1]
+       read below be safe from the second iteration on. */
 
     tmp = (char *) calloc((strlen(path) + 1), sizeof(char));
     if (NULL == tmp) {
@@ -185,7 +208,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
             /* If in POSIX-land, ensure that we never end a directory
                name with path_sep */
 
-            if ('/' == path[0]) {
+            if (path_sep[0] == path[0]) {
                 strcat(tmp, path_sep);
             }
             strcat(tmp, parts[i]);
@@ -407,18 +430,20 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
     exit_status = dirpath_destroy_at(fd, path, recursive, cbfunc);
 
     /*
-     * If the directory is empty, then remove it - but
-     * leave the system tmpdir alone unless we created it!
+     * If the directory is empty, then remove it - but leave the system
+     * tmpdir alone unless we created it!
+     *
+     * Releasing pmix_ptl_base.system_tmpdir here is not this function's
+     * to do, and it aliased its own argument: the only caller that
+     * reaches the second arm passes that very string, so the free left
+     * "path" dangling for the rest of the function and survived only
+     * because nothing read it again. pmix_ptl_base_close() frees it on
+     * the line after the call regardless.
      */
     if (NULL == pmix_server_globals.system_tmpdir ||
-        0 != strcmp(path, pmix_server_globals.system_tmpdir)) {
+        0 != strcmp(path, pmix_server_globals.system_tmpdir) ||
+        pmix_ptl_base.created_system_tmpdir) {
         rmdir(path);
-    } else if (NULL != pmix_server_globals.system_tmpdir &&
-               0 == strcmp(path, pmix_server_globals.system_tmpdir) &&
-               pmix_ptl_base.created_system_tmpdir) {
-        rmdir(path);
-        free(pmix_ptl_base.system_tmpdir);
-        pmix_ptl_base.system_tmpdir = NULL;
     }
     return exit_status;
 }
@@ -458,7 +483,8 @@ bool pmix_os_dirpath_is_empty(const char *path)
 }
 
 /**
- * Stale function left for PRRTE backward compatility
+ * Stale function left for PRRTE backward compatibility - see the header
+ * for why it must stay a no-op.
  */
 int pmix_os_dirpath_access(const char *path, const mode_t mode)
 {
