@@ -133,12 +133,37 @@ PMIX_EXPORT pmix_status_t pmix_unsetenv(const char *name, char ***env)
     __pmix_attribute_nonnull__(1);
 
 /* A consistent way to retrieve the home and tmp directory on all supported
- * platforms.
+ * platforms. Both return storage owned by the environment or the passwd
+ * database - do not free it, and do not hold it across another call.
+ *
+ * pmix_home_directory() answers $HOME when asked about the calling user,
+ * and otherwise consults the passwd database. "The calling user" may be
+ * written as geteuid(), as (uid_t)-1, or as UINT_MAX. Note that $HOME is
+ * consulted ONLY for the calling user: any other uid goes straight to
+ * getpwuid(), which returns NULL when the uid has no passwd entry (a
+ * container whose /etc/passwd lacks it, or a sentinel handed to it by
+ * mistake), and so does this. getpwuid() is not reentrant.
  */
 PMIX_EXPORT const char *pmix_home_directory(uid_t uid);
 PMIX_EXPORT const char *pmix_tmp_directory(void);
 
-/* Provide a utility for harvesting envars */
+/* Copy environment variables matching "incvars" out of the process
+ * environment and onto "ilist" as PMIX_ENVAR kvals, then drop from that
+ * list any whose name matches "excvars".
+ *
+ * Each entry of either list is the NAME of a variable, matched exactly,
+ * unless it ends in '*' - which makes everything before the '*' a prefix
+ * to match on. That distinction matters: "PATH" takes only PATH, while
+ * "PATH*" also takes PATHFINDER. A list meant as a family of variables
+ * needs the '*'.
+ *
+ * Either list may be NULL: no include list means nothing is harvested,
+ * and no exclude list means nothing is dropped. "ilist" must be a
+ * constructed list, and may already hold entries - an incoming variable
+ * that names one of them overwrites its value rather than adding a
+ * second entry, and entries that are not PMIX_ENVAR kvals are left
+ * alone. The kvals added are owned by the list.
+ */
 PMIX_EXPORT pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars,
                                                    pmix_list_t *ilist);
 

@@ -104,7 +104,19 @@ pmix_status_t pmix_environ_merge_inplace(char ***orig, char **adders)
 {
     pmix_status_t ret;
 
-    assert(*orig != environ);
+    /* The header states this as a hard requirement, and for a real
+     * reason: we extend the array with PMIx_Argv_append_nosize(), which
+     * reallocs, and environ may not be realloc'd. This used to be an
+     * assert() - which the shipped build compiles out with -DNDEBUG, so
+     * the one configuration that has to be protected was the one with no
+     * protection at all. Refuse the call instead. */
+    if (environ == *orig) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (NULL == adders) {
+        // nothing to merge in, as pmix_environ_merge() also allows
+        return PMIX_SUCCESS;
+    }
 
     for (size_t adders_idx = 0 ; adders[adders_idx] != NULL ; adders_idx++) {
         const char *adder_string = adders[adders_idx];
@@ -237,7 +249,14 @@ const char *pmix_home_directory(uid_t uid)
 {
     const char *home = NULL;
 
-    if (UINT_MAX == uid || uid == geteuid()) {
+    /* Accept either spelling of "whoever I am": (uid_t)-1 is how a caller
+     * would naturally write it, UINT_MAX is what this has always tested,
+     * and the two coincide only while uid_t is exactly as wide as an int.
+     * Note that anything else falls through to getpwuid(), which has no
+     * entry for a sentinel - so a caller that means its own uid and wants
+     * the $HOME-less fallback to work must say so with one of these or
+     * with its real uid. */
+    if ((uid_t) -1 == uid || UINT_MAX == uid || uid == geteuid()) {
         home = getenv("HOME");
     }
     if (NULL == home) {
@@ -261,7 +280,15 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars, pmix_list
     char *cs_env, *string_key;
     bool duplicate;
 
-    /* harvest envars to pass along */
+    /* harvest envars to pass along. A NULL include list means there is
+     * nothing to harvest - the exclusion list below is screened the same
+     * way, and callers (the pgpu components) rely on it. */
+    if (NULL == ilist) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (NULL == incvars) {
+        return PMIX_SUCCESS;
+    }
     for (j = 0; NULL != incvars[j]; j++) {
         bool inc_wild = false;
         len = strlen(incvars[j]);
@@ -289,15 +316,27 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars, pmix_list
                 /* see if we already have this envar on the list */
                 duplicate = false;
                 PMIX_LIST_FOREACH (kv, ilist, pmix_kval_t) {
-                    if (PMIX_ENVAR != kv->value->type) {
+                    /* the list is caller-supplied: it may hold kvals of
+                     * other types, and an envar carries no value at all
+                     * unless one was loaded into it */
+                    if (NULL == kv->value || PMIX_ENVAR != kv->value->type ||
+                        NULL == kv->value->data.envar.envar) {
                         continue;
                     }
                     if (0 == strcmp(kv->value->data.envar.envar, cs_env)) {
                         /* if the value is the same, then ignore it */
-                        if (0 != strcmp(kv->value->data.envar.value, string_key)) {
-                            /* otherwise, overwrite the value */
+                        if (NULL == kv->value->data.envar.value ||
+                            0 != strcmp(kv->value->data.envar.value, string_key)) {
+                            /* otherwise, overwrite the value - taking the
+                             * copy first, so a failure leaves the entry
+                             * with the value it had rather than none */
+                            char *newval = strdup(string_key);
+                            if (NULL == newval) {
+                                free(cs_env);
+                                return PMIX_ERR_NOMEM;
+                            }
                             free(kv->value->data.envar.value);
-                            kv->value->data.envar.value = strdup(string_key);
+                            kv->value->data.envar.value = newval;
                         }
                         duplicate = true;
                         break;
@@ -337,8 +376,10 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars, pmix_list
                 exc_wild = true;
             }
             PMIX_LIST_FOREACH_SAFE (kv, next, ilist, pmix_kval_t) {
-                /* the list is caller-supplied; only consider envar kvals */
-                if (PMIX_ENVAR != kv->value->type) {
+                /* the list is caller-supplied; only consider envar kvals
+                 * that actually carry a name */
+                if (NULL == kv->value || PMIX_ENVAR != kv->value->type ||
+                    NULL == kv->value->data.envar.envar) {
                     continue;
                 }
                 /* .envar is the bare name, so an exact match ends at the
