@@ -29,12 +29,15 @@ BEGIN_C_DECLS
  * combination of $PWD and getcwd() to find the current working
  * directory.
  *
- * Use $PWD instead of getcwd() a) if $PWD exists and b) is a valid
- * synonym for the results from getcwd(). If both of these conditions
- * are not met, just fall back and use the results of getcwd().
+ * The result of getcwd() is authoritative. $PWD is consulted, but is
+ * used only when it is textually identical to getcwd(); any difference
+ * (a stale $PWD, or one that preserves the symlink components getcwd()
+ * resolves) falls back to the getcwd() value.
  *
  * @param buf Caller-allocated buffer to put the result
- * @param size Length of the buf array
+ * @param size Length of the buf array, including room for the
+ * terminating NUL. A buffer exactly as long as the path is therefore
+ * too short, and is reported as a truncation.
  *
  * @retval PMIX_ERR_OUT_OF_RESOURCE If an internal malloc() fails, or if
  * the supplied buf buffer was not long enough to hold the full result

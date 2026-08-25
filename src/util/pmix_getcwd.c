@@ -13,7 +13,6 @@
 #include "pmix_common.h"
 
 #include <limits.h>
-#include <stdio.h>
 #include <stdlib.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
