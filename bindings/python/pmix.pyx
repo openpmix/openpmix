@@ -3455,7 +3455,9 @@ cdef class PMIxClient:
         return pystr.decode('ascii')
 
     # The inverse of error_string: map the name of a PMIx status back to
-    # its numeric value. Returns PMIX_ERR_NOT_FOUND for an unknown name
+    # its numeric value. Returns INT32_MIN for an unknown name - every
+    # real status is itself negative, so only that sentinel means "not
+    # recognized" - and PMIX_ERR_BAD_PARAM if handed None
     #
     # @errname [INPUT]
     #          - the symbolic name of a status, e.g. "PMIX_ERR_TIMEOUT"
