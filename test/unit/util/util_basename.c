@@ -161,6 +161,80 @@ static void test_dirname_deep_path(void)
     free(r);
 }
 
+static void test_dirname_root_cases(void)
+{
+    /* A path that is nothing but separators names the root, not the
+     * current directory. The libgen-backed branch of pmix_dirname()
+     * gets this right; the hand-rolled fallback used on a platform
+     * without dirname(3) answered "." until it was corrected, and
+     * nothing here would have noticed. */
+    const char *cases[] = {"/", "//", "///", NULL};
+    char *r;
+    int n;
+
+    for (n = 0; NULL != cases[n]; n++) {
+        r = pmix_dirname(cases[n]);
+        report("dirname of an all-separator path is the root",
+               NULL != r && 0 == strcmp(r, "/"));
+        free(r);
+    }
+}
+
+static void test_dirname_corpus(void)
+{
+    /* Pin the full answer table. pmix_dirname() has two independent
+     * implementations selected at configure time, and only one of them
+     * is ever compiled on a given host, so a divergence between them is
+     * invisible to a build that does not check the answers themselves. */
+    static const struct {
+        const char *in;
+        const char *out;
+    } corpus[] = {
+        {"", "."},
+        {".", "."},
+        {"..", "."},
+        {"foo.txt", "."},
+        {"foo/", "."},
+        {"foo//", "."},
+        {"a/", "."},
+        {"./x", "."},
+        {"../x", ".."},
+        {"/", "/"},
+        {"//", "/"},
+        {"///", "/"},
+        {"/foo", "/"},
+        {"//foo", "/"},
+        {"///foo", "/"},
+        {"/foo/", "/"},
+        {"/foo//", "/"},
+        {"/a", "/"},
+        {"/yow.c", "/"},
+        {"/.", "/"},
+        {"/..", "/"},
+        {"/foo/bar", "/foo"},
+        {"/foo/bar/", "/foo"},
+        {"/foo//bar", "/foo"},
+        {"/foo//bar//", "/foo"},
+        {"foo/bar", "foo"},
+        {"foo/bar/", "foo"},
+        {"a/b/c/d", "a/b/c"},
+        {"x//y//z", "x//y"},
+        {"/usr/local/lib/pmix", "/usr/local/lib"},
+        {NULL, NULL}
+    };
+    char msg[256];
+    char *r;
+    int n;
+
+    for (n = 0; NULL != corpus[n].in; n++) {
+        r = pmix_dirname(corpus[n].in);
+        snprintf(msg, sizeof(msg), "dirname(\"%s\") == \"%s\"",
+                 corpus[n].in, corpus[n].out);
+        report(msg, NULL != r && 0 == strcmp(r, corpus[n].out));
+        free(r);
+    }
+}
+
 /* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
@@ -187,6 +261,8 @@ int main(int argc, char **argv)
     test_dirname_single_component();
     test_dirname_local_file();
     test_dirname_deep_path();
+    test_dirname_root_cases();
+    test_dirname_corpus();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

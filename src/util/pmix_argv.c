@@ -59,6 +59,13 @@ pmix_status_t pmix_argv_append_unique_idx(int *idx, char ***argv, const char *ar
     int i;
     pmix_status_t rc;
 
+    /* screen the inputs the way the public twin
+     * (PMIx_Argv_append_unique_nosize) does - the compare loop below
+     * would otherwise hand a NULL arg straight to strcmp */
+    if (NULL == idx || NULL == argv || NULL == arg) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* if the provided array is NULL, then the arg cannot be present,
      * so just go ahead and append
      */
@@ -172,7 +179,7 @@ char **pmix_argv_copy_strip(char **argv)
     char **dupv = NULL;
     int n;
     char *start;
-    bool mod;
+    char *stripped;
     size_t len;
 
     if (NULL == argv) {
@@ -188,26 +195,34 @@ char **pmix_argv_copy_strip(char **argv)
     dupv[0] = NULL;
 
     for (n=0; NULL != argv[n]; n++) {
-        mod = false;
+        /* Narrow the element to the span that survives the strip and
+         * copy that span out. We must not punch a temporary NUL into
+         * the caller's string to mark the end: this function copies,
+         * so the source array is not ours to write to, and an element
+         * that points at read-only storage (a string literal) would
+         * fault. */
         start = argv[n];
-        if ('\"' == argv[n][0]) {
+        len = strlen(start);
+        if ('\"' == start[0]) {
             ++start;
+            --len;
         }
-        len = strlen(argv[n]);
-        if (0 < len && '\"' == argv[n][len-1]) {
-            argv[n][len-1] = '\0';
-            mod = true;
+        if (0 < len && '\"' == start[len-1]) {
+            --len;
         }
-        if (PMIX_SUCCESS != PMIx_Argv_append_nosize(&dupv, start)) {
+        stripped = (char *) malloc(len + 1);
+        if (NULL == stripped) {
             PMIx_Argv_free(dupv);
-            if (mod) {
-                argv[n][len-1] = '\"';
-            }
             return NULL;
         }
-        if (mod) {
-            argv[n][len-1] = '\"';
+        memcpy(stripped, start, len);
+        stripped[len] = '\0';
+        if (PMIX_SUCCESS != PMIx_Argv_append_nosize(&dupv, stripped)) {
+            free(stripped);
+            PMIx_Argv_free(dupv);
+            return NULL;
         }
+        free(stripped);
     }
 
     /* All done */
@@ -274,6 +289,8 @@ pmix_status_t pmix_argv_insert(char ***target, int start, char **source)
     int i, source_count, target_count;
     int suffix_count;
     char **tmp;
+    char **copies;
+    pmix_status_t rc;
 
     /* Check for the bozo cases */
 
@@ -283,13 +300,20 @@ pmix_status_t pmix_argv_insert(char ***target, int start, char **source)
         return PMIX_SUCCESS;
     }
 
-    /* Easy case: appending to the end */
-
     target_count = PMIx_Argv_count(*target);
     source_count = PMIx_Argv_count(source);
+    if (0 == source_count) {
+        return PMIX_SUCCESS;
+    }
+
+    /* Easy case: appending to the end */
+
     if (start > target_count) {
         for (i = 0; i < source_count; ++i) {
-            pmix_argv_append(&target_count, target, source[i]);
+            rc = pmix_argv_append(&target_count, target, source[i]);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
         }
     }
 
@@ -297,11 +321,29 @@ pmix_status_t pmix_argv_insert(char ***target, int start, char **source)
 
     else {
 
+        /* Copy the source strings before touching the target. A copy
+         * that failed after the target had been grown and its suffix
+         * shifted would leave a NULL in the middle of the array, which
+         * terminates it early - every element beyond the hole is both
+         * lost to the caller and leaked - and the old code reported
+         * that as success. */
+
+        copies = (char **) calloc(source_count, sizeof(char *));
+        if (NULL == copies) {
+            return PMIX_ERR_NOMEM;
+        }
+        for (i = 0; i < source_count; ++i) {
+            copies[i] = strdup(source[i]);
+            if (NULL == copies[i]) {
+                goto nomem;
+            }
+        }
+
         /* Allocate new space */
 
         tmp = (char **) realloc(*target, sizeof(char *) * (target_count + source_count + 1));
         if (NULL == tmp) {
-            return PMIX_ERR_NOMEM;
+            goto nomem;
         }
         *target = tmp;
 
@@ -313,16 +355,24 @@ pmix_status_t pmix_argv_insert(char ***target, int start, char **source)
         }
         (*target)[start + suffix_count + source_count] = NULL;
 
-        /* Strdup in the source argv */
+        /* Hand the copies over to the target */
 
-        for (i = start; i < start + source_count; ++i) {
-            (*target)[i] = strdup(source[i - start]);
+        for (i = 0; i < source_count; ++i) {
+            (*target)[start + i] = copies[i];
         }
+        free(copies);
     }
 
     /* All done */
 
     return PMIX_SUCCESS;
+
+nomem:
+    for (i = 0; i < source_count; ++i) {
+        free(copies[i]);
+    }
+    free(copies);
+    return PMIX_ERR_NOMEM;
 }
 
 pmix_status_t pmix_argv_insert_element(char ***target, int location, char *source)
@@ -330,6 +380,7 @@ pmix_status_t pmix_argv_insert_element(char ***target, int location, char *sourc
     int i, target_count;
     int suffix_count;
     char **tmp;
+    char *copy;
 
     /* Check for the bozo cases */
 
@@ -342,13 +393,20 @@ pmix_status_t pmix_argv_insert_element(char ***target, int location, char *sourc
     /* Easy case: appending to the end */
     target_count = PMIx_Argv_count(*target);
     if (location > target_count) {
-        pmix_argv_append(&target_count, target, source);
-        return PMIX_SUCCESS;
+        return pmix_argv_append(&target_count, target, source);
+    }
+
+    /* Copy the source before touching the target - see the comment in
+     * pmix_argv_insert() for why the copy cannot come last */
+    copy = strdup(source);
+    if (NULL == copy) {
+        return PMIX_ERR_NOMEM;
     }
 
     /* Allocate new space */
     tmp = (char **) realloc(*target, sizeof(char *) * (target_count + 2));
     if (NULL == tmp) {
+        free(copy);
         return PMIX_ERR_NOMEM;
     }
     *target = tmp;
@@ -360,8 +418,8 @@ pmix_status_t pmix_argv_insert_element(char ***target, int location, char *sourc
     }
     (*target)[location + suffix_count + 1] = NULL;
 
-    /* Strdup in the source */
-    (*target)[location] = strdup(source);
+    /* Hand the copy over to the target */
+    (*target)[location] = copy;
 
     /* All done */
     return PMIX_SUCCESS;
