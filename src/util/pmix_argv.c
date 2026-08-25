@@ -35,8 +35,6 @@
 #include "pmix.h"
 #include "src/util/pmix_argv.h"
 
-#define ARGSIZE 128
-
 /*
  * Append a string to the end of a new or existing argv array.
  */
@@ -103,7 +101,7 @@ char *pmix_argv_join_range(char **argv, size_t start, size_t end, int delimiter)
 
     /* Bozo case */
 
-    if (NULL == argv || NULL == argv[0] || (int) start >= PMIx_Argv_count(argv)) {
+    if (NULL == argv || NULL == argv[0] || start >= (size_t) PMIx_Argv_count(argv)) {
         return strdup("");
     }
 

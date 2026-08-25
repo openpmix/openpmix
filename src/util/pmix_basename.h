@@ -46,8 +46,7 @@ BEGIN_C_DECLS
  * filename do not count, unless it is in the only part of the
  * filename (e.g., "/" or "C:\").
  *
- * This function will do the Right Things on POSIX and
- * Windows-based operating systems.  For example:
+ * The path separator is "/".  For example:
  *
  * foo.txt returns "foo.txt"
  *
@@ -55,17 +54,9 @@ BEGIN_C_DECLS
  *
  * /yow.c returns "yow.c"
  *
+ * /foo/bar/ returns "bar"
+ *
  * / returns "/"
- *
- * C:\foo\bar\baz returns "baz"
- *
- * D:foo.txt returns "foo.txt"
- *
- * E:\yow.c returns "yow.c"
- *
- * F: returns "F:"
- *
- * G:\ returns "G:"
  *
  * The caller is responsible for freeing the returned string.
  */
@@ -86,26 +77,17 @@ pmix_basename(const char *filename) __pmix_attribute_malloc__ __pmix_attribute_w
  * filename do not count, unless it is in the only part of the
  * filename (e.g., "/" or "C:\").
  *
- * This function will do the Right Things on POSIX and
- * Windows-based operating systems.  For example:
+ * The path separator is "/".  For example:
  *
  * foo.txt returns "."
  *
  * /foo/bar/baz returns "/foo/bar"
  *
+ * /foo/bar/ returns "/foo"
+ *
  * /yow.c returns "/"
  *
  * / returns "/"
- *
- * C:\foo\bar\baz returns "C:\foo\bar"
- *
- * D:foo.txt returns "D:"
- *
- * E:\yow.c returns "E:"
- *
- * F: returns ""
- *
- * G:\ returns ""
  *
  * The caller is responsible for freeing the returned string.
  */

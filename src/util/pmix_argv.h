@@ -55,7 +55,8 @@ BEGIN_C_DECLS
  * @param str Pointer to the string to append.
  *
  * @retval PMIX_SUCCESS On success
- * @retval PMIX_ERROR On failure
+ * @retval PMIX_ERR_BAD_PARAM If argv or arg is NULL
+ * @retval PMIX_ERR_OUT_OF_RESOURCE If the array could not be grown
  *
  * This function adds a string to an argv array of strings by value;
  * it is permissible to pass a string on the stack as the str
@@ -87,7 +88,8 @@ PMIX_EXPORT pmix_status_t pmix_argv_append(int *argc, char ***argv, const char *
  * @param str Pointer to the string to append.
  *
  * @retval PMIX_SUCCESS On success
- * @retval PMIX_ERROR On failure
+ * @retval PMIX_ERR_BAD_PARAM If idx, argv, or arg is NULL
+ * @retval PMIX_ERR_OUT_OF_RESOURCE If the array could not be grown
  *
  * This function is identical to the PMIx_Argv_append_unique_nosize() function
  * but it has an extra argument defining the index of the item in the array.
@@ -115,7 +117,8 @@ PMIX_EXPORT size_t pmix_argv_len(char **argv);
  * @param start The index of the first token to delete
  * @param num_to_delete How many tokens to delete
  *
- * @retval PMIX_SUCCESS Always
+ * @retval PMIX_SUCCESS On success, and for every no-op case
+ * @retval PMIX_ERR_BAD_PARAM If start or num_to_delete is negative
  *
  * Delete some tokens from within an existing argv.  The start
  * parameter specifies the first token to delete, and will delete
@@ -143,7 +146,9 @@ PMIX_EXPORT pmix_status_t pmix_argv_delete(int *argc, char ***argv, int start, i
  * @param source The argv to copy tokens from
  *
  * @retval PMIX_SUCCESS upon success
- * @retval PMIX_BAD_PARAM if any parameters are non-sensical
+ * @retval PMIX_ERR_BAD_PARAM if any parameters are non-sensical
+ * @retval PMIX_ERR_NOMEM if the copy could not be made, in which
+ * case the target is left exactly as it was
  *
  * This function takes one arg and inserts it in the middle of
  * another.  The first token in source will be inserted at index
@@ -166,7 +171,9 @@ PMIX_EXPORT pmix_status_t pmix_argv_insert(char ***target, int start, char **sou
  * @param source The token to be inserted
  *
  * @retval PMIX_SUCCESS upon success
- * @retval PMIX_BAD_PARAM if any parameters are non-sensical
+ * @retval PMIX_ERR_BAD_PARAM if any parameters are non-sensical
+ * @retval PMIX_ERR_NOMEM if the copy could not be made, in which
+ * case the target is left exactly as it was
  *
  * This function takes one arg and inserts it in the middle of
  * another.  The token will be inserted at the specified index
@@ -181,6 +188,19 @@ PMIX_EXPORT pmix_status_t pmix_argv_insert(char ***target, int start, char **sou
  */
 PMIX_EXPORT pmix_status_t pmix_argv_insert_element(char ***target, int location, char *source);
 
+/**
+ * Copy an argv array, stripping one leading and one trailing double
+ * quote from each element.
+ *
+ * @param argv The argv array to copy
+ *
+ * @returns A new NULL-terminated argv array, or NULL on failure
+ *
+ * The source array is left unaffected -- neither the array nor the
+ * strings it points to are written to, so it is safe to pass an argv
+ * whose elements are string literals.  The caller is responsible for
+ * freeing the result with PMIx_Argv_free().
+ */
 PMIX_EXPORT
 char **pmix_argv_copy_strip(char **argv) __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
 
