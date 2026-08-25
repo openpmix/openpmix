@@ -180,7 +180,9 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     pmix_status_t rc;
     pmix_data_array_t *darray;
     pmix_qual_t *qarray;
+    pmix_value_t *newval;
     size_t n, m = 0;
+    int idx;
     pmix_tma_t *const tma = pmix_obj_get_tma(&table->super);
     pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
 
@@ -244,14 +246,26 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
                             PMIX_NAME_PRINT(&pmix_globals.myid), kin->key, tmp);
                 free(tmp);
             }
-            pmix_bfrops_base_tma_value_release(&hv->value, tma);
         }
-        /* TODO(skg) eventually, we want to eliminate this copy */
-        rc = pmix_bfrops_base_tma_copy_value(&hv->value, kin->value, PMIX_VALUE, tma);
+        /* Make the new copy before letting go of the old one. Releasing
+         * first and then failing to copy leaves this entry in the table
+         * under its key with no value behind it, and nothing downstream
+         * is prepared for that: make_copy() hands the stored value
+         * straight to PMIx_Value_xfer(), which reads src->type without
+         * looking, so the next fetch of this key takes the process down.
+         * Copying first costs one value's worth of storage for the
+         * duration and leaves a failed update with the entry exactly as
+         * it was.
+         * TODO(skg) eventually, we want to eliminate this copy */
+        rc = pmix_bfrops_base_tma_copy_value(&newval, kin->value, PMIX_VALUE, tma);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
+        if (NULL != hv->value) {
+            pmix_bfrops_base_tma_value_release(&hv->value, tma);
+        }
+        hv->value = newval;
         return PMIX_SUCCESS;
     }
 
@@ -269,11 +283,38 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
         }
         if (0 < m) {
             darray = (pmix_data_array_t*)pmix_tma_malloc(tma, sizeof(pmix_data_array_t));
+            if (PMIX_UNLIKELY(NULL == darray)) {
+                pmix_dstor_release_tma(hv, tma);
+                return PMIX_ERR_NOMEM;
+            }
             /* zero-initialize so a partially-filled array can be safely
              * released by erase_qualifiers() on an error path below */
             darray->array = (pmix_qual_t*)pmix_tma_calloc(tma, m, sizeof(pmix_qual_t));
+            if (PMIX_UNLIKELY(NULL == darray->array)) {
+                pmix_tma_free(tma, darray);
+                pmix_dstor_release_tma(hv, tma);
+                return PMIX_ERR_NOMEM;
+            }
+            /* A pmix_qual_t is not one of the PMIx data types, so there
+             * is no honest value to put here - but the field must not be
+             * left holding whatever the allocator handed back either,
+             * because under the gds/shmem3 TMA that allocator is a
+             * segment other processes map and read. */
+            darray->type = PMIX_UNDEF;
             darray->size = m;
-            hv->qualindex = pmix_pointer_array_add(proc_data->quals, darray);
+            idx = pmix_pointer_array_add(proc_data->quals, darray);
+            if (PMIX_UNLIKELY(0 > idx)) {
+                /* pmix_pointer_array_add answers a negative status when
+                 * it cannot grow, and qualindex is unsigned: storing
+                 * that would give this value an index the array can
+                 * never be asked for, so it would be kept and never
+                 * found again while the store reported success */
+                pmix_tma_free(tma, darray->array);
+                pmix_tma_free(tma, darray);
+                pmix_dstor_release_tma(hv, tma);
+                return PMIX_ERR_OUT_OF_RESOURCE;
+            }
+            hv->qualindex = (uint32_t)idx;
             qarray = (pmix_qual_t*)darray->array;
             for (n=0, m=0; n < nquals; n++) {
                 if (PMIX_INFO_IS_QUALIFIER(&qualifiers[n])) {
@@ -683,6 +724,16 @@ pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table,
             rc = pmix_hash_table_get_next_key_uint32(table, &id, (void **) &proc_data, node,
                                                      (void **) &node);
         }
+        if (NULL == key) {
+            /* Every proc_data above has been released, but the table is
+             * still holding a pointer to each of them. The per-rank path
+             * below removes its entry before releasing it, and this one
+             * has to do the same or it leaves the table full of freed
+             * objects - a lookup then hands one back and the caller uses
+             * it. It cannot be done inside the loop without invalidating
+             * the iteration, so it is done in one sweep here. */
+            pmix_hash_table_remove_all(table);
+        }
         return PMIX_SUCCESS;
     }
 
@@ -1038,9 +1089,17 @@ static pmix_regattr_input_t* lookup_key(uint32_t inid,
         ptr->string = pmix_tma_strdup(tma, key);
         ptr->type = PMIX_UNDEF; // we don't know what type the user will set
         ptr->description = (char**)pmix_tma_malloc(tma, 2 * sizeof(char*));
-        if (PMIX_UNLIKELY(NULL == ptr->description)) {
-            /* the entry was never handed to the keyindex, so nothing
-             * else will ever free it - release what we took here */
+        if (PMIX_UNLIKELY(NULL == ptr->name || NULL == ptr->string ||
+                          NULL == ptr->description)) {
+            /* An entry whose string did not copy is worse than no entry:
+             * add_to_lookup() declines to index a NULL string, so the
+             * key would be registered under an id nothing can look up by
+             * name - every later reference to it would mint another one -
+             * and make_copy() loads that string as the key it reports to
+             * the application. The entry was never handed to the
+             * keyindex, so nothing else will ever free it: release what
+             * we took here. */
+            pmix_tma_free(tma, ptr->description);
             pmix_tma_free(tma, ptr->name);
             pmix_tma_free(tma, ptr->string);
             pmix_tma_free(tma, ptr);
