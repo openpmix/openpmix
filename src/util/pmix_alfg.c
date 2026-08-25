@@ -42,11 +42,11 @@
  * @brief      Galois shift register: Used to seed the ALFG's
  *             canonical rectangle
  *
- * @param[in]  unsigned int *seed: used to seed the Galois register
- * @param[out] uint32_t lsb: least significant bit of the Galois
- *             register after shift
+ * @param[in,out] uint32_t *seed: the Galois register, advanced in place
+ * @param[out]    uint32_t lsb: least significant bit of the Galois
+ *                register before the shift
  */
-static uint32_t galois(unsigned int *seed)
+static uint32_t galois(uint32_t *seed)
 {
 
     uint32_t lsb;

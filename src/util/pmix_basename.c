@@ -39,7 +39,8 @@
  * was found. It does not modify the original string. Moreover, it does not
  * scan the full string, but only the part allowed by the specified number
  * of characters.
- * If the last character on the string is a path separator, it will be skipped.
+ * Any run of path separators at the end of the string is skipped, so a
+ * string that is nothing but separators yields NULL.
  */
 static inline char *pmix_find_last_path_separator(const char *filename, size_t n)
 {
@@ -54,13 +55,15 @@ static inline char *pmix_find_last_path_separator(const char *filename, size_t n
 
     /* First skip the latest separators */
     for (; p >= filename; p--) {
-        if (*p != PMIX_PATH_SEP[0])
+        if (*p != PMIX_PATH_SEP[0]) {
             break;
+        }
     }
 
     for (; p >= filename; p--) {
-        if (*p == PMIX_PATH_SEP[0])
+        if (*p == PMIX_PATH_SEP[0]) {
             return p;
+        }
     }
 
     return NULL; /* nothing found inside the filename */
