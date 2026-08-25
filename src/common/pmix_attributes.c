@@ -1434,13 +1434,23 @@ static void _get_attrs(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
             regarray = (pmix_regattr_t *) darray->array;
             for (m = 0; m < nattr; m++) {
                 regarray[m].name = strdup(tptr->attrs[m]);
-                PMIX_LOAD_KEY(regarray[m].string, pmix_attributes_lookup(tptr->attrs[m]));
                 dptr = pmix_attributes_lookup_term(tptr->attrs[m]);
                 if (NULL == dptr) {
-                    PMIX_RELEASE(ip);
-                    PMIx_Argv_free(fns);
-                    return;
+                    /* A name the dictionary does not know - a typo in a
+                     * registration, or an attribute private to whoever made
+                     * it.  Report the name and nothing else: an entry whose
+                     * string field is empty is already how a name-only
+                     * attribute is rendered, and the constructor left the
+                     * type at PMIX_UNDEF and the description NULL for us.
+                     *
+                     * What must not happen is what used to: abandoning the
+                     * entry and returning discarded this function AND every
+                     * function after it in the level, so one bad name
+                     * silently truncated the answer - and gave the caller
+                     * nothing to say why the rest had gone missing. */
+                    continue;
                 }
+                PMIX_LOAD_KEY(regarray[m].string, pmix_attributes_lookup(tptr->attrs[m]));
                 regarray[m].type = dptr->type;
                 regarray[m].description = PMIx_Argv_copy(dptr->description);
             }
