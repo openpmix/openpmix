@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -50,8 +50,6 @@ char *pmix_os_path(int relative, ...)
     while (NULL != (element = va_arg(ap, char *))) {
         num_elements++;
         total_length = total_length + strlen(element);
-        if (path_sep[0] != element[0])
-            total_length++;
     }
     va_end(ap);
 
@@ -67,11 +65,18 @@ char *pmix_os_path(int relative, ...)
         } else {
             strcpy(path, path_sep);
         }
-        return (path);
+        return pmix_make_filename_os_friendly(path);
     }
 
-    /* setup path with enough room for the string terminator, the elements, and
-       the separator between each of the elements */
+    /* setup path with enough room for the string terminator, the elements,
+       and the separator between each of the elements.
+
+       At most one separator is written per element - none at all for an
+       element that already begins with one - so this is an upper bound
+       and not an exact size. It used to also count that same separator a
+       second time in the measuring loop above, which made the bound
+       wrong by one byte per element in the same direction as the
+       PMIX_PATH_MAX test below: a name that fits was rejected. */
     total_length = total_length + num_elements * strlen(path_sep) + 1;
     if (relative) {
         total_length++;
