@@ -20,5 +20,6 @@ util_parse_options
 util_os_path
 util_fd
 util_few
+util_getcwd
 util_vmem
 hash_perf
