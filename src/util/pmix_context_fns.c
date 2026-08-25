@@ -38,9 +38,6 @@
 #ifdef HAVE_SYS_PARAM_H
 #    include <sys/param.h>
 #endif
-#ifdef HAVE_UNISTD_H
-#    include <unistd.h>
-#endif
 #ifdef HAVE_NETDB_H
 #    include <netdb.h>
 #endif
