@@ -710,6 +710,58 @@ product** — never hand-edit it, edit the `.l` and let the build
 regenerate. `pmix_keyval_parse` drives it over a real `FILE*` under
 `keyval_mutex` with process-global scratch buffers.
 
+### `pmix_keyval_parse` — process-global state that outlives a run
+
+Everything here is file-static: the key buffer, the lock, and `env_str`,
+which is where the `-x FOO=bar` directives of *every* file parsed so far
+pile up. They are not delivered as they are read — they are accumulated
+into one `;`-separated string and handed over as a single pair named
+`mca_base_env_list_internal` by `pmix_util_keyval_save_internal_envars()`,
+which also frees it.
+
+**That hand-off is not guaranteed to happen, and this state survives a
+finalize.** `pmix_mca_base_var_cache_files()` returns on the first file
+that fails to parse, *before* it reaches the store; and
+`pmix_finalize_util()` clears `pmix_globals.util_initialized`, so
+`pmix_init_util()` — and therefore `pmix_util_keyval_parse_init()` — runs
+again in the same process. An `env_str` left standing is therefore not
+just a leak: the next run is handed the previous run's variables.
+`pmix_util_keyval_parse_finalize()` has to release it alongside the key
+buffer. `test_finalize_drops_pending_envars` in
+[`test/unit/util/util_keyval.c`](../../test/unit/util/util_keyval.c) pins
+it.
+
+**A malformed line is a warning; running out of memory is a return
+code.** The caller acts on what `pmix_util_keyval_parse()` answers —
+`pmix_mca_base_var_cache_files()` treats anything but `PMIX_SUCCESS` or
+`PMIX_ERR_NOT_FOUND` as fatal — and the parse loop used to discard the
+per-line return codes entirely, so a file it could not read reported
+success. Only `PMIX_ERR_OUT_OF_RESOURCE` is propagated, and it stops the
+parse. Syntax errors are deliberately *not* propagated: `parse_error()`
+already reports them on stderr, the rest of the file is still read, and
+turning a typo in an optional parameter file into an init failure is a
+policy change, not a bug fix. If you want that behavior, decide it
+deliberately.
+
+Two more things the shape of this file invites:
+
+- **`PMIX_ERR_NOT_FOUND` is the answer for "could not open", not for
+  "does not exist".** The caller reads it as the latter and carries on,
+  which is right for the default parameter files, most of which are
+  absent — but it means an unreadable file discards every parameter in it
+  and looks identical to no file at all. The code is kept (failing
+  startup over an unreadable optional dotfile would be worse) and a
+  non-`ENOENT` `errno` is now reported instead.
+- **The callback runs with `keyval_mutex` held.** It is not recursive, so
+  a callback that re-enters anything in `pmix_keyval_parse.h` deadlocks
+  against itself. `save_value()` in `src/mca/base` does not; keep it that
+  way.
+
+The `NULL != pmix_util_keyval_yytext` test in `parse_line_new` is dead —
+flex never leaves `yytext` NULL after a match, and the two
+`save_param_name`-style paths `strlen()` it unguarded — but it is
+harmless and is left alone.
+
 ## Build wiring
 
 - `Makefile.am` builds `noinst` `libpmix_util.la` from the `headers` +
@@ -751,7 +803,7 @@ Current coverage includes: `argv`, `alfg`, `basename`, `cmd_line`,
 regression), `if` (the tuple parser), `name_fns` (incl. special-rank
 compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,
-`string_copy`, `timings`, `getcwd`, `getid`.
+`string_copy`, `timings`, `getcwd`, `getid`, `keyval`.
 
 ## Fixed defects (July 2026 review)
 
