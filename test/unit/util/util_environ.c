@@ -8,7 +8,11 @@
  *
  * Unit tests for pmix_environ utility functions:
  *   pmix_getenv, pmix_unsetenv, pmix_environ_merge,
- *   pmix_environ_merge_inplace, pmix_tmp_directory.
+ *   pmix_environ_merge_inplace, pmix_tmp_directory,
+ *   pmix_util_harvest_envars.
+ *
+ * PMIx_Init is called first (the harvest builds pmix_kval_t objects);
+ * PMIX_ERR_UNREACH is treated as normal.
  *
  * Exit 0 if all tests pass, 1 otherwise.
  */
@@ -202,6 +206,23 @@ static void test_merge_inplace_no_override(void)
     PMIx_Argv_free(env);
 }
 
+/* The header states that orig cannot be environ - we extend it with
+ * PMIx_Argv_append_nosize(), which reallocs, and environ may not be
+ * realloc'd. That was enforced by an assert(), which -DNDEBUG compiles
+ * out of exactly the build that has to be protected. */
+static void test_merge_inplace_refuses_environ(void)
+{
+    const char *adds[] = {"PMIX_UT_MERGE_ZZZ=1", NULL};
+    char **a = make_env(adds);
+    char **before = environ;
+    pmix_status_t rc = pmix_environ_merge_inplace(&environ, a);
+
+    report("merge_inplace_environ: refused with ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == rc);
+    report("merge_inplace_environ: environ untouched", before == environ);
+    PMIx_Argv_free(a);
+}
+
 /* ------------------------------------------------------------------ */
 /* pmix_tmp_directory                                                  */
 /* ------------------------------------------------------------------ */
@@ -213,10 +234,126 @@ static void test_tmp_directory_nonnull(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* pmix_util_harvest_envars                                            */
+/* ------------------------------------------------------------------ */
+
+/* Harvest "inc" out of the environment and report how many entries
+ * landed on the list. */
+static int harvest_count(char **inc, char **exc, pmix_status_t *rc)
+{
+    pmix_list_t l;
+    int n;
+
+    PMIX_CONSTRUCT(&l, pmix_list_t);
+    *rc = pmix_util_harvest_envars(inc, exc, &l);
+    n = (int) pmix_list_get_size(&l);
+    PMIX_LIST_DESTRUCT(&l);
+    return n;
+}
+
+/* An include entry is the NAME of a variable unless it ends in '*', in
+ * which case it is a prefix. Both directions are pinned here because
+ * both have callers: a family of variables is spelled "FOO_*", and a
+ * single one is spelled "FOO" and must not also take "FOOBAR".
+ *
+ * This is not academic - src/mca/pmdl/base spells its harvest of the
+ * local MCA params "PMIX_MCA_", and while that read as a prefix it
+ * worked; the day it became an exact name it silently matched nothing,
+ * because no variable is called "PMIX_MCA_". */
+static void test_harvest_exact_vs_wildcard(void)
+{
+    char *exact[] = {"PMIX_UT_HARV", NULL};
+    char *wild[] = {"PMIX_UT_HARV*", NULL};
+    pmix_status_t rc;
+
+    setenv("PMIX_UT_HARV", "one", 1);
+    setenv("PMIX_UT_HARV_EXTRA", "two", 1);
+
+    report("harvest_exact: a bare name takes only that name",
+           1 == harvest_count(exact, NULL, &rc) && PMIX_SUCCESS == rc);
+    report("harvest_wild: a trailing '*' takes the family",
+           2 == harvest_count(wild, NULL, &rc) && PMIX_SUCCESS == rc);
+
+    unsetenv("PMIX_UT_HARV");
+    unsetenv("PMIX_UT_HARV_EXTRA");
+}
+
+static void test_harvest_exclude(void)
+{
+    char *wild[] = {"PMIX_UT_HARV*", NULL};
+    char *exc[] = {"PMIX_UT_HARV_EXTRA", NULL};
+    pmix_status_t rc;
+
+    setenv("PMIX_UT_HARV", "one", 1);
+    setenv("PMIX_UT_HARV_EXTRA", "two", 1);
+    report("harvest_exclude: an exact exclusion drops just that one",
+           1 == harvest_count(wild, exc, &rc) && PMIX_SUCCESS == rc);
+    unsetenv("PMIX_UT_HARV");
+    unsetenv("PMIX_UT_HARV_EXTRA");
+}
+
+static void test_harvest_null_lists(void)
+{
+    pmix_list_t l;
+    pmix_status_t rc;
+
+    /* No include list is "nothing to harvest", the way no exclude list
+     * is "nothing to drop". It used to walk the NULL array. */
+    report("harvest_null_include: SUCCESS, harvests nothing",
+           0 == harvest_count(NULL, NULL, &rc) && PMIX_SUCCESS == rc);
+
+    PMIX_CONSTRUCT(&l, pmix_list_t);
+    (void) l;
+    PMIX_LIST_DESTRUCT(&l);
+    report("harvest_null_ilist: ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_util_harvest_envars(NULL, NULL, NULL));
+}
+
+/* The list is the caller's, and an envar kval on it need not carry a
+ * value - PMIx_Envar_load() leaves the value alone when it is handed
+ * NULL. Harvesting a variable of the same name compared the two with
+ * strcmp() regardless. */
+static void test_harvest_existing_valueless_entry(void)
+{
+    char *inc[] = {"PMIX_UT_HARV", NULL};
+    pmix_list_t l;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+
+    setenv("PMIX_UT_HARV", "one", 1);
+    PMIX_CONSTRUCT(&l, pmix_list_t);
+    PMIX_KVAL_NEW(kv, PMIX_SET_ENVAR);
+    kv->value->type = PMIX_ENVAR;
+    kv->value->data.envar.envar = strdup("PMIX_UT_HARV");
+    kv->value->data.envar.value = NULL;
+    kv->value->data.envar.separator = ':';
+    pmix_list_append(&l, &kv->super);
+
+    rc = pmix_util_harvest_envars(inc, NULL, &l);
+    report("harvest_valueless: returns SUCCESS", PMIX_SUCCESS == rc);
+    report("harvest_valueless: the entry was filled in, not duplicated",
+           1 == pmix_list_get_size(&l));
+    kv = (pmix_kval_t *) pmix_list_get_first(&l);
+    report("harvest_valueless: it now carries the value",
+           NULL != kv->value->data.envar.value &&
+           0 == strcmp(kv->value->data.envar.value, "one"));
+    PMIX_LIST_DESTRUCT(&l);
+    unsetenv("PMIX_UT_HARV");
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
+    pmix_proc_t myproc;
+    pmix_status_t irc;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+
+    irc = PMIx_Init(&myproc, NULL, 0);
+    if (PMIX_SUCCESS != irc && PMIX_ERR_UNREACH != irc) {
+        fprintf(stderr, "PMIx_Init: %s\n", PMIx_Error_string(irc));
+        return 1;
+    }
 
     fprintf(stdout, "\n=== pmix_environ unit tests ===\n\n");
 
@@ -237,9 +374,16 @@ int main(int argc, char **argv)
 
     test_merge_inplace_adds_missing();
     test_merge_inplace_no_override();
+    test_merge_inplace_refuses_environ();
 
     test_tmp_directory_nonnull();
 
+    test_harvest_exact_vs_wildcard();
+    test_harvest_exclude();
+    test_harvest_null_lists();
+    test_harvest_existing_valueless_entry();
+
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
+    PMIx_Finalize(NULL, 0);
     return (nfail > 0) ? 1 : 0;
 }

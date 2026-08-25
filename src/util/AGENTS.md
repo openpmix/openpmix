@@ -250,6 +250,40 @@ public `PMIx_Argv_append_unique_nosize()` plus an index out-parameter,
 and callers are entitled to that: it screens `NULL` inputs the same way
 rather than handing a `NULL` arg to `strcmp`.
 
+### `pmix_environ` — harvesting, and the array you must not realloc
+
+- **An include/exclude entry is a NAME, unless it ends in `*`.** The
+  matcher used to treat every entry as a prefix, so `"PATH"` also took
+  `PATHFINDER`; it now matches exactly unless a trailing `*` says
+  otherwise, which is what the documented `"OMPI_*,OPAL_*"` convention
+  has always meant. The cost of that correctness is that a list written
+  as a bare prefix silently stops matching *anything*, and there was one:
+  `src/mca/pmdl/base` harvests the local MCA params with `"PMIX_MCA_"`,
+  which as an exact name is the name of no variable at all, so no MCA
+  param reached a spawned child. If you add an include list, decide which
+  of the two you mean and spell it. Both directions are pinned by
+  `test_harvest_exact_vs_wildcard` in
+  [`test/unit/util/util_environ.c`](../../test/unit/util/util_environ.c).
+- **`ilist` belongs to the caller, so nothing on it can be assumed.**
+  `pmix_util_harvest_envars` walks a list it did not build: entries may
+  be of any type, and a `PMIX_ENVAR` entry need not carry a value, since
+  `PMIx_Envar_load()` leaves the value untouched when handed `NULL`.
+  Screen the type *and* the pointers before comparing.
+- **`pmix_environ_merge_inplace()` must never be given `environ`.** It
+  extends the array with `PMIx_Argv_append_nosize()`, which reallocs, and
+  `environ` may not be realloc'd — the process aborts. This was enforced
+  by a bare `assert()`, which `-DNDEBUG` removes from precisely the build
+  that needs it; it is now a real check returning `PMIX_ERR_BAD_PARAM`.
+  `test_merge_inplace_refuses_environ` aborts the test binary if the
+  check is removed, so the hazard is not theoretical.
+- **`pmix_home_directory()` consults `$HOME` only for the calling user.**
+  Any other uid goes straight to `getpwuid()`. Ask about yourself with
+  `geteuid()`, `(uid_t)-1`, or `UINT_MAX` — all three are accepted, and
+  the last is what the code historically tested, which coincides with
+  `(uid_t)-1` only while `uid_t` is exactly as wide as an `int`. See the
+  `pmix_context_fns` note below for what happened to the one caller that
+  spelled it `-1`. `getpwuid()` is not reentrant.
+
 ### `pmix_context_fns` — moving the process to where an app runs
 
 Two helpers that `pmix_pfexec` calls to place a child: one `chdir()`s to
