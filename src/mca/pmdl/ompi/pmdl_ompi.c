@@ -240,6 +240,14 @@ static pmix_status_t process_param_file(char *file, pmix_list_t *ilist)
     pmix_status_t rc;
     const char *prefix;
 
+    if (NULL == file) {
+        /* every caller builds the name with pmix_os_path(), which
+         * answers NULL when the assembled path exceeds PMIX_PATH_MAX or
+         * memory ran out. There is no file to read, and the name must
+         * not reach fopen() */
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
     PMIX_CONSTRUCT(&params, pmix_list_t);
     pmix_mca_base_parse_paramfile(file, &params);
     PMIX_LIST_FOREACH (fv, &params, pmix_mca_base_var_file_value_t) {

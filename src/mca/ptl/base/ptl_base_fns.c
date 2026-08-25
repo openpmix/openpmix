@@ -377,6 +377,12 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
             continue;
         }
         newdir = pmix_os_path(false, dirname, dir_entry->d_name, NULL);
+        if (NULL == newdir) {
+            /* nesting has taken the assembled name past PMIX_PATH_MAX,
+             * or we are out of memory - either way there is nothing to
+             * hand opendir() but a NULL */
+            continue;
+        }
         /* if it is a directory, down search */
         tst = opendir(newdir);
         if (NULL != tst) {
@@ -1277,6 +1283,10 @@ static void query_servers(char *dirname, pmix_list_t *servers)
             continue;
         }
         newdir = pmix_os_path(false, dname, dir_entry->d_name, NULL);
+        if (NULL == newdir) {
+            /* as in pmix_ptl_base_df_search() above */
+            continue;
+        }
         /* if it is a directory, down search */
         tst = opendir(newdir);
         if (NULL != tst) {
