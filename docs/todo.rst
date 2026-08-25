@@ -295,16 +295,35 @@ both in ``src/client``:
   off by the *directory-wide* five-lens seventh sweep — recorded there as
   coming through all five lenses with nothing to fix — and has not moved
   since.
-* ``pmix_client_get.c``'s dedicated pass is **incomplete**, and the
-  ledger says so: lens 1 (memory) only, over ``process_request``,
-  ``PMIx_Get``, ``PMIx_Get_nb``, ``gcbfn`` and ``try_local_fetch``.
-  ``get_data`` (~500 lines), ``_getnb_cbfunc``, ``process_values`` and
-  ``refresh_cache``/``refcb`` were never read, and lenses 2–5 were never
-  applied.  The work that followed the same day — the realm and
-  job-level-data fixes, the NULL-key answer, the ownership contract now
-  stated in ``PMIx_Get(3)`` — chased specific findings out of that
-  partial pass; it did not finish it.  This is the next piece of
-  per-file work in either directory.
+* ``pmix_client_get.c``'s dedicated pass ran in two parts, and only the
+  second one finished it.  The first (2026-08-22) covered lens 1
+  (memory) over ``process_request``, ``PMIx_Get``, ``PMIx_Get_nb``,
+  ``gcbfn`` and ``try_local_fetch`` and stopped there; ``get_data``
+  (~500 lines), ``_getnb_cbfunc``, ``process_values`` and
+  ``refresh_cache``/``refcb`` went unread, and lenses 2–5 were never
+  applied to any of it.  The work that followed the same day — the realm
+  and job-level-data fixes, the NULL-key answer, the ownership contract
+  now stated in ``PMIx_Get(3)`` — chased specific findings out of that
+  partial pass rather than completing it.  **All five lenses have since
+  been applied to the whole file (2026-08-25)**, which is what found the
+  entry below.
+
+  What that second part found is worth stating here, because it is a
+  property of the *list* rather than of either function that walks it.
+  ``pmix_client_globals.pending_requests`` is two tables in one — the
+  coalescing table ``get_data()`` consults before it sends, and the
+  delivery table ``_getnb_cbfunc()`` walks when a reply arrives — and
+  they matched on different predicates: ``PMIX_CHECK_NAMES``, which
+  treats ``PMIX_RANK_WILDCARD`` on either side as a match, against exact
+  rank equality.  A get for a specific rank issued while a get at
+  ``WILDCARD`` for the same namespace was outstanding was therefore
+  folded onto it, never sent, and never matched by the reply — and
+  nothing else drains that list, so a blocking ``PMIx_Get`` waited
+  forever and a ``PMIx_Get_nb`` was never called back at all.  Both
+  sites now use one exact predicate; ``test/unit/get_api.c`` covers it.
+  The general shape to look for: **one list serving two questions is
+  one question, and a request the first accepts and the second rejects
+  is not refused, it is lost.**
 
 Not yet reviewed
 ^^^^^^^^^^^^^^^^
