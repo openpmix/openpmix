@@ -242,8 +242,16 @@ static pmix_status_t do_iofdereg(size_t claimed_ninfo)
     return do_iofdereg_refid(claimed_ninfo, 0);
 }
 
-/* replace "fd" with the write end of a fresh pipe, handing back a
- * non-blocking read end */
+/* Replace "fd" with the write end of a fresh pipe, handing back a
+ * non-blocking read end.
+ *
+ * NOTE for anyone chasing a sanitizer failure in this test: stderr is one
+ * of the streams this takes, and AddressSanitizer writes its report to
+ * stderr - so the report goes into the capture pipe and is never seen.
+ * CI shows "FAIL: iof_output" over a .log holding nothing but PASS lines
+ * and a silent exit 1. Run it with
+ * ASAN_OPTIONS=...:log_path=/tmp/asanrep to get the trace into a file
+ * instead. */
 static int capture(int fd)
 {
     int pipefd[2];
@@ -419,6 +427,7 @@ int main(int argc, char **argv)
     {
         pmix_iof_req_t *req;
         pmix_status_t drc;
+        int refid;
 
         req = PMIX_NEW(pmix_iof_req_t);
         PMIX_RETAIN(pmix_globals.mypeer);
@@ -427,11 +436,15 @@ int main(int argc, char **argv)
         PMIX_PROC_CREATE(req->procs, 1);
         PMIX_LOAD_PROCID(&req->procs[0], "iof-dereg-ut", PMIX_RANK_WILDCARD);
         req->channels = PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL;
-        req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+        refid = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+        req->local_id = refid;
 
+        /* keep the id in a local: a successful deregistration RELEASEs
+         * the request, so "req" is a dangling pointer from the call below
+         * onwards and reading req->local_id afterwards is a use-after-free */
         stop_nprocs = SIZE_MAX;
         stop_channels = PMIX_FWD_NO_CHANNELS;
-        drc = do_iofdereg_refid(0, req->local_id);
+        drc = do_iofdereg_refid(0, refid);
         report("the deregistration reached the host", PMIX_ERR_NOT_SUPPORTED == drc);
         report("the stop request carries PMIX_IOF_STOP", stop_directive);
         report("the stop request names the registered channels",
@@ -441,7 +454,7 @@ int main(int argc, char **argv)
                    && 0 == strcmp(stop_procs[0].nspace, "iof-dereg-ut")
                    && PMIX_RANK_WILDCARD == stop_procs[0].rank);
         report("and the local registration is gone",
-               NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, req->local_id));
+               NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid));
     }
 
     PMIx_server_finalize();
