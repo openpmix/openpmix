@@ -52,7 +52,12 @@ static pmix_atomic_bool_t fns_init = false;
 static pthread_mutex_t print_args_init_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static pmix_tsd_key_t print_args_tsd_key;
-char *pmix_print_args_null = "NULL";
+/* Handed back when a thread cannot get its buffers.  A writable array
+ * rather than a pointer to a literal: these functions return char *, so
+ * a caller is nominally entitled to write through the answer, and doing
+ * that to a string literal is undefined.  Nothing outside this file
+ * names it. */
+static char pmix_print_args_null[] = "NULL";
 typedef struct {
     char *buffers[PMIX_PRINT_NAME_ARG_NUM_BUFS];
     int cntr;
@@ -103,8 +108,9 @@ static pmix_print_args_buffers_t *get_print_name_buffer(void)
     }
 
     ret = pmix_tsd_getspecific(print_args_tsd_key, (void **) &ptr);
-    if (PMIX_SUCCESS != ret)
+    if (PMIX_SUCCESS != ret) {
         return NULL;
+    }
 
     if (NULL == ptr) {
         ptr = (pmix_print_args_buffers_t *) malloc(sizeof(pmix_print_args_buffers_t));
