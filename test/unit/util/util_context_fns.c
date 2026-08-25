@@ -104,9 +104,61 @@ static void test_check_cwd_chdir_bad_user(void)
     free(p);
 }
 
+/* The $HOME fallback: a directory the user did NOT ask for, which we
+ * cannot reach, is not an error - we go to $HOME instead and say so in
+ * *incwd. That worked only while $HOME was set. With it unset,
+ * pmix_home_directory() falls back to the passwd entry, and the uid it
+ * was asked about was the sentinel (uid_t)-1, which has no passwd entry -
+ * so the fallback never fired in the one case it was written for, and
+ * *incwd was left naming a directory the process is not in. */
+static void test_check_cwd_home_fallback_no_HOME(void)
+{
+    char *saved = getenv("HOME");
+    char *keep = (NULL == saved) ? NULL : strdup(saved);
+    char *p = strdup("/nonexistent_path_xyz_abc_123");
+    char here[PMIX_PATH_MAX];
+    pmix_status_t rc;
+
+    if (NULL == getcwd(here, sizeof(here))) {
+        report("check_cwd_home_fallback: getcwd", 0);
+        free(p);
+        free(keep);
+        return;
+    }
+    unsetenv("HOME");
+    rc = pmix_util_check_context_cwd(&p, true, false);
+    if (NULL != keep) {
+        setenv("HOME", keep, 1);
+        free(keep);
+    }
+
+    report("check_cwd_home_fallback: returns SUCCESS", PMIX_SUCCESS == rc);
+    /* the whole point: we were moved somewhere real, and *incwd names it */
+    report("check_cwd_home_fallback: cwd was replaced",
+           NULL != p && 0 != strcmp(p, "/nonexistent_path_xyz_abc_123"));
+    report("check_cwd_home_fallback: the reported cwd is reachable",
+           NULL != p && 0 == access(p, X_OK));
+    free(p);
+    if (0 != chdir(here)) {
+        report("check_cwd_home_fallback: restore cwd", 0);
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* pmix_util_check_context_app                                        */
 /* ------------------------------------------------------------------ */
+
+static void test_check_app_null_input(void)
+{
+    /* Its sibling screens a NULL out-param and a NULL string; this one
+     * did not, and handed the NULL straight to strlen(). A spawn request
+     * carrying no cmd at all reaches here. */
+    char *cmd = NULL;
+    report("check_app_null_incmd: ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_util_check_context_app(NULL, NULL, NULL));
+    report("check_app_null_cmd: ERR_BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_util_check_context_app(&cmd, NULL, NULL));
+}
 
 static void test_check_app_abs_good(void)
 {
@@ -180,6 +232,8 @@ int main(int argc, char **argv)
     test_check_cwd_no_chdir();
     test_check_cwd_chdir_success();
     test_check_cwd_chdir_bad_user();
+    test_check_cwd_home_fallback_no_HOME();
+    test_check_app_null_input();
     test_check_app_abs_good();
     test_check_app_abs_bad();
     test_check_app_naked_not_found();
