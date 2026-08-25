@@ -317,6 +317,34 @@ path. Three things about them are easy to get wrong.
   [`test/unit/util/util_context_fns.c`](../../test/unit/util/util_context_fns.c)
   pins it by unsetting `$HOME`.
 
+### `pmix_getcwd` — $PWD is not authoritative
+
+The name and the ticket reference in the header suggest a function that
+prefers `$PWD` — historically it did, comparing the two by `stat()` so a
+`$PWD` that named the same directory through a symlink could be handed
+back. The `stat()` went away years ago and the comparison is now a
+`strcmp`, which means `$PWD` is used only when it is character-for-
+character what `getcwd()` already said: **the answer is always the
+`getcwd()` value.** Do not "restore" the `$PWD` preference without
+deciding deliberately that a caller should be told a directory the
+process is not in.
+
+The length test is `>=`, not `>`: `size` counts the terminating NUL, so a
+buffer exactly as long as the path is a truncation. A truncation is not
+an empty answer — the caller gets as much of the *basename* as fits and
+`PMIX_ERR_OUT_OF_RESOURCE`, so a short buffer yields a plausible-looking
+relative name rather than an obvious failure. Both boundaries, and the
+`$PWD` behavior, are pinned by
+[`test/unit/util/util_getcwd.c`](../../test/unit/util/util_getcwd.c).
+
+One contract seam worth knowing: this function accepts any `size` up to
+`INT_MAX`, but hands it to `pmix_string_copy()`, which `assert()`s at
+`PMIX_MAX_SIZE_ALLOWED_BY_PMIX_STRING_COPY` (128K). A caller with a
+buffer between those two bounds would abort rather than be served. No
+caller is close — the only one in the tree uses `PMIX_PATH_MAX` — but
+do not widen the documented range on the strength of the bozo check
+alone.
+
 ### `pmix_error` — two lookups over a table you do not write
 
 `PMIx_Error_string()` and `PMIx_Error_code()` are a linear scan each over
@@ -568,7 +596,7 @@ Current coverage includes: `argv`, `alfg`, `basename`, `cmd_line`,
 regression), `if` (the tuple parser), `name_fns` (incl. special-rank
 compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,
-`string_copy`, `timings`.
+`string_copy`, `timings`, `getcwd`.
 
 ## Fixed defects (July 2026 review)
 
