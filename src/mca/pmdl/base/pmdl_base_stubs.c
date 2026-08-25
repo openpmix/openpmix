@@ -81,7 +81,12 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info
     pmix_pmdl_base_active_module_t *active;
     pmix_status_t rc;
     pmix_namespace_t *nptr = NULL, *ns;
-    char *params[2] = {"PMIX_MCA_", NULL};
+    /* Trailing '*': this is a prefix, not the name of a variable. An
+     * include entry without one is an exact name (so "PATH" does not also
+     * take "PATHFINDER"), and spelled bare this matched only a variable
+     * literally called "PMIX_MCA_" - which is to say nothing at all, so
+     * none of the local MCA params reached the child. */
+    char *params[2] = {"PMIX_MCA_*", NULL};
     char **priors = NULL;
     pmix_kval_t *kv;
     pmix_mca_base_var_file_value_t *fv;
