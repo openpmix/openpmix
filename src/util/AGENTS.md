@@ -475,6 +475,83 @@ this file only *consumes* it) and the `a.b.c.d[/mask]` tuple parser
 `pmix_iftupletoaddr`, which returns masks in **host** order. Mind that
 byte-order difference if you ever mix the two.
 
+Three different things in here are called a "mask" and only two of them
+are the same kind of number. `pmix_iftupletoaddr()` hands back a real
+32-bit **bit mask** in host order; `pmix_ifindextomask()` hands back the
+interface's **CIDR prefix length**, which is also what
+`pmix_net_samenetwork()` expects as its third argument. Do not feed one
+to the other.
+
+**The list is built once and read without a lock.** `pmix_pif_base_open()`
+constructs `pmix_if_list`, the discovery components append to it, and
+nothing mutates it again until `pmix_pif_base_close()` drains and
+destructs it. Every lookup in `pmix_if.c` is an unlocked walk that is safe
+only because of that; if a future component ever refreshes the list at
+run time, all of them become races at once.
+
+**An empty list answers with its sentinel, not with `NULL`.**
+`pmix_list_get_first()` returns `&list->pmix_list_sentinel` when there is
+nothing on the list, so a `NULL` test on its result never fires — the
+caller then reads its own struct fields off a `pmix_list_item_t` embedded
+in the `pmix_list_t`, which is a read past the end of that object.
+`pmix_ifbegin()` did exactly this and handed the `ptl` listener a garbage
+starting index on any node where discovery found nothing (a container in
+its own network namespace, a platform no `pif` component can read).
+Terminate on `pmix_list_get_end()`, the way every other lookup in the file
+does. `test_ifbegin_empty` in
+[`test/unit/util/util_if.c`](../../test/unit/util/util_if.c) pins it.
+
+**An entry answers only for its own address family, and the list mixes
+families in every build.** A kernel index carries one `pmix_if_list` entry
+per address, so an interface with both an IPv4 and an IPv6 address is two
+entries. Reading a `sockaddr_in` out of an AF_INET6 entry yields that
+entry's flow label, and reading a `sockaddr_in6` out of an AF_INET entry
+yields the zero padding behind the address — so an all-zero query compares
+equal to an unrelated entry of the other family. That is how
+`pmix_ifaddrtoname()` answered `"lo"` for `0.0.0.0` and for `::`, and
+`pmix_ifislocal()` is a thin wrapper over it, so the same confusion calls a
+remote node local. Screen `sa_family` before comparing, as
+`pmix_ifaddrtokindex()` and `pmix_ifmatches()` already do. Note this is
+**not** avoided by an IPv6-disabled build: `PMIX_ENABLE_IPV6` is 0 by
+default, but the `pif` IPv6 components are gated on the OS rather than on
+that flag, so they populate the list regardless — all `PMIX_ENABLE_IPV6`
+turns off is the IPv6 arm of `pmix_ifgetaliases()`.
+
+**`strtol()` answering 0 is not the same as reading a 0.** `/0` is legal
+CIDR meaning "match everything", so once `pmix_iftupletoaddr()` started
+accepting it, a suffix with no digits in it at all (`"10.0.0.0/"`,
+`"10.0.0.0/abc"`) was quietly accepted as that instead of being reported.
+In `pmix_ifmatches()` the resulting mask matches no interface, so an
+`if_include` entry with a typo silently selected nothing *and* suppressed
+the `invalid-net-mask` warning that used to fire. Check the `endptr`.
+
+Two properties that are contracts rather than defects, so that the next
+reader does not re-litigate them:
+
+- **`getaddrinfo()` blocks, and only `pmix_ifaddrtoname()` can be told
+  not to call it.** `pif_do_not_resolve` short-circuits that function
+  (and therefore `pmix_ifislocal()`); `pmix_ifaddrtokindex()` resolves
+  regardless. Both are installed API with no in-tree caller — the
+  in-tree consumers (`ptl_base_listener`, `pnet/tcp`) use only the
+  index/kernel-index lookups, at init — so nothing here runs a DNS
+  timeout on the progress thread today. Do not add such a call to a
+  progress-thread path.
+- **Nothing in this file screens its arguments.** A `NULL` name reaches
+  `strncmp`, a `NULL` tuple reaches `strchr`, and a non-positive `length`
+  reaches `memset`/`pmix_strncpy`. That is a departure from the screening
+  the rest of this directory does on installed entry points; it is left
+  alone because no caller in PMIx or PRRTE passes any of those, and the
+  header does not promise otherwise.
+
+The `#if HAVE_STRUCT_SOCKADDR_IN` `#else` arm is the usual trap: **no
+configuration anyone builds selects it, so it gets no compiler coverage
+at all.** It has to define *every* one of the 21 entry points
+`pmix_if.h` declares — seven were simply missing, which is a link
+failure rather than the graceful degradation the fallback exists for —
+and it has to name every parameter as deliberately unread, since this
+tree builds `-Wextra -Werror`. Force the guard false for one
+`make pmix_if.lo` before believing an edit there is good.
+
 ### `pmix_fd` — descriptor helpers, three of them with no caller
 
 `pmix_fd_read`/`pmix_fd_write`/`pmix_fd_set_cloexec`/`pmix_fd_is_*` are

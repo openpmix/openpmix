@@ -336,8 +336,18 @@ These are the non-trivial ones:
 
 The entire file is wrapped in `#if HAVE_STRUCT_SOCKADDR_IN`. On an exotic
 platform lacking `struct sockaddr_in`, a parallel set of stub
-implementations returns `PMIX_ERR_NOT_SUPPORTED` (or `false`/no-op) for
-most helpers, so callers still link and degrade cleanly.
+implementations returns `PMIX_ERR_NOT_SUPPORTED` (or `false`/no-op) so
+callers still link and degrade cleanly.
+
+That last clause is the part to be careful about, because nothing checks
+it: no configuration anyone builds selects this arm, so it gets neither
+compiler nor linker coverage. It has to define **every** entry point
+`pmix_if.h` declares — seven of the twenty-one were simply absent, which
+is a link failure rather than graceful degradation — and every parameter
+has to be named as deliberately unread (`PMIX_HIDE_UNUSED_PARAMS`), since
+the tree builds `-Wextra -Werror` and none of the stubs read theirs. If
+you add a function to `pmix_if.h`, add its stub here too, and force the
+guard false for one `make pmix_if.lo` to prove the arm still builds.
 
 ## MCA parameters
 

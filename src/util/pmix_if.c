@@ -33,6 +33,7 @@
 #    include <unistd.h>
 #endif
 #include <errno.h>
+#include <stdlib.h>
 #ifdef HAVE_SYS_TYPES_H
 #    include <sys/types.h>
 #endif
@@ -63,6 +64,7 @@
 #include <ctype.h>
 
 #include "src/class/pmix_list.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_net.h"
@@ -176,19 +178,35 @@ int pmix_ifaddrtoname(const char *if_addr, char *if_name, int length)
              intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
              intf = (pmix_pif_t *) pmix_list_get_next(intf)) {
 
+            /* An entry answers only for its own address family.  A kernel
+             * index carries one pmix_if_list entry per address, so the list
+             * routinely mixes AF_INET and AF_INET6 entries; reading an IPv4
+             * address out of a sockaddr_in6 yields that entry's flow label,
+             * and reading an IPv6 address out of a sockaddr_in yields the
+             * zero padding behind it.  Either way an unrelated entry can
+             * compare equal - "0.0.0.0" matched the first IPv6 entry and
+             * "::" matched the first IPv4 one - so the wrong interface name
+             * was returned and pmix_ifislocal() called a remote node local.
+             * The sibling pmix_ifaddrtokindex() has always screened this.
+             */
+            if (r->ai_family != ((struct sockaddr *) &intf->if_addr)->sa_family) {
+                continue;
+            }
+
             if (AF_INET == r->ai_family) {
                 struct sockaddr_in ipv4;
                 struct sockaddr_in *inaddr;
 
                 inaddr = (struct sockaddr_in *) &intf->if_addr;
-                memcpy(&ipv4, r->ai_addr, r->ai_addrlen);
+                memset(&ipv4, 0, sizeof(ipv4));
+                memcpy(&ipv4, r->ai_addr, MIN((size_t) r->ai_addrlen, sizeof(ipv4)));
 
                 if (inaddr->sin_addr.s_addr == ipv4.sin_addr.s_addr) {
                     pmix_strncpy(if_name, intf->if_name, length - 1);
                     freeaddrinfo(res);
                     return PMIX_SUCCESS;
                 }
-            } else {
+            } else if (AF_INET6 == r->ai_family) {
                 if (IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6 *) &intf->if_addr)->sin6_addr,
                                        &((struct sockaddr_in6 *) r->ai_addr)->sin6_addr)) {
                     pmix_strncpy(if_name, intf->if_name, length - 1);
@@ -287,8 +305,15 @@ int pmix_ifbegin(void)
     pmix_pif_t *intf;
 
     intf = (pmix_pif_t *) pmix_list_get_first(&pmix_if_list);
-    if (NULL != intf)
+    /* An empty list answers with its sentinel, never with NULL, so the
+     * NULL test this used to make could not fire: if_index was then read
+     * from a pmix_pif_t laid over pmix_if_list's own sentinel, which is
+     * a read well past the end of the pmix_list_t, and the caller began
+     * its walk from whatever that happened to hold.  Every other lookup
+     * in this file already terminates on pmix_list_get_end(). */
+    if (intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list)) {
         return intf->if_index;
+    }
     return (-1);
 }
 
@@ -535,9 +560,11 @@ static int parse_ipv4_dots(const char *addr, uint32_t *net, int *dots)
         }
         n[i] = (uint32_t) val;
         /* skip all the . */
-        for (start = end; '\0' != *start; start++)
-            if ('.' != *start)
+        for (start = end; '\0' != *start; start++) {
+            if ('.' != *start) {
                 break;
+            }
+        }
     }
     *dots = i;
     *net = PMIX_PIF_ASSEMBLE_FABRIC(n[0], n[1], n[2], n[3]);
@@ -570,18 +597,27 @@ int pmix_iftupletoaddr(const char *inaddr, uint32_t *net, uint32_t *mask)
                 /* no - must be an int telling us how much of the addr to use: e.g., /16
                  * For more information please read http://en.wikipedia.org/wiki/Subnetwork.
                  */
-                pval = strtol(ptr, NULL, 10);
-                /* a prefix length of 0..32 is valid CIDR: /0 matches
-                 * everything, /32 is an exact host match */
-                if ((pval > 32) || (pval < 0)) {
+                char *endptr;
+                long plen;
+
+                plen = strtol(ptr, &endptr, 10);
+                /* The whole suffix has to be digits, and a prefix length of
+                 * 0..32 is valid CIDR: /0 matches everything, /32 is an
+                 * exact host match.  The endptr test is what keeps a typo
+                 * from being accepted: strtol() answers 0 for a suffix with
+                 * no digits at all ("10.0.0.0/", "10.0.0.0/abc"), and since
+                 * /0 became legal that 0 would be taken as "match
+                 * everything" instead of being reported to the user.
+                 */
+                if (endptr == ptr || '\0' != *endptr || plen > 32 || plen < 0) {
                     pmix_output(0, "pmix_iftupletoaddr: unknown mask");
                     return PMIX_ERR_FABRIC_NOT_PARSEABLE;
                 }
                 /* guard against a 32-bit shift-by-32 (undefined behavior) */
-                if (0 == pval) {
+                if (0 == plen) {
                     *mask = 0;
                 } else {
-                    *mask = 0xFFFFFFFF << (32 - pval);
+                    *mask = 0xFFFFFFFF << (32 - plen);
                 }
             }
         } else {
@@ -763,21 +799,46 @@ void pmix_ifgetaliases(char ***aliases)
 
 #else /* HAVE_STRUCT_SOCKADDR_IN */
 
-/* if we don't have struct sockaddr_in, we don't have traditional
-   ethernet devices.  Just make everything a no-op error call */
+/* If we don't have struct sockaddr_in, we don't have traditional
+ * ethernet devices.  Just make everything a no-op error call.
+ *
+ * Every entry point pmix_if.h declares must appear here, or a platform
+ * that takes this branch fails to link rather than degrading; and every
+ * parameter has to be named as deliberately unread, since this tree
+ * builds -Wextra -Werror.  Neither held before: seven functions were
+ * missing outright and none of the stubs compiled.  No configuration
+ * anyone builds selects this arm, so it gets no compiler coverage --
+ * force the guard false for one object build before believing an edit
+ * here is good.
+ */
 
 int pmix_ifaddrtoname(const char *if_addr, char *if_name, int size)
 {
+    PMIX_HIDE_UNUSED_PARAMS(if_addr, if_name, size);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 int pmix_ifnametoindex(const char *if_name)
 {
+    PMIX_HIDE_UNUSED_PARAMS(if_name);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+int pmix_ifnametokindex(const char *if_name)
+{
+    PMIX_HIDE_UNUSED_PARAMS(if_name);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+int pmix_ifaddrtokindex(const char *if_addr)
+{
+    PMIX_HIDE_UNUSED_PARAMS(if_addr);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 int pmix_ifindextokindex(int if_index)
 {
+    PMIX_HIDE_UNUSED_PARAMS(if_index);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
@@ -793,46 +854,88 @@ int pmix_ifbegin(void)
 
 int pmix_ifnext(int if_index)
 {
+    PMIX_HIDE_UNUSED_PARAMS(if_index);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 int pmix_ifindextoname(int if_index, char *if_name, int length)
 {
+    PMIX_HIDE_UNUSED_PARAMS(if_index, if_name, length);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 int pmix_ifkindextoname(int kif_index, char *if_name, int length)
 {
+    PMIX_HIDE_UNUSED_PARAMS(kif_index, if_name, length);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 int pmix_ifindextoaddr(int if_index, struct sockaddr *if_addr, unsigned int length)
 {
+    PMIX_HIDE_UNUSED_PARAMS(if_index, if_addr, length);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-int pmix_ifindextomask(int if_index, uint32_t *if_addr, int length)
+int pmix_ifkindextoaddr(int if_kindex, struct sockaddr *if_addr, unsigned int length)
 {
+    PMIX_HIDE_UNUSED_PARAMS(if_kindex, if_addr, length);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+int pmix_ifindextomask(int if_index, uint32_t *if_mask, int length)
+{
+    PMIX_HIDE_UNUSED_PARAMS(if_index, if_mask, length);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+int pmix_ifindextomac(int if_index, uint8_t mac[6])
+{
+    PMIX_HIDE_UNUSED_PARAMS(if_index, mac);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+int pmix_ifindextomtu(int if_index, int *mtu)
+{
+    PMIX_HIDE_UNUSED_PARAMS(if_index, mtu);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+int pmix_ifindextoflags(int if_index, uint32_t *if_flags)
+{
+    PMIX_HIDE_UNUSED_PARAMS(if_index, if_flags);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 bool pmix_ifislocal(const char *hostname)
 {
+    PMIX_HIDE_UNUSED_PARAMS(hostname);
     return false;
 }
 
+/* This one must not answer PMIX_SUCCESS: it leaves *net and *mask
+ * untouched, and a caller that trusts the return code then reads
+ * whatever it had in them. */
 int pmix_iftupletoaddr(const char *inaddr, uint32_t *net, uint32_t *mask)
 {
-    return 0;
+    PMIX_HIDE_UNUSED_PARAMS(inaddr, net, mask);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+bool pmix_ifisloopback(int if_index)
+{
+    PMIX_HIDE_UNUSED_PARAMS(if_index);
+    return false;
 }
 
 int pmix_ifmatches(int idx, char **nets)
 {
+    PMIX_HIDE_UNUSED_PARAMS(idx, nets);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 void pmix_ifgetaliases(char ***aliases)
 {
+    PMIX_HIDE_UNUSED_PARAMS(aliases);
     return;
 }
 
