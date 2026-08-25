@@ -52,6 +52,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_fd.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_path.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
@@ -565,8 +566,26 @@ sharetopo:
         shmemfile = NULL;
         return PMIX_SUCCESS;
     }
-    /* enough space is available, so create the segment */
-    if (-1 == (shmemfd = open(shmemfile, O_CREAT | O_RDWR, 0600))) {
+    /* Enough space is available, so create the segment.
+     *
+     * O_EXCL, and through pmix_os_dirpath_open_file() so a symlink at
+     * the name is not followed: this process composes the whole of
+     * shmemfile, so anything already there is a file left over from an
+     * earlier run or something this code did not put there. Two passes
+     * at most - a leftover file is reclaimed once and the create
+     * retried; unlink() removes the name it is given and never follows
+     * it onward. */
+    for (int pass = 0; pass < 2; pass++) {
+        shmemfd = pmix_os_dirpath_open_file(shmemfile,
+                                            O_CREAT | O_EXCL | O_RDWR, 0600);
+        if (0 <= shmemfd || EEXIST != errno) {
+            break;
+        }
+        if (0 != unlink(shmemfile) && ENOENT != errno) {
+            break;
+        }
+    }
+    if (-1 == shmemfd) {
         int err = errno;
         if (1 < pmix_output_get_verbosity(pmix_hwloc_output)) {
             pmix_show_help("help-ploc.txt", "sys call fail", true,

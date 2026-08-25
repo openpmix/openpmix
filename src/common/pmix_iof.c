@@ -1047,6 +1047,91 @@ pmix_status_t pmix_iof_expand_pattern(const char *pattern, const char *nspace,
     return process_pattern(pattern, true, nspace, rank, numdigs, suffix, result, NULL);
 }
 
+/* Where the caller's own text ends in an output pattern.
+ *
+ * process_pattern() copies everything that is not a conversion verbatim,
+ * separators included, so "%h/%n/rank-%R" has PMIx composing two whole
+ * directory levels out of the hostname and the namespace. Those are
+ * names this library produces, and they have to be created one at a time
+ * against the descriptor of their parent rather than handed to the
+ * kernel as one string - only the last component of such a string is
+ * ever checked, so a symlink at any level above it would put the output
+ * somewhere the caller never named.
+ *
+ * The dividing line is the last separator that appears before the first
+ * conversion: everything up to it is literal text the caller wrote and
+ * is taken as given, everything after it is composed here. Nothing ahead
+ * of the first conversion is transformed, so the offset is the same in
+ * the pattern and in its expansion.
+ *
+ * @retval >=0 offset of that separator within the pattern
+ * @retval  -1 there is none, so the whole name is composed relative to
+ *             the current directory
+ */
+static ssize_t pattern_literal_head(const char *pattern)
+{
+    const char *pct = strchr(pattern, '%');
+    size_t limit = (NULL == pct) ? strlen(pattern) : (size_t) (pct - pattern);
+    ssize_t head = -1;
+    size_t i;
+
+    for (i = 0; i < limit; i++) {
+        if ('/' == pattern[i]) {
+            head = (ssize_t) i;
+        }
+    }
+    return head;
+}
+
+/* Create the directories a composed output name needs, then open it.
+ * Everything below the caller's own prefix is walked a component at a
+ * time; see pattern_literal_head() for where that prefix ends. `name` is
+ * modified in place while the directory part is taken off it, and is put
+ * back before returning. */
+static int open_composed_output(const char *pattern, char *name, mode_t dmode)
+{
+    ssize_t head = pattern_literal_head(pattern);
+    char *root, *tail, *sep;
+    int rc, fd;
+
+    if (0 > head) {
+        root = strdup(".");
+        tail = name;
+    } else if (0 == head) {
+        root = strdup("/");
+        tail = name + 1;
+    } else {
+        root = (char *) malloc((size_t) head + 1);
+        if (NULL != root) {
+            memcpy(root, name, (size_t) head);
+            root[head] = '\0';
+        }
+        tail = name + head + 1;
+    }
+    if (NULL == root) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return -1;
+    }
+
+    /* any directory levels inside the composed part have to exist first */
+    sep = strrchr(tail, '/');
+    if (NULL != sep) {
+        *sep = '\0';
+        rc = pmix_os_dirpath_create_under(root, tail, dmode);
+        *sep = '/';
+        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
+            PMIX_ERROR_LOG(rc);
+            free(root);
+            return -1;
+        }
+    }
+
+    fd = pmix_os_dirpath_open_file_under(root, tail,
+                                         O_CREAT | O_RDWR | O_TRUNC, 0644);
+    free(root);
+    return fd;
+}
+
 static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                                               pmix_rank_t rank,
                                               pmix_iof_channel_t stream)
@@ -1072,13 +1157,23 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
 
     /* see if we are to output to a directory */
     if (NULL != nptr->iof_flags.directory) {
-        /* construct the directory where the output files will go */
-        pmix_asprintf(&outdir, "%s/%s/rank.%0*u", nptr->iof_flags.directory,
-                      nptr->nspace, numdigs, rank);
+        /* Construct the part of the directory PMIx composes itself, kept
+         * separate from the part the caller handed us. iof_flags.directory
+         * is theirs and is taken as given; the namespace and rank
+         * components below it are ours, and are built one at a time so
+         * that a symlink at either does not send the output files
+         * somewhere the caller never named - see
+         * pmix_os_dirpath_create_under(). */
+        pmix_asprintf(&outdir, "%s/rank.%0*u", nptr->nspace, numdigs, rank);
+        if (NULL == outdir) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return NULL;
+        }
         /* ensure the directory exists. An existing directory is fine:
          * the job may legitimately be writing into one that is already
          * there (a rerun, or another rank that got here first) */
-        rc = pmix_os_dirpath_create(outdir, S_IRWXU | S_IRGRP | S_IXGRP);
+        rc = pmix_os_dirpath_create_under(nptr->iof_flags.directory, outdir,
+                                          S_IRWXU | S_IRGRP | S_IXGRP);
         if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
             PMIX_ERROR_LOG(rc);
             free(outdir);
@@ -1088,7 +1183,13 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             nptr->iof_flags.merge) {
             /* setup the stdout sink */
             pmix_asprintf(&outfile, "%s/stdout", outdir);
-            fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
+            if (NULL == outfile) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                free(outdir);
+                return NULL;
+            }
+            fdout = pmix_os_dirpath_open_file_under(nptr->iof_flags.directory, outfile,
+                                                    O_CREAT | O_RDWR | O_TRUNC, 0644);
             free(outfile);
             if (fdout < 0) {
                 /* couldn't be opened */
@@ -1111,7 +1212,13 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
         } else {
             /* setup the stderr sink */
             pmix_asprintf(&outfile, "%s/stderr", outdir);
-            fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
+            if (NULL == outfile) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                free(outdir);
+                return NULL;
+            }
+            fdout = pmix_os_dirpath_open_file_under(nptr->iof_flags.directory, outfile,
+                                                    O_CREAT | O_RDWR | O_TRUNC, 0644);
             free(outfile);
             if (fdout < 0) {
                 /* couldn't be opened */
@@ -1160,21 +1267,15 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 return NULL;
             }
-            /* ensure the directory the file lands in exists.  This is taken
-             * from the FINAL name, not from the name we were handed: a
-             * pattern may put conversions in the directory part
-             * ("%h/rank-%R"), and creating the raw name's dirname would
-             * create a directory literally called "%h" and then fail to open
-             * the file in the one the pattern actually named. */
-            outdir = pmix_dirname(outfile);
-            rc = pmix_os_dirpath_create(outdir, S_IRWXU | S_IRGRP | S_IXGRP);
-            free(outdir);
-            if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
-                PMIX_ERROR_LOG(rc);
-                free(outfile);
-                return NULL;
-            }
-            fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
+            /* The directories come from the FINAL name, not from the one
+             * we were handed: a pattern may put conversions in the
+             * directory part ("%h/rank-%R"), and creating the raw name's
+             * dirname would create a directory literally called "%h" and
+             * then fail to open the file in the one the pattern actually
+             * named. Those expanded levels are composed here rather than
+             * given to us, so they are built a component at a time. */
+            fdout = open_composed_output(nptr->iof_flags.file, outfile,
+                                         S_IRWXU | S_IRGRP | S_IXGRP);
             free(outfile);
             if (fdout < 0) {
                 /* couldn't be opened */
@@ -1211,15 +1312,8 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 return NULL;
             }
             /* see the note on the stdout sink above */
-            outdir = pmix_dirname(outfile);
-            rc = pmix_os_dirpath_create(outdir, S_IRWXU | S_IRGRP | S_IXGRP);
-            free(outdir);
-            if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
-                PMIX_ERROR_LOG(rc);
-                free(outfile);
-                return NULL;
-            }
-            fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
+            fdout = open_composed_output(nptr->iof_flags.file, outfile,
+                                         S_IRWXU | S_IRGRP | S_IXGRP);
             free(outfile);
             if (fdout < 0) {
                 /* couldn't be opened */

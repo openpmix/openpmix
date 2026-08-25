@@ -947,17 +947,22 @@ looks more roundabout than "stat then chmod" or "readdir then unlink".
   `pmix_os_dirpath_access()` is the fossil of that decision: it is a
   no-op that always answers `PMIX_SUCCESS`, kept because it is installed
   API that PRRTE may still link against. Do not give it a body.
-- **Only the *final* component is protected against a planted symlink.**
-  `mkdir(2)` does not follow a symlink at the last component but does
-  follow one at every component before it, and the tree-building loop
-  accepts `EEXIST` on an intermediate component without asking what it
-  is - by design, since an intermediate need only be traversable. So a
-  symlink pre-planted at an intermediate component of a predictable
-  session path still redirects the leaf that gets created. Closing that
-  needs an `openat` walk from the root with `O_NOFOLLOW` at every step,
-  and `mkdirat` for each component; it is a deliberate design change, not
-  a tidy-up. **Do not "fix" it halfway** - a partial walk that still ends
-  in a path-based `mkdir` buys nothing.
+- **The plain single-path entry points protect only the *final*
+  component against a planted symlink.** `mkdir(2)` does not follow a
+  symlink at the last component but does follow one at every component
+  before it, and the tree-building loop accepts `EEXIST` on an
+  intermediate component without asking what it is - by design, since an
+  intermediate need only be traversable. So a symlink pre-planted midway
+  through a predictable session path still redirects the leaf that gets
+  created. That is why `pmix_os_dirpath_create_under()` and
+  `_open_file_under()` exist, and why they take the trusted prefix and
+  the composed tail as *separate arguments* rather than one path: only
+  the tail can be walked with `O_NOFOLLOW` at every step. Which of the
+  three entry points a caller wants is decided in
+  [Composing a path PMIx will then open](#composing-a-path-pmix-will-then-open)
+  below - and **do not "fix" the plain ones halfway**: a partial walk
+  that still ends in a path-based `mkdir` buys nothing, and one that
+  refuses a symlink at every component refuses macOS outright.
 
 Three contracts the callers depend on:
 
@@ -1088,6 +1093,79 @@ stubs recorded below: **a conditionally-compiled arm no configuration
 here selects gets no compiler coverage at all.** If you touch one,
 compile it by hand — forcing the guard false for one `make` of that
 object is enough.
+
+### Composing a path PMIx will then open
+
+Several places here build a name out of PMIx's own naming scheme and
+then create something at it — a segment backing file, an `hwloc.sm`, a
+per-rank `stdout`, a session directory. Two rules keep those from landing
+somewhere other than where the caller asked, and both are about the
+difference between naming a thing and holding it.
+
+**`O_NOFOLLOW` applies to the last component of a path and nothing
+else.** Every component before it is resolved in the ordinary way,
+symlinks included. So adding `O_NOFOLLOW` to a plain `open()` says
+nothing at all about the directories the name was reached through. That
+gives three entry points rather than one, and which you want depends on
+who composed which part of the name:
+
+| the name is | use |
+|---|---|
+| entirely from outside PMIx | `pmix_os_dirpath_create()` — the whole path is taken as given |
+| a caller's directory + a leaf PMIx composes | `pmix_os_dirpath_open_file()` |
+| a caller's directory + directories PMIx composes | `pmix_os_dirpath_create_under()` / `_open_file_under()` |
+
+- **The prefix is taken as given.** `$TMPDIR`, `PMIX_NSDIR`, a
+  user-named output directory — somebody chose those, and PMIx is in no
+  position to second-guess them. They are resolved normally, which they
+  have to be: on macOS `/tmp`, `/var` and `/etc` are *all* root-owned
+  symlinks into `/private`, so the default PMIx temporary directory
+  reaches its contents through one. A blanket "decline a symlink at any
+  component" walk therefore declines the platform; it was tried, and
+  that is what it did — while also declining the legitimate reclaim of a
+  stale segment file, which is how the mistake surfaced.
+- **What PMIx composes below the prefix gets walked.** Those names are
+  the library's own, so nothing else should have put anything at them.
+  Each is created with `mkdirat()` and opened with `O_NOFOLLOW` against
+  the descriptor of its parent, so the directory each one lands in is the
+  one just checked. The test is **how many components PMIx composes**,
+  not whether it composes any: a single one is already covered, since
+  `mkdir(2)` does not follow a link at the last component of the name it
+  is given and `dirpath_ensure_mode()` then opens that component
+  `O_NOFOLLOW`. It is the *second* composed level that nothing sees.
+  - `write_rndz_file()` does **not** need the `_under` pair. Its
+    directory is `pmix_server_globals.tmpdir`, which is
+    `PMIX_SERVER_TMPDIR` or `$TMPDIR` or `/tmp` verbatim — PMIx composes
+    only the basename beneath it.
+  - `pmix_iof`'s `PMIX_IOF_OUTPUT_TO_DIRECTORY` sink does: the caller
+    names a directory and PMIx builds `<nspace>/rank.N` under it.
+  - So does its `PMIX_IOF_OUTPUT_TO_FILE` sink, which is easy to miss.
+    `process_pattern()` copies everything that is not a conversion
+    verbatim, **separators included**, so `file:%h/%n/rank-%R` has PMIx
+    composing two directory levels out of the hostname and the
+    namespace. `pattern_literal_head()` there is what finds the dividing
+    line: the last separator before the first conversion, since nothing
+    ahead of that is transformed and the offset is therefore the same in
+    the pattern and in its expansion.
+- **Where the name is created fresh, pass `O_EXCL` with `O_CREAT`.**
+  Together they decline *anything* already at the name rather than only a
+  symlink. `write_rndz_file()` in
+  [`ptl_base_listener.c`](../mca/ptl/base/ptl_base_listener.c) is the
+  model, **including its two-pass loop** — a name that carries a pid may
+  hold a file left over from an earlier run, since pids get reused, and
+  that has to be reclaimed or the operation cannot succeed at all.
+  Reclaim it with `unlink()`, which removes the name it is given and
+  never follows it onward. A change that only declines breaks startup;
+  `test/unit/util/util_shmem.c` covers both halves for exactly that
+  reason.
+
+**Once you hold a descriptor, act on it rather than on the name.**
+`chmod()` follows a symlink at the final component and `lchown()`
+deliberately does not, so a pair of them applied to the same path act on
+two different objects — which is what `pmix_shmem_segment_chmod()` and
+its neighbour were doing. Open once and use `fchmod()`/`fstat()`, the way
+`dirpath_ensure_mode()` does in
+[`pmix_os_dirpath.c`](pmix_os_dirpath.c).
 
 ### `pmix_shmem` — a created segment reads as zero
 
