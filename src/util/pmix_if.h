@@ -124,7 +124,8 @@ PMIX_EXPORT int pmix_ifindextokindex(int if_index);
 PMIX_EXPORT int pmix_ifcount(void);
 
 /**
- *  Returns the index of the first available interface.
+ *  Returns the index of the first available interface, or -1 when no
+ *  interface has been discovered.
  */
 PMIX_EXPORT int pmix_ifbegin(void);
 
@@ -227,11 +228,21 @@ PMIX_EXPORT bool pmix_ifislocal(const char *hostname);
 /**
  * Convert a dot-delimited network tuple to an IP address
  *
+ * The tuple may be partial ("192.168"), in which case the mask is
+ * inferred from the number of dots, or it may carry an explicit
+ * "/N" prefix length or "/a.b.c.d" dotted netmask.
+ *
+ * Note that the mask handed back here is a real bit mask in *host*
+ * byte order -- unlike pmix_ifindextomask(), which yields a CIDR
+ * prefix length.
+ *
  * @param addr (IN) character string tuple
- * @param net (IN) Pointer to returned network address
- * @param mask (IN) Pointer to returned netmask
+ * @param net (OUT) Pointer to returned network address; may be NULL
+ * @param mask (OUT) Pointer to returned netmask; may be NULL
  * @return PMIX_SUCCESS if no problems encountered
- * @return PMIX_ERROR if data could not be released
+ * @return PMIX_ERR_FABRIC_NOT_PARSEABLE if the tuple, the prefix
+ *         length, or the dotted netmask is malformed.  Neither
+ *         out-parameter can be relied on in that case.
  */
 PMIX_EXPORT int pmix_iftupletoaddr(const char *addr, uint32_t *net, uint32_t *mask);
 

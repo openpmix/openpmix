@@ -119,6 +119,77 @@ static void teardown_if_list(void)
     PMIX_DESTRUCT(&pmix_if_list);
 }
 
+/*
+ * pmix_ifaddrtoname() walks the same mixed-family list, and used to
+ * compare a resolved address against every entry on it regardless of the
+ * entry's family.  Reading a sockaddr_in out of an AF_INET6 entry yields
+ * that entry's flow label, and reading a sockaddr_in6 out of an AF_INET
+ * entry yields the zero padding behind the address - so an all-zero
+ * query matched the first entry of the *other* family and the function
+ * answered with an interface that does not carry the address at all.
+ * pmix_ifislocal() is a thin wrapper over this, so the same confusion
+ * declares a remote node local.
+ */
+static void check_name(const char *label, const char *addr, const char *expected)
+{
+    char name[PMIX_IF_NAMESIZE + 1];
+    int rc;
+
+    name[0] = '\0';
+    rc = pmix_ifaddrtoname(addr, name, sizeof(name));
+    if (NULL == expected) {
+        report(label, PMIX_SUCCESS != rc);
+    } else {
+        report(label, PMIX_SUCCESS == rc && 0 == strcmp(expected, name));
+    }
+}
+
+static void test_ifaddrtoname(void)
+{
+    build_if_list();
+
+    /* an address the list really carries is still found, by either family */
+    check_name("v4 address finds its interface", "172.17.0.2", "eth0");
+    check_name("v6 address finds its interface", "fe80::1", "eth0");
+    check_name("v4 loopback finds lo", "127.0.0.1", "lo");
+    check_name("v6 loopback finds lo", "::1", "lo");
+
+    /* the cross-family regressions: no interface here holds either of
+     * these, and before the family screen both were reported as "lo" */
+    check_name("v4 unspecified addr is not local", "0.0.0.0", NULL);
+    check_name("v6 unspecified addr is not local", "::", NULL);
+    report("ifislocal agrees v4 unspecified is not local", !pmix_ifislocal("0.0.0.0"));
+    report("ifislocal agrees v6 unspecified is not local", !pmix_ifislocal("::"));
+
+    /* an address on none of the interfaces is not found */
+    check_name("unrelated address not found", "203.0.113.7", NULL);
+
+    teardown_if_list();
+}
+
+/*
+ * A node can come up with nothing discovered - a container in a network
+ * namespace of its own, or a platform none of the pif components can
+ * read.  pmix_list_get_first() answers the list's *sentinel* on an empty
+ * list, never NULL, so pmix_ifbegin()'s NULL test never fired and it read
+ * an if_index out of a pmix_pif_t laid over the sentinel, which is past
+ * the end of the pmix_list_t.  The ptl listener starts its interface walk
+ * at whatever came back.
+ */
+static void test_ifbegin_empty(void)
+{
+    PMIX_CONSTRUCT(&pmix_if_list, pmix_list_t);
+    report("ifcount is zero on an empty list", 0 == pmix_ifcount());
+    report("ifbegin answers -1 on an empty list", -1 == pmix_ifbegin());
+    report("ifnext answers -1 on an empty list", -1 == pmix_ifnext(0));
+    PMIX_DESTRUCT(&pmix_if_list);
+
+    /* and it still finds the first entry when there is one */
+    build_if_list();
+    report("ifbegin answers the first entry", 1 == pmix_ifbegin());
+    teardown_if_list();
+}
+
 /* Every route to "the kernel index of this interface" has to give the
  * same answer.  It did not: the field holds an unsigned index, and
  * pmix_ifindextokindex() returns it as an int, but pmix_ifnametokindex()
@@ -256,11 +327,26 @@ int main(int argc, char **argv)
     /* out-of-range octet */
     check_err("octet > 255 rejected", "192.168.1.300/24");
 
+    /* a suffix with no digits in it must be reported, not read as the
+     * prefix length 0 that strtol() answers for it.  /0 is legal CIDR
+     * meaning "match everything", so swallowing these turned a typo in
+     * an if_include entry into a mask that matches no interface at all -
+     * and suppressed the invalid-net-mask warning that used to fire. */
+    check_err("empty cidr suffix rejected", "192.168.1.0/");
+    check_err("non-numeric cidr suffix rejected", "10.0.0.0/abc");
+    check_err("trailing junk after cidr rejected", "10.0.0.0/24x");
+
     fprintf(stdout, "\n=== pmix_ifmatches unit tests ===\n\n");
     fprintf(stdout, "-- one case drives an invalid netmask;"
                     " the warning it prints is expected --\n");
 
     test_ifmatches();
+
+    fprintf(stdout, "\n=== pmix_ifaddrtoname unit tests ===\n\n");
+    test_ifaddrtoname();
+
+    fprintf(stdout, "\n=== empty interface list unit tests ===\n\n");
+    test_ifbegin_empty();
 
     fprintf(stdout, "\n=== kernel index width unit tests ===\n\n");
     test_large_kernel_index();
