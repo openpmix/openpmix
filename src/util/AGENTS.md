@@ -659,6 +659,40 @@ good — and note that `-UHAVE_STRUCT_SOCKADDR_IN` on the command line does
 **not** do it, because `pmix_config.h` defines the macro again from
 inside the file. Edit the `#ifdef` to `#if 0` for the one compile.
 
+### `pmix_os_path` — a NULL that callers kept forgetting to read
+
+One variadic function that concatenates its `char *` arguments with the
+path separator between them. It is pure: no globals, no syscalls, no
+look at the filesystem. Whether the name it builds refers to anything is
+the caller's question, asked afterwards.
+
+**It fails, and the failure is a `NULL` return.** Two ways: the assembled
+name would exceed `PMIX_PATH_MAX` (`PATH_MAX + 1`, so 1025 bytes on Linux
+and macOS), or the allocation failed. Neither is exotic - the usual
+caller is walking a directory tree, and every level of nesting lengthens
+the name - and five call sites across `src/include`, `src/mca/ptl`,
+`src/mca/pmdl` and `src/tools` used the answer without asking. One of
+them handed it to `strcmp()`. **If you call this, screen the result**;
+`__pmix_attribute_warn_unused_result__` makes the compiler insist you use
+it, which is not the same thing.
+
+**The length is tested against an estimate, not against the answer.** The
+estimate allows one separator per element, which is an upper bound
+because an element that already begins with a separator does not get
+one. It used to count that separator twice - once while measuring and
+again in the `num_elements` term - which pushed a name that fits over the
+limit and had it refused. `test_length_boundary` in
+[`test/unit/util/util_os_path.c`](../../test/unit/util/util_os_path.c)
+pins both sides of that boundary; note that the accepted case asserts the
+*length* of what came back, since asserting merely that it is non-NULL
+would pass against a library with any bound at all above 1024.
+
+Two smaller things the header now states and the code has always done:
+the empty argument list answers `"."` **plus a separator** for a relative
+path, not `"."`; and the argument list must end in `NULL`, which
+`__pmix_attribute_sentinel__` makes a compiler diagnostic rather than the
+segfault the header threatens.
+
 ### `pmix_os_dirpath` — the session directories, and who may swap them
 
 Creates and recursively destroys directory trees. Its callers are the
