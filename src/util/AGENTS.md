@@ -466,6 +466,38 @@ Both functions are pure reads of a `const` table with static storage duration:
 reentrant, safe on any thread, and safe to call from inside the library. The
 returned string belongs to the library and must never be freed.
 
+### `pmix_name_fns` — printing a name costs two buffers, not one
+
+Every `PMIX_NAME_PRINT`/`PMIX_RANK_PRINT` answer comes out of a ring of
+16 buffers held in thread-specific storage, so the result is never freed
+and stays valid only until the ring wraps. What is easy to miss is that
+`print_args()` renders the rank by calling `pmix_util_print_rank()`,
+which takes a buffer of its own — so a *name* print spends two, and the
+real budget for one statement is about eight, not sixteen. Nothing in
+the tree uses more than two per statement, and overrunning it does not
+crash; it silently makes an earlier answer read as a later one.
+
+The TSD key is created once behind an atomic latch, and
+`pmix_name_fns_finalize()` clears that latch because
+`pmix_tsd_keys_destruct()` deletes the key outright. The two must stay
+adjacent, in that order, at the point in `pmix_rte_finalize` where this
+is the only thread left — see
+[`src/runtime/AGENTS.md`](../runtime/AGENTS.md) for why they used to run
+further up and what broke.
+
+**The rank is unsigned, and 45 of its reserved values have no name.**
+`PMIX_RANK_VALID` is `UINT32_MAX-50`, so everything from there up is
+reserved, and `pmix_util_print_rank()` names only five of them
+(`UNDEF`, `WILDCARD`, `LOCAL_NODE`, `LOCAL_PEERS`, `INVALID`). The rest
+fall through to the numeric branch, which therefore has to render values
+above `INT32_MAX` — it cast to `long` and used `%ld`, which is exact on
+a 64-bit platform and implementation-defined where `long` is 32 bits, so
+the same rank printed positive on one machine and negative on another.
+`test_print_rank_above_int32` in
+[`test/unit/util/util_name_fns.c`](../../test/unit/util/util_name_fns.c)
+pins it, and note that it *cannot* fail on a 64-bit build — it is there
+for the 32-bit ones.
+
 ### `pmix_net` / `pmix_if` — network helpers
 
 `pmix_net` is pure address math (CIDR→netmask in *network* order,

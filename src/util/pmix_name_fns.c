@@ -214,7 +214,15 @@ char *pmix_util_print_rank(const pmix_rank_t vpid)
     } else if (PMIX_RANK_INVALID == vpid) {
         pmix_snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "INVALID");
     } else {
-        pmix_snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "%ld", (long) vpid);
+        /* pmix_rank_t is uint32_t and the reserved band runs from
+         * PMIX_RANK_VALID (UINT32_MAX-50) up, only five of which are
+         * named above - so a value this branch has to render can exceed
+         * LONG_MAX where long is 32 bits, and casting it there is
+         * implementation-defined: the same rank printed as a large
+         * positive number on one platform and a negative one on another.
+         * Render it as what it is. */
+        pmix_snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "%u",
+                      (unsigned int) vpid);
     }
     ptr->cntr++;
     if (PMIX_PRINT_NAME_ARG_NUM_BUFS == ptr->cntr) {
