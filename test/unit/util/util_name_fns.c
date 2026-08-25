@@ -56,6 +56,34 @@ static void test_print_rank_positive(void)
     report("print_rank_positive", s != NULL && 0 == strcmp(s, "5"));
 }
 
+/*
+ * The reserved band runs from PMIX_RANK_VALID (UINT32_MAX-50) up, and
+ * only five of its members have names, so this function has to render
+ * raw values that do not fit a signed 32-bit int.  It used to cast the
+ * uint32_t rank to long and print it with %ld: exact on a 64-bit
+ * platform, implementation-defined where long is 32 bits, so the same
+ * rank appeared as a large positive number on one machine and a
+ * negative one on another.
+ *
+ * Note this case cannot fail on a 64-bit build - it is here to pin the
+ * contract for the 32-bit ones, where it can.
+ */
+static void test_print_rank_above_int32(void)
+{
+    char buf[32];
+    char *s;
+
+    s = pmix_util_print_rank(3000000000u);
+    report("print_rank_above_int32", NULL != s && 0 == strcmp(s, "3000000000"));
+
+    /* an unnamed member of the reserved band renders as its own value,
+     * and in particular never as a negative number */
+    snprintf(buf, sizeof(buf), "%u", (unsigned int) (PMIX_RANK_VALID + 10));
+    s = pmix_util_print_rank(PMIX_RANK_VALID + 10);
+    report("print_rank_reserved_band_unsigned",
+           NULL != s && 0 == strcmp(s, buf) && NULL == strchr(s, '-'));
+}
+
 static void test_print_rank_undef(void)
 {
     char *s = pmix_util_print_rank(PMIX_RANK_UNDEF);
@@ -214,6 +242,7 @@ int main(int argc, char **argv)
 
     test_print_rank_zero();
     test_print_rank_positive();
+    test_print_rank_above_int32();
     test_print_rank_undef();
     test_print_rank_wildcard();
     test_print_rank_invalid();
