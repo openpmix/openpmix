@@ -31,6 +31,7 @@
 #endif
 
 #include "pmix_common.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_few.h"
@@ -85,6 +86,11 @@ PMIX_EXPORT pmix_status_t pmix_few(char *argv[], int *status)
 
     return PMIX_SUCCESS;
 #else
+    /* nothing here to fork with.  Both parameters go unread, and this
+     * tree builds with -Wextra -Werror, so say so explicitly - a
+     * platform that takes this branch would otherwise not compile the
+     * file at all */
+    PMIX_HIDE_UNUSED_PARAMS(argv, status);
     return PMIX_ERR_NOT_SUPPORTED;
 #endif
 }

@@ -447,11 +447,20 @@ compiler through it. Everything else that starts a process goes through
   child ran, so the call succeeded, and errno comes back as the child's
   exit status (truncated to 8 bits, as every exit status is).
 
-A note on the guard: the body is compiled behind
+Two notes on the guard. The body is compiled behind
 `HAVE_FORK && HAVE_EXECVE && HAVE_WAITPID` but calls `execvp`, which
 configure does not probe for separately. POSIX gives you the whole
 `exec*` family together, so the proxy holds; it is worth knowing it *is*
 a proxy before adding a fourth call here.
+
+And the `#else` arm — the one no machine anyone builds on has ever
+compiled — did not compile. It returns `PMIX_ERR_NOT_SUPPORTED` without
+reading either parameter, and this tree builds `-Wextra -Werror`, so
+both came out as errors. That is the same shape as the `pmix_pty.c`
+stubs recorded below: **a conditionally-compiled arm no configuration
+here selects gets no compiler coverage at all.** If you touch one,
+compile it by hand — forcing the guard false for one `make` of that
+object is enough.
 
 ### `pmix_shmem` — a created segment reads as zero
 
