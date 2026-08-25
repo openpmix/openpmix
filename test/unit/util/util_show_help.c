@@ -96,6 +96,22 @@ static void test_show_help_string_unknown_topic(void)
     report("show_help_string_unknown_topic: returns NULL", s == NULL);
 }
 
+static void test_show_help_string_null_args(void)
+{
+    /* No file or no topic names nothing, so the answer is the same as any
+     * other lookup that finds nothing. Both arguments used to reach
+     * strcmp() unscreened - which is a crash, not a NULL, and it is
+     * reachable from pmix_cmd_line_parse() whenever a tool passes a NULL
+     * helpfile and the user asks for help. These die on a signal, not with
+     * a failed assertion, if that comes back. */
+    char *s = pmix_show_help_string(NULL, "usage", 0);
+    report("show_help_string_null_file: returns NULL", s == NULL);
+    s = pmix_show_help_string("help-cli.txt", NULL, 0);
+    report("show_help_string_null_topic: returns NULL", s == NULL);
+    s = pmix_show_help_string(NULL, NULL, 0);
+    report("show_help_string_null_both: returns NULL", s == NULL);
+}
+
 /* ------------------------------------------------------------------ */
 /* pmix_show_help_norender                                             */
 /* ------------------------------------------------------------------ */
@@ -144,6 +160,7 @@ int main(int argc, char **argv)
     test_show_help_string_known_topic();
     test_show_help_string_unknown_file();
     test_show_help_string_unknown_topic();
+    test_show_help_string_null_args();
     test_show_help_norender();
     test_help_check_dups_first_call();
 

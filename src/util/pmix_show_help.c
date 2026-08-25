@@ -440,6 +440,15 @@ static void get_content(char ***output,
     int i, j, m;
     char *p, *tp, *file, *pj, *line;
 
+    /* Both of these are handed straight to strcmp() below, so a caller
+     * that has no file or topic to name has to be turned away here
+     * rather than crashing the lookup. Leaving *output alone makes this
+     * read as "no such help", which is what the caller does with every
+     * other lookup that finds nothing. */
+    if (NULL == filename || NULL == topic) {
+        return;
+    }
+
     if (!pmix_show_help_initialized || NULL == project ||
         0 == strcmp(project, "pmix")) {
         // restrict to local array
