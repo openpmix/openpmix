@@ -691,11 +691,15 @@ int main(int argc, char *argv[])
             struct stat buf;
             filename = pmix_os_path(false, options_data[user_data_idx].path_libdir,
                                     options_data[user_data_idx].req_file, NULL);
-            if (0 != stat(filename, &buf)) {
+            /* a name we could not assemble names no file that is there,
+             * so it gets the same report a failed stat does - and the
+             * name itself was never released either way */
+            if (NULL == filename || 0 != stat(filename, &buf)) {
                 pmix_show_help("help-pmixcc.txt", "file-not-found", true, base_argv0,
                                options_data[user_data_idx].req_file,
                                options_data[user_data_idx].language, NULL);
             }
+            free(filename);
         }
     }
 

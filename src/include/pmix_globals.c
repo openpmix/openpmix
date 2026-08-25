@@ -817,6 +817,13 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
          * allocating memory here, so we need to free it later on.
          */
         filenm = pmix_os_path(false, path, ep->d_name, NULL);
+        if (NULL == filenm) {
+            /* the assembled name is longer than PMIX_PATH_MAX, or we are
+             * out of memory - either way we cannot name this entry, and
+             * the ignore-list comparison below would hand the NULL to
+             * strcmp() */
+            continue;
+        }
 
         /* if this path is to be ignored, then do so */
         PMIX_LIST_FOREACH (cf, &epi->ignores, pmix_cleanup_file_t) {
