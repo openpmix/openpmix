@@ -14,8 +14,8 @@
 #
 [malformed net_private_ipv4]
 PMIx has detected at least one malformed IP address or netmask in
-the value of the opal_net_private_ipv4 MCA parameter.  The
-opal_net_private_ipv4 MCA parameter accepts a semicolon-delimited list
+the value of the pmix_net_private_ipv4 MCA parameter.  The
+pmix_net_private_ipv4 MCA parameter accepts a semicolon-delimited list
 of Classless Inter-Domain Routing (CIDR) notation specifications, each
 of the form <ipaddress>/<mask>.  For example:
 

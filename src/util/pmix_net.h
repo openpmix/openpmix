@@ -49,8 +49,9 @@ BEGIN_C_DECLS
  * helper subsystem.
  *
  * @retval PMIX_SUCCESS   Success
- * @retval PMIX_ERR_TEMP_OUT_OF_RESOURCE Not enough memory for static
- *                        buffer creation
+ * @retval PMIX_ERR_OUT_OF_RESOURCE  No thread-specific-data key was
+ *                        available
+ * @retval PMIX_ERR_NOMEM Out of memory
  */
 PMIX_EXPORT int pmix_net_init(void);
 
@@ -66,6 +67,25 @@ PMIX_EXPORT int pmix_net_init(void);
 PMIX_EXPORT int pmix_net_finalize(void);
 
 /**
+ * Parse the pmix_net_private_ipv4 MCA parameter
+ *
+ * Build the table of "private" IPv4 networks that
+ * pmix_net_addr_isipv4public() consults, from the current value of the
+ * pmix_net_private_ipv4 MCA parameter.  This is deliberately *not* part
+ * of pmix_net_init(): that runs from pmix_init_util(), which completes
+ * before pmix_register_params() has given the variable its value, so a
+ * parse there would only ever see the NULL initializer and leave every
+ * address looking public.  Call this once the parameters are registered;
+ * calling it again simply replaces the table.
+ *
+ * @retval PMIX_SUCCESS   Success - including the case where the
+ *                        parameter is empty, which leaves no network
+ *                        classified as private
+ * @retval PMIX_ERR_NOMEM Out of memory
+ */
+PMIX_EXPORT pmix_status_t pmix_net_setup_private_ipv4(void);
+
+/**
  * Calculate netmask in network byte order from CIDR notation
  *
  * @param prefixlen (IN)  CIDR prefixlen
@@ -76,11 +96,12 @@ PMIX_EXPORT uint32_t pmix_net_prefix2netmask(uint32_t prefixlen);
 /**
  * Determine if given IP address is in the localhost range
  *
- * Determine if the given IP address is in the localhost range
- * (127.0.0.0/8), meaning that it can't be used to connect to machines
- * outside the current host.
+ * Determine if the given IP address is in the localhost range, meaning
+ * that it can't be used to connect to machines outside the current host.
+ * That is 127.0.0.0/8 for IPv4, and ::1 or an IPv4-mapped address whose
+ * embedded IPv4 address is itself in 127.0.0.0/8 for IPv6.
  *
- * @param addr             struct sockaddr_in of IP address
+ * @param addr             struct sockaddr of IP address
  * @return                 true if \c addr is a localhost address,
  *                         false otherwise.
  */
@@ -128,7 +149,12 @@ PMIX_EXPORT bool pmix_net_addr_isipv4public(const struct sockaddr *addr);
  *
  * Return the un-resolved address in a string format.  The string will
  * be returned in a per-thread static buffer and should not be freed
- * by the user.
+ * by the user; it is valid until this thread's next call.
+ *
+ * This never returns NULL - an address it cannot render (an unsupported
+ * family, a failed conversion, no memory for the buffer) reads as
+ * "UNKNOWN", so a caller that is about to print the answer does not have
+ * to check it.
  *
  * @param addr              struct sockaddr of address
  * @return                  literal representation of \c addr
@@ -142,7 +168,8 @@ PMIX_EXPORT char *pmix_net_get_hostname(const struct sockaddr *addr);
  * sockaddr_in or a struct sockaddr_in6.
  *
  * @param addr             struct sockaddr containing address
- * @return                 port number from \addr
+ * @return                 port number from \c addr in host byte order,
+ *                         or -1 if it carries neither
  */
 PMIX_EXPORT int pmix_net_get_port(const struct sockaddr *addr);
 
