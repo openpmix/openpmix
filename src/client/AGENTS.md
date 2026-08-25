@@ -2978,6 +2978,25 @@ is the shape `PMIx_Connect_nb` already uses for its job-info fetch.
   `cbdes()` does not touch `proc`; the snapshot exists because the caddy
   the reply was addressed to is itself on the pending list and its `lg`
   is released partway through the delivery loop.
+- **`_getnb_cbfunc()` fetches at `PMIX_SCOPE_UNDEF`, discarding the
+  caller's `PMIX_DATA_SCOPE`**, which reads as a dropped directive. It is
+  deliberate and must stay. The fetch it is about to make is over data
+  the *server* just sent, stored under whichever scope the payload named,
+  and the caller's scope describes where *they* expected to find it — so
+  honoring it here would turn a reply that did arrive into
+  `PMIX_ERR_NOT_FOUND` whenever the two disagree. The local paths
+  (`get_data()`, `try_local_fetch()`) do honor it, because there the
+  scope selects which of this process's own tables to search.
+- **The `PMIX_RANK_WILDCARD` retry in `_getnb_cbfunc()` is the twin of
+  the one deliberately removed from `get_data()`** — the same
+  client-side compensation for a module that will not answer at
+  `PMIX_RANK_UNDEF`, in the path that runs after the server's reply is
+  stored. It is left in place, and left named here rather than quietly
+  removed: with both modules now answering `UNDEF` out of the job-level
+  store it should be dead, but the case that would prove it is a *remote*
+  get — a proc whose data is not already cached, which is a
+  `contrib/dockerswarm` case and not a `make check` one. Retire it with
+  that evidence, not by reasoning from the local path.
 - **`PMIX_GET_POINTER_VALUES` is honored only by the three shortcuts
   `process_request()` answers outright** (`PMIX_PROCID`, `PMIX_RANK`,
   and — inconsistently — not `PMIX_VERSION_NUMERIC`). Every other path
@@ -2985,6 +3004,89 @@ is the shape `PMIx_Connect_nb` already uses for its job-info fetch.
   gap against what the attribute says, but closing it is a change to the
   ownership rules `PMIx_Get(3)` documents rather than a fix; recorded in
   `docs/todo.rst`.
+
+## `pending_requests` is two tables, and both must ask it the same question
+
+`pmix_client_globals.pending_requests` does two jobs. `get_data()`
+consults it before it sends, so that several gets for one proc cost one
+round trip; `_getnb_cbfunc()` walks it when a reply arrives, to deliver
+that reply to every request waiting on it. **A request that the first
+question accepts and the second rejects is lost** — nothing else drains
+this list, so a blocking `PMIx_Get` waits on a lock nothing will wake and
+a `PMIx_Get_nb` is never called back at all (its caddy is released,
+silently, by the `PMIX_LIST_DESTRUCT` in `PMIx_Finalize`).
+
+The two used different predicates. Coalescing matched with
+`PMIX_CHECK_NAMES`, which reports a match whenever *either* rank is
+`PMIX_RANK_WILDCARD`; delivery compared ranks exactly. So a get for a
+specific rank issued while a get at `PMIX_RANK_WILDCARD` for the same
+namespace was outstanding was folded onto that request, never sent, and
+then never matched by its reply. Both directions do it, and it needs no
+threads: two `PMIx_Get_nb` calls back to back are enough, and a get of a
+job-level key the local store does not hold is exactly the kind of
+request that reaches the server at `WILDCARD`.
+
+Both call sites now go through `same_target()`, which is exact.
+**Exact is the right answer, not merely the consistent one.** A reply
+carries the data for the rank that was asked about, and job-level data —
+what a `WILDCARD` request returns — is not any particular proc's data, so
+answering a ranked request out of it would report "not found" for a
+proc the server was never asked about.
+
+Two details to preserve if you touch either site. The coalescing scan
+compares what each request **recorded about itself** (`cb->pname`), not
+the rank it is about to send: `get_data()` rewrites the outgoing rank to
+`WILDCARD` for a NULL key in another namespace and for a pre-v3.2 server,
+while `cb->pname` keeps the original — and `cb->pname` is what the reply
+is matched against. And `same_target()` uses `PMIX_CHECK_NSPACE` for the
+namespace half, which is empty-tolerant; that is safe here only because
+`process_request()` fills `lg->p.nspace` on every path, so neither side
+can carry an empty one.
+
+Regression: `check_coalescing()` in
+[`test/unit/get_api.c`](../../test/unit/get_api.c). Both of its requests
+carry `PMIX_IMMEDIATE`, which is what makes the case bounded — without it
+the server *parks* a request it cannot satisfy and neither call
+completes, fixed or not, so the test would wedge instead of failing.
+
+## A lost connection is not a missing key
+
+`_getnb_cbfunc()` seeds its status with `PMIX_ERR_NOT_FOUND` — the answer
+for a reply that arrives and carries nothing — and the empty-buffer arm
+that means "the connection died, this recv is being completed
+synthetically" used to fall into the delivery loop with that seed still
+standing. Every waiter on the proc was then told the key does not exist.
+
+Those are different facts and callers act on them differently: a missing
+key invites another key or a retry, while a dead server means nothing
+this process asks will ever be answered. `refcb()`, the other recv
+callback in this file, already reported `PMIX_ERR_LOST_CONNECTION`; the
+get path now does too. The same distinction is why `job_data()` in
+[`pmix_client.c`](pmix_client.c) reports a lost connection rather than a
+generic failure — see "Two return codes from `PMIx_Init`" above.
+
+No coverage: reaching it needs a server that dies with a request
+outstanding, which `make check` has no way to arrange from inside the one
+process that is both halves.
+
+## Building the augmented info array a realm request sends
+
+The `PMIX_NODE_INFO` / `PMIX_APP_INFO` / `PMIX_SESSION_INFO` branches of
+`get_data()` all have to add a directive or two to what the caller
+supplied, and the caller's `info[]` is never ours to edit — so each
+copies it into a fresh array and sets `cb->infocopy` so the caddy
+destructor frees the copy rather than the caller's. Six blocks did that,
+identically, and all six discarded the copy's status.
+
+`PMIX_INFO_XFER` discards it *by definition*, and the transfer sets each
+destination's type before it can fail, so a directive that would not copy
+does not leave an empty slot the server can skip: it leaves one naming a
+type with nothing behind it, and this array is what `_pack_get()` puts on
+the wire. The six blocks are now one call to `copy_directives()`, which
+uses the function form and reports. Same defect and same fix as the
+`PMIX_INFO_XFER` in the twelfth sweep's apps copy — **treat any
+`PMIX_INFO_XFER` in this directory as an unchecked call until you have
+looked**.
 
 ## The PTL never hands a recv handler a NULL buffer
 
