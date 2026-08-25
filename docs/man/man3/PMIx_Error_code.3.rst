@@ -36,6 +36,7 @@ INPUT PARAMETERS
 
 * ``errname``: A NULL-terminated string naming a PMIx status or event constant,
   as would be returned by :ref:`PMIx_Error_string(3) <man3-PMIx_Error_string>`.
+  A ``NULL`` pointer names no constant and is reported as unrecognized.
 
 
 DESCRIPTION
@@ -59,8 +60,9 @@ RETURN VALUE
 ------------
 
 Returns the ``pmix_status_t`` value corresponding to ``errname`` on success. If no
-known status or event constant has a matching name, the function returns
-``INT32_MIN`` to indicate that the name was not recognized.
+known status or event constant has a matching name |mdash| including when
+``errname`` is ``NULL`` |mdash| the function returns ``INT32_MIN`` to indicate that
+the name was not recognized.
 
 
 NOTES

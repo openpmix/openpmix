@@ -317,6 +317,49 @@ path. Three things about them are easy to get wrong.
   [`test/unit/util/util_context_fns.c`](../../test/unit/util/util_context_fns.c)
   pins it by unsetting `$HOME`.
 
+### `pmix_error` — two lookups over a table you do not write
+
+`PMIx_Error_string()` and `PMIx_Error_code()` are a linear scan each over
+`pmix_event_strings[]`, which is **generated** into the *build* tree
+(`$(builddir)/src/include/pmix_event_strings.{c,h}`) by
+[`contrib/construct_event_strings.py`](../../contrib/construct_event_strings.py).
+You will not find that table in the source tree, and you must not edit it.
+Four things about how it is built decide how these two functions behave.
+
+- **The table is fed by three headers, in order**: `include/pmix_common.h.in`,
+  then `include/pmix_deprecated.h`, then **`src/util/pmix_error.h`** — which
+  is why this directory's own header carries a `/**** PMIX ERROR CONSTANTS ****/`
+  banner. That banner is not decoration: the harvester skips everything before
+  it and stops at the first line mentioning `PMIX_INTERNAL_ERR_DONE`,
+  `PMIX_ERR_SYS_BASE`, or `PMIX_EXTERNAL_ERR_BASE`. **An internal status added
+  outside that window gets no name**, and `PMIX_ERROR_LOG` then prints
+  `"ERROR STRING NOT FOUND"` for it. `PMIX_INTERNAL_ERR_BASE` sits above the
+  banner and `PMIX_INTERNAL_ERR_DONE` below it precisely so the two range
+  markers stay out of the table.
+- **Scan order is what makes a renamed status print under its current name.**
+  A deprecation rename is the one case where two constants legitimately share
+  a value (see the top-level `AGENTS.md`), and there are several: `-11`, `-3`,
+  `-58`, `-145`, `-231`, `-232`. `PMIx_Error_string()` returns the *first*
+  match, and the current spelling is first only because `pmix_common.h.in` is
+  harvested before `pmix_deprecated.h`. Reorder the harvest and every error
+  message naming one of those codes silently changes.
+  `test_error_string_prefers_current_name` pins it.
+- **`PMIX_EVENT_INDEX_BOUNDARY` is the count of real entries, and the array is
+  one longer than that.** The generator appends a terminator
+  (`.index = UINT32_MAX, .name = "", .code = -1`) that both loops must stop
+  short of — a scan that ran one entry too far would answer `PMIX_ERROR` for
+  the empty name and `""` for a code of `-1`.
+  `test_error_code_empty_name` is the guard.
+- **`INT32_MIN` is the only "not recognized" answer `PMIx_Error_code()` can
+  give**, because every real status is itself negative; callers must test for
+  that sentinel rather than for negativity. A `NULL` name is answered the same
+  way rather than handed to `strcasecmp` — this is an installed public entry
+  point, so it screens its argument.
+
+Both functions are pure reads of a `const` table with static storage duration:
+reentrant, safe on any thread, and safe to call from inside the library. The
+returned string belongs to the library and must never be freed.
+
 ### `pmix_net` / `pmix_if` — network helpers
 
 `pmix_net` is pure address math (CIDR→netmask in *network* order,

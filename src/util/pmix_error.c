@@ -12,7 +12,7 @@
  * Copyright (c) 2007-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -42,6 +42,13 @@ PMIX_EXPORT const char *PMIx_Error_string(pmix_status_t errnum)
 PMIX_EXPORT pmix_status_t PMIx_Error_code(const char *errname)
 {
     size_t n;
+
+    /* the table holds no nameless entry, so a NULL name can only be
+     * a name we do not know - say so instead of handing it to
+     * strcasecmp, which would dereference it */
+    if (NULL == errname) {
+        return INT32_MIN;
+    }
 
     for (n=0; n < PMIX_EVENT_INDEX_BOUNDARY; n++) {
         if (0 == strcasecmp(pmix_event_strings[n].name, errname)) {
