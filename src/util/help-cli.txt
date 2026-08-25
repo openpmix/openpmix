@@ -79,3 +79,14 @@ an argument, but no argument was given:
 
 Please use the "%s --help %s" command to learn more about
 this option.
+#
+[not-enough-arguments]
+An option was included on the %s command line that requires
+two arguments, but only one was given:
+
+  Option: %s
+  First argument: %s
+  Second argument: %s
+
+Please use the "%s --help %s" command to learn more about
+this option.

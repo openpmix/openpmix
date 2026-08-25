@@ -119,6 +119,29 @@ static bool is_option_token(const char *arg, const char *shorts,
     return true;
 }
 
+/* Report an option that takes TWO tokens but was given only one.
+ *
+ * getopt is told these options take a single argument; the parser then
+ * claims a second token from argv[optind] on its own account, so noticing
+ * that the token is absent - or is the next option rather than a value -
+ * is the parser's job and nobody else's. */
+static void report_missing_second(const char *option, const char *first,
+                                  const char *second)
+{
+    char *str;
+
+    str = pmix_show_help_string("help-cli.txt", "not-enough-arguments", true,
+                                pmix_tool_basename, option, first,
+                                (NULL == second) ? "missing" : second,
+                                pmix_tool_basename, option);
+    if (NULL != str) {
+        fprintf(stderr, "%s", str);
+        fflush(stderr);
+        free(str);
+    }
+    return;
+}
+
 static void check_store(const char *name, const char *option,
                         pmix_cli_result_t *results)
 {
@@ -136,9 +159,19 @@ static void check_store(const char *name, const char *option,
         }
     }
 
-    // get here if this is new option
+    /* get here if this is new option. Nothing here can report a failure -
+     * the store function's signature has no return - so on an allocation
+     * failure drop the occurrence rather than filing an item with a NULL
+     * key, which every later lookup would hand straight to strcmp(). */
     opt = PMIX_NEW(pmix_cli_item_t);
+    if (NULL == opt) {
+        return;
+    }
     opt->key = strdup(name);
+    if (NULL == opt->key) {
+        PMIX_RELEASE(opt);
+        return;
+    }
     pmix_list_append(&results->instances, &opt->super);
     /* if the name is NULL, then this is just setting
      * a boolean value - the presence of the option in
@@ -237,6 +270,12 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     /* the getopt_long parser reorders the input argv array, so
      * we have to protect it here */
     argv = PMIx_Argv_copy(pargv);
+    if (NULL != pargv && NULL == argv) {
+        /* the copy failed - an empty input copies to an empty array, so a
+         * NULL here means we ran out of memory. Parsing nothing and
+         * reporting success would silently discard the whole command line. */
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     argc = PMIx_Argv_count(argv);
 
     /* Prefix the short-option string with '+' so getopt stops at the first
@@ -258,6 +297,10 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
      * longer ours - it goes to the tail. That is the intent: a launcher
      * must not eat the flags belonging to the application it launches. */
     pmix_asprintf(&shortopts, "+%s", (NULL == shorts) ? "" : shorts);
+    if (NULL == shortopts) {
+        PMIx_Argv_free(argv);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     // assign a default store_fn if one isn't provided
     if (NULL == storefn) {
         mystore = check_store;
@@ -293,9 +336,22 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     // run the parser
     while (1) {
         argind = optind;
-        if (optind == argc || (optind > 0 && '-' != argv[optind][0])) {
-            // This is the executable, or we are at the last argument.
-            // Don't process any further.
+        /* Stop at the end of argv, or at the first token that is not an
+         * option - that token is the executable, and everything from there
+         * on belongs to it.
+         *
+         * The end test is ">=", not "==", because the arms below that claim
+         * a second token of their own accord step optind themselves. One
+         * that stepped past the end used to slip through an equality test
+         * and send the next iteration reading past the end of the copied
+         * array, where it dereferenced whatever it found.
+         *
+         * A lone "-" is not an option either - conventionally it names
+         * stdin - and getopt agrees: it stops there without consuming it,
+         * which left the arms below reasoning about the PREVIOUS token and
+         * reporting it as missing an argument it had already been given. */
+        if (optind >= argc ||
+            (optind > 0 && ('-' != argv[optind][0] || '\0' == argv[optind][1]))) {
             break;
         }
         opt = getopt_long(argc, argv, shortopts, myoptions, &option_index);
@@ -309,16 +365,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     if (NULL == argv[optind] ||
                         is_option_token(argv[optind], shorts, myoptions)) {
                         // missing the required second argument
-                        str = pmix_show_help_string("help-cli.txt", "not-enough-arguments", true,
-                                                    pmix_tool_basename, myoptions[option_index].name,
-                                                    argv[optind-1], (NULL == argv[optind]) ?
-                                                    "missing" : argv[optind],
-                                                    pmix_tool_basename, myoptions[option_index].name);
-                        if (NULL != str) {
-                            fprintf(stderr, "%s", str);
-                            fflush(stderr);
-                            free(str);
-                        }
+                        report_missing_second(myoptions[option_index].name,
+                                              argv[optind-1], argv[optind]);
                         PMIx_Argv_free(argv);
                         free(shortopts);
                         return PMIX_ERR_SILENT;
@@ -334,6 +382,19 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 // that describe what to do
                 if (0 == strcmp(myoptions[option_index].name, PMIX_CLI_PREPEND_ENVAR) ||
                     0 == strcmp(myoptions[option_index].name, PMIX_CLI_APPEND_ENVAR)) {
+                    /* Like the MCA options above, these take TWO tokens and
+                     * getopt only knows about one, so check that the second
+                     * is really there. Storing it unchecked took the NULL
+                     * that terminates argv for a value and stepped optind
+                     * past the end of the array. */
+                    if (NULL == argv[optind] ||
+                        is_option_token(argv[optind], shorts, myoptions)) {
+                        report_missing_second(myoptions[option_index].name,
+                                              argv[optind-1], argv[optind]);
+                        PMIx_Argv_free(argv);
+                        free(shortopts);
+                        return PMIX_ERR_SILENT;
+                    }
                     store_occurrence(mystore, myoptions[option_index].name,
                                      argv[optind-1], results);
                     store_occurrence(mystore, myoptions[option_index].name,
@@ -378,13 +439,20 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                  optarg, results);
                 break;
             case 'h':
-                /* the "help" option can optionally take an argument. Since
-                 * the argument _is_ optional, getopt will _NOT_ increment
-                 * optind, so argv[optind] is the potential argument */
-                if (NULL == optarg &&
-                    NULL != argv[optind]) {
+                /* The "help" option can optionally take an argument, and an
+                 * optional argument reaches us two ways. Attached to the
+                 * option ("-htopic", "--help=topic") getopt hands it back in
+                 * optarg; given as the next token ("--help topic") it does
+                 * NOT step optind, so the token is still at argv[optind].
+                 *
+                 * Both spell the same request, and both have to be answered
+                 * the same way. The attached form used to fall through to an
+                 * "unrecognized option" complaint naming the topic, so
+                 * "--help=version" was refused while "--help version"
+                 * worked. */
+                ptr = (NULL != optarg) ? optarg : argv[optind];
+                if (NULL != ptr) {
                     /* strip any leading dashes */
-                    ptr = argv[optind];
                     while ('-' == *ptr) {
                         ++ptr;
                     }
@@ -446,33 +514,21 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     PMIx_Argv_free(argv);
                     free(shortopts);
                     return PMIX_OPERATION_SUCCEEDED;
-                } else if (NULL == optarg) {
-                    // high-level help request
-                    str = pmix_show_help_string(helpfile, "usage", false,
-                                                pmix_tool_basename, pmix_tool_org,
-                                                pmix_tool_version,
-                                                pmix_tool_basename,
-                                                pmix_tool_msg);
-                    if (NULL != str) {
-                        printf("%s\n", str);
-                        fflush(stdout);
-                        free(str);
-                    }
-                    PMIx_Argv_free(argv);
-                    free(shortopts);
-                    return PMIX_OPERATION_SUCCEEDED;
-                } else {  // unrecognized option
-                    str = pmix_show_help_string("help-cli.txt", "unrecognized-option", true,
-                                                pmix_tool_basename, optarg);
-                    if (NULL != str) {
-                        fprintf(stderr, "%s", str);
-                        fflush(stderr);
-                        free(str);
-                    }
+                }
+                // high-level help request
+                str = pmix_show_help_string(helpfile, "usage", false,
+                                            pmix_tool_basename, pmix_tool_org,
+                                            pmix_tool_version,
+                                            pmix_tool_basename,
+                                            pmix_tool_msg);
+                if (NULL != str) {
+                    printf("%s\n", str);
+                    fflush(stdout);
+                    free(str);
                 }
                 PMIx_Argv_free(argv);
                 free(shortopts);
-                return PMIX_ERR_SILENT;
+                return PMIX_OPERATION_SUCCEEDED;
             case 'V':
                 str = pmix_show_help_string(helpfile, "version", false,
                                             pmix_tool_basename, pmix_tool_org,
@@ -531,7 +587,10 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 break;
             default:
                 found = false;
-                for (n=0; '\0' != shorts[n]; n++) {
+                /* A tool with no short options at all passes shorts == NULL,
+                 * which the '+'-prefixing above and is_option_token() both
+                 * allow for - so this scan has to as well. */
+                for (n=0; NULL != shorts && '\0' != shorts[n]; n++) {
                     int ascii = shorts[n];
                     if (opt == ascii) {
                         /* found it - now search for matching option. The
@@ -585,7 +644,21 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                     ptr = NULL;
                                 } else if (0 == strcmp(myoptions[m].name, "np") &&
                                            (NULL != optarg && 0 == strcmp(optarg, "p"))) {
-                                    /* we special-case the very common "-np" option */
+                                    /* We special-case the very common "-np"
+                                     * option: getopt read the "p" as the
+                                     * argument of "-n", so the count is the
+                                     * token after it. It has to be there -
+                                     * claiming the NULL that terminates argv
+                                     * stepped optind past the end of the
+                                     * array, and the next iteration then
+                                     * read past it. */
+                                    if (NULL == argv[optind]) {
+                                        report_missing_second(myoptions[m].name,
+                                                              "-np", NULL);
+                                        PMIx_Argv_free(argv);
+                                        free(shortopts);
+                                        return PMIX_ERR_SILENT;
+                                    }
                                     ptr = argv[optind];
                                     ++optind;
                                 }
@@ -631,7 +704,14 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                  * getopt_long function declares these as "unrecognized", but
                  * we would like to provide a more user-friendly error message */
                 for (n=0; NULL != myoptions[n].name; n++) {
-                    /* skip the "--" prefix */
+                    /* Skip the "--" prefix. Only a token that actually has
+                     * one can be indexed past it: getopt hands back the
+                     * offending option here, but the arms that reach this
+                     * point on a -1 return are looking at whatever token
+                     * preceded it, which need not be that long. */
+                    if ('-' != argv[optind-1][0] || '-' != argv[optind-1][1]) {
+                        break;
+                    }
                     if (0 == strcmp(&argv[optind-1][2], myoptions[n].name)) {
                         /* the option is recognized - probably misssing
                          * an argument */
