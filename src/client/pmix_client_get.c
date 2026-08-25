@@ -1274,7 +1274,7 @@ static void get_data(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
-                        if (NULL != kv) {  // will never be NULL
+                        if (NULL != kv) { // should never be NULL
                             rc = PMIx_Value_get_number(kv->value, &lg->nodeid, PMIX_UINT32);
                             PMIX_RELEASE(kv);
                         } else {
