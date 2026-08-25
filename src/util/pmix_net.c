@@ -60,6 +60,7 @@
 #    include <ifaddrs.h>
 #endif
 
+#include "src/include/pmix_globals.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/pmix_tsd.h"
 #include "src/util/pmix_argv.h"
@@ -67,7 +68,12 @@
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_show_help.h"
 
-char *pmix_hostname_unknown = "UNKNOWN";
+/* What every routine here answers when it cannot name an address.  It is
+ * an array rather than a pointer at a string literal because callers are
+ * handed it as a plain char*, and one that writes through it - stripping
+ * a suffix, say, the way this file does to a real answer - would
+ * otherwise be modifying a string literal. */
+static char pmix_hostname_unknown[] = "UNKNOWN";
 
 /* this function doesn't depend on sockaddr_h */
 bool pmix_net_isaddr(const char *name)
@@ -115,58 +121,79 @@ static char *get_hostname_buffer(void)
     int ret;
 
     ret = pmix_tsd_getspecific(hostname_tsd_key, &buffer);
-    if (PMIX_SUCCESS != ret)
+    if (PMIX_SUCCESS != ret) {
         return NULL;
+    }
 
     if (NULL == buffer) {
-        buffer = (void *) calloc((NI_MAXHOST + 1), sizeof(char));
+        buffer = calloc((NI_MAXHOST + 1), sizeof(char));
+        if (NULL == buffer) {
+            return NULL;
+        }
+        /* the buffer is reachable only through the key - if we cannot
+         * bind it there, nothing will ever free it, and every later call
+         * would allocate another one. Hand back the failure instead */
         ret = pmix_tsd_setspecific(hostname_tsd_key, buffer);
+        if (PMIX_SUCCESS != ret) {
+            free(buffer);
+            return NULL;
+        }
     }
 
     return (char *) buffer;
 }
 
-int pmix_net_init(void)
+pmix_status_t pmix_net_setup_private_ipv4(void)
 {
     char **args, *arg;
     uint32_t a, b, c, d, bits, addr;
     int i, j, count, found_bad = 0;
 
+    /* the value arrives from the MCA parameter system, so this cannot be
+     * folded back into pmix_net_init() - that runs from pmix_init_util(),
+     * well before pmix_register_params() gives the variable its value */
+    free(private_ipv4);
+    private_ipv4 = NULL;
+
     args = PMIx_Argv_split(pmix_net_private_ipv4, ';');
-    if (NULL != args) {
-        count = PMIx_Argv_count(args);
-        private_ipv4 = (private_ipv4_t *) calloc((count + 1), sizeof(private_ipv4_t));
-        if (NULL == private_ipv4) {
-            pmix_output(0, "Unable to allocate memory for the private addresses array");
-            PMIx_Argv_free(args);
-            goto do_local_init;
-        }
-        /* j tracks the next slot to fill so that malformed entries are
-         * skipped rather than left as zeroed holes - a zero addr is the
-         * array terminator, so a hole would truncate the list. */
-        for (i = 0, j = 0; i < count; i++) {
-            arg = args[i];
-
-            if (5 != sscanf(arg, "%u.%u.%u.%u/%u", &a, &b, &c, &d, &bits)
-                || (a > 255) || (b > 255) || (c > 255) || (d > 255) || (bits > 32)) {
-                if (0 == found_bad) {
-                    pmix_show_help("help-pmix-util.txt", "malformed net_private_ipv4", true,
-                                   args[i]);
-                    found_bad = 1;
-                }
-                continue;
-            }
-            addr = (a << 24) | (b << 16) | (c << 8) | d;
-            private_ipv4[j].addr = htonl(addr);
-            private_ipv4[j].netmask_bits = bits;
-            j++;
-        }
-        private_ipv4[j].addr = 0;
-        private_ipv4[j].netmask_bits = 0;
-        PMIx_Argv_free(args);
+    if (NULL == args) {
+        return PMIX_SUCCESS;
     }
+    count = PMIx_Argv_count(args);
+    private_ipv4 = (private_ipv4_t *) calloc((count + 1), sizeof(private_ipv4_t));
+    if (NULL == private_ipv4) {
+        PMIx_Argv_free(args);
+        return PMIX_ERR_NOMEM;
+    }
+    /* j tracks the next slot to fill so that malformed entries are
+     * skipped rather than left as zeroed holes - a zero addr is the
+     * array terminator, so a hole would truncate the list. */
+    for (i = 0, j = 0; i < count; i++) {
+        arg = args[i];
 
-do_local_init:
+        if (5 != sscanf(arg, "%u.%u.%u.%u/%u", &a, &b, &c, &d, &bits)
+            || (a > 255) || (b > 255) || (c > 255) || (d > 255) || (bits > 32)) {
+            if (0 == found_bad) {
+                pmix_show_help("help-pmix-util.txt", "malformed net_private_ipv4", true,
+                               args[i]);
+                found_bad = 1;
+            }
+            continue;
+        }
+        addr = (a << 24) | (b << 16) | (c << 8) | d;
+        private_ipv4[j].addr = htonl(addr);
+        private_ipv4[j].netmask_bits = bits;
+        j++;
+    }
+    private_ipv4[j].addr = 0;
+    private_ipv4[j].netmask_bits = 0;
+    PMIx_Argv_free(args);
+
+    return PMIX_SUCCESS;
+}
+
+int pmix_net_init(void)
+{
     return pmix_tsd_key_create(&hostname_tsd_key, hostname_cleanup);
 }
 
@@ -212,7 +239,18 @@ bool pmix_net_islocalhost(const struct sockaddr *addr)
     case AF_INET6: {
         const struct sockaddr_in6 *inaddr = (struct sockaddr_in6 *) addr;
         if (IN6_IS_ADDR_LOOPBACK(&inaddr->sin6_addr)) {
-            return true; /* Bug, FIXME: check for 127.0.0.1/8 */
+            return true;
+        }
+        /* an IPv4-mapped address carries an ordinary IPv4 address in its
+         * low 32 bits, so ::ffff:127.0.0.1 names this host just as surely
+         * as 127.0.0.1 does - answer for the whole 127.0.0.0/8 range the
+         * AF_INET arm above covers */
+        if (IN6_IS_ADDR_V4MAPPED(&inaddr->sin6_addr)) {
+            uint32_t v4;
+            memcpy(&v4, ((const uint8_t *) &inaddr->sin6_addr) + 12, sizeof(v4));
+            if (0x7F000000 == (0xFF000000 & ntohl(v4))) {
+                return true;
+            }
         }
         return false;
     }
@@ -317,19 +355,25 @@ bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
 
 bool pmix_net_addr_isipv6linklocal(const struct sockaddr *addr)
 {
-#    if PMIX_ENABLE_IPV6
-    struct sockaddr_in6 if_addr;
-#    endif
-
+    /* PMIX_ENABLE_IPV6 does not gate this. It is off by default, but the
+     * pif IPv6 discovery components are gated on the OS rather than on
+     * that flag, so an AF_INET6 address is entirely ordinary in a default
+     * build - and every one of them used to fall through to the default
+     * arm below, which answers "unhandled sa_family" on stream 0 rather
+     * than answering the question. Every other family test in this file
+     * (islocalhost, samenetwork) is likewise unconditional. */
     switch (addr->sa_family) {
-#    if PMIX_ENABLE_IPV6
-    case AF_INET6:
+    case AF_INET6: {
+        struct sockaddr_in6 if_addr;
+
+        memset(&if_addr, 0, sizeof(if_addr));
         if_addr.sin6_family = AF_INET6;
         if (1 != inet_pton(AF_INET6, "fe80::0000", &if_addr.sin6_addr)) {
             return false;
         }
-        return pmix_net_samenetwork((const struct sockaddr_storage *) addr, (const struct sockaddr_storage *) &if_addr, 64);
-#    endif
+        return pmix_net_samenetwork((const struct sockaddr_storage *) addr,
+                                    (const struct sockaddr_storage *) &if_addr, 64);
+    }
     case AF_INET:
         return false;
     default:
@@ -437,6 +481,16 @@ int pmix_net_get_port(const struct sockaddr *addr)
 
 #else /* HAVE_STRUCT_SOCKADDR_IN */
 
+/* No configuration anyone builds selects this arm, so it gets no compiler
+ * coverage: every stub has to name its parameters as deliberately unread,
+ * since the tree builds -Wextra -Werror. Force the guard false for one
+ * "make pmix_net.lo" before believing an edit here is good. */
+
+pmix_status_t pmix_net_setup_private_ipv4(void)
+{
+    return PMIX_SUCCESS;
+}
+
 int pmix_net_init(void)
 {
     return PMIX_SUCCESS;
@@ -449,11 +503,13 @@ int pmix_net_finalize(void)
 
 uint32_t pmix_net_prefix2netmask(uint32_t prefixlen)
 {
+    PMIX_HIDE_UNUSED_PARAMS(prefixlen);
     return 0;
 }
 
 bool pmix_net_islocalhost(const struct sockaddr *addr)
 {
+    PMIX_HIDE_UNUSED_PARAMS(addr);
     return false;
 }
 
@@ -461,26 +517,33 @@ bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
                           const struct sockaddr_storage *addr2,
                           uint32_t prefixlen)
 {
+    PMIX_HIDE_UNUSED_PARAMS(addr1, addr2, prefixlen);
     return false;
 }
 
 bool pmix_net_addr_isipv6linklocal(const struct sockaddr *addr)
 {
+    PMIX_HIDE_UNUSED_PARAMS(addr);
     return false;
 }
 
 bool pmix_net_addr_isipv4public(const struct sockaddr *addr)
 {
+    PMIX_HIDE_UNUSED_PARAMS(addr);
     return false;
 }
 
 char *pmix_net_get_hostname(const struct sockaddr *addr)
 {
-    return NULL;
+    /* the contract is that a caller may print the answer without checking
+     * it, so this cannot be NULL just because the platform is thin */
+    PMIX_HIDE_UNUSED_PARAMS(addr);
+    return pmix_hostname_unknown;
 }
 
 int pmix_net_get_port(const struct sockaddr *addr)
 {
+    PMIX_HIDE_UNUSED_PARAMS(addr);
     return -1;
 }
 

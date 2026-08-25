@@ -88,7 +88,16 @@ must regenerate the pair, exactly as the top-level guide says:
 rm src/util/pmix_show_help_content.* && make
 ```
 
-A plain `make` will *not* pick up changed help text. `pmix_show_help`
+A plain `make` will *not* pick up changed help text, and the omission
+hides more than stale strings: under `--enable-devel-check` the generator
+runs with `--purge`, which makes a help topic that **no code references**
+a hard build error. So a change that removes the last caller of a topic
+compiles and tests clean for as long as the stale generated file survives,
+and breaks the build for whoever regenerates it next — which on a fresh
+clone is CI. Regenerate whenever you add, remove, or rename a
+`pmix_show_help*()` call, not only when you edit the text.
+
+`pmix_show_help`
 also aggregates duplicate notices (fired from a libevent timer) and can
 thread-shift delivery through the log path; the global `abd_tuples` list
 is manipulated without locking and assumes progress-thread-only callers.
@@ -500,8 +509,9 @@ for the 32-bit ones.
 
 ### `pmix_net` / `pmix_if` — network helpers
 
-`pmix_net` is pure address math (CIDR→netmask in *network* order,
-localhost/link-local/public classification, `isaddr`). `pmix_if` owns the
+`pmix_net` is *almost* pure address math (CIDR→netmask in *network*
+order, localhost/link-local/public classification, `isaddr`) — see the
+two pieces of state it does keep, below. `pmix_if` owns the
 discovered-interface list (populated by the `src/mca/pif/*` components —
 this file only *consumes* it) and the `a.b.c.d[/mask]` tuple parser
 `pmix_iftupletoaddr`, which returns masks in **host** order. Mind that
@@ -557,32 +567,97 @@ In `pmix_ifmatches()` the resulting mask matches no interface, so an
 `if_include` entry with a typo silently selected nothing *and* suppressed
 the `invalid-net-mask` warning that used to fire. Check the `endptr`.
 
-Two properties that are contracts rather than defects, so that the next
+**`pmix_net_init()` runs before the MCA parameters have values.** It is
+called from `pmix_init_util()`; `pmix_register_params()` — which is what
+gives `pmix_net_private_ipv4` anything but its `NULL` initializer — runs
+later, from `pmix_rte_init()` or from each tool's own startup. So the
+private-network table cannot be built in `pmix_net_init()`: parsing there
+saw `NULL`, `PMIx_Argv_split(NULL, ...)` answered `NULL`, and the table
+stayed empty, which `pmix_net_addr_isipv4public()` reads as *no network is
+private* — every RFC1918 address came back public and the MCA parameter
+was inert in every build. Worse, the malformed-entry `show_help` in that
+parse had never once fired. The parse now lives in
+`pmix_net_setup_private_ipv4()`, called from `pmix_register_params()` at
+the point the value exists. **If you add state here that comes from an MCA
+parameter, it cannot be initialized in `pmix_net_init()` either.**
+`test_isipv4public` in
+[`test/unit/util/util_net.c`](../../test/unit/util/util_net.c) supplies
+the list through the environment, so it also pins that the *user's* value
+is the one consulted.
+
+**`PMIX_ENABLE_IPV6` is not a statement about what addresses you will be
+handed.** It is 0 by default, but the `pif` IPv6 discovery components are
+gated on the OS, not on that flag, so `AF_INET6` addresses are entirely
+ordinary in a default build. `pmix_net_addr_isipv6linklocal()` had its
+`case AF_INET6:` behind that flag and so fell through to the `default:`
+arm for every IPv6 address — answering `false` *and* printing "unhandled
+sa_family" on stream 0 — while `pmix_net_islocalhost()` and
+`pmix_net_samenetwork()` next to it handle `AF_INET6` unconditionally.
+Family tests in this file are unconditional; keep them that way.
+
+**An IPv4-mapped address is an IPv4 address.** `IN6_IS_ADDR_LOOPBACK`
+matches only `::1`, so `::ffff:127.0.0.1` — the shape a dual-stack socket
+reports for an ordinary IPv4 loopback peer — read as *not* localhost.
+`pmix_net_islocalhost()` now unwraps the low 32 bits of a v4-mapped
+address and applies the same 127.0.0.0/8 test the `AF_INET` arm does.
+
+**`pmix_net_get_hostname()` is per-thread, and never `NULL`.** Its answer
+lives in a `NI_MAXHOST + 1` buffer held in thread-specific storage, so the
+two callers that reach it from different threads (the `ptl` listener
+thread's accept handler, and the connect path) do not collide; the answer
+is valid until that thread's next call and must not be freed. Anything it
+cannot render — an unsupported family, a failed conversion, no memory for
+the buffer — comes back as the file-static `"UNKNOWN"`, because a caller
+about to print the answer should not have to check it. The `#else` arm
+below has to honor that too, and used to return `NULL`. The TSD key is
+created fresh by every `pmix_net_init()` and deleted outright by
+`pmix_tsd_keys_destruct()` at finalize, so unlike `pmix_name_fns` this
+file needs no latch to clear.
+
+Four properties that are contracts rather than defects, so that the next
 reader does not re-litigate them:
 
-- **`getaddrinfo()` blocks, and only `pmix_ifaddrtoname()` can be told
-  not to call it.** `pif_do_not_resolve` short-circuits that function
+- **Neither resolver call in `pmix_net` resolves anything.**
+  `pmix_net_isaddr()` passes `AI_NUMERICHOST` to `getaddrinfo()` and
+  `pmix_net_get_hostname()` passes `NI_NUMERICHOST` to `getnameinfo()`,
+  so despite the names neither performs a DNS lookup and neither can
+  block on one. That is *not* true of `pmix_if` (see above) — do not
+  carry an assumption from one file to the other.
+- **`private_ipv4` is written only at init and finalize.**
+  `pmix_net_addr_isipv4public()` walks it with no lock, which is safe
+  because the only writers are `pmix_net_setup_private_ipv4()` (from
+  `pmix_register_params()`) and `pmix_net_finalize()`. It has no in-tree
+  caller, but `pmix_net.h` is installed, so an external one must not
+  classify addresses concurrently with a library init or finalize.
+- **`getaddrinfo()` blocks in `pmix_if`, and only `pmix_ifaddrtoname()`
+  can be told not to call it.** `pif_do_not_resolve` short-circuits it
   (and therefore `pmix_ifislocal()`); `pmix_ifaddrtokindex()` resolves
   regardless. Both are installed API with no in-tree caller — the
   in-tree consumers (`ptl_base_listener`, `pnet/tcp`) use only the
   index/kernel-index lookups, at init — so nothing here runs a DNS
   timeout on the progress thread today. Do not add such a call to a
   progress-thread path.
-- **Nothing in this file screens its arguments.** A `NULL` name reaches
+- **Neither file screens its arguments.** A `NULL` name reaches
   `strncmp`, a `NULL` tuple reaches `strchr`, and a non-positive `length`
   reaches `memset`/`pmix_strncpy`. That is a departure from the screening
   the rest of this directory does on installed entry points; it is left
   alone because no caller in PMIx or PRRTE passes any of those, and the
   header does not promise otherwise.
 
-The `#if HAVE_STRUCT_SOCKADDR_IN` `#else` arm is the usual trap: **no
-configuration anyone builds selects it, so it gets no compiler coverage
-at all.** It has to define *every* one of the 21 entry points
-`pmix_if.h` declares — seven were simply missing, which is a link
-failure rather than the graceful degradation the fallback exists for —
-and it has to name every parameter as deliberately unread, since this
-tree builds `-Wextra -Werror`. Force the guard false for one
-`make pmix_if.lo` before believing an edit there is good.
+**Both files carry a `#if HAVE_STRUCT_SOCKADDR_IN` `#else` arm, and
+neither of them compiled.** This is the usual trap: **no configuration
+anyone builds selects those arms, so they get no compiler coverage at
+all.** `pmix_if.c`'s has to define *every* one of the 21 entry points
+`pmix_if.h` declares — seven were simply missing, which is a link failure
+rather than the graceful degradation the fallback exists for.
+`pmix_net.c`'s defined all eight but named their parameters without
+reading them, which is nine `-Werror=unused-parameter` errors in a tree
+that builds `-Wextra -Werror`; `PMIX_HIDE_UNUSED_PARAMS` is how the rest
+of the tree says "deliberately unread". Force the guard false for one
+`make pmix_if.lo` / `make pmix_net.lo` before believing an edit there is
+good — and note that `-UHAVE_STRUCT_SOCKADDR_IN` on the command line does
+**not** do it, because `pmix_config.h` defines the macro again from
+inside the file. Edit the `#ifdef` to `#if 0` for the one compile.
 
 ### `pmix_fd` — descriptor helpers, three of them with no caller
 

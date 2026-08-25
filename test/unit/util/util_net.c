@@ -27,6 +27,8 @@
 #    include <arpa/inet.h>
 #endif
 
+#include "src/runtime/pmix_init_util.h"
+#include "src/runtime/pmix_rte.h"
 #include "src/util/pmix_net.h"
 
 static int npass = 0;
@@ -86,6 +88,18 @@ static bool islocalhost_v4(const char *ip)
     return pmix_net_islocalhost((struct sockaddr *) &sa);
 }
 
+static bool islocalhost_v6(const char *ip)
+{
+    struct sockaddr_in6 sa;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sin6_family = AF_INET6;
+    if (1 != inet_pton(AF_INET6, ip, &sa.sin6_addr)) {
+        return false;
+    }
+    return pmix_net_islocalhost((struct sockaddr *) &sa);
+}
+
 static void test_islocalhost(void)
 {
     report("islocalhost(127.0.0.1) == true", islocalhost_v4("127.0.0.1"));
@@ -93,6 +107,55 @@ static void test_islocalhost(void)
     report("islocalhost(10.0.0.1) == false", !islocalhost_v4("10.0.0.1"));
     /* Regression: 255.x must not be mistaken for the 127/8 range */
     report("islocalhost(255.1.2.3) == false", !islocalhost_v4("255.1.2.3"));
+    report("islocalhost(::1) == true", islocalhost_v6("::1"));
+    report("islocalhost(2001:db8::1) == false", !islocalhost_v6("2001:db8::1"));
+    /* an IPv4-mapped address carries an ordinary IPv4 address in its low
+     * 32 bits, so the whole of 127.0.0.0/8 names this host through it */
+    report("islocalhost(::ffff:127.0.0.1) == true", islocalhost_v6("::ffff:127.0.0.1"));
+    report("islocalhost(::ffff:127.9.9.9) == true", islocalhost_v6("::ffff:127.9.9.9"));
+    report("islocalhost(::ffff:8.8.8.8) == false", !islocalhost_v6("::ffff:8.8.8.8"));
+}
+
+/* ------------------------------------------------------------------ */
+/* pmix_net_addr_isipv6linklocal                                       */
+/* ------------------------------------------------------------------ */
+
+static void check_linklocal(const char *addr, bool expect)
+{
+    struct sockaddr_in6 sa;
+    char label[96];
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sin6_family = AF_INET6;
+    if (1 != inet_pton(AF_INET6, addr, &sa.sin6_addr)) {
+        snprintf(label, sizeof(label), "inet_pton6(%s)", addr);
+        report(label, 0);
+        return;
+    }
+    snprintf(label, sizeof(label), "isipv6linklocal(%s) == %s", addr,
+             expect ? "true" : "false");
+    report(label, expect == pmix_net_addr_isipv6linklocal((struct sockaddr *) &sa));
+}
+
+/* PMIX_ENABLE_IPV6 is 0 in a default build, but the pif IPv6 discovery
+ * components are gated on the OS rather than on that flag, so an AF_INET6
+ * address is ordinary here. Guarding the AF_INET6 arm on PMIX_ENABLE_IPV6
+ * made every one of these answer false - after complaining about an
+ * "unhandled sa_family" on stream 0. */
+static void test_isipv6linklocal(void)
+{
+    struct sockaddr_in v4;
+
+    check_linklocal("fe80::1", true);
+    check_linklocal("fe80::dead:beef", true);
+    check_linklocal("fe81::1", false);
+    check_linklocal("2001:db8::1", false);
+    check_linklocal("::1", false);
+
+    memset(&v4, 0, sizeof(v4));
+    v4.sin_family = AF_INET;
+    report("isipv6linklocal(v4) == false",
+           !pmix_net_addr_isipv6linklocal((struct sockaddr *) &v4));
 }
 
 /* ------------------------------------------------------------------ */
@@ -221,6 +284,65 @@ static void test_samenetwork(void)
     report("samenetwork(v4, v6, /64) == false", !pmix_net_samenetwork(&v4, &v6, 64));
 }
 
+/* ------------------------------------------------------------------ */
+/* pmix_net_addr_isipv4public                                          */
+/* ------------------------------------------------------------------ */
+
+static void check_public(const char *addr, bool expect)
+{
+    struct sockaddr_in sa;
+    char label[96];
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    if (1 != inet_pton(AF_INET, addr, &sa.sin_addr)) {
+        snprintf(label, sizeof(label), "inet_pton(%s)", addr);
+        report(label, 0);
+        return;
+    }
+    snprintf(label, sizeof(label), "isipv4public(%s) == %s", addr,
+             expect ? "true" : "false");
+    report(label, expect == pmix_net_addr_isipv4public((struct sockaddr *) &sa));
+}
+
+/* The table of private networks comes from an MCA parameter, and the
+ * parameter system does not have the value until pmix_register_params()
+ * runs - which is well after pmix_init_util(), where the network helper
+ * is initialized. Parsing it at pmix_net_init() time therefore saw only
+ * the NULL initializer and left every address, RFC1918 included, looking
+ * public; the MCA parameter was inert. Everything below answers "public"
+ * if that regresses.
+ *
+ * The list is supplied through the environment rather than left at its
+ * default so that the test also proves the *user's* value is the one
+ * being consulted: 172.16.0.0/12 is private by default and public here. */
+static void test_isipv4public(void)
+{
+    struct sockaddr_in6 sa6;
+
+    setenv("PMIX_MCA_pmix_net_private_ipv4", "10.0.0.0/8;192.168.0.0/16", 1);
+
+    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
+        report("pmix_init_util", 0);
+        return;
+    }
+    if (PMIX_SUCCESS != pmix_register_params()) {
+        report("pmix_register_params", 0);
+        return;
+    }
+
+    check_public("10.1.2.3", false);
+    check_public("192.168.1.1", false);
+    check_public("172.16.5.5", true);
+    check_public("8.8.8.8", true);
+
+    /* an IPv6 address is never an IPv4 public address */
+    memset(&sa6, 0, sizeof(sa6));
+    sa6.sin6_family = AF_INET6;
+    report("isipv4public(::1) == false",
+           !pmix_net_addr_isipv4public((struct sockaddr *) &sa6));
+}
+
 #endif /* HAVE_STRUCT_SOCKADDR_IN */
 
 /* ------------------------------------------------------------------ */
@@ -237,6 +359,9 @@ int main(int argc, char **argv)
     test_get_port();
     test_isaddr();
     test_samenetwork();
+    test_isipv6linklocal();
+    /* last - it initializes the library */
+    test_isipv4public();
 #else
     fprintf(stdout, "  SKIP: no struct sockaddr_in on this platform\n");
 #endif

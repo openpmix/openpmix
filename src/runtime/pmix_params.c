@@ -41,6 +41,7 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_hash.h"
+#include "src/util/pmix_net.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_timings.h"
@@ -120,6 +121,12 @@ pmix_status_t pmix_register_params(void)
         PMIX_MCA_BASE_VAR_TYPE_STRING,
         &pmix_net_private_ipv4);
     if (0 > ret) {
+        goto failed;
+    }
+    /* the value is only now known - pmix_net_init() ran back in
+     * pmix_init_util(), so the network helper has yet to see it */
+    ret = pmix_net_setup_private_ipv4();
+    if (PMIX_SUCCESS != ret) {
         goto failed;
     }
 
