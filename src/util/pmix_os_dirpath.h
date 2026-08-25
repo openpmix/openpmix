@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -55,8 +55,16 @@ BEGIN_C_DECLS
  * directories being constructed.
  * @retval PMIX_SUCCESS If the directory tree has been successfully created with
  * the specified access permissions.
- * @retval PMIX_ERROR If the directory tree could not be created with the
- * specified access permissions.
+ * @retval PMIX_ERR_EXISTS If the final directory was already there. It carries
+ * at least the requested permissions, so this is a usable directory and most
+ * callers treat it exactly as they treat PMIX_SUCCESS - but they have to test
+ * for it, since it is not PMIX_SUCCESS. The distinction is what tells a caller
+ * whether it is the one that must clean the directory up afterwards.
+ * @retval PMIX_ERR_BAD_PARAM If path is NULL or empty.
+ * @retval PMIX_ERR_OUT_OF_RESOURCE If memory ran out while building the tree.
+ * @retval PMIX_ERR_SILENT If the tree could not be created - because something
+ * that is not a directory occupies the name, or the OS refused. A message has
+ * already been displayed to the user; the caller must not display another.
  */
 
 PMIX_EXPORT int pmix_os_dirpath_create(const char *path, const mode_t mode);
@@ -64,15 +72,25 @@ PMIX_EXPORT int pmix_os_dirpath_create(const char *path, const mode_t mode);
 /**
  * Check to see if a directory is empty
  *
+ * A directory that cannot be opened as a directory - it does not exist, it is
+ * a plain file, it is a symlink, or it is unreadable - answers false, on the
+ * grounds that the answer is normally used to decide whether to remove the
+ * thing, and none of those may be removed on the strength of this call. A NULL
+ * path answers true, there being nothing in it.
+ *
  * @param path A pointer to a string that contains the path name to be checked.
  *
- * @retval true If the directory is empty
- * @retval false If the directory is not empty
+ * @retval true If the directory is empty, or path is NULL
+ * @retval false If the directory is not empty, or could not be read
  */
 PMIX_EXPORT bool pmix_os_dirpath_is_empty(const char *path);
 
 /**
- * Stale function left for PRRTE backward compatility
+ * Stale function left for PRRTE backward compatibility. It is a no-op that
+ * always answers PMIX_SUCCESS, and it must stay one: asking whether a
+ * directory is writable and then acting on the answer is a time-of-check /
+ * time-of-use race that no spelling of access()/faccessat() can close.
+ * Whether files can be placed in a directory is settled by placing one.
  */
 PMIX_EXPORT int pmix_os_dirpath_access(const char *path, const mode_t mode);
 

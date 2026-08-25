@@ -65,6 +65,17 @@ static void test_create_null(void)
     report("create_null: returns ERR_BAD_PARAM", PMIX_ERR_BAD_PARAM == rc);
 }
 
+/* An empty path names nothing, but mkdir("") answers ENOENT - the same
+ * errno that means "the parent components are missing, go build the
+ * tree". An empty path then splits to no components at all, the build
+ * loop never runs, and the function reported that it had created a
+ * directory tree while doing nothing at all. */
+static void test_create_empty(void)
+{
+    int rc = pmix_os_dirpath_create("", S_IRWXU);
+    report("create_empty: returns ERR_BAD_PARAM", PMIX_ERR_BAD_PARAM == rc);
+}
+
 static void test_create_new(void)
 {
     char path[512];
@@ -460,6 +471,7 @@ int main(int argc, char **argv)
     fprintf(stdout, "\n=== pmix_os_dirpath unit tests ===\n\n");
 
     test_create_null();
+    test_create_empty();
     test_create_new();
     test_create_existing();
     test_create_nested();
