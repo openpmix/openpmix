@@ -22,6 +22,10 @@
 
 #include "src/include/pmix_config.h"
 
+#ifdef HAVE_STRINGS_H
+#    include <strings.h>
+#endif
+
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_event_strings.h"
 #include "src/util/pmix_error.h"
@@ -30,7 +34,7 @@ PMIX_EXPORT const char *PMIx_Error_string(pmix_status_t errnum)
 {
     size_t n;
 
-    for (n=0; n < PMIX_EVENT_INDEX_BOUNDARY; n++) {
+    for (n = 0; n < PMIX_EVENT_INDEX_BOUNDARY; n++) {
         if (errnum == pmix_event_strings[n].code) {
             return pmix_event_strings[n].name;
         }
@@ -50,7 +54,7 @@ PMIX_EXPORT pmix_status_t PMIx_Error_code(const char *errname)
         return INT32_MIN;
     }
 
-    for (n=0; n < PMIX_EVENT_INDEX_BOUNDARY; n++) {
+    for (n = 0; n < PMIX_EVENT_INDEX_BOUNDARY; n++) {
         if (0 == strcasecmp(pmix_event_strings[n].name, errname)) {
             return pmix_event_strings[n].code;
         }
