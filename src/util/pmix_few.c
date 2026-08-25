@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +18,7 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -35,7 +35,7 @@
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_few.h"
 
-int pmix_few(char *argv[], int *status)
+PMIX_EXPORT pmix_status_t pmix_few(char *argv[], int *status)
 {
 #if defined(HAVE_FORK) && defined(HAVE_EXECVE) && defined(HAVE_WAITPID)
     pid_t pid, ret;
@@ -48,7 +48,13 @@ int pmix_few(char *argv[], int *status)
 
     else if (0 == pid) {
         execvp(argv[0], argv);
-        exit(errno);
+        /* _exit, not exit: the child shares the parent's stdio buffers,
+         * and exit() flushes them - so anything the parent had written
+         * but not yet flushed goes out a second time, from here.  It
+         * also runs atexit handlers registered by the parent, which in
+         * a threaded process can deadlock on a lock some other thread
+         * held at fork time. */
+        _exit(errno);
     }
 
     /* Parent loops waiting for the child to die. */

@@ -972,20 +972,33 @@ int main(int argc, char *argv[])
             errno = 0;
             exit_status = 1;
         } else {
-            int status;
+            int status = 0;
+            int spawn_errno;
 
             free(exec_argv[0]);
             exec_argv[0] = tmp;
             ret = pmix_few(exec_argv, &status);
-            exit_status = WIFEXITED(status) ? WEXITSTATUS(status)
-                                            : (WIFSIGNALED(status)
-                                                   ? WTERMSIG(status)
-                                                   : (WIFSTOPPED(status) ? WSTOPSIG(status) : 255));
+            /* grab this before anything below can overwrite it */
+            spawn_errno = errno;
+            /* pmix_few only writes status when it actually had a child to
+             * wait for.  Decoding it on the failure path read whatever
+             * happened to be on the stack, so a compiler that never ran
+             * could hand the build system any exit code at all - zero
+             * included. */
+            exit_status = (PMIX_SUCCESS != ret)
+                              ? 1
+                              : (WIFEXITED(status)
+                                     ? WEXITSTATUS(status)
+                                     : (WIFSIGNALED(status)
+                                            ? WTERMSIG(status)
+                                            : (WIFSTOPPED(status) ? WSTOPSIG(status) : 255)));
             if ((PMIX_SUCCESS != ret) || ((0 != exit_status) && (flags & COMP_SHOW_ERROR))) {
                 char *myexec_command = PMIx_Argv_join(exec_argv, ' ');
                 if (PMIX_SUCCESS != ret) {
+                    /* why the launch failed is in errno; status is a
+                     * wait status and in this case was never set */
                     pmix_show_help("help-pmixcc.txt", "spawn-failed", true, exec_argv[0],
-                                   strerror(status), myexec_command, NULL);
+                                   strerror(spawn_errno), myexec_command, NULL);
                 } else {
 #if 0
                     pmix_show_help("help-pmixcc.txt", "compiler-failed", true,

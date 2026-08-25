@@ -419,6 +419,40 @@ separate decision.
   since both Linux and macOS have one; the fallback has to be verified
   by hand by pointing the `opendir()` at a path that does not exist.
 
+### `pmix_few` — the only place in this tree that forks by hand
+
+One function, one caller: `src/tools/wrapper/pmixcc.c` runs the real
+compiler through it. Everything else that starts a process goes through
+`pmix_pfexec`. Three things follow from that.
+
+- **The child must leave through `_exit()`, never `exit()`.** It shares
+  the parent's stdio buffers, so `exit()` flushes whatever the parent had
+  written and not yet flushed — the output appears twice — and it runs
+  atexit handlers the parent registered, which in a threaded process can
+  deadlock on a lock some other thread held at fork time. This is the same
+  post-fork discipline `pmix_pfexec`'s `do_child()` follows, and for the
+  same reason. `test_child_does_not_flush_our_stdio` in
+  [`test/unit/util/util_few.c`](../../test/unit/util/util_few.c) is the
+  regression; it has to run inside a child of its own with stdout on a
+  pipe, since a line-buffered terminal hides the whole effect.
+- **`status` is written only on `PMIX_SUCCESS`.** On any other return
+  there was no child to wait for, so the caller's variable is whatever it
+  already held. `pmixcc` decoded it unconditionally, off an uninitialized
+  stack slot, which means a compiler that never started could hand the
+  build system any exit code at all — zero included. Initialize it, and
+  check the return code before reaching for a `WIF*` macro.
+- **`status` is a wait status, not an errno.** Why a launch *failed* is
+  in `errno`; `pmixcc` was passing the wait status to `strerror()`. If
+  the exec itself is what failed, that is a different thing again — the
+  child ran, so the call succeeded, and errno comes back as the child's
+  exit status (truncated to 8 bits, as every exit status is).
+
+A note on the guard: the body is compiled behind
+`HAVE_FORK && HAVE_EXECVE && HAVE_WAITPID` but calls `execvp`, which
+configure does not probe for separately. POSIX gives you the whole
+`exec*` family together, so the proxy holds; it is worth knowing it *is*
+a proxy before adding a fourth call here.
+
 ### `pmix_shmem` — a created segment reads as zero
 
 `pmix_shmem_segment_create()` opens its backing file `O_CREAT | O_TRUNC`
@@ -521,7 +555,7 @@ integration-style; only the arithmetic/parsing parts (`pad_to_page`,
 `parse_map_line`, `pmix_alfg` determinism) are unit-friendly.
 
 Current coverage includes: `argv`, `alfg`, `basename`, `cmd_line`,
-`context_fns`, `environ`, `error`, `fd`, `hash` (incl. a mixed-qualifier
+`context_fns`, `environ`, `error`, `fd`, `few`, `hash` (incl. a mixed-qualifier
 regression), `if` (the tuple parser), `name_fns` (incl. special-rank
 compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,
