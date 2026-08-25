@@ -530,6 +530,15 @@ static inline unsigned int pmix_convert_string_to_time(const char *t)
     int sz = PMIx_Argv_count(tmp);
     unsigned int tm;
 
+    /* Nothing to work with.  PMIx_Argv_split hands back NULL - not an empty
+     * array - for a NULL string, an empty one, or one that is nothing but
+     * delimiters, since it drops zero-length tokens; PMIx_Argv_count then
+     * says zero, and the tmp[sz-1] below reads tmp[-1] off a NULL pointer.
+     * An unsigned return has no way to say "bad input", and no time given
+     * is zero time, so answer zero rather than faulting in the caller's
+     * process.  The caller cannot screen for this on our behalf: an
+     * attribute loaded from a NULL string arrives here as a NULL, which is
+     * exactly what a host passing along a client's directive will hand us. */
     if (0 == sz) {
         PMIx_Argv_free(tmp);
         return 0;

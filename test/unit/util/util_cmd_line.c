@@ -955,15 +955,19 @@ static void test_convert_time(void)
     /* zero */
     report("convert_time: \"0\" → 0",
            0 == pmix_convert_string_to_time("0"));
-    /* A string carrying no fields at all splits to NOTHING, so the walk
-     * up from the last field read tmp[-1] off a NULL array. Signal, not
-     * assertion, if this comes back. */
-    report("convert_time: an empty string is no time",
-           0 == pmix_convert_string_to_time(""));
-    report("convert_time: nothing but separators is no time",
-           0 == pmix_convert_string_to_time(":"));
-    report("convert_time: a NULL string is no time",
+    /* Nothing to parse.  PMIx_Argv_split returns NULL rather than an empty
+     * array for all of these - it drops zero-length tokens - so the count is
+     * zero and indexing the last element used to read off a NULL pointer.
+     * A host relaying a client's directive can hand us any of them: an
+     * attribute loaded from a NULL string arrives as a NULL. */
+    report("convert_time: NULL → 0",
            0 == pmix_convert_string_to_time(NULL));
+    report("convert_time: \"\" → 0",
+           0 == pmix_convert_string_to_time(""));
+    report("convert_time: \":\" → 0",
+           0 == pmix_convert_string_to_time(":"));
+    report("convert_time: \":::\" → 0",
+           0 == pmix_convert_string_to_time(":::"));
 }
 
 /* ------------------------------------------------------------------ */
