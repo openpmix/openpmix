@@ -269,6 +269,48 @@ static void test_remove_then_fetch(void)
     PMIX_RELEASE(t);
 }
 
+/* A wildcard removal with a NULL key means "everything, for every
+ * rank". Each rank's proc_data is released - and the table it was
+ * reached through has to let go of it in the same breath, or it is left
+ * holding a pointer to a freed object that the very next lookup hands
+ * back. That the entries are gone is the observable part, so check the
+ * table is empty rather than fetching through a pointer that may or may
+ * not still look valid. */
+static void test_remove_wildcard_empties_the_table(void)
+{
+    pmix_hash_table_t *t = new_table();
+    pmix_kval_t *kv0 = make_kval_str("unit.key.wc", "rank0val");
+    pmix_kval_t *kv1 = make_kval_str("unit.key.wc", "rank1val");
+    pmix_list_t kvals;
+    pmix_status_t rc;
+    uint32_t id;
+    void *pd = NULL, *node = NULL;
+
+    pmix_hash_store(t, 0, kv0, NULL, 0, NULL);
+    pmix_hash_store(t, 1, kv1, NULL, 0, NULL);
+    PMIX_RELEASE(kv0);
+    PMIX_RELEASE(kv1);
+
+    /* both ranks are there to start with */
+    rc = pmix_hash_table_get_first_key_uint32(t, &id, &pd, &node);
+    report("remove_wildcard: table populated before", PMIX_SUCCESS == rc);
+
+    pmix_hash_remove_data(t, PMIX_RANK_WILDCARD, NULL, NULL);
+
+    node = NULL;
+    pd = NULL;
+    rc = pmix_hash_table_get_first_key_uint32(t, &id, &pd, &node);
+    report("remove_wildcard: table holds no entries after",
+           PMIX_SUCCESS != rc);
+
+    PMIX_CONSTRUCT(&kvals, pmix_list_t);
+    rc = pmix_hash_fetch(t, 0, "unit.key.wc", NULL, 0, &kvals, NULL);
+    report("remove_wildcard: fetch returns ERR_NOT_FOUND", PMIX_ERR_NOT_FOUND == rc);
+    drain_list(&kvals);
+    PMIX_DESTRUCT(&kvals);
+    PMIX_RELEASE(t);
+}
+
 /* ------------------------------------------------------------------ */
 /* Multiple ranks                                                       */
 /* ------------------------------------------------------------------ */
@@ -396,6 +438,7 @@ int main(int argc, char **argv)
     test_fetch_wrong_key();
     test_store_overwrite();
     test_remove_then_fetch();
+    test_remove_wildcard_empties_the_table();
     test_multiple_ranks();
     test_store_fetch_qualified();
 

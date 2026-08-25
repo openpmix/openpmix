@@ -194,6 +194,45 @@ qualifiers (`PMIX_INFO_IS_QUALIFIER`) can be smaller than `nquals`: index
 the destination array by the compacted counter, not the loop variable
 (this was the bug fixed in July 2026 — see below).
 
+Four invariants in here are easy to break and hard to see broken.
+
+- **A wildcard removal with a `NULL` key must empty the table, not just
+  release what is in it.** `pmix_hash_remove_data()` releases every
+  `proc_data` it walks, and the table it walked them through still holds
+  a pointer to each one; the per-rank path removes its entry first, and
+  the wildcard path has to do the same. It cannot do it inside the loop
+  without invalidating the iteration, so it sweeps afterwards with
+  `pmix_hash_table_remove_all()`. Take that sweep away and the very next
+  `pmix_hash_fetch()` on the table dereferences a freed `proc_data` —
+  `test_remove_wildcard_empties_the_table` in
+  [`test/unit/util/util_hash.c`](../../test/unit/util/util_hash.c) dies
+  on a signal, not on an assertion. The reason nobody has hit it is that
+  the only caller of that combination is `gds/hash`'s job destructor,
+  which destructs the table on the next line.
+- **Copy the new value before releasing the old one.** An update that
+  released first and then failed to copy left the entry in the table
+  under its key with a `NULL` value, and nothing downstream expects
+  that: `make_copy()` hands the stored value straight to
+  `PMIx_Value_xfer()`, which reads `src->type` without looking. The
+  failed store returns an error the caller sees, and the process then
+  dies on the *next* fetch of that key, somewhere else entirely.
+- **`pmix_pointer_array_add()` answers a negative status, and
+  `qualindex` is unsigned.** Assigning the failure straight through
+  gives the entry an index the qualifier array can never be asked for —
+  `pmix_pointer_array_get_item()` bounds-checks and answers `NULL` — so
+  the value is stored, is never findable again, and the store reports
+  success. Check the `int` before narrowing it.
+- **Every allocation in here goes through the TMA, and the TMA can
+  fail.** Under `gds/shmem3` that allocator is a fixed-size shared
+  segment, so an exhausted one is an ordinary outcome rather than the
+  end of the process. The registration branch of `lookup_key()` is worth
+  a second look on this point: an entry whose key string did not copy is
+  worse than no entry at all, because `add_to_lookup()` declines to index
+  a `NULL` string, so the key ends up registered under an id that nothing
+  can find by name — every later reference to it mints another one — and
+  `make_copy()` loads that string as the key it reports to the
+  application.
+
 ### `pmix_basename` — two implementations, one of them invisible
 
 `pmix_dirname()` has two bodies behind a configure-time `#if`. Where
