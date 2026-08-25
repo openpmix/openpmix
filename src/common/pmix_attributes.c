@@ -1814,6 +1814,16 @@ void pmix_attributes_print_attrs(char ***ans, char *function,
         }
         memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH + PMIX_PRINT_STRING_COLUMN_WIDTH + 4], tmp, len);
 
+        if (NULL == attrs[n].description) {
+            /* the string is known but the description is not - print the
+             * line we have rather than walking a NULL array.  The regattr
+             * constructor leaves this NULL, so any regattr assembled by
+             * hand arrives here that way */
+            line[PMIX_PRINT_ATTR_COLUMN_WIDTH - 1] = '\0';
+            PMIx_Argv_append_nosize(ans, line);
+            continue;
+        }
+
         for (m = 0; NULL != attrs[n].description[m]; m++) {
             len = strlen(attrs[n].description[m]);
             if ((PMIX_PRINT_ATTR_COLUMN_WIDTH - 1
