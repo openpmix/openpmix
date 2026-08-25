@@ -338,23 +338,48 @@ static pmix_status_t make_copy(pmix_regattr_input_t *p,
     pmix_data_array_t *darray;
     pmix_qual_t *quals;
     pmix_info_t *iptr;
+    pmix_status_t rc;
     size_t nq, m;
 
     if (UINT32_MAX != hv->qualindex) {
         /* this is a qualified value - need to return it as such */
         PMIX_KVAL_NEW(kv, PMIX_QUALIFIED_VALUE);
+        if (NULL == kv) {
+            return PMIX_ERR_NOMEM;
+        }
         darray = (pmix_data_array_t*)pmix_pointer_array_get_item(proc_data->quals, hv->qualindex);
         if (NULL == darray) {
             PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+            PMIX_RELEASE(kv);
             return PMIX_ERR_NOT_FOUND;
         }
         quals = (pmix_qual_t*)darray->array;
         nq = darray->size;
+        /* PMIx_Data_array_create is two allocations and reports only the
+         * first: it answers with a descriptor whose "array" is NULL when
+         * the element block could not be had */
         PMIX_DATA_ARRAY_CREATE(darray, nq+1, PMIX_INFO);
+        if (NULL == darray || NULL == darray->array) {
+            PMIX_RELEASE(kv);
+            if (NULL != darray) {
+                PMIX_DATA_ARRAY_FREE(darray);
+            }
+            return PMIX_ERR_NOMEM;
+        }
         iptr = (pmix_info_t*)darray->array;
-        /* the first location is the actual value */
+        /* the first location is the actual value. Report a transfer that
+         * fails rather than discarding it: the xfer sets the
+         * destination's type before it can fail, so a value that would
+         * not copy leaves an element naming a type with nothing behind
+         * it - and this array is what a PMIx_Get of a qualified value
+         * hands back to the application */
         PMIX_LOAD_KEY(iptr[0].key, p->string);
-        PMIx_Value_xfer(&iptr[0].value, hv->value);
+        rc = PMIx_Value_xfer(&iptr[0].value, hv->value);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(kv);
+            PMIX_DATA_ARRAY_FREE(darray);
+            return rc;
+        }
         /* now add the qualifiers */
         for (m=0; m < nq; m++) {
             p = pmix_hash_lookup_key(quals[m].index, NULL, keyindex);
@@ -365,7 +390,12 @@ static pmix_status_t make_copy(pmix_regattr_input_t *p,
                 return PMIX_ERR_BAD_PARAM;
             }
             PMIX_LOAD_KEY(iptr[m+1].key, p->string);
-            PMIx_Value_xfer(&iptr[m+1].value, quals[m].value);
+            rc = PMIx_Value_xfer(&iptr[m+1].value, quals[m].value);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(kv);
+                PMIX_DATA_ARRAY_FREE(darray);
+                return rc;
+            }
             PMIX_INFO_SET_QUALIFIER(&iptr[m+1]);
         }
         kv->value->type = PMIX_DATA_ARRAY;
@@ -373,7 +403,14 @@ static pmix_status_t make_copy(pmix_regattr_input_t *p,
         pmix_list_append(kvals, &kv->super);
     } else {
         PMIX_KVAL_NEW(kv, p->string);
-        PMIx_Value_xfer(kv->value, hv->value);
+        if (NULL == kv) {
+            return PMIX_ERR_NOMEM;
+        }
+        rc = PMIx_Value_xfer(kv->value, hv->value);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(kv);
+            return rc;
+        }
         pmix_list_append(kvals, &kv->super);
     }
     return PMIX_SUCCESS;

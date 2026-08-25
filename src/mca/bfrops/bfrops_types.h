@@ -85,6 +85,15 @@ pmix_bfrop_tma_kval_new(
         if (PMIX_UNLIKELY(NULL == k->value)) {
             PMIX_RELEASE(k);
             k = NULL;
+        } else {
+            /* the allocation is raw, and kvdes() runs value_destruct()
+             * on whatever is here - reading the type and freeing the
+             * union member it names. So a kval released before its value
+             * has been filled in would hand the heap an address out of
+             * uninitialized memory, and every caller of this has at
+             * least one error path between the two. Zeroing gives the
+             * value PMIX_UNDEF, which destructs to nothing. */
+            memset(k->value, 0, sizeof(pmix_value_t));
         }
     }
     return k;
