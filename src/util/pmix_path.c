@@ -89,9 +89,9 @@
 #endif
 
 /*
- * Note that some OS's (e.g., NetBSD and Solaris) have statfs(), but
- * no struct statfs (!).  So check to make sure we have struct statfs
- * before allowing the use of statfs().
+ * Note that some OS's (e.g., NetBSD) have statfs(), but no struct
+ * statfs (!).  So check to make sure we have struct statfs before
+ * allowing the use of statfs().
  */
 #if defined(HAVE_STATFS) \
     && (defined(HAVE_STRUCT_STATFS_F_FSTYPENAME) || defined(HAVE_STRUCT_STATFS_F_TYPE))

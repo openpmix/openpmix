@@ -876,7 +876,7 @@ does not compile**, which is the recurring trap in this directory:
   sign test on `f_bavail` was written as a cast inside the comparison,
   and `statvfs`'s `f_bavail` is unsigned, so it is
   `-Werror=type-limits` on every platform that selects that arm — i.e.
-  the ones without a `struct statfs`, Solaris and NetBSD among them.
+  the ones without a `struct statfs`, NetBSD among them.
   The test now goes through a signed variable, which is correct for the
   BSD `statfs` case it exists for and silent for the unsigned ones.
   That arm also multiplied `f_bavail` by the wrong number: `statfs`
@@ -1216,9 +1216,12 @@ still failed to build, and the `!HAVE_PTSNAME` arm failed on an
 `errsave` it does not use. **Compile every combination by hand before
 believing an edit here**; `make src/util/pmix_pty.lo` with the guards
 edited to `#if 0`/`#if 1` is enough, and all six do build warning-free
-today. The Solaris `__SVR4 && __sun` STREAMS arm is the one exception —
-it needs a `<stropts.h>` this platform does not have, so it cannot be
-compile-checked from here.
+today — every arm in the file is now reachable that way, since the one
+that was not (the Solaris `__SVR4 && __sun` STREAMS module push, which
+needed a `<stropts.h>` no supported platform ships) has been removed
+along with the rest of this library's Solaris support. The `fdm`
+parameter of `pmix_ptysopen()` is what is left of it: nothing reads it
+any more, and it stays only because the signature is frozen.
 
 Two things deliberately left alone:
 

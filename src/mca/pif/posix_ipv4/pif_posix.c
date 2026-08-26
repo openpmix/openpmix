@@ -119,7 +119,7 @@ static int if_posix_open(void)
      * Some notes on the behavior of ioctl(..., SIOCGIFCONF,...)
      * when not enough space is allocated for all the entries.
      *
-     * - Solaris returns -1, errno EINVAL if there is not enough
+     * - some return -1, errno EINVAL if there is not enough
      *   space
      * - OS X returns 0, sets .ifc_len to the space used by the
      *   by the entries that did fit.

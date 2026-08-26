@@ -288,8 +288,10 @@ bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
             prefixlen = plen;
         }
         struct sockaddr_in inaddr1, inaddr2;
-        /* Use temporary variables and memcpy's so that we don't
-           run into bus errors on Solaris/SPARC */
+        /* Copy into properly aligned locals rather than casting the
+           caller's sockaddr: a struct sockaddr* need not be aligned for
+           the larger family-specific struct, and a misaligned load is a
+           bus error on any strict-alignment architecture */
         memcpy(&inaddr1, addr1, sizeof(inaddr1));
         memcpy(&inaddr2, addr2, sizeof(inaddr2));
         uint32_t netmask = pmix_net_prefix2netmask(prefixlen);
@@ -305,8 +307,10 @@ bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
         const uint8_t *a6_1, *a6_2;
         uint32_t nbytes, nbits;
 
-        /* Use temporary variables and memcpy's so that we don't
-           run into bus errors on Solaris/SPARC */
+        /* Copy into properly aligned locals rather than casting the
+           caller's sockaddr: a struct sockaddr* need not be aligned for
+           the larger family-specific struct, and a misaligned load is a
+           bus error on any strict-alignment architecture */
         memcpy(&inaddr1, addr1, sizeof(inaddr1));
         memcpy(&inaddr2, addr2, sizeof(inaddr2));
         a6_1 = (const uint8_t *) &inaddr1.sin6_addr;
