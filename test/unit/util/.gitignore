@@ -27,3 +27,4 @@ hash_perf
 util_keyval
 util_pty
 util_shmem
+util_tty

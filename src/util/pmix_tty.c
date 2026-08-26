@@ -51,6 +51,33 @@
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_tty.h"
 
+/* Bits that can appear in c_lflag but are *status* rather than
+ * settings: the driver turns them on and off for itself.  PENDIN says
+ * queued input has yet to be retyped - which is exactly what happens
+ * when canonical mode is re-enabled - FLUSHO says output is being
+ * discarded, and EXTPROC can be turned on from the master end of a pty
+ * without the slave's caller ever asking for it.  A caller handing
+ * back settings it read a moment ago will legitimately disagree with
+ * the read-back on all three, so they take no part in the check that
+ * a requested set actually took. */
+#ifdef FLUSHO
+#    define PMIX_TTY_FLUSHO FLUSHO
+#else
+#    define PMIX_TTY_FLUSHO 0
+#endif
+#ifdef PENDIN
+#    define PMIX_TTY_PENDIN PENDIN
+#else
+#    define PMIX_TTY_PENDIN 0
+#endif
+#ifdef EXTPROC
+#    define PMIX_TTY_EXTPROC EXTPROC
+#else
+#    define PMIX_TTY_EXTPROC 0
+#endif
+#define PMIX_TTY_LFLAG_STATUS \
+    ((tcflag_t) (PMIX_TTY_FLUSHO | PMIX_TTY_PENDIN | PMIX_TTY_EXTPROC))
+
 pmix_status_t pmix_gettermios(int fd, struct termios *terms)
 {
     int rc;
@@ -76,41 +103,49 @@ pmix_status_t pmix_getwinsz(int fd, struct winsize *ws)
 pmix_status_t pmix_settermios(int fd, struct termios *terms)
 {
     struct termios old, check;
-    int rc, err;
+    pmix_status_t rc;
+    int err;
 
     rc = pmix_gettermios(fd, &old);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
 
-    if (0 != rc) {
+    if (0 != tcsetattr(fd, TCSANOW, terms)) {
+        /* a failure says nothing about how much of the request was
+         * applied, so put the terminal back the way we found it and
+         * report the original error */
+        err = errno;  // preserve original error
+        (void) tcsetattr(fd, TCSANOW, &old);
+        errno = err;
         return PMIX_ERROR;
     }
 
-    rc = tcsetattr(fd, TCSANOW, terms);
-    if (0 != rc) {
-        // attempt to reset it
-        err = errno;  // preserve original error
-        tcsetattr(fd, TCSANOW, &old);
+    /* check that it was fully successful - tcsetattr returns
+     * success if ANY change succeeded. Compare the individual POSIX
+     * termios fields rather than memcmp'ing the whole struct: the
+     * struct carries padding and (on some platforms) speed fields the
+     * kernel canonicalizes, so a byte-exact compare gives spurious
+     * failures even when every requested setting was applied.  The
+     * driver-maintained bits of c_lflag are excluded for the same
+     * reason - see PMIX_TTY_LFLAG_STATUS above. */
+    rc = pmix_gettermios(fd, &check);
+    if (PMIX_SUCCESS != rc) {
+        err = errno;
+        (void) tcsetattr(fd, TCSANOW, &old);
         errno = err;
-
-    } else {
-
-        /* check that it was fully successful - tcsetattr returns
-         * success if ANY change succeeded. Compare the individual POSIX
-         * termios fields rather than memcmp'ing the whole struct: the
-         * struct carries padding and (on some platforms) speed fields the
-         * kernel canonicalizes, so a byte-exact compare gives spurious
-         * failures even when every requested setting was applied. */
-        rc = pmix_gettermios(fd, &check);
-        if (0 != rc) {
-            return PMIX_ERROR;
-        }
-        if (terms->c_iflag != check.c_iflag ||
-            terms->c_oflag != check.c_oflag ||
-            terms->c_cflag != check.c_cflag ||
-            terms->c_lflag != check.c_lflag ||
-            0 != memcmp(terms->c_cc, check.c_cc, sizeof(terms->c_cc))) {
-            errno = EINVAL;
-            return PMIX_ERROR;
-        }
+        return rc;
+    }
+    if (terms->c_iflag != check.c_iflag ||
+        terms->c_oflag != check.c_oflag ||
+        terms->c_cflag != check.c_cflag ||
+        (terms->c_lflag & ~PMIX_TTY_LFLAG_STATUS)
+            != (check.c_lflag & ~PMIX_TTY_LFLAG_STATUS) ||
+        0 != memcmp(terms->c_cc, check.c_cc, sizeof(terms->c_cc))) {
+        /* only part of the request took - leave nothing half-applied */
+        (void) tcsetattr(fd, TCSANOW, &old);
+        errno = EINVAL;
+        return PMIX_ERROR;
     }
 
     return PMIX_SUCCESS;
