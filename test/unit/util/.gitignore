@@ -25,3 +25,4 @@ util_getid
 util_vmem
 hash_perf
 util_keyval
+util_pty
