@@ -71,7 +71,13 @@ static int make_string(char **out, char **no_newline_string, pmix_output_desc_t 
                        va_list arglist);
 static int output(int output_id, const char *format, va_list arglist);
 
-#if defined(HAVE_SYSLOG)
+/* HAVE_SYSLOG is not a macro anything in this tree defines - configure
+ * probes for the *header*, and never for the function - so keying the
+ * syslog support off it left every syslog path in the library dead in
+ * every build ever shipped. syslog.h is what the include above is
+ * guarded on, and POSIX ships openlog/syslog/closelog with it, so that
+ * is the honest test. */
+#if defined(HAVE_SYSLOG_H)
 #    define USE_SYSLOG 1
 #else
 #    define USE_SYSLOG 0
@@ -87,7 +93,7 @@ pmix_output_desc_t pmix_output_info[PMIX_OUTPUT_MAX_STREAMS];
 static bool initialized = false;
 static int default_stderr_fd = -1;
 
-#if defined(HAVE_SYSLOG)
+#if USE_SYSLOG
 static bool syslog_opened = false;
 #endif
 static char *redirect_syslog_ident = NULL;
@@ -305,7 +311,7 @@ void pmix_output_close(int output_id)
             }
         }
 
-#if defined(HAVE_SYSLOG)
+#if USE_SYSLOG
         if (i >= PMIX_OUTPUT_MAX_STREAMS && syslog_opened) {
             closelog();
         }
@@ -548,7 +554,7 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
     pmix_output_info[i].ldi_verbose_level = lds->lds_verbose_level;
 
 #if USE_SYSLOG
-#    if defined(HAVE_SYSLOG)
+#    if USE_SYSLOG
     if (pmix_output_redirected_to_syslog) {
         pmix_output_info[i].ldi_syslog = true;
         pmix_output_info[i].ldi_syslog_priority = pmix_output_redirected_syslog_pri;
@@ -565,7 +571,7 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
         pmix_output_info[i].ldi_syslog = lds->lds_want_syslog;
         if (lds->lds_want_syslog) {
 
-#    if defined(HAVE_SYSLOG)
+#    if USE_SYSLOG
             if (NULL != lds->lds_syslog_ident) {
                 pmix_output_info[i].ldi_syslog_ident = strdup(lds->lds_syslog_ident);
                 openlog(lds->lds_syslog_ident, LOG_PID, LOG_USER);
@@ -578,7 +584,7 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
             pmix_output_info[i].ldi_syslog_priority = lds->lds_syslog_priority;
         }
 
-#    if defined(HAVE_SYSLOG)
+#    if USE_SYSLOG
     }
 #    endif
 
@@ -930,7 +936,7 @@ static int output(int output_id, const char *format, va_list arglist)
         outlen = strlen(out);
 
         /* Syslog output -- does not use the newline-appended string */
-#if defined(HAVE_SYSLOG)
+#if USE_SYSLOG
         if (ldi->ldi_syslog) {
             syslog(ldi->ldi_syslog_priority, "%s", str);
         }

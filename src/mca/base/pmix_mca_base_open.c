@@ -236,9 +236,9 @@ static void set_defaults(pmix_output_stream_t *lds)
     /* Load up defaults */
 
     PMIX_CONSTRUCT(lds, pmix_output_stream_t);
-#if defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H)
+#if defined(HAVE_SYSLOG_H)
     lds->lds_syslog_priority = LOG_INFO;
-#endif /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
+#endif /* defined(HAVE_SYSLOG_H) */
     lds->lds_syslog_ident = "pmix";
     lds->lds_want_stderr = true;
 }
@@ -268,14 +268,14 @@ static void parse_verbose(char *e, pmix_output_stream_t *lds)
         }
 
         if (0 == strcasecmp(ptr, "syslog")) {
-#if defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H)
+#if defined(HAVE_SYSLOG_H)
             lds->lds_want_syslog = true;
             have_output = true;
 #else
             pmix_output(0, "syslog support requested but not available on this system");
-#endif /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
+#endif /* defined(HAVE_SYSLOG_H) */
         } else if (strncasecmp(ptr, "syslogpri:", 10) == 0) {
-#if defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H)
+#if defined(HAVE_SYSLOG_H)
             lds->lds_want_syslog = true;
             have_output = true;
             if (strcasecmp(ptr + 10, "notice") == 0)
@@ -286,9 +286,9 @@ static void parse_verbose(char *e, pmix_output_stream_t *lds)
                 lds->lds_syslog_priority = LOG_DEBUG;
 #else
             pmix_output(0, "syslog support requested but not available on this system");
-#endif /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
+#endif /* defined(HAVE_SYSLOG_H) */
         } else if (strncasecmp(ptr, "syslogid:", 9) == 0) {
-#if defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H)
+#if defined(HAVE_SYSLOG_H)
             lds->lds_want_syslog = true;
             /* "ptr" points into our local copy of the value, which is
              * freed before this function returns - the caller uses the
@@ -298,7 +298,7 @@ static void parse_verbose(char *e, pmix_output_stream_t *lds)
             lds->lds_syslog_ident = syslog_ident;
 #else
             pmix_output(0, "syslog support requested but not available on this system");
-#endif /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
+#endif /* defined(HAVE_SYSLOG_H) */
         }
 
         else if (strcasecmp(ptr, "stdout") == 0) {

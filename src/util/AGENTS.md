@@ -124,6 +124,23 @@ Four things about a stream's lifetime are easy to get wrong, and were.
   descriptor either, so a recycled slot could start life pointed at a
   descriptor that had been closed.
 
+**The syslog support was dead in every build ever shipped.** All of it
+was compiled behind `HAVE_SYSLOG`, and nothing in this tree defines that
+macro — `configure` probes for the *header* (`HAVE_SYSLOG_H`, via the
+`AC_CHECK_HEADERS` list in `config/pmix.m4`) and never for the function.
+So `USE_SYSLOG` was always 0, a stream that asked for syslog was given no
+destination at all, and `PMIX_OUTPUT_REDIRECT=syslog` — which also turns
+stdout, stderr and file output off — silently discarded every line the
+library produced. The guards now key off `HAVE_SYSLOG_H`, which is what
+the `#include <syslog.h>` at the top of the file is guarded on and what
+POSIX ties `openlog`/`syslog`/`closelog` to; `parse_verbose()` in
+`src/mca/base/pmix_mca_base_open.c` carried the same guard and is fixed
+with it, so `pmix mca base verbose = syslog` stops reporting that syslog
+is unavailable on a system that has it. This is the recurring shape from
+`pmix_getid`: **the macro guarding a declaration and the macro guarding
+its use must be the same one, and a guard nothing defines gets no
+compiler coverage** — that block had never been compiled by anyone.
+
 Five environment variables, read once in `pmix_output_init()`, override
 what every stream does: `PMIX_OUTPUT_REDIRECT` (`syslog` or `file`),
 `PMIX_OUTPUT_SYSLOG_PRI`, `PMIX_OUTPUT_SYSLOG_IDENT`,

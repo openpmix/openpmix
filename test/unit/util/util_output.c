@@ -159,6 +159,30 @@ static void test_output_close_disabled_reclaims_slot(void)
     pmix_output_close(b);
 }
 
+/* A stream that asks for syslog has to actually get it. The support was
+ * compiled behind HAVE_SYSLOG, which nothing in this tree defines, so
+ * every syslog path was dead: a stream that asked for syslog was simply
+ * given no destination at all. Nothing is written to the log here - we
+ * only ask the descriptor what it was set up to do. */
+static void test_output_syslog_stream_is_marked(void)
+{
+#ifdef HAVE_SYSLOG_H
+    pmix_output_stream_t lds;
+    int h;
+
+    PMIX_CONSTRUCT(&lds, pmix_output_stream_t);
+    lds.lds_want_syslog = true;
+    h = pmix_output_open(&lds);
+    PMIX_DESTRUCT(&lds);
+
+    report("output_syslog: stream marked for syslog",
+           0 <= h && pmix_output_info[h].ldi_syslog);
+    pmix_output_close(h);
+#else
+    report("output_syslog: no syslog.h, skipped", 1);
+#endif
+}
+
 /* ------------------------------------------------------------------ */
 /* file streams sharing one output file                                */
 /* ------------------------------------------------------------------ */
@@ -293,6 +317,7 @@ int main(int argc, char **argv)
     test_output_close_invalid_no_crash();
     test_output_switch();
     test_output_close_disabled_reclaims_slot();
+    test_output_syslog_stream_is_marked();
     test_output_file_shared_between_streams();
     test_output_verbosity();
     test_output_file_info();
