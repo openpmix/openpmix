@@ -465,6 +465,16 @@ Two consequences worth keeping in mind:
   whichever branch is compiled, so a future edit to either one has to
   keep them agreeing. If you change one body, run the corpus against the
   other by hand before you believe it.
+- **Two of the answers are not the same on every platform, and pinning
+  them made the test fail on Linux while passing on macOS.** POSIX says
+  a pathname beginning with *exactly* two slashes may be interpreted in
+  an implementation-defined manner, so `dirname("//")` and
+  `dirname("//foo")` are `"//"` under glibc and `"/"` under the macOS
+  and BSD libgen — both conforming, and the only two inputs in the whole
+  corpus that differ. Those two rows carry an alternate accepted answer;
+  everything else is a single required one, which is the point of having
+  a table at all. Do not widen any other row to make a platform happy
+  without first checking that POSIX actually leaves it open.
 - **`dirname(3)` is not reentrant on every platform.** glibc rewrites the
   buffer you hand it, but macOS and the older BSDs return a pointer into
   internal static storage, so two threads inside `pmix_dirname()` at once

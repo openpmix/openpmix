@@ -167,15 +167,30 @@ static void test_dirname_root_cases(void)
      * current directory. The libgen-backed branch of pmix_dirname()
      * gets this right; the hand-rolled fallback used on a platform
      * without dirname(3) answered "." until it was corrected, and
-     * nothing here would have noticed. */
+     * nothing here would have noticed.
+     *
+     * WHICH root is not ours to pin down. POSIX says a pathname
+     * beginning with exactly two slashes may be interpreted in an
+     * implementation-defined manner, and the implementations disagree
+     * accordingly: glibc answers "//" for "//" where macOS answers "/".
+     * Both are conforming, so what is asserted is that the answer names
+     * a root at all - which is what the defect this case exists for got
+     * wrong, by answering ".". */
     const char *cases[] = {"/", "//", "///", NULL};
     char *r;
     int n;
+    size_t i;
+    bool rooted;
 
     for (n = 0; NULL != cases[n]; n++) {
         r = pmix_dirname(cases[n]);
-        report("dirname of an all-separator path is the root",
-               NULL != r && 0 == strcmp(r, "/"));
+        rooted = (NULL != r && '\0' != r[0]);
+        for (i = 0; rooted && '\0' != r[i]; i++) {
+            if ('/' != r[i] && '\\' != r[i]) {
+                rooted = false;
+            }
+        }
+        report("dirname of an all-separator path is the root", rooted);
         free(r);
     }
 }
@@ -189,38 +204,45 @@ static void test_dirname_corpus(void)
     static const struct {
         const char *in;
         const char *out;
+        /* A second conforming answer, where POSIX permits one. Only the
+         * two inputs that begin with exactly two slashes have one: such
+         * a pathname "may be interpreted in an implementation-defined
+         * manner", and glibc keeps the "//" while macOS collapses it.
+         * Every other row is a single required answer, and pinning them
+         * is the point of this table. */
+        const char *alt;
     } corpus[] = {
-        {"", "."},
-        {".", "."},
-        {"..", "."},
-        {"foo.txt", "."},
-        {"foo/", "."},
-        {"foo//", "."},
-        {"a/", "."},
-        {"./x", "."},
-        {"../x", ".."},
-        {"/", "/"},
-        {"//", "/"},
-        {"///", "/"},
-        {"/foo", "/"},
-        {"//foo", "/"},
-        {"///foo", "/"},
-        {"/foo/", "/"},
-        {"/foo//", "/"},
-        {"/a", "/"},
-        {"/yow.c", "/"},
-        {"/.", "/"},
-        {"/..", "/"},
-        {"/foo/bar", "/foo"},
-        {"/foo/bar/", "/foo"},
-        {"/foo//bar", "/foo"},
-        {"/foo//bar//", "/foo"},
-        {"foo/bar", "foo"},
-        {"foo/bar/", "foo"},
-        {"a/b/c/d", "a/b/c"},
-        {"x//y//z", "x//y"},
-        {"/usr/local/lib/pmix", "/usr/local/lib"},
-        {NULL, NULL}
+        {"", ".", NULL},
+        {".", ".", NULL},
+        {"..", ".", NULL},
+        {"foo.txt", ".", NULL},
+        {"foo/", ".", NULL},
+        {"foo//", ".", NULL},
+        {"a/", ".", NULL},
+        {"./x", ".", NULL},
+        {"../x", "..", NULL},
+        {"/", "/", NULL},
+        {"//", "/", "//"},
+        {"///", "/", NULL},
+        {"/foo", "/", NULL},
+        {"//foo", "/", "//"},
+        {"///foo", "/", NULL},
+        {"/foo/", "/", NULL},
+        {"/foo//", "/", NULL},
+        {"/a", "/", NULL},
+        {"/yow.c", "/", NULL},
+        {"/.", "/", NULL},
+        {"/..", "/", NULL},
+        {"/foo/bar", "/foo", NULL},
+        {"/foo/bar/", "/foo", NULL},
+        {"/foo//bar", "/foo", NULL},
+        {"/foo//bar//", "/foo", NULL},
+        {"foo/bar", "foo", NULL},
+        {"foo/bar/", "foo", NULL},
+        {"a/b/c/d", "a/b/c", NULL},
+        {"x//y//z", "x//y", NULL},
+        {"/usr/local/lib/pmix", "/usr/local/lib", NULL},
+        {NULL, NULL, NULL}
     };
     char msg[256];
     char *r;
@@ -228,9 +250,17 @@ static void test_dirname_corpus(void)
 
     for (n = 0; NULL != corpus[n].in; n++) {
         r = pmix_dirname(corpus[n].in);
-        snprintf(msg, sizeof(msg), "dirname(\"%s\") == \"%s\"",
-                 corpus[n].in, corpus[n].out);
-        report(msg, NULL != r && 0 == strcmp(r, corpus[n].out));
+        if (NULL == corpus[n].alt) {
+            snprintf(msg, sizeof(msg), "dirname(\"%s\") == \"%s\"",
+                     corpus[n].in, corpus[n].out);
+        } else {
+            snprintf(msg, sizeof(msg), "dirname(\"%s\") == \"%s\" or \"%s\"",
+                     corpus[n].in, corpus[n].out, corpus[n].alt);
+        }
+        report(msg, NULL != r
+                        && (0 == strcmp(r, corpus[n].out)
+                            || (NULL != corpus[n].alt
+                                && 0 == strcmp(r, corpus[n].alt))));
         free(r);
     }
 }
