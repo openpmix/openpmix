@@ -26,6 +26,7 @@
 #include "pmix_common.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -142,7 +143,7 @@ bool pmix_output_init(void)
     if (pmix_output_redirected_to_syslog) {
         verbose.lds_want_syslog = true;
         verbose.lds_syslog_priority = pmix_output_redirected_syslog_pri;
-        if (NULL != str) {
+        if (NULL != redirect_syslog_ident) {
             verbose.lds_syslog_ident = strdup(redirect_syslog_ident);
         }
         verbose.lds_want_stderr = false;
@@ -153,7 +154,7 @@ bool pmix_output_init(void)
     gethostname(hostname, sizeof(hostname) - 1);
     hostname[sizeof(hostname) - 1] = '\0';
     if (0 > pmix_asprintf(&verbose.lds_prefix, "[%s:%05d] ", hostname, getpid())) {
-        return false;
+        goto failed;
     }
 
     for (i = 0; i < PMIX_OUTPUT_MAX_STREAMS; ++i) {
@@ -168,18 +169,33 @@ bool pmix_output_init(void)
         pmix_output_info[i].ldi_file_num_lines_lost = 0;
     }
 
-    initialized = true;
-
     /* Set some defaults */
 
     if (0 > pmix_asprintf(&output_prefix, "pmix-output-pid%d-", getpid())) {
-        return false;
+        goto failed;
     }
     output_dir = strdup(pmix_tmp_directory());
+
+    initialized = true;
 
     /* Open the default verbose stream */
     verbose_stream = pmix_output_open(&verbose);
     return true;
+
+failed:
+    /* leave nothing behind: every entry point in here re-enters this
+     * function while "initialized" is false, so state kept across a
+     * failed attempt is leaked once per call, not once */
+    free(verbose.lds_prefix);
+    verbose.lds_prefix = NULL;
+    free(verbose.lds_syslog_ident);
+    verbose.lds_syslog_ident = NULL;
+    PMIX_DESTRUCT(&verbose);
+    free(redirect_syslog_ident);
+    redirect_syslog_ident = NULL;
+    free(output_prefix);
+    output_prefix = NULL;
+    return false;
 }
 
 /*
@@ -207,8 +223,8 @@ bool pmix_output_switch(int output_id, bool enable)
 
     /* Setup */
 
-    if (!initialized) {
-        pmix_output_init();
+    if (!initialized && !pmix_output_init()) {
+        return false;
     }
 
     if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS) {
@@ -241,8 +257,21 @@ void pmix_output_reopen_all(void)
         verbose.lds_prefix = NULL;
     }
     if (0 > pmix_asprintf(&verbose.lds_prefix, "[%s:%05d] ", hostname, getpid())) {
-        verbose.lds_prefix = NULL;
         return;
+    }
+
+    /* the descriptor holds its own copy of the prefix, made when the
+     * stream was opened, so rebuilding the template alone left the
+     * default verbose stream still announcing the pid of the process we
+     * were before the restart */
+    if (0 <= verbose_stream && verbose_stream < PMIX_OUTPUT_MAX_STREAMS
+        && pmix_output_info[verbose_stream].ldi_used) {
+        str = strdup(verbose.lds_prefix);
+        if (NULL != str) {
+            free(pmix_output_info[verbose_stream].ldi_prefix);
+            pmix_output_info[verbose_stream].ldi_prefix = str;
+            pmix_output_info[verbose_stream].ldi_prefix_len = (int) strlen(str);
+        }
     }
 }
 
@@ -259,11 +288,13 @@ void pmix_output_close(int output_id)
         return;
     }
 
-    /* If it's valid, used, enabled, and has an open file descriptor,
-     * free the resources associated with the descriptor */
+    /* If it's valid and used, free the resources associated with the
+     * descriptor. Note that a stream that has been disabled with
+     * pmix_output_switch() is still open - switching only discards the
+     * output - so being disabled must not keep it from being closed. */
 
-    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS && pmix_output_info[output_id].ldi_used
-        && pmix_output_info[output_id].ldi_enabled) {
+    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS
+        && pmix_output_info[output_id].ldi_used) {
         free_descriptor(output_id);
 
         /* If no one has the syslog open, we should close it */
@@ -312,11 +343,15 @@ void pmix_output_set_verbosity(int output_id, int level)
 void pmix_output_set_output_file_info(const char *dir, const char *prefix, char **olddir,
                                       char **oldprefix)
 {
+    /* the defaults are established by pmix_output_init(), and this is
+     * documented as being callable before any stream exists - so both
+     * globals can still be NULL here, and strdup() must not be handed
+     * one */
     if (NULL != olddir) {
-        *olddir = strdup(output_dir);
+        *olddir = (NULL == output_dir) ? NULL : strdup(output_dir);
     }
     if (NULL != oldprefix) {
-        *oldprefix = strdup(output_prefix);
+        *oldprefix = (NULL == output_prefix) ? NULL : strdup(output_prefix);
     }
 
     if (NULL != dir) {
@@ -403,10 +438,22 @@ void pmix_output_finalize(void)
             pmix_output_close(verbose_stream);
         }
         free(verbose.lds_prefix);
+        verbose.lds_prefix = NULL;
+        /* the class destructor releases only lds_file_suffix - it cannot
+         * touch lds_syslog_ident, since a caller is entitled to point
+         * that at a string literal (src/mca/base does) - so the one we
+         * allocated for our own stream is ours to release */
+        free(verbose.lds_syslog_ident);
+        verbose.lds_syslog_ident = NULL;
         verbose_stream = -1;
 
+        free(redirect_syslog_ident);
+        redirect_syslog_ident = NULL;
+
         free(output_prefix);
+        output_prefix = NULL;
         free(output_dir);
+        output_dir = NULL;
         PMIX_DESTRUCT(&verbose);
         initialized = false;
     }
@@ -455,8 +502,8 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
 
     /* Setup */
 
-    if (!initialized) {
-        pmix_output_init();
+    if (!initialized && !pmix_output_init()) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
     str = getenv("PMIX_OUTPUT_REDIRECT");
@@ -570,6 +617,7 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
         if (NULL != str && redirect_to_file) {
             pmix_output_info[i].ldi_stdout = false;
             pmix_output_info[i].ldi_stderr = false;
+            pmix_output_info[i].ldi_fd = -1;
             pmix_output_info[i].ldi_file = true;
         } else {
             pmix_output_info[i].ldi_stdout = lds->lds_want_stdout;
@@ -602,7 +650,12 @@ static int open_file(int i)
 
     /* first check to see if this file is already open
      * on someone else's stream - if so, we don't want
-     * to open it twice
+     * to open it twice: a second open would truncate what the other
+     * stream has already written, and the two independent file offsets
+     * would then overwrite each other. A stream whose name differs from
+     * ours is simply not the file we are looking for, so keep looking -
+     * giving up on the first mismatch would leave us opening a file a
+     * later stream already holds.
      */
     for (n = 0; n < PMIX_OUTPUT_MAX_STREAMS; n++) {
         if (i == n) {
@@ -616,19 +669,37 @@ static int open_file(int i)
         }
         if (NULL != pmix_output_info[i].ldi_file_suffix && NULL != pmix_output_info[n].ldi_file_suffix) {
             if (0 != strcmp(pmix_output_info[i].ldi_file_suffix, pmix_output_info[n].ldi_file_suffix)) {
-                break;
+                continue;
             }
         }
         if (NULL == pmix_output_info[i].ldi_file_suffix && NULL != pmix_output_info[n].ldi_file_suffix) {
-            break;
+            continue;
         }
         if (NULL != pmix_output_info[i].ldi_file_suffix && NULL == pmix_output_info[n].ldi_file_suffix) {
-            break;
+            continue;
         }
         if (pmix_output_info[n].ldi_fd < 0) {
-            break;
+            continue;
         }
-        pmix_output_info[i].ldi_fd = pmix_output_info[n].ldi_fd;
+        /* same file, and it is already open - take a descriptor of our
+         * own onto it rather than aliasing theirs. Both descriptors
+         * share one file description, so the offset stays shared and
+         * the writes still interleave correctly, but each stream now
+         * owns what free_descriptor() closes: aliasing meant whichever
+         * stream closed first closed the file out from under the other,
+         * which then wrote into whatever descriptor the OS handed out
+         * next, and closed it a second time on its own way out.
+         */
+        pmix_output_info[i].ldi_fd = dup(pmix_output_info[n].ldi_fd);
+        if (0 > pmix_output_info[i].ldi_fd) {
+            return PMIX_ERR_IN_ERRNO;
+        }
+        /* dup() does not carry the close-on-exec flag across */
+        if (-1 == fcntl(pmix_output_info[i].ldi_fd, F_SETFD, FD_CLOEXEC)) {
+            close(pmix_output_info[i].ldi_fd);
+            pmix_output_info[i].ldi_fd = -1;
+            return PMIX_ERR_IN_ERRNO;
+        }
         return PMIX_SUCCESS;
     }
 
@@ -644,10 +715,9 @@ static int open_file(int i)
          * PMIX_PATH_MAX buffer for a pathological output_dir/prefix */
         const char *file_prefix = (NULL != output_prefix) ? output_prefix : "";
         const char *file_suffix;
-        if (pmix_output_info[i].ldi_file_suffix != NULL) {
+        if (NULL != pmix_output_info[i].ldi_file_suffix) {
             file_suffix = pmix_output_info[i].ldi_file_suffix;
         } else {
-            pmix_output_info[i].ldi_file_suffix = NULL;
             file_suffix = "output.txt";
         }
         snprintf(filename, PMIX_PATH_MAX, "%s/%s%s", output_dir, file_prefix,
@@ -661,13 +731,23 @@ static int open_file(int i)
         pmix_output_info[i].ldi_fd = open(filename, flags, 0644);
         free(filename); /* release the filename in all cases */
         if (-1 == pmix_output_info[i].ldi_fd) {
-            pmix_output_info[i].ldi_used = false;
+            /* leave the stream in use: the session directory may simply
+             * not exist yet, and pmix_output() is documented to keep
+             * counting the lost lines and to retry the open on every
+             * subsequent write. Releasing the slot here instead both
+             * stranded the descriptor's strings and handed its id to
+             * the next pmix_output_open() while the original holder was
+             * still using it. */
             return PMIX_ERR_IN_ERRNO;
         }
 
         /* Make the file be close-on-exec to prevent child inheritance
          * problems */
-        if (-1 == fcntl(pmix_output_info[i].ldi_fd, F_SETFD, 1)) {
+        if (-1 == fcntl(pmix_output_info[i].ldi_fd, F_SETFD, FD_CLOEXEC)) {
+            /* we could not make it safe to hold, so do not hold it -
+             * the retry path above will try again */
+            close(pmix_output_info[i].ldi_fd);
+            pmix_output_info[i].ldi_fd = -1;
             return PMIX_ERR_IN_ERRNO;
         }
     }
@@ -685,13 +765,16 @@ static void free_descriptor(int output_id)
 {
     pmix_output_desc_t *ldi;
 
-    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS && pmix_output_info[output_id].ldi_used
-        && pmix_output_info[output_id].ldi_enabled) {
+    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS
+        && pmix_output_info[output_id].ldi_used) {
         ldi = &pmix_output_info[output_id];
 
         if (-1 != ldi->ldi_fd) {
             close(ldi->ldi_fd);
         }
+        /* the slot outlives us and may be handed to another stream, so
+         * it must not be left naming a descriptor we just closed */
+        ldi->ldi_fd = -1;
         ldi->ldi_used = false;
 
         /* If we strduped a prefix, suffix, or syslog ident, free it */
@@ -789,6 +872,34 @@ static int make_string(char **out, char **no_newline_string, pmix_output_desc_t 
 }
 
 /*
+ * Deliver one rendered line to one descriptor.
+ *
+ * write(2) is allowed to accept fewer bytes than it was offered, and a
+ * signal that arrives before any byte is written makes it fail with
+ * EINTR - neither of which means the line could not be delivered. A
+ * single unchecked write() therefore truncated or dropped output for a
+ * reason the caller could do nothing about. EAGAIN is deliberately not
+ * retried: a non-blocking descriptor would turn that into a spin.
+ */
+static int write_line(int fd, const char *buf, size_t len)
+{
+    ssize_t n;
+
+    while (0 < len) {
+        n = write(fd, buf, len);
+        if (0 > n) {
+            if (EINTR == errno) {
+                continue;
+            }
+            return PMIX_ERROR;
+        }
+        buf += n;
+        len -= (size_t) n;
+    }
+    return PMIX_SUCCESS;
+}
+
+/*
  * Do the actual output.  Take a va_list so that we can be called from
  * multiple different places, even functions that took "..." as input
  * arguments.
@@ -797,12 +908,13 @@ static int output(int output_id, const char *format, va_list arglist)
 {
     int rc = PMIX_SUCCESS;
     char *str = NULL, *out = NULL;
+    size_t outlen = 0;
     pmix_output_desc_t *ldi;
 
     /* Setup */
 
-    if (!initialized) {
-        pmix_output_init();
+    if (!initialized && !pmix_output_init()) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
     /* If it's valid, used, and enabled, output */
@@ -815,6 +927,7 @@ static int output(int output_id, const char *format, va_list arglist)
         if (PMIX_SUCCESS != (rc = make_string(&out, &str, ldi, format, arglist))) {
             goto cleanup;
         }
+        outlen = strlen(out);
 
         /* Syslog output -- does not use the newline-appended string */
 #if defined(HAVE_SYSLOG)
@@ -823,21 +936,23 @@ static int output(int output_id, const char *format, va_list arglist)
         }
 #endif
 
-        /* stdout output */
+        /* stdout output. Note that a sink we cannot write to is
+         * remembered but does not stop us trying the others: a stream
+         * fanned out to several destinations must not fall silent on
+         * all of them because one of them was closed. */
         if (ldi->ldi_stdout) {
-            if (0 > write(fileno(stdout), out, (int) strlen(out))) {
+            if (PMIX_SUCCESS != write_line(fileno(stdout), out, outlen)) {
                 rc = PMIX_ERROR;
-                goto cleanup;
             }
             fflush(stdout);
         }
 
         /* stderr output */
         if (ldi->ldi_stderr) {
-            if (0 > write((-1 == default_stderr_fd) ? fileno(stderr) : default_stderr_fd, out,
-                          (int) strlen(out))) {
+            if (PMIX_SUCCESS
+                != write_line((-1 == default_stderr_fd) ? fileno(stderr) : default_stderr_fd, out,
+                              outlen)) {
                 rc = PMIX_ERROR;
-                goto cleanup;
             }
             fflush(stderr);
         }
@@ -858,22 +973,18 @@ static int output(int output_id, const char *format, va_list arglist)
                              "[WARNING: %d lines lost because the PMIx process session directory "
                              "did\n not exist when pmix_output() was invoked]\n",
                              ldi->ldi_file_num_lines_lost);
-                    if (0 > write(ldi->ldi_fd, buffer, (int) strlen(buffer))) {
+                    if (PMIX_SUCCESS != write_line(ldi->ldi_fd, buffer, strlen(buffer))) {
                         rc = PMIX_ERROR;
-                        goto cleanup;
                     }
                     ldi->ldi_file_num_lines_lost = 0;
                 }
             }
             if (ldi->ldi_fd != -1) {
-                if (0 > write(ldi->ldi_fd, out, (int) strlen(out))) {
+                if (PMIX_SUCCESS != write_line(ldi->ldi_fd, out, outlen)) {
                     rc = PMIX_ERROR;
-                    goto cleanup;
                 }
             }
         }
-        free(str);
-        str = NULL;
     }
 
 cleanup:

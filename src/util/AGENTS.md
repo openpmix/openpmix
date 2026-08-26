@@ -73,8 +73,73 @@ each able to fan a message out to stdout/stderr/syslog/a file. The
 `pmix_output_verbose(level, id, ...)` macro is the hot entry point;
 guard expensive verbose output behind it. `make_string` (static) is where
 a formatted line gets its prefix/suffix and trailing newline assembled —
-subtle indexing, so read it before touching. This subsystem is
-process-global and assumes single-threaded (progress-thread) use.
+subtle indexing, so read it before touching.
+
+**Writing is what a second thread may do; changing the table is not.**
+Every line is rendered on the stack and delivered with one `write()`, so
+the `ptl` listener thread and the progress thread can both write without
+a lock — which is just as well, since there is no lock anywhere in the
+file. Everything that *changes* the table (`init`, `open`, `reopen`,
+`close`, `finalize`, `set_output_file_info`) is startup/shutdown work and
+must be serialized by the caller; two concurrent `pmix_output_open()`
+calls can settle on the same free slot. The header used to promise
+serialization the code has never implemented; it now states this.
+
+Four things about a stream's lifetime are easy to get wrong, and were.
+
+- **A disabled stream is still an open stream.** `pmix_output_switch()`
+  is documented as discarding output without closing anything, but
+  `pmix_output_close()` and `free_descriptor()` both refused to act on a
+  stream whose `ldi_enabled` was false — so a stream that had been
+  switched off, or opened with `lds_is_debugging` in a build that is not
+  `--enable-debug`, could never be closed: its `strdup`'ed prefix,
+  suffix, syslog identity and file suffix were stranded, its file stayed
+  open, and its slot stayed `ldi_used` forever. Sixty-four of those
+  exhaust `pmix_output_open()`. The guards now test `ldi_used` alone;
+  `test_output_close_disabled_reclaims_slot` in
+  [`test/unit/util/util_output.c`](../../test/unit/util/util_output.c)
+  pins it.
+- **Two streams may name the same file, and each needs its own
+  descriptor.** `open_file()` deliberately does not open a file a second
+  time — the second open carries `O_TRUNC` and the two independent
+  offsets would overwrite each other — so it looks for a stream already
+  holding that file. It used to *alias* that stream's descriptor, which
+  made the first close take the file away from everyone else still
+  pointed at it: those streams then wrote into whatever descriptor the
+  OS handed out next, and closed it a second time on their own way out.
+  It now `dup()`s, so the file description (and its offset) is shared
+  while each stream owns what it closes. The scan also `break`ed on the
+  first stream whose file *differs* from ours instead of moving on to
+  the next, so a matching stream further down the table was never found.
+  `PMIX_OUTPUT_REDIRECT=file` is all it takes to have several file
+  streams at once.
+- **A file that will not open yet is not a failure.** The header
+  promises that output to a stream whose session directory does not
+  exist is counted as lost and that the open is retried on every later
+  write. The failure path used to mark the slot *unused* instead, which
+  silenced the stream permanently and handed its id to the next
+  `pmix_output_open()` while the original holder was still using it.
+- **`free_descriptor()` must reset `ldi_fd`.** The slot outlives the
+  stream and gets reissued, and one arm of `do_open()` did not set the
+  descriptor either, so a recycled slot could start life pointed at a
+  descriptor that had been closed.
+
+Five environment variables, read once in `pmix_output_init()`, override
+what every stream does: `PMIX_OUTPUT_REDIRECT` (`syslog` or `file`),
+`PMIX_OUTPUT_SYSLOG_PRI`, `PMIX_OUTPUT_SYSLOG_IDENT`,
+`PMIX_OUTPUT_SUFFIX` and `PMIX_OUTPUT_STDERR_FD`. They exist because this
+subsystem comes up before the MCA parameter system does; they are now
+documented in the header.
+
+Two smaller contracts worth knowing: `pmix_output_open()` answers either
+a handle or a *negative PMIx status*, so a caller storing the result has
+to tell them apart before using it; and `pmix_output_reopen_all()` does
+not reopen anything despite its name — it re-reads
+`PMIX_OUTPUT_STDERR_FD` and rebuilds the `[hostname:pid]` prefix of the
+default verbose stream, which is the part a restart invalidates. It used
+to rebuild only the *template* and not the descriptor's own copy, so even
+that did nothing. A stream someone else opened keeps the prefix its
+opener gave it, and only that opener can rebuild it.
 
 ### `pmix_show_help` — help text is compiled *into the library*
 
