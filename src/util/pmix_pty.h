@@ -37,6 +37,15 @@
 #        include <termio.h>
 #    endif
 #endif
+/* struct winsize appears in the prototypes below, and <termios.h> is not
+ * where it comes from - glibc keeps it in <sys/ioctl.h> and only leaks it
+ * out of <termios.h> under some feature-test settings.  macOS does leak
+ * it, which is why a consumer that forgot this include built there and
+ * failed on Linux with "declared inside parameter list".  This header is
+ * installed, so it has to bring its own types. */
+#ifdef HAVE_SYS_IOCTL_H
+#    include <sys/ioctl.h>
+#endif
 
 BEGIN_C_DECLS
 
