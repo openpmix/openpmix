@@ -41,6 +41,7 @@
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
+#include "src/runtime/pmix_rte.h"
 
 #include "src/util/pmix_timings.h"
 
@@ -57,14 +58,41 @@ pmix_timing_prep_t pmix_timing_prep_ev(pmix_timing_t *t, const char *fmt, ...);
 
 static PMIX_CLASS_INSTANCE(pmix_timing_event_t, pmix_list_item_t, NULL, NULL);
 
-static char *nodename = NULL;
-static char *jobid = "";
+/* "<nspace>:<rank>", once somebody tells us - see pmix_init_id(). */
+static char *jobid = NULL;
 static double hnp_offs = 0;
-static bool pmix_timing_overhead = false;
+
+/* Every line this file writes begins "[node:pid] jobid ...". Both names
+ * are answered through these rather than read directly, because neither
+ * is necessarily known yet: a report can be taken before pmix_rte_init()
+ * has settled the hostname, and nothing is obliged to call
+ * pmix_init_id() at all. Neither ever answers NULL - a "%s" of one is
+ * "(null)" at best, and it is what kept this file from compiling: the
+ * node name was a file-static NULL that nothing ever assigned, which gcc
+ * can see, so every asprintf below was a -Werror=format-overflow error
+ * and --enable-pmix-timing did not build. */
+static const char *report_nodename(void)
+{
+    return (NULL != pmix_globals.hostname) ? pmix_globals.hostname : "unknown";
+}
+
+static const char *report_jobid(void)
+{
+    return (NULL != jobid) ? jobid : "";
+}
 
 void pmix_init_id(char *nspace, int rank)
 {
-    pmix_asprintf(&jobid, "%s:%d", nspace, rank);
+    char *tmp = NULL;
+
+    if (0 > pmix_asprintf(&tmp, "%s:%d", nspace, rank) || NULL == tmp) {
+        /* keep whatever we had rather than blanking it */
+        return;
+    }
+    if (NULL != jobid) {
+        free(jobid);
+    }
+    jobid = tmp;
 }
 
 /* Get current timestamp. Derived from MPI_Wtime */
@@ -253,16 +281,29 @@ void pmix_timing_end_prep(pmix_timing_prep_t p, const char *func, const char *fi
 static int _prepare_descriptions(pmix_timing_t *t, struct interval_descr **__descr)
 {
     struct interval_descr *descr;
-    pmix_timing_event_t *ev, *next;
+    pmix_timing_event_t *ev;
 
-    if (t->next_id_cntr == 0) {
-        return 0;
+    /* The sweep below has to run even when no interval was ever
+     * described, because that is exactly when an interval event on the
+     * list has no slot to be resolved against: returning early left
+     * those events in place for pmix_timing_report() to index a
+     * descriptor array that is still NULL. */
+    if (0 < t->next_id_cntr) {
+        *__descr = calloc(t->next_id_cntr, sizeof(struct interval_descr));
+        if (NULL == *__descr) {
+            return -1;
+        }
     }
-
-    *__descr = calloc(t->next_id_cntr, sizeof(struct interval_descr));
     descr = *__descr;
 
-    PMIX_LIST_FOREACH_SAFE (ev, next, t->events, pmix_timing_event_t) {
+    /* Nothing is taken OFF this list. Every event lives inside a block
+     * of PMIX_TIMING_BUFSIZE that pmix_timing_event_alloc() allocated,
+     * and the only pointer to that block is the first event in it -
+     * which is on this list, and is how pmix_timing_release() finds the
+     * block to free. Removing an event therefore leaked its whole block
+     * whenever the event happened to be the block's first. A malformed
+     * event is marked unusable instead, and both consumers skip it. */
+    PMIX_LIST_FOREACH (ev, t->events, pmix_timing_event_t) {
 
         /* pmix_output(0,"EVENT: type = %d, id=%d, ts = %.12le, ovh = %.12le %s",
                     ev->type, ev->id, ev->ts, ev->ts_ovh,
@@ -270,12 +311,11 @@ static int _prepare_descriptions(pmix_timing_t *t, struct interval_descr **__des
         */
         switch (ev->type) {
         case PMIX_TIMING_INTDESCR: {
-            if (ev->id >= t->next_id_cntr) {
+            if (0 > ev->id || ev->id >= t->next_id_cntr) {
                 char *file = pmix_basename(ev->file);
-                pmix_output(0, "pmix_timing: bad event id at %s:%d:%s, ignore and remove", file,
+                pmix_output(0, "pmix_timing: bad event id at %s:%d:%s, ignoring", file,
                             ev->line, ev->func);
                 free(file);
-                pmix_list_remove_item(t->events, (pmix_list_item_t *) ev);
                 continue;
             }
             if (NULL != descr[ev->id].descr_ev) {
@@ -288,7 +328,6 @@ static int _prepare_descriptions(pmix_timing_t *t, struct interval_descr **__des
                             file, ev->line, ev->func, file_prev, prev->line, prev->func);
                 free(file);
                 free(file_prev);
-                pmix_list_remove_item(t->events, (pmix_list_item_t *) ev);
                 continue;
             }
 
@@ -300,12 +339,22 @@ static int _prepare_descriptions(pmix_timing_t *t, struct interval_descr **__des
         }
         case PMIX_TIMING_INTBEGIN:
         case PMIX_TIMING_INTEND: {
-            if (ev->id >= t->next_id_cntr || (NULL == descr[ev->id].descr_ev)) {
+            /* The lower bound is not decoration: PMIX_TIMING_MSTOP on a
+             * handler with no measurement running records an id of -1
+             * (pmix_timing_end() copies current_id), and the report loop
+             * below would then index descr[-1]. pmix_timing_deltas()
+             * screens for it on its own account; this is where both are
+             * covered. */
+            if (0 > ev->id || ev->id >= t->next_id_cntr ||
+                (NULL == descr[ev->id].descr_ev)) {
                 char *file = pmix_basename(ev->file);
-                pmix_output(0, "pmix_timing: bad event id at %s:%d:%s, ignore and remove", file,
+                pmix_output(0, "pmix_timing: bad event id at %s:%d:%s, ignoring", file,
                             ev->line, ev->func);
                 free(file);
-                pmix_list_remove_item(t->events, (pmix_list_item_t *) ev);
+                /* Say so on the event itself: it stays on the list, and
+                 * an id nothing described is what the consumers below
+                 * would otherwise use to index the descriptor array. */
+                ev->id = -1;
                 continue;
             }
             break;
@@ -319,14 +368,15 @@ static int _prepare_descriptions(pmix_timing_t *t, struct interval_descr **__des
 
 /* Output lines in portions that doesn't
  * exceed PMIX_TIMING_OUTBUF_SIZE for later automatic processing */
-int pmix_timing_report(pmix_timing_t *t, char *fname)
+pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname)
 {
     pmix_timing_event_t *ev;
     FILE *fp = NULL;
     char *buf = NULL;
-    int buf_size = 0;
+    size_t buf_size = 0, avail;
     struct interval_descr *descr = NULL;
-    int rc = PMIX_SUCCESS;
+    pmix_status_t rc = PMIX_SUCCESS;
+    int nw;
 
     if (fname != NULL) {
         fp = fopen(fname, "a");
@@ -340,7 +390,10 @@ int pmix_timing_report(pmix_timing_t *t, char *fname)
         }
     }
 
-    _prepare_descriptions(t, &descr);
+    if (0 > _prepare_descriptions(t, &descr)) {
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
+        goto err_exit;
+    }
 
     buf = calloc((PMIX_TIMING_OUTBUF_SIZE + 1), sizeof(char));
     if (buf == NULL) {
@@ -350,44 +403,59 @@ int pmix_timing_report(pmix_timing_t *t, char *fname)
 
     double overhead = 0;
     PMIX_LIST_FOREACH (ev, t->events, pmix_timing_event_t) {
-        char *line, *file;
+        char *line = NULL, *file;
+        nw = -1;
         if (ev->fib && pmix_timing_overhead) {
             overhead += ev->ts_ovh;
         }
         file = pmix_basename(ev->file);
         switch (ev->type) {
         case PMIX_TIMING_INTDESCR:
-            // Service event, skip it.
+            // Service event, skip it - and give back the name taken above.
+            free(file);
             continue;
         case PMIX_TIMING_TRACE:
-            rc = pmix_asprintf(&line, "[%s:%d] %s \"%s\" [PMIX_TRACE] %s:%d %.10lf\n", nodename,
-                          getpid(), jobid, ev->descr, file, ev->line, ev->ts + hnp_offs + overhead);
+            nw = pmix_asprintf(&line, "[%s:%d] %s \"%s\" [PMIX_TRACE] %s:%d %.10lf\n",
+                          report_nodename(),
+                          getpid(), report_jobid(), ev->descr, file, ev->line,
+                          ev->ts + hnp_offs + overhead);
             break;
         case PMIX_TIMING_INTBEGIN:
-            rc = pmix_asprintf(&line, "[%s:%d] %s \"%s [start]\" [PMIX_TRACE] %s:%d %.10lf\n", nodename,
-                          getpid(), jobid, descr[ev->id].descr_ev->descr, file, ev->line,
+            if (0 > ev->id) {
+                /* marked unusable by _prepare_descriptions() */
+                free(file);
+                continue;
+            }
+            nw = pmix_asprintf(&line, "[%s:%d] %s \"%s [start]\" [PMIX_TRACE] %s:%d %.10lf\n",
+                          report_nodename(),
+                          getpid(), report_jobid(), descr[ev->id].descr_ev->descr, file, ev->line,
                           ev->ts + hnp_offs + overhead);
             break;
         case PMIX_TIMING_INTEND:
-            rc = pmix_asprintf(&line, "[%s:%d] %s \"%s [stop]\" [PMIX_TRACE] %s:%d %.10lf\n", nodename,
-                          getpid(), jobid, descr[ev->id].descr_ev->descr, file, ev->line,
+            if (0 > ev->id) {
+                /* marked unusable by _prepare_descriptions() */
+                free(file);
+                continue;
+            }
+            nw = pmix_asprintf(&line, "[%s:%d] %s \"%s [stop]\" [PMIX_TRACE] %s:%d %.10lf\n",
+                          report_nodename(),
+                          getpid(), report_jobid(), descr[ev->id].descr_ev->descr, file, ev->line,
                           ev->ts + hnp_offs + overhead);
             break;
         }
         free(file);
 
-        if (rc < 0) {
+        if (0 > nw || NULL == line) {
             rc = PMIX_ERR_OUT_OF_RESOURCE;
             goto err_exit;
         }
-        rc = 0;
 
         /* Sanity check: this shouldn't happen since description
          * is event only 1KB long and other fields should never
          * exceed 9KB */
         assert(strlen(line) <= PMIX_TIMING_OUTBUF_SIZE);
 
-        if (buf_size + strlen(line) > PMIX_TIMING_OUTBUF_SIZE) {
+        if (buf_size + strlen(line) > (size_t) PMIX_TIMING_OUTBUF_SIZE) {
             // flush buffer to the file
             if (fp != NULL) {
                 fprintf(fp, "%s", buf);
@@ -402,13 +470,23 @@ int pmix_timing_report(pmix_timing_t *t, char *fname)
          * the previous "snprintf(buf, STR_LEN, \"%s%s\", buf, line)" both
          * aliased buf as source and destination (undefined behavior) and
          * capped the whole buffer at PMIX_TIMING_STR_LEN (1024) rather than
-         * the OUTBUF_SIZE it was sized for, silently dropping output */
-        snprintf(buf + buf_size, (PMIX_TIMING_OUTBUF_SIZE + 1) - buf_size, "%s", line);
-        buf_size += strlen(line);
+         * the OUTBUF_SIZE it was sized for, silently dropping output.
+         *
+         * Advance by what was WRITTEN, not by the length of the line.
+         * snprintf answers what it would have written, so a line the
+         * buffer could not hold - the assert above is a debug build's
+         * only guard against one - would otherwise put the next append
+         * past the end of the buffer, with a remaining capacity that
+         * went negative and then converted to an enormous size_t. */
+        avail = (size_t) (PMIX_TIMING_OUTBUF_SIZE + 1) - buf_size;
+        nw = snprintf(buf + buf_size, avail, "%s", line);
+        if (0 < nw) {
+            buf_size += ((size_t) nw < avail) ? (size_t) nw : (avail - 1);
+        }
         free(line);
     }
 
-    if (buf_size > 0) {
+    if (0 < buf_size) {
         // flush buffer to the file
         if (fp != NULL) {
             fprintf(fp, "%s", buf);
@@ -437,14 +515,15 @@ err_exit:
 /* Output events as one buffer so the data won't be mixed
  * with other output. This function is supposed to be human readable.
  * The output goes only to stdout. */
-int pmix_timing_deltas(pmix_timing_t *t, char *fname)
+pmix_status_t pmix_timing_deltas(pmix_timing_t *t, char *fname)
 {
     pmix_timing_event_t *ev;
     FILE *fp = NULL;
     char *buf = NULL;
     struct interval_descr *descr = NULL;
-    int i, rc = PMIX_SUCCESS;
-    size_t buf_size = 0, buf_used = 0;
+    pmix_status_t rc = PMIX_SUCCESS;
+    int i, nw;
+    size_t buf_size = 0, buf_used = 0, avail;
 
     if (fname != NULL) {
         fp = fopen(fname, "a");
@@ -458,7 +537,10 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname)
         }
     }
 
-    _prepare_descriptions(t, &descr);
+    if (0 > _prepare_descriptions(t, &descr)) {
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
+        goto err_exit;
+    }
 
     PMIX_LIST_FOREACH (ev, t->events, pmix_timing_event_t) {
         int id;
@@ -548,13 +630,13 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname)
     for (i = 0; i < t->next_id_cntr; i++) {
         char *line = NULL;
         size_t line_size;
-        rc = pmix_asprintf(&line, "[%s:%d] %s \"%s\" [PMIX_OVHD] %le\n", nodename, getpid(), jobid,
+        nw = pmix_asprintf(&line, "[%s:%d] %s \"%s\" [PMIX_OVHD] %le\n", report_nodename(),
+                      getpid(), report_jobid(),
                       descr[i].descr_ev->descr, descr[i].interval - descr[i].overhead);
-        if (rc < 0) {
+        if (0 > nw || NULL == line) {
             rc = PMIX_ERR_OUT_OF_RESOURCE;
             goto err_exit;
         }
-        rc = 0;
         line_size = strlen(line);
 
         /* Sanity check: this shouldn't happen since description
@@ -568,24 +650,31 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname)
                 buf_size += PMIX_TIMING_OUTBUF_SIZE + 1;
             }
             if (buf_size > DELTAS_SANE_LIMIT) {
-                pmix_output(0, "pmix_timing_report: delta sane limit overflow (%u > %u)!\n",
+                pmix_output(0, "pmix_timing_deltas: delta sane limit overflow (%u > %u)!\n",
                             (unsigned int) buf_size, DELTAS_SANE_LIMIT);
                 free(line);
                 rc = PMIX_ERR_OUT_OF_RESOURCE;
                 goto err_exit;
             }
-            buf = realloc(buf, buf_size);
-            if (buf == NULL) {
+            /* through a temporary: assigning realloc's answer straight
+             * back over buf loses the original block when it fails */
+            char *newbuf = realloc(buf, buf_size);
+            if (NULL == newbuf) {
                 pmix_output(0, "pmix_timing_deltas: Out of memory!\n");
+                free(line);
                 rc = PMIX_ERR_OUT_OF_RESOURCE;
                 goto err_exit;
             }
+            buf = newbuf;
         }
         /* append at the current end using the real remaining capacity
          * (see the matching fix in pmix_timing_report): the old form
          * aliased buf as src+dst and ignored the grown buffer size */
-        snprintf(buf + buf_used, buf_size - buf_used, "%s", line);
-        buf_used += line_size;
+        avail = buf_size - buf_used;
+        nw = snprintf(buf + buf_used, avail, "%s", line);
+        if (0 < nw) {
+            buf_used += ((size_t) nw < avail) ? (size_t) nw : (avail - 1);
+        }
         free(line);
     }
 

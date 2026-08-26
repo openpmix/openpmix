@@ -61,7 +61,7 @@ interface list).
 | `pmix_shmem.{c,h}` / `pmix_vmem.{c,h}` | mmap-backed shared-memory segment; `/proc/self/maps` hole finder (Linux) | `pad_to_page`/`parse_map_line` pure; rest need mmap |
 | `pmix_pty.{c,h}` / `pmix_tty.{c,h}` | pty open/forkpty; termios/winsize helpers | need real pty/tty |
 | `pmix_alfg.{c,h}` | additive lagged-Fibonacci RNG (from Open MPI's `opal_rand`) | pure/deterministic |
-| `pmix_timings.{c,h}` | optional profiling (`--enable-timing`, off by default) | needs `--enable-timing` |
+| `pmix_timings.{c,h}` | optional profiling (`--enable-pmix-timing`, off by default) | needs `--enable-pmix-timing` |
 | `pmix_context_fns.{c,h}` | process-launch cwd/exe resolution helpers | needs a fixture |
 
 ## Subsystems that deserve a closer look
@@ -1310,6 +1310,87 @@ around the chosen placement, without giving up the agreement. Tested in
 is where it has to be tested, since ASLR separates real processes well
 enough to hide whether the scatter works at all.
 
+### `pmix_timings` — a whole subsystem behind one configure switch
+
+Everything in `pmix_timings.c` below its opening `#if PMIX_ENABLE_TIMING`
+— 600 of its 645 lines — is compiled only under `--enable-pmix-timing`
+(note the spelling: `--enable-timing` is not an option and is silently
+ignored). Nothing in PMIx or PRRTE uses any of it: the `PMIX_TIMING_*`
+macros in the header are the intended entry points and have no in-tree
+caller, so **the only thing exercising this code is a developer adding
+macros by hand while chasing a latency question**.
+
+That is the whole context for reading this file. It is the recurring
+trap in this directory in its purest form — see `pmix_few`, `pmix_pty`,
+`pmix_net` above — and it had gone further than any of them: **the
+enabled arm did not compile at all.** `nodename`, the file-static that
+prefixes every line of output with the node's name, was declared `NULL`
+and assigned by nothing, anywhere, ever. gcc can see that, so all four
+`pmix_asprintf()` calls that pass it to a `%s` were
+`-Werror=format-overflow` errors, and `--enable-pmix-timing` failed to
+build. Had it built, every line would have named the node `(null)`.
+
+So: **compile this arm by hand before believing an edit to it.** Forcing
+the guard is not enough on its own — `src/runtime/pmix_rte.h` and
+`src/runtime/pmix_params.c` carry the same `#if`, and the parameters
+live there — so edit `#if PMIX_ENABLE_TIMING` to `#if 1` in all four, or
+better, flip `PMIX_ENABLE_TIMING` in the build tree's generated
+`pmix_config.h` and rebuild, which also lets
+[`test/unit/util/util_timings.c`](../../test/unit/util/util_timings.c)
+actually run. That test has a case per defect below, and its
+unmatched-stop case **dies on a signal** rather than failing an
+assertion when the screen it covers is removed.
+
+Four things about the code the compiler could not have told you:
+
+- **An interval id of -1 is an ordinary outcome, and it indexes an
+  array.** `PMIX_TIMING_MSTOP` on a handler with no measurement running
+  records `current_id`, which is -1, and both consumers index the
+  descriptor array by `ev->id`. `pmix_timing_deltas()` screened for a
+  negative id; `pmix_timing_report()` did not, and when no interval had
+  ever been described the array was not allocated at all — so an
+  unmatched stop was a read through `((struct interval_descr *)
+  NULL)[-1]`. The screen now lives in `_prepare_descriptions()`, which
+  marks such an event unusable, and in the report loop, which skips one.
+- **Nothing may be taken off `t->events`.** Every event lives inside a
+  block of `PMIX_TIMING_BUFSIZE` that `pmix_timing_event_alloc()`
+  allocated, and the only pointer to that block is its first event —
+  which is on the list, carrying `fib`, and is how
+  `pmix_timing_release()` finds the block to free. So
+  `pmix_list_remove_item()` on a malformed event leaked its entire block
+  whenever the event happened to be a block's first, one time in
+  `PMIX_TIMING_BUFSIZE`. Mark an event unusable; do not unlink it.
+- **A parameter that two files define is a parameter that does nothing.**
+  `src/runtime/pmix_params.c` registers the `timing_overhead` MCA
+  parameter against `pmix_timing_overhead`, and `pmix_timings.c` defined
+  a *file-static* of the same name, initialized `false`, which shadowed
+  it for the only two places that read it. The parameter was inert and
+  the overhead accounting it exists to switch never ran, in any build.
+  This is the same shape as `pmix_net_private_ipv4` above, with a
+  different mechanism. The declaration now lives in `pmix_timings.h`, so
+  a static definition following it is a compiler error rather than a
+  silent second variable.
+- **The installed header must declare what its macros use.**
+  `PMIX_TIMING_REPORT`/`_DELTAS` expand to a use of `pmix_timing_output`,
+  which was declared only in `src/runtime/pmix_rte.h` — not an installed
+  header — so those two macros did not compile outside this tree at all.
+  The same header spelled `__FUNCTION__`, a GNU extension, in eight
+  macros, so a consumer compiling `-pedantic` could not use any of them;
+  C11 spells it `__func__`. `pmix_timing_sync_file` was declared in
+  `pmix_rte.h` and defined nowhere, which made any use of it a link
+  error; it is gone. And `PMIX_TIMING_ID(n, r)` named `pmix_timing_id()`,
+  a function that has never existed — the real one is `pmix_init_id()`.
+
+Two smaller invariants worth keeping: `snprintf` answers what it *would*
+have written, so both output loops advance by the number of bytes that
+actually fit rather than by `strlen(line)` — otherwise a line longer than
+`PMIX_TIMING_OUTBUF_SIZE` (which only an `assert()` stands against, and
+`-DNDEBUG` removes that) walks the append cursor past the end of the
+buffer, and the remaining capacity goes negative and converts to an
+enormous `size_t`. And `hnp_offs` is a clock-offset correction that
+nothing ever sets; it is left in place because it is what a
+cross-node timing comparison would need, but read it as 0.
+
 ### `pmix_pty` — a helper that must not take a terminal for itself
 
 Four wrappers around pty setup, and one caller: `pmix_pfexec`'s
@@ -1574,7 +1655,8 @@ Current coverage includes: `argv`, `alfg`, `basename`, `cmd_line`,
 regression), `if` (the tuple parser), `name_fns` (incl. special-rank
 compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,
-`string_copy`, `timings`, `getcwd`, `getid`, `keyval`, `pty` (the
+`string_copy`, `timings` (which runs its real cases only in an
+`--enable-pmix-timing` build), `getcwd`, `getid`, `keyval`, `pty` (the
 controlling-terminal and descriptor-ownership regressions), `shmem` (the
 symlink/stale-file halves of the create, and the reference-count
 lifetime), `show_help` (the `#include` parser and the termination
@@ -1636,7 +1718,8 @@ own commit. Recorded so they are not re-introduced by a future edit.
   `snprintf(buf, PMIX_TIMING_STR_LEN, "%s%s", buf, line)` — aliasing
   `buf` as both source and destination (UB) and capping the buffer at
   1024 rather than the size it was allocated for. Now appends at the
-  current end with the real remaining capacity. (`--enable-timing` only.)
+  current end with the real remaining capacity. (`--enable-pmix-timing`
+  only.)
 - **`pmix_pty.c`.** The `PMIX_ENABLE_PTY_SUPPORT == 0` stubs had a missing
   semicolon and signatures that disagreed with the header (`pmix_ptymopen`
   dropped `maxlen`; `pmix_forkpty` had extra/concrete params), and the
