@@ -1075,8 +1075,10 @@ static void client_teardown(void)
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     /* A deletion that arrived while we were not marked initialized was
      * held rather than applied, and there is now nothing to apply it to.
-     * The list destructor re-constructs, so a second PMIx_Init in this
-     * process starts from an empty one. */
+     * PMIx_Init constructs this list on every cycle, which is what makes it
+     * safe to destruct it on every cycle - the list destructor does re-link
+     * the sentinel, but PMIX_DESTRUCT also zeroes the object's magic id, so
+     * a second destruct without a construct between them is an abort. */
     PMIX_LIST_DESTRUCT(&pmix_client_held_deletes);
     /* drop the delta-commit record, and leave the flag set so a second
      * PMIx_Init in this process starts cumulative rather than trusting
@@ -1280,6 +1282,17 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_client_globals.singleton = false;
     pmix_client_globals.local_iof = false;
     PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
+    /* Constructed here, and not left to its static initializer, for the two
+     * reasons any PMIX_LIST_STATIC_INIT list has to be. Its sentinel is
+     * NULL-linked until a construct runs, so it reads as empty but the first
+     * pmix_list_append() to it writes through a NULL - and appending is
+     * exactly what client_data_delete_handler() does when a deletion arrives
+     * before we are marked initialized, which is the case that handler exists
+     * for. And PMIX_DESTRUCT zeroes an object's magic id, so the teardown
+     * below can only run once per process unless something puts it back:
+     * without this, the second PMIx_Init in a process aborted on the
+     * assertion in a debug build. */
+    PMIX_CONSTRUCT(&pmix_client_held_deletes, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.peers, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
     pmix_client_globals.myserver = PMIX_NEW(pmix_peer_t);
