@@ -292,6 +292,38 @@ compare, `PMIx_Value_get_number`) is actually implemented here in
 `bfrops/base`, because it is all fundamentally data-manipulation code.
 Do not assume `bfrops/base` is purely internal wire code.
 
+#### `PMIx_Value_get_number` and the types that are integers wearing a name
+
+Two things about that function are decisions rather than mechanics, and
+both are easy to undo by accident.
+
+**It accepts the named integer types at both ends.** A `pmix_scope_t`, a
+`pmix_proc_state_t`, a `pmix_alloc_inheritance_t` and a dozen more are
+each a fixed-width unsigned integer given its own type tag and its own
+member of the value union. The number in one of them is a number, and the
+attribute annotations in `pmix_common.h.in` tell callers to load such an
+attribute with the named type — so refusing that spelling meant refusing
+the one the standard asks for, and left every host writing the same
+special case. `plain_integer_type()` names the plain type underneath, at
+both the source and the destination end, and the ordinary `check_*`
+conversions then apply their range and precision rules to them exactly as
+to anything else. **The widths there are the ones
+`pmix_bfrops_base_value_load()` stores; adding a type to one and not the
+other is how the two drift.** Note that a `pmix_value_t`'s union members
+alias, so the source is normalized by copying the whole value and
+restamping its type — nothing has to know which member held the datum.
+
+**A named type is not unloaded into a *different* named type.** A scope is
+not a proc state and an allocation directive is not a status, however
+alike the integers underneath them are, so asking for one from the other
+is `PMIX_ERR_BAD_PARAM`. That rule predates the family — it was
+`check_rank()`'s and `check_status()`'s policy for `PMIX_PID` /
+`PMIX_STATUS` / `PMIX_PROC_RANK`, stated at the tail of each of them — and
+it now lives once at the top of `PMIx_Value_get_number` covering all of
+them. Reading any of them as a plain integer, and building any of them
+from a plain integer, stays allowed: that is what the function is for.
+`PMIX_BOOL` is deliberately outside all of this — a flag is not a count.
+
 ## The buffer (`bfrops_types.h`)
 
 The `pmix_buffer_t` is a growable byte buffer with separate `pack_ptr`

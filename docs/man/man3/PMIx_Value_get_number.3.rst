@@ -70,6 +70,39 @@ the datatype found in the given `val`, taking one of the following actions:
       outside the range of the integer type, then the ``PMIX_ERR_LOST_PRECISION``
       error will be returned
 
+What counts as numeric
+^^^^^^^^^^^^^^^^^^^^^^
+
+Both the plain widths (``PMIX_SIZE``, ``PMIX_INT`` and the sized integer
+types, ``PMIX_FLOAT``, ``PMIX_DOUBLE``) and the PMIx datatypes that *are*
+an integer under a name of their own are numeric for the purposes of this
+function. The latter are:
+
+``PMIX_PID``, ``PMIX_STATUS``, ``PMIX_PROC_RANK``, ``PMIX_PERSIST``,
+``PMIX_SCOPE``, ``PMIX_DATA_RANGE``, ``PMIX_PROC_STATE``,
+``PMIX_ALLOC_DIRECTIVE``, ``PMIX_RESBLOCK_DIRECTIVE``,
+``PMIX_ALLOC_INHERIT``, ``PMIX_JOB_STATE``, ``PMIX_LINK_STATE``,
+``PMIX_LOCTYPE``, ``PMIX_DEVTYPE``, ``PMIX_STOR_MEDIUM``,
+``PMIX_STOR_ACCESS``, ``PMIX_STOR_PERSIST`` and ``PMIX_STOR_ACCESS_TYPE``.
+
+Any of these may appear as the datatype of `val`, as the datatype named by
+the caller, or as both. The range and sign rules above apply to them
+through the integer each one is defined as, so a ``PMIX_ALLOC_INHERIT``
+read into a ``PMIX_INT`` returns its value, and a ``PMIX_INT`` holding
+``300`` read into a ``PMIX_ALLOC_INHERIT`` -- a ``uint8_t`` -- is refused.
+
+There is one restriction. A value of one of these named types is **not**
+unloaded into a *different* named type, however alike the integers
+underneath them may be: a scope is not a process state, and an allocation
+directive is not a status. Asking for one from the other returns
+``PMIX_ERR_BAD_PARAM``. Reading any of them as a plain integer, and
+building any of them from a plain integer, is what this function is for
+and is always allowed.
+
+``PMIX_BOOL`` is not numeric here. A flag is not a count, and a caller
+that wants one should read ``val->data.flag`` or use
+:ref:`PMIx_Value_unload(3) <man3-PMIx_Value_unload>`.
+
 .. note:: The caller must provide backing memory for the value being
           returned. This function will not allocate memory. In addition, this
           function is only usable when retrieving numerical values - the :ref:`PMIx_Value_unload(3) <man3-PMIx_Value_unload>`
@@ -145,6 +178,29 @@ but:
 
 would return ``PMIX_ERR_CHANGE_SIGN`` as the sign requirements conflict.
 
+An attribute annotated with a named integer type is loaded and read with
+that type. For example, ``PMIX_ALLOC_INHERITANCE`` is annotated
+``(pmix_alloc_inheritance_t)``, so a caller sets it as:
+
+.. code-block:: c
+
+    PMIX_INFO_LOAD(&info, PMIX_ALLOC_INHERITANCE,
+                   &(pmix_alloc_inheritance_t){PMIX_ALLOC_INHERIT_CHILD},
+                   PMIX_ALLOC_INHERIT);
+
+and the host reads it back with:
+
+.. code-block:: c
+
+    pmix_alloc_inheritance_t inherit;
+    pmix_status_t rc;
+
+    rc = PMIx_Value_get_number(&info.value, (void*)&inherit,
+                               PMIX_ALLOC_INHERIT);
+
+which also accepts the same disposition sent as a plain integer of any
+width that can hold it, so a host need not care which spelling the caller
+chose.
 
 
 .. seealso::

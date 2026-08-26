@@ -67,7 +67,17 @@ static void report(const char *name, int passed)
 static pmix_data_type_t types[] = {
     PMIX_SIZE, PMIX_INT, PMIX_INT8, PMIX_INT16, PMIX_INT32, PMIX_INT64,
     PMIX_UINT, PMIX_UINT8, PMIX_UINT16, PMIX_UINT32, PMIX_UINT64,
-    PMIX_FLOAT, PMIX_DOUBLE, PMIX_PID, PMIX_PROC_RANK, PMIX_STATUS
+    PMIX_FLOAT, PMIX_DOUBLE, PMIX_PID, PMIX_PROC_RANK, PMIX_STATUS,
+    /* the types that are an integer wearing a name - each one a fixed-width
+     * unsigned integer with its own tag and its own union member.  They are
+     * listed here rather than tested apart because every property below is
+     * a property of theirs too: an inheritance disposition read into an int
+     * has to come back exactly, and a 300 read into one has to be refused. */
+    PMIX_PERSIST, PMIX_SCOPE, PMIX_DATA_RANGE, PMIX_PROC_STATE,
+    PMIX_ALLOC_DIRECTIVE, PMIX_RESBLOCK_DIRECTIVE, PMIX_ALLOC_INHERIT,
+    PMIX_JOB_STATE, PMIX_LINK_STATE,
+    PMIX_LOCTYPE, PMIX_STOR_ACCESS_TYPE,
+    PMIX_DEVTYPE, PMIX_STOR_MEDIUM, PMIX_STOR_ACCESS, PMIX_STOR_PERSIST
 };
 #define NTYPES (sizeof(types) / sizeof(types[0]))
 
@@ -87,7 +97,29 @@ static long double samples[] = {
 
 static int is_structured(pmix_data_type_t t)
 {
-    return (PMIX_PID == t || PMIX_STATUS == t || PMIX_PROC_RANK == t);
+    switch (t) {
+    case PMIX_PID:
+    case PMIX_STATUS:
+    case PMIX_PROC_RANK:
+    case PMIX_PERSIST:
+    case PMIX_SCOPE:
+    case PMIX_DATA_RANGE:
+    case PMIX_PROC_STATE:
+    case PMIX_ALLOC_DIRECTIVE:
+    case PMIX_RESBLOCK_DIRECTIVE:
+    case PMIX_ALLOC_INHERIT:
+    case PMIX_JOB_STATE:
+    case PMIX_LINK_STATE:
+    case PMIX_LOCTYPE:
+    case PMIX_STOR_ACCESS_TYPE:
+    case PMIX_DEVTYPE:
+    case PMIX_STOR_MEDIUM:
+    case PMIX_STOR_ACCESS:
+    case PMIX_STOR_PERSIST:
+        return 1;
+    default:
+        return 0;
+    }
 }
 
 /* the representable range of each integral destination type */
@@ -95,12 +127,27 @@ static int int_range(pmix_data_type_t t, long double *lo, long double *hi)
 {
     switch (t) {
     case PMIX_SIZE:
-    case PMIX_UINT64: *lo = 0; *hi = 18446744073709551615.0L; return 1;
+    case PMIX_UINT64:
+    case PMIX_DEVTYPE:
+    case PMIX_STOR_MEDIUM:
+    case PMIX_STOR_ACCESS:
+    case PMIX_STOR_PERSIST: *lo = 0; *hi = 18446744073709551615.0L; return 1;
     case PMIX_UINT32:
     case PMIX_UINT:
     case PMIX_PROC_RANK: *lo = 0; *hi = 4294967295.0L; return 1;
-    case PMIX_UINT16: *lo = 0; *hi = 65535.0L; return 1;
-    case PMIX_UINT8: *lo = 0; *hi = 255.0L; return 1;
+    case PMIX_UINT16:
+    case PMIX_LOCTYPE:
+    case PMIX_STOR_ACCESS_TYPE: *lo = 0; *hi = 65535.0L; return 1;
+    case PMIX_UINT8:
+    case PMIX_PERSIST:
+    case PMIX_SCOPE:
+    case PMIX_DATA_RANGE:
+    case PMIX_PROC_STATE:
+    case PMIX_ALLOC_DIRECTIVE:
+    case PMIX_RESBLOCK_DIRECTIVE:
+    case PMIX_ALLOC_INHERIT:
+    case PMIX_JOB_STATE:
+    case PMIX_LINK_STATE: *lo = 0; *hi = 255.0L; return 1;
     case PMIX_INT64: *lo = -9223372036854775807.0L - 1;
                      *hi = 9223372036854775807.0L; return 1;
     case PMIX_INT32:
@@ -164,6 +211,25 @@ static void setval(pmix_value_t *v, pmix_data_type_t t, long double x)
     case PMIX_PID: v->data.pid = (pid_t) x; break;
     case PMIX_PROC_RANK: v->data.rank = (pmix_rank_t) x; break;
     case PMIX_STATUS: v->data.status = (pmix_status_t) x; break;
+    case PMIX_PERSIST: v->data.persist = (pmix_persistence_t) x; break;
+    case PMIX_SCOPE: v->data.scope = (pmix_scope_t) x; break;
+    case PMIX_DATA_RANGE: v->data.range = (pmix_data_range_t) x; break;
+    case PMIX_PROC_STATE: v->data.state = (pmix_proc_state_t) x; break;
+    case PMIX_ALLOC_DIRECTIVE: v->data.adir = (pmix_alloc_directive_t) x; break;
+    case PMIX_RESBLOCK_DIRECTIVE:
+        v->data.rbdir = (pmix_resource_block_directive_t) x; break;
+    case PMIX_ALLOC_INHERIT:
+        v->data.inheritance = (pmix_alloc_inheritance_t) x; break;
+    case PMIX_JOB_STATE: v->data.jstate = (pmix_job_state_t) x; break;
+    case PMIX_LINK_STATE: v->data.linkstate = (pmix_link_state_t) x; break;
+    case PMIX_LOCTYPE: v->data.locality = (pmix_locality_t) x; break;
+    case PMIX_DEVTYPE: v->data.devtype = (pmix_device_type_t) x; break;
+    /* the storage types have no union member of their own - value_load()
+     * stores them in the plain member of matching width */
+    case PMIX_STOR_ACCESS_TYPE: v->data.uint16 = (uint16_t) x; break;
+    case PMIX_STOR_MEDIUM:
+    case PMIX_STOR_ACCESS:
+    case PMIX_STOR_PERSIST: v->data.uint64 = (uint64_t) x; break;
     default: break;
     }
 }
@@ -187,6 +253,21 @@ static long double getval(const pmix_value_t *v)
     case PMIX_PID: return (long double) v->data.pid;
     case PMIX_PROC_RANK: return (long double) v->data.rank;
     case PMIX_STATUS: return (long double) v->data.status;
+    case PMIX_PERSIST: return (long double) v->data.persist;
+    case PMIX_SCOPE: return (long double) v->data.scope;
+    case PMIX_DATA_RANGE: return (long double) v->data.range;
+    case PMIX_PROC_STATE: return (long double) v->data.state;
+    case PMIX_ALLOC_DIRECTIVE: return (long double) v->data.adir;
+    case PMIX_RESBLOCK_DIRECTIVE: return (long double) v->data.rbdir;
+    case PMIX_ALLOC_INHERIT: return (long double) v->data.inheritance;
+    case PMIX_JOB_STATE: return (long double) v->data.jstate;
+    case PMIX_LINK_STATE: return (long double) v->data.linkstate;
+    case PMIX_LOCTYPE: return (long double) v->data.locality;
+    case PMIX_DEVTYPE: return (long double) v->data.devtype;
+    case PMIX_STOR_ACCESS_TYPE: return (long double) v->data.uint16;
+    case PMIX_STOR_MEDIUM:
+    case PMIX_STOR_ACCESS:
+    case PMIX_STOR_PERSIST: return (long double) v->data.uint64;
     default: return 0;
     }
 }
