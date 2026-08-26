@@ -659,14 +659,15 @@ first:
   ``PMIx_server_IOF_deliver``, ``_IOF_flow_control``
   (``pmix_server_iof.c``);
   ``PMIx_server_dmodex_request`` (``pmix_server_dmodex.c``);
-  ``PMIx_server_collect_job_info`` (``pmix_server_fence.c``);
-  ``PMIx_server_setup_fork`` (``pmix_server.c``).  All four of those
-  files have since had their own per-file pass (2026-08-24) and none of
-  them added the screen, so this list is what the completed ``src/server``
-  per-file review left open rather than something it has not reached yet.
-* **Known must not get it** — ``PMIx_server_setup_application`` and
-  ``_setup_local_support`` (``pmix_server_setup.c``), for the reason
-  recorded above: a launcher calls them after ``PMIx_tool_init`` alone.
+  ``PMIx_server_collect_job_info`` (``pmix_server_fence.c``).  All three
+  of those files have since had their own per-file pass (2026-08-24) and
+  none of them added the screen, so this list is what the completed
+  ``src/server`` per-file review left open rather than something it has
+  not reached yet.
+* **Known must not get it** — ``PMIx_server_setup_application``,
+  ``_setup_local_support`` (``pmix_server_setup.c``) and
+  ``PMIx_server_setup_fork`` (``pmix_server.c``), for the reason recorded
+  above: a launcher calls them after ``PMIx_tool_init`` alone.
 * **Almost certainly must not get it** — pure helpers over ``preg`` and
   hwloc, both of which ``pmix_rte_init`` stands up for every role, so
   they work correctly in a client today: ``PMIx_generate_regex``,
@@ -681,10 +682,39 @@ first:
   changing either one changes init/finalize semantics rather than closing
   a crash.
 
-``PMIx_server_setup_fork`` is the one worth care: a launcher comes up
-through ``PMIx_tool_init`` and reads as a server long before
-``PMIx_server_init`` runs, so confirm no in-tree or PRRTE path calls it in
-that window before adding the screen.
+**``PMIx_server_setup_fork`` was listed here as "the one worth care" and
+is now closed (2026-08-26) — by the opposite change to the one this entry
+proposed.** The worry was that a launcher comes up through
+``PMIx_tool_init`` and reads as a server long before ``PMIx_server_init``
+runs, so the entry asked for its callers to be confirmed before adding
+the screen. Running it settled it: a launcher calling
+``PMIx_server_setup_fork`` did not need refusing, it needed the call to
+work, and it took SIGSEGV on the way — inside the blocking call, so
+nothing was returned to refuse with. The crash was in
+``pmix_pgpu_base_setup_fork``, not in ``pmix_server_globals`` at all.
+
+The three setup calls a launcher makes fan out to ``pnet`` and ``pgpu``
+side by side — ``pmix_server_setup.c:926/931``, ``:1057/1061`` and
+``pmix_server.c:1677/1689`` — and ``PMIx_tool_init`` opened only ``pnet``
+(for a launcher or scheduler), never ``pgpu``. A base function whose
+framework never opened walks an ``actives`` list that was never
+constructed. ``pmix_pgpu_base_allocate`` and ``_setup_local`` happen to
+open with a ``pmix_list_get_size()`` guard, so ``setup_application`` and
+``_setup_local_support`` survived — which meant the whole ``pgpu`` path
+was *dead* for a launcher rather than fatal, the same shape as the
+missing ``pmix_pgpu.setup_fork`` call that ``pmix_server.c:1685`` records.
+``pmix_pgpu_base_setup_fork`` has no such guard, so that one died.
+``PMIx_tool_init`` now opens and selects ``pgpu`` wherever it opens
+``pnet``, and ``PMIx_tool_finalize`` closes it; the three launcher cases
+in ``test/unit/server_setup.c`` hold it there.
+
+**The general lesson is worth more than the fix.** A screen at the entry
+point answers "may this caller be here at all". When the caller is
+entitled to be there and the code below it is not ready for the role it
+came in as, the screen is not a weaker version of the right fix — it is
+the wrong question, and adding it would have refused the one caller the
+API exists for. Ask which role the path is reached from and what that
+role's init actually stood up, before reaching for a flag.
 
 ``PMIX_GET_POINTER_VALUES`` is honored by three shortcuts and nothing else
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
