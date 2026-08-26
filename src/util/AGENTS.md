@@ -179,10 +179,66 @@ and breaks the build for whoever regenerates it next — which on a fresh
 clone is CI. Regenerate whenever you add, remove, or rename a
 `pmix_show_help*()` call, not only when you edit the text.
 
-`pmix_show_help`
-also aggregates duplicate notices (fired from a libevent timer) and can
-thread-shift delivery through the log path; the global `abd_tuples` list
-is manipulated without locking and assumes progress-thread-only callers.
+`pmix_show_help` also aggregates duplicate notices (fired from a libevent
+timer) and can thread-shift delivery through the log path; the global
+`abd_tuples` list is manipulated without locking and assumes
+progress-thread-only callers.
+
+**The header describes a system that no longer exists**, or rather it
+did: it walked the reader through opening a file in `$pkgdatadir` and
+told an MCA component to install its own helpfile there. Nothing opens
+anything at run time, so following it produced a file PMIx never reads.
+It now says what actually happens, including the regenerate step and the
+`--purge` trap above, and `pmix_show_help_add_data()` — documented as
+adding a *search directory* — now says what it takes, which is a
+compiled-in table that it borrows rather than copies.
+
+**The aggregation state is process-global and outlives a finalize**, the
+same shape as `pmix_keyval_parse`'s `env_str` below. `pmix_show_help_init()`
+can run again in the same process — `pmix_rte_init()` calls it, several
+tools call it directly, and `pmix_show_help_finalize()` clears the
+initialized flag — so a `show_help_timer_set` left standing meant the
+aggregation timer was never armed again for the rest of the process.
+Finalize now deletes the timer and resets the flag and the timestamp.
+
+**Finalize is also the only place the promised termination flush can
+happen.** `pmix_help_check_dups()` documents that accumulated duplicates
+are displayed unconditionally at termination, but the summary only ever
+ran off a five-second timer, and finalize destructed the list without
+looking at it — so a job that ended sooner, which is most of them, was
+never told about the other N processes at all. It now flushes, and it
+clears `pmix_show_help_initialized` *first* so the notice takes
+`local_delivery()`'s direct-to-stderr path: `pmix_rte_finalize()` has
+already paused the progress thread by the time this runs, so anything
+thread-shifted onto the event base here would neither run nor be
+released. `test_duplicates_flushed_at_finalize` in
+[`test/unit/util/util_show_help.c`](../../test/unit/util/util_show_help.c)
+covers it, and has to fork before the test's own `PMIx_Init` — a child of
+an already-initialized process only adjusts a reference count and never
+reaches `pmix_rte_finalize()` at all.
+
+**A message can pull in another one**, with a line of the form
+`#include#FILE#TOPIC` or `#include#PROJECT#FILE#TOPIC`, parsed from the
+right. No `help-*.txt` in the tree uses it yet, which is why both copies
+of the parser — the local-array branch and the registered-array branch,
+which were the same twenty lines twice — dereferenced whatever
+`strrchr()` returned. A line with too few fields, `#include` on its own
+being the easy one to write, is a NULL dereference, and a topic that
+includes itself recursed until the stack ran out. The parse is now one
+`parse_include()` used by both, which refuses a line it cannot read, and
+the recursion carries a depth bound. Both cases are in `util_show_help.c`,
+which drives them through `pmix_show_help_add_data()` — registering a
+table of your own is the only way to reach this parser from a test, and
+the malformed cases die on a signal rather than failing an assertion when
+the guards are removed.
+
+**`pmix_show_help_string()` is not a pure lookup.** When the topic does
+not exist it displays the "couldn't find that help reference" notice
+itself and *then* returns `NULL`, so a caller that reports the miss again
+reports it twice. Anything that stores a `strdup`ed filename or topic on
+`abd_tuples` has to check it: `match()` hands both straight to `strcmp()`,
+and the list outlives the call that built it, so an entry carrying a
+`NULL` is a segfault on the next lookup rather than on this one.
 
 ### `pmix_cmd_line` — the CLI parser
 
@@ -1353,7 +1409,8 @@ regression), `if` (the tuple parser), `name_fns` (incl. special-rank
 compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,
 `string_copy`, `timings`, `getcwd`, `getid`, `keyval`, `pty` (the
-controlling-terminal and descriptor-ownership regressions).
+controlling-terminal and descriptor-ownership regressions), `show_help`
+(the `#include` parser and the termination flush).
 
 ## Fixed defects (July 2026 review)
 

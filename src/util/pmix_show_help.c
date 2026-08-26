@@ -54,6 +54,20 @@ static void local_delivery(const char *file,
 {
     pmix_shift_caddy_t *cd;
 
+    if (NULL == msg) {
+        /* nothing to deliver - and the load below would put a NULL
+         * string on the wire for the host to render */
+        return;
+    }
+    /* the file and topic only label the message; a caller that could not
+     * build one still gets the message itself delivered */
+    if (NULL == file) {
+        file = "";
+    }
+    if (NULL == topic) {
+        topic = "";
+    }
+
     if (!pmix_show_help_initialized ||
         0 == pmix_atomic_load_int(&pmix_show_help_enabled) ||
         NULL == pmix_globals.evbase) {
@@ -67,6 +81,12 @@ static void local_delivery(const char *file,
     }
 
     cd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == cd) {
+        /* losing the message entirely is worse than losing the
+         * aggregation, so say it here */
+        fprintf(stderr, "%s", msg);
+        return;
+    }
     cd->ninfo = 1;
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
     PMIX_INFO_LOAD(&cd->info[0], PMIX_LOG_STDERR, msg, PMIX_STRING);
@@ -226,6 +246,13 @@ static pmix_status_t pmix_get_tli(const char *filename,
     }
     tli->tli_filename = strdup(filename);
     tli->tli_topic = strdup(topic);
+    if (NULL == tli->tli_filename || NULL == tli->tli_topic) {
+        /* match() hands both of these straight to strcmp(), so an entry
+         * carrying a NULL is a segfault on the very next lookup - and
+         * this list outlives the call that built it */
+        PMIX_RELEASE(tli);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     pmix_list_append(&abd_tuples, &(tli->super));
     *tli_ = tli;
 
@@ -246,25 +273,39 @@ static void pmix_show_accumulated_duplicates(int fd, short event, void *context)
     {
         if (tli->tli_display && tli->tli_count_since_last_display > 0) {
             static bool first = true;
-            pmix_asprintf(&tmp, "%d more process%s sent help message %s / %s\n",
-                          tli->tli_count_since_last_display,
-                          (tli->tli_count_since_last_display > 1) ? "es have" : " has",
-                          tli->tli_filename, tli->tli_topic);
-            tli->tli_time_displayed = time(NULL);
             char stamp[50] = {0};
-            strftime(stamp, 50, "%Y-%m-%d %H:%M:%S", localtime(&tli->tli_time_displayed));
-            char *buf;
-            pmix_asprintf(&buf, "%s-%s", tli->tli_filename, stamp);
-            local_delivery(buf, tli->tli_topic, tmp);
+            char *buf = NULL;
+            struct tm *when;
+
+            if (0 > pmix_asprintf(&tmp, "%d more process%s sent help message %s / %s\n",
+                                  tli->tli_count_since_last_display,
+                                  (tli->tli_count_since_last_display > 1) ? "es have" : " has",
+                                  tli->tli_filename, tli->tli_topic)) {
+                continue;
+            }
+            tli->tli_time_displayed = time(NULL);
+            when = localtime(&tli->tli_time_displayed);
+            if (NULL != when) {
+                strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", when);
+            }
+            /* the stamped name only labels the notice - if we cannot
+             * build it, deliver the notice under the bare filename
+             * rather than dropping it */
+            if (0 > pmix_asprintf(&buf, "%s-%s", tli->tli_filename, stamp)) {
+                buf = NULL;
+            }
+            local_delivery((NULL == buf) ? tli->tli_filename : buf,
+                           tli->tli_topic, tmp);
             free(buf);
             /* local_delivery copies the message, so we own tmp */
             free(tmp);
             tli->tli_count_since_last_display = 0;
 
             if (first) {
-                pmix_asprintf(&tmp, "%s", "Set MCA parameter \"base_help_aggregate\" to 0 to see all help / error messages\n");
-                local_delivery(tli->tli_filename, tli->tli_topic, tmp);
-                free(tmp);
+                if (0 <= pmix_asprintf(&tmp, "%s", "Set MCA parameter \"base_help_aggregate\" to 0 to see all help / error messages\n")) {
+                    local_delivery(tli->tli_filename, tli->tli_topic, tmp);
+                    free(tmp);
+                }
                 first = false;
             }
         }
@@ -281,6 +322,11 @@ pmix_status_t pmix_help_check_dups(const char *filename, const char *topic)
     tuple_list_item_t *tli;
     time_t now = time(NULL);
     int rc;
+
+    /* both of these reach strcmp() by way of match() */
+    if (NULL == filename || NULL == topic) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     rc = pmix_get_tli(filename, topic, &tli);
     if (PMIX_SUCCESS == rc) {
@@ -350,17 +396,34 @@ pmix_status_t pmix_show_help_init(void)
     PMIX_CONSTRUCT(&lds, pmix_output_stream_t);
     lds.lds_want_stderr = true;
     output_stream = pmix_output_open(&lds);
+    PMIX_DESTRUCT(&lds);
     PMIX_CONSTRUCT(&abd_tuples, pmix_list_t);
 
     PMIX_CONSTRUCT(&data_arrays, pmix_list_t);
     da = PMIX_NEW(tuple_array_item_t);
+    if (NULL == da) {
+        goto failed;
+    }
     da->project = strdup("pmix");
+    if (NULL == da->project) {
+        PMIX_RELEASE(da);
+        goto failed;
+    }
     da->array = pmix_show_help_data;
     pmix_list_append(&data_arrays, &da->super);
 
     pmix_show_help_initialized = true;
 
     return PMIX_SUCCESS;
+
+failed:
+    /* leave nothing half-built: every caller of this function ignores
+     * what it answers, and the next one in re-enters it */
+    pmix_output_close(output_stream);
+    output_stream = -1;
+    PMIX_DESTRUCT(&data_arrays);
+    PMIX_DESTRUCT(&abd_tuples);
+    return PMIX_ERR_OUT_OF_RESOURCE;
 }
 
 pmix_status_t pmix_show_help_finalize(void)
@@ -369,12 +432,31 @@ pmix_status_t pmix_show_help_finalize(void)
         return PMIX_SUCCESS;
     }
 
+    /* Say what we were holding back.  pmix_help_check_dups() promises
+     * that accumulated duplicates are shown unconditionally at
+     * termination, and this is the only place left to do it - the list
+     * goes away below.  Clearing the initialized flag first sends them
+     * down local_delivery()'s direct path: pmix_rte_finalize() has
+     * already paused the progress thread by the time we are called, so
+     * anything thread-shifted onto the event base from here would never
+     * run and never be released. */
+    pmix_show_help_initialized = false;
+    pmix_show_accumulated_duplicates(0, 0, NULL);
+
+    /* This state is process-global and outlives a finalize: PMIx can be
+     * initialized again in the same process, and a timer flag left set
+     * would keep the aggregation timer from ever being armed again. */
+    if (show_help_timer_set) {
+        pmix_event_del(&show_help_timer_event);
+        show_help_timer_set = false;
+    }
+    show_help_time_last_displayed = 0;
+
     pmix_output_close(output_stream);
     output_stream = -1;
 
     PMIX_LIST_DESTRUCT(&abd_tuples);
     PMIX_LIST_DESTRUCT(&data_arrays);
-    pmix_show_help_initialized = false;
 
     return PMIX_SUCCESS;
 }
@@ -429,16 +511,80 @@ static pmix_status_t array2string(char **outstring,
     return PMIX_SUCCESS;
 }
 
+/* An "#include" chain has to terminate: a topic that includes itself,
+ * or two that include each other, would otherwise recurse until the
+ * stack runs out.  This content is generated from the help-*.txt files,
+ * so that is a typo away rather than an attack, but the failure is the
+ * same either way. */
+#define PMIX_SHOW_HELP_MAX_INCLUDE_DEPTH 16
+
+/*
+ * Parse an include directive - "#include#FILE#TOPIC", or
+ * "#include#PROJECT#FILE#TOPIC" - taking the fields from the right.
+ *
+ * The fields point into *line, which the caller owns and must free;
+ * *project is left NULL when the directive names none, and the caller
+ * supplies its own default.  Answers false, having freed nothing and
+ * set nothing, if the line is not a well-formed directive: it is
+ * generated content, so that is an authoring mistake, but it must not
+ * be a crash.
+ */
+static bool parse_include(const char *content, char **line,
+                          char **project, char **file, char **topic)
+{
+    char *work;
+    char *p;
+
+    work = strdup(content);
+    if (NULL == work) {
+        return false;
+    }
+
+    p = strrchr(work, '#');
+    if (NULL == p) {
+        free(work);
+        return false;
+    }
+    *p = '\0';
+    *topic = p + 1;
+
+    p = strrchr(work, '#');
+    if (NULL == p) {
+        free(work);
+        return false;
+    }
+    *p = '\0';
+    *file = p + 1;
+
+    p = strrchr(work, '#');
+    if (NULL == p) {
+        free(work);
+        return false;
+    }
+    ++p;
+    /* if this isn't pointing at "include", then it must be a project;
+     * otherwise the caller's default applies */
+    if (0 != strncmp(p, "include", strlen("include"))) {
+        *project = p;
+    } else {
+        *project = NULL;
+    }
+
+    *line = work;
+    return true;
+}
+
 static void get_content(char ***output,
                         char *project,
                         const char *filename,
-                        const char* topic)
+                        const char* topic,
+                        int depth)
 {
     tuple_array_item_t *da;
     pmix_show_help_file_t *fe;
     pmix_show_help_entry_t *ie;
     int i, j, m;
-    char *p, *tp, *file, *pj, *line;
+    char *tp, *file, *pj, *line;
 
     /* Both of these are handed straight to strcmp() below, so a caller
      * that has no file or topic to name has to be turned away here
@@ -462,26 +608,18 @@ static void get_content(char ***output,
                         for (m=0; NULL != ie->content[m]; m++) {
                             if (0 == strncmp(ie->content[m], "#include", strlen("#include"))) {
                                 // parse the project (if provided), file and
-                                // topic being included. Work on a writable
-                                // copy so we can NUL-terminate each field -
-                                // ie->content[m] is a read-only string literal.
-                                line = strdup(ie->content[m]);
-                                p = strrchr(line, '#');
-                                *p = '\0';
-                                tp = p + 1;
-                                p = strrchr(line, '#');
-                                *p = '\0';
-                                file = p + 1;
-                                p = strrchr(line, '#');
-                                ++p;
-                                // if this isn't pointing at "include", then it
-                                // must be a project; otherwise default to pmix
-                                if (0 != strncmp(p, "include", strlen("include"))) {
-                                    pj = p;
-                                } else {
-                                    pj = "pmix";
+                                // topic being included. parse_include works on
+                                // a writable copy so it can NUL-terminate each
+                                // field - ie->content[m] is a read-only string
+                                // literal.
+                                if (PMIX_SHOW_HELP_MAX_INCLUDE_DEPTH <= depth) {
+                                    continue;
                                 }
-                                get_content(output, pj, file, tp);
+                                if (!parse_include(ie->content[m], &line, &pj, &file, &tp)) {
+                                    continue;
+                                }
+                                get_content(output, (NULL == pj) ? "pmix" : pj,
+                                            file, tp, depth + 1);
                                 free(line);
                             } else {
                                 PMIx_Argv_append_nosize(output, ie->content[m]);
@@ -513,23 +651,15 @@ next:
                     if (0 == strcmp(ie->topic, topic)) {
                         for (m=0; NULL != ie->content[m]; m++) {
                             if (0 == strncmp(ie->content[m], "#include", strlen("#include"))) {
-                                line = strdup(ie->content[m]);
                                 // parse the project (if provided), file and topic being included
-                                p = strrchr(line, '#');
-                                *p = '\0';
-                                tp = p + 1;
-                                p = strrchr(line, '#');
-                                *p = '\0';
-                                file = p + 1;
-                                p = strrchr(line, '#');
-                                ++p;
-                                // if this isn't pointing at "include", then it must be a project
-                                if (0 != strncmp(p, "include", strlen("include"))) {
-                                    pj = p;
-                                } else {
-                                    pj = da->project;
+                                if (PMIX_SHOW_HELP_MAX_INCLUDE_DEPTH <= depth) {
+                                    continue;
                                 }
-                                get_content(output, pj, file, tp);
+                                if (!parse_include(ie->content[m], &line, &pj, &file, &tp)) {
+                                    continue;
+                                }
+                                get_content(output, (NULL == pj) ? da->project : pj,
+                                            file, tp, depth + 1);
                                 free(line);
                             } else {
                                 PMIx_Argv_append_nosize(output, ie->content[m]);
@@ -554,10 +684,17 @@ char *pmix_show_help_vstring(const char *filename,
     char *msg;
 
     /* Load the message */
-    get_content(&content, NULL, filename, topic);
+    get_content(&content, NULL, filename, topic, 0);
     if (NULL == content) {
-        pmix_asprintf(&msg, "%sSorry!  You were supposed to get help about:\n\n    Filename: %s\n    Topic: %s\n\nBut I couldn't find "
-                    "that help reference.\n\nSorry!\n%s", dash_line, filename, topic, dash_line);
+        /* a NULL here is a caller bug, but naming it in the notice is
+         * more use than passing it to a %s that has no defined answer
+         * for one */
+        if (0 > pmix_asprintf(&msg, "%sSorry!  You were supposed to get help about:\n\n    Filename: %s\n    Topic: %s\n\nBut I couldn't find "
+                              "that help reference.\n\nSorry!\n%s", dash_line,
+                              (NULL == filename) ? "(none given)" : filename,
+                              (NULL == topic) ? "(none given)" : topic, dash_line)) {
+            return NULL;
+        }
         local_delivery(filename, topic, msg);
         free(msg);
         return NULL;
@@ -623,6 +760,12 @@ pmix_status_t pmix_show_help_add_data(const char *project,
     pmix_show_help_file_t *fe;
     int i, j;
 
+    /* project reaches strcmp() and strdup() below, and array is walked
+     * without a guard of its own */
+    if (NULL == project || NULL == array) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     // check for duplicate entries
     PMIX_LIST_FOREACH(da, &data_arrays, tuple_array_item_t) {
         for (i = 0; NULL != da->array[i].filename; ++i) {
@@ -638,7 +781,15 @@ pmix_status_t pmix_show_help_add_data(const char *project,
         }
     }
     da = PMIX_NEW(tuple_array_item_t);
+    if (NULL == da) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     da->project = strdup(project);
+    if (NULL == da->project) {
+        /* the search loop above compares this against strcmp() */
+        PMIX_RELEASE(da);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     da->array = array;
     pmix_list_append(&data_arrays, &da->super);
     return PMIX_SUCCESS;

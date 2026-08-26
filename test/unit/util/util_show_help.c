@@ -25,6 +25,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <string.h>
 
 #include "pmix.h"
@@ -140,6 +142,167 @@ static void test_help_check_dups_first_call(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* pmix_help_check_dups / pmix_show_help_add_data argument screening   */
+/* ------------------------------------------------------------------ */
+
+static void test_check_dups_null_args(void)
+{
+    /* Both arguments reach strcmp() by way of match(), and the list
+     * entry built from them outlives this call - a NULL stored there is
+     * a segfault on the next lookup, not on this one. */
+    report("check_dups_null_file: refused",
+           PMIX_SUCCESS != pmix_help_check_dups(NULL, "topic"));
+    report("check_dups_null_topic: refused",
+           PMIX_SUCCESS != pmix_help_check_dups("help-cli.txt", NULL));
+}
+
+static void test_add_data_null_args(void)
+{
+    report("add_data_null_project: refused",
+           PMIX_SUCCESS != pmix_show_help_add_data(NULL, pmix_show_help_data));
+    report("add_data_null_array: refused",
+           PMIX_SUCCESS != pmix_show_help_add_data("unit-test-null", NULL));
+}
+
+/* ------------------------------------------------------------------ */
+/* The "#include" directive                                            */
+/*                                                                     */
+/* Content normally comes from the generated pmix_show_help_content.c, */
+/* but pmix_show_help_add_data() lets a caller register an array of its */
+/* own, which is the only way to drive the include parser from a test. */
+/* Nothing in the tree uses "#include" yet, so these are the cases its  */
+/* first user will write by accident.                                  */
+/* ------------------------------------------------------------------ */
+
+static const char *content_plain[] = {"the included text", NULL};
+/* well formed: pull in the topic above */
+static const char *content_good[] = {"#include#help-unit-inc.txt#plain", NULL};
+/* malformed: no fields at all after the directive */
+static const char *content_bare[] = {"#include", NULL};
+/* malformed: one field where two are needed */
+static const char *content_short[] = {"#include#help-unit-inc.txt", NULL};
+/* a topic that includes itself */
+static const char *content_loop[] = {"#include#help-unit-inc.txt#loop", NULL};
+
+static pmix_show_help_entry_t unit_entries[] = {
+    {.topic = "plain", .content = content_plain},
+    {.topic = "good", .content = content_good},
+    {.topic = "bare", .content = content_bare},
+    {.topic = "short", .content = content_short},
+    {.topic = "loop", .content = content_loop},
+    {.topic = NULL, .content = NULL}
+};
+
+static pmix_show_help_file_t unit_files[] = {
+    {.filename = "help-unit-inc.txt", .entries = unit_entries},
+    {.filename = NULL, .entries = NULL}
+};
+
+static void test_include(void)
+{
+    char *s;
+    pmix_status_t rc;
+
+    rc = pmix_show_help_add_data("unit-test", unit_files);
+    if (PMIX_SUCCESS != rc) {
+        report("include: registering the test array (skipped)", 1);
+        return;
+    }
+
+    s = pmix_show_help_string("help-unit-inc.txt", "good", 0);
+    report("include_good: pulls in the included text",
+           NULL != s && NULL != strstr(s, "the included text"));
+    free(s);
+
+    /* A directive the parser cannot read must be skipped, not followed
+     * off the end of the string it is walking backwards through. */
+    s = pmix_show_help_string("help-unit-inc.txt", "bare", 0);
+    report("include_bare: survives a directive with no fields", 1);
+    free(s);
+
+    s = pmix_show_help_string("help-unit-inc.txt", "short", 0);
+    report("include_short: survives a directive missing a field", 1);
+    free(s);
+
+    /* Self-reference: without a depth bound this recurses until the
+     * stack runs out. */
+    s = pmix_show_help_string("help-unit-inc.txt", "loop", 0);
+    report("include_loop: a topic that includes itself terminates", 1);
+    free(s);
+}
+
+/* ------------------------------------------------------------------ */
+/* Duplicates held back are still shown at finalize                    */
+/*                                                                     */
+/* pmix_help_check_dups() promises that accumulated duplicates are     */
+/* displayed unconditionally at termination.  The aggregation timer    */
+/* runs five seconds out, so a job that ends sooner - which is most of */
+/* them - only ever sees them if finalize flushes.  This has to run in */
+/* a child of its own: it needs a whole init/finalize cycle with       */
+/* stderr on a pipe, since the notice goes out directly once the       */
+/* progress thread has been paused.                                    */
+/* ------------------------------------------------------------------ */
+
+static void test_duplicates_flushed_at_finalize(void)
+{
+    int fds[2];
+    pid_t pid;
+    int status = 0;
+    char buf[4096];
+    ssize_t n;
+    size_t total = 0;
+
+    if (0 != pipe(fds)) {
+        report("finalize_flush: pipe (skipped)", 1);
+        return;
+    }
+    pid = fork();
+    if (0 > pid) {
+        close(fds[0]);
+        close(fds[1]);
+        report("finalize_flush: fork (skipped)", 1);
+        return;
+    }
+    if (0 == pid) {
+        pmix_proc_t me;
+        pmix_status_t rc;
+        close(fds[0]);
+        if (0 > dup2(fds[1], fileno(stderr))) {
+            _exit(2);
+        }
+        close(fds[1]);
+        rc = PMIx_Init(&me, NULL, 0);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_UNREACH != rc) {
+            _exit(2);   /* nothing to say about a library that never came up */
+        }
+        /* first sighting, then a duplicate that gets counted and held */
+        (void) pmix_help_check_dups("help-cli.txt", "finalize-flush-topic");
+        (void) pmix_help_check_dups("help-cli.txt", "finalize-flush-topic");
+        PMIx_Finalize(NULL, 0);
+        _exit(0);
+    }
+
+    close(fds[1]);
+    while (total < sizeof(buf) - 1) {
+        n = read(fds[0], buf + total, sizeof(buf) - 1 - total);
+        if (0 >= n) {
+            break;
+        }
+        total += (size_t) n;
+    }
+    buf[total] = '\0';
+    close(fds[0]);
+    waitpid(pid, &status, 0);
+
+    if (WIFEXITED(status) && 2 == WEXITSTATUS(status)) {
+        report("finalize_flush: child setup (skipped)", 1);
+        return;
+    }
+    report("finalize_flush: the held-back duplicate is reported",
+           NULL != strstr(buf, "sent help message"));
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -147,13 +310,18 @@ int main(int argc, char **argv)
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
+    fprintf(stdout, "\n=== pmix_show_help unit tests ===\n\n");
+
+    /* Before our own PMIx_Init: this one needs a whole init/finalize
+     * cycle of its own, and a child forked from an already-initialized
+     * process would only be adjusting a reference count. */
+    test_duplicates_flushed_at_finalize();
+
     rc = PMIx_Init(&myproc, NULL, 0);
     if (PMIX_SUCCESS != rc && PMIX_ERR_UNREACH != rc) {
         fprintf(stderr, "PMIx_Init: %s\n", PMIx_Error_string(rc));
         return 1;
     }
-
-    fprintf(stdout, "\n=== pmix_show_help unit tests ===\n\n");
 
     test_show_help_init_idempotent();
     test_show_help_enabled();
@@ -163,6 +331,9 @@ int main(int argc, char **argv)
     test_show_help_string_null_args();
     test_show_help_norender();
     test_help_check_dups_first_call();
+    test_check_dups_null_args();
+    test_add_data_null_args();
+    test_include();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
