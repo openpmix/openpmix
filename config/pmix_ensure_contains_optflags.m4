@@ -43,15 +43,7 @@ for co_word in $co_arg; do
     +K@<:@0-5@:>@)   co_found=1 ;;
     -O)              co_found=1 ;;
     -O@<:@0-9@:>@)   co_found=1 ;;
-    -xO)             co_found=1 ;;
-    -xO@<:@0-9@:>@)  co_found=1 ;;
     -fast)           co_found=1 ;;
-
-    # The below Sun Studio flags require or
-    # trigger -xO optimization
-    -xvector*)     co_found=1 ;;
-    -xdepend=yes)  co_found=1 ;;
-
     esac
 done
 
