@@ -53,6 +53,9 @@ BEGIN_C_DECLS
  *  Environment variables must be followed by a path delimiter or
  *  end-of-string.
  *
+ *  pathv and its elements are read, never written - they may be string
+ *  literals, and another thread may be reading the same array.
+ *
  * The caller is responsible for freeing the returned string.
  */
 PMIX_EXPORT char *pmix_path_find(char *fname, char **pathv, int mode, char **envv)
@@ -71,8 +74,12 @@ PMIX_EXPORT char *pmix_path_find(char *fname, char **pathv, int mode, char **env
  *  @retval NULL Failure
  *
  *  Locates a file with certain permissions from the list of paths
- *  given by the $PATH environment variable.  Replaces "." in the
- *  path with the working dir.
+ *  given by the $PATH environment variable - taken from envv if that
+ *  list carries one, and from the process environment otherwise.
+ *
+ *  A wrkdir replaces every "." in that path; if there was no ".", it
+ *  is appended to the end instead, so a wrkdir is always searched.
+ *  Neither envv nor the environment is modified.
  *
  * The caller is responsible for freeing the returned string.
  */
@@ -116,11 +123,16 @@ PMIX_EXPORT char *pmix_find_absolute_path(char *app_name) __pmix_attribute_warn_
  * permissions
  *
  * @param fname File name
- * @param path Path prefix, if NULL then fname is an absolute path
+ * @param path Path prefix; if NULL, fname is used as given
  * @param mode Target permissions which must be satisfied (see access(2))
  *
- * @retval NULL Failure
+ * @retval NULL Failure - the file does not exist, does not grant the
+ * requested permissions, or the assembled name was too long
  * @retval Full pathname of the located file on Success
+ *
+ * Note that this answers a question about the filesystem at the moment
+ * it is asked: the file may be gone, or its permissions changed, by the
+ * time the caller acts on the answer.
  *
  * The caller is responsible for freeing the returned string.
  */
@@ -139,10 +151,17 @@ PMIX_EXPORT char *pmix_path_access(char *fname, char *path, int mode)
  * This allows checking for NFS prior to opening the file.
  *
  * @fname[in]     File name to check
- * @fstype[out]   File system type if retval is true
+ * @fstype[out]   File system type if retval is true.  Allocated here
+ * and owned by the caller; written only on a true return.
  *
  * @retval true                If fname is on NFS, Lustre or Panasas
  * @retval false               otherwise
+ *
+ * This is answered from the mount table, so it is implemented only
+ * where <mntent.h> exists - Linux, in practice.  **Everywhere else,
+ * including macOS and the BSDs, it answers false unconditionally**,
+ * whatever the file is really on.  Do not use it to decide something
+ * that must be right on those platforms.
  */
 PMIX_EXPORT bool pmix_path_nfs(char *fname, char **fstype) __pmix_attribute_warn_unused_result__;
 
@@ -150,7 +169,10 @@ PMIX_EXPORT bool pmix_path_nfs(char *fname, char **fstype) __pmix_attribute_warn
  * @brief Returns the disk usage of path.
  *
  * @param[in] path       Path to check
- * @out_avail[out]       Amount of free space available on path (if successful)
+ * @out_avail[out]       Amount of free space available on path, in
+ * bytes, and available to *this* user - the reserved blocks a
+ * privileged process could still use are not counted.  Set to zero
+ * before anything else, so it is defined even on an error return.
  *
  * @retval PMIX_SUCCESS  If the operation was successful
  * @retval PMIX_ERROR    otherwise
