@@ -186,7 +186,12 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     if (NULL != dyn_port_string) {
         pmix_util_parse_range_options(dyn_port_string, &pmix_ptl_base.ipv4_ports);
-        if (0 == strcmp(pmix_ptl_base.ipv4_ports[0], "-1")) {
+        /* the parse yields nothing at all for a value it cannot read
+         * - "-", "abc" - so the array can be NULL here, and indexing it
+         * segfaulted the process during init. Fall back to the
+         * ephemeral port, as an absent value does. */
+        if (NULL == pmix_ptl_base.ipv4_ports || NULL == pmix_ptl_base.ipv4_ports[0]
+            || 0 == strcmp(pmix_ptl_base.ipv4_ports[0], "-1")) {
             PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
             pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
             pmix_ptl_base.ipv4_ports[0] = strdup("0");
@@ -210,7 +215,12 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     if (NULL != dyn_port_string6) {
         pmix_util_parse_range_options(dyn_port_string6, &pmix_ptl_base.ipv6_ports);
-        if (0 == strcmp(pmix_ptl_base.ipv6_ports[0], "-1")) {
+        /* the parse yields nothing at all for a value it cannot read
+         * - "-", "abc" - so the array can be NULL here, and indexing it
+         * segfaulted the process during init. Fall back to the
+         * ephemeral port, as an absent value does. */
+        if (NULL == pmix_ptl_base.ipv6_ports || NULL == pmix_ptl_base.ipv6_ports[0]
+            || 0 == strcmp(pmix_ptl_base.ipv6_ports[0], "-1")) {
             PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
             pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
             pmix_ptl_base.ipv6_ports[0] = strdup("0");
