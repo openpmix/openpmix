@@ -140,23 +140,23 @@ int pmix_ptymopen(char *pts_name, size_t maxlen)
     }
     pmix_string_copy(pts_name, master, maxlen);
     fdm = open(pts_name, O_RDWR | O_NOCTTY);
-    if (fdm < 0) {
+    if (0 > fdm) {
         return -1;
     }
-    if (grantpt(fdm) < 0) { /* grant access to slave */
+    if (0 > grantpt(fdm)) { /* grant access to slave */
         errsave = errno;
         close(fdm);  // might change errno
         errno = errsave;
         return -2;
     }
-    if (unlockpt(fdm) < 0) { /* clear slave's lock flag */
+    if (0 > unlockpt(fdm)) { /* clear slave's lock flag */
         errsave = errno;
         close(fdm);  // might change errno
         errno = errsave;
         return -3;
     }
     ptr = ptsname(fdm);
-    if (ptr == NULL) { /* get slave's name */
+    if (NULL == ptr) { /* get slave's name */
         errsave = errno;
         close(fdm);  // might change errno
         errno = errsave;
@@ -184,14 +184,14 @@ int pmix_ptymopen(char *pts_name, size_t maxlen)
     }
     pmix_string_copy(pts_name, ptyname, maxlen);
     /* array index: 0123456789 (for references in following code) */
-    for (ptr1 = "pqrstuvwxyzPQRST"; *ptr1 != 0; ptr1++) {
+    for (ptr1 = "pqrstuvwxyzPQRST"; 0 != *ptr1; ptr1++) {
         pts_name[8] = *ptr1;
-        for (ptr2 = "0123456789abcdef"; *ptr2 != 0; ptr2++) {
+        for (ptr2 = "0123456789abcdef"; 0 != *ptr2; ptr2++) {
             pts_name[9] = *ptr2;
             /* try to open master */
             fdm = open(pts_name, O_RDWR | O_NOCTTY);
-            if (fdm < 0) {
-                if (errno == ENOENT) { /* different from EIO */
+            if (0 > fdm) {
+                if (ENOENT == errno) { /* different from EIO */
                     return -1;         /* out of pty devices */
                 } else {
                     continue; /* try next pty device */
@@ -219,7 +219,7 @@ int pmix_ptysopen(int fdm, char *pts_name)
      no controlling terminal makes it one, and this runs in the process
      opening the pty rather than in the child that will use it */
     fds = open(pts_name, O_RDWR | O_NOCTTY);
-    if (fds < 0) {
+    if (0 > fds) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix_ptysopen: could not open %s: %s",
                             pts_name, strerror(errno));
@@ -228,13 +228,13 @@ int pmix_ptysopen(int fdm, char *pts_name)
 #        if defined(__SVR4) && defined(__sun)
     int errsave;
 
-    if (ioctl(fds, I_PUSH, "ptem") < 0) {
+    if (0 > ioctl(fds, I_PUSH, "ptem")) {
         errsave = errno;
         close(fds);  // might change errno
         errno = errsave;
         return -6;
     }
-    if (ioctl(fds, I_PUSH, "ldterm") < 0) {
+    if (0 > ioctl(fds, I_PUSH, "ldterm")) {
         errsave = errno;
         close(fds);  // might change errno
         errno = errsave;
@@ -255,20 +255,20 @@ int pmix_ptysopen(int fdm, char *pts_name)
 
 #    else
 
-    int gid;
+    gid_t gid;
     struct group *grptr;
 
     grptr = getgrnam("tty");
-    if (grptr != NULL) {
+    if (NULL != grptr) {
         gid = grptr->gr_gid;
     } else {
-        gid = -1; /* group tty is not in the group file */
+        gid = (gid_t) -1; /* group tty is not in the group file */
     }
     /* following two functions don't work unless we're root */
     lchown(pts_name, getuid(), gid);  // DO NOT FOLLOW LINKS
     chmod(pts_name, S_IRUSR | S_IWUSR | S_IWGRP);
     fds = open(pts_name, O_RDWR | O_NOCTTY);
-    if (fds < 0) {
+    if (0 > fds) {
         return -1;
     }
     return fds;
@@ -304,15 +304,15 @@ int pmix_openpty(int *amaster, int *aslave, char *name,
 {
     char line[20];
     *amaster = pmix_ptymopen(line, sizeof(line));
-    if (*amaster < 0) {
+    if (0 > *amaster) {
         return -1;
     }
     *aslave = pmix_ptysopen(*amaster, line);
-    if (*aslave < 0) {
+    if (0 > *aslave) {
         close(*amaster);
         return -1;
     }
-    if (name) {
+    if (NULL != name) {
         // We don't know the max length of name, but we do know the
         // max length of the source, so at least use that.
         pmix_string_copy(name, line, sizeof(line));
@@ -320,11 +320,11 @@ int pmix_openpty(int *amaster, int *aslave, char *name,
 #    ifndef TCSAFLUSH
 #        define TCSAFLUSH TCSETAF
 #    endif
-    if (termp) {
+    if (NULL != termp) {
         (void) tcsetattr(*aslave, TCSAFLUSH, termp);
     }
 #    ifdef TIOCSWINSZ
-    if (winp) {
+    if (NULL != winp) {
         (void) ioctl(*aslave, TIOCSWINSZ, (char *) winp);
     }
 #    endif
