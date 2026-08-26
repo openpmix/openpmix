@@ -267,12 +267,24 @@ def main():
             print("Group destruct_nb result ", foo.error_string(rc))
             if PMIX_SUCCESS == rc and not grpDestructed.wait(timeout=30):
                 print("GROUP DESTRUCT TIMED OUT")
-    # wait for model event
-    while not termEvent.is_set():
-        time.sleep(0.001)
+    # Wait for the model event, with a bound - as the group waits above have.
+    #
+    # This is the event the whole test turns on, and it is the one the test
+    # is least sure of getting: the model is declared inside PMIx_Init, from
+    # the PMIX_PROGRAMMING_MODEL/PMIX_MODEL_LIBRARY_NAME passed to it, while
+    # the handler that catches it is not registered until several lines
+    # after init returns.  Losing that race has to fail this test, not hang
+    # it.  Unbounded, it wedged this process AND the scheduler that forked
+    # us - which cannot finish reading our pipes until we close them - so CI
+    # killed the pair after five minutes with no clue as to why.
+    timedout = not termEvent.wait(timeout=30)
+    if timedout:
+        print("MODEL EVENT TIMED OUT")
     # finalize
     info = []
     foo.finalize(info)
     print("Client finalize complete")
+    if timedout:
+        exit(1)
 if __name__ == '__main__':
     main()
