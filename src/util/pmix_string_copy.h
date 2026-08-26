@@ -80,6 +80,36 @@ PMIX_EXPORT void pmix_string_copy(char *dest, const char *src, size_t dest_len)
  */
 #define PMIX_MAX_SIZE_ALLOWED_BY_PMIX_STRING_COPY (128 * 1024)
 
+/**
+ * Read one line from an open stream, without its trailing newline.
+ *
+ * @param fp An open, readable stream. It is invalid to pass NULL.
+ * @retval A fresh allocation the CALLER frees.
+ * @retval NULL nothing more could be read.
+ *
+ * Three things about this are easy to assume and wrong:
+ *
+ * - **It reads at most 1023 bytes, and a longer line comes back in
+ *   pieces.** There is no error and no marker: the first call answers
+ *   the first 1023 bytes and the next call answers the rest, so a
+ *   caller reading successive lines is handed the tail of the previous
+ *   one where it expects the next line. Every file PMIx reads with this
+ *   is one PMIx wrote, and their lines are short; do not point it at a
+ *   file whose length you do not control.
+ *
+ * - **A returned line is not necessarily newline-terminated in the
+ *   file.** The newline is stripped when there is one, and there is none
+ *   for the last line of a file that does not end in one - or for the
+ *   1023-byte fragment above. So the absence of a newline says nothing
+ *   about where in the file the line came from.
+ *
+ * - **NULL is not specifically end-of-file.** A read error and a failed
+ *   allocation answer the same way, and this function has no other way
+ *   to say so. A caller that has to tell them apart must ask the stream
+ *   itself (feof/ferror); callers here treat NULL as "no more input",
+ *   which for the rendezvous files they read means the writer had not
+ *   finished.
+ */
 PMIX_EXPORT char *pmix_getline(FILE *fp);
 
 

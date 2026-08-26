@@ -56,7 +56,7 @@ char *pmix_getline(FILE *fp)
     char input[1024];
     size_t len;
 
-    ret = fgets(input, 1024, fp);
+    ret = fgets(input, sizeof(input), fp);
     if (NULL != ret) {
         /* strip a trailing newline, if present.  fgets does not
          * guarantee one: a line longer than the buffer or a final
