@@ -1091,6 +1091,81 @@ around the chosen placement, without giving up the agreement. Tested in
 is where it has to be tested, since ASLR separates real processes well
 enough to hide whether the scatter works at all.
 
+### `pmix_printf` — two implementations, only one of which you compile
+
+Four `PMIX_EXPORT` wrappers over `asprintf`/`snprintf`. On any platform
+built this decade they are pass-throughs, and every real defect this file
+has ever had lives in the fallbacks nobody compiles.
+
+There are **three** arms, selected independently by `configure`:
+
+| Guard | What is compiled |
+|---|---|
+| `HAVE_VASPRINTF` | `pmix_vasprintf` is one call to `vasprintf(3)` |
+| `HAVE_VSNPRINTF` | `pmix_vsnprintf` is one call to `vsnprintf(3)`; and, if `vasprintf` is missing, `guess_strlen` sizes the result with a `vsnprintf(NULL, 0, …)` probe |
+| neither | `guess_strlen` sizes the result by **walking the format itself** |
+
+Both macros really are set by `configure` (unlike some `HAVE_*` spellings
+in this tree — see `pmix_output`'s `HAVE_SYSLOG` and `pmix_getid`'s
+`SO_PEERCRED`), so the guards are honest. They just never select the
+interesting arm here.
+
+**The invariant `guess_strlen` has to hold is not "estimate the length".
+It is "bound the length *and* consume exactly the arguments the format
+names".** Those are one obligation, not two, and getting either half
+wrong is memory-unsafe:
+
+- Under-count and `vsprintf` — which has no bound argument — runs off the
+  end of the buffer the caller just allocated from that count. A field
+  width alone does this: `%200d` needs 200 bytes and mentions its size
+  nowhere in the argument list.
+- Fail to consume an argument and every conversion *after* it reads the
+  wrong `va_list` slot. The usual ending is a `%s` reading an integer as
+  a `char *`.
+
+So an unrecognized conversion cannot be skipped over: not knowing what it
+emits and not knowing what it consumes are the same ignorance. The walk
+returns **-1** for anything it cannot bound (an unrecognized conversion,
+or `%ls` with no precision) and `pmix_vasprintf` fails with `EINVAL`
+rather than allocating. Every conversion, flag, width, precision and
+length modifier C99 defines is recognized; over-estimating is deliberate
+and the bounds are worst-case (`%Lf` of `LDBL_MAX` is ~4932 digits).
+
+Two traps specific to sizing a float by arithmetic, both of which cost
+this file an infinite loop before: `while (0 != x) x /= 10.0` never
+terminates for an infinity **or** a NaN, and narrowing the `double` a
+`%f` argument actually is into a `float` first *manufactures* an infinity
+out of any ordinary value above `FLT_MAX` — `pmix_asprintf("%f", 1.0e300)`
+was enough to hang the process. Do not reintroduce a divide-down loop;
+the bounds are constants for a reason.
+
+`pmix_vsnprintf` delegates to the platform `vsnprintf` where there is
+one, rather than routing through `pmix_vasprintf`. It used to do the
+latter, which put a `malloc`/`free` pair and a full-length format on
+every line the library prints, and made `pmix_snprintf` fail outright
+under exactly the memory pressure its callers are usually reporting.
+Several in-tree callers (`pmix_output`, `pmix_name_fns`) ignore the
+return value and read the buffer regardless, so the fallback arm writes a
+terminator even when it fails — the header promises the output is always
+null-terminated, and that promise has to survive the error path.
+
+**Compiler coverage.** Nothing in a normal build compiles the fallbacks,
+and `-U HAVE_VASPRINTF` on the command line does not help — `pmix_config.h`
+defines it again from inside the file. Edit the `#if` lines to `#if 1` /
+`#if 0` for the one compile. All four combinations (live, `vsnprintf`
+probe, hand walk, and the `memcpy`-instead-of-`va_copy` arm) do compile
+warning-free; keep it that way when you touch them.
+
+**Testing them is the same trick.** `test/unit/util/util_printf.c` cross-
+checks `pmix_asprintf` against the platform's own `snprintf` for a matrix
+of conversions and asserts the return value equals `strlen` of what came
+back. That is deliberately implementation-agnostic: on a normal build it
+confirms the pass-throughs pass through, and on a platform that selects
+the hand walk `make check` exercises the walk with no changes. To
+exercise it *here*, force the guards as above, rebuild `libpmix` (not
+just the test — remove `<builddir>/src/util/pmix_printf.lo` first), and
+run `util_printf`.
+
 ### `keyval/` — the flex lexer
 
 `keyval_lex.l` is the flex source; `keyval_lex.c` is a **generated build
@@ -1300,8 +1375,10 @@ A second pass then cleared the remaining latent/robustness items:
   now returns `PMIX_ERR_NOT_FOUND` (not `PMIX_ERROR`) for a missing
   directory, per its header.
 - **`pmix_printf.c`.** The `!HAVE_VASPRINTF` fallback `guess_strlen` read
-  `double`/`long` varargs via `va_arg(ap, int)` — now uses the correct
-  `double`/`long` types. Dead on modern platforms, but no longer UB.
+  `double`/`long` varargs via `va_arg(ap, int)` — corrected to the real
+  types. That function has since been replaced outright; see
+  [`pmix_printf`](#pmix_printf--two-implementations-only-one-of-which-you-compile)
+  above for what it now guarantees.
 - **`pmix_tty.c`.** `pmix_settermios` verified a set via a full-struct
   `memcmp` of `struct termios` (padding / canonicalized fields → spurious
   failures) — now compares the individual POSIX fields (`c_iflag`,
