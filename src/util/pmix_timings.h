@@ -189,8 +189,9 @@ static inline int pmix_timing_start_init(pmix_timing_prep_t p, const char *func,
                                          int line)
 {
     int id = pmix_timing_descr(p, func, file, line);
-    if (id < 0)
+    if (0 > id) {
         return id;
+    }
     pmix_timing_start_id(p.t, id, func, file, line);
     return id;
 }

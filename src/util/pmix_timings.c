@@ -13,6 +13,7 @@
 
 #include "pmix_common.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -120,7 +121,7 @@ pmix_timing_event_t *pmix_timing_event_alloc(pmix_timing_t *t)
         double alloc_begin = t->get_ts();
 
         t->buffer = calloc(t->buffer_size, sizeof(pmix_timing_event_t));
-        if (t->buffer == NULL) {
+        if (NULL == t->buffer) {
             return NULL;
         }
 
@@ -155,7 +156,7 @@ void pmix_timing_init(pmix_timing_t *t)
 pmix_timing_prep_t pmix_timing_prep_ev(pmix_timing_t *t, const char *fmt, ...)
 {
     pmix_timing_event_t *ev = pmix_timing_event_alloc(t);
-    if (ev == NULL) {
+    if (NULL == ev) {
         pmix_timing_prep_t p = {t, NULL, PMIX_ERR_OUT_OF_RESOURCE};
         return p;
     }
@@ -175,9 +176,9 @@ pmix_timing_prep_t pmix_timing_prep_ev_end(pmix_timing_t *t, const char *fmt, ..
     pmix_timing_prep_t p = {t, NULL, 0};
     PMIX_HIDE_UNUSED_PARAMS(fmt);
 
-    if (t->current_id >= 0) {
+    if (0 <= t->current_id) {
         pmix_timing_event_t *ev = pmix_timing_event_alloc(t);
-        if (ev == NULL) {
+        if (NULL == ev) {
             pmix_timing_prep_t p2 = {t, NULL, PMIX_ERR_OUT_OF_RESOURCE};
             return p2;
         }
@@ -220,7 +221,7 @@ void pmix_timing_start_id(pmix_timing_t *t, int id, const char *func, const char
     /* No description is needed. If everything is OK
      * it'll be included in pmix_timing_start_init */
     pmix_timing_event_t *ev = pmix_timing_event_alloc(t);
-    if (ev == NULL) {
+    if (NULL == ev) {
         return;
     }
     PMIX_CONSTRUCT(ev, pmix_timing_event_t);
@@ -240,12 +241,12 @@ void pmix_timing_end(pmix_timing_t *t, int id, const char *func, const char *fil
     /* No description is needed. If everything is OK
      * it'll be included in pmix_timing_start_init */
     pmix_timing_event_t *ev = pmix_timing_event_alloc(t);
-    if (ev == NULL) {
+    if (NULL == ev) {
         return;
     }
     PMIX_CONSTRUCT(ev, pmix_timing_event_t);
 
-    if (id < 0) {
+    if (0 > id) {
         ev->id = t->current_id;
         t->current_id = -1;
     } else {
@@ -267,7 +268,7 @@ void pmix_timing_end_prep(pmix_timing_prep_t p, const char *func, const char *fi
     pmix_timing_event_t *ev = p.ev;
 
     if (!p.errcode && (NULL != ev)) {
-        assert(p.t->current_id >= 0);
+        assert(0 <= p.t->current_id);
         ev->id = p.t->current_id;
         p.t->current_id = -1;
         ev->func = func;
@@ -378,9 +379,9 @@ pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname)
     pmix_status_t rc = PMIX_SUCCESS;
     int nw;
 
-    if (fname != NULL) {
+    if (NULL != fname) {
         fp = fopen(fname, "a");
-        if (fp == NULL) {
+        if (NULL == fp) {
             pmix_output(0,
                         "pmix_timing_report: Cannot open %s file"
                         " for writing timing information!",
@@ -396,7 +397,7 @@ pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname)
     }
 
     buf = calloc((PMIX_TIMING_OUTBUF_SIZE + 1), sizeof(char));
-    if (buf == NULL) {
+    if (NULL == buf) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         goto err_exit;
     }
@@ -417,7 +418,7 @@ pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname)
         case PMIX_TIMING_TRACE:
             nw = pmix_asprintf(&line, "[%s:%d] %s \"%s\" [PMIX_TRACE] %s:%d %.10lf\n",
                           report_nodename(),
-                          getpid(), report_jobid(), ev->descr, file, ev->line,
+                          (int) getpid(), report_jobid(), ev->descr, file, ev->line,
                           ev->ts + hnp_offs + overhead);
             break;
         case PMIX_TIMING_INTBEGIN:
@@ -428,7 +429,7 @@ pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname)
             }
             nw = pmix_asprintf(&line, "[%s:%d] %s \"%s [start]\" [PMIX_TRACE] %s:%d %.10lf\n",
                           report_nodename(),
-                          getpid(), report_jobid(), descr[ev->id].descr_ev->descr, file, ev->line,
+                          (int) getpid(), report_jobid(), descr[ev->id].descr_ev->descr, file, ev->line,
                           ev->ts + hnp_offs + overhead);
             break;
         case PMIX_TIMING_INTEND:
@@ -439,7 +440,7 @@ pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname)
             }
             nw = pmix_asprintf(&line, "[%s:%d] %s \"%s [stop]\" [PMIX_TRACE] %s:%d %.10lf\n",
                           report_nodename(),
-                          getpid(), report_jobid(), descr[ev->id].descr_ev->descr, file, ev->line,
+                          (int) getpid(), report_jobid(), descr[ev->id].descr_ev->descr, file, ev->line,
                           ev->ts + hnp_offs + overhead);
             break;
         }
@@ -457,7 +458,7 @@ pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname)
 
         if (buf_size + strlen(line) > (size_t) PMIX_TIMING_OUTBUF_SIZE) {
             // flush buffer to the file
-            if (fp != NULL) {
+            if (NULL != fp) {
                 fprintf(fp, "%s", buf);
                 fprintf(fp, "\n");
             } else {
@@ -488,7 +489,7 @@ pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname)
 
     if (0 < buf_size) {
         // flush buffer to the file
-        if (fp != NULL) {
+        if (NULL != fp) {
             fprintf(fp, "%s", buf);
             fprintf(fp, "\n");
         } else {
@@ -502,10 +503,10 @@ err_exit:
     if (NULL != descr) {
         free(descr);
     }
-    if (buf != NULL) {
+    if (NULL != buf) {
         free(buf);
     }
-    if (fp != NULL) {
+    if (NULL != fp) {
         fflush(fp);
         fclose(fp);
     }
@@ -525,9 +526,9 @@ pmix_status_t pmix_timing_deltas(pmix_timing_t *t, char *fname)
     int i, nw;
     size_t buf_size = 0, buf_used = 0, avail;
 
-    if (fname != NULL) {
+    if (NULL != fname) {
         fp = fopen(fname, "a");
-        if (fp == NULL) {
+        if (NULL == fp) {
             pmix_output(0,
                         "pmix_timing_report: Cannot open %s file"
                         " for writing timing information!",
@@ -559,13 +560,13 @@ pmix_status_t pmix_timing_deltas(pmix_timing_t *t, char *fname)
 
         /* we already process all PMIX_TIMING_DESCR events
          * and we ignore PMIX_TIMING_EVENT */
-        if (ev->type == PMIX_TIMING_INTDESCR || ev->type == PMIX_TIMING_TRACE) {
+        if (PMIX_TIMING_INTDESCR == ev->type || PMIX_TIMING_TRACE == ev->type) {
             /* skip */
             continue;
         }
 
         id = ev->id;
-        if (id < 0 || id >= t->next_id_cntr) {
+        if (0 > id || id >= t->next_id_cntr) {
             char *file = pmix_basename(ev->file);
             pmix_output(0, "pmix_timing_deltas: bad interval event id: %d at %s:%d:%s (maxid=%d)",
                         id, file, ev->line, ev->func, t->next_id_cntr - 1);
@@ -577,7 +578,7 @@ pmix_status_t pmix_timing_deltas(pmix_timing_t *t, char *fname)
         /* id's assigned auomatically. There shouldn't be any gaps in descr[] */
         assert(NULL != descr[id].descr_ev);
 
-        if (ev->type == PMIX_TIMING_INTBEGIN) {
+        if (PMIX_TIMING_INTBEGIN == ev->type) {
             if (NULL != descr[id].begin_ev) {
                 /* the measurement on this interval was already
                  * started! */
@@ -598,7 +599,7 @@ pmix_status_t pmix_timing_deltas(pmix_timing_t *t, char *fname)
             continue;
         }
 
-        if (ev->type == PMIX_TIMING_INTEND) {
+        if (PMIX_TIMING_INTEND == ev->type) {
             if (NULL == descr[id].begin_ev) {
                 /* the measurement on this interval wasn't started! */
                 char *file = pmix_basename(ev->file);
@@ -621,7 +622,7 @@ pmix_status_t pmix_timing_deltas(pmix_timing_t *t, char *fname)
     }
 
     buf = calloc((PMIX_TIMING_OUTBUF_SIZE + 1), sizeof(char));
-    if (buf == NULL) {
+    if (NULL == buf) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         goto err_exit;
     }
@@ -631,7 +632,7 @@ pmix_status_t pmix_timing_deltas(pmix_timing_t *t, char *fname)
         char *line = NULL;
         size_t line_size;
         nw = pmix_asprintf(&line, "[%s:%d] %s \"%s\" [PMIX_OVHD] %le\n", report_nodename(),
-                      getpid(), report_jobid(),
+                      (int) getpid(), report_jobid(),
                       descr[i].descr_ev->descr, descr[i].interval - descr[i].overhead);
         if (0 > nw || NULL == line) {
             rc = PMIX_ERR_OUT_OF_RESOURCE;
@@ -680,7 +681,7 @@ pmix_status_t pmix_timing_deltas(pmix_timing_t *t, char *fname)
 
     if (buf_used > 0) {
         // flush buffer to the file
-        if (fp != NULL) {
+        if (NULL != fp) {
             fprintf(fp, "%s", buf);
             fprintf(fp, "\n");
         } else {
@@ -697,7 +698,7 @@ err_exit:
     if (NULL != buf) {
         free(buf);
     }
-    if (fp != NULL) {
+    if (NULL != fp) {
         fflush(fp);
         fclose(fp);
     }
@@ -708,7 +709,7 @@ void pmix_timing_release(pmix_timing_t *t)
 {
     int cnt = pmix_list_get_size(t->events);
 
-    if (cnt > 0) {
+    if (0 < cnt) {
         pmix_list_t *tmp = PMIX_NEW(pmix_list_t);
         int i;
         for (i = 0; i < cnt; i++) {
