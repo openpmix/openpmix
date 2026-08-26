@@ -45,10 +45,8 @@
 #endif
 
 #include <errno.h>
-#include <stdio.h>
 #include <string.h>
 
-#include "src/util/pmix_output.h"
 #include "src/util/pmix_tty.h"
 
 /* Bits that can appear in c_lflag but are *status* rather than
@@ -165,12 +163,11 @@ pmix_status_t pmix_setwinsz(int fd, struct winsize *ws)
 pmix_status_t pmix_setraw(int fd, struct termios *prior)
 {
     struct termios terms;
-    int rc;
+    pmix_status_t rc;
 
     rc = pmix_gettermios(fd, &terms);
-
-    if (0 != rc) {
-        return PMIX_ERROR;
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
 
     if (NULL != prior) {
@@ -192,6 +189,5 @@ pmix_status_t pmix_setraw(int fd, struct termios *prior)
     terms.c_cc[VMIN] = 1;                   /* Character-at-a-time input */
     terms.c_cc[VTIME] = 0;                  /* with blocking */
 
-    rc = pmix_settermios(fd, &terms);
-    return rc;
+    return pmix_settermios(fd, &terms);
 }
