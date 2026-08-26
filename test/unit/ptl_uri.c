@@ -250,6 +250,16 @@ int main(int argc, char **argv)
     static pmix_server_module_t mymodule = {0};
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
+    /* A port range the parser cannot read expands to nothing, and the
+     * ptl frame indexed element 0 of the result to see whether the user
+     * had asked for the wildcard - so "-" (and now any non-numeric
+     * value) in this parameter dereferenced a NULL and took the process
+     * down inside PMIx_server_init. Setting it here costs nothing: the
+     * fallback is the ephemeral port, which is what an unset value asks
+     * for anyway. Against an unfixed library this binary dies on a
+     * signal before printing a line, rather than failing a case. */
+    setenv("PMIX_MCA_ptl_base_ipv4_ports", "-", 1);
+
     /* the parsers emit verbose output through the ptl framework, so the
      * frameworks have to be open - server_init is the cheapest way to
      * get a fully initialized library */

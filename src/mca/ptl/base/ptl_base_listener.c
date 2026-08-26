@@ -501,7 +501,14 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                     pmix_ptl_base.ipv4_ports[1] = NULL;
                 } else {
                     pmix_util_parse_range_options(info[n].value.data.string, &pmix_ptl_base.ipv4_ports);
-                    if (0 == strcmp(pmix_ptl_base.ipv4_ports[0], "-1")) {
+                    /* the parse yields nothing at all for a value it cannot
+                     * read - "-", "abc" - so the array can be NULL here,
+                     * and indexing it segfaulted the process during init.
+                     * Fall back to the ephemeral port, as an absent value
+                     * does. */
+                    if (NULL == pmix_ptl_base.ipv4_ports
+                        || NULL == pmix_ptl_base.ipv4_ports[0]
+                        || 0 == strcmp(pmix_ptl_base.ipv4_ports[0], "-1")) {
                         PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
                         pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
                         pmix_ptl_base.ipv4_ports[0] = strdup("0");
@@ -534,7 +541,14 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                     pmix_ptl_base.ipv6_ports[1] = NULL;
                 } else {
                     pmix_util_parse_range_options(info[n].value.data.string, &pmix_ptl_base.ipv6_ports);
-                     if (0 == strcmp(pmix_ptl_base.ipv6_ports[0], "-1")) {
+                     /* the parse yields nothing at all for a value it cannot
+                     * read - "-", "abc" - so the array can be NULL here,
+                     * and indexing it segfaulted the process during init.
+                     * Fall back to the ephemeral port, as an absent value
+                     * does. */
+                    if (NULL == pmix_ptl_base.ipv6_ports
+                        || NULL == pmix_ptl_base.ipv6_ports[0]
+                        || 0 == strcmp(pmix_ptl_base.ipv6_ports[0], "-1")) {
                         PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
                         pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
                         pmix_ptl_base.ipv6_ports[0] = strdup("0");
