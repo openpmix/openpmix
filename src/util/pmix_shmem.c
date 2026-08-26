@@ -71,7 +71,7 @@ static inline bool
 dec_ref_count(
     pmix_shmem_header_t *header
 ) {
-    return pmix_atomic_sub_fetch_32(&header->ref_count, 1) == 0;
+    return 0 == pmix_atomic_sub_fetch_32(&header->ref_count, 1);
 }
 
 static pmix_status_t
@@ -98,7 +98,7 @@ segment_attach(
      * pmix_os_dirpath_open_file() - so a symlink at the backing path
      * does not send the attach at some unrelated file */
     const int fd = pmix_os_dirpath_open_file(shmem->backing_path, O_RDWR, 0);
-    if (fd == -1) {
+    if (-1 == fd) {
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         if (0 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output)) {
             pmix_show_help("help-pmix-util.txt", "failed-file-open", true,
@@ -191,7 +191,7 @@ add_internal_segment_header(
     pmix_shmem_t *shmem,
     uint32_t layout_id
 ) {
-    int rc = PMIX_SUCCESS;
+    pmix_status_t rc = PMIX_SUCCESS;
     // The base address here is inconsequential because this is a temporary,
     // internal attachment site that should not be exposed to the caller.
     rc = segment_attach(shmem, (uintptr_t)NULL, 0);
@@ -218,7 +218,7 @@ pmix_shmem_segment_create(
     const char *backing_path,
     uint32_t layout_id
 ) {
-    int rc = PMIX_SUCCESS;
+    pmix_status_t rc = PMIX_SUCCESS;
     bool created = false;
     // Real size of the segment: the data region begins a full page in
     // (data_addr_from_base() rounds the header up to a page boundary), so
@@ -386,7 +386,7 @@ pmix_shmem_segment_chown(
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
-    if (lchown(shmem->backing_path, owner, group) != 0) {  // DO NOT FOLLOW LINKS
+    if (0 != lchown(shmem->backing_path, owner, group)) {  // DO NOT FOLLOW LINKS
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
     }
@@ -434,7 +434,7 @@ pmix_shmem_segment_chmod(
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    if (fchmod(fd, mode) != 0) {
+    if (0 != fchmod(fd, mode)) {
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
     }
