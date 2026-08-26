@@ -170,13 +170,15 @@ util_few_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_few_LDADD = \
     $(top_builddir)/src/libpmix.la
 
-# Address placement and reservation. Skips itself where there is no
-# /proc/self/maps to scan; see the header comment in util_vmem.c.
 util_shmem_SOURCES = util_shmem.c
 util_shmem_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_shmem_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+# Address placement and reservation. The scan runs everywhere, against
+# maps the test writes; only the cases needing this process's own map
+# skip where there is no /proc/self/maps. See the header comment in
+# util_vmem.c.
 util_vmem_SOURCES = util_vmem.c
 util_vmem_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_vmem_LDADD = \
