@@ -251,7 +251,9 @@ review lands: on **2026-08-20** for the ``src/mca/pnet``, ``src/mca/preg``,
 ``src/mca/pif`` reviews, on **2026-08-21** when ``src/mca/gds/shmem3``
 was re-reviewed against its redesign, and on **2026-08-24**, when the
 per-file pass over ``src/server`` finished — all twenty ``.c`` files —
-and the last of ``src/client`` came inside a review.  Move an entry out
+and the last of ``src/client`` came inside a review, and on
+**2026-08-26**, when the per-file re-review of ``src/util`` finished —
+all twenty-nine of its ``.c`` files.  Move an entry out
 of "Not yet reviewed" as its review lands, and refresh the churn figures
 in "Reviewed, but changed materially since" when a re-review closes one.
 
@@ -271,22 +273,36 @@ Reviewed and current
 ``src/mca/gds/hash``, ``src/mca/gds/shmem3``, ``src/mca/pcompress``,
 ``src/mca/pgpu``, ``src/mca/pif``, ``src/mca/plog``, ``src/mca/pmdl``,
 ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/psec``, ``src/mca/psensor``,
-``src/mca/pstat``, ``src/mca/ptl``, ``src/threads``, and
+``src/mca/pstat``, ``src/mca/ptl``, ``src/threads``, ``src/util``, and
 ``bindings/python``.
-``src/common``, ``src/hwloc`` and ``src/util`` were reviewed too, but
-have moved since — see below.
+``src/common`` and ``src/hwloc`` were reviewed too, but have moved
+since — see below.
 
-**``src/client`` and ``src/server`` are the only two directories the
-review has taken file by file**, a dedicated pass per file rather than a
-directory-wide one, and the difference is worth stating rather than
-flattening: a directory-wide sweep is real coverage, and it is not the
-same thing.  The dedicated pass found something in *every* file it
-read, including files that had already been through four or five
-directory-wide sweeps.  ``src/client`` reached that state on 2026-08-23
-and ``src/server`` on 2026-08-24 — eleven files and twenty, five lenses
-each, one file to a pass.  The per-file record is in the 2026-08-23 and
-later rows of ``.git/deep-review/ledger.tsv``; the reasoning is in each
-directory's ``AGENTS.md``.
+**``src/client``, ``src/server`` and ``src/util`` are the only three
+directories the review has taken file by file**, a dedicated pass per
+file rather than a directory-wide one, and the difference is worth
+stating rather than flattening: a directory-wide sweep is real coverage,
+and it is not the same thing.  The dedicated pass found something in
+*every* file it read, including files that had already been through four
+or five directory-wide sweeps.  ``src/client`` reached that state on
+2026-08-23, ``src/server`` on 2026-08-24 and ``src/util`` on 2026-08-26 —
+eleven files, twenty and twenty-nine, five lenses each, one file to a
+pass.  The per-file record is in the 2026-08-23 and later rows of
+``.git/deep-review/ledger.tsv``; the reasoning is in each directory's
+``AGENTS.md``.
+
+``src/util`` is the sharpest evidence for that difference, because it is
+the only one of the three that had already had a full directory review —
+the July 2026 pass — and the per-file re-review still came to
++5260/-1062 across 58 files in 57 commits, against 4672 lines of new
+test (eight new programs under ``test/unit/util``).  Two of the defects
+it found were invisible from macOS and needed a Linux container to see
+at all — one of them an installed header that failed to build on Linux
+at all; one whole
+subsystem, ``pmix_timings`` under ``--enable-pmix-timing``, turned out
+never to have been built by anybody.  The lesson to carry is in
+``src/util/AGENTS.md``: **a directory that has been reviewed once is
+not thereby covered file by file.**
 
 Two files fall short of that and are named here rather than rounded up,
 both in ``src/client``:
@@ -332,10 +348,14 @@ Each of these has an orientation guide and nothing else: no findings were
 ever recorded in it, and only drive-by fixes have landed.  Ordered by
 size, which is a rough proxy for how much there is to find.
 
-* ``src/util/keyval`` — 2397 lines of lexer and parser, and the only
-  directory in ``src/`` with **no** ``AGENTS.md`` at all.
 * ``src/mca/pdl``, ``src/mca/pinstalldirs`` — about 2200 lines between
   them, and the lowest risk of the group.
+* ``src/util/keyval`` — 138 lines of flex source (``keyval_lex.l``);
+  the 2327-line ``keyval_lex.c`` beside it is a generated build product
+  and is not review material.  It has no ``AGENTS.md`` of its own, but
+  the ``src/util`` re-review gave it a section in that directory's
+  guide and covered its only driver, ``pmix_keyval_parse.c``, so what
+  is left unread is the ``.l`` itself.
 
 Outside ``src/``, nothing has been reviewed: ``examples/`` (16678 lines,
 leak-swept only), ``test/simple`` (11011), ``test/unit/util`` and
@@ -346,13 +366,9 @@ Reviewed, but changed materially since
 
 Ordered by how much of the directory the review no longer covers.
 Figures are against the commit that recorded each review, measured
-2026-08-24.
+2026-08-24.  ``src/util`` stood at the head of this list until
+2026-08-26; the per-file re-review closed it.
 
-#. **``src/util``** — reviewed 2026-07-17/18, the oldest review in the
-   tree, and the gap keeps widening: 38 commits and +2024/-247 across 21
-   files since, none of it re-read.  The largest pieces are the CLI
-   option-parsing rework, the ``dirpath`` conversion to descriptor-based
-   operations, and the ``pmix_hash`` qualifier arrays.
 #. **``src/hwloc``** — reviewed 2026-08-02.  +1129/-205 across three
    files since — the device enumerator and the reworked distance
    computation, against a five-line touch to the guide.  Effectively new,
