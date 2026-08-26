@@ -47,10 +47,13 @@ BEGIN_C_DECLS
  * size'th character then gets the terminating `\0'); if the return
  * value is greater than or equal to the size argument, the string was
  * too short and some of the printed characters were discarded.  The
- * output is always null-terminated.
+ * output is always null-terminated, including on failure.
  *
  * Returns the number of characters that would have been printed if
- * the size were unlimited (again, not including the final `\0').
+ * the size were unlimited (again, not including the final `\0'), or a
+ * negative value if the string could not be formatted at all.  A NULL
+ * str, or a size of zero, asks for that length without writing
+ * anything.
  *
  * THIS IS A PORTABILITY FEATURE: USE snprintf() in CODE.
  */
@@ -72,10 +75,13 @@ __pmix_attribute_format__(__printf__, 3, 4);
  * size'th character then gets the terminating `\0'); if the return
  * value is greater than or equal to the size argument, the string was
  * too short and some of the printed characters were discarded.  The
- * output is always null-terminated.
+ * output is always null-terminated, including on failure.
  *
  * Returns the number of characters that would have been printed if
- * the size were unlimited (again, not including the final `\0').
+ * the size were unlimited (again, not including the final `\0'), or a
+ * negative value if the string could not be formatted at all.  A NULL
+ * str, or a size of zero, asks for that length without writing
+ * anything.
  *
  * THIS IS A PORTABILITY FEATURE: USE vsnprintf() in CODE.
  */
@@ -105,6 +111,13 @@ __pmix_attribute_format__(__printf__, 3, 0);
  * on error and some implementations (modern Linux) do not guarantee
  * such behavior.
  *
+ * On a platform with no asprintf(3) of its own the format is sized by
+ * hand before the buffer is allocated, so a format holding a
+ * conversion that cannot be bounded - one this library does not
+ * recognize, or a wide string with no precision - is refused with -1
+ * and errno set to EINVAL rather than formatted into a buffer that
+ * would be too small.  Every conversion C99 defines is recognized.
+ *
  */
 PMIX_EXPORT int pmix_asprintf(char **ptr, const char *fmt, ...)
 __pmix_attribute_format__(__printf__, 2, 3);
@@ -133,6 +146,9 @@ __pmix_attribute_format__(__printf__, 2, 3);
  * asprintf fails.  The standard does not require *ptr be set to NULL
  * on error and some implementations (modern Linux) do not guarantee
  * such behavior.
+ *
+ * See pmix_asprintf() for the EINVAL case that only arises on a
+ * platform with no asprintf(3) of its own.
  *
  */
 PMIX_EXPORT int pmix_vasprintf(char **ptr, const char *fmt, va_list ap)
