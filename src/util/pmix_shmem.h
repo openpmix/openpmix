@@ -56,6 +56,11 @@ typedef struct pmix_shmem_t {
     /** True if this mapping was placed over a caller-held reservation,
      *  and so must be given back to it rather than simply unmapped. */
     bool in_reservation;
+    /** True while this handle holds a reference on the segment's shared
+     *  reference count. Only pmix_shmem_segment_attach() takes one - the
+     *  internal attach that stamps a freshly created segment does not -
+     *  so detach has to know which kind of attachment it is undoing. */
+    bool holds_ref;
     /** Size of shared-memory segment. */
     size_t size;
     /** Address of shared memory segment header. */
@@ -82,6 +87,16 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_shmem_t);
  * must be derived from the layout itself (sizeof/offsetof of the types that
  * go in), not hand-maintained. A number someone has to remember to bump is
  * a number that will not get bumped.
+ *
+ * A created segment is NOT attached and holds NO reference: the file
+ * exists, its header is stamped, and nothing is mapped. The creator has
+ * to call pmix_shmem_segment_attach() like anybody else if it means to
+ * keep the segment alive, because the reference count is the only thing
+ * that does - the first holder to let go of a segment nobody else has
+ * taken removes the backing file.
+ *
+ * On failure nothing is left behind: any file this call created is
+ * removed again, and the handle's backing path is cleared.
  */
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_create(
@@ -99,6 +114,26 @@ pmix_shmem_segment_create(
  * a failed fixed-address map returns, so the caller can say which happened.
  * Callers are expected to treat either as "this datastore is unusable to
  * me" and fall back, not as fatal.
+ *
+ * Two fields of the handle are INPUTS here, and a process attaching to a
+ * segment somebody else created has to fill them in itself: backing_path,
+ * and size. "size" is the mapped footprint - the value the CREATOR's
+ * handle carried after pmix_shmem_segment_create() returned, which is
+ * pmix_shmem_utils_segment_footprint() of what it asked to store, not
+ * what it asked to store. Pass the smaller number and the mapping ends a
+ * page short of the data region, which nothing here can detect: the tail
+ * of the segment is simply not there, and the reader faults on it later.
+ * gds/shmem3 puts the creator's shmem->size on the wire for exactly this
+ * reason.
+ *
+ * On success the handle holds a reference on the segment; give it back
+ * with pmix_shmem_segment_detach() or by releasing the handle. On
+ * failure nothing is mapped, no reference is held, and the address
+ * fields read NULL.
+ *
+ * A handle maps one segment at a time: this refuses a handle that is
+ * already attached with PMIX_ERR_BAD_PARAM rather than replacing what
+ * it holds. Detach first.
  */
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_attach(
@@ -108,18 +143,52 @@ pmix_shmem_segment_attach(
     uint32_t expected_layout_id
 );
 
+/**
+ * Drop this process's mapping of the segment.
+ *
+ * This releases the reference pmix_shmem_segment_attach() took, so the
+ * two are a matched pair and a handle that is detached explicitly leaves
+ * the shared count where a handle that is simply released would. Dropping
+ * the LAST reference unlinks the backing file - that is what makes a
+ * segment disappear once every holder has let go of it, and it means a
+ * handle whose detach was the last one cannot attach again: the segment
+ * is gone, which is the point.
+ *
+ * Detaching a handle that never completed a public attach - including
+ * one whose attach failed - releases nothing, so it is safe to call on
+ * an error path without knowing how far the attach got.
+ */
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_detach(
     pmix_shmem_t *shmem
 );
 
+/**
+ * Remove the segment's backing file by name.
+ *
+ * Only the name goes: a process that has the segment mapped keeps a
+ * valid mapping afterwards, which is what lets one generation of a
+ * segment be handed off while readers are still on the previous one.
+ *
+ * Ordinarily nothing calls this - dropping the last reference through
+ * pmix_shmem_segment_detach() does it - and the exception is a caller
+ * unwinding a segment it created but never managed to attach, which no
+ * reference count knows about.
+ *
+ * The handle's backing path is cleared either way, so the handle no
+ * longer names a file after this returns.
+ */
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_unlink(
     pmix_shmem_t *shmem
 );
 
 /**
- * Change ownership of given shmem. Similar to chown(2).
+ * Change ownership of the segment's backing file.
+ *
+ * Acts on the object at the name without following a symlink there -
+ * lchown(2) rather than chown(2) - so that this and its neighbour below
+ * cannot end up changing two different objects.
  */
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_chown(
@@ -129,7 +198,18 @@ pmix_shmem_segment_chown(
 );
 
 /**
- * Change permissions of given shmem. Similar to chmod(2).
+ * Change permissions of the segment's backing file.
+ *
+ * Through a descriptor rather than by name, for the reason above:
+ * chmod(2) follows a symlink at the final component and lchown(2) does
+ * not, so the pair applied to a path would disagree about which object
+ * they were changing.
+ *
+ * Note what the mode has to allow. A peer maps the segment MAP_SHARED
+ * from a descriptor it opened O_RDWR - it writes the reference count,
+ * even when it never writes the data - so a mode that denies write to
+ * the processes meant to read the segment does not make it read-only to
+ * them, it makes it unopenable.
  */
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_chmod(
