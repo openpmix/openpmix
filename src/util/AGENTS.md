@@ -1447,6 +1447,17 @@ an 11-byte `strcpy` into a zero-length buffer through. Both now refuse a
 buffer that cannot hold the name, with the `-5`/`EOVERFLOW` its sibling
 path already used.
 
+**An installed header has to bring its own types.** `pmix_pty.h`
+declares two functions taking a `struct winsize *` and included only
+`<termios.h>`, which is not where that type comes from: glibc keeps it
+in `<sys/ioctl.h>` and leaks it out of `<termios.h>` only under some
+feature-test settings, while macOS leaks it unconditionally. So any
+consumer that had not already included `<sys/ioctl.h>` itself built on
+macOS and failed on Linux with "declared inside parameter list" — which
+is what `test/unit/util/util_pty.c` did, so `make check` in that
+directory did not build there at all. The header includes
+`<sys/ioctl.h>` itself now, the way `pmix_tty.h` always has.
+
 **Every arm in this file is conditionally compiled and this platform
 selects one path through it.** `PMIX_ENABLE_PTY_SUPPORT` (all-stubs),
 `HAVE_PTSNAME` (the `/dev/ptmx` route vs. the BSD `/dev/ptyXY` scan),
