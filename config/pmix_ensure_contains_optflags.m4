@@ -40,7 +40,6 @@ for co_word in $co_arg; do
     case $co_word in
     -g)              co_found=1 ;;
     -g@<:@1-3@:>@)   co_found=1 ;;
-    +K@<:@0-5@:>@)   co_found=1 ;;
     -O)              co_found=1 ;;
     -O@<:@0-9@:>@)   co_found=1 ;;
     -fast)           co_found=1 ;;
