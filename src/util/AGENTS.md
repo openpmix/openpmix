@@ -1091,6 +1091,92 @@ around the chosen placement, without giving up the agreement. Tested in
 is where it has to be tested, since ASLR separates real processes well
 enough to hide whether the scatter works at all.
 
+### `pmix_pty` — a helper that must not take a terminal for itself
+
+Four wrappers around pty setup, and one caller: `pmix_pfexec`'s
+`setup_prefork()` calls `pmix_openpty()` so a spawned child's stdout is a
+pty rather than a pipe (PRRTE's `iof_base_setup.c` does the same thing
+with the same call). `pmix_ptymopen()`/`pmix_ptysopen()` exist to build
+`pmix_openpty()` on a platform that has no `openpty(3)`; nothing in PMIx
+or PRRTE calls them directly, but `pmix_pty.h` is installed, so judge
+them as API.
+
+**The pty here is a pipe with a terminal on the end of it, and nothing
+more.** The child does not `setsid()` and does not want a controlling
+terminal — `pmix_pfexec` turns echo off and `dup2`s the slave onto
+stdout. What it wants is line-discipline behavior, not a session.
+
+**That makes the controlling-terminal rule the one thing to get right in
+this file.** Opening a terminal device from a session leader that has no
+controlling terminal *makes it one*, unless the open carries `O_NOCTTY`.
+A PMIx server started as a daemon is precisely a session leader with no
+controlling terminal. So a helper that opens a pty slave without
+`O_NOCTTY` — on behalf of a child, in the parent, before any fork — hands
+the **server's** controlling terminal to a pty the child is about to be
+given, and closing the last master descriptor then sends `SIGHUP` to the
+server's foreground process group. This is not theoretical: with the
+`O_NOCTTY` removed, the probe child in
+[`test/unit/util/util_pty.c`](../../test/unit/util/util_pty.c) does not
+merely report the terminal, it is killed by the hangup before it can
+report anything, which is why that test distinguishes "died on a signal"
+as an outcome of its own.
+
+`openpty(3)` gets this right, so the live path on every platform built
+here was never affected; the exposure is the fallback and the two
+exported helpers. An `ioctl(TIOCSCTTY)` on top of the open was the same
+mistake twice and is gone. **Do not add either back.** If a future caller
+genuinely wants the pty to be a controlling terminal, that belongs in the
+child after `setsid()`, which is what `forkpty()` already does — and
+`pmix_forkpty()` is there for callers who want it.
+
+**The master descriptor belongs to the caller.** `pmix_ptysopen()` takes
+it only because some platforms' STREAMS setup needs it, and it used to
+`close()` it on every failure path — while its one caller,
+`pmix_openpty()`'s fallback, closed it again on the next line. A double
+close is the descriptor equivalent of a double free: the second one lands
+on whatever the OS handed out in between. The function now leaves it
+alone, and `PMIX_HIDE_UNUSED_PARAMS` marks it deliberately unread since
+the signature is frozen.
+
+**`maxlen` means what it says.** Both `pmix_ptymopen()` arms wrote the
+device name in with `strncpy`/`strcpy` and neither honored the size: a
+short buffer came back unterminated and the `open()` on the next line
+read past the end of it, and the BSD arm's test was written
+`strlen(...) < maxlen - 1`, which wraps for a `maxlen` of zero and lets
+an 11-byte `strcpy` into a zero-length buffer through. Both now refuse a
+buffer that cannot hold the name, with the `-5`/`EOVERFLOW` its sibling
+path already used.
+
+**Every arm in this file is conditionally compiled and this platform
+selects one path through it.** `PMIX_ENABLE_PTY_SUPPORT` (all-stubs),
+`HAVE_PTSNAME` (the `/dev/ptmx` route vs. the BSD `/dev/ptyXY` scan),
+`HAVE_OPENPTY` and `HAVE_FORKPTY` are four independent switches, and the
+stub arms take `void *` where the real ones take `struct termios *`, so
+forcing `PMIX_ENABLE_PTY_SUPPORT` means forcing it in the header too. A
+July 2026 pass fixed compile errors in those stubs by adding
+`PMIX_HIDE_UNUSED_PARAMS` calls — without adding the
+`src/include/pmix_globals.h` that declares it, so all three stub arms
+still failed to build, and the `!HAVE_PTSNAME` arm failed on an
+`errsave` it does not use. **Compile every combination by hand before
+believing an edit here**; `make src/util/pmix_pty.lo` with the guards
+edited to `#if 0`/`#if 1` is enough, and all six do build warning-free
+today. The Solaris `__SVR4 && __sun` STREAMS arm is the one exception —
+it needs a `<stropts.h>` this platform does not have, so it cannot be
+compile-checked from here.
+
+Two things deliberately left alone:
+
+- The BSD arm's `lchown()`/`chmod()` pair acts on two different objects
+  if the slave name is a symlink, which is the shape of CVE-2023-41915
+  (the `chown`→`lchown` sweep that put the `// DO NOT FOLLOW LINKS`
+  comment on that line). It is left as is because the name is a `/dev`
+  device node and both calls are no-ops unless the process is already
+  root, so planting the symlink requires the privilege the attack would
+  gain.
+- `ptsname(3)` is not reentrant. `pmix_ptymopen()` has no caller on a
+  platform with `openpty(3)`, and the one caller it can have runs before
+  a fork; do not add a second one on another thread.
+
 ### `pmix_printf` — two implementations, only one of which you compile
 
 Four `PMIX_EXPORT` wrappers over `asprintf`/`snprintf`. On any platform
@@ -1266,7 +1352,8 @@ Current coverage includes: `argv`, `alfg`, `basename`, `cmd_line`,
 regression), `if` (the tuple parser), `name_fns` (incl. special-rank
 compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,
-`string_copy`, `timings`, `getcwd`, `getid`, `keyval`.
+`string_copy`, `timings`, `getcwd`, `getid`, `keyval`, `pty` (the
+controlling-terminal and descriptor-ownership regressions).
 
 ## Fixed defects (July 2026 review)
 
@@ -1330,7 +1417,10 @@ own commit. Recorded so they are not re-introduced by a future edit.
   dropped `maxlen`; `pmix_forkpty` had extra/concrete params), and the
   hand-rolled `pmix_openpty` fallback called `pmix_ptymopen(line)` without
   `maxlen` and used `pmix_string_copy` without including its header —
-  compile failures in those (CI-unexercised) build configs.
+  compile failures in those (CI-unexercised) build configs. Those stubs
+  did **not** build afterwards either — see
+  [`pmix_pty`](#pmix_pty--a-helper-that-must-not-take-a-terminal-for-itself)
+  above; compile-check every arm rather than trusting this entry.
 - **`pmix_keyval_parse.c`.** `isspace()` on a possibly-negative `char`
   (project portability rule) → cast to `unsigned char`; `trim_name`'s
   suffix back-scan could step before the buffer on an all-whitespace

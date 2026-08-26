@@ -96,6 +96,7 @@
 #    include <util.h>
 #endif
 
+#include "src/include/pmix_globals.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_pty.h"
 #include "src/util/pmix_string_copy.h"
@@ -120,17 +121,25 @@ PMIX_EXPORT int pmix_ptysopen(int fdm, char *pts_name)
 int pmix_ptymopen(char *pts_name, size_t maxlen)
 {
     int fdm;
-    int errsave;
 
 #    ifdef HAVE_PTSNAME
+    int errsave;
     char *ptr;
 
 #        ifdef _AIX
-    strncpy(pts_name, "/dev/ptc", maxlen);
+    static const char master[] = "/dev/ptc";
 #        else
-    strncpy(pts_name, "/dev/ptmx", maxlen);
+    static const char master[] = "/dev/ptmx";
 #        endif
-    fdm = open(pts_name, O_RDWR);
+
+    /* strncpy() would leave pts_name unterminated for a short maxlen,
+     and the open() below would then read off the end of it */
+    if (maxlen < sizeof(master)) {
+        errno = EOVERFLOW;
+        return -5;
+    }
+    pmix_string_copy(pts_name, master, maxlen);
+    fdm = open(pts_name, O_RDWR | O_NOCTTY);
     if (fdm < 0) {
         return -1;
     }
@@ -154,7 +163,7 @@ int pmix_ptymopen(char *pts_name, size_t maxlen)
         return -4;
     }
     if (strlen(ptr) < maxlen) {
-        strncpy(pts_name, ptr, maxlen); /* return name of slave */
+        pmix_string_copy(pts_name, ptr, maxlen); /* return name of slave */
         return fdm;            /* return fd of master */
     } else {
         close(fdm);
@@ -164,20 +173,23 @@ int pmix_ptymopen(char *pts_name, size_t maxlen)
 
 #    else  // HAVE_PTSNAME
 
-    char *ptr1, *ptr2;
+    static const char ptyname[] = "/dev/ptyXY";
+    const char *ptr1, *ptr2;
 
-    if (strlen("/dev/ptyXY") < maxlen-1) {
-        strcpy(pts_name, "/dev/ptyXY");
-    } else {
-        return PMIX_ERR_BAD_PARAM;
+    /* maxlen is unsigned: "maxlen - 1" wraps for a maxlen of zero, and
+     the strcpy below would then run off the end of the buffer */
+    if (maxlen < sizeof(ptyname)) {
+        errno = EOVERFLOW;
+        return -5;
     }
-    /* array index: 012345689 (for references in following code) */
+    pmix_string_copy(pts_name, ptyname, maxlen);
+    /* array index: 0123456789 (for references in following code) */
     for (ptr1 = "pqrstuvwxyzPQRST"; *ptr1 != 0; ptr1++) {
         pts_name[8] = *ptr1;
         for (ptr2 = "0123456789abcdef"; *ptr2 != 0; ptr2++) {
             pts_name[9] = *ptr2;
             /* try to open master */
-            fdm = open(pts_name, O_RDWR);
+            fdm = open(pts_name, O_RDWR | O_NOCTTY);
             if (fdm < 0) {
                 if (errno == ENOENT) { /* different from EIO */
                     return -1;         /* out of pty devices */
@@ -197,39 +209,47 @@ int pmix_ptymopen(char *pts_name, size_t maxlen)
 int pmix_ptysopen(int fdm, char *pts_name)
 {
     int fds;
-    int errsave;
+
+    /* the master descriptor belongs to our caller: we neither use nor
+     close it, but it stays in the signature, which is frozen */
+    PMIX_HIDE_UNUSED_PARAMS(fdm);
 
 #    ifdef HAVE_PTSNAME
-    /* following should allocate controlling terminal */
-    fds = open(pts_name, O_RDWR);
+    /* O_NOCTTY: opening a terminal device from a session leader that has
+     no controlling terminal makes it one, and this runs in the process
+     opening the pty rather than in the child that will use it */
+    fds = open(pts_name, O_RDWR | O_NOCTTY);
     if (fds < 0) {
-        pmix_output(0, "FAILED WITH %s", strerror(errno));
-        errsave = errno;
-        close(fdm);  // might change errno
-        errno = errsave;
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix_ptysopen: could not open %s: %s",
+                            pts_name, strerror(errno));
         return -5;
     }
 #        if defined(__SVR4) && defined(__sun)
+    int errsave;
+
     if (ioctl(fds, I_PUSH, "ptem") < 0) {
         errsave = errno;
-        close(fdm);  // might change errno
         close(fds);  // might change errno
         errno = errsave;
         return -6;
     }
     if (ioctl(fds, I_PUSH, "ldterm") < 0) {
         errsave = errno;
-        close(fdm);  // might change errno
         close(fds);  // might change errno
         errno = errsave;
         return -7;
     }
 #        endif
 
-#ifdef TIOCSCTTY                        /* Acquire controlling tty on BSD */
-        // just make the attempt - don't worry if it fails
-        ioctl(fds, TIOCSCTTY, 0);
-#endif
+    /* Deliberately NO TIOCSCTTY here.  This runs in the process that is
+     opening the pty, not in the child that will use it, and TIOCSCTTY
+     succeeds for any session leader that has no controlling terminal -
+     which is exactly the shape of a daemonized PMIx server.  It would
+     then be the *server* whose controlling terminal is the child's pty,
+     so a hangup on that pty reaches the server.  A caller who wants the
+     pty to be a controlling terminal has to say so after setsid() in
+     the child, the way forkpty()/login_tty() do. */
 
     return fds;
 
@@ -247,11 +267,8 @@ int pmix_ptysopen(int fdm, char *pts_name)
     /* following two functions don't work unless we're root */
     lchown(pts_name, getuid(), gid);  // DO NOT FOLLOW LINKS
     chmod(pts_name, S_IRUSR | S_IWUSR | S_IWGRP);
-    fds = open(pts_name, O_RDWR);
+    fds = open(pts_name, O_RDWR | O_NOCTTY);
     if (fds < 0) {
-        errsave = errno;
-        close(fdm);  // might change errno
-        errno = errsave;
         return -1;
     }
     return fds;
