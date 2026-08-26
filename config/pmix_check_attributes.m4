@@ -30,16 +30,17 @@
 #
 
 #
-# Search the generated warnings for
-# keywords regarding skipping or ignoring certain attributes
-#   Intel: ignore
-#   Sun C++: skip
+# Search the generated warnings for keywords regarding skipping or
+# ignoring certain attributes (Intel says "ignore").  The list is
+# deliberately wider than the compilers we know about: a keyword that
+# matches nothing only costs us an attribute we could have used, while
+# one we failed to look for hands us an attribute the compiler does not
+# really honor.
 #
 AC_DEFUN([_PMIX_ATTRIBUTE_FAIL_SEARCH],[
     AC_REQUIRE([AC_PROG_GREP])
     if test -s conftest.err ; then
         # icc uses 'invalid attribute' and 'attribute "__XXX__"  ignored'
-        # Sun 12.1 emits 'warning: attribute parameter "__printf__" is undefined'
         for i in invalid ignore skip undefined ; do
             $GREP -iq $i conftest.err
             if test "$?" = "0" ; then

@@ -28,7 +28,7 @@ AC_DEFUN([PMIX_CHECK_VISIBILITY],[
     AC_REQUIRE([AC_PROG_GREP])
 
     # Check if the compiler has support for visibility, like some
-    # versions of gcc, icc Sun Studio cc.
+    # versions of gcc and icc.
     AC_ARG_ENABLE(visibility,
         AS_HELP_STRING([--enable-visibility],
             [enable visibility feature of certain compilers/linkers (default: enabled)]))
@@ -42,20 +42,9 @@ AC_DEFUN([PMIX_CHECK_VISIBILITY],[
     else
         CFLAGS_orig=$CFLAGS
 
-        pmix_add=
-        case "$oac_cv_c_compiler_vendor" in
-        sun)
-            # Check using Sun Studio -xldscope=hidden flag
-            pmix_add=-xldscope=hidden
-            CFLAGS="$PMIX_CFLAGS_BEFORE_PICKY $pmix_add -errwarn=%all"
-            ;;
-
-        *)
-            # Check using -fvisibility=hidden
-            pmix_add=-fvisibility=hidden
-            CFLAGS="$PMIX_CFLAGS_BEFORE_PICKY $pmix_add -Werror"
-            ;;
-        esac
+        # Check using -fvisibility=hidden
+        pmix_add=-fvisibility=hidden
+        CFLAGS="$PMIX_CFLAGS_BEFORE_PICKY $pmix_add -Werror"
 
         AC_MSG_CHECKING([if $CC supports $pmix_add])
         AC_LINK_IFELSE([AC_LANG_PROGRAM([[
