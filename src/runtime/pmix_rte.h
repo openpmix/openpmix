@@ -39,11 +39,11 @@
 
 BEGIN_C_DECLS
 
-#if PMIX_ENABLE_TIMING
-PMIX_EXPORT extern char *pmix_timing_sync_file;
-PMIX_EXPORT extern char *pmix_timing_output;
-PMIX_EXPORT extern bool pmix_timing_overhead;
-#endif
+/* pmix_timing_output and pmix_timing_overhead are declared by
+ * src/util/pmix_timings.h, which is where the macros that use them live
+ * and which, unlike this header, is installed. pmix_timing_sync_file was
+ * declared here and defined nowhere, so any use of it was a link error;
+ * it is gone. */
 
 PMIX_EXPORT extern char *pmix_net_private_ipv4;
 PMIX_EXPORT extern int pmix_event_caching_window;

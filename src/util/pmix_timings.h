@@ -65,6 +65,24 @@ typedef struct {
     int errcode;
 } pmix_timing_prep_t;
 
+/* Both are MCA parameters, registered by pmix_register_params(). They
+ * are declared HERE, rather than only in src/runtime/pmix_rte.h where
+ * they used to be, because PMIX_TIMING_REPORT and PMIX_TIMING_DELTAS
+ * below expand to a use of pmix_timing_output - and pmix_rte.h is not an
+ * installed header, so those two macros did not compile for anyone
+ * outside this tree.
+ *
+ * pmix_timing_overhead has a second reason to live here: src/util's
+ * implementation defined a file-static of the same name, which shadowed
+ * this one for the only two places that read it, so the parameter was
+ * inert and the overhead accounting it switches never ran. */
+
+/** Where a report is written; NULL sends it to the PMIx debug channel. */
+PMIX_EXPORT extern char *pmix_timing_output;
+/** Whether to charge the timing code's own allocations against the
+ *  intervals they fall inside. */
+PMIX_EXPORT extern bool pmix_timing_overhead;
+
 /* Pass down our namespace and rank for pretty-print purposes */
 PMIX_EXPORT void pmix_init_id(char *nspace, int rank);
 
@@ -199,8 +217,6 @@ PMIX_EXPORT void pmix_timing_end_prep(pmix_timing_prep_t p, const char *func, co
  * disappear.
  *
  * @param t timing handler
- * @param account_overhead consider malloc overhead introduced by timing code
- * @param prefix prefix to use when no fname was specified to ease grep'ing
  * @param fname name of the output file (may be NULL)
  *
  * @retval PMIX_SUCCESS On success
@@ -217,7 +233,6 @@ PMIX_EXPORT pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname);
  * disappear.
  *
  * @param t timing handler
- * @param account_overhead consider malloc overhead introduced by timing code
  * @param fname name of the output file (may be NULL)
  *
  * @retval PMIX_SUCCESS On success
@@ -238,7 +253,9 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
  * Macro for passing down process id - compiled out
  * when configured without --enable-timing
  */
-#    define PMIX_TIMING_ID(n, r) pmix_timing_id((n), (r));
+/* pmix_timing_id() has never existed - the function is pmix_init_id(),
+ * so any use of this macro was an undefined symbol at link time. */
+#    define PMIX_TIMING_ID(n, r) pmix_init_id((n), (r))
 
 /**
  * Main macro for use in declaring pmix timing handler;
@@ -276,7 +293,7 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
  * @see pmix_timing_add_step()
  */
 #    define PMIX_TIMING_EVENT(x) \
-        pmix_timing_add_step(pmix_timing_prep_ev x, __FUNCTION__, __FILE__, __LINE__)
+        pmix_timing_add_step(pmix_timing_prep_ev x, __func__, __FILE__, __LINE__)
 
 /**
  * MDESCR: Measurement DESCRiption
@@ -288,7 +305,7 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
  * @see pmix_timing_descr()
  */
 #    define PMIX_TIMING_MDESCR(x) \
-        pmix_timing_descr(pmix_timing_prep_ev x, __FUNCTION__, __FILE__, __LINE__)
+        pmix_timing_descr(pmix_timing_prep_ev x, __func__, __FILE__, __LINE__)
 
 /**
  * MSTART_ID: Measurement START by ID.
@@ -300,7 +317,7 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
  * @see pmix_timing_start_id()
  */
 #    define PMIX_TIMING_MSTART_ID(t, id) \
-        pmix_timing_start_id(t, id, __FUNCTION__, __FILE__, __LINE__)
+        pmix_timing_start_id(t, id, __func__, __FILE__, __LINE__)
 
 /**
  * MSTART: Measurement START
@@ -312,7 +329,7 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
  * @see pmix_timing_start_init()
  */
 #    define PMIX_TIMING_MSTART(x) \
-        pmix_timing_start_init(pmix_timing_prep_ev x, __FUNCTION__, __FILE__, __LINE__)
+        pmix_timing_start_init(pmix_timing_prep_ev x, __func__, __FILE__, __LINE__)
 
 /**
  * MSTOP: STOP Measurement
@@ -322,7 +339,7 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
  *
  * @see pmix_timing_end()
  */
-#    define PMIX_TIMING_MSTOP(t) pmix_timing_end(t, -1, __FUNCTION__, __FILE__, __LINE__)
+#    define PMIX_TIMING_MSTOP(t) pmix_timing_end(t, -1, __func__, __FILE__, __LINE__)
 
 /**
  * MSTOP_ID: STOP Measurement with ID=id.
@@ -332,7 +349,7 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
  *
  * @see pmix_timing_end()
  */
-#    define PMIX_TIMING_MSTOP_ID(t, id) pmix_timing_end(t, id, __FUNCTION__, __FILE__, __LINE__)
+#    define PMIX_TIMING_MSTOP_ID(t, id) pmix_timing_end(t, id, __func__, __FILE__, __LINE__)
 
 /**
  * MNEXT: start NEXT Measurement
@@ -348,8 +365,8 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
  * @see pmix_timing_start_init()
  */
 #    define PMIX_TIMING_MNEXT(x)                                                            \
-        (pmix_timing_end_prep(pmix_timing_prep_ev_end x, __FUNCTION__, __FILE__, __LINE__), \
-         pmix_timing_start_init(pmix_timing_prep_ev x, __FUNCTION__, __FILE__, __LINE__))
+        (pmix_timing_end_prep(pmix_timing_prep_ev_end x, __func__, __FILE__, __LINE__), \
+         pmix_timing_start_init(pmix_timing_prep_ev x, __func__, __FILE__, __LINE__))
 
 /**
  * The macro for use in reporting collected events with absolute values;
