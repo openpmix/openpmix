@@ -59,9 +59,37 @@
  * pmix_output_finalize()).  This stream outputs to stderr only, and
  * has a stream handle ID of 0.
  *
- * It is erroneous to have one thread close a stream and have another
- * try to write to it.  Multiple threads writing to a single stream
- * will be serialized in an unspecified order.
+ * ENVIRONMENT: five variables, read once by pmix_output_init(),
+ * override what every stream in the process does.  They are the only
+ * way to reach these settings before the MCA parameter system exists,
+ * which is why they are environment variables rather than parameters:
+ *
+ * - PMIX_OUTPUT_REDIRECT - "syslog" sends every stream to the syslog
+ *   and to nothing else; "file" sends every stream to a file and to
+ *   nothing else.  Any other value is ignored.
+ * - PMIX_OUTPUT_SYSLOG_PRI - "info", "warn" or "error" (the default)
+ *   for the priority of syslog output.
+ * - PMIX_OUTPUT_SYSLOG_IDENT - the identity string to open the syslog
+ *   under; "pmix" if unset.
+ * - PMIX_OUTPUT_SUFFIX - overrides the file suffix of every stream that
+ *   writes to a file, so they all share one file.
+ * - PMIX_OUTPUT_STDERR_FD - a descriptor number to write "stderr"
+ *   output to instead of fileno(stderr).
+ *
+ * THREADING: this subsystem keeps process-global state - the stream
+ * table, the output directory and prefix - and takes no lock over any
+ * of it.  Writing is what a second thread may safely do: each call
+ * renders its own line on the stack and delivers it with a single
+ * write(), so two threads writing to the same stream do not corrupt
+ * each other's state, although nothing orders their lines and a line
+ * longer than the pipe buffer may still be split by the OS.
+ * Everything that *changes* the table - pmix_output_init(),
+ * pmix_output_open(), pmix_output_reopen(), pmix_output_close(),
+ * pmix_output_finalize(), pmix_output_set_output_file_info() - must be
+ * called by one thread at a time, and not while another thread is
+ * writing to the stream being changed.  In PMIx that means they run
+ * during startup and shutdown, on the progress thread.  Two concurrent
+ * pmix_output_open() calls can settle on the same free slot.
  */
 
 #ifndef PMIX_OUTPUT_H_
@@ -318,12 +346,18 @@ PMIX_EXPORT void pmix_output_finalize(void);
  * using it in successive calls to PMIX_OUTPUT(), pmix_output(),
  * pmix_output_switch(), and pmix_output_close().
  *
+ * On failure it returns a negative PMIx status - not a handle - so a
+ * caller that stores the answer must tell the two apart before using
+ * it.  There are only PMIX_OUTPUT_MAX_STREAMS handles, and a stream is
+ * held until it is closed, so PMIX_ERR_OUT_OF_RESOURCE is the answer
+ * once they are all spoken for.
+ *
  * If lds is NULL, the default descriptions will be used, meaning
  * that output will only be sent to stderr.
  *
- * It is safe to have multiple threads invoke this function
- * simultaneously; their execution will be serialized in an
- * unspecified manner.
+ * This function is not thread safe: the search for a free slot is
+ * unlocked, so two threads calling it at once can be handed the same
+ * stream.  See the THREADING note at the top of this file.
  *
  * Be sure to see pmix_output() for a description of what happens
  * when open_open() / pmix_output() is directed to send output to a
@@ -367,11 +401,19 @@ PMIX_EXPORT bool pmix_output_switch(int output_id, bool enable);
 /**
  * \internal
  *
- * Reopens all existing output streams.
+ * Re-derives the process-dependent parts of the output configuration.
  *
  * This function should never be called by user applications; it is
  * typically only invoked after a restart (i.e., in a new process)
  * where output streams need to be re-initialized.
+ *
+ * Despite the name it does not reopen streams: it re-reads the stderr
+ * descriptor override from the environment and rebuilds the
+ * "[hostname:pid]" prefix of the default verbose stream, which is the
+ * part a new process invalidates.  A stream opened by anyone else keeps
+ * the prefix, suffix, syslog identity and file its opener gave it, and
+ * only that opener knows how to rebuild them - it must call
+ * pmix_output_reopen() itself.
  */
 PMIX_EXPORT void pmix_output_reopen_all(void);
 
@@ -384,6 +426,11 @@ PMIX_EXPORT void pmix_output_reopen_all(void);
  * after it is closed.  Be aware that pmix_output_handles tend to be
  * re-used; it is possible that after a stream is closed, if another
  * stream is opened, it will get the same handle value.
+ *
+ * A stream that has been disabled with pmix_output_switch() is still
+ * an open stream and must still be closed; closing it is what returns
+ * its handle and releases the copies pmix_output_open() made of the
+ * prefix, suffix, syslog identity and file suffix.
  */
 PMIX_EXPORT void pmix_output_close(int output_id);
 
@@ -468,7 +515,9 @@ PMIX_EXPORT void pmix_output_set_verbosity(int output_id, int level);
  * Get the verbosity level for a stream
  *
  * @param output_id Stream id returned from pmix_output_open()
- * @returns Verbosity of stream
+ * @returns Verbosity of stream, or -1 if output_id does not name an
+ * open stream.  Note that -1 is also a legal verbosity to have set, so
+ * this does not distinguish the two.
  */
 PMIX_EXPORT int pmix_output_get_verbosity(int output_id);
 
@@ -499,7 +548,9 @@ PMIX_EXPORT int pmix_output_get_verbosity(int output_id);
  *
  * If olddir or oldprefix are not NULL, copies of the old
  * directory and prefix (respectively) are returned in these
- * parameters.  The caller is responsible for calling (free) on
+ * parameters - or NULL, if the output subsystem has not been
+ * initialized yet and therefore has no value to hand back.  The
+ * caller is responsible for calling (free) on
  * these values.  This allows one to get the old values, output an
  * output file in a specific directory and/or with a specific
  * prefix, and then restore the old values.
