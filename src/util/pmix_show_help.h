@@ -24,12 +24,11 @@
  * The "show help" subsystem (SHS) in PMIX is intended to help the
  * developer convey meaningful information to the user (read longer
  * than is convenient in a single printf), particularly when errors
- * occur.  The SHS allows the storage of arbitrary-length help
- * messages in text files which can be parameterized by text filename,
- * message name, POSIX locale, and printf()-style parameters (e.g.,
- * "%s", "%d", etc.).  Note that the primary purpose of the SHS is to
- * display help messages, but it can actually be used to display any
- * arbitrary text messages.
+ * occur.  The SHS stores arbitrary-length help messages that are
+ * looked up by filename and topic and rendered with printf()-style
+ * parameters (e.g., "%s", "%d", etc.).  Note that the primary purpose
+ * of the SHS is to display help messages, but it can actually be used
+ * to display any arbitrary text messages.
  *
  * The function pmix_show_help() is used to find a help message and
  * display it.  Its important parameters are a filename, message name,
@@ -40,18 +39,30 @@
  * simple version of i18n-like support, but we got (strong) feedback
  * that i18n support was not desired.  So it never happened.
  *
- * As such, the file lookup is quite straightforward -- the caller
- * passes in the filename to find the help message, and the SHS looks
- * for that file in $pkgdatadir (typically $prefix/share/pmix).
+ * **The "filename" is a name, not a file.** Nothing here opens
+ * anything at run time, and installing a help file somewhere PMIx can
+ * see it accomplishes nothing.  The help-*.txt files in the source
+ * tree are read at *build* time by contrib/convert-help.py, which
+ * generates src/util/pmix_show_help_content.c - a static table that is
+ * compiled into libpmix - and the filename is simply the key that
+ * table is indexed by.  Two consequences:
  *
- * Once the file is successfully opened, the SHS looks for the
- * appropriate help message to display.  It looks for the message name
- * in the file, reads in the message, and displays it.  printf()-like
- * substitutions are performed (e.g., %d, %s, etc.) --
- * pmix_show_help() takes a variable length argument list that are
- * used for these substitutions.
+ * - After adding, removing or editing any show_help content you must
+ *   delete the generated pair and rebuild, or the library keeps
+ *   emitting the old text:
  *
- * The format of the help file is simplistic:
+ *       rm src/util/pmix_show_help_content.* && make
+ *
+ *   Under --enable-devel-check the generator also runs with --purge,
+ *   which makes a topic that no code references a hard build error.  So
+ *   removing the last caller of a topic breaks the build for whoever
+ *   regenerates next - on a fresh clone, that is CI.
+ *
+ * - A project outside this tree contributes its own messages by
+ *   generating a table of its own and registering it with
+ *   pmix_show_help_add_data(), not by installing a file.
+ *
+ * The format of a help file is simplistic:
  *
  * - Comments begin with #.  Any characters after a # on a line are
  *   ignored.  It is not possible to escape a #.
@@ -74,18 +85,23 @@
  * to the second line in the message for this example.
  * \verbatimend
  *
+ * A message may also pull in another one, by giving a line of the form
+ * "#include#FILE#TOPIC" or "#include#PROJECT#FILE#TOPIC"; with no
+ * project named, the including message's own project applies.  Include
+ * chains are bounded, so a topic that includes itself stops rather than
+ * running the stack out, and a directive that is not well formed is
+ * skipped.
+ *
  * It is expected that help messages will be grouped by filename;
  * similar messages should be in a single file.  For example, an MCA
- * component may install its own helpfile in PMIX's $pkgdatadir,
- * and therefore the component can invoke pmix_show_help() to display
- * its own help messages.
+ * component may carry its own help-*.txt, and the component can then
+ * invoke pmix_show_help() to display its own help messages.
  *
- * Message files in $pkgdatadir have a naming convention: they
- * generally start with the prefix "help-" and are followed by a name
- * descriptive of what kind of messages they contain.  MCA components
- * should generally abide by the MCA prefix rule, with the exception
- * that they should start the filename with "help-", as mentioned
- * previously.
+ * Message files have a naming convention: they generally start with
+ * the prefix "help-" and are followed by a name descriptive of what
+ * kind of messages they contain.  MCA components should generally
+ * abide by the MCA prefix rule, with the exception that they should
+ * start the filename with "help-", as mentioned previously.
  */
 
 #ifndef PMIX_SHOW_HELP_H
@@ -145,6 +161,12 @@ PMIX_EXPORT pmix_status_t pmix_show_help(const char *filename,
 /**
  * This function does the same thing as pmix_show_help(), but returns
  * its output in a string (that must be freed by the caller).
+ *
+ * Answers NULL when the message could not be produced - there is no
+ * such filename/topic, or the rendering failed.  Note that the
+ * not-found case is *not* silent: a "couldn't find that help
+ * reference" notice has already been displayed by the time NULL comes
+ * back, so a caller must not report the miss a second time.
  */
 PMIX_EXPORT char *pmix_show_help_string(const char *filename, const char *topic,
                                         int want_error_header, ...);
@@ -159,19 +181,47 @@ PMIX_EXPORT char *pmix_show_help_vstring(const char *filename,
                                          va_list ap);
 
 /**
- * This function adds another search location for the files that
- * back show_help messages. Locations will be searched starting
- * with the prefix installation directory, then cycled through
- * any additional directories in the order they were added
+ * Register another table of compiled-in help content, so that its
+ * messages can be looked up alongside PMIx's own.
+ *
+ * @param project Name this content belongs to, used to disambiguate a
+ * filename that appears in more than one table and as the default
+ * project for an "#include" directive within it.
+ * @param array Table of (filename, entries) pairs, terminated by an
+ * entry with a NULL filename.  It is *borrowed*, not copied, so it must
+ * outlive the show_help subsystem - a static table generated by
+ * convert-help.py is the intended shape.
+ *
+ * Tables are searched in the order they were added, after PMIx's own.
+ * A filename already claimed by another table is refused with
+ * PMIX_ERROR and a message naming both projects.
  */
 PMIX_EXPORT pmix_status_t pmix_show_help_add_data(const char *project,
                                                   pmix_show_help_file_t *array);
 
-// check for duplicate entries
+/**
+ * Record that this (filename, topic) is about to be displayed, and say
+ * whether it has been displayed before.
+ *
+ * Answers PMIX_SUCCESS if it is a duplicate - in which case it has been
+ * counted, and a summary of the accumulated duplicates will be
+ * displayed on a timer and again at finalize - PMIX_ERR_NOT_FOUND if
+ * this is the first time, and an error otherwise.  Note that
+ * PMIX_ERR_NOT_FOUND is the ordinary answer, not a failure.
+ *
+ * Neither argument may be NULL.  Must be called on the progress thread:
+ * the duplicate list is process-global and carries no lock.
+ */
 PMIX_EXPORT pmix_status_t pmix_help_check_dups(const char *filename,
                                                const char *topic);
 
-// output a previously rendered show-help message
+/**
+ * Deliver an already-rendered show-help message.
+ *
+ * No lookup and no substitution is done: output is delivered as it
+ * stands, and is copied, so the caller keeps ownership.  filename and
+ * topic only label the message for the log.
+ */
 PMIX_EXPORT pmix_status_t pmix_show_help_norender(const char *filename,
                                                   const char *topic,
                                                   const char *output);
