@@ -853,10 +853,16 @@ honor:
   commit message; use `git cherry-pick -x` to add it automatically.
   Never commit features directly to a release branch. See
   [`docs/developers/git-github.rst`](docs/developers/git-github.rst).
-- **Update the docs and the news** when user-visible behavior
-  changes: RST under [`docs/`](docs/), and a release-notes entry under
-  [`docs/news/`](docs/news/)
-  (`news-vMAJOR.x.rst`).
+- **Update the docs** when user-visible behavior changes: RST under
+  [`docs/`](docs/).
+
+  Do **not** add an entry to [`docs/news/`](docs/news/). Those files are
+  assembled at release time from the commit log — which is the other half
+  of why a commit message is asked to explain *why* the change was made.
+  A release note is written from your commit, not alongside it. Every
+  branch that adds one prepends to the same list, so the only thing a
+  contributor's entry reliably produces is a conflict with every other
+  branch in flight.
 
 
 ## When in doubt
