@@ -218,6 +218,186 @@ static void test_chmod_does_not_follow_a_symlink(void)
     unlink(other);
 }
 
+/* attach() takes a reference on the count that lives inside the segment;
+ * detach() has to give it back. It did not - only the destructor did, and
+ * only for a handle that was still attached - so a handle that was
+ * detached explicitly left its reference standing for the life of the
+ * node. The count is what decides when the backing file goes away, so the
+ * visible consequence is a file nobody will ever remove, at a name built
+ * from a pid, and pids get reused.
+ *
+ * Assert it through the file, since the count itself is private: after
+ * the only holder detaches, the backing file must be gone. */
+static void test_detach_releases_the_reference(void)
+{
+    char seg[512];
+    pmix_shmem_t *shmem;
+    struct stat sb;
+    int rc;
+
+    snprintf(seg, sizeof(seg), "%s/refcount.seg", tmpbase);
+    unlink(seg);
+
+    shmem = PMIX_NEW(pmix_shmem_t);
+    if (NULL == shmem) {
+        report("refcount: fixture", 0);
+        return;
+    }
+    rc = pmix_shmem_segment_create(shmem, 4096, seg, 1);
+    if (PMIX_SUCCESS != rc) {
+        report("refcount: fixture", 0);
+        PMIX_RELEASE(shmem);
+        return;
+    }
+    rc = pmix_shmem_segment_attach(shmem, (uintptr_t) NULL, 0, 1);
+    report("refcount: attach", PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(shmem);
+        unlink(seg);
+        return;
+    }
+    /* still the only holder, so the file is still there */
+    report("refcount: file present while attached", 0 == stat(seg, &sb));
+
+    rc = pmix_shmem_segment_detach(shmem);
+    report("refcount: detach", PMIX_SUCCESS == rc);
+    report("refcount: last detach unlinks the backing file",
+           0 != stat(seg, &sb) && ENOENT == errno);
+
+    PMIX_RELEASE(shmem);
+    unlink(seg);
+}
+
+/* The internal attach that stamps a freshly created segment must NOT be
+ * counted as a holder: it is undone with the same detach, and a detach
+ * that released a reference nobody took would drive the count negative -
+ * so the first real holder to let go would find it non-zero and leave the
+ * file behind forever.
+ *
+ * A create leaves the segment unattached, so this is observable as: after
+ * create alone, one attach followed by one detach still empties it. */
+static void test_create_takes_no_reference(void)
+{
+    char seg[512];
+    pmix_shmem_t *creator, *holder;
+    struct stat sb;
+    int rc;
+
+    snprintf(seg, sizeof(seg), "%s/stamp.seg", tmpbase);
+    unlink(seg);
+
+    creator = PMIX_NEW(pmix_shmem_t);
+    holder = PMIX_NEW(pmix_shmem_t);
+    if (NULL == creator || NULL == holder) {
+        report("stamp: fixture", 0);
+        return;
+    }
+    rc = pmix_shmem_segment_create(creator, 4096, seg, 1);
+    if (PMIX_SUCCESS != rc) {
+        report("stamp: fixture", 0);
+        goto done;
+    }
+    /* a second handle on the same segment, as a peer process would have */
+    holder->size = creator->size;
+    pmix_string_copy(holder->backing_path, seg, PMIX_PATH_MAX);
+
+    rc = pmix_shmem_segment_attach(holder, (uintptr_t) NULL, 0, 1);
+    if (PMIX_SUCCESS != rc) {
+        report("stamp: fixture", 0);
+        goto done;
+    }
+    (void) pmix_shmem_segment_detach(holder);
+    report("stamp: creator's internal attach is not a reference",
+           0 != stat(seg, &sb) && ENOENT == errno);
+
+done:
+    PMIX_RELEASE(creator);
+    PMIX_RELEASE(holder);
+    unlink(seg);
+}
+
+/* A create that fails partway has to take its own backing file with it.
+ * Nothing else can: the caller is being told the create failed, and the
+ * destructor only unlinks a segment it managed to attach. Provoke the
+ * failure with a size no ftruncate() will accept.
+ *
+ * The file is also what the retry loop above reclaims, so a leftover is
+ * not fatal - it is a file in the session directory that survives the
+ * job, under a name built from a pid. */
+static void test_failed_create_leaves_no_file(void)
+{
+    char seg[512];
+    pmix_shmem_t *shmem;
+    struct stat sb;
+    int rc;
+
+    snprintf(seg, sizeof(seg), "%s/toobig.seg", tmpbase);
+    unlink(seg);
+
+    shmem = PMIX_NEW(pmix_shmem_t);
+    if (NULL == shmem) {
+        report("failed-create: fixture", 0);
+        return;
+    }
+    /* SIZE_MAX/2 rounds up to a length no filesystem will grant, and the
+     * failure lands after the file has been created. */
+    rc = pmix_shmem_segment_create(shmem, (size_t) 1 << 62, seg, 1);
+    if (PMIX_SUCCESS == rc) {
+        /* a filesystem that granted it is not a failure of the code -
+         * say so rather than asserting something we did not provoke */
+        report("failed-create: could not provoke a failure (skipped)", 1);
+        (void) pmix_shmem_segment_unlink(shmem);
+        PMIX_RELEASE(shmem);
+        unlink(seg);
+        return;
+    }
+    report("failed-create: backing file removed",
+           0 != stat(seg, &sb) && ENOENT == errno);
+
+    PMIX_RELEASE(shmem);
+    unlink(seg);
+}
+
+/* One handle maps one segment. An attach on a handle that is already
+ * attached has to be refused outright: the attach's own failure path
+ * detaches, and a detach of the last holder unlinks the backing file, so
+ * absorbing the call would let a second attach that merely failed to
+ * find an address destroy the segment the caller was already holding. */
+static void test_attach_on_attached_handle_is_refused(void)
+{
+    char seg[512];
+    pmix_shmem_t *shmem;
+    struct stat sb;
+    int rc;
+
+    snprintf(seg, sizeof(seg), "%s/reattach.seg", tmpbase);
+    unlink(seg);
+
+    shmem = PMIX_NEW(pmix_shmem_t);
+    if (NULL == shmem) {
+        report("reattach: fixture", 0);
+        return;
+    }
+    if (PMIX_SUCCESS != pmix_shmem_segment_create(shmem, 4096, seg, 1) ||
+        PMIX_SUCCESS != pmix_shmem_segment_attach(shmem, (uintptr_t) NULL, 0, 1)) {
+        report("reattach: fixture", 0);
+        PMIX_RELEASE(shmem);
+        unlink(seg);
+        return;
+    }
+    /* an address that cannot be honored, so the attach fails on its own
+     * account rather than succeeding somewhere harmless */
+    rc = pmix_shmem_segment_attach(shmem, (uintptr_t) 0x1000,
+                                   PMIX_SHMEM_MUST_MAP_AT_RADDR, 1);
+    report("reattach: refused", PMIX_SUCCESS != rc);
+    report("reattach: the held segment survives",
+           shmem->attached && NULL != shmem->hdr_address &&
+           0 == stat(seg, &sb));
+
+    PMIX_RELEASE(shmem);
+    unlink(seg);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -234,6 +414,10 @@ int main(int argc, char **argv)
     test_create_does_not_follow_a_symlink();
     test_create_reclaims_a_stale_file();
     test_chmod_does_not_follow_a_symlink();
+    test_detach_releases_the_reference();
+    test_create_takes_no_reference();
+    test_failed_create_leaves_no_file();
+    test_attach_on_attached_handle_is_refused();
 
     rmdir(tmpbase);
 

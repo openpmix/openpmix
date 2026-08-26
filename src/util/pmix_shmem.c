@@ -83,6 +83,17 @@ segment_attach(
     pmix_status_t rc = PMIX_SUCCESS;
     void *mmap_addr = MAP_FAILED;
 
+    /* A handle maps one segment at a time, and re-using an attached one
+     * has to be refused rather than absorbed. The failure path below
+     * hands the handle to pmix_shmem_segment_detach(), which for an
+     * attached handle drops its reference and, if it was the last one,
+     * takes the backing file with it - so a second attach that merely
+     * failed to find an address would have destroyed the segment the
+     * caller was already holding. Detach first, then attach again. */
+    if (shmem->attached) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* opened relative to its directory rather than by name - see
      * pmix_os_dirpath_open_file() - so a symlink at the backing path
      * does not send the attach at some unrelated file */
@@ -158,7 +169,18 @@ out:
          * the reservation it came out of, not simply drop it. */
         shmem->in_reservation = (0 != over_reservation);
     }
-    // Always set base addresses. On error it is useful for reporting.
+    if (PMIX_SUCCESS != rc) {
+        /* Nothing is mapped, so say so with the pointer that means it.
+         * Writing MAP_FAILED through here instead left the handle
+         * carrying (void *)-1, and data_address carrying that plus a
+         * page - which wraps to a small non-NULL address. A caller
+         * screening the handle with "NULL == hdr_address", as
+         * note_slot_in_use() in gds/shmem3 does, would not have caught
+         * either one. Reporting reads backing_path, not these. */
+        shmem->hdr_address = NULL;
+        shmem->data_address = NULL;
+        return rc;
+    }
     shmem->hdr_address = mmap_addr;
     shmem->data_address = data_addr_from_base(mmap_addr);
     return rc;
@@ -197,6 +219,7 @@ pmix_shmem_segment_create(
     uint32_t layout_id
 ) {
     int rc = PMIX_SUCCESS;
+    bool created = false;
     // Real size of the segment: the data region begins a full page in
     // (data_addr_from_base() rounds the header up to a page boundary), so
     // this is larger than what the caller asked to store. The arithmetic
@@ -238,10 +261,16 @@ pmix_shmem_segment_create(
             break;
         }
     }
-    if (fd == -1) {
+    if (-1 == fd) {
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         goto out;
     }
+    /* From here on the file exists because we made it, so every failure
+     * below has to take it away again. Nothing else will: the caller is
+     * being told the create failed, and shmem_destruct() only unlinks a
+     * segment it managed to attach. A file left here sits in the session
+     * directory under a name built from this pid, and pids get reused. */
+    created = true;
     /* A freshly created file is empty, so this only extends it - and an
      * extension reads as zero, which is the guarantee gds/shmem3's
      * allocator relies on (see tma_carve() there) so that it need not
@@ -260,6 +289,11 @@ out:
         (void)close(fd);
     }
     if (PMIX_SUCCESS != rc) {
+        if (created) {
+            (void)unlink(backing_path);
+            /* and do not leave the caller a path to a file that is gone */
+            memset(shmem->backing_path, 0, PMIX_PATH_MAX);
+        }
         PMIX_ERROR_LOG(rc);
     }
     return rc;
@@ -299,6 +333,7 @@ pmix_shmem_segment_attach(
     }
 
     inc_ref_count(shmem->hdr_address);
+    shmem->holds_ref = true;
     return rc;
 }
 
@@ -309,6 +344,18 @@ pmix_shmem_segment_detach(
     int rc = 0;
 
     if (shmem && shmem->attached) {
+        /* Give back the reference pmix_shmem_segment_attach() took, so a
+         * handle that is detached explicitly leaves the shared count in
+         * the same place a handle that is simply released does. Skipped
+         * for the internal attach that stamps a freshly created segment,
+         * which never took one. Must happen before the unmap: the count
+         * lives in the mapping being dropped. */
+        if (shmem->holds_ref) {
+            shmem->holds_ref = false;
+            if (dec_ref_count(shmem->hdr_address)) {
+                (void)pmix_shmem_segment_unlink(shmem);
+            }
+        }
         if (shmem->in_reservation) {
             /* This range was carved out of a reservation the caller is
              * still holding, and it expects to be able to place something
@@ -446,6 +493,7 @@ shmem_construct(
 ) {
     s->attached = false;
     s->in_reservation = false;
+    s->holds_ref = false;
     s->size = 0;
     s->hdr_address = NULL;
     s->data_address = NULL;
@@ -456,14 +504,10 @@ static void
 shmem_destruct(
     pmix_shmem_t *s
 ) {
-    // We don't have access to a reference count, so bail.
-    if (!s->attached) {
-        return;
-    }
-    // If our reference count has reached zero, then unlink the backing file.
-    if (dec_ref_count(s->hdr_address)) {
-        (void)pmix_shmem_segment_unlink(s);
-    }
+    /* Detach does the whole of it - drop our reference, unlink the
+     * backing file if it was the last one, unmap - so that releasing a
+     * handle and detaching it explicitly cannot come to different
+     * answers. A handle that is not attached holds nothing. */
     (void)pmix_shmem_segment_detach(s);
 }
 

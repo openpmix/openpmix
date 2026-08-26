@@ -1169,8 +1169,8 @@ its neighbour were doing. Open once and use `fchmod()`/`fstat()`, the way
 
 ### `pmix_shmem` — a created segment reads as zero
 
-`pmix_shmem_segment_create()` opens its backing file `O_CREAT | O_TRUNC`
-and `ftruncate`s it to the full size, so a freshly created segment is a
+`pmix_shmem_segment_create()` creates its backing file fresh and
+`ftruncate`s it to the full size, so a freshly created segment is a
 sparse file whose every page reads as zero. **That is a contract, not an
 incidental property**: `gds/shmem3`'s bump allocator relies on it to hand
 out zeroed storage without writing a byte (see `tma_carve()` and
@@ -1178,12 +1178,67 @@ out zeroed storage without writing a byte (see `tma_carve()` and
 what keeps building a segment from faulting in its whole — heavily
 over-estimated — extent up front.
 
-The `O_TRUNC` is the load-bearing half. Segments are unlinked when their
-last holder lets go, so a path collides only with a file left behind by a
-server that died; but the path carries a pid, and pids get reused, and
-`ftruncate()` to the same or a smaller size would leave that file's bytes
-in place. There is exactly one caller of this function and it always
-populates the segment from scratch, so the truncate costs nothing.
+"Fresh" is the load-bearing half, and it is why the open is
+`O_CREAT | O_EXCL` (through `pmix_os_dirpath_open_file()`) rather than
+`O_CREAT | O_TRUNC`. Segments are unlinked when their last holder lets
+go, so a path collides only with a file left behind by a server that
+died; but the path carries a pid, and pids get reused, and `ftruncate()`
+to the same or a smaller size would leave that file's bytes in place.
+`O_EXCL` declines whatever is there — a symlink included, which
+`O_CREAT | O_TRUNC` would have followed and truncated — and the two-pass
+loop then reclaims a leftover with `unlink()` and retries, exactly as
+`write_rndz_file()` does. A change that only declines breaks a server
+whose pid was reused; both halves are covered by
+[`test/unit/util/util_shmem.c`](../../test/unit/util/util_shmem.c).
+
+**The reference count in the segment header is what decides when the
+backing file goes away, and it is the ONLY thing that does.**
+`pmix_shmem_segment_attach()` takes a reference and
+`pmix_shmem_segment_detach()` gives it back; dropping the last one
+unlinks the file. Three consequences are easy to get wrong and two of
+them were:
+
+- **A created segment holds no reference and is not attached.** The
+  internal attach that stamps the header is undone by the same detach as
+  everybody else's, so it deliberately does not count — otherwise the
+  count would never reach zero. The creator has to attach like any other
+  holder if it means to keep the segment alive.
+- **`detach()` releases what `attach()` took.** It used to release
+  nothing: only `shmem_destruct()` decremented, and only for a handle
+  that was still attached, so a handle detached explicitly left its
+  reference standing forever and the backing file was never unlinked by
+  anyone. `gds/shmem3`'s forced-attach-failure test parameters reach
+  exactly that path.
+- **A create that fails takes its own file with it.** Nothing else can:
+  the caller is being told the create failed, and the destructor only
+  unlinks a segment it managed to attach. `gds/shmem3` unlinks by hand
+  in the window *after* a successful create (see its `out_release`),
+  which is a different case and still needed.
+
+**Two fields of the handle are inputs to `pmix_shmem_segment_attach()`**,
+and a process attaching to somebody else's segment fills them in itself:
+`backing_path`, and `size` — where `size` is the mapped *footprint*, the
+number the creator's handle carried afterwards, not the number it asked
+to store. `gds/shmem3` puts the creator's `shmem->size` on the wire for
+that reason. Passing the smaller number maps a page short of the end of
+the data region, which nothing here can detect.
+
+**The mode a segment's file carries has to allow write to every process
+meant to read it.** A peer maps `MAP_SHARED` from a descriptor it opened
+`O_RDWR`, because it writes the reference count even when it never
+writes the data — so a read-only mode does not make the segment
+read-only to a peer, it makes it unopenable, and the peer falls back to
+another GDS module. `gds/shmem3` sets `0660`. A reader that wants the
+data itself to be unwritable asks for
+`pmix_shmem_segment_protect_data()`, which leaves the header page
+writable for exactly this reason.
+
+A handle whose attach failed reads `NULL` in both address fields. That
+is worth relying on rather than re-deriving: the failure path used to
+store `MAP_FAILED` and `MAP_FAILED` plus a page — the second of which
+wraps to a small non-NULL address — so the `NULL == hdr_address` screen
+that `note_slot_in_use()` in `gds/shmem3` performs would not have caught
+either one.
 
 ### `pmix_vmem` — reserving an address before you need it
 
@@ -1490,8 +1545,10 @@ regression), `if` (the tuple parser), `name_fns` (incl. special-rank
 compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,
 `string_copy`, `timings`, `getcwd`, `getid`, `keyval`, `pty` (the
-controlling-terminal and descriptor-ownership regressions), `show_help`
-(the `#include` parser and the termination flush).
+controlling-terminal and descriptor-ownership regressions), `shmem` (the
+symlink/stale-file halves of the create, and the reference-count
+lifetime), `show_help` (the `#include` parser and the termination
+flush).
 
 ## Fixed defects (July 2026 review)
 
