@@ -379,6 +379,7 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
     int i, j;
 
     if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS
+        && pmix_output_info[output_id].ldi_used
         && pmix_output_info[output_id].ldi_verbose_level >= verbose_level) {
         pmix_output_verbose(verbose_level, output_id, "dump data at %p %d bytes\n", ptr, buflen);
         for (i = 0; i < buflen; i += 16) {
@@ -389,7 +390,7 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
             }
             out_pos += ret;
             for (j = 0; j < 16; j++) {
-                if (1023 < (out_pos+2)) {
+                if ((int) sizeof(out_buf) - 1 < out_pos + 2) {
                     return;
                 }
                 if (i + j < buflen) {
@@ -402,7 +403,7 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
                 }
                 out_pos += ret;
             }
-            if (1023 < (out_pos+1)) {
+            if ((int) sizeof(out_buf) - 1 < out_pos + 1) {
                 return;
             }
             ret = snprintf(out_buf + out_pos, sizeof(out_buf) - out_pos, " ");
@@ -411,7 +412,7 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
             }
             out_pos += ret;
             for (j = 0; j < 16; j++) {
-                if (1023 < (out_pos+1)) {
+                if ((int) sizeof(out_buf) - 1 < out_pos + 1) {
                     return;
                 }
                 if (i + j < buflen) {
@@ -422,7 +423,7 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
                     out_pos += ret;
                 }
             }
-            if (1023 < (out_pos+1)) {
+            if ((int) sizeof(out_buf) - 1 < out_pos + 1) {
                 return;
             }
             ret = snprintf(out_buf + out_pos, sizeof(out_buf) - out_pos, "\n");
@@ -554,7 +555,6 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
     pmix_output_info[i].ldi_verbose_level = lds->lds_verbose_level;
 
 #if USE_SYSLOG
-#    if USE_SYSLOG
     if (pmix_output_redirected_to_syslog) {
         pmix_output_info[i].ldi_syslog = true;
         pmix_output_info[i].ldi_syslog_priority = pmix_output_redirected_syslog_pri;
@@ -567,11 +567,8 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
         }
         syslog_opened = true;
     } else {
-#    endif
         pmix_output_info[i].ldi_syslog = lds->lds_want_syslog;
         if (lds->lds_want_syslog) {
-
-#    if USE_SYSLOG
             if (NULL != lds->lds_syslog_ident) {
                 pmix_output_info[i].ldi_syslog_ident = strdup(lds->lds_syslog_ident);
                 openlog(lds->lds_syslog_ident, LOG_PID, LOG_USER);
@@ -579,15 +576,10 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
                 pmix_output_info[i].ldi_syslog_ident = NULL;
                 openlog("pmix", LOG_PID, LOG_USER);
             }
-#    endif
             syslog_opened = true;
             pmix_output_info[i].ldi_syslog_priority = lds->lds_syslog_priority;
         }
-
-#    if USE_SYSLOG
     }
-#    endif
-
 #else
     pmix_output_info[i].ldi_syslog = false;
 #endif
@@ -620,7 +612,7 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
         /* since we aren't redirecting to syslog, use what was
          * given to us
          */
-        if (NULL != str && redirect_to_file) {
+        if (redirect_to_file) {
             pmix_output_info[i].ldi_stdout = false;
             pmix_output_info[i].ldi_stderr = false;
             pmix_output_info[i].ldi_fd = -1;
@@ -966,13 +958,13 @@ static int output(int output_id, const char *format, va_list arglist)
         /* File output -- first check to see if the file opening was
          * delayed.  If so, try to open it.  If we failed to open it,
          * then just discard (there are big warnings in the
-         * pmix_pmix_output.h docs about this!). */
+         * pmix_output.h docs about this!). */
 
         if (ldi->ldi_file) {
-            if (ldi->ldi_fd == -1) {
+            if (-1 == ldi->ldi_fd) {
                 if (PMIX_SUCCESS != open_file(output_id)) {
                     ++ldi->ldi_file_num_lines_lost;
-                } else if (ldi->ldi_file_num_lines_lost > 0 && 0 <= ldi->ldi_fd) {
+                } else if (0 < ldi->ldi_file_num_lines_lost && 0 <= ldi->ldi_fd) {
                     char buffer[BUFSIZ];
                     memset(buffer, 0, BUFSIZ);
                     pmix_snprintf(buffer, BUFSIZ - 1,
@@ -985,7 +977,7 @@ static int output(int output_id, const char *format, va_list arglist)
                     ldi->ldi_file_num_lines_lost = 0;
                 }
             }
-            if (ldi->ldi_fd != -1) {
+            if (-1 != ldi->ldi_fd) {
                 if (PMIX_SUCCESS != write_line(ldi->ldi_fd, out, outlen)) {
                     rc = PMIX_ERROR;
                 }
