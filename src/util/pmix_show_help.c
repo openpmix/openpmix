@@ -24,7 +24,6 @@
 #include "src/include/pmix_config.h"
 
 #include <errno.h>
-#include <locale.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -184,8 +183,9 @@ static pmix_status_t match(const char *a, const char *b)
     size_t min;
 
     /* Check straight string match first */
-    if (0 == strcmp(a, b))
+    if (0 == strcmp(a, b)) {
         return PMIX_SUCCESS;
+    }
 
     if (NULL != strchr(a, '*') || NULL != strchr(b, '*')) {
         tmp1 = strdup(a);
@@ -271,7 +271,7 @@ static void pmix_show_accumulated_duplicates(int fd, short event, void *context)
        yet */
     PMIX_LIST_FOREACH(tli, &abd_tuples, tuple_list_item_t)
     {
-        if (tli->tli_display && tli->tli_count_since_last_display > 0) {
+        if (tli->tli_display && 0 < tli->tli_count_since_last_display) {
             static bool first = true;
             char stamp[50] = {0};
             char *buf = NULL;
@@ -279,7 +279,7 @@ static void pmix_show_accumulated_duplicates(int fd, short event, void *context)
 
             if (0 > pmix_asprintf(&tmp, "%d more process%s sent help message %s / %s\n",
                                   tli->tli_count_since_last_display,
-                                  (tli->tli_count_since_last_display > 1) ? "es have" : " has",
+                                  (1 < tli->tli_count_since_last_display) ? "es have" : " has",
                                   tli->tli_filename, tli->tli_topic)) {
                 continue;
             }
@@ -491,9 +491,8 @@ static pmix_status_t array2string(char **outstring,
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    /* Fill the big string */
+    /* Fill the big string - calloc already left it terminated */
 
-    *(*outstring) = '\0';
     if (want_error_header) {
         strcat(*outstring, dash_line);
     }
@@ -679,7 +678,8 @@ char *pmix_show_help_vstring(const char *filename,
                              va_list arglist)
 {
     int rc;
-    char *single_string, *output;
+    char *single_string = NULL;
+    char *output = NULL;
     char **content = NULL;
     char *msg;
 
