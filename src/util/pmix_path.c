@@ -96,6 +96,8 @@
 #if defined(HAVE_STATFS) \
     && (defined(HAVE_STRUCT_STATFS_F_FSTYPENAME) || defined(HAVE_STRUCT_STATFS_F_TYPE))
 #    define USE_STATFS 1
+#else
+#    define USE_STATFS 0
 #endif
 
 static void path_env_load(char *path, int *pargc, char ***pargv);
@@ -103,6 +105,9 @@ static char *list_env_get(char *var, char **list);
 
 bool pmix_path_is_absolute(const char *path)
 {
+    if (NULL == path) {
+        return false;
+    }
     if (PMIX_PATH_SEP[0] == *path) {
         return true;
     }
@@ -118,7 +123,13 @@ char *pmix_path_find(char *fname, char **pathv, int mode, char **envv)
     char *delimit;
     char *env;
     char *pfix;
+    char *varname;
+    size_t namelen;
     int i;
+
+    if (NULL == fname || NULL == pathv) {
+        return NULL;
+    }
 
     /* If absolute path is given, return it without searching. */
     if (pmix_path_is_absolute(fname)) {
@@ -138,13 +149,21 @@ char *pmix_path_find(char *fname, char **pathv, int mode, char **envv)
         /* Replace environment variable at the head of the string. */
         if ('$' == *pathv[i]) {
             delimit = strchr(pathv[i], PMIX_PATH_SEP[0]);
-            if (delimit) {
-                *delimit = '\0';
+            /* copy the variable name out rather than punching a
+             * temporary NUL into the caller's string and putting it
+             * back: pathv belongs to the caller, its elements may be
+             * string literals, and another thread may be reading the
+             * same array */
+            namelen = (NULL == delimit) ? strlen(pathv[i] + 1)
+                                        : (size_t)(delimit - (pathv[i] + 1));
+            varname = (char *) malloc(namelen + 1);
+            if (NULL == varname) {
+                return NULL;
             }
-            env = list_env_get(pathv[i] + 1, envv);
-            if (delimit) {
-                *delimit = PMIX_PATH_SEP[0];
-            }
+            memcpy(varname, pathv[i] + 1, namelen);
+            varname[namelen] = '\0';
+            env = list_env_get(varname, envv);
+            free(varname);
             if (NULL != env) {
                 if (!delimit) {
                     fullpath = pmix_path_access(fname, env, mode);
@@ -238,6 +257,10 @@ char *pmix_path_access(char *fname, char *path, int mode)
 {
     char *fullpath = NULL;
 
+    if (NULL == fname) {
+        return NULL;
+    }
+
     /* Allocate space for the full pathname. */
     if (NULL == path) {
         fullpath = pmix_os_path(false, fname, NULL);
@@ -267,41 +290,27 @@ char *pmix_path_access(char *fname, char *path, int mode)
  */
 static void path_env_load(char *path, int *pargc, char ***pargv)
 {
-    char *p;
-    char saved;
+    char **elements;
+    int i;
 
     if (NULL == path) {
         *pargc = 0;
         return;
     }
 
-    /* Loop through the paths (delimited by PATHENVSEP), adding each
-       one to argv. */
-
-    while ('\0' != *path) {
-
-        /* Locate the delimiter. */
-
-        for (p = path; *p && (*p != PMIX_ENV_SEP); ++p) {
-            continue;
-        }
-
-        /* Add the path. */
-
-        if (p != path) {
-            saved = *p;
-            *p = '\0';
-            pmix_argv_append(pargc, pargv, path);
-            *p = saved;
-            path = p;
-        }
-
-        /* Skip past the delimiter, if present. */
-
-        if (*path) {
-            ++path;
-        }
+    /* Split the paths (delimited by PATHENVSEP) and add each one to
+     * argv. This used to walk the string in place, punching a temporary
+     * NUL in at each delimiter and putting it back - but the string it
+     * is handed is usually the value getenv() returned, which POSIX
+     * says must not be modified, and any other thread reading the same
+     * variable in that window sees a truncated PATH. Split a copy.
+     * PMIx_Argv_split() drops empty fields, which is what the walk did
+     * with a repeated or leading delimiter. */
+    elements = PMIx_Argv_split(path, PMIX_ENV_SEP);
+    for (i = 0; NULL != elements && NULL != elements[i]; ++i) {
+        pmix_argv_append(pargc, pargv, elements[i]);
     }
+    PMIx_Argv_free(elements);
 }
 
 /**
@@ -347,6 +356,10 @@ char *pmix_find_absolute_path(char *app_name)
     char *abs_app_name;
     char cwd[PMIX_PATH_MAX], *pcwd;
 
+    if (NULL == app_name) {
+        return NULL;
+    }
+
     if (pmix_path_is_absolute(app_name)) { /* already absolute path */
         abs_app_name = app_name;
     } else if ('.' == app_name[0] || NULL != strchr(app_name, PMIX_PATH_SEP[0])) {
@@ -364,6 +377,14 @@ char *pmix_find_absolute_path(char *app_name)
 
     if (NULL != abs_app_name) {
         char *resolved_path = (char *) malloc(PMIX_PATH_MAX);
+        if (NULL == resolved_path) {
+            /* realpath() would allocate a buffer of its own for a NULL
+             * argument, and we would then return this NULL and leak it */
+            if (abs_app_name != app_name) {
+                free(abs_app_name);
+            }
+            return NULL;
+        }
         if (NULL == realpath(abs_app_name, resolved_path)) {
             free(resolved_path);
             /* only free abs_app_name if we allocated it - in the
@@ -467,6 +488,12 @@ bool pmix_path_nfs(char *fname, char **fstype)
                     // the false paths where it would leak.
                     if (NULL != fstype) {
                         *fstype = strdup(mnt.mnt_type);
+                        if (NULL == *fstype) {
+                            /* the contract is that *fstype is valid on a
+                             * true return, so we cannot answer true
+                             * without it */
+                            return false;
+                        }
                     }
                     return true;
                 }
@@ -494,7 +521,8 @@ int pmix_path_df(const char *path, uint64_t *out_avail)
     int rc = -1;
     int trials = 5;
     int err = 0;
-#if defined(USE_STATFS)
+    int64_t avail;
+#if USE_STATFS
     struct statfs buf;
 #elif defined(HAVE_STATVFS)
     struct statvfs buf;
@@ -506,7 +534,7 @@ int pmix_path_df(const char *path, uint64_t *out_avail)
     *out_avail = 0;
 
     do {
-#if defined(USE_STATFS)
+#if USE_STATFS
         rc = statfs(path, &buf);
 #elif defined(HAVE_STATVFS)
         rc = statvfs(path, &buf);
@@ -515,21 +543,38 @@ int pmix_path_df(const char *path, uint64_t *out_avail)
     } while (-1 == rc && ESTALE == err && (--trials > 0));
 
     if (-1 == rc) {
-        pmix_output_verbose(10, 2,
+        pmix_output_verbose(10, 0,
                              "pmix_path_df: stat(v)fs on "
                              "path: %s failed with errno: %d (%s)\n",
                              path, err, strerror(err));
         return PMIX_ERROR;
     }
 
-    /* now set the amount of free space available on path */
-    /* f_bavail is signed on some platforms and can be negative; check the
-     * sign in a full-width signed type rather than truncating to int,
-     * which on a large filesystem would misread a valid 64-bit count as
-     * negative and report zero free space */
-    *out_avail = buf.f_bsize * (((int64_t) buf.f_bavail < 0) ? 0 : buf.f_bavail);
+    /* now set the amount of free space available on path.
+     *
+     * The two interfaces do not count in the same units. statfs()
+     * reports f_bavail in f_bsize blocks, but POSIX statvfs() reports it
+     * in f_frsize ones - and f_bsize there is the *preferred I/O size*,
+     * which on several filesystems is many times f_frsize. Multiplying
+     * by the wrong one told the caller it had far more room than it has.
+     *
+     * f_bavail is signed on the BSDs, where it can be negative, and
+     * unsigned elsewhere - so the sign test has to be made through a
+     * variable of a signed type. Written as a cast in the comparison
+     * itself it is -Werror=type-limits on every platform where the
+     * field is unsigned, which is why the statvfs arm of this function
+     * has never compiled. */
+    avail = (int64_t) buf.f_bavail;
+    if (0 > avail) {
+        avail = 0;
+    }
+#if USE_STATFS
+    *out_avail = (uint64_t) buf.f_bsize * (uint64_t) avail;
+#else
+    *out_avail = (uint64_t) buf.f_frsize * (uint64_t) avail;
+#endif
 
-    pmix_output_verbose(10, 2,
+    pmix_output_verbose(10, 0,
                          "pmix_path_df: stat(v)fs states "
                          "path: %s has %" PRIu64 " B of free space.",
                          path, *out_avail);

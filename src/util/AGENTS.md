@@ -779,6 +779,58 @@ good — and note that `-UHAVE_STRUCT_SOCKADDR_IN` on the command line does
 **not** do it, because `pmix_config.h` defines the macro again from
 inside the file. Edit the `#ifdef` to `#if 0` for the one compile.
 
+### `pmix_path` — searching for an executable without scribbling on the search
+
+Resolves a filename against a search path (`pmix_path_find`,
+`pmix_path_findv`, `pmix_find_absolute_path`) and answers two questions
+about the filesystem (`pmix_path_nfs`, `pmix_path_df`). The searching
+half is reached from `pmix_pfexec` and `pmix_context_fns` when a spawn
+request has to be turned into an executable, and from `src/mca/base`
+when a parameter file has to be found.
+
+**Nothing here may write into what it was given, and two things did.**
+This is the same rule `pmix_argv` records, and it was broken in the two
+places it matters most:
+
+- `pmix_path_find()` marked the end of a `"$VAR/rest"` prefix by
+  punching a temporary NUL into `pathv[i]` and putting it back. Its
+  callers pass arrays of string literals as a matter of course, which
+  faults outright, and it races anything else reading the same array.
+  It now copies the name out. `test_path_find_does_not_write_through_pathv`
+  in [`test/unit/util/util_path.c`](../../test/unit/util/util_path.c)
+  dies on a signal, not on an assertion, if this returns.
+- `path_env_load()` walked the `$PATH` string the same way — and the
+  string it is handed is normally the one `getenv()` returned, which
+  POSIX says a program must not modify. Any other thread reading `PATH`
+  in that window, or a child forked in it, saw a truncated one. It now
+  splits a copy. Note this half is **not** observable from a
+  single-threaded test, since the value is put back before the function
+  returns; the assertion in `util_path.c` only catches a variant that
+  forgets to restore.
+
+**The two filesystem questions are each answered by an arm this platform
+does not compile**, which is the recurring trap in this directory:
+
+- `pmix_path_nfs()` reads the mount table, so it exists only where
+  `<mntent.h>` does. **On macOS and the BSDs it answers `false`
+  unconditionally**, whatever the file is really on — which the header
+  had never said. It has no in-tree caller; do not add one that needs
+  the answer to be right off Linux.
+- `pmix_path_df()`'s `HAVE_STATVFS` arm did not compile *at all*. The
+  sign test on `f_bavail` was written as a cast inside the comparison,
+  and `statvfs`'s `f_bavail` is unsigned, so it is
+  `-Werror=type-limits` on every platform that selects that arm — i.e.
+  the ones without a `struct statfs`, Solaris and NetBSD among them.
+  The test now goes through a signed variable, which is correct for the
+  BSD `statfs` case it exists for and silent for the unsigned ones.
+  That arm also multiplied `f_bavail` by the wrong number: `statfs`
+  counts it in `f_bsize` blocks, but POSIX `statvfs` counts it in
+  `f_frsize` ones, and `f_bsize` there is the *preferred I/O size* —
+  many times larger on some filesystems, so the caller was told it had
+  far more room than it does. Force both arms by hand before believing
+  an edit to this function; a stub `<mntent.h>` in the same style as
+  `pcompress`'s test-build shims is enough for the first.
+
 ### `pmix_os_path` — a NULL that callers kept forgetting to read
 
 One variadic function that concatenates its `char *` arguments with the
