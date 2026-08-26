@@ -37,6 +37,20 @@ typedef enum {
     VMEM_HOLE_BIGGEST_OFFSET = 6
 } pmix_vmem_hole_kind_t;
 
+/**
+ * Find a hole in this process's address space big enough for "size".
+ *
+ * Answers PMIX_ERR_BAD_PARAM for a hole kind this does not implement -
+ * VMEM_HOLE_NONE and VMEM_HOLE_CUSTOM are named in the enum above but
+ * have no search behind them, and are the caller's to screen or avoid.
+ * Answers PMIX_ERROR when there is no map to scan, which is every
+ * platform without /proc/self/maps.
+ *
+ * The address is only an observation about a moment: nothing holds it,
+ * and anything that maps - another thread, the loader, the allocator
+ * growing an arena - can take it before the caller does. Use
+ * pmix_vmem_reserve() for a range that has to still be there later.
+ */
 PMIX_EXPORT pmix_status_t
 pmix_vmem_find_hole(
     pmix_vmem_hole_kind_t hkind,
@@ -71,6 +85,32 @@ PMIX_EXPORT pmix_status_t
 pmix_vmem_find_hole_scattered(
     pmix_vmem_hole_kind_t hkind,
     uint64_t scatter,
+    size_t *addrp,
+    size_t size
+);
+
+/**
+ * As pmix_vmem_find_hole()/_scattered(), but scanning a named map file
+ * rather than this process's own.
+ *
+ * This exists so the placement rules can be held against a map whose
+ * shape is chosen rather than inherited. Everything the scan has to get
+ * right - which gap is the biggest, where the heap and the stack end a
+ * search, an entry too long for the read buffer, an entry it cannot
+ * parse - is a property of the map it is given, and a live
+ * /proc/self/maps is neither reproducible nor steerable. It is also the
+ * only way to reach any of this on a host that has no /proc at all.
+ *
+ * "mapfile" must be in the format of /proc/self/maps. Not for ordinary
+ * use: a hole found in someone else's map says nothing about this
+ * process's address space.
+ */
+PMIX_EXPORT pmix_status_t
+pmix_vmem_find_hole_in_map(
+    const char *mapfile,
+    pmix_vmem_hole_kind_t hkind,
+    uint64_t scatter,
+    bool scattered,
     size_t *addrp,
     size_t size
 );

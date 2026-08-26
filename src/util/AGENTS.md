@@ -58,7 +58,7 @@ interface list).
 | `pmix_fd.{c,h}` | fd read/write, cloexec, type predicates, peer name, mass-close | needs pipes/sockets |
 | `pmix_few.{c,h}` | fork/exec/waitpid a child | needs a child |
 | `pmix_getid.{c,h}` | peer uid/gid over a socket (`SO_PEERCRED`/`getpeereid`) | needs a socketpair |
-| `pmix_shmem.{c,h}` / `pmix_vmem.{c,h}` | mmap-backed shared-memory segment; `/proc/self/maps` hole finder (Linux) | `pad_to_page`/`parse_map_line` pure; rest need mmap |
+| `pmix_shmem.{c,h}` / `pmix_vmem.{c,h}` | mmap-backed shared-memory segment; `/proc/self/maps` hole finder (Linux) | `pad_to_page` pure; the hole scan runs anywhere against a synthetic map; rest need mmap |
 | `pmix_pty.{c,h}` / `pmix_tty.{c,h}` | pty open/forkpty; termios/winsize helpers | need real pty/tty |
 | `pmix_alfg.{c,h}` | additive lagged-Fibonacci RNG (from Open MPI's `opal_rand`) | pure/deterministic |
 | `pmix_timings.{c,h}` | optional profiling (`--enable-pmix-timing`, off by default) | needs `--enable-pmix-timing` |
@@ -1320,6 +1320,62 @@ around the chosen placement, without giving up the agreement. Tested in
 is where it has to be tested, since ASLR separates real processes well
 enough to hide whether the scatter works at all.
 
+**The whole answer comes out of a text scan of `/proc/self/maps`, and
+every defect this file has had lives in that scan rather than in the
+arithmetic.** Three of them, all of which reported a "hole" over a range
+that is mapped:
+
+- **A bracketed tag that is neither `[heap]` nor `[stack]` used to
+  swallow the entry after it.** `parse_map_line()` replaced the entry's
+  newline with a NUL — for a tag string nothing reads — and
+  `find_hole()` decides whether it has the whole entry by looking for
+  that newline, so it read the *next* entry as this one's tail and
+  never accounted for it. The gap after such a tag was then measured
+  past a mapping that is there. Nothing outside the stack normally
+  carries a tag, which is why this survived; a named anonymous VMA
+  (`[anon:…]`, `prctl(PR_SET_VMA_ANON_NAME)`) is enough to hit it, and
+  so is a `[vdso]` that a kernel places below the stack rather than
+  above.
+- **An entry the parser could not read used to reset `prevend` to 0.**
+  `begin` and `end` are zeroed per iteration, and the loop carried them
+  forward regardless of whether the parse succeeded, so the next entry's
+  gap was measured from address 0 — a hole spanning everything below it,
+  all of it occupied. The parse result is now carried in a `parsed` flag
+  and such an entry is skipped whole.
+- **`default: assert(0)` in the hole-kind switch.** `VMEM_HOLE_NONE` and
+  `VMEM_HOLE_CUSTOM` are in the installed enum and have no search behind
+  them, so naming either one aborted the process in a debug build and
+  fell through to a plain `PMIX_ERROR` in a release one. The kind is now
+  screened before anything is opened, and the answer is
+  `PMIX_ERR_BAD_PARAM`.
+
+Two properties of the scan that look like bugs and are not:
+`prevend` starts at 0, so **the span below the first mapping is itself a
+candidate hole** (which is what `VMEM_HOLE_BEGIN` names explicitly); and
+the scan stops at `[stack]`, so a gap above it is never a candidate
+however large — the VMAs up there are special and one of them is above
+the userspace limit.
+
+**`pmix_vmem_find_hole_in_map()` is how any of this is testable.** It
+takes the path of a map to scan instead of `/proc/self/maps`, and it
+exists because everything above is a property of the map the scan is
+handed: a live `/proc/self/maps` is neither reproducible nor steerable,
+and on a host without `/proc` the scan cannot be reached at all — which
+is how `util_vmem.c` came to skip itself entirely on the developer
+platform while the three defects above sat in it. The synthetic-map
+cases run everywhere. **Add a case there rather than reasoning about a
+map you cannot construct**, and note the geometry has to be chosen so
+the wrong answer *wins*: a first draft of the unparseable-entry case
+passed against the unfixed library because the bogus hole was beaten by
+a real one later in the map.
+
+Finally, the placement helpers take `size_t *` for the address they
+answer, not `unsigned long *`. Those are the same type on every platform
+PMIx is built on today and different types on any ILP32 one, where the
+mismatch is a `-Werror=incompatible-pointer-types` build failure rather
+than anything subtle. `find_hole()` hands them the caller's `size_t *`
+straight through; keep them agreeing.
+
 ### `pmix_timings` — a whole subsystem behind one configure switch
 
 Everything in `pmix_timings.c` below its opening `#if PMIX_ENABLE_TIMING`
@@ -1752,14 +1808,20 @@ helpers (`pmix_hash`) need `PMIx_server_init` because they copy values
 through the `bfrops` MCA framework (`util_hash.c` shows the pattern).
 Things that need real OS resources (pty, tty, shmem, `getid`, `few`) are
 integration-style; only the arithmetic/parsing parts (`pad_to_page`,
-`parse_map_line`, `pmix_alfg` determinism) are unit-friendly.
+`pmix_alfg` determinism) are unit-friendly. Where a helper's whole job is
+to read something the platform supplies, consider giving it a way to be
+handed that something instead — `pmix_vmem_find_hole_in_map()` is the
+model, and it turned a test that skipped itself on macOS into one that
+covers every arm of the scan on both platforms.
 
 Current coverage includes: `argv`, `alfg`, `basename`, `cmd_line`,
 `context_fns`, `environ`, `error`, `fd`, `few`, `hash` (incl. a mixed-qualifier
 regression), `if` (the tuple parser), `name_fns` (incl. special-rank
 compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,
-`string_copy`, `timings` (which runs its real cases only in an
+`string_copy`, `vmem` (the placement rules against maps the test writes,
+plus the reserve/restore round trip where there is a `/proc` to scan),
+`timings` (which runs its real cases only in an
 `--enable-pmix-timing` build), `getcwd`, `getid`, `keyval`, `pty` (the
 controlling-terminal and descriptor-ownership regressions), `tty` (the
 raw/restore round trip, and the orphaned-process-group probe that makes

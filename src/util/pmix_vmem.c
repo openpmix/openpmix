@@ -108,10 +108,15 @@ parse_map_line(
             } else if (!strncmp(next, "[stack]", 7)) {
                 *kindp = VMEM_MAP_STACK;
             } else {
-                char *end;
-                if ((end = strchr(next, '\n')) != NULL) {
-                    *end = '\0';
-                }
+                /* Do NOT truncate the line here.  An earlier version
+                 * replaced the newline with a NUL for the sake of a
+                 * tag string nothing reads, and find_hole() decides
+                 * whether it has the whole line by looking for that
+                 * newline - so every bracketed tag other than [heap]
+                 * and [stack] made it swallow the *following* map
+                 * entry as a continuation.  A swallowed entry is
+                 * invisible to the gap arithmetic, which then reports
+                 * a hole spanning a range that is mapped. */
                 *kindp = VMEM_MAP_OTHER;
             }
         } else {
@@ -126,7 +131,7 @@ static pmix_status_t
 use_hole(
     unsigned long holebegin,
     unsigned long holesize,
-    unsigned long *addrp,
+    size_t *addrp,
     unsigned long size
 ) {
     unsigned long aligned;
@@ -204,7 +209,7 @@ static pmix_status_t
 use_hole_offset(
     unsigned long holebegin,
     unsigned long holesize,
-    unsigned long *addrp,
+    size_t *addrp,
     unsigned long size,
     uint64_t scatter,
     bool scattered
@@ -257,6 +262,7 @@ use_hole_offset(
 
 static pmix_status_t
 find_hole(
+    const char *mapfile,
     pmix_vmem_hole_kind_t hkind,
     size_t *addrp,
     size_t size,
@@ -271,7 +277,24 @@ find_hole(
     FILE *file;
     char line[96];
 
-    file = fopen("/proc/self/maps", "r");
+    /* Screen the kind before opening anything.  The scan has nothing to
+     * do for a kind it does not implement, and this used to be an
+     * assert(0) in the switch below - so VMEM_HOLE_NONE or
+     * VMEM_HOLE_CUSTOM, both of which a caller can name from the
+     * installed header, aborted the process in a debug build. */
+    switch (hkind) {
+        case VMEM_HOLE_BEGIN:
+        case VMEM_HOLE_AFTER_HEAP:
+        case VMEM_HOLE_BEFORE_STACK:
+        case VMEM_HOLE_IN_LIBS:
+        case VMEM_HOLE_BIGGEST:
+        case VMEM_HOLE_BIGGEST_OFFSET:
+            break;
+        default:
+            return PMIX_ERR_BAD_PARAM;
+    }
+
+    file = fopen(mapfile, "r");
     if (!file) {
         return PMIX_ERROR;
     }
@@ -279,8 +302,10 @@ find_hole(
     while (fgets(line, sizeof(line), file) != NULL) {
         unsigned long begin = 0, end = 0;
         pmix_vmem_map_kind_t mkind = VMEM_MAP_OTHER;
+        bool parsed;
 
-        if (!parse_map_line(line, &begin, &end, &mkind)) {
+        parsed = (PMIX_SUCCESS == parse_map_line(line, &begin, &end, &mkind));
+        if (parsed) {
             switch (hkind) {
                 case VMEM_HOLE_BEGIN:
                     fclose(file);
@@ -327,14 +352,25 @@ find_hole(
                     break;
 
                 default:
-                    assert(0);
+                    /* unreachable: screened above */
+                    break;
             }
         }
 
+        /* the entry may be longer than our buffer - drain the rest of it
+         * before reading the next one */
         while (!strchr(line, '\n')) {
             if (!fgets(line, sizeof(line), file)) {
                 goto done;
             }
+        }
+
+        if (!parsed) {
+            /* Nothing was learned about this range, so it must not move
+             * prevend: carrying a zeroed end forward would put the next
+             * gap's start at address 0 and manufacture a "hole"
+             * spanning everything below the next mapping. */
+            continue;
         }
 
         if (mkind == VMEM_MAP_STACK) {
@@ -362,13 +398,19 @@ done:
     return PMIX_ERROR;
 }
 
+/* The map every caller means.  Only the test hook below names another. */
+#define PMIX_VMEM_SELF_MAPS "/proc/self/maps"
+
 pmix_status_t
 pmix_vmem_find_hole(
     pmix_vmem_hole_kind_t hkind,
     size_t *addrp,
     size_t size
 ) {
-    return find_hole(hkind, addrp, size, 0, false);
+    if (NULL == addrp) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    return find_hole(PMIX_VMEM_SELF_MAPS, hkind, addrp, size, 0, false);
 }
 
 pmix_status_t
@@ -378,7 +420,25 @@ pmix_vmem_find_hole_scattered(
     size_t *addrp,
     size_t size
 ) {
-    return find_hole(hkind, addrp, size, scatter, true);
+    if (NULL == addrp) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    return find_hole(PMIX_VMEM_SELF_MAPS, hkind, addrp, size, scatter, true);
+}
+
+pmix_status_t
+pmix_vmem_find_hole_in_map(
+    const char *mapfile,
+    pmix_vmem_hole_kind_t hkind,
+    uint64_t scatter,
+    bool scattered,
+    size_t *addrp,
+    size_t size
+) {
+    if (NULL == mapfile || NULL == addrp) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    return find_hole(mapfile, hkind, addrp, size, scatter, scattered);
 }
 
 /**
@@ -431,7 +491,13 @@ pmix_vmem_reserve(
      * input would simply fail the same way eight times. */
     enum { MAX_RESERVE_ATTEMPTS = 8 };
 
+    if (NULL == base) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     *base = 0;
+    if (0 == size) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     for (uint64_t attempt = 0; attempt < MAX_RESERVE_ATTEMPTS; ++attempt) {
         size_t addr = 0;
         pmix_status_t rc = pmix_vmem_find_hole_scattered(
