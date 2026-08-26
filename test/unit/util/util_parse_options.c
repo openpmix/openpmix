@@ -119,6 +119,41 @@ int main(int argc, char **argv)
         check_range("embedded bare dash skipped", in, exp);
     }
 
+    {
+        /* Regression: an element too big for an int used to narrow to
+         * -1 - which this parser reads as the wildcard - so a mistyped
+         * port range silently threw the caller's whole list away and
+         * replaced it with "any". It is malformed input: report it,
+         * skip it, and leave what the caller already had alone. */
+        char **out = NULL;
+        const char *const exp[] = {"7", NULL};
+        char seed[] = "7";
+        char in[] = "4294967295";
+        pmix_util_parse_range_options(seed, &out);
+        pmix_util_parse_range_options(in, &out);
+        report("out-of-range value is not the wildcard", argv_equals(out, exp));
+        PMIx_Argv_free(out);
+    }
+    {
+        const char *const exp[] = {NULL};
+        char in[] = "abc";
+        check_range("non-numeric element yields nothing", in, exp);
+    }
+    {
+        /* the end of a range has to be a number too - "1-abc" used to
+         * read as 1..0 and quietly expand to nothing, while "abc-1"
+         * read as 0..1 and invented two values */
+        const char *const exp[] = {NULL};
+        char in[] = "abc-1";
+        check_range("non-numeric range start yields nothing", in, exp);
+    }
+    {
+        /* whitespace around an element is tolerated, as it always was */
+        const char *const exp[] = {"1", "3", "4", NULL};
+        char in[] = "1 , 3 - 4";
+        check_range("whitespace around elements", in, exp);
+    }
+
     /* NULL input is a documented no-op */
     {
         char **out = NULL;

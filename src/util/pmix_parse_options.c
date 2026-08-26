@@ -23,6 +23,9 @@
  */
 #include "pmix_config.h"
 
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,6 +44,43 @@
 
 #include "src/util/pmix_parse_options.h"
 
+/*
+ * Read one whole token as an int.
+ *
+ * strtol() answers 0 for a string with no digits in it and saturates at
+ * LONG_MAX/LONG_MIN for one that is too big, and neither of those is
+ * distinguishable from a real value once it has been narrowed to an
+ * int - "4294967295" and "99999999999999999999" both narrow to -1,
+ * which this file reads as the wildcard meaning "every value", so a
+ * mistyped port range silently discarded the caller's whole list and
+ * replaced it with "any". Insist on digits, on nothing after them, and
+ * on a value an int can actually hold.
+ */
+static bool parse_whole_int(const char *str, int *val)
+{
+    char *endptr;
+    long tmp;
+
+    if (NULL == str || '\0' == *str) {
+        return false;
+    }
+    errno = 0;
+    tmp = strtol(str, &endptr, 10);
+    if (endptr == str || 0 != errno || tmp < INT_MIN || tmp > INT_MAX) {
+        return false;
+    }
+    /* strtol skips leading whitespace on its own; allow trailing
+     * whitespace too, so a list written as "1, 3" keeps working */
+    while (isspace((unsigned char) *endptr)) {
+        ++endptr;
+    }
+    if ('\0' != *endptr) {
+        return false;
+    }
+    *val = (int) tmp;
+    return true;
+}
+
 void pmix_util_parse_range_options(char *inp, char ***output)
 {
     char **r1 = NULL, **r2 = NULL;
@@ -57,6 +97,9 @@ void pmix_util_parse_range_options(char *inp, char ***output)
 
     /* protect the provided input */
     input = strdup(inp);
+    if (NULL == input) {
+        return;
+    }
 
     /* check for the special '!' operator */
     if (NULL != (bang = strchr(input, '!'))) {
@@ -71,14 +114,16 @@ void pmix_util_parse_range_options(char *inp, char ***output)
         r2 = PMIx_Argv_split(r1[i], '-');
         if (1 < PMIx_Argv_count(r2)) {
             /* given range - get start and end */
-            start = strtol(r2[0], NULL, 10);
-            end = strtol(r2[1], NULL, 10);
+            if (!parse_whole_int(r2[0], &start) || !parse_whole_int(r2[1], &end)) {
+                pmix_output(0, "Unknown parse error on string: %s(%s)", inp, r1[i]);
+                PMIx_Argv_free(r2);
+                continue;
+            }
         } else {
             /* check for wildcard - have to do this here because
              * the -1 would have been caught in the split
              */
-            vint = strtol(r1[i], NULL, 10);
-            if (-1 == vint) {
+            if (parse_whole_int(r1[i], &vint) && -1 == vint) {
                 PMIx_Argv_free(*output);
                 *output = NULL;
                 PMIx_Argv_append_nosize(output, "-1");
@@ -92,7 +137,11 @@ void pmix_util_parse_range_options(char *inp, char ***output)
                 PMIx_Argv_free(r2);
                 continue;
             }
-            start = strtol(r2[0], NULL, 10);
+            if (!parse_whole_int(r2[0], &start)) {
+                pmix_output(0, "Unknown parse error on string: %s(%s)", inp, r1[i]);
+                PMIx_Argv_free(r2);
+                continue;
+            }
             end = start;
         }
         for (n = start; n <= end; n++) {
@@ -123,6 +172,9 @@ void pmix_util_get_ranges(char *inp, char ***startpts, char ***endpts)
 
     /* protect the provided input */
     input = strdup(inp);
+    if (NULL == input) {
+        return;
+    }
 
     /* split on commas */
     r1 = PMIx_Argv_split(input, ',');

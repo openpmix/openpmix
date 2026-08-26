@@ -271,6 +271,44 @@ flags and must not be eaten. Regression cases are
 `test_parse_positional_first` / `test_parse_positional_after_options` in
 [`test/unit/util/util_cmd_line.c`](../../test/unit/util/util_cmd_line.c).
 
+### `pmix_parse_options` — the port-range expander
+
+Two functions that turn `"1,3-5"` into an argv. Their only callers are
+the `ptl` and `pnet/tcp` port-range parameters, which is what makes
+them worth care: **the strings they read come straight from an MCA
+parameter or a host-supplied info key**, so every malformed input is a
+user typo rather than a library bug, and none of it may take the
+process down or be silently reinterpreted.
+
+- **`strtol()` cannot tell you it failed, and its answer here was
+  narrowed to an `int`.** It answers 0 for a string with no digits in
+  it, and saturates at `LONG_MAX` for one that is too big — and
+  `LONG_MAX` narrowed to `int` is `-1`, which this parser reads as the
+  *wildcard*. So `ptl_base_ipv4_ports=4294967295` discarded whatever the
+  caller had already collected and replaced it with "any port", and
+  `ptl_base_ipv4_ports=abc` quietly became port 0. Both are now reported
+  and skipped, by `parse_whole_int()`, which insists on digits, on
+  nothing but whitespace after them, and on a value an `int` can hold.
+  Pinned by `util_parse_options.c`.
+- **The expansion can produce nothing at all, and its callers index
+  element 0.** `"-"` splits to no tokens (`PMIx_Argv_split` drops empty
+  fields), and a malformed element is now skipped, so `*output` is
+  legitimately `NULL` on return. Four sites in `src/mca/ptl/base` read
+  `ports[0]` to see whether the user had asked for the wildcard, which
+  meant `PMIX_MCA_ptl_base_ipv4_ports=-` **segfaulted every PMIx client
+  inside `PMIx_Init`**. `pnet/tcp` got this right by asking
+  `PMIx_Argv_count()` first. If you call this function, the answer may
+  be empty — the regression is the `setenv` at the top of
+  [`test/unit/ptl_uri.c`](../../test/unit/ptl_uri.c), which dies on a
+  signal rather than failing a case.
+- Both functions return `void`, so an allocation failure is invisible
+  to the caller and a malformed element can only be *reported*, not
+  returned. `pmix_util_get_ranges()` — installed API with no in-tree
+  caller — builds two parallel arrays a pair at a time, so an
+  allocation failure between the two would leave them different
+  lengths, and there is no way to say so. Do not add a caller that
+  needs to know.
+
 ### `pmix_hash` — the TMA-aware datastore helper
 
 Backs the `gds` framework. Stores `pmix_dstor_t` values per rank in a
