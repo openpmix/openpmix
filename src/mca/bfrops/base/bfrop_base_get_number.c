@@ -89,9 +89,16 @@ static pmix_status_t check_status(const pmix_value_t *value,
 static pmix_status_t check_pid(const pmix_value_t *value,
                                void *dest, pmix_data_type_t type);
 
+static pmix_data_type_t plain_integer_type(pmix_data_type_t type);
+
+static bool structured_number(pmix_data_type_t type);
+
 pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
                                     void *dest, pmix_data_type_t type)
 {
+    pmix_value_t plain;
+    pmix_data_type_t base;
+
     /* the type tag is the first thing every branch below reads, and the
      * destination is written by every one that matches, so both have to be
      * screened here. Callers reach this with the "value" member of a
@@ -101,6 +108,36 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
      * equally exposed */
     if (NULL == value || NULL == dest) {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* Stated once here rather than at the tail of every check_*: a PMIx
+     * structured value is not unloaded into a DIFFERENT structured value
+     * type, however alike the integers underneath them are.  A scope is not
+     * a proc state and an allocation directive is not a status, and a caller
+     * that asked for one of those from the other has made a mistake worth
+     * hearing about.  Reading either one as a plain integer, or building
+     * either one from a plain integer, is exactly what this function is
+     * for and stays allowed. */
+    if (value->type != type &&
+        structured_number(value->type) && structured_number(type)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* Rewrite a named integer as the plain one underneath it, at both ends.
+     * The union members alias, so the copy carries the datum across without
+     * naming which member holds it - and `plain` is only ever read as an
+     * integer, so it owns nothing and needs no destructor. */
+    base = plain_integer_type(value->type);
+    if (PMIX_UNDEF != base) {
+        plain = *value;
+        plain.type = base;
+        value = &plain;
+    }
+    base = plain_integer_type(type);
+    if (PMIX_UNDEF != base) {
+        /* same width and representation as the type the caller named, so
+         * the store below writes exactly the destination they handed us */
+        type = base;
     }
 
     if (PMIX_SIZE == value->type) {
@@ -2502,3 +2539,67 @@ static pmix_status_t check_pid(const pmix_value_t *value,
     return PMIX_ERR_BAD_PARAM;
 }
 
+/* The integer underneath a PMIx type that is an integer wearing a name.
+ *
+ * A pmix_scope_t, a pmix_proc_state_t, a pmix_alloc_inheritance_t and a
+ * dozen more are each a fixed-width unsigned integer given its own type tag
+ * and its own member of the value union.  The number in one of them is a
+ * number, and a caller asking for it is asking a question with an answer -
+ * but the answer used to be PMIX_ERR_BAD_PARAM, because this function knew
+ * only the plain widths plus PMIX_PID, PMIX_STATUS and PMIX_PROC_RANK.
+ *
+ * That mattered most where the documentation tells a caller to use the
+ * named type: an attribute annotated "(pmix_alloc_inheritance_t)" is loaded
+ * with PMIX_ALLOC_INHERIT, and the reader PMIx offers for it then refused
+ * the spelling PMIx had asked for.  Every host was left writing the same
+ * special case.
+ *
+ * Rather than give each of these an arm in each of the fifteen check_*
+ * functions, name the plain type underneath and let the ordinary
+ * conversions do the work - so the range and precision checks apply to
+ * them exactly as they do to everything else.  Returns PMIX_UNDEF for a
+ * type that is not one of the family.
+ *
+ * The widths here are the ones pmix_bfrops_base_value_load() stores; keep
+ * the two in step.
+ */
+static pmix_data_type_t plain_integer_type(pmix_data_type_t type)
+{
+    switch (type) {
+    case PMIX_PERSIST:
+    case PMIX_SCOPE:
+    case PMIX_DATA_RANGE:
+    case PMIX_PROC_STATE:
+    case PMIX_ALLOC_DIRECTIVE:
+    case PMIX_RESBLOCK_DIRECTIVE:
+    case PMIX_ALLOC_INHERIT:
+    case PMIX_JOB_STATE:
+    case PMIX_LINK_STATE:
+        return PMIX_UINT8;
+
+    case PMIX_LOCTYPE:
+    case PMIX_STOR_ACCESS_TYPE:
+        return PMIX_UINT16;
+
+    case PMIX_DEVTYPE:
+    case PMIX_STOR_MEDIUM:
+    case PMIX_STOR_ACCESS:
+    case PMIX_STOR_PERSIST:
+        return PMIX_UINT64;
+
+    default:
+        return PMIX_UNDEF;
+    }
+}
+
+/* Is this type a number PMIx has given a meaning to, rather than a bare
+ * width?  PMIX_PID, PMIX_STATUS and PMIX_PROC_RANK are the three the
+ * check_* functions already recognized; the rest come from the family
+ * above. */
+static bool structured_number(pmix_data_type_t type)
+{
+    if (PMIX_PID == type || PMIX_STATUS == type || PMIX_PROC_RANK == type) {
+        return true;
+    }
+    return (PMIX_UNDEF != plain_integer_type(type));
+}
