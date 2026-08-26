@@ -458,8 +458,10 @@ failures only in an ordinary build.
 
 Editing the build system means regenerating it — `make` alone can't,
 and trying will wedge the tree. If you change `configure.ac` or any
-`config/*.m4` file (including the embedded oac/Autotools macros), the
-change does not take effect until the build system is regenerated. Do
+`config/*.m4` file, the change does not take effect until the build
+system is regenerated — and so does a submodule bump that moves
+`config/oac` (see [below](#configoac-is-not-ours-to-edit)), even though
+you did not edit anything yourself. Do
 not rely on a plain `make`: PMIx builds in maintainer mode, so
 `make` auto-triggers a partial in-tree Autotools regeneration that
 frequently fails (e.g., unexpanded `OAC_*` macros, `config.status`
@@ -481,6 +483,28 @@ Note that editing `Makefile.am` files do *not* require the full
 `autogen.pl` + `./configure` process.  A simple `make` will regenerate
 the relevant `Makefile[.in]` files and then complete the build
 successfully.
+
+### `config/oac` is not ours to edit
+
+`config/oac` is a **git submodule** — the Open Autotools Components,
+shared with Open MPI (`.gitmodules` points it at `open-mpi/oac`). It is
+third-party code with its own upstream, so the no-hand-editing rule
+above applies to all of it: an edit made from this tree is either lost
+at the next submodule update or silently diverges the two projects that
+share it.
+
+That means it is also **out of scope for any sweep across
+`config/*.m4`** — a cleanup, a dead-platform removal, a style pass. If
+you find a real defect in an OAC macro, route it: file an issue against
+`open-mpi/oac` and say so in your commit message or PR, rather than
+patching it here. Check `git diff --stat -- config/oac` before you
+commit anything that touched `config/`; it should be empty.
+
+The same goes for the other code in the tree that is not ours to
+change: the autotools output (`configure`, `config/libtool.m4`,
+`Makefile.in`, …) and vendored third-party headers such as
+[`src/include/pmix_portable_platform_real.h`](src/include/pmix_portable_platform_real.h),
+whose license explicitly forbids modifying parts of it.
 
 
 **"Did I break it?" — layered:**
