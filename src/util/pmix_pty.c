@@ -87,9 +87,6 @@
 
 #ifdef HAVE_PTSNAME
 #    include <stdlib.h>
-#    ifdef HAVE_STROPTS_H
-#        include <stropts.h>
-#    endif
 #endif
 
 #ifdef HAVE_UTIL_H
@@ -211,7 +208,9 @@ int pmix_ptysopen(int fdm, char *pts_name)
     int fds;
 
     /* the master descriptor belongs to our caller: we neither use nor
-     close it, but it stays in the signature, which is frozen */
+     close it.  It stays in the signature because the signature is
+     frozen - the last route that needed it was the STREAMS module push
+     on Solaris, which this library no longer supports. */
     PMIX_HIDE_UNUSED_PARAMS(fdm);
 
 #    ifdef HAVE_PTSNAME
@@ -225,23 +224,6 @@ int pmix_ptysopen(int fdm, char *pts_name)
                             pts_name, strerror(errno));
         return -5;
     }
-#        if defined(__SVR4) && defined(__sun)
-    int errsave;
-
-    if (0 > ioctl(fds, I_PUSH, "ptem")) {
-        errsave = errno;
-        close(fds);  // might change errno
-        errno = errsave;
-        return -6;
-    }
-    if (0 > ioctl(fds, I_PUSH, "ldterm")) {
-        errsave = errno;
-        close(fds);  // might change errno
-        errno = errsave;
-        return -7;
-    }
-#        endif
-
     /* Deliberately NO TIOCSCTTY here.  This runs in the process that is
      opening the pty, not in the child that will use it, and TIOCSCTTY
      succeeds for any session leader that has no controlling terminal -

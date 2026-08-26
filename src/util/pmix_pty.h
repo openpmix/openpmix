@@ -113,10 +113,9 @@ PMIX_EXPORT int pmix_ptymopen(char *pts_name, size_t maxlen);
  * @return          the slave descriptor, or a negative value on failure
  *
  * **The master descriptor stays the caller's.** This function neither
- * closes it nor keeps it - it is in the signature for the platforms
- * whose STREAMS setup needs it - so a caller unwinding after a failure
- * here must close it itself.  Nothing this function opened survives a
- * failure.
+ * closes it nor keeps it - it remains in the signature only because the
+ * signature is frozen - so a caller unwinding after a failure here must
+ * close it itself.  Nothing this function opened survives a failure.
  */
 PMIX_EXPORT int pmix_ptysopen(int fdm, char *pts_name);
 
