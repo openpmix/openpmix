@@ -48,6 +48,13 @@ pmix_status_t pmix_pgpu_base_allocate(char *nspace, pmix_info_t info[], size_t n
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* NOT a guard on the walk below - the walk is safe on an empty list,
+     * as every other PMIX_LIST_FOREACH in the tree relies on. This is an
+     * early-out that also skips the namespace object built for the
+     * modules to hang data on: with no module to receive it, publishing a
+     * bare namespace onto pmix_globals.nspaces would change what walkers
+     * of that list find (_dmodex_req takes its "we know this nspace"
+     * branch on the strength of an entry with no ranks). */
     if (0 == pmix_list_get_size(&pmix_pgpu_globals.actives)) {
         return PMIX_SUCCESS;
     }
@@ -103,6 +110,9 @@ pmix_status_t pmix_pgpu_base_setup_local(char *nspace, pmix_info_t info[], size_
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* NOT a guard on the walk below - see the note in allocate(). What
+     * this skips is the pmix_pgpu_globals.nspaces cache entry built for
+     * the modules; with none selected, nothing would ever read it. */
     if (0 == pmix_list_get_size(&pmix_pgpu_globals.actives)) {
         return PMIX_SUCCESS;
     }
@@ -373,10 +383,6 @@ void pmix_pgpu_base_child_finalized(pmix_proc_t *peer)
         return;
     }
 
-    if (0 == pmix_list_get_size(&pmix_pgpu_globals.actives)) {
-        return;
-    }
-
     PMIX_LIST_FOREACH (active, &pmix_pgpu_globals.actives, pmix_pgpu_base_active_module_t) {
         if (NULL != active->module->child_finalized) {
             active->module->child_finalized(peer);
@@ -395,10 +401,6 @@ void pmix_pgpu_base_local_app_finalized(pmix_namespace_t *nptr)
 
     /* protect against bozo inputs */
     if (NULL == nptr) {
-        return;
-    }
-
-    if (0 == pmix_list_get_size(&pmix_pgpu_globals.actives)) {
         return;
     }
 
