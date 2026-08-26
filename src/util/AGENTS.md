@@ -1480,6 +1480,89 @@ Two things deliberately left alone:
   platform with `openpty(3)`, and the one caller it can have runs before
   a fork; do not add a second one on another thread.
 
+### `pmix_tty` — verifying a set that the driver only half made
+
+Five wrappers over `tcgetattr`/`tcsetattr` and the winsize ioctls.
+`pmix_tty.h` is installed, and nothing in PMIx or PRRTE calls any of
+them, so — like [`pmix_getid`](#pmix_getid--installed-api-with-no-caller)
+— judge them as API rather than as code with a known caller.
+
+They hold no state, allocate nothing and take no locks, which makes them
+reentrant and usable between `fork` and `exec`. What is not atomic is a
+read-modify-write of one terminal: `pmix_settermios()` reads the current
+settings so it can put them back and `pmix_setraw()` reads them so it
+can hand them to the caller, so two threads driving the same terminal
+each undo the other. That is a caller's problem to serialize, and it is
+written down in the header rather than fixed here — a leaf utility has
+no handle to lock on.
+
+**The whole difficulty in this file is that `tcsetattr(3)` reports
+success when *any* part of the request was applied.** A caller cannot
+act on that, so `pmix_settermios()` reads the settings back and requires
+them to match. Two things about that check have been wrong, in opposite
+directions, and both are easy to reintroduce:
+
+- **It used to answer `PMIX_SUCCESS` when `tcsetattr` failed outright.**
+  The failure arm restored the old settings and preserved `errno`, and
+  then fell out of the `if` into the function's trailing
+  `return PMIX_SUCCESS`. So a `pmix_setraw()` that did nothing at all
+  reported that the terminal was raw, and the caller reads echoed,
+  line-buffered input forever with nothing about the descriptor it holds
+  to say why.
+- **It compared `c_lflag` in full, and part of `c_lflag` is not a
+  setting.** `FLUSHO` and `PENDIN` are status the driver maintains for
+  itself — `PENDIN` means queued input has yet to be retyped, which is
+  exactly what re-enabling canonical mode produces — and `EXTPROC` can be
+  turned on from the master end of a pty without the slave's caller
+  asking. So `pmix_setraw()` followed by a restore of the settings it
+  handed back failed with `EINVAL` on macOS, having applied them
+  perfectly. `PMIX_TTY_LFLAG_STATUS` is the mask that keeps those bits
+  out of the comparison; do not "simplify" it away. Note that this is
+  the *second* pass at the same check — an earlier one replaced a
+  whole-struct `memcmp` with per-field compares for the same class of
+  reason, and did not go far enough.
+
+The function is now all-or-nothing: every failure arm, including a
+read-back that does not match, puts the terminal back the way it was
+found before reporting. Keep it that way — a caller told "no" while the
+terminal sits in a state neither of you chose has nothing it can do.
+
+**Making `tcsetattr` fail on demand is the hard part of testing this,
+and POSIX gives exactly one portable lever.** `tcsetattr` on a process's
+*controlling* terminal from a process group that is both in the
+background and **orphaned** fails with `EIO`, and no `SIGTTOU` is
+delivered. (Merely being in the background is not enough, and ignoring
+`SIGTTOU` makes it *succeed* rather than fail — the ignore/block case is
+explicitly permitted to perform the operation.) Building that position
+takes three processes, and
+[`test/unit/util/util_tty.c`](../../test/unit/util/util_tty.c) does:
+a session leader that acquires the pty as its controlling terminal, a
+child that moves itself into its own process group, and a grandchild
+left orphaned when that child exits. **The session leader has to stay
+alive until the verdict is in** — when the controlling process dies the
+terminal is disassociated from the session and, on BSD-derived systems,
+the slave is revoked out from under the probe, which shows up as
+`tcgetattr` failing for no visible reason.
+
+`pmix_setraw()` clears the line discipline — canonical mode, echo,
+signals, extended input, input and output post-processing — and asks for
+one character at a time with a blocking read. It deliberately does not
+touch `c_cflag`: no `CS8`, no parity clearing. That is
+[TLPI]'s `ttySetRaw()` rather than `cfmakeraw(3)`, and it is the right
+shape here, because the control modes mean nothing on a pty. A caller
+that wants a character size or parity asks for it itself.
+
+[TLPI]: https://man7.org/tlpi/
+
+**The `#else`/`HAVE_TERMIO_H` arm below `HAVE_TERMIOS_H` is inert.**
+`<termio.h>` is the SVR4 header for `struct termio` and the `TCGETA`
+family; it declares neither `struct termios` nor `tcgetattr`/`tcsetattr`,
+so on a platform that really lacked `<termios.h>` this file would not
+compile with or without it. The same three-line idiom appears in
+`pmix_pty.{c,h}` and `src/common/pmix_pfexec.c`, so it is left alone
+here — retiring it is a tree-wide change that should also drop the
+`configure` probe, not a per-file edit.
+
 ### `pmix_printf` — two implementations, only one of which you compile
 
 Four `PMIX_EXPORT` wrappers over `asprintf`/`snprintf`. On any platform
@@ -1657,7 +1740,9 @@ compare), `net`, `os_dirpath`, `os_path`, `output`, `parse_options`
 (incl. the bare-`-` crash regression), `path`, `printf`, `show_help`,
 `string_copy`, `timings` (which runs its real cases only in an
 `--enable-pmix-timing` build), `getcwd`, `getid`, `keyval`, `pty` (the
-controlling-terminal and descriptor-ownership regressions), `shmem` (the
+controlling-terminal and descriptor-ownership regressions), `tty` (the
+raw/restore round trip, and the orphaned-process-group probe that makes
+`tcsetattr` fail), `shmem` (the
 symlink/stale-file halves of the create, and the reference-count
 lifetime), `show_help` (the `#include` parser and the termination
 flush).
@@ -1780,7 +1865,10 @@ A second pass then cleared the remaining latent/robustness items:
 - **`pmix_tty.c`.** `pmix_settermios` verified a set via a full-struct
   `memcmp` of `struct termios` (padding / canonicalized fields → spurious
   failures) — now compares the individual POSIX fields (`c_iflag`,
-  `c_oflag`, `c_cflag`, `c_lflag`, `c_cc`).
+  `c_oflag`, `c_cflag`, `c_lflag`, `c_cc`), with the driver-maintained
+  status bits masked out of `c_lflag`; see
+  [`pmix_tty`](#pmix_tty--verifying-a-set-that-the-driver-only-half-made)
+  for why the field compare on its own was still not enough.
 
 ## Known issue left as-is (by design)
 

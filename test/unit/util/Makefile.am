@@ -19,7 +19,7 @@ check_PROGRAMS = util_hash util_name_fns \
     util_environ util_alfg util_printf util_os_dirpath \
     util_net util_if util_parse_options util_os_path \
     util_fd util_few util_vmem util_getcwd util_getid util_keyval util_pty \
-    util_shmem hash_perf
+    util_tty util_shmem hash_perf
 
 TESTS = util_hash util_name_fns \
     util_output util_error util_cmd_line \
@@ -28,7 +28,7 @@ TESTS = util_hash util_name_fns \
     util_environ util_alfg util_printf util_os_dirpath \
     util_net util_if util_parse_options util_os_path \
     util_fd util_few util_vmem util_getcwd util_getid util_keyval util_pty \
-    util_shmem hash_perf
+    util_tty util_shmem hash_perf
 
 util_keyval_SOURCES = util_keyval.c
 util_keyval_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -117,6 +117,15 @@ util_pty_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_pty_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+# termios/winsize helpers. Needs a real terminal, so every case runs
+# against a pty; the failure case needs three processes to build the
+# only position POSIX lets tcsetattr fail from. See the header comment
+# in util_tty.c.
+util_tty_SOURCES = util_tty.c
+util_tty_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+util_tty_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 util_printf_SOURCES = util_printf.c
 util_printf_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 util_printf_LDADD = \
@@ -191,4 +200,4 @@ clean-local:
 	    util_environ util_alfg util_printf util_os_dirpath \
 	    util_net util_if util_parse_options util_os_path \
 	    util_fd util_few util_vmem util_getcwd util_getid util_keyval util_pty \
-	    util_shmem hash_perf
+	    util_tty util_shmem hash_perf
