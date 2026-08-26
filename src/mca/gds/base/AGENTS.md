@@ -313,23 +313,6 @@ that number came from, and the section after it for why large string
 values are no longer compressed individually before they reach the
 bucket — the same cross-rank redundancy argument, pointing the other
 way.
-||||||| parent of 442f2f2aa (Screen the modex contribution's flag byte, and name the delta marker)
-- **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`) and the
-  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags, with the
-  `PMIX_GDS_*_IS_SET` accessors — the encoding a modex reader uses to
-  learn how keys were written and whether data was collected.
-=======
-- **`pmix_gds_modex_key_fmt_t`** (`NATIVE_FMT` / `KEYMAP_FMT`) and the
-  `PMIX_GDS_COLLECT_BIT` / `PMIX_GDS_KEYMAP_BIT` blob-info flags with their
-  `PMIX_GDS_*_IS_SET` accessors. **These describe an encoding the tree does
-  not use.** Nothing outside this header references any of them — the flag
-  byte a contribution actually carries is a plain `pmix_collect_t` value,
-  packed as a `uint8_t` by `pmix_server_collect_data` and read back as one
-  here, not a bitmask. Do not reach for the bit macros on the assumption
-  that they describe the wire; if a second thing ever does need saying
-  about a contribution, decide then whether to make the byte a bitmask (and
-  convert both ends) or to add another value, as `PMIX_MODEX_DELTA` did.
->>>>>>> 442f2f2aa (Screen the modex contribution's flag byte, and name the delta marker)
 
 ## When working here
 
