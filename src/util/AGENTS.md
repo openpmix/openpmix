@@ -418,6 +418,36 @@ Four invariants in here are easy to break and hard to see broken.
   `make_copy()` loads that string as the key it reports to the
   application.
 
+### `pmix_string_copy` — and the "getline" that does not read a line
+
+`pmix_string_copy()` is the always-terminating bounded copy, and it does
+what its header says: at most `dest_len` bytes are written, the last of
+them a `\0`, with no right-padding. Its `assert()` on a `dest_len` over
+128K is a bozo check for a programmer error, not a contract a caller may
+lean on — `-DNDEBUG` removes it, and `pmix_getcwd` sits close enough to
+that bound to be worth knowing about (see its section above).
+
+`pmix_getline()` is the one to be careful with, because its name
+promises more than it does. It is one `fgets()` into a 1024-byte stack
+buffer, so **a line longer than 1023 bytes comes back in pieces, with no
+error and no marker** — the next call returns the tail, which a caller
+reading successive lines will take for the next line. The in-tree
+callers (`ptl_base_listener`'s stale-rendezvous check, `ptl_base_fns`'
+server-URI reads) are all reading files PMIx itself wrote, whose lines
+are a URI, a version, a pid and a uid:gid pair, so none of them is close
+to the limit — but the header is installed, so the limit is now written
+down there rather than left to be discovered.
+
+Two smaller things follow from the same one-`fgets` shape. A returned
+line is **not** necessarily newline-terminated in the file: the newline
+is stripped when present, and is absent both for a final line without
+one and for a 1023-byte fragment, so it says nothing about where the
+line came from. And `NULL` means end-of-file, a read error, or a failed
+`strdup`, indistinguishably; there is no other channel, and the callers
+treat it as "the writer had not finished yet". Both boundaries, and the
+long-line split, are pinned by
+[`test/unit/util/util_string_copy.c`](../../test/unit/util/util_string_copy.c).
+
 ### `pmix_basename` — two implementations, one of them invisible
 
 `pmix_dirname()` has two bodies behind a configure-time `#if`. Where
