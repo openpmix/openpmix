@@ -144,7 +144,7 @@ char *pmix_path_find(char *fname, char **pathv, int mode, char **envv)
     /* Consider each directory until the file is found.  Thus, the
        order of directories is important. */
 
-    while (pathv[i] && NULL == fullpath) {
+    while (NULL != pathv[i] && NULL == fullpath) {
 
         /* Replace environment variable at the head of the string. */
         if ('$' == *pathv[i]) {
@@ -165,7 +165,7 @@ char *pmix_path_find(char *fname, char **pathv, int mode, char **envv)
             env = list_env_get(varname, envv);
             free(varname);
             if (NULL != env) {
-                if (!delimit) {
+                if (NULL == delimit) {
                     fullpath = pmix_path_access(fname, env, mode);
                 } else {
                     pfix = (char *) calloc((strlen(env) + strlen(delimit) + 1), sizeof(char));
@@ -424,7 +424,7 @@ bool pmix_path_nfs(char *fname, char **fstype)
     dev_t dev;
     char buf[1024];
     int fd, n;
-    char* fs_types[] = {
+    const char *fs_types[] = {
         "lustre",
         "nfs",
         "autofs",
@@ -446,32 +446,33 @@ bool pmix_path_nfs(char *fname, char **fstype)
             return false;
         }
     }
-    if (fstat(fd, &s) != 0) {
+    if (0 != fstat(fd, &s)) {
         close(fd);
         return false;
     }
     close(fd);
 
-    // retain the inode of the file
+    // retain the device the file lives on - st_dev, not the inode:
+    // what identifies a mount point is the device, and two files on
+    // the same filesystem share it
     dev = s.st_dev;
 
     // try a couple of possible locations for the
     // mount table
-    if ((fp = setmntent("/proc/mounts", "r")) == NULL) {
-        if ((fp = setmntent("/etc/mtab", "r")) == NULL) {
+    if (NULL == (fp = setmntent("/proc/mounts", "r"))) {
+        if (NULL == (fp = setmntent("/etc/mtab", "r"))) {
             return false;
         }
     }
 
-    // search the mount table for an entry with
-    // matching inode
+    // search the mount table for an entry on the same device
     while (getmntent_r(fp, &mnt, buf, sizeof(buf))) {
         fd = open(mnt.mnt_dir, O_RDONLY);
         if (0 > fd) {
             // probably lack permissions
             continue;
         }
-        if (fstat(fd, &s) != 0) {
+        if (0 != fstat(fd, &s)) {
             close(fd);
             continue;
         }
