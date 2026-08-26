@@ -113,37 +113,53 @@ def main():
     # output as the process runs
     p = subprocess.Popen(args, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    # define storage to catch the output
-    stdout = []
-    stderr = []
-    # loop until the pipes close
-    while True:
-        reads = [p.stdout.fileno(), p.stderr.fileno()]
-        ret = select.select(reads, [], [])
+    # Drain the child's pipes until both reach EOF, then reap it.
+    #
+    # Three things this has to get right, and the loop that was here got
+    # none of them.  It must not wait forever on a child that has wedged:
+    # select() with no timeout meant a stuck client wedged the scheduler
+    # too, and CI killed the pair after five minutes with nothing to show
+    # for it.  It must not stop reading while a pipe still holds data: the
+    # done flags were reset on every iteration and cleared only for the
+    # descriptors select() happened to return, so an EOF on stderr while
+    # stdout was merely idle ended the loop and discarded the rest of the
+    # client's output.  And it must look at how the child exited - nothing
+    # ever reaped it, so a client that FAILED was reported as a pass.
+    #
+    # A pipe is dropped from the watch list when it reads EOF, so the loop
+    # ends when the child has closed both and not before.  The idle timer
+    # covers a child that stops talking; it is reset by any output, so a
+    # slow client is not mistaken for a stuck one.
+    idle_limit = 60
+    deadline = time.time() + idle_limit
+    reads = [p.stdout, p.stderr]
+    while reads:
+        ready, _, _ = select.select(reads, [], [], 1.0)
+        if not ready:
+            if time.time() > deadline:
+                print("CLIENT PRODUCED NO OUTPUT FOR %d SECONDS - KILLING IT"
+                      % idle_limit)
+                p.kill()
+                break
+            continue
+        for f in ready:
+            line = f.readline()
+            if not line:
+                # EOF on this pipe - stop watching it, keep the other
+                reads.remove(f)
+                continue
+            label = 'stdout: ' if f is p.stdout else 'stderr: '
+            print(label + line.decode('utf-8').rstrip())
+            deadline = time.time() + idle_limit
 
-        stdout_done = True
-        stderr_done = True
-
-        for fd in ret[0]:
-            # if the data
-            if fd == p.stdout.fileno():
-                read = p.stdout.readline()
-                if read:
-                    read = read.decode('utf-8').rstrip()
-                    print('stdout: ' + read)
-                    stdout_done = False
-            elif fd == p.stderr.fileno():
-                read = p.stderr.readline()
-                if read:
-                    read = read.decode('utf-8').rstrip()
-                    print('stderr: ' + read)
-                    stderr_done = False
-
-        if stdout_done and stderr_done:
-            break
+    status = p.wait()
+    print("CLIENT EXITED WITH", status)
 
     print("FINALIZING")
     foo.finalize()
+
+    if 0 != status:
+        exit(1)
 
 if __name__ == '__main__':
     global killer
