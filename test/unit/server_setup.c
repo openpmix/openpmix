@@ -59,6 +59,16 @@
  * re-running: SIGSEGV (exit 139) each time, with no output at all, since
  * stdout is block-buffered when the harness captures it. So a regression
  * here looks like an empty log and a signal, not like a FAIL line.
+ *
+ *   role completeness - the three setup calls a launcher makes fan out to
+ *     pnet and pgpu side by side, and PMIx_tool_init opened only pnet. A
+ *     base function whose framework never opened walks an actives list
+ *     that was never constructed, so PMIx_server_setup_fork took a
+ *     launcher down; setup_application and setup_local_support survived
+ *     only because their pgpu counterparts happen to open with a list-size
+ *     guard, which meant the whole pgpu path was silently dead for a
+ *     launcher instead. The launcher cases run in a forked child for the
+ *     same reason as the rest: this process becomes a server below.
  */
 
 #include "src/include/pmix_config.h"
@@ -879,6 +889,67 @@ static int setup_tool_child(int which)
     return (PMIX_SUCCESS == setup_status) ? 0 : 5;
 }
 
+/* The launcher shape, which is not the same as the tool shape above.
+ * PMIx_tool_init opens pnet and pgpu only for a launcher or a scheduler,
+ * and the three server-side setup calls a launcher makes fan out to both
+ * of those frameworks side by side. A launcher that came up without one
+ * of them reaches a base function whose actives list was never
+ * constructed - the walk starts at a NULL sentinel - so this comes up as
+ * prun does and requires all three calls to be answered and the process
+ * to still be alive afterwards.
+ *
+ * PMIx_server_setup_fork is the one that failed: pmix_pgpu_base_setup_fork
+ * walks its actives list with no size guard, and the call is blocking, so
+ * the child died before the API returned anything at all. */
+static int setup_launcher_child(int which)
+{
+    pmix_proc_t myproc, child;
+    pmix_info_t tinfo[2], info;
+    pmix_status_t rc;
+    char **env = NULL;
+    uint32_t one = 1;
+
+    PMIX_INFO_LOAD(&tinfo[0], PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&tinfo[1], PMIX_LAUNCHER, NULL, PMIX_BOOL);
+    rc = PMIx_tool_init(&myproc, tinfo, 2);
+    PMIX_INFO_DESTRUCT(&tinfo[0]);
+    PMIX_INFO_DESTRUCT(&tinfo[1]);
+    if (PMIX_SUCCESS != rc) {
+        return 3;
+    }
+
+    if (2 == which) {
+        /* the crash case - blocking, so surviving it IS the assertion */
+        PMIX_LOAD_PROCID(&child, myproc.nspace, 0);
+        rc = PMIx_server_setup_fork(&child, &env);
+        PMIx_Argv_free(env);
+        PMIx_tool_finalize();
+        return (PMIX_SUCCESS == rc) ? 0 : 1;
+    }
+
+    PMIX_INFO_LOAD(&info, SUT_KEY, &one, PMIX_UINT32);
+    if (0 == which) {
+        rc = PMIx_server_setup_application(myproc.nspace, &info, 1,
+                                           accepted_setup, NULL);
+    } else {
+        rc = PMIx_server_setup_local_support(myproc.nspace, &info, 1,
+                                             accepted_op, NULL);
+    }
+    PMIX_INFO_DESTRUCT(&info);
+    if (PMIX_SUCCESS != rc) {
+        PMIx_tool_finalize();
+        return 1;
+    }
+    for (int i = 0; i < 200 && !setup_fired; ++i) {
+        (void) PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, NULL);
+    }
+    PMIx_tool_finalize();
+    if (!setup_fired) {
+        return 4;
+    }
+    return (PMIX_SUCCESS == setup_status) ? 0 : 5;
+}
+
 static void check_client_refusal(const char *name, int which)
 {
     pid_t child;
@@ -887,6 +958,9 @@ static void check_client_refusal(const char *name, int which)
     fflush(stdout);
     child = fork();
     if (0 == child) {
+        if (20 <= which) {
+            _exit(setup_launcher_child(which - 20));
+        }
         _exit((which < 10) ? setup_client_child(which) : setup_tool_child(which - 10));
     }
     if (0 > child) {
@@ -920,6 +994,11 @@ int main(int argc, char **argv)
     /* and the case that actually regressed: a launcher, as prun is */
     check_client_refusal("setup_application works for a tool, as prun needs", 10);
     check_client_refusal("setup_local_support works for a tool", 11);
+    /* and the launcher, which is the role that actually opens pnet and
+     * pgpu - the third of these took the process down */
+    check_client_refusal("setup_application works for a launcher", 20);
+    check_client_refusal("setup_local_support works for a launcher", 21);
+    check_client_refusal("setup_fork works for a launcher", 22);
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {

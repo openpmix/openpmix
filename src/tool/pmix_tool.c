@@ -59,6 +59,7 @@
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pmdl/base/base.h"
+#include "src/mca/pgpu/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/psec/psec.h"
 #include "src/mca/ptl/base/base.h"
@@ -1072,6 +1073,24 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             return rc;
         }
 
+        /* open the pgpu framework on the same terms as pnet, and for the
+         * same reason: the server-side calls a launcher makes to prepare
+         * a job - PMIx_server_setup_application, _setup_local_support and
+         * _setup_fork - fan out to the two side by side. Leaving pgpu
+         * closed did not make those calls skip it: pmix_pgpu_base_allocate
+         * and _setup_local open with a list-size guard and quietly did
+         * nothing, so a launcher never harvested the vendor envars at all,
+         * while _setup_fork has no such guard and walked the actives list
+         * a framework open would have constructed. */
+        rc = pmix_mca_base_framework_open(&pmix_pgpu_base_framework,
+                                          PMIX_MCA_BASE_OPEN_DEFAULT);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_pgpu_base_select())) {
+            return rc;
+        }
+
         /* Bind our socket and publish how to reach it. We do NOT begin
          * accepting yet - that happens at the foot of this function, once
          * there is nothing left for this thread to do to shared state.
@@ -1818,6 +1837,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     }
 
     (void) pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+    (void) pmix_mca_base_framework_close(&pmix_pgpu_base_framework);
     /* tear down every server_globals list that pmix_server_initialize
      * constructs on each init, so none of their contents leak across a
      * cycle. pmix_server_initialize (called unconditionally from
