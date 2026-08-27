@@ -318,12 +318,16 @@ static pmix_value_cmp_t cmp_topo(pmix_topology_t *t1,
     }
     /* both are not NULL */
 
-    /* stringify the topologies */
-    p1 = pmix_hwloc_print_topology(t1->topology);
+    /* stringify the topologies. Pass the pmix_topology_t, NOT its inner
+     * hwloc handle: t->topology is a void*, so handing it over converted
+     * silently and the renderer then read its own "source" field out of the
+     * head of struct hwloc_topology - a pointer built from whatever integer
+     * members happen to sit there, dereferenced by strncasecmp. */
+    p1 = pmix_hwloc_print_topology(t1);
     if (NULL == p1) {
         return PMIX_VALUE_COMPARISON_NOT_AVAIL;
     }
-    p2 = pmix_hwloc_print_topology(t2->topology);
+    p2 = pmix_hwloc_print_topology(t2);
     if (NULL == p2) {
         free(p1);
         return PMIX_VALUE_COMPARISON_NOT_AVAIL;
@@ -355,12 +359,13 @@ static pmix_value_cmp_t cmp_cpuset(pmix_cpuset_t *cs1,
     }
     /* sources match */
 
-    /* stringify the cpusets */
-    p1 = pmix_hwloc_print_cpuset(cs1->bitmap);
+    /* stringify the cpusets. Pass the pmix_cpuset_t, not its inner hwloc
+     * bitmap - the same void * conversion described in cmp_topo() above. */
+    p1 = pmix_hwloc_print_cpuset(cs1);
     if (NULL == p1) {
         return PMIX_VALUE_COMPARISON_NOT_AVAIL;
     }
-    p2 = pmix_hwloc_print_cpuset(cs2->bitmap);
+    p2 = pmix_hwloc_print_cpuset(cs2);
     if (NULL == p2) {
         free(p1);
         return PMIX_VALUE_COMPARISON_NOT_AVAIL;
