@@ -959,7 +959,7 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
             continue;
         }
 
-        if (get_locality_string_by_depth(d, cpuset->bitmap, result) < 0) {
+        if (0 > get_locality_string_by_depth(d, cpuset->bitmap, result)) {
             continue;
         }
 
@@ -1033,7 +1033,7 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
         hwloc_bitmap_zero(result);
     }
 
-    if (get_locality_string_by_depth(HWLOC_TYPE_DEPTH_NUMANODE, cpuset->bitmap, result) == 0) {
+    if (0 == get_locality_string_by_depth(HWLOC_TYPE_DEPTH_NUMANODE, cpuset->bitmap, result)) {
         /* it should be impossible, but allow for the possibility
          * that we came up empty at this depth */
         if (!hwloc_bitmap_iszero(result)) {
@@ -1322,10 +1322,10 @@ static pmix_type_conversion_t table[] = {
     {.hwtype = HWLOC_OBJ_OSDEV_COPROC, .pxtype = PMIX_DEVTYPE_COPROC, .name = "COPROCESSOR"},
 };
 
-static int countcolons(char *str)
+static int countcolons(const char *str)
 {
     int cnt = 0;
-    char *p;
+    const char *p;
 
     p = strchr(str, ':');
     while (NULL != p) {
@@ -2489,12 +2489,12 @@ static void print_maps(void)
 {
 
     FILE *maps_file = fopen("/proc/self/maps", "r");
-    if (maps_file) {
+    if (NULL != maps_file) {
         char line[256];
         pmix_output(0, "%s Dumping /proc/self/maps", PMIX_NAME_PRINT(&pmix_globals.myid));
-        while (fgets(line, sizeof(line), maps_file) != NULL) {
+        while (NULL != fgets(line, sizeof(line), maps_file)) {
             char *end = strchr(line, '\n');
-            if (end) {
+            if (NULL != end) {
                 *end = '\0';
             }
             pmix_output(0, "%s", line);
