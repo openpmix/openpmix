@@ -302,21 +302,21 @@ Reviewed and current
 ``src/mca/gds/hash``, ``src/mca/gds/shmem3``, ``src/mca/pcompress``,
 ``src/mca/pgpu``, ``src/mca/pif``, ``src/mca/plog``, ``src/mca/pmdl``,
 ``src/mca/pnet``, ``src/mca/preg``, ``src/mca/psec``, ``src/mca/psensor``,
-``src/mca/pstat``, ``src/mca/ptl``, ``src/threads``, ``src/util``, and
-``bindings/python``.
-``src/common`` and ``src/hwloc`` were reviewed too, but have moved
-since — see below.
+``src/mca/pstat``, ``src/mca/ptl``, ``src/threads``, ``src/util``,
+``src/hwloc``, and ``bindings/python``.
+``src/common`` was reviewed too, but has moved since — see below.
 
-**``src/client``, ``src/server`` and ``src/util`` are the only three
-directories the review has taken file by file**, a dedicated pass per
-file rather than a directory-wide one, and the difference is worth
-stating rather than flattening: a directory-wide sweep is real coverage,
-and it is not the same thing.  The dedicated pass found something in
-*every* file it read, including files that had already been through four
-or five directory-wide sweeps.  ``src/client`` reached that state on
-2026-08-23, ``src/server`` on 2026-08-24 and ``src/util`` on 2026-08-26 —
-eleven files, twenty and twenty-nine, five lenses each, one file to a
-pass.  The per-file record is in the 2026-08-23 and later rows of
+**``src/client``, ``src/server``, ``src/util`` and ``src/hwloc`` are the
+only four directories the review has taken file by file**, a dedicated
+pass per file rather than a directory-wide one, and the difference is
+worth stating rather than flattening: a directory-wide sweep is real
+coverage, and it is not the same thing.  The dedicated pass found
+something in *every* file it read, including files that had already been
+through four or five directory-wide sweeps.  ``src/client`` reached that
+state on 2026-08-23, ``src/server`` on 2026-08-24, ``src/util`` on
+2026-08-26 and ``src/hwloc`` on 2026-08-27 — eleven files, twenty,
+twenty-nine and two, five lenses each, one file to a pass.  The per-file
+record is in the 2026-08-23 and later rows of
 ``.git/deep-review/ledger.tsv``; the reasoning is in each directory's
 ``AGENTS.md``.
 
@@ -396,12 +396,9 @@ Reviewed, but changed materially since
 Ordered by how much of the directory the review no longer covers.
 Figures are against the commit that recorded each review, measured
 2026-08-24.  ``src/util`` stood at the head of this list until
-2026-08-26; the per-file re-review closed it.
+2026-08-26 and ``src/hwloc`` until 2026-08-27; the per-file re-reviews
+closed both.
 
-#. **``src/hwloc``** — reviewed 2026-08-02.  +1129/-205 across three
-   files since — the device enumerator and the reworked distance
-   computation, against a five-line touch to the guide.  Effectively new,
-   unreviewed code.
 #. **``src/common``** — reviewed 2026-08-02, and no longer the modest
    churn it was listed as.  ``pmix_iof.c`` has 1215 changed lines since:
    the tool being given the library's stdin forwarding instead of its
@@ -1109,11 +1106,41 @@ Coverage gaps
   rank or an explicit ``PMIX_REMOTE`` scope, and nothing arranges that
   today.
 
+* **Three findings from the** ``src/hwloc`` **review have no test.**
+  Their reasoning is in ``src/hwloc/AGENTS.md`` items 21, 22 and 29; what
+  is open is the coverage, not the fix.
+
+  * A process that adopted its topology from shared memory and was told
+    to share it must publish the XML, since
+    ``hwloc_shmem_topology_write()`` takes SIGBUS on an adopted topology.
+    Reaching that needs a second-level server between a daemon and its
+    clients, so it belongs in ``contrib/dockerswarm/run-topology.sh``,
+    which has no such shape today.
+  * A ``NULL`` under the deprecated ``PMIX_TOPOLOGY`` key needs the info
+    array ``PMIx_server_init`` was called with, and topology acquisition
+    runs once per process — so it needs a test binary of its own, the way
+    ``test/unit/hwloc_setup_fail.c`` did.  That is the cheapest of the
+    three to close.
+  * The shmem address and size were ``uint64_t`` where one becomes a
+    ``void *``.  Only a build where a pointer is narrower than 64 bits
+    shows it, and none of the test environments is one.
+
 Not defects — by design
 -----------------------
 
 These look like bugs and are not.  They are recorded so that they are
 not "fixed" by a later reader.
+
+* ``PMIx_Compute_distances`` **searches every device type when the info
+  array names none.**  It applies its curated default — network,
+  OpenFabrics, GPU, coprocessor — only when the caller passed no
+  directives at all.  A caller who passed only ``PMIX_DEVICE_ID`` gets
+  the full set, block and DMA devices included, which looks like the
+  same inconsistency as the ``(ptr, 0)`` case fixed on 2026-08-27 and is
+  not.  ``PMIx_Compute_distances(3)`` documents ``PMIX_DEVICE_ID`` as an
+  independent selector, so narrowing the type set behind a caller who
+  named a block device by name would make their device vanish.  Leave
+  it; see ``src/hwloc/AGENTS.md``.
 
 * **A ``pmix_lock_t`` whose ``status`` reads ``PMIX_ERR_INIT`` is
   reporting a missing assignment, not an init failure.**  Both
