@@ -63,7 +63,6 @@
 #include "pmix_hwloc.h"
 #include <hwloc/shmem.h>
 
-static bool passed_thru = false;
 static char *vmhole = "biggest";
 static pmix_vmem_hole_kind_t hole_kind = VMEM_HOLE_BIGGEST;
 static char *topo_file = NULL;
@@ -170,7 +169,31 @@ void pmix_hwloc_finalize(void)
     return;
 }
 
+static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo);
+
+/* Acquire the topology, exactly once per process.
+ *
+ * The one-shot latch has to remember the ANSWER, not just the fact that we
+ * ran: acquisition can fail without being fatal - a server whose setup fails
+ * and was not asked to share its topology carries on running - and a later
+ * caller that gets PMIX_SUCCESS back believes there is a topology to read.
+ * pmix_hwloc_load_topology() is exactly such a caller: it falls back to
+ * setup and, on success, hands the cached topology to PMIx_Load_topology,
+ * which would then be a NULL topology reported as success. */
 pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
+{
+    static bool passed_thru = false;
+    static pmix_status_t result = PMIX_SUCCESS;
+
+    if (passed_thru) {
+        return result;
+    }
+    passed_thru = true;
+    result = setup_topology(info, ninfo);
+    return result;
+}
+
+static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
 {
     pmix_cb_t cb;
     pmix_proc_t wildcard;
@@ -181,15 +204,10 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
     pmix_value_t val;
     bool share = false;
     bool found = false;
+    bool adopted = false;
     pmix_topology_t *topo;
     char *file;
     pmix_status_t rc;
-
-    /* only go thru here ONCE! */
-    if (passed_thru) {
-        return PMIX_SUCCESS;
-    }
-    passed_thru = true;
 
     pmix_output_verbose(2, pmix_hwloc_output,
                         "%s:%s", __FILE__, __func__);
@@ -220,6 +238,14 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
             found = true;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY)) {
             if (!found) { // prefer PMIX_TOPOLOGY2
+                if (NULL == info[n].value.data.ptr) {
+                    /* nothing usable was handed to us, exactly as the
+                     * PMIX_TOPOLOGY2 arm above decides. Taking it anyway
+                     * would latch external_topology against a topology we
+                     * then discover for ourselves, and pmix_hwloc_finalize
+                     * would decline to release it */
+                    continue;
+                }
                 if (NULL != pmix_globals.topology.source) {
                     free(pmix_globals.topology.source);
                 }
@@ -254,7 +280,10 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
 
     /* try to get it ourselves */
     int fd;
-    uint64_t addr, size;
+    /* size_t, not uint64_t: one becomes a void* and the other is hwloc's
+     * length parameter, so on a build where a pointer is narrower than 64
+     * bits the uint64_t spelling truncated silently at the cast */
+    size_t addr, size;
 
     pmix_output_verbose(2, pmix_hwloc_output, "%s:%s checking shmem",
                         __FILE__, __func__);
@@ -293,6 +322,17 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
     cb.key = NULL;
     PMIX_DESTRUCT(&cb);
 
+    /* Any of the three can come back empty - popstr/popsize report a
+     * missing or wrongly-typed value rather than failing the fetch - and
+     * the three are only meaningful together. Adopting at SIZE_MAX would
+     * hand hwloc a mapping request nothing can satisfy. */
+    if (NULL == file || SIZE_MAX == addr || SIZE_MAX == size) {
+        if (NULL != file) {
+            free(file);
+        }
+        goto tryxml;
+    }
+
     if (0 > (fd = open(file, O_RDONLY))) {
         free(file);
         /* it may be that a tool has connected to a remote
@@ -310,7 +350,7 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
     if (0 == rc) {
         pmix_output_verbose(2, pmix_hwloc_output, "%s:%s shmem adopted",
                             __FILE__, __func__);
-        /* got it - we are done */
+        /* got it */
         pmix_asprintf(&pmix_globals.topology.source, "hwloc:%s", HWLOC_VERSION);
         /* record locally in case someone does a PMIx_Get to retrieve it */
         kv.key = PMIX_TOPOLOGY2;
@@ -320,6 +360,18 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, &kv);
         pmix_output_verbose(2, pmix_hwloc_output, "%s:%s stored", __FILE__,
                             __func__);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+        /* A directive to share applies however we came by the topology.
+         * This path used to return here instead, so a process told to share
+         * a topology it had adopted published nothing at all and every one
+         * of its clients fell through to discovering the machine for itself
+         * - which is the whole cost the sharing exists to avoid. */
+        if (share) {
+            adopted = true;
+            goto sharetopo;
+        }
         return PMIX_SUCCESS;
     }
 
@@ -425,19 +477,20 @@ tryself:
             return PMIX_ERR_TAKE_NEXT_OPTION;
         }
         if (0 != hwloc_topology_set_xml((hwloc_topology_t) pmix_globals.topology.topology, topo_file)) {
-            return PMIX_ERR_NOT_SUPPORTED;
+            rc = PMIX_ERR_NOT_SUPPORTED;
+            goto discard;
         }
         /* since we are loading this from an external source, we have to
          * explicitly set a flag so hwloc sets things up correctly
          */
         if (0 != set_flags(pmix_globals.topology.topology, HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM)) {
-            hwloc_topology_destroy(pmix_globals.topology.topology);
-            return PMIX_ERROR;
+            rc = PMIX_ERROR;
+            goto discard;
         }
         /* now load the topology */
         if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
-            hwloc_topology_destroy(pmix_globals.topology.topology);
-            return PMIX_ERROR;
+            rc = PMIX_ERROR;
+            goto discard;
         }
         /* we don't know the version */
         if (NULL != pmix_globals.topology.source) {
@@ -453,14 +506,14 @@ tryself:
         }
 
         if (0 != set_flags(pmix_globals.topology.topology, 0)) {
-            hwloc_topology_destroy(pmix_globals.topology.topology);
-            return PMIX_ERR_INIT;
+            rc = PMIX_ERR_INIT;
+            goto discard;
         }
 
         if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
             PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            hwloc_topology_destroy(pmix_globals.topology.topology);
-            return PMIX_ERR_NOT_SUPPORTED;
+            rc = PMIX_ERR_NOT_SUPPORTED;
+            goto discard;
         }
         pmix_asprintf(&pmix_globals.topology.source, "hwloc:%s", HWLOC_VERSION);
         pmix_output_verbose(2, pmix_hwloc_output,
@@ -524,6 +577,18 @@ sharetopo:
     if (VMEM_HOLE_NONE == hole_kind) {
         pmix_output_verbose(2, pmix_hwloc_output,
                             "%s:%s no shmem requested", __FILE__, __func__);
+        return PMIX_SUCCESS;
+    }
+    /* An adopted topology lives in someone else's mapping, and
+     * hwloc_shmem_topology_write() cannot re-export one: it reports a
+     * length like any other topology and then takes SIGBUS on the write.
+     * The XML above is what we can share, and it is enough - a client that
+     * finds no shmem keys reads the XML rather than discovering the machine
+     * itself. */
+    if (adopted) {
+        pmix_output_verbose(2, pmix_hwloc_output,
+                            "%s:%s adopted topology - sharing xml only",
+                            __FILE__, __func__);
         return PMIX_SUCCESS;
     }
 
@@ -635,6 +700,19 @@ sharetopo:
     pmix_list_append(&pmix_server_globals.gdata, &kptr->super);
 
     return PMIX_SUCCESS;
+
+discard:
+    /* Acquisition failed after hwloc handed us a topology object. Destroying
+     * it is only half the job: the cached pointer has to be cleared with it,
+     * because everything downstream reads pmix_globals.topology.topology and
+     * nothing re-checks whether setup succeeded. A server that was not asked
+     * to share its topology treats this failure as non-fatal and carries
+     * straight on to open the pnet and pgpu components, which walk that
+     * pointer; and pmix_hwloc_finalize() destroys whatever it finds there,
+     * which on a freed topology is a second destroy of the same object. */
+    hwloc_topology_destroy(pmix_globals.topology.topology);
+    pmix_globals.topology.topology = NULL;
+    return rc;
 }
 
 pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
@@ -855,6 +933,14 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
         return PMIX_SUCCESS;
     }
 
+    /* every question below is asked of the cached topology, and hwloc
+     * dereferences what it is handed - see the note in pmix_hwloc_get_cpuset
+     * on why the cache can be empty here */
+    if (NULL == pmix_globals.topology.topology) {
+        *loc = NULL;
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* we are going to use a bitmap to save the results so
      * that we can use a hwloc utility to print them */
     result = hwloc_bitmap_alloc();
@@ -880,7 +966,14 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
         /* it should be impossible, but allow for the possibility
          * that we came up empty at this depth */
         if (!hwloc_bitmap_iszero(result)) {
-            hwloc_bitmap_list_asprintf(&tmp, result);
+            /* the return is the character count, with -1 signalling error -
+             * see the note in pmix_hwloc_pack_cpuset. On error tmp is not
+             * set, so it must not be printed or freed. Dropping the level
+             * instead would hand back a locality string that is silently
+             * missing a token, which reads as "these two do not share it" */
+            if (0 > hwloc_bitmap_list_asprintf(&tmp, result)) {
+                goto nomem;
+            }
             switch (type) {
                 case HWLOC_OBJ_NUMANODE:
                     pmix_asprintf(&t2, "%sNM%s:", (NULL == locality) ? "" : locality, tmp);
@@ -944,7 +1037,9 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
         /* it should be impossible, but allow for the possibility
          * that we came up empty at this depth */
         if (!hwloc_bitmap_iszero(result)) {
-            hwloc_bitmap_list_asprintf(&tmp, result);
+            if (0 > hwloc_bitmap_list_asprintf(&tmp, result)) {
+                goto nomem;
+            }
             pmix_asprintf(&t2, "%sNM%s:", (NULL == locality) ? "" : locality, tmp);
             if (NULL != locality) {
                 free(locality);
@@ -963,6 +1058,14 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
     }
     *loc = locality;
     return PMIX_SUCCESS;
+
+nomem:
+    hwloc_bitmap_free(result);
+    if (NULL != locality) {
+        free(locality);
+    }
+    *loc = NULL;
+    return PMIX_ERR_NOMEM;
 }
 
 /* The locality codes pmix_hwloc_generate_locality_string emits, in the same
@@ -1039,15 +1142,43 @@ pmix_status_t pmix_hwloc_get_relative_locality(const char *locality1,
 
     set1 = PMIx_Argv_split(loc1, ':');
     set2 = PMIx_Argv_split(loc2, ':');
+    /* PMIx_Argv_split drops empty fields, so a payload that is empty or all
+     * separators - "hwloc:", "hwloc:::" - splits to NOTHING and hands back a
+     * NULL array rather than an empty one. These strings arrive from a host
+     * environment's PMIX_LOCALITY_STRING or straight from the caller of
+     * PMIx_Get_relative_locality, so that is reachable input, and only the
+     * FIRST token was ever screened (by locality_payload, which claims a
+     * bare string on its leading type code). Two processes with no locality
+     * tokens in common share the node and nothing else, which is the honest
+     * answer here. */
+    if (NULL == set1 || NULL == set2) {
+        PMIx_Argv_free(set1);
+        PMIx_Argv_free(set2);
+        *loc = locality;
+        return PMIX_SUCCESS;
+    }
     bit1 = hwloc_bitmap_alloc();
     bit2 = hwloc_bitmap_alloc();
 
     /* check each matching type */
     for (n1 = 0; NULL != set1[n1]; n1++) {
+        /* every token is "<2-letter type code><bitmap>", and the bitmap is
+         * read from offset 2 - so a token shorter than that would be read
+         * past the end of its own allocation. Only the first token is
+         * vouched for by locality_payload; the rest are whatever the string
+         * carried */
+        if (2 > strlen(set1[n1])) {
+            rc = PMIX_ERR_BAD_PARAM;
+            continue;
+        }
         /* convert the location into bitmap */
         hwloc_bitmap_list_sscanf(bit1, &set1[n1][2]);
         /* find the matching type in set2 */
         for (n2 = 0; NULL != set2[n2]; n2++) {
+            if (2 > strlen(set2[n2])) {
+                rc = PMIX_ERR_BAD_PARAM;
+                continue;
+            }
             if (0 == strncmp(set1[n1], set2[n2], 2)) {
                 /* convert the location into bitmap */
                 hwloc_bitmap_list_sscanf(bit2, &set2[n2][2]);
@@ -1105,6 +1236,14 @@ pmix_status_t pmix_hwloc_get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envelope_t 
         flag = HWLOC_CPUBIND_THREAD;
     } else {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* topology acquisition is allowed to fail without being fatal - a server
+     * told not to share its topology carries on without one - so the cache
+     * can legitimately be empty here, and hwloc dereferences the topology it
+     * is handed */
+    if (NULL == testcpuset && NULL == pmix_globals.topology.topology) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     cpuset->bitmap = hwloc_bitmap_alloc();
@@ -1220,7 +1359,12 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     pmix_hwloc_device_t *devs = NULL;
     pmix_status_t rc = PMIX_SUCCESS, prc;
 
-    if (NULL == topo || NULL == cpuset || NULL == dist || NULL == ndist) {
+    /* topo->topology is handed to hwloc, which dereferences it, and this is
+     * a caller-supplied structure - PMIx_Compute_distances passes a
+     * non-NULL topology straight through. Its siblings in this file all
+     * screen the inner pointer as well as the outer one */
+    if (NULL == topo || NULL == topo->topology || NULL == cpuset
+        || NULL == dist || NULL == ndist) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -1237,8 +1381,12 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     *dist = NULL;
     *ndist = 0;
 
-    /* determine what they want us to look at */
-    if (NULL == info) {
+    /* determine what they want us to look at.  "No directives" is
+     * (NULL, 0) or (ptr, 0) indifferently - every other PMIx entry point
+     * reads the two the same way, and this one used to give the second the
+     * "every type there is" treatment that belongs to a caller who asked
+     * for it. */
+    if (NULL == info || 0 == ninfo) {
         /* The devices a process communicates through - which is what asking
          * "how far away is it?" is normally about.  Block and DMA devices
          * are deliberately not in the default: this function has never
@@ -1940,6 +2088,18 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
      * and a vendor node come out as one device instead of three. */
     osdev = hwloc_get_next_osdev(topo->topology, NULL);
     while (NULL != osdev) {
+        /* The name is not optional here: it is what we report as osname and
+         * what a GPU's or block device's uuid is built from, and both of
+         * those are strdup'd/printed straight from it. hwloc's XML importer
+         * accepts an OS device with no name at all, and a topology reaches
+         * this layer from wherever the XML came from - the local server's
+         * export, another node's, an unpacked PMIX_TOPO off the wire - so
+         * this is caller-supplied data, not something discovery guarantees.
+         * A device we cannot name is not one we can report; skip it and let
+         * any named sibling on the same PCI function still name it. */
+        if (NULL == osdev->name) {
+            goto next;
+        }
         dtype = PMIX_DEVTYPE_UNKNOWN;
         ntypes = sizeof(table) / sizeof(pmix_type_conversion_t);
         for (n = 0; n < ntypes; n++) {
@@ -2250,12 +2410,15 @@ static size_t popsize(pmix_cb_t *cb)
     pmix_kval_t *kv;
     size_t sz;
 
+    /* SIZE_MAX, not UINT64_MAX: the return type is size_t, so the wider
+     * spelling is not the sentinel the caller can test for on a build where
+     * the two differ */
     if (1 != pmix_list_get_size(kvs)) {
-        return UINT64_MAX;
+        return SIZE_MAX;
     }
     kv = (pmix_kval_t *) pmix_list_get_first(kvs);
     if (PMIX_SIZE != kv->value->type) {
-        return UINT64_MAX;
+        return SIZE_MAX;
     }
     sz = kv->value->data.size;
     kv = (pmix_kval_t *) pmix_list_remove_first(kvs);
@@ -2296,23 +2459,30 @@ static pmix_status_t load_xml(char *xml)
         return PMIX_ERROR;
     }
     if (0 != hwloc_topology_set_xmlbuffer(pmix_globals.topology.topology, xml, strlen(xml) + 1)) {
-        hwloc_topology_destroy(pmix_globals.topology.topology);
-        return PMIX_ERROR;
+        goto discard;
     }
     /* since we are loading this from an external source, we have to
      * explicitly set a flag so hwloc sets things up correctly
      */
     if (0 != set_flags(pmix_globals.topology.topology, HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM)) {
-        hwloc_topology_destroy(pmix_globals.topology.topology);
-        return PMIX_ERROR;
+        goto discard;
     }
     /* now load the topology */
     if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
-        hwloc_topology_destroy(pmix_globals.topology.topology);
-        return PMIX_ERROR;
+        goto discard;
     }
     pmix_globals.topology.source = strdup("hwloc"); // don't know the version?
     return PMIX_SUCCESS;
+
+discard:
+    /* clear the cache along with the object, for the reason spelled out at
+     * setup_topology()'s own discard label. The caller falls through to the
+     * next acquisition method, which normally overwrites this pointer on its
+     * way in - but only if ITS hwloc_topology_init succeeds, and a failure
+     * there returns with whatever was left here. */
+    hwloc_topology_destroy(pmix_globals.topology.topology);
+    pmix_globals.topology.topology = NULL;
+    return PMIX_ERROR;
 }
 
 static void print_maps(void)

@@ -146,13 +146,20 @@ order:
 3. **XML string** — `PMIX_HWLOC_XML_V2`, then `PMIX_HWLOC_XML_V1`
    (`hwloc_topology_set_xmlbuffer` + load). The v1 fallback exists to
    talk to peers built against hwloc 1.x.
-4. **MCA `topo_file`** — an XML file named by `PMIX_MCA_hwloc_topo_file`
-   (testing).
+4. **MCA `topo_file`** — an XML file named by
+   `PMIX_MCA_pmix_hwloc_topo_file` (testing; again the doubled name).
 5. **Self-discovery** — `hwloc_topology_init` + `set_flags` +
    `hwloc_topology_load`.
 
-`pmix_hwloc_setup_topology()` is guarded by the `passed_thru` static so
-it runs **exactly once** per process. After acquiring the topology it
+`pmix_hwloc_setup_topology()` is a thin wrapper around the real
+`setup_topology()`, guarded by a `passed_thru` static so the work runs
+**exactly once** per process. The latch remembers the **answer**, not
+merely that it ran, and that distinction matters: acquisition is allowed
+to fail without being fatal (see below), so a latch that replayed
+`PMIX_SUCCESS` told every later caller there was a topology to read.
+`pmix_hwloc_load_topology()` is exactly such a caller — it falls back to
+setup and, on success, hands the cache to `PMIx_Load_topology`, which
+then reported success while returning a NULL topology. After acquiring the topology it
 optionally *shares* it: exports v2 + v1 XML into
 `pmix_server_globals.gdata` (so clients can fetch it) and, unless
 `hole_kind == VMEM_HOLE_NONE`, writes it to a shmem segment in the
@@ -166,8 +173,9 @@ they are intentionally still emitted.
 Adopting a topology at a fixed virtual address requires the server and
 every client to have the *same* address range free. `set_flags` +
 `pmix_vmem_find_hole(hole_kind, …)` locate that range; `hole_kind` is set
-from the `PMIX_MCA_hwloc_hole_kind` param (`none|begin|biggest|libs|heap|
-stack`, default `biggest`). If a hole can't be found or the backing store
+from the `PMIX_MCA_pmix_hwloc_hole_kind` param (`none|begin|biggest|libs|
+heap|stack`, default `biggest` — note the doubled `pmix_hwloc`, per the
+warning above). If a hole can't be found or the backing store
 lacks space (`enough_space()`), the code **degrades gracefully to XML** —
 none of these are fatal. The two `help-ploc.txt` topics (`target full`,
 `sys call fail`) explain the shmem-disable escape hatch
@@ -196,6 +204,13 @@ and `PMIX_TOPO` (`pmix_topology_t`); see
   [`src/client/AGENTS.md`](../client/AGENTS.md). `pack_cpuset` already
   handled the equivalent (`NULL == src->bitmap`). Keep both symmetric,
   and keep the wire form identical between the two spellings.
+  **This applies to every handler, not just the packers.** `copy` and
+  `print` both reach into the inner pointer through hwloc, and hwloc does
+  not screen it: `hwloc_topology_dup()` reads its source's root object
+  before it validates anything, and `hwloc_get_root_obj()` does not check
+  at all. An empty topology copies to an empty topology and prints as
+  "nothing"; it is not a bad parameter, because it is the only way the
+  value can be expressed.
 - **topology is packed as an XML string only.** hwloc 2.3+ embeds the
   `hwloc_topology_support` flags in the exported XML, and the unpacker
   recovers them by loading with `HWLOC_TOPOLOGY_FLAG_IMPORT_SUPPORT`
@@ -277,8 +292,87 @@ rule). Because the environment always has hwloc on the dev machines,
 `--enable-test-build` is not needed to compile-check this directory, but
 a normal build does exercise it.
 
+## An empty topology cache is a normal state
+
+`pmix_globals.topology.topology` is **not** guaranteed non-NULL once the
+library is up, and code in this directory that hands it to hwloc has to
+say so rather than assume otherwise — hwloc dereferences whatever it is
+given. Three ways it is legitimately empty:
+
+- **A plain tool never acquires one.** `pmix_tool_init` calls
+  `pmix_hwloc_setup_topology()` only inside its
+  `PMIX_PEER_IS_LAUNCHER || PMIX_PEER_IS_SCHEDULER` branch, so an ordinary
+  tool — a debugger, a query client — comes up with an empty cache and
+  stays that way. `PMIx_Get_cpuset` is not restricted by role.
+- **A server may fail to acquire one and carry on.**
+  [`pmix_server.c`](../server/pmix_server.c) treats a failed setup as
+  fatal *only* if it was asked to share the topology; otherwise it logs
+  and continues, straight on into opening the `pnet` and `pgpu`
+  components.
+- **A client before `PMIx_Init` finishes**, which is the case
+  `pmix_hwloc_load_topology()` exists to close.
+
+Two consequences that are load-bearing:
+
+- **A failure path must clear the cache, not just destroy the topology.**
+  `hwloc_topology_destroy()` frees the object; leaving the pointer behind
+  means the server walks freed memory and `pmix_hwloc_finalize()`
+  destroys it a second time. Every failure exit in `setup_topology()` and
+  in `load_xml()` goes through a `discard:` label for this reason — do
+  not add a bare `return` after a destroy. `load_xml()`'s matters even
+  though its caller falls through to the next acquisition method, which
+  normally overwrites the pointer: it only overwrites it if *its*
+  `hwloc_topology_init` succeeds.
+- **Screen the cache before handing it to hwloc.**
+  `pmix_hwloc_get_cpuset` and `pmix_hwloc_generate_locality_string` both
+  do; `PMIx_Compute_distances`'s path screens the caller's structure
+  instead (see below).
+
 ## Pitfalls specific to this directory
 
+- **Screen `topo->topology`, not just `topo`.** A `pmix_topology_t` is a
+  caller-supplied structure and `PMIx_Compute_distances` passes a
+  non-NULL one straight through, so "the outer pointer is not NULL" says
+  nothing about the inner one. `pmix_hwloc_get_devices`,
+  `pmix_hwloc_levelzero_hierarchy` and `check_vendor` all screen both;
+  `pmix_hwloc_compute_distances` screened only the outer one and reached
+  `hwloc_topology_get_depth(NULL)`.
+- **An OS device is not guaranteed to have a name.** hwloc's XML importer
+  accepts `<object type="OSDev" .../>` with no `name` attribute, and a
+  topology reaches this layer *as XML from somewhere else* — the local
+  server's export, another node's, an unpacked `PMIX_TOPO` off the wire —
+  so this is caller-supplied data, not a shape hwloc's own discovery
+  produces. `pmix_hwloc_get_devices()` reports the name as `osname` and
+  builds a GPU's or block device's uuid out of it, so it screens for it
+  at candidate collection: a nameless device is skipped, and a named
+  sibling on the same PCI function still gets to name the function.
+  `osdev_named()` and `osdev_is_render_node()` already guarded it; the
+  build loop did not, and `strdup(NULL)` is a segfault.
+  `test/topologies/unnamed-osdev.xml` is the fixture.
+- **An adopted topology cannot be re-written to shared memory.**
+  `hwloc_shmem_topology_write()` on a topology obtained from
+  `hwloc_shmem_topology_adopt()` reports a length like any other and then
+  takes **SIGBUS** on the write (measured against hwloc 2.12).
+  `hwloc_topology_export_xmlbuffer()` — v1 and v2 — works fine on one, as
+  does `hwloc_shmem_topology_get_length()`. So a process that adopted its
+  topology and was told to share it shares the **XML only**; that is what
+  the `adopted` flag in `setup_topology()` is for. Sharing nothing at all
+  (which is what that path used to do) is not a harmless simplification:
+  every client then falls through to running `hwloc_topology_load()` for
+  itself, which is the entire cost the sharing exists to avoid.
+- **A locality string is text, and only its first token is vouched for.**
+  `pmix_hwloc_locality_payload()` claims a string on its `hwloc:` prefix
+  or on its leading two-letter type code; everything after that is
+  whatever the caller or the host environment's `PMIX_LOCALITY_STRING`
+  happened to contain. `pmix_hwloc_get_relative_locality` therefore has
+  to survive two shapes it used to walk straight into. `PMIx_Argv_split`
+  **drops empty fields**, so a payload that is empty or all separators
+  (`"hwloc:"`, `"hwloc:::"`) splits to *nothing* and yields a NULL array
+  rather than an empty one — `set1[0]` was a NULL dereference. And the
+  bitmap is read from offset 2 of each token, so a token shorter than its
+  two-letter code was read past the end of its own allocation. Two
+  processes with no tokens in common share the node and nothing else,
+  which is the honest answer for both.
 - **A device uuid names the node the device is on, not the node reading
   the topology.** `pmix_hwloc_get_devices()` takes the hostname as a
   *required* parameter and `build_device_uuid()` uses it — neither reads
@@ -376,6 +470,17 @@ a normal build does exercise it.
   `#if HWLOC_API_VERSION >= 0x000NNN00` (e.g. `0x00020300` for the 2.3
   support-import machinery, including the `misc`/`imported_support`
   member that does not exist in older headers).
+- **hwloc may be parsing XML with its own minimalistic scanner, not
+  libxml2.** Which one it uses is decided when hwloc is built, and a
+  distro hwloc built without libxml2 - the one CI runs against - gets
+  the hand-rolled fallback. It parses what hwloc itself exports and
+  little else; notably it does not understand XML **comments**, so one
+  `<!-- -->` in a topology file makes `hwloc_topology_load()` fail with
+  "Failed to parse XML input with the minimalistic parser". Any hand-
+  written topology XML - a test fixture, a bug reproducer - therefore
+  has to stay within what that scanner accepts, and the failure only
+  shows on a machine whose hwloc lacks libxml2. See
+  [`test/topologies/Makefile.am`](../../test/topologies/Makefile.am).
 - **`hwloc_topology_set_xmlbuffer` wants the NUL-inclusive length.**
   hwloc's `export_xmlbuffer` reports (and `set_xmlbuffer` expects) a
   length that *includes* the terminating NUL, so always pass
@@ -553,12 +658,117 @@ A second audit (July 2026) of the same directory found these:
     which drives `test/topologies/test-topo.xml` (two packages, real
     NICs) and fails against the old code.
 
+A third audit (August 2026) added these:
+
+17. **A failed acquisition left a freed topology in the cache.** Four exits
+    in `setup_topology()` and three in `load_xml()` called
+    `hwloc_topology_destroy()` and returned without clearing
+    `pmix_globals.topology.topology`, and one more (a
+    `hwloc_topology_set_xml()` that fails) returned without destroying at
+    all, leaving an initialized-but-unloaded topology behind. Because a
+    server treats a failed acquisition as non-fatal unless it was asked to
+    share, it then carried straight on to open the `pnet` and `pgpu`
+    components against that pointer, and `pmix_hwloc_finalize()` destroyed
+    it a second time — hwloc catches that one itself, with an assertion
+    failure in `hwloc_components_fini`. Reproducible with
+    `PMIX_MCA_pmix_hwloc_topo_file` pointing at a document that is
+    well-formed XML but carries no machine: `set_xml()` accepts it and
+    `load()` rejects it, which is the one shape that reaches the
+    destroy-and-return path rather than failing earlier. Covered by
+    [`test/unit/hwloc_setup_fail.c`](../../test/unit/hwloc_setup_fail.c),
+    which needs a binary of its own because acquisition runs once per
+    process.
+18. **The one-shot latch recorded that acquisition had run, not what it
+    answered**, so every later call returned `PMIX_SUCCESS` — and
+    `PMIx_Load_topology` reported success while handing back a NULL
+    topology. Same test.
+19. **`pmix_hwloc_get_devices()` crashed on an OS device with no name**
+    (`strdup(NULL)`), and `pmix_hwloc_compute_distances()` dereferenced a
+    caller's `topo->topology` without screening it. See the pitfalls above
+    for both; covered by `test_unnamed_osdev` in
+    [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c) and by
+    `test_compute_distances_bad_params`.
+20. **`pmix_hwloc_get_relative_locality` walked a NULL argv and read past
+    the end of short tokens.** See the pitfall above; covered by
+    `test_relative_locality`.
+21. **A topology adopted from shared memory ignored `share`.** See the
+    pitfall above.
+22. **The deprecated `PMIX_TOPOLOGY` arm did not screen a NULL pointer**,
+    while the `PMIX_TOPOLOGY2` arm beside it does (item 14). Taking it
+    latched `external_topology` against a topology we then discovered for
+    ourselves, so `pmix_hwloc_finalize()` declined to release it and the
+    `strdup("hwloc")` source was overwritten unfreed.
+23. **`pmix_hwloc_generate_locality_string` did not check
+    `hwloc_bitmap_list_asprintf`** — the fourth and last caller carrying
+    the misread corrected in items 6 and 15; on failure `tmp` was
+    indeterminate and was both printed and freed.
+24. **`(info, 0)` was not read as "no directives".**
+    `pmix_hwloc_compute_distances` keyed its default device-type set on
+    `NULL == info` alone, so a caller passing a non-NULL array with
+    `ninfo == 0` got "every type there is" — block and DMA devices
+    included — where `(NULL, 0)` got the curated set. Every other PMIx
+    entry point reads the two spellings the same way.
+25. **The `PMIX_TOPO` handlers other than the packers did not accept the
+    empty topology.** `pmix_hwloc_copy_topology` and
+    `pmix_hwloc_print_topology` dereferenced `src->topology` through hwloc,
+    so a `pmix_value_t` carrying the documented "no topology, use yours"
+    value segfaulted on `PMIx_Value_xfer` and on `PMIx_Value_string`. See
+    the datatype section above.
+26. **`pmix_hwloc_pack_topology` released hwloc's XML buffer with `free()`.**
+    hwloc dispatches the export to whichever XML backend it was built with,
+    and the libxml one allocates through libxml2
+    (`xmlDocDumpFormatMemoryEnc`) and releases with `xmlFree`. The rule was
+    already written down in the pitfalls below and already followed by the
+    exporters in `pmix_hwloc.c`; this one call site was the exception.
+27. **`pmix_hwloc_unpack_cpuset` ignored the parse status** of
+    `hwloc_bitmap_list_sscanf`, so a bitmap string that did not survive the
+    wire produced a half-filled bitmap indistinguishable from a real
+    binding. `pmix_hwloc_parse_cpuset_string` screens the same call.
+    `pack_cpuset`'s NULL-source arm likewise returned `PMIX_SUCCESS` while
+    discarding the pack status, which would leave the buffer a field short
+    and desync the peer that reads it.
+28. **Both value comparators handed the renderers the wrong pointer.** In
+    [`bfrop_base_cmp.c`](../mca/bfrops/base/bfrop_base_cmp.c), `cmp_topo`
+    called `pmix_hwloc_print_topology(t1->topology)` — the inner
+    `hwloc_topology_t` — where the function takes a `pmix_topology_t *`,
+    and `cmp_cpuset` did the identical thing with `cs1->bitmap`. Both
+    members are `void *`, so both converted **silently**, and each
+    renderer then read its `source` field out of the head of
+    `struct hwloc_topology` / `struct hwloc_bitmap_s` — a pointer
+    assembled from the unsigned counters that live there — and handed it
+    to `strncasecmp`. Reachable from `PMIx_Value_compare` on any two
+    `PMIX_TOPO` or `PMIX_PROC_CPUSET` values whose sources match, which
+    is what comparing one to itself does.
+
+    **This is the shape to grep for in this directory's callers.** Both
+    public objects are `{char *source; void *thing;}`, and every entry
+    point here takes the *struct*; passing the inner `void *` instead is
+    the one mistake C will not diagnose, and the resulting garbage
+    pointer is read by the very first line of the function. The two
+    comparators were the only sites, and are covered by
+    `test_topology_value_compare` and `test_cpuset_value_compare`.
+29. **Shmem address and size were `uint64_t`** where one becomes a `void *`
+    and the other is hwloc's `size_t` length, and `popsize()` returned
+    `UINT64_MAX` as its sentinel from a `size_t` function. Both are now
+    `size_t`/`SIZE_MAX`, and the three fetched values are checked for the
+    sentinel before an adopt is attempted.
+
 Not a defect, but worth knowing before you "fix" it:
 
 - **`hwloc_get_type_depth(..., HWLOC_OBJ_PU)` is cast to `unsigned`.** If
   PU is absent it returns `HWLOC_TYPE_DEPTH_UNKNOWN` (-1); the cast makes
   `width` zero and the loop simply does not run. Safe, but not obviously
   so.
+- **An `info` array that names no `PMIX_DEVICE_TYPE` still searches every
+  device type.** `pmix_hwloc_compute_distances` only applies its curated
+  default (network, OpenFabrics, GPU, coprocessor) when the caller passed
+  no directives at all; a caller who passed, say, only `PMIX_DEVICE_ID`
+  gets the full set including block and DMA. That looks like the same
+  inconsistency as item 24 and is not:
+  [`PMIx_Compute_distances(3)`](../../docs/man/man3/PMIx_Compute_distances.3.rst)
+  documents `PMIX_DEVICE_ID` as an independent selector, so narrowing the
+  type set behind a caller who named a block device by name would make
+  their device vanish. Leave it.
 - **A cpuset spanning the topology's top-level children yields
   `PMIX_ERR_NOT_AVAILABLE`.** `dsearch` looks for a *single* object at
   each depth that completely covers the cpuset, so a binding spanning two
@@ -566,10 +776,28 @@ Not a defect, but worth knowing before you "fix" it:
   documented "nothing useful can be done" case, not the range case — a
   range needs multiple locations *under* one covering object.
 
-Items 5, 6, 7, 8 and 10–16 are covered by the `hwloc_datatype` unit test
-([`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c), wired
-into `make check`), which round-trips and prints topologies and cpusets
-through the public API. Extend it when you touch this directory.
+Three unit tests cover this directory, all wired into `make check`, and
+they split by what they need to stand up:
+
+| Test | Covers |
+|---|---|
+| [`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c) | items 5–8, 10–16, 19 (distances), 20, 23–28 — round-trips, prints and measures topologies and cpusets through the public API |
+| [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c) | device enumeration and item 19 (naming) — a pure function of a topology plus a type, so no server and no real hardware |
+| [`test/unit/hwloc_setup_fail.c`](../../test/unit/hwloc_setup_fail.c) | items 17 and 18 — what a *failed* acquisition leaves behind. Its own binary, because acquisition runs once per process |
+
+Three items are **not** covered, and it is worth knowing which:
+
+- **21** (an adopted topology honouring `share`) needs a real server whose
+  segment a second process adopts, then that second process serving clients
+  of its own. That is the handoff row of the multi-node table below.
+- **22** (a NULL under the deprecated `PMIX_TOPOLOGY` key) needs the info
+  array `PMIx_server_init` was called with, and acquisition runs once per
+  process — so it needs a binary of its own, as item 17's did.
+- **29** (the shmem address/size widths) only shows on a build where a
+  pointer is narrower than 64 bits, which is not a configuration these
+  tests run in.
+
+Extend them when you touch this directory.
 
 **What the unit test structurally cannot reach** — and where the multi-node
 harness comes in:
@@ -581,6 +809,7 @@ harness comes in:
 | the **multi-node answer** — on one host every peer is a node-mate, so a run cannot distinguish a correct result from "everything is local" | same (the exerciser fails itself if it finds no off-node peer) |
 | the **XML fallback** when no VM hole is available (`hwloc_hole_kind=none`) | `run-topology.sh` runs the whole suite a second time with shmem disabled |
 | the shmem segment actually being **reclaimed** at daemon teardown | `run-topology.sh` checks for a surviving `hwloc.sm` |
+| a process **re-sharing a topology it adopted** — the XML must be published even though the segment cannot be (item 21) | not yet exercised; would need a second-level server between the daemon and its clients |
 
 Item 8 is the cautionary tale for all of this: the unit test had hand-written
 `"hwloc:NM0:SK0:CR0:HT0"` literals that matched what the *consumer* wanted
