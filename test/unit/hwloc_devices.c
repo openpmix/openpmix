@@ -779,6 +779,63 @@ static void test_vendor_check(const char *dir)
     ok(PMIX_ERR_BAD_PARAM == rc, "vendor check: no topology at all is a bad param");
 }
 
+/* An OS device with no name.
+ *
+ * hwloc's XML importer accepts one, and a topology reaches this layer from
+ * wherever its XML came from - the local server's export, another node's,
+ * an unpacked PMIX_TOPO off the wire - so a nameless OS device is
+ * caller-supplied data, not a shape discovery could produce.  The name is
+ * what the enumerator reports as osname and what a GPU's or block device's
+ * uuid is built from, and both used to be taken from it without a check.
+ *
+ * The fixture puts the nameless OpenFabrics device AHEAD of the named
+ * "hfi1_0" on one PCI function - osdev_preferred() has no reason to trade
+ * an incumbent OpenFabrics device for another, so the nameless one wins the
+ * right to name the function - and gives a second function a nameless
+ * network device with no sibling at all.  Both carry the info attributes
+ * their uuids are built from, so neither is dropped for being unnameable in
+ * the uuid sense.  Against the unscreened code this test does not fail, it
+ * segfaults in strdup(NULL). */
+static void test_unnamed_osdev(const char *dir)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0;
+    char path[1024];
+    pmix_status_t rc;
+
+    snprintf(path, sizeof(path), "%s/unnamed-osdev.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        fprintf(stderr, "FAIL: could not load %s\n", path);
+        ++failures;
+        return;
+    }
+
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN,
+                                NULL, &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc, "unnamed osdev: enumeration completes");
+    ok(1 == ndevs, "unnamed osdev: only the device we can name is reported");
+    if (1 == ndevs) {
+        ok(NULL != devs[0].dev.osname
+           && 0 == strcmp(devs[0].dev.osname, "hfi1_0"),
+           "unnamed osdev: the named sibling still names its function");
+        ok(NULL != devs[0].dev.uuid, "unnamed osdev: the reported device has a uuid");
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+    ndevs = 0;
+
+    /* the same walk again, this time asking for the device by name: the
+     * candidate-naming path reads osdev->name too */
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN,
+                                "hfi1_0", &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs,
+       "unnamed osdev: asking by name finds the named device");
+    pmix_hwloc_release_devices(devs, ndevs);
+
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -806,6 +863,7 @@ int main(int argc, char **argv)
     test_vendor_identity(dir);
     test_device_selector(dir);
     test_vendor_check(dir);
+    test_unnamed_osdev(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);

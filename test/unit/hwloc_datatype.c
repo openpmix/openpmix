@@ -661,6 +661,60 @@ static void test_compute_distances_bad_params(void)
     /* restore a source we recognize so the destructor reclaims the topology */
     free(topo.source);
     topo.source = strdup("hwloc");
+
+    /* A structure that names us but carries no topology. The outer pointer
+     * was screened and the inner one was not, so this went straight to
+     * hwloc_topology_get_depth(NULL) - and PMIx_Compute_distances passes a
+     * non-NULL topology through untouched, so the caller decides what is in
+     * it. Every sibling in this file screens both. */
+    {
+        pmix_topology_t empty = PMIX_TOPOLOGY_STATIC_INIT;
+
+        empty.source = strdup("hwloc");
+        dist = NULL;
+        ndist = 0;
+        rc = PMIx_Compute_distances(&empty, &cpuset, NULL, 0, &dist, &ndist);
+        ok = (PMIX_SUCCESS != rc);
+        if (!ok) {
+            fprintf(stdout, "    topology-less structure accepted: rc=%s\n",
+                    PMIx_Error_string(rc));
+        }
+        report("compute_distances rejects a structure with no topology", ok);
+        free(empty.source);
+    }
+
+    /* An empty info array is not a directive to widen the search: (ptr, 0)
+     * and (NULL, 0) both mean "no directives", and the second already got
+     * the default set of device types while the first got every type there
+     * is - block and DMA devices included. Same fixture, so the two calls
+     * are comparable. */
+    {
+        pmix_info_t empty_info;
+        pmix_device_distance_t *d2 = NULL;
+        size_t n2 = 0;
+        pmix_status_t rc2;
+
+        PMIX_INFO_CONSTRUCT(&empty_info);
+        dist = NULL;
+        ndist = 0;
+        rc = PMIx_Compute_distances(&topo, &cpuset, NULL, 0, &dist, &ndist);
+        rc2 = PMIx_Compute_distances(&topo, &cpuset, &empty_info, 0, &d2, &n2);
+        ok = (rc == rc2 && ndist == n2);
+        if (!ok) {
+            fprintf(stdout, "    (NULL,0) gave rc=%s n=%d, (ptr,0) gave rc=%s n=%d\n",
+                    PMIx_Error_string(rc), (int) ndist,
+                    PMIx_Error_string(rc2), (int) n2);
+        }
+        report("compute_distances reads (ptr,0) as no directives", ok);
+        if (NULL != dist) {
+            PMIX_DEVICE_DIST_FREE(dist, ndist);
+        }
+        if (NULL != d2) {
+            PMIX_DEVICE_DIST_FREE(d2, n2);
+        }
+        PMIX_INFO_DESTRUCT(&empty_info);
+    }
+
     PMIX_CPUSET_DESTRUCT(&cpuset);
     PMIx_Topology_destruct(&topo);
 #endif
@@ -877,6 +931,61 @@ step2:
         ok = 1;
     }
     report("relative locality: NULL input is rejected, not dereferenced", ok);
+
+    /* A locality string is text: it reaches here either from a host
+     * environment's PMIX_LOCALITY_STRING or straight from the caller of
+     * PMIx_Get_relative_locality, and only its FIRST token is ever vouched
+     * for (locality_payload claims a bare string on its leading type code,
+     * a prefixed one on the prefix). Everything after that used to be
+     * trusted to be a two-letter code followed by a bitmap.
+     *
+     * Two shapes broke it, and neither is exotic:
+     *
+     *   - a payload with no tokens at all. PMIx_Argv_split drops empty
+     *     fields, so "hwloc:" and "hwloc:::" split to NOTHING and it hands
+     *     back a NULL array rather than an empty one - and the walk read
+     *     set1[0] without checking.
+     *   - a token shorter than the two-letter code. The bitmap is read from
+     *     offset 2, so a one-character token was read past the end of its
+     *     own allocation.
+     *
+     * Neither may crash, and neither may claim a shared resource it did not
+     * find: the answer for two processes with nothing in common is that
+     * they share the node. */
+    {
+        struct {
+            const char *l1;
+            const char *l2;
+            const char *what;
+        } cases[] = {
+            {"hwloc:", "hwloc:", "an empty payload"},
+            {"hwloc:::", "hwloc:::", "a payload that is all separators"},
+            {"hwloc:", "SK0:CR0", "an empty payload against a real one"},
+            {"SK0:X", "SK0:X", "a token shorter than its type code"},
+            {"SK0:X:CR0", "SK0:X:CR0", "a short token between real ones"},
+        };
+        size_t c;
+
+        for (c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+            loc = 0;
+            rc = PMIx_Get_relative_locality(cases[c].l1, cases[c].l2, &loc);
+            ok = (PMIX_ERR_TAKE_NEXT_OPTION == rc)
+                 || (PMIX_SUCCESS == rc && PMIX_LOCALITY_SHARE_NODE == loc)
+                 || (PMIX_ERR_BAD_PARAM == rc);
+            if (!ok) {
+                fprintf(stdout, "    %s: rc=%s loc=0x%x\n", cases[c].what,
+                        PMIx_Error_string(rc), (unsigned) loc);
+            }
+            report(cases[c].what, ok);
+        }
+        /* the short token must not have swallowed the real ones around it */
+        loc = 0;
+        rc = PMIx_Get_relative_locality("SK0:X:CR0", "SK0:X:CR0", &loc);
+        ok = (PMIX_SUCCESS != rc)
+             || (0 != (loc & PMIX_LOCALITY_SHARE_PACKAGE)
+                 && 0 != (loc & PMIX_LOCALITY_SHARE_CORE));
+        report("relative locality: real tokens survive a malformed neighbor", ok);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1045,6 +1154,56 @@ static void run_topology_suite(pmix_topology_t *topo, const char *label, int thi
     }
 }
 
+/* An EMPTY pmix_topology_t is a value, not a broken object.
+ *
+ * A caller with no topology of its own says so by handing over a zeroed
+ * pmix_topology_t - they cannot pass a NULL pointer, because the generic
+ * pack entry point rejects a NULL source before any type handler is
+ * reached. pmix_hwloc_pack_topology() is written around that and says so in
+ * its comment; the copy and print handlers beside it were not, and both
+ * dereference the inner pointer through hwloc (hwloc_topology_dup() reads
+ * its source's root object before it validates anything, and
+ * hwloc_get_root_obj() does not check its argument at all).
+ *
+ * Drive it through the public value API rather than the handlers directly,
+ * because that is how a caller reaches them. */
+static void test_empty_topology_value(void)
+{
+    pmix_topology_t empty = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_value_t src, dst;
+    pmix_status_t rc;
+    char *str = NULL;
+    int ok;
+
+    empty.source = strdup("hwloc");
+
+    PMIX_VALUE_CONSTRUCT(&src);
+    PMIX_VALUE_CONSTRUCT(&dst);
+    src.type = PMIX_TOPO;
+    src.data.topo = &empty;
+
+    /* copy */
+    rc = PMIx_Value_xfer(&dst, &src);
+    ok = (PMIX_SUCCESS == rc && NULL != dst.data.topo
+          && NULL == dst.data.topo->topology);
+    if (!ok) {
+        fprintf(stdout, "    empty topology copy: rc=%s\n", PMIx_Error_string(rc));
+    }
+    report("an empty topology value can be copied", ok);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_VALUE_DESTRUCT(&dst);
+    }
+
+    /* print - "no tree to render" is an answer, a crash is not */
+    str = PMIx_Value_string(&src);
+    report("an empty topology value can be handed to the printer", 1);
+    if (NULL != str) {
+        free(str);
+    }
+
+    free(empty.source);
+}
+
 /* Comparing two PMIX_TOPO values.
  *
  * cmp_topo() stringifies both topologies and compares the strings, and it
@@ -1139,6 +1298,7 @@ int main(int argc, char **argv)
     test_cpuset_parse_bad_input();
     test_cpuset_string_bad_source();
     test_relative_locality();
+    test_empty_topology_value();
     test_topology_value_compare();
     test_cpuset_value_compare();
     test_locality_generator_to_consumer();

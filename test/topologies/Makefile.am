@@ -40,6 +40,23 @@
 # two ordinals rather than one. A mask computed under one model and
 # read under the other silently hands the process half the hardware it
 # was given, so both shapes have to be covered.
+#
+# A fixture here must be parseable by hwloc's MINIMALISTIC XML parser,
+# not just by libxml2. hwloc uses whichever of the two it was built
+# with, and a distro hwloc built without libxml2 - which is what CI
+# runs - falls back to its own hand-rolled scanner. That scanner does
+# not understand XML comments: a single <!-- --> anywhere in the file
+# makes hwloc_topology_load() fail with "Failed to parse XML input with
+# the minimalistic parser", and the test that reads it fails on Linux
+# while passing on a machine whose hwloc has libxml2. So describe a
+# fixture here, in this file, and never inside the fixture itself.
+#
+# unnamed-osdev.xml is not a machine anyone has: it is opa-hfi.xml with
+# OS devices that carry no name at all, which hwloc's XML importer accepts
+# and hwloc's own discovery never produces. It is here because a topology
+# arrives at PMIx as XML from wherever it was exported - another node, an
+# unpacked PMIX_TOPO off the wire - so the shape is caller-supplied data
+# that the enumerator has to survive rather than trust.
 
 EXTRA_DIST = test-topo.xml test-topo2.xml nvml-4gpu.xml drm-4gpu.xml \
-        intel-4gpu.xml intel-flat-4gpu.xml opa-hfi.xml
+        intel-4gpu.xml intel-flat-4gpu.xml opa-hfi.xml unnamed-osdev.xml

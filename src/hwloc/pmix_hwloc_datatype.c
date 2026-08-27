@@ -34,7 +34,11 @@ pmix_status_t pmix_hwloc_pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src,
         /* pack a NULL string */
         tmp = NULL;
         PMIX_BFROPS_PACK_TYPE(rc, buf, &tmp, 1, PMIX_STRING, regtypes);
-        return PMIX_SUCCESS;
+        /* rc, not PMIX_SUCCESS: reporting success for a pack that failed
+         * leaves the buffer one field short, and the peer that unpacks it
+         * then reads the next field as this one - the same desync the
+         * topology arm below is careful to report */
+        return rc;
     }
 
     if (NULL != src->source && 0 != strncasecmp(src->source, "hwloc", 5)) {
@@ -77,9 +81,19 @@ pmix_status_t pmix_hwloc_unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *dest,
     if (NULL == tmp) {
         dest->bitmap = NULL;
     } else {
-        /* convert to a bitmap */
+        /* convert to a bitmap. The string came off the wire, so it is not
+         * guaranteed to be the list form pack_cpuset writes; ignoring the
+         * parse status handed the caller a half-filled bitmap that looks
+         * like a real binding. pmix_hwloc_parse_cpuset_string screens the
+         * same call for the same reason, and leaves nothing half-built
+         * behind - a caller given an error has no reason to destruct. */
         dest->bitmap = hwloc_bitmap_alloc();
-        hwloc_bitmap_list_sscanf(dest->bitmap, tmp);
+        if (0 != hwloc_bitmap_list_sscanf(dest->bitmap, tmp)) {
+            hwloc_bitmap_free(dest->bitmap);
+            dest->bitmap = NULL;
+            free(tmp);
+            return PMIX_ERR_BAD_PARAM;
+        }
         free(tmp);
     }
     dest->source = strdup("hwloc");
@@ -89,6 +103,9 @@ pmix_status_t pmix_hwloc_unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *dest,
 
 pmix_status_t pmix_hwloc_copy_cpuset(pmix_cpuset_t *dest, pmix_cpuset_t *src)
 {
+    if (NULL == dest || NULL == src) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     if (NULL == src->source ||
         0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -108,6 +125,9 @@ char *pmix_hwloc_print_cpuset(pmix_cpuset_t *src)
 {
     char *tmp;
 
+    if (NULL == src) {
+        return NULL;
+    }
     if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return NULL;
     }
@@ -242,7 +262,14 @@ pmix_status_t pmix_hwloc_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
 
     /* add to buffer */
     PMIX_BFROPS_PACK_TYPE(rc, buf, &xmlbuffer, 1, PMIX_STRING, regtypes);
-    free(xmlbuffer);
+    /* hwloc_free_xmlbuffer, not free: hwloc dispatches the export to
+     * whichever XML backend it was built with, and the libxml one allocates
+     * the buffer through libxml2 (xmlDocDumpFormatMemoryEnc) and releases it
+     * with xmlFree. Handing that block to the C library's free() is a
+     * cross-allocator release - undefined, and heap corruption wherever
+     * libxml2's allocator is not the C library's. The exporters in
+     * pmix_hwloc.c already do this correctly. */
+    hwloc_free_xmlbuffer(src->topology, xmlbuffer);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -321,8 +348,21 @@ pmix_status_t pmix_hwloc_unpack_topology(pmix_buffer_t *buf, pmix_topology_t *de
 
 pmix_status_t pmix_hwloc_copy_topology(pmix_topology_t *dest, pmix_topology_t *src)
 {
+    if (NULL == dest || NULL == src) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_NOT_SUPPORTED;
+    }
+    /* An empty topology object is a legal value, not a broken one: it is how
+     * a caller says "no topology, use yours", which is why pack_topology
+     * accepts it. hwloc_topology_dup() reads its source's root object before
+     * it checks anything, so handing it a NULL is a segfault rather than an
+     * error return. Copy the emptiness. */
+    if (NULL == src->topology) {
+        dest->topology = NULL;
+        dest->source = strdup("hwloc");
+        return PMIX_SUCCESS;
     }
 
     /* use the hwloc dup function */
@@ -421,7 +461,14 @@ char *pmix_hwloc_print_topology(pmix_topology_t *src)
     hwloc_obj_t obj;
     char *tmp = NULL;
 
-    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
+    if (NULL == src || NULL == src->source
+        || 0 != strncasecmp(src->source, "hwloc", 5)) {
+        return NULL;
+    }
+    /* the same empty-topology value copy_topology accepts above; there is
+     * no tree to render, and hwloc_get_root_obj() dereferences its argument
+     * without checking it. pmix_hwloc_get_topology_size screens this. */
+    if (NULL == src->topology) {
         return NULL;
     }
 
