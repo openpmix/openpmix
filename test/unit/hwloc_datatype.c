@@ -1045,6 +1045,70 @@ static void run_topology_suite(pmix_topology_t *topo, const char *label, int thi
     }
 }
 
+/* Comparing two PMIX_TOPO values.
+ *
+ * cmp_topo() stringifies both topologies and compares the strings, and it
+ * used to hand the renderer t->topology - the inner hwloc handle - where a
+ * pmix_topology_t * is wanted. That member is a void *, so it converted
+ * silently, and the renderer read its own "source" field out of the head of
+ * struct hwloc_topology: a pointer assembled from whatever integers sit
+ * there, handed straight to strncasecmp. Comparing a topology to itself is
+ * enough to reach it. */
+static void test_topology_value_compare(void)
+{
+    pmix_topology_t real = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_value_t v1, v2;
+    pmix_value_cmp_t cmp;
+    pmix_status_t rc;
+
+    rc = PMIx_Load_topology(&real);
+    if (PMIX_SUCCESS != rc || NULL == real.topology) {
+        fprintf(stdout, "  SKIP: no local topology to compare\n");
+        return;
+    }
+    PMIX_VALUE_CONSTRUCT(&v1);
+    PMIX_VALUE_CONSTRUCT(&v2);
+    v1.type = PMIX_TOPO;
+    v1.data.topo = &real;
+    v2.type = PMIX_TOPO;
+    v2.data.topo = &real;
+    cmp = PMIx_Value_compare(&v1, &v2);
+    if (PMIX_EQUAL != cmp) {
+        fprintf(stdout, "    a topology did not compare equal to itself: %d\n",
+                (int) cmp);
+    }
+    report("a topology value compares equal to itself", PMIX_EQUAL == cmp);
+}
+
+/* The same shape, one type over: cmp_cpuset() handed the renderer
+ * cs->bitmap - the inner hwloc_bitmap_t - where the pmix_cpuset_t is
+ * wanted, and read its "source" out of the head of struct hwloc_bitmap_s. */
+static void test_cpuset_value_compare(void)
+{
+    pmix_cpuset_t cpuset;
+    pmix_value_t v1, v2;
+    pmix_value_cmp_t cmp;
+
+    PMIX_CPUSET_CONSTRUCT(&cpuset);
+    if (PMIX_SUCCESS != PMIx_Parse_cpuset_string("hwloc:0-3", &cpuset)) {
+        report("cpuset compare (setup)", 0);
+        return;
+    }
+    PMIX_VALUE_CONSTRUCT(&v1);
+    PMIX_VALUE_CONSTRUCT(&v2);
+    v1.type = PMIX_PROC_CPUSET;
+    v1.data.cpuset = &cpuset;
+    v2.type = PMIX_PROC_CPUSET;
+    v2.data.cpuset = &cpuset;
+    cmp = PMIx_Value_compare(&v1, &v2);
+    if (PMIX_EQUAL != cmp) {
+        fprintf(stdout, "    a cpuset did not compare equal to itself: %d\n",
+                (int) cmp);
+    }
+    report("a cpuset value compares equal to itself", PMIX_EQUAL == cmp);
+    PMIX_CPUSET_DESTRUCT(&cpuset);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1075,6 +1139,8 @@ int main(int argc, char **argv)
     test_cpuset_parse_bad_input();
     test_cpuset_string_bad_source();
     test_relative_locality();
+    test_topology_value_compare();
+    test_cpuset_value_compare();
     test_locality_generator_to_consumer();
     test_compute_distances_bad_params();
     test_compute_distances_range();
