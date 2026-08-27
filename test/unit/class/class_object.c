@@ -308,7 +308,7 @@ static void test_obj_update_returns_new_value(void)
 static void test_destruct_of_static_init_object(void)
 {
     /* Deliberately NOT PMIX_CONSTRUCT'ed: that is the whole point. */
-    pmix_list_t sl = PMIX_LIST_STATIC_INIT;
+    pmix_list_t sl = PMIX_LIST_STATIC_INIT(sl);
     pmix_object_t so = PMIX_OBJ_STATIC_INIT(pmix_object_t);
 
     report("base class carries a non-NULL constructor array",

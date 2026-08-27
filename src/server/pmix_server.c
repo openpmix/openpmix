@@ -81,20 +81,19 @@
 
 // global variables
 pmix_server_globals_t pmix_server_globals = {
-    .initialized = false,
     .module_set = false,
-    .nspaces = PMIX_LIST_STATIC_INIT,
+    .nspaces = PMIX_LIST_STATIC_INIT(pmix_server_globals.nspaces),
     .clients = PMIX_POINTER_ARRAY_STATIC_INIT,
     .peer_cache = PMIX_POINTER_ARRAY_STATIC_INIT,
-    .collectives = PMIX_LIST_STATIC_INIT,
-    .remote_pnd = PMIX_LIST_STATIC_INIT,
-    .local_reqs = PMIX_LIST_STATIC_INIT,
-    .gdata = PMIX_LIST_STATIC_INIT,
+    .collectives = PMIX_LIST_STATIC_INIT(pmix_server_globals.collectives),
+    .remote_pnd = PMIX_LIST_STATIC_INIT(pmix_server_globals.remote_pnd),
+    .local_reqs = PMIX_LIST_STATIC_INIT(pmix_server_globals.local_reqs),
+    .gdata = PMIX_LIST_STATIC_INIT(pmix_server_globals.gdata),
     .genvars = NULL,
-    .events = PMIX_LIST_STATIC_INIT,
-    .iof = PMIX_LIST_STATIC_INIT,
-    .iof_residuals = PMIX_LIST_STATIC_INIT,
-    .psets = PMIX_LIST_STATIC_INIT,
+    .events = PMIX_LIST_STATIC_INIT(pmix_server_globals.events),
+    .iof = PMIX_LIST_STATIC_INIT(pmix_server_globals.iof),
+    .iof_residuals = PMIX_LIST_STATIC_INIT(pmix_server_globals.iof_residuals),
+    .psets = PMIX_LIST_STATIC_INIT(pmix_server_globals.psets),
     .max_iof_cache = 0,
     .tool_connections_allowed = false,
     .tmpdir = NULL,
@@ -470,11 +469,6 @@ static void server_teardown(void)
     pmix_peer_t *peer;
     pmix_namespace_t *ns;
     pmix_dmdx_local_t *dlcd, *dnxt;
-
-    /* Close the server entry points first: everything below here takes
-     * apart the state they walk, and the frameworks they fan out to are
-     * closed at the foot of this function. */
-    pmix_atomic_unset_bool(&pmix_server_globals.initialized);
 
     /* Take down the file-scope event init may have registered, while the
      * base it is on still exists - otherwise it survives into a state
@@ -1498,7 +1492,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_ptl_base_start_listening();
 
     // mark ourselves as initialized
-    pmix_atomic_set_bool(&pmix_server_globals.initialized);
     pmix_atomic_set_bool(&pmix_globals.initialized);
 
     return PMIX_SUCCESS;

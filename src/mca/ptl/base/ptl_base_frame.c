@@ -68,7 +68,7 @@
 pmix_ptl_base_t pmix_ptl_base = {
     .initialized = false,
     .selected = false,
-    .posted_recvs = PMIX_LIST_STATIC_INIT,
+    .posted_recvs = PMIX_LIST_STATIC_INIT(pmix_ptl_base.posted_recvs),
     .listener = PMIX_LISTENER_STATIC_INIT,
     .connection = NULL,
     .max_msg_size = 0,

@@ -367,16 +367,7 @@ pmix_status_t PMIx_server_register_resources(pmix_info_t info[], size_t ninfo,
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server register resources");
 
-    /* the handler appends to pmix_server_globals.gdata, which is only
-     * *statically* initialized until pmix_server_initialize() constructs
-     * it - and PMIX_LIST_STATIC_INIT leaves the sentinel's prev pointer
-     * NULL, so pmix_list_append writes through NULL rather than finding
-     * an empty list. pmix_globals.initialized does not answer the
-     * question the man page asks: PMIx_Init sets it too, so a client
-     * reaching here was told PMIX_SUCCESS and then took the SIGSEGV on
-     * the progress thread with the call already returned */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -841,11 +832,7 @@ pmix_status_t PMIx_server_deregister_resources(pmix_info_t info[], size_t ninfo,
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server deregister resources");
 
-    /* same as its twin: the handler walks pmix_server_globals.gdata, and
-     * a statically initialized list has a NULL sentinel next pointer, so
-     * the walk is a dereference rather than an empty loop */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -998,14 +985,6 @@ pmix_status_t PMIx_server_setup_application(const pmix_nspace_t nspace, pmix_inf
 {
     pmix_setup_caddy_t *cd;
 
-    /* NOT screened on pmix_server_globals.initialized, unlike the two
-     * resource calls above. A launcher that came up through
-     * PMIx_tool_init is a legitimate caller: PMIx_tool_init opens pmdl
-     * unconditionally and pnet for a launcher, saying so at the site -
-     * "we might need them if we are asking a server to launch something
-     * for us" - and PRRTE's prun reaches here that way, before any
-     * PMIx_server_init. Adding the screen turned every prun launch into
-     * PMIX_ERR_INIT. */
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }

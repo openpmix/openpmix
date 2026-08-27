@@ -74,7 +74,7 @@ typedef struct {
     pmix_list_t outputs;
 } pmix_iof_write_event_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_write_event_t);
-#define PMIX_IOF_WRITE_EVENT_STATIC_INIT    \
+#define PMIX_IOF_WRITE_EVENT_STATIC_INIT(w) \
 {                                           \
     .super = PMIX_LIST_ITEM_STATIC_INIT,    \
     .pending = false,                       \
@@ -83,7 +83,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_write_event_t);
     .ev = NULL,                             \
     .tv = {0, 0},                           \
     .fd = 0,                                \
-    .outputs = PMIX_LIST_STATIC_INIT        \
+    .outputs = PMIX_LIST_STATIC_INIT((w).outputs) \
 }
 
 typedef struct {
@@ -96,12 +96,12 @@ typedef struct {
     bool closed;
 } pmix_iof_sink_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_sink_t);
-#define PMIX_IOF_SINK_STATIC_INIT               \
+#define PMIX_IOF_SINK_STATIC_INIT(s)            \
 {                                               \
     .super = PMIX_LIST_ITEM_STATIC_INIT,        \
     .name = {{0}, 0},                           \
     .tag = PMIX_FWD_NO_CHANNELS,                \
-    .wev = PMIX_IOF_WRITE_EVENT_STATIC_INIT,    \
+    .wev = PMIX_IOF_WRITE_EVENT_STATIC_INIT((s).wev), \
     .xoff = false,                              \
     .exclusive = false,                         \
     .closed = false                             \

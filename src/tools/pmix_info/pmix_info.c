@@ -59,7 +59,7 @@
  * Public variables
  */
 
-pmix_cli_result_t results = PMIX_CLI_RESULT_STATIC_INIT;
+pmix_cli_result_t results = PMIX_CLI_RESULT_STATIC_INIT(results);
 
 const char *pmix_info_type_base = "base";
 

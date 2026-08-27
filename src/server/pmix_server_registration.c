@@ -418,16 +418,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const pmix_nspace_t nspace
     pmix_status_t rc;
     pmix_lock_t mylock;
 
-    /* the *server* library has to be up, not merely some PMIx library.
-     * pmix_globals.initialized is set by PMIx_Init and PMIx_tool_init
-     * too, and until PMIx_server_init has run every list in
-     * pmix_server_globals is only PMIX_LIST_STATIC_INIT - whose sentinel
-     * carries a NULL next pointer, so the collectives walk below is a
-     * NULL dereference rather than an empty loop - and the pnet, pgpu and
-     * pmdl frameworks these handlers fan out to have never been opened.
-     * See pmix_server_globals_t::initialized */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -889,16 +880,7 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_
     pmix_setup_caddy_t *cd;
     pmix_lock_t mylock;
 
-    /* the *server* library has to be up, not merely some PMIx library.
-     * pmix_globals.initialized is set by PMIx_Init and PMIx_tool_init
-     * too, and until PMIx_server_init has run every list in
-     * pmix_server_globals is only PMIX_LIST_STATIC_INIT - whose sentinel
-     * carries a NULL next pointer, so the collectives walk below is a
-     * NULL dereference rather than an empty loop - and the pnet, pgpu and
-     * pmdl frameworks these handlers fan out to have never been opened.
-     * See pmix_server_globals_t::initialized */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         if (NULL != cbfunc) {
             cbfunc(PMIX_ERR_INIT, cbdata);
         }
@@ -1336,16 +1318,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc, u
     pmix_status_t rc;
     pmix_lock_t mylock;
 
-    /* the *server* library has to be up, not merely some PMIx library.
-     * pmix_globals.initialized is set by PMIx_Init and PMIx_tool_init
-     * too, and until PMIx_server_init has run every list in
-     * pmix_server_globals is only PMIX_LIST_STATIC_INIT - whose sentinel
-     * carries a NULL next pointer, so the collectives walk below is a
-     * NULL dereference rather than an empty loop - and the pnet, pgpu and
-     * pmdl frameworks these handlers fan out to have never been opened.
-     * See pmix_server_globals_t::initialized */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -1448,16 +1421,7 @@ PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc, pmix_op_
     pmix_setup_caddy_t *cd;
     pmix_lock_t mylock;
 
-    /* the *server* library has to be up, not merely some PMIx library.
-     * pmix_globals.initialized is set by PMIx_Init and PMIx_tool_init
-     * too, and until PMIx_server_init has run every list in
-     * pmix_server_globals is only PMIX_LIST_STATIC_INIT - whose sentinel
-     * carries a NULL next pointer, so the collectives walk below is a
-     * NULL dereference rather than an empty loop - and the pnet, pgpu and
-     * pmdl frameworks these handlers fan out to have never been opened.
-     * See pmix_server_globals_t::initialized */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         if (NULL != cbfunc) {
             cbfunc(PMIX_ERR_INIT, cbdata);
         }

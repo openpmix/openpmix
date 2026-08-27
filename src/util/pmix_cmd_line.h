@@ -85,10 +85,10 @@ typedef struct {
 } pmix_cli_result_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 
-#define PMIX_CLI_RESULT_STATIC_INIT                 \
+#define PMIX_CLI_RESULT_STATIC_INIT(r)              \
 {                                                   \
     .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
-    .instances = PMIX_LIST_STATIC_INIT,             \
+    .instances = PMIX_LIST_STATIC_INIT((r).instances), \
     .tail = NULL,                                   \
     .nseq = 0                                       \
 }

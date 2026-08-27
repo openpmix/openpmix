@@ -48,7 +48,7 @@
 
 /* Instantiate the global vars */
 pmix_gds_globals_t pmix_gds_globals = {
-    .actives = PMIX_LIST_STATIC_INIT,
+    .actives = PMIX_LIST_STATIC_INIT(pmix_gds_globals.actives),
     .initialized = false,
     .selected = false,
     .all_mods = NULL

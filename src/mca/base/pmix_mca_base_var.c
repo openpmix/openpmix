@@ -63,8 +63,8 @@
  * global variables
  */
 bool pmix_mca_base_var_initialized = false;
-pmix_list_t pmix_mca_base_var_file_values = PMIX_LIST_STATIC_INIT;
-pmix_list_t pmix_mca_base_var_override_values = PMIX_LIST_STATIC_INIT;
+pmix_list_t pmix_mca_base_var_file_values = PMIX_LIST_STATIC_INIT(pmix_mca_base_var_file_values);
+pmix_list_t pmix_mca_base_var_override_values = PMIX_LIST_STATIC_INIT(pmix_mca_base_var_override_values);
 
 /*
  * local variables

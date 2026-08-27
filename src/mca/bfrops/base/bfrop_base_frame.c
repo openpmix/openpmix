@@ -51,7 +51,7 @@
 
 /* Instantiate the global vars */
 pmix_bfrops_globals_t pmix_bfrops_globals = {
-    .actives = PMIX_LIST_STATIC_INIT,
+    .actives = PMIX_LIST_STATIC_INIT(pmix_bfrops_globals.actives),
     .initialized = false,
     .initial_size = 0,
     .threshold_size = 0,

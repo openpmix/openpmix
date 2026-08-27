@@ -42,7 +42,7 @@ pmix_psensor_base_module_t pmix_psensor = {
 };
 
 pmix_psensor_base_t pmix_psensor_base = {
-    .actives = PMIX_LIST_STATIC_INIT,
+    .actives = PMIX_LIST_STATIC_INIT(pmix_psensor_base.actives),
     .evbase = NULL,
     .selected = false
 };

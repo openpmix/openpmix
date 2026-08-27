@@ -319,7 +319,7 @@ static void hddes(pmix_held_delete_t *p)
 }
 static PMIX_CLASS_INSTANCE(pmix_held_delete_t, pmix_list_item_t, hdcon, hddes);
 
-static pmix_list_t pmix_client_held_deletes = PMIX_LIST_STATIC_INIT;
+static pmix_list_t pmix_client_held_deletes = PMIX_LIST_STATIC_INIT(pmix_client_held_deletes);
 
 /* A server telling us that a key has been deleted, so our own copy of it
  * goes too. See pmix_server_notify_deleted(). */
@@ -424,9 +424,9 @@ pmix_client_globals_t pmix_client_globals = {
     .singleton = false,
     .fast_get = true,
     .local_iof = false,
-    .pending_requests = PMIX_LIST_STATIC_INIT,
+    .pending_requests = PMIX_LIST_STATIC_INIT(pmix_client_globals.pending_requests),
     .peers = PMIX_POINTER_ARRAY_STATIC_INIT,
-    .groups = PMIX_LIST_STATIC_INIT,
+    .groups = PMIX_LIST_STATIC_INIT(pmix_client_globals.groups),
     .grouplock = PMIX_MUTEX_STATIC_INIT,
     .get_output = -1,
     .get_verbose = 0,
@@ -446,8 +446,8 @@ pmix_client_globals_t pmix_client_globals = {
     .base_verbose = 0,
     .group_output = -1,
     .group_verbose = 0,
-    .iof_stdout = PMIX_IOF_SINK_STATIC_INIT,
-    .iof_stderr = PMIX_IOF_SINK_STATIC_INIT,
+    .iof_stdout = PMIX_IOF_SINK_STATIC_INIT(pmix_client_globals.iof_stdout),
+    .iof_stderr = PMIX_IOF_SINK_STATIC_INIT(pmix_client_globals.iof_stderr),
     .dirty_local = NULL,
     .dirty_remote = NULL,
     .del_local = NULL,

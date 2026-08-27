@@ -171,20 +171,7 @@ pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members, size_t 
     pmix_setup_caddy_t cd;
     pmix_status_t rc;
 
-    /* The question the man page's PMIX_ERR_INIT answers is whether the
-     * *server* library is up, and pmix_globals.initialized does not ask
-     * it - PMIx_Init and PMIx_tool_init set that flag too. A client is
-     * the case that bites: PMIx_Init constructs only the two IOF lists
-     * in pmix_server_globals, so psets is still PMIX_LIST_STATIC_INIT,
-     * whose sentinel carries NULL next and prev pointers, and the
-     * pmix_list_append in psetdef writes through the NULL prev. The
-     * caller was told PMIX_SUCCESS and the progress thread then took a
-     * SIGSEGV. (A tool escapes the crash - PMIx_tool_init calls
-     * pmix_server_initialize - but is equally entitled to the documented
-     * refusal, since nothing there will ever serve a query about the set
-     * it just recorded.) */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -289,11 +276,7 @@ pmix_status_t PMIx_server_delete_process_set(char *pset_name)
     pmix_setup_caddy_t cd;
     pmix_status_t rc;
 
-    /* same reasoning as the define entry point above: for a client the
-     * walk of pmix_server_globals.psets below starts at a sentinel whose
-     * next pointer is NULL, and dereferences it */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 

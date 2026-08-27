@@ -46,8 +46,8 @@
 
 /* Instantiate the global vars */
 pmix_pgpu_globals_t pmix_pgpu_globals = {
-    .actives = PMIX_LIST_STATIC_INIT,
-    .nspaces = PMIX_LIST_STATIC_INIT
+    .actives = PMIX_LIST_STATIC_INIT(pmix_pgpu_globals.actives),
+    .nspaces = PMIX_LIST_STATIC_INIT(pmix_pgpu_globals.nspaces)
 };
 pmix_pgpu_API_module_t pmix_pgpu = {
     .allocate = pmix_pgpu_base_allocate,

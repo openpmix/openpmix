@@ -74,6 +74,35 @@ each time somebody asks.
           has no answer at that moment, when the question that does have
           one is "does this output have to be formatted yet".
 
+.. note:: **2026-08-27.**  The entry about ``PMIx_server_*`` entry points
+          screening the wrong initialization flag is retired, and the way
+          it went is worth keeping.  It had grown into a per-API audit:
+          which roles may call what, a lookup table, a completeness test
+          to keep the table honest.  All of that was infrastructure to
+          protect against a program that calls a server API from a
+          client, which is a user error that has not occurred in
+          production in the life of the library.
+
+          The whole crash surface was one defect in one macro.
+          ``PMIX_LIST_STATIC_INIT`` left the sentinel's ``next`` and
+          ``prev`` NULL, so a statically initialized list was not an
+          empty list, it was an unwalkable one — and every
+          ``PMIX_LIST_FOREACH`` and ``pmix_list_append`` in the tree
+          assumes an empty list can be walked.  The macro now takes the
+          object it initializes and points the sentinel at itself.  With
+          that one change, calling all fourteen server entry points from
+          a client, a plain tool and a launcher produced ten, four and
+          zero crashes before, and zero, zero and zero after.  The second
+          initialization flag those entry points had been given is gone;
+          there is one ``pmix_globals.initialized`` again, set at the end
+          of whichever init you called.
+
+          **The lesson is about where to fix a class of crash.**  Nine
+          entry points crashing the same way is one bug in what they all
+          walk, not nine bugs in nine doorways — and a screen at the
+          doorway costs a maintenance burden forever while the fix
+          underneath costs nothing after the day it lands.
+
 .. note:: **2026-08-18.**  The ``psensor`` progress-thread entry that
           stood under "Deferred work" is closed.  Both halves it called
           for were made together: ``pmix_psensor_base_open`` now starts
@@ -587,124 +616,6 @@ cover the whole of what the entry described.
   ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
-
-Four ``PMIx_server_*`` entry points still screen the wrong flag
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found reviewing ``src/server/pmix_server_inventory.c`` (2026-08-24).
-
-**The defect.** Entry points in ``src/server`` open like this:
-
-.. code-block:: c
-
-   if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
-       return PMIX_ERR_INIT;
-   }
-
-Their man pages describe that return as "the PMIx **server** library has
-not been initialized".  The flag does not say that.  ``PMIx_Init`` and
-``PMIx_tool_init`` set it too.
-
-``pmix_server_globals.initialized`` is the flag that does say it.  It is
-set at the foot of ``PMIx_server_init`` and cleared at the top of
-``server_teardown()``.
-
-**Why it can be fatal.** Until ``PMIx_server_init`` runs, the lists in
-``pmix_server_globals`` are only statically initialized.
-``PMIX_LIST_STATIC_INIT`` leaves the sentinel's ``next`` and ``prev``
-NULL, so ``PMIX_LIST_FOREACH`` over one of them dereferences NULL
-instead of finding the list empty.  The caller is answered
-``PMIX_SUCCESS`` and the process dies afterwards, on the progress
-thread.  Pointer arrays are safe: ``pmix_pointer_array_get_item``
-bounds-checks, and a statically initialized array has size 0.
-
-Still open
-""""""""""
-
-Four entry points.  Take them one at a time; the answer is not the same
-for all four.
-
-* ``PMIx_server_IOF_deliver`` (``pmix_server_iof.c``) appends to the
-  ``pmix_server_globals.iof`` **list**, so it can be fatal.  The only
-  caller in this tree is ``plog/stdfd``, on the branch it takes when the
-  peer is neither a client nor a tool.  PRRTE calls it from the HNP.
-  One wrinkle: ``server_teardown()`` clears the flag first and then does
-  a lot of work, so a screen here would silently drop ``show_help``
-  output produced during teardown.
-* ``PMIx_server_IOF_flow_control`` (``pmix_server_iof.c``) walks
-  ``pmix_server_globals.clients``, which is a pointer array, so it
-  cannot crash in any role.  A screen here would be about meaning, not
-  safety.  PRRTE calls it from ``iof/hnp``.
-* ``PMIx_server_dmodex_request`` (``pmix_server_dmodex.c``) appends to
-  the ``pmix_server_globals.remote_pnd`` **list**, so it can be fatal.
-  PRRTE calls it from ``prted``.
-* ``PMIx_server_collect_job_info`` (``pmix_server_fence.c``) reads
-  ``pmix_globals.nspaces``, which every role constructs, and
-  ``pmix_server_globals.clients``.  It cannot crash in any role either.
-
-All four files have had their own per-file pass (2026-08-24) and none of
-them added the screen, so this is what the completed ``src/server``
-review left open rather than something it never reached.
-
-Already closed
-""""""""""""""
-
-These now screen ``pmix_server_globals.initialized``.  Each has refusal
-cases in the named test, and those cases fork: against an unfixed
-library the crash arrives after the call has already returned, so the
-parent would die rather than report.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 55 45
-
-   * - Entry points
-     - Test
-   * - ``PMIx_server_collect_inventory``, ``_deliver_inventory``
-     - ``test/unit/server_inventory.c``
-   * - ``PMIx_server_define_process_set``, ``_delete_process_set``
-     - ``test/unit/progress_threads.c``
-   * - ``PMIx_server_register_nspace``, ``_register_client``,
-       ``_deregister_nspace``, ``_deregister_client``
-     - ``test/unit/server_registration.c``
-   * - ``PMIx_server_register_resources``, ``_deregister_resources``
-     - ``test/unit/server_setup.c``
-
-Must not get the screen
-"""""""""""""""""""""""
-
-* ``PMIx_server_setup_application`` and ``_setup_local_support``
-  (``pmix_server_setup.c``), and ``PMIx_server_setup_fork``
-  (``pmix_server.c``).  A launcher calls these after ``PMIx_tool_init``
-  alone — ``prun_common.c`` reaches ``setup_application`` that way and
-  never calls ``PMIx_server_init``.  Screening the first two broke every
-  ``prun`` launch with ``PMIX_ERR_INIT`` and was reverted.
-* The ``preg`` and hwloc helpers.  ``pmix_rte_init`` stands both up for
-  every role, so these work correctly in a client today:
-  ``PMIx_generate_regex``, ``_generate_regex2``, ``_parse_regex2``,
-  ``_generate_ppn``, ``PMIx_server_generate_locality_string``,
-  ``_generate_cpuset_string``, ``_generate_cpuset``
-  (``pmix_server_setup.c``), and ``PMIx_Store_internal``
-  (``pmix_server_dmodex.c``).
-* The two lifecycle sites in ``pmix_server.c``.
-  ``PMIx_server_init``'s test is its already-latched re-entry arm, and
-  ``PMIx_server_finalize``'s guards the reference count.  Changing
-  either one changes init/finalize semantics.
-
-Two rules for the rest of the sweep
-"""""""""""""""""""""""""""""""""""
-
-**Check the callers in PRRTE, not only in this tree.**  Look for a
-launcher reaching the entry point after ``PMIx_tool_init``.
-
-**A screen answers "may this caller be here at all".**  If the caller is
-entitled to be there, the fix is to complete that role's init, not to
-refuse the caller.  ``PMIx_server_setup_fork`` was on the "wants the
-screen" list until 2026-08-26.  It turned out to crash a launcher in
-``pmix_pgpu_base_setup_fork``, because ``PMIx_tool_init`` opened
-``pnet`` and not ``pgpu`` while the setup calls fan out to both.
-Opening ``pgpu`` fixed it; the screen would have refused the only caller
-the API has.
 
 ``PMIX_GET_POINTER_VALUES`` is honored by three shortcuts and nothing else
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

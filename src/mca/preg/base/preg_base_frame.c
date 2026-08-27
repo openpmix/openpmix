@@ -47,7 +47,7 @@
 
 /* Instantiate the global vars */
 pmix_preg_globals_t pmix_preg_globals = {
-    .actives = PMIX_LIST_STATIC_INIT,
+    .actives = PMIX_LIST_STATIC_INIT(pmix_preg_globals.actives),
     .initialized = false,
     .selected = false
 };
