@@ -582,13 +582,16 @@ sentinel carries NULL `next` **and** `prev`. So a client reaching the
 define path writes through the NULL `prev` inside `pmix_list_append`,
 and one reaching the delete path walks off the NULL `next` — in both
 cases after the entry point has already answered `PMIX_SUCCESS`, so the
-SIGSEGV lands on the progress thread with the call already returned. A
-*tool* escapes the crash, `PMIx_tool_init` having called
-`pmix_server_initialize()`, but is owed the same refusal: nothing in a
-tool will ever serve a query about the set it just recorded. Both now
-screen `pmix_server_globals.initialized` as the inventory entry points
-do; the refusal cases in `test/unit/progress_threads.c` fork for the
-reason above.
+SIGSEGV lands on the progress thread with the call already returned.
+
+**That is history now**: `PMIX_LIST_STATIC_INIT` takes the object it
+initializes and points the sentinel at itself, so an unconstructed list
+is an empty list rather than an unwalkable one, and the second
+initialization flag these entry points briefly screened is gone. A
+client calling either one is a programming error the library does not
+try to diagnose — it gets an answer that means nothing and the process
+survives. The forked cases in `test/unit/progress_threads.c` assert
+exactly that, and nothing more.
 
 **Defining a name that is already recorded is a redefinition, and
 `psetdef` is the only insertion point that can keep the list unique.**
@@ -835,21 +838,17 @@ delete-a-key entry point the `gds` module struct does not have, and it
 cannot be built the obvious way for `shmem3`, whose lock-free read path
 is the reason it is fast. See `docs/todo.rst`.
 
-**The two resource calls screen `pmix_server_globals.initialized`. The
-two setup calls must NOT, and that difference is load-bearing.**
+**The two resource calls once carried a second initialization screen.
+They no longer do, and neither does anything else.**
 
 `_register_resources` appends to `pmix_server_globals.gdata` and
-`_deregister_resources` walks it, and that list is only *statically*
-initialized until `pmix_server_initialize()` constructs it —
-`PMIX_LIST_STATIC_INIT` leaves the sentinel's `next` **and** `prev` NULL,
-so the append writes through NULL and the walk dereferences it. A client
-sets `pmix_globals.initialized` from `PMIx_Init` just as readily as a
-server does, so a client reaching either one was answered `PMIX_SUCCESS`
-and then took a SIGSEGV on the progress thread with the call already
-returned. A *tool* escapes the crash (`PMIx_tool_init` calls
-`pmix_server_initialize()`) but is refused too: nothing in a tool will
-ever serve what it just registered, and PRRTE calls both only from
-`prted`/`hnp`, after `PMIx_server_init`.
+`_deregister_resources` walks it. That list used to be unwalkable until
+`pmix_server_initialize()` constructed it, because `PMIX_LIST_STATIC_INIT`
+left the sentinel's `next` and `prev` NULL — so a client reaching either
+one was answered `PMIX_SUCCESS` and then took a SIGSEGV on the progress
+thread with the call already returned. The macro now points a static
+sentinel at itself, which makes the append and the walk find an empty
+list, so the screen has nothing left to prevent.
 
 `PMIx_server_setup_application` and `_setup_local_support` look like they
 want the same screen and must not have it. **A launcher that came up
@@ -2215,19 +2214,16 @@ before you "fix" one:
   `pmix_pnet_globals.actives` and its `pgpu` twin are only
   `PMIX_LIST_STATIC_INIT`, whose sentinel `next` is NULL - so the
   `PMIX_LIST_FOREACH` in each base fan-out dereferences NULL rather than
-  finding the list empty. `pmix_globals.initialized`, which is what both
-  entry points screened on, is set just as readily by `PMIx_Init` and
-  `PMIx_tool_init`; so a tool that called either API was answered
-  `PMIX_SUCCESS` and then took a SIGSEGV on the progress thread, where
-  the man page's `PMIX_ERR_INIT` ("the PMIx server library has not been
-  initialized") is the documented answer. The screen is
-  `pmix_server_globals.initialized`, set at the foot of `PMIx_server_init`
-  and cleared at the top of `server_teardown()`. **The process type is not
-  a usable stand-in**: `PMIX_PROC_LAUNCHER` is defined as
-  `PMIX_PROC_TOOL | PMIX_PROC_SERVER | PMIX_PROC_LAUNCHER_ACT`, so a
-  launcher that has come up through `PMIx_tool_init` and has not yet
-  called `PMIx_server_init` reads as a server while none of this state
-  exists. Covered by `test/unit/server_inventory.c`, whose refusal
+  finding the list empty — so a tool that called either API was answered
+  `PMIX_SUCCESS` and then took a SIGSEGV on the progress thread. A second
+  initialization flag was tried as the screen and has since been removed:
+  the fix belongs in the macro, which now points a static sentinel at
+  itself so the walk finds nothing instead of dereferencing NULL. **Note
+  for anyone tempted to screen on the process type instead**:
+  `PMIX_PROC_LAUNCHER` is `PMIX_PROC_TOOL | PMIX_PROC_SERVER |
+  PMIX_PROC_LAUNCHER_ACT`, so a launcher that came up through
+  `PMIx_tool_init` reads as a server. Covered by
+  `test/unit/server_inventory.c`, whose
   cases run in a forked child because against an unfixed library the
   crash lands after the call has already returned.
 
@@ -2863,14 +2859,14 @@ misbehave by design).
   NULL `proc`, which the verbose line dereferences) with
   `PMIX_ERR_BAD_PARAM`, and the handler compares with `strcmp` as every
   other lookup here does. The four man pages say so.
-- **All four registration entry points screen
-  `pmix_server_globals.initialized`, not just `pmix_globals.initialized`.**
-  See the inventory section for why: `_register_nspace` and
+- **All four registration entry points screen `pmix_globals.initialized`
+  and nothing else.** A second flag was tried here and removed. The
+  crash it was reaching for was the macro's: `_register_nspace` and
   `_register_client` walk `pmix_server_globals.collectives`, and
-  `_deregister_nspace` fans out to `pnet`, `pgpu` and `pmdl`. In a client
-  or a not-yet-`PMIx_server_init`ed tool none of that exists, and
-  `PMIX_LIST_STATIC_INIT`'s NULL sentinel makes the walk a dereference
-  rather than an empty loop.
+  `_deregister_nspace` fans out to `pnet`, `pgpu` and `pmdl`, none of
+  which exists in a client — and `PMIX_LIST_STATIC_INIT` used to leave a
+  NULL sentinel, which made every one of those walks a dereference
+  rather than an empty loop. It no longer does.
 - **`PMIX_SETUP_COLLECTIVE` tolerates a failed allocation.** It used to
   write `(c)->trk` unconditionally, so an OOM was a NULL dereference on
   the progress thread at both of its call sites. It now leaves `(c)` NULL

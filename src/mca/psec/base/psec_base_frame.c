@@ -46,7 +46,7 @@
 
 /* Instantiate the global vars */
 pmix_psec_globals_t pmix_psec_globals = {
-    .actives = PMIX_LIST_STATIC_INIT,
+    .actives = PMIX_LIST_STATIC_INIT(pmix_psec_globals.actives),
     .initialized = false,
     .selected = false
 };

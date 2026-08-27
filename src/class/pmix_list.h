@@ -166,12 +166,41 @@ struct pmix_list_t {
  */
 typedef struct pmix_list_t pmix_list_t;
 
-/* static initializer for pmix_list_t */
-#define PMIX_LIST_STATIC_INIT                               \
-    {                                                       \
-        .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),       \
-        .pmix_list_sentinel = PMIX_LIST_ITEM_STATIC_INIT,   \
-        .pmix_list_length = 0                               \
+/* Static initializer for pmix_list_t.
+ *
+ * Takes the object being initialized, because an empty list is one whose
+ * sentinel points at ITSELF and there is no other way to spell that
+ * address at compile time. Getting it wrong is not a cosmetic matter: a
+ * sentinel carrying NULL next/prev is not an empty list, it is an
+ * unwalkable one, and every PMIX_LIST_FOREACH and pmix_list_append in
+ * the tree assumes an empty list can be walked and appended to. That
+ * assumption holds for a constructed list, so a list that is touched
+ * before its PMIX_CONSTRUCT - a framework that never opened, a globals
+ * struct belonging to a role that never stood it up - used to take the
+ * process down rather than find nothing.
+ *
+ * Use it as
+ *
+ *     pmix_list_t mylist = PMIX_LIST_STATIC_INIT(mylist);
+ *
+ * and, inside a larger initializer, name the member:
+ *
+ *     myglobals_t myglobals = {
+ *         .thelist = PMIX_LIST_STATIC_INIT(myglobals.thelist)
+ *     };
+ *
+ * A subsequent PMIX_CONSTRUCT is still required before anything is put
+ * ON the list by anyone who means it - this only makes the empty state
+ * honest. */
+#define PMIX_LIST_STATIC_INIT(l)                                            \
+    {                                                                       \
+        .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),                       \
+        .pmix_list_sentinel = {                                             \
+            .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),                   \
+            .pmix_list_next = (struct pmix_list_item_t *) &(l).pmix_list_sentinel, \
+            .pmix_list_prev = (struct pmix_list_item_t *) &(l).pmix_list_sentinel  \
+        },                                                                  \
+        .pmix_list_length = 0                                               \
     }
 
 /** Cleanly destruct a list

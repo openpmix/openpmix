@@ -71,8 +71,8 @@ pmix_gds_shmem3_component_t pmix_mca_gds_shmem3_component = {
         .pmix_mca_query_component = component_query,
         .reserved = {0}
     },
-    .jobs = PMIX_LIST_STATIC_INIT,
-    .sessions = PMIX_LIST_STATIC_INIT
+    .jobs = PMIX_LIST_STATIC_INIT(pmix_mca_gds_shmem3_component.jobs),
+    .sessions = PMIX_LIST_STATIC_INIT(pmix_mca_gds_shmem3_component.sessions)
 };
 
 double pmix_gds_shmem3_segment_size_multiplier = 1.0;

@@ -49,7 +49,7 @@
 /* Instantiate the global vars */
 pmix_pmdl_globals_t pmix_pmdl_globals = {
     .lock = PMIX_LOCK_STATIC_INIT,
-    .actives = PMIX_LIST_STATIC_INIT,
+    .actives = PMIX_LIST_STATIC_INIT(pmix_pmdl_globals.actives),
     .initialized = false,
     .selected = false
 };

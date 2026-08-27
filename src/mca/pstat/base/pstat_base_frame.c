@@ -58,7 +58,7 @@ pmix_pstat_base_module_t pmix_pstat = {
 };
 pmix_pstat_base_t pmix_pstat_base = {
     .evbase = NULL,
-    .ops = PMIX_LIST_STATIC_INIT
+    .ops = PMIX_LIST_STATIC_INIT(pmix_pstat_base.ops)
 };
 
 static bool use_separate_thread = false;

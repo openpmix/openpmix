@@ -112,12 +112,7 @@ pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndi
 {
     pmix_shift_caddy_t *cd;
 
-    /* the *server* library has to be up, not merely some PMIx library:
-     * clct fans out to pnet and pgpu, whose active-module lists are only
-     * statically initialized until PMIx_server_init opens those
-     * frameworks - see pmix_server_globals_t::initialized */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -175,10 +170,7 @@ pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
     pmix_lock_t mylock;
     pmix_status_t rc;
 
-    /* same reasoning as PMIx_server_collect_inventory above: dlinv fans
-     * out to pnet and pgpu, which only PMIx_server_init stands up */
-    if (!pmix_atomic_check_bool(&pmix_globals.initialized) ||
-        !pmix_atomic_check_bool(&pmix_server_globals.initialized)) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 

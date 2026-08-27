@@ -65,8 +65,8 @@ typedef enum {
 } show_load_type_t;
 
 static show_load_type_t show_load_errors = SHOW_LOAD_ERRORS_ALL;
-static pmix_list_t show_load_errors_include = PMIX_LIST_STATIC_INIT;
-static pmix_list_t show_load_errors_exclude = PMIX_LIST_STATIC_INIT;
+static pmix_list_t show_load_errors_include = PMIX_LIST_STATIC_INIT(show_load_errors_include);
+static pmix_list_t show_load_errors_exclude = PMIX_LIST_STATIC_INIT(show_load_errors_exclude);
 
 
 static void fc_pair_constructor(struct fc_pair *obj)

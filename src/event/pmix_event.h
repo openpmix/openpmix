@@ -185,17 +185,17 @@ typedef struct {
 } pmix_events_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_events_t);
 
-#define PMIX_EVENTS_STATIC_INIT                     \
-{                                                   \
-    .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
-    .nhdlrs = 0,                                    \
-    .first = NULL,                                  \
-    .last = NULL,                                   \
-    .actives = PMIX_LIST_STATIC_INIT,               \
-    .single_events = PMIX_LIST_STATIC_INIT,         \
-    .multi_events = PMIX_LIST_STATIC_INIT,          \
-    .default_events = PMIX_LIST_STATIC_INIT,        \
-    .observers = PMIX_LIST_STATIC_INIT              \
+#define PMIX_EVENTS_STATIC_INIT(e)                              \
+{                                                                   \
+    .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),                   \
+    .nhdlrs = 0,                                                    \
+    .first = NULL,                                                  \
+    .last = NULL,                                                   \
+    .actives = PMIX_LIST_STATIC_INIT((e).actives),                  \
+    .single_events = PMIX_LIST_STATIC_INIT((e).single_events),      \
+    .multi_events = PMIX_LIST_STATIC_INIT((e).multi_events),        \
+    .default_events = PMIX_LIST_STATIC_INIT((e).default_events),    \
+    .observers = PMIX_LIST_STATIC_INIT((e).observers)               \
 }
 
 /* define an object for chaining event notifications thru

@@ -22,7 +22,7 @@
 #include "src/util/pmix_output.h"
 
 /* instantiate the global list of interfaces */
-pmix_list_t pmix_if_list = PMIX_LIST_STATIC_INIT;
+pmix_list_t pmix_if_list = PMIX_LIST_STATIC_INIT(pmix_if_list);
 bool pmix_if_do_not_resolve = false;
 
 static int pmix_pif_base_register(pmix_mca_base_register_flag_t flags);

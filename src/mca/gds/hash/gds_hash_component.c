@@ -58,8 +58,8 @@ pmix_gds_hash_component_t pmix_mca_gds_hash_component = {
         .pmix_mca_query_component = component_query,
         .reserved = {0}
     },
-    .mysessions = PMIX_LIST_STATIC_INIT,
-    .myjobs = PMIX_LIST_STATIC_INIT
+    .mysessions = PMIX_LIST_STATIC_INIT(pmix_mca_gds_hash_component.mysessions),
+    .myjobs = PMIX_LIST_STATIC_INIT(pmix_mca_gds_hash_component.myjobs)
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, gds, hash)
 
