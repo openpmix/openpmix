@@ -184,27 +184,27 @@ each time somebody asks.
           since" — is done, and three of its findings generalize past
           the component.
 
-          **``is_tsafe`` is a claim about the reader's thread, not about
+          ``is_tsafe`` **is a claim about the reader's thread, not about
           the data.**  ``shmem3`` sets it, and ``try_local_fetch()`` in
           ``src/client/pmix_client_get.c`` consults it on every keyed
           ``PMIx_Get`` with ``pmix_client_globals.fast_get`` defaulting
           **on** — so the module's ``fetch`` runs on the application's
-          own thread.  The justification recorded in the guide was that a
-          fetch holds a reference on the job tracker and reads only data
-          that is never written again.  That is true of what is *in* a
-          segment, and of the job segment, and says nothing about the
-          process-local bookkeeping a read walks beside it: the modex
-          generation chain, which each completing fence releases and
-          ``munmap``\ s, and the tombstone list, which ``del_key()``
+          own thread.  The justification recorded in the guide was that
+          a fetch holds a reference on the job tracker and reads only
+          data that is never written again.  That is true of what is
+          *in* a segment, and of the job segment, and says nothing about
+          the process-local bookkeeping a read walks beside it: the
+          modex generation chain, which each completing fence releases
+          and ``munmap``\ s, and the tombstone list, which ``del_key()``
           appends to.  A ``PMIx_Fence_nb`` concurrent with a
           ``PMIx_Get`` of a remote rank's key could leave an application
           thread inside ``pmix_hash_fetch()`` on a table that had just
           been unmapped; the single-threaded case was safe only by
-          accident, because a blocking fence parks the app thread.  Fixed
-          with a per-job mutex.  When reviewing any ``is_tsafe`` module
-          the question to ask is not "is the data immutable" but "what
-          process-local state does the read touch, and who else writes
-          it".
+          accident, because a blocking fence parks the app thread.
+          Fixed with a per-job mutex.  When reviewing any ``is_tsafe``
+          module the question to ask is not "is the data immutable" but
+          "what process-local state does the read touch, and who else
+          writes it".
 
           **A doc comment saying a field is "X-side only" has to be
           checked against every** *reader*, **not just the writer.**
@@ -306,17 +306,17 @@ Reviewed and current
 ``src/hwloc``, and ``bindings/python``.
 ``src/common`` was reviewed too, but has moved since — see below.
 
-**``src/client``, ``src/server``, ``src/util`` and ``src/hwloc`` are the
-only four directories the review has taken file by file**, a dedicated
-pass per file rather than a directory-wide one, and the difference is
-worth stating rather than flattening: a directory-wide sweep is real
-coverage, and it is not the same thing.  The dedicated pass found
-something in *every* file it read, including files that had already been
-through four or five directory-wide sweeps.  ``src/client`` reached that
-state on 2026-08-23, ``src/server`` on 2026-08-24, ``src/util`` on
-2026-08-26 and ``src/hwloc`` on 2026-08-27 — eleven files, twenty,
-twenty-nine and two, five lenses each, one file to a pass.  The per-file
-record is in the 2026-08-23 and later rows of
+``src/client``, ``src/server``, ``src/util`` **and** ``src/hwloc`` **are
+the only four directories the review has taken file by file**, a
+dedicated pass per file rather than a directory-wide one, and the
+difference is worth stating rather than flattening: a directory-wide
+sweep is real coverage, and it is not the same thing.  The dedicated
+pass found something in *every* file it read, including files that had
+already been through four or five directory-wide sweeps.  ``src/client``
+reached that state on 2026-08-23, ``src/server`` on 2026-08-24,
+``src/util`` on 2026-08-26 and ``src/hwloc`` on 2026-08-27 — eleven
+files, twenty, twenty-nine and two, five lenses each, one file to a
+pass.  The per-file record is in the 2026-08-23 and later rows of
 ``.git/deep-review/ledger.tsv``; the reasoning is in each directory's
 ``AGENTS.md``.
 
@@ -399,15 +399,15 @@ Figures are against the commit that recorded each review, measured
 2026-08-26 and ``src/hwloc`` until 2026-08-27; the per-file re-reviews
 closed both.
 
-#. **``src/common``** — reviewed 2026-08-02, and no longer the modest
-   churn it was listed as.  ``pmix_iof.c`` has 1215 changed lines since:
-   the tool being given the library's stdin forwarding instead of its
-   own, the hold on a spawned job's early output, and the SIGCONT
-   handler that moved here out of ``src/tool``.  ``pmix_pfexec.c`` has
-   335, most recently the removal of the library's signal traps and the
-   per-holder reference on a pfexec child.  The other fifteen files are
-   close to what the review read, so a re-review is really a re-review of
-   those two.
+#. ``src/common`` — reviewed 2026-08-02, and no longer the modest churn
+   it was listed as.  ``pmix_iof.c`` has 1215 changed lines since: the
+   tool being given the library's stdin forwarding instead of its own,
+   the hold on a spawned job's early output, and the SIGCONT handler
+   that moved here out of ``src/tool``.  ``pmix_pfexec.c`` has 335, most
+   recently the removal of the library's signal traps and the per-holder
+   reference on a pfexec child.  The other fifteen files are close to
+   what the review read, so a re-review is really a re-review of those
+   two.
 
 Lower priority, with current guides and churn that is mostly the reviews'
 own work coming back through: ``src/event`` (+414/-29 since 2026-08-01,
@@ -601,13 +601,13 @@ cover the whole of what the entry described.
 * **The pre-v3.2 branch of** ``resolve_peers()`` **no longer carries a
   dead store**, but what it *meant* to do is still not done.  The branch
   assigned ``PMIX_RANK_WILDCARD`` and was then overwritten with
-  ``PMIX_RANK_UNDEF`` before anything read it; the assignment is gone and
-  the branch now varies only the ``key`` and ``ninfo``, which is what it
-  always really did.  The legacy path resolves because ``try_fetch()``
-  retries an ``UNDEF`` rank as ``WILDCARD``.  **Fetching at ``WILDCARD``
-  directly, as the branch intended, is still untried** — that is a
-  behavior change on a path only a pre-v3.2 server exercises, and there
-  is none to test against.
+  ``PMIX_RANK_UNDEF`` before anything read it; the assignment is gone
+  and the branch now varies only the ``key`` and ``ninfo``, which is
+  what it always really did.  The legacy path resolves because
+  ``try_fetch()`` retries an ``UNDEF`` rank as ``WILDCARD``.  **Fetching
+  at** ``WILDCARD`` **directly, as the branch intended, is still
+  untried** — that is a behavior change on a path only a pre-v3.2 server
+  exercises, and there is none to test against.
 * **A malformed** ``PMIX_QUALIFIED_VALUE`` **or a NULL key arriving in a
   cache refresh now fails the enclosing** ``PMIx_Get``.  See the
   ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
@@ -856,7 +856,7 @@ can produce (those arrive through the bounded ``unpack``).  Closing it
 properly means plumbing a length through the deprecated signatures, and a
 caller that can do that is better off moving to ``pmix_regex2_t``.
 
-* **``pmix_debug_threads`` cannot be turned on.**  The four lock macros
+* ``pmix_debug_threads`` **cannot be turned on.**  The four lock macros
   emit distinct debug strings under ``if (pmix_debug_threads)``, but
   nothing in the tree ever assigns that variable — there is no MCA
   parameter for it and no other write outside its definition in
@@ -949,9 +949,9 @@ Coverage gaps
   ``pmix_malloc`` fail — would close a good part of this directory's
   untestable set at once; it is the single highest-value piece of test
   infrastructure the review has wanted.
-* **A multi-namespace ``PMIx_Disconnect`` is not reached by ``make
-  check``.**  ``test/test_cd.c`` — what the ``--test-connect`` runs
-  drive — disconnects a process from its *own* namespace, so the loop in
+* **A multi-namespace** ``PMIx_Disconnect`` **is not reached by** ``make
+  check``.  ``test/test_cd.c`` — what the ``--test-connect`` runs drive
+  — disconnects a process from its *own* namespace, so the loop in
   ``disconnect_cbfunc()`` that drops the other participants' cached data
   never executes.  Reaching it needs live processes in two namespaces,
   and therefore a real launcher, for the reason in the next entry.  The
@@ -961,19 +961,19 @@ Coverage gaps
   than only from the server's deregistration.  Closing this means a test
   that stands up a server and two client namespaces in-process, in the
   white-box style of ``test/unit/server_fence.c``.
-* **``test/simple/simptest`` cannot host a spawn.**  Its ``spawn_fn``
+* ``test/simple/simptest`` **cannot host a spawn.**  Its ``spawn_fn``
   calls ``PMIx_server_setup_application()``, a thread-shifting API, and
   then waits on the result — but ``spawn_fn`` is the host callback and
   runs *on* the server's progress thread, so the fake launch deadlocks.
   Spawn coverage therefore lives in the multi-node suite rather than in
   ``make check``.  Do not add a ``run_*.pl`` that spawns until that path
   is made asynchronous.
-* **The reply handling of the ``PMIx_Compute_distances`` pair is not
+* **The reply handling of the** ``PMIx_Compute_distances`` **pair is not
   covered anywhere,** and cannot be: two of the three paths are
   allocation failures and the third needs a server reply whose declared
   count exceeds its payload.  Reaching the receive path at all requires
   a client whose *local* hwloc computation failed.
-* **Two fixes found in ``src/tool`` ship without regression tests**
+* **Two fixes found in** ``src/tool`` **ship without regression tests**
   because the conditions cannot be arranged in ``make check``: the
   SIGCONT handler for forwarded stdin needs a tty, and the
   late-finalize-reply guard needs a server that answers the finalize
@@ -982,17 +982,17 @@ Coverage gaps
   ``src/common/pmix_iof.c`` when the tool was given the library's
   forwarding instead of its own, and are untested there for the same
   reason.
-* **The debugger-wait teardown in ``PMIx_Init`` is not exercised.**
+* **The debugger-wait teardown in** ``PMIx_Init`` **is not exercised.**
   Reaching it needs the debugger-stop key set on the namespace *and* the
   ``PMIX_READY_FOR_DEBUG`` notification to then fail, which no test
   environment can arrange without fault injection.
 * **The process-set and resolve examples have never been leak-validated.**
   Both hang in the test environments used so far, so valgrind is killed
   before ``PMIx_Finalize`` runs and the report is inconclusive.
-* **``pps`` has never been validated against a live process-table
+* ``pps`` **has never been validated against a live process-table
   server.**  Its no-connect paths are covered by the tools smoke test;
   the proc-table rendering is not.
-* **The compressed half of ``preg`` is invisible to a build with no
+* **The compressed half of** ``preg`` **is invisible to a build with no
   compression library.**  ``preg/compress`` disables itself when
   ``pcompress`` has no module, so on such a build — a stock macOS
   developer tree among them — ``raw`` wins every encode, and neither the
@@ -1000,21 +1000,22 @@ Coverage gaps
   component is ever reached by a round trip.  ``test/unit/preg`` covers
   the framing with hand-built vectors, which is what a bounded decoder
   can be tested with, but the encode-decode pair only meet on a build
-  that can compress: ``test_legacy_large`` says which encoding it got, so
-  a thin run reports itself rather than passing quietly.  The real round
-  trip was run under ``contrib/dockerswarm`` (Linux, all four
+  that can compress: ``test_legacy_large`` says which encoding it got,
+  so a thin run reports itself rather than passing quietly.  The real
+  round trip was run under ``contrib/dockerswarm`` (Linux, all four
   compressors), where the 5000-node case does take the blob path.
-* **The ``psensor/file`` drop-count and baseline semantics have no
-  automated check.**  The fix stops a monitor from alerting before it has
-  ever recorded a miss — a request with no ``PMIX_MONITOR_FILE_DROPS``
-  used to trip on the first sample of a perfectly healthy file.
-  Distinguishing the fixed behavior from the broken one takes a monitor
-  with a *zero* drop allowance watching a file that is being kept fresh,
-  and zero tolerance means any scheduling hiccup or coarse filesystem
-  timestamp granularity fails it.  The heartbeat drop allowance is
-  covered instead (``run_monitor.pl``'s capped monitor), because a
-  request can be given an allowance no run can spend; there is no
-  equivalent for "must not alert on the first look".
+* **The** ``psensor/file`` **drop-count and baseline semantics have no
+  automated check.**  The fix stops a monitor from alerting before it
+  has ever recorded a miss — a request with no
+  ``PMIX_MONITOR_FILE_DROPS`` used to trip on the first sample of a
+  perfectly healthy file. Distinguishing the fixed behavior from the
+  broken one takes a monitor with a *zero* drop allowance watching a
+  file that is being kept fresh, and zero tolerance means any scheduling
+  hiccup or coarse filesystem timestamp granularity fails it.  The
+  heartbeat drop allowance is covered instead (``run_monitor.pl``'s
+  capped monitor), because a request can be given an allowance no run
+  can spend; there is no equivalent for "must not alert on the first
+  look".
 * **A handshake-model psec module blocks the progress thread for as long
   as its peer takes to answer.**  ``PMIX_PSEC_SERVER_HANDSHAKE_IFNEED``
   runs inside the ``ptl`` connection handler, on the progress thread,
@@ -1028,28 +1029,30 @@ Coverage gaps
   the handshake exchange, the way ``handshake_wait_time`` already bounds
   the connect-ack.  Recorded here so a new mechanism does not inherit it
   silently.
-* **``psec/munge``'s failed-encode path is still not executed.**  The
+* ``psec/munge``'s **failed-encode path is still not executed.**  The
   rest of the component now is: ``test/unit/psec_credentials.c`` drives
-  every *active* credential module rather than a fixed list, so on a host
-  with libmunge and a live ``munged`` it examines ``munge`` on the same
-  terms as ``native``.  The PRRTE tree's ``contrib/slurmswarm`` image is
-  such a host — it installs ``libmunge-dev`` before it builds PMIx, so
-  the component is compiled, and its entrypoint starts ``munged`` — and
-  the suite passes 62/62 there, valgrind-clean, with the ``info[n]``
-  defect confirmed to segfault it when reinstated.  What no test reaches
-  is the branch where ``munge_encode`` *fails* midway through a refresh,
-  which is where the dangling ``mycred`` lived; provoking it means making
-  ``munged`` fail on demand between two ``PMIx_Get_credential`` calls.
-* **The plog ``smtp`` component has never been run.**  It builds only
-  where libesmtp is present, and exercising it needs a reachable SMTP
-  server on top of that, so the fixes from the ``src/mca/plog`` review
-  (2026-08-20) — an uninitialized ``message_status_t``, a ``crnl()``
-  that emitted LF where it meant CR, a message callback that ended the
-  message before the body when no prefix was configured — were verified
-  by reading and compile-checked with ``--enable-test-build`` against
-  the shim header, not by sending mail.  The shim makes every libesmtp
-  call a stub, so a test-build tree cannot exercise them either.  The
-  first real user of this component should expect to find more.
+  every *active* credential module rather than a fixed list, so on a
+  host with libmunge and a live ``munged`` it examines ``munge`` on the
+  same terms as ``native``.  The PRRTE tree's ``contrib/slurmswarm``
+  image is such a host — it installs ``libmunge-dev`` before it builds
+  PMIx, so the component is compiled, and its entrypoint starts
+  ``munged`` — and the suite passes 62/62 there, valgrind-clean, with
+  the ``info[n]`` defect confirmed to segfault it when reinstated.  What
+  no test reaches is the branch where ``munge_encode`` *fails* midway
+  through a refresh, which is where the dangling ``mycred`` lived;
+  provoking it means making ``munged`` fail on demand between two
+  ``PMIx_Get_credential`` calls.
+* **The plog** ``smtp`` **component has never been run.**  It builds
+  only where libesmtp is present, and exercising it needs a reachable
+  SMTP server on top of that, so the fixes from the ``src/mca/plog``
+  review (2026-08-20) — an uninitialized ``message_status_t``, a
+  ``crnl()`` that emitted LF where it meant CR, a message callback that
+  ended the message before the body when no prefix was configured — were
+  verified by reading and compile-checked with ``--enable-test-build``
+  against the shim header, not by sending mail.  The shim makes every
+  libesmtp call a stub, so a test-build tree cannot exercise them
+  either.  The first real user of this component should expect to find
+  more.
 * **Nothing exercises the pnet fabric calls.**  ``register_fabric``,
   ``update_fabric`` and ``deregister_fabric`` are wired all the way
   through ``src/mca/pnet/base``, but no shipped component implements any
@@ -1059,14 +1062,14 @@ Coverage gaps
   writing a component that claims a plane, which is the decision recorded
   above.  (``test/unit/server_fabric`` covers the server-side
   ``PMIx_Compute_distances`` handler, not this path.)
-* **``pnet/simptest``'s end-to-end launch path is not in** ``make check``.
-  ``test/unit/pnet_simptest_map`` drives ``allocate`` through
-  ``PMIx_server_setup_application`` against a topology file it writes, but
-  the other half — a client fetching ``PMIX_FABRIC_ENDPT`` by rank and
-  ``PMIX_FABRIC_COORDINATES`` at the node level — still has to be run by
-  hand, because ``test/simple/simptest`` generates its node map from the
-  local host and so needs a topology file naming that host.  See
-  "Running it" in ``src/mca/pnet/simptest/AGENTS.md``.
+* ``pnet/simptest``'s **end-to-end launch path is not in** ``make
+  check``. ``test/unit/pnet_simptest_map`` drives ``allocate`` through
+  ``PMIx_server_setup_application`` against a topology file it writes,
+  but the other half — a client fetching ``PMIX_FABRIC_ENDPT`` by rank
+  and ``PMIX_FABRIC_COORDINATES`` at the node level — still has to be
+  run by hand, because ``test/simple/simptest`` generates its node map
+  from the local host and so needs a topology file naming that host.
+  See "Running it" in ``src/mca/pnet/simptest/AGENTS.md``.
 
 * **The TSD finalize-ordering fix has no automated test.**
   ``pmix_tsd_keys_destruct`` deletes the process's pthread keys, so it
@@ -1083,18 +1086,19 @@ Coverage gaps
   ordering itself is held only by the comment at the call site and by
   ``src/threads/AGENTS.md``.
 
-* **``gds/shmem3`` gets no coverage at all on macOS, of any kind.**  Its
-  ``configure.m4`` gates on a 64-bit non-Apple host with no
-  ``|| test "$pmix_testbuild" = "1"`` escape, so a Mac does not even
-  *compile* it — ``--enable-test-build`` does not help, and a change made
-  there has not been compile-checked until it has been built on Linux.
+* ``gds/shmem3`` **gets no coverage at all on macOS, of any kind.**  Its
+  ``configure.m4`` gates on a 64-bit non-Apple host with no ``|| test
+  "$pmix_testbuild" = "1"`` escape, so a Mac does not even *compile* it
+  — ``--enable-test-build`` does not help, and a change made there has
+  not been compile-checked until it has been built on Linux.
   ``test/unit/gds_datastore``'s ``test_shmem3_job_segment()`` asks
   ``pmix_gds_base_assign_module()`` for the component by name and prints
-  ``SKIP`` where it is absent, so the case is honest rather than missing,
-  and on Linux it drives the segment build end to end in one process.
-  Everything beyond one process — a fence, a second modex generation, a
-  client attaching at a fixed address, and every cross-node fetch — is
-  reachable only through ``contrib/dockerswarm/run-gds-tests.sh``.
+  ``SKIP`` where it is absent, so the case is honest rather than
+  missing, and on Linux it drives the segment build end to end in one
+  process. Everything beyond one process — a fence, a second modex
+  generation, a client attaching at a fixed address, and every
+  cross-node fetch — is reachable only through
+  ``contrib/dockerswarm/run-gds-tests.sh``.
 * **The client-side tombstone generation fix is not what**
   ``examples/delete_key.c`` **discriminates on.**  The example now
   re-publishes a deleted key and requires every rank to read the new
@@ -1142,20 +1146,20 @@ not "fixed" by a later reader.
   named a block device by name would make their device vanish.  Leave
   it; see ``src/hwloc/AGENTS.md``.
 
-* **A ``pmix_lock_t`` whose ``status`` reads ``PMIX_ERR_INIT`` is
-  reporting a missing assignment, not an init failure.**  Both
+* **A** ``pmix_lock_t`` **whose** ``status`` **reads** ``PMIX_ERR_INIT``
+  **is reporting a missing assignment, not an init failure.**  Both
   ``PMIX_CONSTRUCT_LOCK`` and ``PMIX_LOCK_STATIC_INIT`` seed ``status``
   with ``PMIX_ERR_INIT``.  A waiter reads it only after a handler has
-  woken it, so every handler on a path whose waiter reads ``status`` must
-  assign it — and nothing enforces that, which makes the default the
-  thing that decides how a violation presents.  ``PMIX_SUCCESS`` would
-  turn a forgotten assignment into a confident wrong answer;
+  woken it, so every handler on a path whose waiter reads ``status``
+  must assign it — and nothing enforces that, which makes the default
+  the thing that decides how a violation presents.  ``PMIX_SUCCESS``
+  would turn a forgotten assignment into a confident wrong answer;
   ``PMIX_ERR_INIT`` makes it loud.  ``PMIX_CONSTRUCT_LOCK`` previously
   assigned nothing at all, and since the lock usually lives in a
-  ``PMIX_NEW``'d caddy — ``malloc``, not ``calloc`` — the alternative was
-  heap garbage.  If one of these turns up in a bug report, look at the
-  handler that woke the lock and check its error paths before believing
-  the status.
+  ``PMIX_NEW``'d caddy — ``malloc``, not ``calloc`` — the alternative
+  was heap garbage.  If one of these turns up in a bug report, look at
+  the handler that woke the lock and check its error paths before
+  believing the status.
 
   The sweep behind this is worth not redoing.  Poisoning ``status`` and
   warning on it in ``PMIX_WAIT_THREAD`` fires ~86,000 times across
@@ -1166,7 +1170,7 @@ not "fixed" by a later reader.
   ``opcbfunc`` that assigns ``status`` first.  The two spellings are a
   character apart and only instrumentation separates them.
 
-* **``PMIX_ACQUIRE_THREAD`` / ``PMIX_RELEASE_THREAD`` having no callers
+* ``PMIX_ACQUIRE_THREAD`` / ``PMIX_RELEASE_THREAD`` **having no callers
   in** ``libpmix`` **does not make them dead code.**  An in-tree grep
   finds only ``test/unit/threads_primitives.c``, and the live handshake
   everywhere in the library is ``WAIT``/``WAKEUP`` at about 120 sites
@@ -1175,10 +1179,10 @@ not "fixed" by a later reader.
   PRRTE uses the pair: ``src/runtime/prte_locks.h`` includes
   ``src/threads/pmix_threads.h`` to declare ``prte_init_lock`` as a
   ``pmix_lock_t``, and ``prte_init()``, ``prte_finalize()`` and
-  ``src/prted/pmix/pmix_server_notify.c`` guard ``prte_initialized`` with
-  it across eleven call sites (checked against openpmix/prrte master,
-  2026-08-20).  Removing them breaks PRRTE's build, and changing their
-  semantics changes PRRTE's behavior.
+  ``src/prted/pmix/pmix_server_notify.c`` guard ``prte_initialized``
+  with it across eleven call sites (checked against openpmix/prrte
+  master, 2026-08-20).  Removing them breaks PRRTE's build, and changing
+  their semantics changes PRRTE's behavior.
 
   This is worth keeping precisely because the in-tree evidence points the
   wrong way, and because unused-looking API is where documentation rots:
@@ -1188,38 +1192,39 @@ not "fixed" by a later reader.
   mixed the pairs would unlock a mutex they do not hold.  That is
   corrected, and the unit test now covers the pair.
 
-* **The function-pointer cast in ``pmix_thread_start`` is deliberate.**
-  It hands a ``void *(*)(pmix_object_t *)`` to ``pthread_create``, which
-  wants a ``void *(*)(void *)`` — formally a call through an incompatible
-  function pointer type.  GCC's ``-Wcast-function-type``, which is on
-  through ``-Wextra -Werror``, treats any pointer parameter as matching
-  any other and does not diagnose it, and every ABI PMIx supports passes
-  a ``void *`` and a struct pointer identically.  Only clang's opt-in
+* **The function-pointer cast in** ``pmix_thread_start`` **is
+  deliberate.** It hands a ``void *(*)(pmix_object_t *)`` to
+  ``pthread_create``, which wants a ``void *(*)(void *)`` — formally a
+  call through an incompatible function pointer type.  GCC's
+  ``-Wcast-function-type``, which is on through ``-Wextra -Werror``,
+  treats any pointer parameter as matching any other and does not
+  diagnose it, and every ABI PMIx supports passes a ``void *`` and a
+  struct pointer identically.  Only clang's opt-in
   ``-Wcast-function-type-strict`` and UBSan's ``-fsanitize=function``
   object, and neither is used by the build or by CI — the sanitizer job
   in ``.github/workflows/builds.yaml`` is ASan only.  If one of those is
-  ever turned on, the fix is a small trampoline that takes ``void *`` and
-  calls ``t_run``, not a change to ``pmix_thread_fn_t``.
+  ever turned on, the fix is a small trampoline that takes ``void *``
+  and calls ``t_run``, not a change to ``pmix_thread_fn_t``.
 
-* **A statically initialized mutex is not ``ERRORCHECK`` even in a debug
-  build.**  ``pmix_mutex_construct`` sets ``PTHREAD_MUTEX_ERRORCHECK``
-  under ``PMIX_ENABLE_DEBUG`` so self-deadlocks and double-unlocks abort
-  loudly, but ``PMIX_MUTEX_STATIC_INIT`` expands to
-  ``PTHREAD_MUTEX_INITIALIZER`` — an ordinary mutex — because there is no
-  static spelling of a mutex attribute.  This is a property of pthreads,
-  not an oversight, and it cannot be fixed without giving up static
-  initialization.  The consequence to remember is diagnostic: a clean
-  debug run over a file-scope lock says nothing about whether it can
-  deadlock.
+* **A statically initialized mutex is not** ``ERRORCHECK`` **even in a
+  debug build.**  ``pmix_mutex_construct`` sets
+  ``PTHREAD_MUTEX_ERRORCHECK`` under ``PMIX_ENABLE_DEBUG`` so
+  self-deadlocks and double-unlocks abort loudly, but
+  ``PMIX_MUTEX_STATIC_INIT`` expands to ``PTHREAD_MUTEX_INITIALIZER`` —
+  an ordinary mutex — because there is no static spelling of a mutex
+  attribute.  This is a property of pthreads, not an oversight, and it
+  cannot be fixed without giving up static initialization.  The
+  consequence to remember is diagnostic: a clean debug run over a
+  file-scope lock says nothing about whether it can deadlock.
 
-* **``pmix_mutex_construct`` ignoring ``pthread_mutex_init``'s return is
-  not an unchecked error.**  The constructor returns ``void``, so there
-  is nothing it could do but abort, and on both glibc and macOS
-  ``pthread_mutex_init`` with a valid attribute allocates nothing and
-  cannot fail.  POSIX permits ``EAGAIN``/``ENOMEM``, so if a platform
-  that can really fail it ever appears, add a debug-only ``perror`` and
-  ``abort`` matching the ``EDEADLK``/``EPERM`` checks in the same file
-  rather than trying to report it upward.
+* ``pmix_mutex_construct`` **ignoring** ``pthread_mutex_init``'s
+  **return is not an unchecked error.**  The constructor returns
+  ``void``, so there is nothing it could do but abort, and on both glibc
+  and macOS ``pthread_mutex_init`` with a valid attribute allocates
+  nothing and cannot fail.  POSIX permits ``EAGAIN``/``ENOMEM``, so if a
+  platform that can really fail it ever appears, add a debug-only
+  ``perror`` and ``abort`` matching the ``EDEADLK``/``EPERM`` checks in
+  the same file rather than trying to report it upward.
 
 * **A** ``pcompress`` ``compress_string`` **that does not screen its
   argument for NULL is not a missing guard.**  All five implementations
@@ -1246,46 +1251,46 @@ not "fixed" by a later reader.
   anywhere in it.  Both in-tree hosts (PRRTE and ``test/simple/simptest``)
   currently leak it.  See ``src/server/AGENTS.md``.
 
-* **An event-caching block that assigns ``cd->nondefault`` inside its**
-  ``0 < ninfo`` **guard is not dropping a flag.**  It reads as though a
-  non-default event carrying no info would be parked as a default one
-  and then delivered to default handlers that should not see it.  It
-  cannot happen: every path that sets ``chain->nondefault`` reads it out
-  of a ``PMIX_EVENT_NON_DEFAULT`` directive in the info array, so the
-  flag is only ever true when there is info to have carried it.  Moving
-  the assignment out of the guard is equivalent, not a fix — two of the
-  three caching blocks now assign unconditionally only because the
-  guarded form kept being re-reported.  The third, in
+* **An event-caching block that assigns** ``cd->nondefault`` **inside
+  its** ``0 < ninfo`` **guard is not dropping a flag.**  It reads as
+  though a non-default event carrying no info would be parked as a
+  default one and then delivered to default handlers that should not see
+  it.  It cannot happen: every path that sets ``chain->nondefault``
+  reads it out of a ``PMIX_EVENT_NON_DEFAULT`` directive in the info
+  array, so the flag is only ever true when there is info to have
+  carried it.  Moving the assignment out of the guard is equivalent, not
+  a fix — two of the three caching blocks now assign unconditionally
+  only because the guarded form kept being re-reported.  The third, in
   ``pmix_notify_server_of_event``, still assigns inside the guard and is
   equally correct.
-* **``pmix_srand()`` copies the seeded state into a file-static buffer**
+* ``pmix_srand()`` **copies the seeded state into a file-static buffer**
   (``src/util/pmix_alfg.c``).  It looks like a footgun, but it is the
   only way to seed the global that ``pmix_random()`` reads, and the unit
   test deliberately holds down that behavior.  ``pmix_random`` is unused
   in-tree and the real ``pmix_srand`` callers use their own buffers, so
   the "last writer wins" hazard is not reachable.  Do not drop the copy
   without giving ``pmix_random`` another way to be seeded.
-* **``wait_signal_callback()`` reads the child-list size without a
+* ``wait_signal_callback()`` **reads the child-list size without a
   lock** (``src/common/pmix_pfexec.c``).  This is a formal data race,
-  kept on purpose: the child is appended to the list before the ``fork()``
-  that can generate its ``SIGCHLD``, so the count cannot be stale for a
-  child that matters, and removing the guard would make pfexec call
-  ``waitpid(-1)`` on every ``SIGCHLD`` in a process with no children of
-  its own.  If it is restructured, replace the read with a counter
-  maintained across all six add/remove sites.
-* **A failed ``pmix_rte_init`` returns without unwinding.**  It emits a
-  diagnostic and returns, deliberately leaving the frameworks, globals
-  and event base it had already brought up, because a failed
-  ``PMIx_Init`` aborts the process.  New failure points should follow the
-  same pattern.
-* **``get_job_data`` returning success with an empty buffer is safe.**
+  kept on purpose: the child is appended to the list before the
+  ``fork()`` that can generate its ``SIGCHLD``, so the count cannot be
+  stale for a child that matters, and removing the guard would make
+  pfexec call ``waitpid(-1)`` on every ``SIGCHLD`` in a process with no
+  children of its own.  If it is restructured, replace the read with a
+  counter maintained across all six add/remove sites.
+* **A failed** ``pmix_rte_init`` **returns without unwinding.**  It
+  emits a diagnostic and returns, deliberately leaving the frameworks,
+  globals and event base it had already brought up, because a failed
+  ``PMIx_Init`` aborts the process.  New failure points should follow
+  the same pattern.
+* ``get_job_data`` **returning success with an empty buffer is safe.**
   The requesting client initializes its reported status to
   ``PMIX_ERR_NOT_FOUND`` and overwrites it only if a value turns up, so
   an empty success degrades to not-found at the requester.
-* **``pmix_server_job_ctrl`` creating a namespace for an unknown target
-  is intentional.**  A job-control request may name a job this server has
-  not been told about yet, and the epilog directives need somewhere to
-  hang; the entry is reused when registration arrives.
+* ``pmix_server_job_ctrl`` **creating a namespace for an unknown target
+  is intentional.**  A job-control request may name a job this server
+  has not been told about yet, and the epilog directives need somewhere
+  to hang; the entry is reused when registration arrives.
 * **The plog router builds its per-request channel list out of the
   global module wrappers.**  ``pmix_plog_base_log`` appends the
   ``pmix_plog_base_active_module_t`` objects that live in
@@ -1300,52 +1305,53 @@ not "fixed" by a later reader.
   would cost an allocation on every log call to defend against a caller
   that does not exist; the invariant is documented in
   ``src/mca/plog/AGENTS.md`` instead.  Enforce it there, not here.
-* **``pnet/opa`` and ``pnet/nvd`` ship no ``configure.m4``, on purpose.**
-  A component with no ``configure.m4`` is configured by the MCA machinery
-  itself and therefore builds unconditionally, which is what these two
-  want: neither links anything nor needs an SDK — they read info
-  attributes hwloc already recorded and set environment variables — and
-  whether there is work to do is a property of the machine the *daemon*
-  runs on, which only ``component_open`` is in a position to know.  The
-  files they used to have asked that question at build time and got it
-  wrong in both directions (``nvd``'s was hardwired off, ``opa``'s always
-  succeeded).  The one visible consequence is that ``configure``'s summary
-  no longer prints ``Transports / NVIDIA|OmniPath`` lines.  Do not restore
-  them.
-* **``transports_print`` in ``pnet/opa`` type-puns a ``uint64_t`` through
-  ``unsigned int *``.**  That is undefined behavior in general and is not
-  a live defect here: the whole tree is built ``-fno-strict-aliasing``
-  (``config/pmix_setup_cc.m4`` adds it wherever the compiler takes it).
-  The surrounding arithmetic is deliberately width-independent, and the
-  byte-order dependence of the result does not matter because the key is
-  generated once on the lead server and shipped as a string.  Do not copy
-  the idiom into new code, and do not "fix" it as a bug.
-* **A node in ``pnet/simptest``'s topology file that the job's node map
-  does not name is silently skipped.**  ``allocate`` matches each config
-  line against the ``PMIX_NODE_MAP`` by exact name, which is intrinsic to
-  a file that describes the real nodes the RM placed the job on.  The
-  converse is *not* silent: a node the job was placed on that the file
-  fails to describe draws a ``node-not-found`` ``show_help`` naming it and
-  the request is then declined — declined, rather than failed, because a
-  hard error out of ``allocate`` aborts the base's fan-out for every other
-  component too.
-* **``psec/dummy_handshake`` sends its length and status words as raw
-  host-format ``size_t`` / ``pmix_status_t``.**  That means it only
+* ``pnet/opa`` **and** ``pnet/nvd`` **ship no** ``configure.m4``, **on
+  purpose.** A component with no ``configure.m4`` is configured by the
+  MCA machinery itself and therefore builds unconditionally, which is
+  what these two want: neither links anything nor needs an SDK — they
+  read info attributes hwloc already recorded and set environment
+  variables — and whether there is work to do is a property of the
+  machine the *daemon* runs on, which only ``component_open`` is in a
+  position to know.  The files they used to have asked that question at
+  build time and got it wrong in both directions (``nvd``'s was
+  hardwired off, ``opa``'s always succeeded).  The one visible
+  consequence is that ``configure``'s summary no longer prints
+  ``Transports / NVIDIA|OmniPath`` lines.  Do not restore them.
+* ``transports_print`` **in** ``pnet/opa`` **type-puns a** ``uint64_t``
+  **through** ``unsigned int *``.  That is undefined behavior in general
+  and is not a live defect here: the whole tree is built
+  ``-fno-strict-aliasing`` (``config/pmix_setup_cc.m4`` adds it wherever
+  the compiler takes it). The surrounding arithmetic is deliberately
+  width-independent, and the byte-order dependence of the result does
+  not matter because the key is generated once on the lead server and
+  shipped as a string.  Do not copy the idiom into new code, and do not
+  "fix" it as a bug.
+* **A node in** ``pnet/simptest``'s **topology file that the job's node
+  map does not name is silently skipped.**  ``allocate`` matches each
+  config line against the ``PMIX_NODE_MAP`` by exact name, which is
+  intrinsic to a file that describes the real nodes the RM placed the
+  job on.  The converse is *not* silent: a node the job was placed on
+  that the file fails to describe draws a ``node-not-found``
+  ``show_help`` naming it and the request is then declined — declined,
+  rather than failed, because a hard error out of ``allocate`` aborts
+  the base's fan-out for every other component too.
+* ``psec/dummy_handshake`` **sends its length and status words as raw
+  host-format** ``size_t`` / ``pmix_status_t``.  That means it only
   interoperates between peers of identical width and endianness, which
-  would be a wire-format defect in a real mechanism.  It is not one here:
-  the component exists solely to exercise the ``ptl``/``psec`` handshake
-  plumbing, is built only under ``--enable-dummy-handshake``, and is
-  documented as not a pattern to copy.  Do not "fix" it by inventing a
-  wire encoding for a test harness.
-* **``pmix_psec_base_select`` sets ``pmix_psec_globals.selected`` before
-  it can fail.**  A select that ends with an empty actives list returns
-  ``PMIX_ERR_SILENT`` with the flag already true, so a second call would
-  return ``PMIX_SUCCESS`` over an unusable framework.  There is no second
-  call: ``pmix_init.c`` invokes it once and treats the failure as fatal
-  to library init.  Left as-is rather than adding a rollback for a path
-  that cannot be re-entered.
-* **The bare ``atomic_bool`` fields in ``pmix_globals_t``** are correct,
-  merely inconsistent with the typedefs used elsewhere, and the
+  would be a wire-format defect in a real mechanism.  It is not one
+  here: the component exists solely to exercise the ``ptl``/``psec``
+  handshake plumbing, is built only under ``--enable-dummy-handshake``,
+  and is documented as not a pattern to copy.  Do not "fix" it by
+  inventing a wire encoding for a test harness.
+* ``pmix_psec_base_select`` **sets** ``pmix_psec_globals.selected``
+  **before it can fail.**  A select that ends with an empty actives list
+  returns ``PMIX_ERR_SILENT`` with the flag already true, so a second
+  call would return ``PMIX_SUCCESS`` over an unusable framework.  There
+  is no second call: ``pmix_init.c`` invokes it once and treats the
+  failure as fatal to library init.  Left as-is rather than adding a
+  rollback for a path that cannot be re-entered.
+* **The bare** ``atomic_bool`` **fields in** ``pmix_globals_t`` are
+  correct, merely inconsistent with the typedefs used elsewhere, and the
   ``PMIX_C_HAVE_*`` defines in the installed ``pmix_config.h`` are now
   always ``1`` but are retained in case an out-of-tree consumer tests
   them.
