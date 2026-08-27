@@ -253,6 +253,9 @@ Controlling scheduling, timing, and lifecycle:
   (used with the ``PMIX_ALLOC_RELEASE`` directive).
 * ``PMIX_ALLOC_RELEASABLE`` (bool) |mdash| true if the entire allocation may be
   released.
+* ``PMIX_ALLOC_SEQUENCE`` (uint32_t) |mdash| index recording the order in which
+  the host environment acquired this allocation relative to the others it holds;
+  larger values were acquired later, and no other meaning is implied.
 * ``PMIX_ALLOC_NOSHELL`` (bool) |mdash| immediately exit after allocating
   resources, without running a command.
 * ``PMIX_ALLOC_NOT_WAITING`` (bool) |mdash| the requestor is not waiting for

@@ -694,3 +694,4 @@ pmix.spwn.root         663   PMIX_SPAWN_TREE_ROOT
 pmix.spwn.actv         664   PMIX_SPAWN_TREE_ACTIVE
 pmix.spwn.alloc        665   PMIX_SPAWN_ALLOC
 pmix.alloc.dir         666   PMIX_ALLOC_REQ_DIRECTIVE
+pmix.alloc.seq         667   PMIX_ALLOC_SEQUENCE
