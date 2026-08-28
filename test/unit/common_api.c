@@ -516,6 +516,7 @@ static void test_out_parameters(void)
  * here rather than in somebody's application. */
 static char *credpayload = NULL;
 static size_t credsize = 0;
+static char *credcopy = NULL;
 static pmix_status_t credstatus = PMIX_ERR_NOT_SUPPORTED;
 static volatile int credfired = 0;
 
@@ -529,9 +530,15 @@ static void credcb(pmix_status_t status, pmix_byte_object_t *cred,
     credstatus = status;
     if (PMIX_SUCCESS == status && NULL != cred && NULL != cred->bytes) {
         /* take the payload out of the object - the object itself is the
-         * library's and must not be retained or released here */
+         * library's and must not be retained or released here - and keep
+         * a copy of what it holds while we are certainly still allowed
+         * to read it, so that the caller can compare */
         credpayload = cred->bytes;
         credsize = cred->size;
+        credcopy = malloc(cred->size);
+        if (NULL != credcopy) {
+            memcpy(credcopy, cred->bytes, cred->size);
+        }
     }
     credfired++;
 }
@@ -541,8 +548,6 @@ static void test_credential_ownership(void)
     pmix_status_t rc;
     pmix_byte_object_t cred;
     pmix_listener_protocol_t proto;
-    size_t n;
-    int nonzero;
 
     fprintf(stdout, "\n-- PMIx_Get_credential ownership --\n");
 
@@ -584,16 +589,17 @@ static void test_credential_ownership(void)
         return;
     }
 
-    /* the payload is ours now: it has to still be readable here, after
-     * the library has returned from the callback that handed it over */
-    nonzero = 0;
-    for (n = 0; n < credsize; n++) {
-        if (0 != credpayload[n]) {
-            nonzero = 1;
-            break;
-        }
-    }
-    check(1 == nonzero, "the credential survives the callback's return");
+    /* the payload is ours now: it has to read back here, after the
+     * library has returned from the callback that handed it over, as
+     * whatever the callback saw. Comparing against that copy rather than
+     * against any particular content keeps this independent of what the
+     * mechanism puts in a credential - psec/native builds one out of the
+     * effective uid and gid, which are all-zero bytes when the test runs
+     * as root. */
+    check(NULL != credcopy && 0 == memcmp(credpayload, credcopy, credsize),
+          "the credential survives the callback's return");
+    free(credcopy);
+    credcopy = NULL;
 
     /* and it is ours to release - the library must not have done so */
     free(credpayload);
