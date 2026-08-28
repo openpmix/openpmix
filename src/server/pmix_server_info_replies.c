@@ -623,77 +623,92 @@ void pmix_server_monitor_cbfunc(pmix_status_t status, pmix_info_t *info, size_t 
     PMIX_THREADSHIFT(scd, _mon_cbfunc);
 }
 
-static void _cred_cbfunc(int sd, short args, void *cbdata)
+/* Pack a reply that carries nothing but its status.
+ *
+ * This is the whole of the answer to a request that failed, and it is
+ * also the fallback when the payload of a successful one cannot be
+ * packed: a body that was only half written is not something the client
+ * can unpack, so the buffer is discarded and rebuilt to carry just the
+ * failing status. */
+static pmix_buffer_t *pack_status_reply(pmix_peer_t *peer, pmix_status_t status)
 {
-    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
-    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) scd->cbdata;
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
-
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
-        PMIX_RELEASE(cd);
-        PMIX_RELEASE(qcd);
-        PMIX_RELEASE(scd);
-        return;
-    }
-
-    pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "pmix:get credential callback with status %s",
-                        PMIx_Error_string(scd->status));
 
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        goto cleanup;
+        return NULL;
     }
-
-    /* pack the status */
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
+    PMIX_BFROPS_PACK(rc, peer, reply, &status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        goto complete;
-    }
-
-    if (PMIX_SUCCESS == scd->status) {
-        /* pack the returned credential */
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, scd->bo, 1, PMIX_BYTE_OBJECT);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            goto complete;
-        }
-
-        /* pack any returned data */
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->ninfo, 1, PMIX_SIZE);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            goto complete;
-        }
-        if (0 < scd->ninfo) {
-            PMIX_BFROPS_PACK(rc, cd->peer, reply, scd->info, scd->ninfo, PMIX_INFO);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-        }
-    }
-
-complete:
-    // send reply
-    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
-    if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(reply);
+        return NULL;
+    }
+    return reply;
+}
+
+/* Add an info array to a reply that already carries its status */
+static pmix_status_t pack_reply_info(pmix_peer_t *peer, pmix_buffer_t *reply,
+                                     pmix_info_t info[], size_t ninfo)
+{
+    pmix_status_t rc;
+
+    PMIX_BFROPS_PACK(rc, peer, reply, &ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    if (0 < ninfo) {
+        PMIX_BFROPS_PACK(rc, peer, reply, info, ninfo, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+    return rc;
+}
+
+/* Send the reply the credential and validation callbacks packed.
+ *
+ * pmix_credential_cbfunc_t and pmix_validation_cbfunc_t carry no
+ * (release_fn, release_cbdata) pair, so nothing the host hands up
+ * survives the return of the up-call - and the library cannot dispose of
+ * that data itself, having no way to tell a host stack frame from
+ * something malloc'd. The host therefore keeps ownership, and all the
+ * library owes it is to be finished by the time the call returns. That
+ * does not require a copy: both callbacks pack the reply on the host's
+ * own thread, while its data is still valid, and shift only the finished
+ * buffer. Packing is safe there - it writes into a buffer of our own and
+ * reads the peer's bfrops module. Queueing is not, because it touches
+ * the peer's send queue and the send event, so it is left here. */
+static void _queue_sec_reply(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t *) cbdata;
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) scd->cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:security callback with status %s",
+                        PMIx_Error_string(scd->status));
+
+    if (!pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped) &&
+        NULL != scd->buf) {
+        PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, scd->buf);
+        if (PMIX_SUCCESS == rc) {
+            /* the send owns the buffer now */
+            scd->buf = NULL;
+        }
     }
 
-cleanup:
     if (NULL != qcd->info) {
         PMIX_INFO_FREE(qcd->info, qcd->ninfo);
     }
-    if (NULL != scd->bo) {
-        PMIX_BYTE_OBJECT_FREE(scd->bo, 1);
-    }
     PMIX_RELEASE(qcd);
     PMIX_RELEASE(cd);
+    /* a buffer that was never queued goes back in the destructor */
     PMIX_RELEASE(scd);
 }
 
@@ -704,7 +719,6 @@ void pmix_server_cred_cbfunc(pmix_status_t status, pmix_byte_object_t *credentia
     pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
     pmix_status_t rc;
-    size_t n;
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         PMIX_RELEASE(cd);
@@ -715,7 +729,7 @@ void pmix_server_cred_cbfunc(pmix_status_t status, pmix_byte_object_t *credentia
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:cred_cbfunc called");
 
-    /* need to thread-shift this callback as it accesses global data */
+    /* need to thread-shift the send as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
         /* we cannot answer the requestor, but we can at least let go of
@@ -726,9 +740,13 @@ void pmix_server_cred_cbfunc(pmix_status_t status, pmix_byte_object_t *credentia
         return;
     }
     scd->status = status;
-    /* this signature carries no release function, so nothing here is
-     * ours past the return - both the credential and the info array
-     * have to be copied before we hand them to another thread.
+
+    /* A host that could not issue a credential answers with an error
+     * status and no credential - the contract on
+     * pmix_credential_cbfunc_t says exactly that, and the credential is
+     * packed only under a success status. The reverse, a success with
+     * nothing to point at, would leave the client's unpack reading past
+     * the end of the reply, so it is refused here.
      *
      * Every failure below records itself in scd->status and falls
      * through to the thread-shift rather than returning. This callback
@@ -736,112 +754,30 @@ void pmix_server_cred_cbfunc(pmix_status_t status, pmix_byte_object_t *credentia
      * up-called the host and returned PMIX_SUCCESS, so the switchyard
      * has let go of the request and will synthesize nothing. Returning
      * here left the client blocked in PMIx_Get_credential for good. */
-    if (NULL != info && 0 < ninfo) {
-        PMIX_INFO_CREATE(scd->info, ninfo);
-        if (NULL == scd->info) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            scd->status = PMIX_ERR_NOMEM;
-        } else {
-            scd->ninfo = ninfo;
-            /* the caddy owns the copy - flagging it here covers the early
-             * returns that never reach _cred_cbfunc's cleanup */
-            scd->infocopy = true;
-            for (n=0; n < scd->ninfo; n++) {
-                rc = PMIx_Info_xfer(&scd->info[n], &info[n]);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    scd->status = rc;
-                    /* discard the half-built array rather than putting
-                     * default-constructed elements on the wire */
-                    PMIX_INFO_FREE(scd->info, scd->ninfo);
-                    scd->ninfo = 0;
-                    scd->infocopy = false;
-                    break;
-                }
-            }
-        }
-    }
-    /* A host that could not issue a credential answers with an error
-     * status and no credential - the contract on
-     * pmix_credential_cbfunc_t says exactly that, and _cred_cbfunc packs
-     * the credential only under a success status. But the copy screens a
-     * NULL source and reports PMIX_ERR_BAD_PARAM, so the ordinary
-     * refusal used to take the error return above and the client was
-     * never told anything at all. Only copy what is there. */
-    if (NULL != credential) {
-        PMIX_BFROPS_COPY(rc, cd->peer, (void**)&scd->bo, credential, PMIX_BYTE_OBJECT);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            scd->status = rc;
-        }
-    } else if (PMIX_SUCCESS == scd->status) {
-        /* the host claimed success and handed us nothing. The client
-         * unpacks a credential after a success status, so answering that
-         * way would leave its unpack reading past the end of the reply */
+    if (PMIX_SUCCESS == scd->status && NULL == credential) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         scd->status = PMIX_ERR_BAD_PARAM;
     }
-    scd->cbdata = cbdata;
-    PMIX_THREADSHIFT(scd, _cred_cbfunc);
-}
 
-static void _valcbfunc(int sd, short args, void *cbdata)
-{
-    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
-    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) scd->cbdata;
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
-    pmix_buffer_t *reply;
-    pmix_status_t rc;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
-
-    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
-        PMIX_RELEASE(cd);
-        PMIX_RELEASE(qcd);
-        PMIX_RELEASE(scd);
-        return;
-    }
-
-    pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "pmix:validate credential callback with status %s",
-                        PMIx_Error_string(scd->status));
-
-    reply = PMIX_NEW(pmix_buffer_t);
-    if (NULL == reply) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        goto cleanup;
-    }
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto complete;
-    }
-    /* pack any returned data */
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto complete;
-    }
-    if (0 < scd->ninfo) {
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, scd->info, scd->ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
+    scd->buf = pack_status_reply(cd->peer, scd->status);
+    if (NULL != scd->buf && PMIX_SUCCESS == scd->status) {
+        /* pack the credential the host gave us, and whatever it told us
+         * about it - all of it read here, none of it kept */
+        PMIX_BFROPS_PACK(rc, cd->peer, scd->buf, credential, 1, PMIX_BYTE_OBJECT);
+        if (PMIX_SUCCESS == rc) {
+            rc = pack_reply_info(cd->peer, scd->buf, info, ninfo);
+        } else {
             PMIX_ERROR_LOG(rc);
+        }
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(scd->buf);
+            scd->status = rc;
+            scd->buf = pack_status_reply(cd->peer, scd->status);
         }
     }
 
-complete:
-    // send reply
-    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(reply);
-    }
-
-cleanup:
-    if (NULL != qcd->info) {
-        PMIX_INFO_FREE(qcd->info, qcd->ninfo);
-    }
-    PMIX_RELEASE(qcd);
-    PMIX_RELEASE(cd);
-    PMIX_RELEASE(scd);
+    scd->cbdata = cbdata;
+    PMIX_THREADSHIFT(scd, _queue_sec_reply);
 }
 
 void pmix_server_validate_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo,
@@ -851,7 +787,6 @@ void pmix_server_validate_cbfunc(pmix_status_t status, pmix_info_t info[], size_
     pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
     pmix_status_t rc;
-    size_t n;
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         PMIX_RELEASE(cd);
@@ -862,7 +797,7 @@ void pmix_server_validate_cbfunc(pmix_status_t status, pmix_info_t info[], size_
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:validate_cbfunc called");
 
-    /* need to thread-shift this callback as it accesses global data */
+    /* need to thread-shift the send as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
         /* we cannot answer the requestor, but we can at least let go of
@@ -873,38 +808,25 @@ void pmix_server_validate_cbfunc(pmix_status_t status, pmix_info_t info[], size_
         return;
     }
     scd->status = status;
-    /* need to copy the info as they may not hold it for us. As in
-     * pmix_server_cred_cbfunc, a failure records itself in scd->status
-     * and falls through to the thread-shift: this callback is the only
-     * thing that will ever answer the client, so returning here left it
-     * blocked in PMIx_Validate_credential for good. */
-    if (NULL != info && 0 < ninfo) {
-        PMIX_INFO_CREATE(scd->info, ninfo);
-        if (NULL == scd->info) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            scd->status = PMIX_ERR_NOMEM;
-        } else {
-            scd->ninfo = ninfo;
-            /* the caddy owns the copy - flagging it here covers the early
-             * returns that never reach _valcbfunc's cleanup */
-            scd->infocopy = true;
-            for (n=0; n < scd->ninfo; n++) {
-                rc = PMIx_Info_xfer(&scd->info[n], &info[n]);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    scd->status = rc;
-                    /* discard the half-built array rather than putting
-                     * default-constructed elements on the wire */
-                    PMIX_INFO_FREE(scd->info, scd->ninfo);
-                    scd->ninfo = 0;
-                    scd->infocopy = false;
-                    break;
-                }
+
+    /* as in pmix_server_cred_cbfunc, the host's array is packed here
+     * rather than copied: it is ours only until we return, and a failure
+     * records itself in scd->status and falls through to the shift so
+     * that the client is answered either way */
+    scd->buf = pack_status_reply(cd->peer, scd->status);
+    if (NULL != scd->buf) {
+        rc = pack_reply_info(cd->peer, scd->buf, info, ninfo);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(scd->buf);
+            if (PMIX_SUCCESS == scd->status) {
+                scd->status = rc;
             }
+            scd->buf = pack_status_reply(cd->peer, scd->status);
         }
     }
+
     scd->cbdata = cbdata;
-    PMIX_THREADSHIFT(scd, _valcbfunc);
+    PMIX_THREADSHIFT(scd, _queue_sec_reply);
 }
 
 static void _fabcbfunc(int sd, short args, void *cbdata)

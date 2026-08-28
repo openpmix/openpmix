@@ -464,6 +464,7 @@ static void scon(pmix_shift_caddy_t *p)
     p->npdata = 0;
     p->range = PMIX_RANGE_UNDEF;
     p->bo = NULL;
+    p->buf = NULL;
     p->dist = NULL;
     p->ndist = 0;
     p->evhdlr = NULL;
@@ -498,6 +499,9 @@ static void scdes(pmix_shift_caddy_t *p)
     }
     if (NULL != p->kv) {
         PMIX_RELEASE(p->kv);
+    }
+    if (NULL != p->buf) {
+        PMIX_RELEASE(p->buf);
     }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_shift_caddy_t,
