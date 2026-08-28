@@ -141,12 +141,22 @@ Required of supporting host environments:
 * ``PMIX_REGISTER_CLEANUP_DIR`` (char*) |mdash| comma-delimited list of
   directories to be removed upon termination of the specified processes.
 * ``PMIX_CLEANUP_RECURSIVE`` (bool) |mdash| recursively clean up all
-  subdirectories under the specified one(s).
-* ``PMIX_CLEANUP_EMPTY`` (bool) |mdash| only remove empty subdirectories.
+  subdirectories under the specified one(s) |mdash| i.e., remove all files
+  and then the directories that contained them.  Mutually exclusive with
+  ``PMIX_CLEANUP_EMPTY``.
+* ``PMIX_CLEANUP_EMPTY`` (bool) |mdash| remove all empty directories under
+  the specified one(s), leaving every file in place.  Mutually exclusive
+  with ``PMIX_CLEANUP_RECURSIVE``.
 * ``PMIX_CLEANUP_IGNORE`` (char*) |mdash| comma-delimited list of filenames that
   are not to be removed.
 * ``PMIX_CLEANUP_LEAVE_TOPDIR`` (bool) |mdash| when recursively cleaning
   subdirectories, do not remove the top-level directory.
+
+A request naming both ``PMIX_CLEANUP_RECURSIVE`` and ``PMIX_CLEANUP_EMPTY``
+is rejected with ``PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES``, as is one
+that asks for a path to be cleaned up when that path is already named by a
+``PMIX_CLEANUP_IGNORE`` directive.  A rejected request is applied in full
+or not at all |mdash| none of its directives take effect.
 
 Optional for supporting host environments:
 

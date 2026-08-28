@@ -127,6 +127,14 @@
  *      registered so that it reports as a failure instead of taking the
  *      epilog below it down.
  *
+ *   job control: the two cleanup modes, and what each one spares
+ *      PMIX_CLEANUP_RECURSIVE and PMIX_CLEANUP_EMPTY are mutually
+ *      exclusive - the first removes every file and then the
+ *      directories that held them, the second removes only the
+ *      directories that are empty and leaves every file alone - so a
+ *      request naming both is refused. Both are driven over a real tree
+ *      on disk, because what each one spares is as much the point as
+ *      what it removes.
  */
 
 #include "src/include/pmix_config.h"
@@ -145,6 +153,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define CTLUT_DIR "/tmp/pmix-server-control-ut-no-such-dir"
@@ -1305,6 +1314,129 @@ int main(int argc, char **argv)
             rmdir(base);
         }
         drain_epilog_ignores();
+        drain_epilog_files();
+    }
+    /* --- PMIX_CLEANUP_EMPTY, and its exclusion with RECURSIVE --------- */
+    {
+        char tdir[] = "/tmp/pmix-ctlut-e-XXXXXX";
+        char tdir2[] = "/tmp/pmix-ctlut-r-XXXXXX";
+        char *base;
+        char demptyp[300], dfullp[300], dnestp[300], fkeepp[300];
+        pmix_info_t at[3];
+        FILE *fp;
+        bool yes = true;
+        pmix_cleanup_dir_t *rd;
+        size_t nd;
+
+        drain_epilog_ignores();
+        drain_epilog_dirs();
+        drain_epilog_files();
+
+        /* the two modes say opposite things about what happens to a
+         * file, so a request naming both has not said what it wants */
+        PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP_DIR, CTLUT_DIR, PMIX_STRING);
+        PMIX_INFO_LOAD(&at[1], PMIX_CLEANUP_RECURSIVE, &yes, PMIX_BOOL);
+        PMIX_INFO_LOAD(&at[2], PMIX_CLEANUP_EMPTY, &yes, PMIX_BOOL);
+        rc = do_job_ctrl(at, 3);
+        report("recursive plus empty is refused",
+               PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES == rc);
+        only_epilog_dir(&nd);
+        report("the refused mode combination registered nothing", 0 == nd);
+        PMIX_INFO_DESTRUCT(&at[1]);
+        PMIX_INFO_DESTRUCT(&at[2]);
+
+        /* a request carrying nothing but cleanup directives is one we
+         * answer ourselves - PMIX_CLEANUP_EMPTY was not counted as one
+         * of them, so such a request went to the host as well */
+        PMIX_INFO_LOAD(&at[1], PMIX_CLEANUP_EMPTY, &yes, PMIX_BOOL);
+        rc = do_job_ctrl(at, 2);
+        report("a cleanup request naming empty is answered locally",
+               PMIX_OPERATION_SUCCEEDED == rc && !jobctrl_fired);
+        rd = only_epilog_dir(&nd);
+        report("the empty flag reached the registered entry",
+               1 == nd && NULL != rd && rd->empty && !rd->recurse);
+        PMIX_INFO_DESTRUCT(&at[0]);
+        PMIX_INFO_DESTRUCT(&at[1]);
+        drain_epilog_dirs();
+
+        /* and what it actually does: remove the empty directories at any
+         * depth, and leave every file exactly where it is */
+        base = mkdtemp(tdir);
+        if (NULL == base) {
+            report("made a scratch tree for the empty-cleanup case", false);
+        } else {
+            snprintf(demptyp, sizeof(demptyp), "%s/empty", base);
+            snprintf(dfullp, sizeof(dfullp), "%s/full", base);
+            snprintf(dnestp, sizeof(dnestp), "%s/empty/deeper", base);
+            snprintf(fkeepp, sizeof(fkeepp), "%s/full/keep", base);
+            mkdir(dfullp, 0700);
+            mkdir(demptyp, 0700);
+            mkdir(dnestp, 0700);
+            fp = fopen(fkeepp, "w");
+            if (NULL != fp) {
+                fclose(fp);
+            }
+            report("scratch tree built",
+                   0 == access(dnestp, F_OK) && 0 == access(fkeepp, F_OK));
+
+            PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP_DIR, base, PMIX_STRING);
+            PMIX_INFO_LOAD(&at[1], PMIX_CLEANUP_EMPTY, &yes, PMIX_BOOL);
+            PMIX_INFO_LOAD(&at[2], PMIX_CLEANUP_LEAVE_TOPDIR, &yes, PMIX_BOOL);
+            rc = do_job_ctrl(at, 3);
+            report("the empty-cleanup directory registered",
+                   PMIX_OPERATION_SUCCEEDED == rc);
+            PMIX_INFO_DESTRUCT(&at[0]);
+            PMIX_INFO_DESTRUCT(&at[1]);
+            PMIX_INFO_DESTRUCT(&at[2]);
+
+            pmix_execute_epilog(&pmix_globals.mypeer->nptr->epilog);
+            report("an empty directory at depth was removed", 0 != access(dnestp, F_OK));
+            report("the directory that held only empty ones went too",
+                   0 != access(demptyp, F_OK));
+            report("a directory holding a file was left alone", 0 == access(dfullp, F_OK));
+            report("the file itself was left alone", 0 == access(fkeepp, F_OK));
+            report("leave-topdir kept the top directory", 0 == access(base, F_OK));
+
+            unlink(fkeepp);
+            rmdir(dnestp);
+            rmdir(demptyp);
+            rmdir(dfullp);
+            rmdir(base);
+        }
+        drain_epilog_dirs();
+
+        /* the other mode, over the same shape of tree - it takes the
+         * files as well as the directories, and this pins the branch the
+         * empty mode was threaded through */
+        base = mkdtemp(tdir2);
+        if (NULL == base) {
+            report("made a scratch tree for the recursive case", false);
+        } else {
+            snprintf(dfullp, sizeof(dfullp), "%s/full", base);
+            snprintf(fkeepp, sizeof(fkeepp), "%s/full/gone", base);
+            mkdir(dfullp, 0700);
+            fp = fopen(fkeepp, "w");
+            if (NULL != fp) {
+                fclose(fp);
+            }
+            PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP_DIR, base, PMIX_STRING);
+            PMIX_INFO_LOAD(&at[1], PMIX_CLEANUP_RECURSIVE, &yes, PMIX_BOOL);
+            rc = do_job_ctrl(at, 2);
+            report("the recursive directory registered", PMIX_OPERATION_SUCCEEDED == rc);
+            PMIX_INFO_DESTRUCT(&at[0]);
+            PMIX_INFO_DESTRUCT(&at[1]);
+
+            pmix_execute_epilog(&pmix_globals.mypeer->nptr->epilog);
+            report("recursive cleanup removed the nested file", 0 != access(fkeepp, F_OK));
+            report("recursive cleanup removed the directory holding it",
+                   0 != access(dfullp, F_OK));
+            report("recursive cleanup removed the top directory", 0 != access(base, F_OK));
+
+            unlink(fkeepp);
+            rmdir(dfullp);
+            rmdir(base);
+        }
+        drain_epilog_dirs();
         drain_epilog_files();
     }
 

@@ -2976,6 +2976,32 @@ misbehave by design).
   nothing; `pmix_server_job_ctrl` is the only thing in the tree that
   builds an epilog entry, so after that no entry carries a comma and the
   epilog has nothing left to split.
+- **`PMIX_CLEANUP_RECURSIVE` and `PMIX_CLEANUP_EMPTY` are mutually
+  exclusive, and both descend.** Recursive removes every file and then
+  the directories that held them; empty removes only the directories
+  that are empty and leaves every file alone. A request naming both has
+  not said what it wants, and is refused with
+  `PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES`. `dirpath_destroy`
+  (`src/include/pmix_globals.c`) descends under *either* flag — the
+  empty mode has to, because the empty directories it is looking for may
+  be at any depth, and because a directory holding nothing but empty
+  ones becomes empty itself once they are gone, which is what makes the
+  walk bottom-up. What stops that mode from emptying a directory and
+  then removing it is simply that it never unlinks: the `rmdir` at the
+  foot only fires on a directory that is already empty. Given neither
+  flag, a subdirectory is left where it is.
+
+  `PMIX_CLEANUP_EMPTY` was defined, documented and advertised by
+  `src/common/pmix_attributes.c` without being read anywhere, and it was
+  not inert: `pmix_server_job_ctrl` decides whether a request is one it
+  can answer itself by counting the cleanup directives against the
+  total, and an uncounted cleanup key sent a request carrying nothing
+  else up to the host as well, to be registered a second time. **A new
+  directive in this family owes that `++cnt`.** Where the two modes meet
+  across *separate* requests — a duplicate directory directive widening
+  an entry already registered — the existing more-permissive-wins rule
+  decides it: recursive removes everything empty would have and the
+  files besides, so recursive dominates and clears the empty flag.
 - **Two things in `pmix_server_get.c` look like defects and are not.**
   `get_job_data` returns `PMIX_SUCCESS` with an empty buffer when the
   fetch finds nothing, and its callers pass that empty payload to the

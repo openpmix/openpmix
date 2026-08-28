@@ -321,7 +321,13 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_cleanup_file_t);
 typedef struct {
     pmix_list_item_t super;
     char *path;
+    /* recurse and empty are mutually exclusive - PMIX_CLEANUP_RECURSIVE
+     * removes every file and then the directories that held them, while
+     * PMIX_CLEANUP_EMPTY removes only the directories that are empty and
+     * leaves every file alone. pmix_server_job_ctrl refuses a request
+     * asking for both */
     bool recurse;
+    bool empty;
     bool leave_topdir;
 } pmix_cleanup_dir_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_cleanup_dir_t);

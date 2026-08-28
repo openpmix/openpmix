@@ -131,6 +131,7 @@ static void cdcon(pmix_cleanup_dir_t *p)
 {
     p->path = NULL;
     p->recurse = false;
+    p->empty = false;
     p->leave_topdir = false;
 }
 static void cddes(pmix_cleanup_dir_t *p)
@@ -855,22 +856,28 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
         tst = opendir(filenm);
         if (NULL != tst) {
             closedir(tst);
-            /*
-             * If not recursively descending, then if we find a directory then fail
-             * since we were not told to remove it.
-             */
-            if (!cd->recurse) {
-                /* continue removing files */
-                free(filenm);
-                continue;
-            } else {
-                /* Directories are recursively destroyed */
+            /* Both flags descend, for different reasons:
+             * PMIX_CLEANUP_RECURSIVE to destroy the subdirectory, and
+             * PMIX_CLEANUP_EMPTY because the empty directories it is
+             * looking for may be at any depth - and because a directory
+             * holding nothing but empty ones becomes empty itself once
+             * they are gone, which is what makes the walk bottom-up.
+             * Given neither, we were not told to touch a subdirectory at
+             * all, so it is left where it is. */
+            if (cd->recurse || cd->empty) {
                 dirpath_destroy(filenm, cd, epi);
-                free(filenm);
             }
+            free(filenm);
         } else {
-            /* Files are removed right here */
-            unlink(filenm);
+            /* Files are removed right here - except under
+             * PMIX_CLEANUP_EMPTY, where the files are precisely what we
+             * were told to leave behind. Note this is also what stops
+             * that mode from emptying a directory and then removing it:
+             * the rmdir below only fires on a directory that is already
+             * empty. */
+            if (!cd->empty) {
+                unlink(filenm);
+            }
             free(filenm);
         }
     }
