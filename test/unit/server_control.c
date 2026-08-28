@@ -127,14 +127,20 @@
  *      registered so that it reports as a failure instead of taking the
  *      epilog below it down.
  *
- *   job control: the two cleanup modes, and what each one spares
+ *   job control: the two cleanup modes, and the epilog's identity
  *      PMIX_CLEANUP_RECURSIVE and PMIX_CLEANUP_EMPTY are mutually
  *      exclusive - the first removes every file and then the
  *      directories that held them, the second removes only the
  *      directories that are empty and leaves every file alone - so a
  *      request naming both is refused. Both are driven over a real tree
  *      on disk, because what each one spares is as much the point as
- *      what it removes.
+ *      what it removes. The last case is the privilege drop: the epilog
+ *      records the uid the host registered the peer with, and walks
+ *      under it rather than as whatever user the server happens to be.
+ *      We are unprivileged, so pointing the epilog at anyone else is a
+ *      drop we cannot make, and the file must survive - paired with the
+ *      same removal under our own identity, so the case cannot pass by
+ *      the epilog simply never working.
  */
 
 #include "src/include/pmix_config.h"
@@ -1151,6 +1157,7 @@ int main(int argc, char **argv)
         PMIX_INFO_DESTRUCT(&jc[0]);
         drain_epilog_ignores();
     }
+
     /* --- a conflicting request must apply none of itself --------------- */
     {
         pmix_info_t at[4];
@@ -1231,6 +1238,7 @@ int main(int argc, char **argv)
         drain_epilog_dirs();
         drain_epilog_ignores();
     }
+
     /* --- the epilog must honor an ignore, and a comma-delimited list --- */
     {
         char tdir[] = "/tmp/pmix-ctlut-XXXXXX";
@@ -1316,10 +1324,12 @@ int main(int argc, char **argv)
         drain_epilog_ignores();
         drain_epilog_files();
     }
+
     /* --- PMIX_CLEANUP_EMPTY, and its exclusion with RECURSIVE --------- */
     {
         char tdir[] = "/tmp/pmix-ctlut-e-XXXXXX";
         char tdir2[] = "/tmp/pmix-ctlut-r-XXXXXX";
+        char tdir3[] = "/tmp/pmix-ctlut-p-XXXXXX";
         char *base;
         char demptyp[300], dfullp[300], dnestp[300], fkeepp[300];
         pmix_info_t at[3];
@@ -1437,6 +1447,54 @@ int main(int argc, char **argv)
             rmdir(base);
         }
         drain_epilog_dirs();
+        drain_epilog_files();
+
+        /* The privilege drop. We are unprivileged, so naming any other
+         * uid is a drop we cannot make - and the right answer to that is
+         * to remove nothing at all, rather than to remove it as
+         * ourselves, which is the behavior pmix_execute_epilog exists to
+         * stop. Point the epilog at a uid that is not ours and check the
+         * file survives; then put the identity back and check the same
+         * file goes, so the case cannot pass by simply never working. */
+        base = mkdtemp(tdir3);
+        if (NULL == base) {
+            report("made a scratch file for the privilege case", false);
+        } else {
+            uid_t saveuid = pmix_globals.mypeer->nptr->epilog.uid;
+
+            snprintf(fkeepp, sizeof(fkeepp), "%s/owned", base);
+            fp = fopen(fkeepp, "w");
+            if (NULL != fp) {
+                fclose(fp);
+            }
+            PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP, fkeepp, PMIX_STRING);
+            rc = do_job_ctrl(at, 1);
+            report("the privilege-case file registered", PMIX_OPERATION_SUCCEEDED == rc);
+            PMIX_INFO_DESTRUCT(&at[0]);
+
+            /* nobody's real uid, and certainly not ours */
+            pmix_globals.mypeer->nptr->epilog.uid = saveuid + 1;
+            pmix_execute_epilog(&pmix_globals.mypeer->nptr->epilog);
+            report("a cleanup we cannot drop for removes nothing",
+                   0 == access(fkeepp, F_OK));
+            pmix_globals.mypeer->nptr->epilog.uid = saveuid;
+
+            /* and the same request under our own identity does go through,
+             * so the case above is not passing on a broken epilog */
+            PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP, fkeepp, PMIX_STRING);
+            rc = do_job_ctrl(at, 1);
+            report("the privilege-case file registered again",
+                   PMIX_OPERATION_SUCCEEDED == rc);
+            PMIX_INFO_DESTRUCT(&at[0]);
+            pmix_execute_epilog(&pmix_globals.mypeer->nptr->epilog);
+            report("a cleanup under our own identity does remove it",
+                   0 != access(fkeepp, F_OK));
+
+            unlink(fkeepp);
+            rmdir(base);
+        }
+        drain_epilog_dirs();
+        drain_epilog_ignores();
         drain_epilog_files();
     }
 
