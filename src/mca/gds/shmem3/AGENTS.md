@@ -538,19 +538,15 @@ Four things about it are load-bearing:
   slot. Deriving it rather than keeping a tally means no path that
   releases a generation can leave the accounting stale. A generation
   arriving when all slots are taken places itself outside the arena.
-- **The session segment is deliberately outside the arena.** The design
-  is that a session outlives the job that first described it, and
-  `job_destruct()` releases the whole arena, so a shared session's
-  segment inside it would be unmapped under a live holder.
-
-  Be aware that the sharing this guards against **cannot happen today**:
-  nothing ever appends to `pmix_mca_gds_shmem3_component.sessions`, so
-  the list is permanently empty, both searches in
-  `pmix_gds_shmem3_get_session_tracker()` are unreachable, and a job's
-  session object is created by `job_construct()` and dies with it. The
-  placement is still the right one - it is what the code would need the
-  moment a session really were shared - but do not read it as evidence
-  that sharing works.
+- **The session segment is deliberately outside the arena**, and
+  `shmem3_segment_create_and_attach()` says so rather than leaving it to
+  fall out. A session's segment is held by jobs other than the one that
+  built it, while `job_destruct()` unmaps the arena wholesale, so a
+  session placed inside it would go away under a live holder. That used
+  to hold only because the static region is sized for exactly one
+  segment and the job's own fills it, leaving nothing for the session's
+  request - arithmetic, not a guarantee, and the teardown depends on the
+  guarantee.
 
 If the arena cannot be reserved, or a modex does not fit its slot, every
 segment places itself independently exactly as before — degraded, never
@@ -686,6 +682,61 @@ second actually tests the chain - its `gen1` keys are published before
 the first fence and never again, so under a delta they exist *only* in
 the retired generation.
 
+## Sessions: one object, one segment, N jobs
+
+A session legitimately holds more than one job — a persistent PRRTE DVM
+running several jobs under one allocation is the ordinary case — so the
+session's data is shared rather than copied per job.
+
+`pmix_gds_shmem3_session_t` is the shared object. It carries the session
+id **on the tracker**, not only in `smdata`, and that is the whole trick:
+`smdata` lives inside the segment, so an id read from there cannot answer
+the question that has to be settled *before* the segment exists — which
+session is this, and does another job already have it?
+
+`pmix_gds_shmem3_get_session_tracker(job, sid, create)` is the one way in:
+
+| the job holds | asked for | result |
+|---|---|---|
+| anything | `UINT32_MAX` | what it already holds — a wildcard asks, it does not assign |
+| that same id | that id | the object it holds |
+| a *different* named id | some id | `PMIX_ERR_BAD_PARAM` — a job is in one session |
+| the unnamed default | a named id | the shared object for that id, created and registered if new |
+
+`job_construct()` still gives every job a private object identified as
+`UINT32_MAX`. Those are never shared — two jobs that have not named a
+session are not thereby in the same one — and never appear on
+`pmix_mca_gds_shmem3_component.sessions`. The first named session id to
+reach a job replaces that default.
+
+Three consequences worth knowing:
+
+- **The list holds sessions weakly.** Every counted reference belongs to
+  a job; `session_destruct()` unlinks the entry. So the segment is given
+  back when the last job in the session deregisters, which is what makes
+  it reclaimable in a DVM that outlives its allocations. A strong entry
+  would keep every session ever described mapped until the module
+  finalized, which for such a launcher means never. What it costs is that
+  a session does **not** currently outlive the last job in it. Giving it a
+  longer life needs a host-facing "this session is over" call, which the
+  framework does not have — see [`../AGENTS.md`](../AGENTS.md).
+- **First writer wins.** `store_session_array()` skips a session segment
+  that is already `READY_FOR_USE`, because local clients have it mapped
+  and a segment a client can see is never written again. Two jobs that
+  describe one session differently is a host bug; reconciling them would
+  need a second generation of the segment the way the modex has.
+- **The segment's backing path names the job that built it.** It is
+  created by whichever job in the session registers first, and every
+  later one is handed that same path in its seg blob. That is exactly
+  what `test/unit/gds_datastore`'s shared-session case asserts.
+
+The client learns which tracker a session segment belongs to from
+`SHMEM3_SEG_SSID_KEY`, appended to the session seg blob. It has to come
+over the wire for the same reason the tracker keeps its own id: on a
+client this is the first anyone hears of the session, and whether to map
+the segment *is* the question. An older peer skips the key and keeps its
+private tracker, which is the behavior it had before.
+
 ## Deletion: a tombstone, and why it is not in the segment
 
 This component cannot take a key out. The data is in a segment local
@@ -787,7 +838,8 @@ as success.
   by `server_add_nspace()` at `PMIx_server_register_nspace` time, long
   before `register_job_info()` builds the job segment or a client maps it
   — and a session object exists from `job_construct()` with no session
-  data at all. Anything reaching `job->smdata->…` or
+  data at all (see Sessions above; that object is the unnamed default,
+  and a named session replaces it). Anything reaching `job->smdata->…` or
   `job->session->smdata->…` has to establish it is there first; a fetch
   arriving in that window is `PMIX_ERR_NOT_FOUND`, not a fault. Note that
   `pmix_gds_shmem3_get_session_tma()` forming `&NULL->tma` is not a fault

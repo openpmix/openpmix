@@ -144,6 +144,57 @@ worth recording.
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
 
+A shared session's segment has nothing that shares it
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/gds/shmem3`` re-review (2026-08-21), closed
+2026-08-28.  The entry recorded that nothing ever appended to
+``pmix_mca_gds_shmem3_component.sessions``, so the list was permanently
+empty, both searches in ``pmix_gds_shmem3_get_session_tracker()`` were
+unreachable, and a job's session object was created by
+``job_construct()`` and died with it — two jobs in one session each built
+their own copy of the session data.  What it deferred was "deciding when
+a session tracker is registered on the component, and what its lifetime
+is once more than one job holds it".
+
+Both are now decided.  A tracker is registered the first time a job names
+a real session id, on the server as it builds its segments and on a
+client as it reads the session seg blob; the list holds it weakly, so the
+segment is given back when the last job in the session deregisters.
+
+Three things about how it closed are worth keeping.
+
+**The obstacle named in the entry was not the one that mattered.**  The
+entry framed the problem around the arena, since a session's segment
+placed inside a job's arena would be unmapped by ``job_destruct()``.  But
+``job_destruct()`` also released the session's segment *by hand* — SESSION
+was one of the ids in its teardown loop — so the first job destructed
+unmapped the segment and freed the handle whatever the placement was.  The
+arena was a red herring in front of a plain ownership inversion, and the
+fix for it (release the segment from ``session_destruct()``) is a no-op
+until sharing exists, which is what let it land first and separately.
+
+**A property the code merely happened to have was documented as a
+guarantee.**  The session segment really was outside the arena, but not
+because anything said so: ``arena_alloc_static()`` was asked for it like
+any other segment and refused only because the static region is sized for
+exactly one segment and the job's own fills it.  Any later change to the
+reservation would have silently put the session inside the arena and
+reintroduced the unmap the comment claimed was impossible.  Worth a habit:
+when a comment asserts an invariant, check whether the code decides it or
+merely produces it today.
+
+**A regression test that passes against the unfixed code is testing the
+wrong read.**  The first version of the new case had the surviving job
+fetch a job-level key, which passed with the ownership move reverted —
+that key is answered out of the job's own segment and never touches the
+session's.  Only the whole-job (NULL-key) fetch walks the session list.
+With that changed, reverting the ownership move segfaults the test at
+exactly that assertion.  ``test/unit/gds_datastore``'s shared-session case
+was verified by re-breaking each half separately: without the sharing the
+"second job is given the first job's session segment" assertion fails,
+and without the ownership move the surviving-job read crashes.
+
 Review log
 ----------
 

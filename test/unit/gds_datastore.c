@@ -1379,6 +1379,169 @@ static void test_shmem3_job_segment(void)
     PMIX_RELEASE(peer);
 }
 
+/* Does haystack contain needle? The register_job_info reply is packed
+ * kvals, and what this test needs from it is only whether a particular
+ * namespace name appears in it - which is a plain byte search, and keeps
+ * the test out of the component's private blob format. */
+static bool buffer_mentions(pmix_buffer_t *b, const char *needle)
+{
+    const size_t nlen = strlen(needle);
+
+    if (NULL == b->base_ptr || b->bytes_used < nlen) {
+        return false;
+    }
+    for (size_t i = 0; i + nlen <= b->bytes_used; i++) {
+        if (0 == memcmp(&b->base_ptr[i], needle, nlen)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Register a job in a named session and build its segments. Returns the
+ * peer, with the register_job_info reply in *reply for the caller. */
+static pmix_peer_t *register_session_job(const char *nsname, uint32_t sid,
+                                         pmix_gds_base_module_t *mod,
+                                         pmix_buffer_t *reply,
+                                         pmix_status_t *rc)
+{
+    pmix_info_t *info, *iptr;
+    pmix_data_array_t *array;
+    pmix_nspace_t ns;
+    pmix_peer_t *peer;
+    uint32_t nprocs = 2;
+    char *nodemap = strdup(pmix_globals.hostname);
+    char *procmap = strdup("0-1");
+
+    PMIX_INFO_CREATE(info, 4);
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_NODE_MAP, nodemap, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_PROC_MAP, procmap, PMIX_STRING);
+    PMIX_INFO_CREATE(iptr, 1);
+    PMIX_INFO_LOAD(&iptr[0], PMIX_SESSION_ID, &sid, PMIX_UINT32);
+    PMIX_DATA_ARRAY_CREATE(array, 1, PMIX_INFO);
+    memcpy(array->array, iptr, sizeof(pmix_info_t));
+    free(iptr);
+    PMIX_LOAD_KEY(info[3].key, PMIX_SESSION_INFO_ARRAY);
+    info[3].value.type = PMIX_DATA_ARRAY;
+    info[3].value.data.darray = array;
+
+    PMIX_LOAD_NSPACE(ns, nsname);
+    *rc = PMIx_server_register_nspace(ns, nprocs, info, 4, NULL, NULL);
+    PMIX_INFO_FREE(info, 4);
+    free(nodemap);
+    free(procmap);
+    if (!registered(*rc)) {
+        return NULL;
+    }
+
+    peer = mkgdspeer(nsname, nprocs, mod);
+    PMIX_CONSTRUCT(reply, pmix_buffer_t);
+    PMIX_GDS_REGISTER_JOB_INFO(*rc, peer, reply);
+    return peer;
+}
+
+/* Two jobs in one session share one session segment.
+ *
+ * This is what pmix_mca_gds_shmem3_component.sessions exists for, and it
+ * did not happen before: each job built a private session object and its
+ * own segment, so N jobs in a session cost N copies of the same session
+ * data. A persistent DVM running many jobs under one allocation is the
+ * case that makes that matter.
+ *
+ * The observable is the backing path the server hands each job's clients.
+ * A session segment's path is built from the namespace of the job that
+ * created it, so the second job's reply naming the FIRST job's namespace
+ * can only mean it is describing the segment that job built. */
+static void test_shmem3_shared_session(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t dir;
+    pmix_peer_t *peer_a, *peer_b;
+    pmix_buffer_t reply_a, reply_b;
+    pmix_status_t rc_a, rc_b, rc;
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    const uint32_t sid = 77;
+
+    fprintf(stdout, "\n-- shmem3 shared session --\n");
+
+    PMIX_INFO_LOAD(&dir, PMIX_GDS_MODULE, "shmem3", PMIX_STRING);
+    mod = pmix_gds_base_assign_module(&dir, 1);
+    PMIX_INFO_DESTRUCT(&dir);
+    if (NULL == mod || 0 != strcmp(mod->name, "shmem3")) {
+        fprintf(stdout, "    SKIP  shmem3 is not available in this build\n");
+        return;
+    }
+
+    peer_a = register_session_job("gds-sesh-a", sid, mod, &reply_a, &rc_a);
+    if (NULL == peer_a || PMIX_SUCCESS != rc_a) {
+        report("the first job in a session registers", false);
+        if (NULL != peer_a) {
+            PMIX_DESTRUCT(&reply_a);
+            PMIX_RELEASE(peer_a);
+        }
+        return;
+    }
+    report("the first job in a session registers", true);
+
+    peer_b = register_session_job("gds-sesh-b", sid, mod, &reply_b, &rc_b);
+    if (NULL == peer_b || PMIX_SUCCESS != rc_b) {
+        report("the second job in the same session registers", false);
+        PMIX_DESTRUCT(&reply_a);
+        PMIX_RELEASE(peer_a);
+        if (NULL != peer_b) {
+            PMIX_DESTRUCT(&reply_b);
+            PMIX_RELEASE(peer_b);
+        }
+        return;
+    }
+    report("the second job in the same session registers", true);
+
+    /* The point of the case. */
+    report("the second job is given the first job's session segment",
+           buffer_mentions(&reply_b, "gds-sesh-a"));
+    /* ...and the converse, so a pass cannot come from the two replies
+     * simply naming everything. */
+    report("the first job is not given the second job's segments",
+           !buffer_mentions(&reply_a, "gds-sesh-b"));
+
+    PMIX_DESTRUCT(&reply_a);
+    PMIX_DESTRUCT(&reply_b);
+
+    /* Dropping the job that built the segment must not take it away from
+     * the one still in the session: the segment belongs to the session
+     * object, which job B still holds a reference on. Before the segment
+     * moved out of job_destruct(), this unmapped it under B. */
+    PMIX_GDS_DEL_NSPACE(rc, "gds-sesh-a");
+    report("deregistering the first job leaves the session standing",
+           PMIX_SUCCESS == rc);
+
+    /* The whole-job form specifically, and not a job-level key: only this
+     * one walks the session list, which lives in the shared segment. A
+     * keyed job-level fetch is answered out of job B's own segment and
+     * would pass whether or not the session mapping survived. */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-sesh-b", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = NULL;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer_b, &cb);
+    report("the surviving job still reads the shared session segment",
+           PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&cb.kvs));
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    /* And the last job out gives the session segment back. */
+    PMIX_GDS_DEL_NSPACE(rc, "gds-sesh-b");
+    report("deregistering the last job releases the session segment",
+           PMIX_SUCCESS == rc);
+
+    PMIX_RELEASE(peer_a);
+    PMIX_RELEASE(peer_b);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1406,6 +1569,7 @@ int main(int argc, char **argv)
     test_scope_routing();
     test_realm_classifiers();
     test_shmem3_job_segment();
+    test_shmem3_shared_session();
 
     fprintf(stdout, "\n=== %d passed, %d failed ===\n", npass, nfail);
 

@@ -496,6 +496,27 @@ store_session_array(
         return rc;
     }
 
+    /* A session segment that is already in use was filled in by the first
+     * job in this session to describe it, and this is a later one. Its
+     * contents are what every job in the session shares, so there is
+     * nothing to add - and nothing may be added: local clients have the
+     * segment mapped, and a segment a client can see is never written
+     * again.
+     *
+     * That makes this first-writer-wins if two jobs describe one session
+     * differently. They should not; a session's description belongs to
+     * the session. Reconciling them would need a second generation of the
+     * segment, the way the modex does, which is a great deal of machinery
+     * for a disagreement that indicates a host bug. */
+    if (pmix_gds_shmem3_has_status(
+            job, PMIX_GDS_SHMEM3_SESSION_ID, PMIX_GDS_SHMEM3_READY_FOR_USE)) {
+        PMIX_GDS_SHMEM3_VOUT(
+            "%s: session %u is already described; not storing again",
+            __func__, sid
+        );
+        return PMIX_SUCCESS;
+    }
+
     pmix_tma_t *const tma = pmix_gds_shmem3_get_session_tma(job);
     pmix_list_t *ncache = PMIX_NEW(pmix_list_t, tma);
     if (PMIX_UNLIKELY(!ncache)) {

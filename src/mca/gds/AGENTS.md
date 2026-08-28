@@ -449,12 +449,15 @@ outlives the jobs in it — that is what a session is — and there is no
 finalizes. `del_nspace` drops the *job* and its reference to the session;
 the session itself stays.
 
-`pmix_mca_gds_shmem3_component.sessions` is a different story: nothing
-ever appends to it, so it is permanently empty and a `shmem3` session
-object lives and dies with the one job that created it. The searches
-`pmix_gds_shmem3_get_session_tracker()` runs against that list are
-unreachable. Sharing a session across jobs there is unfinished, not
-merely uncleaned — see [`shmem3/AGENTS.md`](shmem3/AGENTS.md).
+`pmix_mca_gds_shmem3_component.sessions` behaves differently, and
+deliberately. Jobs in one session share a single session object and a
+single segment there, and the list holds those objects **weakly** — every
+counted reference belongs to a job — so the segment is reclaimed when the
+last job in the session deregisters rather than lingering to finalize.
+That is a deliberate trade against `hash`'s behavior above: it means a
+`shmem3` session does not outlive the last job in it, which matters for a
+launcher whose DVM outlives the allocations running under it. See
+[`shmem3/AGENTS.md`](shmem3/AGENTS.md).
 
 Closing that needs a **`deregister_session` entry point** — a host-facing
 call that says a session is over, paired with a `del_session` slot on
