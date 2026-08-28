@@ -99,6 +99,20 @@
  *      does nothing, so a second PMIx_Job_control asking for recursive
  *      cleanup of an already-registered directory never took effect.
  *      This case fails, rather than crashes, against an unfixed library.
+ *
+ *   job control: a refused cleanup request must apply none of itself
+ *      The three epilog lists outlive the request and a client has no
+ *      way to take an entry back off one, so a request refused with
+ *      PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES has to leave nothing
+ *      behind. It used to keep its own ignores (applied first, which is
+ *      what the conflict is detected against), every directory accepted
+ *      ahead of the conflicting one, and any flag widening it had
+ *      applied to an entry already registered - that last being the
+ *      destructive one, since a directory the client believes untouched
+ *      becomes recursive and takes its subtree with it at termination.
+ *      All three cases fail, rather than crash, against an unfixed
+ *      library.
+ *
  */
 
 #include "src/include/pmix_config.h"
@@ -1088,6 +1102,86 @@ int main(int argc, char **argv)
         nign = count_epilog_ignores();
         report("ignore of a registered cleanup path was recorded", 1 == nign);
         PMIX_INFO_DESTRUCT(&jc[0]);
+        drain_epilog_ignores();
+    }
+    /* --- a conflicting request must apply none of itself --------------- */
+    {
+        pmix_info_t at[4];
+        size_t nign, nd;
+        pmix_cleanup_dir_t *rd;
+        bool yes = true;
+
+        drain_epilog_ignores();
+        drain_epilog_dirs();
+
+        /* the simplest shape: one request naming the same path as both an
+         * ignore and a cleanup directory. The ignores are applied first,
+         * so the conflict is discovered with this request's own ignore
+         * already on a list that outlives it - and the client is told the
+         * request failed. A refused request must leave nothing behind, or
+         * that path is poisoned for every later request naming it */
+        PMIX_INFO_LOAD(&at[0], PMIX_CLEANUP_IGNORE, CTLUT_DIR "/both", PMIX_STRING);
+        PMIX_INFO_LOAD(&at[1], PMIX_REGISTER_CLEANUP_DIR, CTLUT_DIR "/both", PMIX_STRING);
+        rc = do_job_ctrl(at, 2);
+        report("a self-conflicting cleanup request is refused",
+               PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES == rc);
+        nign = count_epilog_ignores();
+        report("a refused request registered no ignore", 0 == nign);
+        only_epilog_dir(&nd);
+        report("a refused request registered no directory", 0 == nd);
+        PMIX_INFO_DESTRUCT(&at[0]);
+        PMIX_INFO_DESTRUCT(&at[1]);
+
+        /* and the same for a directory accepted ahead of the conflicting
+         * one - it used to be registered for deletion by a request the
+         * client was told had failed, which is the destructive direction */
+        PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP_DIR, CTLUT_DIR "/ok", PMIX_STRING);
+        PMIX_INFO_LOAD(&at[1], PMIX_CLEANUP_IGNORE, CTLUT_DIR "/bad", PMIX_STRING);
+        PMIX_INFO_LOAD(&at[2], PMIX_REGISTER_CLEANUP_DIR, CTLUT_DIR "/bad", PMIX_STRING);
+        rc = do_job_ctrl(at, 3);
+        report("a partly conflicting cleanup request is refused",
+               PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES == rc);
+        only_epilog_dir(&nd);
+        report("a refused request kept no directory accepted ahead of the conflict",
+               0 == nd);
+        report("a refused request kept none of its ignores",
+               0 == count_epilog_ignores());
+        PMIX_INFO_DESTRUCT(&at[0]);
+        PMIX_INFO_DESTRUCT(&at[1]);
+        PMIX_INFO_DESTRUCT(&at[2]);
+
+        /* the sharpest arm: the flag widening a duplicate directive
+         * applies to the entry already on the epilog. Left applied by a
+         * request that then failed, a directory the client believes
+         * untouched has become recursive and takes a whole subtree with
+         * it at termination */
+        PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP_DIR, CTLUT_DIR "/keep", PMIX_STRING);
+        rc = do_job_ctrl(at, 1);
+        report("directory registered for the widening case",
+               PMIX_OPERATION_SUCCEEDED == rc);
+        rd = only_epilog_dir(&nd);
+        report("the registered directory starts non-recursive",
+               1 == nd && NULL != rd && !rd->recurse);
+        PMIX_INFO_DESTRUCT(&at[0]);
+
+        PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP_DIR, CTLUT_DIR "/keep", PMIX_STRING);
+        PMIX_INFO_LOAD(&at[1], PMIX_CLEANUP_RECURSIVE, &yes, PMIX_BOOL);
+        PMIX_INFO_LOAD(&at[2], PMIX_CLEANUP_IGNORE, CTLUT_DIR "/bad", PMIX_STRING);
+        PMIX_INFO_LOAD(&at[3], PMIX_REGISTER_CLEANUP_DIR, CTLUT_DIR "/bad", PMIX_STRING);
+        rc = do_job_ctrl(at, 4);
+        report("a conflicting request carrying a flag upgrade is refused",
+               PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES == rc);
+        rd = only_epilog_dir(&nd);
+        report("a refused request did not widen an existing entry",
+               1 == nd && NULL != rd && !rd->recurse);
+        report("a refused request added no second directory", 1 == nd);
+        report("a refused request added no ignore", 0 == count_epilog_ignores());
+        PMIX_INFO_DESTRUCT(&at[0]);
+        PMIX_INFO_DESTRUCT(&at[1]);
+        PMIX_INFO_DESTRUCT(&at[2]);
+        PMIX_INFO_DESTRUCT(&at[3]);
+
+        drain_epilog_dirs();
         drain_epilog_ignores();
     }
 
