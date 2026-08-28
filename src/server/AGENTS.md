@@ -2932,29 +2932,6 @@ misbehave by design).
   `PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES`: the two lists are meant to
   be exclusive, an ignore arriving second is the one way a path reaches
   both, and the ignore is what the client asked for last.
-- **A job-control cleanup request is staged and then committed, and it
-  has to stay that way.** The three epilog lists outlive the request —
-  they live as long as the namespace or the peer — and nothing gives a
-  client a way to take an entry back off one. So a request refused with
-  `PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES` used to leave behind its own
-  ignores (registered first, which is what the conflict is detected
-  against), every directory accepted ahead of the conflicting one, and
-  any flag widening it had applied to already-registered entries — with
-  the client told the whole request had failed. The widening is the
-  sharpest of the three and the least obviously destructive: a duplicate
-  `PMIX_REGISTER_CLEANUP_DIR` carrying `PMIX_CLEANUP_RECURSIVE` turns an
-  existing non-recursive entry recursive, so a directory the client
-  believes untouched takes its whole subtree with it at termination. The
-  handler now builds every addition on per-epilog staging lists hanging
-  off `pmix_srvr_epi_caddy_t`, records pending widenings on a list of
-  `pmix_srvr_epi_upgrade_t`, and commits with `pmix_list_join` only once
-  nothing can fail — which covers the allocation arms too. **Do not put
-  an allocation or a fallible call below the commit comment**; that is
-  the whole basis of the guarantee. Note the one rule the staging pass
-  had to preserve exactly: a directory that duplicates an entry already
-  on the epilog is *never* conflict-checked, because the question of
-  whether that path may be registered for cleanup was answered when it
-  was registered.
 - **A comma-delimited path list is expanded at registration, and must
   not be expanded anywhere else.** `PMIX_REGISTER_CLEANUP`,
   `PMIX_REGISTER_CLEANUP_DIR` and `PMIX_CLEANUP_IGNORE` are all
@@ -3002,6 +2979,83 @@ misbehave by design).
   an entry already registered — the existing more-permissive-wins rule
   decides it: recursive removes everything empty would have and the
   files besides, so recursive dominates and clears the empty flag.
+- **The epilog removes what a client named *as* that client, and the
+  identity it uses had better be initialized.** `pmix_epilog_t::uid` and
+  `::gid` were written by the connection handler
+  (`src/mca/ptl/base/ptl_base_connection_hdlr.c`, four sites) and read
+  nowhere, so `pmix_execute_epilog` unlinked and rmdir'd whatever path a
+  client named as whatever user the server happened to be — free rein
+  over a node for any client of a privileged system-level server.
+  `pmix_execute_epilog` now walks under the recorded identity, which
+  hands the decision to the kernel and so gets symlinks and `..` right
+  without a check of ours racing the filesystem. Two routes:
+
+  - **We are already that user** — the ordinary per-user server — so
+    walk in place. This compares our own process credentials, not
+    anything on disk, so there is no time-of-check window: only another
+    thread calling `seteuid()` could invalidate it and nothing here
+    does.
+  - **We are not**, so `fork()` and drop in the child
+    (`setgroups(0, NULL)`, then `setgid`, then `setuid` — group before
+    user, because dropping the uid first takes with it the privilege
+    needed to change the gid, and `setuid()` does not touch the
+    supplementary groups on its own). Only a privileged server can drop
+    to somebody else, which is exactly the server this is for; an
+    unprivileged one fails the drop and the child exits having done
+    nothing, which is right, because the kernel would have refused those
+    unlinks anyway.
+
+  **A child rather than `seteuid()` on the spot**, because credentials
+  are per-process: glibc implements the POSIX semantics with a broadcast
+  to every thread, so dropping here would run the whole server as the
+  client for the length of the walk. The epilog runs at job termination
+  and never on a hot path, so the fork is affordable and the window
+  simply does not exist. Every path out of the child is `_exit()`, never
+  `exit()` — this is a forked child of a threaded process and the
+  parent's atexit handlers would tear down a library that is still very
+  much alive in the parent.
+
+  **The parent waits per-pid and treats `ECHILD` as "already gone".**
+  PMIx installs no `SIGCHLD` handler — `child_poll()` in
+  `src/common/pmix_pfexec.c` polls per-pid for exactly this reason — but
+  the host process we are embedded in may sweep with `waitpid(-1)` or
+  set `SIGCHLD` to `SIG_IGN`, and then our child is reaped out from
+  under us.
+
+  **What made this a live hazard rather than a latent one is that
+  `PMIX_NEW` `malloc`s and does not `calloc`.** Neither `nscon` nor
+  `pcon` assigned those two members, so until a handshake wrote them
+  they were uninitialized heap — fine while nothing read them, and not
+  fine at all in a function that unlinks files. Both constructors now
+  default them to `geteuid()`/`getegid()`, which makes an epilog nobody
+  vouched for behave exactly as it always has and reserves the drop for
+  a peer the host actually registered an identity for. **Any new member
+  of an object here is uninitialized until a constructor says
+  otherwise** — do not read the absence of a crash as evidence that
+  something zeroed it.
+- **A job-control cleanup request is staged and then committed, and it
+  has to stay that way.** The three epilog lists outlive the request —
+  they live as long as the namespace or the peer — and nothing gives a
+  client a way to take an entry back off one. So a request refused with
+  `PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES` used to leave behind its own
+  ignores (registered first, which is what the conflict is detected
+  against), every directory accepted ahead of the conflicting one, and
+  any flag widening it had applied to already-registered entries — with
+  the client told the whole request had failed. The widening is the
+  sharpest of the three and the least obviously destructive: a duplicate
+  `PMIX_REGISTER_CLEANUP_DIR` carrying `PMIX_CLEANUP_RECURSIVE` turns an
+  existing non-recursive entry recursive, so a directory the client
+  believes untouched takes its whole subtree with it at termination. The
+  handler now builds every addition on per-epilog staging lists hanging
+  off `pmix_srvr_epi_caddy_t`, records pending widenings on a list of
+  `pmix_srvr_epi_upgrade_t`, and commits with `pmix_list_join` only once
+  nothing can fail — which covers the allocation arms too. **Do not put
+  an allocation or a fallible call below the commit comment**; that is
+  the whole basis of the guarantee. Note the one rule the staging pass
+  had to preserve exactly: a directory that duplicates an entry already
+  on the epilog is *never* conflict-checked, because the question of
+  whether that path may be registered for cleanup was answered when it
+  was registered.
 - **Two things in `pmix_server_get.c` look like defects and are not.**
   `get_job_data` returns `PMIX_SUCCESS` with an empty buffer when the
   fetch finds nothing, and its callers pass that empty payload to the
