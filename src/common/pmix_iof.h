@@ -304,8 +304,17 @@ PMIX_EXPORT pmix_status_t pmix_iof_setup_stdin_read(int fd, pmix_proc_t procs[],
                                                     pmix_info_t directives[], size_t ndirs);
 PMIX_EXPORT void pmix_iof_finalize(void);
 
+/* Deliver one chunk of output from "name" on "stream" - the single entry
+ * to the write path, and what PMIx_server_IOF_deliver ends up calling.
+ * A zero-size "bo" is the end-of-stream marker; see the sink rules in
+ * this directory's AGENTS.md for what that means to each kind of sink.
+ * Progress-thread only. */
 PMIX_EXPORT pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t stream,
                                                 const pmix_byte_object_t *bo);
+/* Last-chance synchronous drain of whatever is still queued on a sink,
+ * for use once the event base can no longer be relied on to write it.
+ * Writes with write(2) and gives up on the first short write - anything
+ * left is discarded rather than retried. */
 PMIX_EXPORT void pmix_iof_static_dump_output(pmix_iof_sink_t *sink);
 PMIX_EXPORT void pmix_iof_write_handler(int fd, short event, void *cbdata);
 PMIX_EXPORT bool pmix_iof_stdin_check(int fd);
@@ -399,7 +408,9 @@ PMIX_EXPORT int pmix_iof_rank_digits(pmix_rank_t nprocs);
  * expanding it, so a launcher can reject a bad one while the user is still
  * looking at their command line rather than at a failed job. On
  * PMIX_ERR_BAD_PARAM it sets *bad (if non-NULL) to a malloc'd copy of the
- * offending conversion for the diagnostic; the caller frees it.
+ * offending conversion for the diagnostic; the caller frees it. *bad is
+ * always written - it is NULL on success, and can also be left NULL by
+ * an allocation failure, so a caller printing it must screen it.
  *
  * pmix_iof_expand_pattern() requires a non-NULL result; it returns the
  * expanded name there as a malloc'd string the caller frees, and
