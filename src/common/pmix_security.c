@@ -35,6 +35,23 @@
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
 
+/* carries the caller's callback across a request the host answers */
+typedef struct {
+    pmix_credential_cbfunc_t cbfunc;
+    void *cbdata;
+} pmix_cred_relay_t;
+
+/* Return a credential to the caller of PMIx_Get_credential_nb.
+ *
+ * What pmix_credential_cbfunc_t transfers is the credential itself - the
+ * payload inside the byte object, and its size - not the object that
+ * carries it. That object remains the library's, and may therefore be
+ * the frame below; what it must not do is destruct, since that would
+ * release the payload the receiver now owns. Nothing is transferred
+ * alongside a failure - the object handed over carries no payload there,
+ * so the receiver has nothing to release. The info array is ours in either case - the same
+ * contract says that array remains owned by the library - and is
+ * released once the callback returns. */
 static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                       pmix_buffer_t *buf, void *cbdata)
 {
@@ -66,17 +83,23 @@ static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &status, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        status = rc;
         goto complete;
     }
     if (PMIX_SUCCESS != status) {
         goto complete;
     }
 
-    /* unpack the credential */
+    /* unpack the credential - the payload allocated here is what is
+     * handed on to the caller */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cred, &cnt, PMIX_BYTE_OBJECT);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        /* a status of success alongside nothing to point at would have
+         * the caller reading a payload we never unpacked */
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+        status = rc;
         goto complete;
     }
 
@@ -85,6 +108,7 @@ static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        status = rc;
         goto complete;
     }
     if (0 < ninfo) {
@@ -93,6 +117,7 @@ static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            status = rc;
             goto complete;
         }
     }
@@ -101,13 +126,59 @@ complete:
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:security cback from server releasing");
     /* release the caller */
     if (NULL != cd->credcbfunc) {
+        /* the payload goes with it - the object must NOT be destructed */
         cd->credcbfunc(status, &cred, info, ninfo, cd->cbdata);
+    } else {
+        /* nobody took the payload, so it is still ours to release */
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
     }
-    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
     if (NULL != info) {
         PMIX_INFO_FREE(info, ninfo);
     }
     PMIX_RELEASE(cd);
+}
+
+/* Relay a credential the host produced to the caller of
+ * PMIx_Get_credential_nb.
+ *
+ * The two directions of pmix_credential_cbfunc_t do not carry the same
+ * ownership, and this is where they meet. Coming down from the library
+ * to its caller, the credential is transferred: the caller keeps the
+ * payload and releases it when done. Coming up from the host it is only
+ * borrowed - the signature has no release function, so the host may
+ * reclaim the payload the instant the up-call returns, and nothing tells
+ * us whether it was ever malloc'd. Passing the host's payload straight
+ * through would hold the caller to both contracts at once, so what goes
+ * out is a copy that is genuinely the caller's. The info array is passed
+ * along as it stands; it belongs to neither of them to release. */
+static void cred_relay(pmix_status_t status, pmix_byte_object_t *credential,
+                       pmix_info_t info[], size_t ninfo, void *cbdata)
+{
+    pmix_cred_relay_t *relay = (pmix_cred_relay_t *) cbdata;
+    pmix_byte_object_t cred;
+
+    if (NULL == relay->cbfunc) {
+        /* nobody asked to be told - the host's data is still the host's,
+         * so there is nothing here to release but ourselves */
+        free(relay);
+        return;
+    }
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+
+    if (PMIX_SUCCESS == status && NULL != credential && NULL != credential->bytes) {
+        cred.bytes = malloc(credential->size);
+        if (NULL == cred.bytes) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            status = PMIX_ERR_NOMEM;
+        } else {
+            memcpy(cred.bytes, credential->bytes, credential->size);
+            cred.size = credential->size;
+        }
+    }
+
+    /* the copy goes to the caller, who releases it - not us */
+    relay->cbfunc(status, &cred, info, ninfo, relay->cbdata);
+    free(relay);
 }
 
 static void mycdcb(pmix_status_t status, pmix_byte_object_t *credential,
@@ -119,15 +190,53 @@ static void mycdcb(pmix_status_t status, pmix_byte_object_t *credential,
     PMIX_ACQUIRE_OBJECT(cb);
     cb->status = status;
     if (PMIX_SUCCESS == status && NULL != credential) {
-        cb->bo.bytes = malloc(credential->size);
-        if (NULL == cb->bo.bytes) {
-            cb->status = PMIX_ERR_NOMEM;
-        } else {
-            memcpy(cb->bo.bytes, credential->bytes, credential->size);
-            cb->bo.size = credential->size;
-        }
+        /* the payload is ours now - take it rather than copy it, and
+         * empty the object we were handed so that nothing frees it twice
+         * if a path above us ever grows a destruct */
+        cb->bo.bytes = credential->bytes;
+        cb->bo.size = credential->size;
+        credential->bytes = NULL;
+        credential->size = 0;
     }
     PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
+/* Meet a credential request from a local psec mechanism: for a server
+ * whose host offers no credential support, and for a client or tool with
+ * no server to ask. The mechanism allocates the credential's payload
+ * into the byte object we hand it, and that payload goes on to the
+ * caller, who owns it from there - so this frame's object is never
+ * destructed once the callback has been given it. The results array is
+ * a different matter: the info array on this callback stays owned by the
+ * library, so it is released as soon as the callback has read it. */
+static pmix_status_t local_credential(const pmix_info_t info[], size_t ninfo,
+                                      pmix_credential_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_byte_object_t cred;
+    pmix_info_t *results = NULL;
+    size_t nresults = 0;
+    pmix_status_t rc;
+
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+    PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, info, ninfo, &results, &nresults, &cred);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+        }
+        return rc;
+    }
+
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, &cred, results, nresults, cbdata);
+    } else {
+        /* nobody took the payload, so it is still ours to release */
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    }
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+    }
+    return PMIX_SUCCESS;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t ninfo,
@@ -162,13 +271,12 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t n
         PMIX_WAIT_THREAD(&cb.lock);
         rc = cb.status;
         if (NULL != cb.bo.bytes) {
-            credential->bytes = malloc(cb.bo.size);
-            if (NULL == credential->bytes) {
-                rc = PMIX_ERR_NOMEM;
-            } else {
-                memcpy(credential->bytes, cb.bo.bytes, cb.bo.size);
-                credential->size = cb.bo.size;
-            }
+            /* the credential mycdcb took is handed on to our caller,
+             * who releases it - the caddy must not destruct it here */
+            credential->bytes = cb.bo.bytes;
+            credential->size = cb.bo.size;
+            cb.bo.bytes = NULL;
+            cb.bo.size = 0;
         }
     }
     PMIX_DESTRUCT(&cb);
@@ -182,9 +290,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
     pmix_cmd_t cmd = PMIX_GET_CREDENTIAL_CMD;
     pmix_status_t rc;
     pmix_query_caddy_t *cb;
-    pmix_byte_object_t cred;
-    pmix_info_t *results = NULL;
-    size_t nresults = 0;
+    pmix_cred_relay_t *relay;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: Get_credential called with %d info",
@@ -204,48 +310,32 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
         /* if the host doesn't support this operation,
          * see if we can generate it ourselves */
         if (NULL == pmix_host_server.get_credential) {
-            PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
-            PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, info, ninfo, &results, &nresults, &cred);
-            if (PMIX_SUCCESS == rc) {
-                /* pass it back in the callback function - the cbfunc has no
-                 * release function, so we retain ownership of the credential
-                 * and results and must free them regardless of whether a
-                 * cbfunc was provided */
-                if (NULL != cbfunc) {
-                    cbfunc(PMIX_SUCCESS, &cred, results, nresults, cbdata);
-                }
-                if (NULL != results) {
-                    PMIX_INFO_FREE(results, nresults);
-                }
-                PMIX_BYTE_OBJECT_DESTRUCT(&cred);
-            }
-            return rc;
+            return local_credential(info, ninfo, cbfunc, cbdata);
         }
-        /* the host is available, so let them try to create it */
+        /* the host is available, so let them try to create it. What the
+         * host hands back stays the host's, so the answer goes out
+         * through a relay that gives our caller an object of its own */
         pmix_output_verbose(2, pmix_globals.debug_output, "pmix:get_credential handed to RM");
-        rc = pmix_host_server.get_credential(&pmix_globals.myid, info, ninfo, cbfunc, cbdata);
+        relay = (pmix_cred_relay_t *) malloc(sizeof(pmix_cred_relay_t));
+        if (NULL == relay) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return PMIX_ERR_NOMEM;
+        }
+        relay->cbfunc = cbfunc;
+        relay->cbdata = cbdata;
+        rc = pmix_host_server.get_credential(&pmix_globals.myid, info, ninfo,
+                                             cred_relay, relay);
+        if (PMIX_SUCCESS != rc) {
+            /* the host will not be calling back */
+            free(relay);
+        }
         return rc;
     }
 
     /* if we are a client or tool and we aren't connected, see
      * if one of our internal plugins is capable of meeting the request */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
-        PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
-        PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, info, ninfo, &results, &nresults, &cred);
-        if (PMIX_SUCCESS == rc) {
-            /* pass it back in the callback function - the cbfunc has no
-             * release function, so we retain ownership of the credential
-             * and results and must free them regardless of whether a
-             * cbfunc was provided */
-            if (NULL != cbfunc) {
-                cbfunc(PMIX_SUCCESS, &cred, results, nresults, cbdata);
-            }
-            if (NULL != results) {
-                PMIX_INFO_FREE(results, nresults);
-            }
-            PMIX_BYTE_OBJECT_DESTRUCT(&cred);
-        }
-        return rc;
+        return local_credential(info, ninfo, cbfunc, cbdata);
     }
 
     /* if we are a client, then relay this request to the server */
