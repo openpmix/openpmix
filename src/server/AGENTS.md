@@ -301,13 +301,14 @@ will synthesize nothing. `pmix_server_cred_cbfunc` copied the host's
 credential unconditionally — and the copy screens a NULL source and
 reports `PMIX_ERR_BAD_PARAM`, while a host that cannot issue one answers
 with an error status and *no* credential, which is exactly what
-`pmix_credential_cbfunc_t`'s contract says and exactly what
-`_cred_cbfunc` is written for (it packs the credential only under a
-success status). So the ordinary refusal took an error return that
-released the caddies and queued nothing, and the client sat in
-`PMIx_Get_credential` for good. Record the failure in `scd->status` and
-fall through to the shift; `pmix_server_validate_cbfunc`'s two info-copy
-arms had the same shape. Covered by `test/unit/server_control.c`.
+`pmix_credential_cbfunc_t`'s contract says. So the ordinary refusal took
+an error return that released the caddies and queued nothing, and the
+client sat in `PMIx_Get_credential` for good. Record the failure in
+`scd->status` and fall through to the shift; the packing that replaced
+that copy keeps the same discipline, and every arm of it — a buffer that
+could not be allocated, a payload that would not pack — still reaches
+`PMIX_THREADSHIFT`. `pmix_server_validate_cbfunc` had the same shape.
+Covered by `test/unit/server_control.c`.
 
 **And when it genuinely cannot shift, it still owes the caddies.** The
 `PMIX_NEW(pmix_shift_caddy_t)` failure arm is the twin of the
@@ -372,20 +373,27 @@ pull that was never granted, which is the same defect the synchronous
 refusal had. Do the removal first, and clear the array slot before
 releasing the request so the array never holds a stale pointer.
 
-**A callback signature with no release function has to *copy* what it
-parks.** `pmix_credential_cbfunc_t` and `pmix_validation_cbfunc_t` -
-`pmix_server_cred_cbfunc` and `pmix_server_validate_cbfunc` - carry no
-`(relfn, relcbdata)` pair, so nothing the host passes survives the return
-of the call. Both of them only thread-shift, and pack the reply later on
-the progress thread. Validate always copied its info array and said why;
-cred copied the credential (`PMIX_BFROPS_COPY`) and then parked the info
-array *by pointer* beside it, so a host that answered from a stack frame
-- the natural thing for a one-element reply - had the server pack that
-frame after it was gone. Copy into the caddy and set `infocopy`, rather
-than freeing explicitly at the end: the flag also covers the early
-returns above the completion, which is where validate leaked its copy.
-The regression case is in `test/unit/server_control.c`, whose host stub
-destructs and overwrites its array the instant the callback returns.
+**A callback signature with no release function must be *finished* with
+what the host handed it before it returns.** `pmix_credential_cbfunc_t`
+and `pmix_validation_cbfunc_t` - `pmix_server_cred_cbfunc` and
+`pmix_server_validate_cbfunc` - carry no `(relfn, relcbdata)` pair, so
+nothing the host passes survives the return of the call. It is not ours
+to release either: there is no way to tell a host stack frame from
+something malloc'd, so the host keeps ownership and reclaims it on the
+next line. Both callbacks used to park the data and pack the reply later
+on the progress thread, which meant copying it - and cred copied the
+credential (`PMIX_BFROPS_COPY`) but parked the info array *by pointer*
+beside it, so a host that answered from a stack frame, the natural thing
+for a one-element reply, had the server pack that frame after it was
+gone. Both now pack the whole reply where they stand, on the host's own
+thread, and shift only the finished buffer (`scd->buf`, released by the
+caddy's destructor if it was never queued); `_queue_sec_reply` does the
+queueing, which is the only part that has to be on the progress thread,
+since it writes `peer->send_msg`, the peer's send queue, and the send
+event. Prefer that shape to a copy wherever a callback's data feeds
+nothing but a reply. The regression case is in
+`test/unit/server_control.c`, whose host stub destructs and overwrites
+its array the instant the callback returns.
 
 **An internal completion path must hand the callback the object that
 callback casts.** `_fabric_response` exists to answer a fabric request the

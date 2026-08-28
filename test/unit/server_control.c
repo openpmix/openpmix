@@ -39,21 +39,26 @@
  *
  *   get_credential: a host that refuses must still be answered
  *      pmix_credential_cbfunc_t's contract is an error status and no
- *      credential. The copy of that credential screens a NULL source, so
- *      the ordinary refusal used to take an error return that queued
- *      nothing and the client's PMIx_Get_credential never came back.
+ *      credential. The copy the server used to make of that credential
+ *      screens a NULL source, so the ordinary refusal used to take an
+ *      error return that queued nothing and the client's
+ *      PMIx_Get_credential never came back.
  *
- *   get_credential: the host's reply info is copied, not borrowed
+ *   get_credential: the reply is packed before the up-call returns
  *      pmix_credential_cbfunc_t carries no (release_fn, release_cbdata)
  *      pair, so nothing the host passes to it survives the return of the
- *      call - and pmix_server_cred_cbfunc only thread-shifts, packing the
- *      reply later on the progress thread. The credential itself was
- *      always copied; the info array beside it was parked by pointer, so
- *      a host that built it on its stack (the natural thing to do for a
- *      one-element answer) had the server pack that frame after it had
+ *      call - and it is not the library's to release either, having no
+ *      way to tell a host stack frame from something malloc'd. The
+ *      answer is to be finished with it by the time the callback
+ *      returns: pmix_server_cred_cbfunc packs the whole reply where it
+ *      stands and thread-shifts only the finished buffer. It used to
+ *      park the data instead and pack on the progress thread - copying
+ *      the credential, but taking the info array by pointer, so a host
+ *      that built that array on its stack (the natural thing to do for a
+ *      one-element answer) had the server pack the frame after it had
  *      been reused. The stub below deliberately destructs and overwrites
- *      its array the instant the callback returns, so the queued reply
- *      carries a recognizable key only if the copy really happened.
+ *      both the instant the callback returns, so the queued reply
+ *      carries recognizable contents only if it was packed in time.
  *      Read back from the peer's send queue, which is where a reply to a
  *      socketless peer comes to rest.
  *
@@ -274,7 +279,7 @@ static void op_stub(pmix_status_t status, void *cbdata)
 /* Answer the credential request from data this frame owns, then take it
  * all back. pmix_credential_cbfunc_t hands down no release function, so
  * this is exactly what the contract permits - and it is what a server
- * that parked the array rather than copying it cannot survive. */
+ * that parked the data rather than packing it cannot survive. */
 static bool cred_fired = false;
 
 /* Overwrite through a volatile pointer: a plain memset over a local the
@@ -1033,7 +1038,8 @@ int main(int argc, char **argv)
                 report("credential reply carries one info", PMIX_SUCCESS == rc
                            && 1 == rninfo && NULL != rinfo);
                 /* the host destructed and overwrote its array before it
-                 * returned, so this only survives a real copy */
+                 * returned, so this survives only if the reply was
+                 * packed while the callback was still running */
                 report("credential reply kept the host's key",
                        NULL != rinfo && PMIX_CHECK_KEY(&rinfo[0], CTLUT_CREDKEY));
                 report("credential reply kept the host's value",
@@ -1051,12 +1057,12 @@ int main(int argc, char **argv)
 
     /* --- a host that cannot issue a credential must still answer ------ */
     /* The contract on pmix_credential_cbfunc_t is an error status and no
-     * credential, and _cred_cbfunc packs a credential only under a
-     * success status - so the reply path was written for this. But the
-     * outer callback copied the credential unconditionally, and the copy
-     * screens a NULL source and reports PMIX_ERR_BAD_PARAM, so the
-     * ordinary refusal took an error return that released everything and
-     * queued nothing. The client's PMIx_Get_credential never came back.
+     * credential, and the credential is packed only under a success
+     * status - so the reply path was written for this. But the callback
+     * used to copy the credential unconditionally, and the copy screens
+     * a NULL source and reports PMIX_ERR_BAD_PARAM, so the ordinary
+     * refusal took an error return that released everything and queued
+     * nothing. The client's PMIx_Get_credential never came back.
      * Against an unfixed library the first assertion below reports no
      * reply at all. */
     {

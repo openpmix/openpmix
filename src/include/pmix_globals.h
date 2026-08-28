@@ -729,6 +729,10 @@ typedef struct {
     pmix_pdata_t *pdata;
     size_t npdata;
     pmix_byte_object_t *bo;
+    /* a reply packed before the shift, for the callbacks whose data is
+     * only theirs to read until they return - released here if it was
+     * never queued */
+    pmix_buffer_t *buf;
     pmix_device_distance_t *dist;
     size_t ndist;
     pmix_data_range_t range;
