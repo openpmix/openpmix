@@ -470,6 +470,68 @@ static pmix_cleanup_dir_t *epi_new_dir(const char *path)
     return cdir;
 }
 
+/* Expand a comma-delimited path list into one entry per path.
+ * PMIX_REGISTER_CLEANUP, PMIX_REGISTER_CLEANUP_DIR and
+ * PMIX_CLEANUP_IGNORE are all documented as comma-delimited lists, and
+ * the expansion used to happen only in pmix_execute_epilog - so every
+ * comparison in between was made against the unexpanded string, and
+ * three separate things silently stopped working for a list of more
+ * than one path. dirpath_destroy strcmp's an ignore against a filename
+ * it has just constructed, so an ignore of "/a,/b" protected neither;
+ * it decides PMIX_CLEANUP_LEAVE_TOPDIR by comparing the directory it is
+ * descending against cd->path, which a list never equals, so the flag
+ * was dropped; and neither the duplicate scan nor the conflict scan
+ * here could see the paths inside one. Expanding at registration makes
+ * every one of those a whole-path comparison, and leaves the epilog
+ * nothing left to split. */
+static pmix_status_t epi_cache_files(pmix_list_t *list, const char *paths)
+{
+    pmix_cleanup_file_t *cf;
+    char **tmp;
+    size_t n;
+
+    tmp = PMIx_Argv_split(paths, ',');
+    if (NULL == tmp) {
+        /* the value named no path at all - a string of nothing but
+         * delimiters, which reached pmix_execute_epilog as an entry
+         * whose own split then returned NULL and was indexed */
+        return PMIX_ERR_BAD_PARAM;
+    }
+    for (n = 0; NULL != tmp[n]; n++) {
+        cf = epi_new_file(tmp[n]);
+        if (NULL == cf) {
+            PMIx_Argv_free(tmp);
+            return PMIX_ERR_NOMEM;
+        }
+        pmix_list_append(list, &cf->super);
+    }
+    PMIx_Argv_free(tmp);
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t epi_cache_dirs(pmix_list_t *list, const char *paths)
+{
+    pmix_cleanup_dir_t *cdir;
+    char **tmp;
+    size_t n;
+
+    tmp = PMIx_Argv_split(paths, ',');
+    if (NULL == tmp) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    for (n = 0; NULL != tmp[n]; n++) {
+        cdir = epi_new_dir(tmp[n]);
+        if (NULL == cdir) {
+            PMIx_Argv_free(tmp);
+            return PMIX_ERR_NOMEM;
+        }
+        pmix_list_append(list, &cdir->super);
+    }
+    PMIx_Argv_free(tmp);
+    return PMIX_SUCCESS;
+}
+
+
 pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                                    pmix_info_cbfunc_t cbfunc,
                                    void *cbdata)
@@ -669,13 +731,11 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 rc = PMIX_ERR_BAD_PARAM;
                 goto exit;
             }
-            cf = epi_new_file(cd->info[n].value.data.string);
-            if (NULL == cf) {
+            rc = epi_cache_files(&cachefiles, cd->info[n].value.data.string);
+            if (PMIX_SUCCESS != rc) {
                 /* return an error */
-                rc = PMIX_ERR_NOMEM;
                 goto exit;
             }
-            pmix_list_append(&cachefiles, &cf->super);
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_REGISTER_CLEANUP_DIR)) {
             ++cnt;
             if (PMIX_STRING != cd->info[n].value.type || NULL == cd->info[n].value.data.string) {
@@ -683,13 +743,11 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 rc = PMIX_ERR_BAD_PARAM;
                 goto exit;
             }
-            cdir = epi_new_dir(cd->info[n].value.data.string);
-            if (NULL == cdir) {
+            rc = epi_cache_dirs(&cachedirs, cd->info[n].value.data.string);
+            if (PMIX_SUCCESS != rc) {
                 /* return an error */
-                rc = PMIX_ERR_NOMEM;
                 goto exit;
             }
-            pmix_list_append(&cachedirs, &cdir->super);
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_CLEANUP_RECURSIVE)) {
             recurse = PMIX_INFO_TRUE(&cd->info[n]);
             ++cnt;
@@ -699,13 +757,11 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 rc = PMIX_ERR_BAD_PARAM;
                 goto exit;
             }
-            cf = epi_new_file(cd->info[n].value.data.string);
-            if (NULL == cf) {
+            rc = epi_cache_files(&ignorefiles, cd->info[n].value.data.string);
+            if (PMIX_SUCCESS != rc) {
                 /* return an error */
-                rc = PMIX_ERR_NOMEM;
                 goto exit;
             }
-            pmix_list_append(&ignorefiles, &cf->super);
             ++cnt;
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_CLEANUP_LEAVE_TOPDIR)) {
             leave_topdir = PMIX_INFO_TRUE(&cd->info[n]);

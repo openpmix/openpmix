@@ -740,41 +740,64 @@ PMIX_CLASS_INSTANCE(pmix_group_t,
                     pmix_list_item_t,
                     grcon, grdes);
 
+/* Is this path one the client asked us to leave alone? dirpath_destroy
+ * asks the same question of the directory it is descending and of every
+ * file inside it; the cleanup_files loop below did not ask it at all,
+ * so an ignore naming a path already registered for cleanup was
+ * recorded and then had no effect - the epilog went on unlinking a file
+ * the client had asked it to keep. pmix_server_job_ctrl refuses the
+ * reverse order with PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES, which is
+ * what says the two lists are meant to be exclusive; an ignore arriving
+ * second is the one way a path can reach both, and it is the ignore
+ * that has to win. */
+static bool epilog_ignored(pmix_epilog_t *epi, const char *path)
+{
+    pmix_cleanup_file_t *cf;
+
+    PMIX_LIST_FOREACH (cf, &epi->ignores, pmix_cleanup_file_t) {
+        if (0 == strcmp(cf->path, path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void pmix_execute_epilog(pmix_epilog_t *epi)
 {
     pmix_cleanup_file_t *cf, *cfnext;
     pmix_cleanup_dir_t *cd, *cdnext;
     DIR *tst;
     int rc;
-    char **tmp;
-    size_t n;
+
+    /* Every entry on these two lists carries exactly one path.
+     * pmix_server_job_ctrl is the only thing in the tree that builds
+     * one, and it expands the comma-delimited value the client sent
+     * before anything is compared against it - which is what makes the
+     * ignore test here, and the top-directory test in dirpath_destroy,
+     * whole-path comparisons that can actually match. Do not re-split
+     * here: a second expansion point is how those comparisons came to be
+     * made against a string no constructed path ever equals. */
 
     /* start with any specified files */
     PMIX_LIST_FOREACH_SAFE (cf, cfnext, &epi->cleanup_files, pmix_cleanup_file_t) {
-        tmp = PMIx_Argv_split(cf->path, ',');
-        for (n = 0; NULL != tmp[n]; n++) {
-            rc = unlink(tmp[n]);
+        if (!epilog_ignored(epi, cf->path)) {
+            rc = unlink(cf->path);
             if (0 > rc) {
                 pmix_output_verbose(10, pmix_globals.debug_output, "File %s failed to unlink: %s",
-                                    tmp[n], strerror(errno));
+                                    cf->path, strerror(errno));
             }
         }
-        PMIx_Argv_free(tmp);
         pmix_list_remove_item(&epi->cleanup_files, &cf->super);
         PMIX_RELEASE(cf);
     }
 
     /* now cleanup the directories */
     PMIX_LIST_FOREACH_SAFE (cd, cdnext, &epi->cleanup_dirs, pmix_cleanup_dir_t) {
-        tmp = PMIx_Argv_split(cd->path, ',');
-        for (n = 0; NULL != tmp[n]; n++) {
-            tst = opendir(tmp[n]);
-            if (NULL != tst) {
-                closedir(tst);
-                dirpath_destroy(tmp[n], cd, epi);
-            }
+        tst = opendir(cd->path);
+        if (NULL != tst) {
+            closedir(tst);
+            dirpath_destroy(cd->path, cd, epi);
         }
-        PMIx_Argv_free(tmp);
         pmix_list_remove_item(&epi->cleanup_dirs, &cd->super);
         PMIX_RELEASE(cd);
     }
@@ -785,17 +808,14 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
     DIR *dp, *tst;
     struct dirent *ep;
     char *filenm;
-    pmix_cleanup_file_t *cf;
 
     if (NULL == path) { /* protect against error */
         return;
     }
 
-    /* if this path is it to be ignored, then do so */
-    PMIX_LIST_FOREACH (cf, &epi->ignores, pmix_cleanup_file_t) {
-        if (0 == strcmp(cf->path, path)) {
-            return;
-        }
+    /* if this path is to be ignored, then do so */
+    if (epilog_ignored(epi, path)) {
+        return;
     }
 
     /* Open up the directory */
@@ -826,14 +846,8 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
         }
 
         /* if this path is to be ignored, then do so */
-        PMIX_LIST_FOREACH (cf, &epi->ignores, pmix_cleanup_file_t) {
-            if (0 == strcmp(cf->path, filenm)) {
-                free(filenm);
-                filenm = NULL;
-                break;
-            }
-        }
-        if (NULL == filenm) {
+        if (epilog_ignored(epi, filenm)) {
+            free(filenm);
             continue;
         }
 
