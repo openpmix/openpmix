@@ -596,7 +596,7 @@ pmix_status_t pmix_iof_setup_stdin_read(int fd, pmix_proc_t procs[], size_t npro
      * unix text utils).
      */
     if (0 != fd) {
-        if ((flags = fcntl(fd, F_GETFL, 0)) < 0) {
+        if (0 > (flags = fcntl(fd, F_GETFL, 0))) {
             pmix_output(pmix_client_globals.iof_output,
                         "[%s:%d]: fcntl(F_GETFL) failed with errno=%d\n",
                         __FILE__, __LINE__, errno);
@@ -1214,7 +1214,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             fdout = pmix_os_dirpath_open_file_under(nptr->iof_flags.directory, outfile,
                                                     O_CREAT | O_RDWR | O_TRUNC, 0644);
             free(outfile);
-            if (fdout < 0) {
+            if (0 > fdout) {
                 /* couldn't be opened */
                 PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
                 free(outdir);
@@ -1249,7 +1249,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             fdout = pmix_os_dirpath_open_file_under(nptr->iof_flags.directory, outfile,
                                                     O_CREAT | O_RDWR | O_TRUNC, 0644);
             free(outfile);
-            if (fdout < 0) {
+            if (0 > fdout) {
                 /* couldn't be opened */
                 PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
                 free(outdir);
@@ -1312,7 +1312,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             fdout = open_composed_output(nptr->iof_flags.file, outfile,
                                          S_IRWXU | S_IRGRP | S_IXGRP);
             free(outfile);
-            if (fdout < 0) {
+            if (0 > fdout) {
                 /* couldn't be opened */
                 PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
                 return NULL;
@@ -1355,7 +1355,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             fdout = open_composed_output(nptr->iof_flags.file, outfile,
                                          S_IRWXU | S_IRGRP | S_IXGRP);
             free(outfile);
-            if (fdout < 0) {
+            if (0 > fdout) {
                 /* couldn't be opened */
                 PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
                 return NULL;
@@ -2663,7 +2663,7 @@ void pmix_iof_static_dump_output(pmix_iof_sink_t *sink)
         while (NULL != (output = (pmix_iof_write_output_t *) pmix_list_remove_first(&wev->outputs))) {
             if (!dump && 0 < output->numbytes) {
                 num_written = write(wev->fd, output->data, output->numbytes);
-                if (num_written < output->numbytes) {
+                if (output->numbytes > num_written) {
                     /* don't retry - just cleanout the list and dump it */
                     dump = true;
                 }
@@ -2712,7 +2712,7 @@ void pmix_iof_write_handler(int sd, short args, void *cbdata)
             continue;
         }
         num_written = write(wev->fd, output->data, output->numbytes);
-        if (num_written < 0) {
+        if (0 > num_written) {
             if (EAGAIN == errno || EINTR == errno) {
                 /* push this item back on the front of the list */
                 pmix_list_prepend(&wev->outputs, item);
@@ -2739,7 +2739,7 @@ void pmix_iof_write_handler(int sd, short args, void *cbdata)
              */
             PMIX_RELEASE(output);
             goto ABORT;
-        } else if (num_written < output->numbytes) {
+        } else if (output->numbytes > num_written) {
             /* incomplete write - adjust data to avoid duplicate output */
             memmove(output->data, &output->data[num_written], output->numbytes - num_written);
             /* adjust the number of bytes remaining to be written */
@@ -3258,7 +3258,7 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
      re-add it */
     rev->active = false;
 
-    if (numbytes < 0) {
+    if (0 > numbytes) {
         /* either we have a connection error or it was a non-blocking read */
 
         /* non-blocking, retry */

@@ -797,15 +797,15 @@ static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
     opts->usepty = 0;
 #endif
 
-    if (ret < 0) {
+    if (0 > ret) {
         opts->usepty = 0;
-        if (pipe(opts->p_stdout) < 0) {
+        if (0 > pipe(opts->p_stdout)) {
             PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
             return PMIX_ERR_SYS_OTHER;
         }
     }
     /* always leave stdin available in case we forward to it */
-    if (pipe(opts->p_stdin) < 0) {
+    if (0 > pipe(opts->p_stdin)) {
         PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
         /* release the stdout pipe/pty we already opened */
         close(opts->p_stdout[0]);
@@ -815,7 +815,7 @@ static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
         return PMIX_ERR_SYS_OTHER;
     }
 
-    if (pipe(opts->p_stderr) < 0) {
+    if (0 > pipe(opts->p_stderr)) {
         PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
         /* release the stdout and stdin pipes we already opened */
         close(opts->p_stdout[0]);
@@ -868,17 +868,17 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
     if (opts->usepty) {
         /* disable echo */
         struct termios term_attrs;
-        if (tcgetattr(opts->p_stdout[1], &term_attrs) < 0) {
+        if (0 > tcgetattr(opts->p_stdout[1], &term_attrs)) {
             return PMIX_ERR_SYS_OTHER;
         }
         term_attrs.c_lflag &= ~(ECHO | ECHOE | ECHOK | ECHOCTL | ECHOKE | ECHONL);
         term_attrs.c_iflag &= ~(ICRNL | INLCR | ISTRIP | INPCK | IXON);
         term_attrs.c_oflag &= ~(OCRNL | ONLCR);
-        if (tcsetattr(opts->p_stdout[1], TCSANOW, &term_attrs) == -1) {
+        if (-1 == tcsetattr(opts->p_stdout[1], TCSANOW, &term_attrs)) {
             return PMIX_ERR_SYS_OTHER;
         }
         ret = dup2(opts->p_stdout[1], fileno(stdout));
-        if (ret < 0) {
+        if (0 > ret) {
             return PMIX_ERR_SYS_OTHER;
         }
         if (0 <= opts->p_stdout[1]) {
@@ -886,9 +886,9 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
             opts->p_stdout[1] = -1;
         }
     } else {
-        if (opts->p_stdout[1] != fileno(stdout)) {
+        if (fileno(stdout) != opts->p_stdout[1]) {
             ret = dup2(opts->p_stdout[1], fileno(stdout));
-            if (ret < 0) {
+            if (0 > ret) {
                 return PMIX_ERR_SYS_OTHER;
             }
             if (0 <= opts->p_stdout[1]) {
@@ -897,9 +897,9 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
             }
         }
     }
-    if (opts->p_stdin[0] != fileno(stdin)) {
+    if (fileno(stdin) != opts->p_stdin[0]) {
         ret = dup2(opts->p_stdin[0], fileno(stdin));
-        if (ret < 0) {
+        if (0 > ret) {
             return PMIX_ERR_SYS_OTHER;
         }
         if (0 <= opts->p_stdin[0]) {
@@ -908,9 +908,9 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
         }
     }
 
-    if (opts->p_stderr[1] != fileno(stderr)) {
+    if (fileno(stderr) != opts->p_stderr[1]) {
         ret = dup2(opts->p_stderr[1], fileno(stderr));
-        if (ret < 0) {
+        if (0 > ret) {
             return PMIX_ERR_SYS_OTHER;
         }
         if (0 <= opts->p_stderr[1]) {
@@ -1329,7 +1329,7 @@ static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env)
        blocking read on the pipe; if the pipe closed with no data,
        then the exec() succeeded.  If the parent reads something from
        the pipe, then the child was letting us know why it failed. */
-    if (pipe(p) < 0) {
+    if (0 > pipe(p)) {
         PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
         return PMIX_ERR_SYS_OTHER;
     }
@@ -1337,14 +1337,14 @@ static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env)
     /* Fork off the child */
     child->pid = fork();
 
-    if (child->pid < 0) {
+    if (0 > child->pid) {
         PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
         close(p[0]);
         close(p[1]);
         return PMIX_ERR_SYS_OTHER;
     }
 
-    if (child->pid == 0) {
+    if (0 == child->pid) {
         if (0 <= p[0]) {
             close(p[0]);
         }
