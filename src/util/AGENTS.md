@@ -1164,6 +1164,16 @@ who composed which part of the name:
   component" walk therefore declines the platform; it was tried, and
   that is what it did — while also declining the legitimate reclaim of a
   stale segment file, which is how the mistake surfaced.
+- **"Taken as given" is not "assumed to exist".** These helpers *open* the
+  prefix; nothing in them creates it, and one of the three kinds of prefix
+  above is routinely named into thin air — a user-supplied output
+  directory. `$TMPDIR` and `PMIX_NSDIR` are there by the time anything
+  composes under them, so the omission is invisible from those call sites;
+  `--output file=/tmp/out/%h/rank-%R:pattern` with no `/tmp/out` yet is a
+  job that silently produces no output at all. A caller whose prefix may
+  not exist has to create it first, with `pmix_os_dirpath_create()` — the
+  whole-path entry point, which is right for it precisely because that
+  path came from outside.
 - **What PMIx composes below the prefix gets walked.** Those names are
   the library's own, so nothing else should have put anything at them.
   Each is created with `mkdirat()` and opened with `O_NOFOLLOW` against

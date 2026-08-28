@@ -1089,10 +1089,17 @@ static ssize_t pattern_literal_head(const char *pattern)
 }
 
 /* Create the directories a composed output name needs, then open it.
- * Everything below the caller's own prefix is walked a component at a
- * time; see pattern_literal_head() for where that prefix ends. `name` is
- * modified in place while the directory part is taken off it, and is put
- * back before returning. */
+ *
+ * The caller's own prefix is created as one path, exactly as it was
+ * before any of this was composed a component at a time: it is text the
+ * caller wrote, and a caller naming a directory tree that does not exist
+ * yet expects it to be made.  Only what PMIx composes BELOW that prefix
+ * is walked a component at a time - see pattern_literal_head() for where
+ * the prefix ends, and pmix_os_dirpath_create_under() for why the rest
+ * cannot be handed to the kernel as one string.
+ *
+ * `name` is modified in place while the directory part is taken off it,
+ * and is put back before returning. */
 static int open_composed_output(const char *pattern, char *name, mode_t dmode)
 {
     ssize_t head = pattern_literal_head(pattern);
@@ -1116,6 +1123,19 @@ static int open_composed_output(const char *pattern, char *name, mode_t dmode)
     if (NULL == root) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return -1;
+    }
+
+    /* The caller's own prefix has to exist before anything can be walked
+     * under it, and nothing else will create it.  Leaving this out made
+     * every pattern naming a directory that did not already exist fail to
+     * open, with mkdir reporting ENOENT for the prefix itself. */
+    if (0 < head) {
+        rc = pmix_os_dirpath_create(root, dmode);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
+            PMIX_ERROR_LOG(rc);
+            free(root);
+            return -1;
+        }
     }
 
     /* any directory levels inside the composed part have to exist first */
@@ -1194,7 +1214,19 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
         }
         /* ensure the directory exists. An existing directory is fine:
          * the job may legitimately be writing into one that is already
-         * there (a rerun, or another rank that got here first) */
+         * there (a rerun, or another rank that got here first).
+         *
+         * The caller's own directory is created as one path - it is theirs
+         * to name, and naming one that does not exist yet is the ordinary
+         * case - and only the namespace and rank levels below it are walked
+         * a component at a time. */
+        rc = pmix_os_dirpath_create(nptr->iof_flags.directory,
+                                    S_IRWXU | S_IRGRP | S_IXGRP);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
+            PMIX_ERROR_LOG(rc);
+            free(outdir);
+            return NULL;
+        }
         rc = pmix_os_dirpath_create_under(nptr->iof_flags.directory, outdir,
                                           S_IRWXU | S_IRGRP | S_IXGRP);
         if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
