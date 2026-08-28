@@ -53,7 +53,7 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 16**
+**Deferred work — 15**
 
 * :ref:`todo-resolve-peers-wildcard`
 * :ref:`todo-iof-write-event`
@@ -69,7 +69,6 @@ At a glance
 * :ref:`todo-fabric-inventory`
 * :ref:`todo-legacy-regex-length`
 * :ref:`todo-debug-threads`
-* :ref:`todo-shared-session`
 * :ref:`todo-server-genvars`
 
 **Coverage gaps — 20.**  No CI race detector; the switchyard's
@@ -542,32 +541,6 @@ parameter for it would cost a few lines; it was left alone because
 ``src/threads`` is semantics-frozen and this is a feature rather than a
 defect.  Until then, do not read a silent run as evidence the handshake
 was not exercised.
-
-.. _todo-shared-session:
-
-A shared session's segment has nothing that shares it
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found in the ``src/mca/gds/shmem3`` re-review (2026-08-21).  The
-component places a job's session segment deliberately *outside* the
-per-job address arena, because a session is meant to outlive the job that
-first described it — ``pmix_mca_gds_shmem3_component.sessions`` holds a
-reference, and ``job_destruct()`` releases the whole arena, so a shared
-session's segment inside it would be unmapped under a live holder.
-
-The sharing that guards against cannot happen today: **nothing ever
-appends to that list**.  It is permanently empty, both searches in
-``pmix_gds_shmem3_get_session_tracker()`` are unreachable, and a job's
-session object is created by ``job_construct()`` and dies with it — so
-two jobs in the same session each build their own copy of the session
-data rather than mapping one segment.
-
-The placement was left as it is, because it is what the code would need
-the moment a session really were shared, and moving it would have to be
-undone.  What is deferred is the other half: deciding when a session
-tracker is registered on the component, and what its lifetime is once
-more than one job holds it.  Do not read the arena comment as evidence
-that sharing works.
 
 .. _todo-server-genvars:
 

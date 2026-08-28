@@ -54,6 +54,11 @@
  * must keep the generations before it; "0" when it stands on its own and
  * supersedes them. Only ever packed for the modex segment. */
 #define SHMEM3_SEG_DELTA_KEY "PMIX_GDS_SHMEM3_SEG_DELTA"
+/* Session id, on a SESSION blob only. A client needs it to decide which
+ * session tracker a segment belongs to, and it cannot read that out of
+ * the segment: the answer is what says whether to map the segment at
+ * all. Appended, so an older peer simply skips it. */
+#define SHMEM3_SEG_SSID_KEY "PMIX_GDS_SHMEM3_SEG_SSID"
 /* A key this job has stopped answering for, as "<rank>:<key>". The
  * segments still contain it - they are never rewritten - so a client
  * attaching after the removal has to be told, or it would read what
@@ -126,6 +131,8 @@ typedef struct {
     size_t seg_size;
     size_t seg_hadr;
     bool is_delta;
+    /** Session id from a SESSION blob; UINT32_MAX if none was sent. */
+    uint32_t ssid;
     /** The job's address-space arena, if it has one. Carried on every
      *  seg blob rather than only the first, so a client that has not yet
      *  reserved it learns of it from whichever blob reaches it first. */
@@ -144,6 +151,7 @@ unpacked_seg_blob_construct(
     ub->seg_size = 0;
     ub->seg_hadr = 0;
     ub->is_delta = false;
+    ub->ssid = UINT32_MAX;
     ub->arena_base = 0;
     ub->arena_size = 0;
 }
@@ -996,6 +1004,7 @@ static void
 session_construct(
     pmix_gds_shmem3_session_t *s
 ) {
+    s->id = UINT32_MAX;
     s->shmem3 = PMIX_NEW(pmix_shmem_t);
     s->shmem3_status = 0;
     s->smdata = NULL;
@@ -1005,6 +1014,26 @@ static void
 session_destruct(
     pmix_gds_shmem3_session_t *s
 ) {
+    /* A shared session is registered on the component's list, which holds
+     * it weakly - the counted references all belong to the jobs in the
+     * session - so the last of those jobs to let go brings us here and
+     * the entry has to come off the list before it is freed.
+     *
+     * Weakly, rather than with a reference of its own, is what makes the
+     * segment reclaimable. A strong entry would keep every session ever
+     * described mapped until the module finalized, which for a launcher
+     * whose DVM outlives the allocations running under it means never.
+     * The cost is that a session does not currently outlive the last job
+     * in it; giving it a longer life needs a host-facing "this session is
+     * over" call, which the gds framework does not have (see
+     * src/mca/gds/AGENTS.md).
+     *
+     * Only a named session is ever on the list. */
+    if (UINT32_MAX != s->id) {
+        pmix_list_remove_item(
+            &pmix_mca_gds_shmem3_component.sessions, &s->super
+        );
+    }
     /* The segment is the session's own. This used to be job_destruct()'s
      * job, which works only while every session has exactly one job: the
      * first job to be destructed would unmap the segment and free the
@@ -2054,8 +2083,15 @@ static void
 module_finalize(void)
 {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
-    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem3_component.sessions);
+    /* Jobs first. A job holds a counted reference on its session, and a
+     * session unlinks itself from the list below as it is destructed, so
+     * this loop is what empties that one. */
     PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem3_component.jobs);
+    /* Deliberately not PMIX_LIST_DESTRUCT: the session list holds no
+     * references, so releasing its members here would be a second
+     * release of objects the jobs above already gave back. After that
+     * loop it is empty and this only tears down the list itself. */
+    PMIX_DESTRUCT(&pmix_mca_gds_shmem3_component.sessions);
 }
 
 static pmix_status_t
@@ -2189,9 +2225,28 @@ prepare_shmem3_stores_for_local_job_data(
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    // Do the same for the job's session information. Note that we recycle the
-    // segment size calculated above because we know that it will be at least as
-    // big as we need for this session information.
+    /* Now the session. A named session is shared: point this job at the
+     * one object every job in that session holds, creating it if this is
+     * the first to describe it. An unnamed one (UINT32_MAX) stays the
+     * private object the job was constructed with. */
+    if (NULL == pmix_gds_shmem3_get_session_tracker(
+                    job, pji->session_id, true)) {
+        rc = PMIX_ERR_NOT_FOUND;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* A session whose segment is already built is one another job in the
+     * same session put there. Nothing more to do: this job now maps and
+     * describes that segment rather than making a second copy of it. */
+    if (pmix_gds_shmem3_has_status(
+            job, PMIX_GDS_SHMEM3_SESSION_ID, PMIX_GDS_SHMEM3_READY_FOR_USE)) {
+        return job_smdata_construct(job, htsize);
+    }
+
+    /* Note that we recycle the segment size calculated above because we
+     * know that it will be at least as big as we need for this session
+     * information. */
     const char *session_name = get_shmem3_session_name(pji->session_id);
     if (PMIX_UNLIKELY(!session_name)) {
         rc = PMIX_ERROR;
@@ -2426,6 +2481,39 @@ pack_shmem3_connection_info(
             PMIX_ERROR_LOG(rc);
             break;
         }
+
+        /* The session id, on a session blob only. It says which session
+         * tracker this segment belongs to, which a client cannot work out
+         * from the segment because the answer decides whether to map it.
+         * A job that named no session sends nothing, and its receiver
+         * keeps the private tracker it was constructed with. */
+        if (PMIX_GDS_SHMEM3_SESSION_ID != shmem3_id ||
+            NULL == job->session || UINT32_MAX == job->session->id) {
+            break;
+        }
+        PMIX_DESTRUCT(&kv);
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM3_SEG_SSID_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        kv.value->type = PMIX_STRING;
+        int nws = pmix_asprintf(
+            &kv.value->data.string, "%zu", (size_t)job->session->id
+        );
+        if (PMIX_UNLIKELY(nws == -1)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
     } while (false);
     PMIX_DESTRUCT(&kv);
 
@@ -2564,6 +2652,17 @@ unpack_shmem3_connection_info(
                 PMIX_ERROR_LOG(rc);
                 break;
             }
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_SSID_KEY)) {
+            /* Decimal, as SMID is; only a session blob carries it, and
+             * absent means the sending job named no session. */
+            size_t st_ssid;
+            rc = strtost(val, 10, &st_ssid);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+            usb->ssid = (uint32_t)st_ssid;
         }
         else {
             /* A key we have not been taught to hear. Skip it.
@@ -3056,6 +3155,25 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                     __func__, usb.arena_base,
                     usb.arena_base + usb.arena_size, usb.nsid
                 );
+            }
+        }
+        /* A session blob that names a session belongs to a shared
+         * tracker. Point this job at the one object every local job in
+         * that session holds, so a second namespace on this node maps
+         * the segment once between them rather than once apiece - and so
+         * the already-attached test just below sees the mapping the
+         * first of them made.
+         *
+         * Creating it here is the point of carrying the id on the wire:
+         * this is the first anyone on a client hears of the session, and
+         * the id could not have come out of the segment, because whether
+         * to map the segment is the question being answered. */
+        if (PMIX_GDS_SHMEM3_SESSION_ID == usb.smid && UINT32_MAX != usb.ssid) {
+            if (NULL == pmix_gds_shmem3_get_session_tracker(
+                            job, usb.ssid, true)) {
+                rc = PMIX_ERR_NOT_FOUND;
+                PMIX_ERROR_LOG(rc);
+                break;
             }
         }
         // Make sure we aren't already attached to the given shmem3.

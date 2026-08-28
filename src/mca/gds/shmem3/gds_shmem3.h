@@ -232,6 +232,20 @@ typedef struct {
 
 typedef struct {
     pmix_list_item_t super;
+    /** Session ID, or UINT32_MAX for a job that has not named one.
+     *
+     * Held here as well as in smdata, and this is the copy every lookup
+     * reads. smdata lives inside the segment, so an id taken from there
+     * cannot answer the question that has to be settled before the
+     * segment exists: which session is this, and does another job
+     * already hold it?
+     *
+     * UINT32_MAX also marks the private object job_construct() gives
+     * every job. Those are never shared - two jobs that have not named a
+     * session are not thereby in the same one - and never appear on
+     * pmix_mca_gds_shmem3_component.sessions.
+     */
+    uint32_t id;
     /** Shared-memory object that maintains backing store for session data. */
     pmix_shmem_t *shmem3;
     /** Stores status for shmem3. */

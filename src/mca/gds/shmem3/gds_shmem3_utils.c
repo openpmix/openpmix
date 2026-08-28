@@ -148,79 +148,66 @@ pmix_gds_shmem3_get_session_tracker(
 
     pmix_gds_shmem3_component_t *const comp = &pmix_mca_gds_shmem3_component;
 
-    // A session's identity lives in smdata, which sits in the session's
-    // shared-memory segment. That segment is constructed by the server in
-    // session_smdata_construct() and mapped by a client in
-    // init_client_side_sm_data(); until then smdata is NULL. Creating a
-    // session here cannot work, because there would be nowhere to record
-    // its ID - no caller asks us to, and one that did would have to
-    // arrange the segment first.
-    if (PMIX_UNLIKELY(create)) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-        return NULL;
-    }
-
-    if (NULL == job->session) {
-        // No session has been assigned to this job. See
-        // if the given ID has already been registered.
-        pmix_gds_shmem3_session_t *si;
-        PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem3_session_t) {
-            if (NULL == si->smdata) {
-                // Its segment is not in place yet, so it has no ID to match.
-                continue;
-            }
-            if (si->smdata->id == sid) {
-                // Found it. Point the job tracker at this session.
-                PMIX_RETAIN(si);
-                job->session = si;
-                return si;
-            }
-        }
-        return NULL;
-    }
-    if (NULL == job->session->smdata) {
-        // The session segment has not been constructed or attached, so we
-        // have no session data to answer with.
-        return NULL;
-    }
-    // If the current session object is pointing to the default global session
-    // and we were given a specific session ID, then update it.
-    if (UINT32_MAX == job->session->smdata->id) {
-        if (UINT32_MAX == sid) {
-            // If the given SID is also UINT32_MAX, then we just add to it.
-            return job->session;
-        }
-        // See if the given ID has already been registered.
-        pmix_gds_shmem3_session_t *si;
-        PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem3_session_t) {
-            if (NULL == si->smdata) {
-                continue;
-            }
-            if (si->smdata->id == sid) {
-                // Found it. Update the refcount on the current session object.
-                PMIX_RELEASE(job->session);
-                // Point the job tracker at the new place.
-                PMIX_RETAIN(si);
-                job->session = si;
-                return si;
-            }
-        }
-        // Not found, and we cannot create one (see above).
-        return NULL;
-    }
-    else if (UINT32_MAX == sid) {
-        // It's a wildcard request, so return the job-tracker session.
+    /* A wildcard request asks for whatever this job already has, which is
+     * the private object job_construct() gave it until something names a
+     * session for it. */
+    if (UINT32_MAX == sid) {
         return job->session;
     }
-    // The job tracker already was assigned a session ID.
-    // Check if the new one matches.
-    if (PMIX_UNLIKELY(job->session->smdata->id != sid)) {
-        // This is an error: you cannot assign a given job to multiple sessions.
+
+    /* Already pointing at the session being asked for. */
+    if (NULL != job->session && sid == job->session->id) {
+        return job->session;
+    }
+
+    /* Pointing at a *different* named session. This is an error: a job
+     * belongs to one session. */
+    if (PMIX_UNLIKELY(NULL != job->session &&
+                      UINT32_MAX != job->session->id)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return NULL;
     }
-    // The two must match, so return it.
-    return job->session;
+
+    /* So the job either has nothing or is still holding the unnamed
+     * default, and this id decides which object it should point at.
+     *
+     * The list is searched on the tracker's own id rather than on
+     * smdata->id, which is what makes this reachable at all: smdata is
+     * inside the segment, so a search that reads it can only find
+     * sessions whose segment already exists - and the caller that has to
+     * be answered first is the one deciding whether to build that
+     * segment. */
+    pmix_gds_shmem3_session_t *si;
+    PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem3_session_t) {
+        if (si->id == sid) {
+            goto share;
+        }
+    }
+
+    if (!create) {
+        return NULL;
+    }
+
+    si = PMIX_NEW(pmix_gds_shmem3_session_t);
+    if (PMIX_UNLIKELY(NULL == si)) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return NULL;
+    }
+    si->id = sid;
+    /* Registered without taking a reference. Every counted reference on a
+     * session belongs to a job in it, so the segment is given back when
+     * the last of them lets go; session_destruct() unlinks this entry.
+     * See the note there for what that costs. */
+    pmix_list_append(&comp->sessions, &si->super);
+
+share:
+    PMIX_RETAIN(si);
+    if (NULL != job->session) {
+        // Give back the unnamed default this replaces.
+        PMIX_RELEASE(job->session);
+    }
+    job->session = si;
+    return si;
 }
 
 bool
