@@ -113,8 +113,15 @@ environment; where supported, they are optional for host environments.
   constraint are allowed to access it. Defaults to ``PMIX_RANGE_SESSION``.
 * ``PMIX_PERSISTENCE`` (pmix_persistence_t) |mdash| declare how long the
   datastore is to retain the data (e.g., ``PMIX_PERSIST_FIRST_READ``,
-  ``PMIX_PERSIST_PROC``, ``PMIX_PERSIST_APP``, ``PMIX_PERSIST_SESSION``,
-  ``PMIX_PERSIST_INDEF``). Defaults to ``PMIX_PERSIST_APP``.
+  ``PMIX_PERSIST_PROC``, ``PMIX_PERSIST_APP``, ``PMIX_PERSIST_NSPACE``,
+  ``PMIX_PERSIST_SESSION``, ``PMIX_PERSIST_INDEF``). Defaults to
+  ``PMIX_PERSIST_APP``.
+
+  Note that ``PMIX_PERSIST_APP`` means the publishing process's
+  *application* |mdash| one app context |mdash| and not its job. A job
+  comprising several applications shares a single namespace, and its
+  applications need not terminate together, so a publisher that means
+  "until my job is over" wants ``PMIX_PERSIST_NSPACE``.
 * ``PMIX_ACCESS_PERMISSIONS`` (pmix_data_array_t) |mdash| define access
   permissions for the published data. The value contains an array of
   :ref:`pmix_info_t(5) <man5-pmix_info_t>` structures specifying the permissions.

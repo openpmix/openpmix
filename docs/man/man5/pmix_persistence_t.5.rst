@@ -25,6 +25,7 @@ C Syntax
    #define PMIX_PERSIST_PROC           2   // retain until publishing process terminates
    #define PMIX_PERSIST_APP            3   // retain until application terminates
    #define PMIX_PERSIST_SESSION        4   // retain until session/allocation terminates
+   #define PMIX_PERSIST_NSPACE         5   // retain until publishing namespace terminates
    #define PMIX_PERSIST_INVALID   UINT8_MAX
 
 
@@ -41,6 +42,13 @@ The `pmix_persistence_t` type is used to specify how long published data is to
 be retained by the datastore before being automatically deleted. It is passed
 as the ``PMIX_PERSISTENCE`` attribute to
 :ref:`PMIx_Publish(3) <man3-PMIx_Publish>`. Defined values include:
+
+.. note:: The numeric values are identifiers and not an ordering. They are
+   assigned in the order the policies were defined, so a larger value does
+   not mean a longer retention |mdash| ``PMIX_PERSIST_INDEF`` is zero and
+   outlives every other policy, and ``PMIX_PERSIST_NSPACE`` was added after
+   ``PMIX_PERSIST_SESSION`` while ending before it. Compare persistence
+   values for equality, never for magnitude.
 
 .. list-table:: Persistence Values
    :align: center
@@ -64,6 +72,9 @@ as the ``PMIX_PERSISTENCE`` attribute to
    * - `PMIX_PERSIST_SESSION`
      - 4
      - Retain the data until the session/allocation terminates.
+   * - `PMIX_PERSIST_NSPACE`
+     - 5
+     - Retain the data until the publishing process's namespace terminates |mdash| that is, until every application in that job has ended.
    * - `PMIX_PERSIST_INVALID`
      - UINT8_MAX
      - An invalid persistence value, used to indicate that no valid persistence policy has been set.

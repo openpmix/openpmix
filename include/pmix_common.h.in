@@ -1997,6 +1997,7 @@ typedef uint8_t pmix_persistence_t;
 #define PMIX_PERSIST_PROC           2   // retain until publishing process terminates
 #define PMIX_PERSIST_APP            3   // retain until application terminates
 #define PMIX_PERSIST_SESSION        4   // retain until session/allocation terminates
+#define PMIX_PERSIST_NSPACE         5   // retain until publishing namespace terminates
 #define PMIX_PERSIST_INVALID   UINT8_MAX
 
 /* define a set of bit-mask flags for specifying behavior of
