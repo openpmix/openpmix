@@ -179,15 +179,20 @@ PMIX_EXPORT void pmix_pfexec_reap_check(void);
         pmix_event_active(&((scd)->ev), EV_WRITE, 1);                      \
     } while (0)
 
+/* "scd" is a caddy pointer the CALLER declares and can still look at
+ * afterwards, and "fn" is the handler to run - both as the parameter
+ * names say. This used to declare a caddy of its own named "scd",
+ * shadowing whatever the caller passed and leaving it untouched, and to
+ * ignore "fn" in favor of a hard-coded handler. Nothing calls it, which
+ * is the only reason that never showed up. */
 #define PMIX_PFEXEC_SIGNAL(scd, r, nm, fn, lk)                             \
     do {                                                                   \
-        pmix_pfexec_signal_caddy_t *scd;                                   \
         (scd) = PMIX_NEW(pmix_pfexec_signal_caddy_t);                      \
         (scd)->proc = (r);                                                 \
         (scd)->signal = (nm);                                              \
         (scd)->lock = (lk);                                                \
         pmix_event_assign(&((scd)->ev), pmix_globals.evbase, -1, EV_WRITE, \
-                          pmix_pfexec_base_signal_proc, (scd));            \
+                          (fn), (scd));                                    \
         PMIX_POST_OBJECT((scd));                                           \
         pmix_event_active(&((scd)->ev), EV_WRITE, 1);                      \
     } while (0)

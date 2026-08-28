@@ -305,6 +305,11 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     // need to threadshift this for processing
     req->nprocs = nprocs;
     PMIX_PROC_CREATE(req->procs, req->nprocs);
+    if (NULL == req->procs) {
+        req->nprocs = 0;
+        PMIX_RELEASE(req);
+        return PMIX_ERR_NOMEM;
+    }
     memcpy(req->procs, procs, nprocs * sizeof(pmix_proc_t));
     req->channels = channel;
     req->directives = (pmix_info_t*)directives;
@@ -1132,13 +1137,37 @@ static int open_composed_output(const char *pattern, char *name, mode_t dmode)
     return fd;
 }
 
+/* How wide the zero-padded rank field has to be for a job of this size.
+ *
+ * It is the LAST rank that sets the width, not the count: ranks run
+ * 0..nprocs-1. Measuring the count instead made every job whose size is
+ * an exact power of ten pad one digit wider than it needs - a 10-rank job
+ * wrote rank.00 through rank.09, against the "%R is the rank, zero-padded
+ * to the width of the job's largest rank" contract in pmix_iof.h. The
+ * sizes in between were right, which is why it went unnoticed. */
+int pmix_iof_rank_digits(pmix_rank_t nprocs)
+{
+    int numdigs = 1;
+    unsigned long np;
+
+    if (2 > nprocs) {
+        return numdigs;
+    }
+    np = (unsigned long) (nprocs - 1) / 10;
+    while (0 < np) {
+        numdigs++;
+        np = np / 10;
+    }
+    return numdigs;
+}
+
 static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                                               pmix_rank_t rank,
                                               pmix_iof_channel_t stream)
 {
     int rc;
     char *outdir, *outfile;
-    int np, numdigs, fdout;
+    int numdigs, fdout;
     pmix_iof_sink_t *snk;
     pmix_proc_t src;
 
@@ -1147,13 +1176,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                         nptr->nspace, rank);
     PMIX_LOAD_PROCID(&src, nptr->nspace, rank);
 
-    np = nptr->nprocs / 10;
-    /* determine the number of digits required for max vpid */
-    numdigs = 1;
-    while (np > 0) {
-        numdigs++;
-        np = np / 10;
-    }
+    numdigs = pmix_iof_rank_digits(nptr->nprocs);
 
     /* see if we are to output to a directory */
     if (NULL != nptr->iof_flags.directory) {
@@ -1199,6 +1222,12 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             }
             /* define a sink to that file descriptor */
             snk = PMIX_NEW(pmix_iof_sink_t);
+            if (NULL == snk) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                close(fdout);
+                free(outdir);
+                return NULL;
+            }
             if (nptr->iof_flags.merge) {
                 PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                      PMIX_FWD_ALL_CHANNELS, pmix_iof_write_handler);
@@ -1233,6 +1262,12 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
              * stddiag chunk would build another sink - re-opening this same
              * file O_TRUNC and discarding what is already in it */
             snk = PMIX_NEW(pmix_iof_sink_t);
+            if (NULL == snk) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                close(fdout);
+                free(outdir);
+                return NULL;
+            }
             PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                  PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL,
                                  pmix_iof_write_handler);
@@ -1284,6 +1319,11 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             }
             /* define a sink to that file descriptor */
             snk = PMIX_NEW(pmix_iof_sink_t);
+            if (NULL == snk) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                close(fdout);
+                return NULL;
+            }
             if (nptr->iof_flags.merge) {
                 PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                      PMIX_FWD_ALL_CHANNELS, pmix_iof_write_handler);
@@ -1323,6 +1363,11 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             /* see the note on the directory sink above for why stddiag is
              * tagged here too */
             snk = PMIX_NEW(pmix_iof_sink_t);
+            if (NULL == snk) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                close(fdout);
+                return NULL;
+            }
             PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                  PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL,
                                  pmix_iof_write_handler);
@@ -1508,11 +1553,19 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
         return rc;
     }
 
-    /* send it to the requestor */
+    /* Send it to the requestor. PMIX_OPERATION_SUCCEEDED is how this
+     * function says "a registrant took these bytes", and the server's
+     * push handler reads it as permission to neither cache the chunk nor
+     * keep the cached copy it already has (see process_cache() and the
+     * walk in pmix_server_iof.c). A send that failed delivered nothing,
+     * so saying it succeeded discards the output and reports success to
+     * the host - report the failure instead, and let the caller cache
+     * the chunk for a registrant that can still be reached */
     PMIX_PTL_SEND_ONEWAY(rc, req->requestor, msg, PMIX_PTL_TAG_IOF);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
+        return rc;
     }
     return PMIX_OPERATION_SUCCEEDED;
 }
@@ -1541,6 +1594,10 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
 
     /* setup output object */
     output = PMIx_Byte_object_create(1);
+    if (NULL == output) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return NULL;
+    }
 
     /* if 0 bytes, then just pass it so the fd can be closed
      * after it writes everything out
@@ -1581,6 +1638,11 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
          * and move on to processing
          */
         output->bytes = (char*)malloc(bo->size);
+        if (NULL == output->bytes) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            PMIx_Byte_object_free(output, 1);
+            return NULL;
+        }
         memcpy(output->bytes, bo->bytes, bo->size);
         output->size = bo->size;
         return output;
@@ -1660,11 +1722,15 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
             }
             PMIX_DESTRUCT(&cb2);
 
+            /* both of these are strdup'd above, including the "unknown"
+             * fallbacks, so an allocation failure leaves a NULL that a
+             * "%s" may not be handed */
             pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                           "<%s nspace=\"%s\" rank=\"%s\"[\"%s\":\"%s\"",
                           suffix, name->nspace,
                           PMIX_RANK_PRINT(name->rank),
-                          cptr, pidstring);
+                          (NULL == cptr) ? "unknown" : cptr,
+                          (NULL == pidstring) ? "unknown" : pidstring);
             free(cptr);
             free(pidstring);
         } else if (myflags->rank) {
@@ -1760,11 +1826,13 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
                 pidstring = strdup("unknown");
             }
             PMIX_DESTRUCT(&cb2);
+            /* see the note on the xml form of this above */
             pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
                           "[%s,%s][%s:%s]<%s>: ",
                           usestring,
                           PMIX_RANK_PRINT(name->rank),
-                          cptr, pidstring,
+                          (NULL == cptr) ? "unknown" : cptr,
+                          (NULL == pidstring) ? "unknown" : pidstring,
                           suffix);
             free(cptr);
             free(pidstring);
@@ -1856,6 +1924,12 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
              * extra characters we need to add to represent these special
              * cases */
             buffer = malloc(bufsize);
+            if (NULL == buffer) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIx_Argv_free(segments);
+                PMIx_Byte_object_free(output, 1);
+                return NULL;
+            }
             memset(buffer, 0, bufsize);
             bufcopy = true;
             m = 0;
@@ -1917,6 +1991,15 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
     }
 
     output->bytes = (char*)malloc(output->size);
+    if (NULL == output->bytes) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        if (bufcopy) {
+            free(buffer);
+        }
+        PMIx_Argv_free(segments);
+        PMIx_Byte_object_free(output, 1);
+        return NULL;
+    }
     offset = 0;
     if (NULL != segments) {
         for (n=0; NULL != segments[n]; n++) {
@@ -1956,6 +2039,10 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     /* write output data to the corresponding tag */
     if (PMIX_FWD_STDIN_CHANNEL & stream) {
         output = PMIX_NEW(pmix_iof_write_output_t);
+        if (NULL == output) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return PMIX_ERR_NOMEM;
+        }
         /* copy over the data to be written */
         if (0 < bo->size) {
             /* don't copy 0 bytes - we just need to pass
@@ -1963,6 +2050,11 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
              * after it writes everything out
              */
             output->data = (char*)malloc(bo->size);
+            if (NULL == output->data) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_RELEASE(output);
+                return PMIX_ERR_NOMEM;
+            }
             memcpy(output->data, bo->bytes, bo->size);
         }
         output->numbytes = bo->size;
@@ -1975,6 +2067,11 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
         return PMIX_ERR_NOT_SUPPORTED;
     }
     output = PMIX_NEW(pmix_iof_write_output_t);
+    if (NULL == output) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIx_Byte_object_free(wbo, 1);
+        return PMIX_ERR_NOMEM;
+    }
     output->data = wbo->bytes;
     output->numbytes = wbo->size;
     // protect returned data region
@@ -1986,24 +2083,42 @@ process:
     /* add this data to the write list for this fd */
     pmix_list_append(&channel->outputs, &output->super);
 
+    /* The copies are a convenience - the caller asked to see the output on
+     * its own terminal as well as in the file. The primary write is already
+     * queued above, so a copy we cannot make is dropped rather than allowed
+     * to fail the write that matters. */
     if (copystdout) {
         copy = PMIX_NEW(pmix_iof_write_output_t);
-        copy->data = (char *) malloc(output->numbytes);
-        memcpy(copy->data, output->data, output->numbytes);
-        copy->numbytes = output->numbytes;
-        pmix_list_append(&pmix_client_globals.iof_stdout.wev.outputs, &copy->super);
-        if (!pmix_client_globals.iof_stdout.wev.pending) {
-            PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stdout.wev);
+        if (NULL != copy) {
+            copy->data = (char *) malloc(output->numbytes);
+            if (NULL == copy->data) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_RELEASE(copy);
+            } else {
+                memcpy(copy->data, output->data, output->numbytes);
+                copy->numbytes = output->numbytes;
+                pmix_list_append(&pmix_client_globals.iof_stdout.wev.outputs, &copy->super);
+                if (!pmix_client_globals.iof_stdout.wev.pending) {
+                    PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stdout.wev);
+                }
+            }
         }
     }
     if (copystderr) {
         copy = PMIX_NEW(pmix_iof_write_output_t);
-        copy->data = (char *) malloc(output->numbytes);
-        memcpy(copy->data, output->data, output->numbytes);
-        copy->numbytes = output->numbytes;
-        pmix_list_append(&pmix_client_globals.iof_stderr.wev.outputs, &copy->super);
-        if (!pmix_client_globals.iof_stderr.wev.pending) {
-            PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stderr.wev);
+        if (NULL != copy) {
+            copy->data = (char *) malloc(output->numbytes);
+            if (NULL == copy->data) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_RELEASE(copy);
+            } else {
+                memcpy(copy->data, output->data, output->numbytes);
+                copy->numbytes = output->numbytes;
+                pmix_list_append(&pmix_client_globals.iof_stderr.wev.outputs, &copy->super);
+                if (!pmix_client_globals.iof_stderr.wev.pending) {
+                    PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stderr.wev);
+                }
+            }
         }
     }
 
@@ -2413,6 +2528,13 @@ static pmix_status_t write_output(const pmix_proc_t *name,
                 /* we need to pre-pend the residual data to the new
                  * data so any lines can be completed */
                 inputdata = (char*)malloc(inputsize + res->bo.size);
+                if (NULL == inputdata) {
+                    /* the residual stays where it is - the next chunk from
+                     * this source gets another chance to complete the line,
+                     * which is better than dropping either half of it */
+                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    return PMIX_ERR_NOMEM;
+                }
                 memcpy(inputdata, res->bo.bytes, res->bo.size);
                 memcpy(&inputdata[res->bo.size], bo->bytes, bo->size);
                 inputsize += res->bo.size;
@@ -2445,6 +2567,13 @@ static pmix_status_t write_output(const pmix_proc_t *name,
             /* we have some residual that needs to be cached until
              * the rest of the line is seen */
             res = PMIX_NEW(pmix_iof_residual_t);
+            if (NULL == res) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                if (copied) {
+                    free(inputdata);
+                }
+                return PMIX_ERR_NOMEM;
+            }
             PMIX_XFER_PROCID(&res->name, name);
             res->channel = channel;
             memcpy(&res->flags, &myflags, sizeof(pmix_iof_flags_t));
@@ -2452,6 +2581,14 @@ static pmix_status_t write_output(const pmix_proc_t *name,
             res->copystdout = copystdout;
             res->copystderr = copystderr;
             res->bo.bytes = (char*)malloc(inputsize - start);
+            if (NULL == res->bo.bytes) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_RELEASE(res);
+                if (copied) {
+                    free(inputdata);
+                }
+                return PMIX_ERR_NOMEM;
+            }
             memcpy(res->bo.bytes, &inputdata[start], inputsize - start);
             res->bo.size = inputsize - start;
             pmix_list_append(&pmix_server_globals.iof_residuals, &res->super);
@@ -2756,7 +2893,14 @@ void pmix_iof_stdin_cb(int sd, short args, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(stdinev);
 
-    backgrounded = !pmix_iof_stdin_check(0);
+    /* ask about the descriptor this event actually reads, not about fd 0.
+     * pmix_iof_setup_stdin_read() takes the descriptor as a parameter and
+     * goes to the trouble of not setting O_NONBLOCK on fd 0, so a caller
+     * is entitled to forward something else - and then the foreground
+     * test below was answering for the wrong terminal. The fallback
+     * mirrors the read handler's */
+    backgrounded = !pmix_iof_stdin_check((0 > stdinev->fd) ? fileno(stdin)
+                                                           : stdinev->fd);
 
     /* a suspended stream stays suspended until an XON says otherwise -
      * having our terminal back does not override the fact that the far
@@ -3209,8 +3353,17 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
             return;
         }
         PMIX_BYTE_OBJECT_CREATE(boptr, 1);
+        if (NULL == boptr) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return;
+        }
         if (0 < bo.size) {
             boptr->bytes = (char*)malloc(bo.size);
+            if (NULL == boptr->bytes) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_BYTE_OBJECT_FREE(boptr, 1);
+                return;
+            }
             memcpy(boptr->bytes, bo.bytes, bo.size);
             boptr->size = bo.size;
         }

@@ -173,9 +173,17 @@ static inline bool pmix_iof_fd_always_ready(int fd)
 
 #define PMIX_IOF_SINK_BLOCKSIZE (1024)
 
+/* The write event's libevent record is malloc'd by the class
+ * constructor, which has no way to report a failure - so every user of
+ * these two macros has to tolerate its absence rather than hand a NULL
+ * to libevent. Output queued on such a sink is simply never written,
+ * which is the best a process this far out of memory can do. */
 #define PMIX_IOF_SINK_ACTIVATE(w)                                      \
     do {                                                               \
         struct timeval *tv = NULL;                                     \
+        if (NULL == (w)->ev) {                                         \
+            break;                                                     \
+        }                                                              \
         (w)->pending = true;                                           \
         PMIX_POST_OBJECT((w));                                         \
         if ((w)->always_writable) {                                    \
@@ -196,7 +204,7 @@ static inline bool pmix_iof_fd_always_ready(int fd)
         pmix_strncpy((snk)->name.nspace, (nm)->nspace, PMIX_MAX_NSLEN);                            \
         (snk)->name.rank = (nm)->rank;                                                             \
         (snk)->tag = (tg);                                                                         \
-        if (0 <= (fid)) {                                                                          \
+        if (0 <= (fid) && NULL != (snk)->wev.ev) {                                                 \
             (snk)->wev.fd = (fid);                                                                 \
             (snk)->wev.always_writable = pmix_iof_fd_always_ready(fid);                            \
             if ((snk)->wev.always_writable) {                                                      \
@@ -363,6 +371,11 @@ PMIX_EXPORT pmix_status_t pmix_iof_flow_control(const pmix_proc_t *source,
                                                 const pmix_info_t directives[], size_t ndirs);
 PMIX_EXPORT void pmix_iof_flow_control_handler(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                                                pmix_buffer_t *buf, void *cbdata);
+
+/* Width of the zero-padded rank field for a job of "nprocs" ranks - the
+ * "numdigs" that pmix_iof_expand_pattern()'s %R conversion, and the
+ * default "<file>.<nspace>.<rank>.out" naming, are padded to. */
+PMIX_EXPORT int pmix_iof_rank_digits(pmix_rank_t nprocs);
 
 /* PMIX_IOF_FILE_PATTERN support.
  *

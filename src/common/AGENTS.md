@@ -154,6 +154,15 @@ Four more things about the stdin side that are easy to get wrong:
   the delete would be the use-after-free it exists to prevent. Note the
   second-init hazard this closes: a stale `stdinev_global` names an event
   registered on a base the previous cycle tore down.
+- **The foreground check asks about the read event's own descriptor.**
+  `pmix_iof_setup_stdin_read()` takes the descriptor as a parameter, and
+  goes to the trouble of not setting `O_NONBLOCK` when it is fd 0, so a
+  caller is entitled to forward something else. `pmix_iof_stdin_cb()`
+  used to call `pmix_iof_stdin_check(0)` regardless, which for any other
+  descriptor is an answer about the wrong terminal. Both in-tree callers
+  pass `fileno(stdin)`, so this is a contract kept rather than a bug
+  fixed — but the parameter has to mean something or it should not be
+  there.
 - **stdin is the application's descriptor, not ours.** The read-event
   destructor closes only fds above 2, exactly as the write-event
   destructor does. A read event on a pfexec child's pipe is ours to
@@ -183,6 +192,16 @@ lose the user's output *silently*.
 - **`pending` is the arm/disarm interlock, not a status bit.** Any path
   that returns from `pmix_iof_write_handler` without clearing it is
   asserting "this channel is done forever".
+- **A write event may have no libevent record.**
+  `iof_write_event_construct()` `malloc`s `wev.ev`, and a class
+  constructor has no way to report a failure — so the two sink macros
+  (`PMIX_IOF_SINK_DEFINE`, `PMIX_IOF_SINK_ACTIVATE`) screen it rather
+  than hand a NULL to libevent. Output queued on such a sink is never
+  written, which is the best a process that far out of memory can do.
+  The real fix is to embed the event in the struct the way
+  `pmix_iof_read_event_t` does; that changes the layout of a type in an
+  installed header, so it is recorded in `docs/todo.rst` rather than
+  done in passing.
 - **A stream's last, unterminated line is written when the stream
   closes.** Non-raw output is split on `'\n'` and the tail is parked on
   `pmix_server_globals.iof_residuals` until the rest of the line arrives.
@@ -296,6 +315,17 @@ This is a gap, not a regression: it looks like a feature that was started
 and not finished. `requestor` is still load-bearing on that path, though —
 it is what tells `myreg()` not to send a registration upstream to itself.
 
+**`pmix_iof_process_iof()`'s return value is a routing decision, not just
+a status.** `PMIX_OPERATION_SUCCEEDED` means *a registrant took these
+bytes*, and all three callers read it as permission to stop caring about
+the chunk: two of them (`pmix_server_process_iof`, and the ancestry retry
+beside it) set `found` and skip caching it, and the third (`_iofreg`)
+deletes the copy already in `pmix_server_globals.iof`. So a
+`PMIX_PTL_SEND_ONEWAY` that failed must **not** answer it — the bytes
+went nowhere, and reporting delivery both loses them and tells the host
+the push succeeded. Return the send's own error and let the caller cache
+the chunk for a registrant that can still be reached.
+
 **None of this affects a peer that registers with us**, which is the case
 that actually matters and which works. Cached output in
 `pmix_server_globals.iof` is delivered to a newly-registered *remote*
@@ -344,6 +374,16 @@ Two rules to keep when touching it:
   (`%h/rank-%R`); taking `pmix_dirname()` of the raw pattern creates a
   directory literally named `%h` and then fails to open the file in the
   one the pattern actually named.
+- **The pad width comes from the last rank, not from the count.** Ranks
+  run `0..nprocs-1`, so `pmix_iof_rank_digits()` measures `nprocs - 1`.
+  Measuring `nprocs` was right everywhere except at an exact power of
+  ten, where it padded one digit too wide — a 10-rank job wrote
+  `rank.00` through `rank.09` against the "`%R` … zero-padded to the
+  width of the job's largest rank" contract in `pmix_iof.h`. The width
+  feeds both `%R` and the default `<file>.<nspace>.<rank>.out` naming, so
+  the two can never disagree. Pinned in
+  [`test/unit/iof_pattern.c`](../../test/unit/iof_pattern.c) on both
+  sides of each power of ten.
 
 `pmix_iof_check_pattern()` exists so a launcher can reject a bad pattern
 while the user is still looking at their command line. It shares its
@@ -520,6 +560,31 @@ add or edit an entry point:
 `pmix_pfexec.c` is different in kind from the other files — it forks and
 execs — and carries hazards the request files do not:
 
+- **`pmix_pfexec_globals` is not `pmix_pfexec_base_open()`'s to clear.**
+  The MCA parameters live in that struct, and they are registered from
+  `pmix_register_params()` — i.e. inside `pmix_rte_init()`, long before
+  any role opens this framework. Registering them from `base_open()`
+  instead left them with no registrar at all (only a launcher opens
+  pfexec), which is why they moved; but `base_open()` went on running a
+  `memset` over the whole struct, so every value the registration had
+  just supplied was thrown away a few hundred microseconds later.
+  Nothing about it was visible in a return code:
+
+  - `timeout_before_sigkill` went to 0, so the kill sequence lost the
+    grace period it exists to give and a child that would have exited on
+    the SIGTERM was SIGKILLed on the next turn of the event loop;
+  - `poll_interval` / `poll_max_interval` went to 0, which
+    `pfexec_poll_arm()`'s floor guard then repaired to the compile-time
+    default — so the reaping poll ran at a fixed 50 ms with no backoff,
+    and both parameters were inert in every build.
+
+  `base_open()` now initializes only the fields it owns (the three
+  poll-state fields, `selected`, the `children` list, `nextid`,
+  `initialized`). **Add a field to `pmix_pfexec_globals_t` and you have
+  to decide which of the two owns it.**
+  [`test/unit/pfexec_params.c`](../../test/unit/pfexec_params.c) sets all
+  three parameters to values that are neither zero nor the defaults,
+  comes up as a LAUNCHER, and reads them back.
 - **Post-`fork()` / pre-`execve()` code must be async-signal-safe.** In a
   multithreaded process the child may only call async-signal-safe
   functions before exec. Be very wary of adding `malloc`-backed calls
@@ -560,6 +625,17 @@ execs — and carries hazards the request files do not:
   pending. Arming therefore takes the timer down first rather than
   trusting `poll_active`. Getting that wrong does not fail loudly — it
   corrupts the base's timer heap, and `make check` hangs.
+- **The spawn path `chdir()`s the whole process, from the progress
+  thread.** `pmix_pfexec_base_spawn_proc()` runs as an event;
+  `setup_path()` moves the process to each app's working directory so the
+  executable can be resolved relative to it, and the `complete:` label
+  puts it back to the directory the spawn started in. In between, the
+  host application's `getcwd()` — on any thread — sees the app's
+  directory rather than its own. Nothing here can fix that locally: the
+  cure is to stop chdir'ing at all and resolve the app against a
+  directory descriptor, which is a redesign of `pmix_context_fns.c` as
+  well. Do not *add* to the window, and do not assume the process cwd is
+  stable anywhere below `pmix_pfexec_base_spawn_proc`.
 - **Do not block the progress thread.** Handlers run as events, so a
   `sleep()` inside one freezes all event processing. The kill sequence
   (SIGCONT → pause → SIGTERM → pause → SIGKILL) is therefore an
@@ -667,6 +743,12 @@ Two suites cover this directory specifically, and they split the same way
 - [`test/unit/iof_flow.c`](../../test/unit/iof_flow.c) — the stdin half:
   XOFF stops the reading, XON restarts it, nothing is lost across a
   suspension. See the flow-control rules above.
+- [`test/unit/iof_pattern.c`](../../test/unit/iof_pattern.c) — the
+  output-file pattern walker, plus the rank pad width.
+- [`test/unit/pfexec_params.c`](../../test/unit/pfexec_params.c) — that
+  pfexec's MCA parameters are still there once the framework has been
+  opened. It reads `pmix_pfexec_globals` directly, because there is no
+  return code in which any of this shows up.
 - [`contrib/dockerswarm/run-common-tests.sh`](../../contrib/dockerswarm/run-common-tests.sh)
   — the connected half. Query/log/job-control/allocation/monitor/IOF with
   the ranks behind *different* PMIx servers. The monitor cases are the
