@@ -367,11 +367,108 @@ exit:
     return rc;
 }
 
+/* One target epilog, plus what this request would add to it. The three
+ * staging lists are what make a job-control request atomic: nothing is
+ * put on an epilog until the whole request is known to be acceptable,
+ * because those lists outlive the request and the client that is told
+ * the request failed has no way to take anything back off them. */
 typedef struct {
     pmix_list_item_t super;
     pmix_epilog_t *epi;
+    pmix_list_t newignores;
+    pmix_list_t newdirs;
+    pmix_list_t newfiles;
 } pmix_srvr_epi_caddy_t;
-static PMIX_CLASS_INSTANCE(pmix_srvr_epi_caddy_t, pmix_list_item_t, NULL, NULL);
+static void epicon(pmix_srvr_epi_caddy_t *p)
+{
+    p->epi = NULL;
+    PMIX_CONSTRUCT(&p->newignores, pmix_list_t);
+    PMIX_CONSTRUCT(&p->newdirs, pmix_list_t);
+    PMIX_CONSTRUCT(&p->newfiles, pmix_list_t);
+}
+static void epides(pmix_srvr_epi_caddy_t *p)
+{
+    /* on the way out of an accepted request these are empty, the entries
+     * having been joined onto the epilog's own lists; on a refused one
+     * they still hold everything the request would have applied */
+    PMIX_LIST_DESTRUCT(&p->newignores);
+    PMIX_LIST_DESTRUCT(&p->newdirs);
+    PMIX_LIST_DESTRUCT(&p->newfiles);
+}
+static PMIX_CLASS_INSTANCE(pmix_srvr_epi_caddy_t, pmix_list_item_t, epicon, epides);
+
+/* A directory already registered on a target epilog whose flags this
+ * request would widen, per the RFC precedence rule. Staged rather than
+ * applied in place for the same reason as the lists above - and with
+ * more reason, since turning a non-recursive entry recursive is the most
+ * destructive thing this handler can do. */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_cleanup_dir_t *dir;
+} pmix_srvr_epi_upgrade_t;
+static PMIX_CLASS_INSTANCE(pmix_srvr_epi_upgrade_t, pmix_list_item_t, NULL, NULL);
+
+/* Is path already named on this list of cleanup files? Every entry
+ * carries a non-NULL path by construction, so the strcmp is unguarded. */
+static bool epi_has_file(pmix_list_t *list, const char *path)
+{
+    pmix_cleanup_file_t *cf;
+
+    PMIX_LIST_FOREACH (cf, list, pmix_cleanup_file_t) {
+        if (0 == strcmp(cf->path, path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static pmix_cleanup_dir_t *epi_find_dir(pmix_list_t *list, const char *path)
+{
+    pmix_cleanup_dir_t *cd;
+
+    PMIX_LIST_FOREACH (cd, list, pmix_cleanup_dir_t) {
+        if (0 == strcmp(cd->path, path)) {
+            return cd;
+        }
+    }
+    return NULL;
+}
+
+/* Build a cleanup-file entry carrying its own copy of the path. Every
+ * scan above strcmp's that member, so an entry with a NULL path must
+ * never reach a list - which is why the strdup failure takes the entry
+ * with it. */
+static pmix_cleanup_file_t *epi_new_file(const char *path)
+{
+    pmix_cleanup_file_t *cf;
+
+    cf = PMIX_NEW(pmix_cleanup_file_t);
+    if (NULL == cf) {
+        return NULL;
+    }
+    cf->path = strdup(path);
+    if (NULL == cf->path) {
+        PMIX_RELEASE(cf);
+        return NULL;
+    }
+    return cf;
+}
+
+static pmix_cleanup_dir_t *epi_new_dir(const char *path)
+{
+    pmix_cleanup_dir_t *cdir;
+
+    cdir = PMIX_NEW(pmix_cleanup_dir_t);
+    if (NULL == cdir) {
+        return NULL;
+    }
+    cdir->path = strdup(path);
+    if (NULL == cdir->path) {
+        PMIX_RELEASE(cdir);
+        return NULL;
+    }
+    return cdir;
+}
 
 pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                                    pmix_info_cbfunc_t cbfunc,
@@ -384,10 +481,11 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_peer_t *pr;
     pmix_proc_t proc;
     size_t n;
-    bool recurse = false, leave_topdir = false, duplicate;
-    pmix_list_t cachedirs, cachefiles, ignorefiles, epicache;
+    bool recurse = false, leave_topdir = false;
+    pmix_list_t cachedirs, cachefiles, ignorefiles, epicache, upgrades;
     pmix_srvr_epi_caddy_t *epicd = NULL;
-    pmix_cleanup_file_t *cf, *cf2, *cfptr;
+    pmix_srvr_epi_upgrade_t *upg;
+    pmix_cleanup_file_t *cf, *cfptr;
     pmix_cleanup_dir_t *cdir, *cdir2, *cdirptr;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
@@ -415,6 +513,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     PMIX_CONSTRUCT(&cachedirs, pmix_list_t);
     PMIX_CONSTRUCT(&cachefiles, pmix_list_t);
     PMIX_CONSTRUCT(&ignorefiles, pmix_list_t);
+    PMIX_CONSTRUCT(&upgrades, pmix_list_t);
 
     /* unpack the number of targets */
     cnt = 1;
@@ -570,17 +669,9 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 rc = PMIX_ERR_BAD_PARAM;
                 goto exit;
             }
-            cf = PMIX_NEW(pmix_cleanup_file_t);
+            cf = epi_new_file(cd->info[n].value.data.string);
             if (NULL == cf) {
                 /* return an error */
-                rc = PMIX_ERR_NOMEM;
-                goto exit;
-            }
-            cf->path = strdup(cd->info[n].value.data.string);
-            if (NULL == cf->path) {
-                /* every scan below strcmp's this member - do not put an
-                 * entry carrying a NULL path on any list */
-                PMIX_RELEASE(cf);
                 rc = PMIX_ERR_NOMEM;
                 goto exit;
             }
@@ -592,15 +683,9 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 rc = PMIX_ERR_BAD_PARAM;
                 goto exit;
             }
-            cdir = PMIX_NEW(pmix_cleanup_dir_t);
+            cdir = epi_new_dir(cd->info[n].value.data.string);
             if (NULL == cdir) {
                 /* return an error */
-                rc = PMIX_ERR_NOMEM;
-                goto exit;
-            }
-            cdir->path = strdup(cd->info[n].value.data.string);
-            if (NULL == cdir->path) {
-                PMIX_RELEASE(cdir);
                 rc = PMIX_ERR_NOMEM;
                 goto exit;
             }
@@ -614,15 +699,9 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 rc = PMIX_ERR_BAD_PARAM;
                 goto exit;
             }
-            cf = PMIX_NEW(pmix_cleanup_file_t);
+            cf = epi_new_file(cd->info[n].value.data.string);
             if (NULL == cf) {
                 /* return an error */
-                rc = PMIX_ERR_NOMEM;
-                goto exit;
-            }
-            cf->path = strdup(cd->info[n].value.data.string);
-            if (NULL == cf->path) {
-                PMIX_RELEASE(cf);
                 rc = PMIX_ERR_NOMEM;
                 goto exit;
             }
@@ -634,136 +713,149 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
     }
     if (0 < cnt) {
-        /* handle any ignore directives first */
+        /* Stage the whole request against every target epilog before any
+         * of it is applied. The lists we would be appending to live as
+         * long as the namespace or the peer, so anything put on one
+         * outlives the request - and a request refused with
+         * PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES used to leave its
+         * ignores, the directories accepted ahead of the conflicting one,
+         * and any flag widening it had applied to already-registered
+         * entries sitting there with the client told the whole thing had
+         * failed. Widening is the sharpest of those: an entry the client
+         * believes untouched becomes recursive, and deletes a subtree at
+         * termination. The allocation arms had the same shape. So: build
+         * everything first, and commit only once nothing can fail. */
+
+        /* the ignores, which are what the two loops below conflict
+         * against - a directive naming a path this request is also asking
+         * to clean must be refused whichever order the info array put
+         * them in, exactly as before */
         PMIX_LIST_FOREACH (cf, &ignorefiles, pmix_cleanup_file_t) {
             PMIX_LIST_FOREACH (epicd, &epicache, pmix_srvr_epi_caddy_t) {
-                /* scan for a duplicate on the list we are about to append
-                 * to. This loop was cloned from the cleanup_files one
-                 * below and kept its scan list, so it asked whether the
-                 * path was already registered for *cleanup* and then
-                 * appended to "ignores" regardless of the answer. Both
-                 * halves of that were wrong: a repeat of the same ignore
-                 * directive was never recognized as a duplicate, so every
-                 * job-control request carrying one appended another copy
-                 * to a list that lives as long as the namespace or peer
-                 * and is walked once per file by dirpath_destroy; and an
-                 * ignore naming a path already registered for cleanup was
+                /* scan the list we are about to append to. This loop was
+                 * cloned from the cleanup_files one below and kept its
+                 * scan list, so it asked whether the path was already
+                 * registered for *cleanup* and then appended to "ignores"
+                 * regardless of the answer. Both halves of that were
+                 * wrong: a repeat of the same ignore directive was never
+                 * recognized as a duplicate, so every job-control request
+                 * carrying one appended another copy to a list that is
+                 * walked once per file by dirpath_destroy; and an ignore
+                 * naming a path already registered for cleanup was
                  * silently dropped, so the epilog deleted a file the
                  * client had asked it to leave alone */
-                duplicate = false;
-                PMIX_LIST_FOREACH (cf2, &epicd->epi->ignores, pmix_cleanup_file_t) {
-                    if (0 == strcmp(cf2->path, cf->path)) {
-                        duplicate = true;
-                        break;
-                    }
+                if (epi_has_file(&epicd->epi->ignores, cf->path) ||
+                    epi_has_file(&epicd->newignores, cf->path)) {
+                    continue;
                 }
-                if (!duplicate) {
-                    /* append a copy to the end of the list - cf itself is a
-                     * member of the local ignorefiles list (destructed below),
-                     * so appending &cf->super would put one item on two lists
-                     * and leave a dangling entry when ignorefiles is freed */
-                    cfptr = PMIX_NEW(pmix_cleanup_file_t);
-                    if (NULL == cfptr) {
-                        rc = PMIX_ERR_NOMEM;
-                        goto exit;
-                    }
-                    cfptr->path = strdup(cf->path);
-                    if (NULL == cfptr->path) {
-                        /* this list outlives the request - a NULL path
-                         * here is strcmp'd by every later job-control
-                         * request and by the epilog itself */
-                        PMIX_RELEASE(cfptr);
-                        rc = PMIX_ERR_NOMEM;
-                        goto exit;
-                    }
-                    pmix_list_append(&epicd->epi->ignores, &cfptr->super);
+                /* stage a copy - cf itself is a member of the local
+                 * ignorefiles list (destructed below), so staging
+                 * &cf->super would put one item on two lists and leave a
+                 * dangling entry when ignorefiles is freed */
+                cfptr = epi_new_file(cf->path);
+                if (NULL == cfptr) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto exit;
                 }
+                pmix_list_append(&epicd->newignores, &cfptr->super);
             }
         }
         /* now look at the directories */
         PMIX_LIST_FOREACH (cdir, &cachedirs, pmix_cleanup_dir_t) {
             PMIX_LIST_FOREACH (epicd, &epicache, pmix_srvr_epi_caddy_t) {
                 /* scan the existing list of directories for any duplicate */
-                duplicate = false;
-                PMIX_LIST_FOREACH (cdir2, &epicd->epi->cleanup_dirs, pmix_cleanup_dir_t) {
-                    if (0 == strcmp(cdir2->path, cdir->path)) {
-                        /* duplicate - check for difference in flags per RFC
-                         * precedence rules. The entry that has to absorb the
-                         * more permissive flag is the one already registered
-                         * on the epilog (cdir2); cdir is the request-local
-                         * copy we are about to discard, and its flags are
-                         * never read, so upgrading it did nothing at all */
-                        if (!cdir2->recurse && recurse) {
-                            cdir2->recurse = recurse;
-                        }
-                        if (!cdir2->leave_topdir && leave_topdir) {
-                            cdir2->leave_topdir = leave_topdir;
-                        }
-                        duplicate = true;
-                        break;
-                    }
-                }
-                if (!duplicate) {
-                    /* check for conflict with ignore */
-                    PMIX_LIST_FOREACH (cf, &epicd->epi->ignores, pmix_cleanup_file_t) {
-                        if (0 == strcmp(cf->path, cdir->path)) {
-                            /* return an error */
-                            rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
+                cdir2 = epi_find_dir(&epicd->epi->cleanup_dirs, cdir->path);
+                if (NULL != cdir2) {
+                    /* duplicate - check for difference in flags per RFC
+                     * precedence rules. The entry that has to absorb the
+                     * more permissive flag is the one already registered
+                     * on the epilog (cdir2); cdir is the request-local
+                     * copy we are about to discard, and its flags are
+                     * never read, so upgrading it did nothing at all.
+                     * Note that a duplicate is never conflict-checked,
+                     * here or before this change: the path is already
+                     * registered for cleanup, so the question of whether
+                     * it may be has been answered */
+                    if ((!cdir2->recurse && recurse) ||
+                        (!cdir2->leave_topdir && leave_topdir)) {
+                        upg = PMIX_NEW(pmix_srvr_epi_upgrade_t);
+                        if (NULL == upg) {
+                            rc = PMIX_ERR_NOMEM;
                             goto exit;
                         }
+                        upg->dir = cdir2;
+                        pmix_list_append(&upgrades, &upg->super);
                     }
-                    /* append it to the end of the list */
-                    cdirptr = PMIX_NEW(pmix_cleanup_dir_t);
-                    if (NULL == cdirptr) {
-                        rc = PMIX_ERR_NOMEM;
-                        goto exit;
-                    }
-                    cdirptr->path = strdup(cdir->path);
-                    if (NULL == cdirptr->path) {
-                        PMIX_RELEASE(cdirptr);
-                        rc = PMIX_ERR_NOMEM;
-                        goto exit;
-                    }
-                    cdirptr->recurse = recurse;
-                    cdirptr->leave_topdir = leave_topdir;
-                    pmix_list_append(&epicd->epi->cleanup_dirs, &cdirptr->super);
+                    continue;
                 }
+                if (NULL != epi_find_dir(&epicd->newdirs, cdir->path)) {
+                    /* an earlier copy in this same request already staged
+                     * it, and every entry this request stages carries the
+                     * request's own flags, so there is nothing to widen */
+                    continue;
+                }
+                /* check for conflict with an ignore - one already
+                 * registered, or one this request is adding */
+                if (epi_has_file(&epicd->epi->ignores, cdir->path) ||
+                    epi_has_file(&epicd->newignores, cdir->path)) {
+                    /* return an error */
+                    rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
+                    goto exit;
+                }
+                cdirptr = epi_new_dir(cdir->path);
+                if (NULL == cdirptr) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto exit;
+                }
+                cdirptr->recurse = recurse;
+                cdirptr->leave_topdir = leave_topdir;
+                pmix_list_append(&epicd->newdirs, &cdirptr->super);
             }
         }
         PMIX_LIST_FOREACH (cf, &cachefiles, pmix_cleanup_file_t) {
             PMIX_LIST_FOREACH (epicd, &epicache, pmix_srvr_epi_caddy_t) {
                 /* scan the existing list of files for any duplicate */
-                duplicate = false;
-                PMIX_LIST_FOREACH (cf2, &epicd->epi->cleanup_files, pmix_cleanup_file_t) {
-                    if (0 == strcmp(cf2->path, cf->path)) {
-                        duplicate = true;
-                        break;
-                    }
+                if (epi_has_file(&epicd->epi->cleanup_files, cf->path) ||
+                    epi_has_file(&epicd->newfiles, cf->path)) {
+                    continue;
                 }
-                if (!duplicate) {
-                    /* check for conflict with ignore */
-                    PMIX_LIST_FOREACH (cf2, &epicd->epi->ignores, pmix_cleanup_file_t) {
-                        if (0 == strcmp(cf->path, cf2->path)) {
-                            /* return an error */
-                            rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
-                            goto exit;
-                        }
-                    }
-                    /* append it to the end of the list */
-                    cfptr = PMIX_NEW(pmix_cleanup_file_t);
-                    if (NULL == cfptr) {
-                        rc = PMIX_ERR_NOMEM;
-                        goto exit;
-                    }
-                    cfptr->path = strdup(cf->path);
-                    if (NULL == cfptr->path) {
-                        PMIX_RELEASE(cfptr);
-                        rc = PMIX_ERR_NOMEM;
-                        goto exit;
-                    }
-                    pmix_list_append(&epicd->epi->cleanup_files, &cfptr->super);
+                /* check for conflict with an ignore */
+                if (epi_has_file(&epicd->epi->ignores, cf->path) ||
+                    epi_has_file(&epicd->newignores, cf->path)) {
+                    /* return an error */
+                    rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
+                    goto exit;
                 }
+                cfptr = epi_new_file(cf->path);
+                if (NULL == cfptr) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto exit;
+                }
+                pmix_list_append(&epicd->newfiles, &cfptr->super);
             }
+        }
+
+        /* the request is acceptable in full - commit it. Nothing below
+         * here allocates or can fail, which is what makes the whole
+         * request either applied or not applied */
+        PMIX_LIST_FOREACH (upg, &upgrades, pmix_srvr_epi_upgrade_t) {
+            if (recurse) {
+                upg->dir->recurse = true;
+            }
+            if (leave_topdir) {
+                upg->dir->leave_topdir = true;
+            }
+        }
+        PMIX_LIST_FOREACH (epicd, &epicache, pmix_srvr_epi_caddy_t) {
+            pmix_list_join(&epicd->epi->ignores,
+                           pmix_list_get_end(&epicd->epi->ignores),
+                           &epicd->newignores);
+            pmix_list_join(&epicd->epi->cleanup_dirs,
+                           pmix_list_get_end(&epicd->epi->cleanup_dirs),
+                           &epicd->newdirs);
+            pmix_list_join(&epicd->epi->cleanup_files,
+                           pmix_list_get_end(&epicd->epi->cleanup_files),
+                           &epicd->newfiles);
         }
         if ((size_t) cnt == cd->ninfo) {
             /* nothing more to do */
@@ -786,6 +878,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     PMIX_LIST_DESTRUCT(&cachedirs);
     PMIX_LIST_DESTRUCT(&cachefiles);
     PMIX_LIST_DESTRUCT(&ignorefiles);
+    PMIX_LIST_DESTRUCT(&upgrades);
     return PMIX_SUCCESS;
 
 exit:
@@ -794,6 +887,7 @@ exit:
     PMIX_LIST_DESTRUCT(&cachedirs);
     PMIX_LIST_DESTRUCT(&cachefiles);
     PMIX_LIST_DESTRUCT(&ignorefiles);
+    PMIX_LIST_DESTRUCT(&upgrades);
     return rc;
 }
 

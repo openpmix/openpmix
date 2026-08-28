@@ -250,7 +250,13 @@ each time somebody asks.
           applied in part before it fails, the server-wide envar hook
           nothing fills, and the allocation-failure injection the
           switchyard's out-of-memory arms need before any of them can be
-          tested.  One entry was opened and closed within the same day —
+          tested.  The cleanup entry is gone from the list below as of
+          2026-08-28: what had been recorded as a question for the
+          Standard turned out to rest on a reading of the code that did
+          not survive being checked, and the repair was a
+          stage-then-commit split of the one handler.
+
+          One entry was opened and closed within the same day —
           the ordering of a registration's acknowledgement against the
           cached events replayed behind it — because the push-back that
           had deferred it ("libevent ordering is too strong an
@@ -420,35 +426,6 @@ single job-level store the ``PMIx_Get`` review forced), and
 
 Open decisions
 --------------
-
-A conflicting cleanup request is applied in part before it fails
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``pmix_server_job_ctrl`` (``src/server/pmix_server_control.c``) applies a
-request's ``PMIX_CLEANUP_IGNORE`` directives to the target epilogs first,
-then its ``PMIX_REGISTER_CLEANUP_DIR`` and ``PMIX_REGISTER_CLEANUP``
-directives — and the latter two fail the whole request with
-``PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES`` when a path they were asked to
-clean is already on that epilog's ignore list.  By then this request's
-ignores, and any directories accepted ahead of the conflicting one, are
-already registered on lists that outlive the request.  So the client is
-told the request failed while the server keeps part of it.
-
-What survives is the conservative half — a path ends up ignored rather
-than deleted — which is why this is recorded rather than repaired.
-Making the request atomic means splitting the walk into a validation pass
-and an application pass, and the validation pass has to reproduce the
-duplicate-detection logic exactly or it will reject requests the current
-code accepts (a directory that duplicates an already-registered entry
-takes the flag-upgrade branch today and is never conflict-checked at
-all).  Whether a partially conflicting job-control request should be
-atomic is a question for the Standard rather than for this file.
-
-The same shape applies to the allocation-failure arms added alongside
-it: a ``strdup`` that fails midway through the walk returns
-``PMIX_ERR_NOMEM`` with the earlier entries registered.  That one is not
-worth a rollback on its own, but it would come out in the wash of a
-validate-then-apply split.
 
 Who owns a credential the host hands up
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

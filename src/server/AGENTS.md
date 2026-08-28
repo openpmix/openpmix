@@ -2923,18 +2923,30 @@ misbehave by design).
   consults it for the directory itself and again for each file inside
   it — so an entry there is meaningful whether or not the same path is
   also on `cleanup_files`.
-- **A conflicting cleanup request is applied in part before it fails.**
-  The ignores are registered first, and the directory and file loops
-  then error with `PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES` when a path
-  they were asked to clean is on the ignore list — by which point this
-  request's ignores, and any directories accepted ahead of the
-  conflicting one, are already on long-lived epilogs. The client is told
-  the request failed and the server keeps half of it. What survives is
-  the conservative half (a path is ignored rather than deleted), which
-  is why this is recorded rather than repaired: making it atomic means a
-  validate-then-apply split, and the exact semantics of a partially
-  conflicting request is a decision for the Standard rather than for
-  this file. See `docs/todo.rst`.
+- **A job-control cleanup request is staged and then committed, and it
+  has to stay that way.** The three epilog lists outlive the request —
+  they live as long as the namespace or the peer — and nothing gives a
+  client a way to take an entry back off one. So a request refused with
+  `PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES` used to leave behind its own
+  ignores (registered first, which is what the conflict is detected
+  against), every directory accepted ahead of the conflicting one, and
+  any flag widening it had applied to already-registered entries — with
+  the client told the whole request had failed. The widening is the
+  sharpest of the three and the least obviously destructive: a duplicate
+  `PMIX_REGISTER_CLEANUP_DIR` carrying `PMIX_CLEANUP_RECURSIVE` turns an
+  existing non-recursive entry recursive, so a directory the client
+  believes untouched takes its whole subtree with it at termination. The
+  handler now builds every addition on per-epilog staging lists hanging
+  off `pmix_srvr_epi_caddy_t`, records pending widenings on a list of
+  `pmix_srvr_epi_upgrade_t`, and commits with `pmix_list_join` only once
+  nothing can fail — which covers the allocation arms too. **Do not put
+  an allocation or a fallible call below the commit comment**; that is
+  the whole basis of the guarantee. Note the one rule the staging pass
+  had to preserve exactly: a directory that duplicates an entry already
+  on the epilog is *never* conflict-checked, because the question of
+  whether that path may be registered for cleanup was answered when it
+  was registered.
+
 - **Two things in `pmix_server_get.c` look like defects and are not.**
   `get_job_data` returns `PMIX_SUCCESS` with an empty buffer when the
   fetch finds nothing, and its callers pass that empty payload to the
